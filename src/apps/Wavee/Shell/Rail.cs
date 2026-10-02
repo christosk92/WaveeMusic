@@ -157,7 +157,6 @@ public static partial class Rail
             new(Winamp, "winamp", "player.style.winamp", "player.style.winamp", PlayerGroup.Devices,
             [
                 Seg("skin", "player.opt.skin", ("base", "player.choice.base"), ("modern", "player.choice.modern"), ("dark", "player.choice.dark")),
-                Seg("vis", "player.opt.analyser", ("spectrum", "player.choice.spectrum"), ("scope", "player.choice.oscilloscope")),
             ]),
             new(Vu, "vu", "player.style.vu", "player.style.vuShort", PlayerGroup.Devices,
             [

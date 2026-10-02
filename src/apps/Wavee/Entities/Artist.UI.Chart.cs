@@ -27,6 +27,7 @@
 // branch, the selection pill is an always-mounted BOUND opacity (selecting is compositor-only) and the per-row playback
 // state sits behind a memo so a skip between two other tracks renders no row (ch 08 §9 traps a-e).
 
+using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -64,6 +65,10 @@ public readonly partial struct Artist
     const float ChartColBreakW = 540f;
     const float ChartMinCardW = (ChartColBreakW - ChartCellGap) / 2f;
     const float ChartEdgeFade = 16f;
+
+    /// <summary>The cells slide over when the check lane arrives (the track table's own tween).</summary>
+    static readonly LayoutTransition s_checkShift = new(
+        TransitionChannels.Position, TransitionDynamics.Tween(333f, Easing.FluentDecelerate));
 
     static readonly Func<float, float> s_chartModernH = static _ => ChartRowH;
     static readonly Func<float, float> s_chartClassicH = static _ => ChartClassicRowH;
@@ -117,6 +122,10 @@ public readonly partial struct Artist
         readonly Func<int, Track> _trackAt;
         readonly Prop<ColorF> _pillFill;
         readonly Action _retry, _demand, _demandTargets, _recheckNow;
+        // WP3 — the shelf's invoke (Tap on a row / Enter / Space-on-single / double-click) and the check lane's visibility.
+        readonly Action<ChartItem, int> _invoke;
+        internal readonly Func<bool> ChecksVisible;
+        readonly List<int> _dragIndices = new(8);
 
         static readonly Func<int, int> s_noMembership = static _ => -1;
         static readonly Track.MenuOptions s_menuOptions = new(ShowGoToAlbum: true);
@@ -147,6 +156,8 @@ public readonly partial struct Artist
             _demand = Demand;
             _demandTargets = DemandTargets;
             _recheckNow = Recheck;
+            _invoke = (_, i) => InvokeAt(i);
+            ChecksVisible = () => { _ = Selection.Version.Value; return SelectionBarRules.ChecksVisible(Selection.SelectedCount, false); };
         }
 
         public override Element Render()
@@ -196,7 +207,12 @@ public readonly partial struct Artist
                 keyOf: _keyOf,
                 maxColumns: cols,
                 snap: ShelfSnap.Page,
-                maxItems: ArtistSections.ChartMaxTracks);
+                maxItems: ArtistSections.ChartMaxTracks,
+                // WP3 — the slot root owns click, focus and the keyboard (arrows, Enter, Space, Ctrl+A, Esc) over the
+                // host-owned model, so a selection survives the page flips that slide the realized window.
+                onInvoke: _invoke,
+                selectionMode: ItemsSelectionMode.Extended,
+                selection: Selection);
             // A key on a component's ROOT is inert (ReconcileSingleChild pairs by type alone), so the keyed shelf is a
             // CHILD of a pass-through column (ch 08 §9 trap 2).
             _shelf = new BoxEl { Direction = 1, MinWidth = 0f, Children = [shelf with { Key = s_chartShelfKeys[shelfKey] }] };
@@ -206,10 +222,15 @@ public readonly partial struct Artist
                 Direction = 1, MinWidth = 0f,
                 Children =
                 [
-                    new SkelRegionEl(
-                        Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                        OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
-                        Group: null, SmoothResize: false),
+                    // The standard selection bar floats over the chart's own rows the moment the selection earns it
+                    // (SelectionBarRules.Visible); it is its own component, so a select/clear re-renders the bar and the
+                    // bound row chrome — never this host or the shelf.
+                    ZStack(
+                        new SkelRegionEl(
+                            Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
+                            OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default,
+                            Group: null, SmoothResize: false),
+                        Embed.Comp(() => new ChartBar(this)) with { Key = "chart-bar" }),
                 ],
             };
         }
@@ -428,7 +449,8 @@ public readonly partial struct Artist
                         Key = "row-pill", Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f),
                         Corners = classic ? CornerRadius4.All(Radii.None) : CornerRadius4.All(1.5f),
                         AlignSelf = FlexAlign.Center, Fill = _pillFill, HitTestVisible = false,
-                        Opacity = Prop.Of(() => { _ = Selection.Version.Value; return Selection.IsSelected(at) ? 1f : 0f; }),
+                        // The accent pill is the single-selection cue; with the check lane up the checkbox says it instead.
+                        Opacity = Prop.Of(() => { _ = Selection.Version.Value; return Selection.IsSelected(at) && !ChecksVisible() ? 1f : 0f; }),
                     },
                 ],
             };
@@ -474,28 +496,66 @@ public readonly partial struct Artist
             var slots = Owner.PopularSlots;
             if ((uint)index >= (uint)slots.Length) return null;
             var pressed = new Track(slots[index]);
-            Track[] tracks;
-            if (!Selection.IsSelected(index) || Selection.SelectedCount <= 1)
-                tracks = [pressed];
-            else
+            SelectionDrag.Indices(Selection, index, _dragIndices);
+            var tracks = new List<Track>(_dragIndices.Count);
+            for (int k = 0; k < _dragIndices.Count; k++)
             {
-                int n = Math.Min(slots.Length, Selection.ItemCount);
-                tracks = new Track[Math.Min(n, Selection.SelectedCount)];
-                int k = 0;
-                for (int i = 0; i < n && k < tracks.Length; i++)
-                    if (Selection.IsSelected(i)) tracks[k++] = new Track(slots[i]);
-                if (k < tracks.Length) Array.Resize(ref tracks, k);
+                int i = _dragIndices[k];
+                if ((uint)i < (uint)slots.Length) tracks.Add(new Track(slots[i]));
             }
+            if (tracks.Count == 0) tracks.Add(pressed);
             string uri = pressed.Uri.Text;
             return new DragPayload(DragKind.Track, uri, uri, pressed.Title, new EntityRef(EntityKind.Track, pressed.Slot),
-                Tracks: tracks, ArtUrl: Controls.ArtUrl(pressed.ImageId));
+                Tracks: tracks.ToArray(), ArtUrl: Controls.ArtUrl(pressed.ImageId));
         }
 
-        /// <summary>Plain = replace, Ctrl = toggle, Shift = range from the anchor.</summary>
-        internal void SelectRow(int index, KeyModifiers mods)
+        /// <summary>The shelf's invoke (a Tap on an unmodified row once it is the only selection, Enter, double-click):
+        /// play the chart FROM this row.</summary>
+        void InvokeAt(int index)
         {
-            Selection.OnInteractedAction(index, (mods & KeyModifiers.Ctrl) != 0, (mods & KeyModifiers.Shift) != 0);
-            if ((mods & KeyModifiers.Shift) == 0) Selection.AnchorIndex = index;
+            var t = TrackAt(index);
+            if (!t.IsValid) return;
+            Track.Invoke(t, () => StartAt(index));
+        }
+
+        /// <summary>The selected tracks, in chart order — the selection lane's provider (called at render and at the "…" open).</summary>
+        internal IReadOnlyList<Track> SelectedTracks()
+        {
+            var slots = Owner.PopularSlots;
+            var picked = new List<Track>(Selection.SelectedCount);
+            for (int r = 0; r < Selection.RangeCount; r++)
+            {
+                var (s, e) = Selection.GetRange(r);
+                for (int i = s; i <= e && i < slots.Length; i++)
+                    if (slots[i] > Table.None) picked.Add(new Track(slots[i]));
+            }
+            return picked;
+        }
+    }
+
+    /// <summary>The chart's floating selection bar — a component of its own so selecting re-renders only it.</summary>
+    sealed class ChartBar : Component
+    {
+        readonly ChartHost _host;
+        readonly Func<int, Element> _lane;
+        readonly Func<IReadOnlyList<Track>> _tracks;
+        readonly Action _exit, _selectAll;
+
+        public ChartBar(ChartHost host)
+        {
+            _host = host;
+            _tracks = host.SelectedTracks;
+            _exit = host.Selection.DeselectAll;
+            _selectAll = host.Selection.SelectAll;
+            _lane = fit => Track.SelectionLane(fit,
+                SelectionLaneArgs.ForTracks(host.Selection.SelectedCount, _tracks, _exit, _selectAll));
+        }
+
+        public override Element Render()
+        {
+            _ = _host.Selection.Version.Value;
+            int n = _host.Selection.SelectedCount;
+            return Controls.SelectionBar(SelectionBarRules.Visible(n, false) ? n : 0, _lane, standalone: true, bottomPadding: Spacing.S);
         }
     }
 
@@ -520,19 +580,12 @@ public readonly partial struct Artist
         bool _likeSaved;
         readonly Func<ChartPresentation> _compute;
         readonly Action _play, _like;
-        readonly Action<PointerEventArgs> _released;
 
         public ChartRow()
         {
             _compute = Compute;
             _play = Play;
             _like = Like;
-            _released = args =>
-            {
-                if (_latest is not { } p) return;
-                if (args.ClickCount >= 2) Play();
-                else p.Owner.SelectRow(p.Index, args.Mods);
-            };
         }
 
         ChartPresentation Compute()
@@ -558,6 +611,9 @@ public readonly partial struct Artist
             var p = UseProps<ChartRowProps>();
             _latest = p;
             var hovered = UseSignal(false);
+            // The shelf slot root's scope (the slot owns click, focus and keys; this content is click-less). Read BEFORE
+            // the early return so the hook order never depends on the row being live.
+            RowScope? slot = UseContext(ItemsView.SlotRow);
             var memo = UseComputed(_compute);
             var pr = memo.Value;
             if (pr.Slot <= 0) return new BoxEl();
@@ -577,7 +633,7 @@ public readonly partial struct Artist
                 plays > 0 ? Strings.Detail.Row.PlaysFull(plays.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)) : "",
                 t.IsExplicit, t.HasVideo);
             return ChartRowView(in cells, p.Index, pr.State, p.Tier, feat, _play, t.IsValid ? _like : null, pop,
-                hovered, _released, owner.ShowArtwork, classic);
+                hovered, slot, owner.ChecksVisible, owner.ShowArtwork, classic);
         }
 
         void Play()
@@ -650,7 +706,7 @@ public readonly partial struct Artist
     /// accent spreads to the explicit mark, the dots, the video glyph, the plays and the duration (W10, parity 83).</summary>
     static Element ChartRowView(in ChartCells c, int index, in Track.RowState st, ArtistPopularLayout.Tier tier,
                                 Element? feat, Action? onPlay, Action? onLike, bool pop, Signal<bool>? hovered,
-                                Action<PointerEventArgs>? onReleased, bool showArtwork, bool classic)
+                                RowScope? slot, Func<bool>? checksVisible, bool showArtwork, bool classic)
     {
         bool classicNow = classic && st.IsNow;
         ColorF? nowInk = classicNow ? Tok.AccentTextPrimary : null;
@@ -723,12 +779,27 @@ public readonly partial struct Artist
         rowChildren[child] = new BoxEl { Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trail };
 
         float rowHeight = classic ? ChartClassicRowH : ChartRowH;
-        var body = new BoxEl
-        {
-            Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = rowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-            Padding = classic ? new Edges4(Spacing.XS, 0f, Spacing.XS, 0f) : new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Children = rowChildren,
-        };
+        var inset = classic ? new Edges4(Spacing.XS, 0f, Spacing.XS, 0f) : new Edges4(Spacing.S, 0f, Spacing.S, 0f);
+        // Slot-hosted rows carry the multi-select check lane in front of the cells; it slides in with the selection.
+        BoxEl body = slot is { } scope && checksVisible is not null
+            ? new BoxEl
+            {
+                Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = rowHeight, AlignItems = FlexAlign.Center, Padding = inset,
+                Children =
+                [
+                    SelectorVisualsBound.BoundCheckLane(checksVisible, scope.IsSelected, scope.OnInteraction, leftMargin: 0f),
+                    new BoxEl
+                    {
+                        Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                        Animate = s_checkShift, Children = rowChildren,
+                    },
+                ],
+            }
+            : new BoxEl
+            {
+                Direction = 0, Grow = 1f, MinWidth = 0f, MinHeight = rowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.S,
+                Padding = inset, Children = rowChildren,
+            };
 
         return new BoxEl
         {
@@ -740,9 +811,9 @@ public readonly partial struct Artist
             BorderWidth = classic ? 0f : 1f, BorderColor = ColorF.Transparent,
             HoverBorderColor = classic ? ColorF.Transparent : Tok.StrokeCardDefault,
             Role = AutomationRole.Button,
-            // Single click SELECTS, double click plays; with no selection model behind it (the skeleton) a click invokes.
-            OnClick = onReleased is null ? onPlay : null,
-            OnPointerReleased = onReleased,
+            // Slot-hosted (the live chart): the shelf's slot root owns click, focus and keys, so this content is click-less.
+            // The skeleton (no slot) is inert.
+            OnClick = null,
             // Real hover edges: the PointerBit every HoverOpacity descendant inherits AND the equalizer's pause gate.
             OnHoverMove = hovered is null ? null : _ => { if (!hovered.Peek()) hovered.Value = true; },
             OnPointerExit = hovered is null ? null : () => { if (hovered.Peek()) hovered.Value = false; },
@@ -774,7 +845,7 @@ public readonly partial struct Artist
             int rows = Math.Min(perCol, Math.Max(0, total - c * perCol));
             var kids = new Element[rows];
             for (int r = 0; r < rows; r++)
-                kids[r] = ChartRowView(in cells, c * perCol + r, in state, tier, null, null, null, false, null, null,
+                kids[r] = ChartRowView(in cells, c * perCol + r, in state, tier, null, null, null, false, null, null, null,
                                        showArtwork, classic);
             columns[c] = new BoxEl
             {

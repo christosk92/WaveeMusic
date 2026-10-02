@@ -138,11 +138,16 @@ public static partial class Spotify
         /// rather than derived from it because <see cref="Fmt"/> is lossy on purpose (<see cref="FormatOf"/> collapses
         /// the four MP3 rungs into one, since no decoder cares). Storage-resolve does care: the number goes in the url
         /// it signs. It is read by exactly that one route, so a choice that never reaches it — a failed one, an
-        /// external episode url — leaves it at its default rather than claiming a format it does not have.</para></summary>
+        /// external episode url — leaves it at its default rather than claiming a format it does not have.</para>
+        ///
+        /// <para><see cref="AlbumGainDb"/>/<see cref="AlbumPeak"/> are the catalogue's ALBUM figures (lossless only: the
+        /// AUDIO_FILES <c>default_album_normalization_params</c>), at the same −14 LUFS reference as the track pair; 0 when
+        /// the catalogue carried none (D5: album mode then uses the track pair).</para></summary>
         public readonly record struct FileChoice(
             byte[] FileId, string FileIdHex, byte[] TrackGid, Format Fmt, long DurationMs, float GainDb,
             string? ExternalUrl, Fault Fault, float Peak = 0f,
-            Md.AudioFile.Types.Format Wire = Md.AudioFile.Types.Format.OggVorbis96)
+            Md.AudioFile.Types.Format Wire = Md.AudioFile.Types.Format.OggVorbis96,
+            float AlbumGainDb = 0f, float AlbumPeak = 0f)
         {
             public bool Ok => Fault == Audio.Fault.None && (FileId.Length > 0 || ExternalUrl is { Length: > 0 });
 
@@ -160,10 +165,12 @@ public static partial class Spotify
         /// so the module and local paths, and anything that only speaks `Stream`, keep working through one class.</para>
         ///
         /// <para><see cref="Peak"/> is the LINEAR true peak the normalization gain is capped by (librespot's
-        /// <c>get_factor</c>), 0 when unknown — carried so the adapters' <c>NormalizationFactor</c> can apply the cap.</para></summary>
+        /// <c>get_factor</c>), 0 when unknown — carried so the adapters' <c>NormalizationFactor</c> can apply the cap.
+        /// <see cref="AlbumGainDb"/>/<see cref="AlbumPeak"/> are the same pair for the ALBUM (the Ogg header's bytes 152/156,
+        /// the lossless catalogue's album params), 0 when the source carries none — what album mode picks (D5).</para></summary>
         public readonly record struct Opened(
             System.IO.Stream? Stream, Format Fmt, long Length, long DurationMs, float GainDb, string FileIdHex, Fault Fault,
-            Body? Body = null, float Peak = 0f)
+            Body? Body = null, float Peak = 0f, float AlbumGainDb = 0f, float AlbumPeak = 0f)
         {
             public bool Ok => Stream is not null && Fault == Audio.Fault.None;
             public static Opened Failed(Audio.Fault fault) => new(null, Format.Unknown, 0, 0, 0f, "", fault);
@@ -392,8 +399,9 @@ public static partial class Spotify
         public static bool IsOggFormat(Format format)
             => format is Format.OggVorbis96 or Format.OggVorbis160 or Format.OggVorbis320;
 
-        /// <summary>How much decrypted file a header gain and peak need: the gain at 144, the peak at 148.</summary>
-        public const int HeaderGainBytes = 152;
+        /// <summary>How much decrypted file the header's four normalization floats need (librespot <c>NormalisationData</c>):
+        /// the track gain at 144, the track peak at 148, the album gain at 152, the album peak at 156.</summary>
+        public const int HeaderGainBytes = 160;
 
         /// <summary>The normalization a body opens with (D6; G-105). The catalogue's figure when it carried one (the
         /// lossless AUDIO_FILES normalization params); otherwise, for an OGG body ONLY, the Spotify header's track gain at
@@ -405,9 +413,22 @@ public static partial class Spotify
         public static (float GainDb, float Peak) GainFor(Format fmt, float catalogueGainDb, float cataloguePeak,
             ReadOnlySpan<byte> clearHeader)
         {
-            if (catalogueGainDb != 0f && float.IsFinite(catalogueGainDb)) return (catalogueGainDb, SanePeak(cataloguePeak));
-            if (!IsOggFormat(fmt) || clearHeader.Length < HeaderGainBytes) return (0f, 0f);
-            return (SaneGain(HeadGainDb(clearHeader)), HeadPeak(clearHeader));
+            (float gain, float peak, _, _) = GainWithAlbumFor(fmt, catalogueGainDb, cataloguePeak, 0f, 0f, clearHeader);
+            return (gain, peak);
+        }
+
+        /// <summary><see cref="GainFor"/> with the ALBUM pair beside the track pair (D5, V-PA13): the catalogue's album figures
+        /// when it carried a track gain (lossless), else — an Ogg body only — the header's album gain at byte 152 and album
+        /// peak at 156. (0, 0, 0, 0) when nothing is known; an album figure that is not believable is 0 (unknown), and album
+        /// mode then falls back to the track pair. PURE.</summary>
+        public static (float GainDb, float Peak, float AlbumGainDb, float AlbumPeak) GainWithAlbumFor(Format fmt,
+            float catalogueGainDb, float cataloguePeak, float catalogueAlbumGainDb, float catalogueAlbumPeak,
+            ReadOnlySpan<byte> clearHeader)
+        {
+            if (catalogueGainDb != 0f && float.IsFinite(catalogueGainDb))
+                return (catalogueGainDb, SanePeak(cataloguePeak), SaneGain(catalogueAlbumGainDb), SanePeak(catalogueAlbumPeak));
+            if (!IsOggFormat(fmt) || clearHeader.Length < HeaderGainBytes) return (0f, 0f, 0f, 0f);
+            return (SaneGain(HeadGainDb(clearHeader)), HeadPeak(clearHeader), HeadAlbumGainDb(clearHeader), HeadAlbumPeak(clearHeader));
         }
 
         /// <summary>Does a country list admit <paramref name="market"/>? The wire spells a list as 2-char country codes
@@ -458,11 +479,17 @@ public static partial class Spotify
                 (byte[] flacId, Format flacFormat, Md.AudioFile.Types.Format flacWire) = PickFlac(lossless);
                 if (flacId.Length > 0)
                 {
+                    // The −14 reference, NO mode (V-PA14): the mode's pregain is applied once, in `Playback.Audio.NormalizationFactor`.
+                    // The album pair rides along from the catalogue's album params when it sent them (D5).
                     Af.NormalizationParams? np = lossless.DefaultFileNormalizationParams;
+                    Af.NormalizationParams? album = lossless.DefaultAlbumNormalizationParams;
                     float gain = np is not null ? NormalizationGain(np.LoudnessDb, np.TruePeakDb) : 0f;
                     float peak = np is not null ? PeakLinear(np.TruePeakDb) : 0f;
+                    float albumGain = album is not null ? NormalizationGain(album.LoudnessDb, album.TruePeakDb) : 0f;
+                    float albumPeak = album is not null ? PeakLinear(album.TruePeakDb) : 0f;
                     return new FileChoice(flacId, Hexed(flacId), track.Gid.ToByteArray(), flacFormat,
-                        track.HasDuration ? track.Duration : fallbackDurationMs, gain, null, Fault.None, peak, flacWire);
+                        track.HasDuration ? track.Duration : fallbackDurationMs, gain, null, Fault.None, peak, flacWire,
+                        albumGain, albumPeak);
                 }
             }
 
@@ -1205,5 +1232,15 @@ public static partial class Spotify
         /// or the figure is not a believable peak (<see cref="SanePeak"/>).</summary>
         public static float HeadPeak(ReadOnlySpan<byte> head)
             => head.Length >= 152 ? SanePeak(BitConverter.ToSingle(head[148..152])) : 0f;
+
+        /// <summary>The ALBUM gain the header carries at byte 152 (D5, V-PA13), 0 when the head is too short or the figure is
+        /// not a believable gain (<see cref="SaneGain"/>).</summary>
+        public static float HeadAlbumGainDb(ReadOnlySpan<byte> head)
+            => head.Length >= 156 ? SaneGain(BitConverter.ToSingle(head[152..156])) : 0f;
+
+        /// <summary>The album's LINEAR true peak at byte 156, 0 when the head is too short or the figure is not a believable
+        /// peak (<see cref="SanePeak"/>).</summary>
+        public static float HeadAlbumPeak(ReadOnlySpan<byte> head)
+            => head.Length >= 160 ? SanePeak(BitConverter.ToSingle(head[156..160])) : 0f;
     }
 }

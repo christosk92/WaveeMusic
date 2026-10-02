@@ -71,7 +71,7 @@ public static partial class Crash
                 string dir = Crash.Bundles.Create(LogFolder, Kind.Managed, DateTimeOffset.Now);
                 Crash.Bundles.WriteSummary(dir, Report.BuildSummary(Kind.Managed, caught, 0));
                 Crash.Bundles.WriteReport(dir, Report.Describe(caught));
-                Crash.Bundles.WriteTail(dir, s_datedLogPath, 300, rules);
+                WriteLogTail(dir, rules);
 
                 if (!RequestDumpFromChild(Handler.DumpKind.Test, GetCurrentThreadId(), 0, dir, out long bytes, out string? err))
                     Log.Warn("crash", "crash.test.dump.failed: " + (err ?? "unknown"));

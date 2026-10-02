@@ -1117,11 +1117,19 @@ public readonly partial struct Track
                 OnPlay: play, OnLike: like, LikePop: pop,
                 ActionsCell: p.Options.ActionsCell ?? (set.Actions ? MoreCell(true, set.Classic) : null),
                 MoreEnabled: true, HoverPaused: hovered, HeartRevealOnHover: p.Options.HeartRevealOnHover);
-            var grid = Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH,
-                            TitleCell(t, st.IsNow, set.Classic, marquee: false), in options);
+            // The title carries the full-text tooltip while it is cut (the plain run only; the marquee scrolls instead).
+            Element title = TitleCell(t, st.IsNow, set.Classic, marquee: false);
+            if (title is TextEl titleRun) title = Controls.TrimmedTitle(titleRun, t.ForDisplay.Title);
+            var grid = Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH, title, in options);
+
+            // A row whose column set has no "…" lane (no Actions, no Video lane) still offers the menu: the standard "…" as
+            // a hover overlay at the row's end over an opaque chip, reserving no width.
+            bool overlayMore = !set.Actions && !set.Video && p.Options.ActionsCell is null && !Controls.IsNullOverlay(svc);
 
             var row = new BoxEl
             {
+                ZStack = overlayMore,
+                Draggable = _drag ??= Drag.Source(DragLatest),
                 MinHeight = p.RowH, ClipToBounds = true,
                 Margin = new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
                 Corners = Radii.ControlAll,
@@ -1138,10 +1146,31 @@ public readonly partial struct Track
                 // Real enter/exit edges: the PointerBit every HoverOpacity descendant inherits AND the equalizer pause.
                 OnHoverMove = _ => { if (!hovered.Peek()) hovered.Value = true; },
                 OnPointerExit = () => { if (hovered.Peek()) hovered.Value = false; },
-                Children = [grid],
+                Children = overlayMore ? [grid, MoreOverlay(set.Classic)] : [grid],
             };
             return Controls.IsNullOverlay(svc) ? row : ContextMenu.Attach(row, svc, menu);
         }
+
+        DragSource? _drag;
+
+        /// <summary>The row's drag (selection-less: the row's own track), built cold at drag promotion from the NEWEST props.</summary>
+        DragPayload DragLatest() => RowPayload(_latest!.Track, null);
+
+        static Element MoreOverlay(bool classic) => new BoxEl
+        {
+            HitTestPassThrough = true, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+            Padding = new Edges4(0f, 0f, Spacing.S, 0f),
+            Children =
+            [
+                new BoxEl
+                {
+                    Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, BlocksDragArm = true,
+                    Corners = Radii.ControlAll, Fill = Tok.FillControlSolid,
+                    Opacity = 0f, HoverOpacity = 1f,
+                    Children = [MoreCell(true, classic)],
+                },
+            ],
+        };
 
         void PlayLatest()
         {
@@ -1190,7 +1219,8 @@ public readonly partial struct Track
     /// <see cref="Draggable"/> hands the row a single-track drag (a row that owns another drag — the queue's
     /// reorder — says false); <see cref="QueueItemId"/> non-null marks it a queue row (the drag is then a reorder no
     /// playlist may deposit, and the menu addresses the queue entry). <see cref="ShowMenu"/> false keeps the right-click
-    /// menu and drops the "…" (a narrow surface with no room for the slot). <see cref="MenuArgs"/> is the menu's own
+    /// menu and drops the "…" button (the queue's rows and the rail's Next up: <see cref="QueueRowRules.ShowsMenuButton"/>,
+    /// where the "…" overlay would cover the ✕). <see cref="MenuArgs"/> is the menu's own
     /// options (null = the defaults). <see cref="Trailing"/> is the right cluster (heart, duration, add) and
     /// <see cref="Selected"/> the opened/chosen skin.</para></summary>
     public readonly record struct RowDataOptions(

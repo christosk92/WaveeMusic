@@ -526,7 +526,7 @@ public static partial class Shell
             for (int i = 0; i < richRows; i++, index++)
             {
                 if (i == 0 && rows.Count > 0) rows.Add(new BoxEl { Height = 1f, Margin = new Edges4(16f, 4f, 16f, 4f), Fill = Tok.StrokeDividerDefault });
-                rows.Add(RichRow(s.Items[i], index, highlighted == index));
+                rows.Add(RichRow(s.Items[i], index));
             }
 
             Element body;
@@ -569,50 +569,93 @@ public static partial class Shell
             Children = OmniQueryContent(text, typed),
         };
 
-        Element RichRow(Omnibar.Item item, int index, bool selected)
-        {
-            float radius = Omnibar.IsCircular(item.Kind) ? 22f : 5f;
-            string typeLabel = OmniTypeLabel(item.Kind);
-            var trailing = new List<Element>(3);
-            if (Omnibar.CanPlay(item.Kind))
-                trailing.Add(OmniRowAction(Icons.Play, () => { OnPlayContext?.Invoke(item.Uri); close?.Invoke(); }));
-            if (Omnibar.ShowsHeart(item.Kind))
-                trailing.Add(Embed.Comp(() => new Controls.SaveButton { Uri = item.Uri.Text, Name = item.Title, Box = 28f, Glyph = 14f })
-                    with { Key = "omni-heart:" + item.Uri.Text });
-            trailing.Add(new BoxEl
-            {
-                Shrink = 0f, Padding = new Edges4(9f, 2f, 9f, 2f), Corners = CornerRadius4.All(10f), Fill = Tok.FillSubtleSecondary,
-                Children = [Design.Type.Eyebrow(typeLabel) with { Color = Tok.TextTertiary }],
-            });
+        /// <summary>A rich row is the shared media surface in SLOT mode (<see cref="Controls.SlotSurface"/>): the field keeps
+        /// focus, the arrow-key cursor (<c>Highlight</c>) is the row's "focused" fact, and Enter / a click is the
+        /// <see cref="RowScope.OnInteraction"/> choose. Keyed by index + uri: the component's props freeze at mount.</summary>
+        Element RichRow(Omnibar.Item item, int index)
+            => Embed.Comp(() => new OmniRow { Item = item, Index = index, Choose = choose, Close = close })
+                with { Key = "omni-row:" + index + ":" + item.Uri.Text };
+    }
 
-            return new BoxEl
+    /// <summary>One rich flyout row. Synthesizes the <see cref="RowScope"/> a bound slot would hand its surface: the
+    /// highlight IS the focus, tap / Enter / Space choose, the root never takes focus (the field keeps it).</summary>
+    sealed class OmniRow : Component
+    {
+        public required Omnibar.Item Item;
+        public required int Index;
+        public required Action<int> Choose;
+        public Action? Close;
+
+        public override Element Render()
+        {
+            var item = Item;
+            int index = Index;
+            var choose = Choose;
+            var close = Close;
+            var at = UseSignal(index);
+            var highlighted = UseComputed(() => s_omnibar.Highlight.Value == index);
+            var scope = new RowScope(at, static () => false, () => highlighted.Value, static () => true,
+                (trigger, _) => { if (trigger != ItemContainerTrigger.DoubleTap) choose(index); },
+                static _ => { })
+            { IsFocused = highlighted };
+
+            var kind = item.Kind;
+            var rf = item.Ref;                                  // allocates the table row if unseen (UI thread, render)
+            string uri = item.Uri.Text;
+            Action? play = Omnibar.CanPlay(kind)
+                ? Omnibar.ChoosePlays(kind)
+                    ? () =>
+                    {
+                        // A track/episode that is the current item toggles pause (the row verb every list row uses);
+                        // else the host's play. Without a table slot, the uri toggle compares playables with the item.
+                        if (kind == Omnibar.ItemKind.Track && rf.Kind == EntityKind.Track && rf.Slot > 0)
+                            Track.Invoke(new Track(rf.Slot), () => OnPlayContext?.Invoke(item.Uri));
+                        else if (OnPlayContext is { } start && ContextPlayRules.For(item.Uri.Id, Playback.ContextUri.Peek(), Playback.CurrentId.Peek(), Playback.Error.Peek()) == ContextPlayAction.Start)
+                            start(item.Uri);
+                        else
+                            Playback.PlayOrToggleContext(item.Uri.Id);
+                        close?.Invoke();
+                    }
+                    : () => { Playback.PlayOrToggleContext(uri); close?.Invoke(); }
+                : null;
+
+            Func<ContextMenuModel?>? menu = OmnibarRowRules.MenuOf(kind) switch
             {
-                Direction = 0, Height = 58f, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(12f, 0f, 10f, 0f), Margin = new Edges4(4f, 2f, 4f, 2f), Corners = Radii.ControlAll,
-                Role = AutomationRole.MenuItem,
-                Fill = selected ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                OnClick = () => choose(index),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = 44f, Height = 44f, Shrink = 0f, Corners = CornerRadius4.All(radius), ClipToBounds = true,
-                        Children = [Controls.Artwork(item.ImageUrl, 44f, 44f, radius)],
-                    },
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, MinWidth = 0f,
-                        Children =
-                        [
-                            new TextEl(item.Title) { Size = 14f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                            new TextEl(item.Subtitle ?? typeLabel) { Size = 12f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        ],
-                    },
-                    new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 2f, Children = trailing.ToArray() },
-                ],
+                OmnibarRowRules.MenuKind.Track when !rf.IsNone => () =>
+                {
+                    Track.EnsureActions();
+                    return Track.Menu([new Track(rf.Slot)], new Track.MenuOptions(ShowGoToAlbum: true));
+                },
+                OmnibarRowRules.MenuKind.Container => () => Menus.Container(ContainerTargetOf(item), item.ImageUrl, item.Subtitle),
+                _ => null,
             };
+
+            DragSource? drag = OmnibarRowRules.Drags(kind) && !rf.IsNone
+                ? Drag.Source(() => kind == Omnibar.ItemKind.Track
+                    ? new DragPayload(DragKind.Track, uri, uri, item.Title, rf, Tracks: [new Track(rf.Slot)], ArtUrl: item.ImageUrl)
+                    : new DragPayload(Drag.KindOf(rf.Kind), uri, uri, item.Title, rf, ArtUrl: item.ImageUrl))
+                : null;
+
+            var data = new Controls.CardData(uri, item.Title,
+                Design.Type.TrackMeta(Search.SubtitleText(OmniKindWord(item), item.Subtitle))
+                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                item.ImageUrl, () => choose(index), play, Circular: Omnibar.IsCircular(kind), Drag: drag)
+            {
+                Trailing = rf.IsNone ? null : Search.TrailingOf(rf, uri, item.Title, compact: true),
+                Menu = menu,
+            };
+
+            return Controls.SlotSurface(scope, data, OmnibarRowRules.RowShape)
+                with { Role = AutomationRole.MenuItem, Margin = new Edges4(4f, 2f, 4f, 2f) };
         }
+
+        static ActionTarget ContainerTargetOf(Omnibar.Item item) => item.Kind switch
+        {
+            Omnibar.ItemKind.Album => ActionTarget.ForAlbum(item.Uri, item.Title),
+            Omnibar.ItemKind.Artist => ActionTarget.ForArtist(item.Uri, item.Title),
+            Omnibar.ItemKind.Playlist => ActionTarget.ForPlaylist(item.Uri, item.Title),
+            _ => ActionTarget.ForShow(item.Uri, item.Title),
+        };
     }
 
     /// <summary>One sentence in the row slot, optionally with a trailing affordance (the failure's Retry).</summary>
@@ -626,15 +669,12 @@ public static partial class Shell
             : [new TextEl(text) { Size = 14f, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }, trailing],
     };
 
-    /// <summary>A 28-DIP round row action on the emphatic scale tier (▶).</summary>
-    static Element OmniRowAction(string glyph, Action onClick) => new BoxEl
-    {
-        Width = 28f, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-        Corners = CornerRadius4.All(14f),
-        HoverScale = Design.Motion.ScaleEmphatic.Hover, PressScale = Design.Motion.ScaleEmphatic.Press,
-        Cursor = CursorId.Hand, OnClick = onClick, Role = AutomationRole.Button,
-        Children = [Icon(glyph, 14f, Tok.TextSecondary)],
-    }.Interactive(Interaction.Subtle);
+    /// <summary>The row's kind word: an album's release kind (Single / EP / Compilation) when the wire said it, else the
+    /// kind's own label.</summary>
+    static string OmniKindWord(Omnibar.Item item)
+        => item.Kind == Omnibar.ItemKind.Album && item.ReleaseKind is { } release
+            ? Detail.Text.KindLabel(release)
+            : OmniTypeLabel(item.Kind);
 
     static string OmniTypeLabel(Omnibar.ItemKind kind) => Loc.Get(kind switch
     {

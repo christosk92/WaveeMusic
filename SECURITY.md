@@ -27,7 +27,7 @@ You should get an acknowledgement within 7 days.
 
 ## What not to send
 
-Don't include Spotify credentials, OAuth tokens, `credentials.json`, or a full unredacted `wavee.log` in a
+Don't include Spotify credentials, OAuth tokens, `credentials.json`, or a full unredacted `wavee-<date>.log` in a
 report. For a crash, a stack trace plus the version quad is enough — every release ships with a matching
 symbols zip, so we can symbolicate from that alone.
 

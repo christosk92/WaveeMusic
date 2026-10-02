@@ -1,5 +1,5 @@
 // ── Shell/Sidebar.UI.Rail.cs ───────────────────────────────────────────────────────────────────────────────────────
-// the collapsed 56-DIP rail (tiles, dividers, pending stack, footer) and the rail folder flyout
+// the collapsed icon rail (tiles, dividers, pending stack, footer) and the rail folder flyout
 //
 // Role: UI
 // Owner: J
@@ -21,7 +21,7 @@ namespace Wavee;
 
 public static partial class Sidebar
 {
-    /// <summary>THE ONE 56-DIP RAIL. Its content is data: the rail plan (`SidebarRowPlanner.BuildRail` — `ShowInRail`
+    /// <summary>THE ONE ICON RAIL (48 / 56 / 80 DIP by the user detent). Its content is data: the rail plan (`SidebarRowPlanner.BuildRail` — `ShowInRail`
     /// sections in document order, dividers collapsed); this class only draws tiles, so no design's rail can drift.
     /// VIRTUALIZED (Detail hero + full rail plan, Part 2): the rail is ONE bound <c>ItemsView</c> — the ONE scroller
     /// for head chrome, plan rows AND footer chrome alike (<see cref="SidebarRailItems"/> maps an item index to which
@@ -38,15 +38,8 @@ public static partial class Sidebar
     /// they read their OWN live edges directly (see <see cref="RailSlot"/>).</para></summary>
     internal static class Rail
     {
-        /// <summary>The rail tile box (40×40 inside the 56-DIP strip).</summary>
-        public const float Box = 40f;
-
-        /// <summary>The art edge inside an <see cref="ArtTile"/> (the 2-DIP accent ring needs the 2-DIP inset).</summary>
-        public const float ArtEdge = 36f;
-
-        /// <summary>The tile row's extent — <see cref="SidebarRailExtents.Pitch"/>, the pure/testable home for this
-        /// number (Box + the 6-DIP gap the old column's <c>Gap</c> used to add after every child).</summary>
-        public const float Pitch = SidebarRailExtents.Pitch;
+        // Every tile number (box, art edge, glyph, corner, pitch, divider width) is the user's rail DETENT, read as ONE
+        // SidebarRailMetrics (`SidebarRailMetrics.For(Sidebar.RailDetent.Value)`: the read is the subscription), never a const.
 
         /// <summary>The rule row's extent — <see cref="SidebarRailExtents.DividerExtent"/> (<see cref="Divider"/>'s
         /// own height plus its vertical margin).</summary>
@@ -61,7 +54,8 @@ public static partial class Sidebar
         public static Element Frame(PaneView owner)
         {
             var plan = owner.RailPlan;
-            if (plan.Rows.Count == 0 && Binder is null) return SeedStack(PendingTiles);
+            var m = SidebarRailMetrics.For(Sidebar.RailDetent.Value);
+            if (plan.Rows.Count == 0 && Binder is null) return SeedStack(PendingTiles, in m);
 
             bool hasHead = owner.HasRailHead;
             bool hasFooter = owner.HasRailFooter;
@@ -115,6 +109,8 @@ public static partial class Sidebar
             public override Element Render()
             {
                 int index = scope.Index.Value;   // a recycle writes this → exactly this item re-renders
+                // The detent read IS the subscription: a detent change re-renders the ~25 realized tiles once.
+                var m = SidebarRailMetrics.For(Sidebar.RailDetent.Value);
                 bool hasHead = o.HasRailHead;
                 bool hasFooter = o.HasRailFooter;
                 var plan = o.RailPlan;
@@ -137,7 +133,7 @@ public static partial class Sidebar
                         {
                             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center,
                             Padding = new Edges4(0f, SidebarRailExtents.TopPad, 0f, 0f),
-                            Children = [head, Divider()],
+                            Children = [head, Divider(in m)],
                         };
                     }
 
@@ -147,8 +143,13 @@ public static partial class Sidebar
                         _ = Localization.CultureEpoch.Value;
                         _ = s_binderEpoch.Value;
                         var kids = new List<Element>(4);
-                        if (o.Config.RailFooter?.Invoke() is { } footerEl) { kids.Add(Divider()); kids.Add(footerEl); }
-                        if (o.Config.RailLayoutMenu) { kids.Add(Divider()); kids.Add(LayoutMenu.Button(Box)); }
+                        if (o.Config.RailFooter?.Invoke() is { } footerEl) { kids.Add(Divider(in m)); kids.Add(footerEl); }
+                        // Keyed by the tile: a component's props freeze at mount, so a new detent must remount the button.
+                        if (o.Config.RailLayoutMenu)
+                        {
+                            kids.Add(Divider(in m));
+                            kids.Add(LayoutMenu.Button(m.Tile) with { Key = "rail-layout-menu:" + m.Tile.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+                        }
                         if (kids.Count == 0) return Nothing;
                         return new BoxEl
                         {
@@ -164,14 +165,14 @@ public static partial class Sidebar
                         if ((uint)rowIndex >= (uint)plan.Rows.Count) return Nothing;
                         var row = plan.Rows[rowIndex];
                         bool isDivider = row.Kind == SidebarRowKind.Divider;
-                        Element content = isDivider ? Divider()
+                        Element content = isDivider ? Divider(in m)
                             : o.SectionOf(row.SectionId) is { } section
-                                ? Tile(o, section, in row, plan.Entries, o.SelectedRoutePeek) ?? Nothing
+                                ? Tile(o, section, in row, plan.Entries, o.SelectedRoutePeek, in m) ?? Nothing
                                 : Nothing;
                         // The rail's own top/bottom inset lands on the edge ITEM: the head/footer above when the mode
                         // supplies one, else this row (SidebarRailExtents.ExtentOf folds the SAME pad into the seed,
                         // so this stays a fixed-height row with no post-realize correction).
-                        float baseExtent = isDivider ? SidebarRailExtents.DividerExtent : SidebarRailExtents.Pitch;
+                        float baseExtent = isDivider ? SidebarRailExtents.DividerExtent : SidebarRailExtents.Pitch(in m);
                         float topPad = !hasHead && rowIndex == 0 ? SidebarRailExtents.TopPad : 0f;
                         float bottomPad = !hasFooter && rowIndex == plan.Rows.Count - 1 ? SidebarRailExtents.BottomPad : 0f;
                         return new BoxEl
@@ -193,20 +194,20 @@ public static partial class Sidebar
         }
 
         static Element? Tile(PaneView owner, SidebarSectionSpec section, in SidebarRow row,
-                             IReadOnlyList<SidebarLibraryEntry> entries, string sel)
+                             IReadOnlyList<SidebarLibraryEntry> entries, string sel, in SidebarRailMetrics m)
         {
             string sectionId = row.SectionId;
             switch (row.Kind)
             {
                 case SidebarRowKind.EntityRow when (uint)row.EntryIndex < (uint)entries.Count:
-                    return EntryTile(owner, sectionId, entries[row.EntryIndex], sel);
+                    return EntryTile(owner, sectionId, entries[row.EntryIndex], sel, in m);
                 case SidebarRowKind.FolderHeader when (uint)row.EntryIndex < (uint)entries.Count:
-                    return FolderTile(owner, sectionId, entries[row.EntryIndex]);
+                    return FolderTile(owner, sectionId, entries[row.EntryIndex], in m);
                 // A hand-placed route shortcut / link, or a whole feed-shaped section as one tile.
                 case SidebarRowKind.IconRow:
                     return section.Kind is SidebarSectionKind.CollectionShortcuts or SidebarSectionKind.StaticLinks
-                        ? RouteTile(owner, section, row.Key, sel)
-                        : SectionTile(owner, section, sectionId);
+                        ? RouteTile(owner, section, row.Key, sel, in m)
+                        : SectionTile(owner, section, sectionId, in m);
                 default:
                     return null;
             }
@@ -218,7 +219,8 @@ public static partial class Sidebar
         /// target at 56 DIP (and it reuses the expanded row's spec, so the two cannot diverge); every other cover stays pure
         /// navigation, and the drop machinery keeps a drag crossing it transparent. An entry whose identity has not landed is
         /// a BONE — Trap 5 (never the raw uri fragment) and a label-less tile with nothing to put in its tooltip.</summary>
-        static Element EntryTile(PaneView owner, string sectionId, SidebarLibraryEntry entry, string sel)
+        static Element EntryTile(PaneView owner, string sectionId, SidebarLibraryEntry entry, string sel,
+                                 in SidebarRailMetrics m)
         {
             string key = PaneView.RailTileKey(in entry);
             if (entry.Kind == SidebarEntryKind.AppRoute)
@@ -226,20 +228,20 @@ public static partial class Sidebar
                 string routeKey = entry.Id;
                 var dest = Shell.Dest(Shell.Parse(routeKey));
                 return IconTile(key, dest.Glyph, string.Equals(routeKey, sel, StringComparison.Ordinal),
-                    () => owner.Navigate(routeKey, null), dest.Title);
+                    () => owner.Navigate(routeKey, null), dest.Title, in m);
             }
 
-            if (SidebarCardRules.IsPending(in entry)) return SeedTile(key);
-            var data = SidebarCards.RailOf(owner, sectionId, in entry, sel);
+            if (SidebarCardRules.IsPending(in entry)) return SeedTile(in m, key);
+            var data = SidebarCards.RailOf(owner, sectionId, in entry, sel, in m);
             string uri = entry.Uri;
-            return ArtTile(key, data, data.Drop is null ? null : () => owner.IsRailDropActive(uri));
+            return ArtTile(key, data, in m, data.Drop is null ? null : () => owner.IsRailDropActive(uri));
         }
 
         /// <summary>A folder cannot disclose in a 56-DIP strip, so its tile opens the side flyout (the pane's
         /// <c>OpenRailFolderFlyout</c>, anchored through the node this tile registers). It is also a real destination —
         /// Into, and only Into — and right-click is the FULL folder menu, whose Expand verb is the pane-expanding gesture
         /// the click used to be. The tooltip carries name AND count: the strip has room for neither.</summary>
-        static Element FolderTile(PaneView owner, string sectionId, SidebarLibraryEntry folder)
+        static Element FolderTile(PaneView owner, string sectionId, SidebarLibraryEntry folder, in SidebarRailMetrics m)
         {
             string key = PaneView.RailTileKey(in folder);
             string cueKey = folder.Id;
@@ -249,13 +251,14 @@ public static partial class Sidebar
             string name = folder.Name.Length > 0 ? folder.Name : PaneText.ShortUri(folder.Id);
             string tip = name + " · " + Strings.Sidebar.V3.ItemCount(folder.ChildCount);
             return IconTile(key, Icons.Folder, false,
-                () => owner.OpenRailFolderFlyout(sectionId, in folder), tip,
+                () => owner.OpenRailFolderFlyout(sectionId, in folder), tip, in m,
                 drop, drop is null ? null : () => owner.IsRailDropActive(cueKey),
                 onRealized: h => owner.RegisterRailNode(key, h),
                 menuOverlay: owner.MenuOverlay, menu: owner.RailTileMenu(sectionId, in folder));
         }
 
-        static Element? RouteTile(PaneView owner, SidebarSectionSpec section, string key, string sel)
+        static Element? RouteTile(PaneView owner, SidebarSectionSpec section, string key, string sel,
+                                  in SidebarRailMetrics m)
         {
             var item = PaneText.ItemOf(section, key);
             // An ACTION or TRACK shortcut is omitted: a text-less strip cannot say what it would do (the pane owns it).
@@ -263,18 +266,18 @@ public static partial class Sidebar
             var dest = Shell.Dest(Shell.Parse(key));
             string label = item?.LabelOverride is { Length: > 0 } alias ? alias : dest.Title;
             return IconTile("rail:" + key, PaneText.Glyph(item, dest.Glyph),
-                string.Equals(key, sel, StringComparison.Ordinal), () => owner.Navigate(key, null), label);
+                string.Equals(key, sel, StringComparison.Ordinal), () => owner.Navigate(key, null), label, in m);
         }
 
         /// <summary>A whole SECTION as one tile. Concerts navigates to its hub; every other feed-shaped section (an
         /// extension contribution) EXPANDS the pane — a strip cannot express a list, and an unresolved contribution must
         /// not be able to fill the rail with prompts.</summary>
-        static Element SectionTile(PaneView owner, SidebarSectionSpec section, string sectionId)
+        static Element SectionTile(PaneView owner, SidebarSectionSpec section, string sectionId, in SidebarRailMetrics m)
         {
             bool concerts = section.Kind == SidebarSectionKind.Concerts;
-            Action click = concerts ? () => owner.Navigate("concerts", null) : static () => SetCollapsed(false);
+            Action click = concerts ? () => owner.Navigate("concerts", null) : static () => SetRegime(SidebarRegime.Expanded);
             return IconTile("rail:" + sectionId, concerts ? Icons.Calendar : Icons.Grid, false, click,
-                PaneText.TitleOf(section));
+                PaneText.TitleOf(section), in m);
         }
 
         /// <summary>A GLYPH tile (a shortcut, an app route, a folder, a V3 nav tile) with the selection-aware ramp: a
@@ -283,12 +286,12 @@ public static partial class Sidebar
         /// <paramref name="onRealized"/> hands the node to a caller that outlives the memoized rebuild (a folder tile's
         /// flyout anchor). <paramref name="menuOverlay"/>/<paramref name="menu"/> are a PAIR (a half-wired call attaches
         /// nothing); the factory runs at OPEN time, and ContextMenu CHAINS onto <c>OnRealized</c>.</summary>
-        public static Element IconTile(string key, string glyph, bool selected, Action? onClick, string? tooltip = null,
-                                       DropTargetSpec? drop = null, Func<bool>? dropActive = null,
+        public static Element IconTile(string key, string glyph, bool selected, Action? onClick, string? tooltip,
+                                       in SidebarRailMetrics m, DropTargetSpec? drop = null, Func<bool>? dropActive = null,
                                        Action<NodeHandle>? onRealized = null,
                                        IOverlayService? menuOverlay = null, Func<ContextMenuModel?>? menu = null)
         {
-            Element mark = Ui.Icon(glyph, 16f, selected ? Tok.TextPrimary : Tok.TextSecondary);
+            Element mark = Ui.Icon(glyph, m.Glyph, selected ? Tok.TextPrimary : Tok.TextSecondary);
             bool armed = drop is not null && dropActive is not null;
             // A glyph tile is the sidebar's own grammar (not media), so it keeps its tree and takes only the shared RULE: the
             // hand cursor and the Button role belong to an invokable box, never to a caller's whim.
@@ -297,8 +300,8 @@ public static partial class Sidebar
             {
                 OnRealized = onRealized,
                 Key = key,
-                Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Corners = CornerRadius4.All(6f),
+                Width = m.Tile, Height = m.Tile, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = CornerRadius4.All(m.Corner),
                 // The selection ladder: accent plate at rest, states only ever go UP.
                 Fill = selected ? global::Wavee.Design.Colors.SelectedRest : ColorF.Transparent,
                 HoverFill = selected ? global::Wavee.Design.Colors.SelectedHover : Tok.FillSubtleSecondary,
@@ -308,66 +311,67 @@ public static partial class Sidebar
                 OnClick = onClick,
                 DropTarget = drop,
                 ZStack = armed,
-                Children = armed ? new Element[] { Wash(6f, dropActive!, ring: false), mark } : new Element[] { mark },
+                Children = armed ? new Element[] { Wash(m.Tile, m.Corner, dropActive!, ring: false), mark } : new Element[] { mark },
             };
             if (menuOverlay is not null && menu is not null) tile = tile.WithContextMenu(menuOverlay, menu);
             return Tip(tile, tooltip);
         }
 
-        /// <summary>An ART tile: the shared media surface at the rail shape (<see cref="Shape.RailTile"/>) over a cover at
-        /// <see cref="ArtEdge"/>. It is label-less — the surface wraps itself in the tile's tooltip, the title IS the label,
+        /// <summary>An ART tile: the shared media surface at the rail shape (<see cref="Shape.RailTileOf"/>) over a cover at
+        /// <see cref="SidebarRailMetrics.Art"/>. It is label-less — the surface wraps itself in the tile's tooltip, the title IS the label,
         /// and a drag never shows it (the chip caption names the target) — and its states are the surface's: the hand cursor,
         /// the hover plate, the focus ring, the now-playing pill, and selection as the 2-DIP accent ring (the pill is
         /// expanded-only). A <paramref name="data"/> with no click is the surface's DISPLAY-ONLY mode — a hand-placed entity
         /// the pin scheme has no route for stays visible but inert (iron rule 9): no hand, Button role or tab stop, the
         /// cover and the tooltip label unchanged. An armed drop (a spec in <paramref name="data"/> plus its <paramref name="dropActive"/> cue) adds
         /// an accent@0.35 wash over the cover and a BOUND ring painted exactly over the tile's own, so a tile that is
-        /// selected AND armed still shows one ring. The wrapper pins the 40×40 box (the tooltip wrapper shrink-wraps a row).</summary>
-        public static Element ArtTile(string key, Controls.CardData data, Func<bool>? dropActive = null)
+        /// selected AND armed still shows one ring. The wrapper pins the detent tile box (the tooltip wrapper shrink-wraps a row).</summary>
+        public static Element ArtTile(string key, Controls.CardData data, in SidebarRailMetrics m, Func<bool>? dropActive = null)
         {
-            Element tile = Controls.Surface(data, global::Wavee.Shape.RailTile);
+            Element tile = Controls.Surface(data, global::Wavee.Shape.RailTileOf(m.Tile));
             bool armed = data.Drop is not null && dropActive is not null;
             return new BoxEl
             {
-                Key = key, ZStack = true, Width = Box, Height = Box, Shrink = 0f,
-                Children = armed ? new Element[] { tile, Wash(Radii.Control, dropActive!, ring: true) } : new Element[] { tile },
+                Key = key, ZStack = true, Width = m.Tile, Height = m.Tile, Shrink = 0f,
+                Children = armed ? new Element[] { tile, Wash(m.Tile, Radii.Control, dropActive!, ring: true) } : new Element[] { tile },
             };
         }
 
-        /// <summary>One pending rail tile: the surface's own seed face at the rail shape (a 36 bone in a 40 box), disabled and
+        /// <summary>One pending rail tile: the surface seed face at the rail shape (the art bone in the tile box), disabled and
         /// handler-less — the unit of the pending stack, and what an entry whose identity has not landed renders as.</summary>
-        static Element SeedTile(string? key = null) => new BoxEl
+        static Element SeedTile(in SidebarRailMetrics m, string? key = null) => new BoxEl
         {
-            Key = key, Width = Box, Height = Box, Shrink = 0f,
-            Children = [Controls.Surface(Controls.CardData.Seed, global::Wavee.Shape.RailTile)],
+            Key = key, Width = m.Tile, Height = m.Tile, Shrink = 0f,
+            Children = [Controls.Surface(Controls.CardData.Seed, global::Wavee.Shape.RailTileOf(m.Tile))],
         };
 
         /// <summary><paramref name="count"/> pending rail tiles at the rail's tile gap, centred.</summary>
-        static Element SeedStack(int count)
+        static Element SeedStack(int count, in SidebarRailMetrics m)
         {
             var kids = new Element[count < 0 ? 0 : count];
-            for (int i = 0; i < kids.Length; i++) kids[i] = SeedTile();
-            return new BoxEl { Direction = 1, Gap = Pitch - Box, AlignItems = FlexAlign.Center, Children = kids };
+            for (int i = 0; i < kids.Length; i++) kids[i] = SeedTile(in m);
+            return new BoxEl { Direction = 1, Gap = m.Pitch - m.Tile, AlignItems = FlexAlign.Center, Children = kids };
         }
 
-        /// <summary>The short centred rule between rail bands (24×1, <c>Tok.TextTertiary</c> @ A 0.30, margin 4/4).</summary>
-        public static Element Divider() => new BoxEl
+        /// <summary>The short centred rule between rail bands (<see cref="SidebarRailMetrics.DividerW"/> × 1,
+        /// <c>Tok.TextTertiary</c> @ A 0.30, margin 4/4).</summary>
+        public static Element Divider(in SidebarRailMetrics m) => new BoxEl
         {
-            Width = 24f, Height = 1f, Margin = new Edges4(0f, 4f, 0f, 4f), Fill = Tok.TextTertiary with { A = 0.3f },
+            Width = m.DividerW, Height = 1f, Margin = new Edges4(0f, 4f, 0f, 4f), Fill = Tok.TextTertiary with { A = 0.3f },
         };
 
         // The drop cue overlay: always mounted (a structural change would need a render), hit-transparent (it can never
         // steal the tile's own drop hit), transparent at rest, and its only live inputs are the two bound thunks.
-        static BoxEl Wash(float radius, Func<bool> active, bool ring) => new()
+        static BoxEl Wash(float tile, float radius, Func<bool> active, bool ring) => new()
         {
-            Width = Box, Height = Box, Corners = CornerRadius4.All(radius), HitTestVisible = false,
+            Width = tile, Height = tile, Corners = CornerRadius4.All(radius), HitTestVisible = false,
             Fill = Prop.Of(() => active() ? Tok.AccentDefault with { A = 0.35f } : ColorF.Transparent),
             BorderWidth = ring ? 2f : 0f,
             BorderColor = ring ? Prop.Of(() => active() ? Tok.AccentDefault : ColorF.Transparent)
                                : (Prop<ColorF>)ColorF.Transparent,
         };
 
-        // The tooltip IS the tile's label (a 56-DIP strip has no room for text).
+        // The tooltip IS the tile's label (an icon rail has no room for text).
         static Element Tip(BoxEl tile, string? tooltip)
             => tooltip is { Length: > 0 } t ? ToolTip.Wrap(tile, t) : tile;
     }

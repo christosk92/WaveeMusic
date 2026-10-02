@@ -210,17 +210,18 @@ public static partial class Sidebar
 
         // ── the rail tile (label-less: the tooltip IS the title) ────────────────────────────────────────────────────
 
-        /// <summary>A projected entry as a rail tile: the cover at <see cref="Rail.ArtEdge"/>, the entry's menu on right-click
-        /// (the same one the expanded row opens), and — for an editable playlist — the track-deposit drop spec whose cue is
-        /// the rail's own published uri (<see cref="PaneView.IsRailDropActive"/>).</summary>
-        public static Controls.CardData RailOf(PaneView o, string sectionId, in SidebarLibraryEntry entry, string sel)
+        /// <summary>A projected entry as a rail tile: the cover at the detent's art edge (<see cref="SidebarRailMetrics.Art"/>),
+        /// the entry's menu on right-click (the same one the expanded row opens), and — for an editable playlist — the
+        /// track-deposit drop spec whose cue is the rail's own published uri (<see cref="PaneView.IsRailDropActive"/>).</summary>
+        public static Controls.CardData RailOf(PaneView o, string sectionId, in SidebarLibraryEntry entry, string sel,
+                                               in SidebarRailMetrics m)
         {
             var e = entry;
             bool circular = e.Circular || e.Kind == SidebarEntryKind.Artist;
             return new Controls.CardData(e.Uri, SidebarCardRules.TitleOf(in e), null, null,
                 ActivateOf(o, in e, e.Name), null, circular, DragOf(in e),
                 ShowMenu: SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Rail),
-                CoverOverride: Cover.Art(e.Cover, e.MosaicTiles, e.Id, Rail.ArtEdge, circular))
+                CoverOverride: Cover.Art(e.Cover, e.MosaicTiles, e.Id, m.Art, circular))
             {
                 Selected = SidebarCardRules.Selected(in e, sel),
                 Menu = o.RailTileMenu(sectionId, in e),

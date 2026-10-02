@@ -878,8 +878,8 @@ public sealed partial class Edges
     /// reading.</summary>
     public readonly EdgeTable<KindEdge> SearchResult = new();
 
-    // the TRAIT relations (G-044): four extension kinds the track drawer and the album page read, each "the row is the
-    // payload" or a plain list, and each landed by §8 below
+    // the TRAIT relations (G-044): the extension kinds (and the audio-analysis grid) the track drawer, the album page and
+    // the fullscreen stage read, each "the row is the payload" or a plain list, and each landed by §8 below
     /// <summary>Extension kind 186: the credits block, in the server's own grouped order. Parent = track slot; the
     /// target is the credited ARTIST's slot, or <see cref="Table.None"/> for an unlinked contributor (a session player
     /// with no artist page). Owned text: see <see cref="CreditEdge"/>.</summary>
@@ -887,10 +887,15 @@ public sealed partial class Edges
     /// <summary>Extension kinds 98 / 99: the recording's other RENDITIONS — the audio counterpart of a music video and
     /// the video counterpart of a song. Parent = track slot, targets = track slots, the payload says which way.</summary>
     public readonly EdgeTable<VersionEdge> TrackVersions = new();
-    /// <summary>Extension kind 237 reduced to <see cref="Spotify.Decode.WaveformColumns"/> magnitudes (0-255, the loudest
-    /// column = 255). Parent = track slot; payload-only, targets unused — ~38 KB of wire per track becomes 220 bytes,
-    /// once, at decode (0.2.9 <c>SpotifyTrackExpansionService.MapWaveform</c>).</summary>
-    public readonly EdgeTable<byte> TrackWaveform = new();
+    /// <summary>Extension kind 237 kept as <see cref="WaveSample"/> triples (low/mid/high, 0-255) — at most
+    /// <see cref="WaveformBands.MaxSamples"/> per track (a longer answer is max-pooled), indexed by DURATION. Parent = track
+    /// slot; payload-only, targets unused; Count = Total = N. The drawer's 220 columns and the stage's Horizon derive from it
+    /// at read time (<see cref="WaveformBands"/>).</summary>
+    public readonly EdgeTable<WaveSample> TrackWaveform = new();
+    /// <summary>The audio-analysis BEAT GRID: one <c>uint</c> per beat (start ms in bits 0..30, bit 31 = a bar's downbeat —
+    /// <see cref="BeatGrid"/>), Count = Total = beat count. Parent = track slot; payload-only. An EMPTY Complete run means
+    /// "the service has no grid for this track" and Pulse falls back to the tempo grid.</summary>
+    public readonly EdgeTable<uint> TrackBeats = new();
     /// <summary>Extension kind 151: "playlists featuring this album", at most twelve (0.2.9's Take(12)). Parent = album
     /// slot, targets = playlist slots.</summary>
     public readonly EdgeTable<NoEdge> AlbumRecommendations = new();
@@ -1066,9 +1071,10 @@ public sealed partial class Staging
 
 // ── 8. the trait relations (G-044) ───────────────────────────────────────────────────────────────────────────────────
 
-/// <summary>Which trait relation a <see cref="StagedTraitRun"/> rewrites — the four §6 names, and the tables they land
-/// in are fixed by it (parent and child), exactly as <see cref="Relation"/> fixes them for the generic runs.</summary>
-public enum TraitRelation : byte { TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations }
+/// <summary>Which trait relation a <see cref="StagedTraitRun"/> rewrites — the five names, and the tables they land
+/// in are fixed by it (parent and child), exactly as <see cref="Relation"/> fixes them for the generic runs.
+/// <c>TrackBeats</c> is APPENDED: the staged byte values of the first four do not move.</summary>
+public enum TraitRelation : byte { TrackCredits, TrackVersions, TrackWaveform, AlbumRecommendations, TrackBeats }
 
 /// <summary>One staged trait member: a credit row, a version, a recommended playlist. A union read by the run's
 /// relation: credits read the three texts and <see cref="Target"/> (the artist); versions read <see cref="Target"/> and
@@ -1080,8 +1086,8 @@ public struct StagedTrait
     public byte B0;
 }
 
-/// <summary>One parent's rewritten trait relation. A waveform carries no members: its 220 magnitudes ride
-/// <see cref="Bytes"/> in the staging arena.</summary>
+/// <summary>One parent's rewritten trait relation. A waveform carries no members: its <see cref="WaveSample"/> triples ride
+/// <see cref="Bytes"/> in the staging arena; so does a beat grid (<c>uint</c>s).</summary>
 public struct StagedTraitRun
 {
     public StagedId Parent;
@@ -1112,6 +1118,10 @@ public static partial class Entities
     static CreditEdge[] s_creditPayload = new CreditEdge[64];
     static VersionEdge[] s_versionPayload = new VersionEdge[64];
     static NoEdge[] s_traitNone = new NoEdge[64];
+    // The payload-only waveform / beat-grid relations: their targets are never read, so ONE all-zero array serves every run
+    // and NEVER goes through `GrowTraits` (a 4,096-wide waveform run would permanently double every trait scratch array
+    // above). 8192 >= WaveformBands.MaxSamples; never written.
+    static readonly int[] s_waveTargets = new int[BeatGrid.MaxBeats];
 
     /// <summary>Land every staged rootlist: resolve the account, resolve each ITEM to a playlist slot (a marker targets
     /// <see cref="Table.None"/>), AddRef the folder strings, release the list being replaced, and <c>Replace</c> —
@@ -1146,7 +1156,7 @@ public static partial class Entities
         }
     }
 
-    /// <summary>Land every staged trait run (credits, versions, waveform, recommendations). Each is a whole-list
+    /// <summary>Land every staged trait run (credits, versions, waveform, beats, recommendations). Each is a whole-list
     /// <c>Replace</c>, Complete, EMPTY INCLUDED: "this track has no credits" is the answer that stops the drawer asking
     /// (finding 27's rule, as for descriptors).</summary>
     static partial void CommitTraits(Staging s)
@@ -1201,11 +1211,18 @@ public static partial class Entities
                     {
                         int parent = s.Slot(Current.Tracks, in run.Parent);
                         if (parent == Table.None) break;
-                        var magnitudes = s.Utf8(run.Bytes);
-                        GrowTraits(magnitudes.Length);
-                        s_traitTargets.AsSpan(0, magnitudes.Length).Clear();         // payload-only: targets unused
-                        edges.TrackWaveform.Replace(parent, s_traitTargets.AsSpan(0, magnitudes.Length), magnitudes,
-                                                    EdgeState.Complete, magnitudes.Length);
+                        var samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, WaveSample>(s.Utf8(run.Bytes));
+                        if (samples.Length > s_waveTargets.Length) samples = samples[..s_waveTargets.Length];   // the decoder caps at MaxSamples; a bad run must not throw
+                        edges.TrackWaveform.Replace(parent, s_waveTargets.AsSpan(0, samples.Length), samples, EdgeState.Complete, samples.Length);
+                        break;
+                    }
+                case TraitRelation.TrackBeats:
+                    {
+                        int parent = s.Slot(Current.Tracks, in run.Parent);
+                        if (parent == Table.None) break;
+                        var beats = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(s.Utf8(run.Bytes));
+                        if (beats.Length > s_waveTargets.Length) beats = beats[..s_waveTargets.Length];
+                        edges.TrackBeats.Replace(parent, s_waveTargets.AsSpan(0, beats.Length), beats, EdgeState.Complete, beats.Length);
                         break;
                     }
                 case TraitRelation.AlbumRecommendations:

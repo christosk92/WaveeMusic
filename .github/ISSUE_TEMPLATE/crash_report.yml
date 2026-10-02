@@ -70,7 +70,7 @@ body:
     id: report-id
     attributes:
       label: Crash report id
-      description: "Settings › Logs › Reports shows it on each report, e.g. 3f9c-2b1a"
+      description: "Settings › Privacy & diagnostics › Crash reports shows it on each report, e.g. 3f9c-2b1a"
       placeholder: "3f9c-2b1a"
   - type: textarea
     id: crash-report
@@ -79,9 +79,9 @@ body:
       description: |
         In Wavee, open **Settings › About › Report a problem…** (or the prompt shown after a crash) — it copies
         the redacted crash report to your clipboard and saves it as `wavee-report-<date>.txt` next to the logs;
-        paste it here whole. Raw reports are listed in **Settings › Logs › Reports** (**View** opens one,
-        **Open folder** shows them all); each one is `logs\crash\<stamp>-<kind>\report.txt`. If the app won't
-        start, the folder is `%LOCALAPPDATA%\Wavee\logs\crash` — for a Microsoft Store or MSIX install, the
+        paste it here whole. Raw reports are listed in **Settings › Privacy & diagnostics › Crash reports** (a
+        report's **…** › **View** opens one, **Open folder** shows them all); each one is
+        `logs\crash\<stamp>-<kind>\report.txt`. If the app won't start, the folder is `%LOCALAPPDATA%\Wavee\logs\crash` — for a Microsoft Store or MSIX install, the
         package's LocalCache equivalent (`%LOCALAPPDATA%\Packages\cproducts.Wavee_*\LocalCache\Local\Wavee\logs\crash`).
       render: text
     validations:

@@ -14,9 +14,10 @@
 //         ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  drag preview
 //
 //   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
-//            └ both bracketed bands UNMOUNT under full-screen video (FrameRules.ChromeMounted)
+//            └ both bracketed bands UNMOUNT under full-screen video OR the fullscreen stage (FrameRules.ChromeMounted)
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
 //                            rail seam · rail overlay(Rail.Frame) · narrow drawer ]
+//            └ COLLAPSES (bound Visible) while the fullscreen stage is up
 //
 // THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. Every geometry/precedence/gating answer below is a
 // call into `Shell.FrameRules`, `Shell.Chrome`, `TabWorkspace`, `Notify` or an owner's rule table — each pinned by a
@@ -102,6 +103,8 @@ public static partial class Shell
     static SceneStore? s_scene;
     static Action<float>? s_requestTheme;
     static NodeHandle s_contentRegion;
+    /// <summary>The sidebar column's node, read only by the pane-invariant probe (never a render input).</summary>
+    static NodeHandle s_sidebarColumn;
 
     /// <summary>The shell MATERIAL cell the page tints publish into (provided through <see cref="ShellMaterial.Slot"/>)
     /// and the neutral owner the content host claims it with for every route that has no colour of its own.</summary>
@@ -135,9 +138,11 @@ public static partial class Shell
     const float PaneMs = 300f;
     const string ContentRowMorphId = "shell.content-row";
 
+    // The sidebar column's settle is a SPRING (D5): a second drag mid-settle retargets without a jump. The content card
+    // keeps the 300 ms tween (it FLIPs against the row through its own transition).
     static readonly LayoutTransition SidebarPaneAnim = new(TransitionChannels.Size | TransitionChannels.Position,
-        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
-        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
+        TransitionDynamics.Spring(0.30f, 0.85f), SizeMode.Reveal,
+        ExitDynamics: TransitionDynamics.Spring(0.30f, 0.85f), SuppressDescendantTransitions: true);
 
     static readonly LayoutTransition ContentCardAnim = new(TransitionChannels.Position | TransitionChannels.Size,
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
@@ -149,12 +154,11 @@ public static partial class Shell
     static readonly Edges4 StrokeOverhang = new(0f, 0f, -1f, -1f);
     static readonly CornerRadius4 RailBandCorners = new(Radii.Card, 0f, 0f, 0f);
 
+    // CLAMP-ONLY: no `collapsed` argument, so the engine detent is off and the raw cell reaches the rail floor. The regime,
+    // the detents, the hold-at-180 approach band and the fade are all SidebarResizeRules (read off Sidebar.Seam).
     static readonly Splitter.SplitterOptions SidebarSeamOptions = new()
     {
-        Min = Layout.NavPaneMinW, Max = Layout.NavPaneMaxW, ShowIndicator = false, CompactWidth = Layout.CompactRailW,
-        // Issue #84: the resist band starts at the OLD 240 floor so the feel through 240 → 180 is unchanged; collapse at
-        // 240 − 64 = 176 (just under the 180 floor), re-expand at 190.
-        FadeStart = 240f, FadeDistance = 64f, ForcePush = 64f, ReExpand = 190f,
+        Min = SidebarResizeRules.RailFloorW, Max = SidebarResizeRules.ExpandedMaxW, ShowIndicator = false,
     };
 
     static readonly Splitter.SplitterOptions RailSeamOptions = new()
@@ -201,13 +205,41 @@ public static partial class Shell
         /// playable-uri reads run at navigation/track rate, not per resize pixel.</summary>
         readonly Signal<bool> _pageStageHosts = new(false);
 
-        bool _narrowSeeded, _tierSeeded;
-        SidebarDesign _tierDesign = Sidebar.Design.Peek();
+        bool _lastResortSeeded;
+        TemplateParts? _seamParts;
+        // The seam release velocity: (seam - last) / dt sampled by the presentation effect while dragging (plain fields).
+        float _seamLast = float.NaN;
+        long _seamLastQpc;
+        float _seamVelocity;
         float _lastAutoZoom;
         bool _autoZoomSeeded;
         Video.PlacementState _videoWas = Video.State.Surface.Peek();
         bool _railWas = Ui.RailOpen.Peek();
         Video.DockedHost _hostWas = Video.DockedHost.Rail;
+
+        /// <summary>One velocity sample per seam MOVE while dragging, in DIP/s off the frame clock. Called by the presentation
+        /// effect only; it also re-runs on a Regime/RailDetent write, which must not read as a stopped pointer.</summary>
+        void SampleSeamVelocity(float seam)
+        {
+            long now = Design.FrameTime.NowQpc;
+            if (float.IsNaN(_seamLast)) { _seamLast = seam; _seamLastQpc = now; _seamVelocity = 0f; return; }
+            if (seam == _seamLast) return;
+            double dt = (now - _seamLastQpc) / (double)System.Diagnostics.Stopwatch.Frequency;
+            if (dt > 0.0) _seamVelocity = (float)((seam - _seamLast) / dt);
+            _seamLast = seam;
+            _seamLastQpc = now;
+        }
+
+        /// <summary>The velocity at release, and the sampler reset: zero when the pointer rested (over 100 ms since the last
+        /// move) before letting go.</summary>
+        float ReleaseSeamVelocity()
+        {
+            double idle = (Design.FrameTime.NowQpc - _seamLastQpc) / (double)System.Diagnostics.Stopwatch.Frequency;
+            float v = float.IsNaN(_seamLast) || idle > 0.1 ? 0f : _seamVelocity;
+            _seamLast = float.NaN;
+            _seamVelocity = 0f;
+            return v;
+        }
 
         public override Element Render()
         {
@@ -215,52 +247,60 @@ public static partial class Shell
             s_scene = Context.Scene;
             s_requestTheme = UseContext(ThemeControl.Request);
             var post = UsePost();
+            var overlay = UseContext(Overlay.Service);
+            _seamParts ??= BuildSeamParts(overlay);
             // Float the engine's toast lane above the docked player bar (the idempotent registration idiom).
             Toast.EdgeInset = Design.Size.PlayerBarH;
             var vp = UseContextSignal(Viewport.Size);
             var zoom = UseContextSignal(Viewport.Zoom);
 
-            // The narrow band's FIRST value is known only here; seed it before the column mounts so a narrow launch
-            // lays out narrow on frame one (no subscriber reads these yet).
-            if (!_narrowSeeded)
+            // The last-resort band's FIRST value is known only here; seed it before the column mounts so a tiny launch
+            // lays out as a rail on frame one (no subscriber reads it yet).
+            if (!_lastResortSeeded)
             {
-                _narrowSeeded = true;
-                bool narrow = Layout.NarrowFor(vp.Peek().Width, current: false, initialized: false);
-                Ui.NarrowShell.SetIfChanged(narrow);
-                Ui.SidebarPresentedCompact.SetIfChanged(FrameRules.PresentedCompact(narrow, Sidebar.Collapsed.Peek()));
+                _lastResortSeeded = true;
+                Ui.LastResort.SetIfChanged(SidebarResizeRules.LastResort(vp.Peek().Width, false, MinContentW));
+                var seed = new SidebarResizeRules.State(Sidebar.Regime.Peek(), Sidebar.RailDetent.Peek(), Sidebar.Width.Peek());
+                Sidebar.PresentedWidth.SetIfChanged(Ui.LastResort.Peek()
+                    ? SidebarResizeRules.StripOf(seed.Detent)
+                    : SidebarResizeRules.Present(in seed, vp.Peek().Width, MinContentW));
             }
 
-            // ── the responsive bands (hot width, band-gated writes; never debounced — a deferred structural width is
-            //    a frame rendered at the wrong tier) ──
+            // LAST RESORT (D1-b): the window cannot hold the expanded floor and the content floor. Hysteretic, derived;
+            // the ONLY way the window width reaches the sidebar's presentation.
             UseSignalEffect(() =>
             {
-                bool current = Ui.NarrowShell.Peek();
-                bool next = Layout.NarrowFor(vp.Value.Width, current, initialized: true);
+                bool current = Ui.LastResort.Peek();
+                bool next = SidebarResizeRules.LastResort(vp.Value.Width, current, MinContentW);
                 if (next == current) return;
-                Ui.NarrowShell.Value = next;
+                Ui.LastResort.Value = next;
                 if (!next) Ui.DrawerOpen.SetIfChanged(false);
             });
-            UseSignalEffect(static () =>
-                Ui.SidebarPresentedCompact.SetIfChanged(FrameRules.PresentedCompact(Ui.NarrowShell.Value, Sidebar.Collapsed.Value)));
-            // The nav pane's responsive DEFAULT width. Viewport AND design are read first and unconditionally (an early
-            // return before either drops the subscription). Yields to a pinned width (the service no-ops) and to a live
-            // drag (peek-gated — the grip owns the width 1:1 while the pointer is down).
+            // THE ONE PRESENTATION EFFECT: a live drag presents Track(seam); at rest, Present(state, viewport). It never
+            // writes Sidebar.Width (the preference); Regime/RailDetent are written live only so the pane re-skins mid-drag
+            // (persisted at commit).
             UseSignalEffect(() =>
             {
-                float w = vp.Value.Width;
-                var design = Sidebar.Design.Value;
-                if (design != _tierDesign) { _tierDesign = design; _tierSeeded = false; }
-                Sidebar.SetViewportWidth(w);
-                if (Sidebar.WidthUserSet || _sidebarDragging.Peek()) return;
-                float next = Layout.NavPaneDefaultFor(w, Sidebar.Width.Peek(), _tierSeeded, Sidebar.Tiers);
-                if (w > 0f) _tierSeeded = true;
-                Sidebar.SetResponsiveWidth(next);
-            });
-            // The grip's detent writes Sidebar.Collapsed directly; persist it (posted: the service re-writes the cell).
-            UseSignalEffect(() =>
-            {
-                bool collapsed = Sidebar.Collapsed.Value;
-                post(collapsed ? s_persistCollapsed : s_persistExpanded);
+                float vpW = vp.Value.Width;
+                float seam = Sidebar.Seam.Value;
+                bool dragging = _sidebarDragging.Value;
+                bool lastResort = Ui.LastResort.Value;
+                var state = new SidebarResizeRules.State(Sidebar.Regime.Value, Sidebar.RailDetent.Value, Sidebar.Width.Value);
+                if (dragging)
+                {
+                    var live = SidebarResizeRules.Track(seam, in state);
+                    Sidebar.Regime.SetIfChanged(live.Regime);
+                    Sidebar.RailDetent.SetIfChanged(live.Detent);
+                    Sidebar.PresentedWidth.SetIfChanged(live.PresentedWidth);
+                    _sidebarFade.SetIfChanged(live.Fade);
+                    SampleSeamVelocity(seam);
+                    return;
+                }
+                _sidebarFade.SetIfChanged(1f);
+                // Last resort: the inline column is the user's rail detent whatever the regime (the drawer owns the pane).
+                Sidebar.PresentedWidth.SetIfChanged(lastResort
+                    ? SidebarResizeRules.StripOf(state.Detent)
+                    : SidebarResizeRules.Present(in state, vpW, MinContentW));
             });
             UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
             // Session chrome, not a preference: reopening restores the rail exactly as it was.
@@ -305,6 +345,7 @@ public static partial class Shell
                 FluentApp.ActivationRedirected += onRedirect;
                 FluentApp.SystemColorsChanged += onColors;
                 if (hooks is not null) hooks.ZoomWheel = onWheel;
+                Diagnostics.SidebarPaneFrame = s_paneFrame;
                 // The toast activation → deep-link hop: a toast reaches exactly the destinations a link can.
                 Notify.HostInstall(post, static raw => ApplyDeepLink(raw));
                 DrainActivation();   // a payload parked before the window existed
@@ -318,6 +359,7 @@ public static partial class Shell
                     FluentApp.ActivationRedirected -= onRedirect;
                     FluentApp.SystemColorsChanged -= onColors;
                     if (hooks is not null && ReferenceEquals(hooks.ZoomWheel, onWheel)) hooks.ZoomWheel = null;
+                    if (ReferenceEquals(Diagnostics.SidebarPaneFrame, s_paneFrame)) Diagnostics.SidebarPaneFrame = null;
                 };
             }, DepKey.Empty);
 
@@ -328,8 +370,7 @@ public static partial class Shell
                 Video.DockedHosting.PageStageHosts(Ui.ActiveStagePlayable.Value, Playback.CurrentId.Value.Text)));
             UseSignalEffect(() =>
             {
-                float sidebarW = Ui.SidebarPresentedCompact.Value ? Layout.CompactRailW : Sidebar.Width.Value;
-                Ui.RailFits.SetIfChanged(Ui.CanFitRail(vp.Value.Width, sidebarW, Ui.RailWidth.Value));
+                Ui.RailFits.SetIfChanged(Ui.CanFitRail(vp.Value.Width, Sidebar.PresentedWidth.Value, Ui.RailWidth.Value));
             });
             // The video host-capability REPORT (an input to the availability intersection, never chrome state). Reads the
             // published fit, so it runs when a fact flips rather than per resize pixel.
@@ -490,8 +531,9 @@ public static partial class Shell
                         // THE W12 TRAP lives in FrameRules.SidebarPaneWidth: a drag peek presents the pane expanded, so this
                         // clipped column widens with it.
                         Direction = 1, Shrink = 0f, ClipToBounds = true,
-                        Width = Prop.Of(static () => FrameRules.SidebarPaneWidth(Ui.SidebarPresentedCompact.Value,
-                            Sidebar.DragPeek.Value, Sidebar.Width.Value)),
+                        OnRealized = static h => s_sidebarColumn = h,
+                        Width = Prop.Of(static () => FrameRules.SidebarPaneWidth(
+                            Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value)),
                         Animate = SidebarPaneAnim,
                         Children =
                         [
@@ -547,13 +589,12 @@ public static partial class Shell
             new BoxEl
             {
                 Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(Ui.NarrowShell.Value)),
-                Transform = Prop.Of(static () => Affine2D.Translation(
-                    FrameRules.SidebarSeamX(Ui.SidebarPresentedCompact.Value, Sidebar.Width.Value), 0f)),
+                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(Ui.LastResort.Value)),
+                Transform = Prop.Of(static () => Affine2D.Translation(Sidebar.PresentedWidth.Value, 0f)),
                 Children =
                 [
-                    Splitter.Create(Sidebar.Width, static () => Sidebar.CommitWidthDrag(Sidebar.Width.Peek()), SidebarSeamOptions,
-                        collapsed: Sidebar.Collapsed, fade: _sidebarFade, dragging: _sidebarDragging),
+                    Splitter.Create(Sidebar.Seam, () => Sidebar.CommitSeam(ReleaseSeamVelocity()), SidebarSeamOptions,
+                        fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
                 ],
             },
             // The rail seam: exists only while the rail is open.
@@ -598,17 +639,21 @@ public static partial class Shell
         {
             // The ONE region that yields when the window is shorter than the column; clipped so a settling page never
             // paints into the dock slot. The drag spotlight scrim is scoped to it (chrome and dock stay lit).
+            // The bound Visible COLLAPSES the whole shell body while the fullscreen stage is up: out of layout, paint and
+            // hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
+            // tab switch — every consumer reviewed benign, V-U37). It sits on THIS node, which carries no MorphId: the
+            // content row's MorphId stays on an inner node with an unbound Visible (the BindContract rule guards the
+            // tagged node itself).
             Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+            Visible = Prop.Of(static () => !Ui.ImmersiveLyrics.Value),
             OnRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnBoundsChanged = static _ => PublishScrimClip(),
         };
     }
 
     static readonly Func<bool> s_chromeMounted = static () =>
-        FrameRules.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value));
+        FrameRules.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), Ui.ImmersiveLyrics.Value);
 
-    static readonly Action s_persistCollapsed = static () => Sidebar.SetCollapsed(true);
-    static readonly Action s_persistExpanded = static () => Sidebar.SetCollapsed(false);
     static readonly Action s_drainActivation = DrainActivation;
 
     static Action ZoomApplier(float zoom) => () => FluentApp.SetZoom(zoom);
@@ -664,11 +709,53 @@ public static partial class Shell
         s_requestTheme?.Invoke(Design.Motion.Standard);
     }
 
+    // -- 2.2 the sidebar seam: keyboard, double-click, context menu, release velocity ---------------------------------
+
+    /// <summary>Parts for the seam root: a focusable slider (left/right nudge, Shift x5, Home/End, Enter/Space toggles), a
+    /// double-click that toggles the regime, and the layout context menu. Splitter re-asserts only its mechanics (size,
+    /// cursor, drag handlers), so these survive.</summary>
+    static TemplateParts BuildSeamParts(IOverlayService overlay)
+    {
+        var parts = new TemplateParts();
+        parts[Splitter.PartRoot] = b => (b with
+        {
+            Focusable = true, TabStop = true, AllowFocusOnInteraction = false, Role = AutomationRole.Slider,
+            OnKeyDown = OnSeamKey,
+            OnPointerPressed = static e => { if (e.ClickCount == 2) Sidebar.ToggleRegime(); },
+        }).WithContextMenu(overlay, Sidebar.LayoutMenu.Model);
+        return parts;
+    }
+
+    static void OnSeamKey(KeyEventArgs e)
+    {
+        if (e.Handled) return;
+        switch (e.KeyCode)
+        {
+            case Keys.Left: Sidebar.StepSeam(-1, e.Shift); break;
+            case Keys.Right: Sidebar.StepSeam(+1, e.Shift); break;
+            case Keys.Home: Sidebar.SetExpandedWidth(SidebarResizeRules.ExpandedMinW); break;
+            case Keys.End: Sidebar.SetExpandedWidth(SidebarResizeRules.ExpandedMaxW); break;
+            case Keys.Enter or Keys.Space: Sidebar.ToggleRegime(); break;
+            default: return;
+        }
+        e.Handled = true;
+        Announcer.Say(Sidebar.Regime.Peek() == SidebarRegime.Rail
+            ? Loc.Format("sidebar.seam.announceRail", ("size", Loc.Get(RailDetentLabelKey(Sidebar.RailDetent.Peek()))))
+            : Loc.Format("sidebar.seam.announceWidth", ("width", (int)Sidebar.Width.Peek())));
+    }
+
+    static string RailDetentLabelKey(SidebarRailDetent d) => d switch
+    {
+        SidebarRailDetent.Compact => "sidebar.rail.compact",
+        SidebarRailDetent.Large => "sidebar.rail.large",
+        _ => "sidebar.rail.default",
+    };
+
     static void ToggleSidebar()
     {
-        // Narrow: the hamburger opens the drawer and never writes the desktop collapse preference.
-        if (Ui.NarrowShell.Peek()) { Ui.DrawerOpen.Value = !Ui.DrawerOpen.Peek(); return; }
-        Sidebar.SetCollapsed(!Sidebar.Collapsed.Peek());
+        // Last resort: the hamburger opens the drawer and never writes the user's regime.
+        if (Ui.LastResort.Peek()) { Ui.DrawerOpen.Value = !Ui.DrawerOpen.Peek(); return; }
+        Sidebar.ToggleRegime();
     }
 
     static void CommitRailDrag()
@@ -678,14 +765,17 @@ public static partial class Shell
         Platform.Settings.Set(Platform.Keys.ShellRailWidth, w);
     }
 
-    /// <summary>F11 — toggles video fullscreen only while a video is active. With focus inside a player the element
-    /// consumes F11 first (focused routing precedes accelerators), so exactly one of the two fires.</summary>
+    /// <summary>F11 — closes the fullscreen stage if it is up; otherwise exits / enters video fullscreen; otherwise opens
+    /// the stage (an empty stage is allowed; <c>Stage.Open</c> itself refuses over fullscreen video). With focus inside a
+    /// player the element consumes F11 first (focused routing precedes accelerators), so exactly one of them fires.</summary>
     static void ToggleVideoFullscreen()
     {
-        switch (FrameRules.F11(Video.State.Resolved == Video.SurfacePlacement.Fullscreen, Video.State.IsActive))
+        switch (FrameRules.F11(Video.State.Resolved == Video.SurfacePlacement.Fullscreen, Video.State.IsActive, Ui.ImmersiveLyrics.Peek()))
         {
             case FrameRules.FullscreenToggle.Enter: Video.State.EnterFullscreen(); break;
             case FrameRules.FullscreenToggle.Exit: Video.State.ExitFullscreen(); break;
+            case FrameRules.FullscreenToggle.CloseStage: Stage.Close(null, "f11-shell"); break;   // the stage root normally takes F11 first; this is the unfocused fallback (no flight) — V-U43
+            case FrameRules.FullscreenToggle.OpenStage: Stage.Open(null, "f11"); break;           // no shared-element flight from a key press; an empty stage is allowed
         }
     }
 
@@ -700,7 +790,7 @@ public static partial class Shell
                         Video.State.Resolved == Video.SurfacePlacement.Fullscreen))
             {
                 case FrameRules.EscapeAction.CloseImmersiveLyrics:
-                    Ui.ImmersiveLyrics.Value = false;
+                    Stage.Close(null, "escape-shell");   // the stage root normally takes Esc first; this is the unfocused fallback
                     e.Handled = true;   // also stops the unhandled-Escape arm from clearing focus
                     break;
                 case FrameRules.EscapeAction.ExitVideoFullscreen:
@@ -723,6 +813,21 @@ public static partial class Shell
         if (focused.IsNull || s_scene is not { } scene || !scene.IsLive(focused)) return false;
         ref var ix = ref scene.Interaction(focused);
         return ix.Role == AutomationRole.Text || (ix.HandlerMask & InteractionInfo.CharBit) != 0;
+    }
+
+    /// <summary>The pane-invariant probe's observation (<see cref="Diagnostics.SidebarPaneFrame"/>): the presentation facts
+    /// as decided, plus the column's laid-out width. The layer opacities and hit-test owners are the facts the regime
+    /// implies (the pane folds its two layers off exactly Regime ∨ LastResort).</summary>
+    static readonly Func<SidebarPaneFrameSnapshot> s_paneFrame = SidebarPaneFrame;
+
+    static SidebarPaneFrameSnapshot SidebarPaneFrame()
+    {
+        float rendered = s_scene is { } scene && !s_sidebarColumn.IsNull && scene.IsLive(s_sidebarColumn)
+            ? scene.AbsoluteRect(s_sidebarColumn).W : Sidebar.PresentedWidth.Peek();
+        bool rail = Sidebar.Regime.Peek() == SidebarRegime.Rail || Ui.LastResort.Peek();
+        return new SidebarPaneFrameSnapshot(Sidebar.Design.Peek(), Sidebar.Regime.Peek(), Sidebar.RailDetent.Peek(),
+            Ui.LastResort.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered,
+            rail ? 0f : 1f, rail ? 1f : 0f, !rail, rail);
     }
 
     static void PublishScrimClip()
@@ -1312,7 +1417,7 @@ public static partial class Shell
 
     // ══ 5. THE NARROW DRAWER ═══════════════════════════════════════════════════════════════════════════════════════
     //
-    // In the narrow band the 56-DIP rail stays inline and the hamburger opens a separately-retained full pane OVER the
+    // In the last-resort band the user's rail detent stays inline and the hamburger opens a separately-retained full pane OVER the
     // page, so the saved desktop preference is never overwritten. Always mounted; open/close is compositor-only.
 
     sealed class NarrowDrawer : Component
@@ -1323,7 +1428,7 @@ public static partial class Shell
 
         public override Element Render()
         {
-            bool narrow = Ui.NarrowShell.Value;
+            bool narrow = Ui.LastResort.Value;
             bool open = narrow && Ui.DrawerOpen.Value;
             var hooks = UseContext(InputHooks.Current);
             _escapePreview ??= key =>
@@ -1399,7 +1504,7 @@ public static partial class Shell
     /// (<c>ShellNarrowDrawerTests</c>).</summary>
     public static class NarrowDrawerMount
     {
-        public static bool ShouldMount(bool narrowShell, bool drawerOpen) => narrowShell;
+        public static bool ShouldMount(bool lastResort, bool drawerOpen) => lastResort;
     }
 
     sealed class DrawerScrim : Component
@@ -1487,6 +1592,7 @@ public static partial class Shell
     {
         public override Element Render()
         {
+            var overlay = UseContext(Overlay.Service);   // the release rows' album menu host
             var expanded = UseSignal("");
             var tick = UseSignal(0);
             // Relative times advance while open; a frame-clock interval that auto-pauses when parked.
@@ -1506,7 +1612,7 @@ public static partial class Shell
             for (int i = 0; i < feed.Items.Count; i++)
             {
                 var n = feed.Items[i];
-                if (Notify.PassesFilter(n, filter)) rows.Add(NotificationRow(n, now, expanded, expandedId));
+                if (Notify.PassesFilter(n, filter)) rows.Add(NotificationRow(n, now, expanded, expandedId, overlay));
             }
 
             Element body = rows.Count > 0
@@ -1605,16 +1711,27 @@ public static partial class Shell
         };
     }
 
-    static Element NotificationRow(Notification n, long now, Signal<string> expanded, string expandedId) => n.Category switch
+    static Element NotificationRow(Notification n, long now, Signal<string> expanded, string expandedId, IOverlayService? overlay) => n.Category switch
     {
         NotifyCategory.AppUpdate => NotificationCard("ntf:" + n.Id, UpdateRow(n.Update ?? AppUpdateSnapshot.Idle), n.IsUnread, null),
         NotifyCategory.Social => NotificationCard("ntf:" + n.Id, SocialRow(n, now), n.IsUnread, () => OpenSocial(n)),
-        NotifyCategory.NewRelease => NotificationCard("ntf:" + n.Id, ReleaseRow(n), n.IsUnread, () => OpenRelease(n)),
+        NotifyCategory.NewRelease => ReleaseCard(n, overlay),
         _ => ActivityCard(n, now, expanded, expandedId),
     };
 
+    /// <summary>A new-release row: click opens it; an ALBUM release also answers a right-click with the one album menu
+    /// (the cards' own — Play next, Add to queue, Save, Go to artist…). An episode release has no container menu.</summary>
+    static Element ReleaseCard(Notification n, IOverlayService? overlay)
+    {
+        var card = NotificationCard("ntf:" + n.Id, ReleaseRow(n), n.IsUnread, () => OpenRelease(n));
+        if (n.ReleaseKind != NewReleaseKind.Album || !n.Subject.IsValid || overlay is null || Controls.IsNullOverlay(overlay)) return card;
+        var target = ActionTarget.ForAlbum(n.Subject, n.Title);
+        string? art = n.ImageUrl, creator = n.Creator;
+        return card.WithContextMenu(overlay, () => Menus.Container(in target, art, creator));
+    }
+
     /// <summary>The generic row frame: 56 min, r8, the hover rung, the unread dot, and the enter/exit/slide choreography.</summary>
-    static Element NotificationCard(string key, Element content, bool unread, Action? onClick) => new BoxEl
+    static BoxEl NotificationCard(string key, Element content, bool unread, Action? onClick) => new BoxEl
     {
         Key = key,
         Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, MinHeight = 56f,

@@ -189,6 +189,7 @@ public static partial class Fetch
             FetchEdge.TrackCredits => e.TrackCredits,
             FetchEdge.TrackVersions => e.TrackVersions,
             FetchEdge.TrackWaveform => e.TrackWaveform,
+            FetchEdge.TrackBeats => e.TrackBeats,
             FetchEdge.HomeSections => e.HomeSection,
             FetchEdge.HomePreviews => e.HomePreviews,
             FetchEdge.SearchResults => e.SearchResult,
@@ -215,7 +216,7 @@ public static partial class Fetch
         FetchEdge.ArtistPopular or FetchEdge.ArtistRelated or FetchEdge.ArtistReleases or FetchEdge.ArtistAlbums
             or FetchEdge.ArtistSingles or FetchEdge.ArtistCompilations or FetchEdge.ArtistConcerts => scope.Artists,
         FetchEdge.ShowEpisodes => scope.Shows,
-        FetchEdge.TrackCredits or FetchEdge.TrackVersions or FetchEdge.TrackWaveform => scope.Tracks,
+        FetchEdge.TrackCredits or FetchEdge.TrackVersions or FetchEdge.TrackWaveform or FetchEdge.TrackBeats => scope.Tracks,
         FetchEdge.HomeSections or FetchEdge.HomePreviews => scope.Homes,
         FetchEdge.SearchResults => scope.Searches,
         FetchEdge.BrowseCategories or FetchEdge.BrowseSections => scope.Browses,

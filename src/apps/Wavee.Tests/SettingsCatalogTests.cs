@@ -57,26 +57,28 @@ public class SettingsCatalogTests
         => Assert.Throws<InvalidOperationException>(() => Settings.Catalog.RowGlyph(Settings.Tab.General, "no-such-row"));
 
     /// <summary>A DEVELOPER-ONLY row is ABSENT while the switch is off and present while it is on — never greyed, which is
-    /// the shape reserved for a row whose write is merely unavailable (the FPS overlay). This is the gate the tabs call,
-    /// so the table IS the answer rather than a condition repeated in each UI file.</summary>
+    /// the shape reserved for a row whose write is merely unavailable (the Privacy &amp; diagnostics › Developer items,
+    /// which are present and greyed while developer mode is off). This is the gate the tabs call, so the table IS the
+    /// answer rather than a condition repeated in each UI file.</summary>
     [Theory]
     [InlineData(Settings.Tab.Appearance, "pageMotion")]
     [InlineData(Settings.Tab.Appearance, "npvPresentation")]
-    [InlineData(Settings.Tab.General, "simulateUpdate")]
     public void A_developer_only_row_is_absent_without_developer_mode_and_present_with_it(Settings.Tab tab, string rowId)
     {
         Assert.False(Settings.Catalog.RowVisible(tab, rowId, developerMode: false));
         Assert.True(Settings.Catalog.RowVisible(tab, rowId, developerMode: true));
     }
 
-    /// <summary>Everything else is visible in BOTH states — a gate that leaked would empty the page for normal users.</summary>
+    /// <summary>Everything else is visible in BOTH states — a gate that leaked would empty the page for normal users.
+    /// The two Developer items that used to be gated here (Simulate an update, Send a test crash report) are greyed on
+    /// the Privacy &amp; diagnostics tab instead, so only the two Appearance rows remain.</summary>
     [Fact]
-    public void Only_the_four_declared_rows_are_developer_only()
+    public void Only_the_two_appearance_rows_are_developer_only()
     {
         var gated = Settings.Catalog.Rows.Where(r => !Settings.Catalog.RowVisible(r.Tab, r.RowId, developerMode: false))
                                          .Select(r => r.Tab + "/" + r.RowId)
                                          .OrderBy(s => s, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion", "General/sendTestCrashReport", "General/simulateUpdate" }, gated);
+        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion" }, gated);
         foreach (var row in Settings.Catalog.Rows)
             Assert.True(Settings.Catalog.RowVisible(row.Tab, row.RowId, developerMode: true));
     }
@@ -101,10 +103,54 @@ public class SettingsCatalogTests
         => Assert.Throws<InvalidOperationException>(() => Settings.Catalog.SectionGlyph(Settings.Tab.General, "No Such Section"));
 
     [Fact]
-    public void Scope_IsTheFourTableDrivenTabs()
+    public void Scope_IsTheFiveTableDrivenTabs()
     {
         var tabs = Settings.Catalog.Sections.Select(s => s.Tab).Distinct().OrderBy(t => t).ToArray();
-        Assert.Equal(new[] { Settings.Tab.General, Settings.Tab.Appearance, Settings.Tab.Playback, Settings.Tab.Storage }, tabs);
+        Assert.Equal(new[] { Settings.Tab.General, Settings.Tab.Appearance, Settings.Tab.Playback, Settings.Tab.Storage, Settings.Tab.PrivacyDiagnostics }, tabs);
+    }
+
+    static string[] SectionTitles(Settings.Tab tab)
+        => Settings.Catalog.Sections.Where(s => s.Tab == tab).Select(s => s.Title).ToArray();
+
+    static string[] RowIds(Settings.Tab tab, string section)
+        => Settings.Catalog.Rows.Where(r => r.Tab == tab && r.Section == section).Select(r => r.RowId).ToArray();
+
+    /// <summary>The Privacy &amp; diagnostics tab (privacy-diagnostics-tab-implementation.md §4.2): five groups in this
+    /// order, each with the rows that paint a glyph, none of them developer-only (the Developer items are greyed, never
+    /// composed away). The consent, crash-report and developer rows moved OUT of General, which keeps four groups.</summary>
+    [Fact]
+    public void ThePrivacyTab_HasItsFiveGroupsInOrder_AndGeneralLostItsTwo()
+    {
+        const Settings.Tab privacy = Settings.Tab.PrivacyDiagnostics;
+
+        Assert.Equal(new[] { "Privacy", "Crash reports", "Logs", "Tools", "Developer" }, SectionTitles(privacy));
+        Assert.Equal(new[] { "Shield", "Warning", "Document", "Repair", "Code" },
+            Settings.Catalog.Sections.Where(s => s.Tab == privacy).Select(s => s.Glyph).ToArray());
+
+        Assert.Equal(new[] { "whatLeaves", "crashReports", "crashDump", "crashContents", "crashService", "privacyPolicy" }, RowIds(privacy, "Privacy"));
+        Assert.Equal(new[] { "savedReports" }, RowIds(privacy, "Crash reports"));
+        Assert.Equal(new[] { "logViewer", "detailLevel", "logFiles", "reportProblem" }, RowIds(privacy, "Logs"));
+        Assert.Equal(new[] { "playbackRuntime", "connectDiagnostics", "realtimeCapture" }, RowIds(privacy, "Tools"));
+        Assert.Equal(new[] { "developerMode", "fpsOverlay", "simulateUpdate", "sendTestCrashReport" }, RowIds(privacy, "Developer"));
+
+        // present-and-greyed, not composed away: nothing on this tab is developer-only
+        Assert.All(Settings.Catalog.Rows.Where(r => r.Tab == privacy), r => Assert.False(r.DeveloperOnly, privacy + "/" + r.RowId));
+
+        // General keeps its four groups, in this order, and no row of the two it lost
+        Assert.Equal(new[] { "Language & region", "Links", "Notification area", "Graphics" }, SectionTitles(Settings.Tab.General));
+        Assert.DoesNotContain(Settings.Catalog.Rows,
+            r => r.Tab == Settings.Tab.General && (r.Section == "Privacy & diagnostics" || r.Section == "Developer"));
+        Assert.DoesNotContain(Settings.Catalog.Sections,
+            s => s.Tab == Settings.Tab.General && (s.Title == "Privacy & diagnostics" || s.Title == "Developer"));
+    }
+
+    /// <summary>The five groups stack on ONE scrolling tab, so two headers wearing one glyph would read as the same group.</summary>
+    [Fact]
+    public void ThePrivacyTab_SectionGlyphs_AreAllDistinct()
+    {
+        var glyphs = Settings.Catalog.Sections.Where(s => s.Tab == Settings.Tab.PrivacyDiagnostics).Select(s => s.Glyph).ToArray();
+        Assert.Equal(5, glyphs.Length);
+        Assert.Equal(glyphs.Length, glyphs.Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]
@@ -121,8 +167,9 @@ public class SettingsCatalogTests
     [Fact]
     public void TheTwoDeliberateGears_AreDeveloperModeAndPlayerStyle()
     {
+        // table order: Appearance's rows precede the Privacy & diagnostics rows
         var gears = Settings.Catalog.Rows.Where(r => r.Glyph == "Settings").Select(r => (r.Tab, r.RowId)).ToArray();
-        Assert.Equal(new[] { (Settings.Tab.General, "developerMode"), (Settings.Tab.Appearance, "npvStyle") }, gears);
+        Assert.Equal(new[] { (Settings.Tab.Appearance, "npvStyle"), (Settings.Tab.PrivacyDiagnostics, "developerMode") }, gears);
     }
 
     [Fact]
@@ -134,6 +181,14 @@ public class SettingsCatalogTests
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug("no-such-tab"));
         Assert.Equal(Settings.Tab.Storage, Settings.TabFromSlug("STORAGE"));
         Assert.Equal(Settings.Tab.General, Settings.TabFromSlug(null));
+
+        // The Privacy & diagnostics tab took the sixth slot from the old Logs tab (the log viewer is a route now).
+        Assert.Equal(new[] { "general", "appearance", "playback", "notifications", "storage", "privacy", "about" }, Settings.TabSlugs);
+        Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("privacy"));
+        Assert.Equal(Settings.Tab.PrivacyDiagnostics, Settings.TabFromSlug("PRIVACY"));
+        Assert.Equal("privacy", Settings.SlugOf(Settings.Tab.PrivacyDiagnostics));
+        Assert.DoesNotContain("logs", Settings.TabSlugs);
+        Assert.Equal(Settings.Tab.General, Settings.TabFromSlug("logs"));   // an old `settings` + `logs` link lands on the page, never nowhere
     }
 }
 

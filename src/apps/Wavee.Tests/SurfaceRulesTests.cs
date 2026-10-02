@@ -79,11 +79,42 @@ public class SurfaceRulesTests
         Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.Grid, hasMenu: true, showMenu: true));
         Assert.True(SurfaceRules.ShowsMenuTrailing(Shape.Row(48f), hasMenu: true, showMenu: true));
         Assert.False(SurfaceRules.ShowsMenuCorner(Shape.Row(48f), hasMenu: true, showMenu: true));
-        Assert.False(SurfaceRules.ShowsMenuCorner(Shape.RailTile, hasMenu: true, showMenu: true));
-        Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.RailTile, hasMenu: true, showMenu: true));
+        Assert.False(SurfaceRules.ShowsMenuCorner(Shape.RailTileOf(SidebarRailMetrics.For(SidebarRailDetent.Default).Tile), hasMenu: true, showMenu: true));
+        Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.RailTileOf(SidebarRailMetrics.For(SidebarRailDetent.Default).Tile), hasMenu: true, showMenu: true));
         Assert.False(SurfaceRules.ShowsMenuCorner(Shape.Grid, hasMenu: true, showMenu: false));
         Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.Row(48f), hasMenu: true, showMenu: false));
         Assert.False(SurfaceRules.ShowsMenuCorner(Shape.Shelf(), hasMenu: false, showMenu: true));
+    }
+
+    [Fact]
+    public void Trailing_menu_is_an_overlay_that_reserves_no_width()
+    {
+        Assert.False(SurfaceRules.MenuReservesWidth(Shape.Row(48f), hasMenu: true, showMenu: true));
+        Assert.False(SurfaceRules.MenuReservesWidth(Shape.EpisodeRow, hasMenu: true, showMenu: true));
+        Assert.False(SurfaceRules.MenuReservesWidth(Shape.Row(48f), hasMenu: false, showMenu: true));
+    }
+
+    [Fact]
+    public void A_lane_shape_reserves_the_menu_its_own_width_beside_the_trailing_cluster()
+    {
+        // A TrailingLane row still shows the trailing "…" (the same gate) — in a lane of its own, never over the control
+        // that ends the row (the search rows' Follow pill / heart).
+        var lane = Shape.Row(48f) with { Menu = MenuPlacement.TrailingLane };
+        Assert.True(SurfaceRules.ShowsMenuTrailing(lane, hasMenu: true, showMenu: true));
+        Assert.True(SurfaceRules.MenuReservesWidth(lane, hasMenu: true, showMenu: true));
+        Assert.False(SurfaceRules.ShowsMenuCorner(lane, hasMenu: true, showMenu: true));
+        Assert.True(SurfaceRules.MenuReservesWidth(Shape.RowLarge with { Menu = MenuPlacement.TrailingLane }, hasMenu: true, showMenu: true));
+    }
+
+    [Theory]
+    [InlineData(false, true)]   // no menu (or no host for it): no "…", so no lane
+    [InlineData(true, false)]   // the data opted out (CardData.ShowMenu): right-click only, no lane
+    [InlineData(false, false)]
+    public void A_lane_exists_only_where_the_menu_button_does(bool hasMenu, bool showMenu)
+    {
+        var lane = Shape.Row(48f) with { Menu = MenuPlacement.TrailingLane };
+        Assert.False(SurfaceRules.ShowsMenuTrailing(lane, hasMenu, showMenu));
+        Assert.False(SurfaceRules.MenuReservesWidth(lane, hasMenu, showMenu));
     }
 
     [Fact]
@@ -92,7 +123,7 @@ public class SurfaceRulesTests
         Assert.True(SurfaceRules.TitleTip(trimmed: false, hasLabels: false));
         Assert.False(SurfaceRules.TitleTip(trimmed: false, hasLabels: true));
         Assert.True(SurfaceRules.TitleTip(trimmed: true, hasLabels: true));
-        Assert.False(Shape.RailTile.Labels);
+        Assert.False(Shape.RailTileOf(SidebarRailMetrics.For(SidebarRailDetent.Default).Tile).Labels);
     }
 
     // ── the plate ────────────────────────────────────────────────────────────────────────────────────────────────────

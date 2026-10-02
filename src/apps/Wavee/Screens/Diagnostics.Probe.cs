@@ -21,6 +21,13 @@
 // SAFETY (§2.8): settings writes land in an overlay and never reach HKCU; the credential blob can be refreshed but never
 // removed; the Connect device id is namespaced (`device.id.headless`); no library.<schema>.db unless `--store`;
 // `--profile` redirects the whole profile (App.cs sets `Platform.ProfileRoot` from `ProfileArg` before `Platform.Boot`).
+//
+// `--stress-audio` (docs/plans/wavee/playback-smoothness-implementation.md §4.18, #167) is the same shape for the audio load
+// test: a windowless host that plays a local file or a Spotify track through the REAL device while burner threads, an
+// allocator, a minimized stand-in window and battery-saver throttling lean on the machine, then prints the glitch ledger.
+// It is the LAST section of this file; its decisions are pure (`StressOptions`, `StressRun`, `StressReport`, `StressRules`)
+// and pinned by `Wavee.Tests/AudioStressTests.cs`. The `Probe.Arms.cs` partial (G-016) is owned elsewhere: the arm is wired
+// from `Probe.TryRun` here.
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -44,6 +51,7 @@ public static partial class Diagnostics
             // `FluentApp.DiagnosticRun` from `Diagnostics.Install` instead.
             if (TryRunCliArm(args, out code)) return true;
             code = 0;
+            if (Array.IndexOf(args, "--stress-audio") >= 0) { code = StressAudio(args); return true; }   // the load-test runner (§ --stress-audio, below)
             if (Array.IndexOf(args, "--headless") < 0) return false;
             AttachParentConsole();
             if (!HeadlessOptions.TryParse(args, out HeadlessOptions options, out string usage))
@@ -62,6 +70,20 @@ public static partial class Diagnostics
         {
             int i = Array.IndexOf(args, "--profile");
             return i >= 0 && i + 1 < args.Length ? args[i + 1] : "";
+        }
+
+        /// <summary>`--stress-audio ...` (playback-smoothness plan §4.18): the on-box load test. Windowless like `--headless`; the
+        /// parse is pure (<see cref="StressOptions.TryParse"/>), the run is <see cref="StressAudioHost"/>. Exit 0 = no incidents
+        /// (or one under `--allow-one`), 2 = incidents, 1 = the run could not be completed, 64 = usage.</summary>
+        static int StressAudio(string[] args)
+        {
+            AttachParentConsole();
+            if (!StressOptions.TryParse(args, out StressOptions options, out string usage))
+            {
+                Console.Error.WriteLine(usage);
+                return Headless.ExitCode.Usage;
+            }
+            return StressAudioHost.Run(options);
         }
 
         [LibraryImport("kernel32.dll")]
@@ -656,6 +678,19 @@ public static partial class Diagnostics
                     if (s_connect && s_wasOnline) Hello();              // already online: the session will not announce again until it reconnects
                     return true;
                 case Headless.Verb.Log: Log.Info("headless", c.Arg0); return true;
+                case Headless.Verb.Analysis:
+                    {
+                        // the audio-analysis endpoint probe (fullscreen-flagship-implementation.md §4.5.3). The HTTP call BLOCKS, so it
+                        // runs on an api thread and posts its line back to the loop — Emit is loop-thread only (the RequestMembers shape).
+                        string uri = c.Arg0;
+                        bool queued = Spotify.Api.Run(() =>
+                        {
+                            string line = Spotify.Api.AudioAnalysisProbe(uri, CancellationToken.None);   // blocking: api thread
+                            s_loop.Post(() => Emit(line));
+                        });
+                        if (!queued) { error = "api queue full — retry"; return false; }
+                        return true;
+                    }
             }
             error = "not executable here: " + c.Verb;
             return false;
@@ -845,6 +880,790 @@ public static partial class Diagnostics
             server.WaitForConnection();
             Volatile.Write(ref s_pipeOut, new StreamWriter(server, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true });
             return new StreamReader(server, new UTF8Encoding(false));
+        }
+    }
+
+    // ══ --stress-audio ═══════════════════════════════════════════════════════════════════════════════════════════════════
+    // docs/plans/wavee/playback-smoothness-implementation.md §4.18 (V-PA39; #167). The on-box half of the load-test harness.
+    //
+    //   Wavee.exe --stress-audio --file <flac|ogg|mp3> --burners 2 --memory-mib 2048 --minimize --seconds 60
+    //
+    // THE GATE runs through the REAL WASAPI device: `--file` opens a local file through the normal `FileByteSource` path,
+    // `--track spotify:track:<id>` plays a track on the stored credential. Without either, or under `--fake`, the run goes
+    // through `PacedSilentEndpoint` and is labelled `smoke` in every line it prints: it proves the harness and the engine's
+    // starvation path under load in CI, it is NOT the gate.
+    //
+    // THE LOAD, started the moment the pump reports Playing: `--burners n` spin threads at each of BelowNormal / Normal /
+    // AboveNormal / Highest (4n in all), `--memory-mib n` of byte[] touched and churned every 50 ms (memory pressure + GC),
+    // `--minimize` a minimized top-level stand-in window (this arm is windowless, so there is no Wavee window to minimize;
+    // a minimized window is what makes Windows treat the process as background), `--battery-saver` the process opted INTO
+    // execution-speed throttling (the inverse of F4's opt-out, applied after the device exists so it wins).
+    //
+    // THE VERDICT: the glitch ledger over the window (`Metrics.GlitchIncidents`, tallied across ledger resets) and the engine's
+    // xrun count; exit 0 when the run had no incident (`--allow-one` tolerates one), 2 when it had more, 1 when it could not be
+    // completed (the track ended first, no audio, a fault), 64 usage.
+    //
+    // Every decision is PURE and in `Wavee.Tests/AudioStressTests.cs`: `StressOptions` (the argv parse and the smoke label),
+    // `StressRules` (the burner classes, the allocator plan, the pass rule), `StressRun` (the run's state machine and the
+    // incident tally), `StressReport` (the printed ledger summary and its JSON line). `StressAudioHost` boots the headless
+    // composition and ticks the machine; `StressLoad` is the OS half.
+
+    /// <summary>`--stress-audio [--file &lt;path&gt; | --track &lt;spotify:track:id&gt;] [--burners &lt;n per class&gt;] [--memory-mib &lt;n&gt;]
+    /// [--minimize] [--battery-saver] [--seconds &lt;n&gt;] [--allow-one] [--fake] [--profile &lt;dir&gt;]`. Pure parse; tested.</summary>
+    public readonly record struct StressOptions(string FilePath, string TrackUri, int Burners, int MemoryMib, bool Minimize,
+                                                bool BatterySaver, int Seconds, bool AllowOne, bool Fake, string Profile)
+    {
+        public const int DefaultSeconds = 60, MaxBurnersPerClass = 64, MaxMemoryMib = 16_384, MaxSeconds = 3_600;
+        public const string TrackPrefix = "spotify:track:";
+
+        public const string Usage =
+            "usage: Wavee.exe --stress-audio [--file <path> | --track <spotify:track:id>] [--burners <n>] [--memory-mib <n>]\n" +
+            "                 [--minimize] [--battery-saver] [--seconds <n>] [--allow-one] [--fake] [--profile <dir>]\n" +
+            "  --file          play a local file through the real device (the gate)\n" +
+            "  --track         play a Spotify track on the stored credential through the real device (the gate)\n" +
+            "                  neither: the --fake silent voice through the paced silent endpoint, labelled `smoke` (CI only)\n" +
+            "  --burners       spin threads at EACH of BelowNormal, Normal, AboveNormal and Highest (default 0, at most 64)\n" +
+            "  --memory-mib    byte[] kept touched and churned every 50 ms (default 0, at most 16384)\n" +
+            "  --minimize      a minimized stand-in window, so Windows treats the process as background\n" +
+            "  --battery-saver apply execution-speed throttling to the process (the inverse of the audio leaf's opt-out)\n" +
+            "  --seconds       the length of the measured window (default 60)\n" +
+            "  --allow-one     tolerate one incident (exit 0); default: none\n" +
+            "  --fake          silent endpoint: the run is a smoke run, whatever the source\n" +
+            "  exit codes: 0 no incident, 2 incidents, 1 the run could not complete, 64 usage, 67/75/69 credential / login / device";
+
+        /// <summary>The run goes through a real audio source (`--file` or `--track`).</summary>
+        public bool HasSource => FilePath.Length > 0 || TrackUri.Length > 0;
+
+        /// <summary>V-PA39: the paced silent endpoint — no source, or `--fake` — is a SMOKE run, never the gate.</summary>
+        public bool Smoke => Fake || !HasSource;
+
+        /// <summary>`smoke` or `device`: printed on every line of the report.</summary>
+        public string Label => Smoke ? "smoke" : "device";
+
+        /// <summary>`--track` needs a signed-in session before it can play.</summary>
+        public bool NeedsLogin => TrackUri.Length > 0;
+
+        public static bool TryParse(string[] args, out StressOptions options, out string usage)
+        {
+            options = new StressOptions("", "", 0, 0, false, false, DefaultSeconds, false, false, "");
+            usage = "";
+            string file = "", track = "", profile = "";
+            int burners = 0, memory = 0, seconds = DefaultSeconds;
+            bool minimize = false, battery = false, allowOne = false, fake = false;
+            for (int i = 0; i < args.Length; i++)
+            {
+                string a = args[i];
+                switch (a)
+                {
+                    case "--stress-audio": break;
+                    case "--fake": fake = true; break;
+                    case "--minimize": minimize = true; break;
+                    case "--battery-saver": battery = true; break;
+                    case "--allow-one": allowOne = true; break;
+                    case "--file": if (!Text(args, ref i, a, out file, ref usage)) return false; break;
+                    case "--track": if (!Text(args, ref i, a, out track, ref usage)) return false; break;
+                    case "--profile": if (!Text(args, ref i, a, out profile, ref usage)) return false; break;
+                    case "--burners": if (!Count(args, ref i, a, 0, MaxBurnersPerClass, out burners, ref usage)) return false; break;
+                    case "--memory-mib": if (!Count(args, ref i, a, 0, MaxMemoryMib, out memory, ref usage)) return false; break;
+                    case "--seconds": if (!Count(args, ref i, a, 1, MaxSeconds, out seconds, ref usage)) return false; break;
+                    default:
+                        usage = "unknown argument '" + a + "'\n" + Usage;
+                        return false;
+                }
+            }
+            if (file.Length > 0 && track.Length > 0) { usage = "--file and --track cannot be combined\n" + Usage; return false; }
+            if (track.Length > 0 && (!track.StartsWith(TrackPrefix, StringComparison.Ordinal) || track.Length == TrackPrefix.Length))
+            {
+                usage = "--track wants a spotify:track:<id> uri, not '" + track + "'\n" + Usage;
+                return false;
+            }
+            if (fake && track.Length > 0) { usage = "--fake has no Spotify session: use --file, or nothing, with it\n" + Usage; return false; }
+            options = new StressOptions(file, track, burners, memory, minimize, battery, seconds, allowOne, fake, profile);
+            return true;
+        }
+
+        static bool Text(string[] args, ref int i, string flag, out string value, ref string usage)
+        {
+            value = "";
+            if (i + 1 >= args.Length || args[i + 1].StartsWith("--", StringComparison.Ordinal))
+            {
+                usage = flag + " wants a value\n" + Usage;
+                return false;
+            }
+            value = args[++i];
+            return true;
+        }
+
+        static bool Count(string[] args, ref int i, string flag, int min, int max, out int count, ref string usage)
+        {
+            count = 0;
+            if (!Text(args, ref i, flag, out string text, ref usage)) return false;
+            if (int.TryParse(text, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out count)
+                && count >= min && count <= max) return true;
+            usage = flag + " wants a whole number from " + min + " to " + max + ", not '" + text + "'\n" + Usage;
+            return false;
+        }
+    }
+
+    /// <summary>The allocator's shape for `--memory-mib`: <see cref="ChunkCount"/> chunks of <see cref="ChunkBytes"/> kept resident
+    /// and touched, <see cref="ReplacePerTick"/> of them replaced (a fresh LOH allocation, touched page by page) every
+    /// <see cref="TickMs"/> — about one full turnover per four seconds, so the GC has real work for the whole run. PURE.</summary>
+    public readonly record struct AllocatorPlan(int ChunkBytes, int ChunkCount, int ReplacePerTick, int TickMs)
+    {
+        public const int ChunkMib = 4, DefaultTickMs = 50;
+
+        public static AllocatorPlan None => new(0, 0, 0, 0);
+        public bool IsNone => ChunkCount == 0;
+        public long ResidentBytes => (long)ChunkBytes * ChunkCount;
+
+        public static AllocatorPlan For(int memoryMib)
+        {
+            if (memoryMib <= 0) return None;
+            int chunkMib = Math.Min(ChunkMib, memoryMib);
+            int count = (memoryMib + chunkMib - 1) / chunkMib;
+            return new AllocatorPlan(chunkMib * 1024 * 1024, count, Math.Max(1, count / 80), DefaultTickMs);
+        }
+    }
+
+    /// <summary>The stress arm's small pure rules.</summary>
+    public static class StressRules
+    {
+        /// <summary>The burner priority classes, in the order the plan lists them (read-only).</summary>
+        public static IReadOnlyList<ThreadPriority> BurnerClasses { get; } =
+            Array.AsReadOnly(new[] { ThreadPriority.BelowNormal, ThreadPriority.Normal, ThreadPriority.AboveNormal, ThreadPriority.Highest });
+
+        /// <summary>`--burners n` is n threads in EACH class.</summary>
+        public static int BurnerThreads(int perClass) => Math.Max(0, perClass) * BurnerClasses.Count;
+
+        public static AllocatorPlan Allocator(int memoryMib) => AllocatorPlan.For(memoryMib);
+
+        /// <summary>The pass rule: no incident, or one under `--allow-one`.</summary>
+        public static bool Passed(int incidents, bool allowOne) => incidents <= (allowOne ? 1 : 0);
+
+        /// <summary>What the report names the source: the file's NAME (never its folder), the track uri, or the silent voice.</summary>
+        public static string SourceLabel(in StressOptions o)
+            => o.FilePath.Length > 0 ? "file:" + Path.GetFileName(o.FilePath)
+             : o.TrackUri.Length > 0 ? "track:" + o.TrackUri
+             : "silent-voice";
+    }
+
+    /// <summary>What the run's machine reads each tick (the SHELL fills it once per tick, on the loop thread).</summary>
+    /// <param name="Phase">`Playback.Phase.ToString()`: Idle / Loading / Playing / Paused / Ended.</param>
+    /// <param name="Fault">`Playback.Fault.ToString()`; "None" when healthy.</param>
+    /// <param name="Xruns">`Metrics.Xruns`: the engine's RT incident count, every session this process.</param>
+    /// <param name="GlitchIncidents">`Metrics.GlitchIncidents`: the session ledger's incident count (resets with the session).</param>
+    /// <param name="LongestStallMs">`Metrics.LongestStallMs`: the session ledger's longest stall.</param>
+    /// <param name="VerdictKey">`Metrics.GlitchVerdictKey`: the ledger's verdict key (clean, gcPauses, byteStarved, producerStarved, deviceLate).</param>
+    public readonly record struct StressInput(long NowMs, bool Online, string Phase, bool Buffering, string Fault, int PositionMs,
+                                              long Xruns, long XrunFramesLost, int GlitchIncidents, long LongestStallMs, string VerdictKey);
+
+    public enum StressVerb : byte
+    {
+        None,
+        /// <summary>Start the playback (import and play the file, or play the track).</summary>
+        Play,
+        /// <summary>Audio is flowing: start the burners, the allocator, the stand-in window, the throttling. The window opens now.</summary>
+        BeginLoad,
+        /// <summary>The window is over (or the track ended first): print <see cref="StressRun.Report"/> and exit with the code.</summary>
+        Finish,
+        /// <summary>The run cannot complete: print the reason and exit with the code.</summary>
+        Fail,
+    }
+
+    public readonly record struct StressStep(StressVerb Verb, int Code = 0, string Reason = "");
+
+    /// <summary>The printed ledger summary of one run. PURE: <see cref="ToText"/> is the human lines, <see cref="ToJsonLine"/> the
+    /// machine line (`"kind":"stress"`, like the headless lines). <paramref name="LongestStallMs"/> is −1 when the source of the
+    /// numbers does not measure it (the engine-level smoke run).</summary>
+    public readonly record struct StressReport(
+        string Label, string Source, int RequestedSeconds, int PlayedSeconds, int Burners, int MemoryMib, bool Minimized, bool BatterySaver,
+        int Incidents, long LongestStallMs, string Verdict, long Xruns, long XrunFramesLost, int AllowedIncidents, bool EndedEarly)
+    {
+        public bool Passed => !EndedEarly && Incidents <= AllowedIncidents;
+
+        /// <summary>0 pass, 2 incidents, 1 the track ended before the window did (inconclusive).</summary>
+        public int ExitCode => EndedEarly ? Headless.ExitCode.Fault : Passed ? Headless.ExitCode.Ok : Headless.ExitCode.Assertion;
+
+        public string ToText()
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var sb = new StringBuilder(256);
+            sb.Append("stress-audio label=").Append(Label)
+              .Append(" source=").Append(Source)
+              .Append(" seconds=").Append(PlayedSeconds.ToString(inv)).Append('/').Append(RequestedSeconds.ToString(inv))
+              .Append(" burners=").Append(Burners.ToString(inv)).Append('x').Append(StressRules.BurnerClasses.Count.ToString(inv))
+              .Append(" memoryMiB=").Append(MemoryMib.ToString(inv))
+              .Append(" minimized=").Append(Minimized ? "yes" : "no")
+              .Append(" batterySaver=").Append(BatterySaver ? "yes" : "no")
+              .Append('\n');
+            sb.Append("ledger incidents=").Append(Incidents.ToString(inv))
+              .Append(" longestStallMs=").Append(LongestStallMs < 0 ? "n/a" : LongestStallMs.ToString(inv))
+              .Append(" verdict=").Append(Verdict)
+              .Append(" xruns=").Append(Xruns.ToString(inv))
+              .Append(" xrunFramesLost=").Append(XrunFramesLost.ToString(inv))
+              .Append('\n');
+            sb.Append("result ");
+            if (EndedEarly)
+                sb.Append("INCONCLUSIVE ended-early played=").Append(PlayedSeconds.ToString(inv)).Append("s of ").Append(RequestedSeconds.ToString(inv)).Append('s');
+            else
+                sb.Append(Passed ? "PASS" : "FAIL").Append(" incidents=").Append(Incidents.ToString(inv)).Append(" allowed=").Append(AllowedIncidents.ToString(inv));
+            if (Label == "smoke")
+                sb.Append("\nnote smoke run: the silent endpoint is paced to the wall clock, not a device; this is not the on-box gate");
+            return sb.ToString();
+        }
+
+        public string ToJsonLine(long t)
+        {
+            var buffer = new System.Buffers.ArrayBufferWriter<byte>(256);
+            using (var w = new System.Text.Json.Utf8JsonWriter(buffer))
+            {
+                w.WriteStartObject();
+                w.WriteNumber("t", t);
+                w.WriteString("kind", "stress");
+                w.WriteString("label", Label);
+                w.WriteString("source", Source);
+                w.WriteNumber("seconds", RequestedSeconds);
+                w.WriteNumber("played", PlayedSeconds);
+                w.WriteNumber("burners", Burners);
+                w.WriteNumber("memoryMib", MemoryMib);
+                w.WriteBoolean("minimized", Minimized);
+                w.WriteBoolean("batterySaver", BatterySaver);
+                w.WriteNumber("incidents", Incidents);
+                w.WriteNumber("longestStallMs", LongestStallMs);
+                w.WriteString("verdict", Verdict);
+                w.WriteNumber("xruns", Xruns);
+                w.WriteNumber("xrunFramesLost", XrunFramesLost);
+                w.WriteNumber("allowed", AllowedIncidents);
+                w.WriteBoolean("endedEarly", EndedEarly);
+                w.WriteBoolean("passed", Passed);
+                w.WriteNumber("code", ExitCode);
+                w.WriteEndObject();
+            }
+            return Encoding.UTF8.GetString(buffer.WrittenSpan);
+        }
+    }
+
+    /// <summary>The run's state machine, one <see cref="Tick"/> per host tick: wait for the session (`--track`), post the play, wait
+    /// for audio, open the measured window (the load starts), tally incidents across ledger resets until the window is over, then
+    /// report. PURE: no clock, no engine, no thread — the host feeds it a <see cref="StressInput"/> and executes the verb.</summary>
+    public sealed class StressRun
+    {
+        public const int LoginTimeoutMs = 60_000, AudioStartTimeoutMs = 30_000;
+
+        public enum Stage : byte { Boot, WaitingForAudio, Running, Done }
+
+        readonly StressOptions _o;
+        Stage _stage;
+        long _t0 = -1, _playAt, _windowAt;
+        int _lastLedger, _ledgerIncidents;
+        long _longestStallMs, _xrunBase, _frameBase, _xruns, _frames;
+        string _verdict = "clean";
+        bool _minimized;
+
+        public StressRun(StressOptions options) => _o = options;
+
+        public Stage Current => _stage;
+
+        /// <summary>The ledger's incidents over the window, summed across ledger resets (a new session starts the count from zero),
+        /// or the engine's xrun delta when that is larger: an xrun the RT counted is an incident even if the ledger's drain missed it.</summary>
+        public int Incidents => Math.Max(_ledgerIncidents, (int)Math.Clamp(_xruns, 0L, int.MaxValue));
+
+        public long LongestStallMs => _longestStallMs;
+
+        /// <summary>Set once the run finished (<see cref="StressVerb.Finish"/>).</summary>
+        public StressReport? Report { get; private set; }
+
+        /// <summary>The host tells the machine what the load turned out to be (the stand-in window may fail to minimize).</summary>
+        public void NoteLoad(bool minimized) => _minimized = minimized;
+
+        public StressStep Tick(in StressInput i)
+        {
+            if (_t0 < 0) _t0 = i.NowMs;
+            switch (_stage)
+            {
+                case Stage.Boot:
+                    if (_o.NeedsLogin && !i.Online)
+                        return i.NowMs - _t0 > LoginTimeoutMs
+                            ? Fail(Headless.ExitCode.LoginTimeout, "the session was not online within " + LoginTimeoutMs / 1000 + " s")
+                            : default;
+                    _stage = Stage.WaitingForAudio;
+                    _playAt = i.NowMs;
+                    return new StressStep(StressVerb.Play);
+
+                case Stage.WaitingForAudio:
+                    if (i.Fault != "None") return Fail(Headless.ExitCode.Fault, "playback fault " + i.Fault);
+                    if (i.Phase == "Playing" && !i.Buffering)
+                    {
+                        _stage = Stage.Running;
+                        _windowAt = i.NowMs;
+                        _lastLedger = i.GlitchIncidents;     // earlier incidents (the open itself) are not the window's
+                        _xrunBase = i.Xruns;
+                        _frameBase = i.XrunFramesLost;
+                        return new StressStep(StressVerb.BeginLoad);
+                    }
+                    return i.NowMs - _playAt > AudioStartTimeoutMs
+                        ? Fail(_o.Smoke ? Headless.ExitCode.Fault : Headless.ExitCode.NoEndpoint, "no audio within " + AudioStartTimeoutMs / 1000 + " s")
+                        : default;
+
+                case Stage.Running:
+                    Observe(in i);
+                    if (i.Fault != "None") return Fail(Headless.ExitCode.Fault, "playback fault " + i.Fault);
+                    long elapsedMs = i.NowMs - _windowAt;
+                    if (elapsedMs >= _o.Seconds * 1000L) return Finish(_o.Seconds, endedEarly: false);
+                    if (i.Phase is "Ended" or "Idle") return Finish((int)(elapsedMs / 1000), endedEarly: true);
+                    return default;
+
+                default:
+                    return default;
+            }
+        }
+
+        void Observe(in StressInput i)
+        {
+            // A ledger count BELOW the last one is a new session's ledger: count from zero again.
+            _ledgerIncidents += i.GlitchIncidents >= _lastLedger ? i.GlitchIncidents - _lastLedger : i.GlitchIncidents;
+            _lastLedger = i.GlitchIncidents;
+            if (i.LongestStallMs > _longestStallMs) _longestStallMs = i.LongestStallMs;
+            if (i.VerdictKey != "clean") _verdict = i.VerdictKey;
+            _xruns = Math.Max(0L, i.Xruns - _xrunBase);
+            _frames = Math.Max(0L, i.XrunFramesLost - _frameBase);
+        }
+
+        StressStep Fail(int code, string reason)
+        {
+            _stage = Stage.Done;
+            return new StressStep(StressVerb.Fail, code, reason);
+        }
+
+        StressStep Finish(int playedSeconds, bool endedEarly)
+        {
+            _stage = Stage.Done;
+            var report = new StressReport(_o.Label, StressRules.SourceLabel(in _o), _o.Seconds, playedSeconds, _o.Burners, _o.MemoryMib,
+                _minimized, _o.BatterySaver, Incidents, _longestStallMs, _verdict, _xruns, _frames, _o.AllowOne ? 1 : 0, endedEarly);
+            Report = report;
+            return new StressStep(StressVerb.Finish, report.ExitCode);
+        }
+    }
+
+    /// <summary>The OS half of the load: burner threads, the allocator, the minimized stand-in window, the battery-saver
+    /// throttling. Everything it starts is a background thread and is undone by <see cref="Dispose"/>.</summary>
+    public sealed class StressLoad : IDisposable
+    {
+        const uint WsOverlappedWindow = 0x00CF0000;
+        const int SwShowMinNoActive = 7;
+        const uint WmQuit = 0x0012;
+
+        readonly List<Thread> _threads = new();
+        readonly ManualResetEventSlim _windowUp = new(false);
+        volatile bool _stop;
+        double _sink;
+        uint _windowThreadId;
+        bool _batterySaverOn;
+
+        StressLoad() { }
+
+        /// <summary>True when the stand-in window exists and is iconic.</summary>
+        public bool Minimized { get; private set; }
+
+        public int BurnerThreads { get; private set; }
+
+        public AllocatorPlan Allocator { get; private set; }
+
+        public static StressLoad Start(StressOptions o)
+        {
+            var load = new StressLoad();
+            load.StartBurners(o.Burners);
+            load.StartAllocator(StressRules.Allocator(o.MemoryMib));
+            if (o.Minimize) load.StartMinimizedWindow();
+            if (o.BatterySaver) load.ApplyBatterySaver();
+            Log.Info("stress", "stress.begin burnerThreads=" + load.BurnerThreads + " residentMiB=" + (load.Allocator.ResidentBytes >> 20)
+                               + " minimized=" + load.Minimized + " batterySaver=" + load._batterySaverOn);
+            return load;
+        }
+
+        void StartBurners(int perClass)
+        {
+            for (int c = 0; c < StressRules.BurnerClasses.Count; c++)
+            {
+                for (int n = 0; n < perClass; n++)
+                {
+                    ThreadPriority priority = StressRules.BurnerClasses[c];
+                    var thread = new Thread(Burn) { IsBackground = true, Priority = priority, Name = "wavee-stress-burn-" + priority };
+                    thread.Start();
+                    _threads.Add(thread);
+                    BurnerThreads++;
+                }
+            }
+        }
+
+        /// <summary>A dependent sqrt chain: loop-carried, bounded, never folded away, and one core's worth of work per thread.</summary>
+        void Burn()
+        {
+            double x = 1.000001;
+            while (!_stop)
+            {
+                for (int i = 0; i < 50_000; i++) x = Math.Sqrt(x + 1.0) * 1.0001;
+            }
+            Interlocked.Exchange(ref _sink, x);
+        }
+
+        void StartAllocator(AllocatorPlan plan)
+        {
+            Allocator = plan;
+            if (plan.IsNone) return;
+            var thread = new Thread(() => Churn(plan)) { IsBackground = true, Name = "wavee-stress-alloc" };
+            thread.Start();
+            _threads.Add(thread);
+        }
+
+        void Churn(AllocatorPlan plan)
+        {
+            var chunks = new byte[plan.ChunkCount][];
+            for (int i = 0; i < chunks.Length && !_stop; i++)
+            {
+                try { chunks[i] = Touch(plan.ChunkBytes); }
+                catch (OutOfMemoryException)
+                {
+                    Log.Warn("stress", "memory pressure capped at " + i * (plan.ChunkBytes >> 20) + " MiB: out of memory");
+                    break;
+                }
+            }
+            int next = 0;
+            while (!_stop)
+            {
+                Thread.Sleep(plan.TickMs);
+                for (int k = 0; k < plan.ReplacePerTick && !_stop; k++)
+                {
+                    try { chunks[next] = Touch(plan.ChunkBytes); }
+                    catch (OutOfMemoryException) { }
+                    next = (next + 1) % chunks.Length;
+                }
+            }
+            GC.KeepAlive(chunks);
+        }
+
+        /// <summary>A fresh array with every page written, so the memory is committed and not merely reserved.</summary>
+        static byte[] Touch(int bytes)
+        {
+            var a = new byte[bytes];
+            for (int i = 0; i < a.Length; i += 4096) a[i] = 1;
+            return a;
+        }
+
+        void StartMinimizedWindow()
+        {
+            var thread = new Thread(WindowThread) { IsBackground = true, Name = "wavee-stress-window" };
+            thread.Start();
+            _threads.Add(thread);
+            _windowUp.Wait(2_000);
+        }
+
+        void WindowThread()
+        {
+            nint hwnd = StressNative.CreateWindowExW(0, "STATIC", "Wavee stress stand-in (minimized)", WsOverlappedWindow, 100, 100, 360, 120, 0, 0, 0, 0);
+            if (hwnd != 0)
+            {
+                StressNative.ShowWindow(hwnd, SwShowMinNoActive);
+                Minimized = StressNative.IsIconic(hwnd) != 0;
+            }
+            _windowThreadId = StressNative.GetCurrentThreadId();
+            _windowUp.Set();
+            if (hwnd == 0) return;
+            var msg = default(StressNative.Msg);
+            while (StressNative.GetMessageW(ref msg, 0, 0, 0) > 0)
+            {
+                StressNative.TranslateMessage(ref msg);
+                StressNative.DispatchMessageW(ref msg);
+            }
+            StressNative.DestroyWindow(hwnd);
+        }
+
+        void ApplyBatterySaver()
+        {
+            _batterySaverOn = StressNative.SetExecutionSpeedThrottling(on: true);
+            if (!_batterySaverOn) Log.Warn("stress", "battery-saver emulation failed: SetProcessInformation(ProcessPowerThrottling) was refused");
+        }
+
+        public void Dispose()
+        {
+            _stop = true;
+            if (_windowThreadId != 0) StressNative.PostThreadMessageW(_windowThreadId, WmQuit, 0, 0);
+            foreach (Thread t in _threads) t.Join(2_000);
+            if (_batterySaverOn)
+            {
+                StressNative.SetExecutionSpeedThrottling(on: false);   // back to the audio leaf's opt-out
+                _batterySaverOn = false;
+            }
+            _windowUp.Dispose();
+        }
+    }
+
+    internal static partial class StressNative
+    {
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Msg
+        {
+            public nint HWnd;
+            public uint Message;
+            public nuint WParam;
+            public nint LParam;
+            public uint Time;
+            public int PtX;
+            public int PtY;
+            public uint Private;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct ProcessPowerThrottlingState
+        {
+            public uint Version;
+            public uint ControlMask;
+            public uint StateMask;
+        }
+
+        [LibraryImport("user32.dll", EntryPoint = "CreateWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+        internal static partial nint CreateWindowExW(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height,
+                                                     nint parent, nint menu, nint instance, nint param);
+
+        [LibraryImport("user32.dll")] internal static partial int ShowWindow(nint hWnd, int command);
+        [LibraryImport("user32.dll")] internal static partial int IsIconic(nint hWnd);
+        [LibraryImport("user32.dll")] internal static partial int DestroyWindow(nint hWnd);
+        [LibraryImport("user32.dll", EntryPoint = "GetMessageW")] internal static partial int GetMessageW(ref Msg msg, nint hWnd, uint filterMin, uint filterMax);
+        [LibraryImport("user32.dll")] internal static partial int TranslateMessage(ref Msg msg);
+        [LibraryImport("user32.dll", EntryPoint = "DispatchMessageW")] internal static partial nint DispatchMessageW(ref Msg msg);
+        [LibraryImport("user32.dll")] internal static partial int PostThreadMessageW(uint threadId, uint message, nuint wParam, nint lParam);
+        [LibraryImport("kernel32.dll")] internal static partial uint GetCurrentThreadId();
+        [LibraryImport("kernel32.dll")] internal static partial nint GetCurrentProcess();
+        [LibraryImport("kernel32.dll")] internal static partial int SetProcessInformation(nint process, int infoClass, ref ProcessPowerThrottlingState info, uint size);
+
+        /// <summary>PROCESS_POWER_THROTTLING_EXECUTION_SPEED with the control bit set: <paramref name="on"/> = throttle (battery saver),
+        /// off = never throttle (the audio leaf's own opt-out, `PowerThrottling.OptOut`). False when the call is refused.</summary>
+        internal static bool SetExecutionSpeedThrottling(bool on)
+        {
+            const int ProcessPowerThrottling = 4;
+            var state = new ProcessPowerThrottlingState { Version = 1, ControlMask = 0x1, StateMask = on ? 0x1u : 0u };
+            return SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, ref state, 12) != 0;
+        }
+    }
+
+    /// <summary>The `--stress-audio` host: the headless composition (one writer thread, the marshallers, the overlay settings, the
+    /// protected credential) with the stress machine in place of the script runner. `--fake`/no-source smoke runs of the silent
+    /// voice skip the pump altogether and load the engine session directly.</summary>
+    public static class StressAudioHost
+    {
+        const int TickMs = 100;
+
+        static HeadlessLoop s_loop = null!;
+        static StressOptions s_options;
+        static StressRun s_run = null!;
+        static StressLoad? s_load;
+        static Timer? s_tick;
+        static int s_exit, s_tickQueued;
+        static bool s_exiting;
+        static readonly Action s_tickAction = Tick;
+
+        public static int Run(StressOptions o)
+        {
+            s_options = o;
+            if (o.FilePath.Length > 0 && !File.Exists(o.FilePath))
+            {
+                Console.Error.WriteLine("--file: no such file: " + o.FilePath);
+                return Headless.ExitCode.Usage;
+            }
+            string profile = Platform.LocalFolder;
+            if (!ProfileWritable(profile, out string why))
+            {
+                Console.Error.WriteLine(why);
+                return Headless.ExitCode.Config;
+            }
+            if (!o.HasSource) return RunSilentVoice(o);
+
+            s_loop = new HeadlessLoop();
+            s_run = new StressRun(o);
+
+            // the stores: the same safety as the headless host (settings never reach HKCU; the credential is never removed)
+            Platform.UseSettings(new Headless.OverlaySettings(Platform.BackingSettings));
+            ICredentialProtector protector = OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector();
+            Platform.UseCredentialSlot(new Headless.ProtectedLocalStore(new FileLocalStore(Platform.StorePath), "stress",
+                refused: static k => Log.Warn("stress", "refused to remove " + k + " (a stress run never clears the credential)")), protector);
+            if (o.NeedsLogin && !Platform.HasStoredCredential())
+            {
+                Console.Error.WriteLine("--track needs a stored credential: sign in once in the Wavee window on this machine");
+                return Headless.ExitCode.NoCredential;
+            }
+
+            // the marshallers: ONE writer — this thread, blocked on the loop
+            Playback.ToUi = s_loop.Post;
+            Spotify.Post = s_loop.Post;
+            Store.Post = s_loop.Post;
+            Palette.Post = s_loop.Post;
+            Playback.FrameNowMs = static () => s_loop.NowMs;
+            WasapiAudioDevice.DiagSink = static s => Log.Info("audio", s);
+            WasapiAudioDevice.FormatSink = static f => Log.Info("audio", "device format " + f);
+
+            // `--fake --file`: the paced silent endpoint, labelled smoke. BEFORE `Playback.Boot()`, which queues the backend build on the
+            // pump chain (the flag is read there); the headless host calls it after, and wins the race only by being quick.
+            if (o.Smoke) Playback.Audio.UseSilentEndpoint();
+
+            App.RegisterShapes();
+            Store.Use(null);
+            Entities.Boot(Platform.Scope);
+            Spotify.Boot();
+            Playback.Boot();
+            Spotify.Api.Boot();
+            Playback.Audio.LocalPath = Playlist.LocalPathOf;          // a local file's id → its path (Modules.InstallUi's seam, which this host does not run)
+            if (o.NeedsLogin) Spotify.Login();
+
+            s_tick = new Timer(static _ =>
+            {
+                if (Interlocked.CompareExchange(ref s_tickQueued, 1, 0) == 0) s_loop.Post(s_tickAction);
+            }, null, TickMs, TickMs);
+
+            try { s_loop.Run(); }
+            catch (Exception ex)
+            {
+                Log.Error("stress", "the loop faulted", ex);
+                Console.Error.WriteLine("stress-audio: the host faulted: " + ex.GetType().Name + ": " + ex.Message);
+                s_exit = Headless.ExitCode.HostError;
+            }
+            finally
+            {
+                s_tick?.Dispose();
+                s_load?.Dispose();
+            }
+            return s_exit;
+        }
+
+        /// <summary>The smoke run with no source: the `--fake` silent voice through <c>PacedSilentEndpoint</c>, loaded directly at the
+        /// engine session (the pump and the catalog are never booted — the session is the unit under load).</summary>
+        static int RunSilentVoice(StressOptions o)
+        {
+            var session = Playback.Audio.OpenSilentSession(Playback.Audio.SilentFormat, (o.Seconds + 5L) * 1000, effects: null, volume: 1f);
+            StressLoad? load = null;
+            try
+            {
+                session.PlayAsync().AsTask().GetAwaiter().GetResult();
+                load = StressLoad.Start(o);
+                Thread.Sleep(o.Seconds * 1000);
+                long xruns = session.XrunCount, lost = session.XrunFramesLost;
+                var report = new StressReport(o.Label, StressRules.SourceLabel(in o), o.Seconds, o.Seconds, o.Burners, o.MemoryMib, load.Minimized,
+                    o.BatterySaver, (int)Math.Min(int.MaxValue, xruns), -1, xruns == 0 ? "clean" : "unknown", xruns, lost, o.AllowOne ? 1 : 0, false);
+                Console.Out.WriteLine(report.ToText());
+                Console.Out.WriteLine(report.ToJsonLine(Environment.TickCount64));
+                return report.ExitCode;
+            }
+            finally
+            {
+                load?.Dispose();
+                try { session.DisposeAsync().AsTask().GetAwaiter().GetResult(); }
+                catch (Exception ex) { Log.Warn("stress", "the silent session did not dispose cleanly", ex); }
+            }
+        }
+
+        /// <summary>Loop thread, every 100 ms: the host's frame (Fetch.Pump + Entities.Publish), then one step of the machine.</summary>
+        static void Tick()
+        {
+            Volatile.Write(ref s_tickQueued, 0);
+            if (s_exiting) return;
+            long nowMs = s_loop.NowMs;
+
+            Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            Fetch.Pump();
+            Entities.Publish();
+
+            Playback.State p = Playback.Snap();
+            var m = Playback.Audio.Metrics.Read();
+            var input = new StressInput(nowMs, Spotify.Current.IsOnline, p.Phase.ToString(), p.Buffering, p.Error.ToString(), p.Position(nowMs),
+                m.Xruns, m.XrunFramesLost, (int)m.GlitchIncidents, (long)m.LongestStallMs, m.GlitchVerdictKey ?? GlitchLedger.VerdictClean);
+
+            StressStep step = s_run.Tick(in input);
+            switch (step.Verb)
+            {
+                case StressVerb.Play:
+                    if (!StartPlayback(out string error))
+                    {
+                        Console.Error.WriteLine("stress-audio: " + error);
+                        RequestExit(Headless.ExitCode.Fault);
+                    }
+                    break;
+                case StressVerb.BeginLoad:
+                    s_load = StressLoad.Start(s_options);
+                    s_run.NoteLoad(s_load.Minimized);
+                    break;
+                case StressVerb.Finish:
+                    {
+                        StressReport report = s_run.Report!.Value;
+                        Console.Out.WriteLine(report.ToText());
+                        Console.Out.WriteLine(report.ToJsonLine(nowMs));
+                        RequestExit(step.Code);
+                        break;
+                    }
+                case StressVerb.Fail:
+                    Console.Error.WriteLine("stress-audio: " + step.Reason);
+                    Console.Out.WriteLine(Headless.JsonLine.Fault(nowMs, "stress-failed", step.Reason));
+                    RequestExit(step.Code);
+                    break;
+            }
+        }
+
+        /// <summary>Loop thread. `--file`: import the file as a local track and play it as a one-row queue; `--track`: the headless
+        /// `play` of one track. Both the way the headless host starts a single playable.</summary>
+        static bool StartPlayback(out string error)
+        {
+            error = "";
+            if (s_options.FilePath.Length > 0)
+            {
+                Track track = Playlist.ImportLocalFile(Path.GetFullPath(s_options.FilePath));
+                if (!track.IsValid) { error = "the file could not be imported as a local track: " + s_options.FilePath; return false; }
+                var row = new EntityRef(EntityKind.Track, track.Slot);
+                PlayRow(row, row.Id);
+                return true;
+            }
+            if (!EntityId.TryParse(s_options.TrackUri.AsSpan(), out EntityId id) || !id.IsPlayable) { error = "not a track uri: " + s_options.TrackUri; return false; }
+            EntityRef trackRow = Entities.Ref(id);
+            if (trackRow.IsNone) { error = "no row for " + s_options.TrackUri; return false; }
+            PlayRow(trackRow, id);
+            return true;
+        }
+
+        static void PlayRow(EntityRef row, EntityId context)
+        {
+            Span<EntityRef> refs = [row];
+            Span<QueueEdge> rows = stackalloc QueueEdge[1];
+            int n = Headless.BuildContextQueue(refs, 0, refs, rows);
+            Queue.Replace(refs[..n], rows[..n]);
+            Playback.PlayNow(row, context, Queue.CursorOf(0), Playback.PlayableKind.Audio, 0);
+        }
+
+        /// <summary>Loop thread. Stop playback, close the session WITHOUT clearing the credential, let the queue drain, return.</summary>
+        static void RequestExit(int code)
+        {
+            if (s_exiting) return;
+            s_exiting = true;
+            s_exit = code;
+            s_tick?.Change(Timeout.Infinite, Timeout.Infinite);
+            try { Playback.Stop(); } catch (Exception ex) { Log.Warn("stress", "stop on exit failed", ex); }
+            try { Spotify.Apply(new Spotify.SessionEvent(Spotify.SessionEventKind.Disconnect)); }
+            catch (Exception ex) { Log.Warn("stress", "disconnect on exit failed", ex); }
+            s_loop.Stop();
+        }
+
+        static bool ProfileWritable(string dir, out string why)
+        {
+            why = "";
+            try
+            {
+                Directory.CreateDirectory(dir);
+                string probe = Path.Combine(dir, ".stress-write-probe");
+                File.WriteAllText(probe, "ok");
+                File.Delete(probe);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+            {
+                why = dir + ": " + ex.Message;
+                return false;
+            }
         }
     }
 }

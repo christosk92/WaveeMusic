@@ -147,6 +147,58 @@ public class DeveloperModeTests
             Platform.Developer.Load(DefaultsOnlySettings.Instance);
         }
     }
+
+    /// <summary>A store that records what the FPS-overlay signal said at the instant its key was written — the one way a
+    /// test can see the ORDER of "persist, then publish" without a reactive flush in the way.</summary>
+    sealed class FpsWriteProbe : IAppSettings
+    {
+        readonly MemoryAppSettings _inner = new();
+
+        /// <summary>The signal's value when the overlay key was last written; null until it is written.</summary>
+        public bool? SignalSeenAtWrite { get; private set; }
+
+        public T Get<T>(SettingKey<T> key) => _inner.Get(key);
+
+        public void Set<T>(SettingKey<T> key, T value)
+        {
+            if (key.Name == Platform.Keys.FpsOverlay.Name) SignalSeenAtWrite = Platform.Developer.FpsOverlay.Peek();
+            _inner.Set(key, value);
+        }
+    }
+
+    /// <summary>The FPS overlay's live toggle (privacy-diagnostics-tab-implementation.md §5.4): the setter stores the key
+    /// FIRST and publishes the signal second, so a reader that re-reads the setting and one that reads the signal agree.
+    /// Before this the Settings row wrote the store directly and the signal stayed stale until the next launch.</summary>
+    [Fact]
+    public void SetFpsOverlay_persists_then_publishes()
+    {
+        var store = new FpsWriteProbe();
+        Platform.UseSettings(store);
+        try
+        {
+            Platform.Developer.Load(store);
+            Assert.False(Platform.Developer.FpsOverlay.Peek());
+
+            Platform.Developer.SetFpsOverlay(true);
+            Assert.False(store.SignalSeenAtWrite);                      // the key landed while the signal still said "off"
+            Assert.True(store.Get(Platform.Keys.FpsOverlay));
+            Assert.True(Platform.Developer.FpsOverlay.Peek());          // …and then the signal followed
+
+            Platform.Developer.SetFpsOverlay(false);
+            Assert.True(store.SignalSeenAtWrite);                       // the "off" write saw the signal still "on"
+            Assert.False(store.Get(Platform.Keys.FpsOverlay));
+            Assert.False(Platform.Developer.FpsOverlay.Peek());
+
+            // the other two switches ride separate setters and are untouched
+            Assert.False(Platform.Developer.Enabled.Peek());
+            Assert.False(Platform.Developer.StageRects.Peek());
+        }
+        finally
+        {
+            Platform.UseSettings(null);
+            Platform.Developer.Load(DefaultsOnlySettings.Instance);
+        }
+    }
 }
 
 // ── NetworkPolicy (ch 29 W9, §8) ─────────────────────────────────────────────────────────────────────────────────────
@@ -552,5 +604,92 @@ public class WaveeLogSessionsTests
         Assert.Same(legacy, WaveeLogSessions.Find(list, "pid7@4000"));
         Assert.Null(WaveeLogSessions.Find(list, "nope"));
         Assert.Null(WaveeLogSessions.Find([], null));
+    }
+
+    // ── ListPastSessions over a real folder: the writer's file names, walked from the CONFIGURED base path ──────
+
+    static string TempLogFolder()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "wavee-sessions-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    static void Delete(string dir)
+    {
+        try { Directory.Delete(dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    [Fact]
+    public void ListPastSessions_DiscoversDailyRolledFiles_FromBasePath()
+    {
+        string dir = TempLogFolder();
+        try
+        {
+            // The base path is never a file on disk any more: the writer only makes wavee-yyyyMMdd[-HHmmss].log.
+            string basePath = Path.Combine(dir, "wavee.log");
+            string current = Log.SessionId;
+            File.WriteAllLines(LogFileNames.Dated(basePath, new DateOnly(2026, 9, 1)),
+                new[] { Start(1000, "aaaaaaaa", 10), L(2, 1001, "aaaaaaaa", 10, "a1") });                           // run A
+            File.WriteAllLines(LogFileNames.Rolled(basePath, new DateTime(2026, 9, 2, 12, 0, 0)),
+                new[] { Start(2000, "bbbbbbbb", 11), L(2, 2001, "bbbbbbbb", 11, "b1") });                           // run B, up to the size roll
+            File.WriteAllLines(LogFileNames.Dated(basePath, new DateOnly(2026, 9, 2)),
+                new[] { L(3, 2002, "bbbbbbbb", 11, "b2"), Start(3000, current, 12), L(2, 3001, current, 12, "c1") }); // B's tail, then THIS run
+            File.WriteAllText(Path.Combine(dir, "scroll-20260902-120000.csv"), "t,frame\n1,2\n");                    // strangers in the folder
+            File.WriteAllText(Path.Combine(dir, "wavee-report-20260902-120000.txt"), "seq=1 tid=1 I [app] not a log\n");
+
+            var walk = WaveeLogSessions.ListPastSessions(basePath, currentPid: 12);
+
+            Assert.Null(walk.Error);
+            Assert.Equal(3, walk.FilesSeen);                       // the two dailies and the roll; neither stranger
+            Assert.Equal(7, walk.LinesSeen);
+            Assert.Equal(0, walk.FilesSkipped);
+            Assert.Equal(2, walk.Sessions.Count);                  // this run is dropped
+            Assert.Equal("bbbbbbbb", walk.Sessions[0].SessionId);  // newest first
+            Assert.Equal(3, walk.Sessions[0].EntryCount);
+            Assert.NotEqual(walk.Sessions[0].FileStart, walk.Sessions[0].FileEnd);   // B spans the roll and its day file
+            Assert.Equal("aaaaaaaa", walk.Sessions[1].SessionId);
+            Assert.Equal(2, walk.Sessions[1].EntryCount);
+            Assert.DoesNotContain(walk.Sessions, s => s.SessionId == current);
+
+            // A folder that is not there is "nothing on disk", not a fault; a base path of null likewise.
+            var none = WaveeLogSessions.ListPastSessions(Path.Combine(dir, "missing", "wavee.log"), 12);
+            Assert.Null(none.Error);
+            Assert.Equal(0, none.FilesSeen);
+            Assert.Empty(none.Sessions);
+            Assert.Null(WaveeLogSessions.ListPastSessions(null, 12).Error);
+        }
+        finally { Delete(dir); }
+    }
+
+    [Fact]
+    public void ListPastSessions_DailyFileOrdering_SizeRollSortsBeforeItsDay()
+    {
+        string dir = TempLogFolder();
+        try
+        {
+            string basePath = Path.Combine(dir, "wavee.log");
+            string current = Log.SessionId;
+            // The DAY file is written first and the roll second, so neither the order on disk nor the write time can be
+            // what puts the roll first: only its name can ('-' sorts before '.').
+            File.WriteAllLines(LogFileNames.Dated(basePath, new DateOnly(2026, 9, 2)),
+                new[] { L(4, 2003, "bbbbbbbb", 11, "b3"), Start(3000, current, 12) });
+            File.WriteAllLines(LogFileNames.Rolled(basePath, new DateTime(2026, 9, 2, 12, 0, 0)),
+                new[] { Start(2000, "bbbbbbbb", 11), L(2, 2001, "bbbbbbbb", 11, "b1"), L(3, 2002, "bbbbbbbb", 11, "b2") });
+
+            var walk = WaveeLogSessions.ListPastSessions(basePath, currentPid: 12);
+
+            Assert.Null(walk.Error);
+            Assert.Equal(2, walk.FilesSeen);
+            var only = Assert.Single(walk.Sessions);                // had the day file come first, B would be torn in two around this run
+            Assert.Equal("bbbbbbbb", only.SessionId);
+            Assert.Equal(4, only.EntryCount);
+            Assert.Equal(2000, only.StartUnixMs);
+            Assert.Equal(new[] { "wavee-20260902-120000.log", "wavee-20260902.log" }, only.Files.Select(f => Path.GetFileName(f)).ToArray());
+            Assert.Equal(0, only.FileStart);
+            Assert.Equal(1, only.FileEnd);
+            Assert.Equal(4, WaveeLogSessions.RawLines(only, WaveeLogSessions.ReadSharedLines).Count);   // the real reader, in the same order
+        }
+        finally { Delete(dir); }
     }
 }

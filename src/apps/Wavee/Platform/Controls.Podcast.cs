@@ -41,9 +41,9 @@ namespace Wavee;
 /// episode number, null for a trailer); a null <paramref name="Play"/> drops the disc. <paramref name="Tone"/> is the
 /// show's tone (label ink, disc fill, lead gradient). <paramref name="Menu"/> is the door's context menu (built at OPEN
 /// time, null = none) — right-click anywhere on the card; <see cref="Controls.Door"/> attaches it when it is handed an
-/// overlay service.</summary>
+/// overlay service. <see cref="PlayUri"/> names what the disc plays, so its glyph can read Pause while that episode is the one playing.</summary>
 public sealed record DoorData(string Label, string Title, string? Why, string? Meta, bool Lead, string? Numeral,
-                              Action? Play, Action Open, Func<ColorF> Tone, Func<ContextMenuModel?>? Menu = null);
+                              Action? Play, Action Open, Func<ColorF> Tone, Func<ContextMenuModel?>? Menu = null, string? PlayUri = null);
 
 public static partial class Controls
 {
@@ -356,7 +356,7 @@ public static partial class Controls
     static Element DoorFoot(DoorData d)
     {
         var kids = new List<Element>(2);
-        if (d.Play is { } play) kids.Add(DoorPlay(play, d.Tone));
+        if (d.Play is { } play) kids.Add(DoorPlay(play, d.Tone, d.PlayUri));
         if (d.Meta is { Length: > 0 } meta)
             kids.Add(new TextEl(meta)
             {
@@ -371,7 +371,10 @@ public static partial class Controls
 
     /// <summary>The door's 32 disc: the tone, a contrast-picked play glyph, the emphatic scale tier, its own tab stop and
     /// its name ("Play"). It blocks a drag arm so a door that ever becomes a drag source still plays.</summary>
-    static Element DoorPlay(Action play, Func<ColorF> tone) => Named(new BoxEl
+    static Element DoorPlay(Action play, Func<ColorF> tone, string? playUri)
+    {
+        EntityId playId = playUri is { Length: > 0 } ? EntityId.Parse(playUri) : default;   // parsed once, at build
+        return Named(new BoxEl
     {
         Width = DoorDisc, Height = DoorDisc, Shrink = 0f, Corners = Radii.Circle(DoorDisc),
         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Prop.Of(tone),
@@ -383,10 +386,20 @@ public static partial class Controls
             new BoxEl
             {
                 Width = DoorDiscGlyph, Height = DoorDiscGlyph, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [Icon(Icons.Play, DoorDiscGlyph) with { Color = Prop.Of(() => ColorContrast.PickContrast(tone())) }],
+                Children =
+                [
+                    Icon(Icons.Play, DoorDiscGlyph) with
+                    {
+                        // Pause while THIS episode is the one playing (a coarse-first subscribing read: the glyph node
+                        // re-skins, the door does not re-render).
+                        Text = Prop.Of(() => ShowsPause(playId) ? Icons.Pause : Icons.Play),
+                        Color = Prop.Of(() => ColorContrast.PickContrast(tone())),
+                    },
+                ],
             },
         ],
     }, Loc.Get(Strings.Detail.Play));
+    }
 
     // ══ 5. THE FIND BOX ══════════════════════════════════════════════════════════════════════════════════════════════
 

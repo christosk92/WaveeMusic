@@ -69,7 +69,7 @@ the handler infers it from the parent's exit code), and `UncleanExit` (Task Mana
 process — never prompts, just gets listed as "Closed"). `ExitCode 0` writes nothing.
 
 The **out-of-process handler** is the same signed `Wavee.exe`, re-invoked as `--crash-handler <pid>
-<logFolder> <datedLogPath>`. It talks to the parent over a `stdin` pipe (one byte per heartbeat, one line
+<logFolder> <logBasePath>`. It talks to the parent over a `stdin` pipe (one byte per heartbeat, one line
 per dump request) plus a process handle — no named kernel objects, no admin rights, no WER `LocalDumps`
 registry key (which needs both and is why the old WER probe was dead on user machines). See
 `docs/plans/wavee/crash-diagnostics-implementation.md` §B.0–B.1 for why every rejected alternative
@@ -88,8 +88,11 @@ registry key (which needs both and is why the old WER probe was dead on user mac
 
 Folder name: `yyyyMMdd-HHmmss-fff-<kind>` (`Crash.Files.BundleName`). Write order is deliberate —
 `summary.json` first (so even a disk-full write leaves *something* readable), then `report.txt`, then
-`log-tail.txt` (last 300 lines of the dated log, scrubbed at write time), then the dump last. Pruned to
-the newest 10 bundles and ≤ 200 MB total on every write.
+`log-tail.txt` (last 300 lines of the day's log, scrubbed at write time), then the dump last. The day's log is
+resolved at crash time, not at launch (an in-process bundle uses `Log.FilePath` as it stands; the child derives the
+dated name from the base path with `LogFileNames.Dated`), so a crash after midnight tails today's file; and the
+managed path flushes the log queue first and merges any line still queued (`TailAssembler.Merge`), so the tail ends
+with the crash's own lines. Pruned to the newest 10 bundles and ≤ 200 MB total on every write.
 
 `summary.json` is the machine-readable half (`Crash.Summary` — every field the Worker's ingest contract
 in §7 below validates against, camelCase on the wire). `report.txt` is the human-readable half: today's
@@ -134,6 +137,10 @@ matching `Wavee-<quad>-win-<arch>-symbols.zip` release asset, verify its sha256 
 run `cdb -lines -z … -y … -c "ln Wavee+0x<rva>; q"` per RVA. `summary.json`'s `debugId`, `moduleBase` and
 `rvas` fields carry everything §5b's recipe needs; `quad`/`arch`/`commit` tell you which zip to fetch.
 
+`log-tail.txt` is the last 300 lines of the log file that was current when the crash happened (the day's
+`wavee-<date>.log`, resolved at crash time), taken after the log queue was flushed — so it ends with the lines that
+led up to the crash rather than yesterday's file.
+
 A `.dmp` (when present) opens directly in WinDbg/cdb with the same symbols path — the "WinDbg one-liner"
 referenced from the dashboard's report detail view is this same §5b recipe, just pointed at the dump
 instead of a bare RVA list.
@@ -149,7 +156,7 @@ drain catches it and the frame goes on, so it writes **no** bundle; it exists to
 line reaches `wavee-*.log` (`Platform.Host.RouteFor`), the only trace a swallowed UI-thread fault leaves.
 `native` faults inside ntdll (a `Native` bundle with `faultModule` `ntdll.dll`, §10).
 
-**Send a test crash report** (Settings › General › Developer, shown only in developer mode) runs the whole pipeline
+**Send a test crash report** (Settings › Privacy & diagnostics › Developer, greyed until developer mode is on) runs the whole pipeline
 without crashing: `Crash.Host.WriteTestReport` throws a `Crash.SimulatedCrashException` through three no-inline Wavee
 frames, catches it, and writes a normal `Managed` bundle — `summary.json`, `report.txt` (its "Frames (RVA)" parsed
 from the caught trace in a NativeAOT build), `log-tail.txt` — plus a real minidump of the still-running process. The
@@ -158,8 +165,8 @@ child's exit-code inference, and the button touches neither the once-per-process
 marker: a real crash or non-zero exit later in the same run is still captured, and the next launch never offers the
 test as "Wavee crashed last time". The bundle then goes through `Crash.Uploader.Enqueue` with its dump (scrub → pack
 → outbox → POST) whatever the reporting mode — the click is the manual send — and the real outcome toast follows
-(the sent card names its short id; Logs › Reports lists it either way). On the dashboard its issue is titled `Wavee.Crash+SimulatedCrashException · <innermost Wavee frame>`, and
-repeated tests from one build group into that one issue (§11). A build that can't send (`Uploader.Configured` false)
+(the sent card names its short id; Crash reports › Saved reports lists it either way). On the dashboard its issue is
+titled `Wavee.Crash+SimulatedCrashException · <innermost Wavee frame>`, and repeated tests from one build group into that one issue (§11). A build that can't send (`Uploader.Configured` false)
 disables the button.
 
 **Unpackaged** (fast iteration):
@@ -215,7 +222,7 @@ Each request gets its own timeout, `UploadPolicy.Timeout(bodyBytes)` = 30 s + 1 
 30 s…10 min (a full 20 MB bundle with a dump gets about 7½ minutes); `HttpClient.Timeout` itself is
 infinite. A fixed 30 s used to time out large dumps on slow connections.
 
-**Who sends.** The in-app crash prompt's "Send" — and a Reports row's Send, which opens the same prompt
+**Who sends.** The in-app crash prompt's "Send" — and a saved report's **… › Send**, which opens the same prompt
 with its preview and dump checkbox — **enqueues** like any other upload, passing a `settled` callback. The
 toast reflects the real outcome (`UploadToasts.For`): "sent" only once the drain got a 2xx/409, the failure
 toast (`crash.sendFailed`) on a final failure, the queued toast once while it waits; all share the dedupe
@@ -294,7 +301,7 @@ Since #165: Issue detail falls back to the issue's own `last_frames_json` once n
 (§13), and its Log tail tab shows the newest report's tail (or says reports older than 90 days are deleted
 while the issue's counts are kept); issues carry a "Regressed" badge and a "Resolved in ≤ <version>" note
 (§12); Native reports show `<CODE> in <module>+0x<offset>` (§10); Report detail's Delete is real (§14);
-Overview has "Run retention now" (§13). The app's Settings › Logs › Reports shows each report's short id
+Overview has "Run retention now" (§13). The app's Settings › Privacy & diagnostics › Crash reports shows each report's short id
 (e.g. `3f9c-2b1a`, also prefilled into the GitHub crash form's `report-id` field); the Reports search
 strips `-`, so pasting that id finds the report.
 
@@ -466,7 +473,7 @@ the same rule as erasure) → `200 {"deleted":1,"fingerprint":"<fp>"}`; an unkno
 session a `401`. It is the maintainer's tool for one bad report (a synthetic test, a duplicate) and leaves
 no tombstone — a user's erasure is §9.
 
-In the app, a Reports row's **Delete** (Settings › Logs › Reports) is local: it confirms, then
+In the app, a report row's **… › Delete** (Settings › Privacy & diagnostics › Crash reports) is local: it confirms, then
 `Crash.Host.Delete` calls `Uploader.ForgetBundle(dir)` (dropping the outbox entry) and removes the bundle
 folder. A copy already on the service stays until retention (§13) or "Delete my data…" (§9). The row's
-**Copy** puts the scrubbed preview — exactly what Send would upload — on the clipboard.
+**… › Copy** puts the scrubbed preview — exactly what Send would upload — on the clipboard.

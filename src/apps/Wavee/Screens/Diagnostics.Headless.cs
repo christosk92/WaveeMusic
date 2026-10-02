@@ -23,6 +23,7 @@
 //                     (read at the audio boot or the next open: put `set` lines before the first volume/play)
 //   stats [mark|reset] · wait[?] <cond> [timeout <ms>] · expect[?] <cond> · sleep <ms> · connect on|off
 //   log <text> · quit [code]
+//   analysis <spotify:track:id>   (prints one {"ev":"analysis",…,"verdict":"A|B|C"} line — the audio-analysis endpoint probe)
 // A condition is up to four clauses joined by `&&` (no `||` — write two steps):
 //   playing|paused|loading|idle|ended · online|offline|failed|… · buffering · next · prefetched · seeked (each `!`-able)
 //   phase==… · session==… · track==uri|track!= · format==flac24 · owner==us|foreign|nobody · seek.kind==ring|far|disk
@@ -78,7 +79,7 @@ public static partial class Diagnostics
         public enum Verb : byte
         {
             None, Play, Pause, Resume, Toggle, Stop, Seek, Next, Prev, Volume, Shuffle, Repeat, Quality, Set, Queue,
-            Prepare, Status, Stats, Wait, Expect, Sleep, Login, Connect, Log, Quit,
+            Prepare, Status, Stats, Wait, Expect, Sleep, Login, Connect, Log, Quit, Analysis,
         }
 
         /// <summary>One parsed line, already validated. A Seek carries a resolved position (absolute, relative or from
@@ -151,7 +152,7 @@ public static partial class Diagnostics
             "repeat" => Verb.Repeat, "quality" => Verb.Quality, "set" => Verb.Set, "queue" => Verb.Queue,
             "prepare" => Verb.Prepare, "status" => Verb.Status, "stats" => Verb.Stats, "wait" => Verb.Wait,
             "expect" => Verb.Expect, "sleep" => Verb.Sleep, "login" => Verb.Login, "connect" => Verb.Connect,
-            "log" => Verb.Log, "quit" => Verb.Quit, _ => Verb.None,
+            "log" => Verb.Log, "quit" => Verb.Quit, "analysis" => Verb.Analysis, _ => Verb.None,
         };
 
         static bool TryParseText(ReadOnlySpan<char> line, int id, out Command cmd, out string error)
@@ -211,6 +212,16 @@ public static partial class Diagnostics
                         string uri = argc == 1 ? line[parts[1]].ToString() : "";
                         if (!IsSpotifyUri(uri, containers: false)) { error = "queue wants spotify:track|episode:<22-char id>"; return false; }
                         cmd = new Command(Verb.Queue, text, Arg0: uri, Id: id);
+                        return true;
+                    }
+
+                case Verb.Analysis:
+                    {
+                        string uri = argc == 1 ? line[parts[1]].ToString() : "";
+                        // IsSpotifyUri(containers: false) still admits episodes; the analysis endpoint is track-only (V-D20/V-U52)
+                        if (!IsSpotifyUri(uri, containers: false) || EntityUri.KindOf(uri.AsSpan()) != EntityKind.Track)
+                        { error = "analysis wants spotify:track:<22-char id>"; return false; }
+                        cmd = new Command(Verb.Analysis, text, Arg0: uri, Id: id);
                         return true;
                     }
 

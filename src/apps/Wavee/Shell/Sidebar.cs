@@ -56,80 +56,30 @@ using FluentGpu.Signals;
 
 namespace Wavee;
 
-// ── 0. the pane's own width ladder, and the CORE entry points ────────────────────────────────────────────────────────
+// ── 0. the pane's own width bounds, and the CORE entry points ────────────────────────────────────────────────────────
 //
-// One clamp pair, one rail width, one tier ladder — owned HERE rather than by the shell, because every writer of the
-// sidebar's width (the splitter seam, the responsive default, the pre-measure seed, `SidebarPaneState.Restore`, a
-// diagnostics probe) must go through the same numbers or the pane gets persisted at a width it cannot render at. That
-// drift is exactly what a second literal pair caused in 0.2.9. `Shell/Shell.cs` READS these; it does not redeclare
-// them, and the values are 0.2.9's `ShellResponsiveLayout` nav-pane block unchanged.
+// One clamp pair, owned HERE rather than by the shell, because every writer of the sidebar's expanded width (the
+// splitter seam, the keyboard nudge, `SidebarPaneState.Restore`, a diagnostics probe) must go through the same numbers
+// or the pane gets persisted at a width it cannot render at. That drift is exactly what a second literal pair caused
+// in 0.2.9. `Shell/Shell.cs` READS these; it does not redeclare them. The width BETWEEN the bounds is the user's: there
+// is no responsive ladder (the window never moves the sidebar) — the rail's geometry and the resize rules live in
+// `Sidebar.Resize.cs`.
 
-/// <summary>The sidebar column's bounds and its default-width ladder. Issue #84 lowered the floor from 240 to 180 so
-/// the pane can go genuinely narrow; 460 is the ceiling. 56 is the collapsed rail — a real surface, not a stub: both
-/// layers stay mounted and cross-fade, so text never reflows through a 56-DIP layout.</summary>
+/// <summary>The expanded sidebar column's bounds. Issue #84 lowered the floor from 240 to 180 so the pane can go
+/// genuinely narrow; 460 is the ceiling. The collapsed rail's widths are the detents of
+/// <see cref="SidebarRailMetrics"/> — a real surface, not a stub: both layers stay mounted and cross-fade, so text
+/// never reflows through a rail-width layout.</summary>
 public static class SidebarPaneBounds
 {
     /// <summary>THE clamp pair. Every writer goes through it.</summary>
     public const float NavPaneMinW = 180f, NavPaneMaxW = 460f;
 
-    /// <summary>The collapsed rail.</summary>
-    public const float CompactRailW = 56f;
-
-    /// <summary>Classic's ladder. Each design has its own triple — <see cref="SidebarDesignInfo.Tiers"/> is the owner
-    /// of the per-design values; these three are the ones every no-triple overload forwards with.</summary>
-    public const float NavPaneNarrowW = 240f, NavPaneMidW = 280f, NavPaneWideW = 320f;
-
-    /// <summary>Viewport ≥ 1400 → the MID tier; ≥ 1800 → the WIDE tier. Identical for all three designs; only the
-    /// three tier VALUES differ.</summary>
-    public const float NavPaneMidEnterW = 1400f, NavPaneWideEnterW = 1800f;
-
-    /// <summary>Widen immediately, shrink only 24 DIP past the threshold — so 1400 widens at once and the mid tier
-    /// holds down to 1376. A ladder with no hysteresis oscillates on a window edge drag.</summary>
+    /// <summary>The anti-flicker band for a threshold crossing (the regime flip's drag-back distance).</summary>
     public const float NavPaneHysteresisDip = 24f;
-
-    /// <summary>Classic's tier triple.</summary>
-    public static (float Narrow, float Mid, float Wide) ClassicTiers => (NavPaneNarrowW, NavPaneMidW, NavPaneWideW);
 
     /// <summary>The one clamp.</summary>
     public static float Clamp(float width)
         => width < NavPaneMinW ? NavPaneMinW : width > NavPaneMaxW ? NavPaneMaxW : width;
-
-    /// <summary>The tier a viewport is nominally in, with no hysteresis.</summary>
-    public static float NominalNavPaneDefaultFor(float viewportWidth, in (float Narrow, float Mid, float Wide) tiers)
-        => viewportWidth >= NavPaneWideEnterW ? tiers.Wide
-         : viewportWidth >= NavPaneMidEnterW ? tiers.Mid
-         : tiers.Narrow;
-
-    /// <inheritdoc cref="NominalNavPaneDefaultFor(float, in ValueTuple{float, float, float})"/>
-    public static float NominalNavPaneDefaultFor(float viewportWidth)
-        => NominalNavPaneDefaultFor(viewportWidth, ClassicTiers);
-
-    /// <summary>Pre-measure seed. A zero/unknown viewport (the shell's constructor, before the first bounds callback)
-    /// takes the narrow tier; the viewport effect commits the real tier before the first layout.</summary>
-    public static float InitialNavPaneDefaultForViewport(float viewportWidth,
-                                                         in (float Narrow, float Mid, float Wide) tiers)
-        => viewportWidth <= 0f ? tiers.Narrow : NominalNavPaneDefaultFor(viewportWidth, tiers);
-
-    /// <inheritdoc cref="InitialNavPaneDefaultForViewport(float, in ValueTuple{float, float, float})"/>
-    public static float InitialNavPaneDefaultForViewport(float viewportWidth)
-        => InitialNavPaneDefaultForViewport(viewportWidth, ClassicTiers);
-
-    /// <summary>The default width for a viewport, WITH the shrink hysteresis. `initialized` is false only before the
-    /// first real measure, where the nominal tier is taken outright.</summary>
-    public static float NavPaneDefaultFor(float viewportWidth, float current, bool initialized,
-                                          in (float Narrow, float Mid, float Wide) tiers)
-    {
-        if (viewportWidth <= 0f) return current;
-        if (!initialized) return NominalNavPaneDefaultFor(viewportWidth, tiers);
-        float nominal = NominalNavPaneDefaultFor(viewportWidth, tiers);
-        if (nominal >= current) return nominal;                       // widen at once
-        float dipped = NominalNavPaneDefaultFor(viewportWidth + NavPaneHysteresisDip, tiers);
-        return dipped < current ? dipped : current;                    // shrink only past the dip
-    }
-
-    /// <inheritdoc cref="NavPaneDefaultFor(float, float, bool, in ValueTuple{float, float, float})"/>
-    public static float NavPaneDefaultFor(float viewportWidth, float current, bool initialized)
-        => NavPaneDefaultFor(viewportWidth, current, initialized, ClassicTiers);
 }
 
 public static partial class Sidebar
@@ -850,35 +800,35 @@ public static class SidebarRailItems
     }
 }
 
-/// <summary>The 56-DIP rail's row geometry — PURE and directly testable (no owner, no component, no measurement),
+/// <summary>The rail's row geometry — PURE and directly testable (no owner, no component, no measurement),
 /// mirroring how <see cref="SidebarRowExtents"/> serves the pane's own variable-extent layout. Detail hero + full
-/// rail plan, Part 2: the rail is now a virtualized list over the SAME uncapped rail plan the pane's own list
-/// renders (`Shell/Sidebar.UI.Rail.cs`'s <c>Rail</c>), so its layout needs an extent function too.</summary>
+/// rail plan, Part 2: the rail is a virtualized list over the SAME uncapped rail plan the pane's own list
+/// renders (`Shell/Sidebar.UI.Rail.cs`'s <c>Rail</c>), so its layout needs an extent function too. Every tile
+/// dimension comes from the <see cref="SidebarRailMetrics"/> of the user's rail detent.</summary>
 public static class SidebarRailExtents
 {
-    /// <summary>A tile ROW's extent: the rail's 40-DIP tile (`Rail.Box`) plus the 6-DIP gap the old, unvirtualized
-    /// column's `Gap` used to add after every child. The slot wraps its tile in a box of exactly this height, so the
-    /// layout's seed and its real measurement always agree — no post-realize correction pass for the common row.</summary>
-    public const float Pitch = 46f;
-
     /// <summary>A rule ROW's extent: the rail's divider own height (1) plus its vertical margin (4 + 4). The divider
-    /// is drawn RAW (no wrapper), so this is also exactly what the slot measures.</summary>
+    /// is drawn RAW (no wrapper), so this is also exactly what the slot measures. Detent-independent.</summary>
     public const float DividerExtent = 9f;
 
-    /// <summary>The rail tile's own box (`Rail.Box`) and the gap between two tiles in the head's column: a tile ROW's
-    /// <see cref="Pitch"/> is exactly one of each.</summary>
+    /// <summary>The gap between two tiles in the head's column: a tile ROW's <see cref="Pitch"/> is exactly one tile
+    /// plus one of these.</summary>
     public const float TileGap = 6f;
-    public const float Tile = Pitch - TileGap;
+
+    /// <summary>A tile ROW's extent: the detent's tile plus the <see cref="TileGap"/> the old, unvirtualized column's
+    /// `Gap` used to add after every child. The slot wraps its tile in a box of exactly this height, so the layout's
+    /// seed and its real measurement always agree — no post-realize correction pass for the common row.</summary>
+    public static float Pitch(in SidebarRailMetrics m) => m.Pitch;
 
     /// <summary>The head item's EXACT extent for a head of <paramref name="tiles"/> tiles — what its slot renders
     /// (`Rail.RailSlot`'s Head arm: the <see cref="TopPad"/>, the tile column with <see cref="TileGap"/> between tiles,
     /// then the rule). The seed and the measurement agree, so a reseed (every wholesale republish) never corrects the head.
-    /// The V3 head of five destinations + Home is 287 DIP; the old two-tile guess (101) was re-corrected by 186 DIP on
-    /// every reseed — the rail's "jump on selection" (2026-09-25, item J).</summary>
-    public static float HeadExtentOf(int tiles)
+    /// The V3 head of five destinations + Home is 287 DIP at the Default detent; the old two-tile guess (101) was
+    /// re-corrected by 186 DIP on every reseed — the rail's "jump on selection" (2026-09-25, item J).</summary>
+    public static float HeadExtentOf(int tiles, in SidebarRailMetrics m)
     {
         if (tiles < 0) tiles = 0;
-        return TopPad + tiles * Tile + (tiles > 0 ? (tiles - 1) * TileGap : 0f) + DividerExtent;
+        return TopPad + tiles * m.Tile + (tiles > 0 ? (tiles - 1) * TileGap : 0f) + DividerExtent;
     }
 
     /// <summary>The footer item's SEED (a rule + the mode's footer content + a rule + the layout-menu tile, rough
@@ -896,20 +846,21 @@ public static class SidebarRailExtents
 
     /// <summary>The rail layout's analytic seed for item <paramref name="index"/> in the rail's ONE list (head, rows,
     /// footer — <see cref="SidebarRailItems.Map"/>): <see cref="HeadExtentOf"/> of <paramref name="headTiles"/> for the head
-    /// (exact), <see cref="FooterEstimate"/> for the footer; <see cref="Pitch"/>/<see cref="DividerExtent"/> for a plan row, plus <see cref="TopPad"/>/
+    /// (exact), <see cref="FooterEstimate"/> for the footer; the detent's pitch/<see cref="DividerExtent"/> for a plan row, plus <see cref="TopPad"/>/
     /// <see cref="BottomPad"/> on the edge row when there is no head/footer to carry it instead — folded in here so
     /// the seed and the row slot's own rendered height (`Rail.RailSlot`) always agree exactly, edge row included.
     /// Out of range answers the common (tile) case rather than throwing.</summary>
-    public static float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, bool hasHead, bool hasFooter, int headTiles)
+    public static float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, bool hasHead, bool hasFooter, int headTiles,
+                                 in SidebarRailMetrics m)
     {
         ArgumentNullException.ThrowIfNull(rows);
         var (kind, rowIndex) = SidebarRailItems.Map(index, hasHead, hasFooter, rows.Count);
-        if (kind == SidebarRailItemKind.Head) return HeadExtentOf(headTiles);
+        if (kind == SidebarRailItemKind.Head) return HeadExtentOf(headTiles, in m);
         if (kind == SidebarRailItemKind.Footer) return FooterEstimate;
-        if (kind != SidebarRailItemKind.Row) return Pitch;
+        if (kind != SidebarRailItemKind.Row) return m.Pitch;
 
         float extent = (uint)rowIndex < (uint)rows.Count && rows[rowIndex].Kind == SidebarRowKind.Divider
-            ? DividerExtent : Pitch;
+            ? DividerExtent : m.Pitch;
         if (!hasHead && rowIndex == 0) extent += TopPad;
         if (!hasFooter && rowIndex == rows.Count - 1) extent += BottomPad;
         return extent;
@@ -1226,13 +1177,17 @@ public readonly record struct SidebarNavLayout(bool MoveUp, bool MoveDown, bool 
     }
 }
 
-/// <summary>A settled docked-pane observation. Deliberately separate from the persisted preference triple — these
-/// are rendered TERMINAL-STATE facts captured by the shell after a transition settles.</summary>
+/// <summary>A settled docked-pane observation. Deliberately separate from the persisted preferences — these
+/// are rendered TERMINAL-STATE facts captured by the shell after a transition settles.
+/// <see cref="PresentedWidth"/> is what the shell's presentation effect decided; <see cref="RenderedPaneWidth"/> is
+/// what the column actually laid out at.</summary>
 public readonly record struct SidebarPaneFrameSnapshot(
     SidebarDesign Design,
-    bool UserCollapsed,
-    bool PresentedCompact,
+    SidebarRegime Regime,
+    SidebarRailDetent Detent,
+    bool LastResort,
     float PreferredExpandedWidth,
+    float PresentedWidth,
     float RenderedPaneWidth,
     float ExpandedOpacity,
     float RailOpacity,
@@ -1247,11 +1202,12 @@ public enum SidebarPaneInvariantFault : ushort
     None = 0,
     NonFiniteValue = 1 << 0,
     PreferredWidthOutOfRange = 1 << 1,
-    CompactWidthMismatch = 1 << 2,
+    RailWidthMismatch = 1 << 2,
     ExpandedWidthOutOfRange = 1 << 3,
-    ExpandedWidthMismatch = 1 << 4,
-    LayerOpacityMismatch = 1 << 5,
-    HitTestOwnerMismatch = 1 << 6,
+    PresentedExceedsPreferred = 1 << 4,
+    ExpandedWidthMismatch = 1 << 5,
+    LayerOpacityMismatch = 1 << 6,
+    HitTestOwnerMismatch = 1 << 7,
 }
 
 /// <summary>Pure terminal-state validator behind the screenshot/layout probe and the runtime edge diagnostic. It does
@@ -1263,6 +1219,7 @@ public static class SidebarPaneInvariant
     public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot state)
     {
         if (!float.IsFinite(state.PreferredExpandedWidth)
+            || !float.IsFinite(state.PresentedWidth)
             || !float.IsFinite(state.RenderedPaneWidth)
             || !float.IsFinite(state.ExpandedOpacity)
             || !float.IsFinite(state.RailOpacity))
@@ -1272,10 +1229,12 @@ public static class SidebarPaneInvariant
         if (!InExpandedRange(state.PreferredExpandedWidth))
             fault |= SidebarPaneInvariantFault.PreferredWidthOutOfRange;
 
-        if (state.PresentedCompact)
+        // The last-resort band presents the rail at the user's detent, whatever the stored regime says.
+        bool rail = state.Regime == SidebarRegime.Rail || state.LastResort;
+        if (rail)
         {
-            if (!Near(state.RenderedPaneWidth, SidebarPaneBounds.CompactRailW))
-                fault |= SidebarPaneInvariantFault.CompactWidthMismatch;
+            if (!Near(state.RenderedPaneWidth, SidebarResizeRules.StripOf(state.Detent)))
+                fault |= SidebarPaneInvariantFault.RailWidthMismatch;
             if (!Near(state.ExpandedOpacity, 0f) || !Near(state.RailOpacity, 1f))
                 fault |= SidebarPaneInvariantFault.LayerOpacityMismatch;
             if (state.ExpandedHitTestVisible || !state.RailHitTestVisible)
@@ -1283,9 +1242,12 @@ public static class SidebarPaneInvariant
         }
         else
         {
-            if (!InExpandedRange(state.RenderedPaneWidth))
+            if (!InExpandedRange(state.PresentedWidth))
                 fault |= SidebarPaneInvariantFault.ExpandedWidthOutOfRange;
-            if (!Near(state.RenderedPaneWidth, state.PreferredExpandedWidth))
+            // The window may yield the pane below the preference, never above it.
+            if (state.PresentedWidth > state.PreferredExpandedWidth + Tolerance)
+                fault |= SidebarPaneInvariantFault.PresentedExceedsPreferred;
+            if (!Near(state.RenderedPaneWidth, state.PresentedWidth))
                 fault |= SidebarPaneInvariantFault.ExpandedWidthMismatch;
             if (!Near(state.ExpandedOpacity, 1f) || !Near(state.RailOpacity, 0f))
                 fault |= SidebarPaneInvariantFault.LayerOpacityMismatch;

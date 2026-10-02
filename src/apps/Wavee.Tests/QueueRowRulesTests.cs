@@ -3,8 +3,8 @@
 // The rail's Modern queue rows and its now-playing card are the shared media surface (`Controls.Surface` over
 // `Track.RowData` / `Episode.RowData`, Entities/Queue.UI.cs); everything the builders DECIDE lives in `QueueRowRules` —
 // the row's height under each skin (the reorder lane's slot maths needs it exact, and the surface's floor is not it), the
-// autoplay dim, which row has a ✕, which row drags on its own, which adapter feeds a row and where a click on the playing
-// card goes — and that is what is pinned here. The element trees (the plate, the trailing cluster, the seed face) are the
+// autoplay dim, which row has a ✕, which row drags on its own, that no row has a "…" button, which adapter feeds a row and
+// where a click on the playing card goes — and that is what is pinned here. The element trees (the plate, the trailing cluster, the seed face) are the
 // surface's own facts (SurfaceRulesTests) and the live check's.
 //
 // No window, no loop, no table is touched.
@@ -84,6 +84,34 @@ public class QueueRowRulesTests
     {
         Assert.False(QueueRowRules.RowDrags(viewer: false));   // the lane's wrapper is the drag source
         Assert.True(QueueRowRules.RowDrags(viewer: true));     // a viewed queue has no lane
+    }
+
+    // ── the "…" button ───────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void No_queue_surface_grows_a_menu_button()
+    {
+        // The rows (both skins), the now-playing card and the NPV's Next up are right-click only: the surface's "…"
+        // overlays the row's end, which here is the ✕ or the heart.
+        Assert.False(QueueRowRules.ShowsMenuButton);
+    }
+
+    [Fact]
+    public void The_queue_shapes_show_no_trailing_menu_even_with_a_menu_attached()
+    {
+        // What the surface does with the rule: the menu stays attached (right-click), the "…" — overlay or lane — does not
+        // exist. The row shape, the now-playing card's tile shape and the NPV's 52-floor Next up shape.
+        SurfaceShape[] shapes =
+        [
+            Shape.Row(34f) with { MinHeight = QueueRowRules.SurfaceExtent(34f) },
+            Shape.RowTile with { ArtEdge = 44f },
+            Shape.Row(40f) with { MinHeight = 52f },
+        ];
+        foreach (var shape in shapes)
+        {
+            Assert.False(SurfaceRules.ShowsMenuTrailing(shape, hasMenu: true, showMenu: QueueRowRules.ShowsMenuButton));
+            Assert.False(SurfaceRules.MenuReservesWidth(shape, hasMenu: true, showMenu: QueueRowRules.ShowsMenuButton));
+        }
     }
 
     // ── which adapter, which click ───────────────────────────────────────────────────────────────────────────────────

@@ -276,12 +276,57 @@ public class PlayerBarOverflowTests
     }
 
     [Fact]
-    public void Full_carries_nothing_in_the_overflow()
-        => Assert.Empty(Build(Shell.PlayerBarTier.Full, video: true));
+    public void Full_overflows_only_now_playing_because_its_expand_slot_opens_the_stage()
+        => Assert.Equal(new[] { Shell.OverflowCommand.NowPlaying }, Build(Shell.PlayerBarTier.Full, video: true));
 
     [Fact]
-    public void Wide_overflows_only_now_playing()
-        => Assert.Equal(new[] { Shell.OverflowCommand.NowPlaying }, Build(Shell.PlayerBarTier.Wide, video: true));
+    public void Wide_overflows_now_playing_and_the_stage_door()
+        => Assert.Equal(new[] { Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.FullScreen },
+            Build(Shell.PlayerBarTier.Wide, video: true));
+
+    [Fact]
+    public void The_stage_door_is_in_the_overflow_exactly_where_the_expand_slot_is_not_and_follows_now_playing()
+    {
+        // ONE stage door at every tier: the Expand slot where the row has it (Full), the "⋯" row everywhere else.
+        foreach (var tier in new[]
+                 {
+                     Shell.PlayerBarTier.Minimal, Shell.PlayerBarTier.Compact, Shell.PlayerBarTier.Medium,
+                     Shell.PlayerBarTier.Comfortable, Shell.PlayerBarTier.Wide, Shell.PlayerBarTier.Full,
+                 })
+            foreach (bool active in new[] { false, true })
+            foreach (bool video in new[] { false, true })
+            {
+                var layout = Shell.PlayerBarLayout.ForTier(tier);
+                var rows = Build(tier, active: active, video: video);
+                int door = Array.IndexOf(rows, Shell.OverflowCommand.FullScreen);
+                Assert.Equal(!layout.ShowExpand, door >= 0);
+                if (door >= 0) Assert.Equal(Array.IndexOf(rows, Shell.OverflowCommand.NowPlaying) + 1, door);
+            }
+    }
+
+    [Fact]
+    public void Now_playing_rides_every_tier_and_keeps_its_place_between_queue_and_video()
+    {
+        // The Expand slot (Full tier) opens the fullscreen stage, so the "⋯" menu is the now-playing rail's one door on
+        // the bar at EVERY tier — never gated on the Expand slot being dropped.
+        foreach (var tier in new[]
+                 {
+                     Shell.PlayerBarTier.Minimal, Shell.PlayerBarTier.Compact, Shell.PlayerBarTier.Medium,
+                     Shell.PlayerBarTier.Comfortable, Shell.PlayerBarTier.Wide, Shell.PlayerBarTier.Full,
+                 })
+            foreach (bool active in new[] { false, true })
+            {
+                var rows = Build(tier, active: active, video: true);
+                int now = Array.IndexOf(rows, Shell.OverflowCommand.NowPlaying);
+                Assert.True(now >= 0, tier + " carries the now-playing row");
+                int queue = Array.IndexOf(rows, Shell.OverflowCommand.Queue);
+                int video = Array.IndexOf(rows, Shell.OverflowCommand.Video);
+                int mute = Array.IndexOf(rows, Shell.OverflowCommand.Mute);
+                if (queue >= 0) Assert.True(queue < now);
+                if (video >= 0) Assert.True(now < video);
+                if (mute >= 0) Assert.True(now < mute);
+            }
+    }
 
     [Fact]
     public void Compact_order_is_the_menu_order()
@@ -290,7 +335,8 @@ public class PlayerBarOverflowTests
         {
             Shell.OverflowCommand.Previous, Shell.OverflowCommand.Next, Shell.OverflowCommand.Shuffle,
             Shell.OverflowCommand.Repeat, Shell.OverflowCommand.Lyrics, Shell.OverflowCommand.Queue,
-            Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.Video, Shell.OverflowCommand.Mute,
+            Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.FullScreen, Shell.OverflowCommand.Video,
+            Shell.OverflowCommand.Mute,
         }, Build(Shell.PlayerBarTier.Compact, video: true));
     }
 
@@ -419,6 +465,20 @@ public class PlayerBarSlotReservationTests
     }
 
     [Fact]
+    public void Full_carries_the_stage_door_and_the_overflow_slot_beside_it()
+    {
+        // The Expand slot is the Full tier's door to the fullscreen stage; the now-playing rail's toggle moved into the
+        // "⋯" menu, which is therefore reserved here too (one slot + one gap wider than before the stage existed).
+        var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full);
+        var withoutVideo = Shell.RightSlot.Shuffle | Shell.RightSlot.Repeat | Shell.RightSlot.Volume | Shell.RightSlot.VolumeSlider
+                           | Shell.RightSlot.Lyrics | Shell.RightSlot.Queue | Shell.RightSlot.Devices | Shell.RightSlot.Expand
+                           | Shell.RightSlot.More;
+        Assert.Equal(withoutVideo | Shell.RightSlot.Video, Shell.PlayerBarRules.RightSlots(L, hasVideo: true));
+        Assert.Equal(withoutVideo, Shell.PlayerBarRules.RightSlots(L, hasVideo: false));
+        Assert.Equal(Shell.PlayerBarRules.RightWidth(L, hasVideo: true), L.RightWMax);
+    }
+
+    [Fact]
     public void A_track_starting_without_a_video_moves_nothing()
     {
         // The width has NO input from PlayerState: with hasVideo fixed, every state at every tier yields one number.
@@ -513,7 +573,8 @@ public class PlayerBarSlotReservationTests
                 Assert.Equal(reserved, n > 0);
             }
         }
-        Assert.False(Shell.PlayerBarRules.OverflowSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full)));
+        // The now-playing row rides every tier (the Full tier's Expand slot opens the stage), so the slot is reserved everywhere.
+        Assert.True(Shell.PlayerBarRules.OverflowSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full)));
         Assert.True(Shell.PlayerBarRules.OverflowSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide)));
     }
 
@@ -730,11 +791,58 @@ public class SeekRailRulesTests
     public void A_commit_clamps_into_the_duration_or_into_the_window()
     {
         Assert.Equal(60_000L, Shell.SeekRail.CommitTargetMs(0.5f, 120_000, Playback.LiveWindow.None));
-        Assert.Equal(120_000L, Shell.SeekRail.CommitTargetMs(1.5f, 120_000, Playback.LiveWindow.None));
+        // U-8 (playback smoothness #167): a track commit runs through `Playback.SeekTarget.Clamp`, so a drag past the end lands where
+        // `DoSeek` will put it — the tail guard before the duration, not the duration itself (it used to be 120_000 and the thumb
+        // then stepped back by the guard when the seek landed).
+        Assert.Equal(120_000L - Playback.SeekTarget.TailGuardMs, Shell.SeekRail.CommitTargetMs(1.5f, 120_000, Playback.LiveWindow.None));
         var w = Dvr(10_000, 70_000, 20_000);
         Assert.Equal(40_000L, Shell.SeekRail.CommitTargetMs(0.5f, 0, w));
         Assert.False(Shell.SeekRail.CanCommit(Playback.LiveWindow.None, 0));
         Assert.True(Shell.SeekRail.CanCommit(w, 0));
+    }
+
+    // ── U-8: the commit target IS the reducer's seek target ─────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(-0.25f, 120_000L)]
+    [InlineData(0f, 120_000L)]
+    [InlineData(0.5f, 120_000L)]
+    [InlineData(0.99f, 120_000L)]
+    [InlineData(1f, 120_000L)]
+    [InlineData(1.5f, 120_000L)]
+    [InlineData(1f, 3_600_000L)]                    // an hour-long episode
+    [InlineData(1f, 500L)]                          // shorter than the tail guard: the cap is 0, never negative
+    [InlineData(0.5f, 500L)]
+    [InlineData(0.5f, 0L)]                          // unknown duration: only the lower bound applies
+    public void The_commit_target_is_a_fixed_point_of_the_seek_clamp(float fraction, long durationMs)
+    {
+        long target = Shell.SeekRail.CommitTargetMs(fraction, durationMs, Playback.LiveWindow.None);
+
+        // The drop point the hold paints and the position the reducer lands on are the SAME number: running the commit through the
+        // reducer's own clamp (what `DoSeek` does with it) changes nothing, so there is no visible step when the seek lands.
+        Assert.Equal(target, Playback.SeekTarget.Clamp((int)target, (int)durationMs));
+        Assert.True(target >= 0);
+        if (durationMs > 0) Assert.True(target <= durationMs - Math.Min(durationMs, Playback.SeekTarget.TailGuardMs));
+    }
+
+    [Fact]
+    public void Dragging_to_the_very_end_commits_the_tail_guard_before_the_duration()
+    {
+        const long duration = 180_000;
+        Assert.Equal(duration - Playback.SeekTarget.TailGuardMs, Shell.SeekRail.CommitTargetMs(1f, duration, Playback.LiveWindow.None));
+        Assert.Equal(0L, Shell.SeekRail.CommitTargetMs(0f, duration, Playback.LiveWindow.None));
+        // A fraction inside the allowed span is untouched.
+        Assert.Equal(90_000L, Shell.SeekRail.CommitTargetMs(0.5f, duration, Playback.LiveWindow.None));
+    }
+
+    [Fact]
+    public void A_dvr_commit_still_clamps_into_the_window_and_not_through_the_track_guard()
+    {
+        // The DVR window is a span of its own, not a duration: its edges are the window's (`LiveRail.Seek`), unchanged by U-8.
+        var w = Dvr(10_000, 70_000, 20_000);
+        Assert.Equal(Playback.LiveRail.Seek(in w, 0.5f), Shell.SeekRail.CommitTargetMs(0.5f, 0, w));
+        Assert.Equal(Playback.LiveRail.Seek(in w, 1f), Shell.SeekRail.CommitTargetMs(1f, 0, w));
+        Assert.Equal(Playback.LiveRail.Seek(in w, 0f), Shell.SeekRail.CommitTargetMs(0f, 0, w));
     }
 
     [Fact]
@@ -743,6 +851,42 @@ public class SeekRailRulesTests
         Assert.False(Shell.SeekRail.HoldsDrop(0, 10_000));                                   // nothing pending
         Assert.True(Shell.SeekRail.HoldsDrop(10_000, 10_000 + Shell.SeekRail.CommitHoldMs - 1));
         Assert.False(Shell.SeekRail.HoldsDrop(10_000, 10_000 + Shell.SeekRail.CommitHoldMs));   // a refused seek lets go
+    }
+
+    // ── D4 / V-PA22: the transport key map — Shift is the fine ladder step, Ctrl and Alt are chords ────────────────────
+
+    [Fact]
+    public void Shift_with_left_or_right_is_the_fine_ladder_step()
+    {
+        Assert.Equal(Shell.PlayerKeyIntent.SeekBackFine, Shell.PlayerKey(FluentGpu.Foundation.Keys.Left, true, false, modified: false, shift: true));
+        Assert.Equal(Shell.PlayerKeyIntent.SeekForwardFine, Shell.PlayerKey(FluentGpu.Foundation.Keys.Right, true, false, modified: false, shift: true));
+        // the plain keys are the coarse ladder (5 s → 15 s → 30 s while held)
+        Assert.Equal(Shell.PlayerKeyIntent.SeekBack, Shell.PlayerKey(FluentGpu.Foundation.Keys.Left, true, false, modified: false, shift: false));
+        Assert.Equal(Shell.PlayerKeyIntent.SeekForward, Shell.PlayerKey(FluentGpu.Foundation.Keys.Right, true, false, modified: false, shift: false));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Ctrl_or_alt_is_a_chord_and_never_a_transport_key(bool shift)
+    {
+        foreach (int key in new[]
+        {
+            FluentGpu.Foundation.Keys.Left, FluentGpu.Foundation.Keys.Right, FluentGpu.Foundation.Keys.Up,
+            FluentGpu.Foundation.Keys.Down, FluentGpu.Foundation.Keys.Space,
+        })
+            Assert.Equal(Shell.PlayerKeyIntent.None, Shell.PlayerKey(key, true, false, modified: true, shift: shift));
+    }
+
+    [Fact]
+    public void Shift_means_nothing_on_the_volume_and_play_keys_and_focus_and_handled_still_gate_the_ladder()
+    {
+        Assert.Equal(Shell.PlayerKeyIntent.None, Shell.PlayerKey(FluentGpu.Foundation.Keys.Up, true, false, modified: false, shift: true));
+        Assert.Equal(Shell.PlayerKeyIntent.None, Shell.PlayerKey(FluentGpu.Foundation.Keys.Down, true, false, modified: false, shift: true));
+        Assert.Equal(Shell.PlayerKeyIntent.None, Shell.PlayerKey(FluentGpu.Foundation.Keys.Space, true, false, modified: false, shift: true));
+        // a key outside the focused container, or one a control already handled, never reaches the ladder — fine or not
+        Assert.Equal(Shell.PlayerKeyIntent.None, Shell.PlayerKey(FluentGpu.Foundation.Keys.Left, false, false, modified: false, shift: true));
+        Assert.Equal(Shell.PlayerKeyIntent.None, Shell.PlayerKey(FluentGpu.Foundation.Keys.Right, true, true, modified: false, shift: true));
     }
 
     [Fact]

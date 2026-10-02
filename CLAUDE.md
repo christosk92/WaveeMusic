@@ -81,4 +81,4 @@ this reason.
   `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board, issue
   forms — every modifying `gh` call is approved by the user first). Sidebar platform design: `docs/guide/sidebar-extension-platform.md`;
   playback modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`; scrolling:
-  `docs/guide/scrolling.md`.
+  `docs/guide/scrolling.md`; the full-screen stage and its visualizers: `docs/guide/fullscreen-visualizers.md`.

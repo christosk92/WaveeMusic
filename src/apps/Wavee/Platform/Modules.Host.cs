@@ -2328,7 +2328,7 @@ public static partial class Modules
     /// <see cref="MaxPrimeFrames"/> frames and discards anything produced before the change — publishing the core rate
     /// would bind the resampler at half the true rate. A change AFTER priming is a genuine mid-stream encoding switch:
     /// the read answers an error and the retry re-opens (and re-primes). Not seekable: a live body has no timeline.</summary>
-    public sealed class AacAudioDecoder(float gainDb, float peak = 0f) : IAudioDecoder, IDisposable
+    public sealed class AacAudioDecoder(float gainDb, float peak = 0f) : IAudioDecoder, IDisposable, Playback.Audio.IGainFolding
     {
         /// <summary>Enough to get past the implicit-SBR change (the first or second frame) without burning real audio.</summary>
         public const int MaxPrimeFrames = 8;
@@ -2337,7 +2337,7 @@ public static partial class Modules
         readonly float[] _scratch = new float[16384];
         AdtsFrameReader? _reader;
         MfAacDecoder? _decoder;
-        LinearResampler? _resampler;
+        PolyphaseResampler? _resampler;
         MixFormat _target;
         int _srcRate, _srcChannels;
         float[] _held = [];        // interleaved SOURCE-rate samples, conformed to the target channel count
@@ -2346,6 +2346,11 @@ public static partial class Modules
         bool _eof, _faulted;
 
         public GaplessInfo Gapless => GaplessInfo.None;
+
+        /// <summary>The linear factor folded into this decoder's output (<see cref="Playback.Audio.IGainFolding"/>, V-PA15): the one figure
+        /// it was built with — the module's stream has no header to learn a later one from — so the seek swap's baked-gain bookkeeping
+        /// is exact for AAC.</summary>
+        public float AppliedGainLinear => _gain;
 
         /// <summary>Whether this Windows edition carries the AAC MFT ("N" editions without the media feature pack do
         /// not) — the host maps false to a refusal rather than a noise decode.</summary>
@@ -2369,7 +2374,7 @@ public static partial class Modules
                 Prime(first);
                 _srcRate = _decoder.OutputSampleRate > 0 ? _decoder.OutputSampleRate : header.SampleRate;
                 _srcChannels = _decoder.OutputChannels > 0 ? _decoder.OutputChannels : Math.Max(1, header.ChannelConfiguration);
-                _resampler = _srcRate != target.SampleRate ? new LinearResampler(_srcRate, target.SampleRate, target.Channels) : null;
+                _resampler = _srcRate != target.SampleRate ? new PolyphaseResampler(_srcRate, target.SampleRate, target.Channels) : null;
                 info = new DecodedInfo(new MediaContentType(Container.Adts, CodecId.None, CodecId.Aac),
                     new MixFormat(_srcRate, _srcChannels), TimeSpan.Zero, default);
                 Log.Info("audio", "aac.open core=" + header.SampleRate.ToString(CultureInfo.InvariantCulture) + " out="
@@ -2443,42 +2448,51 @@ public static partial class Modules
             int wantFrames = dst.Length / Math.Max(1, ch);
             if (wantFrames <= 0) return 0;
             int srcCh = Math.Max(1, _srcChannels);
-            // Fill the hold with at least one frame's worth of SOURCE samples.
-            while (_heldCount < srcCh)
+            while (true)
             {
-                if (_eof) return 0;
-                if (!_reader!.TryReadFrame(out ReadOnlySpan<byte> frame, out _)) { _eof = true; return 0; }
-                PushAndDrain(frame, primingPhase: false);
-                if (_faulted)
+                // Fill the hold with at least one frame's worth of SOURCE samples.
+                while (_heldCount < srcCh)
                 {
-                    Log.Warn("audio", "aac: the stream changed encoding mid-play");
-                    return -1;
+                    if (_eof) return Tail(dst);
+                    if (!_reader!.TryReadFrame(out ReadOnlySpan<byte> frame, out _)) { _eof = true; return Tail(dst); }
+                    PushAndDrain(frame, primingPhase: false);
+                    if (_faulted)
+                    {
+                        Log.Warn("audio", "aac: the stream changed encoding mid-play");
+                        return -1;
+                    }
                 }
-            }
-            int srcFrames = _heldCount / srcCh;
-            if (_resampler is { IsActive: true } rs) srcFrames = Math.Min(srcFrames, Math.Max(1, rs.SrcFramesForOutput(wantFrames)));
-            else srcFrames = Math.Min(srcFrames, wantFrames);
-            int conformedLength = srcFrames * ch;
-            if (_out.Length < conformedLength) _out = new float[Math.Max(conformedLength, 8192)];
-            ConformInto(_held.AsSpan(_heldStart, srcFrames * srcCh), srcCh, _out.AsSpan(0, conformedLength), ch, _gain);
+                int srcFrames = _heldCount / srcCh;
+                if (_resampler is { IsActive: true } rs) srcFrames = Math.Min(srcFrames, Math.Max(1, rs.SrcFramesForOutput(wantFrames)));
+                else srcFrames = Math.Min(srcFrames, wantFrames);
+                int conformedLength = srcFrames * ch;
+                if (_out.Length < conformedLength) _out = new float[Math.Max(conformedLength, 8192)];
+                ConformInto(_held.AsSpan(_heldStart, srcFrames * srcCh), srcCh, _out.AsSpan(0, conformedLength), ch, _gain);
 
-            int produced, consumed;
-            if (_resampler is { IsActive: true } active)
-            {
-                ResampleResult rr = active.Process(_out.AsSpan(0, conformedLength), srcFrames, dst);
-                produced = rr.Produced;
-                consumed = rr.Consumed;
+                int produced, consumed;
+                if (_resampler is { IsActive: true } active)
+                {
+                    ResampleResult rr = active.Process(_out.AsSpan(0, conformedLength), srcFrames, dst);
+                    produced = rr.Produced;
+                    consumed = rr.Consumed;
+                }
+                else
+                {
+                    _out.AsSpan(0, conformedLength).CopyTo(dst);
+                    produced = consumed = srcFrames;
+                }
+                _heldStart += consumed * srcCh;
+                _heldCount -= consumed * srcCh;
+                if (_heldCount <= 0) { _heldStart = 0; _heldCount = 0; }
+                // A read that went wholly into the filter's history (the group-delay pre-roll) produced nothing: that is not the end.
+                if (produced == 0 && consumed > 0) continue;
+                return produced;
             }
-            else
-            {
-                _out.AsSpan(0, conformedLength).CopyTo(dst);
-                produced = consumed = srcFrames;
-            }
-            _heldStart += consumed * srcCh;
-            _heldCount -= consumed * srcCh;
-            if (_heldCount <= 0) { _heldStart = 0; _heldCount = 0; }
-            return produced;
         }
+
+        /// <summary>The end of the stream: the resampler's trailing half kernel (V-PE21) over as many reads as <paramref name="dst"/>
+        /// needs; 0 once it is spent, which is the decoder's end (and 0 at once when there is no resampler).</summary>
+        int Tail(Span<float> dst) => _resampler is { IsActive: true } rs ? rs.Flush(dst) : 0;
 
         /// <summary>PURE: channel conform + gain from an interleaved source span into a destination span of
         /// <paramref name="dstChannels"/>. Mono duplicates; more than the target downmixes pairwise.</summary>

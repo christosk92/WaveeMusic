@@ -22,7 +22,8 @@
 //     ranges overlapped, al4/al5 and al10/al11, and a track can name only one album, so al5 and al11 move to free runs);
 //     descending play counts so row 1 is the star (ch 31 §3.1's curve); `DeriveTopTrack` after the memberships (G-262).
 //   · every seeded track: `Row | Audio | Tags | Video | Isrc` known (G-260), its credit run, one descriptor, and EMPTY
-//     complete versions / waveform / credits runs unless it is one of the four drawer fixtures.
+//     complete versions / waveform / beats / credits runs unless it is one of the four drawer fixtures (which get a
+//     `WaveSample` triangle sized from the row's duration; their beat grid stays EMPTY — Pulse takes the seeded tempo).
 //   · al2 the rich album (ch 31 W3): 2 billed + 3 track-only artists (the face pile's +N), 2 other versions, 6 more-by
 //     ("Show all 6"), 7 featured-on playlists, 6 similar albums, 6 merch rows (one with no price, one with no shop url).
 //   · al3 the short release with a video: track 0 `HasVideo` + its video counterpart row; related artists for its rows.
@@ -61,7 +62,12 @@ public static partial class Entities
         /// <summary>The countdown lead: 730 d + ch 31 W16's 9 d 4 h (the clock trap in the header).</summary>
         const long Lead = 739 * Day + 4 * 3600;
         const string PreReleaseUri = "spotify:prerelease:pr13";
-        const int Waveform = Spotify.Decode.WaveformColumns;
+        /// <summary>The scratch target width the TrackTags / TrackFormats runs borrow (Tags needs at most 2, Formats at most 5).
+        /// The waveform's targets are <see cref="s_waveTargets"/>.</summary>
+        const int ZeroTargets = 8;
+        /// <summary>All-zero, never written: the waveform relation is payload-only (<c>EdgeTable&lt;WaveSample&gt;</c>), and its
+        /// N reaches <see cref="WaveformBands.MaxSamples"/>.</summary>
+        static readonly int[] s_waveTargets = new int[WaveformBands.MaxSamples];
 
         /// <summary>G-261: album titles of their own, disjoint from the playlist, folder, track and show vocabularies.</summary>
         static readonly string[] s_albumTitles =
@@ -464,7 +470,7 @@ public static partial class Entities
             var e = Current.Edges;
             Span<int> artists = stackalloc int[4];
             Span<int> targets = stackalloc int[8];
-            Span<int> zeros = stackalloc int[Waveform];
+            Span<int> zeros = stackalloc int[ZeroTargets];
             Span<StringId> tags = stackalloc StringId[2];
 
             // the pool: credits, descriptor, and the drawer runs
@@ -504,7 +510,7 @@ public static partial class Entities
                 Span<int> credited = stackalloc int[4];
                 Span<int> scratch = stackalloc int[4];
                 Artists(slot, credited[..Credited(a, k, credited)], scratch);
-                Span<int> none = stackalloc int[Waveform];
+                Span<int> none = stackalloc int[ZeroTargets];
                 Span<StringId> one = stackalloc StringId[2];
                 Tags(slot, seed, false, none, one);
                 Traits(slot);
@@ -533,6 +539,7 @@ public static partial class Entities
             var e = Current.Edges;
             e.TrackVersions.ReplaceRun(track, default, default);
             e.TrackWaveform.ReplaceRun(track, default, default);
+            e.TrackBeats.ReplaceRun(track, default, default);
             e.ReleaseCreditText(track);
             e.TrackCredits.ReplaceRun(track, default, default);
         }
@@ -559,14 +566,22 @@ public static partial class Entities
             if (a == RichAlbum && k == 0) ladder[rungs++] = new FormatEdge(16, 1411);
             e.TrackFormats.Replace(track, zeros[..rungs], ladder[..rungs], EdgeState.Complete, rungs);
 
-            // waveform: 220 magnitudes, a deterministic triangle envelope
-            Span<byte> columns = stackalloc byte[Waveform];
-            for (int c = 0; c < Waveform; c++)
+            // waveform: WaveSample triples, a deterministic triangle envelope — low full, mid 0.7×, high 0.45×; N from the row's
+            // duration at the wire's 20 ms hop, capped like a real answer
+            int samples = Math.Clamp(new global::Wavee.Track(track).DurationMs / WaveformBands.NominalHopMs, 64, WaveformBands.MaxSamples);
+            WaveSample[] wave = System.Buffers.ArrayPool<WaveSample>.Shared.Rent(samples);
+            try
             {
-                int phase = (c * 3 + pool) % 64;
-                columns[c] = (byte)(60 + (phase < 32 ? phase : 63 - phase) * 6);
+                for (int i = 0; i < samples; i++)
+                {
+                    int phase = (i * 3 + pool) % 64;
+                    byte low = (byte)(60 + (phase < 32 ? phase : 63 - phase) * 6);
+                    wave[i] = new WaveSample(low, (byte)(low * 0.7f), (byte)(low * 0.45f));
+                }
+                e.TrackWaveform.Replace(track, s_waveTargets.AsSpan(0, samples), wave.AsSpan(0, samples), EdgeState.Complete, samples);
             }
-            e.TrackWaveform.Replace(track, zeros, columns, EdgeState.Complete, Waveform);
+            finally { System.Buffers.ArrayPool<WaveSample>.Shared.Return(wave); }
+            e.TrackBeats.ReplaceRun(track, default, default);   // no grid under --fake: Pulse takes the seeded tempo
 
             // credits: performers (linked), songwriters (one linked, one not), a producer with no artist page
             int n = Credited(a, k, artists);

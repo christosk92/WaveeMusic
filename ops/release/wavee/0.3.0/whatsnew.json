@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.0",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Rebuilt from the ground up: a new Home, cards that behave the same everywhere, pages for episodes and people, a true full-screen view, and lossless.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "new-home",
+      "title": "A new Home, built around what you play",
+      "body": "Home opens on your daylist as a full card with a countdown to the next daypart, then Recently played and the shelves you page through. All, Music, Podcasts and Audiobooks switch in place without blanking the page. When a daylist ends, Home says it is updating instead of sitting at 00:00:00.",
+      "kind": "rebuilt",
+      "issues": [
+        162
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/home.jpg",
+        "alt": "The new Home: the All, Music, Podcasts and Audiobooks pivot, the daylist card with its countdown and daypart timeline, and Recently played",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "one-surface",
+      "title": "Every card and row works the same way",
+      "body": "Cards and rows on every page are now one shared control, so hover, the play button, the … and right-click menus, drag and a tooltip on a cut-off title behave the same everywhere. The card that is playing lights up, and its play button pauses. Each page takes its own colour from the first frame, and scrolling runs on one model for wheel, touchpad and scrollbar.",
+      "kind": "rebuilt",
+      "issues": [
+        157,
+        159,
+        160
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/surface.jpg",
+        "alt": "An artist page in the artist's own colour, with its hero, Top tracks and the queue panel beside it",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "episodes-and-profiles",
+      "title": "Pages for episodes and for people",
+      "body": "Episodes get their own page, with chapters, a transcript, comments and similar episodes, plus a playback-speed control and your place synced with your other devices. A Spotify profile link, a playlist's owner or a friend in the activity rail now opens their profile, with public playlists, who they follow and who follows them.",
+      "kind": "new",
+      "issues": [
+        161,
+        164
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/episodes-people.jpg",
+        "alt": "An episode page with its About, Chapters, Transcript and Comments tabs, in front of a profile page with followers, following and public playlists",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "fullscreen",
+      "title": "A real full screen, with eight visualizers",
+      "body": "Full screen now takes the whole display: the title bar and player bar step aside and one transport card sits over the music. Switch between Lyrics, Visualizer, Up next and Artist while the cover follows you, every control takes its colour from the album art, and the controls hide when the mouse rests. Eight visualizers move with a real analysis of what you hear, with the lyric line sung word by word over them.",
+      "kind": "rebuilt",
+      "issues": [
+        166
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/fullscreen.jpg",
+        "alt": "The full-screen view in Visualizer mode: the Spectrum visualizer moving with the song, the lyric line over it, the now-playing card and the transport card, with Lyrics mode beside it",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "lossless",
+      "title": "Lossless, and playback that keeps up",
+      "body": "Lossless FLAC plays when your account has it, through Wavee's own decoders. Playback no longer halts or stutters while your PC is busy, a seek inside what is already loaded is instant, and dragging the seek bar plays the music under your hand like tape. Normalization gets Quiet, Normal and Loud levels and an album mode.",
+      "kind": "new",
+      "issues": [
+        167
+      ],
+      "media": {
+        "kind": "image",
+        "src": "media/lossless.jpg",
+        "alt": "A song playing in lossless FLAC: the quality badge in the player bar, and Settings with the Lossless audio quality and the new normalization levels",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}

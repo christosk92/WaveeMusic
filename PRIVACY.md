@@ -19,12 +19,12 @@ out yourself:
 | Library database | `library.db` | Albums, artists, playlists, sync state, and the metadata cache. |
 | Encrypted audio cache | `Wavee\Cache` (relocatable in Settings › Storage) | Encrypted CDN chunks and saved license keys, so you do not re-download tracks you already streamed. |
 | Image cache | `cache\images` | Album art and other artwork, keyed by URL hash. |
-| Logs | `logs\wavee.log` | Rolled at 10 MB, 7 files kept. Written to disk only, never uploaded. |
+| Logs | `logs\wavee-<date>.log` | A new file each day or at 10 MB; kept 7 days, up to 250 MB. Written to disk only, never uploaded. |
 | Crash reports | `logs\crash\<stamp>-<kind>\` | A folder per crash: the error and a redacted log excerpt, optionally a memory snapshot. Sending it anywhere is off by default and always your choice — see "Crash reports (opt-in)" below. |
 | Playback session & navigation history | `session.json` | So Wavee reopens where you left off. |
 | Local play log | under `%LOCALAPPDATA%\Wavee` | Powers the local "recently played" surfaces. |
 | Settings | Windows registry, `HKCU` | Typed keys only. |
-| Dealer WebSocket archive | off by default | A debugging capture of Spotify's push frames, enabled only in Settings › Diagnostics. Local file. |
+| Dealer WebSocket archive | off by default | A debugging capture of Spotify's push frames, enabled only in Settings › Privacy & diagnostics › Tools › Realtime capture. Local file. |
 
 ## What leaves your machine
 
@@ -127,14 +127,14 @@ it happened in). These statistics never hold report contents: no exception messa
 memory snapshot. They are kept to track whether a bug has been fixed.
 
 **Seeing, copying, deleting, or sending a report by hand:** every crash report Wavee has saved is listed
-in **Settings › Logs › Reports**, whether or not you have crash reporting turned on, each with its short
-report id. Each report has its own buttons, which work regardless of your general setting: **View** opens
-it in Notepad; **Copy** puts the redacted report — exactly what would be sent — on your clipboard;
-**Delete** removes it from your PC, and a report deleted before it was sent is never uploaded; **Send**
-shows you the report first and uploads it only when you confirm — a single explicit action. Deleting a
-report from your PC does not remove a copy that was already sent: that copy is deleted after 90 days (see
-"Retention"), or straight away with "Delete my data…" below. The underlying files live in your
-`logs\crash` folder (see the table above) if you would rather inspect or delete them directly on disk.
+in **Settings › Privacy & diagnostics › Crash reports › Saved reports**, whether or not you have crash
+reporting turned on, each with its short report id. Each report's **…** menu offers four actions, which work
+regardless of your general setting: **View** opens it in Notepad; **Copy** puts the redacted report — exactly
+what would be sent — on your clipboard; **Send** shows you the report first and uploads it only when you
+confirm — a single explicit action; **Delete** removes it from your PC, and a report deleted before it was
+sent is never uploaded. Deleting a report from your PC does not remove a copy that was already sent: that copy is
+deleted after 90 days (see "Retention"), or straight away with "Delete my data…" below. The underlying files live
+in your `logs\crash` folder (see the table above) if you would rather inspect or delete them directly on disk.
 
 ### Your rights
 

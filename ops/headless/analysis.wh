@@ -1,0 +1,5 @@
+# the audio-analysis endpoint probe (fullscreen-flagship-implementation.md §4.5.3) — the runner itself waits for the session
+wait online timeout 60000
+analysis spotify:track:4cOdK2wGLETKBW3PvgPWqT
+sleep 4000
+quit

@@ -144,7 +144,7 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         Assert.Equal(1f, Playback.Audio.NormalizationFactor(enabled: true, float.NaN));
         Assert.Equal(minus6, Playback.Audio.NormalizationFactor(enabled: true, -6f));
         Assert.Equal(plus6, Playback.Audio.NormalizationFactor(enabled: true, 6f));
-        Assert.Equal(1f / 0.9f, Playback.Audio.NormalizationFactor(enabled: true, 6f, peak: 0.9f));   // 1.995 × 0.9 > 1
+        Assert.Equal(Playback.Audio.LimiterCeilingLinear / 0.9f, Playback.Audio.NormalizationFactor(enabled: true, 6f, peak: 0.9f));   // 1.995 × 0.9 > the limiter's ceiling (N-1: the cap moved from 1.0)
         Assert.Equal(minus6, Playback.Audio.NormalizationFactor(enabled: true, -6f, peak: 0.9f));     // a cut is never capped
         Assert.Equal(MathF.Pow(10f, Playback.Audio.MaxGainDb / 20f), Playback.Audio.NormalizationFactor(enabled: true, 400f));
 
@@ -556,6 +556,489 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         return silent == blocks ? 1 : 0;
     }
 
+    // ── 7. playback smoothness (#167), wave 2: S-1, S-7, P-5, V-PA35 ───────────────────────────────────────────────────
+    //
+    //   S-1   A seek's LANDING read was interrupted by the next seek of a scrub. Latching `_eof` there ended the track for every seek storm
+    //         that raced it; the decoder is not primed, so it cannot keep decoding like the FLAC arm — it latches `_needsLanding` and `Read`
+    //         serves silence while it repeats the landing read WITHOUT re-targeting the source (that would end the interrupt window the
+    //         next seek just opened).
+    //   S-7   A page-sequence hole (or an undecodable packet) re-primes the decoder and the clock owes the span it cost: the next page
+    //         granule names it and `Read` pads it as silence, so the track keeps its length and the audio after the hole keeps its place.
+    //   P-5   `ID3` names a TAG, not a codec: where the block ends is 10 + the syncsafe size (+10 for a footer).
+    //   V-PA35  A decoder reopened on the setup it already holds skips the parse; the pool rents by setup hash.
+
+    [Fact]
+    public void An_interrupted_landing_latches_serves_silence_and_lands_without_re_targeting_once_the_bytes_arrive()
+    {
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var source = new RandomAccessFake(file, linear.LastGranule);
+        var decoder = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(decoder.TryOpen(source, new MixFormat(id.SampleRate, 2), out _));
+        Assert.Equal(4_096 * 2, Drain(decoder, 4_096).Length);
+
+        long target = linear.Frames / 2;
+        source.ResetCounts();
+        source.InterruptAfterResume = true;                               // the next seek's interrupt lands while THIS landing is read
+        Assert.Equal(target, decoder.Seek(target));                       // never −1, never a throw: the seek completes at its target
+        int retargets = source.Retargets;
+        Assert.Equal(1, source.Resumes);                                  // the landing's own resume, once
+        Assert.True(source.Interrupt);
+
+        // not the end, whatever the engine would latch: silence, for as long as the interrupt stands …
+        Assert.Equal(1, SilentBlocksUntilNoEof(decoder, blocks: 3));
+        Assert.Equal(retargets, source.Retargets);                        // … and the retries never re-target (that would end the interrupt window)
+        Assert.Equal(1, source.Resumes);
+
+        // The bytes arrive: the landing reads its window, primes, places the clock, and the first frame out is the target sample.
+        source.InterruptAfterResume = false;
+        source.Interrupt = false;
+        float[] after = Drain(decoder, 4_096);
+        Assert.Equal(4_096 * 2, after.Length);
+        Assert.True(MemoryMarshal.AsBytes(after.AsSpan()).SequenceEqual(
+            MemoryMarshal.AsBytes(linear.Pcm.AsSpan((int)(target * 2), after.Length))));
+        Assert.Equal(retargets, source.Retargets);                        // the landing's retry re-targeted nothing …
+        Assert.Equal(1, source.Resumes);                                  // … and resumed nothing: the failed attempt's request stands
+    }
+
+    [Fact]
+    public void A_seek_that_follows_an_interrupted_landing_supersedes_it_and_lands_sample_exact()
+    {
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var source = new RandomAccessFake(file, linear.LastGranule);
+        var decoder = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(decoder.TryOpen(source, new MixFormat(id.SampleRate, 2), out _));
+        Assert.Equal(4_096 * 2, Drain(decoder, 4_096).Length);
+
+        long first = linear.Frames / 3, second = linear.Frames * 3 / 4;
+        source.InterruptAfterResume = true;
+        Assert.Equal(first, decoder.Seek(first));
+        Assert.Equal(1, SilentBlocksUntilNoEof(decoder, blocks: 1));      // latched on `first`
+
+        source.InterruptAfterResume = false;                              // the scrub's NEXT seek arrives — through the front door, as ever
+        Assert.Equal(second, decoder.Seek(second));
+        Assert.False(source.Interrupt);                                   // its own retarget ended the interrupt
+        float[] after = Drain(decoder, 4_096);
+        Assert.Equal(4_096 * 2, after.Length);
+        Assert.True(MemoryMarshal.AsBytes(after.AsSpan()).SequenceEqual(
+            MemoryMarshal.AsBytes(linear.Pcm.AsSpan((int)(second * 2), after.Length))));   // the superseded landing left no trace
+    }
+
+    [Fact]
+    public void A_landing_that_fails_for_any_reason_but_an_interrupt_ends_the_track_as_it_always_did_and_a_latched_one_that_loses_its_source_ends_too()
+    {
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var mix = new MixFormat(id.SampleRate, 2);
+        long durationMs = linear.Frames * 1000 / id.SampleRate;
+        long target = linear.Frames / 2;
+
+        // a closed body: the landing read answers −1 — no interrupt, nothing owed but the end
+        var closedSource = new RandomAccessFake(file, linear.LastGranule);
+        var closed = new Playback.Audio.VorbisAudioDecoder(0f, durationMs);
+        Assert.True(closed.TryOpen(closedSource, mix, out _));
+        Assert.Equal(4_096 * 2, Drain(closed, 4_096).Length);
+        closedSource.Closed = true;
+        Assert.Equal(target, closed.Seek(target));
+        Assert.Equal(0, closed.Read(new float[512]));                     // EOF, never silence: silence is only ever owed to an INTERRUPT
+
+        // an interrupted landing whose source then goes away: the latch ends the track and clears itself
+        var lostSource = new RandomAccessFake(file, linear.LastGranule);
+        var lost = new Playback.Audio.VorbisAudioDecoder(0f, durationMs);
+        Assert.True(lost.TryOpen(lostSource, mix, out _));
+        Assert.Equal(4_096 * 2, Drain(lost, 4_096).Length);
+        lostSource.InterruptAfterResume = true;
+        Assert.Equal(target, lost.Seek(target));
+        Assert.Equal(1, SilentBlocksUntilNoEof(lost, blocks: 1));
+        lostSource.InterruptAfterResume = false;
+        lostSource.Interrupt = false;
+        lostSource.Closed = true;
+        Assert.Equal(0, lost.Read(new float[512]));
+        Assert.Equal(0, lost.Read(new float[512]));                       // and it stays ended: no latch is left to serve silence forever
+    }
+
+    // ── S-7: the clock's pad (pure) ─────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_hole_names_the_span_it_cost_at_the_next_page_pin_and_pads_it_once_ahead_of_the_frames_that_follow()
+    {
+        var clock = Clock.At(10_000);                                     // 10 000 granules were admitted before the hole
+        clock.Hole();                                                     // packets were lost: the decoder re-primed
+
+        // The packet after a re-prime returns no frames; it is the last on its page, whose granule says 14 000 — the lost span plus
+        // this packet's own (never decoded) frames. Nothing is handed out, but the gap is now owed.
+        Clock.Run primed = clock.Admit(frames: 0, granuleAtEnd: 14_000, eos: false);
+        Assert.Equal(0, primed.Count);
+        Assert.Equal(14_000, clock.Position);
+
+        Clock.Run next = clock.Admit(frames: 512, granuleAtEnd: -1, eos: false);
+        Assert.Equal(512, next.Count);
+        Assert.Equal(14_000L, next.Start);
+        Assert.Equal(4_000, next.Pad);                                    // silence AHEAD of these frames: 14 000 − 10 000
+
+        Clock.Run after = clock.Admit(frames: 512, granuleAtEnd: -1, eos: false);
+        Assert.Equal(0, after.Pad);                                       // paid once
+        Assert.Equal(14_512L, after.Start);
+    }
+
+    [Fact]
+    public void A_hole_pads_nothing_while_a_landing_is_still_dropping_frames_and_nothing_for_a_gap_that_is_a_wrong_pin()
+    {
+        // After a seek the clock drops frames up to its target: nothing before the target is heard, so a hole there costs nothing audible.
+        var landing = Clock.At(10_000);
+        landing.Target = 15_000;
+        landing.Hole();
+        Clock.Run dropped = landing.Admit(frames: 600, granuleAtEnd: 14_800, eos: false);        // pinned: [14 200, 14 800) — all before the target
+        Assert.Equal(0, dropped.Count);
+        Clock.Run reached = landing.Admit(frames: 600, granuleAtEnd: 15_400, eos: false);       // [14 800, 15 400): 200 dropped, 400 heard
+        Assert.Equal(200, reached.Skip);
+        Assert.Equal(400, reached.Count);
+        Assert.Equal(0, reached.Pad);
+
+        // A gap beyond MaxPad is not "a lost page", it is a wrong pin: the clock re-pins and pads nothing.
+        var wrong = Clock.At(10_000);
+        wrong.Hole();
+        Clock.Run repinned = wrong.Admit(frames: 0, granuleAtEnd: 10_000 + Clock.MaxPad + 1, eos: false);
+        Assert.Equal(0, repinned.Count);
+        Clock.Run follow = wrong.Admit(frames: 512, granuleAtEnd: -1, eos: false);
+        Assert.Equal(0, follow.Pad);
+        Assert.Equal(10_000 + Clock.MaxPad + 1, follow.Start);
+
+        // …and the largest believable gap is padded in full
+        var biggest = Clock.At(10_000);
+        biggest.Hole();
+        biggest.Admit(frames: 0, granuleAtEnd: 10_000 + Clock.MaxPad, eos: false);
+        Assert.Equal((int)Clock.MaxPad, biggest.Admit(frames: 64, granuleAtEnd: -1, eos: false).Pad);
+    }
+
+    /// <summary>The file with the audio page nearest the middle of its granule range removed WHOLE: a page-sequence hole — the pages
+    /// either side keep their own sequence numbers, so the reader sees the gap.</summary>
+    static byte[] WithoutTheMiddlePage(byte[] file, long firstAudioPage, long lastGranule)
+    {
+        var pages = new List<(int At, int Length, long Granule)>();
+        int at = (int)firstAudioPage;
+        while ((at = Ogg.FindPage(file, at, out Ogg.Page page, out _)) >= 0)
+        {
+            pages.Add((at, page.Length, page.Granule));
+            at += page.Length;
+        }
+        int best = -1;
+        long bestDistance = long.MaxValue;
+        for (int i = 3; i < pages.Count - 3; i++)                         // never the first or last pages: the open and the end are not the point
+        {
+            if (pages[i].Granule < 0) continue;
+            long distance = Math.Abs(pages[i].Granule - lastGranule / 2);
+            if (distance < bestDistance) { bestDistance = distance; best = i; }
+        }
+        Assert.True(best > 0, "the fixture has no page to remove");
+        (int removedAt, int removedLength, _) = pages[best];
+        var damaged = new byte[file.Length - removedLength];
+        file.AsSpan(0, removedAt).CopyTo(damaged);
+        file.AsSpan(removedAt + removedLength).CopyTo(damaged.AsSpan(removedAt));
+        return damaged;
+    }
+
+    [Fact]
+    public void A_hole_re_primes_the_decoder_and_the_owed_span_is_padded_so_the_track_keeps_its_length_and_the_audio_after_it_keeps_its_place()
+    {
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        var (ident, _, firstAudioPage) = VorbisFixture.Headers(file, new Ogg.Reader());
+        Assert.True(Vorbis.TryParseIdentification(ident, out Vorbis.Identification id));
+        byte[] damaged = WithoutTheMiddlePage(file, firstAudioPage, linear.LastGranule);
+        Assert.True(damaged.Length < file.Length);
+
+        var decoder = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(decoder.TryOpen(new RandomAccessFake(damaged, linear.LastGranule), new MixFormat(id.SampleRate, 2), out _));
+        float[] repaired = Drain(decoder, linear.Frames + 8_192);
+        float[] straight = linear.Pcm;
+
+        Assert.Equal(straight.Length, repaired.Length);                   // the lost span came back as silence: the length is the whole track's
+        int quarter = straight.Length / 8 * 2;                            // a quarter of the samples, a whole number of frames
+        Assert.True(MemoryMarshal.AsBytes(repaired.AsSpan(0, quarter)).SequenceEqual(MemoryMarshal.AsBytes(straight.AsSpan(0, quarter))),
+            "the audio BEFORE the hole differs from the straight decode");
+        Assert.True(MemoryMarshal.AsBytes(repaired.AsSpan(repaired.Length - quarter)).SequenceEqual(MemoryMarshal.AsBytes(straight.AsSpan(straight.Length - quarter))),
+            "the audio AFTER the hole is not where the straight decode puts it");
+
+        // …and the hole itself is exact silence the length of what was lost (pink noise never has two silent frames, let alone a thousand)
+        int straightSilence = LongestSilentRun(straight, quarter, straight.Length - quarter);
+        int longestSilence = LongestSilentRun(repaired, quarter, repaired.Length - quarter);
+        Assert.True(straightSilence < 100, $"the straight decode already has {straightSilence} silent frames in a row: the fixture cannot tell a pad from noise");
+        Assert.True(longestSilence >= 1_000, $"the longest run of silent frames in the repaired middle is {longestSilence}");
+    }
+
+    /// <summary>The most consecutive all-zero stereo frames in <paramref name="pcm"/>[from, to) (sample indices).</summary>
+    static int LongestSilentRun(float[] pcm, int from, int to)
+    {
+        int best = 0, run = 0;
+        for (int i = from; i + 1 < to; i += 2)
+        {
+            if (pcm[i] == 0f && pcm[i + 1] == 0f) { run++; if (run > best) best = run; }
+            else run = 0;
+        }
+        return best;
+    }
+
+    // ── P-5: where an ID3v2 block ends (pure) ───────────────────────────────────────────────────────────────────────
+
+    static byte[] Id3Header(byte versionMajor, byte flags, int size)
+    {
+        var h = new byte[10];
+        "ID3"u8.CopyTo(h);
+        h[3] = versionMajor;
+        h[4] = 0;
+        h[5] = flags;
+        h[6] = (byte)((size >> 21) & 0x7F);
+        h[7] = (byte)((size >> 14) & 0x7F);
+        h[8] = (byte)((size >> 7) & 0x7F);
+        h[9] = (byte)(size & 0x7F);
+        return h;
+    }
+
+    [Fact]
+    public void An_id3v2_block_ends_ten_plus_its_syncsafe_size_plus_ten_more_for_a_footer()
+    {
+        Assert.Equal(10L, Playback.Audio.Id3v2Length(Id3Header(3, 0, 0)));                       // an empty tag is still its header
+        Assert.Equal(267L, Playback.Audio.Id3v2Length(Id3Header(3, 0, 257)));                    // 0x00 0x00 0x02 0x01 = (2 << 7) | 1
+        Assert.Equal(10L + 2_097_152L, Playback.Audio.Id3v2Length(Id3Header(4, 0, 2_097_152)));  // a 2 MiB cover: the size spans all four bytes
+        Assert.Equal(10L + 0x0FFF_FFFFL, Playback.Audio.Id3v2Length(Id3Header(4, 0, 0x0FFF_FFFF)));
+        Assert.Equal(10L + 257 + 10, Playback.Audio.Id3v2Length(Id3Header(4, 0x10, 257)));       // the footer flag (byte 5, bit 4): +10
+        Assert.Equal(267L, Playback.Audio.Id3v2Length(Id3Header(3, 0xE0, 257)));                 // the other flags (unsync, extended, experimental) add nothing
+        Assert.Equal(267L, Playback.Audio.Id3v2Length([.. Id3Header(3, 0, 257), .. new byte[64]]));   // bytes after the header are not the header's business
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void A_head_shorter_than_an_id3v2_header_has_no_tag(int length)
+        => Assert.Equal(0L, Playback.Audio.Id3v2Length(Id3Header(3, 0, 257).AsSpan(0, length)));
+
+    [Fact]
+    public void A_head_that_is_not_a_well_formed_id3v2_header_has_no_tag()
+    {
+        byte[] Mutated(int index, byte value) { byte[] h = Id3Header(3, 0, 257); h[index] = value; return h; }
+
+        Assert.Equal(0L, Playback.Audio.Id3v2Length("OggS\0\0\0\0\0\0\0\0"u8));                  // not ID3
+        Assert.Equal(0L, Playback.Audio.Id3v2Length("fLaC\0\0\0\0\0\0\0\0"u8));
+        Assert.Equal(0L, Playback.Audio.Id3v2Length("ID\0\0\0\0\0\0\0\0\0"u8));                  // a near miss
+        Assert.Equal(0L, Playback.Audio.Id3v2Length(Mutated(3, 0xFF)));                          // a 0xFF version
+        Assert.Equal(0L, Playback.Audio.Id3v2Length(Mutated(4, 0xFF)));                          // a 0xFF revision
+        for (int sizeByte = 6; sizeByte <= 9; sizeByte++)
+            Assert.Equal(0L, Playback.Audio.Id3v2Length(Mutated(sizeByte, 0x80)));               // syncsafe: seven bits per byte, the top one is never set
+        Assert.Equal(267L, Playback.Audio.Id3v2Length(Id3Header(3, 0, 257)));                    // (and the unmutated header is accepted)
+    }
+
+    [Fact]
+    public void A_tagged_flac_is_a_flac_once_the_tag_is_skipped_where_the_old_rule_called_every_id3_file_mp3()
+    {
+        var tag = new byte[10 + 100];
+        Id3Header(3, 0, 100).CopyTo(tag, 0);
+        byte[] file = [.. tag, .. "fLaC"u8.ToArray(), .. new byte[40]];
+
+        Assert.Equal(Spotify.Audio.Format.Mp3, Playback.Audio.SniffFormat(file));                // the old rule: the magic of the TAG
+        long id3 = Playback.Audio.Id3v2Length(file);
+        Assert.Equal(110L, id3);
+        Assert.Equal(Spotify.Audio.Format.Flac, Playback.Audio.SniffFormat(file.AsSpan((int)id3)));   // P-5: sniff what comes AFTER it
+    }
+
+    // ── V-PA35: the setup-hash hit and the decoder pool ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_setup_hash_is_pure_nonzero_and_names_exactly_the_bytes_the_tables_were_built_from()
+    {
+        byte[] pink = VorbisFixture.Bytes("pink-320.ogg"), sine = VorbisFixture.Bytes("sine-440.ogg");
+        var (ident, setup, _) = VorbisFixture.Headers(pink, new Ogg.Reader());
+        var (sineIdent, sineSetup, _) = VorbisFixture.Headers(sine, new Ogg.Reader());
+
+        ulong hash = Vorbis.Decoder.HashSetup(ident, setup);
+        Assert.NotEqual(0UL, hash);                                                        // 0 means "no tables"
+        Assert.Equal(hash, Vorbis.Decoder.HashSetup(ident, setup));
+        Assert.NotEqual(hash, Vorbis.Decoder.HashSetup(sineIdent, sineSetup));              // another file's setup
+        Assert.NotEqual(hash, Vorbis.Decoder.HashSetup(ident, setup.AsSpan(0, setup.Length - 1)));   // a byte short
+        byte[] flipped = (byte[])setup.Clone();
+        flipped[^1] ^= 0x01;
+        Assert.NotEqual(hash, Vorbis.Decoder.HashSetup(ident, flipped));                    // one bit
+        // the lengths are mixed in: moving a byte from one header to the other is a different setup
+        Assert.NotEqual(Vorbis.Decoder.HashSetup([1, 2, 3], [4, 5]), Vorbis.Decoder.HashSetup([1, 2], [3, 4, 5]));
+    }
+
+    [Fact]
+    public void A_decoder_reopened_on_the_setup_it_already_holds_skips_the_parse_allocates_nothing_and_decodes_exactly_like_a_fresh_one()
+    {
+        byte[] file = VorbisFixture.Bytes("pink-320.ogg");
+        var (ident, setup, first) = VorbisFixture.Headers(file, new Ogg.Reader());
+        ulong hash = Vorbis.Decoder.HashSetup(ident, setup);
+
+        var held = new Vorbis.Decoder();
+        Assert.Equal(0UL, held.SetupHash);                                                  // nothing built yet
+        Assert.True(held.Open(ident, setup, 0.5f));
+        Assert.Equal(hash, held.SetupHash);
+        DecodeFirstPackets(file, first, held, 25);                                          // leave lapping state behind
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(held.Open(ident, setup, 1f));                                           // the same bytes: the hit
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.Equal(0L, allocated);                                                        // a few microseconds of lapping reset, not the ~1 ms table build
+        Assert.Equal(hash, held.SetupHash);
+        Assert.Equal(1f, held.Gain);                                                        // the gain is the new one …
+        Assert.Equal(0, held.PreviousBlockSize);                                            // … and the overlap state is reset: the next packet primes
+
+        var fresh = new Vorbis.Decoder();
+        Assert.True(fresh.Open(ident, setup, 1f));
+        float[] a = DecodeFirstPackets(file, first, held, 40), b = DecodeFirstPackets(file, first, fresh, 40);
+        Assert.True(a.Length > 8_000, $"only {a.Length} samples out of 40 packets: the comparison proves nothing");
+        Assert.True(MemoryMarshal.AsBytes(a.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(b.AsSpan())),
+            "a decoder that skipped the parse decodes differently from one that built its tables");
+    }
+
+    [Fact]
+    public void A_different_setup_rebuilds_the_tables_and_a_failed_open_leaves_no_hash_to_hit()
+    {
+        byte[] pink = VorbisFixture.Bytes("pink-320.ogg"), sine = VorbisFixture.Bytes("sine-440.ogg");
+        var (ident, setup, first) = VorbisFixture.Headers(pink, new Ogg.Reader());
+        var (sineIdent, sineSetup, _) = VorbisFixture.Headers(sine, new Ogg.Reader());
+        ulong pinkHash = Vorbis.Decoder.HashSetup(ident, setup), sineHash = Vorbis.Decoder.HashSetup(sineIdent, sineSetup);
+
+        var dec = new Vorbis.Decoder();
+        Assert.True(dec.Open(ident, setup));
+        Assert.Equal(pinkHash, dec.SetupHash);
+        Assert.True(dec.Open(sineIdent, sineSetup));
+        Assert.Equal(sineHash, dec.SetupHash);                                              // re-parsed in place: the tables are the sine file's now
+
+        Assert.False(dec.Open(ident, new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }));              // not a setup header
+        Assert.Equal(0UL, dec.SetupHash);                                                   // a hash can never name half-built tables
+        Assert.False(dec.IsOpen);
+
+        Assert.True(dec.Open(ident, setup, 1f));                                            // and the good setup is parsed again, from scratch
+        Assert.Equal(pinkHash, dec.SetupHash);
+        var reference = new Vorbis.Decoder();
+        Assert.True(reference.Open(ident, setup, 1f));
+        Assert.True(MemoryMarshal.AsBytes(DecodeFirstPackets(pink, first, dec, 30).AsSpan())
+            .SequenceEqual(MemoryMarshal.AsBytes(DecodeFirstPackets(pink, first, reference, 30).AsSpan())));
+    }
+
+    /// <summary>The first <paramref name="packets"/> audio packets of <paramref name="file"/> through <paramref name="decoder"/>, as floats.</summary>
+    static float[] DecodeFirstPackets(byte[] file, long firstAudioPage, Vorbis.Decoder decoder, int packets)
+    {
+        var reader = new Ogg.Reader();
+        Clock.Restart(reader, firstAudioPage);
+        ReadOnlySpan<byte> audio = file.AsSpan((int)firstAudioPage);
+        var all = new List<float>();
+        for (int p = 0; p < packets; p++)
+        {
+            Assert.Equal(Ogg.Reader.Next.Packet, reader.NextPacket(audio, out ReadOnlySpan<byte> packet, out _));
+            Assert.Equal(Vorbis.PacketResult.Ok, decoder.DecodePacket(packet));
+            foreach (float v in decoder.OutputSpan) all.Add(v);
+        }
+        return [.. all];
+    }
+
+    /// <summary>Open the file on an adapter and play a little. The adapter holds a CORE decoder (rented by the setup's hash); disposing it
+    /// returns the decoder to the pool still holding that file's tables.</summary>
+    static Playback.Audio.VorbisAudioDecoder OpenAndPlay(byte[] file)
+    {
+        VorbisFixture.Decoded linear = VorbisFixture.DecodeAll(file);
+        Assert.True(Vorbis.TryParseIdentification(VorbisFixture.Headers(file, new Ogg.Reader()).Ident, out Vorbis.Identification id));
+        var adapter = new Playback.Audio.VorbisAudioDecoder(0f, linear.Frames * 1000 / id.SampleRate);
+        Assert.True(adapter.TryOpen(new RandomAccessFake(file, linear.LastGranule), new MixFormat(id.SampleRate, 2), out _));
+        Assert.True(Drain(adapter, 2_048).Length > 0);
+        return adapter;
+    }
+
+    static ulong SetupHashOf(byte[] file)
+    {
+        var (ident, setup, _) = VorbisFixture.Headers(file, new Ogg.Reader());
+        return Vorbis.Decoder.HashSetup(ident, setup);
+    }
+
+    // The pool is PROCESS-WIDE and other test classes open Vorbis adapters beside this one, so each claim below is retried until the pool
+    // is as this test just left it — a concurrent claim can take a decoder this test returned, but not every time.
+
+    [Fact]
+    public void The_pool_rents_the_decoder_whose_tables_match_the_setup_asked_for_not_merely_the_first_one_in_it()
+    {
+        byte[] pink = VorbisFixture.Bytes("pink-320.ogg"), sine = VorbisFixture.Bytes("sine-440.ogg");
+        ulong pinkHash = SetupHashOf(pink), sineHash = SetupHashOf(sine);
+        Assert.NotEqual(pinkHash, sineHash);
+
+        bool matched = false;
+        for (int attempt = 0; attempt < 25 && !matched; attempt++)
+        {
+            // TWO adapters alive at once hold two different decoders (one file's tables each). Returned pink first, the pool holds the
+            // pink decoder in an EARLIER slot than the sine one: "the first pooled" is wrong for the sine rent, "the match" is right.
+            Playback.Audio.VorbisAudioDecoder a = OpenAndPlay(pink), b = OpenAndPlay(sine);
+            a.Dispose();
+            b.Dispose();
+            Vorbis.Decoder rented = Playback.Audio.VorbisDecoderPool.Rent(sineHash);
+            matched = rented.SetupHash == sineHash && rented.IsOpen;
+        }
+        Assert.True(matched, "Rent(hash) never answered the decoder holding that hash's tables");
+
+        matched = false;
+        for (int attempt = 0; attempt < 25 && !matched; attempt++)
+        {
+            OpenAndPlay(pink).Dispose();                                  // (the pink decoder is back in the pool)
+            Vorbis.Decoder rented = Playback.Audio.VorbisDecoderPool.Rent(pinkHash);
+            matched = rented.SetupHash == pinkHash && rented.IsOpen;      // the tables are built: opening it on this setup skips the parse
+        }
+        Assert.True(matched);
+    }
+
+    [Fact]
+    public void A_decoder_rented_back_by_hash_after_its_adapter_was_disposed_opens_on_its_tables_with_no_parse_and_is_pooled_once()
+    {
+        byte[] pink = VorbisFixture.Bytes("pink-320.ogg");
+        ulong pinkHash = SetupHashOf(pink);
+        var (ident, setup, _) = VorbisFixture.Headers(pink, new Ogg.Reader());
+
+        bool reused = false;
+        for (int attempt = 0; attempt < 25 && !reused; attempt++)
+        {
+            Playback.Audio.VorbisAudioDecoder first = OpenAndPlay(pink);
+            first.Dispose();
+            first.Dispose();                                              // idempotent: the decoder goes back to the pool ONCE
+            Vorbis.Decoder rented = Playback.Audio.VorbisDecoderPool.Rent(pinkHash);
+            Vorbis.Decoder another = Playback.Audio.VorbisDecoderPool.Rent(pinkHash);
+            Assert.NotSame(rented, another);                              // a decoder pooled twice would be rented to two voices at once
+            if (rented.SetupHash != pinkHash) continue;                   // (a concurrent test took ours: try again)
+
+            reused = true;
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Assert.True(rented.Open(ident, setup, 1f));                   // its own setup: a hit — no parse, no allocation
+            Assert.Equal(0L, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        Assert.True(reused);
+    }
+
+    [Fact]
+    public void The_pool_hands_any_pooled_decoder_when_none_matches_and_a_new_one_when_it_is_empty()
+    {
+        byte[] pink = VorbisFixture.Bytes("pink-320.ogg");
+        const ulong nobodys = 0x1234_5678_9ABC_DEF0UL;                    // no file hashes to this
+
+        bool pooled = false;
+        for (int attempt = 0; attempt < 25 && !pooled; attempt++)
+        {
+            OpenAndPlay(pink).Dispose();
+            Vorbis.Decoder rented = Playback.Audio.VorbisDecoderPool.Rent(nobodys);
+            pooled = rented.IsOpen && rented.SetupHash != nobodys;        // a pooled decoder (it re-parses in place), not a new one
+        }
+        Assert.True(pooled, "Rent(unknown hash) did not fall back to a pooled decoder");
+
+        bool sawNew = false;
+        for (int i = 0; i < 3 * Playback.Audio.VorbisDecoderPool.Capacity + 4 && !sawNew; i++)
+        {
+            Vorbis.Decoder rented = Playback.Audio.VorbisDecoderPool.Rent(nobodys);
+            sawNew = !rented.IsOpen && rented.SetupHash == 0UL;           // the pool ran dry: a fresh decoder with no tables
+        }
+        Assert.True(sawNew, "an emptied pool never produced a new decoder");
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Up to <paramref name="maxFrames"/> frames of interleaved stereo, read the way the engine's producer reads.</summary>
@@ -606,6 +1089,12 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         public bool Interrupt;
         /// <summary>A starving link: this many reads answer <c>StarvedRead</c> before bytes flow again.</summary>
         public int Starves;
+        /// <summary>S-1: the NEXT seek's interrupt arrives while this seek's LANDING window is being read. The adapter's own
+        /// <c>Retarget</c> ends any interrupt, so the one that lands after it is raised by its <c>ResumeFrom</c> — which the landing
+        /// (and only the landing) issues before it reads a byte.</summary>
+        public bool InterruptAfterResume;
+        /// <summary>The source is gone (a closed body): every read answers −1.</summary>
+        public bool Closed;
         /// <summary>The tail granule — settable, because the stream layer learns it after the decoder opened.</summary>
         public long Tail { get; set; } = tail;
         public uint Epoch { get; private set; }
@@ -634,6 +1123,7 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
         public int ReadAt(long offset, Span<byte> dst, uint epoch)
         {
             if (epoch != Epoch) return -1;
+            if (Closed) return -1;
             if (Interrupt) return Playback.Audio.InterruptedRead;
             if (Starves > 0) { Starves--; return Playback.Audio.StarvedRead; }
             if (offset >= data.Length || dst.Length == 0) return 0;
@@ -645,7 +1135,11 @@ public sealed class AudioAdapterTests(ITestOutputHelper output)
 
         public void Retarget(long probeOffset, int probeBytes, uint epoch) { Retargets++; Epoch = epoch; Interrupt = false; }
 
-        public void ResumeFrom(long offset) => Resumes++;
+        public void ResumeFrom(long offset)
+        {
+            Resumes++;
+            if (InterruptAfterResume) Interrupt = true;
+        }
     }
 
     /// <summary>A byte array behind the engine's plain sequential face — a local file, as the adapters see one.</summary>

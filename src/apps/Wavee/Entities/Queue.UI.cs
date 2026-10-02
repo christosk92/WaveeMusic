@@ -21,9 +21,10 @@
 // A QUEUE ROW IS NOT `Track.Row` (ch 21 §9.3 #4): it is a builder over (row ref, QueueEdge) — heart, ✕, a drag payload that
 // no playlist may copy, the autoplay dim, a section-named menu. The rail's Modern rows and its now-playing card are the
 // shared media surface (`Controls.Surface` over `Track.RowData` / `Episode.RowData`: the plate, the hand, the play FAB,
-// the pill, the "…" and the right-click menu are the surface's; a row whose title is not known yet is its seed face) with
-// the heart and ✕ as its trailing cluster; `QueueRowRules` holds the decisions. The Classic skin (hairline rows, no art,
-// one folded line) and the stage pane's glass rows stay their own trees — the surface has no hairline or on-media plate.
+// the pill and the right-click menu are the surface's — no "…" button, `QueueRowRules.ShowsMenuButton`; a row whose title
+// is not known yet is its seed face) with the heart and ✕ as its trailing cluster; `QueueRowRules` holds the decisions.
+// The Classic skin (hairline rows, no art, one folded line) and the stage pane's glass rows stay their own trees — the
+// surface has no hairline or on-media plate.
 //
 // EVERY SLOT IS A PLAIN KEYED CHILD (ch 21 §0 #6): no virtualization, rows Enter/Exit/Slide, visual pagination at 100
 // rows per page. ONE `Reorderable` spans the lane, headers included; `QueueMovePlan` decides a drop and a cross-section
@@ -164,6 +165,18 @@ public static partial class Queue
         if (context.Kind != EntityKind.List) return NameOf(context);
         return ListName(context, in wire) ?? NameOf(ContextTarget(context, in wire));
     }
+
+    /// <summary>The noun for a context's KIND ("album", "playlist", "artist", "podcast", "search") — the fullscreen stage's
+    /// "Playing from {kind}" caption. Anything that is not one of the four named kinds (a Liked Songs collection, a
+    /// <c>spotify:list:</c> context, a search context) reads as "search". UI, not <c>Queue.cs</c>: it reads loc.</summary>
+    public static string ContextKindLabel(EntityId context) => Loc.Get(context.Kind switch
+    {
+        EntityKind.Album => Strings.Stage.Kind.Album,
+        EntityKind.Playlist => Strings.Stage.Kind.Playlist,
+        EntityKind.Artist => Strings.Stage.Kind.Artist,
+        EntityKind.Show => Strings.Stage.Kind.Show,
+        _ => Strings.Stage.Kind.Search,
+    });
 
     static string? NameOf(EntityId context)
     {
@@ -570,17 +583,17 @@ public static partial class Queue
         }
 
         /// <summary>The Modern row: THE shared media surface (<c>Shape.Row</c>) over the row's own adapter — the plate, the
-        /// hand, the play FAB, the pill, the "…" and the right-click menu are the surface's; the heart and ✕ are its trailing
-        /// cluster. A click (and the FAB) is a cursor move inside the live session (<see cref="SkipToRow"/>), and the lane's
-        /// reorder gesture rides the wrapper above the row, so the surface carries a drag of its own only for a viewer, who
-        /// has no lane. The wrapper here carries what the surface has no dial for: the key (a skin flip REMOUNTS), the
+        /// hand, the play FAB, the pill and the right-click menu are the surface's (no "…" button,
+        /// <see cref="QueueRowRules.ShowsMenuButton"/>); the heart and ✕ are its trailing cluster. A click (and the FAB) is
+        /// a cursor move inside the live session (<see cref="SkipToRow"/>), and the lane's reorder gesture rides the wrapper
+        /// above the row, so the surface carries a drag of its own only for a viewer, who has no lane. The wrapper here carries what the surface has no dial for: the key (a skin flip REMOUNTS), the
         /// autoplay dim and the Enter/Exit/Slide motion.</summary>
         Element SurfaceRow(RowText text, EntityRef r, ulong itemId, int index, QueueSection section, bool art, bool removable)
         {
             bool viewer = Viewer;
             Action skip = () => SkipToRow(itemId, index, r);
             var data = SurfaceData(r, text, art, click: skip, play: skip, draggable: QueueRowRules.RowDrags(viewer), queueItem: itemId,
-                                   menu: () => RowMenu(itemId, index, r, viewer), showMenu: true,
+                                   menu: () => RowMenu(itemId, index, r, viewer),
                                    trailing: RowTrailing(text, removable, () => RemoveRow(itemId, index, r)));
             var shape = Shape.Row(TrackRowRules.ArtEdge(QueueArt, art)) with { MinHeight = RowExtent };
             return new BoxEl
@@ -595,17 +608,20 @@ public static partial class Queue
         }
 
         /// <summary>The Classic row: hairline, square, no art, title and artists folded into one line — a look the surface
-        /// has no plate for, so it stays its own tree.</summary>
+        /// has no plate for, so it stays its own tree. Like the Modern row it has no "…" button
+        /// (<see cref="QueueRowRules.ShowsMenuButton"/>): its menu is the right-click / Menu key (<c>Attach</c>).</summary>
         Element ClassicRow(RowText text, EntityRef r, ulong itemId, int index, QueueSection section, bool removable)
         {
-            var kids = new List<Element>(4) { HeartLane(text, ClassicExtent), ClassicIdentity(text, nowPlaying: false) };
-            kids.Add(MenuHost is null ? new BoxEl { Width = 0f, Shrink = 0f } : Overflow());
-            kids.Add(removable ? CloseGlyph(() => RemoveRow(itemId, index, r), classic: true) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f });
-
             var body = new BoxEl
             {
                 Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = ClassicExtent,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.XS, 0f), Children = kids.ToArray(),
+                Padding = new Edges4(Spacing.S, 0f, Spacing.XS, 0f),
+                Children =
+                [
+                    HeartLane(text, ClassicExtent),
+                    ClassicIdentity(text, nowPlaying: false),
+                    removable ? CloseGlyph(() => RemoveRow(itemId, index, r), classic: true) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f },
+                ],
             };
             var row = new BoxEl
             {
@@ -628,8 +644,9 @@ public static partial class Queue
 
         /// <summary>The playing card: Modern is the surface on the TILE plate (the opaque card fill and a hairline that turns
         /// accent while it plays) at a 44 art, its click the playing context's page — the context when it has one, else the
-        /// track's album — and, with nowhere to go, NO click: the body is display-only and the FAB still toggles play/pause. The heart is its trailing; no "…"
-        /// (the right-click menu stays, the slot goes), and it drags as the one track it is. Classic stays its hairline row.</summary>
+        /// track's album — and, with nowhere to go, NO click: the body is display-only and the FAB still toggles play/pause.
+        /// The heart is its trailing; no "…" button (<see cref="QueueRowRules.ShowsMenuButton"/> — the right-click track
+        /// menu stays), and it drags as the one track it is. Classic stays its hairline row.</summary>
         Element NowPlayingCard(EntityRef current, bool classic)
         {
             RowText text = TextOf(current);
@@ -640,7 +657,7 @@ public static partial class Queue
             Action? open = QueueRowRules.NowPlayingClickOf(!target.IsNone) == QueueRowRules.NowPlayingClick.OpenContext
                 ? () => Shell.GoTo(target) : null;
             var data = SurfaceData(current, text, art: true, click: open, play: toggle, draggable: true, queueItem: null, menu: null,
-                                   showMenu: false, trailing: HeartLane(text));
+                                   trailing: HeartLane(text));
             var shape = Shape.RowTile with { ArtEdge = NowArt };
             return new BoxEl
             {
@@ -702,9 +719,11 @@ public static partial class Queue
         /// <c>Track.RowData</c> over the row the track DISPLAYS (a relink reads its canonical facts; the uri stays the
         /// queue's own, which the playback relation matches). A ruled-unavailable track keeps the row's own "Unavailable" in
         /// place of its title, artists and cover. <paramref name="menu"/> replaces a track's single-track menu with the
-        /// queue-entry menu; <paramref name="queueItem"/> marks the drag a queue reorder no playlist may deposit.</summary>
+        /// queue-entry menu; <paramref name="queueItem"/> marks the drag a queue reorder no playlist may deposit.
+        /// No row grows the surface's hover "…" (<see cref="QueueRowRules.ShowsMenuButton"/>): its overlay would land on
+        /// the ✕ (or, on the card, the heart) and hide it. The menu stays on the right-click, the Menu key and the swipe.</summary>
         static Controls.CardData SurfaceData(EntityRef r, RowText text, bool art, Action? click, Action play, bool draggable,
-                                             ulong? queueItem, Func<ContextMenuModel?>? menu, bool showMenu, Element trailing)
+                                             ulong? queueItem, Func<ContextMenuModel?>? menu, Element trailing)
         {
             switch (QueueRowRules.FaceOf(r.Kind, text.Thin))
             {
@@ -716,14 +735,16 @@ public static partial class Queue
                     var facts = Episode.RowFactsOf(episode);
                     if (!art) facts = facts with { Cover = null };
                     var data = Episode.RowData(episode, in facts,
-                        new Episode.RowOptions(OnClick: click, OnPlay: play, ShowMeta: false, ShowGoToShow: true, Trailing: trailing));
+                        new Episode.RowOptions(OnClick: click, OnPlay: play, ShowMeta: false, ShowGoToShow: true, Trailing: trailing))
+                        with { ShowMenu = QueueRowRules.ShowsMenuButton };
                     // The episode adapter reads a null click as "open the episode page"; the caller's null is display-only.
                     return click is null ? data with { OnClick = null } : data;
                 }
                 default:
                 {
                     var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art, ShowExplicit: false,
-                                                           ShowVideo: true, Draggable: draggable, ShowMenu: showMenu,
+                                                           ShowVideo: true, Draggable: draggable,
+                                                           ShowMenu: QueueRowRules.ShowsMenuButton,
                                                            QueueItemId: queueItem, Trailing: trailing);
                     var data = Track.RowData(new Track(r.Slot).ForDisplay, in options) with { Uri = text.Uri };
                     if (menu is not null) data = data with { Menu = menu };
@@ -736,7 +757,7 @@ public static partial class Queue
         /// viewed rows line up.</summary>
         static Element RowTrailing(RowText text, bool removable, Action remove) => new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Direction = 0, Gap = Spacing.XXS, AlignItems = FlexAlign.Center, Shrink = 0f,
             Children =
             [
                 HeartLane(text),
@@ -905,23 +926,6 @@ public static partial class Queue
         {
             Key = "classic-hairline", AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Height = 1f,
             Fill = Prop.Of(static () => Tok.StrokeDividerDefault), HitTestVisible = false,
-        };
-
-        /// <summary>The Classic row's hover-revealed "…": re-enters the context funnel, so the row's own menu opens anchored
-        /// here (the surface's own trailing "…" does the same for the Modern row).</summary>
-        static Element Overflow() => new BoxEl
-        {
-            Opacity = 0f, HoverOpacity = 1f, Shrink = 0f, BlocksDragArm = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Corners = CornerRadius4.All(0f), HoverFill = Design.Colors.RowPressed,
-                    Role = AutomationRole.Button, Cursor = CursorId.Hand, ClickRequestsContext = true,
-                    Children = [new TextEl(Icons.More) { Size = 14f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary }],
-                },
-            ],
         };
 
         /// <summary>The rail's ✕ is painted AT REST (no hover-opacity — that is the stage's row, ch 21 §11 #1).</summary>
@@ -1354,8 +1358,9 @@ public static partial class Queue
 }
 
 /// <summary>The rail queue row's pure decisions, engine-free so a fact pins each one: the row's height under each skin
-/// (the lane's drag maths needs it EXACT), the autoplay dim, which row has a ✕, which row drags on its own, which adapter
-/// feeds a row, and where a click on the playing card goes. The builders in <c>Queue.UI.cs</c> only feed them.</summary>
+/// (the lane's drag maths needs it EXACT), the autoplay dim, which row has a ✕, which row drags on its own, whether a row
+/// has a "…" button, which adapter feeds a row, and where a click on the playing card goes. The builders in
+/// <c>Queue.UI.cs</c> (and the rail's "Next up" rows) only feed them.</summary>
 public static class QueueRowRules
 {
     /// <summary>The Classic row's height: the hairline row, no art.</summary>
@@ -1384,6 +1389,13 @@ public static class QueueRowRules
     /// <summary>A row carries a drag of its own only when no reorder lane does: the lane's wrapper is the drag source of
     /// every row of a queue we own, and a viewed queue has no lane.</summary>
     public static bool RowDrags(bool viewer) => viewer;
+
+    /// <summary>Does a queue surface grow the hover "…" button? Never — the rail queue's rows (both skins), its
+    /// now-playing card and the NPV's "Next up" rows are right-click only (the Menu key, Shift+F10 and the touch swipe open
+    /// the same entry menu). The surface's "…" overlays the row's END, which here is the ✕ / the heart: on hover it hid and
+    /// blocked them (owner, 2026-10-02 — reverses interaction-consistency D4). Fed to the surface as
+    /// <c>CardData.ShowMenu</c>, which keeps the attached menu and drops only the button.</summary>
+    public static bool ShowsMenuButton => false;
 
     /// <summary>Which adapter feeds a row: the seed face while its title is unknown, the episode adapter for an episode,
     /// the track adapter for everything else.</summary>

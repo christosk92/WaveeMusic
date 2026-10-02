@@ -5,8 +5,9 @@
 // Role: CORE
 // Owner: U
 // Wave: 3 (parallel — pure over spans, no wave dependency)
-// Budget: 920 lines (split out of `Playback.Audio.Flac.cs` by the optimisation pass: the two halves together
-//         passed that file's 1,100 + 30 %, so the arithmetic became this named partial and the format stayed there)
+// Budget: 1,070 lines (split out of `Playback.Audio.Flac.cs` by the optimisation pass: the two halves together
+//         passed that file's 1,100 + 30 %, so the arithmetic became this named partial and the format stayed there;
+//         920 then, +150 for K4b — the 33-bit side-channel kernels (P-1) — and the explicit §9.1.3 downmix table (P-4))
 // Spec: docs/plans/wavee/wavee-0.3-flac-implementation.md §3 + RFC 9639
 //
 // WHY THIS FILE EXISTS. `Playback.Audio.Flac.cs` is the FORMAT — what a metadata block is, what a frame header
@@ -43,6 +44,12 @@
 //     fixed.c:571-599. Symphonia is scalar here too (decoder.rs:716-752).
 //   • The Rice loop. Every residual's bit length depends on the one before it; there is nothing to widen.
 //   • `Crc8`. Sixteen header bytes at most — below any threshold worth a table wider than one.
+//   • The 33-bit side channel (K4b, P-1). A 32-bit stereo stream coded L/S, S/R or M/S carries one channel at 33 bits
+//     (RFC 9639 §9.2), which an `int` cannot hold. That channel is restored, shifted and decorrelated in `long`, as
+//     libFLAC's `FLAC__lpc_restore_signal_wide_33bit` / `FLAC__fixed_restore_signal_wide_33bit` do. It is the rarest
+//     path in the decoder (a lossless 32-bit stereo file), so it is scalar loops over the same recurrences and no
+//     vector twin: the LPC is a serial recurrence like the narrow ones, a 64-bit lane multiply has no native
+//     instruction below AVX-512, and the decorrelation is one pass over a block that is already decoded.
 // What is left — the decorrelation, the wasted-bits shift and the int→float scale — is elementwise over a whole
 // block, and that is where `Vector256` runs with a `Vector128` (NEON: arm64 ships) path under it and a scalar tail
 // that is also the whole path on a short block. `ForceScalar` turns every one of them off so a test can assert the
@@ -185,6 +192,12 @@ public static partial class Playback
             /// <summary>Read n bits as a two's-complement signed value (n ≤ 32).</summary>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int ReadSigned(int n) => n == 0 ? 0 : (int)(Read(n) << (32 - n)) >> (32 - n);
+
+            /// <summary>Read n bits (1..64) as a two's-complement signed <c>long</c> — the 33-bit side channel's
+            /// warm-ups, verbatim samples and constant (P-1). <see cref="ReadSigned"/> cannot do this: it narrows to
+            /// 32 bits and its <c>32 − n</c> shift count is masked by C#. Not a hot loop: only a 32-bit stereo
+            /// stream reaches it.</summary>
+            public long ReadSignedLong(int n) => n == 0 ? 0 : (long)(ReadLong(n) << (64 - n)) >> (64 - n);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool ReadBit() => Read(1) != 0;
@@ -578,6 +591,117 @@ public static partial class Playback
             }
         }
 
+        // ── K4b. The 33-bit side channel (P-1; RFC 9639 §9.2) ───────────────────────────────────────────────────────
+        //
+        // A 32-bit stereo stream coded L/S, S/R or M/S carries its side channel at 33 bits: L − R spans
+        // −(2^32 − 1) .. 2^32 − 1. The channel is decoded into a `long` block; its Rice residuals still fit an `int`
+        // (libFLAC keeps `residual[]` 32-bit for exactly this case), so they are decoded into the side channel's own
+        // slot of the planar `int` buffer — which is idle, the samples live in the `long` block — and restored from
+        // there. Both restorations are libFLAC's `_wide_33bit` forms: the warm-ups are already in `s[0, order)`, the
+        // residuals are in `res[order..]`, and every other sample is residual + prediction in 64-bit. The output of
+        // the decorrelation is always 32-bit (a real L or R), so everything after `DecorrelateWide` is the narrow path.
+
+        /// <summary>§9.2.5 FIXED restoration into 64-bit samples. <paramref name="s"/>[0, order) hold the warm-ups,
+        /// <paramref name="res"/>[order..] the residuals; fills <paramref name="s"/>[order..]. Order 0 copies the
+        /// residuals (the narrow path restores in place and leaves them where they are).</summary>
+        public static void RestoreFixed33(Span<long> s, ReadOnlySpan<int> res, int order)
+        {
+            int n = s.Length;
+            if (order < 0 || order > 4 || n < order || res.Length < n) return;
+            fixed (long* d = s)
+            fixed (int* q = res)
+            {
+                long* p = d + order;
+                long* end = d + n;
+                int* r = q + order;
+                switch (order)
+                {
+                    case 0:
+                        for (; p < end; p++, r++) *p = *r;
+                        return;
+                    case 1:
+                        for (; p < end; p++, r++) *p = *r + p[-1];
+                        return;
+                    case 2:
+                        for (; p < end; p++, r++) *p = *r + 2L * p[-1] - p[-2];
+                        return;
+                    case 3:
+                        for (; p < end; p++, r++) *p = *r + 3L * p[-1] - 3L * p[-2] + p[-3];
+                        return;
+                    default:
+                        for (; p < end; p++, r++) *p = *r + 4L * p[-1] - 6L * p[-2] + 4L * p[-3] - p[-4];
+                        return;
+                }
+            }
+        }
+
+        /// <summary>§9.2.6 LPC restoration into 64-bit samples: <c>s[i] = res[i] + ((Σ c[j]·s[i−1−j]) &gt;&gt;
+        /// shift)</c>, the sum in <c>long</c> (a 15-bit coefficient × a 33-bit sample × 32 taps is under 2^53, so it
+        /// cannot overflow). Warm-ups in <paramref name="s"/>[0, order), residuals in <paramref name="res"/>[order..].
+        /// One 4-way-unrolled loop for every order — this path is a 32-bit stereo stream's side channel and nothing
+        /// else, so the per-order unrolling the 32/64-bit kernels earn is not worth the code.</summary>
+        public static void RestoreLpc33(Span<long> s, ReadOnlySpan<int> res, ReadOnlySpan<int> c, int shift)
+        {
+            int order = c.Length;
+            int n = s.Length;
+            if (order <= 0 || order > MaxLpcOrder || n < order || res.Length < n) return;
+            fixed (long* d = s)
+            fixed (int* q = res)
+            fixed (int* k = c)
+            {
+                long* p = d + order;
+                long* end = d + n;
+                int* r = q + order;
+                for (; p < end; p++, r++)
+                {
+                    long sum = 0;
+                    int j = 0;
+                    for (; j + 4 <= order; j += 4)
+                        sum += (long)k[j] * p[-1 - j] + (long)k[j + 1] * p[-2 - j]
+                             + (long)k[j + 2] * p[-3 - j] + (long)k[j + 3] * p[-4 - j];
+                    for (; j < order; j++) sum += (long)k[j] * p[-1 - j];
+                    *p = *r + (sum >> shift);
+                }
+            }
+        }
+
+        /// <summary>§9.2.2's "add k least-significant zero bits" over a 64-bit run. <paramref name="bits"/> is
+        /// below 33 here (the subframe header rejects <c>wasted ≥ bps</c> and <c>bps</c> is 33), so C#'s shift-count
+        /// mask — the hazard <see cref="ShiftLeft"/> guards against — cannot bite.</summary>
+        public static void ShiftLeftWide(Span<long> s, int bits)
+        {
+            for (int i = 0; i < s.Length; i++) s[i] <<= bits;
+        }
+
+        /// <summary>§4.2 for a 32-bit stream: the same three decorrelations as <see cref="Decorrelate"/>, with the
+        /// side channel taken from the 64-bit <paramref name="side"/> block instead of from an <c>int</c> run, and
+        /// the arithmetic done in <c>long</c> so L − S, S + R and the mid/side sum cannot wrap. The channel that is
+        /// NOT the side channel is read from <paramref name="ch0"/> (L/S, M/S) or <paramref name="ch1"/> (S/R); the
+        /// outputs — always a real 32-bit L and R — go to the <c>int</c> runs. Anything other than assignments 1..3
+        /// is a no-op. Scalar by design (see the file header).</summary>
+        public static void DecorrelateWide(byte assignment, Span<int> ch0, Span<int> ch1, ReadOnlySpan<long> side)
+        {
+            int n = Math.Min(Math.Min(ch0.Length, ch1.Length), side.Length);
+            switch (assignment)
+            {
+                case 1:                                                 // left/side: R = L − S
+                    for (int i = 0; i < n; i++) ch1[i] = (int)(ch0[i] - side[i]);
+                    break;
+                case 2:                                                 // side/right: L = S + R
+                    for (int i = 0; i < n; i++) ch0[i] = (int)(side[i] + ch1[i]);
+                    break;
+                case 3:                                                 // mid/side
+                    for (int i = 0; i < n; i++)
+                    {
+                        long s = side[i];
+                        long mid = ((long)ch0[i] << 1) | (s & 1);
+                        ch0[i] = (int)((mid + s) >> 1);
+                        ch1[i] = (int)((mid - s) >> 1);
+                    }
+                    break;
+            }
+        }
+
         // ── K5. Decorrelation, the wasted-bits shift, and the float conversion — the SIMD sites (P15) ────────────────
 
         /// <summary>§4.2, in place over the two channel runs. Left/side: R = L − S. Side/right: L = S + R. Mid/side:
@@ -749,25 +873,41 @@ public static partial class Playback
         }
 
         /// <summary>Mono, and 3..8-channel files (local only; Spotify serves stereo). A mono source is duplicated; a
-        /// multichannel source is downmixed to L/R in the RFC §9.1.3 channel order (FL FR FC LFE BL BR SL SR) with
-        /// the usual −3 dB centre and surround weights. We play a stereo device, so a downmix is the honest answer
-        /// for a file the user dropped — 0.2.9's FlacBox path interleaved N channels into a stereo buffer.
+        /// multichannel source is downmixed to L/R by an EXPLICIT per-channel-count table, because RFC 9639 §9.1.3
+        /// fixes a different channel order for every count (P-4):
+        /// <code>
+        ///   3 = FL FR FC              4 = FL FR BL BR            5 = FL FR FC BL BR
+        ///   6 = FL FR FC LFE BL BR    7 = FL FR FC LFE BC SL SR  8 = FL FR FC LFE BL BR SL SR
+        /// </code>
+        /// FL/FR pass at 1; FC goes to both sides at 0.7071 (−3 dB); BL/SL go to L and BR/SR to R at 0.7071; BC (the
+        /// 7-channel layout's only mono rear channel) goes to both sides at 0.5; LFE is dropped. We play a stereo
+        /// device, so a downmix is the honest answer for a file the user dropped — 0.2.9's FlacBox path interleaved
+        /// N channels into a stereo buffer.
         /// <para>Same three paths as <see cref="ToFloat"/>. The weights multiply in the scalar path's order —
-        /// <c>(sample × scale) × k</c>, never <c>sample × (scale × k)</c> — because float multiplication is not
-        /// associative and the two would differ by a ULP on some samples; the equivalence fact would then be a
-        /// tolerance instead of an equality, and a tolerance is not a proof.</para></summary>
+        /// <c>(sample × scale) × k</c>, never <c>sample × (scale × k)</c> — and accumulate in one fixed order
+        /// (FL, + FC, + the first surround pair, + the second pair, + BC) in all three paths, because float
+        /// arithmetic is not associative and the two would differ by a ULP on some samples; the equivalence fact
+        /// would then be a tolerance instead of an equality, and a tolerance is not a proof.</para></summary>
         public static void ToFloatMulti(ReadOnlySpan<int> planar, int channels, int block, int bps, float gain, Span<float> interleaved)
         {
             float scale = gain / (float)(1L << (bps - 1));
-            const float k = 0.7071f;
+            const float k = 0.7071f;                            // −3 dB: FC, and every surround / side channel
+            const float kb = 0.5f;                              // BC, to each side
             if (interleaved.Length < block * 2) block = interleaved.Length / 2;
             if (block <= 0 || channels <= 0 || planar.Length < channels * block) return;
-            // Which planes the downmix reads, resolved once: centre, then the two surrounds, then the two sides.
-            int c3 = channels >= 3 ? 2 : -1;
-            int c5L = channels >= 5 ? (channels == 5 ? 3 : 4) : -1;
-            int c5R = channels >= 5 ? (channels == 5 ? 4 : 5) : -1;
-            int c7L = channels >= 7 ? channels - 2 : -1;
-            int c7R = channels >= 7 ? channels - 1 : -1;
+            // Which planes the downmix reads, resolved ONCE from the §9.1.3 table above (−1 = the layout has none).
+            // cC = FC; cL1/cR1 = the first surround pair (BL/BR; SL/SR for 7 channels); cL2/cR2 = the second pair
+            // (8 channels only: SL/SR after BL/BR); cBc = BC (7 channels only). LFE is never read.
+            int cC = -1, cL1 = -1, cR1 = -1, cL2 = -1, cR2 = -1, cBc = -1;
+            switch (channels)
+            {
+                case 3: cC = 2; break;                                                      // FL FR FC
+                case 4: cL1 = 2; cR1 = 3; break;                                            // FL FR BL BR
+                case 5: cC = 2; cL1 = 3; cR1 = 4; break;                                    // FL FR FC BL BR
+                case 6: cC = 2; cL1 = 4; cR1 = 5; break;                                    // FL FR FC LFE BL BR
+                case 7: cC = 2; cBc = 4; cL1 = 5; cR1 = 6; break;                           // FL FR FC LFE BC SL SR
+                case 8: cC = 2; cL1 = 4; cR1 = 5; cL2 = 6; cR2 = 7; break;                  // FL FR FC LFE BL BR SL SR
+            }
             int i = 0;
             fixed (int* p = planar)
             fixed (float* o = interleaved)
@@ -776,6 +916,7 @@ public static partial class Playback
                 {
                     var kv = Vector256.Create(scale);
                     var kw = Vector256.Create(k);
+                    var kbv = Vector256.Create(kb);
                     for (int step = Vector256<int>.Count; i <= block - step; i += step)
                     {
                         var l = Vector256.ConvertToSingle(Vector256.Load(p + i)) * kv;
@@ -783,21 +924,27 @@ public static partial class Playback
                         if (channels > 1)
                         {
                             r = Vector256.ConvertToSingle(Vector256.Load(p + block + i)) * kv;
-                            if (c3 >= 0)
+                            if (cC >= 0)
                             {
-                                var cv = Vector256.ConvertToSingle(Vector256.Load(p + c3 * block + i)) * kv * kw;
+                                var cv = Vector256.ConvertToSingle(Vector256.Load(p + cC * block + i)) * kv * kw;
                                 l += cv;
                                 r += cv;
                             }
-                            if (c5L >= 0)
+                            if (cL1 >= 0)
                             {
-                                l += Vector256.ConvertToSingle(Vector256.Load(p + c5L * block + i)) * kv * kw;
-                                r += Vector256.ConvertToSingle(Vector256.Load(p + c5R * block + i)) * kv * kw;
+                                l += Vector256.ConvertToSingle(Vector256.Load(p + cL1 * block + i)) * kv * kw;
+                                r += Vector256.ConvertToSingle(Vector256.Load(p + cR1 * block + i)) * kv * kw;
                             }
-                            if (c7L >= 0)
+                            if (cL2 >= 0)
                             {
-                                l += Vector256.ConvertToSingle(Vector256.Load(p + c7L * block + i)) * kv * kw;
-                                r += Vector256.ConvertToSingle(Vector256.Load(p + c7R * block + i)) * kv * kw;
+                                l += Vector256.ConvertToSingle(Vector256.Load(p + cL2 * block + i)) * kv * kw;
+                                r += Vector256.ConvertToSingle(Vector256.Load(p + cR2 * block + i)) * kv * kw;
+                            }
+                            if (cBc >= 0)
+                            {
+                                var bv = Vector256.ConvertToSingle(Vector256.Load(p + cBc * block + i)) * kv * kbv;
+                                l += bv;
+                                r += bv;
                             }
                         }
                         Interleave256(l, r, o + (i << 1));
@@ -807,6 +954,7 @@ public static partial class Playback
                 {
                     var kv = Vector128.Create(scale);
                     var kw = Vector128.Create(k);
+                    var kbv = Vector128.Create(kb);
                     for (int step = Vector128<int>.Count; i <= block - step; i += step)
                     {
                         var l = Vector128.ConvertToSingle(Vector128.Load(p + i)) * kv;
@@ -814,21 +962,27 @@ public static partial class Playback
                         if (channels > 1)
                         {
                             r = Vector128.ConvertToSingle(Vector128.Load(p + block + i)) * kv;
-                            if (c3 >= 0)
+                            if (cC >= 0)
                             {
-                                var cv = Vector128.ConvertToSingle(Vector128.Load(p + c3 * block + i)) * kv * kw;
+                                var cv = Vector128.ConvertToSingle(Vector128.Load(p + cC * block + i)) * kv * kw;
                                 l += cv;
                                 r += cv;
                             }
-                            if (c5L >= 0)
+                            if (cL1 >= 0)
                             {
-                                l += Vector128.ConvertToSingle(Vector128.Load(p + c5L * block + i)) * kv * kw;
-                                r += Vector128.ConvertToSingle(Vector128.Load(p + c5R * block + i)) * kv * kw;
+                                l += Vector128.ConvertToSingle(Vector128.Load(p + cL1 * block + i)) * kv * kw;
+                                r += Vector128.ConvertToSingle(Vector128.Load(p + cR1 * block + i)) * kv * kw;
                             }
-                            if (c7L >= 0)
+                            if (cL2 >= 0)
                             {
-                                l += Vector128.ConvertToSingle(Vector128.Load(p + c7L * block + i)) * kv * kw;
-                                r += Vector128.ConvertToSingle(Vector128.Load(p + c7R * block + i)) * kv * kw;
+                                l += Vector128.ConvertToSingle(Vector128.Load(p + cL2 * block + i)) * kv * kw;
+                                r += Vector128.ConvertToSingle(Vector128.Load(p + cR2 * block + i)) * kv * kw;
+                            }
+                            if (cBc >= 0)
+                            {
+                                var bv = Vector128.ConvertToSingle(Vector128.Load(p + cBc * block + i)) * kv * kbv;
+                                l += bv;
+                                r += bv;
                             }
                         }
                         Interleave128(l, r, o + (i << 1));
@@ -846,17 +1000,18 @@ public static partial class Playback
                     {
                         l = p[i] * scale;
                         r = p[block + i] * scale;
-                        if (c3 >= 0) { float c = p[c3 * block + i] * scale * k; l += c; r += c; }
-                        if (c5L >= 0)
+                        if (cC >= 0) { float c = p[cC * block + i] * scale * k; l += c; r += c; }
+                        if (cL1 >= 0)
                         {
-                            l += p[c5L * block + i] * scale * k;
-                            r += p[c5R * block + i] * scale * k;
+                            l += p[cL1 * block + i] * scale * k;
+                            r += p[cR1 * block + i] * scale * k;
                         }
-                        if (c7L >= 0)
+                        if (cL2 >= 0)
                         {
-                            l += p[c7L * block + i] * scale * k;
-                            r += p[c7R * block + i] * scale * k;
+                            l += p[cL2 * block + i] * scale * k;
+                            r += p[cR2 * block + i] * scale * k;
                         }
+                        if (cBc >= 0) { float b = p[cBc * block + i] * scale * kb; l += b; r += b; }
                     }
                     o[i << 1] = l;
                     o[(i << 1) + 1] = r;

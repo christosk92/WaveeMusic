@@ -1,4 +1,4 @@
-﻿// ── Screens/Diagnostics.Host.cs ────────────────────────────────────────────────────────────────────────────────────
+// ── Screens/Diagnostics.Host.cs ────────────────────────────────────────────────────────────────────────────────────
 // WaveeLogSessions' disk walk + export, NavigationFrameWatch + MemorySampler (the always-on frame and memory lines,
 // the Shell.RouteNoted consumer), the lyrics evidence bundle. The old crash-report writer + GUI-run crash-prompt
 // latch (Diagnostics.CrashReport, Diagnostics.BeginGuiRun, NewCrashDump) retired here — see
@@ -32,19 +32,25 @@ namespace Wavee;
 
 public static partial class WaveeLogSessions
 {
-    /// <summary>Every completed session on disk, newest first (this run excluded). <paramref name="basePath"/> is the
-    /// CONFIGURED path (<c>Log.BasePath</c>, wavee.log): the dated live file would narrow the glob to one day.</summary>
-    public static List<Info> ListPastSessions(string? basePath, int currentPid)
+    /// <summary>Every completed session on disk, newest first (this run excluded), with what the walk saw.
+    /// <paramref name="basePath"/> is the CONFIGURED path (<c>Log.BasePath</c>, wavee.log): the dated live file would
+    /// narrow the glob to one day. Only app logs are walked (<see cref="LogFileNames.IsAppLog"/> — daily files, size
+    /// rolls and the legacy double-dated rolls), in <see cref="Chronological"/> order. NEVER throws: any fault comes
+    /// back in <see cref="WalkResult.Error"/>, because the session picker has to be able to say "couldn't read the log
+    /// folder" instead of showing the same empty list it shows for "nothing on disk". The files stream line by line
+    /// (<see cref="ReadSharedLines"/>); a month of logs is ~60 MB and none of it is buffered whole.</summary>
+    public static WalkResult ListPastSessions(string? basePath, int currentPid)
     {
         try
         {
             string? dir = basePath is null ? null : Path.GetDirectoryName(basePath);
-            if (basePath is null || dir is null || !Directory.Exists(dir)) return [];
-            string root = Path.GetFileNameWithoutExtension(basePath), ext = Path.GetExtension(basePath);
-            string[] files = Chronological(Directory.GetFiles(dir, root + "-*" + ext), File.Exists(basePath) ? basePath : null);
-            return Split(files, ReadSharedLines, Log.SessionId, currentPid);
+            if (basePath is null || dir is null || !Directory.Exists(dir)) return new WalkResult([], 0, 0, 0, null);
+            string[] rolled = LogFileNames.AppLogs(Directory.EnumerateFiles(dir, LogFileNames.Glob(basePath)), basePath).ToArray();
+            string[] files = Chronological(rolled, File.Exists(basePath) ? basePath : null);
+            var sessions = Split(files, ReadSharedLines, Log.SessionId, currentPid, out long linesSeen, out int filesSkipped);
+            return new WalkResult(sessions, files.Length, linesSeen, filesSkipped, null);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return []; }
+        catch (Exception ex) { return new WalkResult([], 0, 0, 0, ex); }
     }
 
     public static WaveeLogEntry[] LoadSession(Info info, int maxEntries = 4096) => Load(info, ReadSharedLines, maxEntries);
@@ -283,7 +289,7 @@ public static partial class Diagnostics
                 if (PaneFaultEdge(s_paneFault, fault))
                     Log.Event(WaveeLogLevel.Error, "sidebar", "sidebar.pane.invariant_failed", "Sidebar pane did not settle in a valid terminal state", null, -1, null,
                         WaveeLogField.Of("route", s_route), WaveeLogField.Of("design", snap.Design.ToString()),
-                        WaveeLogField.Of("presentedCompact", snap.PresentedCompact), WaveeLogField.Of("preferredWidth", snap.PreferredExpandedWidth),
+                        WaveeLogField.Of("regime", snap.Regime.ToString()), WaveeLogField.Of("detent", snap.Detent.ToString()), WaveeLogField.Of("lastResort", snap.LastResort), WaveeLogField.Of("presentedWidth", snap.PresentedWidth), WaveeLogField.Of("preferredWidth", snap.PreferredExpandedWidth),
                         WaveeLogField.Of("renderedWidth", snap.RenderedPaneWidth), WaveeLogField.Of("fault", SidebarPaneInvariant.FaultName(fault)));
                 s_paneFault = fault;
             }
@@ -501,6 +507,7 @@ public static partial class Diagnostics
                 ? (allocNow - s_lastAllocBytes) / ((nowTicks - s_lastAllocTicks) / (double)System.Diagnostics.Stopwatch.Frequency) / 1048576.0 : 0;
             s_lastAllocBytes = allocNow; s_lastAllocTicks = nowTicks;
             long ws = Environment.WorkingSet, privateBytes = 0, processPeak = 0;
+            long previousPeak = s_peakWorkingSet;   // the level is judged against the peak BEFORE this sample raises it
             if (ws > s_peakWorkingSet) s_peakWorkingSet = ws;
             try { using var p = System.Diagnostics.Process.GetCurrentProcess(); privateBytes = p.PrivateMemorySize64; processPeak = p.PeakWorkingSet64; } catch { }
             var gc = GC.GetGCMemoryInfo();
@@ -532,7 +539,8 @@ public static partial class Diagnostics
                 sb.Append(" | gpu bytes=").Append(Mb(g.Bytes)).Append(" resources=").Append(g.Count);
                 if (FluentApp.GpuCensusLine() is { Length: > 0 } detail) sb.Append(detail);
             }
-            Log.Event(ws > 400L * 1024 * 1024 ? WaveeLogLevel.Warning : WaveeLogLevel.Info, "mem", "mem.sample", sb.ToString());
+            // Warning only on a new working-set peak above 400 MB (MemorySamplePolicy): a steady 800 MB used to warn every 5 s.
+            Log.Event(MemorySamplePolicy.LevelFor(ws, previousPeak, MemorySamplePolicy.WarnBytes), "mem", "mem.sample", sb.ToString());
         }
 
         /// <summary>The process-lifetime peak, after the UI loop (no engine read after host disposal).</summary>

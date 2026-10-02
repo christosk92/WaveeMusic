@@ -357,7 +357,7 @@ public readonly partial struct Artist
             _demandBlocks = DemandBlocks;
             _settle = Settle;
             _seekAlbumKey = SeekAlbumKey;
-            _playAll = () => { var a = new Artist(_artist); if (a.IsValid) Playback.PlayContext(a.Id); };
+            _playAll = () => { var a = new Artist(_artist); if (a.IsValid) Playback.PlayOrToggleContext(a.Id); };
             _shuffleAll = () =>
             {
                 var a = new Artist(_artist);
@@ -1399,7 +1399,7 @@ public readonly partial struct Artist
                 _r = r;
                 _slot = b.AlbumSlot;
                 Block = b;
-                _menu = () => { var a = new Album(_slot); return a.IsValid ? Album.MoreMenu(a, _r._overlay) : null; };
+                _menu = () => { var a = new Album(_slot); return a.IsValid ? Album.HeroMenu(a, _r._overlay) : null; };
                 _onHeadBounds = rect => CheckChrome("head", _slot, _r._narrow ? "stacked" : "inline",
                                                     ReaderShape.HeadHeight(_r._narrow), rect.H,
                                                     ref _loggedDeclared, ref _loggedMeasured);
@@ -1658,7 +1658,7 @@ public readonly partial struct Artist
                 {
                     Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
                 };
-                Element play = Controls.Named(Controls.PlayFab(() => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, slot)),
+                Element play = Controls.Named(Controls.PlayFab(() => Playback.PlayOrToggleContext(LibraryRows.IdOf(EntityKind.Album, slot)),
                                                                Icons.Play, ReaderShape.HeadCircle),
                                               Strings.Library.PlayAlbum(title));
                 Element save = Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = ReaderShape.HeadGlyph, Box = ReaderShape.HeadCircle })

@@ -7,7 +7,7 @@
 // §5.5: "bodies stay opaque to the in-app view by design").
 //
 // ZERO COST WHEN OFF: this page (and its 750 ms poll) exists only while the route is mounted — the route itself IS
-// the subscription, exactly like the logs panel's own tail (Diagnostics.UI.cs's LogsPanelView). CaptureRecentStore
+// the subscription, exactly like the log viewer's own tail (LogsPage.UI.cs's LogsPageView). CaptureRecentStore
 // only ever grows while a writer is installed (RealtimeCaptureHost.Apply installs the tee on the 0→1 transition
 // only, Diagnostics/Capture.Host.cs), so an idle store costs one empty-array snapshot per poll.
 //
@@ -216,7 +216,7 @@ public static partial class Diagnostics
             Direction = 0, Gap = Spacing.S,
             Children =
             [
-                Button.Standard(Loc.Get(Strings.Settings.Diag.OpenCaptureFolderButton),
+                Button.Standard(Loc.Get(Strings.Settings.Privacy.Tools.OpenFolder),
                     static () => OpenFolder(Path.Combine(Platform.LogFolder, "capture"))),
                 Button.Standard(Loc.Get(Strings.Settings.Diagnostics.Refresh), () => _refresh.Value = _refresh.Peek() + 1),
             ],

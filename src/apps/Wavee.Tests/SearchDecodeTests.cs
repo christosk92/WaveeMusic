@@ -452,12 +452,12 @@ public class SearchSuggestionDecodeTests
         Assert.Equal(Shell.Omnibar.ItemKind.Track, suggestions.Items[0].Kind);
         Assert.Equal("Titanium (feat. Sia)", suggestions.Items[0].Title);
         Assert.Contains("David Guetta", suggestions.Items[0].Subtitle);
-        Assert.Equal(Loc.Get(Strings.Search.SubtitleSong) + " - David Guetta, Sia", suggestions.Items[0].Subtitle);
+        Assert.Equal("David Guetta, Sia", suggestions.Items[0].Subtitle);           // the DETAIL only: the row composes the kind word
         Assert.Equal("https://i.scdn.co/image/cover", suggestions.Items[0].ImageUrl);
         Assert.Equal("spotify:track:0TDLuuLlV54CkRRUOahJb4", suggestions.Items[0].Uri.Text);
         Assert.Equal(Shell.Omnibar.ItemKind.Artist, suggestions.Items[1].Kind);
         Assert.Equal("David Guetta", suggestions.Items[1].Title);
-        Assert.Equal(Loc.Get(Strings.Search.TypeArtist), suggestions.Items[1].Subtitle);
+        Assert.Null(suggestions.Items[1].Subtitle);
         Assert.Equal("https://i.scdn.co/image/avatar", suggestions.Items[1].ImageUrl);
     }
 
@@ -472,7 +472,7 @@ public class SearchSuggestionDecodeTests
 
         Assert.Equal(Shell.Omnibar.ItemKind.Genre, suggestions.Items[0].Kind);
         Assert.Equal("spotify:genre:0JQ5DAqbMKFFzDl7qN9Apr", suggestions.Items[0].Uri.Text);
-        Assert.Equal(Loc.Get(Strings.Search.TypeGenre), suggestions.Items[0].Subtitle);
+        Assert.Null(suggestions.Items[0].Subtitle);
         Assert.Equal("https://i.scdn.co/image/g", suggestions.Items[0].ImageUrl);
 
         Assert.Equal(Shell.Omnibar.ItemKind.Playlist, suggestions.Items[1].Kind);
@@ -485,7 +485,7 @@ public class SearchSuggestionDecodeTests
 
         Assert.Equal(Shell.Omnibar.ItemKind.User, suggestions.Items[3].Kind);
         Assert.Equal("Koffie Liefhebber", suggestions.Items[3].Title);              // displayName, not username
-        Assert.Equal(Loc.Get(Strings.Search.TypeUser), suggestions.Items[3].Subtitle);
+        Assert.Null(suggestions.Items[3].Subtitle);
         Assert.Equal("https://i.scdn.co/image/u", suggestions.Items[3].ImageUrl);
         Assert.Equal("spotify:user:koffieliefhebber", suggestions.Items[3].Uri.Text);
     }
@@ -517,13 +517,15 @@ public class SearchSuggestionDecodeTests
         Assert.Empty(suggestions.Queries);
         Assert.Equal(5, suggestions.Items.Count);
         Assert.Equal(Shell.Omnibar.ItemKind.Album, suggestions.Items[0].Kind);
-        Assert.Equal("Single - Daft Punk", suggestions.Items[0].Subtitle);          // the wire's release type, title-cased
-        Assert.Equal(Loc.Get(Strings.Search.TypeAlbum), suggestions.Items[1].Subtitle);
+        Assert.Equal("Daft Punk", suggestions.Items[0].Subtitle);
+        Assert.Equal(AlbumKind.Single, suggestions.Items[0].ReleaseKind);            // the kind word comes from the wire type, not the subtitle
+        Assert.Null(suggestions.Items[1].ReleaseKind);
+        Assert.Null(suggestions.Items[1].Subtitle);
         Assert.Equal(Shell.Omnibar.ItemKind.Podcast, suggestions.Items[2].Kind);
         Assert.Equal("Denis & Sasa", suggestions.Items[2].Subtitle);
         Assert.Equal(Shell.Omnibar.ItemKind.Audiobook, suggestions.Items[3].Kind);
         Assert.Equal("Abbey Beathan", suggestions.Items[3].Subtitle);
-        Assert.Equal(Loc.Get(Strings.Search.SubtitleSong) + " - A, B, C, ...", suggestions.Items[4].Subtitle);   // 0.2.9 JoinNames
+        Assert.Equal("A, B, C, D", suggestions.Items[4].Subtitle);
     }
 
     [Fact]
@@ -581,4 +583,21 @@ public class SearchSuggestionDecodeTests
             """{"data":{"searchV2":{"topResultsV2":{"itemsV2":[{"item":{"__typename":"NotFound","data":{}}}]}}}}"""u8));
         Assert.Same(Shell.Omnibar.Suggestions.Empty, Spotify.Decode.SearchSuggestions(ReadOnlySpan<byte>.Empty));
     }
+}
+
+public class SearchReleaseKindTests
+{
+    [Theory]
+    [InlineData("SINGLE", AlbumKind.Single)]
+    [InlineData("ep", AlbumKind.EP)]
+    [InlineData("Album", AlbumKind.Album)]
+    [InlineData("COMPILATION", AlbumKind.Compilation)]
+    public void ReleaseKindOf_MapsTheWireType(string wire, AlbumKind expected)
+        => Assert.Equal(expected, Spotify.Decode.ReleaseKindOf(wire));
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("APPEARS_ON")]
+    public void ReleaseKindOf_UnknownIsNull(string? wire) => Assert.Null(Spotify.Decode.ReleaseKindOf(wire));
 }

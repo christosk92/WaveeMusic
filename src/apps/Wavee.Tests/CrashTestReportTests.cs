@@ -1,4 +1,4 @@
-// ── Wavee.Tests/CrashTestReportTests.cs — Settings › Developer › "Send a test crash report" (#165) ─────────────────
+// ── Wavee.Tests/CrashTestReportTests.cs — Settings › Privacy & diagnostics › Developer › "Send a test crash report" (#165) ──
 //
 // The pure facts behind the developer button (Platform/Crash.TestReport.cs, Crash.Handler.DumpKinds): the D line's kind
 // tokens, which kinds latch the child's exit-code inference (a crash's request does; the live `test` snapshot's must
@@ -103,14 +103,17 @@ public class SimulatedCrashTests
     }
 }
 
-// ── 3. the row is a developer-only one ──────────────────────────────────────────────────────────────────────────────
+// ── 3. the row is present in both states, greyed while developer mode is off ───────────────────────────────────────
 
 public class TestCrashReportRowTests
 {
+    /// <summary>The button lives under Settings › Privacy &amp; diagnostics › Developer and is no longer a developer-only
+    /// catalog row: it is composed in BOTH states and greyed (not removed) while developer mode is off. The greying is the
+    /// UI's own `isEnabled`; the catalog's answer is "present either way".</summary>
     [Fact]
-    public void The_row_is_composed_only_in_developer_mode()
+    public void The_row_is_present_in_both_states_and_greyed_not_composed_away_while_developer_mode_is_off()
     {
-        Assert.False(Settings.Catalog.RowVisible(Settings.Tab.General, "sendTestCrashReport", developerMode: false));
-        Assert.True(Settings.Catalog.RowVisible(Settings.Tab.General, "sendTestCrashReport", developerMode: true));
+        Assert.True(Settings.Catalog.RowVisible(Settings.Tab.PrivacyDiagnostics, "sendTestCrashReport", developerMode: false));
+        Assert.True(Settings.Catalog.RowVisible(Settings.Tab.PrivacyDiagnostics, "sendTestCrashReport", developerMode: true));
     }
 }

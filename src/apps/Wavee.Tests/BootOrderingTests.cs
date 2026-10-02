@@ -77,6 +77,7 @@ public sealed class BootOrderingTests : IDisposable
         Shell.SetPage(Shell.RouteKind.PlaybackDiagnostics, static (in Shell.Route _) => Diagnostics.RuntimePage());
         Shell.SetPage(Shell.RouteKind.ConnectDiagnostics, static (in Shell.Route _) => Diagnostics.ConnectPage());
         Shell.SetPage(Shell.RouteKind.CaptureDiagnostics, static (in Shell.Route _) => Diagnostics.CapturePage());
+        Shell.SetPage(Shell.RouteKind.Logs, static (in Shell.Route _) => LogsPage.Page());
 
         // Exhaustive, not a hand-picked subset (the brief's explicit instruction): every kind, one arm each.
         for (int i = 0; i < Shell.RouteKindCount; i++)
@@ -103,7 +104,7 @@ public sealed class BootOrderingTests : IDisposable
         // LibraryAlbums/LibraryArtists/LibraryPodcasts (Playlist.Page.cs's InstallPages still owes it one more
         // Shell.SetPage(RouteKind.LibraryAudiobooks, User.LibraryPageFor) line — outside this wave's ownership) —
         // and realtime-capture-implementation.md unit 6 appended RouteKind.CaptureDiagnostics, registered above.
-        Assert.Equal(35, Shell.RouteKindCount);
+        Assert.Equal(36, Shell.RouteKindCount);
     }
 
     // ══ LAZY_GROUP: a miss installs its whole group once, the hit path never re-installs ══════════════════════════

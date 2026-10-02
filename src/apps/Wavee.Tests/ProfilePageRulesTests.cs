@@ -209,8 +209,17 @@ public class ProfilePageRulesTests
     [Fact]
     public void Numeral_GroupsInTheGivenCulture()
     {
-        Assert.Equal("1,063", ProfileStats.Numeral(1063, CultureInfo.GetCultureInfo("en-US")));
-        Assert.Equal("1.063", ProfileStats.Numeral(1063, CultureInfo.GetCultureInfo("nl-NL")));
+        static CultureInfo Grouped(string separator)
+        {
+            var c = (CultureInfo)CultureInfo.InvariantCulture.Clone();
+            c.NumberFormat.NumberGroupSeparator = separator;
+            c.NumberFormat.NumberDecimalSeparator = separator == "." ? "," : ".";
+            return c;
+        }
+        // The app runs in globalization-invariant mode (Directory.Build.props), so named cultures do not exist here: the two
+        // grouping conventions are built from the invariant culture with their separators set.
+        Assert.Equal("1,063", ProfileStats.Numeral(1063, Grouped(",")));
+        Assert.Equal("1.063", ProfileStats.Numeral(1063, Grouped(".")));
         Assert.Equal("0", ProfileStats.Numeral(-1, CultureInfo.InvariantCulture));
     }
 

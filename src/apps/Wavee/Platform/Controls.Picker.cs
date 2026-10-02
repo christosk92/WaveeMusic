@@ -273,13 +273,19 @@ public static partial class Controls
     public static readonly string[] EqualizerBands = ["31", "62", "125", "250", "500", "1k", "2k", "4k", "8k", "16k"];
 
     /// <summary>The ten-band equalizer curve: a draggable spline over a dashed grid, with a node per band and a value
-    /// pill on the active one.
+    /// pill on the band under the pointer — or, with no pointer on the curve, on the ACTIVE band the arrow keys edit.
     ///
     /// <para>RE-PUSHED LIVE PROPS: the record-equality gate re-renders the core only when the gains, the handler, the
     /// enabled flag or the height actually change — so a settings page that re-renders for an unrelated row does not
-    /// rebuild 240 child nodes.</para>
+    /// rebuild the curve.</para>
     ///
-    /// <para><paramref name="height"/> null takes the width-derived heuristic; a card with its own budget fixes it
+    /// <para>SIZING: the curve FILLS the width its parent gives it and measures that width. Its root is stretched, never
+    /// content-sized, so the measurement cannot feed back into itself. Put it where the flex algorithm sizes the slot — a
+    /// column child, or a row child with <c>Grow 1 / Basis 0 / MinWidth 0</c>. It has no minimum width of its own: a
+    /// narrow lane thins the band labels instead (<see cref="EqCurveGeometry.BandLabelStride"/>). Every coordinate it
+    /// draws or reads comes from <see cref="EqCurveGeometry"/>.</para>
+    ///
+    /// <para><paramref name="height"/> null takes the width-derived height; a card with its own budget fixes it
     /// rather than letting the curve claim whatever its width would imply.</para></summary>
     public static Element EqualizerCurve(float[] gains, Action<int, float> onBandChanged, bool isEnabled = true,
                                          float? height = null)
@@ -288,96 +294,71 @@ public static partial class Controls
     /// <inheritdoc cref="EqualizerCurve"/>
     public sealed record EqCurveProps(float[] Gains, Action<int, float> OnBandChanged, bool IsEnabled, float? Height);
 
+    /// <summary>The curve.
+    /// <code>
+    /// root      stretched to the lane and MEASURED · Height · the card plate, the focus stop and every handler
+    ///  └ plot   Width × Height (the measured width), ZStack, clip — the relayout FIREWALL
+    ///     ├ grid    EqGridLayer: dB rungs + labels, band gridlines + labels (re-renders only when the size moves)
+    ///     ├ fill    95 strips, curve → 0 dB
+    ///     ├ curve   95 segments × 2 (underlay + line)
+    ///     ├ nodes   10
+    ///     └ badge   the value pill, on <see cref="EqCurveRules.BadgeBand"/>
+    /// </code>
+    /// The ROOT carries no width: the plate is always exactly the lane, and that is the width it reports. The PLOT carries
+    /// one: a fixed-size clipped box is what keeps a per-sample drag re-render from re-laying-out the settings page. The
+    /// root's own height change (width-driven, rare) is the one thing that flows through the page.</summary>
     sealed class EqCurveCore : Component
     {
-        const float MinGain = -12f, MaxGain = 12f;
-        const float PadLeft = 40f, PadRight = 16f, PadTop = 18f, PadBottom = 34f;
         const float NodeRest = 14f, NodeHot = 18f;
-        const float FallbackWidth = 720f;
         const int Samples = 96;
+        const float SampleStep = EqCurveGeometry.LastBand / (float)(Samples - 1);
 
-        readonly Signal<int> _active = new(5);
+        readonly Signal<int> _active = new(EqCurveRules.DefaultActiveBand);
         readonly Signal<int> _hover = new(-1);
         int _dragBand = -1;
+
+        // What the handlers read at EVENT time, never a render-time capture: the latest props and the measured-width
+        // signal. That signal is written during LAYOUT, ahead of the re-render it schedules, so a pointer sample landing
+        // between the two maps through the size the surface has now, not the one last drawn. The handlers themselves are
+        // allocated once, here, not per render.
+        EqCurveProps? _props;
+        IReadSignal<float>? _width;
+        readonly Action<Point2> _onDown, _onDrag, _onHover;
+        readonly Action _onExit;
+        readonly Action<KeyEventArgs> _onKey;
+
+        public EqCurveCore()
+        {
+            _onDown = Down;
+            _onDrag = Drag;
+            _onHover = Hover;
+            _onExit = Exit;
+            _onKey = Key;
+        }
 
         public override Element Render()
         {
             var p = UsePropsOrDefault<EqCurveProps>();
-            // Self-measured root width — never a hand-rolled bounds→signal mirror.
             var measuredW = UseMeasuredWidth(1f);
-            if (p is null) return new BoxEl { MinHeight = 250f };
+            _props = p;
+            _width = measuredW;
+            if (p is null) return new BoxEl { AlignSelf = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 250f };
 
             float measured = measuredW.Value;
-            float width = measured > 0.5f ? measured : FallbackWidth;
-            int active = Math.Clamp(_active.Value, 0, 9);
-            int hover = _hover.Value;
-            return new BoxEl { Direction = 1, Children = [Surface(p, MathF.Max(width, 260f), active, hover)] };
-        }
-
-        Element Surface(EqCurveProps p, float width, int active, int hover)
-        {
-            float height = p.Height ?? Math.Clamp(width * 0.38f, 252f, 360f);
-            float plotW = MathF.Max(120f, width - PadLeft - PadRight);
-            float plotH = MathF.Max(120f, height - PadTop - PadBottom);
-            float zeroY = PadTop + GainToY(0f, plotH);
             bool enabled = p.IsEnabled;
-
-            void Commit(int band, float y)
-            {
-                if (!enabled) return;
-                band = Math.Clamp(band, 0, 9);
-                _dragBand = band;
-                _active.Value = band;
-                // Quantized to half a decibel: a continuous drag would write a new float every pointer sample, and the
-                // ear cannot hear the difference between 1.47 and 1.5 dB.
-                float gain = MathF.Round(YToGain(y - PadTop, plotH) * 2f) * 0.5f;
-                p.OnBandChanged(band, gain);
-            }
-
-            void Down(Point2 pt) => Commit(NearestBand(pt.X, plotW), pt.Y);
-            // Once a drag has claimed a band it KEEPS it: a vertical drag that strays sideways must not hop to the
-            // neighbouring band mid-gesture.
-            void Drag(Point2 pt) => Commit(_dragBand >= 0 ? _dragBand : NearestBand(pt.X, plotW), pt.Y);
-            void Hover(Point2 pt) => _hover.Value = NearestBand(pt.X, plotW);
-            void Exit() { _dragBand = -1; _hover.Value = -1; }
-
-            void Key(KeyEventArgs e)
-            {
-                if (!enabled) return;
-                int band = Math.Clamp(_active.Peek(), 0, 9);
-                float current = GainAt(p.Gains, band);
-                float next;
-                switch (e.KeyCode)
-                {
-                    // Left/Right MOVE the selection; Up/Down change the value. The two axes are the two things a
-                    // ten-band curve has, and collapsing them onto one pair is what makes a keyboard user unable to
-                    // reach band 9.
-                    case Keys.Left: _active.Value = Math.Max(0, band - 1); e.Handled = true; return;
-                    case Keys.Right: _active.Value = Math.Min(9, band + 1); e.Handled = true; return;
-                    case Keys.Up: next = current + 0.5f; break;
-                    case Keys.Down: next = current - 0.5f; break;
-                    case Keys.PageUp: next = current + 3f; break;
-                    case Keys.PageDown: next = current - 3f; break;
-                    case Keys.Home: next = 0f; break;
-                    case Keys.End: next = current >= 0f ? MinGain : MaxGain; break;
-                    default: return;
-                }
-                e.Handled = true;
-                _active.Value = band;
-                p.OnBandChanged(band, Math.Clamp(next, MinGain, MaxGain));
-            }
-
-            var kids = new System.Collections.Generic.List<Element>(240);
-            GridLines(kids, plotW, plotH);
-            FillArea(kids, p.Gains, plotW, plotH, zeroY, enabled);
-            CurveLine(kids, p.Gains, plotW, plotH, enabled);
-            BandNodes(kids, p.Gains, plotW, plotH, active, hover, enabled);
-            BandLabels(kids, plotW, height);
-            ValuePill(kids, p.Gains, plotW, plotH, active, width, height);
+            // The first frame is unmeasured: the plate at the seed height and NO plot. A plot drawn at a guessed width is
+            // what used to pin this curve at 720 DIP — the root wrapped that guess and then measured it back.
+            bool ready = measured > 0.5f;
+            var g = ready
+                ? EqCurveGeometry.For(measured, p.Height)
+                : EqCurveGeometry.For(0f, p.Height ?? EqCurveGeometry.AutoHeight(EqCurveGeometry.SeedWidth));
+            int active = Math.Clamp(_active.Value, 0, EqCurveGeometry.LastBand);
+            int hover = _hover.Value;
 
             return new BoxEl
             {
-                Width = width, Height = height, ZStack = true, ClipToBounds = true,
+                Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f,
+                Height = g.Height, ClipToBounds = true,
                 Corners = CornerRadius4.All(Radii.Card),
                 Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
                 Opacity = enabled ? 1f : 0.58f,
@@ -388,91 +369,154 @@ public static partial class Controls
                 // stock template's own −3 is the right answer — which is why this declares it explicitly rather than
                 // taking one of the two named app insets.
                 FocusVisualMargin = Edges4.All(-3f),
-                OnPointerDown = enabled ? Down : null,
-                OnDrag = enabled ? Drag : null,
-                OnHoverMove = enabled ? Hover : null,
-                OnPointerExit = enabled ? Exit : null,
-                OnKeyDown = enabled ? Key : null,
+                OnPointerDown = enabled ? _onDown : null,
+                OnDrag = enabled ? _onDrag : null,
+                OnHoverMove = enabled ? _onHover : null,
+                OnPointerExit = enabled ? _onExit : null,
+                OnKeyDown = enabled ? _onKey : null,
+                Children = ready ? new Element[] { Plot(p, g, active, hover, enabled) } : Array.Empty<Element>(),
+            };
+        }
+
+        static Element Plot(EqCurveProps p, EqCurveGeometry g, int active, int hover, bool enabled)
+        {
+            var kids = new List<Element>(2 + 3 * (Samples - 1) + EqCurveGeometry.BandCount)
+            {
+                Embed.Comp(new EqGridProps(g.Width, g.Height), static () => new EqGridLayer()),
+            };
+            FillArea(kids, p.Gains, g, enabled);
+            CurveLine(kids, p.Gains, g, enabled);
+            BandNodes(kids, p.Gains, g, active, hover, enabled);
+            int badge = EqCurveRules.BadgeBand(hover, active, enabled);
+            if (badge >= 0) kids.Add(ValueBadge(p.Gains, g, badge));
+            return new BoxEl
+            {
+                Width = g.Width, Height = g.Height, Shrink = 0f, ZStack = true, ClipToBounds = true,
                 Children = kids.ToArray(),
             };
         }
 
-        static void GridLines(System.Collections.Generic.List<Element> kids, float plotW, float plotH)
+        // ── input ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The geometry of the surface as it is NOW (see the field comment above).</summary>
+        EqCurveGeometry Live() => EqCurveGeometry.For(_width?.Peek() ?? 0f, _props?.Height);
+
+        /// <summary>A press claims the band nearest to it for the whole gesture.</summary>
+        void Down(Point2 pt)
         {
-            float[] rungs = [12f, 6f, 0f, -6f, -12f];
-            for (int i = 0; i < rungs.Length; i++)
-            {
-                float g = rungs[i];
-                bool zero = MathF.Abs(g) < 0.01f;
-                float y = PadTop + GainToY(g, plotH);
-                kids.Add(new BoxEl
-                {
-                    Width = 34f, Height = 14f, OffsetX = 2f, OffsetY = y - 7f,
-                    Children =
-                    [
-                        new TextEl(zero ? "0 dB" : g.ToString("+0;-0", System.Globalization.CultureInfo.InvariantCulture))
-                        {
-                            Size = 10f, Weight = zero ? (ushort)650 : (ushort)400, FontFamily = "Cascadia Code",
-                            Color = zero ? Tok.TextSecondary : Tok.TextTertiary,
-                        },
-                    ],
-                });
-                // The ZERO line is louder and longer-dashed than the rest: it is the one rung a user aims at.
-                DashH(kids, PadLeft, y, plotW,
-                      zero ? Tok.TextSecondary with { A = 0.34f } : Tok.StrokeDividerDefault,
-                      zero ? 1.2f : 1f, zero ? 5f : 2.5f, zero ? 5f : 5f);
-            }
-            for (int i = 0; i < 10; i++)
-                DashV(kids, PadLeft + (i / 9f) * plotW, PadTop, plotH, Tok.StrokeDividerDefault with { A = 0.58f },
-                      1f, 2f, 5f);
+            var g = Live();
+            if (g.PlotWidth <= 0f) return;
+            _dragBand = g.NearestBand(pt.X);
+            Commit(g, _dragBand, pt.Y);
         }
 
+        /// <summary>Once a press has claimed a band the drag KEEPS it: a vertical drag that strays sideways, or out of the
+        /// surface, must not hop to the neighbouring band mid-gesture.</summary>
+        void Drag(Point2 pt)
+        {
+            var g = Live();
+            if (g.PlotWidth <= 0f) return;
+            Commit(g, _dragBand >= 0 ? _dragBand : g.NearestBand(pt.X), pt.Y);
+        }
+
+        /// <summary>The band under the gesture becomes the active band AND the hovered one, so the badge rides the node
+        /// being dragged even when the pointer has strayed off its column.</summary>
+        void Commit(EqCurveGeometry g, int band, float y)
+        {
+            if (_props is not { IsEnabled: true } p) return;
+            band = Math.Clamp(band, 0, EqCurveGeometry.LastBand);
+            _active.Value = band;
+            _hover.Value = band;
+            p.OnBandChanged(band, g.SnappedGainAt(y));
+        }
+
+        void Hover(Point2 pt)
+        {
+            var g = Live();
+            if (g.PlotWidth > 0f) _hover.Value = g.NearestBand(pt.X);
+        }
+
+        void Exit() => _hover.Value = -1;
+
+        void Key(KeyEventArgs e)
+        {
+            if (_props is not { IsEnabled: true } p) return;
+            int band = Math.Clamp(_active.Peek(), 0, EqCurveGeometry.LastBand);
+            float current = EqCurveRules.GainAt(p.Gains, band);
+            float next;
+            switch (e.KeyCode)
+            {
+                // Left/Right MOVE the selection; Up/Down change the value. The two axes are the two things a ten-band
+                // curve has, and collapsing them onto one pair is what makes a keyboard user unable to reach band 9.
+                case Keys.Left: Select(Math.Max(0, band - 1)); e.Handled = true; return;
+                case Keys.Right: Select(Math.Min(EqCurveGeometry.LastBand, band + 1)); e.Handled = true; return;
+                case Keys.Up: next = current + 0.5f; break;
+                case Keys.Down: next = current - 0.5f; break;
+                case Keys.PageUp: next = current + 3f; break;
+                case Keys.PageDown: next = current - 3f; break;
+                case Keys.Home: next = 0f; break;
+                case Keys.End: next = current >= 0f ? EqCurveGeometry.MinGain : EqCurveGeometry.MaxGain; break;
+                default: return;
+            }
+            e.Handled = true;
+            Select(band);
+            p.OnBandChanged(band, Math.Clamp(next, EqCurveGeometry.MinGain, EqCurveGeometry.MaxGain));
+        }
+
+        /// <summary>The keyboard owns the badge: a pointer still resting over another band must not hold it there.</summary>
+        void Select(int band)
+        {
+            _active.Value = band;
+            _hover.Value = -1;
+        }
+
+        // ── the dynamic layers ───────────────────────────────────────────────────────────────────────────────────────
+
         // The area under the curve, as vertical strips. A real filled path would need a polygon primitive the recorder
-        // does not carry; at 96 samples the strips are sub-pixel and read as a solid wash.
-        static void FillArea(System.Collections.Generic.List<Element> kids, float[] gains, float plotW, float plotH,
-                         float zeroY, bool enabled)
+        // does not carry; at 96 samples the strips are sub-pixel and read as a solid wash. ONE strip per sample interval,
+        // always (a zero-height strip draws nothing): a strip count that varied with the gains would shift every later
+        // child's index and turn a drag sample into a remount of the curve.
+        static void FillArea(List<Element> kids, float[] gains, EqCurveGeometry g, bool enabled)
         {
             ColorF fill = (enabled ? Tok.AccentDefault : Tok.TextDisabled) with { A = enabled ? 0.15f : 0.10f };
-            float lastX = PadLeft, lastY = PadTop + GainToY(Sample(gains, 0f), plotH);
+            float zeroY = g.ZeroY;
+            float x0 = g.X(0f);
             for (int s = 1; s < Samples; s++)
             {
-                float u = (s / (float)(Samples - 1)) * 9f;
-                float x = PadLeft + (u / 9f) * plotW;
-                float y = PadTop + GainToY(Sample(gains, u), plotH);
-                float midX = (lastX + x) * 0.5f, midY = (lastY + y) * 0.5f;
-                float stripW = MathF.Max(1.5f, x - lastX + 0.75f);
-                float top = MathF.Min(midY, zeroY), h = MathF.Abs(midY - zeroY);
-                if (h > 0.5f)
-                    kids.Add(new BoxEl { Width = stripW, Height = h, OffsetX = midX - stripW * 0.5f, OffsetY = top, Fill = fill });
-                lastX = x; lastY = y;
+                float x1 = g.X(s * SampleStep);
+                float y = g.Y(EqCurveRules.Sample(gains, (s - 0.5f) * SampleStep));
+                kids.Add(new BoxEl
+                {
+                    Width = x1 - x0 + 0.75f, Height = MathF.Abs(y - zeroY),
+                    OffsetX = x0, OffsetY = MathF.Min(y, zeroY), Fill = fill,
+                });
+                x0 = x1;
             }
         }
 
         // Two passes: a wide, faint UNDERLAY and the crisp line over it. That is what gives the curve a soft edge where
         // the renderer has no stroke feathering of its own.
-        static void CurveLine(System.Collections.Generic.List<Element> kids, float[] gains, float plotW, float plotH,
-                          bool enabled)
+        static void CurveLine(List<Element> kids, float[] gains, EqCurveGeometry g, bool enabled)
         {
             ColorF under = (enabled ? Tok.AccentDefault : Tok.TextDisabled) with { A = enabled ? 0.28f : 0.22f };
             ColorF main = enabled ? Tok.AccentDefault : Tok.TextDisabled;
-            Point2 last = CurvePoint(gains, 0f, plotW, plotH);
+            Point2 last = CurvePoint(gains, 0f, g);
             for (int s = 1; s < Samples; s++)
             {
-                Point2 pt = CurvePoint(gains, (s / (float)(Samples - 1)) * 9f, plotW, plotH);
+                Point2 pt = CurvePoint(gains, s * SampleStep, g);
                 kids.Add(Segment(last, pt, under, 5.5f));
                 kids.Add(Segment(last, pt, main, 2.5f));
                 last = pt;
             }
         }
 
-        static void BandNodes(System.Collections.Generic.List<Element> kids, float[] gains, float plotW, float plotH,
-                          int active, int hover, bool enabled)
+        static void BandNodes(List<Element> kids, float[] gains, EqCurveGeometry g, int active, int hover, bool enabled)
         {
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < EqCurveGeometry.BandCount; i++)
             {
-                float x = PadLeft + (i / 9f) * plotW;
-                float y = PadTop + GainToY(GainAt(gains, i), plotH);
-                bool hot = enabled && (i == active || i == hover);
+                float x = g.BandX(i);
+                float y = g.Y(EqCurveRules.GainAt(gains, i));
+                bool hot = EqCurveRules.IsHot(i, hover, active, enabled);
                 float d = hot ? NodeHot : NodeRest;
                 kids.Add(new BoxEl
                 {
@@ -488,53 +532,30 @@ public static partial class Controls
             }
         }
 
-        // Below ~420 DIP of plot the ten labels collide, so every other one is dropped — but the LAST is always kept,
-        // because the right edge of the band range is what tells the user the axis is complete.
-        static void BandLabels(System.Collections.Generic.List<Element> kids, float plotW, float height)
+        /// <summary>The value pill for <paramref name="band"/>: that band's frequency and gain, centred above its node and
+        /// clamped inside the plot (<see cref="EqCurveGeometry.BadgeAt"/>).</summary>
+        static Element ValueBadge(float[] gains, EqCurveGeometry g, int band)
         {
-            bool dense = plotW < 420f;
-            for (int i = 0; i < 10; i++)
-            {
-                if (dense && (i % 2) != 0 && i != 9) continue;
-                kids.Add(new BoxEl
-                {
-                    Width = 42f, Height = 14f,
-                    OffsetX = PadLeft + (i / 9f) * plotW - 21f, OffsetY = height - 24f,
-                    Children = [new TextEl(EqualizerBands[i])
-                        { Size = 10f, FontFamily = "Cascadia Code", Color = Tok.TextTertiary }],
-                });
-            }
-        }
-
-        static void ValuePill(System.Collections.Generic.List<Element> kids, float[] gains, float plotW, float plotH,
-                              int active, float width, float height)
-        {
-            if ((uint)active >= 10u) return;
-            float gain = GainAt(gains, active);
-            float x = PadLeft + (active / 9f) * plotW;
-            float y = PadTop + GainToY(gain, plotH);
-            const float pillW = 104f;
-            // Clamped INSIDE the surface on both axes: a pill for band 0 or band 9 would otherwise hang off the card.
-            float px = Math.Clamp(x - pillW * 0.5f, 6f, MathF.Max(6f, width - pillW - 6f));
-            float py = Math.Clamp(y - 42f, 6f, MathF.Max(6f, height - 58f));
-            kids.Add(new BoxEl
+            float gain = EqCurveRules.GainAt(gains, band);
+            var (x, y) = g.BadgeAt(band, gain);
+            return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = 5f,
-                Width = pillW, Height = 28f, OffsetX = px, OffsetY = py,
+                Width = EqCurveGeometry.BadgeWidth, Height = EqCurveGeometry.BadgeHeight, OffsetX = x, OffsetY = y,
                 Padding = new Edges4(8f, 0f, 8f, 0f),
-                Corners = CornerRadius4.All(14f),
+                Corners = CornerRadius4.All(EqCurveGeometry.BadgeHeight * 0.5f),
                 Fill = Tok.FillControlDefault,
                 BorderWidth = 1f, BorderBrush = Tok.ControlElevationBorder,
                 Shadow = Elevation.Tooltip,
                 Children =
                 [
-                    Design.Type.MicroMeta(EqualizerBands[active])
+                    Design.Type.MicroMeta(EqualizerBands[band])
                         with { FontFamily = "Cascadia Code", Color = Tok.TextSecondary, Shrink = 0f },
-                    new TextEl(FormatDb(gain))
+                    new TextEl(EqCurveRules.DbText(gain))
                         { Size = 12f, Weight = 700, Color = Tok.TextPrimary, Grow = 1f, MaxLines = 1,
                           Trim = TextTrim.CharacterEllipsis },
                 ],
-            });
+            };
         }
 
         static Element Segment(Point2 a, Point2 b, ColorF color, float thickness)
@@ -551,57 +572,94 @@ public static partial class Controls
                 PointCount = 2, Color = color, Thickness = thickness, RoundCaps = true,
             };
 
-        static void DashH(System.Collections.Generic.List<Element> kids, float x, float y, float w, ColorF color,
-                          float h, float dash, float gap)
+        /// <summary>A spline point through THE x and y mappings — the same ones the nodes use, so the curve passes through
+        /// every node (<see cref="EqCurveRules.Sample"/> at u = i is band i's gain).</summary>
+        static Point2 CurvePoint(float[] gains, float u, EqCurveGeometry g)
+            => new(g.X(u), g.Y(EqCurveRules.Sample(gains, u)));
+    }
+
+    /// <summary>The grid layer's props: the surface size and nothing else, so its thousand-odd dash boxes are rebuilt only
+    /// when the size moves — a hover, a drag sample or a gain change re-renders the curve and re-uses this layer.</summary>
+    sealed record EqGridProps(float Width, float Height);
+
+    /// <summary>The static half of the curve: the five dB rungs with their right-aligned labels, the ten band gridlines,
+    /// and the band labels CENTRED under them (the text is centred in a box centred on the gridline — a box centred on
+    /// the line with its text left-aligned is what put every label half a box to the left of its node).</summary>
+    sealed class EqGridLayer : Component
+    {
+        public override Element Render()
+        {
+            var p = UseProps<EqGridProps>();
+            var g = EqCurveGeometry.For(p.Width, p.Height);
+            var kids = new List<Element>(512);
+            Rungs(kids, g);
+            BandLines(kids, g);
+            BandLabels(kids, g);
+            return new BoxEl { Width = g.Width, Height = g.Height, ZStack = true, Children = kids.ToArray() };
+        }
+
+        static void Rungs(List<Element> kids, EqCurveGeometry g)
+        {
+            var rungs = EqCurveRules.GainRungs;
+            for (int r = 0; r < rungs.Length; r++)
+            {
+                float gain = rungs[r];
+                bool zero = MathF.Abs(gain) < 0.01f;
+                kids.Add(new BoxEl
+                {
+                    Width = g.GainLabelWidth, Height = EqCurveGeometry.LabelHeight, OffsetY = g.GainLabelTop(gain),
+                    Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                    Children =
+                    [
+                        new TextEl(EqCurveRules.GainRungLabels[r])
+                        {
+                            Size = 10f, Weight = zero ? (ushort)650 : (ushort)400, FontFamily = "Cascadia Code",
+                            Color = zero ? Tok.TextSecondary : Tok.TextTertiary, MaxLines = 1,
+                        },
+                    ],
+                });
+                // The ZERO line is louder and longer-dashed than the rest: it is the one rung a user aims at. Each line is
+                // centred ON its y, like the nodes are.
+                float thick = zero ? 1.2f : 1f;
+                DashH(kids, g.PlotLeft, g.Y(gain) - thick * 0.5f, g.PlotWidth,
+                      zero ? Tok.TextSecondary with { A = 0.34f } : Tok.StrokeDividerDefault,
+                      thick, zero ? 5f : 2.5f, 5f);
+            }
+        }
+
+        static void BandLines(List<Element> kids, EqCurveGeometry g)
+        {
+            ColorF line = Tok.StrokeDividerDefault with { A = 0.58f };
+            for (int i = 0; i < EqCurveGeometry.BandCount; i++)
+                DashV(kids, g.BandX(i) - 0.5f, g.PlotTop, g.PlotHeight, line, 1f, 2f, 5f);
+        }
+
+        static void BandLabels(List<Element> kids, EqCurveGeometry g)
+        {
+            for (int i = 0; i < EqCurveGeometry.BandCount; i++)
+            {
+                if (!g.ShowsBandLabel(i)) continue;
+                kids.Add(new BoxEl
+                {
+                    Width = EqCurveGeometry.BandLabelWidth, Height = EqCurveGeometry.LabelHeight,
+                    OffsetX = g.BandLabelLeft(i), OffsetY = g.BandLabelTop,
+                    Direction = 0, Justify = FlexJustify.Center, AlignItems = FlexAlign.Center,
+                    Children = [new TextEl(EqualizerBands[i])
+                        { Size = 10f, FontFamily = "Cascadia Code", Color = Tok.TextTertiary, MaxLines = 1 }],
+                });
+            }
+        }
+
+        static void DashH(List<Element> kids, float x, float y, float w, ColorF color, float h, float dash, float gap)
         {
             for (float dx = 0f; dx < w; dx += dash + gap)
                 kids.Add(new BoxEl { Width = MathF.Min(dash, w - dx), Height = h, OffsetX = x + dx, OffsetY = y, Fill = color });
         }
 
-        static void DashV(System.Collections.Generic.List<Element> kids, float x, float y, float h, ColorF color,
-                          float w, float dash, float gap)
+        static void DashV(List<Element> kids, float x, float y, float h, ColorF color, float w, float dash, float gap)
         {
             for (float dy = 0f; dy < h; dy += dash + gap)
                 kids.Add(new BoxEl { Width = w, Height = MathF.Min(dash, h - dy), OffsetX = x, OffsetY = y + dy, Fill = color });
         }
-
-        static Point2 CurvePoint(float[] gains, float u, float plotW, float plotH)
-            => new(PadLeft + (u / 9f) * plotW, PadTop + GainToY(Sample(gains, u), plotH));
-
-        /// <summary>A CATMULL-ROM sample between the band nodes, clamped to the gain range. A straight polyline would
-        /// read as a set of hinges rather than as a filter response; a spline is what makes ten discrete bands look like
-        /// one curve.</summary>
-        static float Sample(float[] gains, float u)
-        {
-            if (u <= 0f) return GainAt(gains, 0);
-            if (u >= 9f) return GainAt(gains, 9);
-            int i = Math.Clamp((int)MathF.Floor(u), 0, 8);
-            float t = u - i;
-            float p0 = GainAt(gains, Math.Max(0, i - 1));
-            float p1 = GainAt(gains, i);
-            float p2 = GainAt(gains, i + 1);
-            float p3 = GainAt(gains, Math.Min(9, i + 2));
-            float t2 = t * t, t3 = t2 * t;
-            return Math.Clamp(
-                0.5f * ((2f * p1) + (-p0 + p2) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2
-                        + (-p0 + 3f * p1 - 3f * p2 + p3) * t3),
-                MinGain, MaxGain);
-        }
-
-        static int NearestBand(float x, float plotW)
-            => Math.Clamp((int)MathF.Round(Math.Clamp((x - PadLeft) / MathF.Max(plotW, 1f), 0f, 1f) * 9f), 0, 9);
-
-        static float GainAt(float[] gains, int band)
-            => (uint)band < 10u && band < gains.Length ? Math.Clamp(gains[band], MinGain, MaxGain) : 0f;
-
-        static float GainToY(float gain, float plotH)
-            => (MaxGain - Math.Clamp(gain, MinGain, MaxGain)) / (MaxGain - MinGain) * plotH;
-
-        static float YToGain(float y, float plotH)
-            => Math.Clamp(MaxGain - (Math.Clamp(y, 0f, plotH) / MathF.Max(plotH, 1f)) * (MaxGain - MinGain),
-                          MinGain, MaxGain);
-
-        static string FormatDb(float gain)
-            => gain.ToString("+0.#;-0.#;0", System.Globalization.CultureInfo.InvariantCulture) + " dB";
     }
 }

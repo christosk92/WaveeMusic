@@ -21,13 +21,12 @@ public class SearchHitDataTests
     {
         var shape = SearchHitRules.ShapeOf(large: false, artHidden: false);
 
-        Assert.Equal(Shape.Row(48f), shape);
+        Assert.Equal(Shape.Row(48f) with { Menu = MenuPlacement.TrailingLane }, shape);
         Assert.Equal(48f, shape.ArtEdge);
         Assert.Equal(64f, shape.MinHeight);                 // the standard row floor (Shape.RowFloorFor)
         Assert.Equal(1, shape.TitleLines);
         Assert.Equal(30f, shape.Fab);
         Assert.Equal(PlateKind.ListRow, shape.Plate);       // transparent at rest, the subtle ladder on hover and press
-        Assert.Equal(MenuPlacement.Trailing, shape.Menu);   // a hit with a menu gets the hot-revealed "…"
         Assert.False(shape.IsLargeRow);
     }
 
@@ -36,7 +35,7 @@ public class SearchHitDataTests
     {
         var shape = SearchHitRules.ShapeOf(large: true, artHidden: false);
 
-        Assert.Equal(Shape.RowLarge, shape);
+        Assert.Equal(Shape.RowLarge with { Menu = MenuPlacement.TrailingLane }, shape);
         Assert.Equal(84f, shape.ArtEdge);
         Assert.Equal(112f, shape.MinHeight);
         Assert.Equal(44f, shape.Fab);
@@ -48,7 +47,37 @@ public class SearchHitDataTests
     {
         // Only a TRACK hides its artwork and a track is never the large lead row; were it ever one, the lead keeps its
         // 84 square rather than collapsing to the play glyph's.
-        Assert.Equal(Shape.RowLarge, SearchHitRules.ShapeOf(large: true, artHidden: true));
+        Assert.Equal(SearchHitRules.ShapeOf(large: true, artHidden: false), SearchHitRules.ShapeOf(large: true, artHidden: true));
+    }
+
+    // ── where the "…" goes ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void EveryRow_PutsItsMenuButtonInALaneOfItsOwn(bool large, bool artHidden)
+    {
+        // Beside the heart / Follow pill, never the overlay over the row's end (it cut "Follow" to "Fol" and hid the heart).
+        var shape = SearchHitRules.ShapeOf(large, artHidden);
+        Assert.Equal(MenuPlacement.TrailingLane, shape.Menu);
+        Assert.True(SurfaceRules.MenuReservesWidth(shape, hasMenu: true, showMenu: true));
+    }
+
+    [Theory]
+    [InlineData(EntityKind.Track)]
+    [InlineData(EntityKind.Album)]
+    [InlineData(EntityKind.Artist)]
+    [InlineData(EntityKind.Playlist)]
+    [InlineData(EntityKind.Show)]
+    [InlineData(EntityKind.Episode)]
+    [InlineData(EntityKind.User)]
+    [InlineData(EntityKind.Unknown)]
+    public void EveryKindWithAMenu_EndsInAControl_WhichIsWhyTheMenuNeedsItsOwnLane(EntityKind kind)
+    {
+        // The overlay "…" lands on the row's end; on search that end is ALWAYS a control when there is a menu at all.
+        if (Search.HasMenu(kind))
+            Assert.NotEqual(SearchHitRules.Trailing.None, SearchHitRules.TrailingOf(kind, hasUri: true));
     }
 
     [Fact]

@@ -135,15 +135,25 @@ internal static partial class PodcastReaderUI
     static Element RecommendationCard(Spotify.Podcasts.Recommendation item, int index, float width)
     {
         var data = new Controls.CardData(item.Uri, item.Title, Quiet(item.Subtitle), item.Image,
-            OnClick: () => OpenRecommendation(item))
+            OnClick: () => OpenRecommendation(item), OnPlay: RecommendationPlay(item))
         {
             Menu = () => RecommendationMenu(item),
         };
         return Controls.Surface(data, Shape.Shelf(captionLines: 2), width);   // the extent above: one title line, two caption lines
     }
 
+    /// <summary>The card's play FAB: pause/resume when the episode or show is the playing context, else start it. Null for a
+    /// uri that names neither (no dead FAB).</summary>
+    static Action? RecommendationPlay(Spotify.Podcasts.Recommendation item)
+    {
+        var uri = EntityUri.Parse(item.Uri);
+        if (!uri.IsValid || uri.Kind is not (EntityKind.Episode or EntityKind.Show)) return null;
+        var id = uri.Id;
+        return () => Playback.PlayOrToggleContext(id);
+    }
+
     /// <summary>A recommendation's menu, built at OPEN time: an episode gets the episode menu (with "Go to show"), a show
-    /// the container verbs (play next · add to queue · pin) and Share. The shelf holds wire rows, not library entities, so
+    /// the shared container menu (<see cref="Menus.Container"/>). The shelf holds wire rows, not library entities, so
     /// an episode the scope has not seen is menu'd by its uri alone.</summary>
     static ContextMenuModel? RecommendationMenu(Spotify.Podcasts.Recommendation item)
     {
@@ -152,13 +162,8 @@ internal static partial class PodcastReaderUI
         if (uri.Kind == EntityKind.Episode)
             return Episode.Menu(Entities.Episode(uri), new Episode.MenuOptions(ShowGoToShow: true));
         if (uri.Kind != EntityKind.Show) return null;
-        var ctx = new ActionContext(ActionTarget.ForShow(uri, item.Title), Actions.Services);
-        var rows = new List<MenuFlyoutItem>(6);
-        if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
-        if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
-        if (Actions.Menu.Row(ActionId.PinToSidebar, in ctx) is { } pin) Actions.Menu.Group(rows, pin);
-        Actions.Menu.Group(rows, Episode.ShareMenu(uri, in ctx));
-        return rows.Count == 0 ? null : new ContextMenuModel(rows, Actions.Menu.Header(item.Image.Length > 0 ? item.Image : null, item.Title, item.Subtitle));
+        var show = ActionTarget.ForShow(uri, item.Title);
+        return Menus.Container(in show, item.Image.Length > 0 ? item.Image : null, item.Subtitle, new ContainerExtras());
     }
 
     internal sealed record RatingProps(EntityUri Subject, Func<ColorF>? Tone);

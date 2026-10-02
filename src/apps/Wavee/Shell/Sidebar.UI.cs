@@ -196,8 +196,16 @@ public static partial class Sidebar
                 SearchHead = false,
                 OnCreatePlaylist = PaneView.CreatePlaylistFlow,
                 HeaderCreate = true,
-                RailFooter = static () => Embed.Comp(static () => new CreateButton(
-                    PaneView.CreatePlaylistFlow, menu: PaneView.CreateRootMenu, box: Rail.Box, glyph: 16f)),
+                // Read at footer-build time (the rail slot already subscribed to the detent); the tile in the Key
+                // remounts the button, because a component props freeze at mount.
+                RailFooter = static () =>
+                {
+                    var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
+                    float tile = m.Tile, glyph = m.Glyph;
+                    return Embed.Comp(() => new CreateButton(
+                        PaneView.CreatePlaylistFlow, menu: PaneView.CreateRootMenu, box: tile, glyph: glyph))
+                        with { Key = "rail-create:" + tile.ToString(System.Globalization.CultureInfo.InvariantCulture) };
+                },
             }, DepKey.Empty);
             return Embed.Comp(() => new PaneView(config, _inDrawer));
         }
@@ -546,8 +554,8 @@ public static partial class Sidebar
         /// anything realizes.</summary>
         readonly RepeatLayout _rowLayout;
 
-        /// <summary>The rail's own layout: two fixed extents (a tile's <see cref="Rail.Pitch"/> or
-        /// <see cref="Rail.DividerExtent"/>), seeded analytically from <see cref="RailPlan"/> — never measured.</summary>
+        /// <summary>The rail's own layout: two fixed extents (a tile's <see cref="SidebarRailMetrics.Pitch"/> at the
+        /// current detent or <see cref="Rail.DividerExtent"/>), seeded analytically from <see cref="RailPlan"/> — never measured.</summary>
         internal readonly RepeatLayout RailLayout;
 
         /// <summary>Reordering rides <c>MotionTok.ItemPlacement</c>.</summary>
@@ -562,7 +570,8 @@ public static partial class Sidebar
             Config = config;
             InDrawer = inDrawer;
             _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.ClassicHeight);
-            RailLayout = RepeatLayout.Extents(RailExtentSeed, estimatedExtent: Rail.Pitch);
+            RailLayout = RepeatLayout.Extents(RailExtentSeed,
+                estimatedExtent: SidebarRailMetrics.For(SidebarRailDetent.Default).Pitch);
         }
 
         public override Element Render()
@@ -575,8 +584,9 @@ public static partial class Sidebar
             // The mode's live document — invoked HERE so the signals it reads subscribe this pane.
             var sourceDoc = Config.Document();
             // The drawer always renders expanded; a live drag peek presents expanded too (it flips twice per drag). Compact is
-            // what the FRAME presents (collapsed, or the narrow band's 56-DIP column), never `Collapsed` alone.
-            bool compact = !InDrawer && Shell.Ui.SidebarPresentedCompact.Value && !_dragPeek.Value;
+            // what the FRAME presents (the rail regime, or the last-resort band's inline rail), never the regime alone.
+            bool compact = !InDrawer && (Sidebar.Regime.Value == SidebarRegime.Rail || Shell.Ui.LastResort.Value)
+                           && !_dragPeek.Value;
             string search = _search.Value;
             // Invoked UNCONDITIONALLY: edit mode must not change the hook sequence (branch on the value, never the hooks).
             var edit = Config.Edit?.Invoke();
@@ -593,6 +603,14 @@ public static partial class Sidebar
             // The rail's own sweep: RailHost no longer subscribes SelectedRoute (a recycled RailSlot bakes selected in
             // as a value, ch 25 §9), so THIS is what re-skins the two rail tiles a navigation concerns.
             UseSignalEffect(RefreshRailSelection);
+            // A detent change re-seeds the rail's analytic extents (the pitch and the V3 head seed are per detent) and
+            // bumps the re-plan edge so the head/footer chrome rebuilds at the new metrics. The read is the subscription.
+            UseSignalEffect(() =>
+            {
+                _ = Sidebar.RailDetent.Value;
+                ReseedRailExtents();
+                RailVersion.Value = RailVersion.Peek() + 1;
+            });
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
             // THE COUNT, never the plan version (W3-A2). This render decides two things off the published plan — empty
             // pane vs list, and whether a pending expansion has its rows yet — and both are functions of the COUNT. The
@@ -620,7 +638,7 @@ public static partial class Sidebar
             Element expanded = new BoxEl
             {
                 Key = "expanded-layer", Direction = 1, Grow = 1f, Shrink = 0f,
-                // Measured at the OPEN width even while presented compact: text never reflows through 56 DIP.
+                // Measured at the OPEN width even while presented compact: text never reflows through the rail width.
                 Width = _expandedWidth, ClipToBounds = true,
                 Opacity = compact ? 0f : 1f, HitTestVisible = !compact,
                 Children = ExpandedChildren(rows),
@@ -634,7 +652,8 @@ public static partial class Sidebar
                 // tiles. The embed is held by reference: a propless ComponentEl the reconciler reuses without a render.
                 children.Add(new BoxEl
                 {
-                    Key = "compact-layer", Direction = 1, Grow = 1f, Shrink = 0f, Width = SidebarPaneBounds.CompactRailW,
+                    Key = "compact-layer", Direction = 1, Grow = 1f, Shrink = 0f,
+                    Width = Prop.Of(static () => Sidebar.PresentedWidth.Value),
                     Opacity = compact ? 1f : 0f, HitTestVisible = compact,
                     // DRAG PEEK: a pure spring-load waypoint over the whole rail (never a destination, never a refusal).
                     DropTarget = RailPeekDropSpec(),
@@ -1586,8 +1605,12 @@ public static partial class Sidebar
         }
 
         /// <summary>The rail's analytic seed — <see cref="SidebarRailExtents.ExtentOf"/>, the head at its exact tile count.</summary>
-        float RailExtentSeed(int index) => SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter,
-            index == 0 && HasRailHead ? Config.RailHeadTiles?.Invoke() ?? 0 : 0);
+        float RailExtentSeed(int index)
+        {
+            var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
+            return SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter,
+                index == 0 && HasRailHead ? Config.RailHeadTiles?.Invoke() ?? 0 : 0, in m);
+        }
 
         /// <summary>Re-seed the rail's ONE list — head, rows AND footer (the list's item count, not the plan's row count:
         /// seeding only the rows shrank the table and re-appended the chrome items as fresh estimates). The engine anchors
@@ -2195,7 +2218,7 @@ public static partial class Sidebar
         {
             if (folderId.Length == 0) return;
             CloseRailFolderFlyout();
-            SetCollapsed(false);
+            SetRegime(SidebarRegime.Expanded);
             SetFolderExpanded(folderId, true);
         }
 

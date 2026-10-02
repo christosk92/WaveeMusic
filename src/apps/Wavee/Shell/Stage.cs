@@ -1,491 +1,389 @@
 // ── Shell/Stage.cs ─────────────────────────────────────────────────────────────────────────────────────────────────
-// StageLayout, StageArm, StageInk, StagePane
+// Stage.Mode/ModeRules, Stage.Aspect + Stage.Layout (the fullscreen allocator), Stage.Transport, Stage.Tone, Stage.Entry,
+// Stage.Caption
 //
 // Role: CORE
 // Owner: K
-// Wave: 4
-// Budget: 500 lines
-// Spec: ch 21 §9.5 (which restates its own earlier 400: it omitted StageInk; 578 lines of 0.2.9, so 500 is a floor)
+// Wave: 7
+// Budget: 420 lines
+// Spec: docs/plans/wavee/fullscreen-flagship-implementation.md §2, §4.7
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// THE IMMERSIVE STAGE'S CORE — and nothing that paints:
+// THE FULLSCREEN STAGE'S CORE — and nothing that paints:
 //
-//   • `Stage.Layout`  the PURE space allocator: wide⇄compact on ONE threshold with hysteresis, the HEIGHT fold ladder
-//     (device line → volume row → demote), the art as a quantised residual, and the whole scrim alpha ladder.
-//   • `Stage.Pane`    which pane the right-hand region shows. A `static` signal on purpose: "last pane wins" for the
-//     SESSION — not a setting (nothing is written to disk) and not per-track state.
-//   • `Stage.Band` / `Stage.Transport` / `Stage.DriftClock` / `Stage.Drift` (stage B) — the surface's band arithmetic,
-//     the two transport predicates, and the backdrop drift's clock and pose, so `Stage.UI.cs` renders and never decides.
+//   • `Stage.Mode`      the four panes as a PERSISTED preference (Prefs.Stage); `ModeRules.Coerce` is the append-only int rule.
+//   • `Stage.Layout`    the PURE allocator: four ASPECT classes with hysteresis (the prototypes' container queries,
+//                       Main.dc.html:142-170) and every DIP the renderer lays out as a fraction of the viewport; the
+//                       cover's two sizes (hero / thumb) that the one morphing node moves between.
+//   • `Stage.Transport` the three predicates the transport card keeps (byte-identical to the previous stage).
+//   • `Stage.Tone`      the accent cross-fade and scrim constants (alphas live here, colours in Design.StageInk — ch 00 §4.4;
+//                       named Tone because the UI files alias `Ink = Wavee.Design.StageInk`, V-U1).
+//   • `Stage.Entry`     who may enter (not over fullscreen video — an EMPTY stage is allowed, as the rail ⛶ does today) and
+//                       the morph key the bar art and the hero share.
+//   • `Stage.Caption`   the lyric caption's clock view (which line it hangs on, when the break dots stand in) and its slots.
 //
-// STAGEARM / STAGEINK ARE `Platform/Design.cs`'s (`Design.StageArm`, `Design.StageInk`, owner L). §2 homed them here,
-// and this file carried a copy until owner L landed the real one in the same wave — WITH the design system's own
-// accent-as-ink solve (`Palette.TextInk`) that a CORE file here cannot reach. One authority: the copy is deleted, the
-// stage renderers (`Stage.UI.cs`, `Lyrics.UI.cs`) take every rung from `Design.StageInk`, and `Layout.ScrimBaseA` below
-// REFERENCES `Design.StageArm.ScrimBaseA` rather than restating 0.46 (ch 00 §4.4) — the accent ground and the scrim
-// plateau are then one number by construction.
-//
-// WHY THE ALPHAS LIVE IN `Layout` AND THE COLOURS IN THE ARM. The scrim ladder is theme-INVARIANT, and that is a result
-// rather than an assumption: compositing happens in sRGB-encoded space, whose transfer curve is not symmetric —
-// mixing toward BLACK at a partial alpha destroys far more perceptual luminance than mixing toward white — so at the
-// plateau the LIGHT arm clears a higher contrast ratio at every rung than the dark arm already ships (ch 21 §4.4's
-// table: 4.29 vs 3.57 primary, 3.55 vs 2.89 secondary, 6.70 vs 5.70 under the column shade). One ladder is correct
-// for both, and `StageTests` asserts exactly that rather than trusting this comment. If tuning ever disagrees, the ONE
-// sanctioned addition is a `ScrimBaseLightA` beside `ScrimBaseA`: **alphas may live in `Layout`, colours may not.**
-//
-// Rules: `Layout` is `System`-only (apart from the one referenced constant) so the tests drive the real allocator
-// rather than a copy of its arithmetic — no `Element`, no component, no entity read. No allocation after warm-up (P8);
-// no LINQ, no closures, no async, no boxing (P9).
-
-using FluentGpu.Signals;
+// Rules: `System`-only — no Element, no signal, no entity read — so Wavee.Tests drives the real arithmetic. No
+// allocation after warm-up (P8); no LINQ, no closures, no async, no boxing (P9).
 
 namespace Wavee;
 
 public static partial class Stage
 {
-    // ── 1. the controls the column can fold ─────────────────────────────────────────────────────────────────────────
+    // ── 1. the four modes ───────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The controls the stage's identity column can FOLD away when it runs out of room. A folded control is
-    /// never LOST — it moves address into the compact header's "…" overflow, exactly like the player bar's own
-    /// ladder.</summary>
-    [Flags]
-    public enum Control : byte
+    /// <summary>What the right-hand region shows. PERSISTED ints (Platform.Keys.StageMode) — append only.</summary>
+    public enum Mode : byte { Lyrics = 0, Visualizer = 1, Queue = 2, Artist = 3 }
+
+    public static class ModeRules
     {
-        None = 0,
-        /// <summary>The shuffle satellite (32-DIP, latches accent).</summary>
-        Shuffle = 1 << 0,
-        /// <summary>The repeat satellite (32-DIP, latches accent).</summary>
-        Repeat = 1 << 1,
-        /// <summary>The volume row (thin slider over the scrim).</summary>
-        Volume = 1 << 2,
-        /// <summary>The output-device line under the volume row.</summary>
-        OutputDevice = 1 << 3,
+        public const int Count = 4;
+        /// <summary>A stored/hand-edited int → a real mode; anything else is Lyrics.</summary>
+        public static int Coerce(int stored) => (uint)stored < (uint)Count ? stored : (int)Mode.Lyrics;
+        /// <summary>Visualizer mode has no pane: the face takes the stage and the caption shows the lyric.</summary>
+        public static bool ShowsPane(Mode m) => m != Mode.Visualizer;
+        /// <summary>The gallery is a Visualizer-mode affordance: toggled from another mode it first switches the mode (the
+        /// prototype's <c>togglePane</c>, Flagship.dc.html:555).</summary>
+        public static (Mode Mode, bool Open) ToggleGallery(Mode current, bool open)
+            => current == Mode.Visualizer ? (current, !open) : (Mode.Visualizer, true);
+        /// <summary>The caption line carries the active lyric where no lyrics pane does: over the face when the user wants
+        /// it, and in Lyrics mode when the aspect has no room for the pane (Compact) — never without a timed line.</summary>
+        public static bool ShowsCaption(Mode m, bool overlayOn, bool hasTimedLyrics, bool paneShown)
+            => hasTimedLyrics && ((m == Mode.Visualizer && overlayOn) || (m == Mode.Lyrics && !paneShown));
     }
 
     // ── 2. the allocator ────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The PURE space allocator behind the immersive stage. It answers one question: at this surface width
-    /// and column height, is the stage in its WIDE two-region shape (a fixed identity + transport column beside the
-    /// pane region) or its COMPACT one-column shape (an identity HEADER row above a full-width pane) — and, if wide,
-    /// how much does the column carry?
-    ///
-    /// <para><b>One structure, one reflow flag.</b> There are not two stage layouts; there is one tree whose row
-    /// direction, art size, transport sizes and folded-control set all fall out of <see cref="Wide"/>. Everything a
-    /// renderer needs is a field on this struct, so a call site never re-derives a breakpoint.</para>
-    ///
-    /// <para><b>Hysteresis, per rung, in both axes.</b> A demotion or a fold is IMMEDIATE — nothing may clip while the
-    /// window contracts — and a promotion needs <see cref="PromotionHysteresisW"/> while an unfold needs
-    /// <see cref="FoldHysteresisH"/>. So dragging a window edge across a boundary flips each rung exactly ONCE per
-    /// crossing instead of thrashing a surface that owns a mounted lyrics view and a mounted queue.</para></summary>
+    /// <summary>The four layout classes. Desktop is the 1920×1080 board; the others are the prototypes' container queries.</summary>
+    public enum Aspect : byte { Desktop = 0, Ultrawide = 1, Portrait = 2, Compact = 3 }
+
+    /// <summary>Every DIP the renderer lays out, resolved from (W, H). One structure, one <see cref="Aspect"/> flag: a
+    /// call site never re-derives a breakpoint. Demotion is immediate; promotion needs the hysteresis reserve, so a
+    /// drag across an edge flips once per crossing.</summary>
     public readonly record struct Layout(
-        bool Wide,
-        float ColumnWidth,
-        float ArtSize,
-        float PlayBox,
-        float StepBox,
-        float SatelliteBox,
-        Control Folded)
+        Aspect Aspect, float W, float H,
+        float HeroArt, float ThumbArt, float PadX, float IdentityTop,
+        float PaneX, float PaneRight, float PaneTop, float PaneBottom,
+        float GalleryW, float GalleryH, float TransportH,
+        bool ShowPane, bool ShowChips, bool ShowGallery, bool ShowVolume, bool IconOnlySelector)
     {
-        // ── the one threshold ───────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>At or above this surface width the stage is WIDE. 600 is the width at which a 352-DIP column plus
-        /// its falloff still leaves the pane region a readable measure; under it the pane would be narrower than the
-        /// column beside it.</summary>
-        public const float WideEnterW = 600f;
-
-        /// <summary>The reserve a PROMOTION needs on top of <see cref="WideEnterW"/>. Demotion takes none.</summary>
-        public const float PromotionHysteresisW = 40f;
-
-        // ── the wide shape ──────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The identity column's DESIGNED width — what the user sees as "the column". Fixed, never fluid: it
-        /// carries a 300-square cover and an authored transport cluster, so stretching it would only stretch its
-        /// whitespace.</summary>
-        public const float WideColumnW = 352f;
-
-        /// <summary>The air between the identity column and the pane region, spent as the stage band's <c>Gap</c>.
-        /// A <c>Gap</c>, not a margin: the flex layout accounts for it in BOTH measure and arrange, so the band's
-        /// arithmetic and the renderer's can never disagree about it. It replaced a 120-DIP "falloff" added to the
-        /// column BOX and then padded back out by the renderer — 120 DIP of dead padding inside the column rather than
-        /// air between the two regions, which put the first lyric glyph ~390 DIP from the artwork.</summary>
-        public const float RegionGapW = 56f;
-
-        /// <summary>The column's internal gutter. Authored here rather than in the renderer so
-        /// <see cref="ColumnContentW"/> (and the volume track that spans it) is derived arithmetic rather than a
-        /// second copy of the same number.</summary>
-        public const float ColumnPadX = 24f;
-
-        /// <summary>What the column's content actually gets: 352 − 2 × 24 = 304 — the 300 cover with a hairline to
-        /// spare, AND the span every full-width row in the column (the seek block, the volume rail) must fill.</summary>
-        public const float ColumnContentW = WideColumnW - 2f * ColumnPadX;
-
-        /// <summary>The cover on the wide stage.</summary>
-        public const float WideArtW = 300f;
-        /// <summary>The cover in the compact header row (the app's Thumb64 rung, restated to keep this type
-        /// engine-free).</summary>
-        public const float CompactArtW = 64f;
-
-        /// <summary>The filled circular play/pause — the ONE filled control on the stage.</summary>
-        public const float WidePlayBoxW = 56f;
-        /// <inheritdoc cref="WidePlayBoxW"/>
-        public const float CompactPlayBoxW = 40f;
-
-        /// <summary>Previous / next.</summary>
-        public const float WideStepBoxW = 40f;
-        /// <inheritdoc cref="WideStepBoxW"/>
-        public const float CompactStepBoxW = 32f;
-
-        /// <summary>Shuffle / repeat — the transport's two SATELLITES. One rung below prev/next in both shapes,
-        /// because they are modes rather than actions.</summary>
-        public const float SatelliteBoxW = 32f;
-
-        // ── the column's HEIGHT budget ──────────────────────────────────────────────────────────────────────────────
-        //
-        // The column is a fixed stack of authored rows, and on a short window that stack simply did not fit: centred
-        // justification clamps its leftover at 0, so the surplus fell off the BOTTOM and the output-device line was
-        // clipped away — silently, because a clipped control looks exactly like a control that was never designed.
-        //
-        // THE RULE: THE LADDER IS LOSSY IN THE ART, NEVER IN A CONTROL. A control that falls off the bottom is
-        // unreachable; a smaller cover is merely smaller. So the ART is a RESIDUAL of the height left after the
-        // chrome, and only when the art cannot keep MinArtW does a control fold — device line first, then the volume
-        // row, then the whole shape demotes to Compact.
-        //
-        // Every number below is MEASURED off the real arranged column, not estimated: art 300, identity row 32, seek
-        // block 50, transport = PlayBox, volume 32, device 24, with StackGapH between the big blocks and RowGapS
-        // between the tight ones. Non-art chrome totals exactly 320 with everything shown.
-        //
-        // NOTE the satellites are deliberately NOT a height rung: shuffle/repeat sit INSIDE the transport row, so
-        // folding them saves zero vertical space. They stay what they always were — a WIDTH concern.
-
-        /// <summary>The column's vertical gutter, spent at both ends.</summary>
-        public const float ColumnPadY = 28f;
-        /// <summary>The gap between the column's big blocks.</summary>
-        public const float StackGapH = 18f;
-        /// <summary>The tighter gap (the app's Spacing.S, restated so this type stays engine-free).</summary>
-        public const float RowGapS = 8f;
-
-        /// <summary>Title + artist + heart + "…".</summary>
-        public const float IdentityRowH = 32f;
-        /// <summary>The seek bar plus the elapsed/remaining row under it.</summary>
-        public const float SeekBlockH = 50f;
-        /// <summary>The volume rail row.</summary>
-        public const float VolumeRowH = 32f;
-        /// <summary>The output-device line.</summary>
-        public const float DeviceRowH = 24f;
-
-        /// <summary>The smallest cover the stage will show before it starts folding CONTROLS instead. Below this the
-        /// cover stops reading as the surface's subject and the surface stops being worth its own window.</summary>
-        public const float MinArtW = 168f;
-
-        /// <summary>The art size is quantised to this. NOT cosmetic: the surface's reflow signal is value inequality,
-        /// so an unquantised residual would re-render the surface — and its mounted lyrics view — on EVERY vertical
-        /// resize pixel, destroying the one-coarse-flag property the width ladder is built on. On the 4-DIP grid a
-        /// drag re-renders at most once per 4 DIP.</summary>
+        // ── authored constants (the prototype's chrome, Flagship.dc.html:184-237) ──────────────────────────────────
+        public const float TopBarH = 48f;
+        public const float TransportDesktopH = 112f, TransportCompactH = 96f;
+        public const float Pad = 24f;
+        public const float NowPlayingCardX = 24f, NowPlayingCardY = 64f, NowPlayingCardW = 460f, NowPlayingCardH = 136f;
+        public const float GalleryDesktopW = 444f, GalleryTop = 64f, GalleryBottom = 160f, GalleryRight = 24f;
+        /// <summary>How far the face is inset on the right while the gallery pane is open (pane + 2 × 24).</summary>
+        public const float GalleryInset = GalleryDesktopW + 2f * Pad;
+        public const float HairlineH = 3f;
+        public const float SelectorItemW = 128f, SelectorIconOnlyW = 44f;
+        public const float ThumbDesktop = 96f, ThumbSmall = 64f;
+        public const float HeroMin = 168f, HeroMax = 640f, SmallHeroMin = 96f, SmallHeroMax = 320f;
+        /// <summary>The art is quantised to this grid so a resize pixel re-renders nothing (the previous stage's rule, kept).</summary>
         public const float ArtQuantum = 4f;
 
-        /// <summary>The reserve an UNFOLD needs, per rung. Folding takes none — nothing may clip while the window
-        /// contracts — exactly <see cref="PromotionHysteresisW"/>'s asymmetry, applied to the height axis.</summary>
-        public const float FoldHysteresisH = 24f;
+        // ── thresholds (§2.2) ──────────────────────────────────────────────────────────────────────────────────────
+        /// <summary>Under this width the stage is Compact whatever the height (the previous stage's one threshold, kept).</summary>
+        public const float WideEnterW = 600f;
+        public const float PortraitEnter = 0.80f, PortraitLeave = 0.85f;
+        public const float UltrawideEnter = 2.00f, UltrawideLeave = 1.95f;
+        public const float CompactEnterH = 460f, CompactLeaveH = 484f;   // + the previous stage's FoldHysteresisH 24
 
-        /// <summary>The two controls the HEIGHT ladder may fold. (<see cref="CompactFold"/> is a superset; the two
-        /// compose as a union.)</summary>
-        public const Control HeightFoldable = Control.Volume | Control.OutputDevice;
+        public static float Q4(float v) => MathF.Floor(v / ArtQuantum) * ArtQuantum;
 
-        /// <summary>Everything the column spends vertically EXCEPT the cover — the term the art is the residual of.</summary>
-        public static float ColumnChromeH(Control folded, float playBox) =>
-            2f * ColumnPadY
-            + StackGapH + IdentityRowH
-            + StackGapH + SeekBlockH
-            + RowGapS + playBox
-            + ((folded & Control.Volume) == 0 ? StackGapH + VolumeRowH : 0f)
-            + ((folded & Control.OutputDevice) == 0 ? RowGapS + DeviceRowH : 0f);
+        /// <summary>The class for (w, h) given the previous one (hysteresis). A degenerate size keeps the previous class.</summary>
+        public static Aspect ClassOf(float w, float h, Aspect? previous)
+        {
+            if (w <= 0f || h <= 0f) return previous ?? Aspect.Desktop;
+            if (w < WideEnterW) return Aspect.Compact;
+            float ratio = w / h;
+            bool wasCompact = previous == Aspect.Compact, wasPortrait = previous == Aspect.Portrait, wasUltra = previous == Aspect.Ultrawide;
+            if (ratio >= 1f && (h <= CompactEnterH || (wasCompact && h < CompactLeaveH))) return Aspect.Compact;
+            if (ratio <= PortraitEnter || (wasPortrait && ratio < PortraitLeave)) return Aspect.Portrait;
+            if (ratio >= UltrawideEnter || (wasUltra && ratio > UltrawideLeave)) return Aspect.Ultrawide;
+            return Aspect.Desktop;
+        }
 
-        /// <summary>Can the column carry <see cref="MinArtW"/> at this height with this much folded?</summary>
-        static bool FitsArt(float availH, Control folded, float playBox) =>
-            availH - ColumnChromeH(folded, playBox) >= MinArtW;
+        public static Layout Seed(float w, float h) => Resolve(w, h, null);
 
-        /// <summary>The height at which the WIDE column stops being viable at all — DERIVED, never authored, so it
-        /// cannot drift from the ladder it describes.</summary>
-        public static float WideEnterH => ColumnChromeH(HeightFoldable, WidePlayBoxW) + MinArtW;
-
-        /// <summary>What the compact shape folds into the header's "…". Shuffle and repeat lose their satellites, and
-        /// the volume row and the device line lose their space entirely — all four still reachable, one tap deeper.</summary>
-        public const Control CompactFold =
-            Control.Shuffle | Control.Repeat | Control.Volume | Control.OutputDevice;
-
-        // ── the scrim ladder (alphas only — see the file header) ────────────────────────────────────────────────────
-        //
-        // EDGE-INVISIBILITY IS THE WHOLE MECHANISM. A veil is invisible iff it either (a) reaches its own boundary at
-        // alpha 0 after a feather long enough that the ramp is below the eye's banding threshold, or (b) ends at a
-        // WINDOW edge, where there is no "outside" to contrast with. Every stop below satisfies one of the two, and
-        // `StageTests` asserts it in DIP rather than in stop fractions.
-
-        /// <summary>The base scrim — what the artwork is dimmed to across the whole surface. One flat value, no theme
-        /// branch: this is the ground everything else deepens FROM.</summary>
-        public const float ScrimBaseA = Design.StageArm.ScrimBaseA;
-
-        /// <summary>The scrim at the very top of the body band, under the caption cluster.</summary>
-        public const float ScrimTopA = 0.76f;
-
-        /// <summary>…and at the very bottom, under the pivot band and the transport.</summary>
-        public const float ScrimBottomA = 0.70f;
-
-        /// <summary>Where the top deepening has fully resolved into <see cref="ScrimBaseA"/>, as a FRACTION of the
-        /// body height. A fraction, not a DIP box, is what makes it edge-free by construction: at any window the
-        /// feather is hundreds of DIP long, where the deleted 88-DIP top veil was a band you could point at.</summary>
-        public const float ScrimTopStop = 0.22f;
-
-        /// <summary>Where the bottom deepening starts, same units.</summary>
-        public const float ScrimBottomStop = 0.62f;
-
-        /// <summary>How much darker the scrim goes behind the identity column, on top of <see cref="ScrimBaseA"/>.</summary>
-        public const float ColumnShadeA = 0.26f;
-
-        /// <summary>How far the column shade keeps fading past <see cref="WideColumnW"/> before it reaches exactly 0.
-        /// The shade is a full-bleed PAINT layer with no layout consequence at all, so its feather is free, and a
-        /// 260-DIP ramp to zero has no locatable edge.</summary>
-        public const float ColumnShadeFalloffW = 260f;
-
-        /// <summary>The column shade layer's width. Not a layout width.</summary>
-        public const float ColumnShadeW = WideColumnW + ColumnShadeFalloffW;
-
-        /// <summary>The stop at which the shade stops holding <see cref="ColumnShadeA"/> and starts feathering.</summary>
-        public static float ColumnShadeHoldStop => WideColumnW / ColumnShadeW;
-
-        /// <summary>One mid stop inside the feather so the ramp is a CURVE rather than a straight line — a linear
-        /// alpha ramp is exactly the shape the eye resolves as a Mach band.</summary>
-        public static float ColumnShadeMidStop => ColumnShadeHoldStop + 0.55f * (1f - ColumnShadeHoldStop);
-
-        /// <summary>The mid stop's alpha, as a fraction of <see cref="ColumnShadeA"/>.</summary>
-        public const float ColumnShadeMidFrac = 0.34f;
-
-        /// <summary>How much darker the scrim goes under the QUEUE pane while it is up — its rows carry hover glass,
-        /// and glass needs something under it. Feathers to 0 on the pane's left; its deep end is the window edge.</summary>
-        public const float PaneShadeA = 0.24f;
-
-        /// <summary>Where the queue pane's shade has finished coming up out of 0.</summary>
-        public const float PaneShadeFeatherStop = 0.22f;
-
-        // ── the two shapes ──────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The wide stage: nothing folded.</summary>
-        public static readonly Layout WideStage = new(
-            Wide: true, ColumnWidth: WideColumnW, ArtSize: WideArtW,
-            PlayBox: WidePlayBoxW, StepBox: WideStepBoxW, SatelliteBox: SatelliteBoxW, Folded: Control.None);
-
-        /// <summary>The compact stage: the identity column is a header row and <see cref="CompactFold"/> is in the
-        /// "…".</summary>
-        public static readonly Layout CompactStage = new(
-            Wide: false, ColumnWidth: 0f, ArtSize: CompactArtW,
-            PlayBox: CompactPlayBoxW, StepBox: CompactStepBoxW, SatelliteBox: SatelliteBoxW, Folded: CompactFold);
+        /// <summary>The live resolve. Every fraction is the prototype's (Main.dc.html:46 `--hw:min(28cqw, 82cqh − 340px)` and
+        /// the three container queries at :142-170); the hero is clamped and quantised.</summary>
+        public static Layout Resolve(float w, float h, Layout? previous)
+        {
+            w = MathF.Max(0f, w);
+            h = MathF.Max(0f, h);
+            var a = ClassOf(w, h, previous?.Aspect);
+            switch (a)
+            {
+                case Aspect.Ultrawide:
+                {
+                    float hero = Math.Clamp(Q4(MathF.Min(0.21f * w, 0.82f * h - 340f)), HeroMin, HeroMax);
+                    float padX = Q4(0.05f * w);
+                    return new Layout(a, w, h, hero, ThumbDesktop, padX, Q4(0.12f * h),
+                        PaneX: padX + hero + Q4(0.045f * w), PaneRight: Q4(0.04f * w), PaneTop: 88f, PaneBottom: 168f,
+                        GalleryW: Q4(0.19f * w), GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottom), TransportH: TransportDesktopH,
+                        ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: true, IconOnlySelector: false);
+                }
+                case Aspect.Portrait:
+                {
+                    float hero = Math.Clamp(Q4(MathF.Min(0.14f * h, 0.26f * w)), SmallHeroMin, SmallHeroMax);
+                    float padX = Q4(0.07f * w);
+                    float identityTop = TopBarH + 44f;
+                    return new Layout(a, w, h, hero, ThumbSmall, padX, identityTop,
+                        PaneX: padX, PaneRight: padX, PaneTop: identityTop + hero + Pad, PaneBottom: 168f,
+                        GalleryW: w, GalleryH: Q4(0.55f * h), TransportH: TransportDesktopH,
+                        ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: w >= 700f, IconOnlySelector: true);
+                }
+                case Aspect.Compact:
+                {
+                    float hero = Math.Clamp(Q4(MathF.Min(0.62f * h, w - 420f)), SmallHeroMin, SmallHeroMax);
+                    const float padX = 28f;
+                    return new Layout(a, w, h, hero, ThumbSmall, padX, TopBarH + 28f,
+                        PaneX: padX + hero + 28f, PaneRight: padX, PaneTop: TopBarH + 28f, PaneBottom: TransportCompactH + Pad,
+                        GalleryW: 0f, GalleryH: 0f, TransportH: TransportCompactH,
+                        ShowPane: false, ShowChips: false, ShowGallery: false, ShowVolume: false, IconOnlySelector: true);
+                }
+                default:
+                {
+                    float hero = Math.Clamp(Q4(MathF.Min(0.28f * w, 0.82f * h - 340f)), HeroMin, HeroMax);
+                    float padX = Q4(0.058f * w);
+                    return new Layout(Aspect.Desktop, w, h, hero, ThumbDesktop, padX, Q4(0.122f * h),
+                        PaneX: padX + hero + Q4(0.05f * w), PaneRight: Q4(0.05f * w), PaneTop: 88f, PaneBottom: 168f,
+                        GalleryW: GalleryDesktopW, GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottom), TransportH: TransportDesktopH,
+                        ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: true, IconOnlySelector: false);
+                }
+            }
+        }
 
         // ── derived reads the renderer uses ─────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The column BOX's width. It IS the designed column — the box and the design agree, and the air
-        /// beside it is <see cref="RegionGapW"/> spent by the band. 0 in the compact shape, where the identity is a
-        /// full-width header row rather than a column.</summary>
-        public float LayoutWidth => Wide ? ColumnWidth : 0f;
+        /// <summary>The ONE cover node's size for a mode: the hero everywhere but the Visualizer thumb.</summary>
+        public float CoverSize(Mode mode) => mode == Mode.Visualizer ? ThumbArt : HeroArt;
+        public float CoverX(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardX + 20f : PadX;
+        public float CoverY(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardY + 20f : IdentityTop;
+        /// <summary>Portrait and Compact lay the identity out as a ROW (art left, title right of it); Desktop/Ultrawide stack it.</summary>
+        public bool IdentityIsRow => Aspect is Aspect.Portrait or Aspect.Compact;
+        /// <summary>The title column: beside the thumb in Visualizer mode; beside the hero on the small classes (V-U23); under it otherwise.</summary>
+        public float TitleX(Mode mode) => mode == Mode.Visualizer ? CoverX(mode) + ThumbArt + 16f : IdentityIsRow ? PadX + HeroArt + Pad : PadX;
+        public float TitleY(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardY + 18f : IdentityIsRow ? IdentityTop : IdentityTop + HeroArt + Pad;
+        /// <summary>The title column's width. Under the hero (Desktop/Ultrawide) it runs past the art's edge up to the pane's
+        /// gutter (§3.2: the pane starts at PaneX), so a long title reads instead of being cut at the cover's width; beside the
+        /// art on the small classes it takes the rest of the row; in the now-playing card it is the card minus the thumb.</summary>
+        public float TitleW(Mode mode) => mode == Mode.Visualizer ? NowPlayingCardW - (ThumbArt + 56f)
+            : IdentityIsRow ? MathF.Max(160f, W - TitleX(mode) - PadX) : MathF.Max(HeroArt, PaneX - Pad - PadX);
 
-        /// <summary>Is this control ON the stage (rather than folded into the compact "…")?</summary>
-        public bool Shows(Control c) => (Folded & c) == 0;
-
-        /// <inheritdoc cref="Shows"/>
-        public bool ShowSatellites => Shows(Control.Shuffle) && Shows(Control.Repeat);
-        /// <inheritdoc cref="Shows"/>
-        public bool ShowVolume => Shows(Control.Volume);
-        /// <inheritdoc cref="Shows"/>
-        public bool ShowDeviceLine => Shows(Control.OutputDevice);
-        /// <summary>The compact shape is the only one with an overflow, and it always has one (four controls fold).</summary>
-        public bool ShowOverflow => Folded != Control.None;
-
-        /// <summary>A monotone "how much is the stage carrying" score — the comparand the narrowing-never-adds test
-        /// asserts on. Every component is non-decreasing in width.</summary>
-        public int Richness => (Wide ? 1 : 0)
-            + (ShowSatellites ? 1 : 0) + (ShowVolume ? 1 : 0) + (ShowDeviceLine ? 1 : 0)
-            + (int)(ArtSize * 0.01f) + (int)(PlayBox * 0.1f) + (int)(StepBox * 0.1f);
-
-        // ── resolution ──────────────────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The seed (no previous layout ⇒ no promotion/unfold reserve) — the value the surface's signal is
-        /// constructed with before its first viewport effect runs.</summary>
-        public static Layout Seed(float width, float columnAvailH) => Resolve(width, columnAvailH, null);
-
-        /// <summary>The live resolve. <paramref name="columnAvailH"/> is the height the identity column actually gets
-        /// — the surface owns that arithmetic (viewport less the caption band, the player bar and the stage's own top
-        /// band) and passes it in, so the renderer and this allocator cannot hold two different opinions about it.
-        ///
-        /// <para><b>Two axes, ONE shape decision.</b> The width ladder decides wide⇄compact; the height ladder decides
-        /// how much the wide column carries, and its terminal rung is the SAME <see cref="CompactStage"/> the width
-        /// ladder already ends at. So there is still one shape, one fold set (a union) and one <see cref="Shows"/> —
-        /// not two competing breakpoint tables.</para></summary>
-        public static Layout Resolve(float width, float columnAvailH, Layout? previous = null)
+        /// <summary>The titles column's rhythm (Hero: Gap XS between title · meta · chips; the chips row's top margin S and
+        /// its 24-DIP chip) — what <see cref="TitleBlockH"/> adds up.</summary>
+        public const float TitleGap = 4f, ChipsTop = 8f, ChipH = 24f;
+        /// <summary>The identity block's height with <paramref name="lines"/> title lines: title · meta · (chips).</summary>
+        public float TitleBlockH(Mode mode, int lines)
         {
-            width = MathF.Max(0f, width);
-            float availH = MathF.Max(0f, columnAvailH);
-
-            bool wideByWidth = previous is { } old
-                ? width >= WideEnterW && (old.Wide || width >= WideEnterW + PromotionHysteresisW)
-                : width >= WideEnterW;
-            if (!wideByWidth) return CompactStage;
-
-            Control was = previous is { } p ? p.Folded & HeightFoldable : Control.None;
-            const float box = WidePlayBoxW;
-
-            // Rung 1 — the output-device line. Informational, and the picker it opens is one tap away in the transport.
-            Control fold = Control.None;
-            if (Refold(availH, fold, box, (was & Control.OutputDevice) != 0)) fold |= Control.OutputDevice;
-
-            // Rung 2 — the volume row. It has a system twin and hardware keys; the cover does not.
-            if (fold != Control.None && Refold(availH, fold, box, (was & Control.Volume) != 0))
-                fold |= Control.Volume;
-
-            // Rung 3 — even the folded column cannot keep MinArtW ⇒ the whole shape demotes, the width ladder's end.
-            if (!FitsArt(availH, fold, box)) return CompactStage;
-
-            float art = availH - ColumnChromeH(fold, box);
-            art = MathF.Min(art, MathF.Min(WideArtW, ColumnContentW));
-            art = MathF.Max(art, MinArtW);
-            art = MathF.Floor(art / ArtQuantum) * ArtQuantum;
-            return WideStage with { ArtSize = art, Folded = fold };
+            var (_, titleLine) = TitleFont(mode);
+            var (_, metaLine) = MetaFont(mode);
+            return lines * titleLine + TitleGap + metaLine + (ShowChips ? TitleGap + ChipsTop + ChipH : 0f);
         }
+        /// <summary>The title's line budget: the thumb card holds ONE line (the card is a fixed 136 DIP); the hero takes TWO
+        /// whenever the whole block (two lines, the meta line, the chips) still clears the transport card, else one. The
+        /// meta and chips FLOW under it (a column), so nothing below the title is positioned by a hard-coded offset.</summary>
+        public int TitleMaxLines(Mode mode)
+            => mode == Mode.Visualizer ? 1 : TitleY(mode) + TitleBlockH(mode, 2) <= TransportTop - Pad ? 2 : 1;
 
-        /// <summary>Should the NEXT rung fold? Folding is immediate; unfolding demands <see cref="FoldHysteresisH"/>
-        /// of reserve, which is what makes a slow drag flip it once rather than oscillate on the boundary.</summary>
-        static bool Refold(float availH, Control folded, float playBox, bool wasFolded) =>
-            wasFolded ? !FitsArt(availH - FoldHysteresisH, folded, playBox)
-                      : !FitsArt(availH, folded, playBox);
+        // ── the top bar: brand · SelectorBar · [gallery][exit] ──────────────────────────────────────────────────────
+
+        /// <summary>The top bar's own metrics (TopBar: Padding 16 · 8, Gap 8; the button column's Gap 4), the 40-DIP glass
+        /// button, and the labelled exit button's budget (glyph + "Exit full screen" in the longest shipped locale).</summary>
+        public const float TopBarPadL = 16f, TopBarPadR = 8f, TopBarGap = 8f, SelectorGap = 4f;
+        public const float BarButtonW = 40f, BarButtonGap = 4f, ExitLabelW = 220f;
+        /// <summary>The SelectorBar's four items, labelled or icon-only.</summary>
+        public float SelectorW => 4f * (IconOnlySelector ? SelectorIconOnlyW : SelectorItemW) + 3f * SelectorGap;
+        /// <summary>Each side column of the top bar: the brand and the button cluster split what the SelectorBar leaves
+        /// (both Grow 1 · Basis 0), so the selector stays centred.</summary>
+        public float TopBarSideW => MathF.Max(0f, (W - TopBarPadL - TopBarPadR - SelectorW - 2f * TopBarGap) * 0.5f);
+        /// <summary>The exit button carries its label only beside a labelled selector AND when its column holds the gallery
+        /// toggle plus the labelled button; otherwise it is the glyph alone with the label as its tooltip — it never
+        /// truncates to "Ex…" (the icon-only classes show "⤢" alone, §3.5).</summary>
+        public bool ExitLabelShown => !IconOnlySelector && TopBarSideW >= BarButtonW + BarButtonGap + ExitLabelW;
+
+        // ── the transport card's clusters ───────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The card's horizontal padding · the centred cluster (shuffle · previous · PLAY 56 · next · repeat at Gap 8)
+        /// · the right cluster's gap, the device button's floor (glyph + chevron, the name trimmed away) and the volume slider.</summary>
+        public const float TransportPadX = 20f, TransportCentreW = 4f * BarButtonW + 56f + 4f * 8f;
+        public const float TransportRightGap = 6f, DeviceMinW = 72f, VolumeSliderW = 128f;
+        /// <summary>heart · mute · device (at its floor) · more.</summary>
+        public const float TransportRightMinW = 3f * BarButtonW + DeviceMinW + 3f * TransportRightGap;
+        /// <summary>The card's width (full width at Pad, or right of the art on Compact) and its top edge.</summary>
+        public float TransportW => MathF.Max(0f, W - TransportLeft - Pad);
+        public float TransportTop => H - Pad - TransportH;
+        /// <summary>Each side of the centred cluster: the "Playing from" column and the right cluster split it equally.</summary>
+        public float TransportSideW => MathF.Max(0f, (TransportW - 2f * TransportPadX - TransportCentreW) * 0.5f);
+        /// <summary>The volume slider shows where the class offers it (<see cref="ShowVolume"/>) AND the right cluster still fits
+        /// beside it; otherwise the mute glyph alone — the cluster never runs off the card.</summary>
+        public bool VolumeFits => ShowVolume && TransportSideW >= TransportRightMinW + TransportRightGap + VolumeSliderW;
+
+        // ── the caption: the lyric over the face (and Compact Lyrics mode's lyric line) ──────────────────────────────
+
+        /// <summary>The caption block's widest share of its region · its gutter above the transport card · the gap between
+        /// its lines · the active line's type range · the context lines' share of it · the height under which the context
+        /// lines drop · the soft veil's overhang around the block.</summary>
+        public const float CaptionMaxWFrac = 0.72f, CaptionAboveTransport = 24f, CaptionLineGap = 8f;
+        public const float CaptionActiveMin = 40f, CaptionActivePortraitMin = 32f, CaptionActiveMax = 56f, CaptionContextRatio = 0.45f;
+        public const float CaptionContextMinH = 600f, CaptionVeilPadX = 120f, CaptionVeilPadY = 56f;
+        public const int CaptionActiveMaxLines = 2;
+
+        /// <summary>The ACTIVE line's type: the hero-title scale, 40–56 DIP by height (an even size, the line 8 DIP taller);
+        /// Portrait is width-capped (floor 32), Compact steps down to its title size.</summary>
+        public (float Size, float Line) CaptionFont
+        {
+            get
+            {
+                if (Aspect == Aspect.Compact) return (24f, 30f);
+                float s = MathF.Round(MathF.Min(0.04f * H, 0.05f * W) * 0.5f) * 2f;
+                s = Math.Clamp(s, Aspect == Aspect.Portrait ? CaptionActivePortraitMin : CaptionActiveMin, CaptionActiveMax);
+                return (s, s + 8f);
+            }
+        }
+        /// <summary>The previous / next context lines: ≈0.45 of the active size (floor 14).</summary>
+        public (float Size, float Line) CaptionContextFont
+        {
+            get
+            {
+                float c = MathF.Max(14f, MathF.Round(CaptionFont.Size * CaptionContextRatio));
+                return (c, MathF.Round(c * 1.3f));
+            }
+        }
+        /// <summary>The previous and next lines need vertical room: never on Compact, and only on a window this tall.</summary>
+        public bool CaptionShowsContext => Aspect != Aspect.Compact && H >= CaptionContextMinH;
+        /// <summary>The region the caption centres in: the face's width (the open gallery's inset excluded, so the line never
+        /// slides under the pane).</summary>
+        float CaptionRegionW(Mode mode, bool galleryOpen) => MathF.Max(0f, W - (mode == Mode.Visualizer ? FaceRight(galleryOpen) : 0f));
+        /// <summary>The caption block's width: 72 % of its region, on the quantum; on Compact the strip right of the art.</summary>
+        public float CaptionW(Mode mode, bool galleryOpen)
+            => Aspect == Aspect.Compact ? TransportW : Q4(CaptionMaxWFrac * CaptionRegionW(mode, galleryOpen));
+        /// <summary>The caption block's left edge: centred in its region; on Compact flush with the transport card.</summary>
+        public float CaptionX(Mode mode, bool galleryOpen)
+            => Aspect == Aspect.Compact ? TransportLeft : (CaptionRegionW(mode, galleryOpen) - CaptionW(mode, galleryOpen)) * 0.5f;
+        /// <summary>The block's BOTTOM margin from the stage's bottom edge: above the transport card and its gutter, so the
+        /// line never sits under the controls or the hairline — the lower third of the stage.</summary>
+        public float CaptionBottom => TransportH + Pad + CaptionAboveTransport;
+        /// <summary>The block at its tallest: two active lines plus the two context lines when shown.</summary>
+        public float CaptionBlockMaxH
+        {
+            get
+            {
+                float ctx = CaptionShowsContext ? 2f * (CaptionContextFont.Line + CaptionLineGap) : 0f;
+                return CaptionActiveMaxLines * CaptionFont.Line + ctx;
+            }
+        }
+        /// <summary>The block's top edge at its tallest.</summary>
+        public float CaptionTopMin => H - CaptionBottom - CaptionBlockMaxH;
+        /// <summary>Compact: the transport card sits RIGHT of the art, not under it (V-U23). Everywhere else it spans the width at Pad.</summary>
+        public float TransportLeft => Aspect == Aspect.Compact ? PadX + HeroArt + Pad : Pad;
+        /// <summary>The face's right inset while the gallery is open (the prototype's <c>.pane .stg { right: 492px }</c>) — THIS
+        /// layout's gallery width plus the two gutters (Ultrawide's docked column is 19 % of W, not 444 — V-U45).</summary>
+        public float FaceRight(bool galleryOpen) => galleryOpen && ShowGallery && Aspect != Aspect.Portrait ? GalleryW + 2f * Pad : 0f;
+        /// <summary>The pane's width from its two edges; never negative.</summary>
+        public float PaneW => MathF.Max(0f, W - PaneX - PaneRight);
+        public float PaneH => MathF.Max(0f, H - PaneTop - PaneBottom);
+
+        /// <summary>Title type per aspect and mode: the hero reads TitleLarge 40/52, the thumb Subtitle 20/28; small
+        /// classes step down (Title 28/36 · 24/30).</summary>
+        public (float Size, float Line) TitleFont(Mode mode)
+        {
+            if (mode == Mode.Visualizer) return (20f, 28f);
+            return Aspect switch { Aspect.Portrait => (28f, 36f), Aspect.Compact => (24f, 30f), _ => (40f, 52f) };
+        }
+        public (float Size, float Line) MetaFont(Mode mode)
+            => mode != Mode.Visualizer && (Aspect is Aspect.Desktop or Aspect.Ultrawide) ? (18f, 24f) : (14f, 20f);
+
+        /// <summary>A monotone "how much is on screen" score for the narrowing-never-adds test: the five affordance flags and the
+        /// transport height. The hero is EXCLUDED on purpose — it is a per-class formula (0.28·W vs Ultrawide's 0.21·W) and
+        /// legitimately shrinks when a wider window promotes to Ultrawide (V-U24).</summary>
+        public int Richness => (ShowPane ? 1 : 0) + (ShowChips ? 1 : 0) + (ShowGallery ? 1 : 0) + (ShowVolume ? 1 : 0)
+            + (IconOnlySelector ? 0 : 1) + (int)(TransportH * 0.01f);
     }
 
-    // ── 3. which pane the right-hand region is showing ──────────────────────────────────────────────────────────────
+    // ── 3. what the transport may do (unchanged from the previous stage) ────────────────────────────────────────────
 
-    /// <summary>The stage's pane choice. The signal is <b>static</b> on purpose: it persists for the SESSION, so
-    /// re-opening the surface lands on the pane you left it on. It is not a setting — nothing is written to disk — and
-    /// it is not per-track state either; it is exactly "last pane wins".</summary>
-    public static class Pane
-    {
-        public const int Lyrics = 0;
-        public const int Queue = 1;
-
-        /// <summary>Read it in a Render to subscribe; the two panes stay MOUNTED either way — the switch is an opacity
-        /// cross-fade, never a conditional mount.</summary>
-        public static readonly Signal<int> Current = new(Lyrics);
-
-        /// <summary>Flip to the other pane — the pivot links' one writer.</summary>
-        public static void Toggle() => Current.Value = Current.Peek() == Lyrics ? Queue : Lyrics;
-    }
-
-    // ── 4. the surface's band arithmetic (stage B) ──────────────────────────────────────────────────────────────────
-    //
-    // ONE definition of how much height the identity column gets, passed into `Layout.Resolve`, so the allocator's
-    // height ladder and the tree that realizes it cannot disagree about the room there is (W14's table:
-    // availH = vpH − 48 − 72 − 88). The wide band height is used unconditionally: the height ladder only runs on the
-    // wide path, so the compact band can never be an input to it.
-
-    /// <summary>The fixed bands the immersive surface is built from.</summary>
-    public static class Band
-    {
-        /// <summary>The window caption strip left live above the surface (the engine's expanded title bar).</summary>
-        public const float CaptionH = 48f;
-        /// <summary>The docked player bar left live below it.</summary>
-        public const float PlayerBarH = 72f;
-        /// <summary>The top band holding the way out, wide and compact.</summary>
-        public const float TopBandH = 88f, CompactTopBandH = 56f;
-        /// <summary>The pivot band along the pane region's bottom edge.</summary>
-        public const float PivotBandH = 72f;
-        /// <summary>The volume rail's LENGTH: the column's content span less the mute glyph and the gap beside it —
-        /// `Slider.Create` takes a length, and a NaN one collapsed the rail to a dash.</summary>
-        public const float VolumeTrackW = Layout.ColumnContentW - 32f - 8f;
-
-        public static float TopBandFor(bool wide) => wide ? TopBandH : CompactTopBandH;
-
-        /// <summary>The body band: the viewport less the caption and the player bar.</summary>
-        public static float BodyH(float viewportH) => MathF.Max(1f, viewportH - CaptionH - PlayerBarH);
-
-        /// <summary>The height the identity column actually gets — the input to <see cref="Layout.Resolve"/>.</summary>
-        public static float ColumnAvailH(float viewportH) => MathF.Max(0f, BodyH(viewportH) - TopBandH);
-    }
-
-    // ── 5. what the transport may do (StageIdentity.cs:89-90) ───────────────────────────────────────────────────────
-
-    /// <summary>The stage transport's own predicates. Previous/Next and the satellites are NOT here: they read the shared
-    /// <see cref="Shell.SkipRule"/> / <see cref="Shell.PlayerBarFacts"/> fact set, the same one the bar and the video
-    /// overlay read. The play disc's own rule stays: loading kills only the disc.</summary>
     public static class Transport
     {
         public static bool PrimaryEnabled(bool hasTrack, bool loading) => hasTrack && !loading;
-
-        /// <summary>The quality badge names the PLAYING stream or nothing: no published format, or another Connect device
-        /// is active, ⇒ no badge. Silence is the correct answer, not a fallback.</summary>
+        /// <summary>The format chip names the PLAYING stream or nothing: no published format, or another Connect device
+        /// is active, ⇒ no chip. Silence is the correct answer, not a fallback.</summary>
         public static bool ShowsQualityBadge(bool hasFormat, bool remoteActive) => hasFormat && !remoteActive;
-
         /// <summary>The identity title: the track's own title, or "nothing playing" when it is absent or still EQUALS the
         /// uri (a placeholder row before its metadata landed — never surface a raw uri).</summary>
         public static bool UsesTitle(string? title, string? uri) => title is { Length: > 0 } && title != uri;
     }
 
-    // ── 6. the backdrop drift (ImmersiveLyricsSurface.cs:70-82, StageDriftClock.cs) ─────────────────────────────────
+    // ── 4. tone arithmetic (alphas and the cross-fade; the colours are Design.StageInk's) ────────────────────────────
 
-    /// <summary>Elapsed presentation time for the decorative drift. Pausing HOLDS the last sampled pose; resuming
-    /// continues that phase without spending the paused wall time. The caller supplies monotonic seconds (the frame
-    /// clock), so the clock itself reads nothing.</summary>
-    public sealed class DriftClock
+    public static class Tone
     {
-        double _elapsed, _last;
-        bool _sampled;
-        public bool Running { get; private set; }
-
-        public void SetRunning(bool running, double nowSeconds)
-        {
-            if (Running == running) return;
-            Running = running;
-            _last = nowSeconds;
-        }
-
-        public double Sample(double nowSeconds)
-        {
-            if (!Running) return _elapsed;
-            if (!_sampled) { _sampled = true; _last = nowSeconds; return _elapsed; }
-            if (nowSeconds > _last) { _elapsed += nowSeconds - _last; _last = nowSeconds; }
-            return _elapsed;
-        }
-
-        public void Reset()
-        {
-            Running = false;
-            _sampled = false;
-            _elapsed = _last = 0d;
-        }
+        /// <summary>The accent cross-fade on a track change (the prototype's <c>transition: --acc 1s</c>, tightened to the
+        /// Fluent "slow" neighbourhood so a skip-skip-skip never lags the art).</summary>
+        public const float CrossFadeMs = 600f;
+        /// <summary>The scrim over the backdrop: deep under lyrics/queue/artist, light under a face.</summary>
+        public const float ScrimA = 0.56f, ScrimVisualizerA = 0.22f;
+        /// <summary>The caption's inks: unsung glyphs, the previous and next context lines (alphas over the stage ink), the
+        /// active line's accent bloom (its layer opacity and blur σ), the soft veil's centre, and the rise every line hand-off
+        /// travels (in from below, out above).</summary>
+        public const float CaptionUnsungA = 0.45f, CaptionPrevA = 0.35f, CaptionNextA = 0.45f;
+        public const float CaptionBloomA = 0.55f, CaptionBloomSigma = 10f, CaptionVeilA = 0.40f, CaptionRiseDip = 16f;
+        /// <summary>The bottom smoke under the face so the transport card reads (prototype <c>.smk</c>).</summary>
+        public const float SmokeH = 440f, SmokeA = 0.60f;
+        /// <summary>The base Field's opacity: breathing under a pane, near-full under a face.</summary>
+        public const float BaseFieldA = 0.62f, BaseFieldBreathA = 0.20f, BaseFieldVisualizerA = 0.90f;
+        /// <summary>The LINEAR cross-fade position for a change that began <paramref name="elapsedMs"/> ago: 0 at the change,
+        /// 1 at <see cref="CrossFadeMs"/> and after. The clock lerps from the colour CAPTURED at the change, so the fade
+        /// completes in exactly CrossFadeMs whatever the tick rate (an exponential step never reaches the target — V-U17).</summary>
+        public static float Progress(float elapsedMs) => elapsedMs <= 0f ? 0f : MathF.Min(1f, elapsedMs / CrossFadeMs);
     }
 
-    /// <summary>The drift's geometry: two INCOMMENSURATE sinusoids (37 s / 53 s never re-phase inside a session), a
-    /// translation of ±4 % of the body per axis and a ±2 % scale wobble on the SAME two waves, under a 1.30× paint
-    /// overscale that keeps an edge from ever showing.</summary>
-    public static class Drift
+    // ── 5. entry ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+    public static class Entry
     {
-        public const float PeriodASec = 37f, PeriodBSec = 53f, AmpFrac = 0.04f, ScaleAmp = 0.02f;
-        public const float IntervalMs = 33f, Overscale = 1.30f, SigmaDip = 80f, ResolutionScale = 0.5f;
-        /// <summary>Write gates: a tick whose delta is invisible is dropped (most ticks near a turning point).</summary>
-        public const float WriteEpsDip = 0.15f, WriteEpsScale = 0.0004f;
-        const float Tau = 6.2831853f;
+        /// <summary>The shared-element key the player bar's art and the stage hero both carry (an IMAGE node — the
+        /// engine captures only image nodes, ConnectedAnimation.cs:246-250).</summary>
+        public const string MorphKey = "stage:art";
+        /// <summary>Never over a fullscreen VIDEO (F11 owns that). Nothing playing is NOT a bar: the rail ⛶ opens an empty
+        /// stage today (Rail.UI.cs:253-255, "a track with no lyrics still opens a full stage") and so does every door here (V-U53).</summary>
+        public static bool CanEnter(bool videoFullscreen) => !videoFullscreen;
+    }
 
-        /// <summary>The carrier's pose at drift time <paramref name="t"/>, for a body of the given size. Divided by
-        /// <see cref="Overscale"/> because the carrier sits UNDER the frame's paint scale.</summary>
-        public readonly record struct Pose(float Dx, float Dy, float Scale);
+    // ── 6. the caption's clock view (fed the lyrics view's OWN resolves — Lyrics.ResolveLine / AdvancePastInterlude) ──
 
-        public static Pose At(double t, float bodyW, float bodyH)
+    public static class Caption
+    {
+        /// <summary>What the caption hangs on at <paramref name="nowMs"/>. <c>Anchor</c> is the line the view centres on
+        /// (−1 = before the first line); <c>Dots</c> says the break's breathing dots stand in for the active line.
+        /// <paramref name="leadLine"/> is the lyrics view's lead-resolved line (<c>ResolveLine(now + LeadMs)</c>);
+        /// <paramref name="gapStart"/>/<paramref name="gapEnd"/> the real break <c>AdvancePastInterlude</c> reported for it
+        /// (equal ⇒ none). The dots hold the slot from the sung-out point until the NEXT line resolves on the same lead, so
+        /// the hand-off is dots → next line with nothing between (never the finished line flashing back, never a line-synced
+        /// line lit before it is sung). A long intro (≥ <paramref name="minGapMs"/>) breathes the same dots toward line 0.</summary>
+        public static (int Anchor, bool Dots) View(int leadLine, long gapStart, long gapEnd, long firstStartMs, long nowMs, long leadMs, long minGapMs)
         {
-            float sinA = MathF.Sin(Tau * (float)t / PeriodASec);
-            float sinB = MathF.Sin(Tau * (float)t / PeriodBSec);
-            return new Pose(AmpFrac * bodyW * sinA / Overscale, AmpFrac * bodyH * sinB / Overscale,
-                            1f + ScaleAmp * 0.5f * (sinB - sinA));
+            if (leadLine < 0) return (-1, firstStartMs >= minGapMs && nowMs + leadMs < firstStartMs);
+            return (leadLine, gapEnd > gapStart && nowMs >= gapStart && nowMs + leadMs < gapEnd);
         }
 
-        /// <summary>Does the ticker run at all? Setting OFF, OS reduced motion, paused, or no art ⇒ no ticker.</summary>
-        public static bool Runs(bool animatedSetting, bool reducedMotion, bool playing, bool hasArt)
-            => animatedSetting && !reducedMotion && playing && hasArt;
+        /// <summary>One int for the view (the host's ONE signal — a re-render only when the line or the break edge moves).</summary>
+        public static int Pack(int anchor, bool dots) => ((anchor + 1) << 1) | (dots ? 1 : 0);
+        public static int AnchorOf(int packed) => (packed >> 1) - 1;
+        public static bool DotsOf(int packed) => (packed & 1) != 0;
 
-        /// <summary>Is the move from <paramref name="current"/> to <paramref name="next"/> worth a paint write?</summary>
-        public static bool Worth(in Pose current, in Pose next)
-            => MathF.Abs(current.Dx - next.Dx) >= WriteEpsDip || MathF.Abs(current.Dy - next.Dy) >= WriteEpsDip
-            || MathF.Abs(current.Scale - next.Scale) >= WriteEpsScale;
+        /// <summary>The three slots' line indices (−1 = empty): the previous line above, the active line (none while the dots
+        /// stand in), the next line below. In a break the previous slot is the line just sung. Without context (Compact, a
+        /// short window) only the centre shows.</summary>
+        public static (int Prev, int Centre, int Next) Slots(int anchor, bool dots, bool context, int count)
+        {
+            int centre = dots ? -1 : Valid(anchor, count);
+            int prev = context ? Valid(dots ? anchor : anchor - 1, count) : -1;
+            int next = context ? Valid(anchor + 1, count) : -1;
+            return (prev, centre, next);
+
+            static int Valid(int i, int n) => (uint)i < (uint)n ? i : -1;
+        }
     }
 }

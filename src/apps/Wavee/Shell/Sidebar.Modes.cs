@@ -54,7 +54,7 @@ public enum SidebarV3Qualifier : byte { Any = 0, ByYou = 1, BySpotify = 2, Mixed
 public enum SidebarV3Sort : byte { Recents = 0, RecentlyAdded = 1, Alphabetical = 2, Creator = 3, Custom = 4 }
 public enum SidebarV3View : byte { CompactList = 0, List = 1, CompactGrid = 2, Grid = 3 }
 
-/// <summary>The per-design static table: key slug, mount key, responsive width tiers, and the int coercion the
+/// <summary>The per-design static table: key slug, mount key, default width, and the int coercion the
 /// persisted setting round-trips through.</summary>
 public static class SidebarDesignInfo
 {
@@ -82,16 +82,13 @@ public static class SidebarDesignInfo
         _ => "sidebar.classic",
     };
 
-    /// <summary>The responsive nav-pane width tiers per design. All three sets sit INSIDE the global
-    /// <c>SidebarPaneBounds.NavPaneMinW/MaxW</c> clamp (180/460, issue #84) — the grip and the tier ladder still
-    /// clamp through that one owner, and no per-design literal pair may be reintroduced anywhere else.</summary>
-    public static (float Narrow, float Mid, float Wide) Tiers(SidebarDesign d) => d switch
+    /// <summary>The design's default expanded width (the former MID tier, D4): what an absent key and "Reset width"
+    /// answer with. Inside the one global clamp (<c>SidebarPaneBounds.NavPaneMinW/MaxW</c>, 180/460, issue #84).</summary>
+    public static float DefaultWidth(SidebarDesign d) => d switch
     {
-        SidebarDesign.LibraryV3 => (300f, 340f, 380f),
-        SidebarDesign.Curated => (280f, 320f, 360f),
-        _ => (SidebarPaneBounds.NavPaneNarrowW,
-              SidebarPaneBounds.NavPaneMidW,
-              SidebarPaneBounds.NavPaneWideW),   // 240 / 280 / 320 — Classic's existing ladder, unchanged
+        SidebarDesign.LibraryV3 => 340f,
+        SidebarDesign.Curated => 320f,
+        _ => 280f,
     };
 
     /// <summary>Persisted-int → design, tolerating a hand-edited or future value (falls back to Classic, never
@@ -99,69 +96,35 @@ public static class SidebarDesignInfo
     public static SidebarDesign FromInt(int v) => (uint)v < Count ? (SidebarDesign)v : SidebarDesign.Classic;
 }
 
-/// <summary>One design's remembered pane triple. Immutable so a snapshot can be handed around without aliasing the
+/// <summary>One design's remembered pane pair. Immutable so a snapshot can be handed around without aliasing the
 /// live state it came from.</summary>
-public readonly record struct SidebarPaneSnapshot(float Width, bool Collapsed, bool WidthUserSet);
+public readonly record struct SidebarPaneSnapshot(float Width, SidebarRegime Regime);
 
 /// <summary>
-/// The PURE per-design pane snapshot/restore rules behind a design switch. While a design's <c>WidthUserSet</c> is
-/// false its width follows THAT design's tier ladder; the first committed seam drag in that design latches the flag
-/// forever, for that design only. Switching designs never latches, and never clears, another design's flag.
-/// Collapsing is not a width choice and never touches the flag.
+/// The PURE per-design pane snapshot/restore rules behind a design switch: the expanded width and the regime
+/// (<c>sidebar.&lt;slug&gt;.collapsed</c> ⇔ Rail). The rail detent is GLOBAL, not per design, and is read separately.
 /// </summary>
 public static class SidebarPaneState
 {
-    /// <summary>The design's own width key, seeded with ITS narrow tier as the settings default (so an absent key
-    /// answers with a sane per-design floor rather than a foreign design's number).</summary>
+    /// <summary>The design's own width key, seeded with ITS default as the settings default.</summary>
     static SettingKey<float> WidthKey(SidebarDesign design)
-        => Platform.Keys.SidebarWidth(SidebarDesignInfo.Slug(design), SidebarDesignInfo.Tiers(design).Narrow);
+        => Platform.Keys.SidebarWidth(SidebarDesignInfo.Slug(design), SidebarDesignInfo.DefaultWidth(design));
 
-    /// <summary>Write the outgoing design's live pane state into its own key bag (step 1 of a switch).</summary>
+    /// <summary>Write a design's live pane state into its own key bag.</summary>
     public static void Snapshot(IAppSettings settings, SidebarDesign design, in SidebarPaneSnapshot state)
     {
-        string slug = SidebarDesignInfo.Slug(design);
-        settings.Set(WidthKey(design), state.Width);
-        settings.Set(Platform.Keys.SidebarCollapsed(slug), state.Collapsed);
-        settings.Set(Platform.Keys.SidebarWidthUserSet(slug), state.WidthUserSet);
+        settings.Set(WidthKey(design), SidebarPaneBounds.Clamp(state.Width));
+        settings.Set(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design)), state.Regime == SidebarRegime.Rail);
     }
 
-    /// <summary>Read the incoming design's remembered pane state (step 2 of a switch). A design whose width was
-    /// never pinned by a drag gets its OWN tier default at the live viewport — which is what makes the tier ladder
-    /// re-seed on a switch instead of carrying the outgoing design's width across.</summary>
-    public static SidebarPaneSnapshot Restore(IAppSettings settings, SidebarDesign design, float viewportWidth)
-    {
-        string slug = SidebarDesignInfo.Slug(design);
-        bool userSet = settings.Get(Platform.Keys.SidebarWidthUserSet(slug));
-        float width = userSet
-            ? Math.Clamp(settings.Get(WidthKey(design)), SidebarPaneBounds.NavPaneMinW, SidebarPaneBounds.NavPaneMaxW)
-            : TierDefault(design, viewportWidth);
-        return new SidebarPaneSnapshot(width, settings.Get(Platform.Keys.SidebarCollapsed(slug)), userSet);
-    }
+    /// <summary>Read a design's remembered pane state.</summary>
+    public static SidebarPaneSnapshot Restore(IAppSettings settings, SidebarDesign design)
+        => new(SidebarPaneBounds.Clamp(settings.Get(WidthKey(design))),
+               settings.Get(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design))) ? SidebarRegime.Rail : SidebarRegime.Expanded);
 
-    /// <summary>The width a design gets when it has never been pinned: its own tier ladder evaluated at
-    /// <paramref name="viewportWidth"/> (a zero/unknown viewport takes the narrow tier — the pre-measure seed).</summary>
-    public static float TierDefault(SidebarDesign design, float viewportWidth)
-        => SidebarPaneBounds.InitialNavPaneDefaultForViewport(viewportWidth, SidebarDesignInfo.Tiers(design));
-
-    /// <summary>"Reset width" (the layout menu / customizer affordance): clear the design's user-set latch and hand
-    /// back its tier default, so the responsive ladder owns the width again.</summary>
-    public static SidebarPaneSnapshot ResetWidth(IAppSettings settings, SidebarDesign design, float viewportWidth)
-    {
-        string slug = SidebarDesignInfo.Slug(design);
-        settings.Set(Platform.Keys.SidebarWidthUserSet(slug), false);
-        float width = TierDefault(design, viewportWidth);
-        settings.Set(WidthKey(design), width);
-        return new SidebarPaneSnapshot(width, settings.Get(Platform.Keys.SidebarCollapsed(slug)), false);
-    }
-
-    /// <summary>The drag-commit edge: clamp, persist, and LATCH the width as this design's user choice.</summary>
-    public static float CommitWidth(IAppSettings settings, SidebarDesign design, float width)
-    {
-        float clamped = Math.Clamp(width, SidebarPaneBounds.NavPaneMinW, SidebarPaneBounds.NavPaneMaxW);
-        settings.Set(WidthKey(design), clamped);
-        settings.Set(Platform.Keys.SidebarWidthUserSet(SidebarDesignInfo.Slug(design)), true);
-        return clamped;
-    }
+    /// <summary>The global collapsed-rail size; an unknown stored int is Default.</summary>
+    public static SidebarRailDetent RestoreDetent(IAppSettings settings)
+        => SidebarRailMetrics.Coerce(settings.Get(Platform.Keys.SidebarRailDetent));
 }
 
 // ── 2. the one-time chooser gate ─────────────────────────────────────────────────────────────────────────────────────

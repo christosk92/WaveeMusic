@@ -615,7 +615,6 @@ public sealed class DpapiProtector : ICredentialProtector
 public static partial class Log
 {
     const long DefaultMaxFileBytes = 10L * 1024L * 1024L;
-    const int DefaultRetainedFiles = 7;
     const int MaxQueueLines = 8192;
 
     static readonly Lock s_fileGate = new();
@@ -632,7 +631,18 @@ public static partial class Log
     static string? s_basePath;    // as configured (wavee.log); the active dated file is derived from it
     static string? s_openPath;    // the path the sink currently appends to
     static long s_maxFileBytes = DefaultMaxFileBytes;
-    static int s_retainedFiles = DefaultRetainedFiles;
+    static int s_retentionDays = LogRetentionPolicy.DefaultDays;
+    static long s_retentionBytes = LogRetentionPolicy.DefaultBytes;
+
+    /// <summary>The size at which the daily file is rolled (10 MB). The Log files card and the Storage row read it, so
+    /// the rule they print is the rule the writer applies.</summary>
+    public static long MaxFileBytes => s_maxFileBytes;
+
+    /// <summary>How many days of log files are kept (7); see <see cref="LogRetentionPolicy"/>.</summary>
+    public static int RetentionDays => s_retentionDays;
+
+    /// <summary>The cap on all log files together (250 MB); the oldest go first, the file being written never.</summary>
+    public static long RetentionBytes => s_retentionBytes;
 
     /// <summary>The file lines are being appended to RIGHT NOW — the dated file (wavee-yyyyMMdd.log). Recomputed on
     /// read, so it stays correct across a midnight roll.</summary>
@@ -643,10 +653,10 @@ public static partial class Log
     public static string? BasePath => s_basePath;
 
     /// <summary>Point the sink at a file and set the two level gates. The main app log is DAILY: one file per local
-    /// calendar day, and 0.2.9's single ever-growing wavee.log is migrated into the dated set on first launch so the
-    /// session picker keeps seeing its history.</summary>
+    /// calendar day (names: <see cref="LogFileNames"/>; retention: <see cref="LogRetentionPolicy"/>), and 0.2.9's single
+    /// ever-growing wavee.log is migrated into the dated set on first launch so the session picker keeps seeing its history.</summary>
     public static void Configure(string basePath, WaveeLogLevel minLevel, WaveeLogLevel fileMinLevel,
-        long? maxFileBytes = null, int? retainedFiles = null)
+        long? maxFileBytes = null, int? retentionDays = null, long? retentionBytes = null)
     {
         if (!string.Equals(s_basePath, basePath, StringComparison.OrdinalIgnoreCase))
             lock (s_writeGate) CloseStream();          // path change → reopen on the next batch
@@ -655,12 +665,12 @@ public static partial class Log
         MinLevel = minLevel;
         FileMinLevel = fileMinLevel;
         s_maxFileBytes = maxFileBytes.GetValueOrDefault(DefaultMaxFileBytes);
-        s_retainedFiles = Math.Max(1, retainedFiles.GetValueOrDefault(DefaultRetainedFiles));
+        s_retentionDays = Math.Max(1, retentionDays.GetValueOrDefault(LogRetentionPolicy.DefaultDays));
+        s_retentionBytes = Math.Max(1L, retentionBytes.GetValueOrDefault(LogRetentionPolicy.DefaultBytes));
 
         try { Directory.CreateDirectory(Path.GetDirectoryName(basePath)!); } catch { }
         MigrateLegacyBaseFile(basePath);
-        PruneRolledFiles(Path.GetDirectoryName(basePath),
-            Path.GetFileNameWithoutExtension(basePath), Path.GetExtension(basePath));
+        ApplyRetention(ActiveFilePath());
     }
 
     /// <summary>Best-effort synchronous drain of the queued lines. Safe from a crash path, and the whole of the
@@ -678,12 +688,35 @@ public static partial class Log
         lock (s_writeGate) CloseStream();
     }
 
+    /// <summary>The lines still QUEUED for the file, formatted exactly as the writer will write them, oldest first — a
+    /// snapshot under the file gate, nothing dequeued. A crash bundle's tail merges these after the file's own lines
+    /// (<see cref="TailAssembler.Merge"/>): the sink writes on a pool thread, so the lines nearest a crash are the ones
+    /// not on disk yet. Called from a dying thread, so the gate is tried for 500 ms and an empty array is the answer
+    /// when it cannot be had — never a hang.</summary>
+    public static string[] PendingFileLines()
+    {
+        bool locked = false;
+        try
+        {
+            locked = s_fileGate.TryEnter(500);
+            if (!locked || s_fileQueue.Count == 0) return [];
+            var lines = new string[s_fileQueue.Count];
+            int i = 0;
+            foreach (var entry in s_fileQueue) lines[i++] = FormatFileLine(in entry);
+            return lines;
+        }
+        catch { return []; }
+        finally { if (locked) s_fileGate.Exit(); }
+    }
+
     static partial void FileWrite(WaveeLogEntry entry)
     {
         if (s_basePath is null) return;
         lock (s_fileGate)
         {
-            if (s_fileQueue.Count >= MaxQueueLines) { s_fileQueue.Dequeue(); s_droppedFileLines++; }
+            // Drop the OLDEST lines to admit this one; the marker (written with the next batch) says how many.
+            int drop = FileQueuePolicy.Admit(s_fileQueue.Count, MaxQueueLines);
+            for (int i = 0; i < drop && s_fileQueue.Count > 0; i++) { s_fileQueue.Dequeue(); s_droppedFileLines++; }
             s_fileQueue.Enqueue(entry);
             if (s_drainScheduled) return;
             s_drainScheduled = true;
@@ -715,6 +748,7 @@ public static partial class Log
         var path = ActiveFilePath();
         if (path is null || (entries.Length == 0 && dropped == 0)) return;
 
+        int lost = 0;   // lines this call could not persist; handed back to the drop counter after the write gate
         lock (s_writeGate)
         {
             try
@@ -723,10 +757,19 @@ public static partial class Log
                 if (s_sw is not null && !string.Equals(s_openPath, path, StringComparison.OrdinalIgnoreCase))
                     CloseStream();
                 EnsureStream(path);
+                WaveeLogEntry marker = default;
                 if (dropped > 0)
-                    s_sw!.WriteLine("W [log] file sink dropped queued lines count=" + dropped.ToString(CultureInfo.InvariantCulture));
+                {
+                    // A REAL entry (seq/tid/t/sid/pid prefix, category "log", Warning): the session parser reads it back
+                    // and the viewer shows it. It precedes the batch it was dropped ahead of, so it takes that line's time.
+                    marker = FileQueuePolicy.DropMarker(Interlocked.Increment(ref s_nextSequence),
+                        entries.Length > 0 ? entries[0].UnixMs : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        Environment.CurrentManagedThreadId, dropped);
+                    s_sw!.WriteLine(FormatFileLine(in marker));
+                }
                 for (int i = 0; i < entries.Length; i++) s_sw!.WriteLine(FormatFileLine(in entries[i]));
                 s_sw!.Flush();
+                if (dropped > 0) PushRing(in marker);   // ring only: it must not re-enter the queue it reports on
                 if (s_fileSinkFailed)
                 {
                     s_fileSinkFailed = false;
@@ -737,6 +780,7 @@ public static partial class Log
             catch
             {
                 CloseStream();   // reopen next batch → feeds the recovery signal above
+                lost = dropped + entries.Length;
                 if (!s_fileSinkFailed)
                 {
                     s_fileSinkFailed = true;
@@ -744,32 +788,26 @@ public static partial class Log
                 }
             }
         }
+        if (lost > 0)
+            lock (s_fileGate) s_droppedFileLines += lost;   // reported by the marker once the sink writes again
     }
 
     static string? ActiveFilePath()
     {
         string? basePath = s_basePath;
-        return basePath is null ? null : DatedPath(basePath, DateTime.Now);
+        return basePath is null ? null : LogFileNames.Dated(basePath, DateOnly.FromDateTime(DateTime.Now));
     }
 
-    static string DatedPath(string basePath, DateTime day)
-        => Path.Combine(Path.GetDirectoryName(basePath) ?? "",
-            Path.GetFileNameWithoutExtension(basePath) + "-" + day.ToString("yyyyMMdd", CultureInfo.InvariantCulture)
-            + Path.GetExtension(basePath));
-
     /// <summary>One-time migration to daily files: the pre-split single wavee.log is RENAMED into the dated set,
-    /// stamped with its own last write, so its history stays visible and the writer never appends to the un-dated
-    /// name again. A failure (another instance still holds it open, a name collision) leaves it alone — harmless.</summary>
+    /// stamped with its own last write (local time, the size-roll shape), so its history stays visible and the writer
+    /// never appends to the un-dated name again. A failure (another instance still holds it open, a name collision)
+    /// leaves it alone — harmless.</summary>
     static void MigrateLegacyBaseFile(string basePath)
     {
         try
         {
             if (!File.Exists(basePath)) return;
-            string dir = Path.GetDirectoryName(basePath) ?? "";
-            string root = Path.GetFileNameWithoutExtension(basePath);
-            string ext = Path.GetExtension(basePath);
-            string stamp = File.GetLastWriteTime(basePath).ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-            File.Move(basePath, Path.Combine(dir, root + "-" + stamp + ext), overwrite: false);
+            File.Move(basePath, LogFileNames.Rolled(basePath, File.GetLastWriteTime(basePath)), overwrite: false);
         }
         catch { }
     }
@@ -779,11 +817,10 @@ public static partial class Log
         if (s_sw is not null) return;
         string? dir = Path.GetDirectoryName(path);
         if (dir is not null) Directory.CreateDirectory(dir);
-        RollIfNeeded(path, dir);
-        // Daily retention: keep the newest N of the WHOLE dated set (dated days AND their intra-day size-rolls), so
-        // the folder stays about a week deep instead of accreting one file per day forever.
-        if (s_basePath is { } bp)
-            PruneRolledFiles(Path.GetDirectoryName(bp), Path.GetFileNameWithoutExtension(bp), Path.GetExtension(bp));
+        RollIfNeeded(path);
+        // Retention runs on every open — the start of the run, a midnight switch, after a size roll — so the age rule
+        // holds for a session that never rolls by size too.
+        ApplyRetention(path);
         s_fs = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         s_sw = new StreamWriter(s_fs, new UTF8Encoding(false));
         s_openPath = path;
@@ -798,38 +835,51 @@ public static partial class Log
         s_openPath = null;
     }
 
-    static void RollIfNeeded(string path, string? dir)
+    /// <summary>Cut the daily file at the size limit: rename it to the roll name (<see cref="LogFileNames.Rolled"/>:
+    /// local time, one date). The move never overwrites — a roll in the same second as the last takes the next
+    /// <c>-n</c> name, so no earlier roll is ever destroyed.</summary>
+    static void RollIfNeeded(string path)
     {
         try
         {
-            if (!File.Exists(path) || new FileInfo(path).Length < s_maxFileBytes) return;
-            string root = Path.GetFileNameWithoutExtension(path);
-            string ext = Path.GetExtension(path);
-            string rolled = Path.Combine(dir ?? "",
-                root + "-" + DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ext);
-            File.Move(path, rolled, overwrite: true);
-            PruneRolledFiles(dir, root, ext);
+            if (s_basePath is not { } basePath || !File.Exists(path) || new FileInfo(path).Length < s_maxFileBytes) return;
+            DateTime now = DateTime.Now;
+            for (int collision = 0; collision < 100; collision++)
+            {
+                string rolled = LogFileNames.Rolled(basePath, now, collision);
+                if (File.Exists(rolled)) continue;
+                try { File.Move(path, rolled, overwrite: false); return; }
+                catch (IOException) when (File.Exists(rolled)) { }   // lost the race for this name — take the next
+            }
         }
         catch { }
     }
 
-    static void PruneRolledFiles(string? dir, string root, string ext)
+    /// <summary>Delete what <see cref="LogRetentionPolicy"/> selects among the app logs next to the base path, sparing
+    /// <paramref name="activePath"/>. Best-effort: a file another process holds simply stays until the next open.</summary>
+    static void ApplyRetention(string? activePath)
     {
-        if (dir is null) return;
         try
         {
-            var files = Directory.GetFiles(dir, root + "-*" + ext);
-            Array.Sort(files, static (a, b) => File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a)));
-            for (int i = s_retainedFiles; i < files.Length; i++)
-                try { File.Delete(files[i]); } catch { }
+            if (s_basePath is not { } basePath || Path.GetDirectoryName(basePath) is not { } dir || !Directory.Exists(dir)) return;
+            var files = new List<LogRetentionPolicy.Entry>();
+            foreach (string f in Directory.EnumerateFiles(dir, LogFileNames.Glob(basePath)))
+            {
+                if (!LogFileNames.IsAppLog(f, basePath)) continue;
+                try { var info = new FileInfo(f); files.Add(new LogRetentionPolicy.Entry(f, info.Length, info.LastWriteTimeUtc)); }
+                catch (IOException) { }
+            }
+            foreach (string victim in LogRetentionPolicy.Select(files, DateTime.UtcNow, activePath, s_retentionDays, s_retentionBytes))
+                try { File.Delete(victim); } catch { }
         }
         catch { }
     }
 
-    /// <summary>The action plugged into the engine's `Diag` sink. GPU-forensics lines (adapter identity, the
-    /// device-lost dump, the fence-stall watchdog, present-time DWM glitches, the wake census) route at Warning so
-    /// they clear the default Info FILE threshold and land in wavee-yyyyMMdd.log — the one channel a user can send
-    /// after an intermittent hang. Everything else stays Debug-gated by MinLevel.</summary>
+    /// <summary>The action plugged into the engine's `Diag` sink. GPU faults (adapter identity, the device-lost dump,
+    /// the fence-stall watchdog, present-time DWM glitches) route at Warning, and the forensic census lines
+    /// (<c>[render.pace]</c>, <c>[wake]</c>, <c>[d3d12.present]</c>, <c>[d3d12.display]</c>) at Info, so both clear the
+    /// default Info FILE threshold and land in wavee-yyyyMMdd.log — the one channel a user can send after an
+    /// intermittent hang — without the measurements counting as warnings. Everything else stays Debug-gated by MinLevel.</summary>
     public static Action<string> DiagSink => static s =>
     {
         switch (RouteFor(s))
@@ -855,9 +905,23 @@ public static partial class Log
     /// rather than something discovered by grepping a log that never contained the line.</summary>
     public static DiagRoute RouteFor(string s)
         => PostedActionFault(s) ? DiagRoute.Warn
+         : ForensicInfo(s) ? DiagRoute.Info
          : GpuForensic(s) ? DiagRoute.Warn
          : AlwaysOn(s) ? DiagRoute.Info
          : DiagRoute.Debug;
+
+    /// <summary>The forensic CENSUS lines: they must reach the Info file (an hour-old "pinned at panel rate" report
+    /// needs them) but they are measurements, not faults, and at Warning they dominated the Warnings badge and the file
+    /// (one 10 MB roll held 1,216 <c>[render.pace]</c> and 423 <c>[wake]</c> warnings). <c>[render.pace]</c> is the 1 Hz
+    /// pacing line, <c>[wake]</c> the 30 s wake census, <c>[d3d12.present]</c> / <c>[d3d12.display]</c> the once-per-edge
+    /// queue-depth and monitor-mode lines. A line that also names <c>dwmGlitches</c> IS a fault and stays on the Warning
+    /// arm below, wherever it came from.</summary>
+    static bool ForensicInfo(string s)
+        => (s.StartsWith("[render.pace]", StringComparison.Ordinal)
+            || s.StartsWith("[wake]", StringComparison.Ordinal)
+            || s.StartsWith("[d3d12.present]", StringComparison.Ordinal)
+            || s.StartsWith("[d3d12.display]", StringComparison.Ordinal))
+           && !s.Contains("dwmGlitches", StringComparison.Ordinal);
 
     /// <summary>The engine instruments that must clear the Info file gate without pretending to be a fault. All of
     /// them are edge- or value-gated, so none can spam:
@@ -911,21 +975,10 @@ public static partial class Log
         // The compositor-clock latch silently drops production from vblank pacing to a wall-clock timer for the rest
         // of the session; it must reach the Info file.
         || s.StartsWith("[compositor-clock]", StringComparison.Ordinal)
-        // The render thread's 1 Hz pacing line while motion is live: presents by kind, skipped ticks, slot wait, lag.
-        || s.StartsWith("[render.pace]", StringComparison.Ordinal)
         || s.StartsWith("[device-lost]", StringComparison.Ordinal)
-        // The always-on wake census: one line per 30 s naming the frame rate and WHICH wake term held the loop awake.
-        // It has to clear the Info gate or it answers nothing after the fact — "pinned at panel rate, cause unknown"
-        // is precisely the report this instrument exists to make answerable.
-        || s.StartsWith("[wake]", StringComparison.Ordinal)
         || s.StartsWith("[repaint]", StringComparison.Ordinal)
         || s.StartsWith("[repaint-causes]", StringComparison.Ordinal)
         || s.StartsWith("[repaint-raw-sample]", StringComparison.Ordinal)
-        // Present-queue depth and the window's actual monitor/refresh are both invisible from the outside: a queue
-        // two frames deep still reports a healthy frame rate, and a window on a 50 Hz secondary reports the same fps
-        // as one on the 120 Hz panel unless the mode line says otherwise. Both are once-per-edge.
-        || s.StartsWith("[d3d12.present]", StringComparison.Ordinal)
-        || s.StartsWith("[d3d12.display]", StringComparison.Ordinal)
         || s.StartsWith("[d3d12.stall]", StringComparison.Ordinal)
         // The always-on forensic ring's failure line (INCIDENT 2026-09, detached-window-render-isolation-implementation.md
         // §2.5/§2.6): the last 64 recorded D3D12 state ops named on a cmdList.Close failure — the only evidence a

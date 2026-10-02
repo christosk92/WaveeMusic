@@ -257,6 +257,7 @@ public static partial class Rail
     {
         public override Element Render()
         {
+            var begin = UseContext(SharedTransition.Begin);   // the stage's art flight is captured before the mount (null headless)
             int available = Prefs.Lyrics.Available.Value;
             int secondary = Prefs.Lyrics.SecondaryLine();
             var kids = new List<Element>(4) { TitleText(Shell.RailMode.Lyrics) };
@@ -264,7 +265,7 @@ public static partial class Rail
                 kids.Add(HeaderButton(Icons.Globe, Prefs.Lyrics.Tooltip(secondary),
                     () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
                     active: (available & Prefs.Lyrics.BitFor(secondary)) != 0));
-            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), static () => Shell.Ui.ImmersiveLyrics.Value = true));
+            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), () => Stage.Open(begin, "rail-header")));
             kids.Add(Diagnostics.LyricsInspector.Button());
             kids.Add(CloseButton());
             return HeaderBox(kids.ToArray());
@@ -468,14 +469,23 @@ public static partial class Rail
 
     // ── the NowPlaying body (scrolls under the pinned hero) ──────────────────────────────────────────────────────────
 
+    /// <summary>The track's FIRST credited artist — the one the rail's About card and the fullscreen stage's Artist pane
+    /// both read. <c>default</c> when the track is not (yet) valid or carries no artist edge.</summary>
+    internal static Artist NowPlayingArtist(Track track)
+    {
+        if (!track.IsValid) return default;
+        var slots = track.ArtistSlots;
+        return slots.Length > 0 && slots[0] > 0 ? new Artist(slots[0]) : default;
+    }
+
     sealed class NowPlayingBody : Component
     {
         public override Element Render()
         {
             var track = NowTrack();
             int trackSlot = track.Slot;
-            var artistSlots = track.IsValid ? track.ArtistSlots : default;
-            int artistSlot = artistSlots.Length > 0 ? artistSlots[0] : 0;
+            var nowArtist = NowPlayingArtist(track);
+            int artistSlot = nowArtist.Slot;
 
             // The rail is not a page and never mounts on a route: its demand is keyed on the PLAYING track (§9.3 #6).
             UseEffect(() =>
@@ -497,7 +507,7 @@ public static partial class Rail
             var sections = new List<Element>(5);
             if (artistSlot > 0)
             {
-                var artist = new Artist(artistSlot);
+                var artist = nowArtist;
                 if (artist.Knows(ArtistFields.Stats))
                 {
                     sections.Add(AboutArtist(artist));
@@ -590,100 +600,8 @@ public static partial class Rail
     };
 
     static Element AboutArtist(Artist artist)
-    {
-        const float heroH = 132f;
-        string name = artist.Name;
-        var facts = new List<Element>(3);
-        if (artist.MonthlyListeners > 0) facts.Add(Fact(artist.MonthlyListeners.ToString("N0"), Loc.Get(Strings.Artist.MetaMonthly)));
-        if (artist.Followers > 0) facts.Add(Fact(artist.Followers.ToString("N0"), Loc.Get(Strings.Artist.MetaFollowers)));
-        if (artist.WorldRank > 0) facts.Add(Fact("#" + artist.WorldRank.ToString("N0"), Strings.Artist.WorldRank("").Trim()));
-
-        string? heroUrl = Controls.ArtUrl(artist.HeroImageId);
-        Element band = heroUrl is { Length: > 0 }
-            ? new BoxEl
-            {
-                Height = heroH, ZStack = true, ClipToBounds = true, Corners = Radii.CardAll,
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, 56f),
-                Children =
-                [
-                    Ui.Image(heroUrl, ImageFit.Cover, 2.6f, 320f, Radii.Card, Tok.FillSubtleSecondary),
-                    new BoxEl
-                    {
-                        Height = heroH, Corners = Radii.CardAll,
-                        Gradient = GradientDown(new GradientStop(0f, ColorF.FromRgba(0, 0, 0, 0)),
-                            new GradientStop(0.55f, ColorF.FromRgba(0, 0, 0, 31)), new GradientStop(1f, ColorF.FromRgba(0, 0, 0, 158))),
-                    },
-                ],
-            }
-            : new BoxEl
-            {
-                Height = 72f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Fill = Tok.FillSubtleSecondary,
-                Corners = Radii.CardAll, ClipToBounds = true,
-                Children = [PersonPicture.Create("", 56f, displayName: name, imageSourcePath: Controls.ArtUrl(artist.ImageId))],
-            };
-
-        // The name carries the trim tooltip (a long name is cut in a 200-DIP rail). The tip sits in a COLUMN slot the row
-        // sizes — a ToolTip wrapper is Shrink 0 and may never be a shrinking row child.
-        var nameStyle = new TextEl(name)
-            { Size = 18f, LineHeight = 24f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        Element nameTip = Controls.TrimTip(
-            new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [nameStyle] }, name, nameStyle);
-        var body = new List<Element>(4)
-        {
-            new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [nameTip] },
-                    artist.IsVerified ? Icon(Icons.Check, 12f, Tok.AccentTextPrimary) : new BoxEl(),
-                ],
-            },
-        };
-        if (facts.Count > 0) body.Add(new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.S, Children = facts.ToArray() });
-        string bio = Entities.Strings.Resolve(artist.BioLeadId.IsEmpty ? artist.BioId : artist.BioLeadId);
-        if (!string.IsNullOrWhiteSpace(bio))
-            body.Add(new TextEl(bio) { Size = 14f, LineHeight = 20f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 5, Trim = TextTrim.CharacterEllipsis });
-        string artistUri = artist.Uri.Text;
-
-        // A (B) surface — a hero band OVER text is a card, not a row, so it stays its own tree and takes the shared RULES:
-        // the link (the band and the text) is the card's ONE click owner and gets the hand, the Button role and the tab
-        // stop from `SurfaceRules`; the Follow toggle is the FOOTER, a sibling of that link and never inside it (a button
-        // nested in a button role is two tab stops for one gesture, and its press would otherwise start the link's).
-        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
-        return Section(Loc.Get(Strings.Detail.AboutTheArtist), new BoxEl
-        {
-            Direction = 1, Corners = Radii.CardAll, Fill = Tok.FillCardSecondary, ClipToBounds = true,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 1, Corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f), HoverFill = Tok.FillCardDefault,
-                    Role = mode.Role, Focusable = mode.OwnsFocus, Cursor = SurfaceRules.Cursor(in mode),
-                    FocusVisualMargin = Design.FocusInsetBordered,
-                    OnClick = () => GoTo(artist.Uri, name),
-                    Children = [band, new BoxEl { Direction = 1, Gap = Spacing.M, Padding = Edges4.All(Spacing.M), Children = body.ToArray() }],
-                },
-                new BoxEl
-                {
-                    Direction = 0, Padding = new Edges4(Spacing.M, 0f, Spacing.M, Spacing.M),
-                    Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri }],
-                },
-            ],
-        });
-    }
-
-    static Element Fact(string value, string label) => new BoxEl
-    {
-        Direction = 1, Gap = Spacing.XXS, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS),
-        Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary,
-        Children =
-        [
-            new TextEl(value) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            new TextEl(label) { Size = 12f, LineHeight = 16f, Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-        ],
-    };
+        => Section(Loc.Get(Strings.Detail.AboutTheArtist),
+            Controls.ArtistAboutCard(artist, AboutLayout.Rail) with { Key = "about:" + artist.Uri.Text });
 
     /// <summary>At most 5 cities; the longest bar is 260 and the shortest never below 8 % of it.</summary>
     static Element CitiesSection(ReadOnlySpan<CityEdge> cities)
@@ -829,8 +747,8 @@ public static partial class Rail
     /// <c>Track.Invoke</c> so the deck row toggles pause instead. The item is resolved inside the LIVE queue when clicked:
     /// the surface keeps its data across a queue shift (a data-equal re-push carries no new delegate into the render), so
     /// a captured index would go stale. The key carries
-    /// the queue item and the artwork flag, so a settings flip REMOUNTS rather than re-binds. No "…": the rail is 200-500
-    /// DIP wide and a row's "…" would reserve a 44-DIP slot out of its text; the menu stays on right-click, as before.</summary>
+    /// the queue item and the artwork flag, so a settings flip REMOUNTS rather than re-binds. Like every queue row it has
+    /// no "…" button (<see cref="QueueRowRules.ShowsMenuButton"/>): the menu is the right-click.</summary>
     static Element NextUpRow(Track t, int queueIndex, ulong itemId, bool art)
     {
         // The queue panel's own skip (Queue.PlayItem → SkipToRow): resolves the item in the LIVE queue at click time, trims
@@ -838,7 +756,8 @@ public static partial class Rail
         Action play = () => Queue.PlayItem(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
         Action click = () => Track.Invoke(t, play);
         var data = Track.RowData(t, new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art,
-                                                             ShowExplicit: false, ShowVideo: true, ShowMenu: false));
+                                                             ShowExplicit: false, ShowVideo: true,
+                                                             ShowMenu: QueueRowRules.ShowsMenuButton));
         var shape = Shape.Row(TrackRowRules.ArtEdge(Design.Size.ArtThumb, art)) with { MinHeight = NextUpRowH };
         return Controls.Surface(data, shape) with
         {
@@ -917,6 +836,7 @@ public static partial class Rail
             UseEffect(static () => { Friends.SetActive?.Invoke(true); return static () => Friends.SetActive?.Invoke(false); }, DepKey.Empty);
             var tick = UseSignal(0);
             UseInterval(() => tick.Value = tick.Peek() + 1, Friends.TickMs);
+            var overlay = UseContext(Overlay.Service);   // the rows' right-click / Menu-key host
             _ = tick.Value;
             var state = Friends.State.Value;
             var table = Entities.Current.Edges.Friends;
@@ -931,7 +851,7 @@ public static partial class Rail
                 case Friends.Surface.Rows:
                     long now = Playback.UnixNowMs();                        // a DATE against a server epoch, not a motion clock
                     var kids = new Element[rows.Length];
-                    for (int i = 0; i < rows.Length; i++) kids[i] = FriendRow(rows[i], now);
+                    for (int i = 0; i < rows.Length; i++) kids[i] = FriendRow(rows[i], now, overlay);
                     return FriendsShell(new ScrollEl
                     {
                         Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "friendspanel",
@@ -960,7 +880,10 @@ public static partial class Rail
         Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, 0f), Children = [content],
     };
 
-    static Element FriendRow(in FriendEdge f, long now)
+    /// <summary>One friend-activity row. Right-click / Menu key / Shift+F10 open the entity menu of what the friend played:
+    /// the track's own menu when the activity names a track (the same one every track row offers), else the container menu
+    /// of the context, album or artist the row navigates to (<see cref="Menus.Container"/>).</summary>
+    static Element FriendRow(in FriendEdge f, long now, IOverlayService overlay)
     {
         const float avatar = 40f;
         var user = new User(f.UserSlot);
@@ -1027,7 +950,24 @@ public static partial class Rail
             };
         }
 
-        return new BoxEl
+        int trackSlot = f.TrackSlot;
+        Friends.Target menuTarget = Friends.TargetOf(contextSlot, albumSlot, artistSlot);
+        Func<ContextMenuModel?> menuOf = () =>
+        {
+            if (trackSlot > 0 && new Track(trackSlot) is { IsValid: true } track)
+                return Track.Menu(new[] { track }, new Track.MenuOptions(ShowGoToAlbum: true));
+            ActionTarget target;
+            switch (menuTarget)
+            {
+                case Friends.Target.Context: target = ActionTarget.ForPlaylist(new Playlist(contextSlot).Uri, label); break;
+                case Friends.Target.Album: target = ActionTarget.ForAlbum(new Album(albumSlot).Uri, label); break;
+                case Friends.Target.Artist: target = ActionTarget.ForArtist(new Artist(artistSlot).Uri, label); break;
+                default: return null;
+            }
+            return Menus.Container(in target, null, null);
+        };
+
+        var row = new BoxEl
         {
             Key = "fr:" + user.Uri.Text,
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = Design.Size.TrackRowH,
@@ -1052,6 +992,7 @@ public static partial class Rail
                 },
             ],
         };
+        return Controls.IsNullOverlay(overlay) ? row : row.WithContextMenu(overlay, menuOf);
     }
 
     static string RelTime(long ageMs) => Friends.Age(ageMs, out long n) switch

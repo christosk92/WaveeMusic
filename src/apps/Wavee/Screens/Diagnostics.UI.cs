@@ -1,7 +1,8 @@
 // ── Screens/Diagnostics.UI.cs ──────────────────────────────────────────────────────────────────────────────────────
 // the diagnostics install (the orchestrator's one call), the two diagnostics pages (runtime, Connect — the API console
-// page DELETED, §9.6 Q7, 2026-09-12), the logs panel + log view, the FPS overlay, the shared diagnostics chrome, and the
-// lyrics inspector dialog (≈600, moved here by ch 22 §9 (d), A14)
+// page DELETED, §9.6 Q7, 2026-09-12), the FPS overlay, the shared diagnostics chrome, and the lyrics inspector dialog
+// (≈600, moved here by ch 22 §9 (d), A14). The log viewer is its own route now: `LogsPage.UI.cs` / `LogsPage.cs`
+// (privacy-diagnostics-tab-implementation.md §3.2); `Install` registers it.
 //
 // Role: UI
 // Owner: S
@@ -14,13 +15,13 @@
 // the report text, the frame watch and the inspector's anomaly inks are `Diagnostics.cs` / `Platform.Settings.cs` (CORE,
 // tested); the disk and the process are `Diagnostics.Host.cs`.
 //
-// NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the log tail polls at 750 ms and bumps only when `Log.Version` moved
-// (and not at all on a past session), and the FPS pill renders ONCE — the host refreshes its two retained dynamic-text
-// slots in place. No surface here carries a context menu, a drag or a shortcut (ch 27 §6).
+// NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the FPS pill renders ONCE — the host refreshes its two retained
+// dynamic-text slots in place (the log viewer's 750 ms tail lives in `LogsPage.UI.cs`). No surface here carries a context
+// menu, a drag or a shortcut (ch 27 §6).
 //
-// PROPS FREEZE AT MOUNT: every control whose interesting fields freeze (the session / category / level combos, the command
-// bar, the virtualized list) is REMOUNTED through a `Key` that changes exactly when its frozen input does, and every
-// toggle that triggers such a remount runs through `UsePost` so the click finishes before its node is torn down.
+// PROPS FREEZE AT MOUNT: every control whose interesting fields freeze is REMOUNTED through a `Key` that changes exactly
+// when its frozen input does, and every toggle that triggers such a remount runs through `UsePost` so the click finishes
+// before its node is torn down.
 
 using System.Globalization;
 using FluentGpu;
@@ -29,9 +30,9 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Media;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 
 namespace Wavee;
 
@@ -48,10 +49,10 @@ public static partial class Diagnostics
     /// before the window). Never from the headless arm.
     /// <list type="bullet">
     /// <item>the crash pipeline's run marker + boot-failure streak + this-launch bundle latch (<c>Crash.Host.BeginGuiRun</c>);</item>
-    /// <item>the two diagnostics pages (`playback-diagnostics`, `connect-diagnostics`);</item>
+    /// <item>the diagnostics pages (runtime, Connect, capture) and the log viewer's own route (`logs`);</item>
     /// <item>the frame watch as <c>Shell.RouteNoted</c>'s consumer (G-197);</item>
     /// <item>the NLM cost host; the pre-loop hook (ambient power + the GUI probe arms);</item>
-    /// <item>the seams the Wave-6 screens left for owner S: the logs panel, "Send event", the report dialog's diagnostics
+    /// <item>the seams the Wave-6 screens left for owner S: "Send event", the report dialog's diagnostics
     /// text / past sessions, and the updater's metered read.</item>
     /// </list></summary>
     public static void Install()
@@ -66,13 +67,13 @@ public static partial class Diagnostics
         Shell.SetPage(Shell.RouteKind.PlaybackDiagnostics, static (in Shell.Route _) => RuntimePage());
         Shell.SetPage(Shell.RouteKind.ConnectDiagnostics, static (in Shell.Route _) => ConnectPage());
         Shell.SetPage(Shell.RouteKind.CaptureDiagnostics, static (in Shell.Route _) => CapturePage());
+        Shell.SetPage(Shell.RouteKind.Logs, static (in Shell.Route _) => LogsPage.Page());
         Shell.RouteNoted += static route => NavigationFrameWatch.NoteRoute(route);
         NavigationFrameWatch.Attach();
 
         Platform.Network.Install(Playback.ToUi);
         Probe.InstallGuiArms(Environment.GetCommandLineArgs());
 
-        Settings.LogsPanelBody = static () => LogsPanel();
         Settings.SendTestEvent = static topic => ToTestEvent(NotificationSimulator.Send(topic));
         Feedback.DiagnosticsText = static () => InfoText();
         Feedback.PastSessionLog = static key => PastSessionLines(key);
@@ -124,15 +125,11 @@ public static partial class Diagnostics
     /// past session for a null key. Off the UI thread.</summary>
     static IReadOnlyList<string>? PastSessionLines(string? key)
     {
-        var sessions = WaveeLogSessions.ListPastSessions(Log.BasePath, Environment.ProcessId);
+        var sessions = WaveeLogSessions.ListPastSessions(Log.BasePath, Environment.ProcessId).Sessions;
         return WaveeLogSessions.Find(sessions, key) is { } info ? WaveeLogSessions.RawLines(info, WaveeLogSessions.ReadSharedLines) : null;
     }
 
     // ══ 2. THE MOUNT POINTS ═════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Settings › Logs: the full-height viewer (ch 27 W21-W22). It fills the lane the Settings page gives it.</summary>
-    // MOUNT POINT (stage B contract) — assigned to `Settings.LogsPanelBody` by Install
-    public static Element LogsPanel() => Embed.Comp(static () => new LogsPanelView());
 
     /// <summary>The `playback-diagnostics` page (ch 27 W23).</summary>
     // MOUNT POINT (stage B contract) — registered by Install
@@ -260,450 +257,6 @@ public static partial class Diagnostics
 
     static TimeSpan LocalOffset => TimeZoneInfo.Local.GetUtcOffset(DateTimeOffset.UtcNow);
 
-    // ══ 4. THE LOGS PANEL (ch 27 W21-W22; 0.2.9 `Features/Shell/LogsPanel.cs`) ══════════════════════════════════════
-
-    /// <summary>The viewer. <see cref="_rows"/> and <see cref="_categories"/> are FIELDS, refreshed at the top of every
-    /// render, so a command built by an OLDER render (the bar does not remount for a plain search edit) still reads the
-    /// CURRENT rows when clicked.</summary>
-    sealed class LogsPanelView : Component
-    {
-        readonly Signal<string> _search = new("");
-        readonly Signal<int> _level = new((int)LogLevelBucket.All);
-        readonly Signal<int> _category = new(0);
-        readonly Signal<int> _session = new(0);
-        readonly Signal<int> _newestFirst = new(1);
-        readonly Signal<int> _groupRepeats = new(1);
-        readonly Signal<int> _wrap = new(0);
-        readonly Signal<int> _refresh = new(0);            // the live poll, a load landing, Clear view
-        readonly Signal<int> _visibleLimit = new(LogView.PageRows);
-        readonly Signal<int> _sessionsRev = new(0);         // ONLY when the session LIST changes
-        readonly Signal<int> _levelsRev = new(0);           // Verbose / Capture level / File log level
-        readonly Signal<long> _expandedSeq = new(-1);
-
-        List<WaveeLogSessions.Info>? _sessions;
-        bool _sessionsBusy, _sessionLoadBusy;
-        WaveeLogEntry[]? _sessionEntries;
-        int _sessionLoaded;
-        LogViewRow[] _rows = [];
-        string[] _categories = [];
-        readonly ItemsViewController _listCtrl = new();
-        IOverlayService? _overlay;
-
-        public override Element Render()
-        {
-            var hooks = UseContext(InputHooks.Current);
-            var post = UsePost();
-            var lastVersion = UseRef(-1L);
-            _overlay = UseContext(Overlay.Service);
-
-            UseEffect(() => RefreshSessions(post), DepKey.Empty);
-            UseSignalEffect(() =>
-            {
-                _ = _session.Value;
-                _expandedSeq.Value = -1;
-                _visibleLimit.Value = LogView.PageRows;
-                EnsureSessionLoaded(post);
-            });
-            // The live tail (session 0 only; auto-pauses while parked): bumps only when the log actually moved.
-            UseInterval(() =>
-            {
-                long v = Log.Version;
-                if (v == lastVersion.Value) return;
-                lastVersion.Value = v;
-                _refresh.Value = _refresh.Peek() + 1;
-            }, 750f, enabled: _session.Value == 0);
-            var logLayout = UseMemo(static () => new MeasuredStackVirtualLayout(estimatedExtent: 36f), DepKey.Empty);
-
-            _ = _refresh.Value; _ = _expandedSeq.Value; _ = _search.Value; _ = _level.Value; _ = _category.Value;
-            _ = _newestFirst.Value; _ = _groupRepeats.Value; _ = _wrap.Value; _ = _visibleLimit.Value; _ = _levelsRev.Value;
-
-            bool live = _session.Value == 0;
-            WaveeLogEntry[]? entries = live ? Log.Snapshot() : _sessionLoaded == _session.Value ? _sessionEntries : null;
-            _categories = entries is null ? [] : LogView.Categories(entries);
-            // The category clamp lives in an effect (a signal write in render is the backwards-write tripwire).
-            UseEffect(() => { if (_category.Peek() > _categories.Length) _category.Value = 0; }, _categories.Length);
-
-            var query = Query();
-            var result = entries is null ? LogViewResult.Empty : LogView.Build(entries, query);
-            _rows = result.Rows;
-
-            return new BoxEl
-            {
-                Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = Spacing.M,
-                Children =
-                [
-                    HeaderRow(hooks, post, live),
-                    FilterRow(result, post),
-                    new BoxEl
-                    {
-                        Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Corners = CornerRadius4.All(Radii.Card),
-                        Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
-                        Children = [LogBody(entries, result, query, logLayout), new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault }, Footer(result, live)],
-                    },
-                ],
-            };
-        }
-
-        LogViewQuery Query() => new((LogLevelBucket)_level.Value, CurrentCategory(), _search.Value,
-            _newestFirst.Value != 0, _groupRepeats.Value != 0, _visibleLimit.Value);
-
-        // ── the header: the session picker + the command bar ───────────────────────────────────────────────────────
-
-        Element HeaderRow(InputHooks hooks, Action<Action> post, bool live)
-        {
-            var (labels, subs) = SessionItems();
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = 48f, Shrink = 0f,
-                Children =
-                [
-                    ComboBox.Create(labels, _session, width: 320f, itemDescriptions: subs, onChange: _ => _expandedSeq.Value = -1)
-                        with { Key = "logs:session:" + _sessionsRev.Value.ToString(CultureInfo.InvariantCulture) },
-                    new BoxEl { Grow = 1f },
-                    CommandBar.Create(PrimaryCommands(hooks, post, live), SecondaryCommands(post))
-                        with { Key = "logs:bar:" + (live ? "L" : "P") + _newestFirst.Value + _groupRepeats.Value + _wrap.Value + ":" + _levelsRev.Value },
-                ],
-            };
-        }
-
-        IReadOnlyList<AppBarCommand> PrimaryCommands(InputHooks hooks, Action<Action> post, bool live)
-        {
-            bool newestFirst = _newestFirst.Value != 0, groupRepeats = _groupRepeats.Value != 0;
-            bool verbose = LogCapturePolicy.IsVerbose(Log.MinLevel);
-            return
-            [
-                new(Icons.Refresh, Loc.Get(Strings.Settings.Diagnostics.Refresh), () =>
-                {
-                    RefreshSessions(post, force: true);
-                    if (_session.Peek() == 0) _refresh.Value = _refresh.Peek() + 1;
-                }),
-                new(Icons.Copy, Loc.Get(Strings.Settings.Diagnostics.CopyVisible), () => hooks.Clipboard?.SetText(LogView.CopyText(_rows))),
-                new(Icons.Download, Loc.Get(Strings.Settings.Diagnostics.ExportSession), ExportSession),
-                new(Icons.Folder, Loc.Get(Strings.Settings.Diagnostics.OpenLogFolder), static () => OpenFolder(Path.GetDirectoryName(Log.FilePath ?? ""))),
-                new(Icons.ClearText, Loc.Get(Strings.Settings.Diagnostics.ClearView), () => Controls.Confirm(_overlay,
-                    Loc.Get(Strings.Settings.Diagnostics.ClearView), Loc.Get(Strings.Settings.Diagnostics.ClearViewBody),
-                    Loc.Get(Strings.Settings.Diagnostics.ClearView), () => { Log.ClearRing(); _refresh.Value = _refresh.Peek() + 1; }),
-                    Enabled: LogView.CanClear(_session.Value)),
-                AppBarCommand.Separator,
-                new(Icons.Sort, Loc.Get(Strings.Settings.Diagnostics.NewestFirst),
-                    () => post(() => { _newestFirst.Value = newestFirst ? 0 : 1; _expandedSeq.Value = -1; }),
-                    Kind: AppBarCommandKind.ToggleButton, IsChecked: newestFirst),
-                new(Icons.List, Loc.Get(Strings.Settings.Diagnostics.GroupRepeats),
-                    () => post(() => { _groupRepeats.Value = groupRepeats ? 0 : 1; _expandedSeq.Value = -1; }),
-                    Kind: AppBarCommandKind.ToggleButton, IsChecked: groupRepeats),
-                new(Icons.Code, Loc.Get(Strings.Settings.Diagnostics.Verbose),
-                    () => post(() => { LogCapturePolicy.SetVerbose(Platform.Settings, !verbose); _levelsRev.Value = _levelsRev.Peek() + 1; }),
-                    Kind: AppBarCommandKind.ToggleButton, IsChecked: verbose),
-            ];
-        }
-
-        IReadOnlyList<AppBarCommand> SecondaryCommands(Action<Action> post)
-        {
-            bool wrap = _wrap.Value != 0;
-            return
-            [
-                new(default, Loc.Get(Strings.Settings.Diagnostics.WrapLines), () => post(() => _wrap.Value = wrap ? 0 : 1),
-                    Kind: AppBarCommandKind.ToggleButton, IsChecked: wrap),
-                AppBarCommand.Separator,
-                new(Icons.Attention, Loc.Get(Strings.Report.ThisSession), () =>
-                    Feedback.Open(Feedback.ReportKind.Bug, new Feedback.ReportPrefill(PastSessionId: SelectedPastSession() is { } s ? WaveeLogSessions.KeyOf(s) : null))),
-            ];
-        }
-
-        // ── the filter row: search + level segments + badges + category + the two capture levels ──────────────────
-        // The capture levels are headed ComboBoxes, not cascading overflow radios: a plain CommandBar's overflow renders
-        // no sub-menu (ch 27's drift note — the code wins).
-
-        Element FilterRow(LogViewResult result, Action<Action> post)
-        {
-            var catLabels = new string[_categories.Length + 1];
-            catLabels[0] = Loc.Get(Strings.Settings.Diagnostics.AllCategories);
-            Array.Copy(_categories, 0, catLabels, 1, _categories.Length);
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true, MinHeight = 40f, Shrink = 0f,
-                Children =
-                [
-                    AutoSuggestBox.Create(Array.Empty<string>(), placeholder: Loc.Get(Strings.Settings.Diagnostics.FilterPlaceholder),
-                        grow: 1f, text: _search, onChange: q => _search.Value = q, onQuerySubmitted: q => _search.Value = q,
-                        minHeight: 34f, cornerRadius: Radii.Control),
-                    Segmented.Create(LevelItems(), _level),
-                    result.WarningCount > 0
-                        ? ClickableBadge(InfoBadge.Count(result.WarningCount, InfoBadgeSeverity.Caution), () => _level.Value = (int)LogLevelBucket.Warnings)
-                        : new BoxEl(),
-                    result.ErrorCount > 0
-                        ? ClickableBadge(InfoBadge.Count(result.ErrorCount, InfoBadgeSeverity.Critical), () => _level.Value = (int)LogLevelBucket.Errors)
-                        : new BoxEl(),
-                    new BoxEl { Grow = 1f },
-                    ComboBox.Create(catLabels, _category, width: 180f)
-                        with { Key = "logs:cat:" + _session.Value.ToString(CultureInfo.InvariantCulture) + ":" + _categories.Length.ToString(CultureInfo.InvariantCulture) },
-                    ComboBox.Create(LogView.LevelNames, new Signal<int>(Math.Clamp((int)Log.MinLevel, 0, 4)), width: 132f,
-                        header: Loc.Get(Strings.Settings.Diagnostics.CaptureLevel),
-                        onChange: i => post(() => { LogCapturePolicy.SetMinLevel(Platform.Settings, (WaveeLogLevel)Math.Clamp(i, 0, 4)); _levelsRev.Value = _levelsRev.Peek() + 1; }))
-                        with { Key = "logs:level:" + _levelsRev.Value.ToString(CultureInfo.InvariantCulture) },
-                    ComboBox.Create(LogView.LevelNames, new Signal<int>(Math.Clamp((int)Log.FileMinLevel, 0, 4)), width: 132f,
-                        header: Loc.Get(Strings.Settings.Diagnostics.FileLevel),
-                        onChange: i => post(() => { LogCapturePolicy.SetFileLevel(Platform.Settings, (WaveeLogLevel)Math.Clamp(i, 0, 4)); _levelsRev.Value = _levelsRev.Peek() + 1; }))
-                        with { Key = "logs:filelevel:" + _levelsRev.Value.ToString(CultureInfo.InvariantCulture) },
-                ],
-            };
-        }
-
-        static SegmentedItem[] s_levelItems = [];
-
-        static SegmentedItem[] LevelItems()
-        {
-            if (s_levelItems.Length == 0)   // the launch locale is fixed for the process
-                s_levelItems =
-                [
-                    new(Loc.Get(Strings.Settings.Diagnostics.LevelAll)), new(Loc.Get(Strings.Settings.Diagnostics.LevelInfo)),
-                    new(Loc.Get(Strings.Settings.Diagnostics.LevelWarnings)), new(Loc.Get(Strings.Settings.Diagnostics.LevelErrors)),
-                ];
-            return s_levelItems;
-        }
-
-        /// <summary>The badge becomes a button that sets the level filter (and gets a name: 0.2.9's had none, ch 27 §6.7).</summary>
-        static Element ClickableBadge(BoxEl badge, Action onClick) =>
-            badge with { Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick };
-
-        string? CurrentCategory()
-        {
-            int idx = _category.Value;
-            return idx <= 0 || idx > _categories.Length ? null : _categories[idx - 1];
-        }
-
-        // ── the sessions: discovery, loading, the picker's items ────────────────────────────────────────────────────
-
-        void RefreshSessions(Action<Action> post, bool force = false)
-        {
-            if (!force && (_sessions is not null || _sessionsBusy)) return;
-            _sessionsBusy = true;
-            string? basePath = Log.BasePath;   // the BASE (wavee.log): the dated live file would glob one day's rolls
-            int pid = Environment.ProcessId;
-            _ = Task.Run(() =>
-            {
-                var list = WaveeLogSessions.ListPastSessions(basePath, pid);
-                post(() =>
-                {
-                    _sessions = list;
-                    _sessionsBusy = false;
-                    if (_session.Peek() > list.Count) _session.Value = 0;
-                    _sessionLoaded = 0;
-                    _sessionEntries = null;
-                    _sessionsRev.Value = _sessionsRev.Peek() + 1;
-                });
-            });
-        }
-
-        void EnsureSessionLoaded(Action<Action> post)
-        {
-            int sel = _session.Peek();
-            if (sel == 0 || _sessionLoadBusy || _sessions is not { } sessions || _sessionLoaded == sel || sel - 1 >= sessions.Count) return;
-            var info = sessions[sel - 1];
-            _sessionLoadBusy = true;
-            _ = Task.Run(() =>
-            {
-                var loaded = WaveeLogSessions.LoadSession(info);
-                post(() =>
-                {
-                    _sessionEntries = loaded;
-                    _sessionLoaded = sel;
-                    _sessionLoadBusy = false;
-                    _refresh.Value = _refresh.Peek() + 1;
-                    EnsureSessionLoaded(post);
-                });
-            });
-        }
-
-        (string[] Labels, string[] Subs) SessionItems()
-        {
-            int n = 1 + (_sessions?.Count ?? 0);
-            var labels = new string[n];
-            var subs = new string[n];
-            labels[0] = Loc.Get(Strings.Settings.Diagnostics.CurrentRun);
-            DateTimeOffset started;
-            try { using var p = System.Diagnostics.Process.GetCurrentProcess(); started = p.StartTime; }
-            catch (InvalidOperationException) { started = DateTimeOffset.Now; }
-            subs[0] = Strings.Settings.Diagnostics.RunningFor(Environment.ProcessId, LogView.Uptime(DateTimeOffset.Now - started));
-            if (_sessions is { } list)
-                for (int i = 0; i < list.Count; i++)
-                {
-                    labels[i + 1] = LogView.SessionLabel(list[i].StartUnixMs, list[i].Pid, list[i].EntryCount, LocalOffset);
-                    subs[i + 1] = Strings.Settings.Diagnostics.SessionEvents(list[i].EntryCount);
-                }
-            return (labels, subs);
-        }
-
-        WaveeLogSessions.Info? SelectedPastSession()
-        {
-            int sel = _session.Peek();
-            return sel == 0 || _sessions is not { } sessions || sel - 1 >= sessions.Count ? null : sessions[sel - 1];
-        }
-
-        void ExportSession()
-        {
-            bool live = _session.Peek() == 0;
-            string? path;
-            try
-            {
-                path = FilePicker.SaveFile(FluentApp.WindowHandle, Loc.Get(Strings.Settings.Diagnostics.ExportSession),
-                    live ? "wavee-session-live.txt" : "wavee-session-" + _session.Peek().ToString(CultureInfo.InvariantCulture) + ".txt",
-                    ("Log text", "*.txt"), ("All files", "*.*"));
-            }
-            catch (InvalidOperationException ex) { Log.Warn("log", "the export dialog failed", ex); return; }
-            if (path is null) return;
-            try
-            {
-                if (live) File.WriteAllText(path, LogView.CopyText(_rows));
-                else if (SelectedPastSession() is { } info) WaveeLogSessions.ExportSessionToFile(info, path);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("log", "the session export failed", ex); }
-        }
-
-        // ── the body: loading / empty / rows ─────────────────────────────────────────────────────────────────────────
-
-        Element LogBody(WaveeLogEntry[]? entries, LogViewResult result, LogViewQuery query, MeasuredStackVirtualLayout layout)
-        {
-            if (entries is null)
-                return new BoxEl
-                {
-                    Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
-                    Children = [ProgressRing.Indeterminate(), new TextEl(Loc.Get(Strings.Settings.Diagnostics.LoadingSession)) { Size = 12f, Color = Tok.TextSecondary }],
-                };
-            if (result.Shown == 0)
-                return new BoxEl
-                {
-                    Grow = 1f, Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Gap = Spacing.M,
-                    Padding = new Edges4(0f, 64f, 0f, 64f),
-                    Children = [FluentGpu.Dsl.Ui.Icon(Icons.Search, 36f, Tok.TextTertiary), Design.Type.PageHero(Loc.Get(Strings.Settings.Diagnostics.EmptyFilter))],
-                };
-
-            // The list's ItemCount/template freeze at mount: the visible SET changing remounts it; ScrollKey keeps the offset.
-            string scrollKey = "logs:scroll:" + _session.Value.ToString(CultureInfo.InvariantCulture);
-            var rows = result.Rows;
-            return new BoxEl
-            {
-                Key = "logs:list:" + LogView.RemountKey(_session.Value, query, result.Shown),
-                Grow = 1f, Shrink = 1f, MinHeight = 0f,
-                Children =
-                [
-                    ItemsView.Create(rows.Length, i => LogRow(rows[i]), RepeatLayout.Measured(layout), new ListOptions
-                    {
-                        SelectionMode = ItemsSelectionMode.None, Controller = _listCtrl, Selector = SelectorVisual.None,
-                        KeyOf = i => scrollKey + ":" + rows[i].Entry.Sequence.ToString(CultureInfo.InvariantCulture),
-                        IsItemInvokedEnabled = true, OnInvoked = i => ToggleExpand(rows[i].Entry.Sequence, rows), Grow = 1f,
-                        Scroll = new ScrollOptions { ScrollKey = scrollKey },
-                    }),
-                ],
-            };
-        }
-
-        void ToggleExpand(long seq, LogViewRow[] rows)
-        {
-            _expandedSeq.Value = _expandedSeq.Peek() == seq ? -1 : seq;
-            int idx = LogView.IndexOfSequence(rows, seq);
-            if (idx >= 0) _listCtrl.StartBringItemIntoView(idx, alignmentRatio: 0f);
-        }
-
-        /// <summary>36 DIP, fixed columns: chevron 12 · dot 6 · time 92 · pill 58 × 22 · category 96 · message · ×N.</summary>
-        Element LogRow(LogViewRow row)
-        {
-            var e = row.Entry;
-            long seq = e.Sequence;
-            bool expanded = _expandedSeq.Value == seq;
-            bool wrapAll = expanded || _wrap.Value != 0;
-            var line = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = 36f, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                Grow = 1f, Fill = expanded ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                Children =
-                [
-                    Sidebar.Chevron.Disclosure(() => _expandedSeq.Value == seq, size: 12f),
-                    SeverityDot(e.Level),
-                    new TextEl(LogView.FormatTime(e.UnixMs, LocalOffset)) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = 92f, Shrink = 0f },
-                    LevelPill(e.Level),
-                    new TextEl(e.Category) { Size = 12f, Color = Tok.TextSecondary, FontFamily = "Cascadia Code", Width = 96f, Shrink = 0f, Trim = TextTrim.CharacterEllipsis },
-                    Design.Type.DenseMeta(e.Message) with
-                    {
-                        Color = Tok.TextPrimary, Grow = 1f, MinWidth = 0f,
-                        Wrap = wrapAll ? TextWrap.Wrap : TextWrap.NoWrap, Trim = wrapAll ? TextTrim.None : TextTrim.CharacterEllipsis, MaxLines = wrapAll ? 0 : 1,
-                    },
-                    row.Repeat > 1 ? RepeatBadge(row.Repeat) : new BoxEl(),
-                ],
-            }.Interactive(Interaction.ListRow);
-            if (!expanded) return line;
-
-            // The expanded row is a keyed WRAPPER: the line, Fields (only when non-empty), Exception (only when present),
-            // and the meta line, which ALWAYS renders.
-            var detail = new List<Element>(4) { line };
-            string fieldText = LogView.FieldText(e.Fields);
-            if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Settings.Diagnostics.Fields), fieldText));
-            if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Settings.Diagnostics.Exception), ex));
-            detail.Add(Design.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
-            return new BoxEl { Key = "logs:row:" + seq.ToString(CultureInfo.InvariantCulture), Direction = 1, Gap = 4f, Padding = new Edges4(0f, 0f, Spacing.S, Spacing.S), Children = detail.ToArray() };
-        }
-
-        static Element DetailSection(string caption, string text) => new BoxEl
-        {
-            Direction = 1, Gap = 4f, Padding = new Edges4(44f, 0f, Spacing.M, 4f),
-            Children = [Design.Type.MicroMeta(caption) with { Weight = 600, Color = Tok.TextTertiary }, CodeBlock.Create(text, copyable: true, fontSize: 12f)],
-        };
-
-        /// <summary>A dot only for Warning and ≥ Error; every other level holds the 6-DIP column with a blank spacer.</summary>
-        static Element SeverityDot(WaveeLogLevel level) => level switch
-        {
-            WaveeLogLevel.Warning => InfoBadge.Dot(InfoBadgeSeverity.Caution),
-            >= WaveeLogLevel.Error => InfoBadge.Dot(InfoBadgeSeverity.Critical),
-            _ => new BoxEl { Width = 6f, Height = 6f, Shrink = 0f },
-        };
-
-        static Element RepeatBadge(int repeat) => new BoxEl
-        {
-            Padding = new Edges4(7f, 1f, 7f, 2f), Corners = CornerRadius4.All(Radii.Full), Fill = Tok.FillSubtleSecondary,
-            Children = [Design.Type.MicroMeta("×" + repeat.ToString(CultureInfo.InvariantCulture)) with { Weight = 700, Color = Tok.TextSecondary }],
-        };
-
-        static BoxEl LevelPill(WaveeLogLevel level)
-        {
-            var color = level switch
-            {
-                WaveeLogLevel.Critical or WaveeLogLevel.Error => Tok.SystemFillCritical,
-                WaveeLogLevel.Warning => Tok.SystemFillCaution,
-                WaveeLogLevel.Debug or WaveeLogLevel.Trace => Tok.TextTertiary,
-                _ => Tok.AccentDefault,
-            };
-            return new BoxEl
-            {
-                Width = 58f, Height = 22f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = CornerRadius4.All(Radii.Full),
-                Fill = color with { A = 0.12f }, BorderWidth = 1f, BorderColor = color with { A = 0.38f },
-                Children = [new TextEl(level.ToString().ToUpperInvariant()) { Size = 10f, Weight = 800, Color = color }],
-            };
-        }
-
-        // ── the footer: shown/total + Load more + the capture caption ────────────────────────────────────────────────
-
-        Element Footer(LogViewResult result, bool live)
-        {
-            var kids = new List<Element>(3)
-            {
-                new TextEl(live ? Strings.Settings.Diagnostics.FooterLive(result.Shown, result.Total) : Strings.Settings.Diagnostics.FooterPast(result.Shown, result.Total))
-                    { Size = 12f, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f },
-            };
-            if (result.Truncated)
-                kids.Add(HyperlinkButton.Create(Loc.Get(Strings.Settings.Diagnostics.LoadMore), () => _visibleLimit.Value = LogView.NextCap(_visibleLimit.Peek())));
-            var min = Log.MinLevel;
-            var file = LogCapturePolicy.EffectiveFileLevel(min, Log.FileMinLevel);
-            kids.Add(Design.Type.MicroMeta(Strings.Settings.Diagnostics.CaptureCaption(LevelName(min), LevelName(file))) with { Color = Tok.TextTertiary });
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.S, Spacing.M, Spacing.S),
-                Children = kids.ToArray(),
-            };
-        }
-
-        static string LevelName(WaveeLogLevel level) => LogView.LevelNames[Math.Clamp((int)level, 0, LogView.LevelNames.Length - 1)];
-    }
-
     // ══ 5. THE RUNTIME DIAGNOSTICS PAGE (ch 27 W23; 0.2.9 `PlaybackRuntimeDiagnosticsPage.cs`) ═════════════════════
 
     /// <summary>"Why is local playback not ready?" — the provisioner's own computed report, verbatim. The page adds no
@@ -733,6 +286,8 @@ public static partial class Diagnostics
             }
             body.Add(ModulesSection(ModulesReportSource?.Invoke()));
             body.Add(UpdatesSection(update, NotesReportSource?.Invoke()));
+            body.Add(StageCard());
+            body.Add(Embed.Comp(static () => new PlaybackHealthView()));
             body.Add(Embed.Comp(static () => new PodcastWireCheckView()));
             body.Add(new BoxEl
             {
@@ -770,6 +325,28 @@ public static partial class Diagnostics
             Row(Loc.Get(Strings.Diagnostics.Runtime.Architecture), s.Arch),
             Row(Loc.Get(Strings.Diagnostics.Runtime.RuntimePath), s.Location),
             Row(Loc.Get(Strings.Diagnostics.Runtime.SignatureTrust), s.Trust.ToString()));
+
+        /// <summary>"Fullscreen &amp; visualizer" (fullscreen-flagship-implementation.md §4.14): the stage's mode/kind, the lease
+        /// tier, the FFT cost per publish, the alignment applied to the last window (frames behind the newest rendered sample)
+        /// and the endpoint's queue depth (diagnostic only — §2.7), the data source, and the publish count. A snapshot taken at
+        /// render: <c>Stage.Diagnostics.Version</c> re-renders the page on every enter/exit/mode/pick/lease/source note, and
+        /// Refresh re-reads the FFT figures.</summary>
+        static Element StageCard()
+        {
+            _ = Stage.Diagnostics.Version.Value;
+            var (queueFrames, publishes) = Playback.Audio.SpectrumDiagnostics();
+            Span<float> scratch = stackalloc float[Visualizer.Bands.Count];
+            int n = Playback.Audio.CopySpectrum(scratch, out SpectrumInfo info);
+            string delay = n == 0 ? queueFrames.ToString(CultureInfo.InvariantCulture) + " frames queued"
+                : info.AlignFrames.ToString(CultureInfo.InvariantCulture) + " frames behind newest · " + queueFrames.ToString(CultureInfo.InvariantCulture) + " queued";
+            return Card(Loc.Get(Strings.Stage.Diag.Title),
+                Row(Loc.Get(Strings.Stage.Diag.Mode), Stage.Diagnostics.IsOpen ? Stage.Diagnostics.LastMode + " · " + Stage.Diagnostics.LastKind : null),
+                Row(Loc.Get(Strings.Stage.Diag.Leases), Stage.Diagnostics.LastTier.ToString()),
+                Row(Loc.Get(Strings.Stage.Diag.Fft), n == 0 ? null : info.FftMs.ToString("0.000", CultureInfo.InvariantCulture) + " ms"),
+                Row(Loc.Get(Strings.Stage.Diag.Delay), delay),
+                Row(Loc.Get(Strings.Stage.Diag.Source), Stage.Diagnostics.LastSource.ToString()),
+                Row(Loc.Get(Strings.Stage.Diag.Publishes), publishes.ToString(CultureInfo.InvariantCulture)));
+        }
 
         static Element CandidatesSection(RuntimeDiagnostics d)
         {
@@ -909,6 +486,60 @@ public static partial class Diagnostics
                 });
             return Card(Loc.Get(Strings.Diagnostics.Updates.Title), rows);
         }
+    }
+
+    // ══ 5a. THE PLAYBACK HEALTH CARD (playback-smoothness-implementation.md §4.14; #167) ══════════════════════════
+    //
+    // "Is playback healthy right now?" without opening a log: the glitch ledger's verdict, the longest stall, whether
+    // the audio threads joined MMCSS, how full the PCM ring is against its target, the device's own buffer and the
+    // decode speed. One `Playback.Audio.Metrics.Read()` per second (a lock-free read of primitives), so it costs the
+    // page nothing while nothing changes. All text is a loc key (V-PA34): the verdict arrives as a key string and the
+    // seek kind as an enum, and both map to the generated `Strings` constants here.
+
+    /// <summary>The "Playback health" card on the runtime-diagnostics page. Self-refreshing: it owns a 1 Hz
+    /// <c>UseInterval</c> over <c>Playback.Audio.Metrics.Read()</c>, so the page's own Refresh
+    /// button is not needed for it. A row whose fact does not exist yet (no live session, no decode yet, no seek yet)
+    /// prints the page's usual "—".</summary>
+    sealed class PlaybackHealthView : Component
+    {
+        // Seeded from a real read (not `default`) so the verdict row is never a null key on the first frame.
+        readonly Signal<Playback.Audio.Metrics> _m = new(Playback.Audio.Metrics.Read());
+
+        public override Element Render()
+        {
+            UseInterval(() => _m.Value = Playback.Audio.Metrics.Read(), 1000f, enabled: true);
+            var m = _m.Value;
+            var inv = CultureInfo.InvariantCulture;
+            bool live = m.RingTargetMs > 0;   // a ring target exists only while a session is open
+            return Card(Loc.Get(Strings.Diagnostics.Playback.Health),
+                Row(Loc.Get(Strings.Diagnostics.Playback.VerdictLabel), VerdictText(m.GlitchVerdictKey)),
+                Row(Loc.Get(Strings.Diagnostics.Playback.Incidents), m.GlitchIncidents.ToString(inv)),
+                Row(Loc.Get(Strings.Diagnostics.Playback.LongestStall), Strings.Diagnostics.Playback.Ms(m.LongestStallMs)),
+                Row(Loc.Get(Strings.Diagnostics.Playback.Mmcss), Loc.Get(m.MmcssRegistered ? Strings.Diagnostics.Playback.MmcssOn : Strings.Diagnostics.Playback.MmcssOff)),
+                Row(Loc.Get(Strings.Diagnostics.Playback.RingFill), live ? Strings.Diagnostics.Playback.MsOfMs(m.RingFillMs, m.RingTargetMs) : null),
+                Row(Loc.Get(Strings.Diagnostics.Playback.DeviceBuffer), live ? Strings.Diagnostics.Playback.Ms(m.DevicePaddingMs) : null),
+                Row(Loc.Get(Strings.Diagnostics.Playback.Decode), m.DecodeXRealtime > 0f ? Strings.Diagnostics.Playback.XRealtime(m.DecodeXRealtime.ToString("0.0", inv)) : null),
+                Row(Loc.Get(Strings.Diagnostics.Playback.LastSeek), m.LastSeekLatencyMs >= 0 ? Strings.Diagnostics.Playback.MsKind(m.LastSeekLatencyMs, SeekKindText(m.LastSeekKind)) : null));
+        }
+
+        /// <summary>The ledger's verdict key → its sentence. An empty key is "no verdict yet" (a dash); a key this card does
+        /// not know falls through to a dynamic lookup, which renders loudly as "[key]" rather than hiding a drifted name.</summary>
+        static string? VerdictText(string? key) => string.IsNullOrEmpty(key) ? null : key switch
+        {
+            "clean" => Loc.Get(Strings.Diagnostics.Playback.Verdict.Clean),
+            "gcPauses" => Loc.Get(Strings.Diagnostics.Playback.Verdict.GcPauses),
+            "byteStarved" => Loc.Get(Strings.Diagnostics.Playback.Verdict.ByteStarved),
+            "producerStarved" => Loc.Get(Strings.Diagnostics.Playback.Verdict.ProducerStarved),
+            "deviceLate" => Loc.Get(Strings.Diagnostics.Playback.Verdict.DeviceLate),
+            _ => Loc.Get("diagnostics.playback.verdict." + key),
+        };
+
+        static string SeekKindText(Playback.Audio.SeekKind kind) => Loc.Get(kind switch
+        {
+            Playback.Audio.SeekKind.Far => Strings.Diagnostics.Playback.SeekKind.Far,
+            Playback.Audio.SeekKind.Disk => Strings.Diagnostics.Playback.SeekKind.Disk,
+            _ => Strings.Diagnostics.Playback.SeekKind.Ring,
+        });
     }
 
     // ══ 5b. THE PODCAST WIRE CHECK (podcast-show-rework-implementation.md §6.0; owner D1) ══════════════════════════

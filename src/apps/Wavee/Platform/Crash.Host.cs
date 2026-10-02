@@ -41,7 +41,7 @@ public static partial class Crash
         static StreamWriter? s_stdin;
         static readonly object s_writeLock = new();
         static System.Threading.Timer? s_beatTimer;
-        static string? s_datedLogPath;
+        static string? s_logBasePath;
 
         static int s_managedHandled, s_nativeHandled;
         static int s_hangReportedForThisProcess;
@@ -67,14 +67,14 @@ public static partial class Crash
         /// <c>--headless</c>/the relaunch broker. Spawning failure is logged and otherwise inert — a launch with no
         /// crash handler still runs; it just cannot capture a native fault or a hang, and a managed one falls back to
         /// "no bundle, only the app log's own crash line" (<c>Shell.Host.InstallCrashNet</c>'s belt).</summary>
-        public static void Install(string logFolder, string? datedLogPath)
+        public static void Install(string logFolder, string? logBasePath)
         {
             if (Interlocked.Exchange(ref s_installed, 1) != 0) return;
             s_logFolder = logFolder;
-            s_datedLogPath = datedLogPath;
+            s_logBasePath = logBasePath;
             try { Directory.CreateDirectory(Files.Root(logFolder)); } catch { }
 
-            SpawnChild(logFolder, datedLogPath);
+            SpawnChild(logFolder, logBasePath);
 
             NativeHook.OnForeignFault = static (code, ptrs) => RequestDumpCore(Kind.Native, ptrs, code);
             NativeHook.Install();
@@ -89,7 +89,7 @@ public static partial class Crash
             s_beatTimer = new System.Threading.Timer(OnBeatTick, null, 2000, 2000);
         }
 
-        static void SpawnChild(string logFolder, string? datedLogPath)
+        static void SpawnChild(string logFolder, string? logBasePath)
         {
             try
             {
@@ -105,7 +105,9 @@ public static partial class Crash
                 psi.ArgumentList.Add("--crash-handler");
                 psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
                 psi.ArgumentList.Add(logFolder);
-                psi.ArgumentList.Add(string.IsNullOrEmpty(datedLogPath) ? "-" : datedLogPath);
+                // The BASE path (wavee.log), not today's dated file: the child outlives midnight and derives the day's file
+                // at bundle time (Crash.Bundles.ResolveTailPath). A dated path frozen here tailed yesterday after midnight.
+                psi.ArgumentList.Add(string.IsNullOrEmpty(logBasePath) ? "-" : logBasePath);
                 // Deliberately NOT added to the modules' kill-on-close job object (§B.1): the child must outlive a
                 // parent that just faulted, long enough to finish a dump.
                 var child = Process.Start(psi);
@@ -205,11 +207,17 @@ public static partial class Crash
             if (Interlocked.Exchange(ref s_managedHandled, 1) != 0) return;
             try
             {
+                // The crash's own line goes in FIRST and the queue is drained BEFORE the tail is read: this runs ahead of
+                // Shell's Critical line (the handlers fire in subscription order) and the sink writes on a pool thread, so
+                // without both the tail ended before the crash and missed the last <= 512-line batch. (The native path
+                // flushes in NativeHook.) Type and message only: Shell logs the full exception right after.
+                try { Log.Event(WaveeLogLevel.Critical, "crash", "crash.managed", ex.GetType().FullName + ": " + ex.Message); } catch { }
+                Log.Flush();
                 string dir = Crash.Bundles.Create(LogFolder, Kind.Managed, DateTimeOffset.Now);
                 var summary = Report.BuildSummary(Kind.Managed, ex, 0);
                 Crash.Bundles.WriteSummary(dir, summary);
                 Crash.Bundles.WriteReport(dir, Report.Describe(ex));
-                Crash.Bundles.WriteTail(dir, s_datedLogPath, 300, SafeGatherRules());
+                WriteLogTail(dir, SafeGatherRules());
                 // NO settings write and NO signal write here: this runs on the CRASHING thread (a pool thread for a worker
                 // fault), and Settings.Set / Signal writes are UI-thread-only — measured 2026-09-25: the write took the
                 // process down with a fatal "invalid program" inside a SettingsChanged subscriber. A file marker instead.
@@ -229,6 +237,13 @@ public static partial class Crash
             }
             catch (Exception writeEx) { try { Log.Warn("crash", "crash.managed.bundle.failed", writeEx); } catch { } }
         }
+
+        /// <summary>The bundle's <c>log-tail.txt</c>: the day's file AS OF NOW (<see cref="Crash.Bundles.ResolveTailPath"/> —
+        /// never a path frozen at install, which names the boot day's file) plus the lines still queued for it. The queue
+        /// snapshot is taken first, so a line the writer lands meanwhile is in both and deduped rather than in neither.
+        /// Shared by the managed, native and test-report paths.</summary>
+        static void WriteLogTail(string dir, Feedback.RedactionRules rules)
+            => Crash.Bundles.WriteTail(dir, Crash.Bundles.ResolveTailPath(s_logBasePath ?? Log.BasePath), 300, rules, Log.PendingFileLines());
 
         /// <summary>The native-fault path's public entry (<c>Crash.NativeHook.OnForeignFault</c> — the FILTER, §B.0's
         /// spike — wires <see cref="RequestDumpCore"/> directly so it also has the fault code for the summary; this
@@ -256,7 +271,7 @@ public static partial class Crash
                 Report.DescribeSynthetic(headline, sb);
                 Report.AppendRvaSection(sb, rvas);
                 Crash.Bundles.WriteReport(dir, sb.ToString());
-                Crash.Bundles.WriteTail(dir, s_datedLogPath, 300, SafeGatherRules());
+                WriteLogTail(dir, SafeGatherRules());
                 // NO settings write and NO signal write here: this runs on the CRASHING thread (a pool thread for a worker
                 // fault), and Settings.Set / Signal writes are UI-thread-only — measured 2026-09-25: the write took the
                 // process down with a fatal "invalid program" inside a SettingsChanged subscriber. A file marker instead.

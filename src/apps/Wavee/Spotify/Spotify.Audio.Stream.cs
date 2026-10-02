@@ -31,6 +31,10 @@
 //                 probe is the only request on the wire. Ping and throughput as librespot measures them
 //                 (`audio/src/fetch/receive.rs:279-339`).
 //   · `IRangeSource` — the wire as an interface; `Wavee.Tests/AudioStreamTests.cs` replaces it with a counting fake.
+//   · THE SECOND READER (V-PA20). `Body.ProbeAt` / `ProbeRange` serve a NON-OWNING view (the seek's second decoder, the
+//                 scrub source): resident bytes are copied without moving the cursor, the epoch or the interrupt, and a
+//                 miss queues ONE view-only range BEHIND the live fill — never at the queue front, never cancelling the
+//                 fill. `Body.PageIndexSnapshot` is the Ogg page index built as slots land (container offsets).
 //
 // THE TIMELINE THE LOG PRINTS (always on, category "audio"): audio.open.begin → audio.head → audio.open → audio.first
 // (the first byte the decoder got, and from WHICH store) → audio.len → audio.splice → audio.range (per landed range,
@@ -106,10 +110,12 @@ public static partial class Spotify
             /// <param name="HeadBytes">The playing body's clear head still held (0 once proven).</param>
             /// <param name="SpliceProof">The playing body's splice proof: 0 unchecked · 1 byte-exact · 2 refused.</param>
             /// <param name="ReadAheadBytes">Ring memory granted out of the shared budget right now.</param>
+            /// <param name="Faults">Ranges that ended in an exception OUTSIDE the wire (R-6: the disk cache, a decrypt, a bug —
+            /// settled as refused by the fetcher's last-resort catch). A wire fault a mirror was retried for is not one.</param>
             public readonly record struct Stats(
                 long Requests, long Cancelled, int InFlight, int Outstanding, int PeakInFlight, int PingMs, long BytesPerSecond,
                 long Heads, long Resolves, long Probes, long CacheHits, long CdnBytes,
-                long RingWaits, long RingStarves, int HeadBytes, int SpliceProof, long ReadAheadBytes)
+                long RingWaits, long RingStarves, int HeadBytes, int SpliceProof, long ReadAheadBytes, int Faults)
             {
                 /// <summary>Every HTTP request the audio path made: ranges + heads + storage-resolves (the key is an AP
                 /// round trip, not HTTP). Vorbis plan §5.4's cold start is 4 of these.</summary>
@@ -128,7 +134,7 @@ public static partial class Spotify
                         Interlocked.Read(ref s_statProbes), Interlocked.Read(ref s_statCacheHits),
                         Interlocked.Read(ref s_statCdnBytes), Interlocked.Read(ref s_statRingWaits),
                         Interlocked.Read(ref s_statRingStarves), live?.HeadBytes ?? 0, live?.SpliceProof ?? 0,
-                        ReadAheadBudget.InUseBytes);
+                        ReadAheadBudget.InUseBytes, fetcher.Faults);
                 }
 
                 /// <summary>The monotonic counters as a delta against <paramref name="mark"/> (a script's `stats mark`); the
@@ -144,6 +150,7 @@ public static partial class Spotify
                     CdnBytes = CdnBytes - mark.CdnBytes,
                     RingWaits = RingWaits - mark.RingWaits,
                     RingStarves = RingStarves - mark.RingStarves,
+                    Faults = Faults - mark.Faults,
                 };
             }
         }
@@ -270,10 +277,14 @@ public static partial class Spotify
             ValueTask<IRangeReply?> OpenAsync(string url, long start, long end, CancellationToken ct);
         }
 
-        /// <summary>What one <see cref="Body.FetchRangeAsync"/> call settled on. <see cref="Bytes"/>: &gt;0 landed, 0
-        /// every mirror refused, −1 cancelled before a slot landed. <see cref="HeadersAt"/>: the timestamp the first
-        /// successful reply's headers arrived (the fetcher's ping sample).</summary>
-        internal readonly record struct FetchResult(int Bytes, long HeadersAt);
+        /// <summary>What one <see cref="Body.FetchRangeAsync"/> call settled on. <see cref="Bytes"/>: &gt;0 landed (also when
+        /// the wire faulted or the idle deadline ran out AFTER some slots landed — P-6: a slow link that made progress is
+        /// not a refusing one), 0 every mirror refused with nothing landed, −1 cancelled before a slot landed.
+        /// <see cref="HeadersAt"/>: the timestamp the first successful reply's headers arrived (the fetcher's ping
+        /// sample). <see cref="AttemptAt"/> (R-6): the timestamp the mirror attempt that ANSWERED began (0 = unknown, e.g. a
+        /// partial or refused result) — the ping is measured from there, not from the range's start, so a dead mirror tried
+        /// first does not inflate it.</summary>
+        internal readonly record struct FetchResult(int Bytes, long HeadersAt, long AttemptAt = 0);
 
         /// <summary>What a reply that does not start where it was asked to is worth (G-118). A 200 to a non-zero Range
         /// used to be taken AS that range — an external podcast host that ignores Range then corrupted every range after the
@@ -500,8 +511,12 @@ public static partial class Spotify
 
         /// <summary>One request on the wire. Epoch-stamped (C4): a sequential range whose epoch a seek superseded is
         /// dropped before it reaches the wire; one already landing is still STORED (bytes are bytes). A probe is issued
-        /// BY the seek, so it is never stale. The tail feeds the gapless length and the cache, never the ring's window.</summary>
-        public readonly record struct RangeRequest(long Start, long End, uint Epoch, bool Probe, bool Tail = false);
+        /// BY the seek, so it is never stale. The tail feeds the gapless length and the cache, never the ring's window.
+        /// <para><paramref name="ViewOnly"/> (V-PA20): the second reader's range (<see cref="Body.ProbeAt"/>). It is a probe
+        /// (never stale) that is queued BEHIND the live fill, is not the ring's pending range (no cursor, epoch or fill
+        /// identity moves for it), survives the owner's own seek (<see cref="Fetcher.Retarget"/> keeps it, like the tail)
+        /// and lands into the ring without the S-11 behind-window protection, because the cursor never moved for it.</para></summary>
+        public readonly record struct RangeRequest(long Start, long End, uint Epoch, bool Probe, bool Tail = false, bool ViewOnly = false);
 
         /// <summary>Which store answered a range — a LOG value first, bookkeeping second.</summary>
         public enum Source : byte
@@ -532,9 +547,14 @@ public static partial class Spotify
             /// request, decides how far ahead we are.</summary>
             public const int MaxRangeBytes = 512 * 1024;
 
-            /// <summary>A range's own deadline. Generous on purpose: at librespot's minimum throughput (8 KiB/s,
-            /// `mod.rs:104`) a full range takes a minute, and the ring's 8 s read bound reports the stall long before.</summary>
-            const int RangeTimeoutMs = 60_000;
+            /// <summary>A range's IDLE deadline (S-2): the wire may take as long as it likes so long as it keeps sending.
+            /// The clock restarts when a mirror attempt begins and after every read that returned bytes
+            /// (<see cref="Body.FetchRangeAsync"/>), so a link that sends nothing for this long is dead and the range is
+            /// settled then — the old 60 s TOTAL deadline held a stalled range on the wire for a minute after the ring's
+            /// 8 s read bound had already reported it. The same bound as <see cref="Ring.DefaultWaitMs"/>: the retry
+            /// starts when the reader would have given up. A mirror that trips it is rotated away from (the next range starts
+            /// on the following mirror), so a silent edge costs one deadline, not one per range.</summary>
+            public const int RangeIdleTimeoutMs = 8_000;
 
             public static readonly Fetcher Shared = new();
 
@@ -548,7 +568,8 @@ public static partial class Spotify
             Task? _loop;
             CancellationTokenSource? _inFlight;
             Body? _inFlightBody;
-            bool _inFlightTail;
+            bool _inFlightTail, _inFlightViewOnly;
+            long _progressAt;                       // TickCount64 of the in-flight range's last sign of life (see NoteProgress)
             byte[]? _scratch, _chunkScratch;
             int _ping0 = 500, _ping1 = 500;
             int _requests, _cancelled, _peak, _live, _outstanding, _faults;
@@ -603,18 +624,65 @@ public static partial class Spotify
                 if (!_queue.Writer.TryWrite((body, req))) Interlocked.Decrement(ref _outstanding);
             }
 
-            /// <summary>A seek on <paramref name="body"/>: cancel its in-flight range (never the tail), drop its queued
-            /// ranges (keeping a pending tail), and put <paramref name="probe"/> at the FRONT of the queue — so the probe
-            /// is the only request in flight when it is issued and nothing is served before it. A default probe only
-            /// cancels and drops.</summary>
+            /// <summary>A seek on <paramref name="body"/>: cancel its in-flight range (never the tail or a view-only range),
+            /// drop its queued ranges (keeping a pending tail and any view-only range — side work the owner's seek does not
+            /// own), and put <paramref name="probe"/> at the FRONT of the queue — so the probe is the only request in flight
+            /// when it is issued and nothing is served before it. A default probe only cancels and drops.</summary>
             public void Retarget(Body body, in RangeRequest probe)
             {
                 EnsureStarted();
-                CancelAndDrain(body, keepTail: true, probe.End > probe.Start ? probe : null);
+                CancelAndDrain(body, keepSide: true, probe.End > probe.Start ? probe : null);
             }
 
-            /// <summary>The body is gone: cancel and drop everything of it, the tail included.</summary>
-            public void Forget(Body body) => CancelAndDrain(body, keepTail: false, null);
+            /// <summary>The body is gone: cancel and drop everything of it, the tail and the view-only ranges included.</summary>
+            public void Forget(Body body) => CancelAndDrain(body, keepSide: false, null);
+
+            /// <summary>The in-flight range showed life: a mirror attempt began, or a read returned bytes. Called by
+            /// <see cref="Body.FetchRangeAsync"/> on the fetch task; <see cref="CancelInFlight"/> reads it.</summary>
+            internal void NoteProgress() => Volatile.Write(ref _progressAt, Environment.TickCount64);
+
+            /// <summary>S-2, with the slow-link fix: the ring's bounded read ran out while <paramref name="body"/>'s range was
+            /// still on the wire. A range that has not shown ONE sign of life since the reader began that wait
+            /// (<paramref name="waitStartedAt"/>, <c>Environment.TickCount64</c>) is cancelled, so it settles Stale and the ring
+            /// plans it again — never the tail or a view-only range, and nothing queued is touched (no seek happened, so no
+            /// probe is owed). A range that IS sending, however slowly, is left alone: every cancel discards the slot it is
+            /// filling (only COMPLETED 64 KiB slots land), so on a link at or below ~8 KiB/s — a slot per 8 s, the reader's
+            /// whole bound — cancelling a trickle meant no slot could ever finish. Such a range is still bounded: the idle
+            /// deadline (<see cref="RangeIdleTimeoutMs"/>) ends one that stops, and the pump's 90 s stall budget one that
+            /// never completes a slot. The cancel is <c>CancelAsync</c> outside <see cref="_gate"/> for the reason
+            /// <see cref="CancelAndDrain"/>'s hazard note gives. True when a range was cancelled.</summary>
+            internal bool CancelInFlight(Body body, long waitStartedAt)
+            {
+                CancellationTokenSource? toCancel = null;
+                lock (_gate)
+                {
+                    if (_inFlight is { } live && ReferenceEquals(_inFlightBody, body) && !_inFlightTail && !_inFlightViewOnly
+                        && StarveMayCancel(Volatile.Read(ref _progressAt), waitStartedAt))
+                    {
+                        _inFlight = null;
+                        Interlocked.Increment(ref _cancelled);
+                        toCancel = live;
+                    }
+                }
+                if (toCancel is null) return false;
+                try { _ = toCancel.CancelAsync(); }
+                catch (ObjectDisposedException) { }
+                return true;
+            }
+
+            /// <summary>The starve rule as a fact: may a read that began waiting at <paramref name="waitStartedAt"/> cancel the range
+            /// whose last sign of life was <paramref name="lastProgressAt"/> (both <c>Environment.TickCount64</c>)? Only when
+            /// the range showed none since the wait began. PURE.</summary>
+            public static bool StarveMayCancel(long lastProgressAt, long waitStartedAt) => lastProgressAt <= waitStartedAt;
+
+            /// <summary>Was <paramref name="cts"/> (the range now in flight) cancelled by someone — a seek, a starve, a dispose
+            /// — rather than by its own idle deadline? Every outside cancel clears <c>_inFlight</c> BEFORE it cancels, so a
+            /// cancelled source that is still registered can only have been the deadline's. The one question
+            /// <see cref="Body.FetchRangeAsync"/> asks to decide whether a silent mirror should be rotated away from.</summary>
+            internal bool CancelledFromOutside(CancellationTokenSource cts)
+            {
+                lock (_gate) return !ReferenceEquals(_inFlight, cts);
+            }
 
             /// <summary>HAZARD: cancelling a `CancellationTokenSource` runs every registered continuation
             /// SYNCHRONOUSLY on the cancelling thread — with the async consumer, that continuation can run all the
@@ -623,12 +691,12 @@ public static partial class Spotify
             /// anything is cancelled, and the cancel must not run inline on this thread either — both are honored
             /// below: the queue work finishes and the lock is released FIRST, then `CancelAsync` (not `Cancel`) hands
             /// the callbacks to the thread pool instead of running them here.</summary>
-            void CancelAndDrain(Body body, bool keepTail, RangeRequest? first)
+            void CancelAndDrain(Body body, bool keepSide, RangeRequest? first)
             {
                 CancellationTokenSource? toCancel = null;
                 lock (_gate)
                 {
-                    if (_inFlight is { } live && ReferenceEquals(_inFlightBody, body) && !(keepTail && _inFlightTail))
+                    if (_inFlight is { } live && ReferenceEquals(_inFlightBody, body) && !(keepSide && (_inFlightTail || _inFlightViewOnly)))
                     {
                         _inFlight = null;
                         Interlocked.Increment(ref _cancelled);
@@ -637,7 +705,7 @@ public static partial class Spotify
                     int kept = 0;
                     while (_queue.Reader.TryRead(out var item))
                     {
-                        if (ReferenceEquals(item.Body, body) && !(keepTail && item.Req.Tail))
+                        if (ReferenceEquals(item.Body, body) && !(keepSide && (item.Req.Tail || item.Req.ViewOnly)))
                         {
                             Interlocked.Decrement(ref _outstanding);
                             item.Body.Dropped(item.Req);
@@ -711,18 +779,40 @@ public static partial class Spotify
             async ValueTask ServeAsync(Body body, RangeRequest req)
             {
                 if (body.Disposed) return;
+                // H-12: a widening the playhead earned is a flag the producer set (never a queue post — `DropOldest` could
+                // drop it and a full queue would evict a range); it is carried out HERE, on the fetch task, so the producer
+                // thread never rents slots or re-hashes the ring under its gate.
+                body.GrowIfRequested();
                 if (!req.Probe && !req.Tail && req.Epoch != body.Epoch) { body.Settle(in req, Source.Stale); return; }
 
                 long start = req.Start, end = req.End;
-                body.FillFromDisk(in req, ref start, ref end, _chunkScratch!);  // the disk answers first; the range shrinks
-                if (start >= end) { body.Settle(in req, Source.Local); return; }
-
                 Source outcome = Source.Refused;
                 CancellationTokenSource? cts = null;
+                bool onWire = false;
                 try
                 {
-                    cts = new CancellationTokenSource(RangeTimeoutMs);
-                    lock (_gate) { _inFlight = cts; _inFlightBody = body; _inFlightTail = req.Tail; }
+                    // S-12: the range is registered as in flight BEFORE the disk fill, so a seek that arrives while the disk
+                    // answers (up to eight SHA-256-verified 64 KiB chunks) reaches this range's token instead of queueing its
+                    // probe behind a fill nobody wants. No deadline yet: `FetchRangeAsync` arms the idle clock when a mirror
+                    // attempt starts, so it covers the WIRE only (never the disk fill above it).
+                    cts = new CancellationTokenSource();
+                    lock (_gate)
+                    {
+                        _inFlight = cts; _inFlightBody = body; _inFlightTail = req.Tail; _inFlightViewOnly = req.ViewOnly;
+                        Volatile.Write(ref _progressAt, Environment.TickCount64);
+                    }
+
+                    body.FillFromDisk(in req, ref start, ref end, _chunkScratch!);  // the disk answers first; the range shrinks
+                    if (start >= end) { outcome = Source.Local; return; }
+                    // …and the epoch / the token are looked at again AFTER it: the fill took real time, and a seek may have
+                    // superseded this range during it (whatever the disk already landed stays — bytes are bytes).
+                    if (cts.IsCancellationRequested || body.Disposed || (!req.Probe && !req.Tail && req.Epoch != body.Epoch))
+                    {
+                        outcome = Source.Stale;
+                        return;
+                    }
+
+                    onWire = true;
                     int live = Interlocked.Increment(ref _live);
                     if (live > _peak) Volatile.Write(ref _peak, live);
                     Interlocked.Increment(ref _requests);
@@ -731,20 +821,22 @@ public static partial class Spotify
                     long t0 = Stopwatch.GetTimestamp();
                     int want = (int)Math.Min(MaxRangeBytes, end - start);
                     // The body lands every completed 64 KiB slot as it arrives (G-102), so a slow link feeds the reader a
-                    // slot at a time instead of making it wait for the whole 512 KiB.
-                    FetchResult got = await body.FetchRangeAsync(req, start, end, _scratch.AsMemory(0, want), cts.Token)
+                    // slot at a time instead of making it wait for the whole 512 KiB. It gets the SOURCE, not just the token:
+                    // every read that returns bytes re-arms the idle deadline (S-2).
+                    FetchResult got = await body.FetchRangeAsync(req, start, end, _scratch.AsMemory(0, want), cts)
                         .ConfigureAwait(false);
                     if (got.Bytes > 0)
                     {
                         Interlocked.Add(ref s_statCdnBytes, got.Bytes);
-                        Observe(t0, got.HeadersAt, got.Bytes);
+                        Observe(got.AttemptAt != 0 ? got.AttemptAt : t0, got.HeadersAt, got.Bytes);   // R-6: from the mirror that answered
                     }
                     outcome = got.Bytes > 0 ? Source.Cdn : got.Bytes < 0 ? Source.Stale : Source.Refused;
                 }
                 catch (Exception ex)
                 {
-                    // The last resort: a fault outside the wire (the disk cache, a decrypt, a bug — `FetchRangeAsync`
-                    // itself maps every wire fault to a mirror retry or a settle and does not throw here). The range is
+                    // The last resort: a fault outside the wire (the disk cache — `FillFromDisk` is inside the try since
+                    // S-12 — a decrypt, a bug; `FetchRangeAsync` itself maps every wire fault to a mirror retry or a
+                    // settle and does not throw here). The range is
                     // settled as REFUSED regardless: the ring arms its backoff and plans again, never left pending. This
                     // is the actual fix for the bug this batch exists to close — today's `Serve` has no such catch, so an
                     // exception here used to escape past `body.Settle(...)` entirely and starve the ring forever.
@@ -753,9 +845,9 @@ public static partial class Spotify
                 }
                 finally
                 {
+                    if (onWire) Interlocked.Decrement(ref _live);
                     if (cts is not null)
                     {
-                        Interlocked.Decrement(ref _live);
                         lock (_gate) { if (ReferenceEquals(_inFlight, cts)) { _inFlight = null; _inFlightBody = null; } }
                         cts.Dispose();
                     }
@@ -859,6 +951,9 @@ public static partial class Spotify
             long _pendingStart = -1;                // the ONE sequential/probe range queued or in flight, by identity
             long _pendingEnd;
             uint _pendingEpoch;
+            long _viewStart = -1;                   // the ONE view-only range (the second reader's) queued or in flight, by identity
+            long _viewRetryAfter;                   // TickCount64 before which a refused view range is not asked for again
+            long _behindFrom = -1, _behindTo = -1;  // chunk indices [from, to): the slots behind a cold landing still owed (S-11)
             long _retryAfter;
             long _interruptUntil;                   // TickCount64 before which an interruptible miss answers Interrupted
             long _heldSpan;                         // the last probe's aligned length: a held demand plans no more
@@ -933,7 +1028,8 @@ public static partial class Spotify
             public int ReadAt(long fileOffset, Span<byte> dst, uint epoch, bool interruptible = false)
             {
                 if (fileOffset < 0 || dst.Length == 0 || AtEnd(fileOffset)) return 0;
-                long deadline = Environment.TickCount64 + _waitMs;
+                long waitStartedAt = Environment.TickCount64;
+                long deadline = waitStartedAt + _waitMs;
                 bool waited = false;
                 while (true)
                 {
@@ -969,8 +1065,124 @@ public static partial class Spotify
                     Interlocked.Increment(ref s_statRingStarves);
                     Log.Warn("audio", $"audio.underrun file={_body.FileIdHex} at={fileOffset} waitMs={_waitMs} stallMs={StallMs} "
                                       + $"cursor={Cursor} ring={Seconds}s slots={Slots} inflight={_fetch.Outstanding}");
+                    CancelIfPending(fileOffset, waitStartedAt);
                     return Starved;
                 }
+            }
+
+            /// <summary>S-2: a read that gave up after its bound while the range that should answer it is still on the
+            /// wire, and that range has shown NO sign of life for that whole bound (<paramref name="waitStartedAt"/> is when
+            /// the read began waiting; <see cref="Fetcher.CancelInFlight"/> holds the rule). Cancel it so it settles Stale and
+            /// the ring plans it again from its first hole (every slot that landed stays). A range that is still sending —
+            /// a slow link — is kept: cancelling it would discard the slot it is filling, again and again (the livelock this
+            /// rule replaces). Only when <paramref name="fileOffset"/> lies in the pending range — a read starved on a
+            /// refusal's backoff has nothing on the wire to cancel.</summary>
+            void CancelIfPending(long fileOffset, long waitStartedAt)
+            {
+                if (!IsPending(fileOffset)) return;
+                if (!_fetch.CancelInFlight(_body, waitStartedAt))
+                    Log.Info("audio", $"audio.starve.keep file={_body.FileIdHex} at={fileOffset} "
+                                      + "range still sending (or not the fill's): not cancelled");
+            }
+
+            /// <summary>THE SECOND READER (V-PA20), FILE coordinates: copy what is resident at <paramref name="fileOffset"/>
+            /// WITHOUT touching the cursor, the epoch, the interrupt, the stall clock or the wait/starve counters — those
+            /// belong to the playing read. On a miss with <paramref name="residentOnly"/> answers 0 at once. Otherwise
+            /// it asks for the bytes as ONE view-only range queued behind the live fill (<see cref="PlanView"/>; nothing is
+            /// cancelled, nothing is moved to the queue front) and waits, up to <paramref name="waitMs"/>, for them to land.
+            /// Returns bytes copied (&gt;0), 0 at a true EOF or on a resident-only miss, −1 when the body is gone,
+            /// <see cref="Starved"/> when the wait ran out — the view's range stays queued, so a caller that asks again keeps
+            /// waiting for the same bytes.</summary>
+            internal int ProbeAt(long fileOffset, Span<byte> dst, int waitMs, bool residentOnly)
+            {
+                if (fileOffset < 0 || dst.Length == 0 || AtEnd(fileOffset)) return 0;
+                int n;
+                lock (_gate) n = TryCopy(fileOffset, dst);
+                if (n > 0) return n;
+                if (residentOnly) return 0;
+                long deadline = Environment.TickCount64 + Math.Max(0, waitMs);
+                while (true)
+                {
+                    if (_body.Disposed) return -1;
+                    if (AtEnd(fileOffset)) return 0;
+                    if (PlanView(fileOffset, dst.Length, out RangeRequest req)) EnqueueView(in req);
+                    lock (_wake) Monitor.Wait(_wake, PollMs);
+                    lock (_gate) n = TryCopy(fileOffset, dst);
+                    if (n > 0) return n;
+                    if (Environment.TickCount64 >= deadline) return Starved;
+                }
+            }
+
+            /// <summary>The view's seek, FILE coordinates: queue the view-only range covering [<paramref name="fileOffset"/>,
+            /// +<paramref name="bytes"/>) unless it is already resident, already the live fill's pending range, or a view
+            /// range is already on its way. True when a request was queued.</summary>
+            internal bool ProbeRange(long fileOffset, long bytes)
+            {
+                if (fileOffset < 0 || AtEnd(fileOffset) || !PlanView(fileOffset, bytes, out RangeRequest req)) return false;
+                EnqueueView(in req);
+                return true;
+            }
+
+            /// <summary>Plan the view-only range for the first hole in the span the second reader wants — aligned out to whole
+            /// slots at both ends like a probe, at least <see cref="ProbeWindow"/> long, at most one
+            /// <see cref="Fetcher.MaxRangeBytes"/> range. Nothing is planned when the span is resident, when the live fill's
+            /// own pending range covers the hole (that range lands it: wait), when a view range is already queued or in flight
+            /// (ONE at a time, so the queue never fills with a reader's retries and never evicts the fill), or during a
+            /// refusal's backoff. <see cref="_pendingStart"/> and the cursor are never touched.</summary>
+            bool PlanView(long fileOffset, long bytes, out RangeRequest req)
+            {
+                req = default;
+                lock (_gate)
+                {
+                    if (_released || _body.Disposed || _viewStart >= 0 || Environment.TickCount64 < _viewRetryAfter) return false;
+                    long length = _body.FileLength;
+                    long from = AlignDown(fileOffset);
+                    if (from >= length) return false;
+                    long want = Math.Min(length, AlignUp(fileOffset + Math.Max(bytes, ProbeWindow)));
+                    long hole = -1;
+                    for (long at = from; at < want; at += SlotBytes)
+                    {
+                        if (Holds(at, at + 1)) continue;
+                        hole = at;
+                        break;
+                    }
+                    if (hole < 0) return false;
+                    if (_pendingStart >= 0 && hole >= _pendingStart && hole < _pendingEnd) return false;
+                    long end = Math.Min(want, hole + Fetcher.MaxRangeBytes);
+                    _viewStart = hole;
+                    req = new RangeRequest(hole, end, Epoch, Probe: true, ViewOnly: true);
+                    return true;
+                }
+            }
+
+            void EnqueueView(in RangeRequest req)
+            {
+                Log.Info("audio", $"audio.probe file={_body.FileIdHex} range={req.Start}..{req.End} view=1");
+                _fetch.Enqueue(_body, req);
+            }
+
+            /// <summary>A view-only range finished (any outcome): free the view identity (a refusal arms the same backoff as
+            /// the fill's), wake the second reader, and let the owner re-plan — the landing may have punched a hole in its
+            /// window (a view lands without moving the cursor).</summary>
+            internal void ViewSettled(in RangeRequest req, bool refused)
+            {
+                lock (_gate)
+                {
+                    if (req.Start == _viewStart)
+                    {
+                        _viewStart = -1;
+                        if (refused) _viewRetryAfter = Environment.TickCount64 + RefusedBackoffMs;
+                    }
+                }
+                WakeWaiters();
+                Advance(Cursor, demand: false);
+            }
+
+            /// <summary>A queued view-only range was dropped (DropOldest, a dispose) — under the channel's lock, so it touches
+            /// one field and wakes nobody; the second reader's next poll plans again.</summary>
+            internal void ViewDropped(in RangeRequest req)
+            {
+                if (Interlocked.Read(ref _viewStart) == req.Start) Interlocked.CompareExchange(ref _viewStart, -1, req.Start);
             }
 
             /// <summary>EOF is only EOF once the length is REAL: past the catalogue estimate a read waits for
@@ -1010,7 +1222,16 @@ public static partial class Spotify
                     _retryAfter = 0;                                   // a user gesture outranks a backoff
                     _fillHeld = true;
                     _heldSpan = Math.Max(SlotBytes, end - start);
-                    resident = residentElsewhere || Holds(start, end);
+                    bool holds = residentElsewhere || Holds(start, end);
+                    // S-10: a probe lying inside the range THIS seek (same epoch) already has queued or on the wire is that
+                    // range's business — a second probe of one seek (the planner's next window) must not cancel it and ask
+                    // for the same bytes again.
+                    bool covered = !holds && ProbeCoveredByPending(_pendingStart, _pendingEnd, _pendingEpoch, epoch, start, end);
+                    resident = holds || covered;
+                    // S-11 / D8: a cold landing owes the slots just behind it (a step back after a seek is then free); they are
+                    // planned LAST (`TryPlanBehind`), once the window ahead is whole, so they never delay the bytes in front.
+                    if (holds) { _behindFrom = _behindTo = -1; }
+                    else { _behindTo = start / SlotBytes; _behindFrom = Math.Max(0, _behindTo - KeepBehindSlots / 2); }
                     if (!resident) { _pendingStart = start; _pendingEnd = end; _pendingEpoch = epoch; _primed = false; }
                 }
                 Log.Info("audio", $"audio.retarget file={_body.FileIdHex} at={probeOffset} probe={start}..{end} "
@@ -1061,12 +1282,18 @@ public static partial class Spotify
             }
 
             /// <summary>Publish landed PLAINTEXT. Requests are slot-aligned, so a chunk is complete, the file's last, or the
-            /// head of a slot a broken reply cut short (then <see cref="Holds"/> asks for the chunk again).</summary>
-            internal void Land(long start, ReadOnlySpan<byte> plain)
+            /// head of a slot a broken reply cut short (then <see cref="Holds"/> asks for the chunk again).
+            /// <para>S-11: a chunk may not evict one of the <see cref="KeepBehindSlots"/> slots kept just behind the cursor
+            /// (<see cref="EvictsBehind"/>) — a stale range landing after a seek moved the cursor must not wipe the slots the
+            /// seek just planned behind its landing. The owner's own fill never reaches those slots (its window ends
+            /// <see cref="KeepBehindSlots"/> slots short of the table size), so a refusal is only ever a stray. A
+            /// <paramref name="viewOnly"/> landing is exempt: its bytes are the point, and the cursor did not move for it.</para></summary>
+            internal void Land(long start, ReadOnlySpan<byte> plain, bool viewOnly = false)
             {
                 lock (_gate)
                 {
                     if (_released) return;
+                    long cursorChunk = Cursor / SlotBytes;
                     long at = start;
                     int offset = 0;
                     while (offset < plain.Length)
@@ -1077,9 +1304,12 @@ public static partial class Spotify
                         int slot = (int)(chunk % _slots.Length);
                         if (within == 0)
                         {
-                            plain.Slice(offset, n).CopyTo(_slots[slot]);
-                            _slotChunk[slot] = chunk;
-                            _slotFilled[slot] = n;
+                            if (viewOnly || !EvictsBehind(slot, chunk, cursorChunk))
+                            {
+                                plain.Slice(offset, n).CopyTo(_slots[slot]);
+                                _slotChunk[slot] = chunk;
+                                _slotFilled[slot] = n;
+                            }
                         }
                         else if (_slotChunk[slot] == chunk && _slotFilled[slot] == within)
                         {
@@ -1092,6 +1322,25 @@ public static partial class Spotify
                 }
                 WakeWaiters();
             }
+
+            /// <summary>S-11: would landing <paramref name="chunk"/> into <paramref name="slot"/> evict a DIFFERENT chunk that
+            /// lies in the <see cref="KeepBehindSlots"/> slots just behind <paramref name="cursorChunk"/>? Caller holds
+            /// <see cref="_gate"/>.</summary>
+            bool EvictsBehind(int slot, long chunk, long cursorChunk) => WouldEvictBehind(_slotChunk[slot], chunk, cursorChunk);
+
+            /// <summary>S-11 as a fact: would landing <paramref name="incomingChunk"/> over <paramref name="residentChunk"/> (−1 =
+            /// an empty slot) evict a DIFFERENT chunk lying in the <see cref="KeepBehindSlots"/> chunks just behind
+            /// <paramref name="cursorChunk"/>? PURE.</summary>
+            public static bool WouldEvictBehind(long residentChunk, long incomingChunk, long cursorChunk)
+                => residentChunk >= 0 && residentChunk != incomingChunk
+                   && residentChunk >= cursorChunk - KeepBehindSlots && residentChunk < cursorChunk;
+
+            /// <summary>S-10 as a fact: is the probe [<paramref name="start"/>, <paramref name="end"/>) inside the range this SAME
+            /// seek (<paramref name="epoch"/> equal to the pending range's) already has queued or on the wire
+            /// ([<paramref name="pendingStart"/>, <paramref name="pendingEnd"/>); <paramref name="pendingStart"/> &lt; 0 = none)?
+            /// Then the pending range answers it and nothing is cancelled. PURE.</summary>
+            public static bool ProbeCoveredByPending(long pendingStart, long pendingEnd, uint pendingEpoch, uint epoch, long start, long end)
+                => pendingStart >= 0 && pendingEpoch == epoch && start >= pendingStart && end <= pendingEnd;
 
             /// <summary>A range finished (any outcome). Frees the pending identity when it is this range, arms a 250 ms
             /// backoff when every mirror refused (a dead CDN costs four requests a second until the read bound reports
@@ -1123,7 +1372,7 @@ public static partial class Spotify
             /// <summary>The mirrors changed under a refusal backoff (a re-resolve landed): plan now, not in 250 ms.</summary>
             internal void RetryNow()
             {
-                lock (_gate) _retryAfter = 0;
+                lock (_gate) { _retryAfter = 0; _viewRetryAfter = 0; }
                 WakeWaiters();
                 Advance(Cursor, demand: false);
             }
@@ -1272,7 +1521,7 @@ public static partial class Spotify
                     hole = at;
                     break;
                 }
-                if (hole < 0) { _primed = true; return false; }
+                if (hole < 0) { _primed = true; return TryPlanBehind(out req); }
                 if (_primed)
                 {
                     if (hole - from >= LowWaterBytes()) return false;
@@ -1288,14 +1537,45 @@ public static partial class Spotify
                 return true;
             }
 
+            /// <summary>S-11 / D8: after a cold seek the ring owes <see cref="KeepBehindSlots"/> / 2 slots just behind the
+            /// landing (<see cref="Retarget"/> records them), so a step back right after the seek is a ring hit, not a probe.
+            /// They are the LOWEST-priority range: planned only once the window ahead of the landing is whole — never in
+            /// front of, or inside, the probe, so a slow link spends none of its first seconds on bytes behind the playhead.
+            /// One-shot and best effort (a refusal or a drop is not retried), and only while the cursor is still at the
+            /// landing. Caller holds <see cref="_gate"/>.</summary>
+            bool TryPlanBehind(out RangeRequest req)
+            {
+                req = default;
+                if (_behindTo <= _behindFrom) return false;
+                long from = _behindFrom, to = _behindTo;
+                _behindFrom = _behindTo = -1;
+                long cursorChunk = Cursor / SlotBytes;
+                if (Math.Abs(cursorChunk - to) > KeepBehindSlots / 2) return false;
+                long length = _body.FileLength;
+                for (long chunk = from; chunk < to; chunk++)
+                {
+                    long at = chunk * SlotBytes;
+                    if (at >= length || Holds(at, at + 1)) continue;
+                    long end = Math.Min(length, to * SlotBytes);
+                    _pendingStart = at;
+                    _pendingEnd = end;
+                    _pendingEpoch = Epoch;
+                    req = new RangeRequest(at, end, _pendingEpoch, Probe: false);
+                    return true;
+                }
+                return false;
+            }
+
             /// <summary>Refill when fewer bytes than this are resident ahead: one full range short of the window, but never
             /// below librespot's prefetch rule (`receive.rs:504-516`: `max(4 × ping × nominal rate, ping × throughput)`),
-            /// so a slow link starts its refill earlier.</summary>
+            /// so a slow link starts its refill earlier — and (S-13) never below HALF the window: for a window of one range
+            /// or less (metered 320k/160k, 96k, a prepared ring) `window − MaxRangeBytes` collapsed to the 64 KiB floor, so
+            /// the refill was a full 512 KiB range requested with 1.6–2 s of audio left.</summary>
             long LowWaterBytes()
             {
                 long librespot = Math.Min(_windowBytes,
                     Fetcher.PrefetchThresholdBytes(_fetch.PingMs, FileBytesPerSecond, _fetch.BytesPerSecond));
-                return Math.Max(SlotBytes, Math.Max(librespot, _windowBytes - Fetcher.MaxRangeBytes));
+                return Math.Max(SlotBytes, Math.Max(librespot, Math.Max(_windowBytes / 2, _windowBytes - Fetcher.MaxRangeBytes)));
             }
 
             int TryCopy(long fileOffset, Span<byte> dst)
@@ -1343,7 +1623,19 @@ public static partial class Spotify
             long _tailGranule = -1, _tailCandidate = -1;
             int _lengthKnown, _mirror, _disposed, _firstServed, _proof, _tailQueued, _sizeDeclared, _ringLogged;
             int _firstStore, _firstServedMs = -1, _gainBits, _peakBits, _gainKnown, _promoted, _resolving, _resolves;
+            // D5/V-PA13: the album pair beside the track pair (the Ogg header's bytes 152/156, the lossless catalogue's album params).
+            int _albumGainBits, _albumPeakBits;
             int _refusals, _keyProved;
+
+            // The landing-time Ogg page index (V-PA20/V-PA36): GROW-ONLY arrays, one writer at a time under `_indexGate`, and a
+            // published count — a reader takes the count first, then the arrays, so it never sees an entry that is not written
+            // (growth publishes the bigger arrays BEFORE the count that needs them). No copy-on-write per page.
+            readonly Lock _indexGate = new();
+            long[] _indexOffsets = [], _indexGranules = [];
+            ulong[] _indexedChunks = [];             // one bit per 64 KiB chunk already scanned (a chunk lands more than once)
+            int _indexCount;
+            /// <summary>The page index stops growing here (4 MiB of entries): a bound, not a plan — a 3-hour podcast is ~100 K.</summary>
+            const int MaxIndexEntries = 1 << 18;
 
             /// <summary>The window a seek's interrupt lasts when the caller names none (see <see cref="Ring.Interrupt"/>).</summary>
             public const int DefaultInterruptMs = 1_000;
@@ -1378,11 +1670,14 @@ public static partial class Spotify
             /// <param name="dispatch">Where a re-resolve runs (an api thread in production); null runs it inline.</param>
             /// <param name="decrypt">A native decryptor for this file (<see cref="BodyDecryptorFor"/>); it replaces the
             /// AES-CTR keystream of <paramref name="key"/>. Null decrypts with the key.</param>
+            /// <param name="albumGainDb">The ALBUM gain (header byte 152, or the catalogue's album params), 0 when unknown —
+            /// album mode's figure (D5). Like the track gain it is learned off chunk 0 for an Ogg body opened without a header.</param>
+            /// <param name="albumPeak">The album's LINEAR true peak, 0 when unknown.</param>
             public Body(IRangeSource source, string[] mirrors, byte[]? key, int skip, long fileLength, bool lengthKnown,
                 long durationMs, Format fmt, float gainDb, string fileIdHex, byte[]? head, ChunkDiskCache? disk,
                 Fetcher? fetcher = null, bool metered = false, int waitMs = Ring.DefaultWaitMs, float peak = 0f,
                 bool prepared = false, bool gainKnown = true, Func<string, string[]?>? reresolve = null,
-                Action<Action>? dispatch = null, BodyDecrypt? decrypt = null)
+                Action<Action>? dispatch = null, BodyDecrypt? decrypt = null, float albumGainDb = 0f, float albumPeak = 0f)
             {
                 _source = source;
                 _mirrors = mirrors;
@@ -1395,6 +1690,8 @@ public static partial class Spotify
                 Fmt = fmt;
                 _gainBits = BitConverter.SingleToInt32Bits(gainDb);
                 _peakBits = BitConverter.SingleToInt32Bits(SanePeak(peak));
+                _albumGainBits = BitConverter.SingleToInt32Bits(SaneGain(albumGainDb));
+                _albumPeakBits = BitConverter.SingleToInt32Bits(SanePeak(albumPeak));
                 _gainKnown = gainKnown ? 1 : 0;
                 Prepared = prepared;
                 FileIdHex = fileIdHex;
@@ -1424,6 +1721,11 @@ public static partial class Spotify
             public float GainDb => BitConverter.Int32BitsToSingle(Volatile.Read(ref _gainBits));
             /// <summary>The LINEAR true peak the normalization gain is capped by, or 0 when unknown.</summary>
             public float Peak => BitConverter.Int32BitsToSingle(Volatile.Read(ref _peakBits));
+            /// <summary>The ALBUM normalization gain in dB (the header's byte 152, the catalogue's album params, or — an Ogg body
+            /// opened with no header at hand — chunk 0's); 0 = none, and album mode then uses the track pair (D5).</summary>
+            public float AlbumGainDb => BitConverter.Int32BitsToSingle(Volatile.Read(ref _albumGainBits));
+            /// <summary>The album's LINEAR true peak, 0 when unknown.</summary>
+            public float AlbumPeak => BitConverter.Int32BitsToSingle(Volatile.Read(ref _albumPeakBits));
             /// <summary>True once <see cref="GainDb"/> is the file's real figure (always, except an Ogg body waiting for chunk 0).</summary>
             public bool GainKnown => Volatile.Read(ref _gainKnown) != 0;
             /// <summary>Opened as the prepared next track (its ring was sized for the hand-off, not for the whole track).</summary>
@@ -1535,23 +1837,109 @@ public static partial class Spotify
                 return got;
             }
 
-            int _widened;                            // 1 once the playhead passed the lossless probation: the ring was widened
+            int _widened;                            // 1 once the playhead passed the lossless probation: the widening was requested
+            int _growRequested;                      // H-12: 1 while a widening is waiting for the fetch task (polled, never queued)
+            long _growPlayheadMs;                    // the playhead that earned it — written before the flag, read after it
 
             /// <summary>A lossless track starts on its probation window (<see cref="ReadAhead.For"/>) and earns the larger
             /// one once its playhead has passed <see cref="ReadAhead.ProbationMs"/>, so a skipped track never pulls the
-            /// whole file. Once; a read-path check of one int. The playhead is the container offset over the file's rate.</summary>
+            /// whole file. Once; a read-path check of one int. The playhead is the container offset over the file's rate.
+            /// <para>H-12: this runs inside <see cref="ReadAt"/>, on the engine's decode-ahead producer, so it only RAISES A
+            /// FLAG — <see cref="Ring.Grow"/> rents slots and re-hashes four tables under the ring's gate (≈ 7 MB for a FLAC
+            /// at the 10 s mark), which the producer must not do. The fetch task polls the flag at the top of
+            /// <c>Fetcher.ServeAsync</c> (<see cref="GrowIfRequested"/>). A flag, not a post into the fetcher's queue: that
+            /// queue is <c>DropOldest</c> (C8), so a post could be dropped by the next one and could itself evict a range.</para></summary>
             void WidenWhenProven(long offset)
             {
                 if (Volatile.Read(ref _widened) != 0) return;
                 long playheadMs = offset * 1000L / Math.Max(1, _ring.FileBytesPerSecond);
                 if (playheadMs < ReadAhead.ProbationMs || Interlocked.Exchange(ref _widened, 1) != 0) return;
-                _ring.Grow(ReadAhead.For(Fmt, _metered, _fetcher.BytesPerSecond, _ring.FileBytesPerSecond, playheadMs));
+                Volatile.Write(ref _growPlayheadMs, playheadMs);
+                Volatile.Write(ref _growRequested, 1);
+            }
+
+            /// <summary>H-12: carry out the widening <see cref="WidenWhenProven"/> asked for. Called by the fetch task at the
+            /// top of every range it serves; one volatile read when nothing was asked. The tier is computed HERE from the
+            /// link's throughput as it is now, not as it was when the playhead crossed the probation. Never throws: a
+            /// widening that fails costs a ring that stays as it was, never a range left unsettled.</summary>
+            internal void GrowIfRequested()
+            {
+                if (Volatile.Read(ref _growRequested) == 0 || Interlocked.Exchange(ref _growRequested, 0) == 0) return;
+                try
+                {
+                    _ring.Grow(ReadAhead.For(Fmt, _metered, _fetcher.BytesPerSecond, _ring.FileBytesPerSecond,
+                        Volatile.Read(ref _growPlayheadMs)));
+                }
+                catch (Exception ex) { Log.Warn("audio", $"audio.ring.grow file={FileIdHex} faulted", ex); }
             }
 
             /// <summary>A seek is coming for the decoder that may be blocked in this body's ring wait (the engine's
             /// <c>SeekAsync</c> waits for its decode-ahead producer to come back, and a producer blocked in an underrun
             /// comes back only after the 8 s bound). See <see cref="Ring.Interrupt"/>. Any thread; non-blocking.</summary>
             public void InterruptPendingRead(int forMs = DefaultInterruptMs) => _ring.Interrupt(forMs);
+
+            /// <summary>THE SECOND READER (V-PA20), container coordinates: what a NON-OWNING view of this body reads
+            /// (<c>Playback.Audio.RingSource</c> with <c>ownsBody: false</c> — the seek's second decoder, the scrub source). It
+            /// serves the clear head and the ring exactly like <see cref="ReadAt"/>, but moves NOTHING: not the ring's cursor,
+            /// not its epoch, not its interrupt window, and it feeds neither the stall clock, the wait/starve counters, the
+            /// first-served stamp nor the lossless widening — those are the playing read's.
+            /// <para>A resident span is copied at once. A miss with <paramref name="residentOnly"/> answers 0 at once (the scrub
+            /// recentre). Otherwise the bytes are asked for as ONE view-only range queued BEHIND the live fill (never at the
+            /// queue front, never cancelling the fill; see <see cref="RangeRequest.ViewOnly"/>) and the call waits up to
+            /// <paramref name="waitMs"/> for them.</para>
+            /// <para>Returns bytes copied (&gt;0, short at a store's edge), 0 at a true EOF or on a resident-only miss, −1 when
+            /// the body is gone, <see cref="Starved"/> when the wait ran out — the view's range stays queued, so asking again keeps
+            /// waiting for the same bytes (a view that must be cancellable asks in short slices). Any thread; blocks only here.</para></summary>
+            public int ProbeAt(long offset, Span<byte> dst, int waitMs, bool residentOnly)
+            {
+                long length = Length;
+                bool known = LengthKnown;
+                if (offset < 0 || dst.Length == 0 || (known && offset >= length)) return 0;
+                int cap = known ? (int)Math.Min(dst.Length, length - offset) : dst.Length;
+                long fileOffset = Skip + offset;
+                byte[]? head = Volatile.Read(ref _head);
+                if (head is not null && fileOffset < head.Length)
+                {
+                    int n = (int)Math.Min(cap, head.Length - fileOffset);
+                    head.AsSpan((int)fileOffset, n).CopyTo(dst);
+                    return n;
+                }
+                return _ring.ProbeAt(fileOffset, dst[..cap], waitMs, residentOnly);
+            }
+
+            /// <summary>The view's seek, container coordinates: queue the view-only range for
+            /// [<paramref name="offset"/>, +<paramref name="bytes"/>) — aligned out to whole slots, at least one probe window —
+            /// without waiting and without a copy. Nothing happens when the span is the clear head's, resident, already the
+            /// live fill's pending range, or a view range is already on its way (ONE at a time). True when a request was
+            /// queued. A non-owning <c>RingSource.Retarget</c> is this call.</summary>
+            public bool ProbeRange(long offset, int bytes)
+            {
+                if (Disposed || offset < 0) return false;
+                long fileOffset = Skip + offset;
+                if (Volatile.Read(ref _head) is { } head && fileOffset + Math.Max(1, bytes) <= head.Length) return false;
+                return _ring.ProbeRange(fileOffset, Math.Max(1, bytes));
+            }
+
+            /// <summary>The Ogg pages found in every 64 KiB chunk that has landed so far (CDN or disk cache) — a hint a seek
+            /// uses to bracket a target before it probes: <c>PageIndex.Merge</c> feeds <c>Ogg.BeginSeek</c> from it. Empty for
+            /// anything that is not Ogg (FLAC keeps its own seek points, fed from frame headers by its adapter). Entries are
+            /// CONTAINER offsets (file offset − <see cref="Skip"/>: what the decoder sees) with the page's granule, in LANDING
+            /// order — not sorted (a probe or a cache fill can land behind), never duplicated (a chunk is scanned once), only
+            /// pages that lie wholly inside one chunk (a page across a chunk edge is not listed: the index is a bracket, never
+            /// a promise), only pages with a granule. The array is APPEND-ONLY, so a caller that has merged the first N entries
+            /// need only look at [N, count) next time. Lock-free: the spans cover the entries published when the call was made
+            /// and stay valid while the body lives (a growing index leaves the old arrays to their readers). The two out spans
+            /// are always the same length. (A tuple of spans is not expressible — a tuple cannot hold a ref struct — hence the
+            /// out parameters.)</summary>
+            public void PageIndexSnapshot(out ReadOnlySpan<long> offsets, out ReadOnlySpan<long> granules)
+            {
+                int count = Volatile.Read(ref _indexCount);                          // the count FIRST, then the arrays
+                offsets = Volatile.Read(ref _indexOffsets).AsSpan(0, count);
+                granules = Volatile.Read(ref _indexGranules).AsSpan(0, count);
+            }
+
+            /// <summary>Entries in <see cref="PageIndexSnapshot"/> now.</summary>
+            public int PageIndexCount => Volatile.Read(ref _indexCount);
 
             /// <summary>Would a read at container <paramref name="offset"/> be served without a request — from the head,
             /// the ring, or the slot already queued / in flight?</summary>
@@ -1607,13 +1995,26 @@ public static partial class Spotify
             /// where it was asked read past or refused (<see cref="RangeReply.SkipFor"/>), `Content-Range` adopted as the true
             /// length, and every COMPLETED 64 KiB slot published the moment it arrives — the ciphertext written through to the
             /// disk cache, decrypted IN PLACE at its true file offset, served (G-102: at 64 KB/s a whole 512 KiB range took 8 s,
-            /// the reader's whole bound). &gt;0 bytes landed, 0 when every mirror refused (the url set is dropped and a
-            /// re-resolve is asked for), −1 when cancelled before a slot landed. A mirror whose wire THROWS mid-body is not
-            /// fatal — the next mirror gets the same range; only running out of mirrors is a refusal.</summary>
+            /// the reader's whole bound). &gt;0 bytes landed, 0 when every mirror refused with NOTHING landed (the url set is
+            /// dropped and a re-resolve is asked for), −1 when cancelled before a slot landed. A mirror whose wire THROWS
+            /// mid-body is not fatal — the next mirror gets the same range; only running out of mirrors is a refusal, and
+            /// (P-6) only when no slot of the range landed on the way: a link that delivered some slots and then broke is
+            /// slow, not refusing, so it answers the slots it landed and the ring plans the rest.
+            /// <para>S-2: <paramref name="cts"/> is the fetcher's own source for this range, not just its token — the IDLE
+            /// deadline lives here: <see cref="Fetcher.RangeIdleTimeoutMs"/> from the start of each mirror attempt, and
+            /// again after every read that returned bytes. A seek's cancel and the idle deadline both arrive on its token.
+            /// Each of those moments also tells the fetcher the range showed life (<see cref="Fetcher.NoteProgress"/>), which
+            /// is what the ring's starve-cancel reads.</para>
+            /// <para>A mirror that went SILENT (the deadline fired — <see cref="Fetcher.CancelledFromOutside"/> says it was not
+            /// a seek's or a starve's cancel) is rotated away from: the next range starts on the following mirror, not on the
+            /// one that just wasted <see cref="Fetcher.RangeIdleTimeoutMs"/> (a hard failure moves the same way, because the
+            /// mirror that finally answers becomes the first choice). The cancelled token cannot be reused, so this range
+            /// settles and the ring plans it again at once, on the new mirror.</para></summary>
             [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
             internal async ValueTask<FetchResult> FetchRangeAsync(RangeRequest req, long start, long end, Memory<byte> dst,
-                CancellationToken ct)
+                CancellationTokenSource cts)
             {
+                CancellationToken ct = cts.Token;
                 long headersAt = Stopwatch.GetTimestamp();
                 int want = (int)Math.Min(dst.Length, end - start);
                 if (want <= 0) return new FetchResult(0, headersAt);
@@ -1624,10 +2025,14 @@ public static partial class Spotify
                     RequestResolve("no mirrors");
                     return new FetchResult(0, headersAt);
                 }
+                int bestLanded = 0;                        // P-6: the most any mirror attempt published before it broke
                 for (int attempt = 0; attempt < mirrors.Length; attempt++)
                 {
-                    if (ct.IsCancellationRequested) return new FetchResult(-1, headersAt);
-                    int index = (_mirror + attempt) % mirrors.Length;
+                    if (ct.IsCancellationRequested) return new FetchResult(bestLanded > 0 ? bestLanded : -1, headersAt);
+                    cts.CancelAfter(Fetcher.RangeIdleTimeoutMs);        // S-2: a fresh idle window for each mirror attempt
+                    _fetcher.NoteProgress();
+                    long attemptAt = Stopwatch.GetTimestamp();           // R-6: this attempt's start, for the ping sample
+                    int index = (Volatile.Read(ref _mirror) + attempt) % mirrors.Length;
                     IRangeReply? reply = null;
                     int total = 0, landed = 0;
                     try
@@ -1636,7 +2041,7 @@ public static partial class Spotify
                         if (reply is null) continue;
                         headersAt = Stopwatch.GetTimestamp();
                         long skip = RangeReply.SkipFor(start, reply.Start);
-                        if (skip < 0 || !await ReadPastAsync(reply, skip, dst, ct).ConfigureAwait(false))
+                        if (skip < 0 || !await ReadPastAsync(reply, skip, dst, cts, _fetcher).ConfigureAwait(false))
                         {
                             Log.Warn("audio", $"audio.range file={FileIdHex} at={start} replyStart={reply.Start} refused (not the asked range)");
                             continue;
@@ -1646,6 +2051,8 @@ public static partial class Spotify
                         {
                             int n = await reply.ReadAsync(dst.Slice(total, want - total), ct).ConfigureAwait(false);
                             if (n <= 0) break;
+                            cts.CancelAfter(Fetcher.RangeIdleTimeoutMs);    // S-2: it is sending — the idle clock starts over
+                            _fetcher.NoteProgress();
                             total += n;
                             int whole = total / Ring.SlotBytes * Ring.SlotBytes;
                             if (whole - landed < Ring.SlotBytes || ct.IsCancellationRequested) continue;
@@ -1662,16 +2069,32 @@ public static partial class Spotify
                         total = 0;
                     }
                     finally { reply?.Dispose(); }                                        // HTTP/2: RST_STREAM if unfinished
-                    if (ct.IsCancellationRequested) return new FetchResult(landed > 0 ? landed : -1, headersAt);
+                    if (landed > bestLanded) bestLanded = landed;
+                    if (ct.IsCancellationRequested)
+                    {
+                        if (!_fetcher.CancelledFromOutside(cts)) RotateAwayFrom(index, mirrors.Length, start);   // the idle deadline: this mirror went silent
+                        return new FetchResult(bestLanded > 0 ? bestLanded : -1, headersAt);
+                    }
                     if (total <= 0) continue;
 
-                    _mirror = index;
+                    Volatile.Write(ref _mirror, index);
                     if (total > landed) Publish(in req, start + landed, dst.Span[landed..total]);
                     Log.Info("audio", $"audio.range file={FileIdHex} at={start} len={total} src=cdn pingMs={_fetcher.PingMs} "
                                       + $"kbps={_fetcher.BytesPerSecond * 8 / 1000} ms={ElapsedMs()}");
-                    return new FetchResult(total, headersAt);
+                    return new FetchResult(total, headersAt, attemptAt);
                 }
-                if (ct.IsCancellationRequested) return new FetchResult(-1, headersAt);
+                if (ct.IsCancellationRequested) return new FetchResult(bestLanded > 0 ? bestLanded : -1, headersAt);
+                if (bestLanded > 0)
+                {
+                    // P-6: some slots of this range landed before the wire broke, and the mirrors that answered afterwards
+                    // refused or broke too. That is a slow-but-alive link, NOT a refusing one: `_refusedAt` stays below
+                    // `_landedAt` (so `Refusing` and the pump's 6 s fast-fail do not apply), no mirror set is dropped, no
+                    // re-resolve is asked for. The slots are published; the ring plans the rest from its first hole.
+                    if (_fetcher.ShouldLogFault())
+                        Log.Warn("audio", $"audio.range file={FileIdHex} at={start} len={bestLanded} src=cdn partial of={want} "
+                                          + $"mirrors={mirrors.Length} ms={ElapsedMs()}");
+                    return new FetchResult(bestLanded, headersAt);
+                }
                 InvalidateMirrors(FileIdHex);
                 Interlocked.Increment(ref _refusals);
                 Volatile.Write(ref _refusedAt, Environment.TickCount64);
@@ -1685,14 +2108,36 @@ public static partial class Spotify
                     => ex is HttpRequestException or IOException or ObjectDisposedException or InvalidOperationException;
             }
 
-            /// <summary>Discard <paramref name="bytes"/> of a reply that started at 0 instead of the asked offset.</summary>
-            [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-            static async ValueTask<bool> ReadPastAsync(IRangeReply reply, long bytes, Memory<byte> scratch, CancellationToken ct)
+            /// <summary>Which mirror the next range starts on after mirror <paramref name="silentIndex"/> went silent: the following
+            /// one, wrapping (a single mirror has nowhere to go: 0). PURE.</summary>
+            public static int MirrorAfterIdle(int silentIndex, int count) => count <= 1 ? 0 : (silentIndex + 1) % count;
+
+            /// <summary>The idle deadline fired on mirror <paramref name="silent"/>: the next range starts on the one after it
+            /// (a single-mirror set has nowhere to go). Only the fetch task writes this, and a re-resolve resets it to 0.</summary>
+            void RotateAwayFrom(int silent, int count, long start)
             {
+                if (count <= 1) return;
+                int next = MirrorAfterIdle(silent, count);
+                Volatile.Write(ref _mirror, next);
+                if (_fetcher.ShouldLogFault())
+                    Log.Warn("audio", $"audio.range file={FileIdHex} at={start} mirror={silent} silent for {Fetcher.RangeIdleTimeoutMs} ms: "
+                                      + $"the next range starts on mirror={next}");
+            }
+
+            /// <summary>Discard <paramref name="bytes"/> of a reply that started at 0 instead of the asked offset. Every read
+            /// that returns bytes re-arms <paramref name="cts"/>'s idle deadline (S-2), exactly as the body loop does: a
+            /// 4 MiB read-past on a slow link is progress, not silence.</summary>
+            [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+            static async ValueTask<bool> ReadPastAsync(IRangeReply reply, long bytes, Memory<byte> scratch, CancellationTokenSource cts,
+                Fetcher fetcher)
+            {
+                CancellationToken ct = cts.Token;
                 while (bytes > 0)                                            // bytes == 0 (the norm): completes synchronously
                 {
                     int n = await reply.ReadAsync(scratch[..(int)Math.Min(scratch.Length, bytes)], ct).ConfigureAwait(false);
                     if (n <= 0) return false;
+                    cts.CancelAfter(Fetcher.RangeIdleTimeoutMs);
+                    fetcher.NoteProgress();
                     bytes -= n;
                 }
                 return true;
@@ -1766,11 +2211,11 @@ public static partial class Spotify
             {
                 if (req.Tail ? TailGranule >= 0 : _ring.HoldsLocked(start, end)) { start = end; return; }
                 if (_disk is null || !LengthKnown) return;
-                while (start < end && TryDiskChunk(start, chunkScratch, !req.Tail)) start = Ring.AlignUp(start + 1);
-                while (end > start && TryDiskChunk(Ring.AlignDown(end - 1), chunkScratch, !req.Tail)) end = Ring.AlignDown(end - 1);
+                while (start < end && TryDiskChunk(start, chunkScratch, !req.Tail, req.ViewOnly)) start = Ring.AlignUp(start + 1);
+                while (end > start && TryDiskChunk(Ring.AlignDown(end - 1), chunkScratch, !req.Tail, req.ViewOnly)) end = Ring.AlignDown(end - 1);
             }
 
-            bool TryDiskChunk(long at, Span<byte> scratch, bool publish)
+            bool TryDiskChunk(long at, Span<byte> scratch, bool publish, bool viewOnly)
             {
                 long chunk = Ring.AlignDown(at) / Ring.SlotBytes;
                 if (_disk is null || !_disk.TryReadChunk(FileIdHex, (int)chunk, scratch, out int length) || length <= 0)
@@ -1780,7 +2225,7 @@ public static partial class Spotify
                 if (_decrypt is not null) _decrypt(plain, chunk * Ring.SlotBytes);
                 else if (_key is not null) Ctr.DecryptInPlace(plain, _key, chunk * Ring.SlotBytes);
                 Observe(chunk * Ring.SlotBytes, plain);
-                if (publish) _ring.Land(chunk * Ring.SlotBytes, plain);
+                if (publish) _ring.Land(chunk * Ring.SlotBytes, plain, viewOnly);
                 return true;
             }
 
@@ -1790,7 +2235,7 @@ public static partial class Spotify
             internal void Land(in RangeRequest req, long start, ReadOnlySpan<byte> plain)
             {
                 Observe(start, plain);
-                if (!req.Tail) _ring.Land(start, plain);
+                if (!req.Tail) _ring.Land(start, plain, req.ViewOnly);
             }
 
             void Observe(long start, ReadOnlySpan<byte> plain)
@@ -1806,12 +2251,16 @@ public static partial class Spotify
                 if (start == 0 && !GainKnown && plain.Length >= HeaderGainBytes)
                 {
                     // An Ogg body that opened with no header at hand: chunk 0 IS the header (G-107).
-                    (float gain, float peak) = GainFor(Fmt, 0f, 0f, plain);
+                    (float gain, float peak, float albumGain, float albumPeak) = GainWithAlbumFor(Fmt, 0f, 0f, 0f, 0f, plain);
+                    Volatile.Write(ref _albumPeakBits, BitConverter.SingleToInt32Bits(albumPeak));
+                    Volatile.Write(ref _albumGainBits, BitConverter.SingleToInt32Bits(albumGain));
                     Volatile.Write(ref _peakBits, BitConverter.SingleToInt32Bits(peak));
                     Volatile.Write(ref _gainBits, BitConverter.SingleToInt32Bits(gain));
                     Volatile.Write(ref _gainKnown, 1);
-                    Log.Info("audio", $"audio.gain file={FileIdHex} gain={gain:0.0} dB peak={peak:0.000} from=chunk0 ms={ElapsedMs()}");
+                    Log.Info("audio", $"audio.gain file={FileIdHex} gain={gain:0.0} dB peak={peak:0.000} album={albumGain:0.0} dB "
+                                      + $"albumPeak={albumPeak:0.000} from=chunk0 ms={ElapsedMs()}");
                 }
+                IndexPages(start, plain);
                 long length = FileLength;
                 if (!IsOgg(Fmt) || !LengthKnown || TailGranule >= 0 || start + plain.Length <= length - 2L * Ring.SlotBytes) return;
                 // Bytes arrive in ascending order (a range, or the disk a chunk at a time), so a page found in the slot
@@ -1824,11 +2273,75 @@ public static partial class Spotify
                 Log.Info("audio", $"audio.tail file={FileIdHex} granule={_tailCandidate} ms={ElapsedMs()}");
             }
 
+            /// <summary>The landing-time page index (V-PA20/V-PA36): walk every COMPLETE 64 KiB chunk in the landed plaintext
+            /// with <c>Ogg.FindPage</c> (a CRC-verified scan, ~50 µs a chunk, on the fetch task) and append each page's
+            /// CONTAINER offset and granule. A chunk is scanned once however often it lands (a bit per chunk), and only a
+            /// chunk that is whole — 64 KiB, or the file's last — counts: a broken reply's stub is scanned when its
+            /// remainder lands as a whole chunk. Pages across a chunk edge are skipped (see <see cref="PageIndexSnapshot"/>).
+            /// A page before the container's first byte (Spotify's own 0xa7-byte lead-in page) and a page with no granule
+            /// are not listed. Never throws and never touches the ring.</summary>
+            void IndexPages(long start, ReadOnlySpan<byte> plain)
+            {
+                if (!IsOgg(Fmt) || plain.IsEmpty) return;
+                long length = FileLength;
+                bool known = LengthKnown;
+                long firstChunkAt = Ring.AlignUp(start);                         // a continuation piece starts mid-chunk: its stub is skipped
+                for (long at = firstChunkAt; at < start + plain.Length; at += Ring.SlotBytes)
+                {
+                    int n = (int)Math.Min(Ring.SlotBytes, start + plain.Length - at);
+                    if (n < Ring.SlotBytes && !(known && at + n >= length)) break;   // not whole: the rest has not landed
+                    ReadOnlySpan<byte> chunk = plain.Slice((int)(at - start), n);
+                    long index = at / Ring.SlotBytes;
+                    lock (_indexGate)
+                    {
+                        if (index >= (long)_indexedChunks.Length * 64)
+                        {
+                            if (index >= (1L << 20)) return;                         // a 64 GiB file: no index, no allocation
+                            Array.Resize(ref _indexedChunks, (int)Math.Max(16, Math.Max(_indexedChunks.Length * 2, index / 64 + 1)));
+                        }
+                        ulong bit = 1UL << (int)(index & 63);
+                        if ((_indexedChunks[index >> 6] & bit) != 0) continue;
+                        _indexedChunks[index >> 6] |= bit;
+                        int from = 0;
+                        while (from < chunk.Length)
+                        {
+                            int page = Playback.Ogg.FindPage(chunk, from, out Playback.Ogg.Page p, out _);
+                            if (page < 0) break;
+                            long container = at + page - Skip;
+                            if (container >= 0 && p.Granule >= 0) AppendPage(container, p.Granule);
+                            from = page + Math.Max(1, p.Length);
+                        }
+                    }
+                }
+            }
+
+            /// <summary>Append one page. Caller holds <see cref="_indexGate"/>. The arrays double when full — the bigger pair is
+            /// published BEFORE the count that needs it, so a reader that took the count first always finds its entries.</summary>
+            void AppendPage(long offset, long granule)
+            {
+                int count = _indexCount;                                             // only this writer changes it
+                if (count >= MaxIndexEntries) return;
+                if (count == _indexOffsets.Length)
+                {
+                    int capacity = Math.Max(256, count * 2);
+                    var offsets = new long[capacity];
+                    var granules = new long[capacity];
+                    _indexOffsets.AsSpan(0, count).CopyTo(offsets);
+                    _indexGranules.AsSpan(0, count).CopyTo(granules);
+                    Volatile.Write(ref _indexGranules, granules);
+                    Volatile.Write(ref _indexOffsets, offsets);
+                }
+                _indexOffsets[count] = offset;
+                _indexGranules[count] = granule;
+                Volatile.Write(ref _indexCount, count + 1);
+            }
+
             /// <summary>A range finished, one way or another.</summary>
             internal void Settle(in RangeRequest req, Source source)
             {
                 if (source == Source.Local)
                     Log.Info("audio", $"audio.range file={FileIdHex} at={req.Start} len={req.End - req.Start} src=local ms={ElapsedMs()}");
+                if (req.ViewOnly) { _ring.ViewSettled(req, source == Source.Refused); return; }   // the second reader's: the fill's identity is not touched
                 if (req.Tail) return;
                 _ring.Settled(req, source == Source.Refused);
                 if (Volatile.Read(ref _ringLogged) == 0)
@@ -1841,7 +2354,11 @@ public static partial class Spotify
                 }
             }
 
-            internal void Dropped(in RangeRequest req) { if (!req.Tail) _ring.Dropped(req); }
+            internal void Dropped(in RangeRequest req)
+            {
+                if (req.ViewOnly) _ring.ViewDropped(req);
+                else if (!req.Tail) _ring.Dropped(req);
+            }
 
             /// <summary>The slot-aligned range covering the file's last 64 KiB (one or two slots): the last Ogg page and
             /// its granule are in there even when the final slot is a few bytes long. Queued once the length is real.</summary>
@@ -2130,7 +2647,8 @@ public static partial class Spotify
                 else Ctr.DecryptInPlace(clearCached, key, 0);
             }
             ReadOnlySpan<byte> header = head.Length >= HeaderGainBytes ? head : clearCached;
-            (float gain, float peak) = GainFor(choice.Fmt, choice.GainDb, choice.Peak, header);
+            (float gain, float peak, float albumGain, float albumPeak) = GainWithAlbumFor(choice.Fmt, choice.GainDb, choice.Peak,
+                choice.AlbumGainDb, choice.AlbumPeak, header);
             bool gainKnown = !header.IsEmpty || choice.GainDb != 0f || !IsOggFormat(choice.Fmt);
 
             int skip = HeaderBytesFor(choice.Fmt);
@@ -2144,7 +2662,8 @@ public static partial class Spotify
             };
             var body = new Body(seams.Source, mirrors.Ok ? mirrors.Urls : Array.Empty<string>(), key.ToArray(), skip, length, cached,
                 choice.DurationMs, choice.Fmt, gain, fileIdHex, head, disk, seams.Fetcher, seams.Metered, peak: peak,
-                prepared: prepared, gainKnown: gainKnown, reresolve: reresolve, dispatch: dispatch, decrypt: decrypt);
+                prepared: prepared, gainKnown: gainKnown, reresolve: reresolve, dispatch: dispatch, decrypt: decrypt,
+                albumGainDb: albumGain, albumPeak: albumPeak);
             if (!prepared) Volatile.Write(ref s_liveBody, body);
             body.Start();
 
@@ -2169,7 +2688,7 @@ public static partial class Spotify
                 }
             }
             return new Opened(new BodyStream(body), choice.Fmt, body.Length, choice.DurationMs, body.GainDb, fileIdHex,
-                Fault.None, body, body.Peak);
+                Fault.None, body, body.Peak, body.AlbumGainDb, body.AlbumPeak);
         }
 
         /// <summary>A plain body on somebody else's host (a podcast enclosure): no key, no cache, no resolve. Its length is
@@ -2183,11 +2702,12 @@ public static partial class Spotify
             bool known = probed > 0;
             long length = known ? probed : Math.Max(Ring.SlotBytes, choice.DurationMs * NominalBytesPerSecond(choice.Fmt) / 1000);
             var plain = new Body(seams.Source, [url], null, 0, length, known, choice.DurationMs, choice.Fmt, choice.GainDb,
-                choice.FileIdHex, null, null, seams.Fetcher, seams.Metered, peak: choice.Peak, prepared: prepared);
+                choice.FileIdHex, null, null, seams.Fetcher, seams.Metered, peak: choice.Peak, prepared: prepared,
+                albumGainDb: choice.AlbumGainDb, albumPeak: choice.AlbumPeak);
             if (!prepared) Volatile.Write(ref s_liveBody, plain);
             plain.Start();
             return new Opened(new BodyStream(plain), choice.Fmt, plain.Length, choice.DurationMs, choice.GainDb,
-                choice.FileIdHex, Fault.None, plain, plain.Peak);
+                choice.FileIdHex, Fault.None, plain, plain.Peak, plain.AlbumGainDb, plain.AlbumPeak);
         }
 
         // ── 8. the next track ────────────────────────────────────────────────────────────────────────────────────────

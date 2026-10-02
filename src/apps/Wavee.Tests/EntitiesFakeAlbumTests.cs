@@ -63,6 +63,7 @@ public class EntitiesFakeAlbumTests
                 Assert.Equal(EdgeState.Complete, Entities.Current.Edges.TrackVersions.State(row.Slot));
                 Assert.Equal(EdgeState.Complete, Entities.Current.Edges.TrackCredits.State(row.Slot));
                 Assert.Equal(EdgeState.Complete, Entities.Current.Edges.TrackWaveform.State(row.Slot));
+                Assert.Equal(EdgeState.Complete, Entities.Current.Edges.TrackBeats.State(row.Slot));
             }
     }
 
@@ -231,7 +232,11 @@ public class EntitiesFakeAlbumTests
         bool flac = false;
         foreach (var rung in t.Formats) flac |= rung.FormatId == 16;
         Assert.True(flac);
-        Assert.Equal(Spotify.Decode.WaveformColumns, e.TrackWaveform.Count(t.Slot));
+        Assert.InRange(e.TrackWaveform.Count(t.Slot), 64, WaveformBands.MaxSamples);
+        Assert.Equal(e.TrackWaveform.Count(t.Slot), e.TrackWaveform.Total(t.Slot));        // Count == Total == N (O6)
+        Assert.True(WaveformBands.ToColumns(e.TrackWaveform.Payload(t.Slot), new float[WaveformBands.Columns]));   // a real shape, not silence
+        Assert.Equal(EdgeState.Complete, e.TrackBeats.State(t.Slot));                       // no grid under --fake: an EMPTY answer
+        Assert.Equal(0, e.TrackBeats.Count(t.Slot));
 
         var credits = e.TrackCredits.Payload(t.Slot);
         var linked = e.TrackCredits.Targets(t.Slot);

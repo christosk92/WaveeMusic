@@ -169,6 +169,7 @@ public class OggTests
             var r = new Ogg.Reader();
             Assert.Equal(Ogg.Reader.Next.Packet, r.NextPacket(stream, out ReadOnlySpan<byte> p0, out _));
             Assert.True(p0.SequenceEqual(s.P0));
+            Assert.Equal(Ogg.Reader.Next.Hole, r.NextPacket(stream, out _, out _));        // S-7: the gap is REPORTED, then the next call walks page 2
             Assert.Equal(Ogg.Reader.Next.Packet, r.NextPacket(stream, out ReadOnlySpan<byte> p2, out _));
             Assert.Equal(0, p2.Length);
             Assert.Equal(Ogg.Reader.Next.Packet, r.NextPacket(stream, out ReadOnlySpan<byte> p3, out long g3));
@@ -196,6 +197,7 @@ public class OggTests
             var r = new Ogg.Reader();
             Assert.Equal(Ogg.Reader.Next.Packet, r.NextPacket(stream, out ReadOnlySpan<byte> p0, out _));
             Assert.True(p0.SequenceEqual(s.P0));
+            Assert.Equal(Ogg.Reader.Next.Hole, r.NextPacket(stream, out _, out _));        // S-7: the rejected page is a sequence gap, reported once
             Assert.Equal(Ogg.Reader.Next.Packet, r.NextPacket(stream, out ReadOnlySpan<byte> p2, out _));
             Assert.Equal(0, p2.Length);                               // P1 was lost with page 1
         }

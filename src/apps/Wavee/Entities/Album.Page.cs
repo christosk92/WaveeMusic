@@ -386,30 +386,8 @@ public readonly partial struct Album
             else Actions.Services.Play?.Invoke(a.Uri);
         }
 
-        /// <summary>The hero ⋯ (W20), built at OPEN from the live model: Add to playlist ▸ (the track menu's own deposit
-        /// submenu over the album's rows) · Play next · Add to queue (the container verbs). No owner rows on an album.</summary>
-        ContextMenuModel? MoreMenu()
-        {
-            var a = _display;
-            if (!a.IsValid) return null;
-            var slots = a.TrackSlots;
-            var rows = new List<MenuFlyoutItem>(3);
-            if (slots.Length > 0)
-            {
-                var tracks = new Track[slots.Length];
-                for (int i = 0; i < tracks.Length; i++) tracks[i] = new Track(slots[i]);
-                if (Track.Menu(tracks, new Track.MenuOptions(ShowGoToAlbum: false, PickerOverlay: _overlay)) is { } model)
-                {
-                    string add = Loc.Get(Strings.Detail.AddToPlaylist);
-                    for (int i = 0; i < model.Rows.Count; i++)
-                        if (string.Equals(model.Rows[i].Label, add, StringComparison.Ordinal)) { rows.Add(model.Rows[i]); break; }
-                }
-            }
-            var ctx = new ActionContext(ActionTarget.ForAlbum(a.Uri, a.Title), Actions.Services);
-            if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
-            if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
-            return rows.Count == 0 ? null : new ContextMenuModel(rows);
-        }
+        /// <summary>The hero ⋯ (W20): the one container menu, on-page — see <see cref="Album.HeroMenu"/>.</summary>
+        ContextMenuModel? MoreMenu() => HeroMenu(_display, _overlay);
 
         /// <summary>The cover drags the whole album: the resident rows when they are in hand, else the library's resolver.</summary>
         object? CoverPayload()
@@ -429,6 +407,34 @@ public readonly partial struct Album
             return new DragPayload(DragKind.Album, uri, uri, a.Title, new EntityRef(EntityKind.Album, a.Slot),
                                    Tracks: tracks, TrackResolver: resolver, ArtUrl: Controls.ArtUrl(a.ImageId));
         }
+    }
+
+    /// <summary>The album's hero ⋯ — the page's and the library pane's ONE menu, built at OPEN from the live model:
+    /// <c>Menus.Container</c> on the page (Play next · Add to queue · Add to playlist ▸ · Pin · Share). When the tracks are
+    /// resident, Add to playlist is the track menu's own deposit submenu over them (no resolve round-trip); otherwise the
+    /// registered container verb resolves them. Null when nothing is offerable.</summary>
+    internal static ContextMenuModel? HeroMenu(Album a, IOverlayService? overlay)
+    {
+        if (!a.IsValid) return null;
+        MenuFlyoutItem? deposit = null;
+        var slots = a.TrackSlots;
+        if (slots.Length > 0)
+        {
+            var tracks = new Track[slots.Length];
+            for (int i = 0; i < tracks.Length; i++) tracks[i] = new Track(slots[i]);
+            if (Track.Menu(tracks, new Track.MenuOptions(ShowGoToAlbum: false, PickerOverlay: overlay)) is { } model)
+            {
+                string add = Loc.Get(Strings.Detail.AddToPlaylist);
+                for (int i = 0; i < model.Rows.Count; i++)
+                    if (string.Equals(model.Rows[i].Label, add, StringComparison.Ordinal)) { deposit = model.Rows[i]; break; }
+            }
+        }
+        var artists = a.ArtistSlots;
+        var artist = artists.Length > 0 ? new Artist(artists[0]) : default;
+        string subtitle = PageRules.Subtitle(artist.IsValid && artist.Knows(ArtistFields.Name) ? artist.Name : null, a.Year, a.Kind);
+        var target = ActionTarget.ForAlbum(a.Uri, a.Title);
+        return Menus.Container(in target, Controls.ArtUrl(a.ImageId), subtitle,
+            new ContainerExtras { OnPage = true, Deposit = deposit });
     }
 
     /// <summary>W18's unresolvable prerelease: 14 px tertiary, centred, 16/24 padding.</summary>
@@ -1097,7 +1103,7 @@ public readonly partial struct Album
         var card = new HomeCard(new EntityRef(EntityKind.Album, slot));
         return Controls.Surface(new Controls.CardData(uri, title, SubtitleLine(subtitle), cover,
             OnClick: () => Track.GoToAlbum(x),
-            OnPlay: () => Playback.PlayContext(id),
+            OnPlay: () => Playback.PlayOrToggleContext(id),
             Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
             { Menu = HomeCardNav.MenuOf(in card) },
             Shape.RowTile) with { Key = "album:" + slot.ToString(CultureInfo.InvariantCulture) };
@@ -1117,7 +1123,7 @@ public readonly partial struct Album
         var card = new HomeCard(new EntityRef(EntityKind.Playlist, slot));
         return Controls.Surface(new Controls.CardData(uri, title, owner.Length > 0 ? SubtitleLine(owner) : null, cover,
             OnClick: () => Shell.GoTo(Shell.For(playlistUri, title)),
-            OnPlay: () => Playback.PlayContext(id),
+            OnPlay: () => Playback.PlayOrToggleContext(id),
             Drag: Drag.Source(() => ResourcePayload(DragKind.Playlist, EntityKind.Playlist, slot, uri, title, cover)))
             { Menu = HomeCardNav.MenuOf(in card) },
             Shape.RowTile) with { Key = "playlist:" + slot.ToString(CultureInfo.InvariantCulture) };
@@ -1170,7 +1176,11 @@ public readonly partial struct Album
         };
     }
 
-    /// <summary>"Fans also like": at most eight 48-DIP chips in ONE clipped row — never wrapped, no cap link.</summary>
+    const float FanCardW = 148f;
+    static readonly SurfaceShape s_fanShape = Shape.Shelf(captionLines: 1);
+
+    /// <summary>"Fans also like": at most eight circular artist cards in ONE clipped row, the same card as the artist page
+    /// (click opens, hover play toggles the artist context, container menu, drag source).</summary>
     static Element FansRow(ReadOnlySpan<int> fans)
     {
         var chips = new Element[fans.Length];
@@ -1180,92 +1190,31 @@ public readonly partial struct Album
 
     static Element ArtistChip(Artist artist)
     {
+        string uri = artist.Uri.Text;
         string name = artist.Name;
-        return new BoxEl
+        string? image = Controls.ArtUrl(artist.ImageId);
+        string sub = Loc.Get(Strings.Search.TypeArtist);
+        var id = artist.Id;
+        var ar = artist;
+        var data = new Controls.CardData(uri, name, SubtitleLine(sub), image,
+            OnClick: () => Track.GoToArtist(ar),
+            OnPlay: () => Playback.PlayOrToggleContext(id),
+            Circular: true,
+            Drag: Drag.Source(() => new DragPayload(DragKind.Artist, uri, uri, name, new EntityRef(EntityKind.Artist, ar.Slot), ArtUrl: image)))
         {
-            Key = "fan:" + artist.Slot.ToString(CultureInfo.InvariantCulture),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 0f, Height = 48f,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.L, 0f),
-            Corners = CornerRadius4.All(24f), Fill = Tok.FillCardSecondary,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            HoverFill = Tok.FillCardDefault, PressedFill = Tok.FillSubtleTertiary,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-            OnClick = () => Track.GoToArtist(artist),
-            Children =
-            [
-                // The hashed art plate, never initials (W12: only portraits of PEOPLE fall back to initials).
-                Controls.Artwork(Controls.ArtUrl(artist.ImageId), 32f, 32f, 16f),
-                new TextEl(name)
-                {
-                    Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                },
-            ],
+            Menu = () => Menus.Container(ActionTarget.ForArtist(ar.Uri, name), image, sub),
         };
+        return Controls.Surface(data, s_fanShape, FanCardW) with { Key = "fan:" + artist.Slot.ToString(CultureInfo.InvariantCulture) };
     }
 
-    /// <summary>"About the artist": 84 round portrait, the eyebrow, the 20/700 name + the verified check (an empty box of
-    /// the same size when unverified, so the name's measure never changes), ≤2 bio lines, Follow. The whole card
-    /// navigates; Follow is its own hit target.</summary>
+    /// <summary>"About the artist": the shared <see cref="Controls.ArtistAboutCard"/> in its page row layout (the link is the
+    /// focusable click owner; Follow is its sibling, never nested inside it).</summary>
     static Element AboutSection(Artist artist)
-    {
-        string name = artist.Name;
-        string bio = artist.BioLeadId.IsEmpty ? "" : Entities.Strings.Resolve(artist.BioLeadId);
-        string uri = artist.Uri.Text;
-        Element card = new BoxEl
+        => new BoxEl
         {
-            Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
-            Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.M),
-            Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverFill = Tok.FillCardDefault, ClipToBounds = true,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = () => Track.GoToArtist(artist),
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = 84f, Height = 84f, Shrink = 0f, Corners = CornerRadius4.All(42f), ClipToBounds = true,
-                    Children = [PersonPicture.Create("", 84f, displayName: name, imageSourcePath: Controls.ArtUrl(artist.ImageId))],
-                },
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
-                    Children =
-                    [
-                        Design.Type.Eyebrow(Loc.Get(Strings.Detail.AboutTheArtist))
-                            with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                            Children =
-                            [
-                                // The name takes its measured width and only SHRINKS (never grows): the check sits
-                                // directly after the last glyph instead of being pushed to the card's far edge.
-                                new TextEl(name)
-                                {
-                                    Size = 20f, LineHeight = 28f, Weight = 700, Color = Tok.TextPrimary,
-                                    Shrink = 1f, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                                },
-                                artist.IsVerified
-                                    ? Icon(Icons.Check, 12f, Tok.TextSecondary) with { Shrink = 0f }
-                                    : new BoxEl { Width = 12f, Height = 12f, Shrink = 0f },
-                            ],
-                        },
-                        bio.Length > 0
-                            ? Design.Type.DenseMeta(bio) with
-                            {
-                                Color = Tok.TextSecondary,
-                                Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
-                            }
-                            : new BoxEl(),
-                    ],
-                },
-                // The follow toggle's uri freezes at mount: keyed on it. Workstream B: Controls.FollowToggle
-                // (32/r4, page-accent tint) replaces the old FollowButton capsule.
-                Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name }) with { Key = "follow:" + uri },
-            ],
+            Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,
+            Children = [Controls.ArtistAboutCard(artist, AboutLayout.Page) with { Key = "about:" + artist.Uri.Text }],
         };
-        return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad, Children = [card] };
-    }
 
     // ── the music-video section (ch 05 W12; the 2026-09-17 rewrite) ──────────────────────────────────────────────────
     //
@@ -1350,8 +1299,8 @@ public readonly partial struct Album
             [
                 Design.Type.Eyebrow(Loc.Get(customVideo ? Strings.VideoOverride.CustomLabel : Strings.Detail.WatchOfficialVideo))
                     with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                Design.Type.RailHeader(title)
-                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                Controls.TrimmedTitle(Design.Type.RailHeader(title)
+                    with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }, title),
                 new TextEl(VideoMeta(in v))
                 {
                     Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary,
@@ -1371,7 +1320,7 @@ public readonly partial struct Album
             FocusVisualMargin = Design.FocusInsetBordered,
             OnClick = watch,
             Draggable = Drag.Source(() => VideoPayload(slot, uri, title, thumb)),
-            Children = menu ? [thumbnail, text, SurfaceParts.Action(Controls.MoreButton(null))] : [thumbnail, text],
+            Children = menu ? [thumbnail, text, SurfaceParts.Action(Controls.MoreButton(null, requestsContext: true, restOpacity: 0f))] : [thumbnail, text],
         };
         return menu ? ContextMenu.Attach(hero, overlay!, () => VideoMenu(slot)) : hero;
     }
@@ -1521,7 +1470,7 @@ public readonly partial struct Album
             case PageRules.WatchAction.AudioOnly:
                 // Say it. A play badge over a video still that silently starts the song is the defect, not the fix.
                 Notify.Say(Loc.Get(Strings.Player.VideoUnavailable), InfoBarSeverity.Warning, dedupeKey: "album.video.nohost");
-                Playback.PlayContext(member.Id);
+                Playback.PlayOrToggleContext(member.Id, "album.watch");
                 return;
 
             case PageRules.WatchAction.SwitchInPlace:
@@ -1533,7 +1482,7 @@ public readonly partial struct Album
 
             default:
                 RequestVideoSurface(hasVideo);        // FIRST — see the summary; order is the contract
-                Playback.PlayContext(member.Id);
+                Playback.PlayOrToggleContext(member.Id, "album.watch");
                 return;
         }
     }

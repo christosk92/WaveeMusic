@@ -151,6 +151,7 @@ public static partial class Playback
             static bool s_liveCleared;
             static long s_durationMs;
             static bool s_isLive;
+            static double s_lastRate = 1.0;                      // the rate the card was last given (U-10)
             static readonly Action s_flush = Flush;              // cached so the per-tick path allocates nothing
 
             internal static void Activate(nint hwnd)
@@ -162,7 +163,8 @@ public static partial class Playback
                     smtc.ButtonPressed += OnButton;
                     smtc.PositionChangeRequested += OnSeekRequested;
                     smtc.SetEnabledButtons(play: true, pause: true, next: true, previous: true);
-                    smtc.PlaybackRate = 1.0;                            // must be > 0 or the flyout refuses the card
+                    s_lastRate = 1.0;
+                    smtc.PlaybackRate = s_lastRate;                     // must be > 0 or the flyout refuses the card; OnStateChanged follows the episode speed
                     smtc.IsEnabled = true;                              // …and THIS is what makes the media keys live
                     s_smtc = smtc;
                 }
@@ -211,6 +213,16 @@ public static partial class Playback
                     s_lastStatus = status;
                     try { smtc.SetPlaybackStatus(status); }
                     catch (Exception ex) { Log.Warn("playback", "smtc status failed", ex); }
+                }
+
+                // rate (U-10) — the flyout extrapolates the thumb between our timeline pushes at THIS rate, so an episode at 1.5x
+                // drifts at 1x if it is pinned. ContentRate is > 0 by construction (1 unless an episode speed applies).
+                double rate = s.ContentRate;
+                if (rate != s_lastRate)
+                {
+                    s_lastRate = rate;
+                    try { smtc.PlaybackRate = rate; }
+                    catch (Exception ex) { Log.Warn("playback", "smtc rate failed", ex); }
                 }
 
                 // enablement — play/pause are ALWAYS enabled; only the two skips move (W6)

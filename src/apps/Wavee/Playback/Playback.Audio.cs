@@ -228,6 +228,24 @@ public static partial class Playback
         /// does.</summary>
         public static IDisposable AcquireLevels() => s_effects.AcquireVisualizer();
 
+        /// <summary>Take a SPECTRUM lease (the engine's FFT tier; it implies the level tap). Dispose to release — the RT
+        /// stops filling the ring and the clock thread stops analysing the moment the last lease goes.</summary>
+        public static IDisposable AcquireSpectrum() => s_effects.AcquireSpectrum();
+
+        /// <summary>Copy the latest band magnitudes (dB) tear-free. 0 ⇒ nothing published yet (no lease, not playing,
+        /// or the window is not yet latency-aligned).</summary>
+        public static int CopySpectrum(Span<float> into, out SpectrumInfo info) => s_effects.CopySpectrum(into, out info);
+
+        /// <summary>Mirror of <c>Prefs.Stage.SyncOffsetMs</c> onto the analysis window (positive = read earlier).</summary>
+        public static void SetSpectrumOffsetMs(float ms) => s_effects.SpectrumOffsetMs = ms;
+
+        /// <summary>Diagnostics: the live session's endpoint queue depth (frames, diagnostic only — §2.7) and spectrum publish
+        /// count; (0, 0) without one.</summary>
+        public static (long DelayFrames, long Publishes) SpectrumDiagnostics()
+        {
+            lock (s_gate) { return s_session is { } s ? (s.OutputDelayFrames, s.SpectrumPublishes) : (0L, 0L); }
+        }
+
         /// <summary>One local render endpoint, as the picker renders it.</summary>
         /// <param name="Id">The endpoint id, or "" for the system default row.</param>
         /// <param name="Name">The short display name — `Playback.AudioDeviceNaming.Shorten`'s answer.</param>
@@ -348,6 +366,36 @@ public static partial class Playback
         // and zero position must NOT be read: everything comes off the session itself.
         static bool s_silent;
         static int s_pendingSeekMs = -1;
+        // V-PA2: the reducer's seek generation the parked/last seek belongs to. Seeded by every `Load` (the reducer is already
+        // on `seekGen` when it emits the load) and stamped by `Seek`; every Position/Seeked the pump posts carries it. Written
+        // under s_gate, read by the tick.
+        static uint s_pendingSeekGen;
+        // V-PA28: the SEEK MAILBOX. Last write wins: `Seek` stores (stamped load epoch << 32 | target ms) and at most ONE
+        // `SeekCoreAsync` is queued on the chain for a whole run of seeks — it takes the newest. −1 = empty. The generation, the
+        // start stamp and the stream counters of the newest write ride with it. All written and taken under s_gate.
+        static long s_seekMailbox = -1;
+        static uint s_seekMailboxGen;
+        static long s_seekT0;
+        static Spotify.Audio.Stream.Stats s_seekBefore;
+        // The in-flight design-A prepare (a second decoder opening at the seek target). A newer seek, a load, a stop all cancel
+        // it. Volatile.Read/Write everywhere (V-PA28).
+        static CancellationTokenSource? s_seekPrepare;
+        // The stale timer faded the live voice to silence (V-PE14: the prepare was late) and nothing has replaced it yet, so a
+        // seek that resolves on that SAME voice (the ring jump, the in-place fallback) must give it its level back. s_gate.
+        static bool s_activeSilenced;
+        // A seek dropped a committed gapless join (S-5): the reducer is owed `Input.PrepareLost` once the seek lands — across a
+        // cancelled seek too, which is why it is a flag and not a local. s_gate.
+        static bool s_joinLostBySeek;
+        // voice id → the linear factor its decoder folded into the PCM (V-PA15; <see cref="IGainFolding"/>) and the figures behind
+        // it: what a live normalization change ramps FROM (`now / baked`, `now` from THAT voice's figures — a crossfade has two
+        // tracks live). Written at open, at a join, at a crossfade and at a seek swap. s_gate.
+        static readonly Dictionary<long, BakedVoice> s_bakedFactor = new();
+        // H-11: the 200 ms timer re-enters when a tick overruns (a log write, a prepare commit, a long drain); a second tick on
+        // top of the first would fold the stall twice and post the state twice. 0 = idle, 1 = a tick is running.
+        static int s_tickBusy;
+        // D1: the per-session glitch ledger. Written on the tick thread (`DrainXruns`, `FoldStall`), read by `Metrics.Read()` and
+        // the health card, folded and reset by `RetireXruns` — one lock inside, no engine type in it.
+        static readonly GlitchLedger s_ledger = new();
         static PlaybackState s_lastState = PlaybackState.Idle;
         static long s_lastPositionPostMs, s_lastWorkLogMs;
         static long s_nextVoiceId;
@@ -409,16 +457,9 @@ public static partial class Playback
         public static void Boot()
         {
             SeedOnce();
-            Settings.ApplyNormalization ??= SetNormalization;   // G-132: the settings row's seam; D6 owns the effect
+            Settings.ApplyNormalization ??= static () => SetNormalization();   // G-132: the settings rows' seam (toggle, mode, album); V-PA27: an Action
             if (Volatile.Read(ref s_booted) == 0) Enqueue(static () => { EnsureBackend(); return Task.CompletedTask; });
         }
-
-        /// <summary>The normalization toggle's seam for <see cref="Settings.ApplyNormalization"/> (G-132). D6: the
-        /// decoders own normalization — <see cref="NormalizationFactor"/> reads <c>Platform.Keys.NormalizationEnabled</c>
-        /// itself on every open, so there is no per-session gain to recompute here; the persisted flag the settings row
-        /// already wrote is what the NEXT load reads. This only makes the change observable in the log.</summary>
-        public static void SetNormalization(bool enabled)
-            => Log.Info("audio", "normalization " + (enabled ? "enabled" : "disabled") + " — takes effect on the next load");
 
         /// <summary>Boot the backend ahead of the first play — the composition root calls it once the startup quiet period
         /// is over, so the endpoint probe happens while nobody is waiting for sound. Idempotent; returns immediately.</summary>
@@ -512,6 +553,8 @@ public static partial class Playback
             float saved = Platform.Settings.Get(Platform.Keys.RememberVolume)
                 ? Platform.Settings.Get(Platform.Keys.SavedVolume) : 1f;
             s_volume = VolumeTaper.Amplitude(saved);
+            // The stage's analysis-window offset (Prefs.Stage.SyncOffsetMs; written live by the gallery/Appearance sliders).
+            s_effects.SpectrumOffsetMs = Math.Clamp(Platform.Settings.Get(Platform.Keys.StageSyncOffsetMs), -500, 500);
         }
 
         public static void Shutdown()
@@ -531,8 +574,10 @@ public static partial class Playback
         /// <summary>Load <paramref name="id"/> for reducer epoch <paramref name="epoch"/>, starting at
         /// <paramref name="fromMs"/>. Returns immediately. The epoch bumps HERE, synchronously, so a superseded load
         /// stops being ours before this call returns — and `_clockStale` goes up with it, so nothing reports the
-        /// outgoing track's position for the track that is starting.</summary>
-        public static void Load(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs = 0)
+        /// outgoing track's position for the track that is starting. <paramref name="seekGen"/> is the reducer's seek
+        /// generation at the load (V-PA2): it seeds <c>s_pendingSeekGen</c>, so a position or a parked seek reported by this
+        /// load's own session carries the generation the reducer is already on and is not dropped as stale.</summary>
+        public static void Load(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, uint seekGen)
         {
             // A fake playable has no bytes and plays through the silent voice: it needs the DSP seed, never a device. A real
             // one boots the backend as the load's own first step, on the chain (G-124).
@@ -548,8 +593,10 @@ public static partial class Playback
             // prepare built for the track that is being replaced.
             CancellationToken token = s_loads.Next();
             s_prepares.Cancel();
+            CancelSeekPrepare();                // a seek's second decoder opening on the OUTGOING track is not worth finishing
+            ScrubDrop();                        // a drag on the outgoing track is orphaned (the reducer sends no cancel)
             ReleaseBlockedChain();
-            Enqueue(() => LoadCoreAsync(row, id, epoch, fromMs, kind, chain, token));
+            Enqueue(() => LoadCoreAsync(row, id, epoch, fromMs, kind, seekGen, chain, token));
         }
 
         /// <summary>Prepare the NEXT playable so the boundary can be a hand-off instead of a hard cut. Best effort by
@@ -600,19 +647,43 @@ public static partial class Playback
             catch (Exception ex) { Log.Warn("audio", "prefetch failed", ex); }
         }
 
-        /// <summary>Seek the live track. Two things happen BEFORE the chain: the stream counters are sampled (the seek's
-        /// kind is their delta, <see cref="SeekKindOf"/>), and a decoder blocked in the ring's wait is interrupted
-        /// (<see cref="RingSource.InterruptPendingRead"/>) — the engine's <c>SeekAsync</c> waits for its decode-ahead
-        /// producer to come back to its seek mailbox, and a producer blocked in an underrun comes back only after the
-        /// ring's 8 s bound.</summary>
-        public static void Seek(int ms, uint epoch = 0)
+        /// <summary>Seek the live track — through the MAILBOX (V-PA28, S-4): the target is stamped with the load epoch and the
+        /// reducer's seek generation <paramref name="gen"/>, the previous in-flight prepare is cancelled, and ONE
+        /// <see cref="SeekCoreAsync"/> is queued for a whole run of seeks (it takes the newest target; the older ones never
+        /// reach the engine). The stream counters are sampled here (the seek's kind is their delta, <see cref="SeekKindOf"/>).
+        /// Until the seek lands the pump REPORTS the target as the position (<see cref="ActivePositionMs"/>), stamped with
+        /// <paramref name="gen"/>, so the bar never steps back. Nothing touches the live producer here: the ring jump and the
+        /// voice swap leave it alone, and only the in-place fallback interrupts its byte wait (V-PA19).
+        /// <para>A seek for an OLDER load than the pump's is dropped. A seek for a load that is still in flight (the user
+        /// dragged the bar the instant the track changed: its epoch is AHEAD of <c>s_loadEpoch</c> until the load op runs) is
+        /// kept — the chain runs it after that load, exactly as the chain always ordered it.</para></summary>
+        public static void Seek(int ms, uint epoch = 0, uint gen = 0)
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             Spotify.Audio.Stream.Stats before = Spotify.Audio.Stream.Stats.Read();
-            IMediaByteSource? live;
-            lock (s_gate) live = s_silent ? null : s_bytes;
-            (live as RingSource)?.InterruptPendingRead();
-            Enqueue(() => SeekCoreAsync(ms, epoch, t0, before));
+            int target = Math.Max(0, ms);
+            bool queued;
+            lock (s_gate)
+            {
+                if (epoch != 0 && epoch < s_loadEpoch) return;                       // a superseded load's seek
+                uint stamp = epoch == 0 ? s_loadEpoch : epoch;
+                s_pendingSeekMs = target;
+                s_pendingSeekGen = gen;
+                s_pendingSeekQueued = true;               // this seek IS the queued work: the tick's Ready arm must not apply it again
+                s_seekMailboxGen = gen;
+                s_seekT0 = t0;
+                s_seekBefore = before;
+                queued = Interlocked.Exchange(ref s_seekMailbox, ((long)stamp << 32) | (uint)target) >= 0;
+            }
+            CancelSeekPrepare();                                                     // a newer seek supersedes an in-flight prepare
+            if (!queued) Enqueue(SeekCoreAsync);                                     // ONE chain op reads the newest target
+        }
+
+        /// <summary>Cancel the in-flight design-A prepare, if any. A cancel racing the prepare's own teardown is harmless.</summary>
+        static void CancelSeekPrepare()
+        {
+            try { Volatile.Read(ref s_seekPrepare)?.Cancel(); }
+            catch (ObjectDisposedException) { }
         }
 
         public static void Pause()
@@ -656,6 +727,8 @@ public static partial class Playback
             StopTicker();
             s_loads.Cancel();
             s_prepares.Cancel();
+            CancelSeekPrepare();
+            ScrubDrop();
             ReleaseBlockedChain();
             Enqueue(static () => DisposeSessionAsync());
         }
@@ -775,16 +848,34 @@ public static partial class Playback
 
         // ── 8. the load ──────────────────────────────────────────────────────────────────────────────────────────────
 
-        static async Task LoadCoreAsync(EntityRef row, EntityId id, uint epoch, int fromMs, PlayableKind kind, long chain,
-            CancellationToken token)
+        static async Task LoadCoreAsync(EntityRef row, EntityId id, uint epoch, int fromMs, PlayableKind kind, uint seekGen,
+            long chain, CancellationToken token)
         {
             await DisposeSessionAsync().ConfigureAwait(false);
             if (IsStale(chain) || token.IsCancellationRequested) return;
 
             lock (s_gate)
             {
-                s_pendingSeekMs = -1;          // a seek parked for the OUTGOING track must never land on this one
-                s_pendingSeekQueued = false;
+                // A seek parked for the OUTGOING track must never land on this one — mailbox included (V-PA2, V-PA28). The one
+                // exception is a seek the reducer posted for THIS load while it was still in flight (stamped with this load's
+                // epoch): it is the load's own newest intent. It keeps the mailbox AND the pending target/generation it set, so the
+                // tick still reports the target and its landing still matches the reducer's generation.
+                long box = Volatile.Read(ref s_seekMailbox);
+                if (box >= 0 && (uint)(box >> 32) == epoch)
+                {
+                    // keep: `Seek` already wrote s_pendingSeekMs / s_pendingSeekGen / s_pendingSeekQueued for it
+                }
+                else
+                {
+                    Interlocked.Exchange(ref s_seekMailbox, -1);
+                    s_seekMailboxGen = seekGen;
+                    s_pendingSeekMs = -1;
+                    s_pendingSeekQueued = false;
+                    s_pendingSeekGen = seekGen;    // V-PA2: seeded from EVERY load, so the first report is current
+                }
+                s_activeSilenced = false;
+                s_joinLostBySeek = false;
+                s_bakedFactor.Clear();
                 s_errorReported = false;
                 s_startedAnnounced = false;
                 s_recovering = false;
@@ -817,7 +908,7 @@ public static partial class Playback
             }
 
             lock (s_gate) { s_opened = opened; s_activeDurMs = opened.DurationMs; }
-            await OpenSessionAsync(bytes, opened, row, epoch, fromMs, chain, token, autoResume: true).ConfigureAwait(false);
+            await OpenSessionAsync(bytes, opened, row, epoch, fromMs, seekGen, chain, token, autoResume: true).ConfigureAwait(false);
         }
 
         /// <summary>How often an open still in progress looks at its body's stall (only while opening; a healthy open
@@ -857,7 +948,7 @@ public static partial class Playback
         static bool RefusedOf(IMediaByteSource? bytes) => bytes is RingSource ring && ring.Body.Refusing;
 
         static async Task OpenSessionAsync(IMediaByteSource bytes, Opened opened, EntityRef row, uint epoch,
-            int fromMs, long chain, CancellationToken token, bool autoResume)
+            int fromMs, uint seekGen, long chain, CancellationToken token, bool autoResume)
         {
             MediaPlayer? player = Volatile.Read(ref s_player);
             if (player is null) { bytes.Close(); PostFault(Fault.RuntimeMissing, epoch); return; }
@@ -901,6 +992,7 @@ public static partial class Playback
                 if (pcm is not null)
                 {
                     s_activePrimaryId = pcm.PrimaryVoiceIdValue;
+                    NoteBakedFactor(s_activePrimaryId, decoder, in opened);
                     s_activeJoinFrame = GaplessJoinClock.JoinFrameFor(pcm.SampleClock, opened.DurationMs, 0, pcm.Format.SampleRate);
                     s_anchorClock = pcm.SampleClock;
                     s_anchorPlayheadMs = 0;
@@ -923,10 +1015,11 @@ public static partial class Playback
             {
                 bool canServe = bytes.Caps.Seekable;
                 if (SeekGate.Decide(hasSession: true, sourceCanServeBeyondHead: canServe) == SeekAdmission.ApplyNow)
-                    await ApplySeekAsync(fromMs, epoch).ConfigureAwait(false);
+                    await ApplySeekAsync(fromMs, epoch, seekGen).ConfigureAwait(false);
                 else
                 {
-                    lock (s_gate) s_pendingSeekMs = fromMs;
+                    // Parked for the tick's Ready arm — unless a newer seek of the user's already owns the pending target.
+                    lock (s_gate) { if (s_pendingSeekGen == seekGen) s_pendingSeekMs = fromMs; }
                     if (s_playIntent) { try { await player.PauseAsync().ConfigureAwait(false); } catch { } }
                 }
             }
@@ -1024,10 +1117,13 @@ public static partial class Playback
 
         static async Task DisposeSessionAsync()
         {
+            CancelSeekPrepare();                // a second decoder opening for a seek on the session going away has no purpose left
             PcmAudioSession? session;
             IMediaByteSource? bytes, retiring, join, prep;
             IPreparedItem? prepared;
             bool wasSilent;
+            GlitchLedger.Snapshot summary = default;
+            EntityId summaryTrack = default;
             lock (s_gate)
             {
                 session = s_session;
@@ -1057,10 +1153,11 @@ public static partial class Playback
                 s_activeJoinFrame = 0;
                 s_clockStale = true;
                 s_lastState = PlaybackState.Idle;
-                if (session is not null) RetireXruns(session);
+                if (session is not null) { summary = RetireXruns(session); summaryTrack = s_id; }
             }
             if (session is not null)
             {
+                LogSessionSummary(in summary, summaryTrack);
                 session.DeviceFormatChanged -= OnDeviceFormatChanged;
                 session.DeviceRebuilt -= OnDeviceRebuilt;
             }
@@ -1104,35 +1201,217 @@ public static partial class Playback
         /// public because "which codec does a Flac24 rung get" is a promise worth a test rather than a comment.</summary>
         public static IAudioDecoder CreateDecoderFor(in Opened opened) => opened.Format switch
         {
-            Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb, opened.Peak),
+            Spotify.Audio.Format.Flac or Spotify.Audio.Format.Flac24 => new FlacAudioDecoder(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
             Spotify.Audio.Format.Mp3 => new Mp3AudioDecoder(opened.GainDb, opened.Peak),
             Spotify.Audio.Format.Aac => new Modules.AacAudioDecoder(opened.GainDb, opened.Peak),
-            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak),
+            _ => new VorbisAudioDecoder(opened.GainDb, opened.DurationMs, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak),
         };
 
-        /// <summary>The normalization gain as a linear multiplier, folded into the conversion that happens anyway —
-        /// one multiply per sample and no extra pass. `Platform.Keys.NormalizationEnabled` (default true) gates it;
-        /// off ⇒ 1. The engine's own `ReplayGainInfo` stays unity for the primary voice so the two do not compound.
-        /// <paramref name="peak"/> is the track's linear true peak (`Opened.Peak`), which caps a boost.</summary>
-        internal static float GainLinear(float gainDb, float peak = 0f)
-            => NormalizationFactor(Platform.Settings.Get(Platform.Keys.NormalizationEnabled), gainDb, peak);
+        // ── 8a. normalization (D5, D6): modes, album mode, the ONE factor, the live ramp ────────────────────────────────
+
+        /// <summary>The loudness the user asks for: the pregain applied on top of every figure (Spotify's own dial, −23/−14/−11 LUFS
+        /// against the −14 reference the figures are in). The values are PERSISTED ints (<c>Platform.Keys.NormalizationMode</c>) —
+        /// append only.</summary>
+        public enum NormalizationMode : byte { Quiet = 0, Normal = 1, Loud = 2 }
+
+        /// <summary>The limiter's ceiling (−1.5 dB), shared with the engine's <c>LimiterSpec.Default</c>: every normalization cap lands
+        /// here (N-1), so a peak the cap admits is never touched by the limiter.</summary>
+        public const float LimiterCeilingLinear = 0.84139514f;
+
+        /// <summary>ReplayGain tags are referenced to −18 LUFS; the −14 frame everything else uses is +4 dB (V-PA18).</summary>
+        public const float ReplayGainToSpotifyDb = 4f;
+
+        /// <summary>A mode's pregain in dB: Quiet −9 (→ −23 LUFS), Normal 0 (→ −14), Loud +3 (→ −11). PURE.</summary>
+        public static float PregainDb(NormalizationMode mode) => mode switch { NormalizationMode.Quiet => -9f, NormalizationMode.Loud => 3f, _ => 0f };
+
+        /// <summary>The persisted mode int, coerced: anything outside 0..2 is Normal (an old or hand-edited profile never picks a mode
+        /// that does not exist). PURE.</summary>
+        public static NormalizationMode ModeOf(int persisted) => persisted is >= 0 and <= 2 ? (NormalizationMode)persisted : NormalizationMode.Normal;
+
+        /// <summary>The normalization gain as a linear multiplier, folded into the conversion that happens anyway — one multiply per
+        /// sample and no extra pass. The setting (<c>NormalizationEnabled</c>, <c>NormalizationMode</c>, <c>NormalizationAlbum</c>)
+        /// is read HERE, per open (a live change re-ramps the playing voice instead — <see cref="SetNormalization"/>); off ⇒ 1. The
+        /// engine's own <c>ReplayGainInfo</c> stays unity for the primary voice so the two do not compound.
+        /// <paramref name="peak"/> is the track's linear true peak (<c>Opened.Peak</c>), which caps a boost.</summary>
+        internal static float GainLinear(float gainDb, float peak = 0f, float albumGainDb = 0f, float albumPeak = 0f)
+            => NormalizationFactor(Platform.Settings.Get(Platform.Keys.NormalizationEnabled),
+                ModeOf(Platform.Settings.Get(Platform.Keys.NormalizationMode)), Platform.Settings.Get(Platform.Keys.NormalizationAlbum),
+                gainDb, peak, albumGainDb, albumPeak);
 
         /// <summary>The largest boost or cut a gain figure may ask for. Spotify's track gains sit within ±15 dB; the Ogg
         /// figure is four bytes of a header (byte 144), and a garbage float there must never become a deafening
         /// multiply.</summary>
         public const float MaxGainDb = 30f;
 
-        /// <summary>The normalization gain as ONE linear factor (Vorbis plan §6.3): <c>10^(dB/20)</c>, clamped to
-        /// ±<see cref="MaxGainDb"/>, and — when the track peak is known — capped so <c>peak × factor ≤ 1</c> (librespot
-        /// <c>get_factor</c>, player.rs:383-395). Off, or a non-finite figure, ⇒ exactly 1. PURE; the decoders fold the
-        /// answer into the interleave multiply (Vorbis) or the int→float scale constant (FLAC).</summary>
+        /// <summary>The two-argument form: Normal mode, the track pair — what every caller before the modes meant. PURE.</summary>
         public static float NormalizationFactor(bool enabled, float gainDb, float peak = 0f)
+            => NormalizationFactor(enabled, NormalizationMode.Normal, false, gainDb, peak);
+
+        /// <summary>The normalization gain as ONE linear factor (D5, Vorbis plan §6.3): the chosen pair (the album's when
+        /// <paramref name="album"/> is asked AND the source carried one, else the track's) plus the mode's pregain, <c>10^(dB/20)</c>
+        /// clamped to ±<see cref="MaxGainDb"/>, and — when the peak is known — capped so <c>factor × peak ≤ </c>
+        /// <see cref="LimiterCeilingLinear"/> (the limiter's ceiling, N-1): the cut that keeps a boosted peak under the limiter.
+        /// <see cref="NormalizationMode.Loud"/> lifts the cap to 1.0 and lets the (pre-volume) limiter do the rest, as Spotify's own
+        /// Loud does. Off, or a non-finite figure, ⇒ exactly 1. The mode is applied HERE and nowhere else (V-PA14: the lossless
+        /// catalogue figure stays at the −14 reference). PURE; the decoders fold the answer into the interleave multiply (Vorbis) or
+        /// the int→float scale constant (FLAC).</summary>
+        public static float NormalizationFactor(bool enabled, NormalizationMode mode, bool album, float gainDb, float peak,
+            float albumGainDb = 0f, float albumPeak = 0f)
         {
-            if (!enabled || !float.IsFinite(gainDb) || gainDb == 0f) return 1f;
-            float factor = MathF.Pow(10f, Math.Clamp(gainDb, -MaxGainDb, MaxGainDb) / 20f);
-            if (peak > 0f && float.IsFinite(peak) && factor * peak > 1f) factor = 1f / peak;
+            if (!enabled) return 1f;
+            bool useAlbum = album && float.IsFinite(albumGainDb) && albumGainDb != 0f;
+            float g = useAlbum ? albumGainDb : gainDb, p = useAlbum ? albumPeak : peak;
+            if (!float.IsFinite(g)) return 1f;
+            float factor = MathF.Pow(10f, Math.Clamp(g + PregainDb(mode), -MaxGainDb, MaxGainDb) / 20f);
+            float cap = mode == NormalizationMode.Loud ? 1f : LimiterCeilingLinear;
+            if (p > 0f && float.IsFinite(p) && factor * p > cap) factor = cap / p;
             return factor;
         }
+
+        /// <summary>The four normalization figures of one file, in the −14 LUFS frame (a ReplayGain tag is already +4 dB): what a decoder
+        /// folded, and — kept per voice — what a live mode switch recomputes the factor from (V-PA15). <c>AlbumGainDb == 0</c> means "no
+        /// album figure" and album mode then uses the track pair.</summary>
+        public readonly record struct NormalizationFigures(float GainDb, float Peak, float AlbumGainDb = 0f, float AlbumPeak = 0f)
+        {
+            /// <summary>The factor these figures give under the CURRENT settings values passed in. PURE.</summary>
+            public float Factor(bool enabled, NormalizationMode mode, bool album)
+                => NormalizationFactor(enabled, mode, album, GainDb, Peak, AlbumGainDb, AlbumPeak);
+
+            /// <summary>The catalogue's / header's figures when it carried a track gain (they win — Spotify's own measurement), else the
+            /// file's ReplayGain tags at +4 dB (N-3, V-PA18): the track pair from the track tags (the album tags when only those exist),
+            /// the album pair from the album tags only. No tags ⇒ <paramref name="source"/> unchanged. PURE.</summary>
+            public static NormalizationFigures WithReplayGain(in NormalizationFigures source, in ReplayGainTags tags)
+            {
+                if (source.GainDb != 0f || !tags.Any) return source;
+                float albumGain = tags.HasAlbumGain ? tags.AlbumGainDb + ReplayGainToSpotifyDb : 0f;
+                return tags.HasTrackGain
+                    ? new NormalizationFigures(tags.TrackGainDb + ReplayGainToSpotifyDb, tags.TrackPeak, albumGain, tags.HasAlbumGain ? tags.AlbumPeak : 0f)
+                    : new NormalizationFigures(albumGain, tags.AlbumPeak, albumGain, tags.AlbumPeak);
+            }
+        }
+
+        /// <summary>The four ReplayGain tags of a local file (<c>REPLAYGAIN_TRACK_GAIN</c>/<c>_TRACK_PEAK</c>/<c>_ALBUM_GAIN</c>/<c>_ALBUM_PEAK</c>), in
+        /// the tag's own −18 LUFS frame: gains in dB, peaks LINEAR. <see cref="HasTrackGain"/>/<see cref="HasAlbumGain"/> say whether the gain tag was
+        /// present and believable; a missing peak is 0 (unknown). The parsers are PURE over spans (ASCII, case-insensitive keys).</summary>
+        public readonly record struct ReplayGainTags(float TrackGainDb, float TrackPeak, float AlbumGainDb, float AlbumPeak,
+            bool HasTrackGain, bool HasAlbumGain)
+        {
+            /// <summary>Any gain tag at all.</summary>
+            public bool Any => HasTrackGain || HasAlbumGain;
+
+            /// <summary>The four tag VALUES (the text after the <c>=</c>), each empty when the tag is absent.</summary>
+            public static ReplayGainTags Of(ReadOnlySpan<byte> trackGain, ReadOnlySpan<byte> trackPeak,
+                ReadOnlySpan<byte> albumGain, ReadOnlySpan<byte> albumPeak)
+            {
+                bool hasTrack = TryParseGainDb(trackGain, out float tg), hasAlbum = TryParseGainDb(albumGain, out float ag);
+                TryParsePeak(trackPeak, out float tp);
+                TryParsePeak(albumPeak, out float ap);
+                return new ReplayGainTags(hasTrack ? tg : 0f, tp, hasAlbum ? ag : 0f, ap, hasTrack, hasAlbum);
+            }
+
+            /// <summary>A gain tag: <c>-6.54 dB</c>, <c>+3.2dB</c>, <c> -6.54 </c> (the unit optional, any case). False when there is no number,
+            /// it is not finite, or it is beyond ±<see cref="MaxGainDb"/> (a garbage tag is no gain).</summary>
+            public static bool TryParseGainDb(ReadOnlySpan<byte> text, out float db)
+            {
+                db = 0f;
+                text = TrimAscii(text);
+                if (text.Length >= 2 && (text[^2] | 0x20) == (byte)'d' && (text[^1] | 0x20) == (byte)'b') text = TrimAscii(text[..^2]);
+                if (text.IsEmpty
+                    || !float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value)
+                    || !float.IsFinite(value) || Math.Abs(value) > MaxGainDb) return false;
+                db = value;
+                return true;
+            }
+
+            /// <summary>A peak tag: a LINEAR amplitude (<c>0.988553</c>). False (0) when it is not a believable peak (<see cref="Spotify.Audio.SanePeak"/>).</summary>
+            public static bool TryParsePeak(ReadOnlySpan<byte> text, out float peak)
+            {
+                peak = 0f;
+                text = TrimAscii(text);
+                if (text.IsEmpty
+                    || !float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float value)) return false;
+                peak = Spotify.Audio.SanePeak(value);
+                return peak > 0f;
+            }
+
+            /// <summary>An Ogg Vorbis COMMENT HEADER packet (type 3, <c>"vorbis"</c>, then the comment block) — what the adapter already
+            /// reads at open. Nothing (<c>default</c>) for a packet that is not one, or a block that is cut short.</summary>
+            public static ReplayGainTags FromVorbisComment(ReadOnlySpan<byte> packet)
+                => packet.Length >= 7 && packet[0] == 3 ? FromCommentBlock(packet[7..]) : default;
+
+            /// <summary>A Vorbis comment BLOCK (vendor string, count, then length-prefixed <c>KEY=value</c> fields, all little-endian) — the body of a
+            /// Vorbis comment header after its 7-byte prefix, and of a FLAC VORBIS_COMMENT block. The last of a repeated key wins.</summary>
+            public static ReplayGainTags FromCommentBlock(ReadOnlySpan<byte> block)
+            {
+                int pos = 0;
+                if (!ReadLe(block, ref pos, out uint vendor) || vendor > (uint)(block.Length - pos)) return default;
+                pos += (int)vendor;
+                if (!ReadLe(block, ref pos, out uint count)) return default;
+                ReadOnlySpan<byte> trackGain = default, trackPeak = default, albumGain = default, albumPeak = default;
+                for (uint i = 0; i < count; i++)
+                {
+                    if (!ReadLe(block, ref pos, out uint len) || len > (uint)(block.Length - pos)) break;
+                    ReadOnlySpan<byte> field = block.Slice(pos, (int)len);
+                    pos += (int)len;
+                    int eq = field.IndexOf((byte)'=');
+                    if (eq <= 0) continue;
+                    ReadOnlySpan<byte> key = field[..eq], value = field[(eq + 1)..];
+                    if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_GAIN"u8)) trackGain = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_TRACK_PEAK"u8)) trackPeak = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_GAIN"u8)) albumGain = value;
+                    else if (System.Text.Ascii.EqualsIgnoreCase(key, "REPLAYGAIN_ALBUM_PEAK"u8)) albumPeak = value;
+                }
+                return Of(trackGain, trackPeak, albumGain, albumPeak);
+            }
+
+            static bool ReadLe(ReadOnlySpan<byte> b, ref int pos, out uint v)
+            {
+                v = 0;
+                if (pos < 0 || pos + 4 > b.Length) return false;
+                v = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(b[pos..]);
+                pos += 4;
+                return true;
+            }
+
+            static ReadOnlySpan<byte> TrimAscii(ReadOnlySpan<byte> s)
+            {
+                int start = 0, end = s.Length;
+                while (start < end && s[start] <= (byte)' ') start++;
+                while (end > start && s[end - 1] <= (byte)' ') end--;
+                return s[start..end];
+            }
+        }
+
+        /// <summary>V-PA15, live (D5): re-ramp every live voice's gain slot to the factor the CURRENT settings give its figures — each by
+        /// <c>now / baked</c> for THAT voice (<see cref="SetVoiceGainRatio"/>), so the decoders keep their folded factor and nothing reopens.
+        /// Called by the settings rows (the toggle, the mode, the album switch) via <see cref="Settings.ApplyNormalization"/>; with nothing
+        /// playing there is nothing to ramp, and the next open reads the setting itself (<see cref="GainLinear"/>).</summary>
+        public static void SetNormalization()
+        {
+            bool enabled = Platform.Settings.Get(Platform.Keys.NormalizationEnabled);
+            NormalizationMode mode = ModeOf(Platform.Settings.Get(Platform.Keys.NormalizationMode));
+            bool album = Platform.Settings.Get(Platform.Keys.NormalizationAlbum);
+            PcmAudioSession? sess;
+            KeyValuePair<long, BakedVoice>[] voices;
+            long activeId;
+            lock (s_gate) { sess = s_session; voices = s_bakedFactor.ToArray(); activeId = s_activePrimaryId; }
+            int ramped = 0;
+            float shown = 1f;
+            if (sess is not null)
+                foreach (var (voiceId, voice) in voices)
+                {
+                    float now = voice.Figures.Factor(enabled, mode, album);
+                    if (voiceId == activeId) shown = now;
+                    if (SetVoiceGainRatio(sess, voiceId, now, voice.Factor)) ramped++;
+                }
+            Log.Info("audio", $"normalization enabled={enabled} mode={mode} album={album} voices={ramped}/{voices.Length} factor={shown:0.###}");
+        }
+
+        /// <summary>One voice's live ramp: <c>SetVoiceGain(id, now / baked, 50 ms)</c> — ABSOLUTE relative to what its decoder folded in, so
+        /// a repeated call is idempotent. False for a voice the session no longer knows, an unusable baked factor, or a full command queue
+        /// (the previous factor stays in force until the next change). PURE ratio, one engine call.</summary>
+        static bool SetVoiceGainRatio(PcmAudioSession sess, long voiceId, float now, float baked)
+            => baked > 0f && float.IsFinite(baked) && sess.SetVoiceGain(voiceId, now / baked, rampMs: 50);
 
         // ── 9a. Ogg Vorbis: the engine-facing adapter over the CORE decoder (Vorbis plan §6) ─────────────────────────
         //
@@ -1165,12 +1444,28 @@ public static partial class Playback
             /// <summary>After a seek: frames before this granule are dropped. <see cref="Unknown"/> when there is none.</summary>
             public long Target;
 
+            /// <summary>The most silence one hole is ever padded with, in granules (~12 s at 44.1 kHz). A larger gap is not "a lost
+            /// page", it is a wrong pin: the clock re-pins and pads nothing.</summary>
+            public const long MaxPad = 1 << 19;
+
+            bool _hole;     // S-7: a hole was crossed; the next page pin names the span that is missing
+            int _owed;      // frames of silence owed to the next run that hands frames out
+
             public static VorbisClock At(long position) => new() { Position = position, Target = Unknown };
 
-            /// <summary>What to hand out of one decoded packet: skip <see cref="Skip"/> frames of its output, then
-            /// hand out <see cref="Count"/>. <see cref="Start"/> is the packet's first granule, <see cref="Unknown"/>
-            /// when it could not be placed.</summary>
-            public readonly record struct Run(int Skip, int Count, long Start);
+            /// <summary>S-7: packets were lost here (a page-sequence hole, an undecodable packet) — the decoder re-primed and the
+            /// running count is now SHORT by exactly what was lost. The next page granule that pins a start names it
+            /// (<see cref="Admit"/>) and the run that follows carries it as <see cref="Run.Pad"/>. Ignored while a seek's landing
+            /// is still dropping frames to <see cref="Target"/>: nothing before the target is heard.</summary>
+            public void Hole()
+            {
+                if (Target == Unknown) _hole = true;
+            }
+
+            /// <summary>What to hand out of one decoded packet: <see cref="Pad"/> frames of SILENCE first (what a hole cost,
+            /// S-7), then skip <see cref="Skip"/> frames of its output and hand out <see cref="Count"/>.
+            /// <see cref="Start"/> is the packet's first granule, <see cref="Unknown"/> when it could not be placed.</summary>
+            public readonly record struct Run(int Skip, int Count, long Start, int Pad = 0);
 
             /// <summary>Place one decoded packet. <paramref name="granuleAtEnd"/> is the page granule when the packet
             /// is the last one completed on its page (else −1); <paramref name="eos"/> says that page is the stream's
@@ -1179,16 +1474,27 @@ public static partial class Playback
             {
                 if (frames < 0) frames = 0;
                 long start;
-                if (granuleAtEnd >= 0 && !eos) start = granuleAtEnd - frames;            // the page pins it
+                bool pinned = granuleAtEnd >= 0 && !eos;
+                if (pinned) start = granuleAtEnd - frames;                                // the page pins it
                 else if (Position != Unknown) start = Position;                           // the running count
                 else if (granuleAtEnd >= 0) start = granuleAtEnd - frames;               // the EOS page, with no clock
                 else return new Run(frames, 0, Unknown);                                  // nothing placeable yet
+                // S-7: after a hole the running count only counts frames that were really decoded, so the first pin AHEAD of it is
+                // exactly the span that is missing.
+                if (_hole && pinned && Position != Unknown)
+                {
+                    long gap = start - Position;
+                    if (gap > 0 && gap <= MaxPad) _owed += (int)gap;
+                    _hole = false;
+                }
                 Position = start + frames;
                 int keep = eos && granuleAtEnd >= 0 ? Ogg.TrimTail(start, frames, granuleAtEnd) : frames;
                 int skip = Target != Unknown && Target > start ? (int)Math.Min(keep, Target - start) : 0;
                 if (keep - skip <= 0) return new Run(keep, 0, start);
                 Target = Unknown;                                                         // reached: frames flow from here
-                return new Run(skip, keep - skip, start);
+                int pad = _owed;
+                _owed = 0;
+                return new Run(skip, keep - skip, start, pad);
             }
 
             /// <summary>The granule of the first frame a decode that resumes at <paramref name="windowOffset"/> will
@@ -1210,6 +1516,8 @@ public static partial class Playback
                     Ogg.Reader.Next next = reader.NextPacket(window, out ReadOnlySpan<byte> packet, out long granule);
                     if (next == Ogg.Reader.Next.Corrupt) continue;
                     if (next == Ogg.Reader.Next.NeedMore) { needMore = true; break; }
+                    // Anything else ends the peek — a `Hole` (S-7) included: frames counted before a gap cannot pin a granule after it,
+                    // so the start stays Unknown and the clock runs unpinned until the first page granule the decode meets.
                     if (next != Ogg.Reader.Next.Packet) break;
                     int f = decoder.PeekFrames(packet, ref prevN);
                     if (f < 0) continue;                                    // not audio: DecodePacket skips it too
@@ -1329,6 +1637,46 @@ public static partial class Playback
             float GainDb { get; }
             /// <summary>The linear true peak that caps a boost; 0 when unknown.</summary>
             float Peak { get; }
+            /// <summary>The ALBUM gain in dB (D5, V-PA13); 0 when the file carries none. A default member: a source that knows no album
+            /// (a fake, a module stream) need not say so.</summary>
+            float AlbumGainDb => 0f;
+            /// <summary>The album's linear true peak; 0 when unknown.</summary>
+            float AlbumPeak => 0f;
+        }
+
+        /// <summary>A decoder that folds the normalization factor into the PCM it hands out (V-PA15): the value it FOLDED. The pump
+        /// records it per voice (<see cref="s_bakedFactor"/>) so a live normalization change can ramp a playing voice by
+        /// <c>now / baked</c> through the voice's gain slot without reopening its decoder. 1 = unity (off, or no figure).</summary>
+        public interface IGainFolding
+        {
+            /// <summary>The linear factor folded into this decoder's output (the figure it OPENED with, the byte source's
+            /// late one included).</summary>
+            float AppliedGainLinear { get; }
+
+            /// <summary>The figures behind <see cref="AppliedGainLinear"/> — the ones a live mode switch recomputes the factor from: the
+            /// byte source's late figure and a local file's ReplayGain tags included (the pump's <see cref="Opened"/> knows neither).
+            /// Null = this decoder does not say, and the pump uses the <see cref="Opened"/>'s own figures. A default member so a decoder
+            /// with nothing to add (MP3, AAC) stays as it is.</summary>
+            NormalizationFigures? AppliedFigures => null;
+        }
+
+        /// <summary>A voice's baked normalization: the factor its decoder folded and the figures it was computed from.</summary>
+        readonly record struct BakedVoice(float Factor, NormalizationFigures Figures);
+
+        /// <summary>Remember the linear factor <paramref name="decoder"/> folded into voice <paramref name="voiceId"/>'s PCM
+        /// (V-PA15), with the figures behind it. A decoder that does not expose it (none of the shipped ones: Vorbis, FLAC, MP3 and
+        /// AAC all do) is assumed to have folded what <see cref="GainLinear"/> answers for its <paramref name="opened"/> figures right
+        /// now. Caller holds <see cref="s_gate"/>. The table stays tiny: entries for voices that are neither the live one, the one
+        /// being added nor the pending join's are dropped.</summary>
+        static void NoteBakedFactor(long voiceId, IAudioDecoder? decoder, in Opened opened)
+        {
+            var openedFigures = new NormalizationFigures(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak);
+            s_bakedFactor[voiceId] = decoder is IGainFolding folding
+                ? new BakedVoice(folding.AppliedGainLinear, folding.AppliedFigures ?? openedFigures)
+                : new BakedVoice(GainLinear(opened.GainDb, opened.Peak, opened.AlbumGainDb, opened.AlbumPeak), openedFigures);
+            if (s_bakedFactor.Count <= 6) return;
+            foreach (long id in new List<long>(s_bakedFactor.Keys))
+                if (id != voiceId && id != s_activePrimaryId && id != s_joinVoiceId) s_bakedFactor.Remove(id);
         }
 
         /// <summary>At most this many frames of silence per decoder read while a seek's interrupt is pending: small enough
@@ -1372,17 +1720,17 @@ public static partial class Playback
             }
         }
 
-        /// <summary>The Vorbis adapter's per-track working set — the 192 KiB pinned probe window, the CORE decoder's grow-only
-        /// tables (0.3–0.7 MB) and the page reader's spanning buffer — kept for the next track instead of re-pinned per track
-        /// (G-134). Two sets: the playing voice and the prepared one; the retiring voice of a crossfade takes a fresh set.
-        /// A set is returned only by the adapter's <c>Dispose</c>, which the engine calls once the decode producer that used
-        /// it has stopped.</summary>
+        /// <summary>The Vorbis adapter's per-track working set — the 192 KiB pinned probe window and the page reader's spanning
+        /// buffer — kept for the next track instead of re-pinned per track (G-134). Two sets: the playing voice and the prepared
+        /// one; the retiring voice of a crossfade takes a fresh set. A set is returned only by the adapter's <c>Dispose</c>, which
+        /// the engine calls once the decode producer that used it has stopped. The CORE decoder (its 0.3–0.7 MB of setup tables)
+        /// is NOT part of the set any more: it is rented by setup hash AFTER the header packets are read
+        /// (<see cref="VorbisDecoderPool"/>, V-PA35) — the window is needed to read the headers, the decoder only to open them.</summary>
         public sealed class VorbisWorkingSet
         {
             public const int PoolSize = 2;
 
             internal byte[] Window = [];
-            internal Vorbis.Decoder? Decoder;
             internal Ogg.Reader? Reader;
 
             static readonly Lock Gate = new();
@@ -1427,14 +1775,77 @@ public static partial class Playback
             }
         }
 
+        /// <summary>The Vorbis CORE decoders, pooled by SETUP HASH (V-PA35). A second decoder opened on the track that is already
+        /// playing — a seek's voice swap, a scrub's grain decoder — is handed one whose tables are already built for exactly that
+        /// setup: <c>Vorbis.Decoder.Open</c> then resets the lapping state and skips the parse, a few microseconds instead of the
+        /// ~1 ms table build. <see cref="Rent"/> prefers a pooled decoder whose <c>SetupHash</c> equals the asked one, else any
+        /// pooled one (it re-parses in place, allocating only if the new setup is larger), else a new one. Capacity four: the
+        /// playing voice, the prepared one, the retiring voice of a crossfade, and the seek/scrub voice. A decoder is returned only
+        /// by the adapter's <c>Dispose</c>, once its decode producer has stopped.</summary>
+        public static class VorbisDecoderPool
+        {
+            public const int Capacity = 4;
+
+            static readonly Lock Gate = new();
+            static readonly Vorbis.Decoder?[] s_pool = new Vorbis.Decoder?[Capacity];
+
+            /// <summary>Decoders waiting for the next open.</summary>
+            public static int Pooled
+            {
+                get
+                {
+                    lock (Gate)
+                    {
+                        int n = 0;
+                        foreach (Vorbis.Decoder? d in s_pool) if (d is not null) n++;
+                        return n;
+                    }
+                }
+            }
+
+            /// <summary>A decoder for <paramref name="setupHash"/> (<c>Vorbis.Decoder.HashSetup</c>): a matching pooled one first.</summary>
+            public static Vorbis.Decoder Rent(ulong setupHash)
+            {
+                lock (Gate)
+                {
+                    int any = -1;
+                    for (int i = 0; i < s_pool.Length; i++)
+                    {
+                        if (s_pool[i] is not { } d) continue;
+                        if (d.SetupHash == setupHash) { s_pool[i] = null; return d; }
+                        if (any < 0) any = i;
+                    }
+                    if (any >= 0) { Vorbis.Decoder d = s_pool[any]!; s_pool[any] = null; return d; }
+                }
+                return new Vorbis.Decoder();
+            }
+
+            internal static void Return(Vorbis.Decoder decoder)
+            {
+                lock (Gate)
+                {
+                    for (int i = 0; i < s_pool.Length; i++)
+                    {
+                        if (s_pool[i] is null) { s_pool[i] = decoder; return; }
+                        if (ReferenceEquals(s_pool[i], decoder)) return;
+                    }
+                }
+            }
+        }
+
         /// <summary>Ogg Vorbis over the CORE reader and decoder (Vorbis plan §6.2). Blocks in the byte seam and nowhere
         /// else; allocates in <see cref="TryOpen"/> and nowhere after (P8) — the window, the reader's spanning buffer and
         /// the decoder's tables are sized once there, out of a pooled <see cref="VorbisWorkingSet"/>.</summary>
-        public sealed class VorbisAudioDecoder : IAudioDecoder, IDisposable
+        public sealed class VorbisAudioDecoder : IAudioDecoder, IDisposable, IGainFolding
         {
             /// <summary>The probe window's 192 KiB ceiling, and more than two maximal pages, so a landing's peek always
             /// sees the page that pins it.</summary>
             const int WindowBytes = 192 * 1024;
+
+            /// <summary>The most hole-silence one read hands out (source frames), and the shared zero buffer it is cut from — a
+            /// hole's pad is a rare event, so ONE static buffer serves every adapter (≤ 8 mix channels).</summary>
+            const int PadChunkFrames = 1_024;
+            static readonly float[] s_padZeros = new float[PadChunkFrames * 8];
 
             /// <summary>How much of a local file's end is read at open for its last granule.</summary>
             const int TailScanBytes = 64 * 1024;
@@ -1444,6 +1855,8 @@ public static partial class Playback
             const int HeaderScanLimit = 1 << 20;
 
             float _gainLinear;
+            // The figures `_gainLinear` was computed from (the ctor's, then the byte source's late ones, then the file's ReplayGain tags).
+            NormalizationFigures _figures;
             readonly long _durationMs;
             VorbisWorkingSet? _set;
             Vorbis.Decoder? _dec;
@@ -1452,7 +1865,7 @@ public static partial class Playback
             IMediaByteSource? _src;
             IRandomAccessBytes? _ra;
             MixFormat _target;
-            LinearResampler? _resampler;
+            PolyphaseResampler? _resampler;
             float[] _conform = [];            // the held packet re-laid for a mix that is not stereo (never, today)
             VorbisClock _clock;
             long _winStart;                   // container offset of _win[0]
@@ -1463,14 +1876,38 @@ public static partial class Playback
             int _rate;
             uint _epoch;
             bool _eof, _interrupted;
+            // The stream's last packet is out: what is left to hand out is the resampler's trailing half kernel (V-PE21), over as many
+            // reads as `dst` needs. `_eof` follows once `Flush` runs dry.
+            bool _ending;
+            // S-1 (V-PA16): the LANDING read of the last `Seek` was interrupted (a scrub's next seek is on its way), so the decoder
+            // is not primed and the clock is not placed. Not the end of the track: `Read` hands out silence and repeats the
+            // read of [_landOffset, _landOffset + _landBytes) until it lands — or the next `Seek` drops the latch.
+            bool _needsLanding;
+            long _landOffset, _landTarget;
+            int _landBytes;
+            // S-7: silence (SOURCE-rate frames) owed BEFORE the held packet — the span a page-sequence hole or an undecodable packet
+            // cost, named by the next page granule (`VorbisClock.Run.Pad`). `Read` hands it out, through the resampler, ahead of
+            // the held frames, so the track keeps its length and the audio after the hole keeps its place.
+            int _pad;
+            // V-PA36: how many of the stream layer's landing-time page-index entries are already merged into the reader's index.
+            int _indexSeeded;
+
+            /// <summary>The linear factor folded into this decoder's output (<see cref="IGainFolding"/>, V-PA15).</summary>
+            public float AppliedGainLinear => _gainLinear;
+
+            /// <summary>The figures behind <see cref="AppliedGainLinear"/> (<see cref="IGainFolding.AppliedFigures"/>).</summary>
+            public NormalizationFigures? AppliedFigures => _figures;
 
             /// <param name="gainDb">The normalization figure (`Opened.GainDb`: the catalogue's, else the header's byte 144).</param>
             /// <param name="durationMs">The declared duration: the seek estimate's slope until the tail is known, and the
             /// yardstick a tail granule is checked against.</param>
             /// <param name="peak">The track's linear true peak (`Opened.Peak`, header byte 148), which caps a boost; 0 = unknown.</param>
-            public VorbisAudioDecoder(float gainDb, long durationMs = 0, float peak = 0f)
+            /// <param name="albumGainDb">The ALBUM gain (`Opened.AlbumGainDb`, header byte 152), 0 = none: album mode's figure (D5).</param>
+            /// <param name="albumPeak">The album's linear true peak (`Opened.AlbumPeak`, header byte 156); 0 = unknown.</param>
+            public VorbisAudioDecoder(float gainDb, long durationMs = 0, float peak = 0f, float albumGainDb = 0f, float albumPeak = 0f)
             {
-                _gainLinear = GainLinear(gainDb, peak);
+                _figures = new NormalizationFigures(gainDb, peak, albumGainDb, albumPeak);
+                _gainLinear = GainLinear(gainDb, peak, albumGainDb, albumPeak);
                 _durationMs = Math.Max(0, durationMs);
             }
 
@@ -1483,23 +1920,24 @@ public static partial class Playback
                 _ra = src as IRandomAccessBytes;
                 _target = target;
                 _eof = false;
+                _ending = false;
+                _needsLanding = false;
                 _hold = _holdOffset = 0;
+                _pad = 0;
                 if (!src.TryOpen(new DataSpec { Position = 0, Length = -1 })) return false;
                 if (_set is null)
                 {
                     VorbisWorkingSet set = VorbisWorkingSet.Rent();
                     if (set.Window.Length < WindowBytes) set.Window = GC.AllocateUninitializedArray<byte>(WindowBytes, pinned: true);
-                    set.Decoder ??= new Vorbis.Decoder();
                     set.Reader ??= new Ogg.Reader();
                     _set = set;
                     _win = set.Window;
-                    _dec = set.Decoder;
                     _ogg = set.Reader;
                 }
                 Ogg.Reader ogg = _ogg!;
-                Vorbis.Decoder dec = _dec!;
                 ogg.Reset();
                 ogg.Index.Clear();
+                _indexSeeded = 0;
                 _epoch = _ra?.Epoch ?? 0;
 
                 long localTail = _ra is null ? ScanLocalTail() : -1;          // first: it moves a sequential source
@@ -1514,11 +1952,27 @@ public static partial class Playback
                 first.CopyTo(ident);
                 ident = ident[..first.Length];
                 if (!NextHeader(out ReadOnlySpan<byte> comment) || Vorbis.HeaderType(comment) != 3) return false;
+                // Read NOW: the next header's refill may move the window the packet is a view of (N-3, V-PA18).
+                ReplayGainTags replayGain = ReplayGainTags.FromVorbisComment(comment);
                 if (!NextHeader(out ReadOnlySpan<byte> setup)) return false;
                 // The header pages have been served, so the file's own normalization figure is known by now even when the
                 // body opened with no header at hand (G-107): the source's figure wins over the one this adapter was built with.
-                if (src is INormalizationSource normalization) _gainLinear = GainLinear(normalization.GainDb, normalization.Peak);
+                if (src is INormalizationSource normalization)
+                    _figures = new NormalizationFigures(normalization.GainDb, normalization.Peak, normalization.AlbumGainDb, normalization.AlbumPeak);
+                // N-3, V-PA18: and when neither the catalogue nor the Spotify header carried a figure, the file's own ReplayGain tags (a
+                // local .ogg), read from the comment packet at open — at +4 dB, into the −14 frame everything else is in.
+                _figures = NormalizationFigures.WithReplayGain(in _figures, in replayGain);
+                _gainLinear = GainLinear(_figures.GainDb, _figures.Peak, _figures.AlbumGainDb, _figures.AlbumPeak);
+                // V-PA35: the decoder is rented NOW, by the hash of the setup just read — a pooled decoder whose tables were built
+                // from exactly these bytes skips the parse (a seek's second decoder on the playing track always does).
+                ulong setupHash = Vorbis.Decoder.HashSetup(ident, setup);
+                Vorbis.Decoder dec = _dec ??= VorbisDecoderPool.Rent(setupHash);
+                bool setupHit = dec.SetupHash == setupHash;
+                long setupStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 if (!dec.Open(ident, setup, _gainLinear)) return false;
+                Log.Info("audio", "audio.open.vorbis setupMs="
+                    + System.Diagnostics.Stopwatch.GetElapsedTime(setupStart).TotalMilliseconds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)
+                    + " setupHit=" + (setupHit ? 1 : 0));
                 _rate = dec.SampleRate;
                 if (_rate <= 0) return false;
 
@@ -1533,7 +1987,7 @@ public static partial class Playback
                 long tail = _ra?.TailGranule ?? localTail;
                 _tail = VorbisClock.PlausibleTail(tail, _durationMs, _rate) ? tail : -1;
                 Gapless = VorbisClock.Gapless(_origin, _tail, _rate, target.SampleRate);
-                _resampler = _rate != target.SampleRate ? new LinearResampler(_rate, target.SampleRate, target.Channels) : null;
+                _resampler = _rate != target.SampleRate ? new PolyphaseResampler(_rate, target.SampleRate, target.Channels) : null;
                 int ch = Math.Max(1, target.Channels);
                 if (ch != Vorbis.OutputChannels && _conform.Length < dec.MaxFrames * ch) _conform = new float[dec.MaxFrames * ch];
 
@@ -1561,10 +2015,11 @@ public static partial class Playback
             public void Dispose()
             {
                 VorbisWorkingSet? set = Interlocked.Exchange(ref _set, null);
-                _dec = null;
+                Vorbis.Decoder? dec = Interlocked.Exchange(ref _dec, null);
                 _ogg = null;
                 _win = [];
                 if (set is not null) VorbisWorkingSet.Return(set);
+                if (dec is not null) VorbisDecoderPool.Return(dec);
             }
 
             /// <summary>The next header packet, refilling as it goes. A header is never corrupt and never the end.</summary>
@@ -1575,6 +2030,7 @@ public static partial class Playback
                 {
                     Ogg.Reader.Next next = ogg.NextPacket(_win.AsSpan(0, _winLen), out packet, out _);
                     if (next == Ogg.Reader.Next.Packet) return true;
+                    if (next == Ogg.Reader.Next.Hole) continue;           // a header page lost: the header that follows will not be the one asked for
                     if (next != Ogg.Reader.Next.NeedMore || !Fill()) break;
                 }
                 packet = default;
@@ -1683,12 +2139,19 @@ public static partial class Playback
                     Ogg.Reader.Next next = ogg.NextPacket(_win.AsSpan(0, _winLen), out ReadOnlySpan<byte> packet, out long granule);
                     if (next == Ogg.Reader.Next.NeedMore) { if (!Fill()) return false; continue; }
                     if (next == Ogg.Reader.Next.Eos) return false;
-                    if (next == Ogg.Reader.Next.Corrupt) continue;
+                    // S-7 (OV_HOLE): packets are MISSING here (a page-sequence gap, an oversized packet, an undecodable one). The
+                    // decoder must not overlap-add the next good packet onto a window two packets back (a click): it re-primes, and the
+                    // clock owes the lost span, which the next page granule names and `Read` pads as silence.
+                    if (next is Ogg.Reader.Next.Hole or Ogg.Reader.Next.Corrupt) { dec.Prime(); _clock.Hole(); continue; }
                     long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                     Vorbis.PacketResult decoded = dec.DecodePacket(packet);
                     RecordDecode(DecodeVorbis, decoded == Vorbis.PacketResult.Ok ? dec.Frames : 0, _rate,
                         System.Diagnostics.Stopwatch.GetTimestamp() - t0);
-                    if (decoded != Vorbis.PacketResult.Ok) continue;
+                    if (decoded != Vorbis.PacketResult.Ok)
+                    {
+                        if (decoded != Vorbis.PacketResult.NotAudio) { dec.Prime(); _clock.Hole(); }   // a stray header packet costs nothing
+                        continue;
+                    }
                     bool eos = granule >= 0 && ogg.SawEos;
                     VorbisClock.Run run = _clock.Admit(dec.Frames, granule, eos);
                     if (run.Count > 0)
@@ -1696,6 +2159,7 @@ public static partial class Playback
                         _holdOffset = run.Skip;
                         _hold = run.Count;
                         _heldStart = run.Start + run.Skip;
+                        _pad = run.Pad;
                         if (_target.Channels != Vorbis.OutputChannels) ConformHeld(dec);
                         return true;
                     }
@@ -1742,15 +2206,42 @@ public static partial class Playback
                 int ch = Math.Max(1, _target.Channels);
                 int want = dst.Length / ch;
                 if (want <= 0) return 0;
+                if (_ending) return DrainTail(dst);
+                if (_needsLanding && !TryLand())
+                {
+                    // S-1: still not landed. Interrupted again → silence (the seek that interrupted it is on its way and will
+                    // flush this); anything else means the bytes are really gone (a closed body, a true end) — the old ending.
+                    if (TakeInterrupt(ref _interrupted)) return Silence(dst, want, ch);
+                    _needsLanding = false;
+                    _eof = true;
+                    return 0;
+                }
                 while (true)
                 {
-                    if (_hold == 0 && !NextFrames())
+                    if (_hold == 0 && _pad == 0 && !NextFrames())
                     {
                         // A seek interrupted the byte wait: silence, never an EOF the engine would latch — the seek that is
                         // on its way flushes it (and a seek that never arrives ends the interrupt within a second).
                         if (TakeInterrupt(ref _interrupted)) return Silence(dst, want, ch);
-                        _eof = true;
-                        return 0;
+                        _ending = true;                                          // the last packet is out: the resampler's tail, then the end
+                        return DrainTail(dst);
+                    }
+                    if (_pad > 0)
+                    {
+                        // S-7: the span a hole cost, as silence AHEAD of the frames that follow it — through the resampler, because
+                        // the owed count is in source frames and the mix is not.
+                        int owed = Math.Min(_pad, Math.Max(1, Math.Min(PadChunkFrames, s_padZeros.Length / ch)));
+                        if (_resampler is { IsActive: true } padRs)
+                        {
+                            ResampleResult pr = padRs.Process(s_padZeros.AsSpan(0, owed * ch), owed, dst);
+                            _pad -= pr.Consumed;
+                            if (pr.Produced > 0 || pr.Consumed == 0) return pr.Produced;
+                            continue;
+                        }
+                        int silent = Math.Min(want, owed);
+                        dst[..(silent * ch)].Clear();
+                        _pad -= silent;
+                        return silent;
                     }
                     ReadOnlySpan<float> held = Held();
                     if (_resampler is { IsActive: true } rs)
@@ -1768,6 +2259,16 @@ public static partial class Playback
                 }
             }
 
+            /// <summary>The end of the stream: the resampler's trailing half kernel (V-PE21) over as many reads as <paramref name="dst"/>
+            /// needs, then 0 — and only then <c>_eof</c>. With no resampler there is no tail and this is the old end.</summary>
+            int DrainTail(Span<float> dst)
+            {
+                int tail = _resampler is { IsActive: true } rs ? rs.Flush(dst) : 0;
+                if (tail > 0) return tail;
+                _eof = true;
+                return 0;
+            }
+
             /// <summary>MIX-domain frame in (counted from the decoder's first frame), MIX-domain frame reached out, or −1
             /// when the byte seam failed. The plan is the CORE's (<c>Ogg.BeginSeek</c> / <c>TryNextProbe</c> /
             /// <c>Observe</c>); this is the I/O around it: the source is re-targeted BEFORE each probe window is read,
@@ -1778,7 +2279,10 @@ public static partial class Playback
                 if (_ra is null && !_src.Caps.Seekable) return -1;
                 long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 _hold = _holdOffset = 0;
+                _pad = 0;                                                // a hole's owed silence belongs to the position being left
                 _eof = false;
+                _ending = false;                                         // the tail belonged to the stream being left
+                _needsLanding = false;                                   // a new seek supersedes a landing still waiting
                 _interrupted = false;                                    // the seek the interrupt was waiting for is here
                 _resampler?.Reset();
                 if (_ra is { } ra)
@@ -1786,6 +2290,9 @@ public static partial class Playback
                     long tail = ra.TailGranule;                          // the tail usually lands after the open
                     if (_tail < 0 && VorbisClock.PlausibleTail(tail, _durationMs, _rate)) _tail = tail;
                     _epoch = Math.Max(_epoch, ra.Epoch) + 1;
+                    // V-PA36: the pages the stream layer already walked as their bytes landed (CDN and disk alike) seed the planner,
+                    // so a target inside the fetched window resolves from the index with no probe at all.
+                    if (ra is RingSource ring) ring.SeedPageIndex(_ogg.Index, ref _indexSeeded);
                 }
 
                 long target = VorbisClock.TargetGranule(frame, _rate, _target.SampleRate, _origin);
@@ -1813,21 +2320,32 @@ public static partial class Playback
                 // precedes the target inside the packet that holds it.
                 if (!ReadWindowAt(plan.Offset, plan.WindowBytes, landing: true))
                 {
-                    // The landing window never arrived. The decoder is NOT primed here, so unlike the FLAC arm this
-                    // cannot keep waiting on the ring — the track ends, as it did before. What it no longer does is
-                    // throw: −1 is the engine's `InvalidOperationException("Decoder could not seek to the requested
-                    // frame.")`, and a seek that failed because the bytes are missing is a fact about the link, not a
-                    // bug in the caller. The seek completes at the target and `Read`'s 0 ends it a tick later.
-                    _eof = true;
-                    Log.Warn("audio", $"audio.seek.short codec=vorbis target={target} page={plan.Offset} eof=1");
+                    // The landing window never arrived. Never a throw: −1 is the engine's `InvalidOperationException("Decoder
+                    // could not seek to the requested frame.")`, and a seek that failed because the bytes are missing is a fact
+                    // about the link, not a bug in the caller. The seek completes at the target either way. What happens NEXT
+                    // depends on WHY it never arrived:
+                    //   • INTERRUPTED (S-1, V-PA16) — an interrupt for the NEXT seek of a scrub, which is on its way and will
+                    //     flush this. Latching `_eof` here ended the track for every seek storm that raced it. The decoder is not
+                    //     primed, so it cannot keep decoding like the FLAC arm; it latches `_needsLanding` instead and `Read`
+                    //     serves silence while it repeats the landing read.
+                    //   • anything else (a closed body, a true end) — the track ends, as it did before; `Read`'s 0 says so.
+                    bool interrupted = _interrupted;
+                    if (interrupted)
+                    {
+                        _needsLanding = true;
+                        _landOffset = plan.Offset;
+                        _landBytes = plan.WindowBytes;
+                        _landTarget = target;
+                        _interrupted = false;                            // consumed: the latch is the landing's now
+                    }
+                    else _eof = true;
+                    Log.Warn("audio", $"audio.seek.short codec=vorbis target={target} page={plan.Offset} eof={(_eof ? 1 : 0)} "
+                                      + $"interrupted={(interrupted ? 1 : 0)} needsLanding={(_needsLanding ? 1 : 0)}");
                     return VorbisClock.MixFrameOf(target, _rate, _target.SampleRate, _origin);
                 }
-                long start = PeekLanding();
-                _dec.Prime();
-                _clock = VorbisClock.At(start);
-                _clock.Target = target;
+                PlaceLanding(target);
                 bool landed = NextFrames();
-                if (!landed) _eof = true;
+                if (!landed && !_interrupted) _eof = true;               // an interrupted first decode is silence, not the end (S-1)
                 long reached = landed ? _heldStart : _clock.Position != VorbisClock.Unknown ? _clock.Position : target;
                 Log.Info("audio", $"audio.seek codec=vorbis target={target} landed={reached} page={plan.Offset} "
                                   + $"probes={plan.Probes} tier={plan.Tier} resolved={(plan.Resolved ? 1 : 0)} "
@@ -1835,17 +2353,43 @@ public static partial class Playback
                 return VorbisClock.MixFrameOf(reached, _rate, _target.SampleRate, _origin);
             }
 
+            /// <summary>The landing window is in: peek the first frame's granule, prime the decoder on the page, and place the
+            /// clock so it drops what precedes <paramref name="target"/> inside the packet that holds it.</summary>
+            void PlaceLanding(long target)
+            {
+                long start = PeekLanding();
+                _dec!.Prime();
+                _clock = VorbisClock.At(start);
+                _clock.Target = target;
+            }
+
+            /// <summary>S-1: repeat the landing read a <c>Seek</c> left latched in <c>_needsLanding</c>. WITHOUT re-targeting the
+            /// source: the failed attempt's retarget stands (the bytes are already requested), and a re-targeting read would also
+            /// end the interrupt window the NEXT seek's <c>InterruptPendingRead</c> opened — leaving the producer blocked on a
+            /// position the seek is about to abandon. True once the window is in and the decoder is primed.</summary>
+            bool TryLand()
+            {
+                if (!ReadWindowAt(_landOffset, _landBytes, landing: true, retarget: false)) return false;
+                PlaceLanding(_landTarget);
+                _needsLanding = false;
+                return true;
+            }
+
             /// <summary>Read a window at an absolute container offset. On the random-access face the source is
             /// re-targeted first (a resident window costs nothing) and, for the landing, the sequential fill is resumed
-            /// there before a byte is read.</summary>
-            bool ReadWindowAt(long offset, int bytes, bool landing)
+            /// there before a byte is read. <paramref name="retarget"/> false repeats a read the source was already
+            /// re-targeted for (S-1's retry).</summary>
+            bool ReadWindowAt(long offset, int bytes, bool landing, bool retarget = true)
             {
                 if (_ra is { } ra)
                 {
-                    ra.Retarget(offset, bytes, _epoch);
-                    if (landing) ra.ResumeFrom(offset);
+                    if (retarget)
+                    {
+                        ra.Retarget(offset, bytes, _epoch);
+                        if (landing) ra.ResumeFrom(offset);
+                    }
                 }
-                else if (_src!.Seek(offset) != offset) return false;
+                else if (retarget && _src!.Seek(offset) != offset) return false;
                 _winStart = offset;
                 _winLen = 0;
                 VorbisClock.Restart(_ogg!, offset);
@@ -1864,20 +2408,100 @@ public static partial class Playback
         /// layer's <see cref="Spotify.Audio.Body"/> — the clear head, the read-ahead ring, the fetch thread and the disk
         /// cache all live there (owner F). This adds the engine's sequential face (MP3, and anything else that only
         /// speaks <c>Read</c>/<c>Seek</c>) and the random-access face the Vorbis and FLAC adapters read. Container
-        /// coordinates throughout: the 0xa7 skip is inside <c>Body</c>.</summary>
+        /// coordinates throughout: the 0xa7 skip is inside <c>Body</c>.
+        /// <para>OWNING or a VIEW (V-PA4, V-PA20). The source the track was opened with OWNS the body: its reads move the ring's
+        /// cursor and epoch, a seek's <c>Retarget</c>/<c>ResumeFrom</c> steer the fill, and closing it disposes the body. A
+        /// seek's SECOND decoder (design A) reads the same body through a non-owning view (<c>ownsBody: false</c>): its reads
+        /// are <c>Body.ProbeAt</c> (resident bytes copied without touching the cursor, the epoch or the interrupt; a miss
+        /// queued BEHIND the live fill), its <c>Retarget</c> is <c>Body.ProbeRange</c>, its <c>ResumeFrom</c> and
+        /// <c>InterruptPendingRead</c> do nothing, and closing it never disposes the body — the retiring voice's teardown
+        /// can therefore never take the playing voice's bytes with it. <see cref="ReleaseOwnership"/> /
+        /// <see cref="TakeOwnership"/> hand the body over, once, just BEFORE the swap that makes the view the live voice.</para></summary>
         public sealed class RingSource : IMediaByteSource, IRandomAccessBytes, INormalizationSource
         {
+            /// <summary>How long ONE probe read waits for a missing range before it answers <see cref="StarvedRead"/> — the
+            /// caller asks again (the decoders loop on it), so a cancelled view ends within a slice.</summary>
+            const int ProbeSliceMs = 250;
+
             readonly Spotify.Audio.Body _body;
             long _cursor;
+            int _owns;                  // 1 = this source owns the body (Interlocked)
+            int _cancelled;             // a view only: the prepare that built it was cancelled — every read answers −1
+            int _residentOnly;          // a view only: reads answer what is resident and never wait (the scrub's recentre)
+            long _probeEnd;             // a view only: the end of the bytes it read last — where it takes the sequential fill over
 
-            public RingSource(Spotify.Audio.Body body) => _body = body;
+            public RingSource(Spotify.Audio.Body body, bool ownsBody = true)
+            {
+                _body = body;
+                _owns = ownsBody ? 1 : 0;
+            }
 
             public Spotify.Audio.Body Body => _body;
+
+            /// <summary>This source owns the body (its reads steer the ring; closing it disposes the body).</summary>
+            public bool OwnsBody => Volatile.Read(ref _owns) != 0;
+
+            /// <summary>A view's reads answer only what is resident (0 at once for the rest), never waiting on the wire — the
+            /// scrub source toggles it around its recentre (V-PA30). Ignored by an owning source.</summary>
+            public bool ResidentOnly
+            {
+                get => Volatile.Read(ref _residentOnly) != 0;
+                set => Volatile.Write(ref _residentOnly, value ? 1 : 0);
+            }
+
+            /// <summary>Stop being the body's owner: reads become probes, <c>Close</c> stops disposing it. Idempotent.</summary>
+            public void ReleaseOwnership() => Interlocked.Exchange(ref _owns, 0);
+
+            /// <summary>Become the body's owner (the swap that makes this view the live voice is about to land): reads move the ring
+            /// again, and the sequential fill continues from where this source last read, so the new playhead's bytes are the ones
+            /// the ring keeps ahead. Idempotent.</summary>
+            public void TakeOwnership()
+            {
+                if (Interlocked.Exchange(ref _owns, 1) != 0) return;
+                long end = Volatile.Read(ref _probeEnd);
+                if (end > 0) _body.ResumeFrom(end);
+            }
+
+            /// <summary>V-PA36: merge the stream layer's landing-time page index (every Ogg page walked as its bytes landed, CDN and
+            /// disk alike) into <paramref name="index"/> — only what is new since <paramref name="seeded"/> (the body's array is
+            /// grow-only). The ONE call site of <c>Body.PageIndexSnapshot</c>.</summary>
+            public void SeedPageIndex(Ogg.PageIndex index, ref int seeded)
+            {
+                _body.PageIndexSnapshot(out ReadOnlySpan<long> offsets, out ReadOnlySpan<long> granules);
+                int count = Math.Min(offsets.Length, granules.Length);
+                if (count <= seeded) return;
+                index.Merge(offsets[seeded..count], granules[seeded..count]);
+                seeded = count;
+            }
+
+            /// <summary>One probe read for a view (never the owning path): resident bytes at <paramref name="offset"/>, else one
+            /// slice's wait behind the live fill. >0 copied; −1 cancelled or the body is gone; 0 at the true end — or, with
+            /// <see cref="ResidentOnly"/>, "not resident"; <see cref="StarvedRead"/> after a slice with nothing (never the end:
+            /// the caller asks again).</summary>
+            int ProbeRead(long offset, Span<byte> dst)
+            {
+                if (Volatile.Read(ref _cancelled) != 0 || _body.Disposed) return -1;
+                bool residentOnly = ResidentOnly;
+                int n = _body.ProbeAt(offset, dst, ProbeSliceMs, residentOnly);
+                if (n > 0)
+                {
+                    if (offset + n > Volatile.Read(ref _probeEnd)) Volatile.Write(ref _probeEnd, offset + n);
+                    return n;
+                }
+                if (n < 0 || residentOnly) return n < 0 ? n : 0;
+                if (_body.LengthKnown && offset >= _body.Length) return 0;
+                return StarvedRead;
+            }
 
             /// <summary>The body's figure — the catalogue's, the header's, or chunk 0's once it landed.</summary>
             public float GainDb => _body.GainDb;
 
             public float Peak => _body.Peak;
+
+            /// <summary>The body's ALBUM pair (D5, V-PA13) — the header's bytes 152/156, the catalogue's album params, or chunk 0's.</summary>
+            public float AlbumGainDb => _body.AlbumGainDb;
+
+            public float AlbumPeak => _body.AlbumPeak;
 
             /// <summary>Container bytes — the catalogue estimate until the first range's <c>Content-Range</c> names it.</summary>
             public long? Length => _body.Length;
@@ -1892,15 +2516,26 @@ public static partial class Playback
             public bool TryOpen(in DataSpec spec)
             {
                 _cursor = Math.Max(0, spec.Position);
-                return !_body.Disposed;
+                return !_body.Disposed && Volatile.Read(ref _cancelled) == 0;
             }
 
             /// <summary>The sequential read at the cursor. 0 only at EOF (the ring's rule). NEVER interruptible: a sequential
             /// consumer (NLayer through <see cref="ByteSourceStream"/>) cannot tell "a seek is coming" from the end of the
             /// track, so it keeps waiting — through every starve too (D5), until bytes arrive or a Stop closes the body. A −1
-            /// from a moved epoch is retried once, as <see cref="ReadAtEpoch"/> does.</summary>
+            /// from a moved epoch is retried once, as <see cref="ReadAtEpoch"/> does. A VIEW reads by probe (it never moves the
+            /// ring), asking again after every starved slice until bytes arrive, it is cancelled or the body goes.</summary>
             public int Read(Span<byte> dst)
             {
+                if (!OwnsBody)
+                {
+                    while (true)
+                    {
+                        int p = ProbeRead(_cursor, dst);
+                        if (p == StarvedRead) continue;
+                        if (p > 0) _cursor += p;
+                        return p;
+                    }
+                }
                 uint epoch = _body.Epoch;
                 bool retried = false;
                 while (true)
@@ -1928,37 +2563,54 @@ public static partial class Playback
 
             /// <summary>The random-access face the Vorbis and FLAC adapters read — INTERRUPTIBLE, because both hand out
             /// silence for <see cref="InterruptedRead"/> until their own seek arrives.</summary>
-            public int ReadAt(long offset, Span<byte> dst, uint epoch) => _body.ReadAt(offset, dst, epoch, interruptible: true);
+            public int ReadAt(long offset, Span<byte> dst, uint epoch)
+                => OwnsBody ? _body.ReadAt(offset, dst, epoch, interruptible: true) : ProbeRead(offset, dst);
 
             /// <summary>A seek. The ring aligns the probe out to whole slots at both ends, so the one range on the wire
-            /// covers the whole window the planner is about to read.</summary>
-            public void Retarget(long probeOffset, int probeBytes, uint epoch) => _body.Retarget(probeOffset, probeBytes, epoch);
+            /// covers the whole window the planner is about to read. A view only REQUESTS the range
+            /// (<c>Body.ProbeRange</c>, queued behind the live fill): the ring's cursor, epoch and in-flight fill are not its to move.</summary>
+            public void Retarget(long probeOffset, int probeBytes, uint epoch)
+            {
+                if (OwnsBody) { _body.Retarget(probeOffset, probeBytes, epoch); return; }
+                if (Volatile.Read(ref _cancelled) == 0) _body.ProbeRange(probeOffset, probeBytes);
+            }
 
             /// <summary>A seek is on its way (see <see cref="Spotify.Audio.Body.InterruptPendingRead"/>): release a
             /// decoder blocked in the ring's wait so the engine's producer reaches its seek mailbox now, not after the
-            /// 8 s bound. Any thread; non-blocking.</summary>
-            public void InterruptPendingRead() => _body.InterruptPendingRead();
+            /// 8 s bound. Any thread; non-blocking. A view has no wait of the ring's to interrupt.</summary>
+            public void InterruptPendingRead()
+            {
+                if (OwnsBody) _body.InterruptPendingRead();
+            }
 
+            /// <summary>The seek landed at <paramref name="offset"/>: the sequential fill continues from there. A view only moves
+            /// its own cursor — the live voice's fill is not its to steer until <see cref="TakeOwnership"/>.</summary>
             public void ResumeFrom(long offset)
             {
                 _cursor = Math.Max(0, offset);
-                _body.ResumeFrom(offset);
+                if (OwnsBody) _body.ResumeFrom(offset);
             }
 
             /// <summary>The engine cancels only a source that is going away — an abandoned open or prepare, a retiring
-            /// voice — so the body is released: a read blocked in the ring's bounded wait returns −1 at once.</summary>
-            public void Cancel() => _body.Dispose();
+            /// voice — so the owning source releases the body: a read blocked in the ring's bounded wait returns −1 at once. A
+            /// view disposes nothing (the body is the live voice's): it only stops answering, so a probe read in flight ends within
+            /// its slice.</summary>
+            public void Cancel()
+            {
+                if (OwnsBody) _body.Dispose();
+                else Volatile.Write(ref _cancelled, 1);
+            }
 
-            public void Close() => _body.Dispose();
+            public void Close() => Cancel();
         }
 
         /// <summary>MP3, over NLayer. The LAME/Xing gapless numbers are read from the tag before the codec takes the
         /// stream — never a hardcoded constant, because the delay and padding are the encoder's own facts.</summary>
-        public sealed class Mp3AudioDecoder : IAudioDecoder
+        public sealed class Mp3AudioDecoder : IAudioDecoder, IGainFolding
         {
             readonly float _gain;
             NLayer.MpegFile? _file;
-            LinearResampler? _resampler;
+            PolyphaseResampler? _resampler;
             MixFormat _target;
             float[] _src = [];
             float[] _pull = [];        // NLayer speaks float[] only; ONE buffer, never one per block (P8)
@@ -1971,6 +2623,9 @@ public static partial class Playback
                 _gain = GainLinear(gainDb, peak);
                 _pullFn = ReadSource;
             }
+
+            /// <summary>The linear factor folded into this decoder's output (<see cref="IGainFolding"/>, V-PA15).</summary>
+            public float AppliedGainLinear => _gain;
 
             public GaplessInfo Gapless { get; private set; } = GaplessInfo.None;
 
@@ -1986,7 +2641,7 @@ public static partial class Playback
                     _file = new NLayer.MpegFile(stream);
                     _srcChannels = Math.Max(1, _file.Channels);
                     int rate = _file.SampleRate > 0 ? _file.SampleRate : target.SampleRate;
-                    _resampler = rate != target.SampleRate ? new LinearResampler(rate, target.SampleRate, target.Channels) : null;
+                    _resampler = rate != target.SampleRate ? new PolyphaseResampler(rate, target.SampleRate, target.Channels) : null;
                     _src = new float[4096 * Math.Max(_srcChannels, target.Channels)];
                     Gapless = hasTag ? tag.ToGapless(rate, target.SampleRate) : GaplessInfo.None;
                     info = new DecodedInfo(new MediaContentType(Container.Mp3, CodecId.None, CodecId.Mp3),
@@ -2021,10 +2676,17 @@ public static partial class Playback
                     long srcFrame = _target.SampleRate == _file.SampleRate
                         ? frame
                         : (long)Math.Round((double)frame * _file.SampleRate / _target.SampleRate);
-                    _file.Position = srcFrame * _srcChannels;
+                    // NLayer's Position is in BYTES of decoded float samples, not samples (its Length is samples × 4): the
+                    // old `srcFrame × channels` landed a quarter of the way to the target.
+                    _file.Position = srcFrame * _srcChannels * sizeof(float);
                     _hold = 0;
                     _resampler?.Reset();
-                    return frame;
+                    // NLayer lands on an MPEG frame boundary (up to ~1 152 samples off): report where it actually is, so
+                    // the clock rebases on the audio that plays rather than on the ask.
+                    long landedSrc = _file.Position / (sizeof(float) * (long)_srcChannels);
+                    return _target.SampleRate == _file.SampleRate
+                        ? landedSrc
+                        : (long)Math.Round((double)landedSrc * _target.SampleRate / _file.SampleRate);
                 }
                 catch { return -1; }
             }
@@ -2129,39 +2791,47 @@ public static partial class Playback
         delegate int PullSamples(Span<float> into);
 
         /// <summary>Pull → channel conform → gain → resample, for the MP3 pull decoder. The FLAC and Vorbis adapters
-        /// have their own loops because their cores hand over whole decoded blocks rather than an interleaved pull.</summary>
+        /// have their own loops because their cores hand over whole decoded blocks rather than an interleaved pull. When the pull
+        /// runs dry the resampler's trailing half kernel (V-PE21) is handed out over as many reads as <paramref name="dst"/> needs
+        /// (<c>Flush</c> answers 0 once it is spent, which is the end); the pull is asked again on each of those reads, and a
+        /// finished stream answers 0 again.</summary>
         static int PullConform(Span<float> dst, MixFormat target, int srcChannels, float gain,
-            ref int hold, float[] scratch, LinearResampler? resampler, PullSamples pull)
+            ref int hold, float[] scratch, PolyphaseResampler? resampler, PullSamples pull)
         {
             int ch = target.Channels;
             int want = dst.Length / ch;
             if (want <= 0 || scratch.Length == 0) return 0;
 
-            if (hold == 0)
+            while (true)
             {
-                int maxFrames = Math.Min(scratch.Length / Math.Max(ch, srcChannels), 4096);
-                int samples = pull(scratch.AsSpan(0, maxFrames * srcChannels));
-                if (samples <= 0) return 0;
-                int frames = samples / srcChannels;
-                Conform(scratch, frames, srcChannels, ch, gain);
-                hold = frames;
-            }
+                if (hold == 0)
+                {
+                    int maxFrames = Math.Min(scratch.Length / Math.Max(ch, srcChannels), 4096);
+                    int samples = pull(scratch.AsSpan(0, maxFrames * srcChannels));
+                    if (samples <= 0) return resampler is { IsActive: true } tail ? tail.Flush(dst) : 0;
+                    int frames = samples / srcChannels;
+                    Conform(scratch, frames, srcChannels, ch, gain);
+                    hold = frames;
+                }
 
-            if (resampler is { IsActive: true } rs)
-            {
-                ResampleResult rr = rs.Process(scratch.AsSpan(0, hold * ch), hold, dst);
-                int unread = hold - rr.Consumed;
-                if (unread > 0 && rr.Consumed > 0) scratch.AsSpan(rr.Consumed * ch, unread * ch).CopyTo(scratch);
-                hold = unread;
-                return rr.Produced;
-            }
+                if (resampler is { IsActive: true } rs)
+                {
+                    ResampleResult rr = rs.Process(scratch.AsSpan(0, hold * ch), hold, dst);
+                    int unread = hold - rr.Consumed;
+                    if (unread > 0 && rr.Consumed > 0) scratch.AsSpan(rr.Consumed * ch, unread * ch).CopyTo(scratch);
+                    hold = unread;
+                    // A pull that went wholly into the filter's history (the group-delay pre-roll) produced nothing: that is not the end.
+                    if (rr.Produced > 0 || rr.Consumed == 0) return rr.Produced;
+                    continue;
+                }
 
-            int take = Math.Min(want, hold);
-            scratch.AsSpan(0, take * ch).CopyTo(dst);
-            int rest = hold - take;
-            if (rest > 0) scratch.AsSpan(take * ch, rest * ch).CopyTo(scratch);
-            hold = rest;
-            return take;
+                int take = Math.Min(want, hold);
+                scratch.AsSpan(0, take * ch).CopyTo(dst);
+                int rest = hold - take;
+                if (rest > 0) scratch.AsSpan(take * ch, rest * ch).CopyTo(scratch);
+                hold = rest;
+                return take;
+            }
         }
 
         /// <summary>In-place channel conform + gain, walked BACKWARD when it grows so mono→stereo needs no second
@@ -2354,6 +3024,7 @@ public static partial class Playback
             {
                 if (!sess.TryAddCrossfadeVoice(item.AudioVoice!, GainEnvelope.Constant, join, rg, sess.BuildVoiceChain(), id))
                     return false;
+                NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the joining voice's decoder folded
                 s_joinExact = exact;
                 s_joinPending = true;
                 s_joinFrame = join;
@@ -2464,6 +3135,7 @@ public static partial class Playback
                     return false;
                 sess.SetVoiceEnvelope(s_activePrimaryId,
                     GainEnvelope.Fade(FadeKind.Out, start, fadeFrames, CrossCurve.EqualPower));
+                NoteBakedFactor(id, s_prepDecoder, in s_prepOpened);       // V-PA15: what the incoming voice's decoder folded
 
                 outgoing = s_loadEpoch;
                 joined = s_prepId;
@@ -2513,14 +3185,15 @@ public static partial class Playback
 
         /// <summary>Abandon a pending join. The mixer has no voice REMOVAL, so B's envelope is pinned at zero with a
         /// 1-frame fade-out in the past and its byte source is cut: the ring decode faults to EOF and the voice
-        /// retires silently.</summary>
-        static void AbandonPendingJoin(PcmAudioSession? sess, string reason)
+        /// retires silently. True when a join was really dropped (S-5: only then does a seek owe the reducer a
+        /// <c>PrepareLost</c> — see <see cref="AfterSeekLanded"/>).</summary>
+        static bool AbandonPendingJoin(PcmAudioSession? sess, string reason)
         {
             long voiceId;
             IMediaByteSource? bytes;
             lock (s_gate)
             {
-                if (!s_joinPending) return;
+                if (!s_joinPending) return false;
                 s_joinPending = false;
                 voiceId = s_joinVoiceId;
                 bytes = s_joinBytes;
@@ -2533,6 +3206,7 @@ public static partial class Playback
             Log.Info("audio", "join abandoned reason=" + reason);
             try { sess?.SetVoiceEnvelope(voiceId, GainEnvelope.Fade(FadeKind.Out, 0, 1, CrossCurve.Linear)); } catch { }
             if (bytes is not null) { try { bytes.Close(); } catch { } }
+            return true;
         }
 
         static void DisposePreparedSlot()
@@ -2556,51 +3230,295 @@ public static partial class Playback
 
         // ── 11. seek ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <param name="t0">The <c>Stopwatch</c> stamp of the <see cref="Seek"/> call (0: a restore's seek, not timed).</param>
-        /// <param name="before">The stream counters at that call — the seek's kind is the delta (<see cref="SeekKindOf"/>).</param>
-        static async Task SeekCoreAsync(int ms, uint epoch, long t0 = 0, Spotify.Audio.Stream.Stats before = default)
+        /// <summary>How long a design-A prepare may take to deliver its first block before the OLD voice stops playing the position
+        /// the user already left (V-PE14): past it the old voice fades to silence over <see cref="SeekStaleFadeMs"/> and the new
+        /// one fades in from silence when it lands.</summary>
+        const int SeekStaleMs = 80, SeekStaleFadeMs = 10;
+
+        /// <summary>How a design-A attempt ended: its voice is the live one, a newer seek / a load / a stop superseded it (nothing to
+        /// report — the newer op owns the outcome), or it failed and the seek falls back to the in-place path.</summary>
+        enum SwapOutcome : byte { Landed, Cancelled, Failed }
+
+        /// <summary>The seek pump (V-PA28, S-4): ONE op per run of seeks, reading the NEWEST target from the mailbox, last write
+        /// wins. Three ways to serve it, none of which stops the device (D3):
+        /// <list type="number">
+        /// <item><b>B — the ring jump.</b> A target inside the decoded span (the kept 1 s behind, the 2 s ahead) is decided and
+        /// applied ON the RT thread (<c>TryJumpWithinRingAsync</c>): a 5 ms equal-power blend, the live producer untouched.</item>
+        /// <item><b>A — the voice swap.</b> A second decoder opens at the target on a NON-OWNING view of the same bytes
+        /// (<see cref="SwapSeekAsync"/>) while the live voice keeps playing; ONE compound engine command replaces it at a block
+        /// boundary. Needs a free decoder lease and a Spotify body.</item>
+        /// <item><b>Fallback — in place.</b> No lease (or A failed): the engine fades the live voice out and holds, the decoder
+        /// seeks, the voice fades back in. The one path that interrupts the live producer's byte wait (V-PA19).</item>
+        /// </list>
+        /// The achieved frame — not the requested one — is what the reducer is told (U-11).</summary>
+        static async Task SeekCoreAsync()
         {
+            long packed, t0;
+            uint gen, loaded;
+            Spotify.Audio.Stream.Stats before;
             PcmAudioSession? sess;
+            PcmAudioPlayer? backend;
+            IMediaByteSource? bytes;
+            Opened opened;
             bool silent;
-            lock (s_gate) { sess = s_session; silent = s_silent; }
+            lock (s_gate)
+            {
+                packed = Interlocked.Exchange(ref s_seekMailbox, -1);
+                gen = s_seekMailboxGen;
+                t0 = s_seekT0;
+                before = s_seekBefore;
+                sess = s_session;
+                silent = s_silent;
+                backend = s_backend;
+                bytes = s_bytes;
+                opened = s_opened;
+                loaded = s_loadEpoch;
+            }
+            if (packed < 0) return;                                  // a load cleared it, or an earlier op already took it
+            uint epoch = (uint)(packed >> 32);
+            int ms = (int)(uint)packed;
+            if (epoch != loaded)
+            {
+                // A seek for a load whose op is still queued BEHIND this one (an earlier Seek queued this op, then Load(N+1) and
+                // Seek(N+1) overwrote the mailbox before the chain got here): hand it back and run it after that load — the load keeps a
+                // seek stamped with its own epoch. Nothing queued behind us means no load is coming: the seek is for a dead load.
+                if (epoch > loaded && Volatile.Read(ref s_chainDepth) > 1 && Interlocked.CompareExchange(ref s_seekMailbox, packed, -1) == -1)
+                {
+                    Enqueue(SeekCoreAsync);
+                    return;
+                }
+                ClearPendingSeek(gen);       // for a load that is no longer the live one
+                return;
+            }
+
             if (silent && sess is not null)
             {
                 // The facade has no silent session, and the silent voice is a signal generator the engine cannot seek.
-                if (await SilentSeekAsync(sess, ms, epoch).ConfigureAwait(false) && t0 != 0) RecordSeek(ms, t0, before);
+                if (await SilentSeekAsync(sess, ms, epoch, gen).ConfigureAwait(false) && t0 != 0) RecordSeek(ms, t0, before);
                 return;
             }
             MediaPlayer? p = Volatile.Read(ref s_player);
-            if (p is null || sess is null) { lock (s_gate) s_pendingSeekMs = ms; return; }
-            AbandonPendingJoin(sess, "seek");
-            await ApplySeekAsync(ms, epoch, t0, before).ConfigureAwait(false);
+            if (p is null || sess is null || backend is null)
+            {
+                // Parked: the tick's Ready arm applies the target once a session is there (the target is still pending).
+                lock (s_gate) { if (s_pendingSeekGen == gen) s_pendingSeekQueued = false; }
+                return;
+            }
+
+            if (AbandonPendingJoin(sess, "seek")) lock (s_gate) s_joinLostBySeek = true;   // S-5: owed to the reducer once the seek lands
+            long target = GaplessJoinClock.MsToFrames(ms, sess.Format.SampleRate);
+            long achieved = -1;
+            bool swapped = false;
+            try
+            {
+                if (await sess.TryJumpWithinRingAsync(target, CancellationToken.None).ConfigureAwait(false)) achieved = target;      // B
+                else if (bytes is RingSource owner && backend.TryAcquireDecoderLease(out IDisposable lease))                        // A
+                {
+                    (SwapOutcome outcome, long landed) = await SwapSeekAsync(sess, backend, owner, opened, target, gen, lease).ConfigureAwait(false);
+                    if (outcome == SwapOutcome.Cancelled)
+                    {
+                        // A newer seek (or a load) owns the outcome — its pending target is the one that stays. Only when NOTHING newer
+                        // exists (a hand-off replaced the live voice under this seek) is this one's target released.
+                        ClearPendingSeek(gen);
+                        return;
+                    }
+                    if (outcome == SwapOutcome.Landed) { achieved = landed; swapped = true; }
+                }
+                if (achieved < 0)
+                {
+                    (bytes as RingSource)?.InterruptPendingRead();                                                                  // V-PA19: only HERE
+                    achieved = await sess.SeekInPlaceAsync(target, CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                // A scrub release or the stale timer may have parked the voice at gain 0: a failed seek must give it its level
+                // back, or the track plays on in silence until the next seek or load.
+                RestoreSilencedVoice(sess);
+                SeekFailed(ms, gen, ex);
+                return;
+            }
+            if (!swapped) RestoreSilencedVoice(sess);
+            int achievedMs = achieved == target ? ms : (int)Math.Min(int.MaxValue, achieved * 1000L / Math.Max(1, sess.Format.SampleRate));
+            AfterSeekLanded(ms, achievedMs, epoch, gen, t0, before);
         }
 
-        static async Task ApplySeekAsync(int ms, uint epoch, long t0 = 0, Spotify.Audio.Stream.Stats before = default)
+        /// <summary>Seek A (D3): a second decoder, opened at <paramref name="target"/> on a NON-OWNING view of the live body, replaces
+        /// the playing voice in ONE compound engine command while the old voice keeps playing right up to the swap block.
+        /// <para>Ordering that matters. (1) The stale timer starts with the prepare (V-PE14). (2) The prepare runs under a token a
+        /// newer seek cancels; the lease travels with the prepared voice and is released on every failure path. (3) The BODY is handed
+        /// over — the old source stops owning it, the view starts — BEFORE the swap (V-PA4): the retiring voice's teardown closes its
+        /// source and must not dispose what the new voice reads. (4) Once handed over the swap is NOT cancellable (a newer seek
+        /// waits its turn on the chain): cancelling there would dispose a voice that already owns the body.</para>
+        /// <para>Returns <see cref="SwapOutcome.Landed"/> with the achieved frame (the prepared item's start, U-11),
+        /// <see cref="SwapOutcome.Cancelled"/> when superseded, <see cref="SwapOutcome.Failed"/> when the caller should fall back.</para></summary>
+        static async Task<(SwapOutcome Outcome, long Achieved)> SwapSeekAsync(PcmAudioSession sess, PcmAudioPlayer backend,
+            RingSource owner, Opened opened, long target, uint gen, IDisposable lease)
         {
-            MediaPlayer? p = Volatile.Read(ref s_player);
-            if (p is null) return;
-            try { await p.SeekAsync(TimeSpan.FromMilliseconds(Math.Max(0, ms)), SeekMode.Accurate).ConfigureAwait(false); }
-            catch (Exception ex) { SeekFailed(ms, ex); return; }
+            var cts = new CancellationTokenSource();
+            Volatile.Write(ref s_seekPrepare, cts);
+            var timerCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+            IPreparedItem? item = null;
+            RingSource? view = null;
+            IAudioDecoder? decoder = null, previous = null;
+            Task stale = Task.CompletedTask;
+            bool handedOver = false, swapped = false;
+            long achieved = 0;
+            try
+            {
+                view = new RingSource(owner.Body, ownsBody: false);         // a second reader: probes, no cursor / epoch moves (V-PA20)
+                decoder = CreateDecoderFor(opened);
+                s_decoderForOpen.Value = decoder;                           // flows into the engine's factory call inside the prepare
+                MediaSource source = MediaSource.FromPull(view).WithKind(MediaKind.PcmAudio);
+                PrepareContext ctx = PrepareContext.For(sess.Format, sess.NormalizationMode, sess.ReferenceLufsValue);
+                stale = StaleTimerAsync(sess, timerCts.Token);
+                item = await backend.PrepareAtAsync(source, ctx, target, lease, cts.Token).ConfigureAwait(false);   // the lease travels with it
+                s_decoderForOpen.Value = null;
+                cts.Token.ThrowIfCancellationRequested();                   // a newer seek landed its target while this finished: newest wins
 
+                lock (s_gate)
+                {
+                    // A load, a stop or a hand-off moved the live voice while the prepare ran: it is not ours to replace.
+                    if (!ReferenceEquals(s_session, sess) || !ReferenceEquals(s_bytes, owner)) throw new OperationCanceledException();
+                    previous = s_activeDecoder;
+                    owner.ReleaseOwnership();
+                    view.TakeOwnership();
+                    handedOver = true;
+                    s_bytes = view;
+                    s_activeDecoder = decoder;
+                }
+                achieved = await sess.SwapToPreparedAsync(item, gen, CancellationToken.None).ConfigureAwait(false);
+                swapped = true;
+                item = null;                                                // its voice is the session's now
+                timerCts.Cancel();                                          // the swap is in: the stale fade has nothing left to do
+                try { await stale.ConfigureAwait(false); } catch { }
+                lock (s_gate)
+                {
+                    s_activePrimaryId = sess.ActiveVoiceIdValue;
+                    NoteBakedFactor(s_activePrimaryId, decoder, in opened); // V-PA15: the new voice's baked factor
+                    s_activeSilenced = false;                               // the new voice came in from its own envelope
+                }
+                return (SwapOutcome.Landed, achieved);
+            }
+            catch (Exception ex)
+            {
+                if (swapped) return (SwapOutcome.Landed, achieved);         // nothing after the swap can fail the seek
+                bool cancelled = ex is OperationCanceledException || !IsLiveSession(sess);
+                if (handedOver)
+                {
+                    // The hand-over precedes the swap by design; undo it so the still-playing old voice keeps a body that disposes
+                    // with IT (best effort: a failure INSIDE the engine's swap races the new ring's retirement, which closes `view`).
+                    lock (s_gate)
+                    {
+                        try { view!.ReleaseOwnership(); owner.TakeOwnership(); } catch { }
+                        if (ReferenceEquals(s_bytes, view)) { s_bytes = owner; s_activeDecoder = previous; }
+                    }
+                }
+                timerCts.Cancel();
+                if (item is not null) { try { await item.DisposeAsync().ConfigureAwait(false); } catch { } }
+                lease.Dispose();                                            // idempotent: the engine already released it on its own failure paths
+                if (!cancelled) Log.Warn("audio", $"audio.seek.swap.failed to={target} — falling back to the in-place seek", ex);
+                return (cancelled ? SwapOutcome.Cancelled : SwapOutcome.Failed, 0);
+            }
+            finally
+            {
+                s_decoderForOpen.Value = null;
+                if (ReferenceEquals(Volatile.Read(ref s_seekPrepare), cts)) Volatile.Write(ref s_seekPrepare, null);
+                timerCts.Dispose();
+                cts.Dispose();
+            }
+        }
+
+        /// <summary>Is <paramref name="sess"/> still the live session of an engine that is not shutting down?</summary>
+        static bool IsLiveSession(PcmAudioSession sess)
+        {
+            lock (s_gate) return ReferenceEquals(s_session, sess) && !s_disposed;
+        }
+
+        /// <summary>V-PE14: the prepare had no block for <see cref="SeekStaleMs"/> — the live voice is still playing a position the
+        /// user left, so it fades to silence over <see cref="SeekStaleFadeMs"/> (the new voice comes in from silence when it lands).
+        /// Does nothing when the swap landed first or the timer was cancelled. <c>s_activeSilenced</c> goes up BEFORE the fade is
+        /// requested: a fade that lands and a flag that did not would leave a silent voice nobody gives its level back to.</summary>
+        static async Task StaleTimerAsync(PcmAudioSession sess, CancellationToken ct)
+        {
+            try { await Task.Delay(SeekStaleMs, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+            try
+            {
+                if (ct.IsCancellationRequested || sess.SwapLanded) return;
+                lock (s_gate) { if (ReferenceEquals(s_session, sess)) s_activeSilenced = true; }
+                await sess.FadeActiveToSilenceAsync(TimeSpan.FromMilliseconds(SeekStaleFadeMs), CancellationToken.None).ConfigureAwait(false);
+                Log.Info("audio", $"audio.seek.stale-fade afterMs={SeekStaleMs} fadeMs={SeekStaleFadeMs}");
+            }
+            catch (Exception ex)
+            {
+                lock (s_gate) s_activeSilenced = false;
+                Log.Warn("audio", "audio.seek.stale-fade failed", ex);
+            }
+        }
+
+        /// <summary>The seek landed on the SAME voice the stale timer had silenced (a ring jump or the in-place fallback — a swap
+        /// replaces the voice instead): give it its level back with a 5 ms fade-in.</summary>
+        static void RestoreSilencedVoice(PcmAudioSession sess)
+        {
+            lock (s_gate) { if (!s_activeSilenced) return; s_activeSilenced = false; }
+            int frames = Math.Max(1, sess.Format.SampleRate / 200);
+            try { sess.SetVoiceEnvelope(sess.ActiveVoiceIdValue, GainEnvelope.Fade(FadeKind.In, sess.SampleClock, frames, CrossCurve.EqualPower)); }
+            catch (Exception ex) { Log.Warn("audio", "audio.seek.restore-voice failed", ex); }
+        }
+
+        /// <summary>A seek of generation <paramref name="gen"/> will never land (superseded load): stop reporting its target.</summary>
+        static void ClearPendingSeek(uint gen)
+        {
             lock (s_gate)
             {
+                if (s_pendingSeekGen != gen) return;
                 s_pendingSeekMs = -1;
                 s_pendingSeekQueued = false;
+            }
+        }
+
+        /// <summary>The bookkeeping and the report after a seek landed, whichever way it was served. The pending target is released
+        /// only when THIS seek is still the newest (<c>s_pendingSeekGen == gen</c>); the endgame is re-armed for a seek back out of
+        /// its window (and the arm line may log again); the reducer is told the ACHIEVED position (U-11) under the seek's generation
+        /// — and, when the seek dropped a committed join, that its prepared row is lost (S-5, V-PA33), so it re-arms the next row.</summary>
+        static void AfterSeekLanded(int requestedMs, int achievedMs, uint epoch, uint gen, long t0, Spotify.Audio.Stream.Stats before)
+        {
+            bool joinLost;
+            lock (s_gate)
+            {
+                if (s_pendingSeekGen == gen) { s_pendingSeekMs = -1; s_pendingSeekQueued = false; }
                 // The engine rebased its position to the target, and `p.Position` is the active voice's own: no offset.
                 s_activeStartMs = 0;
                 if (s_session is { } sess)
                 {
-                    s_activeJoinFrame = GaplessJoinClock.JoinFrameFor(
-                        sess.SampleClock, s_activeDurMs, ms, sess.Format.SampleRate);
+                    s_activeJoinFrame = GaplessJoinClock.JoinFrameFor(sess.SampleClock, s_activeDurMs, achievedMs, sess.Format.SampleRate);
                     s_anchorClock = sess.SampleClock;
-                    s_anchorPlayheadMs = Math.Max(0, ms);
+                    s_anchorPlayheadMs = Math.Max(0, achievedMs);
                 }
                 // A seek back out of the endgame window re-arms it: the reducer prepares again when it reopens.
-                if (s_activeDurMs > 0 && ms < s_activeDurMs - EndingSoonMs(EffectiveFadeMs, s_activeDurMs))
-                { s_lastEndgameAskMs = -1; s_endgameAskCount = 0; }
+                if (s_activeDurMs > 0 && achievedMs < s_activeDurMs - EndingSoonMs(EffectiveFadeMs, s_activeDurMs))
+                { s_lastEndgameAskMs = -1; s_endgameAskCount = 0; s_armLogged = false; }
+                joinLost = s_joinLostBySeek;
+                s_joinLostBySeek = false;
             }
-            if (t0 != 0) RecordSeek(ms, t0, before);
-            PostSignal(AudioSignal.Seeked, epoch == 0 ? s_loadEpoch : epoch, ms);
+            if (t0 != 0) RecordSeek(requestedMs, t0, before);
+            uint stamp = epoch == 0 ? s_loadEpoch : epoch;
+            if (joinLost) Post(Input.PrepareLost(stamp));
+            PostSignal(AudioSignal.Seeked, stamp, achievedMs, gen);
+        }
+
+        /// <summary>The PARKED seek — the one that reached a session that was not yet serving (a restored track opened at
+        /// <paramref name="ms"/>, a deferred open's target applied by the tick's Ready arm): nothing is audible yet, so there is no
+        /// voice to protect and the engine's own dispatcher (<c>MediaPlayer.SeekAsync</c>) serves it. A user's seek on a playing
+        /// track never comes here — that is <see cref="SeekCoreAsync"/>.</summary>
+        static async Task ApplySeekAsync(int ms, uint epoch, uint gen, long t0 = 0, Spotify.Audio.Stream.Stats before = default)
+        {
+            MediaPlayer? p = Volatile.Read(ref s_player);
+            if (p is null) return;
+            try { await p.SeekAsync(TimeSpan.FromMilliseconds(Math.Max(0, ms)), SeekMode.Accurate).ConfigureAwait(false); }
+            catch (Exception ex) { SeekFailed(ms, gen, ex); return; }
+            AfterSeekLanded(ms, ms, epoch, gen, t0, before);
         }
 
         /// <summary>A seek the decoder could not land — `Decoder could not seek to the requested frame` is the engine
@@ -2613,14 +3531,18 @@ public static partial class Playback
         /// <para>No fault is posted here. A seek fails because the BYTES are not there, and the body that has them is
         /// already being folded by <see cref="FoldStall"/> — which now fails a refused body in seconds. Two verdicts for
         /// one cause would be one fault too many; the line below is what ties them together in the log.</para></summary>
-        static void SeekFailed(int ms, Exception ex)
+        static void SeekFailed(int ms, uint gen, Exception ex)
         {
             IMediaByteSource? live;
             lock (s_gate)
             {
                 live = s_bytes;
-                s_pendingSeekMs = -1;
-                s_pendingSeekQueued = false;
+                // Only when this is still the newest seek: a newer one's target is the one the bar must keep showing.
+                if (s_pendingSeekGen == gen)
+                {
+                    s_pendingSeekMs = -1;
+                    s_pendingSeekQueued = false;
+                }
             }
             Log.Warn("audio", $"audio.seek.failed to={ms} stallMs={StallOf(live)} "
                               + $"refusing={(RefusedOf(live) ? 1 : 0)} why={ex.GetType().Name}", ex);
@@ -2631,7 +3553,7 @@ public static partial class Playback
         /// offset CARRIED to the target — the old path zeroed it, so a fake track reported 0:00 after every seek. Play
         /// intent is kept: a paused track stays paused at its new position. False when a load replaced the session while
         /// the new one was being built.</summary>
-        static async Task<bool> SilentSeekAsync(PcmAudioSession old, int ms, uint epoch)
+        static async Task<bool> SilentSeekAsync(PcmAudioSession old, int ms, uint epoch, uint gen)
         {
             long durMs;
             bool play;
@@ -2639,14 +3561,17 @@ public static partial class Playback
             SilentStart start = SilentStart.For(durMs, ms);
             PcmAudioSession fresh = OpenSilentSession(SilentFormat, start.VoiceMs, s_effects, s_volume);
             bool adopted;
+            GlitchLedger.Snapshot summary = default;
+            EntityId summaryTrack = default;
             lock (s_gate)
             {
                 adopted = s_silent && ReferenceEquals(s_session, old);
                 if (adopted)
                 {
-                    RetireXruns(old);
+                    summary = RetireXruns(old);
+                    summaryTrack = s_id;
                     s_session = fresh;
-                    s_pendingSeekMs = -1;
+                    if (s_pendingSeekGen == gen) { s_pendingSeekMs = -1; s_pendingSeekQueued = false; }
                     s_activeStartMs = -start.PositionOffsetMs;
                     s_activePrimaryId = fresh.PrimaryVoiceIdValue;
                     if (ms < durMs - EndingSoonMs(EffectiveFadeMs, durMs)) { s_lastEndgameAskMs = -1; s_endgameAskCount = 0; }
@@ -2657,10 +3582,11 @@ public static partial class Playback
                 try { await fresh.DisposeAsync().ConfigureAwait(false); } catch { }
                 return false;
             }
+            LogSessionSummary(in summary, summaryTrack);
             try { fresh.SetMuted(Muted.Peek()); } catch { }
             try { await old.DisposeAsync().ConfigureAwait(false); } catch { }
             if (play) { try { await fresh.PlayAsync().ConfigureAwait(false); } catch { } }
-            PostSignal(AudioSignal.Seeked, epoch == 0 ? s_loadEpoch : epoch, start.PositionOffsetMs);
+            PostSignal(AudioSignal.Seeked, epoch == 0 ? s_loadEpoch : epoch, start.PositionOffsetMs, gen);
             return true;
         }
 
@@ -2704,14 +3630,25 @@ public static partial class Playback
             return SeekGate.ReportedPositionMs(pending, Math.Max(0, raw - s_activeStartMs));
         }
 
+        /// <summary>The timer's callback: ONE tick at a time (H-11). A tick that overruns the 200 ms period makes the next
+        /// timer callback skip instead of running on top of it.</summary>
         static void Tick()
+        {
+            if (Interlocked.CompareExchange(ref s_tickBusy, 1, 0) != 0) return;
+            try { TickCore(); }
+            finally { Volatile.Write(ref s_tickBusy, 0); }
+        }
+
+        static void TickCore()
         {
             if (s_disposed) { StopTicker(); return; }
             MediaPlayer? p = Volatile.Read(ref s_player);
             PcmAudioSession? sess;
-            uint epoch;
+            uint epoch, gen;
             bool silent;
-            lock (s_gate) { sess = s_session; epoch = s_loadEpoch; silent = s_silent; }
+            // `gen`: the seek generation every Started / Position this tick posts is stamped with (V-PA2) — the reducer drops a
+            // report whose generation is not its own, so the pump must name the newest seek it knows (`Seek` writes it at the call).
+            lock (s_gate) { sess = s_session; epoch = s_loadEpoch; silent = s_silent; gen = s_pendingSeekGen; }
             // A session torn down between ticks would otherwise fire a zombie `pos=0, playing` tick off stale state.
             if (sess is null) { StopTicker(); return; }
 
@@ -2804,13 +3741,13 @@ public static partial class Playback
                     {
                         s_startedAnnounced = true;
                         RecordFirstAudio();
-                        PostSignal(AudioSignal.Started, epoch, pos);
+                        PostSignal(AudioSignal.Started, epoch, pos, gen);
                     }
-                    else if (s_lastState != PlaybackState.Playing) PostSignal(AudioSignal.Started, epoch, pos);
+                    else if (s_lastState != PlaybackState.Playing) PostSignal(AudioSignal.Started, epoch, pos, gen);
                     else if (FrameNowMs() - s_lastPositionPostMs >= PositionSampleMs)
                     {
                         s_lastPositionPostMs = FrameNowMs();
-                        PostSignal(AudioSignal.Position, epoch, pos);
+                        PostSignal(AudioSignal.Position, epoch, pos, gen);
                     }
                     break;
 
@@ -2829,7 +3766,7 @@ public static partial class Playback
                     if (parked >= 0 && !s_pendingSeekQueued)
                     {
                         s_pendingSeekQueued = true;                     // once: a 200 ms tick must not queue a seek per tick
-                        Enqueue(() => ApplySeekAsync(parked, epoch));
+                        Enqueue(() => ApplySeekAsync(parked, epoch, gen));
                     }
                     break;
 
@@ -2882,6 +3819,7 @@ public static partial class Playback
                     return true;
                 case StarvePolicy.Verdict.Recovering when !s_recovering:
                     s_recovering = true;
+                    s_ledger.RecordByteWait(stallMs);                      // D1: the byte seam starved long enough to be reported
                     Log.Warn("audio", $"audio.starve stallMs={stallMs} posMs={posMs} "
                                       + $"reason={(refused ? "refused" : "slow")} — reconnecting");
                     Post(Input.Recovering(RecoveryKind.Network, epoch));
@@ -2898,20 +3836,30 @@ public static partial class Playback
             }
         }
 
-        /// <summary>Drain the RT feed's xrun events on the TICK thread, one Warning per incident and never a
-        /// cumulative count — a count says "something has been wrong for a while", an incident says when.</summary>
+        /// <summary>Drain the RT feed's xrun events on the TICK thread, one structured Warning (`audio.glitch`) per incident and
+        /// never a cumulative count — a count says "something has been wrong for a while", an incident says when. Each incident
+        /// also goes into the session's <see cref="GlitchLedger"/> (D1), whose verdict rides on the line: the log and the
+        /// health card tell the same story.</summary>
         static void DrainXruns(PcmAudioSession sess, long posMs, PlaybackState state)
         {
+            bool live;
+            EntityId track = default;
             lock (s_gate)
             {
                 // The live session's running totals, for `Metrics`; a torn-down session's were folded in by RetireXruns.
-                if (ReferenceEquals(s_session, sess))
+                live = ReferenceEquals(s_session, sess);
+                if (live)
                 {
                     Volatile.Write(ref s_liveXruns, sess.XrunCount);
                     Volatile.Write(ref s_liveXrunFrames, sess.XrunFramesLost);
+                    track = s_id;
                 }
             }
             int rate = sess.Format.SampleRate;
+            // Read BEFORE draining: an incident's event carries only its FIRST block's shortfall (the feed latches once per
+            // incident) while every later block of the same stall accrues into XrunFramesLost. What the drained events do not
+            // account for is the open incident's tail — folded in below so the card's "longest stall" is the real length.
+            long lostBeforeDrain = sess.XrunFramesLost;
             Span<AudioFeedThread.XrunEvent> buf = stackalloc AudioFeedThread.XrunEvent[16];
             int n;
             while ((n = sess.DrainXrunEvents(buf)) > 0)
@@ -2924,11 +3872,23 @@ public static partial class Playback
                     // `ev.Timestamp` is a QPC value, NOT a tick count: subtracting it from TickCount64 always clamped
                     // to zero, which is how this line read "ageMs=0" for a year.
                     long ageMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(ev.Timestamp).TotalMilliseconds;
-                    Log.Warn("audio", $"[audio] xrun voice={ev.VoiceId} gapFrames={ev.GapFrames} gapMs={gapMs:0.0} "
-                        + $"totalFramesLost={lost} ringFramesAtMiss={ev.RingFrames} posMs={posMs} state={state} "
-                        + $"gcPauseTicksDelta={ev.GcPauseTicksDelta} ageMs={ageMs}");
+                    // A session already retired (the tick captured it before the swap) must not pollute the NEW session's ledger.
+                    if (live) s_ledger.Record(ev.GapFrames, ev.RingFrames, ev.GcPauseTicksDelta, rate, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                    GlitchLedger.Snapshot snap = live ? s_ledger.Read() : default;
+                    Log.Event(WaveeLogLevel.Warning, "audio", "audio.glitch", "underrun", null, (long)Math.Round(gapMs), null,
+                        WaveeLogField.Of("stallMs", (long)Math.Round(gapMs)), WaveeLogField.Of("gapFrames", ev.GapFrames),
+                        WaveeLogField.Of("ringFramesAtMiss", ev.RingFrames), WaveeLogField.Of("gcTicks", ev.GcPauseTicksDelta),
+                        WaveeLogField.Of("posMs", posMs), WaveeLogField.Of("state", state.ToString()),
+                        WaveeLogField.Of("voice", ev.VoiceId), WaveeLogField.Of("totalFramesLost", lost),
+                        WaveeLogField.Of("ageMs", ageMs), WaveeLogField.Of("track", track.Text),
+                        WaveeLogField.Of("verdict", snap.Verdict));
                 }
                 if (n < buf.Length) break;
+            }
+            if (live && rate > 0)
+            {
+                long tail = lostBeforeDrain - s_ledger.Read().FramesLost;
+                if (tail > 0) s_ledger.Extend(tail, rate, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             }
 
             long now = FrameNowMs();
@@ -2996,8 +3956,11 @@ public static partial class Playback
 
         // ── 14. posting back ─────────────────────────────────────────────────────────────────────────────────────────
 
-        static void PostSignal(AudioSignal signal, uint epoch, long arg = 0)
-            => Post(Input.Audio(signal, epoch, FrameNowMs(), arg));
+        /// <summary><paramref name="gen"/>: the seek generation the report belongs to (V-PA2). The reducer drops a
+        /// <see cref="AudioSignal.Position"/> / <see cref="AudioSignal.Started"/> / <see cref="AudioSignal.Seeked"/> whose generation
+        /// is not its own, so those three always carry the pump's newest one; every other signal ignores it.</summary>
+        static void PostSignal(AudioSignal signal, uint epoch, long arg = 0, uint gen = 0)
+            => Post(Input.Audio(signal, epoch, FrameNowMs(), arg, gen));
 
         static void PostFault(Fault fault, uint epoch = 0)
         {
@@ -3083,10 +4046,11 @@ public static partial class Playback
         /// <summary>What the pump knows about an opened track beyond its bytes. <see cref="Format"/> is what the
         /// decoder factory switches on; <see cref="Label"/> is what the stage badge and the deck faces print
         /// (ch 21 §10 item 77, ch 23 W18/W19). <see cref="Peak"/> is the linear true peak the normalization gain is capped
-        /// by (<see cref="NormalizationFactor"/>), 0 when unknown.</summary>
+        /// by (<see cref="NormalizationFactor"/>), 0 when unknown. <see cref="AlbumGainDb"/>/<see cref="AlbumPeak"/> are the same
+        /// pair for the album (D5): what album mode picks, 0 when the source carries none.</summary>
         public readonly record struct Opened(
             Spotify.Audio.Format Format, long DurationMs, float GainDb, string Label, int BitrateKbps, bool IsLive,
-            float Peak = 0f);
+            float Peak = 0f, float AlbumGainDb = 0f, float AlbumPeak = 0f);
 
         /// <summary>Where a module playable's bytes come from (owner T's `Platform/Modules.Host.cs`, Wave 6). A SEAM
         /// rather than a call, so Wave 3 builds and runs with no module host at all: an unattached provider answers
@@ -3205,9 +4169,9 @@ public static partial class Playback
 
             fault = Fault.None;
             int kbps = o.DurationMs > 0 && o.Length > 0 ? (int)(o.Length * 8 / o.DurationMs) : BitrateHintKbps(o.Fmt);
-            opened = new Opened(o.Fmt, o.DurationMs, o.GainDb, LabelFor(o.Fmt, 0, 0), kbps, IsLive: false, o.Peak);
+            opened = new Opened(o.Fmt, o.DurationMs, o.GainDb, LabelFor(o.Fmt, 0, 0), kbps, IsLive: false, o.Peak, o.AlbumGainDb, o.AlbumPeak);
             Log.Info("audio", $"audio.open fmt={o.Fmt} len={o.Length} durMs={o.DurationMs} gain={o.GainDb:0.0} dB "
-                              + $"peak={o.Peak:0.000} kbps={kbps} head={body.HeadBytes} ring={body.Ring.Seconds}s/"
+                              + $"peak={o.Peak:0.000} album={o.AlbumGainDb:0.0} dB albumPeak={o.AlbumPeak:0.000} kbps={kbps} head={body.HeadBytes} ring={body.Ring.Seconds}s/"
                               + $"{body.Ring.Slots} slots prepared={(prepared ? 1 : 0)} tail={body.TailGranule}");
             return new RingSource(body);
         }
@@ -3233,16 +4197,26 @@ public static partial class Playback
             if (path is not { Length: > 0 } || !File.Exists(path)) { fault = Fault.Unavailable; return null; }
 
             Span<byte> head = stackalloc byte[64];
-            int n = 0;
+            Span<byte> after = stackalloc byte[64];
+            int n = 0, m = 0;
+            long id3 = 0;
             try
             {
                 using FileStream probe = new(path, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete, 32 * 1024);
                 n = probe.Read(head);
+                // P-5: `ID3` names a TAG, not a codec — a tagged .flac (or an ADTS file) starts with one too. Re-read just past
+                // it (10 + the syncsafe size, +10 for a footer) and sniff THAT; the old rule called every ID3 file MP3.
+                id3 = Id3v2Length(head[..n]);
+                if (id3 > 0 && id3 < probe.Length)
+                {
+                    probe.Position = id3;
+                    m = probe.Read(after);
+                }
             }
             catch (Exception ex) { Log.Warn("audio", "local probe failed", ex); fault = Fault.Unavailable; return null; }
 
-            Spotify.Audio.Format format = SniffFormat(head[..n]) ?? Spotify.Audio.Format.Mp3;
+            Spotify.Audio.Format format = (id3 > 0 ? SniffFormat(after[..m]) : SniffFormat(head[..n])) ?? Spotify.Audio.Format.Mp3;
             fault = Fault.None;
             opened = new Opened(format, 0, 0f, LabelFor(format, 0, 0), 0, IsLive: false);
             return new FileByteSource(path);
@@ -3539,6 +4513,18 @@ public static partial class Playback
         }
 
         // ── 18. sniffing ─────────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>P-5: where an ID3v2 block ends — <c>10 + syncsafe(size)</c>, plus 10 when the header's footer flag (byte 5,
+        /// bit 4) is set — as a source offset; 0 when <paramref name="head"/> does not start with a well-formed ID3v2 header
+        /// (fewer than 10 bytes, no <c>ID3</c>, a 0xFF version, or a size byte with its top bit set). PURE.</summary>
+        public static long Id3v2Length(ReadOnlySpan<byte> head)
+        {
+            if (head.Length < 10 || head[0] != (byte)'I' || head[1] != (byte)'D' || head[2] != (byte)'3') return 0;
+            if (head[3] == 0xFF || head[4] == 0xFF) return 0;                              // version / revision are never 0xFF
+            if (((head[6] | head[7] | head[8] | head[9]) & 0x80) != 0) return 0;           // syncsafe: seven bits per byte
+            long size = ((long)head[6] << 21) | ((long)head[7] << 14) | ((long)head[8] << 7) | head[9];
+            return 10 + size + ((head[5] & 0x10) != 0 ? 10 : 0);
+        }
 
         /// <summary>Magic bytes → format. The order is load-bearing: ADTS and MPEG audio share an 11-bit sync and only
         /// the LAYER field separates them.</summary>
@@ -3839,7 +4825,7 @@ public static partial class Playback
         /// <see cref="IRandomAccessBytes"/> face when it has one), the CORE <c>Flac.Decoder</c> over the window, float
         /// conversion + gain, and the engine's resampler. Runs on the engine's decode-ahead thread; blocks in the byte
         /// seam and nowhere else.</summary>
-        public sealed class FlacAudioDecoder : IAudioDecoder
+        public sealed class FlacAudioDecoder : IAudioDecoder, IGainFolding
         {
             const int WindowBytes = 64 * 1024;
             const int SeekPointCapacity = 1024;
@@ -3847,7 +4833,8 @@ public static partial class Playback
 
             readonly Flac.Decoder _dec = new();
             readonly Flac.SeekPoint[] _seek = new Flac.SeekPoint[SeekPointCapacity];
-            readonly float _gainLinear;
+            float _gainLinear;
+            NormalizationFigures _figures;      // what `_gainLinear` was computed from (the ctor's, else the file's ReplayGain tags)
             IMediaByteSource? _src;
             IRandomAccessBytes? _ra;
             uint _epoch;
@@ -3864,11 +4851,24 @@ public static partial class Playback
             int _skipSamples;               // samples to drop after a seek (the target was inside the frame)
             long _samplePos;                // next source sample to be emitted
             bool _eof, _interrupted;
-            LinearResampler? _resampler;
+            bool _ending;                   // the last frame is out: the resampler's trailing half kernel (V-PE21), then `_eof`
+            PolyphaseResampler? _resampler;
 
             /// <param name="gainDb">The normalization figure (the catalogue's for a Spotify FLAC).</param>
             /// <param name="peak">The linear true peak that caps a boost (`Opened.Peak`); 0 = unknown.</param>
-            public FlacAudioDecoder(float gainDb, float peak = 0f) => _gainLinear = GainLinear(gainDb, peak);
+            /// <param name="albumGainDb">The catalogue's ALBUM gain (`Opened.AlbumGainDb`), 0 = none: album mode's figure (D5).</param>
+            /// <param name="albumPeak">The album's linear true peak; 0 = unknown.</param>
+            public FlacAudioDecoder(float gainDb, float peak = 0f, float albumGainDb = 0f, float albumPeak = 0f)
+            {
+                _figures = new NormalizationFigures(gainDb, peak, albumGainDb, albumPeak);
+                _gainLinear = GainLinear(gainDb, peak, albumGainDb, albumPeak);
+            }
+
+            /// <summary>The linear factor folded into this decoder's output (<see cref="IGainFolding"/>, V-PA15).</summary>
+            public float AppliedGainLinear => _gainLinear;
+
+            /// <summary>The figures behind <see cref="AppliedGainLinear"/> (<see cref="IGainFolding.AppliedFigures"/>).</summary>
+            public NormalizationFigures? AppliedFigures => _figures;
 
             public GaplessInfo Gapless { get; private set; } = GaplessInfo.None;
 
@@ -3887,6 +4887,12 @@ public static partial class Playback
                 _winStart = 0; _winLen = 0; _cursor = 0;
                 if (!Fill()) return false;
 
+                // P-5: a tagged .flac starts with an ID3v2 block and only then `fLaC`. The window restarts at the stream marker, so
+                // every offset below (the first frame, the seek table's, the length the planner interpolates over) stays a
+                // SOURCE offset — the prefix is just bytes before the file's own start.
+                long id3 = Id3v2Length(_win.AsSpan(0, _winLen));
+                if (id3 > 0 && !ReadWindowAt(id3)) return false;
+
                 Flac.Headers h = Flac.ParseHeaders(_win.AsSpan(0, _winLen), _seek);
                 while (!h.Valid && !h.Complete && _winLen == _win.Length)      // a huge PICTURE block: grow, read on
                 {
@@ -3895,16 +4901,28 @@ public static partial class Playback
                     h = Flac.ParseHeaders(_win.AsSpan(0, _winLen), _seek);
                 }
                 if (!h.Valid) return false;
+                // N-3, V-PA18: a local file's ReplayGain tags, when the catalogue carried no figure (a Spotify FLAC always has one or none
+                // and no tags). The ranges index THIS window, so they are read before anything refills or resizes it.
+                if (_figures.GainDb == 0f && (!h.Tags.RgTrackGain.IsEmpty || !h.Tags.RgAlbumGain.IsEmpty))
+                {
+                    ReadOnlySpan<byte> head = _win.AsSpan(0, _winLen);
+                    var tags = ReplayGainTags.Of(TagText(head, h.Tags.RgTrackGain), TagText(head, h.Tags.RgTrackPeak),
+                        TagText(head, h.Tags.RgAlbumGain), TagText(head, h.Tags.RgAlbumPeak));
+                    _figures = NormalizationFigures.WithReplayGain(in _figures, in tags);
+                    _gainLinear = GainLinear(_figures.GainDb, _figures.Peak, _figures.AlbumGainDb, _figures.AlbumPeak);
+                }
                 _si = h.Info;
                 _seekCount = h.SeekPointCount;
-                _firstFrame = h.FirstFrame;
+                _firstFrame = _winStart + h.FirstFrame;                // window[0] is the stream marker: its source offset is _winStart
                 _cursor = h.FirstFrame;
-                if (_si.MaxFrame > (uint)_win.Length)
-                    Array.Resize(ref _win, (int)Math.Min((long)_si.MaxFrame * 2, 16L * 1024 * 1024));
+                // S-9: the window holds TWO maximum-size frames, so a false sync candidate inside the first still leaves a whole
+                // frame's worth of lookahead behind it (`Observe` skips an `Overrun` candidate while that much remains).
+                if (2L * _si.MaxFrame > _win.Length)
+                    Array.Resize(ref _win, (int)Math.Min(2L * _si.MaxFrame, 16L << 20));
                 _dec.Open(_si);
                 if (_conformed.Length < _si.MaxBlock * 2) _conformed = new float[_si.MaxBlock * 2];
                 _resampler = _si.SampleRate != target.SampleRate
-                    ? new LinearResampler(_si.SampleRate, target.SampleRate, target.Channels) : null;
+                    ? new PolyphaseResampler(_si.SampleRate, target.SampleRate, target.Channels) : null;
 
                 // A FLAC has no encoder delay and no padding: 0/0 is the TRUTH here, not a guess, and STREAMINFO's
                 // total-sample count pins the exact end so two tracks of one album join sample-exact.
@@ -3917,6 +4935,11 @@ public static partial class Playback
                     TimeSpan.FromMilliseconds(_si.DurationMs), default);
                 return true;
             }
+
+            /// <summary>A tag value out of the header window, empty when the tag is absent or its range does not lie inside it.</summary>
+            static ReadOnlySpan<byte> TagText(ReadOnlySpan<byte> head, Flac.ByteRange range)
+                => range.Length > 0 && range.Offset >= 0 && range.Offset <= head.Length && range.Length <= head.Length - range.Offset
+                    ? head.Slice(range.Offset, range.Length) : default;
 
             long ToMix(long srcFrames) => (long)Math.Round((double)srcFrames * _target.SampleRate / _si.SampleRate);
 
@@ -3980,7 +5003,10 @@ public static partial class Playback
                         if (!Fill()) return false;
                         continue;
                     }
-                    if (fr != Flac.FrameResult.Ok) { _cursor++; continue; }   // bad CRC / reserved: resync one byte on
+                    // Bad CRC / reserved: resync one byte on. `Unsupported` lands here too, but only for the two cases left once the
+                    // wide (33-bit side) path exists — an LPC shift below zero, which a conforming encoder never writes, and a
+                    // decoder that was never opened. Both are a damaged or foreign stream, not audio worth a block of silence.
+                    if (fr != Flac.FrameResult.Ok) { _cursor++; continue; }
                     _cursor += consumed;
                     _samplePos = block.SampleNumber;
                     if (block.Channels == 2)
@@ -4008,6 +5034,7 @@ public static partial class Playback
                 int ch = _target.Channels;                     // 2 for every session the app opens
                 int want = dst.Length / ch;
                 if (want <= 0) return 0;
+                if (_ending) return DrainTail(dst);
 
                 if (_hold == 0 && !NextBlock()) return EndOrSilence(dst, want, ch);
 
@@ -4033,10 +5060,20 @@ public static partial class Playback
             }
 
             /// <summary>No next frame: silence while a seek's interrupt is pending (never an EOF the engine would latch —
-            /// the seek on its way flushes it), else the end.</summary>
+            /// the seek on its way flushes it), else the end — after the resampler's trailing half kernel (V-PE21).</summary>
             int EndOrSilence(Span<float> dst, int want, int ch)
             {
                 if (TakeInterrupt(ref _interrupted)) return Silence(dst, want, ch);
+                _ending = true;
+                return DrainTail(dst);
+            }
+
+            /// <summary>The resampler's tail over as many reads as <paramref name="dst"/> needs, then 0 — and only then <c>_eof</c>.
+            /// With no resampler there is no tail and this is the old end.</summary>
+            int DrainTail(Span<float> dst)
+            {
+                int tail = _resampler is { IsActive: true } rs ? rs.Flush(dst) : 0;
+                if (tail > 0) return tail;
                 _eof = true;
                 return 0;
             }
@@ -4052,7 +5089,7 @@ public static partial class Playback
                 if (_src is null) return -1;
                 long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 long target = Math.Clamp(ToSrc(frame), 0, _si.TotalSamples > 0 ? _si.TotalSamples : long.MaxValue);
-                _hold = 0; _eof = false; _skipSamples = 0;
+                _hold = 0; _eof = false; _ending = false; _skipSamples = 0;
                 _interrupted = false;                          // the seek the interrupt was waiting for is here
                 _resampler?.Reset();
                 if (_ra is { } ra) _epoch = Math.Max(_epoch, ra.Epoch) + 1;
@@ -4166,6 +5203,15 @@ public static partial class Playback
         /// <param name="FlacXRealtime">FLAC decode throughput (frame decode + float conversion), this process.</param>
         /// <param name="Mp3XRealtime">MP3 decode throughput (NLayer's read, byte-seam waits included), this process.</param>
         /// <param name="PrepareArmed">A prepared next track is ready for the hand-off right now.</param>
+        /// <param name="GlitchIncidents">RT underrun incidents on the CURRENT session (the <see cref="GlitchLedger"/> is per session —
+        /// it restarts at every load; <see cref="Xruns"/> is the process total).</param>
+        /// <param name="LongestStallMs">The longest single underrun gap on the current session, in ms.</param>
+        /// <param name="GlitchVerdictKey">Why the session glitched: exactly one of <c>clean</c>, <c>gcPauses</c>, <c>byteStarved</c>,
+        /// <c>producerStarved</c>, <c>deviceLate</c> (loc KEYS — the card translates them); null only in <c>default(Metrics)</c>.</param>
+        /// <param name="MmcssRegistered">The RT thread is registered with MMCSS "Pro Audio" (<c>MmcssProAudio.ProAudioRegistered</c>).</param>
+        /// <param name="RingTargetMs">The decode-ahead ring's target fill in ms; <b>0 when no session is open</b>.</param>
+        /// <param name="RingFillMs">What the active voice's ring holds right now, in ms; 0 without a session.</param>
+        /// <param name="DevicePaddingMs">Audio queued in the device buffer, in ms; 0 without a session.</param>
         public readonly record struct Metrics(
             int FirstAudioMs, bool FirstAudioFromHead,
             int LastSeekMs, int LastSeekLatencyMs, SeekKind LastSeekKind, int Seeks,
@@ -4173,7 +5219,9 @@ public static partial class Playback
             long Xruns, long XrunFramesLost,
             int GaplessExact, int GaplessDegraded, int GaplessAbandoned, int Crossfades,
             float DecodeXRealtime, float VorbisXRealtime, float FlacXRealtime, float Mp3XRealtime,
-            bool PrepareArmed)
+            bool PrepareArmed,
+            int GlitchIncidents, long LongestStallMs, string? GlitchVerdictKey,
+            bool MmcssRegistered, int RingTargetMs, int RingFillMs, int DevicePaddingMs)
         {
             /// <summary>The live measurements.</summary>
             public static Metrics Read()
@@ -4186,6 +5234,10 @@ public static partial class Playback
                     Spotify.Audio.Format.Unknown => 0f,
                     _ => vorbis,
                 };
+                GlitchLedger.Snapshot glitch = s_ledger.Read();
+                PcmAudioSession? sess = Volatile.Read(ref s_session);
+                int rate = sess?.Format.SampleRate ?? 0;
+                bool open = sess is not null && rate > 0;
                 return new Metrics(
                     Volatile.Read(ref s_mFirstAudioMs), Volatile.Read(ref s_mFirstFromHead) != 0,
                     Volatile.Read(ref s_mLastSeekMs), Volatile.Read(ref s_mLastSeekLatencyMs),
@@ -4198,14 +5250,24 @@ public static partial class Playback
                     Volatile.Read(ref s_mGaplessExact), Volatile.Read(ref s_mGaplessDegraded),
                     Volatile.Read(ref s_mGaplessAbandoned), Volatile.Read(ref s_mCrossfades),
                     playing, vorbis, flac, mp3,
-                    Volatile.Read(ref s_prepItem) is { IsReady: true });
+                    Volatile.Read(ref s_prepItem) is { IsReady: true },
+                    glitch.Incidents, glitch.LongestStallMs, glitch.Verdict,
+                    MmcssProAudio.ProAudioRegistered,
+                    open ? FramesToMs(sess!.TargetAheadFrames, rate) : 0,
+                    open ? FramesToMs(sess!.BufferedFrames, rate) : 0,
+                    open ? FramesToMs(sess!.DevicePaddingFrames, rate) : 0);
             }
         }
+
+        /// <summary>Frames → ms at <paramref name="rate"/>, rounded down; 0 for a nonsense input. PURE.</summary>
+        static int FramesToMs(int frames, int rate)
+            => rate <= 0 || frames <= 0 ? 0 : (int)Math.Min(int.MaxValue, frames * 1000L / rate);
 
         /// <summary>Zero every counter (the headless `stats reset`). The live session's xrun total is re-read at the next
         /// tick, so only what happens after the reset is counted.</summary>
         public static void ResetMetrics()
         {
+            s_ledger.Reset();
             Volatile.Write(ref s_mFirstAudioMs, -1);
             Volatile.Write(ref s_mFirstFromHead, 0);
             Volatile.Write(ref s_mLastSeekMs, 0);
@@ -4297,13 +5359,32 @@ public static partial class Playback
                               + $"requests={after.Requests - before.Requests} cacheHits={after.CacheHits - before.CacheHits}");
         }
 
-        /// <summary>A session is going away (caller holds <see cref="s_gate"/>): fold its xrun totals into the retired ones.</summary>
-        static void RetireXruns(PcmAudioSession session)
+        /// <summary>A session is going away (caller holds <see cref="s_gate"/>): fold its xrun totals into the retired ones, and
+        /// take the session's glitch ledger (D1) — returned for <see cref="LogSessionSummary"/>, which the caller emits once it
+        /// has released the gate — leaving a fresh one for the next session.</summary>
+        static GlitchLedger.Snapshot RetireXruns(PcmAudioSession session)
         {
             Interlocked.Add(ref s_retiredXruns, session.XrunCount);
             Interlocked.Add(ref s_retiredXrunFrames, session.XrunFramesLost);
             Interlocked.Exchange(ref s_liveXruns, 0);
             Interlocked.Exchange(ref s_liveXrunFrames, 0);
+            GlitchLedger.Snapshot summary = s_ledger.Read();
+            s_ledger.Reset();
+            return summary;
+        }
+
+        /// <summary>`audio.session.summary` (D1): one line per session — Info when it was clean, a Warning when the RT feed
+        /// underran. <paramref name="track"/> is the track the session was playing when it was retired.</summary>
+        static void LogSessionSummary(in GlitchLedger.Snapshot s, EntityId track)
+        {
+            bool clean = s.Incidents == 0;
+            Log.Event(clean ? WaveeLogLevel.Info : WaveeLogLevel.Warning, "audio", "audio.session.summary", clean ? "clean" : "glitches",
+                null, -1, null,
+                WaveeLogField.Of("incidents", s.Incidents), WaveeLogField.Of("producerStarves", s.ProducerStarves),
+                WaveeLogField.Of("deviceLate", s.DeviceLate), WaveeLogField.Of("gcImplicated", s.GcImplicated),
+                WaveeLogField.Of("byteWaits", s.ByteWaits), WaveeLogField.Of("framesLost", s.FramesLost),
+                WaveeLogField.Of("longestStallMs", s.LongestStallMs), WaveeLogField.Of("longestByteWaitMs", s.LongestByteWaitMs),
+                WaveeLogField.Of("track", track.Text), WaveeLogField.Of("verdict", s.Verdict));
         }
     }
 

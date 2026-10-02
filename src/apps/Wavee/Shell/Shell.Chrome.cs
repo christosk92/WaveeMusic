@@ -25,9 +25,6 @@ public static partial class Shell
 
     public static class Layout
     {
-        public const float NarrowEnterW = 720f;
-        public const float NarrowLeaveW = 760f;
-        public const float CompactRailW = 56f;
         public const float DrawerMinW = 240f;
         public const float DrawerViewportInset = 32f;
 
@@ -166,71 +163,6 @@ public static partial class Shell
         public const float ChromePinnedTabW = 40f;
         public const float ChromeTabViewportMinW = 32f;
 
-        // ── nav-pane (sidebar) width ─────────────────────────────────────────────────────────────────────────────────
-        // The single clamp bounds for the expanded pane. EVERY writer (the seam drag, the probe seam, the responsive
-        // default) must clamp through these — a second literal pair is how the drag and the probe drifted apart.
-        // Issue #84 lowered the floor from 240 to 180 so the sidebar can go genuinely narrow.
-        public const float NavPaneMinW = 180f, NavPaneMaxW = 460f;
-
-        // Stock navigation views author the open-pane length per window class rather than one fixed number: a 240-DIP
-        // floor for ordinary windows, 320 once the window is wide enough that 240 reads as a cramped gutter. These are
-        // the DEFAULT only — a user who drags the seam pins their own width and the ladder stops applying for that
-        // design. Each sidebar design has its own triple (owner J's `Sidebar.cs` owns the values); the breakpoints,
-        // the 24-DIP shrink hysteresis and the clamp are IDENTICAL for all three.
-        public const float NavPaneMidEnterW = 1400f;    // ≥ this → the MID tier
-        public const float NavPaneWideEnterW = 1800f;   // ≥ this → the WIDE tier
-        public const float NavPaneNarrowW = 240f, NavPaneMidW = 280f, NavPaneWideW = 320f;   // Classic's ladder
-        public const float NavPaneHysteresisDip = 24f;
-
-        /// <summary>Classic's tier triple — what every no-triple overload forwards with, so a call site that knows
-        /// nothing about sidebar designs keeps its exact behaviour.</summary>
-        public static (float Narrow, float Mid, float Wide) ClassicTiers => (NavPaneNarrowW, NavPaneMidW, NavPaneWideW);
-
-        public static float NominalNavPaneDefaultFor(float viewportWidth)
-            => NominalNavPaneDefaultFor(viewportWidth, ClassicTiers);
-
-        public static float NominalNavPaneDefaultFor(float viewportWidth, in (float Narrow, float Mid, float Wide) tiers) =>
-            viewportWidth >= NavPaneWideEnterW ? tiers.Wide
-            : viewportWidth >= NavPaneMidEnterW ? tiers.Mid
-            : tiers.Narrow;
-
-        /// <summary>Pre-measure seed. A zero/unknown viewport (before the first bounds callback) takes the narrow
-        /// tier; the viewport effect commits the real tier before the first layout.</summary>
-        public static float InitialNavPaneDefaultForViewport(float viewportWidth)
-            => InitialNavPaneDefaultForViewport(viewportWidth, ClassicTiers);
-
-        /// <inheritdoc cref="InitialNavPaneDefaultForViewport(float)"/>
-        public static float InitialNavPaneDefaultForViewport(float viewportWidth,
-            in (float Narrow, float Mid, float Wide) tiers)
-            => viewportWidth <= 0f ? tiers.Narrow : NominalNavPaneDefaultFor(viewportWidth, tiers);
-
-        /// <summary>Widen immediately; shrink only after <see cref="NavPaneHysteresisDip"/> past the threshold — with
-        /// the dip ADDED, because here a LARGER number is the wider tier. So 1400 widens to the mid tier at once, and
-        /// the mid tier holds down to 1376.</summary>
-        public static float NavPaneDefaultFor(float viewportWidth, float current, bool initialized)
-            => NavPaneDefaultFor(viewportWidth, current, initialized, ClassicTiers);
-
-        /// <inheritdoc cref="NavPaneDefaultFor(float, float, bool)"/>
-        public static float NavPaneDefaultFor(float viewportWidth, float current, bool initialized,
-            in (float Narrow, float Mid, float Wide) tiers)
-        {
-            if (viewportWidth <= 0f) return current;
-            if (!initialized) return NominalNavPaneDefaultFor(viewportWidth, tiers);
-            float nominal = NominalNavPaneDefaultFor(viewportWidth, tiers);
-            if (nominal >= current) return nominal;
-            float dipped = NominalNavPaneDefaultFor(viewportWidth + NavPaneHysteresisDip, tiers);
-            return dipped < current ? dipped : current;
-        }
-
-        public static float ClampNavPaneWidth(float w) => Math.Clamp(w, NavPaneMinW, NavPaneMaxW);
-
-        public static bool NarrowFor(float width, bool current, bool initialized)
-        {
-            if (width <= 0f) return current;
-            if (!initialized) return width <= NarrowEnterW;
-            return current ? width < NarrowLeaveW : width <= NarrowEnterW;
-        }
-
         public static bool ToolbarNarrowFor(float width, bool current, bool initialized)
         {
             if (width <= 0f) return current;
@@ -240,7 +172,7 @@ public static partial class Shell
 
         public static float DrawerWidth(float viewportWidth, float preferredWidth)
         {
-            float cap = MathF.Max(CompactRailW, viewportWidth - DrawerViewportInset);
+            float cap = MathF.Max(Design.Size.NavCompactW, viewportWidth - DrawerViewportInset);
             return MathF.Min(MathF.Max(DrawerMinW, preferredWidth), cap);
         }
 

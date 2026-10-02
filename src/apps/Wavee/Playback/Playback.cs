@@ -954,6 +954,18 @@ public static partial class Playback
         /// the host already converts once per drain. The memory rule stands either way: this is FRAME time, never
         /// <c>Environment.TickCount64</c>.</para></summary>
         public long PosQpc;
+        /// <summary>The seek generation (U-1, V-PA2): bumps on every LOCAL seek (<see cref="EmitSeek"/>) and travels out on
+        /// <see cref="Effects.SeekGen"/> (a seek) and on every load. The pump stamps it on the <see cref="AudioSignal.Position"/> and
+        /// <see cref="AudioSignal.Seeked"/> it posts (<see cref="Input.Gen"/>), so a report from before the seek can never
+        /// drag the playhead back over the user's drop point.</summary>
+        public uint SeekGen;
+        /// <summary>The <see cref="SeekGen"/> of the last <see cref="AudioSignal.Seeked"/> that landed — what the seek rail's
+        /// drop-point hold waits for (V-PA12).</summary>
+        public uint LastSeekLandedGen;
+        /// <summary>The frame-clock stamp of the newest seek WE forwarded to a foreign owner (0 = none) and where it asked to
+        /// land: while the stamp is fresh and the cluster still disagrees, <see cref="MirrorRemote"/> keeps the optimistic
+        /// position the drag painted instead of snapping back to the owner's pre-seek report (U-3, V-PA10).</summary>
+        public long RemoteSeekAtMs, RemoteSeekTargetMs;
         /// <summary>The current playable's duration in ms as the source stated it. 0 = unknown, and the seek bar is
         /// DISABLED rather than drawn as a full grey rail (ch 20 §7).</summary>
         public int DurationMs;
@@ -966,6 +978,25 @@ public static partial class Playback
         /// <summary>The level a mute took the volume away from (the owner's while Foreign, ours otherwise); 0 = none
         /// remembered. Only the VOLUME-0 mute uses it — a real sink mute keeps the volume where it was.</summary>
         public float MuteRestoreVolume;
+        /// <summary>THIS device's output sink is muted (the last <see cref="Effects.Mute"/> the reducer emitted). The reducer's
+        /// own copy of what the host used to keep in a static, so an unmute at volume 0 and a volume raise under a mute are
+        /// DECISIONS here, not host side-effects (U-4, V-PA32).</summary>
+        public bool SinkMuted;
+        /// <summary>The frame-clock stamp of the first volume change not yet persisted (0 = none). <see cref="DoTick"/> turns it
+        /// into one <see cref="Effects.PersistVolume"/> once <see cref="VolumePersistDebounceMs"/> have passed, so a drag
+        /// writes the registry about once per tick instead of once per drain (V-1, V-PA11).</summary>
+        public long VolumeDirtySinceMs;
+        /// <summary>The seek bar's scrub gesture as a value (D4): Idle → Pressed → Scrubbing, back to Idle at once on release or
+        /// cancel (<see cref="ScrubModel"/>, the CORE in <c>Playback.Scrub.cs</c>). <see cref="ScrubModel.Audible"/> is the reducer's
+        /// verdict at the press — a LOCAL, PLAYING, non-video deck gets grains; everything else (paused, a foreign owner, video)
+        /// scrubs visually and commits ONE ordinary seek (V-PA41).</summary>
+        public ScrubModel Scrub;
+        /// <summary>Where the drag stands in ms while <see cref="Scrub"/> is live — what <see cref="Playback.ScrubPositionMs"/>
+        /// publishes for the time labels and the rail's readout (U-7). Meaningless while the model is Idle.</summary>
+        public int ScrubPosMs;
+        /// <summary>The <see cref="LoadEpoch"/> the gesture began under. A load that replaced the row mid-drag (an auto-advance, a
+        /// device reload) orphans the gesture: its release must never seek a row it never scrubbed.</summary>
+        public uint ScrubEpoch;
         public bool Shuffle;
         public RepeatMode Repeat;
         /// <summary>Restrictions as the cluster stated them. The bar greys its buttons off
@@ -1100,11 +1131,13 @@ public static partial class Playback
         public readonly float SliderVolume => Own.Kind == Owner.Foreign && MirrorVolume >= 0f ? MirrorVolume : Volume;
 
         /// <summary>The position to PAINT at <paramref name="nowMs"/> (frame clock): the last authoritative report
-        /// extrapolated while playing, and the report itself otherwise. Clamped into the duration when one is known —
-        /// a bar that runs past the end of its own rail is the tick-overrun defect 0.2.9 shipped.</summary>
+        /// extrapolated while playing, and the report itself otherwise — a refilling stream (<see cref="Buffering"/>) does
+        /// not advance either, so the stall's length is never extrapolated and then snapped back when it ends (U-5). Clamped
+        /// into the duration when one is known — a bar that runs past the end of its own rail is the tick-overrun defect
+        /// 0.2.9 shipped.</summary>
         public readonly int Position(long nowMs)
         {
-            if (Phase != Phase.Playing) return PosMs;
+            if (Phase != Phase.Playing || Buffering) return PosMs;
             long p = PosMs + (long)((nowMs - PosQpc) * ContentRate);
             if (p < 0) p = 0;
             if (DurationMs > 0 && p > DurationMs) p = DurationMs;
@@ -1220,6 +1253,20 @@ public static partial class Playback
         /// <summary>The deck's context becomes <see cref="Input.Context"/> WITHOUT a load — a radio parked behind the
         /// current row (G-251). <see cref="Input.Cursor"/> is the deck row's cursor in the rewritten queue.</summary>
         SwitchContext,
+        /// <summary>The pump DROPPED the join it had scheduled for the prepared row (a seek moved the playhead out from
+        /// under the planned join frame): the next row is no longer prepared. <c>Epoch</c> = the load epoch the join belonged
+        /// to; the reducer re-arms the prepare (V-PA33).</summary>
+        PrepareLost,
+        /// <summary>The seek bar's PRESS (<c>IntArg</c> = the pointer's target ms): the scrub gesture begins (D4). A scrub PREVIEW still
+        /// never reaches the position — only <see cref="ScrubEnd"/> commits one seek.</summary>
+        ScrubBegin,
+        /// <summary>The pointer MOVED under a live scrub (<c>IntArg</c> = the target ms). The model coalesces what the audio side sees to
+        /// ≤ 20 per second; the labels follow every move.</summary>
+        ScrubMove,
+        /// <summary>The RELEASE (<c>IntArg</c> = the committed target ms): ONE seek, or — for an audible scrub — the pump's release IS the seek.</summary>
+        ScrubEnd,
+        /// <summary>The gesture was abandoned (a lost capture, an unmount): nothing is committed and the held voice resumes.</summary>
+        ScrubCancel,
     }
 
     /// <summary>One input — a VALUE (C2). A plain <c>readonly struct</c> and NOT a <c>record struct</c> on purpose:
@@ -1246,15 +1293,19 @@ public static partial class Playback
         public readonly RemoteCommand Command;
         public readonly LiveWindow Live;
         public readonly PlayableKind PlayKind;
+        /// <summary>The seek generation the pump stamped on this report (<see cref="State.SeekGen"/>): an
+        /// <see cref="AudioSignal.Position"/> or <see cref="AudioSignal.Seeked"/> from before the newest local seek carries an
+        /// older one and is dropped. 0 on everything that is not a pump report.</summary>
+        public readonly uint Gen;
 
         public Input(InputKind kind, EntityRef row = default, EntityId id = default, EntityId context = default,
             QueueCursor cursor = default, int intArg = 0, long longArg = 0, uint epoch = 0, long nowMs = 0,
             ClusterFrame frame = default, RemoteState remote = default, RemoteCommand command = default,
-            LiveWindow live = default, PlayableKind playKind = PlayableKind.Audio)
+            LiveWindow live = default, PlayableKind playKind = PlayableKind.Audio, uint gen = 0)
         {
             Kind = kind; Row = row; Id = id; Context = context; Cursor = cursor;
             IntArg = intArg; LongArg = longArg; Epoch = epoch; NowMs = nowMs;
-            Frame = frame; Remote = remote; Command = command; Live = live; PlayKind = playKind;
+            Frame = frame; Remote = remote; Command = command; Live = live; PlayKind = playKind; Gen = gen;
         }
 
         // ── the named constructors every call site should use ───────────────────────────────────────────────────────
@@ -1284,7 +1335,9 @@ public static partial class Playback
         public static Input Pause(long nowMs = 0) => new(InputKind.Pause, nowMs: nowMs);
         public static Input Resume(long nowMs = 0) => new(InputKind.Resume, nowMs: nowMs);
         public static Input Seek(int ms, long nowMs = 0) => new(InputKind.Seek, intArg: ms, nowMs: nowMs);
-        public static Input Volume(float value) => new(InputKind.SetVolume, intArg: WireVolume(value));
+        /// <summary>Set THIS device's volume (or the foreign owner's). <c>nowMs</c> is the frame-clock stamp the reducer's
+        /// volume-persist debounce counts from (V-1).</summary>
+        public static Input Volume(float value, long nowMs = 0) => new(InputKind.SetVolume, intArg: WireVolume(value), nowMs: nowMs);
         public static Input Shuffle(bool on) => new(InputKind.SetShuffle, intArg: on ? 1 : 0);
         public static Input Repeat(RepeatMode mode) => new(InputKind.SetRepeat, intArg: (int)mode);
         public static Input Transfer(ulong device, int rosterSlot = -1, long nowMs = 0)
@@ -1306,8 +1359,18 @@ public static partial class Playback
         /// found by the host that owns the uid book), −1 for none; carried as <c>IntArg</c> + 1.</param>
         public static Input Controller(in RemoteCommand command, long nowMs = 0, int skipTo = -1)
             => new(InputKind.RemoteCommand, intArg: skipTo + 1, command: command, nowMs: nowMs);
-        public static Input Audio(AudioSignal signal, uint epoch, long nowMs = 0, long arg = 0)
-            => new(InputKind.AudioSignal, intArg: (int)signal, epoch: epoch, nowMs: nowMs, longArg: arg);
+        /// <summary>A pump report. <c>gen</c> is the seek generation it belongs to (<see cref="Input.Gen"/>); only Position
+        /// and Seeked read it.</summary>
+        public static Input Audio(AudioSignal signal, uint epoch, long nowMs = 0, long arg = 0, uint gen = 0)
+            => new(InputKind.AudioSignal, intArg: (int)signal, epoch: epoch, nowMs: nowMs, longArg: arg, gen: gen);
+        /// <summary>The pump dropped the join it had scheduled for the prepared row (<see cref="InputKind.PrepareLost"/>).</summary>
+        public static Input PrepareLost(uint epoch) => new(InputKind.PrepareLost, epoch: epoch);
+        /// <summary>The scrub gesture's four edges (D4). <c>ms</c> is the pointer's target, already clamped by the rail; the reducer
+        /// clamps again at the commit (<see cref="SeekTarget.Clamp"/>).</summary>
+        public static Input ScrubBegin(int ms, long nowMs = 0) => new(InputKind.ScrubBegin, intArg: ms, nowMs: nowMs);
+        public static Input ScrubMove(int ms, long nowMs = 0) => new(InputKind.ScrubMove, intArg: ms, nowMs: nowMs);
+        public static Input ScrubEnd(int ms, long nowMs = 0) => new(InputKind.ScrubEnd, intArg: ms, nowMs: nowMs);
+        public static Input ScrubCancel() => new(InputKind.ScrubCancel);
         public static Input Ended(uint epoch, long nowMs = 0) => new(InputKind.Ended, epoch: epoch, nowMs: nowMs);
         public static Input TransferDone(uint epoch, bool ok) => new(InputKind.TransferDone, intArg: ok ? 1 : 0, epoch: epoch);
         public static Input PutSent(uint messageId, bool isActive)
@@ -1409,12 +1472,38 @@ public static partial class Playback
         // ── seek ──
         public bool Seek;
         public int SeekMs;
+        /// <summary>The LOAD epoch the seek is posted under (U-1): the pump's <see cref="AudioSignal.Seeked"/> must pass the
+        /// reducer's <c>i.Epoch != s.LoadEpoch</c> drop test, which a transport epoch never would.</summary>
         public uint SeekEpoch;
+        /// <summary>The seek generation (<see cref="State.SeekGen"/>) the pump stamps on its reports for this seek. Every load
+        /// effect carries it too, so the pump's counter is seeded from the reducer's at each load (V-PA2).</summary>
+        public uint SeekGen;
+
+        // ── scrub (D4; wave 3) ──
+        /// <summary>The press of an AUDIBLE scrub (<see cref="ScrubModel.Audible"/>): the pump holds the main voice and opens the grain
+        /// voice at <see cref="ScrubMs"/>. Never set for a paused deck, a foreign owner or video — those scrub visually.</summary>
+        public bool ScrubBegin;
+        /// <summary>A coalesced (≤ 20 Hz) move: the grain voice retargets to <see cref="ScrubMs"/> at <see cref="ScrubVelocity"/>
+        /// (audio-ms per wall-ms, dimensionless, passed through unchanged — V-PA9); on the video host it is a keyframe preview.</summary>
+        public bool ScrubMove;
+        /// <summary>The release of an audible scrub: the pump's release IS the seek (V-PA5), so this slot is set INSTEAD of
+        /// <see cref="Seek"/> and reads its target, epoch and generation from <see cref="SeekMs"/>, <see cref="SeekEpoch"/> and
+        /// <see cref="SeekGen"/>.</summary>
+        public bool ScrubEnd;
+        /// <summary>The gesture was abandoned (or ended as something other than the pump's release): release the held voice /
+        /// the video preview and resume where it was.</summary>
+        public bool ScrubCancel;
+        /// <summary>The pointer's target for <see cref="ScrubBegin"/> / <see cref="ScrubMove"/>, in ms.</summary>
+        public int ScrubMs;
+        public double ScrubVelocity;
 
         // ── volume ──
         public bool Volume;
         public float VolumeValue;
         public uint VolumeEpoch;
+        /// <summary>Write <see cref="VolumeValue"/> to <c>SavedVolume</c> NOW: the debounce in <see cref="DoTick"/> elapsed
+        /// (V-1, V-PA11). The sink's own <see cref="Volume"/> effect no longer persists anything.</summary>
+        public bool PersistVolume;
 
         // ── gapless (G-100, G-112) ──
         /// <summary>Fully open the next row for the hand-off (the endgame). A pump holding another id replaces it.</summary>
@@ -1544,7 +1633,8 @@ public static partial class Playback
         public void Clear() => this = default;
 
         /// <summary>Is anything at all pending? The host skips its whole execute pass when nothing is.</summary>
-        public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume
+        public readonly bool Any => Load || Start || Stop || PauseHost || ResumeHost || Seek || Volume || PersistVolume
+            || ScrubBegin || ScrubMove || ScrubEnd || ScrubCancel
             || PrepareNext || PublishState || SendRemote || Transfer || Fetch || Smtc || SmtcTimeline || Snapshot
             || Prefetch || Prefetch2 || CancelPrepared || Adopt || QueueAdd || Reorder || Autoplay || Page || AutoplayPage
             || VideoDemoted || SkippedUnavailable || TakeoverSeed || ClaimRejected || TransferFailed || Mute || Refused != Refusal.None;
@@ -1570,6 +1660,7 @@ public static partial class Playback
                 s.PosQpc = i.NowMs;
                 s.EpisodeRate = ValidEpisodeSpeed(BitConverter.Int32BitsToSingle(i.IntArg));
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
+                fx.SmtcTimeline = true;                      // the OS card follows the new rate now, not at the next position tick (U-10)
                 break;
             case InputKind.Resume: DoResume(ref s, in i, ref fx); break;
             case InputKind.Seek: DoSeek(ref s, in i, ref fx); break;
@@ -1609,6 +1700,11 @@ public static partial class Playback
             case InputKind.Paged: DoPaged(ref s, in i, ref fx); break;
             case InputKind.QueueToOwner: DoQueueToOwner(ref s, in i, ref fx); break;
             case InputKind.SwitchContext: DoSwitchContext(ref s, in i, ref fx); break;
+            case InputKind.PrepareLost: DoPrepareLost(ref s, in i, ref fx); break;
+            case InputKind.ScrubBegin: DoScrubBegin(ref s, in i, ref fx); break;
+            case InputKind.ScrubMove: DoScrubMove(ref s, in i, ref fx); break;
+            case InputKind.ScrubEnd: DoScrubEnd(ref s, in i, ref fx); break;
+            case InputKind.ScrubCancel: DoScrubCancel(ref s, ref fx); break;
             default: break;
         }
     }
@@ -1743,13 +1839,27 @@ public static partial class Playback
         if (s.Parked) { s.PosMs = 0; s.PosQpc = i.NowMs; fx.SmtcTimeline = true; return; }   // nothing live to seek
         bool registered = s.ReportOpen;
         ReportEnd(ref s, ref fx, why, s.Position(i.NowMs));
-        s.PosMs = 0;
-        s.PosQpc = i.NowMs;
-        Bump(ref s);
-        fx.Seek = true;
-        fx.SeekMs = 0;
-        fx.SeekEpoch = s.Epoch;
+        EmitSeek(ref s, ref fx, 0, i.NowMs);                 // the one seek emitter: bumps the generation, announces, arms the OS timeline
         if (registered) ReportStart(ref s, ref fx, why, 0);   // the same row, played again, is a new registration
+    }
+
+    /// <summary>THE one local-seek emitter (U-1, V-PA2): <see cref="DoSeek"/> and <see cref="Restart"/> both go through it, so
+    /// EVERY local seek bumps the generation the pump stamps on its reports and is posted under the LOAD epoch — a transport
+    /// epoch (what these used to carry) never matched <see cref="State.LoadEpoch"/>, and the pump's <c>Seeked</c> was dropped.</summary>
+    /// <param name="scrubRelease">The seek IS an audible scrub's release (V-PA5): the pump holds the main voice, so the release replaces
+    /// the plain seek — <see cref="Effects.ScrubEnd"/> is set INSTEAD of <see cref="Effects.Seek"/> (an earlier seek in this drain is
+    /// superseded by the very generation this one mints), and both read the same target / epoch / generation slots.</param>
+    static void EmitSeek(ref State s, ref Effects fx, int ms, long nowMs, bool scrubRelease = false)
+    {
+        s.PosMs = ms;
+        s.PosQpc = nowMs;
+        s.SeekGen++;
+        Bump(ref s);
+        if (scrubRelease) { fx.Seek = false; fx.ScrubEnd = true; }
+        else fx.Seek = true;
+        fx.SeekMs = ms;
+        fx.SeekEpoch = s.LoadEpoch;
+        fx.SeekGen = s.SeekGen;
         Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
         fx.SmtcTimeline = true;
     }
@@ -1863,7 +1973,21 @@ public static partial class Playback
     static void DoSeek(ref State s, in Input i, ref Effects fx)
     {
         if (!s.HasCurrent || (s.NoSeek && !s.Parked && s.Error == Fault.None)) return;
-        if (!s.RoutesLocal) { Forward(ref s, RemoteCmd.SeekTo, ref fx, i.IntArg, false); return; }
+        if (!s.RoutesLocal)
+        {
+            // U-3: the drag's drop point is painted at once and HELD against the owner's pre-seek reports (MirrorRemote),
+            // stamped on the frame clock. Forward may refuse (no owner device known): nothing was sent, so nothing is held.
+            int remote = SeekTarget.Clamp(i.IntArg, s.DurationMs);
+            Forward(ref s, RemoteCmd.SeekTo, ref fx, remote, false);
+            if (s.Own.Device != 0)
+            {
+                s.PosMs = remote;
+                s.PosQpc = i.NowMs;
+                s.RemoteSeekAtMs = Math.Max(1L, i.NowMs);
+                s.RemoteSeekTargetMs = remote;
+            }
+            return;
+        }
         int ms = SeekTarget.Clamp(i.IntArg, s.DurationMs);
         if (s.Parked || s.Error != Fault.None)
         {
@@ -1876,14 +2000,86 @@ public static partial class Playback
             return;
         }
         ReportSeeked(ref s, ref fx, s.Position(i.NowMs), ms);
-        s.PosMs = ms;
-        s.PosQpc = i.NowMs;
-        Bump(ref s);
-        fx.Seek = true;
-        fx.SeekMs = ms;
-        fx.SeekEpoch = s.Epoch;
-        Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
-        fx.SmtcTimeline = true;
+        EmitSeek(ref s, ref fx, ms, i.NowMs);
+    }
+
+    // ── 9.1b the scrub gesture (D4, #167) ───────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The press. The model begins; the gesture is AUDIBLE (the pump holds the main voice and plays grains at the thumb)
+    /// only for a local, playing, non-video, seekable deck — a paused deck (the device is stopped), a foreign owner (there is no
+    /// local audio) and video scrub VISUALLY and commit one ordinary seek (V-PA41). The press is stamped with the load epoch so a
+    /// load that replaces the row mid-drag orphans the gesture (<see cref="ScrubOrphaned"/>).</summary>
+    static void DoScrubBegin(ref State s, in Input i, ref Effects fx)
+    {
+        var e = s.Scrub.Down(i.IntArg, i.NowMs);
+        s.ScrubPosMs = i.IntArg;
+        s.ScrubEpoch = s.LoadEpoch;
+        bool audible = e.Begin && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && s.Phase == Phase.Playing
+                       && !s.Parked && s.Error == Fault.None && !s.NoSeek;
+        // ASSIGNED on every press, true or false: `ScrubModel.Up` leaves `Audible` set (the release arm reads it after Up) and `Down` does not
+        // reset it, so a stale true would leak from the last gesture into this one. `fx.ScrubBegin` follows the same verdict, so a later
+        // non-audible press in one drain also withdraws an earlier audible one's begin.
+        s.Scrub.Audible = audible;
+        fx.ScrubBegin = audible;
+        if (audible) fx.ScrubMs = i.IntArg;
+    }
+
+    /// <summary>The pointer moved. The labels follow EVERY move (<see cref="State.ScrubPosMs"/>); the host sees at most one per
+    /// <see cref="ScrubModel.CoalesceMs"/>. Only a gesture the host can act on emits: an audible one (grains) or video (keyframe
+    /// previews) — a visual-only audio scrub sends nothing, and a foreign owner never hears of it (U-3: one forwarded
+    /// <c>seek_to</c> at the release).</summary>
+    static void DoScrubMove(ref State s, in Input i, ref Effects fx)
+    {
+        if (ScrubOrphaned(ref s)) return;
+        var e = s.Scrub.Move(i.IntArg, i.NowMs);
+        s.ScrubPosMs = i.IntArg;
+        if (!e.Move || !s.RoutesLocal) return;
+        if (!s.Scrub.Audible && s.Kind != PlayableKind.Video) return;
+        fx.ScrubMove = true;
+        fx.ScrubMs = i.IntArg;
+        fx.ScrubVelocity = e.Velocity;
+    }
+
+    /// <summary>The release: ONE seek. An audible scrub's release IS the seek (V-PA5) — the pump holds the main voice, so it swaps /
+    /// seeks it at the release point and <see cref="Effects.ScrubEnd"/> is set INSTEAD of <see cref="Effects.Seek"/>
+    /// (<see cref="EmitSeek"/> with <c>scrubRelease</c>). Anything else — remote, video, paused, a deck that stopped being
+    /// seekable mid-drag — is one ordinary <see cref="DoSeek"/>, preceded (when a voice was held) by the cancel that releases it.</summary>
+    static void DoScrubEnd(ref State s, in Input i, ref Effects fx)
+    {
+        if (ScrubOrphaned(ref s)) return;
+        bool audible = s.Scrub.Audible;
+        var e = s.Scrub.Up(i.IntArg, i.NowMs);
+        s.Scrub.Audible = false;
+        if (!e.Commit) return;
+        if (audible && s.HasCurrent && s.RoutesLocal && s.Kind != PlayableKind.Video && !s.Parked && s.Error == Fault.None && !s.NoSeek)
+        {
+            int target = SeekTarget.Clamp(i.IntArg, s.DurationMs);
+            ReportSeeked(ref s, ref fx, s.Position(i.NowMs), target);
+            EmitSeek(ref s, ref fx, target, i.NowMs, scrubRelease: true);
+            return;
+        }
+        if (audible) fx.ScrubCancel = true;               // the held voice must not outlive a release the pump will not run
+        var seek = Input.Seek(i.IntArg, i.NowMs);
+        DoSeek(ref s, in seek, ref fx);
+    }
+
+    /// <summary>Abandoned (a lost capture, an unmount): nothing is committed. Emitted for a gesture the host holds something for —
+    /// the grain voice of an audible scrub, the muted preview of a video one. Idempotent: a cancel with no live gesture is nothing.</summary>
+    static void DoScrubCancel(ref State s, ref Effects fx)
+    {
+        bool audible = s.Scrub.Audible;
+        bool orphaned = s.ScrubEpoch != s.LoadEpoch;
+        var e = s.Scrub.Cancel();
+        if (e.Cancel && !orphaned && s.RoutesLocal && (audible || s.Kind == PlayableKind.Video)) fx.ScrubCancel = true;
+    }
+
+    /// <summary>A load replaced the deck row under a live gesture (an auto-advance mid-drag, a device reload): the gesture is dropped
+    /// and the model returns to Idle, so its release can never seek a row it never scrubbed. The pump's session went with the load.</summary>
+    static bool ScrubOrphaned(ref State s)
+    {
+        if (s.Scrub.Current == ScrubModel.State.Idle || s.ScrubEpoch == s.LoadEpoch) return false;
+        s.Scrub.Cancel();
+        return true;
     }
 
     static void DoVolume(ref State s, in Input i, ref Effects fx)
@@ -1899,14 +2095,37 @@ public static partial class Playback
             return;
         }
         float v = wire / (float)MaxWireVolume;
+        UnmuteSinkForRaise(ref s, ref fx, wire);
         if (Math.Abs(v - s.Volume) * MaxWireVolume < 1f) return;
         s.Volume = v;
+        MarkVolumeDirty(ref s, i.NowMs);
         Bump(ref s);
         fx.Volume = true;
         fx.VolumeValue = v;
         fx.VolumeEpoch = s.Epoch;
         Announce(ref s, ref fx, PublishReason.VolumeChanged);
         fx.Snapshot = true;
+    }
+
+    /// <summary>A volume raised above the mute floor while the sink is muted un-mutes the sink: the slider moving up is the
+    /// listener asking to hear it (U-4). The mute glyph and the audio never disagree about who is silent.</summary>
+    static void UnmuteSinkForRaise(ref State s, ref Effects fx, int wire)
+    {
+        if (!s.SinkMuted || wire <= Input.WireVolume(MuteFloor)) return;
+        fx.Mute = true;
+        fx.MuteOn = false;
+        s.SinkMuted = false;
+    }
+
+    /// <summary>How long a changed volume waits before it is written to the registry (the first change starts the clock; the
+    /// ticker closes it): a drag costs about one write per tick, not one per drain (V-1).</summary>
+    public const int VolumePersistDebounceMs = 500;
+
+    /// <summary>Mark the volume as changed-but-not-persisted. The FIRST change since the last write starts the debounce.
+    /// <c>Math.Max(1, …)</c> because 0 means "clean" and a test clock may read 0.</summary>
+    static void MarkVolumeDirty(ref State s, long nowMs)
+    {
+        if (s.VolumeDirtySinceMs == 0) s.VolumeDirtySinceMs = Math.Max(1L, nowMs);
     }
 
     /// <summary>Shuffle on/off. Locally it is not a flag but an ORDER (G-080): the rows ahead of the cursor are shuffled,
@@ -1955,8 +2174,13 @@ public static partial class Playback
                 s.Buffering = false;
                 s.Error = Fault.None;
                 s.AutoSkips = 0;                          // audio is out: the dead-row run, if any, is over
-                s.PosMs = (int)i.LongArg;
-                s.PosQpc = i.NowMs;
+                // A Started from an older seek generation while a newer seek is still in flight carries a pre-drop
+                // position: adopting it would step the thumb back over the drop point (the Seeked will place it).
+                if (i.Gen == s.SeekGen || s.LastSeekLandedGen == s.SeekGen)
+                {
+                    s.PosMs = (int)i.LongArg;
+                    s.PosQpc = i.NowMs;
+                }
                 Bump(ref s);
                 ReportStart(ref s, ref fx, s.StartReason, s.PosMs);   // once per row: a reload's Started finds it open
                 Announce(ref s, ref fx, PublishReason.PlayerStateChanged);
@@ -1965,6 +2189,9 @@ public static partial class Playback
                 break;
 
             case AudioSignal.Position:
+                // A report stamped with an older seek generation predates the user's last drop point: it would drag the
+                // playhead back over it (U-1, V-PA2).
+                if (i.Gen != s.SeekGen) break;
                 // NOT an epoch bump: a position report changes nothing a shell is doing (C4), and bumping here would
                 // cancel the very load that is reporting. This is the ~5 Hz path — it must stay effect-light.
                 s.PosMs = (int)i.LongArg;
@@ -1977,6 +2204,8 @@ public static partial class Playback
 
             case AudioSignal.Buffering:
                 if (s.Buffering) break;
+                s.PosMs = s.Position(i.NowMs);                // freeze the playhead on the edge: Position() holds it while refilling (U-5)
+                s.PosQpc = i.NowMs;
                 s.Buffering = true;
                 break;
 
@@ -1988,8 +2217,10 @@ public static partial class Playback
                 break;
 
             case AudioSignal.Seeked:
+                if (i.Gen != s.SeekGen) break;                // a newer seek is already in flight: its own Seeked is the one that lands
                 s.PosMs = (int)i.LongArg;
                 s.PosQpc = i.NowMs;
+                s.LastSeekLandedGen = i.Gen;
                 fx.SmtcTimeline = true;
                 break;
 
@@ -2116,7 +2347,14 @@ public static partial class Playback
     {
         Owner before = s.Own.Kind;
         OwnerFx owner = Ownership.Fold(ref s.Own, in i.Frame, s.Us);
-        if (i.Frame.AckId != 0) s.ClusterAck = i.Frame.AckId;
+        if (i.Frame.AckId != 0)
+        {
+            // U-3: the ack is recorded but does NOT end the optimistic remote-seek hold. A newer ack says the owner applied
+            // SOME command of ours — a pause or a volume step acked before the seek lands would otherwise release the hold
+            // onto a pre-seek echo and snap the thumb back. The hold ends on tolerance (the owner reached the target) or
+            // on expiry (DoClusterApply), which covers a refused or clamped seek within RemoteSeekHoldMs.
+            s.ClusterAck = i.Frame.AckId;
+        }
         // §3.3's ownership-transition row: the ONE cluster-apply call site. Remote-originated (a dealer push or the
         // response to our own PUT) — causeId 0, per §2.2.
         Capture.Decision(CaptureKind.OwnershipTransition, causeId: 0L, owner, before, s.Own.Kind,
@@ -2218,6 +2456,10 @@ public static partial class Playback
         }
     }
 
+    /// <summary>How long a remote seek's optimistic position outranks the owner's reports, and how far a report may sit from the
+    /// seek's target before it still counts as "the owner has not caught up" (U-3, V-PA10).</summary>
+    public const int RemoteSeekHoldMs = 2_000, RemoteSeekToleranceMs = 1_500;
+
     static void MirrorRemote(ref State s, in Input i, ref Effects fx)
     {
         ref readonly RemoteState r = ref i.Remote;
@@ -2225,6 +2467,7 @@ public static partial class Playback
         {
             s.CurrentId = r.Track;
             s.Current = default;                         // the remote's row may have no slot here yet
+            s.RemoteSeekAtMs = 0;                        // a seek held for the OLD row says nothing about this one
             fx.Fetch = true;
             fx.FetchId = r.Track;
             fx.FetchEpoch = s.Epoch;
@@ -2235,8 +2478,17 @@ public static partial class Playback
         s.Phase = !r.HasTrack ? Phase.Idle : proj.Playing ? Phase.Playing : Phase.Paused;
         s.Buffering = r.IsBuffering;
         s.Error = Fault.None;
-        s.PosMs = proj.PosMs;
-        s.PosQpc = i.NowMs;
+        // U-3 (V-PA10): the optimistic position a remote seek painted is HELD while it is fresh and the cluster still reports
+        // the pre-seek one — a stale echo must not snap the thumb back. The hold ends on tolerance (the owner caught up) or on
+        // expiry — never on a bare ack, which may be for another command (DoCluster) — and then the cluster is adopted as before.
+        bool holdRemote = s.RemoteSeekAtMs > 0 && i.NowMs - s.RemoteSeekAtMs < RemoteSeekHoldMs
+            && Math.Abs(proj.PosMs - s.RemoteSeekTargetMs) > RemoteSeekToleranceMs;
+        if (!holdRemote)
+        {
+            s.PosMs = proj.PosMs;
+            s.PosQpc = i.NowMs;
+            s.RemoteSeekAtMs = 0;
+        }
         s.DurationMs = durMs;
         // The header follows the OWNER: its context is painted the moment it arrives, so a takeover (A4) adopts what
         // is already on screen. A new context is a new refill story, as in DoPlay.
@@ -2335,6 +2587,7 @@ public static partial class Playback
                 s.PosMs = s.Position(i.NowMs);
                 s.PosQpc = i.NowMs;
                 s.EpisodeRate = ValidEpisodeSpeed(BitConverter.Int32BitsToSingle((int)c.SeekToMs));
+                fx.SmtcTimeline = true;                      // U-10, as the local SetSpeed
                 break;
 
             case RemoteCmd.SetShufflingContext:
@@ -2486,8 +2739,9 @@ public static partial class Playback
 
     /// <summary>At or below this a volume reads as muted (the bar's glyph threshold, <c>PlayerBarRules.MuteThreshold</c>).</summary>
     public const float MuteFloor = 0.001f;
-    /// <summary>The level an unmute returns to when no earlier level was remembered.</summary>
-    public const float UnmuteDefault = 0.7f;
+    /// <summary>The level an unmute returns to when no earlier level was remembered, and the first-launch volume's twin
+    /// (<c>SavedVolume</c>'s default): through the cubic taper 0.794³ = 0.5005, which is −6.01 dB (D6).</summary>
+    public const float UnmuteDefault = 0.794f;
 
     /// <summary>Mute whoever is audible, routed like <see cref="DoVolume"/>: a real local sink is muted as a sink (the
     /// volume stays where it was); a foreign owner — the wire has no mute flag — and a sinkless local session are muted
@@ -2500,6 +2754,16 @@ public static partial class Playback
         {
             fx.Mute = true;
             fx.MuteOn = muted;
+            s.SinkMuted = muted;
+            // U-4: an unmute at volume 0 would be a no-op — the glyph folds "volume at the floor" into muted, so the listener
+            // could never un-mute. Bring the volume back to what the mute took away (or the default) through the one
+            // volume arm, so the slider, the sink, the PUT and the persistence all see it.
+            if (!muted && s.Volume <= MuteFloor)
+            {
+                float back = s.MuteRestoreVolume > MuteFloor ? s.MuteRestoreVolume : UnmuteDefault;
+                var restore = new Input(InputKind.SetVolume, intArg: Input.WireVolume(back), nowMs: i.NowMs);
+                DoVolume(ref s, in restore, ref fx);
+            }
             return;
         }
         float current = foreign ? (s.MirrorVolume >= 0f ? s.MirrorVolume : 0f) : s.Volume;
@@ -2572,11 +2836,15 @@ public static partial class Playback
         ReportEnd(ref s, ref fx, PlayReason.Logout, s.Position(i.NowMs));
         ulong us = s.Us;
         float volume = s.Volume;
+        bool sinkMuted = s.SinkMuted;                    // the sink stays muted (and the volume write pending) across a sign-out
+        long volumeDirtySince = s.VolumeDirtySinceMs;
         bool video = s.VideoWanted;
         uint epoch = s.Epoch, seq = s.PublishSeq;
         s = State.Initial;
         s.Us = us;
         s.Volume = volume;
+        s.SinkMuted = sinkMuted;
+        s.VolumeDirtySinceMs = volumeDirtySince;
         s.VideoWanted = video;
         s.Epoch = epoch;
         s.PublishSeq = seq;
@@ -2648,10 +2916,18 @@ public static partial class Playback
     // ── 9.4 the ticker and the live window ──────────────────────────────────────────────────────────────────────────
 
     /// <summary>The 1 s ticker (P10, named). It folds the extrapolation into <see cref="State.PosMs"/> so every reader
-    /// sees ONE number, arms the OS timeline latch, and expires the ownership protection window. It must produce NO
-    /// other effect: a tick that announced would be a PUT per second.</summary>
+    /// sees ONE number, arms the OS timeline latch, closes the volume-persist debounce and expires the ownership protection
+    /// window. It must produce NO other effect: a tick that announced would be a PUT per second.</summary>
     static void DoTick(ref State s, in Input i, ref Effects fx)
     {
+        // V-1 / V-PA11: the volume changed and the debounce elapsed — ONE persist effect, in the drain the tick runs in. A
+        // dirty volume keeps the ticker alive (Host.Publish), so a paused or idle deck closes it too.
+        if (s.VolumeDirtySinceMs != 0 && i.NowMs - s.VolumeDirtySinceMs >= VolumePersistDebounceMs)
+        {
+            fx.PersistVolume = true;
+            fx.VolumeValue = s.Volume;
+            s.VolumeDirtySinceMs = 0;
+        }
         // A2: fold only OUR OWN pump's position. A mirrored (Foreign) or departed (Nobody) row has nothing here
         // driving it forward — folding it anyway is the exact ratchet-to-the-duration bug this gate exists to stop;
         // `State.Position` still extrapolates it for display, off the single snapshot `MirrorRemote` wrote.

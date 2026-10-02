@@ -228,12 +228,9 @@ public readonly partial struct Show
         {
             var show = new Show(_slot);
             if (!show.IsValid) return null;
-            var ctx = new ActionContext(ActionTarget.ForShow(show.Uri, show.Knows(ShowFields.Title) ? show.Title : ""), Actions.Services);
-            var rows = new List<MenuFlyoutItem>(4);
-            if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
-            if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
-            Actions.Menu.Group(rows, Episode.ShareMenu(show.Uri, in ctx));
-            return rows.Count == 0 ? null : new ContextMenuModel(rows);
+            var target = ActionTarget.ForShow(show.Uri, show.Knows(ShowFields.Title) ? show.Title : "");
+            return Menus.Container(in target, show.Knows(ShowFields.Image) ? Controls.ArtUrl(show.ImageId) : null, null,
+                new ContainerExtras { OnPage = true });
         }
     }
 }

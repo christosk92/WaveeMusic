@@ -1025,39 +1025,38 @@ public static partial class Spotify
             string name = StrOf(data, "name") ?? "";
             Shell.Omnibar.ItemKind kind;
             string? subtitle, image;
+            AlbumKind? release = null;
             if (Has(wrapperType, dataType, "Track"))
             {
                 kind = Shell.Omnibar.ItemKind.Track;
-                subtitle = JoinArtists(Loc.Get(Strings.Search.SubtitleSong), data);
+                subtitle = JoinArtists(data);
                 image = ImageAt(data, "albumOfTrack", "coverArt");
             }
             else if (Has(wrapperType, dataType, "Artist"))
             {
                 kind = Shell.Omnibar.ItemKind.Artist;
                 name = TryDig(data, out var p, "profile", "name") ? p.GetString() ?? name : name;
-                subtitle = Loc.Get(Strings.Search.TypeArtist);
+                subtitle = null;
                 image = ImageAt(data, "visuals", "avatarImage");
             }
             else if (Has(wrapperType, dataType, "Album"))
             {
                 kind = Shell.Omnibar.ItemKind.Album;
-                // 0.2.9: the wire's own release type, title-cased ("Single", "Ep", "Compilation"), as the prefix.
-                subtitle = JoinArtists(StrOf(data, "type") is { Length: > 0 } type
-                    ? char.ToUpperInvariant(type[0]) + type[1..].Replace('_', ' ').ToLowerInvariant()
-                    : Loc.Get(Strings.Search.TypeAlbum), data);
+                release = ReleaseKindOf(StrOf(data, "type"));
+                subtitle = JoinArtists(data);
                 image = ImageAt(data, "coverArt");
             }
             else if (Has(wrapperType, dataType, "Playlist"))
             {
                 kind = Shell.Omnibar.ItemKind.Playlist;
-                subtitle = TryDig(data, out var o, "ownerV2", "data", "name") ? o.GetString() : Loc.Get(Strings.Search.TypePlaylist);
+                subtitle = TryDig(data, out var o, "ownerV2", "data", "name") ? o.GetString() : null;
                 image = TryDig(data, out var images, "images", "items") && images.ValueKind == JsonValueKind.Array
                         && images.GetArrayLength() > 0 ? PickUrl(images[0]) : null;
             }
             else if (Has(wrapperType, dataType, "Genre"))
             {
                 kind = Shell.Omnibar.ItemKind.Genre;
-                subtitle = Loc.Get(Strings.Search.TypeGenre);
+                subtitle = null;
                 image = ImageAt(data, "image");
             }
             else if (Has(wrapperType, dataType, "Episode"))
@@ -1070,7 +1069,7 @@ public static partial class Spotify
             else if (Has(wrapperType, dataType, "Podcast") || Has(wrapperType, dataType, "Show"))
             {
                 kind = Shell.Omnibar.ItemKind.Podcast;
-                subtitle = TryDig(data, out var pub, "publisher", "name") ? pub.GetString() : Loc.Get(Strings.Search.TypePodcast);
+                subtitle = TryDig(data, out var pub, "publisher", "name") ? pub.GetString() : null;
                 image = ImageAt(data, "coverArt");
             }
             else if (Has(wrapperType, dataType, "Audiobook"))
@@ -1083,12 +1082,23 @@ public static partial class Spotify
             {
                 kind = Shell.Omnibar.ItemKind.User;
                 name = StrOf(data, "displayName") ?? StrOf(data, "username") ?? name;
-                subtitle = Loc.Get(Strings.Search.TypeUser);
+                subtitle = null;
                 image = ImageAt(data, "avatar") ?? ImageAt(data, "visuals", "avatarImage");
             }
             else return null;
-            return new Shell.Omnibar.Item(kind, EntityUri.Parse(uri.AsSpan()), name, subtitle, image);
+            return new Shell.Omnibar.Item(kind, EntityUri.Parse(uri.AsSpan()), name, subtitle, image, release);
         }
+
+        /// <summary>PURE: the wire's album <c>type</c> ("SINGLE" / "EP" / "ALBUM" / "COMPILATION", any case) → the release
+        /// kind the omnibar row names ("Single" / "EP" / "Album" / "Compilation"); null when absent or unrecognised, so
+        /// the row falls back to the plain "Album".</summary>
+        public static AlbumKind? ReleaseKindOf(string? wire)
+            => wire is null ? null
+             : wire.Equals("SINGLE", StringComparison.OrdinalIgnoreCase) ? AlbumKind.Single
+             : wire.Equals("EP", StringComparison.OrdinalIgnoreCase) ? AlbumKind.EP
+             : wire.Equals("ALBUM", StringComparison.OrdinalIgnoreCase) ? AlbumKind.Album
+             : wire.Equals("COMPILATION", StringComparison.OrdinalIgnoreCase) ? AlbumKind.Compilation
+             : null;
 
         static bool Has(string wrapperType, string dataType, string word)
             => wrapperType.Contains(word, StringComparison.OrdinalIgnoreCase) || string.Equals(dataType, word, StringComparison.Ordinal);
@@ -1175,21 +1185,20 @@ public static partial class Spotify
             }
         }
 
-        /// <summary>"Song - A, B, C, ..." (0.2.9 <c>JoinNames</c>): the prefix alone when there are no artists.</summary>
-        static string JoinArtists(string prefix, JsonElement data)
+        /// <summary>The artists' names joined with ", " — the DETAIL only (the row composes its kind word and the " · "
+        /// separator, <c>Search.SubtitleText</c>); null when the wire names none.</summary>
+        static string? JoinArtists(JsonElement data)
         {
-            if (!TryDig(data, out var list, "artists", "items") || list.ValueKind != JsonValueKind.Array) return prefix;
-            var sb = new System.Text.StringBuilder(prefix);
-            int n = 0;
+            if (!TryDig(data, out var list, "artists", "items") || list.ValueKind != JsonValueKind.Array) return null;
+            var sb = new System.Text.StringBuilder();
             foreach (var a in list.EnumerateArray())
             {
                 string? name = TryDig(a, out var p, "profile", "name") ? p.GetString() : StrOf(a, "name");
                 if (name is not { Length: > 0 }) continue;
-                if (n == 3) { sb.Append(", ..."); break; }
-                sb.Append(n == 0 ? " - " : ", ").Append(name);
-                n++;
+                if (sb.Length > 0) sb.Append(", ");
+                sb.Append(name);
             }
-            return sb.ToString();
+            return sb.Length == 0 ? null : sb.ToString();
         }
 
         static string? FirstName(JsonElement authors)

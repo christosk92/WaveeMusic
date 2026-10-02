@@ -67,13 +67,14 @@ public sealed class PrefsTests : IDisposable
     public void BumpAll_moves_every_epoch()
     {
         int a = Prefs.Appearance.Epoch.Peek(), l = Prefs.Lyrics.Epoch.Peek(), d = Prefs.DetailHero.Epoch.Peek(),
-            n = Prefs.NpvPlayer.Epoch.Peek(), p = Prefs.PlayerBar.Epoch.Peek();
+            n = Prefs.NpvPlayer.Epoch.Peek(), p = Prefs.PlayerBar.Epoch.Peek(), s = Prefs.Stage.Epoch.Peek();
         Prefs.BumpAll();
         Assert.Equal(a + 1, Prefs.Appearance.Epoch.Peek());
         Assert.Equal(l + 1, Prefs.Lyrics.Epoch.Peek());
         Assert.Equal(d + 1, Prefs.DetailHero.Epoch.Peek());
         Assert.Equal(n + 1, Prefs.NpvPlayer.Epoch.Peek());
         Assert.Equal(p + 1, Prefs.PlayerBar.Epoch.Peek());
+        Assert.Equal(s + 1, Prefs.Stage.Epoch.Peek());
     }
 
     // ── the clamps ───────────────────────────────────────────────────────────────────────────────────────────────────

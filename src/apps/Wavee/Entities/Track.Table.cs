@@ -927,8 +927,8 @@ public readonly partial struct Track
                 default(Episode.RowItem)), DepKey.Empty);
             _viewMemo = UseComputed(() => new TableView(_sort.Value, _query.Value, _filters.Value, _multi.Value));
             _selectedCount = UseComputed(ComputeSelectedCount);
-            _checksVisible = UseComputed(() => _multi.Value || _selectedCount!.Value >= 2);
-            _selectionVisible = UseComputed(() => { int n = _selectedCount!.Value; return n > 0 && (_multi.Value || n >= 2); });
+            _checksVisible = UseComputed(() => SelectionBarRules.ChecksVisible(_selectedCount!.Value, _multi.Value));
+            _selectionVisible = UseComputed(() => SelectionBarRules.Visible(_selectedCount!.Value, _multi.Value));
             var live = UseMemo(() => new TableLive(_viewMemo!, SetFilters, _visible), DepKey.Empty);
 
             var context = args.Source.Context;
@@ -2029,7 +2029,7 @@ public readonly partial struct Track
                 Role = AutomationRole.Button,
                 OnPointerReleased = args =>
                 {
-                    if (args.ClickCount >= 2) interact(ItemContainerTrigger.DoubleTap, args.Mods);
+                    if (RowClickPolicy.TriggerOf(args.ClickCount, args.Mods) == ItemContainerTrigger.DoubleTap) interact(ItemContainerTrigger.DoubleTap, args.Mods);
                     else interact(ItemContainerTrigger.Tap, SelectorVisualsBound.MultiSelectMods(_checksVisible!.Peek(), args.Mods));
                 },
                 OnKeyDown = args =>

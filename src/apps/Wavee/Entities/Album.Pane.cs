@@ -123,7 +123,7 @@ public readonly partial struct Album
                 _ = scope.Artists.Changed.Value;
                 DemandRowsNow();
             };
-            _play =() => { var a = new Album(_slot); if (a.IsValid) Playback.PlayContext(a.Id); };
+            _play =() => { var a = new Album(_slot); if (a.IsValid) Playback.PlayOrToggleContext(a.Id); };
             _shuffle = () => { var a = new Album(_slot); if (!a.IsValid) return; Playback.SetShuffle(true); Playback.PlayContext(a.Id); };
             _open = () => { var a = new Album(_slot); if (a.IsValid) Shell.GoTo(Shell.For(a.Uri, a.Title)); };
             _retry = () =>
@@ -133,7 +133,7 @@ public readonly partial struct Album
                 if (Entities.Current.Edges.AlbumTracks.IsFailed(_slot)) Entities.RefreshEdge(FetchEdge.AlbumTracks, _slot);
                 _retryEpoch.Value = _retryEpoch.Peek() + 1;
             };
-            _menu = () => { var a = new Album(_slot); return a.IsValid ? MoreMenu(a, _overlay) : null; };   // the page's hero menu, lifted (§5.0)
+            _menu = () => { var a = new Album(_slot); return a.IsValid ? HeroMenu(a, _overlay) : null; };   // the page's hero menu, lifted (§5.0)
             _shimmer = CountedShimmer;
             _trailing = AlsoByTrailing;
             _rows = RowsTable;
@@ -474,7 +474,7 @@ public readonly partial struct Album
             var card = new HomeCard(new EntityRef(EntityKind.Album, slot));
             var data = new Controls.CardData(uri, title, null, cover,
                 OnClick: () => _alsoBy(slot),
-                OnPlay: () => Playback.PlayContext(id),
+                OnPlay: () => Playback.PlayOrToggleContext(id),
                 Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
             {
                 Height = SurfaceMetrics.AlsoByCardH,   // a year-less tile keeps its neighbours' plate height

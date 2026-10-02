@@ -283,5 +283,6 @@ public static partial class Prefs
         DetailHero.Bump();
         NpvPlayer.Bump();
         PlayerBar.Bump();
+        Stage.Bump();
     }
 }

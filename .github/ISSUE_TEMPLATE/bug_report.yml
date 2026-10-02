@@ -70,7 +70,7 @@ body:
     attributes:
       label: Diagnostics info
       description: |
-        Settings › Diagnostics › **Copy diagnostics info**, then paste here. Settings › About › **Report a
+        Settings › About › **Copy diagnostics info**, then paste here. Settings › About › **Report a
         problem…** also copies this, already redacted.
       render: text
   - type: textarea
@@ -78,9 +78,9 @@ body:
     attributes:
       label: Relevant log lines
       description: |
-        Settings › Diagnostics › **Open log folder** → `logs\wavee.log`. Paste only the relevant lines, and please
-        remove anything personal before posting. Settings › About › **Report a problem…** also copies both this
-        and the diagnostics info above, already redacted.
+        Settings › Privacy & diagnostics › Logs › Log files › **Open folder** → `logs\wavee-<date>.log`. Paste only the
+        relevant lines, and please remove anything personal before posting. Settings › About › **Report a
+        problem…** also copies both this and the diagnostics info above, already redacted.
       render: text
   - type: checkboxes
     id: checklist

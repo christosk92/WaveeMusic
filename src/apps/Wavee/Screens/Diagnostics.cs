@@ -10,7 +10,7 @@
 // Spec: ch 27 §9.3, §8 (LogView, BuildReport), §7 DATA GAPS G7/G8/G14; ch 22 §9 (b), (d), W17-W19b; gaps G-094, G-153,
 //       G-183, G-197
 //
-// ENGINE-FREE (one Signal for the Connect traces' version). Every decision the logs panel, the two diagnostics pages,
+// ENGINE-FREE (one Signal for the Connect traces' version). Every decision the Logs page, the two diagnostics pages,
 // the lyrics inspector and the frame watch render is a function here with a fact in Wavee.Tests; `Diagnostics.UI.cs` only
 // lays them out and `Diagnostics.Host.cs` only touches the disk, the process and the engine.
 //
@@ -154,6 +154,18 @@ public static partial class Diagnostics
                 if (rows[i].Repeat > 1) sb.Append(" (repeated ").Append(rows[i].Repeat.ToString(CultureInfo.InvariantCulture)).Append("×)");
                 sb.Append('\n');
             }
+            return sb.ToString();
+        }
+
+        /// <summary>"Export session" on the LIVE ring: every entry in the log FILE's own line shape
+        /// (<see cref="Log.FormatFileLine"/>: <c>seq= tid= t= sid= pid=</c> and then the formatted entry), one per line,
+        /// oldest first — the span is the ring snapshot, which already is. Independent of every filter and of grouping, so
+        /// the file it becomes reads like a slice of the log file and a past session's export (raw file lines) is the same
+        /// product. "Copy visible" stays <see cref="CopyText"/>, the filtered one.</summary>
+        public static string ExportText(ReadOnlySpan<WaveeLogEntry> entries)
+        {
+            var sb = new StringBuilder(entries.Length * 128);
+            for (int i = 0; i < entries.Length; i++) sb.Append(Log.FormatFileLine(in entries[i])).Append('\n');
             return sb.ToString();
         }
 

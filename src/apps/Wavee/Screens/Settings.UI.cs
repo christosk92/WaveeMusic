@@ -1,7 +1,7 @@
 // ── Screens/Settings.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the page shell (masthead, the 7-tab SelectorBar, the per-tab scroll lane), the shared row grammar every tab builds
-// with, the glyph resolver, General (incl. the tray's Notification-area group), Notifications, the Logs mount, and
-// the Screens-side install call
+// the page shell (masthead, the 7-tab SelectorBar — General, Appearance, Playback, Notifications, Storage, Privacy &
+// diagnostics, About — and the per-tab scroll lane), the shared row grammar every tab builds with, the glyph resolver,
+// General (incl. the tray's Notification-area group), Notifications, and the Screens-side install call
 //
 // Role: UI
 // Owner: R
@@ -17,9 +17,8 @@
 // settings page is a single keep-alive route, so page-lifetime statics are the 0.2.9 instance fields, verbatim.
 //
 // MOUNT POINTS / SEAMS: `Settings.InstallScreens()` (the orchestrator's one call), `Settings.Page()`,
-// `Settings.Open(Tab)`; `Settings.LogsPanelBody` (owner S assigns `Diagnostics.LogsPanel`), `Settings.SendTestEvent`
-// (owner S assigns the notification simulator, G-218). The Appearance, Playback, Storage and About bodies live in
-// their named partials.
+// `Settings.Open(Tab)`; `Settings.SendTestEvent` (owner S assigns the notification simulator, G-218). The Appearance,
+// Playback, Storage, Privacy & diagnostics and About bodies live in their named partials.
 
 using System.Globalization;
 using FluentGpu;
@@ -46,6 +45,8 @@ public static partial class Settings
     public static void InstallScreens()
     {
         Shell.SetPage(Shell.RouteKind.Settings, static (in Shell.Route route) => Page());
+        // `wavee://open?route=settings&arg=<slug>`: the arg is a TAB slug, never a place of its own (plan D4).
+        Shell.OnSettingsTabRequested = static slug => Open(TabFromSlug(slug));
         ReleaseNotes.InstallUi();
         Feedback.InstallUi();
         Setup.InstallWizard();
@@ -60,9 +61,6 @@ public static partial class Settings
         s_tab.Value = (int)tab;
         Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
     }
-
-    /// <summary>Owner S's log viewer (`Diagnostics.LogsPanel`). Null → the Logs tab says the viewer is unavailable.</summary>
-    public static Func<Element>? LogsPanelBody;
 
     /// <summary>Owner S's notification simulator (G-218): push a real event of the topic through the pipeline and report
     /// what consumed it. Null → "Send event" answers <see cref="TestEventOutcome.Unavailable"/>.</summary>
@@ -103,6 +101,7 @@ public static partial class Settings
     private static partial Element AppearanceTab();
     private static partial Element PlaybackTab();
     private static partial Element StorageTab();
+    private static partial Element PrivacyDiagnosticsTab();
     private static partial Element AboutTab();
 
     sealed class SettingsPageView : Component
@@ -135,7 +134,8 @@ public static partial class Settings
 
             _ = s_epoch.Value;
             _ = Prefs.PlayerBar.Epoch.Value;
-            int tab = Math.Clamp(s_tab.Value, 0, TabSlugs.Length - 1);
+            _ = Prefs.Stage.Epoch.Value;   // a gallery write on the fullscreen stage re-renders the Appearance ▸ Fullscreen rows live
+            int tab =Math.Clamp(s_tab.Value, 0, TabSlugs.Length - 1);
 
             UseEffect(() =>
             {
@@ -149,27 +149,21 @@ public static partial class Settings
                 Tab.Playback => PlaybackTab(),
                 Tab.Notifications => NotificationsTab(),
                 Tab.Storage => StorageTab(),
-                Tab.Logs => LogsTab(),
+                Tab.PrivacyDiagnostics => PrivacyDiagnosticsTab(),
                 Tab.About => AboutTab(),
                 _ => GeneralTab(),
             };
 
             string slug = TabSlugs[tab];
-            // N7/N8: the body swaps with no transition; only the scroller is keyed, per tab, so each tab keeps its own
-            // offset. Logs is the one unscrolled lane: the panel owns the full remaining height.
-            Element content = (Tab)tab == Tab.Logs
-                ? new BoxEl
-                {
-                    Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
-                    Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.L),
-                    Children = [body],
-                }
-                : ScrollView(new BoxEl
-                {
-                    Direction = 1,
-                    Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
-                    Children = [ContentColumn(body)],
-                }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
+            // N7: the body swaps with no transition; only the scroller is keyed, per tab, so each tab keeps its own
+            // offset. Every tab is an ordinary scrolling lane (N8's unscrolled Logs lane is retired: the viewer is the
+            // route `logs`).
+            Element content = ScrollView(new BoxEl
+            {
+                Direction = 1,
+                Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
+                Children = [ContentColumn(body)],
+            }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
 
             // W28: the masthead and the strip are SIBLINGS of the scroller — nothing compacts, sticks or gains a shadow.
             return new BoxEl
@@ -196,7 +190,7 @@ public static partial class Settings
         Loc.Get(Strings.Settings.Tabs.Playback),
         Loc.Get(Strings.Settings.Notify.Title),
         Loc.Get(Strings.Settings.Tabs.Storage),
-        Loc.Get(Strings.Settings.Tabs.Logs),
+        Loc.Get(Strings.Settings.Tabs.Privacy),
         Loc.Get(Strings.Settings.Tabs.About),
     ];
 
@@ -256,7 +250,7 @@ public static partial class Settings
     /// <summary>One settings row (a <see cref="SettingsCard"/>). Inert under the pointer unless click-enabled (W29 ①).</summary>
     static Element Row(string label, string? sub, Element? control = null, string? icon = null,
                        SettingsCard.ContentAlignment align = SettingsCard.ContentAlignment.Right,
-                       bool isClickEnabled = false, Action? onClick = null, bool isEnabled = true)
+                       bool isClickEnabled = false, Action? onClick = null, bool isEnabled = true, string? actionIcon = null)
         => SettingsCard.Create(new SettingsCard.Options
         {
             Header = label,
@@ -266,6 +260,7 @@ public static partial class Settings
             Alignment = align,
             IsClickEnabled = isClickEnabled,
             IsActionIconVisible = isClickEnabled,
+            ActionIcon = actionIcon,
             OnClick = onClick,
             IsEnabled = isEnabled,
         });
@@ -342,6 +337,7 @@ public static partial class Settings
         "Attention" => Icons.Attention, "Download" => Icons.Download, "ChromeClose" => Icons.ChromeClose,
         "ChromeMinimize" => Icons.ChromeMinimize, "RevealPassword" => Icons.RevealPassword, "Contact" => Icons.Contact,
         "Info" => Icons.Info, "StatusWarning" => Icons.StatusWarning, "Camera" => Icons.Camera, "Forward" => Icons.Forward,
+        "Shield" => Icons.Shield, "Warning" => Icons.Warning, "Repair" => Icons.Repair,
         _ => UnmappedGlyph(name),
     };
 
@@ -385,14 +381,6 @@ public static partial class Settings
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Gpu.Title), SectionGlyph(Tab.General, "Graphics"),
             Loc.Get(Strings.Settings.Gpu.Subtitle)));
         kids.Add(Embed.Comp(static () => new GpuPickerCard()));
-
-        kids.Add(SectionHeader(Loc.Get(Strings.Crash.SettingsSection), SectionGlyph(Tab.General, "Privacy & diagnostics"),
-            Loc.Get(Strings.Crash.SettingsSectionSub)));
-        kids.Add(Embed.Comp(static () => new Crash.PrivacyRows()));
-
-        kids.Add(SectionHeader(Loc.Get(Strings.Settings.Diag.Title), SectionGlyph(Tab.General, "Developer"),
-            Loc.Get(Strings.Settings.Diag.Subtitle)));
-        AddDeveloperRows(kids);
 
         return TabStack(kids.ToArray());
     }
@@ -477,86 +465,6 @@ public static partial class Settings
                 Tray.Host.OnSettingsChanged();
             }),
             RowGlyph(Tab.General, "startOnLogin")));
-    }
-
-    /// <summary>Developer: the app's ONE developer switch, the FPS overlay (present but greyed while developer mode is
-    /// off — never hidden), the realtime capture (docs/plans/wavee/realtime-capture-implementation.md — the persisted
-    /// key/subtitle string are `dealerArchive`/`dealerArchiveSub` verbatim, CLAUDE.md's "no legacy renumbering"; only
-    /// what it now switches on and its copy changed) plus its two doors (open the folder / open the in-app viewer), and
-    /// "Simulate an update" and "Send a test crash report" (both composed away while developer mode is off).</summary>
-    static void AddDeveloperRows(List<Element> kids)
-    {
-        bool dev = Platform.Settings.Get(Platform.Keys.DeveloperMode);
-        kids.Add(Row(Loc.Get(Strings.Settings.Diag.DeveloperMode), Loc.Get(Strings.Settings.Diag.DeveloperModeSub),
-            Toggle(Platform.Keys.DeveloperMode), RowGlyph(Tab.General, "developerMode")));
-        kids.Add(Row(Loc.Get(Strings.Settings.Diag.FpsOverlay), Loc.Get(Strings.Settings.Diag.FpsOverlaySub),
-            Toggle(Platform.Keys.FpsOverlay, isEnabled: dev), RowGlyph(Tab.General, "fpsOverlay"), isEnabled: dev));
-        kids.Add(Row(Loc.Get(Strings.Settings.Diag.DealerArchive), Loc.Get(Strings.Settings.Diag.DealerArchiveSub),
-            Toggle(Platform.Keys.DealerArchiveEnabled, afterWrite: static _ => RealtimeCaptureHost.OnSettingsChanged()),
-            RowGlyph(Tab.General, "dealerArchive")));
-        kids.Add(Row(Loc.Get(Strings.Settings.Diag.OpenCaptureFolder), Loc.Get(Strings.Settings.Diag.OpenCaptureFolderSub),
-            Button.Standard(Loc.Get(Strings.Settings.Diag.OpenCaptureFolderButton),
-                static () => Diagnostics.OpenFolder(Path.Combine(Platform.LogFolder, "capture"))),
-            RowGlyph(Tab.General, "openCaptureFolder")));
-        kids.Add(Row(Loc.Get(Strings.Settings.Diag.OpenCaptureViewer), Loc.Get(Strings.Settings.Diag.OpenCaptureViewerSub),
-            Button.Standard(Loc.Get(Strings.Settings.Diag.OpenCaptureViewerButton),
-                static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.CaptureDiagnostics))),
-            RowGlyph(Tab.General, "openCaptureViewer")));
-        if (RowVisible(Tab.General, "simulateUpdate", dev))
-            kids.Add(Row(Loc.Get(Strings.Settings.Diag.SimulateUpdate), Loc.Get(Strings.Settings.Diag.SimulateUpdateSub),
-                Button.Standard(Loc.Get(Strings.Settings.Diag.SimulateUpdateButton), static () => Update.Host.SimulateUpdate()),
-                RowGlyph(Tab.General, "simulateUpdate")));
-        if (RowVisible(Tab.General, "sendTestCrashReport", dev))
-        {
-            bool canSend = Crash.Uploader.Configured;
-            kids.Add(Row(Loc.Get(Strings.Settings.Diag.SendTestCrashReport),
-                Loc.Get(canSend ? Strings.Settings.Diag.SendTestCrashReportSub : Strings.Settings.Diag.SendTestCrashReportUnavailable),
-                Button.Standard(Loc.Get(Strings.Settings.Diag.SendTestCrashReportButton), static () => SendTestCrashReport(),
-                    isEnabled: canSend && !s_testCrashBusy),
-                RowGlyph(Tab.General, "sendTestCrashReport")));
-        }
-    }
-
-    /// <summary>True from the click until the test bundle is written and handed to the uploader (UI thread only). It
-    /// guards the GENERATION — one live dump request at a time from here — not the upload: each click is its own
-    /// report, and its outcome card is its own (<c>crash:&lt;id&gt;</c>).</summary>
-    static bool s_testCrashBusy;
-
-    /// <summary>Developer › "Send a test crash report" (#165): <see cref="Crash.Host.WriteTestReport"/> off the UI
-    /// thread (it blocks on the crash handler's dump), then — back on it — the Reports list bump and the NORMAL send:
-    /// <see cref="Crash.Uploader.Enqueue"/> with the dump, whatever the reporting mode (this click is the manual send),
-    /// and the real outcome card (<c>Crash.OutcomeToasts</c>) carrying the report's short id.</summary>
-    static void SendTestCrashReport()
-    {
-        if (s_testCrashBusy || !Crash.Uploader.Configured) return;
-        s_testCrashBusy = true;
-        Bump();
-        var post = s_post;
-        var rules = Crash.Scrubber.RulesNow();   // UI thread: the live account/device tables
-        var writing = Notify.Say(Loc.Get(Strings.Crash.TestReportWriting), InfoBarSeverity.Informational,
-            dedupeKey: "crash-test-report", durationMs: 15000f);
-        _ = Task.Run(() =>
-        {
-            Crash.BundleInfo? bundle = Crash.Host.WriteTestReport(rules);
-            post(() =>
-            {
-                s_testCrashBusy = false;
-                Bump();
-                if (bundle is null)
-                {
-                    writing.Close();
-                    Notify.Say(Loc.Get(Strings.Crash.TestReportFailed), InfoBarSeverity.Error, durationMs: 8000f);
-                    return;
-                }
-                Crash.Host.ReportsVersion.Value++;   // Logs › Reports lists it now
-                var outcome = Crash.OutcomeToasts.Track(bundle, queuedShown: false, test: true);
-                Crash.Uploader.Enqueue(bundle, includeDump: true, settled: rec =>
-                {
-                    writing.Close();
-                    outcome(rec);
-                });
-            });
-        });
     }
 
     /// <summary>Settings › General › Graphics — the render-GPU picker. Its own component so the seeding effect lives on
@@ -805,23 +713,6 @@ public static partial class Settings
             ? Button.Standard(Loc.Get(Strings.Settings.Notify.OpenWindows), static () => OpenUri("ms-settings:notifications"))
             : null;
         return InfoBar.Create(InfoBarSeverity.Warning, t.Title, t.Body, isClosable: false, actionButton: action);
-    }
-
-    // ══ 7. LOGS (N8, W21 — the panel is owner S's) ═════════════════════════════════════════════════════════════════
-
-    static Element LogsTab()
-    {
-        // crash-diagnostics-implementation.md §D/§F "E · In-app UI": the Reports list sits under the log viewer,
-        // taking only its own natural height (no Grow) so the viewer keeps the rest of the tab's vertical space.
-        Element reports = Embed.Comp(static () => new Crash.ReportsList());
-        if (LogsPanelBody is { } body)
-            return new BoxEl { Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1, Gap = Spacing.M, Children = [body(), reports] };
-        return new BoxEl
-        {
-            Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Children = [Design.Type.DenseMeta(Loc.Get("settings.logs.unavailable")) with { Color = Tok.TextSecondary }],
-        };
     }
 
     static bool IsPackaged()

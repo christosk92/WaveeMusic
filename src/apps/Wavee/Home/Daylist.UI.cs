@@ -115,10 +115,14 @@ public sealed class DaylistCard : Component
         string title = card.Title;
 
         void Play() => HomeCardNav.Play(in c);
-        void Shuffle() { Playback.SetShuffle(true); HomeCardNav.Play(in c); }
+        // Shuffle STARTS the daylist shuffled; it never toggles (HomeCardNav.Play pauses a daylist that already plays).
+        void Shuffle() { Playback.SetShuffle(true); Playback.PlayContext(c.Uri); }
+        // The ▶ names what a press does: Pause while this daylist is the context playing (a subscribing, coarse-first read).
+        bool pauses = Controls.ShowsPause(uri);
 
         var actions = ActionRow(
-            Button.Create(Loc.Get(Strings.Home.Play), Play, ButtonAppearance.Accent, glyph: Icons.Play)
+            Button.Create(Loc.Get(pauses ? Strings.Home.Pause : Strings.Home.Play), Play, ButtonAppearance.Accent,
+                          glyph: pauses ? Icons.Pause : Icons.Play)
                 with { MinWidth = Controls.PrimaryMinWidth, Shrink = 0f },
             Button.Create(Loc.Get(Strings.Detail.Shuffle), Shuffle, ButtonAppearance.Standard, glyph: Icons.Shuffle)
                 with { Shrink = 0f },

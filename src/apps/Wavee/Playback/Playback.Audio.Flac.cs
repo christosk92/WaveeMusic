@@ -28,7 +28,8 @@
 //
 // Rules this file is written under (P1-P16 / C1-C10, relationships_wavee.md §5.11):
 //   P8   ZERO allocation after `Decoder.Open`. Two buffers, both sized from STREAMINFO: `MaxBlock × Channels` ints
-//        for the planar block and 32 ints for the LPC coefficients. The bit reader is a `ref struct` over the
+//        for the planar block and 32 ints for the LPC coefficients (plus `MaxBlock` longs for the 33-bit side channel,
+//        and only when the stream is 32-bit stereo — §4b). The bit reader is a `ref struct` over the
 //        caller's span; every header, every block and every seek probe is stack-only. §3.11 is the whole list.
 //   P9   No LINQ, no closures, no async, no boxing, no exceptions on the decode path. An overrun sets a flag and
 //        yields zeros; a corrupt frame is a return value (`FrameResult`), not a throw. The SHELL resyncs.
@@ -145,6 +146,11 @@ public static partial class Playback
             public ByteRange Title, Artist, Album, AlbumArtist, Date, TrackNumber;
             public ByteRange PictureMime, PictureData;
 
+            /// <summary>The four ReplayGain tag VALUES (N-3, V-PA18), as ranges like the rest: <c>REPLAYGAIN_TRACK_GAIN</c>/<c>_TRACK_PEAK</c>/
+            /// <c>_ALBUM_GAIN</c>/<c>_ALBUM_PEAK</c>. Text such as <c>-6.54 dB</c> and <c>0.988553</c>; the adapter parses them
+            /// (<c>Playback.Audio.ReplayGainTags</c>). Empty when the file carries none.</summary>
+            public ByteRange RgTrackGain, RgTrackPeak, RgAlbumGain, RgAlbumPeak;
+
             /// <summary>§8.8's picture type; 3 = front cover. The first picture wins, a front cover replaces it.</summary>
             public uint PictureKind;
         }
@@ -246,8 +252,9 @@ public static partial class Playback
         }
 
         /// <summary>§8.6, LITTLE-endian lengths (the one little-endian block in the format). Keys are ASCII and
-        /// case-insensitive; the FIRST '=' splits. Only the six keys a row needs are kept; the rest is skipped by
-        /// length, so a 1,000-comment block costs one pass and no allocation.</summary>
+        /// case-insensitive; the FIRST '=' splits. Only the six keys a row needs, and the four ReplayGain keys the
+        /// normalization needs, are kept; the rest is skipped by length, so a 1,000-comment block costs one pass and no
+        /// allocation.</summary>
         static void ParseVorbisComment(ReadOnlySpan<byte> b, int baseOffset, ref Tags tags)
         {
             int pos = 0;
@@ -269,6 +276,10 @@ public static partial class Playback
                     else if (KeyIs(key, "ALBUMARTIST"u8) || KeyIs(key, "ALBUM ARTIST"u8)) tags.AlbumArtist = value;
                     else if (KeyIs(key, "DATE"u8)) tags.Date = value;
                     else if (KeyIs(key, "TRACKNUMBER"u8)) tags.TrackNumber = value;
+                    else if (KeyIs(key, "REPLAYGAIN_TRACK_GAIN"u8)) tags.RgTrackGain = value;
+                    else if (KeyIs(key, "REPLAYGAIN_TRACK_PEAK"u8)) tags.RgTrackPeak = value;
+                    else if (KeyIs(key, "REPLAYGAIN_ALBUM_GAIN"u8)) tags.RgAlbumGain = value;
+                    else if (KeyIs(key, "REPLAYGAIN_ALBUM_PEAK"u8)) tags.RgAlbumPeak = value;
                 }
                 pos += (int)len;
             }
@@ -344,12 +355,14 @@ public static partial class Playback
         public enum HeaderResult : byte { Ok, NotSync, Reserved, BadCrc, Truncated, Mismatch }
 
         /// <summary>The cheap gate before the CRC-8 parse, for the sync scanner and the seek probe (Symphonia
-        /// <c>is_likely_frame_header</c>, frame.rs:225-267). Four bytes: the widened 16-bit sync, and no reserved
-        /// code in the block-size / rate / channel / bit-depth fields.</summary>
+        /// <c>is_likely_frame_header</c>, frame.rs:225-267). Four bytes: the 15-bit sync code (§9.1: <c>0xFF</c>, then
+        /// <c>0b1111100</c> in the top seven bits of the second byte — the low bit is the blocking strategy, so the
+        /// mask is <c>0xFE</c>, not <c>0xFC</c>: P-8), and no reserved code in the block-size / rate / channel /
+        /// bit-depth fields.</summary>
         public static bool LooksLikeHeader(ReadOnlySpan<byte> b)
         {
             if (b.Length < 4) return false;
-            if (b[0] != 0xFF || (b[1] & 0xFC) != 0xF8) return false;
+            if (b[0] != 0xFF || (b[1] & 0xFE) != 0xF8) return false;
             int block = b[2] >> 4, rate = b[2] & 0xF, chan = b[3] >> 4, bps = (b[3] >> 1) & 7;
             return block != 0 && rate != 0xF && chan < 0xB && bps != 3 && (b[3] & 1) == 0;
         }
@@ -362,7 +375,7 @@ public static partial class Playback
         {
             h = default;
             if (b.Length < 6) return HeaderResult.Truncated;
-            if (b[0] != 0xFF || (b[1] & 0xFC) != 0xF8) return HeaderResult.NotSync;
+            if (b[0] != 0xFF || (b[1] & 0xFE) != 0xF8) return HeaderResult.NotSync;     // 15-bit sync (§9.1): P-8
             h.Variable = (b[1] & 1) != 0;
             int blockCode = b[2] >> 4, rateCode = b[2] & 0xF, chanCode = b[3] >> 4, bpsCode = (b[3] >> 1) & 7;
             if (blockCode == 0 || rateCode == 0xF || chanCode > 0xA || bpsCode == 3 || (b[3] & 1) != 0)
@@ -588,6 +601,79 @@ public static partial class Playback
             return FrameResult.Ok;
         }
 
+        // ── 4b. The wide path: the 33-bit side channel of a 32-bit stereo stream (P-1; §9.2) ────────────────────────
+        //
+        // L/S, S/R and M/S stereo give the side channel one more bit than the stream's depth, so at 32 bits it is 33 —
+        // an `int` cannot hold it, and the narrow reader cannot read it (`ReadSigned(33)` truncates to 32 bits and
+        // shifts by a masked −1: full-scale garbage with a passing CRC-16). `DecodeFrame` routes exactly that one
+        // subframe here. Same syntax as `DecodeSubframe`, four differences: the samples are `long`; warm-ups, the
+        // constant and verbatim samples are read with `ReadSignedLong`; the Rice residuals (still 32-bit) land in the
+        // side channel's own slot of the planar `int` buffer, which is idle because the samples live in the `long`
+        // block, and the restoration reads them from there; and the wasted-bits shift is in `long`. Nothing is
+        // allocated: the `long` block is the decoder's third buffer, sized in `Open`.
+
+        /// <summary>One 33-bit side subframe (§9.2). <paramref name="scratch"/> is the side channel's <c>int</c> run
+        /// (residual scratch, <paramref name="samples"/>.Length long); <paramref name="samples"/> receives the signed
+        /// 33-bit samples before decorrelation.</summary>
+        static FrameResult DecodeSubframeWide(ref BitReader r, int bps, Span<int> scratch, Span<long> samples, Span<int> coefs)
+        {
+            if (r.ReadBit()) return FrameResult.Reserved;                            // the zero pad bit (§9.2.1)
+            int type = (int)r.Read(6);
+            int wasted = 0;
+            if (r.ReadBit()) wasted = r.ReadUnary() + 1;                             // §9.2.2: unary (k−1)
+            if (wasted >= bps) return FrameResult.Reserved;
+            bps -= wasted;
+
+            FrameResult res;
+            if (type == 0)
+            {
+                samples.Fill(r.ReadSignedLong(bps));
+                res = FrameResult.Ok;
+            }
+            else if (type == 1)
+            {
+                for (int i = 0; i < samples.Length; i++) samples[i] = r.ReadSignedLong(bps);
+                res = FrameResult.Ok;
+            }
+            else if ((type & 0x38) == 0x08 && (type & 7) <= 4) res = DecodeFixedWide(ref r, bps, type & 7, scratch, samples);
+            else if ((type & 0x20) != 0) res = DecodeLpcWide(ref r, bps, (type & 0x1F) + 1, scratch, samples, coefs);
+            else return FrameResult.Reserved;
+            if (res != FrameResult.Ok) return res;
+            if (r.Overrun) return FrameResult.Overrun;
+
+            if (wasted > 0) ShiftLeftWide(samples, wasted);                          // §9.2.2, in long
+            return FrameResult.Ok;
+        }
+
+        /// <summary>§9.2.5 for the wide path: 33-bit warm-ups into <paramref name="s"/>, residuals into
+        /// <paramref name="res"/> (the <c>int</c> scratch run), restored in 64-bit by <see cref="RestoreFixed33"/>.</summary>
+        static FrameResult DecodeFixedWide(ref BitReader r, int bps, int order, Span<int> res, Span<long> s)
+        {
+            if (order > s.Length) return FrameResult.Reserved;
+            for (int i = 0; i < order; i++) s[i] = r.ReadSignedLong(bps);
+            FrameResult fr = DecodeResidual(ref r, order, res);
+            if (fr != FrameResult.Ok) return fr;
+            RestoreFixed33(s, res, order);
+            return FrameResult.Ok;
+        }
+
+        /// <summary>§9.2.6 for the wide path: as <see cref="DecodeLpc"/>, with the warm-ups in <c>long</c> and the
+        /// restoration by <see cref="RestoreLpc33"/> (no accumulator choice to make: the sum is always 64-bit).</summary>
+        static FrameResult DecodeLpcWide(ref BitReader r, int bps, int order, Span<int> res, Span<long> s, Span<int> coefs)
+        {
+            if (order > s.Length || order > MaxLpcOrder) return FrameResult.Reserved;
+            for (int i = 0; i < order; i++) s[i] = r.ReadSignedLong(bps);
+            int precision = (int)r.Read(4) + 1;
+            if (precision == 16) return FrameResult.Reserved;                        // 0b1111 forbidden
+            int shift = r.ReadSigned(5);
+            if (shift < 0) return FrameResult.Unsupported;
+            for (int i = 0; i < order; i++) coefs[i] = r.ReadSigned(precision);
+            FrameResult fr = DecodeResidual(ref r, order, res);
+            if (fr != FrameResult.Ok) return fr;
+            RestoreLpc33(s, res, coefs[..order], shift);
+            return FrameResult.Ok;
+        }
+
         // ── 5. Decorrelation, wasted bits, and the float conversion → §K5 of the Kernels partial ────────────────
         //
         // `Decorrelate`, `ShiftLeft`, `ToFloat` and `ToFloatMulti` are the three places in the decoder where the
@@ -612,7 +698,7 @@ public static partial class Playback
                 if (rel < 0) return -1;
                 i += rel;
                 if (i + 4 > win.Length) return -1;
-                if ((win[i + 1] & 0xFC) != 0xF8 || !LooksLikeHeader(win[i..])) { i++; continue; }
+                if ((win[i + 1] & 0xFE) != 0xF8 || !LooksLikeHeader(win[i..])) { i++; continue; }
                 HeaderResult r = ParseFrameHeader(win[i..], si, out h);
                 if (r == HeaderResult.Ok) return i;
                 if (r == HeaderResult.Truncated) return -1;                           // need more bytes, not another offset
@@ -720,7 +806,14 @@ public static partial class Playback
                 int at = FindHeader(window, from, decoder.Info, out FrameHeader h);
                 if (at < 0) return ProbeResult.NoFrame;
                 FrameResult fr = decoder.DecodeFrame(window[at..], out _, out _);
-                if (fr == FrameResult.Overrun) return ProbeResult.NoFrame;             // the window holds no whole frame
+                // S-9. An Overrun means the window ended inside this candidate. If a whole maximum-size frame would
+                // still have fitted from `at` to the window's end (STREAMINFO's max frame size), a REAL frame cannot
+                // have overrun: it is a false sync whose garbage subframes ran off the end, so it is a skip candidate
+                // like any other (the CRC-16 would have said so had the window been longer). Only when fewer than
+                // `MaxFrame` bytes remain can the candidate be a real frame cut by the window: that is NoFrame, and
+                // the caller reads a bigger or later window. Unknown MaxFrame (0) makes every Overrun skippable.
+                if (fr == FrameResult.Overrun && window.Length - at < decoder.Info.MaxFrame)
+                    return ProbeResult.NoFrame;                                         // the window holds no whole frame
                 if (fr != FrameResult.Ok) { from = at + 1; continue; }                 // a false sync: the CRC-16 said so
 
                 long abs = windowOffset + at;
@@ -775,12 +868,14 @@ public static partial class Playback
         }
 
         /// <summary>The stateless-across-frames decoder. Owns exactly two buffers, sized once from STREAMINFO:
-        /// <c>MaxBlock × Channels</c> ints for the planar samples and 32 ints for LPC coefficients. Reused across
-        /// seeks and, by the SHELL, across tracks of the same shape — a second <see cref="Open"/> with a smaller or
-        /// equal <c>MaxBlock × Channels</c> allocates nothing.</summary>
+        /// <c>MaxBlock × Channels</c> ints for the planar samples and 32 ints for LPC coefficients — plus, for a
+        /// 32-bit STEREO stream only (P-1), a <c>MaxBlock</c>-long <c>long</c> block that holds the 33-bit side
+        /// channel until it is decorrelated. Reused across seeks and, by the SHELL, across tracks of the same shape —
+        /// a second <see cref="Open"/> with a smaller or equal shape allocates nothing.</summary>
         public sealed class Decoder
         {
             int[] _pcm = [];
+            long[] _wide = [];
             readonly int[] _coefs = new int[MaxLpcOrder];
             StreamInfo _si;
 
@@ -790,12 +885,18 @@ public static partial class Playback
             /// <summary>How many ints the planar buffer holds — the one number the allocation gate reads.</summary>
             public int BufferInts => _pcm.Length;
 
+            /// <summary>How many longs the 33-bit side-channel block holds: 0 until a 32-bit stereo stream is opened.</summary>
+            public int WideLongs => _wide.Length;
+
             /// <summary>Size the buffers for this stream. The only allocation site after construction.</summary>
             public void Open(in StreamInfo si)
             {
                 _si = si;
                 int need = si.MaxBlock * si.Channels;
                 if (_pcm.Length < need) _pcm = new int[need];
+                // Only a stereo frame has a side channel, and only at 32 bits does it need 33 (P-1).
+                int needWide = si.Bps >= 32 && si.Channels == 2 ? si.MaxBlock : 0;
+                if (_wide.Length < needWide) _wide = new long[needWide];
             }
 
             /// <summary>Decode the frame whose sync byte is <paramref name="win"/>[0]. On <see cref="FrameResult.Ok"/>,
@@ -812,15 +913,21 @@ public static partial class Playback
                 if (hr != HeaderResult.Ok) return FrameResult.Reserved;
                 if (h.BlockSize > _si.MaxBlock || h.Channels != _si.Channels) return FrameResult.Reserved;
                 if (h.BlockSize * h.Channels > _pcm.Length) return FrameResult.Unsupported;   // Open was never called
+                // P-1: a decorrelated 32-bit frame has a 33-bit side channel, decoded into the long block.
+                bool wide = h.Assignment != 0 && h.Bps == 32;
+                if (wide && _wide.Length < h.BlockSize) return FrameResult.Unsupported;       // Open was never called
 
                 var r = new BitReader(win, h.HeaderBytes);
                 Span<int> pcm = _pcm.AsSpan(0, h.BlockSize * h.Channels);
                 for (int c = 0; c < h.Channels; c++)
                 {
                     // §4.2: the side channel carries one extra bit — L/S: channel 1; S/R: channel 0; M/S: channel 1.
-                    int bps = h.Bps + ((h.Assignment == 1 && c == 1) || (h.Assignment == 2 && c == 0)
-                                    || (h.Assignment == 3 && c == 1) ? 1 : 0);
-                    FrameResult fr = DecodeSubframe(ref r, bps, pcm.Slice(c * h.BlockSize, h.BlockSize), _coefs);
+                    bool side = (h.Assignment == 1 && c == 1) || (h.Assignment == 2 && c == 0)
+                             || (h.Assignment == 3 && c == 1);
+                    Span<int> run = pcm.Slice(c * h.BlockSize, h.BlockSize);
+                    FrameResult fr = side && wide
+                        ? DecodeSubframeWide(ref r, h.Bps + 1, run, _wide.AsSpan(0, h.BlockSize), _coefs)
+                        : DecodeSubframe(ref r, h.Bps + (side ? 1 : 0), run, _coefs);
                     if (fr != FrameResult.Ok) return fr;
                 }
                 r.AlignToByte();
@@ -830,7 +937,10 @@ public static partial class Playback
                 ushort crc = (ushort)((win[end] << 8) | win[end + 1]);
                 if (Crc16(win[..end]) != crc) return FrameResult.BadCrc16;
 
-                if (h.Assignment != 0)
+                if (wide)
+                    DecorrelateWide(h.Assignment, pcm[..h.BlockSize], pcm.Slice(h.BlockSize, h.BlockSize),
+                                    _wide.AsSpan(0, h.BlockSize));
+                else if (h.Assignment != 0)
                     Decorrelate(h.Assignment, pcm[..h.BlockSize], pcm.Slice(h.BlockSize, h.BlockSize));
                 consumed = end + 2;
                 block = new Block(pcm, h.BlockSize, h.Channels, h.Bps, h.SampleNumber);

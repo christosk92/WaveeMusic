@@ -18,6 +18,7 @@ using Wavee;
 using Wavee.Sdk.Streams;
 using Xunit;
 using Audio = Wavee.Spotify.Audio;
+using Ogg = Wavee.Playback.Ogg;
 
 namespace Wavee.Tests;
 
@@ -77,12 +78,14 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
 
     static Audio.Body NewBody(FakeCdn cdn, Audio.Fetcher fetcher, int length, bool known = true, byte[]? head = null,
         ChunkDiskCache? disk = null, int waitMs = Audio.Ring.DefaultWaitMs, string fileId = FileA, bool prepared = false,
-        float peak = 0f, string[]? mirrors = null, Func<string, string[]?>? reresolve = null, bool gainKnown = true)
+        float peak = 0f, string[]? mirrors = null, Func<string, string[]?>? reresolve = null, bool gainKnown = true,
+        bool metered = false, Audio.BodyDecrypt? decrypt = null, Audio.Format fmt = Audio.Format.OggVorbis320)
     {
         long estimate = Skip + 60_000L * Audio.NominalBytesPerSecond(Audio.Format.OggVorbis320) / 1000;
         return new Audio.Body(cdn, mirrors ?? ["https://cdn-a.test/audio", "https://cdn-b.test/audio"], Key, Skip,
-            known ? length : estimate, known, 60_000, Audio.Format.OggVorbis320, 0f, fileId, head, disk, fetcher,
-            metered: false, waitMs: waitMs, peak: peak, prepared: prepared, gainKnown: gainKnown, reresolve: reresolve);
+            known ? length : estimate, known, 60_000, fmt, 0f, fileId, head, disk, fetcher,
+            metered: metered, waitMs: waitMs, peak: peak, prepared: prepared, gainKnown: gainKnown, reresolve: reresolve,
+            decrypt: decrypt);
     }
 
     /// <summary>The open's seams over <paramref name="cdn"/>: the head, resolve and key COUNT their calls, work runs inline.</summary>
@@ -280,7 +283,7 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void Far_seek_is_one_probe_then_one_fill_range()
+    public void Far_seek_is_one_probe_one_fill_range_and_last_the_slots_behind_the_landing()
     {
         var (plain, cipher) = Big.Value;
         var cdn = new FakeCdn(cipher);
@@ -297,9 +300,17 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         WaitIdle(fetcher);
 
         var after = cdn.Ranges[opens..];
-        Assert.Equal(ProbeRange(far, BigBytes), after[0]);              // the 48 KiB probe, aligned out at both ends
-        Assert.Equal(2, fetcher.Requests - before);                     // + the fill from the landing page to EOF
-        output.WriteLine($"far seek: probe 1 + fill {fetcher.Requests - before - 1}; open cost {before}");
+        (long Start, long End) probe = ProbeRange(far, BigBytes);
+        long landingChunk = probe.Start / Slot;
+        Assert.Equal(probe, after[0]);                                  // the 48 KiB probe, aligned out at both ends
+        Assert.Equal((probe.End, (long)BigBytes), after[1]);            // the fill from the landing page to EOF
+        // S-11: a cold landing owes the slots just behind it (a step back after the seek is then a ring hit). They are the LOWEST-priority
+        // range — planned only once the window ahead is whole — and ONE request: KeepBehindSlots / 2 whole slots ending at the landing's.
+        Assert.Equal(((landingChunk - Audio.Ring.KeepBehindSlots / 2) * Slot, landingChunk * Slot), after[2]);
+        Assert.Equal(3, fetcher.Requests - before);
+        Assert.Equal(3, after.Length);
+        Assert.True(body.IsResident(landingChunk * Slot - Skip - 1), "the slot just behind the landing is resident");
+        output.WriteLine($"far seek: probe 1 + fill {fetcher.Requests - before - 2} + behind 1; open cost {before}");
     }
 
     [Fact]
@@ -538,12 +549,17 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         Assert.Equal(ProbeRange(probe1, BigBytes), cdn.Ranges[opens]);
         Assert.Equal(ProbeRange(landing, BigBytes), cdn.Ranges[opens + 1]);
 
-        body.ResumeFrom(landing);                                       // the landing: the held fill goes out, once
+        body.ResumeFrom(landing);                                       // the landing: the held fill goes out, once …
         WaitIdle(fetcher);
         Assert.False(body.Ring.FillHeld);
-        Assert.Equal(3, fetcher.Requests - before);
+        Assert.Equal(4, fetcher.Requests - before);                     // … and then, last, the slots behind it (S-11)
         Assert.Equal((ProbeRange(landing, BigBytes).End, (long)BigBytes), cdn.Ranges[opens + 2]);
-        output.WriteLine($"two-probe seek: {fetcher.Requests - before} requests (2 probes + 1 fill at the landing)");
+        // The slots behind are the LANDING's (the last probe's), never the first probe's: KeepBehindSlots / 2 whole slots ending where the
+        // landing probe begins, one request, planned only once the window ahead was whole.
+        long landingChunk = ProbeRange(landing, BigBytes).Start / Slot;
+        Assert.Equal(((landingChunk - Audio.Ring.KeepBehindSlots / 2) * Slot, landingChunk * Slot), cdn.Ranges[opens + 3]);
+        Assert.Equal(cancelled, fetcher.Cancelled);                     // nothing was ever cancelled for any of it
+        output.WriteLine($"two-probe seek: {fetcher.Requests - before} requests (2 probes + 1 fill at the landing + 1 behind it)");
     }
 
     [Fact]
@@ -1410,6 +1426,891 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         Assert.Equal(Path.Combine(local, "Wavee", "Cache", "audio"), Audio.DiskCache.DirectoryUnder(local));
     }
 
+    // ── playback smoothness (#167), wave 0: S-2, S-12, S-13, P-6, H-12, R-6 ───────────────────────────────────────────
+    //
+    // Plan docs/plans/wavee/playback-smoothness-implementation.md §4.16 / §5. The facts are the audit's stream findings:
+    //
+    //   S-2   The only range deadline was a 60 s TOTAL: a socket that stopped sending mid-range held the wire for a minute while
+    //         the ring starved in 8 s rounds. Now an IDLE deadline (`Fetcher.RangeIdleTimeoutMs`, re-armed after every read that
+    //         returned bytes), and a starving read cancels the range that should have answered it. (The idle deadline's own
+    //         end-to-end test — a link that goes quiet for the production 8 s — was an ~11 s wall-clock fact and was dropped: the
+    //         starve-cancel test below covers the same settle-Stale-and-replan path in 200 ms, and the deadline's rule is pure.)
+    //   S-12  `FillFromDisk` ran BEFORE `_inFlight` was registered, so a seek that arrived during up to eight SHA-256-verified disk
+    //         reads could not cancel the stale fill, and the probe queued behind it.
+    //   S-13  For windows ≤ 512 KiB (metered, 96k, prepared) the low-water mark collapsed to ~80 KiB: the refill was a whole 512 KiB
+    //         range requested with 1.6-2 s of audio left.
+    //   P-6   A wire fault after some slots landed, then refusals, set `_refusedAt`: `Refusing` and the pump's 6 s fast-fail
+    //         applied to a slow-but-alive link.
+    //   H-12  `WidenWhenProven` ran inside `ReadAt` — on the engine's decode-ahead producer — and rented slots / re-hashed four
+    //         tables under the ring's gate. It now raises a flag the fetch task polls.
+    //   R-6   `Fetcher.Faults` was not in `Stream.Stats`.
+
+    [Fact]
+    public void A_read_that_starves_cancels_the_range_that_should_have_answered_it_and_the_ring_plans_it_again()
+    {
+        // S-2's second half: the idle deadline re-arms on every byte, so a TRICKLE never trips it. A read that has waited its whole
+        // bound (8 s in production, 200 ms here) cancels the range its offset lies in — it settles Stale and the ring plans it again
+        // from its first hole, every slot that landed kept.
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { SteppedBelow = 2L * MaxRange };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 200);
+        cdn.Step(Slot);                                                   // slot 0 only: the range is then on the wire and quiet
+        body.Start();
+        WaitUntil(() => body.IsResident(0), "the first slot to land");
+        Assert.Equal(0, fetcher.Cancelled);
+
+        var dst = new byte[4_096];
+        Assert.Equal(Audio.Body.Starved, body.ReadAt(Slot, dst, body.Epoch));   // slot 1 is inside the range that is still on the wire
+
+        WaitUntil(() => cdn.ReadCancelsObserved == 1, "the quiet range to be cancelled by the starving read");
+        Assert.Equal(1, fetcher.Cancelled);
+        Assert.Equal(0, fetcher.Faults);                                  // a cancel, not a fault
+        Assert.Equal(1, body.Ring.Starves);
+        WaitUntil(() => cdn.Ranges.Any(r => r.Start == Slot), "the ring to plan the cancelled range's remainder again");
+    }
+
+    [Fact]
+    public void A_seek_during_the_disk_fill_reaches_that_range_and_its_remainder_never_goes_to_the_wire()
+    {
+        // S-12. The fill's range is [0, 512 KiB); the disk answers its first chunk and the fetch task is parked INSIDE that read
+        // (the decrypt seam blocks it — a disk answer is real time: eight SHA-256-verified 64 KiB reads). A seek arrives. Before the
+        // fix the range was not yet "in flight", so the seek's cancel found nothing and the probe queued behind the stale fill; the
+        // stale remainder then went to the wire.
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher) = Big.Value;
+        using var disk = new ChunkDiskCache(dir.Path);
+        disk.SetSize(FileA, BigBytes);
+        disk.WriteChunk(FileA, 0, cipher.AsSpan(0, Slot));                // chunk 0 only (ciphertext: the body decrypts at the true offset)
+        Assert.True(disk.WaitForPendingWrites(10_000));
+
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var inTheFill = new ManualResetEventSlim();
+        using var proceed = new ManualResetEventSlim();
+        int armed = 0;
+        int testThread = Environment.CurrentManagedThreadId;
+        using var body = NewBody(cdn, fetcher, BigBytes, disk: disk, decrypt: (buffer, at) =>
+        {
+            Audio.Ctr.DecryptInPlace(buffer, Key, at);
+            if (Environment.CurrentManagedThreadId == testThread) return;
+            if (Volatile.Read(ref armed) == 1 && Interlocked.Exchange(ref armed, 0) == 1) { inTheFill.Set(); proceed.Wait(); }
+        });
+
+        try
+        {
+            Volatile.Write(ref armed, 1);
+            body.Start();
+            Assert.True(inTheFill.Wait(20_000), "the fetch task to be inside the disk fill");
+
+            const long far = 2_600_000;
+            body.Retarget(far, Audio.Ring.ProbeWindow, 1);
+            Assert.Equal(1, fetcher.Cancelled);                           // the range was registered BEFORE its disk fill: the seek reached it
+        }
+        finally { proceed.Set(); }
+
+        WaitIdle(fetcher);
+        (long Start, long End) probe = ProbeRange(2_600_000, BigBytes);
+        Assert.Contains(probe, cdn.Ranges);
+        Assert.All(cdn.Ranges, r => Assert.True(r.Start >= probe.Start, $"range [{r.Start}, {r.End}) is the stale fill's remainder, on the wire"));
+        Assert.Equal(0, fetcher.Faults);
+        Assert.Equal(Expected(plain, 0, 4_096), Read(body, 0, 4_096));    // chunk 0, which the disk answered, is kept: bytes are bytes
+    }
+
+    [Fact]
+    public void Ranges_the_disk_answers_never_count_as_on_the_wire()
+    {
+        // S-12's accounting: `_live` is incremented and decremented only by ranges that went on the wire. A range answered
+        // entirely from disk (Source.Local) — or cancelled/stale during the disk fill — touches neither counter.
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher) = Big.Value;
+        PrimeCache(dir.Path, plain, cipher);
+
+        using var disk = new ChunkDiskCache(dir.Path);
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, disk: disk);
+        body.Start();
+        Assert.Equal(Expected(plain, 0, 300_000), Read(body, 0, 300_000));
+        body.Retarget(2_600_000, Audio.Ring.ProbeWindow, 1);
+        Assert.Equal(Expected(plain, 2_600_000, 100_000), Read(body, 2_600_000, 100_000));
+        WaitIdle(fetcher);
+
+        Assert.Empty(cdn.Ranges);
+        Assert.Equal(0, fetcher.Requests);
+        Assert.Equal(0, fetcher.InFlight);                                // not −1: nothing was decremented that was never incremented
+        Assert.Equal(0, fetcher.PeakInFlight);
+        Assert.Equal(0, fetcher.Faults);
+    }
+
+    [Fact]
+    public void A_fault_in_the_disk_fill_settles_the_range_refused_counts_in_Faults_and_the_ring_recovers()
+    {
+        // S-12 moved the disk fill INSIDE the fetcher's last-resort catch: a fault there (the cache, a decrypt, a bug) used to
+        // escape past `body.Settle` and leave the ring's pending range set forever. Now it settles Refused, counts, and the ring
+        // plans again behind its backoff — and the stats the Diagnostics page reads carry the count (R-6).
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher) = Big.Value;
+        using var disk = new ChunkDiskCache(dir.Path);
+        disk.SetSize(FileA, BigBytes);
+        disk.WriteChunk(FileA, 0, cipher.AsSpan(0, Slot));
+        Assert.True(disk.WaitForPendingWrites(10_000));
+
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        int failOnce = 1;
+        int testThread = Environment.CurrentManagedThreadId;
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 300, disk: disk, decrypt: (buffer, at) =>
+        {
+            // NOT a wire-fault type (`FetchRangeAsync` would retry the next mirror for those): this reaches the last-resort catch.
+            if (Environment.CurrentManagedThreadId != testThread && Interlocked.Exchange(ref failOnce, 0) == 1)
+                throw new NotSupportedException("fake: the disk fill's decrypt faulted");
+            Audio.Ctr.DecryptInPlace(buffer, Key, at);
+        });
+        Audio.Stream.Stats mark = Audio.Stream.Stats.Read(fetcher);
+        body.Start();
+
+        WaitUntil(() => fetcher.Faults >= 1, "the disk fill's fault to be settled");
+        Assert.Equal(0, fetcher.InFlight);                                // it never reached the wire, so it was never counted on it
+        WaitUntil(() => body.Ring.RetryAfter > 0, "the range to settle Refused: the ring arms its backoff");
+        Audio.Stream.Stats delta = Audio.Stream.Stats.Read(fetcher).Since(in mark);
+        Assert.Equal(1, delta.Faults);                                    // R-6: in the stats, as a delta
+
+        Assert.Equal(Expected(plain, 0, 100_000), ReadThroughStarves(body, 0, 100_000));   // the same body recovered
+        WaitIdle(fetcher);
+        Assert.Equal(1, fetcher.Faults);                                  // exactly the injected one
+    }
+
+    [Theory]
+    [InlineData(true)]     // a metered 320k ring: its window is ONE range, so half the window is what matters (S-13)
+    [InlineData(false)]    // an unmetered 30 s ring: `window − MaxRangeBytes` dominates and is unchanged
+    public void The_refill_waits_for_the_low_water_mark_which_is_never_below_half_the_window(bool metered)
+    {
+        // The refill policy is the ring's hysteresis: once the window is whole it stays quiet until the run ahead of the cursor
+        // drops below LowWaterBytes, then refills. The disk answers every range, so this observes the POLICY alone — no CDN timing:
+        // the fetcher's ping and throughput keep their initial values and a range planned shows up as disk-cache hits, not requests.
+        // Run ahead after the cursor has crossed k slots is (window − k) slots, so the refill starts at the first k where that is
+        // below the mark — and one slot earlier it must not.
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher) = Big.Value;
+        PrimeCache(dir.Path, plain, cipher);
+
+        using var disk = new ChunkDiskCache(dir.Path);
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, disk: disk, metered: metered);
+        body.Start();
+        WaitIdle(fetcher);
+
+        int window = body.Ring.Slots - Audio.Ring.KeepBehindSlots;
+        long windowBytes = (long)window * Slot;
+        long librespot = Math.Min(windowBytes,
+            Audio.Fetcher.PrefetchThresholdBytes(fetcher.PingMs, body.Ring.FileBytesPerSecond, fetcher.BytesPerSecond));
+        long lowWater = Math.Max(Slot, Math.Max(librespot, Math.Max(windowBytes / 2, windowBytes - MaxRange)));
+        Assert.True(lowWater >= windowBytes / 2, "S-13: never below half the window");
+        int refillAt = (int)((windowBytes - lowWater) / Slot) + 1;       // the first slot count whose run ahead is below the mark
+        Assert.InRange(refillAt, 2, window - 1);
+
+        Audio.Stream.Stats mark = Audio.Stream.Stats.Read(fetcher);
+        Read(body, 0, (refillAt - 1) * Slot + 100 - Skip);               // one slot short of the mark…
+        WaitIdle(fetcher);
+        Assert.Equal(0L, Audio.Stream.Stats.Read(fetcher).Since(in mark).CacheHits);   // …plans nothing
+
+        Read(body, (refillAt - 1) * Slot + 100 - Skip, Slot);            // …and across it
+        WaitIdle(fetcher);
+        long hits = Audio.Stream.Stats.Read(fetcher).Since(in mark).CacheHits;
+        Assert.True(hits > 0, $"window {window} slots, mark {lowWater} B: no refill planned after {refillAt} slots");
+        Assert.Empty(cdn.Ranges);                                         // (the disk answered it)
+        output.WriteLine($"metered={metered}: window {window} slots, low-water {lowWater} B, refill from slot {refillAt}");
+    }
+
+    [Fact]
+    public void A_range_whose_mirrors_all_broke_after_a_slot_landed_is_slow_not_refused()
+    {
+        // P-6. Both mirrors hand out one whole slot (+ 4 KiB) and then reset the stream. Slots landed, so the link made progress:
+        // the range answers what landed, `_refusedAt` stays below `_landedAt` (so `Refusing` and the pump's 6 s fast-fail do not
+        // apply), no mirror set is dropped and no re-resolve is asked for. The ring plans the rest from its first hole.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { FaultPrefix = "https://flaky.", FaultAfterBytes = Slot + 4_096 };
+        int reresolves = 0;
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes,
+            mirrors: ["https://flaky.a.test/audio", "https://flaky.b.test/audio"],
+            reresolve: _ => { Interlocked.Increment(ref reresolves); return null; });
+        body.Start();
+        WaitUntil(() => body.BodyBytes >= 2L * Slot, "slots to keep landing, one per range");
+        WaitIdle(fetcher);
+
+        Assert.Equal(0, body.Refusals);
+        Assert.False(body.Refusing);
+        Assert.Equal(0, Volatile.Read(ref reresolves));                   // the mirror set was never dropped
+        Assert.Equal(0, fetcher.Faults);                                  // a wire fault a mirror was retried for is not a Fault
+        Assert.Equal(Expected(plain, 0, 3 * Slot), Read(body, 0, 3 * Slot));   // and what landed is served
+    }
+
+    [Fact]
+    public void A_range_whose_mirrors_all_broke_before_any_slot_landed_is_still_a_refusal()
+    {
+        // P-6's other side: with NOTHING landed there is no progress to call slow — the url set is dropped, a re-resolve asked for.
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { FaultPrefix = "https://flaky.", FaultAfterBytes = Slot / 2 };
+        int reresolves = 0;
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 300,
+            mirrors: ["https://flaky.a.test/audio", "https://flaky.b.test/audio"],
+            reresolve: _ => { Interlocked.Increment(ref reresolves); return null; });
+        body.Start();
+
+        WaitUntil(() => body.Refusals >= 1, "every mirror to fail with nothing landed");
+        Assert.True(body.Refusing);
+        WaitUntil(() => Volatile.Read(ref reresolves) >= 1, "a re-resolve to be asked for");
+    }
+
+    [Fact]
+    public void A_widening_the_reader_asked_for_is_applied_by_the_next_serve_and_never_by_the_reader()
+    {
+        // H-12. `WidenWhenProven` runs inside `Body.ReadAt` — on the engine's decode-ahead producer — so it only raises a flag; the
+        // fetch task polls it at the top of every range it serves (a flag, not a post: the fetcher's queue is DropOldest and could
+        // drop the post). The sequence: a probe is on the wire (held) → the playhead crosses the probation on resident bytes (the
+        // flag goes up, the reader rents NOTHING) → the probe's serve began before the flag, so it does not apply it either →
+        // the fill that follows the landing is the next serve, and the ring grows.
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+        int before = body.Ring.Slots;
+
+        cdn.Hold();
+        const long far = 2_600_000;
+        body.Retarget(far, Audio.Ring.ProbeWindow, 1);
+        WaitUntil(() => cdn.Live == 1, "the probe to be on the wire, held");
+
+        long probationBytes = Audio.ReadAhead.ProbationMs * (long)body.Ring.FileBytesPerSecond / 1000;
+        Read(body, 0, (int)probationBytes + 2 * Slot);                    // resident (the 30 s window): the playhead passes the probation
+        Assert.Equal(before, body.Ring.Slots);                            // the READER only raised the flag
+
+        cdn.Release();
+        WaitIdle(fetcher);
+        Assert.Equal(before, body.Ring.Slots);                            // the probe's serve started before the flag: it waits for the next
+
+        body.ResumeFrom(far);                                             // the landing releases the held fill: the NEXT serve
+        WaitIdle(fetcher);
+        Assert.True(body.Ring.Slots > before, $"the widening was dropped: {before} slots before, {body.Ring.Slots} after");
+        Assert.Equal(0, fetcher.Faults);
+    }
+
+    [Fact]
+    public void Stats_carry_the_fetchers_fault_count_and_since_subtracts_it()
+    {
+        // R-6. PURE: a monotonic counter is a delta, a gauge stays the value's.
+        var mark = default(Audio.Stream.Stats) with { Faults = 2, Requests = 10 };
+        var now = default(Audio.Stream.Stats) with { Faults = 5, Requests = 17, PingMs = 40 };
+        Audio.Stream.Stats delta = now.Since(in mark);
+        Assert.Equal(3, delta.Faults);
+        Assert.Equal(7L, delta.Requests);
+        Assert.Equal(40, delta.PingMs);
+
+        // LIVE: a source that throws (not a wire fault) reaches the fetcher's last-resort catch; the stats see it.
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { ThrowOnOpen = true };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 300);
+        Audio.Stream.Stats before = Audio.Stream.Stats.Read(fetcher);
+        Assert.Equal(0, before.Faults);
+        body.Start();
+        WaitUntil(() => fetcher.Faults >= 1, "the broken source's first range to settle");
+
+        int faults = fetcher.Faults;
+        Audio.Stream.Stats after = Audio.Stream.Stats.Read(fetcher);
+        Assert.True(after.Faults >= faults);
+        Assert.Equal(after.Faults - before.Faults, after.Since(in before).Faults);
+    }
+
+    // ── playback smoothness (#167), wave 2: S-10, S-11, the second reader (V-PA20), the page index (V-PA36), the starve rule, R-6 ──────
+    //
+    //   S-10  A seek is a run of probes; a probe lying inside the range THIS seek (same epoch) already has queued or on the wire is that
+    //         range's business — cancelling it to ask for the same bytes again threw away the bytes already on the way.
+    //   S-11  A cold landing owes the slots just behind it (a step back after a seek is then a ring hit). They are one range, planned LAST
+    //         (after the window ahead is whole), and a chunk landing after the cursor moved may not evict them.
+    //   V-PA20  `Body.ProbeAt` / `ProbeRange`: the seek's SECOND reader. It copies what is resident and otherwise asks for ONE view-only
+    //         range queued BEHIND the live fill; it moves nothing of the owner's (cursor, epoch, interrupt, stall clock, counters).
+    //   V-PA36  The page index: every Ogg page found in a chunk as it lands (CDN or disk), CONTAINER offsets, landing order, grow-only.
+    //   S-2+  A starving read cancels the range that should have answered it ONLY when that range showed no life during the whole wait: a
+    //         slow link that keeps trickling is never cancelled (each cancel discards the slot being filled — a livelock at ≤ ~8 KiB/s).
+    //   R-6   The ping sample is the time to headers of the mirror that ANSWERED, not of the range (a failover is not a slow mirror).
+
+    // ── pure tables ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(-1L, 0L, 0u, 0u, 0L, 65_536L, false)]                 // nothing pending
+    [InlineData(65_536L, 196_608L, 3u, 3u, 65_536L, 196_608L, true)]  // exactly the pending range
+    [InlineData(65_536L, 196_608L, 3u, 3u, 65_536L, 131_072L, true)]  // inside, same start
+    [InlineData(65_536L, 196_608L, 3u, 3u, 131_072L, 196_608L, true)] // inside, same end
+    [InlineData(65_536L, 196_608L, 3u, 3u, 0L, 131_072L, false)]      // starts before it
+    [InlineData(65_536L, 196_608L, 3u, 3u, 65_536L, 196_609L, false)] // ends one byte past it
+    [InlineData(65_536L, 196_608L, 3u, 4u, 65_536L, 131_072L, false)] // a NEWER seek's probe: it supersedes, even for the same bytes
+    [InlineData(0L, 524_288L, 0u, 0u, 65_536L, 131_072L, true)]       // a pending range at offset 0 is a real range
+    public void A_probe_is_covered_only_by_the_pending_range_of_the_same_seek_that_encloses_it(
+        long pendingStart, long pendingEnd, uint pendingEpoch, uint epoch, long start, long end, bool expected)
+        => Assert.Equal(expected, Audio.Ring.ProbeCoveredByPending(pendingStart, pendingEnd, pendingEpoch, epoch, start, end));
+
+    [Theory]
+    [InlineData(-1L, 47L, 20L, false)]     // an empty slot evicts nothing
+    [InlineData(18L, 18L, 20L, false)]     // the same chunk again is a rewrite, not an eviction
+    [InlineData(19L, 47L, 20L, true)]      // just behind the cursor
+    [InlineData(18L, 46L, 20L, true)]
+    [InlineData(16L, 46L, 20L, true)]      // the oldest of the KeepBehindSlots (4) slots kept behind
+    [InlineData(15L, 46L, 20L, false)]     // one older: nobody is keeping it
+    [InlineData(20L, 46L, 20L, false)]     // the cursor's own chunk is the live window, not "behind"
+    [InlineData(30L, 46L, 20L, false)]     // ahead of the cursor
+    public void A_chunk_may_not_evict_one_of_the_slots_kept_just_behind_the_cursor(long resident, long incoming, long cursor, bool expected)
+    {
+        Assert.Equal(4, Audio.Ring.KeepBehindSlots);
+        Assert.Equal(expected, Audio.Ring.WouldEvictBehind(resident, incoming, cursor));
+    }
+
+    [Theory]
+    [InlineData(1_000L, 1_000L, true)]     // the last sign of life is at or before the moment the read began waiting: nothing since
+    [InlineData(999L, 1_000L, true)]
+    [InlineData(0L, 0L, true)]
+    [InlineData(1_001L, 1_000L, false)]    // a byte (or a mirror attempt) arrived AFTER the wait began: the range is alive
+    [InlineData(5_000L, 1_000L, false)]
+    public void A_starving_read_may_cancel_a_range_only_when_it_showed_no_life_since_the_wait_began(long lastProgressAt, long waitStartedAt, bool expected)
+        => Assert.Equal(expected, Audio.Fetcher.StarveMayCancel(lastProgressAt, waitStartedAt));
+
+    [Theory]
+    [InlineData(0, 1, 0)]                  // a single mirror has nowhere to go
+    [InlineData(3, 1, 0)]
+    [InlineData(0, 0, 0)]                  // (no mirrors at all: the same answer, never a modulo by zero)
+    [InlineData(0, 2, 1)]
+    [InlineData(1, 2, 0)]                  // wraps
+    [InlineData(0, 3, 1)]
+    [InlineData(1, 3, 2)]
+    [InlineData(2, 3, 0)]
+    public void The_next_range_starts_on_the_mirror_after_the_one_that_went_silent_wrapping(int silent, int count, int expected)
+        => Assert.Equal(expected, Audio.Body.MirrorAfterIdle(silent, count));
+
+    // ── S-10 / S-11 live ────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_second_probe_of_the_same_seek_inside_the_range_already_on_the_wire_cancels_nothing_and_asks_for_nothing()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+        int cancelled = fetcher.Cancelled, opens = cdn.Count;
+
+        cdn.Hold();
+        const long far = 2_000_000;
+        (long Start, long End) probe = ProbeRange(far, BigBytes);
+        body.Retarget(far, Audio.Ring.ProbeWindow, 1);
+        WaitUntil(() => cdn.Count == opens + 1 && cdn.Live == 1, "the probe to be on the wire, held");
+        Assert.Equal(probe, cdn.Ranges[opens]);
+
+        body.Retarget(far + 10_000, Audio.Ring.ProbeWindow, 1);          // the same seek's next window, inside the probe's aligned span
+        Assert.Equal(cancelled, fetcher.Cancelled);                       // nothing was cancelled …
+        Assert.Equal(1, fetcher.Outstanding);                             // … and nothing was queued: the probe on the wire still answers it
+        Assert.Equal(1, cdn.Count - opens);
+
+        body.Retarget(far + 20_000, Audio.Ring.ProbeWindow, 2);          // a NEWER seek, the very same bytes: it supersedes, as it always did
+        WaitUntil(() => cdn.CancelsObserved == 1, "the superseded probe to observe its token");
+        WaitUntil(() => cdn.Count == opens + 2, "the newer seek's probe to reach the wire");
+        Assert.Equal(cancelled + 1, fetcher.Cancelled);
+        Assert.Equal(probe, cdn.Ranges[opens + 1]);
+
+        cdn.Release();
+        WaitIdle(fetcher);
+        Assert.Equal(Expected(plain, far + 20_000, 16_000), Read(body, far + 20_000, 16_000));
+    }
+
+    [Fact]
+    public void The_slots_behind_a_cold_landing_are_one_range_planned_last_and_a_stale_landing_cannot_evict_them()
+    {
+        // A METERED body: its 10 s ring is 12 slots (8 ahead + 4 behind) and never grows, so chunks 12 apart share a slot and a stale
+        // range landing a chunk "one lap earlier" would, before S-11, overwrite the slot kept just behind the cursor.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, metered: true);
+        Assert.Equal(12, body.Ring.Slots);
+        body.Start();
+        WaitIdle(fetcher);
+        int before = fetcher.Requests, opens = cdn.Count;
+
+        const long far = 2_600_000;
+        (long Start, long End) probe = ProbeRange(far, BigBytes);
+        long landingChunk = probe.Start / Slot;
+        long behindChunk = landingChunk - 1;                              // the slot just behind the landing
+        body.Retarget(far, Audio.Ring.ProbeWindow, 1);
+        Assert.Equal(Expected(plain, far, 16_000), Read(body, far, 16_000));
+        WaitIdle(fetcher);
+        Assert.Equal(1, fetcher.Requests - before);                       // the probe alone: the fill AND the slots behind wait for the landing
+        Assert.False(body.IsResident(behindChunk * Slot - Skip));
+
+        body.ResumeFrom(far);
+        WaitIdle(fetcher);
+        var ranges = cdn.Ranges[opens..];
+        Assert.Equal(3, ranges.Length);                                   // the probe, the fill, then — LAST — the slots behind
+        Assert.Equal(probe, ranges[0]);
+        Assert.Equal(probe.End, ranges[1].Start);
+        Assert.Equal(((landingChunk - Audio.Ring.KeepBehindSlots / 2) * Slot, landingChunk * Slot), ranges[2]);
+        Assert.True(body.IsResident(behindChunk * Slot - Skip), "the slot just behind the landing is resident");
+
+        // A stale range (an earlier seek's, past the fetcher's epoch check — a probe never is stale) lands one chunk that maps onto that
+        // very slot, one lap earlier. The direct-mapped ring would overwrite it; the S-11 rule refuses.
+        long staleChunk = behindChunk - body.Ring.Slots;
+        Assert.True(staleChunk >= 0);
+        int count = cdn.Count;
+        fetcher.Enqueue(body, new Audio.RangeRequest(staleChunk * Slot, (staleChunk + 1) * Slot, body.Epoch, Probe: true));
+        WaitIdle(fetcher);
+        Assert.Equal(count + 1, cdn.Count);                               // it did go on the wire (that chunk was not resident) …
+        Assert.True(body.IsResident(behindChunk * Slot - Skip), "a stale landing evicted a slot kept behind the cursor");   // … and landed nothing over it
+        Assert.False(body.IsResident(staleChunk * Slot - Skip));
+        int served = cdn.Count;
+        Assert.Equal(Expected(plain, behindChunk * Slot - Skip, 2_000), Read(body, behindChunk * Slot - Skip, 2_000));
+        WaitIdle(fetcher);
+        Assert.Equal(served, cdn.Count);                                  // a step back after the seek costs nothing
+    }
+
+    // ── the second reader: Body.ProbeAt / ProbeRange (V-PA20) ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void ProbeAt_serves_resident_bytes_and_moves_nothing_of_the_playing_reads()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+        uint epoch = body.Epoch;
+        long cursor = body.Ring.Cursor, want = body.Ring.Want;
+        int waits = body.Ring.Waits, starves = body.Ring.Starves, requests = fetcher.Requests;
+
+        var dst = new byte[10_000];
+        Assert.Equal(dst.Length, body.ProbeAt(5_000, dst, waitMs: 1_000, residentOnly: false));
+        Assert.Equal(Expected(plain, 5_000, dst.Length), dst);
+
+        Assert.Equal(epoch, body.Epoch);                                  // not the epoch,
+        Assert.Equal(cursor, body.Ring.Cursor);                           // not the cursor,
+        Assert.Equal(want, body.Ring.Want);
+        Assert.Equal(waits, body.Ring.Waits);                             // not the wait/starve counters,
+        Assert.Equal(starves, body.Ring.Starves);
+        Assert.Equal(0L, body.StallMs);                                   // not the stall clock,
+        Assert.Equal(-1, body.FirstServedMs);                             // not the first-served stamp (only the playing read's first byte is)
+        Assert.Equal(requests, fetcher.Requests);                         // and it asked for nothing
+    }
+
+    [Fact]
+    public void A_resident_only_probe_that_misses_answers_zero_at_once_and_requests_nothing()
+    {
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+        int count = cdn.Count, requests = fetcher.Requests;
+
+        var clock = Stopwatch.StartNew();
+        Assert.Equal(0, body.ProbeAt(2_600_000, new byte[4_096], waitMs: Audio.Ring.DefaultWaitMs, residentOnly: true));
+        Assert.True(clock.ElapsedMilliseconds < 1_000, $"a resident-only miss waited {clock.ElapsedMilliseconds} ms");
+        WaitIdle(fetcher);
+
+        Assert.Equal(count, cdn.Count);
+        Assert.Equal(requests, fetcher.Requests);
+        Assert.False(body.IsResident(2_600_000));                         // nothing was queued either: the view did not ask
+    }
+
+    [Fact]
+    public void A_probe_miss_is_one_view_only_range_queued_behind_the_live_fill_nothing_is_cancelled_and_the_cursor_stays()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        cdn.Hold();
+        body.Start();
+        WaitUntil(() => cdn.Live == 1, "the live fill's first range to be held open");
+        uint epoch = body.Epoch;
+        long cursor = body.Ring.Cursor;
+
+        const long far = 2_600_000;
+        var dst = new byte[4_096];
+        Assert.Equal(Audio.Body.Starved, body.ProbeAt(far, dst, waitMs: 150, residentOnly: false));   // the wait ran out: not EOF, not gone
+
+        Assert.Equal(0, fetcher.Cancelled);                               // the fill in flight was NOT cancelled for the view
+        Assert.Equal(1, cdn.Count);                                       // and the view's range is still QUEUED behind it
+        Assert.Equal(epoch, body.Epoch);
+        Assert.Equal(cursor, body.Ring.Cursor);
+        Assert.Equal(0, body.Ring.Waits);
+        Assert.Equal(0, body.Ring.Starves);                               // a starved VIEW is not a starved listener
+        Assert.Equal(0L, body.StallMs);
+
+        cdn.Release();
+        WaitIdle(fetcher);
+        (long Start, long End) view = ProbeRange(far, BigBytes);
+        var ranges = cdn.Ranges;
+        Assert.True(Array.IndexOf(ranges, view) > 0, $"the view's range {view} was served ahead of the live fill: {string.Join(", ", ranges)}");
+        Assert.Equal(1, ranges.Count(r => r == view));                    // asked for ONCE, however long the reader waited
+        Assert.Equal(0, fetcher.Cancelled);
+        Assert.Equal(dst.Length, body.ProbeAt(far, dst, waitMs: 5_000, residentOnly: false));         // the same bytes, now resident
+        Assert.Equal(Expected(plain, far, dst.Length), dst);
+        Assert.Equal(epoch, body.Epoch);
+        Assert.Equal(cursor, body.Ring.Cursor);                           // the view landed far ahead of the cursor without moving it
+    }
+
+    [Fact]
+    public void ProbeRange_queues_one_view_range_without_waiting_and_a_view_range_survives_the_owners_seek()
+    {
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        cdn.Hold();
+        body.Start();
+        WaitUntil(() => cdn.Live == 1, "the live fill's first range to be held open");
+
+        const long far = 2_600_000;
+        Assert.False(body.ProbeRange(0, 4_096));                          // the live fill's own pending range covers it: wait for that
+        Assert.True(body.ProbeRange(far, 4_096));                         // queued — and the call returned at once
+        Assert.False(body.ProbeRange(far + 200_000, 4_096));              // ONE view range at a time: the queue never fills with a reader's retries
+
+        // The OWNER seeks: its in-flight fill is cancelled and its queue drained — but the view's range is side work it does not own.
+        const long owner = 1_000_000;
+        body.Retarget(owner, Audio.Ring.ProbeWindow, 1);
+        cdn.Release();
+        WaitIdle(fetcher);
+
+        (long Start, long End) view = ProbeRange(far, BigBytes), ownerProbe = ProbeRange(owner, BigBytes);
+        var ranges = cdn.Ranges;
+        int viewAt = Array.IndexOf(ranges, view), probeAt = Array.IndexOf(ranges, ownerProbe);
+        Assert.True(viewAt >= 0, $"the view's range was dropped by the owner's seek: {string.Join(", ", ranges)}");
+        Assert.True(probeAt >= 0 && probeAt < viewAt, "the owner's probe goes first, the surviving view range after it");
+        Assert.Equal(1, fetcher.Cancelled);                               // only the live fill's range
+        Assert.True(body.IsResident(far));                                // and the view's bytes landed
+    }
+
+    [Fact]
+    public void A_probe_inside_the_clear_head_is_served_from_it_and_never_asks_the_wire()
+    {
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, head: plain[..Audio.HeadMaxBytes]);
+        cdn.Hold();
+        body.Start();
+        WaitUntil(() => cdn.Live == 1, "the first range to be held open");
+
+        var dst = new byte[16_000];
+        Assert.Equal(dst.Length, body.ProbeAt(1_000, dst, waitMs: 1_000, residentOnly: true));
+        Assert.Equal(Expected(plain, 1_000, dst.Length), dst);
+        Assert.False(body.ProbeRange(1_000, 16_000));                     // the head's span is never a request
+        Assert.Equal(1, cdn.Count);
+        Assert.Equal(0, body.Ring.Waits);
+        cdn.Release();
+        WaitIdle(fetcher);
+    }
+
+    [Fact]
+    public void A_probe_at_the_end_is_zero_and_a_probe_of_a_disposed_body_is_minus_one()
+    {
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+
+        Assert.Equal(0, body.ProbeAt(body.Length, new byte[16], waitMs: 100, residentOnly: false));    // a true EOF: the length is real
+        Assert.Equal(0, body.ProbeAt(-1, new byte[16], waitMs: 100, residentOnly: false));
+        Assert.Equal(0, body.ProbeAt(10, Span<byte>.Empty, waitMs: 100, residentOnly: false));
+
+        body.Dispose();
+        Assert.Equal(-1, body.ProbeAt(2_600_000, new byte[16], waitMs: 100, residentOnly: false));     // gone: not a starve, not the end
+        Assert.False(body.ProbeRange(2_600_000, 16));
+    }
+
+    // ── the landing-time page index (V-PA36) ────────────────────────────────────────────────────────────────────────
+
+    const int PagesPerChunk = 8;
+    const int PageBytes = 27 + 1 + 100;                // the header, one lacing value, a 100-byte body
+
+    static void ScrubOggS(byte[] buffer)
+    {
+        for (int i = 0; i + 4 <= buffer.Length; i++)
+            if (buffer[i] == (byte)'O' && buffer[i + 1] == (byte)'g' && buffer[i + 2] == (byte)'g' && buffer[i + 3] == (byte)'S')
+                buffer[i] = 0;
+    }
+
+    /// <summary>One VALID page at <paramref name="at"/> (real header, one segment of 100 bytes, a real CRC): the body is whatever random
+    /// bytes were already there, so it never contains a second <c>OggS</c>.</summary>
+    static void WriteValidPage(byte[] buffer, int at, long granule, uint sequence)
+    {
+        "OggS"u8.CopyTo(buffer.AsSpan(at));
+        buffer[at + 4] = 0;                                                    // version
+        buffer[at + 5] = 0;                                                    // header flags
+        BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(at + 6, 8), granule);
+        BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(at + 14, 4), 7u);          // serial
+        BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(at + 18, 4), sequence);
+        buffer.AsSpan(at + 22, 4).Clear();                                     // the CRC field is zero while the checksum is computed
+        buffer[at + 26] = 1;                                                   // one segment …
+        buffer[at + 27] = 100;                                                 // … of 100 bytes
+        BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(at + 22, 4), Ogg.Crc32(buffer.AsSpan(at, PageBytes), Ogg.CrcFieldOffset));
+    }
+
+    /// <summary>A file of <see cref="BigBytes"/> whose chunks each hold <see cref="PagesPerChunk"/> valid pages wholly inside them, plus the
+    /// pages the index must NOT list: Spotify's lead-in page (before the container's first byte), a page straddling the edge between
+    /// chunks 4 and 5, and a page with no granule. <c>Pages</c> are the ones it must: (chunk, CONTAINER offset, granule).</summary>
+    static readonly Lazy<(byte[] Plain, byte[] Cipher, (int Chunk, long Offset, long Granule)[] Pages)> Paged = new(() =>
+    {
+        var plain = new byte[BigBytes];
+        new Random(20260914).NextBytes(plain);
+        ScrubOggS(plain);
+        var pages = new List<(int Chunk, long Offset, long Granule)>();
+        WriteValidPage(plain, 0, granule: 0, sequence: 0);                    // the lead-in page: container offset −167, never listed
+        WriteValidPage(plain, Skip, granule: 5, sequence: 1);                 // the container's first page: container offset 0
+        pages.Add((0, 0, 5));
+        for (int chunk = 0; chunk < BigBytes / Slot; chunk++)
+            for (int k = 0; k < PagesPerChunk; k++)
+            {
+                int at = chunk * Slot + 1_000 + k * 2_000;
+                long granule = (long)chunk * 100_000 + k * 1_000 + 1;
+                WriteValidPage(plain, at, granule, (uint)(2 + chunk * PagesPerChunk + k));
+                pages.Add((chunk, at - Skip, granule));
+            }
+        WriteValidPage(plain, 5 * Slot - 50, granule: 777, sequence: 9_000);            // straddles a chunk edge: never listed
+        WriteValidPage(plain, 7 * Slot + 40_000, granule: -1, sequence: 9_001);         // a page with no granule: never listed
+        return (plain, Audio.Ctr.Decrypt(plain, Key, 0), [.. pages]);
+    });
+
+    static int ChunkOfContainer(long containerOffset) => (int)((containerOffset + Skip) / Slot);
+
+    [Fact]
+    public void The_page_index_lists_the_whole_pages_of_every_chunk_that_landed_as_container_offsets_with_their_granules()
+    {
+        var (_, cipher, pages) = Paged.Value;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        Assert.Equal(0, body.PageIndexCount);
+        body.PageIndexSnapshot(out ReadOnlySpan<long> none, out ReadOnlySpan<long> noGranules);
+        Assert.True(none.IsEmpty && noGranules.IsEmpty);
+
+        body.Start();
+        WaitIdle(fetcher);
+
+        // What landed: the window from 0 (the opening fill) and the tail range's chunk — which is NOT in the ring, yet it is indexed.
+        int window = body.Ring.Slots - Audio.Ring.KeepBehindSlots;
+        var landed = new HashSet<int>(Enumerable.Range(0, window)) { BigBytes / Slot - 1 };
+        var expected = new Dictionary<long, long>();
+        foreach ((int chunk, long offset, long granule) in pages)
+            if (landed.Contains(chunk)) expected[offset] = granule;
+
+        body.PageIndexSnapshot(out ReadOnlySpan<long> offsetsSpan, out ReadOnlySpan<long> granulesSpan);
+        long[] offsets = offsetsSpan.ToArray(), granules = granulesSpan.ToArray();
+        Assert.Equal(offsets.Length, granules.Length);                    // the two views are always the same length
+        Assert.Equal(body.PageIndexCount, offsets.Length);
+        Assert.Equal(expected.Count, offsets.Length);                     // every whole page, and nothing else
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            Assert.True(expected.TryGetValue(offsets[i], out long granule), $"entry {i}: offset {offsets[i]} is not a listed page");
+            Assert.Equal(granule, granules[i]);
+        }
+        Assert.Equal(offsets.Length, offsets.Distinct().Count());         // a chunk is scanned once
+
+        long straddler = 5L * Slot - 50 - Skip, noGranule = 7L * Slot + 40_000 - Skip;
+        Assert.DoesNotContain(straddler, offsets);                        // not wholly inside one chunk: the index is a bracket, never a promise
+        Assert.DoesNotContain(noGranule, offsets);                        // no granule, nothing to bracket with
+        Assert.DoesNotContain(-(long)Skip, offsets);                      // Spotify's own lead-in page precedes the container
+        Assert.Contains(0L, offsets);                                     // the container's first page does not
+
+        // Within a chunk the pages come in file order; across chunks in LANDING order — and the tail's chunk landed between two window chunks.
+        int lastChunk = -1, inversions = 0;
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            int chunk = ChunkOfContainer(offsets[i]);
+            if (chunk == lastChunk) Assert.True(offsets[i] > offsets[i - 1], $"entry {i} is out of file order inside chunk {chunk}");
+            else if (chunk < lastChunk) inversions++;
+            lastChunk = chunk;
+        }
+        Assert.True(inversions >= 1, "the index came out sorted: it is supposed to list pages in the order their chunks landed");
+    }
+
+    [Fact]
+    public void The_page_index_is_grow_only_never_lists_a_chunk_twice_and_a_seeks_behind_slots_come_last()
+    {
+        var (_, cipher, pages) = Paged.Value;
+        var plain = Paged.Value.Plain;
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes);
+        body.Start();
+        WaitIdle(fetcher);
+
+        body.PageIndexSnapshot(out ReadOnlySpan<long> early, out _);
+        long[] earlyCopy = early.ToArray();
+        Assert.InRange(earlyCopy.Length, 1, 255);                         // below the initial capacity: the landings below must GROW the arrays
+
+        const long far = 2_600_000;
+        long landingChunk = ProbeRange(far, BigBytes).Start / Slot;
+        int window = body.Ring.Slots - Audio.Ring.KeepBehindSlots;
+        body.Retarget(far, Audio.Ring.ProbeWindow, 1);
+        Assert.Equal(Expected(plain, far, 16_000), Read(body, far, 16_000));
+        body.ResumeFrom(far);
+        WaitIdle(fetcher);
+
+        // landed since: the probe's two chunks, the fill to EOF (chunk 47 a SECOND time: the tail range had it), then the slots behind
+        var landed = new HashSet<int>(Enumerable.Range(0, window));
+        for (long c = landingChunk - Audio.Ring.KeepBehindSlots / 2; c < BigBytes / Slot; c++) landed.Add((int)c);
+        var expected = new Dictionary<long, long>();
+        foreach ((int chunk, long offset, long granule) in pages)
+            if (landed.Contains(chunk)) expected[offset] = granule;
+
+        body.PageIndexSnapshot(out ReadOnlySpan<long> after, out ReadOnlySpan<long> afterGranules);
+        Assert.True(after.Length > 256, $"{after.Length} entries: the growth path was never taken");
+        Assert.Equal(expected.Count, after.Length);                       // chunk 47 landed twice and was indexed once
+        Assert.Equal(after.Length, body.PageIndexCount);
+        // APPEND-ONLY: a reader that merged the first N entries need only look at [N, count) next time — and the span it took earlier still
+        // holds exactly what it held, though the arrays have since been replaced by bigger ones.
+        Assert.True(early.SequenceEqual(earlyCopy));
+        Assert.True(after[..earlyCopy.Length].SequenceEqual(earlyCopy));
+        for (int i = 0; i < after.Length; i++)
+        {
+            Assert.True(expected.TryGetValue(after[i], out long granule), $"entry {i}: offset {after[i]} is not a listed page");
+            Assert.Equal(granule, afterGranules[i]);
+        }
+
+        // The slots behind the landing landed LAST — after the fill ahead of it — so their (smaller) offsets are at the END of the list.
+        int firstBehind = -1, lastAhead = -1;
+        for (int i = 0; i < after.Length; i++)
+        {
+            int chunk = ChunkOfContainer(after[i]);
+            if (chunk >= landingChunk - Audio.Ring.KeepBehindSlots / 2 && chunk < landingChunk) { if (firstBehind < 0) firstBehind = i; }
+            else if (chunk >= landingChunk && chunk != BigBytes / Slot - 1) lastAhead = i;
+        }
+        Assert.True(firstBehind > lastAhead && lastAhead > 0, $"behind slots start at entry {firstBehind}, the fill's last page is entry {lastAhead}");
+    }
+
+    [Fact]
+    public void A_body_that_is_not_ogg_keeps_no_page_index()
+    {
+        var (_, cipher, _) = Paged.Value;
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(new FakeCdn(cipher), fetcher, BigBytes, fmt: Audio.Format.Flac);   // the bytes hold valid pages; FLAC has none to index
+        body.Start();
+        WaitIdle(fetcher);
+
+        Assert.Equal(0, body.PageIndexCount);
+        body.PageIndexSnapshot(out ReadOnlySpan<long> offsets, out ReadOnlySpan<long> granules);
+        Assert.True(offsets.IsEmpty && granules.IsEmpty);
+    }
+
+    [Fact]
+    public void Chunks_that_land_from_the_disk_cache_are_indexed_too()
+    {
+        using var dir = new TempDir();
+        SkipWhenTheVolumeIsInsideTheReserve(dir.Path);
+        var (plain, cipher, pages) = Paged.Value;
+        PrimeCache(dir.Path, plain, cipher);
+
+        using var disk = new ChunkDiskCache(dir.Path);
+        var cdn = new FakeCdn(cipher);
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, disk: disk);
+        body.Start();
+        Assert.Equal(Expected(plain, 0, BigBytes - Skip), Read(body, 0, BigBytes - Skip));
+        WaitIdle(fetcher);
+
+        Assert.Empty(cdn.Ranges);                                         // the disk answered every chunk …
+        Assert.Equal(pages.Length, body.PageIndexCount);                  // … and every page of every chunk was indexed as it landed
+    }
+
+    // ── the starve rule: a trickle is never cancelled ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_range_that_keeps_trickling_is_never_cancelled_by_a_starving_read_so_its_slot_completes_across_the_starves()
+    {
+        // The livelock this closes: a starving read cancelled the range unconditionally, and a cancel discards the 64 KiB slot being filled
+        // (only COMPLETED slots land). On a link at or below ~8 KiB/s — a slot per 8 s, the reader's whole bound — no slot could ever finish.
+        // Now a range that shows ANY life (a read that returns bytes) after the reader began waiting is left alone. A STEPPED link, so the
+        // trickle is a fact of the fixture: the credits below are all that crosses it. Two starving reads each see 24 KiB arrive after their
+        // wait began (48 KiB, short of the slot); the third read's wait sees the last 16 KiB and the slot lands.
+        var (plain, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { SteppedBelow = 2L * MaxRange };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 200);
+        body.Start();
+        WaitUntil(() => cdn.Count >= 1, "the first range to be opened");
+        uint epoch = body.Epoch;
+        const int Trickle = 6 * FakeCdn.StepBytes;                         // 24 KiB per starving read
+
+        for (int round = 1; round <= 2; round++)
+        {
+            var dst = new byte[4_096];
+            using var started = new ManualResetEventSlim();
+            Task<int> read = Task.Run(() => { started.Set(); return body.ReadAt(0, dst, epoch); });
+            started.Wait();
+            Thread.Sleep(80);                                             // the link shows life STRICTLY after the wait began (TickCount64 is ~16 ms grained)
+            cdn.Step(Trickle);
+            Assert.Equal(Audio.Body.Starved, await read);   // its bound runs out with the slot still short …
+
+            Assert.Equal(0, fetcher.Cancelled);                           // … and the range that is still sending is NOT cancelled
+            Assert.Equal(0, cdn.ReadCancelsObserved);
+            Assert.Equal(round, body.Ring.Starves);
+            Assert.Equal((long)round * Trickle, cdn.SteppedServed);
+        }
+
+        var last = new byte[4_096];
+        using var startedLast = new ManualResetEventSlim();
+        Task<int> final = Task.Run(() => { startedLast.Set(); return body.ReadAt(0, last, epoch); });
+        startedLast.Wait();
+        Thread.Sleep(80);
+        cdn.Step(Slot - 2 * Trickle);                                     // the slot's last 16 KiB: 64 KiB in all
+        Assert.Equal(last.Length, await final);
+        Assert.Equal(Expected(plain, 0, last.Length), last);
+        Assert.Equal(0, fetcher.Cancelled);
+        Assert.Equal(0, cdn.ReadCancelsObserved);
+        Assert.Equal(2, body.Ring.Starves);                               // two starves, and the slot still landed: no livelock
+    }
+
+    // ── R-6: the ping is the answering mirror's ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_ping_sample_is_taken_from_the_mirror_that_answered_not_from_the_range_that_failed_over_to_it()
+    {
+        // The first range opens on mirror A, which only says "refused" after 200 ms; mirror B answers at once. A sample taken from the
+        // RANGE's start charged B with A's 200 ms, and the median-of-three ping (500, 500 → sample 1 → sample 2) sat near 200. Sampled from
+        // B's own attempt it is a few ms. The link is frozen after the fourth open (the second fill range), so exactly two samples — the
+        // failed-over range and the tail — have been folded in: median(500, p1, p2) = max(p1, p2).
+        var (_, cipher) = Big.Value;
+        var cdn = new FakeCdn(cipher) { SlowPrefix = "https://slow.", SlowOpenMs = 200, HoldFromOpen = 4 };
+        using var fetcher = new Audio.Fetcher();
+        using var body = NewBody(cdn, fetcher, BigBytes, mirrors: ["https://slow.a.test/audio", "https://cdn-b.test/audio"]);
+        try
+        {
+            body.Start();
+            WaitUntil(() => cdn.Count == 4 && cdn.Live == 1, "the fourth open (the second fill range) to be held");
+
+            string[] urls = cdn.Urls;
+            Assert.StartsWith("https://slow.", urls[0]);                  // the range tried the slow mirror first …
+            Assert.StartsWith("https://cdn-b.", urls[1]);                 // … and fell over to the good one
+            Assert.StartsWith("https://cdn-b.", urls[2]);                 // (the tail then starts there: the mirror that answers becomes the first choice)
+            Assert.InRange(fetcher.PingMs, 1, 120);                       // not 200: the failed mirror's time is not B's ping
+        }
+        finally { cdn.Release(); }
+        WaitIdle(fetcher);
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static void PrimeCache(string directory, byte[] plain, byte[] cipher)
@@ -1490,6 +2391,13 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         /// `IOException` mid-body — the wire fault `FetchRangeAsync` retries on the next mirror.</summary>
         public string? FaultPrefix { get; init; }
         public int FaultAfterBytes { get; init; }
+        /// <summary>A mirror whose url starts with this answers "refused" (no reply) only after <see cref="SlowOpenMs"/> — a mirror that
+        /// is slow to fail, so a range that falls over to the next one has spent real time on the first.</summary>
+        public string? SlowPrefix { get; init; }
+        public int SlowOpenMs { get; init; }
+        /// <summary>Open number N (1-based, counted over every open) and every later one are HELD until <see cref="Release"/> —
+        /// "freeze the link after the Nth open" without a race against the fetch task.</summary>
+        public int HoldFromOpen { get; init; }
 
         public (long Start, long End)[] Ranges { get { lock (_gate) return [.. _ranges]; } }
         /// <summary>Every open in order, stamped with <c>Environment.TickCount64</c> — the clock the ring's backoff runs on.</summary>
@@ -1513,13 +2421,17 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         public ValueTask<Audio.IRangeReply?> OpenAsync(string url, long start, long end, CancellationToken ct)
         {
             int live = Interlocked.Increment(ref _live);
+            int count;
             lock (_gate)
             {
                 _ranges.Add((start, end + 1));
                 _urls.Add(url);
                 _opens.Add((start, end + 1, url, Environment.TickCount64));
                 if (live > _peak) _peak = live;
+                count = _ranges.Count;
             }
+            if (HoldFromOpen > 0 && count == HoldFromOpen) Hold();
+            if (SlowPrefix is { } slow && url.StartsWith(slow, StringComparison.Ordinal)) return SlowRefuseAsync(ct);
             Task gate = _open.Task;
             if (gate.IsCompleted)
             {
@@ -1529,6 +2441,14 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
                 finally { Interlocked.Decrement(ref _live); }
             }
             return HeldAsync(gate, url, start, end, ct);
+        }
+
+        async ValueTask<Audio.IRangeReply?> SlowRefuseAsync(CancellationToken ct)
+        {
+            try { await Task.Delay(SlowOpenMs, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { Interlocked.Increment(ref _cancels); }
+            finally { Interlocked.Decrement(ref _live); }
+            return null;
         }
 
         async ValueTask<Audio.IRangeReply?> HeldAsync(Task gate, string url, long start, long end, CancellationToken ct)

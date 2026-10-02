@@ -203,7 +203,7 @@ public static partial class Shell
 
         InstallCrashNet();
         if (!Platform.Args.Headless && !Platform.Args.RelaunchBroker)
-            Crash.Host.Install(Platform.LogFolder, Log.FilePath);
+            Crash.Host.Install(Platform.LogFolder, Log.BasePath);   // the BASE path: the handler derives the day's file at bundle time
         InstallMarshallers();
 
         // The gate itself was already acquired by AcquireInstance, before RegisterShapes/Store.Use/Entities.Boot ran;
@@ -756,11 +756,24 @@ public static partial class Shell
     /// payload un-hides, restores and fronts it; a jump-list Pause / Resume and <c>wavee://quit</c> never do.</summary>
     public static void ApplyDeepLink(ReadOnlySpan<char> raw)
     {
+        // A payload's trailing NUL (a WM_COPYDATA sender counting its terminator) is cut inside DeepLink() itself, so the
+        // parser, this wake decision and the `deeplink.refused` line below all see the clean text; the refused log
+        // trims it the same way for the raw echo.
+        int nul = raw.IndexOf('\0');
+        if (nul >= 0) raw = raw[..nul];
         var verb = DeepLink(raw, Platform.Settings.Get(Platform.Keys.DeveloperMode));
         if (Tray.WakeFor(verb.Kind)) Tray.Host.ShowWindow();
         switch (verb.Kind)
         {
             case DeepLinkKind.Open:
+                // `route=settings&arg=<tab>`: the arg is a TAB SLUG, never a place of its own (D4) — it is handed to
+                // Settings, not committed as a route with an Arg (`Dest` would title the tab with it, `SameSlot` would
+                // swallow a re-open of the same page on another tab).
+                if (verb.Route.Kind == RouteKind.Settings && ArgOf(verb.Route) is { } slug && OnSettingsTabRequested is { } openTab)
+                {
+                    openTab(slug);
+                    break;
+                }
                 GoTo(verb.Route);
                 break;
             case DeepLinkKind.Play:
@@ -800,6 +813,9 @@ public static partial class Shell
     /// <summary>`wavee://open?route=report&amp;arg=bug|crash|…` — a report is a DIALOG, never a tab and never a
     /// history entry. `+Shell.Overlays.UI.cs` installs it.</summary>
     public static Action<string>? OnReportRequested;
+
+    /// <summary>`wavee://open?route=settings&amp;arg=&lt;tab slug&gt;`: Settings opens on that tab; set by Settings.InstallScreens.</summary>
+    public static Action<string>? OnSettingsTabRequested;
 
     // ══ 4. THE NAV VERBS (the SHELL half — the reducer is Shell.cs) ═════════════════════════════════════════════════
 

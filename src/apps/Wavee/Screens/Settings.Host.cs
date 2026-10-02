@@ -166,10 +166,14 @@ public static partial class Settings
         // ".dead-*" leftovers a rename-first Delete could not clean up yet — all are bytes the cache occupies.
         try { foreach (string f in Directory.EnumerateFiles(root, "library.*")) library += FileBytes(f); }
         catch { }
+        // Only the app log (daily files, size rolls, legacy rolls): the CSV captures and legacy crash txt that also sit in
+        // logs\ are not what "Delete old logs" removes, so counting them made the row's "N files" a number it could not clear.
         try
         {
+            string logBase = AppLogBase();
             if (Directory.Exists(Platform.LogFolder))
-                foreach (string f in Directory.EnumerateFiles(Platform.LogFolder)) { logs += FileBytes(f); logFiles++; }
+                foreach (string f in LogFileNames.AppLogs(Directory.EnumerateFiles(Platform.LogFolder, LogFileNames.Glob(logBase)), logBase))
+                { logs += FileBytes(f); logFiles++; }
         }
         catch { }
         status = null;
@@ -204,8 +208,14 @@ public static partial class Settings
 
     // ══ 5. THE CLEARS (N11: each is behind ConfirmThen; each toasts; the storage ones re-run the census) ════════════
 
-    /// <summary>Deletes only the ROLLED <c>wavee-*.log</c> files — never the live <c>wavee.log</c> — and toasts even when
-    /// there was nothing to delete (parity 48a).</summary>
+    /// <summary>The app-log base path (<c>...\logs\wavee.log</c>) the census and the sweep derive file names from —
+    /// the writer's own when the log is configured, else where Boot would put it.</summary>
+    static string AppLogBase() => Log.BasePath ?? Path.Combine(Platform.LogFolder, "wavee.log");
+
+    /// <summary>Deletes every app log EXCEPT the file Wavee is writing to right now (today's <c>wavee-yyyyMMdd.log</c>):
+    /// earlier days, the size rolls and the legacy rolls (<see cref="LogFileNames.SweepTargets"/>). Crash reports, CSV
+    /// captures and other files in <c>logs\</c> are not app logs and stay. Toasts even when there was nothing to delete
+    /// (parity 48a). Until 2026-10-02 the sweep matched <c>wavee-*.log</c> and so deleted the live daily file too.</summary>
     static void DeleteOldLogs()
     {
         var post = s_post;
@@ -215,11 +225,15 @@ public static partial class Settings
             try
             {
                 if (Directory.Exists(Platform.LogFolder))
-                    foreach (string f in Directory.EnumerateFiles(Platform.LogFolder, "wavee-*.log"))
+                {
+                    string logBase = AppLogBase();
+                    foreach (string f in LogFileNames.SweepTargets(Directory.EnumerateFiles(Platform.LogFolder, LogFileNames.Glob(logBase)),
+                                 logBase, DateOnly.FromDateTime(DateTime.Now)))
                     {
                         try { File.Delete(f); deleted++; }
                         catch (Exception ex) { Log.Warn("settings", "could not delete " + f, ex); }
                     }
+                }
             }
             catch (Exception ex) { Log.Warn("settings", "old log sweep failed", ex); }
             post(() =>

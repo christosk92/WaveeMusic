@@ -429,7 +429,9 @@
       "designShort": "디자인",
       "designSub": "왼쪽 탐색 방식을 선택합니다. 즉시 적용됩니다.",
       "customize": "사이드바 사용자 지정",
-      "customizeSub": "Custom의 섹션을 추가, 재정렬 및 구성합니다"
+      "customizeSub": "Custom의 섹션을 추가, 재정렬 및 구성합니다",
+      "railSize": "접힌 레일 크기",
+      "railSizeSub": "사이드바를 접었을 때 아이콘 레일의 너비입니다."
     },
     "layout": {
       "title": "레이아웃 및 밀도",
@@ -450,7 +452,7 @@
       "general": "일반",
       "playback": "재생",
       "storage": "저장 공간 및 캐시",
-      "diagnostics": "진단",
+      "privacy": "개인정보 및 진단",
       "about": "정보"
     },
     "language": {
@@ -479,6 +481,20 @@
       "npvPresentationSub": "트랙 정보 위에 커버 아트 또는 플레이어를 표시합니다",
       "npvStyle": "플레이어 스타일",
       "npvStyleSub": "플레이어를 선택했을 때 표시할 열두 가지 플레이어 중 하나를 선택합니다"
+    },
+    "playback": {
+      "normalization": "음량 평준화",
+      "normalizationSub": "모든 트랙을 비슷한 음량으로 재생합니다",
+      "normalizationMode": "음량 수준",
+      "normalizationModeSub": "평준화된 트랙이 재생되는 음량입니다. 변경 사항은 재생 중인 트랙에 곧바로 반영됩니다.",
+      "normQuiet": "작게",
+      "normQuietSub": "큰 소리 구간에 가장 여유를 둡니다(약 -23 LUFS)",
+      "normNormal": "보통",
+      "normNormalSub": "Spotify 기본값과 같은 균형 잡힌 수준입니다(약 -14 LUFS)",
+      "normLoud": "크게",
+      "normLoudSub": "가장 큰 음량이며, 리미터가 피크 클리핑을 막아 줍니다(약 -11 LUFS)",
+      "normalizationAlbum": "앨범 평준화",
+      "normalizationAlbumSub": "앨범의 트랙을 앨범 고유의 음량으로 재생하여 조용한 곡과 큰 곡의 상대적인 음량 차이를 유지합니다"
     },
     "choice": {
       "system": "시스템",
@@ -509,6 +525,7 @@
     "yourLibrary": "내 라이브러리",
     "comingSoon": "이 화면은 다음 업데이트에서 제공됩니다.",
     "viewAllHistory": "전체 기록 보기",
+    "logs": "로그",
     "history": {
       "title": "기록",
       "clearAll": "모두 지우기",
@@ -599,6 +616,16 @@
     "menu": {
       "customize": "사이드바 사용자 지정…",
       "resetWidth": "너비 초기화"
+    },
+    "rail": {
+      "size": "접힌 레일 크기",
+      "compact": "작게",
+      "default": "기본",
+      "large": "크게"
+    },
+    "seam": {
+      "announceWidth": "사이드바 너비 {width}",
+      "announceRail": "아이콘 레일, {size}"
     },
     "layout": {
       "title": "사이드바 레이아웃",
@@ -978,6 +1005,7 @@
     "videoMiniPlayer": "미니 플레이어에서 재생",
     "videoFullScreen": "전체 화면",
     "videoExitFullScreen": "전체 화면 종료",
+    "fullscreen": "전체 화면",
     "noVideoForThisSong": "이 곡에는 비디오가 없습니다",
     "videoNeedsWiderWindow": "창을 더 넓혀야 합니다",
     "videoNoSecondWindow": "이 창에서는 사용할 수 없습니다",
@@ -1036,7 +1064,6 @@
       "body": "본체",
       "lcd": "LCD",
       "skin": "스킨",
-      "analyser": "분석기",
       "face": "패널",
       "needles": "바늘",
       "accent": "강조색",
@@ -1074,8 +1101,6 @@
       "base": "기본",
       "modern": "모던",
       "dark": "다크",
-      "spectrum": "스펙트럼",
-      "oscilloscope": "오실로스코프",
       "ivory": "아이보리",
       "blue": "블루",
       "vu": "VU",
@@ -1159,6 +1184,123 @@
     "homeAudiobooks": "홈: 오디오북",
     "homeFollowingOn": "홈: 팔로잉 켜기",
     "homeFollowingOff": "홈: 팔로잉 끄기"
+  },
+  "diagnostics": {
+    "playback": {
+      "health": "재생 상태",
+      "verdictLabel": "끊김 진단",
+      "verdict": {
+        "clean": "양호 — 이번 세션에 끊김이 없습니다",
+        "gcPauses": "가비지 컬렉션 일시 중지가 대부분의 끊김과 겹쳤습니다",
+        "byteStarved": "네트워크 — 오디오 데이터가 너무 늦게 도착했습니다",
+        "producerStarved": "디코더가 너무 느림 — 버퍼가 비었습니다",
+        "deviceLate": "오디오 장치 또는 OS 스케줄링 — 버퍼에는 아직 데이터가 있었습니다"
+      },
+      "incidents": "끊김 횟수",
+      "longestStall": "가장 긴 중단",
+      "ms": "{ms} ms",
+      "mmcss": "MMCSS",
+      "mmcssOn": "등록됨 (Pro Audio + Audio)",
+      "mmcssOff": "등록되지 않음 — 아직 재생 전이거나 Windows가 작업을 거부했습니다",
+      "ringFill": "링 버퍼",
+      "msOfMs": "{fill} / {target} ms",
+      "deviceBuffer": "장치 버퍼",
+      "decode": "디코딩 속도",
+      "xRealtime": "실시간의 {speed}배",
+      "lastSeek": "마지막 이동",
+      "msKind": "{ms} ms · {kind}",
+      "seekKind": {
+        "ring": "디코딩된 링 버퍼",
+        "far": "네트워크 요청",
+        "disk": "디스크 캐시"
+      }
+    }
+  },
+  "stage": {
+    "brand": "지금 재생 중 · 전체 화면",
+    "mode": {
+      "lyrics": "가사",
+      "visualizer": "비주얼라이저",
+      "queue": "다음 재생",
+      "artist": "아티스트"
+    },
+    "exit": "전체 화면 종료",
+    "gallery": "비주얼라이저 갤러리 및 설정",
+    "galleryTitle": "비주얼라이저",
+    "closePanel": "패널 닫기",
+    "settingsHeader": "설정",
+    "sensitivity": "감도",
+    "lyricsOverlay": "비주얼라이저 위에 가사 표시",
+    "reduceMotion": "동작 줄이기",
+    "syncOffset": "동기화 오프셋",
+    "upNext": "다음 재생",
+    "nextFrom": "{context}의 다음 곡",
+    "playingFrom": "{kind}에서 재생 중",
+    "kind": {
+      "album": "앨범",
+      "playlist": "플레이리스트",
+      "artist": "아티스트",
+      "show": "팟캐스트",
+      "search": "검색"
+    },
+    "syncedLyrics": "싱크 가사",
+    "bpm": "{bpm} BPM",
+    "monthlyListeners": "월간 청취자 {count}명",
+    "goToArtist": "아티스트로 이동",
+    "credits": "크레딧 · {title}",
+    "tip": {
+      "title": "비주얼라이저를 선택하세요",
+      "body": "앨범 아트 색조를 입힌 여덟 가지 스타일입니다. 오른쪽에서 하나를 고르세요. Wavee는 3초 후 컨트롤을 숨기며, 마우스를 움직이면 다시 나타납니다.",
+      "gotIt": "확인"
+    },
+    "viz": {
+      "field": "필드",
+      "halo": "헤일로",
+      "horizon": "호라이즌",
+      "matrix": "매트릭스",
+      "aurora": "오로라",
+      "spectrum": "스펙트럼",
+      "pulse": "펄스",
+      "tape": "테이프"
+    },
+    "vizSub": {
+      "field": "앰비언트 · 커버 색상",
+      "halo": "커버 주위의 스펙트럼",
+      "horizon": "Spotify의 파형",
+      "matrix": "도트 매트릭스 · 라이브",
+      "aurora": "리본 · 저음, 중음, 고음",
+      "spectrum": "48 막대 · 피크 캡",
+      "pulse": "비트 동기화 · 차분함",
+      "tape": "릴 · 레벨 미터"
+    },
+    "source": {
+      "precomputed": "Spotify 데이터",
+      "tempo": "템포 그리드",
+      "breath": "대기"
+    },
+    "settings": {
+      "title": "전체 화면",
+      "subtitle": "전체 화면 지금 재생 중 보기와 비주얼라이저",
+      "visualizer": "비주얼라이저",
+      "visualizerSub": "전체 화면 보기가 시작될 때 사용할 비주얼라이저",
+      "sensitivity": "감도",
+      "sensitivitySub": "비주얼라이저가 음악에 반응하는 강도",
+      "lyricsOverlay": "비주얼라이저 위에 가사 표시",
+      "lyricsOverlaySub": "비주얼라이저 위에 현재 가사 줄 표시",
+      "syncOffset": "동기화 오프셋",
+      "syncOffsetSub": "들리는 소리에 맞게 비주얼라이저를 앞뒤로 조정합니다 — 블루투스 헤드폰은 보통 양수 값이 필요합니다",
+      "calm": "동작 줄이기",
+      "calmSub": "더 차분한 비주얼라이저: 움직임 축소, 비트 플래시 없음"
+    },
+    "diag": {
+      "title": "전체 화면 및 비주얼라이저",
+      "mode": "모드",
+      "fft": "게시당 FFT",
+      "leases": "리스 단계",
+      "delay": "출력 지연",
+      "source": "데이터 소스",
+      "publishes": "스펙트럼 게시 수"
+    }
   },
   "person": {
     "openAccount": "계정 열기",

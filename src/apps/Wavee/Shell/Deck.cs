@@ -92,6 +92,11 @@ public static partial class Deck
         bool IsSettled { get; }
     }
 
+    /// <summary>A pull of the 0..1 band levels the rail's own fold produced this tick (<c>Deck.SpectrumFold.Levels</c>) — empty
+    /// when there is no live spectrum. A PULL, never a subscription: the spectrum is published off the UI thread, so a deck
+    /// reads it from its own ticker.</summary>
+    public delegate ReadOnlySpan<float> SpectrumPull();
+
     /// <summary>WHY a deck's medium changed track, as an EDGE (set for exactly one fold, then cleared by the clock).
     /// The record family needs all four combinations because the physical gesture differs: a same-album advance
     /// re-cues the arm on the SAME disc, a new album pulls the record and swaps the sleeve, and a USER skip is quicker
@@ -1128,13 +1133,11 @@ public static partial class Deck
     // ── 10. MeterModel — the hi-fi VU needles ──────────────────────────────────────────────────────────────────────
 
     /// <summary>Engine-free physics for the Hi-fi VU deck: dB-to-needle-angle mapping plus a first-order ballistic lag
-    /// (slow for VU, fast for PPM). When the level tap has NO data but the deck is playing, a small constant plus a
-    /// slow breathing sine keeps the needles alive instead of pinned at the floor — absence is a real answer, not an
-    /// error.</summary>
+    /// (slow for VU, fast for PPM). When the level tap has NO data the needles REST — nothing is invented: absence is a
+    /// real answer, and a needle that breathed over silence would be a lie.</summary>
     public sealed class MeterModel : IModel
     {
         const float RestDeg = -45f;
-        const float BreatheOmega = 0.6f;      // rad/s — the "slow sin" for the no-tap-but-playing case
         const float RightOffsetOmega = 2.1f;  // rad/s — L→R stereo derivation
 
         readonly bool _ppm;
@@ -1168,12 +1171,13 @@ public static partial class Deck
             else
             {
                 var sample = _levels?.Invoke();
-                float dbL = sample is { } s
-                    ? RmsToDb(s.rms)
-                    : RmsToDb(0.12f) + 3f * MathF.Sin(BreatheOmega * _t);
-                float dbR = dbL + 1.5f * MathF.Sin(RightOffsetOmega * _t);
-                targetL = DbToDeg(dbL);
-                targetR = DbToDeg(dbR);
+                if (sample is { } s)
+                {
+                    float dbL = RmsToDb(s.rms);
+                    targetL = DbToDeg(dbL);
+                    targetR = DbToDeg(dbL + 1.5f * MathF.Sin(RightOffsetOmega * _t));   // the stereo spread stays a derivation of ONE real level
+                }
+                else { targetL = RestDeg; targetR = RestDeg; }                            // no tap => the needles rest; nothing is invented
             }
 
             float tau = _ppm ? 0.05f : 0.3f;
@@ -1191,10 +1195,9 @@ public static partial class Deck
 
     // ── 11. LevelModel — the Winamp / WMP analyser ──────────────────────────────────────────────────────────────────
 
-    /// <summary>Engine-free "analyser" for the Winamp/WMP-style decks: band levels synthesized from the RMS/peak tap
-    /// (or a flat fallback when there is no tap) rather than a real FFT, plus a peak-hold/fall overlay. Scope mode
-    /// instead fills <see cref="Bands"/> with a fake waveform sample. Arrays are preallocated once in the constructor
-    /// so <see cref="Tick"/> never allocates.</summary>
+    /// <summary>The analyser decks (Winamp 19, WMP 24): the stage's 48 folded band levels remapped onto N bars, with the deck's
+    /// own peak caps (hold 400 ms, fall 1.2/s). No tap => the bars release to the floor and the model settles; nothing is
+    /// synthesised. Arrays are preallocated once in the constructor so <see cref="Tick"/> never allocates.</summary>
     public sealed class LevelModel : IModel
     {
         const float PeakHoldMs = 400f;
@@ -1205,22 +1208,17 @@ public static partial class Deck
         const float SettleEps = 0.005f;
 
         readonly int _bandCount;
-        readonly bool _scope;
-        readonly Func<(float rms, float peak)?>? _levels;
-        readonly float _seed;
+        readonly SpectrumPull? _spectrum;
         readonly float[] _bands;
         readonly float[] _peaks;
         readonly float[] _peakHoldMs;
 
-        float _t;
         bool _settled;
 
-        public LevelModel(int bands, bool scope, Func<(float rms, float peak)?> levels, float? seed = null)
+        public LevelModel(int bands, SpectrumPull? spectrum)
         {
             _bandCount = bands;
-            _scope = scope;
-            _levels = levels;
-            _seed = seed ?? (float)(Random.Shared.NextDouble() * 1000.0);
+            _spectrum = spectrum;
             _bands = new float[bands];
             _peaks = new float[bands];
             _peakHoldMs = new float[bands];
@@ -1233,61 +1231,41 @@ public static partial class Deck
 
         public Frame Tick(in Input input, float dtSec)
         {
-            _t += dtSec;
             bool playing = input.Advancing || (input.PlayWhenReady && !input.Buffering);
-
-            var sample = _levels?.Invoke();
-            float env, rmsN;
-            if (sample is { } s)
+            ReadOnlySpan<float> live = _spectrum is { } pull ? pull() : default;
+            bool have = playing && live.Length >= 2;
+            for (int i = 0; i < _bandCount; i++)
             {
-                env = Clamp01(s.peak * 2.2f);
-                rmsN = Clamp01(s.rms * 3.5f);
-            }
-            else
-            {
-                env = playing ? 0.8f : 0f;
-                rmsN = env;
+                float target = have ? MathF.Max(FloorLevel, Remap(live, i, _bandCount)) : FloorLevel;
+                _bands[i] += (target - _bands[i]) * (target > _bands[i] ? AttackCoeff : ReleaseCoeff);
+                // The exponential release never reaches the floor exactly; snap the last half-percent so a silent
+                // deck really settles (and the ticker can stop) instead of asymptoting forever.
+                if (!playing && _bands[i] < FloorLevel + SettleEps) _bands[i] = FloorLevel;
+                UpdatePeak(i, _bands[i], dtSec);
             }
 
-            if (_scope)
-            {
-                for (int i = 0; i < _bandCount; i++)
-                {
-                    float v = 0.5f + 0.38f * MathF.Sin(i * 0.5f + _t * 9f) * MathF.Sin(i * 0.08f + _t * 2f) * env;
-                    _bands[i] = v;
-                    UpdatePeak(i, v, dtSec);
-                }
-            }
-            else
-            {
-                for (int i = 0; i < _bandCount; i++)
-                {
-                    float target = playing
-                        ? MathF.Max(FloorLevel, env * (0.35f + 0.45f * MathF.Sin(_t * (3f + 0.37f * i) + _seed + i) * MathF.Sin(1.3f * _t + 0.8f * i)) + rmsN * Hash(i, _t) * 0.15f)
-                        : FloorLevel;
-                    float coeff = target > _bands[i] ? AttackCoeff : ReleaseCoeff;
-                    _bands[i] += (target - _bands[i]) * coeff;
-                    // The exponential release never reaches the floor exactly; snap the last half-percent so a silent
-                    // deck really settles (and the ticker can stop) instead of asymptoting forever.
-                    if (!playing && _bands[i] < FloorLevel + SettleEps) _bands[i] = FloorLevel;
-                    UpdatePeak(i, _bands[i], dtSec);
-                }
-            }
-
-            // SCOPE mode settles on the same rule as spectrum mode: the ticker must be able to stop when a scope deck
-            // is paused (ch 23 §8 — the case 0.2.9's own test file did not cover, and the defect it shipped).
             bool settled = !playing;
             if (settled)
             {
                 for (int i = 0; i < _bandCount; i++)
                 {
-                    if (_scope ? MathF.Abs(_bands[i] - 0.5f) > SettleEps : _bands[i] > FloorLevel) { settled = false; break; }
+                    if (_bands[i] > FloorLevel) { settled = false; break; }
                 }
             }
             _settled = settled;
 
             var phase = playing ? PhaseName.Playing : PhaseName.Paused;
             return new Frame(input.Frac, 0f, 0f, 0f, 1f, 0f, 0f, 0, false, phase);
+        }
+
+        /// <summary>Bar <paramref name="i"/> of <paramref name="n"/> reads the MAX of the source bands that fall in its share
+        /// (48 -> 19/24 never drops a peak).</summary>
+        public static float Remap(ReadOnlySpan<float> source, int i, int n)
+        {
+            int from = (int)((long)i * source.Length / n), to = Math.Max(from + 1, (int)((long)(i + 1) * source.Length / n));
+            float m = 0f;
+            for (int k = from; k < to && k < source.Length; k++) if (source[k] > m) m = source[k];
+            return m;
         }
 
         void UpdatePeak(int i, float band, float dtSec)
@@ -1306,21 +1284,6 @@ public static partial class Deck
                 _peaks[i] = MathF.Max(band, _peaks[i] - PeakFallPerSec * dtSec);
             }
         }
-
-        /// <summary>A cheap deterministic pseudo-random value in 0..1 from a band index and a coarse (1/30 s) time
-        /// bucket.</summary>
-        static float Hash(int i, float t)
-        {
-            unchecked
-            {
-                int n = i * 374_761_393 + (int)MathF.Floor(t * 30f) * 668_265_263;
-                n = (n ^ (n >> 13)) * 1_274_126_177;
-                n ^= n >> 16;
-                return (n & 0x7fffffff) / 2_147_483_648f;
-            }
-        }
-
-        static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
     }
 
     // ── 12. ProgressModel — the two faces whose only moving part is progress ────────────────────────────────────────
@@ -1463,8 +1426,7 @@ public static partial class Deck
     /// within a tick or two, so they take only their options.</para></summary>
     public static class Models
     {
-        /// <summary>Winamp's spectrum window is 19 bars; its oscilloscope option fills the SAME band array with a
-        /// waveform sample instead, so the face binds one set of signals either way.</summary>
+        /// <summary>Winamp's spectrum window is 19 bars (the face binds the first 19 of the slab's 24).</summary>
         public const int WinampBands = 19;
         /// <summary>WMP's bar visualizer.</summary>
         public const int WmpBands = 24;
@@ -1474,11 +1436,13 @@ public static partial class Deck
         /// <remarks>The preset's options are read through `Rail.PlayerPrefs` (clamped on read, under the one epoch).</remarks>
         /// <param name="levels">The audio level tap as a PULL, not a subscription: levels are published on the audio
         /// control thread, so a deck must peek them from its own ticker — a reactive edge there would schedule UI work
-        /// from that thread. Null (Connect playback, a remote device, `--fake`) is a real answer the synths handle by
-        /// falling back to a level-free envelope.</param>
+        /// from that thread. Only the VU reads it; null (Connect playback, a remote device, `--fake`) is a real answer —
+        /// the needles rest.</param>
         /// <param name="seed">The transport as it stands, for the record family's mount-time decision.</param>
+        /// <param name="spectrum">The analyser decks' (Winamp, WMP) band pull — the rail's own fold of the engine's FFT
+        /// (<c>Deck.SpectrumFold</c>). Null (or an empty pull) is a real answer: the bars rest at the floor.</param>
         public static IModel Create(in Rail.PlayerCatalog.Preset preset,
-                                    Func<(float rms, float peak)?> levels, in Input seed)
+                                    Func<(float rms, float peak)?> levels, in Input seed, SpectrumPull? spectrum = null)
             => preset.Id switch
             {
                 Rail.PlayerCatalog.Record => new RecordModel(in seed, RecordVariant.Record),
@@ -1489,8 +1453,8 @@ public static partial class Deck
                 Rail.PlayerCatalog.Reel => new TapeModel(TapeKind.Reel),
                 Rail.PlayerCatalog.Cd => new DiscModel(),
                 Rail.PlayerCatalog.Vu => new MeterModel(Rail.PlayerPrefs.ChoiceSlug(in preset, "ballistics") == "ppm", levels),
-                Rail.PlayerCatalog.Winamp => new LevelModel(WinampBands, Rail.PlayerPrefs.ChoiceSlug(in preset, "vis") == "scope", levels),
-                Rail.PlayerCatalog.Wmp => new LevelModel(WmpBands, false, levels),
+                Rail.PlayerCatalog.Winamp => new LevelModel(WinampBands, spectrum),
+                Rail.PlayerCatalog.Wmp => new LevelModel(WmpBands, spectrum),
                 // iPod and Canvas: progress is the only thing that moves per tick (Canvas's drift is slab keyframes).
                 _ => new ProgressModel(),
             };
@@ -1513,14 +1477,13 @@ public static partial class Deck
             or Rail.PlayerCatalog.Zune or Rail.PlayerCatalog.Picture;
 
         /// <summary>The ONE option of a preset that is read at MODEL construction rather than by the face — VU ›
-        /// needles (<c>ballistics</c>: the τ) and Winamp › analyser (<c>vis</c>: spectrum vs scope synth); null for
-        /// every other preset. ch 23 §6.4(4): 0.2.9 built the model once, so flipping either restyled the face and
-        /// kept the old physics until a remount. The host compares this option's current slug with the one its model
-        /// was built from and rebuilds the model IN PLACE when they differ — no remount, no entrance fade.</summary>
+        /// needles (<c>ballistics</c>: the τ); null for every other preset. ch 23 §6.4(4): 0.2.9 built the model once,
+        /// so flipping it restyled the face and kept the old physics until a remount. The host compares this option's
+        /// current slug with the one its model was built from and rebuilds the model IN PLACE when they differ — no
+        /// remount, no entrance fade.</summary>
         public static string? ModelOptionSlug(int presetId) => presetId switch
         {
             Rail.PlayerCatalog.Vu => "ballistics",
-            Rail.PlayerCatalog.Winamp => "vis",
             _ => null,
         };
     }

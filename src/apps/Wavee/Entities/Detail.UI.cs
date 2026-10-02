@@ -1062,8 +1062,11 @@ public static partial class Detail
         void PlayAll()
         {
             // The table fills the cell with "play the VISIBLE order from the top"; before it mounts, play the context.
+            // The hero ▶ pauses/resumes the context it is already playing instead of restarting it.
+            if (_latest is { } cur && ContextPlayRules.For(cur.Identity.Subject.Id, Playback.ContextUri.Peek(), Playback.CurrentId.Peek(), Playback.Error.Peek()) == ContextPlayAction.Toggle)
+            { Playback.PlayOrToggleContext(cur.Identity.Subject.Id); return; }
             if (_playAllCell[0] is { } visible) { visible(); return; }
-            if (_latest is { } spec) Actions.Services.Play?.Invoke(spec.Identity.Subject);
+            if (_latest is { } spec) Playback.PlayOrToggleContext(spec.Identity.Subject.Id);
         }
 
         /// <summary>Auto-tracked: the spec, the theme tick and the cover palette watch. A grading landing re-derives
@@ -1199,7 +1202,7 @@ public static partial class Detail
         Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
     };
 
-    static Action DefaultPlay(EntityUri subject) => () => Actions.Services.Play?.Invoke(subject);
+    static Action DefaultPlay(EntityUri subject) => () => Playback.PlayOrToggleContext(subject.Id);
 
     /// <summary>The fixed-width metadata rail (two-column arm): cover · eyebrow/owner · title · artists · meta · daylist ·
     /// chart · CTA · prerelease · release panel · description · liked facts, in its own scroller. <paramref name="titleSize"/>
@@ -1319,7 +1322,7 @@ public static partial class Detail
 
         // CTA cluster: the primary (the page's, else Play), then the fixed FAB GROUP that wraps as a unit — or the page's
         // satellites, wrapping one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : PlayButton(accent, play);
+        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
         kids.Add(satellites is not null
             ? SatelliteCta("rail:cta", primary, satellites, RailLayout.CtaTopMargin)
             : new BoxEl
@@ -1683,7 +1686,7 @@ public static partial class Detail
 
         // The one fixed CTA cluster that differs: no More, a bare Share FAB. A page's primary replaces Play; its
         // satellites replace the heart + Share and wrap one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : PlayButton(accent, play);
+        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
         Element ctaRow;
         if (satellites is not null)
             ctaRow = SatelliteCta("hdr:play", primary, satellites, topMargin: 0f);

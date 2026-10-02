@@ -157,14 +157,15 @@ public class EpisodeRowDataAdapterTests
         => new("spotify:episode:row1", "The one about slabs", show, "https://img/row1", isExplicit, false, 0L, 60 * Min, resumeMs);
 
     [Fact]
-    public void An_episode_is_not_a_drag_source()
+    public void A_resolved_episode_is_an_episode_drag_source_and_an_unresolved_handle_is_not()
     {
         var episode = Resident();
         var facts = Facts();
         var options = new Episode.RowOptions(Clock: Clock);
-        Assert.Null(Episode.RowData(episode, in facts, in options).Drag);
+        Assert.NotNull(Episode.RowData(episode, in facts, in options).Drag);
         var compact = new Episode.RowOptions(ShowMeta: false);
-        Assert.Null(Episode.RowData(episode, in facts, in compact).Drag);
+        Assert.NotNull(Episode.RowData(episode, in facts, in compact).Drag);
+        Assert.Null(Episode.RowData(default, in facts, in compact).Drag);
     }
 
     [Fact]

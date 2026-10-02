@@ -173,6 +173,12 @@ public static partial class Lyrics
         public static int Resolve(int setting, bool weakGpu)
             => setting == Auto ? (weakGpu ? WeakGpuDefault : StrongGpuDefault) : Math.Clamp(setting, 0, 100);
 
+        /// <summary>The STAGE never depth-blurs: the fullscreen surface's depth cue is the scrim and the accent pill, and
+        /// every non-active line being its own blur layer was the stage's largest per-frame cost (§1.1). 0 ⇒ Enabled(0) is
+        /// false and DriveDofRamp snaps every σ to 0 in one pass. The active line's halo is NOT this strength — the view
+        /// keeps it on the user's setting (<c>ViewCore._haloScale</c>).</summary>
+        public static int ResolveFor(int setting, bool weakGpu, bool onStage) => onStage ? 0 : Resolve(setting, weakGpu);
+
         /// <summary>The resolved strength (0..100, NOT −1 — call <see cref="Resolve"/> first) as the 0..1 multiplier
         /// the view scales its DoF ladder and halo σ by.</summary>
         public static float Scale(int strength) => Math.Clamp(strength, 0, 100) / 100f;
@@ -1126,9 +1132,9 @@ public static partial class Lyrics
         /// is gone and every launch starts at <see cref="None"/>.</summary>
         public static int SecondaryLine() => global::Wavee.Prefs.Lyrics.SecondaryLine();
 
-        /// <summary>Reactive read of the blur strength RESOLVED (0..100) — the stored −1 means AUTO and is interpreted
-        /// here, once, through <see cref="BlurPolicy.Resolve"/>.</summary>
-        public static int BlurStrength(bool weakGpu) => BlurPolicy.Resolve(global::Wavee.Prefs.Lyrics.BlurStrength(), weakGpu);
+        /// <summary>Reactive read of the blur strength RESOLVED (0..100) for a surface — the stored −1 means AUTO and is
+        /// interpreted here, once, through <see cref="BlurPolicy.ResolveFor"/>; the stage is always 0.</summary>
+        public static int BlurStrength(bool weakGpu, bool onStage) => BlurPolicy.ResolveFor(global::Wavee.Prefs.Lyrics.BlurStrength(), weakGpu, onStage);
 
         /// <summary>The ONE writer both globe toggles go through: set the session mode, then bump.</summary>
         public static void SetSecondaryLine(int mode) => global::Wavee.Prefs.Lyrics.SetSecondaryLine(mode);

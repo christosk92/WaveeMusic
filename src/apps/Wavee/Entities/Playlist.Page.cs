@@ -696,20 +696,24 @@ public readonly partial struct Playlist
             Playback.PlayRows(rows, 0, pl.Id);
         }
 
-        /// <summary>The hero/rail ⋯ (ch 03 item 49): "Copy to playlist ▸" (a playlist page's label for owned and followed
-        /// alike — Heart is Follow for both) · Play next · Add to queue · then the owner pair, each self-gated.</summary>
+        /// <summary>The hero/rail ⋯ (ch 03 item 49): the one container menu, on-page (Play next · Add to queue · Copy to
+        /// playlist ▸ · Pin · Share — "Copy to playlist" is a playlist page's label for owned and followed alike, Heart is
+        /// Follow for both), then the owner pair as the page's own tail, each self-gated.</summary>
         ContextMenuModel? MoreMenu()
         {
             var pl = _playlist;
             if (!pl.IsValid) return null;
-            var rows = new List<MenuFlyoutItem>(6);
             var tracks = TracksOf(pl);
-            if (tracks.Length > 0) rows.Add(DepositMenu(Loc.Get(Strings.Detail.CopyToPlaylist), tracks, pl.Uri, _overlay));
-            var ctx = new ActionContext(ActionTarget.ForPlaylist(pl.Uri, TitleOf(pl), new PlaylistHost(pl.Uri, pl.Caps, Array.Empty<int>())), Actions.Services);
-            if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
-            if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
-            AppendOwnerItems(rows, pl, _overlay);
-            return rows.Count == 0 ? null : new ContextMenuModel(rows);
+            var target = ActionTarget.ForPlaylist(pl.Uri, TitleOf(pl), new PlaylistHost(pl.Uri, pl.Caps, Array.Empty<int>()));
+            var tail = new List<MenuFlyoutItem>(3);
+            AppendOwnerItems(tail, pl, _overlay);
+            string owner = pl.Owner.IsValid ? Entities.Strings.Resolve(pl.Owner.NameId) : "";
+            return Menus.Container(in target, Controls.ArtUrl(pl.ImageId), owner.Length > 0 ? owner : null, new ContainerExtras
+            {
+                OnPage = true,
+                Deposit = tracks.Length > 0 ? DepositMenu(Loc.Get(Strings.Detail.CopyToPlaylist), tracks, pl.Uri, _overlay) : null,
+                Tail = tail,
+            });
         }
 
         object? CoverPayload()

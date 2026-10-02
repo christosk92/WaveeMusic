@@ -165,8 +165,7 @@ public static partial class HomeCardNav
         string outcome = "completed";
         try
         {
-            if (!HomeCardPlayRouting.PlaysAsItem(card.Kind) && Actions.Services.Play is { } play) play(EntityUri.Parse(uri));
-            else Playback.PlayContext(uri);
+            Playback.PlayOrToggleContext(uri);
         }
         catch (Exception ex)
         {
@@ -207,18 +206,13 @@ public static partial class HomeCardNav
         return () => CardMenu(c);
     }
 
-    // The card grammar: playlist / album — strip Play · Play next · Add to queue, rows Save · Add to playlist ▸ · Open ·
-    // Pin · Share ▸; Liked drops Save; artist — strip Play, rows Follow · Open · Pin · Share ▸ · Go to artist radio (no
-    // queue pair, no Add to playlist); show — Play · Open · Pin · Share ▸; a track uri — the thin track menu. Registered
-    // AppActions render through `Actions.Menu`; the container verbs the action table carries only as descriptors are
-    // explicit rows over the same `Actions.Services` seams (the sidebar's ShowModel precedent).
+    // The card menu is Menus.Container (Platform/Menus.Container.cs): one verb table per kind, shared with every other
+    // container surface. A track uri keeps the thin track menu; the card carries only its nav origin (Open's masthead).
     static ContextMenuModel? CardMenu(HomeCard card)
     {
-        var s = Actions.Services;
         var uri = EntityUri.Parse(card.Uri);
         if (!uri.IsValid) return null;
         string title = card.Title;
-        string? art = card.ImageUrl;
         string plain = HomeCards.PlainText(card.Subtitle);
 
         if (card.Kind == HomeCardKind.Track)
@@ -228,74 +222,16 @@ public static partial class HomeCardNav
             return Track.Menu([Entities.Track(uri)], new Track.MenuOptions(ShowGoToAlbum: true));
         }
 
-        var route = RouteFor(in card);
-        bool liked = card.Kind == HomeCardKind.Liked;
-        var targetKind = card.Kind switch
+        var target = card.Kind switch
         {
-            HomeCardKind.Artist => TargetKind.Artist,
-            HomeCardKind.Album => TargetKind.Album,
-            HomeCardKind.Playlist or HomeCardKind.Liked => TargetKind.Playlist,
-            _ => TargetKind.None,
+            HomeCardKind.Artist => ActionTarget.ForArtist(uri, title),
+            HomeCardKind.Album => ActionTarget.ForAlbum(uri, title),
+            HomeCardKind.Playlist or HomeCardKind.Liked => ActionTarget.ForPlaylist(uri, title),
+            HomeCardKind.Podcast or HomeCardKind.Audiobook => ActionTarget.ForShow(uri, title),
+            _ => default,
         };
-        var ctx = new ActionContext(new ActionTarget(targetKind, Array.Empty<Track>(), uri, title, PlaylistHost.None), s);
-        var rows = new List<MenuFlyoutItem>(8);
-        AppBarCommand[] strip;
-        string subtitle;
-        bool circular = card.Kind == HomeCardKind.Artist;
-
-        switch (card.Kind)
-        {
-            case HomeCardKind.Artist:
-                strip = Actions.Menu.Strip(in ctx, [ActionId.PlayContext]);
-                rows.Add(SaveRow(s, uri, follow: true));
-                rows.Add(OpenRow(route));
-                if (PinRow(s, route) is { } pinA) rows.Add(pinA);
-                if (Actions.Menu.Share(in ctx) is { } shareA) rows.Add(shareA);
-                rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.GoToArtistRadio), ActionIcons.Resolve(ActionIcons.Radio),
-                    s.StartRadio is not null, () => Actions.Services.StartRadio?.Invoke(uri)));
-                subtitle = Actions.Menu.KindWord(TargetKind.Artist);
-                break;
-            case HomeCardKind.Podcast or HomeCardKind.Audiobook:
-                strip = [];
-                if (Actions.Menu.Row(ActionId.PlayContext, in ctx) is { } playS) rows.Add(playS);
-                rows.Add(OpenRow(route));
-                if (PinRow(s, route) is { } pinS) rows.Add(pinS);
-                if (Actions.Menu.Share(in ctx) is { } shareS) rows.Add(shareS);
-                subtitle = plain.Length > 0 ? plain : Loc.Get(Strings.Menu.KindPodcast);
-                break;
-            default:
-                strip = Actions.Menu.Strip(in ctx, [ActionId.PlayContext, ActionId.PlayContextNext, ActionId.AddContextToQueue]);
-                if (!liked) rows.Add(SaveRow(s, uri, follow: false));
-                if (Actions.Menu.Row(ActionId.AddContextToPlaylist, in ctx) is { } add) rows.Add(add);
-                rows.Add(OpenRow(route));
-                if (PinRow(s, route) is { } pin) rows.Add(pin);
-                if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
-                subtitle = plain.Length > 0 ? plain : Actions.Menu.KindWord(targetKind);
-                break;
-        }
-        return new ContextMenuModel(strip, rows, Actions.Menu.Header(art, title, subtitle, circular));
-    }
-
-    static MenuFlyoutItem SaveRow(ActionServices s, EntityUri uri, bool follow)
-    {
-        bool saved = s.IsSaved?.Invoke(uri) ?? false;
-        string label = follow
-            ? Loc.Get(saved ? Strings.Artist.Following : Strings.Artist.Follow)
-            : Loc.Get(saved ? Strings.Menu.Saved : Strings.Menu.SaveToLibrary);
-        return new MenuFlyoutItem(label, ActionIcons.Resolve(ActionIcons.Save, saved), s.SetSaved is not null,
-            () => Actions.Services.SetSaved?.Invoke(uri, !(Actions.Services.IsSaved?.Invoke(uri) ?? false)));
-    }
-
-    static MenuFlyoutItem OpenRow(Shell.Route route)
-        => new(Loc.Get(Strings.Menu.Open), ActionIcons.Resolve(ActionIcons.Open), !route.IsNone,
-               () => Shell.GoTo(route, HomeOrigin));
-
-    static MenuFlyoutItem? PinRow(ActionServices s, Shell.Route route)
-    {
-        if (route.IsNone || s.SetPinned is null) return null;
-        bool pinned = s.IsPinned?.Invoke(route) ?? false;
-        return Actions.Menu.Pin(pinned,
-            () => Actions.Services.SetPinned?.Invoke(route, true),
-            () => Actions.Services.SetPinned?.Invoke(route, false));
+        if (target.Kind == TargetKind.None) return null;
+        return Menus.Container(in target, card.ImageUrl, card.Kind == HomeCardKind.Artist ? null : plain,
+            new ContainerExtras { Liked = card.Kind == HomeCardKind.Liked, OpenOrigin = HomeOrigin });
     }
 }

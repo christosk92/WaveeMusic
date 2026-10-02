@@ -429,7 +429,9 @@
       "designShort": "Ontwerp",
       "designSub": "Kies de navigatie aan de linkerkant. Wordt direct toegepast.",
       "customize": "Zijbalk aanpassen",
-      "customizeSub": "Secties in Custom toevoegen, herschikken en instellen"
+      "customizeSub": "Secties in Custom toevoegen, herschikken en instellen",
+      "railSize": "Grootte van samengevouwen balk",
+      "railSizeSub": "Hoe breed de pictogrambalk is wanneer de zijbalk is samengevouwen."
     },
     "layout": {
       "title": "Indeling en dichtheid",
@@ -450,7 +452,7 @@
       "general": "Algemeen",
       "playback": "Afspelen",
       "storage": "Opslag en cache",
-      "diagnostics": "Diagnostiek",
+      "privacy": "Privacy en diagnostiek",
       "about": "Over"
     },
     "language": {
@@ -479,6 +481,20 @@
       "npvPresentationSub": "Toon de hoes of een speler boven de nummergegevens",
       "npvStyle": "Spelerstijl",
       "npvStyleSub": "Welke van de twaalf spelers wordt getoond wanneer Speler is geselecteerd"
+    },
+    "playback": {
+      "normalization": "Audionormalisatie",
+      "normalizationSub": "Speel elk nummer af op een vergelijkbaar volume",
+      "normalizationMode": "Volumeniveau",
+      "normalizationModeSub": "Hoe luid genormaliseerde nummers klinken. Een wijziging hoor je binnen een moment op het nummer dat speelt.",
+      "normQuiet": "Zacht",
+      "normQuietSub": "De meeste ruimte voor luide passages (ongeveer -23 LUFS)",
+      "normNormal": "Normaal",
+      "normNormalSub": "Een gebalanceerd niveau, hetzelfde als de standaard van Spotify (ongeveer -14 LUFS)",
+      "normLoud": "Luid",
+      "normLoudSub": "Het luidste niveau; een limiter voorkomt dat pieken clippen (ongeveer -11 LUFS)",
+      "normalizationAlbum": "Albumnormalisatie",
+      "normalizationAlbumSub": "Speel de nummers van een album af op het eigen niveau van het album, zodat stille en luide nummers hun onderlinge volumeverhouding behouden"
     },
     "choice": {
       "system": "Systeem",
@@ -509,6 +525,7 @@
     "yourLibrary": "Jouw bibliotheek",
     "comingSoon": "Deze weergave komt in een latere versie.",
     "viewAllHistory": "Volledige geschiedenis bekijken",
+    "logs": "Logboeken",
     "history": {
       "title": "Geschiedenis",
       "clearAll": "Alles wissen",
@@ -599,6 +616,16 @@
     "menu": {
       "customize": "Zijbalk aanpassen…",
       "resetWidth": "Breedte herstellen"
+    },
+    "rail": {
+      "size": "Grootte van samengevouwen balk",
+      "compact": "Compact",
+      "default": "Standaard",
+      "large": "Groot"
+    },
+    "seam": {
+      "announceWidth": "Breedte zijbalk {width}",
+      "announceRail": "Pictogrambalk, {size}"
     },
     "layout": {
       "title": "Indeling van zijbalk",
@@ -978,6 +1005,7 @@
     "videoMiniPlayer": "Afspelen in minispeler",
     "videoFullScreen": "Volledig scherm",
     "videoExitFullScreen": "Volledig scherm afsluiten",
+    "fullscreen": "Volledig scherm",
     "noVideoForThisSong": "Geen video voor dit nummer",
     "videoNeedsWiderWindow": "Vereist een breder venster",
     "videoNoSecondWindow": "Niet beschikbaar vanuit dit venster",
@@ -1036,7 +1064,6 @@
       "body": "Body",
       "lcd": "Lcd",
       "skin": "Skin",
-      "analyser": "Analyzer",
       "face": "Wijzerplaat",
       "needles": "Naalden",
       "accent": "Accent",
@@ -1074,8 +1101,6 @@
       "base": "Basis",
       "modern": "Modern",
       "dark": "Donker",
-      "spectrum": "Spectrum",
-      "oscilloscope": "Oscilloscoop",
       "ivory": "Ivoor",
       "blue": "Blauw",
       "vu": "VU",
@@ -1159,6 +1184,123 @@
     "homeAudiobooks": "Start: Audioboeken",
     "homeFollowingOn": "Start: Volgen aan",
     "homeFollowingOff": "Start: Volgen uit"
+  },
+  "diagnostics": {
+    "playback": {
+      "health": "Afspeelstatus",
+      "verdictLabel": "Oordeel haperingen",
+      "verdict": {
+        "clean": "Schoon — geen haperingen in deze sessie",
+        "gcPauses": "Pauzes van de garbage collector vielen samen met de meeste haperingen",
+        "byteStarved": "Netwerk — audiogegevens kwamen te laat binnen",
+        "producerStarved": "Decoder te traag — de buffer liep leeg",
+        "deviceLate": "Audioapparaat of OS-planning — de buffer had nog gegevens"
+      },
+      "incidents": "Haperingen",
+      "longestStall": "Langste onderbreking",
+      "ms": "{ms} ms",
+      "mmcss": "MMCSS",
+      "mmcssOn": "Geregistreerd (Pro Audio + Audio)",
+      "mmcssOff": "Niet geregistreerd — nog niets afgespeeld, of Windows weigerde de taak",
+      "ringFill": "Ringbuffer",
+      "msOfMs": "{fill} van {target} ms",
+      "deviceBuffer": "Apparaatbuffer",
+      "decode": "Decodeersnelheid",
+      "xRealtime": "{speed}× realtime",
+      "lastSeek": "Laatste doorspoeling",
+      "msKind": "{ms} ms · {kind}",
+      "seekKind": {
+        "ring": "gedecodeerde ring",
+        "far": "netwerkverzoek",
+        "disk": "schijfcache"
+      }
+    }
+  },
+  "stage": {
+    "brand": "Nu speelt · volledig scherm",
+    "mode": {
+      "lyrics": "Songtekst",
+      "visualizer": "Visualisatie",
+      "queue": "Hierna",
+      "artist": "Artiest"
+    },
+    "exit": "Volledig scherm afsluiten",
+    "gallery": "Visualisatiegalerij en instellingen",
+    "galleryTitle": "Visualisatie",
+    "closePanel": "Paneel sluiten",
+    "settingsHeader": "Instellingen",
+    "sensitivity": "Gevoeligheid",
+    "lyricsOverlay": "Songtekst over visualisatie",
+    "reduceMotion": "Minder beweging",
+    "syncOffset": "Synchronisatie-offset",
+    "upNext": "Hierna",
+    "nextFrom": "Hierna uit {context}",
+    "playingFrom": "Afspelen uit {kind}",
+    "kind": {
+      "album": "album",
+      "playlist": "afspeellijst",
+      "artist": "artiest",
+      "show": "podcast",
+      "search": "zoekopdracht"
+    },
+    "syncedLyrics": "Gesynchroniseerde songtekst",
+    "bpm": "{bpm} BPM",
+    "monthlyListeners": "{count} maandelijkse luisteraars",
+    "goToArtist": "Naar artiest",
+    "credits": "Credits · {title}",
+    "tip": {
+      "title": "Kies je visualisatie",
+      "body": "Acht stijlen, allemaal gekleurd naar de albumhoes. Kies er rechts een. Wavee verbergt de bediening na drie seconden; beweeg de muis om die terug te halen.",
+      "gotIt": "Begrepen"
+    },
+    "viz": {
+      "field": "Veld",
+      "halo": "Halo",
+      "horizon": "Horizon",
+      "matrix": "Matrix",
+      "aurora": "Aurora",
+      "spectrum": "Spectrum",
+      "pulse": "Puls",
+      "tape": "Tape"
+    },
+    "vizSub": {
+      "field": "Ambient · hoeskleuren",
+      "halo": "Spectrum rond de hoes",
+      "horizon": "Golfvorm van Spotify",
+      "matrix": "Puntmatrix · live",
+      "aurora": "Linten · laag, midden, hoog",
+      "spectrum": "48 balken · piekmarkers",
+      "pulse": "Op de beat · rustig",
+      "tape": "Spoelen · niveaumeter"
+    },
+    "source": {
+      "precomputed": "Van Spotify",
+      "tempo": "Temporaster",
+      "breath": "Rust"
+    },
+    "settings": {
+      "title": "Volledig scherm",
+      "subtitle": "De weergave Nu speelt op volledig scherm en de visualisaties",
+      "visualizer": "Visualisatie",
+      "visualizerSub": "Met welke visualisatie de volledig-schermweergave opent",
+      "sensitivity": "Gevoeligheid",
+      "sensitivitySub": "Hoe sterk de visualisaties op de muziek reageren",
+      "lyricsOverlay": "Songtekst over de visualisatie",
+      "lyricsOverlaySub": "Toon de huidige regel over de visualisatie",
+      "syncOffset": "Synchronisatie-offset",
+      "syncOffsetSub": "Verschuif de visualisaties vroeger of later zodat ze kloppen met wat je hoort — Bluetooth-koptelefoons hebben meestal een positieve waarde nodig",
+      "calm": "Minder beweging",
+      "calmSub": "Rustigere visualisaties: kleinere uitslagen, geen beatflitsen"
+    },
+    "diag": {
+      "title": "Volledig scherm en visualisatie",
+      "mode": "Modus",
+      "fft": "FFT per publicatie",
+      "leases": "Lease-niveau",
+      "delay": "Uitvoervertraging",
+      "source": "Gegevensbron",
+      "publishes": "Spectrumpublicaties"
+    }
   },
   "person": {
     "openAccount": "Account openen",

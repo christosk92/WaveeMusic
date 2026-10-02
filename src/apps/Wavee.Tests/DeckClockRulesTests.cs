@@ -36,14 +36,14 @@ public class DeckClockRulesTests
     }
 
     [Fact]
-    public void A_paused_scope_deck_settles_so_the_gate_closes()
+    public void A_paused_analyser_deck_settles_so_the_gate_closes()
     {
-        // ch 23 §6.4(5): 0.2.9's oscilloscope parked at 0.5, above the spectrum floor, and never settled.
-        var scope = new Deck.LevelModel(Deck.Models.WinampBands, scope: true, levels: static () => null, seed: 1f);
+        // ch 23 §6.4(5): a paused analyser must settle, or the 30 Hz ticker burns forever. The model reads no spectrum here.
+        var analyser = new Deck.LevelModel(Deck.Models.WinampBands, spectrum: null);
         var input = DeckIn.Make(playWhenReady: false, advancing: false, phase: Deck.TransportPhase.Paused);
-        for (int i = 0; i < 4; i++) scope.Tick(in input, 0.033f);
-        Assert.True(scope.IsSettled);
-        Assert.False(Deck.ClockRules.ShouldTick(false, true, false, false, false, scope.IsSettled));
+        for (int i = 0; i < 4; i++) analyser.Tick(in input, 0.033f);
+        Assert.True(analyser.IsSettled);
+        Assert.False(Deck.ClockRules.ShouldTick(false, true, false, false, false, analyser.IsSettled));
     }
 
     [Fact]
@@ -151,13 +151,22 @@ public class DeckClockRulesTests
 public class DeckModelOptionsTests
 {
     [Fact]
-    public void Exactly_the_vu_needles_and_the_winamp_analyser_are_model_options()
+    public void Exactly_the_vu_needles_are_a_model_option()
     {
+        // The Winamp analyser option (spectrum vs a synthesised oscilloscope) is gone: the analyser decks read the real
+        // bands and have nothing to rebuild.
         Assert.Equal("ballistics", Deck.Models.ModelOptionSlug(Rail.PlayerCatalog.Vu));
-        Assert.Equal("vis", Deck.Models.ModelOptionSlug(Rail.PlayerCatalog.Winamp));
         for (int id = 0; id < Rail.PlayerCatalog.Presets.Length; id++)
-            if (id is not (Rail.PlayerCatalog.Vu or Rail.PlayerCatalog.Winamp))
+            if (id != Rail.PlayerCatalog.Vu)
                 Assert.Null(Deck.Models.ModelOptionSlug(id));
+    }
+
+    [Fact]
+    public void The_winamp_deck_carries_only_its_skin_option()
+    {
+        var winamp = Rail.PlayerCatalog.ById(Rail.PlayerCatalog.Winamp);
+        Assert.Single(winamp.Options);
+        Assert.Equal("skin", winamp.Options[0].Slug);
     }
 
     [Fact]

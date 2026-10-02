@@ -8,11 +8,10 @@
 // Spec: ch 16 §1.3 (DayHeader, ChildRow, the month card and its cell) · §2 W3, W5-W7, W11-W14, W23 · §3.1 · §5 rows 5,
 //   10-14 · §9.1 #5-#9, #15 · §9.2 (the drawer's two indices, the ModuleHeader span trap, the artwork setting)
 //
-// WHAT A ROW IS MADE OF. The GROUP ARM is 0.2.9's `MediaCard.Row(plated: false)` geometry — 64 tall, `pad(8,0,8,0)`, gap
-// 12, r4, transparent at rest, the ListRow hover ramp, no press scale — composed from the shared parts
-// (`Controls.Artwork`, `Controls.NowPlayingOverlay`, `Controls.RowChip`, `Track.MoreCell`, `Track.ExpandCell`) rather
-// than the shared surface's row (`Controls.Surface`), whose 8-DIP padding and clipped edge-square art slot cannot carry
-// the Saved row's 60 × 56 stack inside the fixed 64 band (W7) — a deliberate (B) surface (#160 as built). The SINGLE-PLAY ARM (a lone track) and every DRAWER CHILD are
+// WHAT A ROW IS MADE OF. The GROUP ARM is the shared surface's row (`Controls.Surface(…, Shape.Row(48))` pinned to the
+// 64 band): focusable, the ListRow plate, the now-playing overlay, a drag, the right-click menu and the hover "…"
+// overlay come from the surface; the kind chip, played-at stamp and expand chevron ride its trailing cluster, and the
+// Saved row's member stack is its cover (36-DIP members behind a 40 context tile inside the 48 square, W7). The SINGLE-PLAY ARM (a lone track) and every DRAWER CHILD are
 // `Track.EagerRow` — ch 01's vocabulary, the now-playing ink and the equalizer included; an episode member is the
 // app's shared media surface (`Controls.Surface` fed by `Episode.RowData`) at the same band — the track grid is Track-only.
 //
@@ -38,7 +37,7 @@ public readonly partial struct Recents
 {
     // ══ 1. METRICS ═══════════════════════════════════════════════════════════════════════════════════════════════════
 
-    const float CardArt = 48f, SavedTile = 40f, ChildWhenCol = 60f;
+    const float CardArt = 48f, SavedTile = 36f, SavedContext = 40f, ChildWhenCol = 60f;
     const float ChildActionsCol = 40f + Spacing.M + ChildWhenCol;
 
     /// <summary>An episode member's two bands: the single-play arm is the 64 band the group card and the track row share
@@ -206,69 +205,43 @@ public readonly partial struct Recents
         string when = page.WhenOf(shape, r);
         string sub = page.SubtitleOf(shape, r, in row, facts.Subtitle);
 
+        // The cover: the context art (a Saved row's smaller tile sits in front of two member covers). The surface mounts the
+        // shared now-playing overlay over it (the hover FAB, swapped for the equalizer pill when this context plays, W23).
+        float ctxEdge = saved ? SavedContext : CardArt;
         Element art = target.Kind == EntityKind.Collection
-            ? Sidebar.Cover.Liked(CardArt)
-            : Controls.Artwork(facts.Cover, CardArt, CardArt, circular ? CardArt / 2f : Radii.Control,
+            ? Sidebar.Cover.Liked(ctxEdge)
+            : Controls.Artwork(facts.Cover, ctxEdge, ctxEdge, circular ? ctxEdge / 2f : Radii.Control,
                                morphKey: page.MorphOf(shape, r, target, uri), decodePx: 96);
-        Element tile = new BoxEl
-        {
-            ZStack = true, Width = CardArt, Height = CardArt, Shrink = 0f,
-            // The shared now-playing overlay: the hover FAB, swapped for the equalizer pill when this context plays (W23).
-            Children = [art, Controls.NowPlayingOverlay(uri, h.Play, 30f)],
-        };
 
-        Element text = new BoxEl
-        {
-            // Keyed on readiness: identity landing remounts the column, which fades it in — no resize (§5 row 9).
-            Key = facts.Known ? "text" : "text-pending",
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
-            Enter = facts.Known ? new EnterExit(Opacity: 0f, Active: true) : null,
-            Transition = facts.Known ? MotionTok.ControlNormal : null,
-            Children = !facts.Known
-                ? [Controls.PendingBar(140f, 10f), Controls.PendingBar(90f, 8f)]
-                : saved ? [TitleText(facts.Title), SavedMeta(sub)]
-                : sub.Length > 0 ? [TitleText(facts.Title), SubText(sub)]
-                : [TitleText(facts.Title)],
-        };
-
+        // The trailing cluster: [kind chip] · [when] · [chevron]. The chevron lane is RESERVED, never collapsed (an artist
+        // row's lane aligns with an album row's, parity 73), and the "…" overlay lands on the lane after it, so the chevron
+        // stays visible while the pointer is on the row.
         string? chip = KindLabel(target.Kind);
-        var trail = new Element[(when.Length > 0 ? 1 : 0) + 2];
-        int k = 0;
-        if (when.Length > 0) trail[k++] = Caption(when) with { Key = "when", Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 };
-        // A kind with no container menu keeps the "…" lane as an inert placeholder, never a dead button (parity 73).
-        trail[k++] = Track.MoreCell(menu, false) with { Key = "more" };
-        trail[k] = canExpand
+        var trail = new List<Element>(4);
+        if (chip is not null) trail.Add(Controls.RowChip(chip) with { Key = "chip" });
+        if (when.Length > 0) trail.Add(Caption(when) with { Key = "when", Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 });
+        trail.Add(canExpand
             ? Track.ExpandCell(expanded, h.Toggle) with { Key = "chevron" }
-            // The chevron lane is RESERVED, never collapsed: an artist row's "…" aligns with an album row's (parity 73).
-            : new BoxEl { Key = "chevron", Width = Spacing.XXL, Height = Spacing.XXL, Shrink = 0f };
+            : new BoxEl { Key = "chevron", Width = Spacing.XXL, Height = Spacing.XXL, Shrink = 0f });
+        trail.Add(new BoxEl { Key = "more-lane", Width = Controls.IconButtonSize, Shrink = 0f });
 
-        var kids = new Element[chip is null ? 3 : 4];
-        kids[0] = saved ? SavedArtwork(rows, r, tile) with { Key = "cover" } : tile with { Key = "cover" };
-        kids[1] = text;
-        if (chip is not null) kids[2] = Controls.RowChip(chip) with { Key = "chip" };
-        kids[^1] = new BoxEl
+        var data = new Controls.CardData(
+            uri, facts.Known ? facts.Title : "",
+            !facts.Known ? Controls.PendingBar(140f, 10f) : saved ? SavedMeta(sub) : sub.Length > 0 ? SubText(sub) : null,
+            null, canExpand ? h.Toggle : h.Open, h.Play, circular,
+            Drag.KindOf(target.Kind) == DragKind.Route ? null : h.DragFrom,
+            ShowMenu: menu,
+            CoverOverride: saved ? SavedArtwork(rows, r, art) : art)
         {
-            Key = "trailing", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f, Children = trail,
+            Menu = menu ? h.Menu : null,
+            Trailing = new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f, Children = trail.ToArray() },
+            Height = RecentsLayout.RowHeight,
         };
-
-        var card = new BoxEl
-        {
-            Key = "row", Direction = 0, Height = RecentsLayout.RowHeight, MinWidth = 0f,
-            AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Corners = Radii.ControlAll, Role = AutomationRole.Button, Cursor = CursorId.Hand,
-            FocusVisualMargin = Design.FocusInsetRow,
-            OnClick = canExpand ? h.Toggle : h.Open,
-            Draggable = Drag.KindOf(target.Kind) == DragKind.Route ? null : h.DragFrom,
-            Children = kids,
-        }.Interactive(Interaction.ListRow);
-        Element primary = menu && !Controls.IsNullOverlay(overlay) ? ContextMenu.Attach(card, overlay, h.Menu) : card;
+        Element primary = Controls.Surface(data, global::Wavee.Shape.Row(CardArt) with { MinHeight = RecentsLayout.RowHeight });
         return expanded && canExpand
             ? new BoxEl { Direction = 1, MinWidth = 0f, Children = [primary, Drawer(page, shape, r)] }
             : new BoxEl { Direction = 1, MinWidth = 0f, Children = [primary] };
     }
-
-    static TextEl TitleText(string title)
-        => Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 
     static TextEl SubText(string sub)
         => Caption(sub) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
@@ -288,8 +261,8 @@ public readonly partial struct Recents
         ],
     };
 
-    /// <summary>The Saved stack (W7): two 40-DIP member covers stepped to x 12 / x 16, the 48 context tile at y 8, in a
-    /// 60 × 56 box — the same members-first source the drawer lists.</summary>
+    /// <summary>The Saved stack (W7): two 36-DIP member covers stepped to x 6 / x 12 behind the 40 context tile at y 8,
+    /// inside the surface's 48 art square — the same members-first source the drawer lists.</summary>
     static BoxEl SavedArtwork(RecentsSnapshot rows, int r, Element context)
     {
         var members = RecentsView.DrawerTargets(rows, r);
@@ -300,17 +273,17 @@ public readonly partial struct Recents
             layers.Add(new BoxEl
             {
                 Width = SavedTile, Height = SavedTile,
-                Transform = Affine2D.Translation(layers.Count == 0 ? Spacing.M : Spacing.L, 0f),
+                Transform = Affine2D.Translation(layers.Count == 0 ? Spacing.XS + 2f : Spacing.S + 4f, 0f),
                 Children = [Controls.Artwork(CoverOf(members[i]), SavedTile, SavedTile, Radii.Control, decodePx: 80)],
             });
         }
         layers.Add(new BoxEl
         {
-            Width = CardArt, Height = CardArt, Transform = Affine2D.Translation(0f, Spacing.S), Children = [context],
+            Width = SavedContext, Height = SavedContext, Transform = Affine2D.Translation(0f, Spacing.S), Children = [context],
         });
         return new BoxEl
         {
-            Width = CardArt + Spacing.M, Height = CardArt + Spacing.S, Shrink = 0f, ZStack = true, Children = layers.ToArray(),
+            Width = CardArt, Height = CardArt, Shrink = 0f, ZStack = true, Children = layers.ToArray(),
         };
     }
 
@@ -449,6 +422,13 @@ public readonly partial struct Recents
                     },
                 ],
             };
+        // The "…" is the surface's hover overlay at the row's end; the lane is kept (not reserved by the surface) so the
+        // duration and played-at columns line up with the track children's [when · "…"] lane.
+        trailing = new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f,
+            Children = [trailing, new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f }],
+        };
         var options = new Episode.RowOptions(OnClick: play, OnPlay: play, ShowMeta: false, Trailing: trailing);
         return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Controls.Surface(Episode.RowData(e, in options), shape)] };
     }

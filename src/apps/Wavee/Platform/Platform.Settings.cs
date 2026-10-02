@@ -37,6 +37,32 @@ public static partial class Platform
         /// <summary>The immersive lyrics stage's geometry log (ch 22 §9 (b): `FG_STAGE_RECTS` retired into a Developer
         /// row). Off: the seven OnBoundsChanged callbacks stay null, which is what keeps the cost at zero.</summary>
         public static readonly SettingKey<bool> StageRects = new("diag.stageRects", false);
+
+        // ── the fullscreen stage (docs/plans/wavee/fullscreen-flagship-implementation.md §2.11) — all written through Prefs.Stage ──
+        /// <summary>Stage.Mode as an int (0 Lyrics · 1 Visualizer · 2 Queue · 3 Artist); unknown ⇒ Lyrics.</summary>
+        public static readonly SettingKey<int> StageMode = new("stage.mode", 0);
+        /// <summary>Visualizer.Kind as an int (0 Field … 7 Tape); unknown ⇒ Horizon (2).</summary>
+        public static readonly SettingKey<int> StageVisualizer = new("stage.visualizer", 2);
+        /// <summary>Band gain, clamped [0.3, 1.5].</summary>
+        public static readonly SettingKey<float> StageSensitivity = new("stage.sensitivity", 1f);
+        /// <summary>The active lyric line is drawn over the visualizer.</summary>
+        public static readonly SettingKey<bool> StageLyricsOverlay = new("stage.lyricsOverlay", true);
+        /// <summary>Analysis-window offset in ms (positive = earlier), clamped ±500.</summary>
+        public static readonly SettingKey<int> StageSyncOffsetMs = new("stage.syncOffsetMs", 0);
+        /// <summary>Calmer faces: ×0.55 gain, slower attack, no beat kick (the gallery's "Reduce motion").</summary>
+        public static readonly SettingKey<bool> StageCalm = new("stage.calm", false);
+        /// <summary>The gallery pane is open in Visualizer mode.</summary>
+        public static readonly SettingKey<bool> StageGalleryOpen = new("stage.galleryOpen", true);
+        /// <summary>The "Pick your visualizer" tip has been dismissed once.</summary>
+        public static readonly SettingKey<bool> StageTipSeen = new("stage.tipSeen", false);
+
+        // ── playback normalization (docs/plans/wavee/playback-smoothness-implementation.md §4.15, D5; beside `NormalizationEnabled`) ──
+        /// <summary><c>Playback.Audio.NormalizationMode</c> as an int (0 Quiet −23 LUFS · 1 Normal −14 · 2 Loud −11). PERSISTED — append
+        /// only; anything outside 0..2 reads as Normal (<c>Playback.Audio.ModeOf</c>).</summary>
+        public static readonly SettingKey<int> NormalizationMode = new("playback.normalization.mode", 1);
+        /// <summary>Album mode: play a track at its ALBUM's gain when the source carries one (else its own), so the loudness
+        /// relationships inside an album survive. Off by default (track gain).</summary>
+        public static readonly SettingKey<bool> NormalizationAlbum = new("playback.normalization.album", false);
     }
 }
 
@@ -328,8 +354,14 @@ public static partial class WaveeLogSessions
     public sealed record Info(string[] Files, int FileStart, int LineStart, int FileEnd, int LineEnd,
                               long StartUnixMs, int Pid, int EntryCount, string SessionId);
 
-    /// <summary>The rolled files in chronological order (their yyyyMMdd[-HHmmss] names sort ordinally), then the live
-    /// file when it exists.</summary>
+    /// <summary>One walk of the log folder: the completed sessions plus what the walk saw, so "no past sessions" can be
+    /// told apart from "the folder was empty" and "the walk failed". <see cref="FilesSeen"/> is every app log listed,
+    /// <see cref="LinesSeen"/> every line read, <see cref="FilesSkipped"/> the files that could not be read, and
+    /// <see cref="Error"/> the exception when the walk itself faulted (<c>ListPastSessions</c> never throws).</summary>
+    public sealed record WalkResult(List<Info> Sessions, int FilesSeen, long LinesSeen, int FilesSkipped, Exception? Error);
+
+    /// <summary>The rolled files in chronological order (their yyyyMMdd[-HHmmss] names sort ordinally, and a size roll
+    /// sorts before the day file it was cut from — <see cref="LogFileNames"/>), then the live file when it exists.</summary>
     public static string[] Chronological(string[] rolled, string? live)
     {
         var copy = (string[])rolled.Clone();
@@ -345,8 +377,16 @@ public static partial class WaveeLogSessions
     /// legacy sid-less files) is dropped — the live ring is the richer source for it. An unreadable file skips only
     /// itself; the boundary state machine carries across the gap.</summary>
     public static List<Info> Split(string[] files, Func<string, IEnumerable<string>> readLines, string currentSessionId, int currentPid)
+        => Split(files, readLines, currentSessionId, currentPid, out _, out _);
+
+    /// <summary><see cref="Split(string[], Func{string, IEnumerable{string}}, string, int)"/>, also reporting how many
+    /// lines it read and how many files it had to skip (an unreadable file skips only itself).</summary>
+    public static List<Info> Split(string[] files, Func<string, IEnumerable<string>> readLines, string currentSessionId, int currentPid,
+                                   out long linesSeen, out int filesSkipped)
     {
         var sessions = new List<Info>();
+        linesSeen = 0;
+        filesSkipped = 0;
         long prevSeq = long.MaxValue;
         string prevSid = "";
         bool open = false;
@@ -377,7 +417,8 @@ public static partial class WaveeLogSessions
                     li++;
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { filesSkipped++; }
+            linesSeen += li;
         }
         if (open) sessions.Add(new Info(files, curFile, curLine, files.Length - 1, int.MaxValue, curStart, curPid, curCount, curSid));
 

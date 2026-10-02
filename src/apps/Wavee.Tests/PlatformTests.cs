@@ -282,6 +282,60 @@ public class PlatformSettingsTests
             Assert.Equal(Platform.SettingsEpoch, Platform.SettingsChanged.Peek());
         });
 
+    /// <summary>The fullscreen stage's family (flagship plan §4.6): every writer clamps what it persists — a hand-edited or
+    /// future value must read back as something this build can draw — and bumps `Prefs.Stage.Epoch` exactly once, AFTER the
+    /// store has it.</summary>
+    [Fact]
+    public void Prefs_Stage_clamps_and_bumps_once()
+        => WithStore(new MemoryAppSettings(), static () =>
+        {
+            int before = Prefs.Stage.Epoch.Peek();
+
+            Prefs.Stage.SetSensitivity(9f);
+            Assert.Equal(1.5f, Platform.Settings.Get(Platform.Keys.StageSensitivity));
+            Assert.Equal(before + 1, Prefs.Stage.Epoch.Peek());
+
+            Prefs.Stage.SetSyncOffsetMs(-900);
+            Assert.Equal(-500, Platform.Settings.Get(Platform.Keys.StageSyncOffsetMs));
+            Assert.Equal(before + 2, Prefs.Stage.Epoch.Peek());
+
+            Prefs.Stage.SetMode(7);
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.StageMode));
+            Assert.Equal(before + 3, Prefs.Stage.Epoch.Peek());
+
+            // The readers answer from the store (and clamp again): a value written behind the epoch's back still reads sane.
+            Assert.Equal(1.5f, Prefs.Stage.Sensitivity());
+            Assert.Equal(-500, Prefs.Stage.SyncOffsetMs());
+            Assert.Equal(0, Prefs.Stage.Mode());
+            Platform.Settings.Set(Platform.Keys.StageSyncOffsetMs, 900);
+            Assert.Equal(500, Prefs.Stage.SyncOffsetMs());
+        });
+
+    /// <summary>The stage's four booleans default as the §2.11 table says and each write bumps the one epoch once; the
+    /// tip is a one-way latch (<c>SetTipSeen</c> has no argument).</summary>
+    [Fact]
+    public void Prefs_Stage_booleans_default_and_each_write_bumps_once()
+        => WithStore(new MemoryAppSettings(), static () =>
+        {
+            Assert.True(Prefs.Stage.LyricsOverlay());
+            Assert.False(Prefs.Stage.Calm());
+            Assert.True(Prefs.Stage.GalleryOpen());
+            Assert.False(Prefs.Stage.TipSeen());
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.StageSyncOffsetMs));
+
+            int before = Prefs.Stage.Epoch.Peek();
+            Prefs.Stage.SetLyricsOverlay(false);
+            Prefs.Stage.SetCalm(true);
+            Prefs.Stage.SetGalleryOpen(false);
+            Prefs.Stage.SetTipSeen();
+            Assert.Equal(before + 4, Prefs.Stage.Epoch.Peek());
+
+            Assert.False(Prefs.Stage.LyricsOverlay());
+            Assert.True(Prefs.Stage.Calm());
+            Assert.False(Prefs.Stage.GalleryOpen());
+            Assert.True(Prefs.Stage.TipSeen());
+        });
+
     /// <summary>G-077's DEBUG assert is gated on <see cref="Platform.UiThreadId"/>, which nothing in this app has
     /// ever captured (no host anywhere records the OS thread the engine's UI loop runs on) — so it defaults to
     /// <c>null</c> and a write from ANY thread, including this test's, must be a no-op that never trips. A write

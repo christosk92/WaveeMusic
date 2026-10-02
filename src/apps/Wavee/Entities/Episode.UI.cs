@@ -747,7 +747,8 @@ public readonly partial struct Episode
     /// <item><c>MetaRow</c> = [explicit badge · ▣ · "date · length"] and <c>Below</c> = the resume rung (120 wide) — only
     /// with <see cref="RowOptions.ShowMeta"/>, and the rung only while resumed;</item>
     /// <item><c>Menu</c> = <see cref="Menu"/> whenever the handle resolves — the surface shows the "…" and attaches the
-    /// right-click funnel; <c>Drag</c> is null, always.</item>
+    /// right-click funnel; <c>Drag</c> is the episode's own drag (kind
+    /// <see cref="DragKind.Episode"/>, the row's episode — never a selection) wherever the handle resolves.</item>
     /// </list></summary>
     public static Controls.CardData RowData(Episode e, in RowFacts f, in RowOptions o)
     {
@@ -773,8 +774,15 @@ public readonly partial struct Episode
                 AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Spacing.XS - SurfaceGeometry.CardLabelGap, 0f, 0f),
             };
 
+        string dragUri = f.Uri, dragTitle = f.Title;
+        string? dragCover = f.Cover;
+        DragSource? drag = e.IsValid && dragUri.Length > 0
+            ? Drag.Source(() => new DragPayload(DragKind.Episode, dragUri, dragUri, dragTitle,
+                                                new EntityRef(EntityKind.Episode, episode.Slot), ArtUrl: dragCover))
+            : null;
+
         return new Controls.CardData(f.Uri, f.Title, f.Show is { Length: > 0 } show ? RowCaption(show) : null, f.Cover,
-            OnClick: open, OnPlay: play, Drag: null)
+            OnClick: open, OnPlay: play, Drag: drag)
         {
             Menu = menu, MetaRow = plan.HasMetaRow ? MetaRowOf(in plan) : null, Below = below, Trailing = o.Trailing,
         };

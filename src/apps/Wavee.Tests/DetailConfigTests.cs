@@ -67,7 +67,7 @@ public class DetailConfigTests
 
     [Fact]
     public void Selection() => Row(c => c.Selection,
-        ItemsSelectionMode.Extended, ItemsSelectionMode.Extended, ItemsSelectionMode.None,
+        ItemsSelectionMode.Extended, ItemsSelectionMode.Extended, ItemsSelectionMode.Extended,
         ItemsSelectionMode.Extended, ItemsSelectionMode.Extended, ItemsSelectionMode.None);
 
     [Fact]
@@ -107,13 +107,12 @@ public class DetailConfigTests
     [Fact]
     public void RailResizable() => Row(c => c.RailResizable, true, true, true, true, true, true);
 
-    /// <summary>A single / compilation is the album literal with exactly ONE knob changed.</summary>
+    /// <summary>A single IS the album literal (singles select like albums); a compilation is the album with ONE knob changed.</summary>
     [Fact]
     public void SingleAndCompilation_AreTheAlbumWithOneKnob()
     {
-        Assert.Equal(Config.Album with { Selection = ItemsSelectionMode.None }, Config.Single);
+        Assert.Equal(Config.Album, Config.Single);
         Assert.Equal(Config.Album with { ShowTrackArtist = true }, Config.Compilation);
-        Assert.NotEqual(Config.Album, Config.Single);
         Assert.NotEqual(Config.Album, Config.Compilation);
     }
 

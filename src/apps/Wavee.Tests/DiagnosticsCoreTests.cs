@@ -158,6 +158,46 @@ public class LogViewTests
     }
 }
 
+/// <summary>`Log.Tally` — the Log viewer card's live description reads it every 750 ms instead of copying the ring with
+/// `Log.Snapshot()` (privacy-diagnostics-tab-implementation.md D5, N12). It drives the process-wide ring, so it shares
+/// the platform collection with the other tests that clear and fill it.</summary>
+[Collection(PlatformCollection.Name)]
+public class LogTallyTests
+{
+    [Fact]
+    public void Tally_matches_snapshot_counts()
+    {
+        var min = Log.MinLevel;
+        try
+        {
+            Log.MinLevel = WaveeLogLevel.Info;
+            Log.ClearRing();
+
+            Log.Tally(out int total, out int warnings, out int errors);
+            Assert.Equal((0, 0, 0), (total, warnings, errors));   // an empty ring tallies to nothing, not a stale count
+
+            Log.Info("app", "one");
+            Log.Warn("app", "two");
+            Log.Info("app", "three");
+            Log.Error("app", "four");
+            Log.Warn("app", "five");
+            Log.Critical("app", "six");
+            Log.Warn("app", "seven");
+
+            WaveeLogEntry[] snapshot = Log.Snapshot();
+            Log.Tally(out total, out warnings, out errors);
+
+            Assert.Equal(snapshot.Length, total);
+            Assert.Equal(snapshot.Count(e => e.Level == WaveeLogLevel.Warning), warnings);
+            Assert.Equal(snapshot.Count(e => e.Level >= WaveeLogLevel.Error), errors);   // Error AND Critical, like LogView's ErrorCount
+
+            // and the fixture really exercised all three counters (a vacuous pass would be 0 == 0)
+            Assert.Equal((7, 3, 2), (total, warnings, errors));
+        }
+        finally { Log.MinLevel = min; Log.ClearRing(); }
+    }
+}
+
 public class RuntimeReportTests
 {
     static readonly DateTimeOffset At = new(2026, 9, 13, 10, 0, 0, TimeSpan.Zero);

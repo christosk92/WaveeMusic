@@ -13,6 +13,10 @@
 //
 // The allocation fact is the CORE rule no reading of the code can prove (P8): after `Open`, 200 packets move
 // `GC.GetAllocatedBytesForCurrentThread()` by ZERO bytes, and a second `Open` of the same setup costs nothing.
+//
+// Section 8 is the CONFORMANCE pass over the Xiph.Org test vectors (`Fixtures/ogg/xiph`, README there): the streams the
+// libvorbis-era fixtures above are not — floor 0, residue 0 and 1, a 512 / 4096 block pair, one mode, a mode the setup
+// never declared, a chain — against libvorbis's own decode. `VorbisFuzzTests` is the hostile-input counterpart.
 
 using System.Diagnostics;
 using System.IO;
@@ -146,6 +150,58 @@ internal static class VorbisFixture
             dec?.DecodePacket(packet);
             if (granule >= 0) return;
         }
+    }
+}
+
+/// <summary>The Xiph.Org Vorbis test vectors (<c>Fixtures/ogg/xiph</c>, README there): the FIRST logical stream of a file
+/// decoded start to finish with the granule trims applied. Unlike <see cref="VorbisFixture.DecodeAll"/> it takes the last
+/// granule from the packets it walks (a chained file's tail belongs to ANOTHER stream) and counts the packets the decoder
+/// refuses instead of asserting on them: <c>unused-mode-test.ogg</c> carries 34 on purpose.</summary>
+internal static class XiphFixture
+{
+    public static byte[] Bytes(string name)
+        => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "ogg", "xiph", name));
+
+    /// <summary>What a conformance fact reads: the trimmed interleaved-stereo PCM and what was seen on the way.</summary>
+    public sealed record Link(float[] Pcm, long Frames, long LastGranule, long LeadIn, int Packets, int Undecodable,
+                              bool SawEos, int Channels, int SampleRate, int Block0, int Block1);
+
+    public static Link DecodeFirstLink(byte[] file)
+    {
+        var reader = new Ogg.Reader();
+        var (ident, setup, _) = VorbisFixture.Headers(file, reader);
+        Assert.True(Vorbis.TryParseIdentification(ident, out Vorbis.Identification id));
+        var dec = new Vorbis.Decoder();
+        Assert.True(dec.Open(ident, setup));
+
+        var pcm = new float[1 << 20];
+        long outFrames = 0, leadIn = -1, lastGranule = -1;
+        int packets = 0, undecodable = 0;
+        bool sawEos = false;
+        while (true)
+        {
+            Ogg.Reader.Next next = reader.NextPacket(file, out ReadOnlySpan<byte> packet, out long granule);
+            if (next == Ogg.Reader.Next.Corrupt) continue;
+            if (next != Ogg.Reader.Next.Packet) { sawEos = next == Ogg.Reader.Next.Eos; break; }
+            packets++;
+            if (dec.DecodePacket(packet) == Vorbis.PacketResult.Ok)
+            {
+                if ((outFrames + dec.Frames) * 2 > pcm.Length) Array.Resize(ref pcm, pcm.Length * 2);
+                dec.OutputSpan.CopyTo(pcm.AsSpan((int)(outFrames * 2)));
+                outFrames += dec.Frames;
+            }
+            else undecodable++;
+            if (granule < 0) continue;
+            lastGranule = granule;
+            if (leadIn < 0) leadIn = Ogg.LeadIn(granule, outFrames);
+        }
+
+        long lead = leadIn < 0 ? 0 : leadIn;
+        long avail = outFrames - lead;
+        long exact = Ogg.ExactFrames(lastGranule);
+        long keep = exact >= 0 && exact < avail ? exact : avail;
+        return new Link(pcm.AsSpan((int)(lead * 2), (int)(keep * 2)).ToArray(), keep, lastGranule, lead, packets,
+                        undecodable, sawEos, id.Channels, id.SampleRate, id.BlockSize0, id.BlockSize1);
     }
 }
 
@@ -635,6 +691,153 @@ public unsafe class VorbisTests
         }
     }
 
+    // ── 4b. floor 0 against §6.2.3 evaluated in double (P-2) ───────────────────────────────────────────────────────
+    //
+    // Floor 0 has not been produced by libvorbis since 2002 and the Xiph vectors carry none, so nothing but a synthetic floor can
+    // reach it. The EVEN-order curve was coded without the spec's ½ (`p = (1 − w)`, `q = (1 + w)`): the whole curve √2 too quiet,
+    // tens of dB on loud bands. The odd branch was always right. `Vorbis.RenderFloor0` is the public pure seam: it reads only its
+    // arguments, so the spec's pseudocode can be evaluated beside it in `double`.
+
+    /// <summary>Vorbis I §6.2.3, verbatim, in double: the linear floor value for ONE spectrum line. <paramref name="lsp"/> are the
+    /// decoded coefficients (the angles); <paramref name="w"/> is cos ω for the line.</summary>
+    static double SpecFloor0(int order, double[] lsp, double w, double amplitude, int amplitudeBits, double amplitudeOffset)
+    {
+        double p, q;
+        if ((order & 1) != 0)
+        {
+            p = 1.0 - w * w;
+            for (int j = 0; j <= (order - 3) / 2; j++) { double t = Math.Cos(lsp[2 * j + 1]) - w; p *= 4.0 * t * t; }
+            q = 0.25;
+            for (int j = 0; j <= (order - 1) / 2; j++) { double t = Math.Cos(lsp[2 * j]) - w; q *= 4.0 * t * t; }
+        }
+        else
+        {
+            p = (1.0 - w) / 2.0;
+            q = (1.0 + w) / 2.0;
+            for (int j = 0; j <= (order - 2) / 2; j++)
+            {
+                double tp = Math.Cos(lsp[2 * j + 1]) - w, tq = Math.Cos(lsp[2 * j]) - w;
+                p *= 4.0 * tp * tp;
+                q *= 4.0 * tq * tq;
+            }
+        }
+        double amplitudeMax = Math.Pow(2.0, amplitudeBits) - 1.0;
+        return Math.Exp(0.11512925 * (amplitude * amplitudeOffset / (amplitudeMax * Math.Sqrt(p + q)) - amplitudeOffset));
+    }
+
+    /// <summary>Render one floor 0 over <paramref name="spec"/> through <see cref="Vorbis.RenderFloor0"/>.</summary>
+    static void RenderFloor0(int order, int amplitudeBits, int amplitudeOffset, float amplitude, float[] lsp, int[] map,
+                             float[] cosw, float[] spec)
+    {
+        var f = new Vorbis.Floor { Type = 0, Order = order, AmplitudeBits = amplitudeBits, AmplitudeOffset = amplitudeOffset };
+        var coef = new float[Vorbis.Floor0Stride];                       // [0] amplitude, [1..order] LSP, then `order` cosine scratch
+        coef[0] = amplitude;
+        for (int j = 0; j < order; j++) coef[1 + j] = lsp[j];
+        fixed (float* c = coef)
+        fixed (float* sp = spec)
+        fixed (int* mp = map)
+        fixed (float* cw = cosw)
+            Vorbis.RenderFloor0(&f, c, sp, spec.Length, mp, cw);
+    }
+
+    [Theory]
+    [InlineData(2)]                                                  // even: the branch P-2 fixed
+    [InlineData(4)]
+    [InlineData(6)]
+    [InlineData(3)]                                                  // odd: always right, must stay right
+    [InlineData(5)]
+    public void Floor0_render_matches_the_spec_pseudocode_in_double(int order)
+    {
+        const int n2 = 128, barkMapSize = 64, amplitudeBits = 6, amplitudeOffset = 100;
+        uint seed = (uint)(0xF100 + order);
+        for (int trial = 0; trial < 6; trial++)
+        {
+            // LSP angles in [2.4, 3.0] rad (cos ≈ −0.74 … −0.99) against ω in [0, π/4) (cos ≥ 0.7): every |cos(lsp) − cos ω| ≥ 1.4, so
+            // no catastrophic cancellation separates the float evaluation from the double one — what is compared is the FORMULA.
+            var lsp = new float[order];
+            for (int j = 0; j < order; j++) lsp[j] = 2.4f + 0.6f * ((Next(ref seed) & 0xFFFF) / 65536f);
+            float amplitude = 1 + (Next(ref seed) % ((1u << amplitudeBits) - 1));        // 1 .. 2^bits − 1: never 0 (that floor is "unused")
+
+            var map = new int[n2];
+            var cosw = new float[n2];
+            var spec = new float[n2];
+            for (int i = 0; i < n2; i++)
+            {
+                map[i] = i / 2 * barkMapSize / 64;                          // monotone bark map, every value used for two lines
+                cosw[i] = (float)Math.Cos(Math.PI * map[i] / (4.0 * barkMapSize));   // ω = π·map / (4·size) ∈ [0, π/4)
+                spec[i] = 0.5f + (Next(ref seed) & 0xFFFF) / 65536f;
+            }
+            var original = (float[])spec.Clone();
+
+            RenderFloor0(order, amplitudeBits, amplitudeOffset, amplitude, lsp, map, cosw, spec);
+
+            for (int i = 0; i < n2; i++)
+            {
+                double w = Math.Cos(Math.PI * map[i] / (4.0 * barkMapSize));
+                double expected = original[i] * SpecFloor0(order, Array.ConvertAll(lsp, v => (double)v), w, amplitude, amplitudeBits, amplitudeOffset);
+                double relative = Math.Abs(spec[i] - expected) / expected;
+                Assert.True(relative <= 1e-5, $"order {order} trial {trial} line {i}: {spec[i]} vs the spec's {expected} (relative {relative:E2})");
+            }
+        }
+    }
+
+    [Fact]
+    public void Floor0_even_order_carries_the_specs_one_half_by_hand()
+    {
+        // Order 2, ω = π/2 (cos ω = 0), lsp = [0, π/3] (cos = 1, ½): worked by hand from §6.2.3.
+        //   p = (1 − 0)/2 · 4·(½ − 0)²  = ½ · 1 = 0.5
+        //   q = (1 + 0)/2 · 4·(1 − 0)²  = ½ · 4 = 2
+        //   p + q = 2.5,  floor = exp(0.11512925 · (255·100 / (255 · √2.5) − 100))
+        // WITHOUT the ½ (the bug) p = 1, q = 4, p + q = 5: a factor √2 less amplitude term — a different curve altogether.
+        var spec = new float[] { 1f };
+        RenderFloor0(order: 2, amplitudeBits: 8, amplitudeOffset: 100, amplitude: 255f, lsp: [0f, MathF.PI / 3f],
+                     map: [0], cosw: [0f], spec: spec);
+
+        double expected = Math.Exp(0.11512925 * (100.0 / Math.Sqrt(2.5) - 100.0));
+        double buggy = Math.Exp(0.11512925 * (100.0 / Math.Sqrt(5.0) - 100.0));
+        Assert.True(Math.Abs(spec[0] - expected) / expected <= 1e-5, $"got {spec[0]}, the spec says {expected}");
+        Assert.True(Math.Abs(spec[0] - buggy) / buggy > 0.1, "indistinguishable from the pre-P-2 curve: the half is missing again");
+    }
+
+    [Fact]
+    public void Floor0_odd_order_by_hand()
+    {
+        // Order 3, ω = π/2, lsp = [0, π/3, π/3] (cos = 1, ½, ½):
+        //   p = (1 − 0)      · 4·(cos lsp[1] − 0)²                      = 1 · 1       = 1
+        //   q = ¼ · 4·(cos lsp[0] − 0)² · 4·(cos lsp[2] − 0)²           = ¼ · 4 · 1   = 1
+        //   p + q = 2
+        var spec = new float[] { 1f };
+        RenderFloor0(order: 3, amplitudeBits: 8, amplitudeOffset: 100, amplitude: 255f, lsp: [0f, MathF.PI / 3f, MathF.PI / 3f],
+                     map: [0], cosw: [0f], spec: spec);
+
+        double expected = Math.Exp(0.11512925 * (100.0 / Math.Sqrt(2.0) - 100.0));
+        Assert.True(Math.Abs(spec[0] - expected) / expected <= 1e-5, $"got {spec[0]}, the spec says {expected}");
+    }
+
+    [Fact]
+    public void Floor0_multiplies_into_the_spectrum_it_is_given_and_shares_one_value_per_bark_band()
+    {
+        // The curve is applied IN PLACE (an existing spectrum is scaled, not replaced) and a run of lines that share a bark map entry
+        // share one value (the render loop evaluates the cosines once per band).
+        var lsp = new float[] { 2.5f, 2.7f };
+        var map = new[] { 0, 0, 0, 1, 1, 2 };
+        var cosw = new float[map.Length];
+        for (int i = 0; i < map.Length; i++) cosw[i] = (float)Math.Cos(Math.PI * map[i] / 8.0);
+        var spec = new float[] { 2f, 4f, 8f, 1f, 3f, 5f };
+
+        float[] before = (float[])spec.Clone();
+
+        RenderFloor0(2, 6, 100, 40f, lsp, map, cosw, spec);
+
+        float[] gain = new float[spec.Length];                           // the curve's value at each line, recovered from the product
+        for (int i = 0; i < spec.Length; i++) gain[i] = spec[i] / before[i];
+        Assert.All(gain, g => Assert.True(g > 0f && g < 1f, $"a floor value {g} must attenuate (the amplitude term is below the offset)"));
+        for (int i = 1; i < 3; i++) Assert.True(Math.Abs(gain[i] - gain[0]) <= 1e-6f * gain[0], $"line {i} shares band 0's value");
+        Assert.True(Math.Abs(gain[4] - gain[3]) <= 1e-6f * gain[3], "line 4 shares band 1's value");
+        Assert.True(Math.Abs(gain[0] - gain[3]) > 1e-3f * gain[0], "band 0 and band 1 are different values");
+        Assert.True(Math.Abs(gain[3] - gain[5]) > 1e-3f * gain[3], "band 1 and band 2 are different values");
+    }
+
     [Theory]
     [InlineData(2, 2)]                                               // the stereo, even-dims fast path
     [InlineData(2, 1)]                                               // odd dims: the generic stereo path
@@ -1023,6 +1226,140 @@ public unsafe class VorbisTests
             frames += dec.Frames;
         }
         return frames;
+    }
+
+    // ── 8. conformance: the Xiph.Org vectors, against libvorbis ─────────────────────────────────────────────────────
+    //
+    // `Fixtures/ogg/xiph/README.md` has the provenance, what each stream pins and how the references were made. The
+    // libvorbis-era fixtures above are all floor 1 + residue 2 at 256 / 2048; these are the streams that are not: floor 0
+    // + residue 0 (the early encoders), residue 1, a 512 / 4096 block pair, 2048 / 2048 with ONE mode, a mode count that is
+    // not a power of two with 34 packets addressing a mode the setup never declared, and a chained file. The reference is
+    // libvorbis's own decode (through ffmpeg) of a 0.5 s window; the length of the whole link is checked from the granules.
+    // Two independent float decoders agree to 1 LSB on these streams, so the bound is 3 LSB and 1 LSB RMS: a wrong
+    // codebook, floor, residue, window or IMDCT misses by thousands.
+
+    [Theory]
+    [InlineData("test-short", 2, 44_100, 256, 2048, 59_392L, 80, 0, 0)]
+    [InlineData("test-short2", 2, 44_100, 256, 2048, 282_816L, 317, 0, 176_400)]
+    [InlineData("48k-mono", 1, 48_000, 512, 4096, 515_234L, 336, 0, 48_000)]
+    [InlineData("singlemap-test", 2, 44_100, 2048, 2048, 172_032L, 169, 0, 0)]
+    [InlineData("unused-mode-test", 2, 44_100, 256, 2048, 540_991L, 1_102, 34, 0)]
+    public void Xiph_vectors_decode_to_their_granule_length_and_match_libvorbis(string name, int channels, int rate,
+        int block0, int block1, long lastGranule, int packets, int undecodable, int referenceStart)
+    {
+        XiphFixture.Link d = XiphFixture.DecodeFirstLink(XiphFixture.Bytes(name + ".ogg"));
+        Assert.Equal(channels, d.Channels);
+        Assert.Equal(rate, d.SampleRate);
+        Assert.Equal(block0, d.Block0);
+        Assert.Equal(block1, d.Block1);
+        Assert.Equal(packets, d.Packets);
+        Assert.Equal(undecodable, d.Undecodable);        // only unused-mode-test: mode 3 of a 3-mode setup
+        Assert.Equal(lastGranule, d.LastGranule);
+        Assert.Equal(0L, d.LeadIn);
+        if (undecodable == 0) Assert.Equal(lastGranule, d.Frames);   // the whole link, to the sample (the EOS trim included)
+        else Assert.InRange(d.Frames, 450_000L, lastGranule);        // the refused packets cost their frames; the rest decode
+
+        int nonFinite = 0;
+        foreach (float v in d.Pcm) if (!float.IsFinite(v)) nonFinite++;
+        Assert.Equal(0, nonFinite);
+
+        AgainstLibvorbis(name, channels, d, referenceStart);
+    }
+
+    static void AgainstLibvorbis(string name, int channels, XiphFixture.Link d, int referenceStart)
+    {
+        byte[] raw = XiphFixture.Bytes(name + ".s16");
+        ReadOnlySpan<short> reference = MemoryMarshal.Cast<byte, short>(raw);
+        int frames = reference.Length / channels;
+        Assert.True(frames > 0 && referenceStart + frames <= d.Frames,
+                    $"{name}: the reference window [{referenceStart}, {referenceStart + frames}) is not inside the {d.Frames} decoded frames");
+
+        double maxLsb = 0, sumSq = 0;
+        int worstAt = -1, monoMismatch = 0;
+        for (int i = 0; i < frames; i++)
+        {
+            int at = 2 * (referenceStart + i);
+            if (channels == 1 && d.Pcm[at] != d.Pcm[at + 1]) monoMismatch++;     // mono is duplicated, exactly
+            for (int c = 0; c < channels; c++)
+            {
+                double got = Math.Clamp(d.Pcm[at + c] * 32768.0, -32768.0, 32767.0);   // the converter's clip
+                double delta = got - reference[i * channels + c];
+                double a = Math.Abs(delta);
+                if (a > maxLsb) { maxLsb = a; worstAt = i; }
+                sumSq += delta * delta;
+            }
+        }
+        double rms = Math.Sqrt(sumSq / reference.Length);
+        Print($"{name}: {frames:N0} frames from {referenceStart:N0} vs libvorbis, max |Δ| {maxLsb:F3} LSB at {worstAt}, " +
+              $"RMS {rms:F3} LSB, {d.Packets} packets ({d.Undecodable} refused), {d.Frames:N0} frames");
+        Assert.Equal(0, monoMismatch);
+        Assert.True(maxLsb <= 3.0, $"{name}: max |Δ| {maxLsb:F2} LSB at frame {referenceStart + worstAt}");
+        Assert.True(rms <= 1.0, $"{name}: RMS {rms:F3} LSB");
+    }
+
+    [Fact]
+    public void A_chained_stream_decodes_its_first_link_only_and_that_link_is_test_short()
+    {
+        // chain-test3.ogg is two logical streams back to back with different channel counts (44.1 kHz stereo floor 0,
+        // then 48 kHz mono floor 1). Spotify never serves a chain: the reader plays the first link and stops at its EOS.
+        // The first link is test-short.ogg packet for packet, so its PCM must equal that file's bit for bit.
+        byte[] chain = XiphFixture.Bytes("chain-test3.ogg");
+        int begins = 0, at = 0;
+        while ((at = Ogg.FindPage(chain, at, out Ogg.Page p, out _)) >= 0)
+        {
+            if (p.Bos) begins++;
+            at += p.Length;
+        }
+        Assert.Equal(2, begins);
+
+        XiphFixture.Link first = XiphFixture.DecodeFirstLink(chain);
+        XiphFixture.Link bare = XiphFixture.DecodeFirstLink(XiphFixture.Bytes("test-short.ogg"));
+        Assert.True(first.SawEos);                                   // it stopped at the first link's EOS, not at the file's end
+        Assert.Equal(2, first.Channels);
+        Assert.Equal(59_392L, first.Frames);
+        Assert.Equal(bare.Packets, first.Packets);
+        Assert.True(MemoryMarshal.AsBytes(first.Pcm.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(bare.Pcm.AsSpan())));
+    }
+
+    [Fact]
+    public void A_file_behind_a_167_byte_prefix_decodes_and_seeks_like_the_bare_one()
+    {
+        // Spotify's Ogg files carry 167 bytes before the first page. The stream layer strips them (Body's skip) and the
+        // adapter reads container coordinates, but the CORE must not care either way: the reader resyncs by scanning for
+        // "OggS", the first audio page's offset includes the prefix, and the seek planner works in those absolute offsets.
+        const int Prefix = 167;
+        byte[] bare = VorbisFixture.Bytes("sine-440.ogg");
+        var wrapped = new byte[Prefix + bare.Length];
+        wrapped.AsSpan(0, Prefix).Fill(0xA7);                        // no 'O' in it, so no false capture pattern
+        bare.CopyTo(wrapped, Prefix);
+
+        VorbisFixture.Decoded straight = VorbisFixture.DecodeAll(bare);
+        VorbisFixture.Decoded behind = VorbisFixture.DecodeAll(wrapped);
+        Assert.Equal(straight.Frames, behind.Frames);
+        Assert.Equal(straight.LastGranule, behind.LastGranule);
+        Assert.True(MemoryMarshal.AsBytes(behind.Pcm.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(straight.Pcm.AsSpan())));
+
+        VorbisFixture.Open(bare, new Ogg.Reader(), out long bareFirstPage);
+        var reader = new Ogg.Reader();
+        Vorbis.Decoder dec = VorbisFixture.Open(wrapped, reader, out long firstAudioPage);
+        Assert.Equal(bareFirstPage + Prefix, firstAudioPage);
+        VorbisFixture.StartPlayback(wrapped, reader, dec);
+        var src = new VorbisFixture.CountingSource(wrapped);
+        long total = straight.Frames;
+        const int want = 4096;
+        foreach (long target in new[] { total * 70 / 100, total / 10, total - 10 })
+        {
+            Ogg.SeekPlan plan = VorbisFixture.Plan(wrapped, reader, firstAudioPage, total, target, src);
+            Assert.InRange(plan.Probes, 0, 8);
+            float[] got = DecodeFrom(wrapped, reader, dec, plan.Offset, target + want, out long startPos, out long frames);
+            Assert.True(startPos <= target, $"→ {target}: landed at {startPos}, past the target");
+            int compare = (int)Math.Min(want, total - target);
+            Assert.True(startPos + frames >= target + compare, $"→ {target}: decoded only to {startPos + frames}");
+            ReadOnlySpan<float> seeked = got.AsSpan((int)((target - startPos) * 2), compare * 2);
+            ReadOnlySpan<float> straightPcm = straight.Pcm.AsSpan((int)(target * 2), compare * 2);
+            Assert.True(MemoryMarshal.AsBytes(seeked).SequenceEqual(MemoryMarshal.AsBytes(straightPcm)),
+                        $"→ {target}: the seeked samples differ from the bare file's linear decode");
+        }
     }
 }
 

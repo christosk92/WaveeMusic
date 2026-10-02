@@ -707,7 +707,8 @@ public static partial class Spotify
             RouteTransport.Spclient => route.Rest is SpclientRoute.ShowRead or SpclientRoute.PlaylistRead or SpclientRoute.LikedContentFilters or SpclientRoute.PermissionBase
                 or SpclientRoute.Popcount or SpclientRoute.ArtistTopTracksExtended or SpclientRoute.Rootlist
                 or SpclientRoute.CollectionPage or SpclientRoute.Recents
-                or SpclientRoute.ProfileView or SpclientRoute.ProfileFollowers or SpclientRoute.ProfileFollowing,
+                or SpclientRoute.ProfileView or SpclientRoute.ProfileFollowers or SpclientRoute.ProfileFollowing
+                or SpclientRoute.AudioAnalysis,
             _ => false,
         };
 
@@ -1181,6 +1182,10 @@ public static partial class Spotify
                 case SpclientRoute.ArtistTopTracksExtended:
                     result = ArtistTopTracksExtended(uri, ct);
                     if (result.Ok) Decode.ArtistTopTracks(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    break;
+                case SpclientRoute.AudioAnalysis:
+                    result = AudioAnalysis(IdOf(uri), ApiHost.Spclient, ct);
+                    if (result.Ok && result.Body.Length > 0) Decode.AudioAnalysis(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
                     break;
                 case SpclientRoute.LikedContentFilters:
                     ContentFiltersAnswer(uri, s, ref outcome);
@@ -2035,6 +2040,77 @@ public static partial class Spotify
             w.Append("/artistplaycontext/v1/page/spotify/artist-top-tracks-extensions/");
             w.AppendEscaped(artistUri);
             return Get(w.Written, ApiHost.Spclient, CommonJson, ct);
+        }
+
+        /// <summary><c>/audio-attributes/v1/audio-analysis/{base62}</c> — the track's beat/bar grid as JSON (CommonJson, the
+        /// <see cref="FriendPresence"/> PathWriter shape). <paramref name="host"/> is <see cref="ApiHost.Spclient"/>
+        /// (apresolve) for the data path; the probe also tries <see cref="ApiHost.SpclientWg"/>.</summary>
+        public static Result AudioAnalysis(string trackId, ApiHost host, CancellationToken ct)
+        {
+            Span<char> path = stackalloc char[128];
+            var w = new PathWriter(path);
+            w.Append("/audio-attributes/v1/audio-analysis/");
+            w.AppendEscaped(trackId);
+            return Get(w.Written, host, CommonJson, ct);
+        }
+
+        /// <summary>The wave-D probe (blocking — api threads only, never the loop thread): ask BOTH spclient hosts, walk
+        /// the WHOLE body, and report one JSON line — <c>{"ev":"analysis","host":…,"status":…,"bytes":…,"beats":N,"bars":N,
+        /// "keys":[…top-level members…],"verdict":"A"|"B"|"C"}</c>. Verdict A = 200 and beats &gt; 0 (the decoder as written);
+        /// B = 200 with another shape (the top-level keys say which); C = no 200 from either host, or non-JSON.</summary>
+        public static string AudioAnalysisProbe(string trackUri, CancellationToken ct)
+        {
+            string id = IdOf(trackUri);
+            string line = "";
+            foreach (ApiHost host in (ReadOnlySpan<ApiHost>)[ApiHost.Spclient, ApiHost.SpclientWg])
+            {
+                Result r = AudioAnalysis(id, host, ct);
+                int beats = 0, bars = 0;
+                var keys = new System.Collections.Generic.List<string>(8);
+                bool json = r.Body.Length > 0 && ProbeWalk(r.Bytes, keys, ref beats, ref bars);
+                string verdict = r.Status == 200 && json && beats > 0 ? "A" : r.Status == 200 && json ? "B" : "C";
+                var sb = new System.Text.StringBuilder(256);
+                sb.Append("{\"ev\":\"analysis\",\"host\":\"").Append(host == ApiHost.Spclient ? "spclient" : "wg")
+                  .Append("\",\"status\":").Append(r.Status).Append(",\"bytes\":").Append(r.Body.Length)
+                  .Append(",\"beats\":").Append(beats).Append(",\"bars\":").Append(bars).Append(",\"keys\":[");
+                for (int i = 0; i < keys.Count; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append('"').Append(System.Text.Json.JsonEncodedText.Encode(keys[i]).ToString()).Append('"');
+                }
+                sb.Append("],\"verdict\":\"").Append(verdict).Append("\"}");
+                line = sb.ToString();
+                if (verdict != "C") break;            // the first host that answers decides; C on both prints the LAST (wg) line
+            }
+            return line;
+        }
+
+        /// <summary>Full-body walk: every top-level member name, and the element counts of the <c>beats</c> and <c>bars</c> arrays
+        /// (wherever the array sits at depth 1). False for non-JSON.</summary>
+        static bool ProbeWalk(ReadOnlySpan<byte> body, System.Collections.Generic.List<string> keys, ref int beats, ref int bars)
+        {
+            try
+            {
+                var r = new System.Text.Json.Utf8JsonReader(body);
+                if (!r.Read() || r.TokenType != System.Text.Json.JsonTokenType.StartObject) return false;
+                while (r.Read() && r.TokenType == System.Text.Json.JsonTokenType.PropertyName)
+                {
+                    string name = r.GetString() ?? "";
+                    keys.Add(name);
+                    r.Read();
+                    if (r.TokenType == System.Text.Json.JsonTokenType.StartArray && name is "beats" or "bars")
+                    {
+                        int count = 0;
+                        int depth = r.CurrentDepth;
+                        while (r.Read() && !(r.TokenType == System.Text.Json.JsonTokenType.EndArray && r.CurrentDepth == depth))
+                            if (r.CurrentDepth == depth + 1 && r.TokenType is System.Text.Json.JsonTokenType.StartObject or System.Text.Json.JsonTokenType.Number) count++;
+                        if (name == "beats") beats = count; else bars = count;
+                    }
+                    else r.TrySkip();
+                }
+                return true;
+            }
+            catch (System.Text.Json.JsonException) { return false; }
         }
 
         /// <summary>The server clock, for the ownership fence.</summary>

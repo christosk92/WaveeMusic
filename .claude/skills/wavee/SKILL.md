@@ -22,7 +22,7 @@ dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj
 ```
 
 A `dotnet run`, a VS publish profile (`bin\...\publish-profiles-*`) or a plain `publish-wavee-aot.ps1` is unstamped:
-Settings › Developer › "Send a test crash report" says *no crash service set up* and the update checker never runs
+Settings › Privacy & diagnostics › Developer › "Send a test crash report" says *no crash service set up* and the update checker never runs
 (channel `dev`). To exercise either for real, use the verify builds in the `releasing` skill
 (§ Verify builds: `-CrashService`, `-Channel stable -Quad …`).
 
@@ -61,9 +61,11 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 - [session-restore.md](session-restore.md) — `session.json`: nav stacks **and** the playback session. Write gates,
   the cluster → snapshot → paused restore order, and the uid→uri→index→head identity ladder. Read before touching
   restore, `PlaybackController`'s recovery paths, or anything that decides what plays at launch.
-- [audio-handoff.md](audio-handoff.md) — gapless & crossfade: one `IAudioClient` per queue, the 0 ms butt-join vs the
-  overlap path, prepared-next timing, codec pre-roll trim, and how to read the `[gapless]` log. Read before touching
-  `SpotifyLive/Audio/**` or prepared-next scheduling.
+- [audio-handoff.md](audio-handoff.md) — the audio pipeline end to end: continuity (MMCSS threads, the 2 s / 1 s rings,
+  shallow-silence starvation recovery), the three seek paths and seek generations, scrub grains, the resampler, the
+  limiter-before-volume and normalization modes, gapless & crossfade (the 0 ms butt-join vs the overlap path, codec
+  pre-roll trim), and how to read `audio.glitch` / `[gapless]`. Read before touching `Playback/Playback.Audio*.cs`, the
+  engine's `Media/Playback/Audio/**`, or prepared-next scheduling.
 - [playback-modules.md](playback-modules.md) — **playback modules**: sources that ship as independently updatable
   out-of-process exes (YouTube, Twitch, radio; Spotify next) speaking JSON-RPC over stdio. The three layers (SDK in
   `Wavee.Sdk`, host in `Backend/Modules`, modules in `src/apps/modules`), the `wavee-module.json` manifest and the
@@ -88,8 +90,11 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
   Diagnostics Scroll + Tiles cards and the `scroll.frames` / `scroll.burst` log lines. **No app-side workarounds for
   engine scroll behaviour** — reproduce, then fix in `..\fluent-gpu` (its `fluentgpu-scroll` skill). Guide:
   `docs/guide/scrolling.md`.
-- [probes.md](probes.md) — the headless CLI probe flags (`--spotify-metadata`, `--spotify-login`, ...), how to
-  build/run one against the live account, and the credential-store caveat. Read before running or adding a probe.
+- **Full-screen Now Playing + visualizers** — the stage, the eight faces, the demand tiers and fallback ladder, the
+  `stage.*` / `viz.*` log events and the Diagnostics card. Guide: `docs/guide/fullscreen-visualizers.md`.
+- [probes.md](probes.md) — the windowless CLI probe arms (`--log-sessions` and the others `Probe.TryRunCliArm`
+  dispatches), how to build/run one against the live profile, and the credential-store caveat. Read before running
+  or adding a probe.
 - **`wavee-sidebar` skill** (`.claude/skills/wavee-sidebar/`) — the left sidebar: the three designs as documents
   over ONE `SidebarPane` renderer, the layout document/reducer/persistence, the projection→binder→planner
   pipeline, the customizer, and the extension registries. Read it before touching `Features/Sidebar/**`,

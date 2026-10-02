@@ -37,9 +37,10 @@
 // Execute routes by the host that holds the row (`s_hostKind`): a Video row goes to `Video`, everything else to
 // `Audio`, and a load that changes hosts stops the outgoing one first (`MediaSwitch.HostChanges`).
 //
-//   static class Audio { Load(row, id, kind, epoch, fromMs); Stop(); Pause(); Resume(); Seek(ms, epoch);
+//   static class Audio { Load(row, id, kind, epoch, fromMs, seekGen); Stop(); Pause(); Resume(); Seek(ms, epoch, gen);
 //                        SetVolume(linear01); Prepare(row, id); }
-//   static class Video { Load(source, epoch, fromMs); Stop(); Play(); Pause(); Seek(ms); SetVolume(amplitude); }
+//   static class Video { Load(source, epoch, fromMs, paused, seekGen); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
+//                        SetVolume(amplitude); }
 //   static class Os    { Publish(in State s); }
 //   partial void PumpAdopt(uint from, uint to);  PumpPrefetch(row, id);  PumpCancelPrepared();   ← owner H implements
 //
@@ -135,6 +136,24 @@ public static partial class Playback
     public static readonly Signal<int> PositionMs = new(0);
     /// <summary>0 = unknown, and the seek bar is DISABLED rather than drawn as a full grey rail.</summary>
     public static readonly Signal<int> DurationMs = new(0);
+    /// <summary>The seek generation (<see cref="State.SeekGen"/>): bumps on every LOCAL seek the reducer emits. The seek bar
+    /// samples it BEFORE it posts its commit and asks <see cref="SeekLandedAfter"/> of <see cref="LastSeekLandedGen"/> (V-PA12).</summary>
+    public static readonly Signal<uint> SeekGen = new(0u);
+    /// <summary>The <see cref="SeekGen"/> of the last <see cref="AudioSignal.Seeked"/> that landed
+    /// (<see cref="State.LastSeekLandedGen"/>) — what releases the seek rail's drop-point hold.</summary>
+    public static readonly Signal<uint> LastSeekLandedGen = new(0u);
+    /// <summary>Where a live scrub gesture stands in ms (U-7): the time labels and the rail's readout show it instead of the position
+    /// while the pointer drags. −1 = no scrub live. <see cref="ScrubModel"/> runs in the reducer; this is its one published number.</summary>
+    public static readonly Signal<int> ScrubPositionMs = new(-1);
+
+    /// <summary>V-PA12: did a seek NEWER than <paramref name="gen"/> land? The seek bar samples <see cref="SeekGen"/> BEFORE it
+    /// posts its commit — the drain that bumps it runs later (or inline under a synchronous marshaller, which is why the sample
+    /// must come first) — and its drop-point hold ends on the first <see cref="LastSeekLandedGen"/> past that sample: the
+    /// commit's own generation, or a newer seek's that superseded it (the reducer drops every <c>Seeked</c> but the newest's).
+    /// It never has to predict the generation the commit will get, so another seek already queued ahead of it cannot skew it.
+    /// A commit the reducer does not turn into a seek (a foreign owner, a parked deck) bumps nothing, so nothing lands past the
+    /// sample and <c>SeekRail.CommitHoldMs</c> is what ends the hold. Wrap-safe. Pure.</summary>
+    public static bool SeekLandedAfter(uint gen, uint landedGen) => unchecked((int)(landedGen - gen)) > 0;
     /// <summary>0..1, LINEAR — the SLIDER's value (<see cref="State.SliderVolume"/>): the foreign owner's volume while
     /// one owns playback, ours otherwise. The cubic taper is the audio host's.</summary>
     public static readonly Signal<float> Volume = new(1f);
@@ -610,10 +629,6 @@ public static partial class Playback
         StepOne(Input.QueueChanged(now));
     }
 
-    /// <summary>The local sink's mute as the last <see cref="Effects.Mute"/> set it (the host's copy; <see cref="Audio.Muted"/>
-    /// lands a UI hop later).</summary>
-    static bool s_sinkMuted;
-
     static Scope? s_followScope;
     static int s_followIndex = -1;
     static uint s_followVersion;
@@ -652,19 +667,39 @@ public static partial class Playback
             s_uids.ReseedCounter(Queue.Rows);         // a fresh activation restarts the q<n> mint at q0, above every uid still booked
         }
         if (s_fx.Stop) StopHost();
-        if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused);
+        if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused, s_fx.SeekGen);
         else if (s_fx.Adopt) PumpAdopt(s_fx.AdoptFrom, s_fx.AdoptTo);
         if (s_fx.CancelPrepared) PumpCancelPrepared();
         if (s_fx.PauseHost) { if (s_hostKind == PlayableKind.Video) Video.Pause(); else Audio.Pause(); }
         if (s_fx.ResumeHost) { if (s_hostKind == PlayableKind.Video) Video.Play(); else Audio.Resume(); }
-        if (s_fx.Seek) { if (s_hostKind == PlayableKind.Video) Video.Seek(s_fx.SeekMs); else Audio.Seek(s_fx.SeekMs, s_fx.SeekEpoch); }
+        // The scrub gesture BEFORE the seek (V-PA5): an audible scrub's release IS the seek, set INSTEAD of `Seek`; a cancel that
+        // rides with a plain seek (a release the pump will not run) must have let go of the held voice first.
+        if (s_fx.ScrubBegin) Audio.ScrubBegin(s_fx.ScrubMs);
+        if (s_fx.ScrubMove)
+        {
+            if (s_hostKind == PlayableKind.Video) Video.ScrubPreview(s_fx.ScrubMs);
+            else Audio.ScrubMove(s_fx.ScrubMs, s_fx.ScrubVelocity);
+        }
+        if (s_fx.ScrubEnd) Audio.ScrubEnd(s_fx.SeekMs, s_fx.SeekEpoch, s_fx.SeekGen);
+        if (s_fx.ScrubCancel)
+        {
+            if (s_hostKind == PlayableKind.Video) Video.ScrubPreviewEnd();
+            else Audio.ScrubCancel();
+        }
+        if (s_fx.Seek)
+        {
+            if (s_hostKind == PlayableKind.Video) Video.Seek(s_fx.SeekMs, accurate: true, s_fx.SeekGen);
+            else Audio.Seek(s_fx.SeekMs, s_fx.SeekEpoch, s_fx.SeekGen);
+        }
         if (s_fx.Volume)
         {
             Audio.SetVolume(s_fx.VolumeValue);
             Video.SetVolume(Audio.VolumeTaper.Amplitude(s_fx.VolumeValue));
-            if (Platform.Settings.Get(Platform.Keys.RememberVolume))
-                Platform.Settings.Set(Platform.Keys.SavedVolume, s_fx.VolumeValue);
         }
+        // The registry write is the reducer's DEBOUNCED decision (V-1, V-PA11), not a side effect of every volume drain: a drag
+        // used to write the setting, bump SettingsEpoch (re-rendering every settings subscriber) per frame.
+        if (s_fx.PersistVolume && Platform.Settings.Get(Platform.Keys.RememberVolume))
+            Platform.Settings.Set(Platform.Keys.SavedVolume, s_fx.VolumeValue);
         if (s_fx.PrepareNext) Audio.Prepare(s_fx.NextRow, s_fx.NextId);
         if (s_fx.Prefetch2) PumpPrefetch(s_fx.Prefetch2Row, s_fx.Prefetch2Id);   // the farther row first: the nearer one's caches stay newest
         if (s_fx.Prefetch) PumpPrefetch(s_fx.PrefetchRow, s_fx.PrefetchId);
@@ -694,7 +729,6 @@ public static partial class Playback
         if (s_fx.Refused != Refusal.None) Log.Info("playback", "intent refused: " + s_fx.Refused);
         if (s_fx.Mute)
         {
-            s_sinkMuted = s_fx.MuteOn;
             Audio.SetMuted(s_fx.MuteOn);
             Video.SetMuted(s_fx.MuteOn);
         }
@@ -727,16 +761,23 @@ public static partial class Playback
     /// line (G-140). A paused load is followed by the host's own pause in the same pass. <paramref name="fromMs"/> is
     /// already the episode's resume point when a Claim or an Advance started one "from the top": the reducer's load tail
     /// resolves it on the deck (<c>EpisodeStartOf</c> in <c>EmitLoad</c>), so a paused load shows it from the first frame.</summary>
-    static void LoadHost(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, bool paused)
+    static void LoadHost(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, bool paused, uint seekGen)
     {
         Pending.Load.Value = true;
         if (MediaSwitch.HostChanges(s_hostKind, kind)) StopHost();
         s_hostKind = kind;
         EnsureRow(id);                                     // an inbound row may have a slot and no identity yet
-        if (kind == PlayableKind.Video) { LoadVideo(row, id, epoch, fromMs, paused); return; }
-        Audio.Load(row, id, kind, epoch, fromMs);
+        if (kind == PlayableKind.Video) { LoadVideo(row, id, epoch, fromMs, paused, seekGen); return; }
+        Audio.Load(row, id, kind, epoch, fromMs, seekGen);
         if (paused) Audio.Pause();
     }
+
+    /// <summary>Where, and under which seek generation, a resolved video load actually starts (V-PA2). The reducer may have taken a
+    /// seek while the manifest resolved — <c>Video.Seek</c> then found no player — so a generation that moved on since the load
+    /// was emitted brings its drop point (<paramref name="reducerPosMs"/>) with it; an unmoved one keeps the position the load
+    /// carried. Pure.</summary>
+    public static (uint Gen, int StartMs) VideoLoadStart(uint reducerGen, int reducerPosMs, uint loadGen, int loadFromMs)
+        => reducerGen != loadGen ? (reducerGen, reducerPosMs) : (loadGen, loadFromMs);
 
     /// <summary>The video resolver: a row's manifest id (32 hex) → a playable source, or null for "no video". Blocks —
     /// api threads only. The default is the row's own gid; owner H's resolver tiers (the counterpart's gid, a TrackV4
@@ -746,7 +787,7 @@ public static partial class Playback
 
     /// <summary>Resolve on an api thread, load on the UI thread — unless a newer load superseded this one meanwhile. A
     /// row with no source demotes to audio through the reducer (<see cref="AudioSignal.VideoUnavailable"/>).</summary>
-    static void LoadVideo(EntityRef row, EntityId id, uint epoch, int fromMs, bool paused)
+    static void LoadVideo(EntityRef row, EntityId id, uint epoch, int fromMs, bool paused, uint seekGen)
     {
         string gid = row.Kind == EntityKind.Track && !row.IsNone && Entities.Current is not null
                      && (uint)row.Slot < (uint)Entities.Current.Tracks.Count
@@ -763,7 +804,13 @@ public static partial class Playback
             ToUi(() =>
             {
                 if (s_state.LoadEpoch != epoch || s_hostKind != PlayableKind.Video) return;   // superseded while resolving
-                Video.Load(resolved, epoch, fromMs, paused);
+                // The load starts under the generation the reducer is on NOW, not the one it had when this resolve began (V-PA2): a
+                // seek taken meanwhile found no player (Video.Seek stamps its generation and returns), and a load seeded with the
+                // older value would stamp every Position it posts with it — all dropped for the rest of the load. The same seek's
+                // drop point is where the open must land, so the position follows the generation (else the first report walks
+                // the playhead back to where the load began).
+                (uint gen, int startMs) = VideoLoadStart(s_state.SeekGen, s_state.PosMs, seekGen, fromMs);
+                Video.Load(resolved, epoch, startMs, paused, gen);
             });
         });
         if (!queued) Post(Input.Audio(AudioSignal.VideoUnavailable, epoch, FrameNowMs()));
@@ -1025,7 +1072,10 @@ public static partial class Playback
         PositionMs.Value = s_state.Position(now);
         DurationMs.Value = s_state.DurationMs;
         Volume.Value = s_state.SliderVolume;
-        Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_sinkMuted || s_state.Volume <= MuteFloor;
+        Muted.Value = s_state.Own.Kind == Owner.Foreign ? s_state.SliderVolume <= MuteFloor : s_state.SinkMuted || s_state.Volume <= MuteFloor;
+        SeekGen.Value = s_state.SeekGen;
+        LastSeekLandedGen.Value = s_state.LastSeekLandedGen;
+        ScrubPositionMs.Value = s_state.Scrub.Current != ScrubModel.State.Idle ? s_state.ScrubPosMs : -1;
         Shuffle.Value = s_state.Shuffle;
         Repeat.Value = s_state.Repeat;
         CanSeek.Value = s_state.CanSeek;
@@ -1047,7 +1097,8 @@ public static partial class Playback
         if (s_state.Owner != Owner.Us) Pending.Transfer.Value = false;
 
         WatchRow();
-        Ticker(s_state.Phase == Phase.Playing || s_state.Own.Claim == ClaimPhase.Protected || AwaitsIdentity());
+        Ticker(s_state.Phase == Phase.Playing || s_state.Own.Claim == ClaimPhase.Protected || AwaitsIdentity()
+            || s_state.VolumeDirtySinceMs != 0);     // a changed volume's debounce closes on a tick, whatever the deck is doing (V-1)
         FlushRowEnsures();       // D4: the one span ask per kind every EnsureRow call this drain made owes
     }
 
@@ -1184,8 +1235,25 @@ public static partial class Playback
         => Log.Info("playback", "play/pause cause=" + cause + (resume ? " action=resume" : " action=pause"));
 
     public static void SeekTo(int ms) => Post(Input.Seek(ms, FrameNowMs()));
+
+    // The scrub gesture's four edges (D4): the seek bar posts them, the reducer's `ScrubModel` decides what the pump hears. `ms` is the
+    // pointer's target (the rail already ran it through `SeekRail.CommitTargetMs`); the commit clamps once more.
+    public static void ScrubBegin(int ms) => Post(Input.ScrubBegin(ms, FrameNowMs()));
+    public static void ScrubMove(int ms) => Post(Input.ScrubMove(ms, FrameNowMs()));
+    public static void ScrubEnd(int ms) => Post(Input.ScrubEnd(ms, FrameNowMs()));
+    public static void ScrubCancel() => Post(Input.ScrubCancel());
     public static void GoLive() => Post(Input.GoLive(FrameNowMs()));
-    public static void SetVolume(float linear01) => Post(Input.Volume(linear01));
+    public static void SetVolume(float linear01) => Post(Input.Volume(linear01, FrameNowMs()));
+
+    /// <summary>The exit tail's one call (V-PA11): write a volume change the reducer's 500 ms debounce has not persisted yet,
+    /// so the last slider move before closing the window is never lost. A no-op when nothing is pending. After the loop
+    /// stopped — the reducer will not run again — and before the settings sink closes.</summary>
+    public static void FlushVolume()
+    {
+        if (s_state.VolumeDirtySinceMs == 0) return;      // read-only: the reducer is the one writer of s_state, and it has stopped
+        if (Platform.Settings.Get(Platform.Keys.RememberVolume))
+            Platform.Settings.Set(Platform.Keys.SavedVolume, s_state.Volume);
+    }
     /// <summary>Mute or unmute whoever is audible: the local sink, or — while another device owns playback, where the wire
     /// has no mute flag — that device's volume (0, remembering the level to come back to). Routed like <see cref="SetVolume"/>.</summary>
     public static void SetMuted(bool muted) => Post(Input.Mute(muted, Audio.Supported.Peek()));
@@ -1262,10 +1330,12 @@ public static partial class Playback
     // it was started for — the drop test in `Step` is the whole of C4 and it cannot work if a caller forgets.
 
     public static void ReportStarted(uint epoch, int positionMs) => Post(Input.Audio(AudioSignal.Started, epoch, FrameNowMs(), positionMs));
-    public static void ReportPosition(uint epoch, int positionMs) => Post(Input.Audio(AudioSignal.Position, epoch, FrameNowMs(), positionMs));
+    public static void ReportPosition(uint epoch, int positionMs, uint gen = 0)
+        => Post(Input.Audio(AudioSignal.Position, epoch, FrameNowMs(), positionMs, gen));
     public static void ReportBuffering(uint epoch, bool refilling)
         => Post(Input.Audio(refilling ? AudioSignal.Buffering : AudioSignal.Buffered, epoch, FrameNowMs()));
-    public static void ReportSeeked(uint epoch, int positionMs) => Post(Input.Audio(AudioSignal.Seeked, epoch, FrameNowMs(), positionMs));
+    public static void ReportSeeked(uint epoch, int positionMs, uint gen = 0)
+        => Post(Input.Audio(AudioSignal.Seeked, epoch, FrameNowMs(), positionMs, gen));
     public static void ReportPaused(uint epoch) => Post(Input.Audio(AudioSignal.Paused, epoch, FrameNowMs()));
     public static void ReportResumed(uint epoch) => Post(Input.Audio(AudioSignal.Resumed, epoch, FrameNowMs()));
     public static void ReportStopped(uint epoch) => Post(Input.Audio(AudioSignal.Stopped, epoch, FrameNowMs()));
@@ -1314,7 +1384,6 @@ public static partial class Playback
         s_identity = default;
         s_hellos = 0;
         s_hostKind = PlayableKind.Audio;
-        s_sinkMuted = false;
         s_draining = false;
         s_redrain = false;
         s_queueVersion = 0;

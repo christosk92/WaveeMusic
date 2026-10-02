@@ -464,7 +464,7 @@ public readonly partial struct Show
         var model = h.Model;
         return Controls.Door(new DoorData(label, title, DescriptionOf(e), meta, lead, n > 0 ? FormatCache.Int(n) : null,
             Play: () => Episode.Invoke(e, () => model.PlayInShow(e)), Open: () => Episode.OpenPage(e), Tone: h.Tone,
-            Menu: MenuOf(h, e)), OverlayOf(h));
+            Menu: MenuOf(h, e), PlayUri: e.Uri.Text), OverlayOf(h));
     }
 
     /// <summary>The trailer door: its own row (outside the membership), played alone — not as the show context.</summary>
@@ -472,7 +472,7 @@ public readonly partial struct Show
         => Controls.Door(new DoorData(Loc.Get(Strings.Podcast.Trailer), t.Title, DescriptionOf(t),
             t.Knows(EpisodeFields.Duration) ? Episode.DurationLabel(t.DurationMs) : null, Lead: false, Numeral: null,
             Play: () => Episode.Invoke(t, () => Playback.PlayContext(t.Id)), Open: () => Episode.OpenPage(t), Tone: h.Tone,
-            Menu: MenuOf(h, t)), OverlayOf(h));
+            Menu: MenuOf(h, t), PlayUri: t.Uri.Text), OverlayOf(h));
 
     /// <summary>The head's episode menu — the SAME one a list row attaches (<see cref="ReaderHost.HeadRowCtx"/>'s
     /// <c>Menu</c>, built at OPEN time), for a head surface that owns its own right-click (a door, the hero, an up-next

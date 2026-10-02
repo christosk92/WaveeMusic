@@ -1,7 +1,8 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
 // the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
 // row density + hide artwork, track list style, track page layout + the two rail rows) · Sidebar (the design picker's three
-// compact cards + "Customize sidebar") · Lyrics (blur) · Now playing (hero*, player style)
+// compact cards + "Customize sidebar") · Lyrics (blur) · Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset,
+// reduce motion — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
 //
 // * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
@@ -18,7 +19,8 @@
 // EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
 // row density / track list style → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
 // the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
-// tab reads that epoch). The tab body reads the store directly (never a foreign epoch it does not need), so a write
+// tab reads that epoch); the five Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
+// gallery writes show here live). The tab body reads the store directly (never a foreign epoch it does not need), so a write
 // re-renders this page once, through `Bump()`.
 //
 // FROZEN CONTROL INPUTS. A ComboBox freezes its items, its signal AND its onChange at mount: the zoom and player-style
@@ -44,6 +46,9 @@ public static partial class Settings
     static readonly FloatSignal s_lyricsBlurSlider = new(Lyrics.BlurPolicy.StrongGpuDefault);
     /// <summary>The zoom combo's selection, kept in step with the LIVE zoom by <see cref="ZoomPicker"/>.</summary>
     static readonly Signal<int> s_zoomIndex = new(0);
+    /// <summary>The collapsed-rail-size combo's selection (0 Compact · 1 Default · 2 Large), kept in step with
+    /// <see cref="Sidebar.RailDetent"/> by <see cref="RailDetentPicker"/> so a pick made from the sidebar's own menu shows here.</summary>
+    static readonly Signal<int> s_railDetent = new(1);
     /// <summary>The player-style combo's selection, kept in step with every other style writer by <see cref="NpvStylePicker"/>.</summary>
     static readonly Signal<int> s_npvStyle = new(Rail.PlayerCatalog.DefaultPresetId);
 
@@ -53,11 +58,32 @@ public static partial class Settings
         ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%",
     };
 
+    // The fullscreen stage's three value controls (a ComboBox and two sliders). Each is bound for the control's life, so a
+    // child component re-seeds it from Prefs.Stage on every epoch (StageVisualizerPicker / StageSensitivitySlider /
+    // StageSyncSlider below) and a pick made in the stage's gallery shows here live.
+    static readonly Signal<int> s_stageVisualizer = new((int)Visualizer.Kind.Horizon);
+    static readonly FloatSignal s_stageSensitivity = new(1f), s_stageSyncOffset = new(0f);
+    static readonly Slider.SliderOptions s_stageSensitivityOptions = new()
+    {
+        Min = 0.3f, Max = 1.5f, Step = 0.05f, TickFrequency = 0.3f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%",
+    };
+    static readonly Slider.SliderOptions s_stageSyncOptions = new()
+    {
+        Min = -500f, Max = 500f, Step = 10f, TickFrequency = 250f, IsThumbToolTipEnabled = true,
+        ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms",
+    };
+
     /// <summary>The ladder rungs as labels, hoisted once — digits and '%' never change with culture.</summary>
     static readonly string[] s_zoomRungLabels = BuildZoomRungLabels();
 
     static partial void SeedAppearance()
-        => s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength), GpuProfile.IsWeak);
+    {
+        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength), GpuProfile.IsWeak);
+        s_stageVisualizer.Value = Prefs.Stage.Visualizer();
+        s_stageSensitivity.Value = Prefs.Stage.Sensitivity();
+        s_stageSyncOffset.Value = Prefs.Stage.SyncOffsetMs();
+    }
 
     // ══ 2. THE TAB ════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -111,6 +137,19 @@ public static partial class Settings
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
         kids.Add(Row(Loc.Get(Strings.Settings.Appearance.LyricsBlur), Loc.Get(Strings.Settings.Appearance.LyricsBlurSub),
             LyricsBlurControl(lyricsBlurAuto), RowGlyph(Tab.Appearance, "lyricsBlur")));
+
+        // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
+        kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Visualizer), Loc.Get(Strings.Stage.Settings.VisualizerSub),
+            Embed.Comp(static () => new StageVisualizerPicker()), RowGlyph(Tab.Appearance, "stageVisualizer")));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Sensitivity), Loc.Get(Strings.Stage.Settings.SensitivitySub),
+            Embed.Comp(static () => new StageSensitivitySlider()), RowGlyph(Tab.Appearance, "stageSensitivity")));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.LyricsOverlay), Loc.Get(Strings.Stage.Settings.LyricsOverlaySub),
+            StageToggle(Platform.Keys.StageLyricsOverlay), RowGlyph(Tab.Appearance, "stageLyricsOverlay")));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.SyncOffset), Loc.Get(Strings.Stage.Settings.SyncOffsetSub),
+            Embed.Comp(static () => new StageSyncSlider()), RowGlyph(Tab.Appearance, "stageSyncOffset")));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Calm), Loc.Get(Strings.Stage.Settings.CalmSub),
+            StageToggle(Platform.Keys.StageCalm), RowGlyph(Tab.Appearance, "stageCalm")));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
             Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
@@ -476,14 +515,18 @@ public static partial class Settings
             var design = Sidebar.Design.Value;
             // The customizer edits the Curated document; offering it for another design would edit something the user is
             // not looking at, and this row never switches design silently.
+            // The rail size is global (every design collapses to the same rail), so its item is always present.
+            var railSize = Item(Loc.Get(Strings.Settings.Sidebar.RailSize), Loc.Get(Strings.Settings.Sidebar.RailSizeSub),
+                Embed.Comp(static () => new RailDetentPicker()), icon: Icons.SplitView);   // no catalog row: SettingsCatalog lives in Settings.cs
             Element[] items = SidebarDesignGating.CanCustomize(design)
                 ?
                 [
                     Item(Loc.Get(Strings.Settings.Sidebar.Customize), Loc.Get(Strings.Settings.Sidebar.CustomizeSub), null,
                         isClickEnabled: true, onClick: static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.SidebarCustomize)),
                         icon: RowGlyph(Tab.Appearance, "sidebarCustomize")),
+                    railSize,
                 ]
-                : [];
+                : [railSize];
 
             return SettingsExpander.Create(new SettingsExpander.Options
             {
@@ -494,6 +537,30 @@ public static partial class Settings
                 ItemsHeader = ExpanderPanel(SidebarDesignCards(design)),
                 Items = items,
             }) with { Key = "appearance.sidebar.design" };
+        }
+    }
+
+    /// <summary>The "Collapsed rail size" combo: Compact · Default · Large. Its own component because it subscribes to
+    /// <see cref="Sidebar.RailDetent"/> (a pick from the sidebar's layout menu moves the selection with no settings write).</summary>
+    sealed class RailDetentPicker : Component
+    {
+        public override Element Render()
+        {
+            int index = Sidebar.RailDetent.Value switch
+            {
+                SidebarRailDetent.Compact => 0,
+                SidebarRailDetent.Large => 2,
+                _ => 1,
+            };
+            UseEffect(() => s_railDetent.Value = index, DepKey.From(index));
+            return ComboBox.Create(
+                [Loc.Get("sidebar.rail.compact"), Loc.Get("sidebar.rail.default"), Loc.Get("sidebar.rail.large")],
+                s_railDetent, width: 160f, onChange: static i => Sidebar.SetRailDetent(i switch
+                {
+                    0 => SidebarRailDetent.Compact,
+                    2 => SidebarRailDetent.Large,
+                    _ => SidebarRailDetent.Default,
+                }));
         }
     }
 
@@ -670,6 +737,48 @@ public static partial class Settings
             for (int i = 0; i < presets.Length; i++) labels[i] = Loc.Get(presets[i].LabelKey);
             return ComboBox.Create(labels, s_npvStyle, width: 180f,
                 onChange: static i => Rail.PlayerPrefs.SetStyle(i, Rail.NpvDiagnostics.SourceSettings));
+        }
+    }
+
+    // ══ 7. FULLSCREEN STAGE ═══════════════════════════════════════════════════════════════════════════════════════════
+
+    static string[] VisualizerLabels() =>
+    [
+        Loc.Get(Strings.Stage.Viz.Field), Loc.Get(Strings.Stage.Viz.Halo), Loc.Get(Strings.Stage.Viz.Horizon), Loc.Get(Strings.Stage.Viz.Matrix),
+        Loc.Get(Strings.Stage.Viz.Aurora), Loc.Get(Strings.Stage.Viz.Spectrum), Loc.Get(Strings.Stage.Viz.Pulse), Loc.Get(Strings.Stage.Viz.Tape),
+    ];
+
+    /// <summary>The two toggles read `Platform.SettingsChanged` through `Toggle` as every Appearance toggle does; the bump wakes the stage.</summary>
+    static Element StageToggle(SettingKey<bool> key) => Toggle(key, afterWrite: static _ => Prefs.Stage.Bump());
+
+    sealed class StageVisualizerPicker : Component
+    {
+        public override Element Render()
+        {
+            UseSignalEffect(static () => s_stageVisualizer.Value = Prefs.Stage.Visualizer());   // the gallery's pick lands here live
+            return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: 220f,
+                onChange: static i => { if ((uint)i < (uint)Visualizer.Catalog.Count) Prefs.Stage.SetVisualizer(i); });
+        }
+    }
+    sealed class StageSensitivitySlider : Component
+    {
+        public override Element Render()
+        {
+            UseSignalEffect(static () => s_stageSensitivity.SetIfChanged(Prefs.Stage.Sensitivity()));
+            return Slider.Create(s_stageSensitivity, static v => Prefs.Stage.SetSensitivity(v), s_stageSensitivityOptions, length: 180f);
+        }
+    }
+    sealed class StageSyncSlider : Component
+    {
+        public override Element Render()
+        {
+            UseSignalEffect(static () => s_stageSyncOffset.SetIfChanged(Prefs.Stage.SyncOffsetMs()));
+            return Slider.Create(s_stageSyncOffset, static v =>
+            {
+                int ms = (int)MathF.Round(v / 10f) * 10;
+                Prefs.Stage.SetSyncOffsetMs(ms);
+                Playback.Audio.SetSpectrumOffsetMs(ms);
+            }, s_stageSyncOptions, length: 180f);
         }
     }
 }

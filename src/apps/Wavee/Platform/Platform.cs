@@ -212,7 +212,8 @@ public static partial class Platform
         public static readonly SettingKey<double> VideoLinkKbps = new("playback.video.linkKbps", 0.0);
         public static readonly SettingKey<int> VideoMeteredMaxHeight = new("playback.video.quality.meteredMaxHeight", 480);
         public static readonly SettingKey<bool> RememberVolume = new("playback.volume.remember", true);
-        public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.7f);
+        /// <summary>First-launch volume ≈ −6 dB (D6): 0.794³ = 0.5005 through the cubic taper. <c>Playback.UnmuteDefault</c> is the same number.</summary>
+        public static readonly SettingKey<float> SavedVolume = new("playback.volume", 0.794f);
         public static readonly SettingKey<string> OutputDeviceId = new("playback.output.deviceId", "");
         public static readonly SettingKey<string> OutputDeviceName = new("playback.output.deviceName", "");
         public static readonly SettingKey<bool> EqualizerEnabled = new("playback.eq.enabled", false);
@@ -365,14 +366,13 @@ public static partial class Platform
         // reader's own sort, whose old 0-4 discography values clamp to 0).
 
         /// <summary>Per-DESIGN sidebar pane state (`sidebar.&lt;slug&gt;.*`; slugs are "classic"/"library-v3"/"curated"
-        /// and are PERSISTED — never rename one). The tier default is passed IN, from the design table that owns it, so
-        /// this file does not duplicate — and drift from — `Sidebar.cs`'s ladder.</summary>
-        public static SettingKey<float> SidebarWidth(string designSlug, float tierNarrow) => new("sidebar." + designSlug + ".width", tierNarrow);
-        /// <summary>While a design's WidthUserSet is false its width follows that design's tier ladder; the first
-        /// committed seam drag in that design latches it forever, for that design only. Collapsing the pane is NOT a
-        /// width choice and must never set it.</summary>
-        public static SettingKey<bool> SidebarWidthUserSet(string designSlug) => new("sidebar." + designSlug + ".width.userSet", false);
+        /// and are PERSISTED — never rename one). The default is passed IN, from the design table that owns it
+        /// (`SidebarDesignInfo.DefaultWidth`), so this file does not duplicate — and drift from — it.</summary>
+        public static SettingKey<float> SidebarWidth(string designSlug, float defaultWidth) => new("sidebar." + designSlug + ".width", defaultWidth);
+        /// <summary>True ⇔ the design's regime is Rail (the pre-resize meaning, unchanged — no migration).</summary>
         public static SettingKey<bool> SidebarCollapsed(string designSlug) => new("sidebar." + designSlug + ".collapsed", false);
+        /// <summary>The collapsed rail's size, GLOBAL across designs (0 Compact · 1 Default · 2 Large; unknown ⇒ Default).</summary>
+        public static readonly SettingKey<int> SidebarRailDetent = new("sidebar.rail.detent", 1);
 
         /// <summary>A deck/player preset's own option (`npv.player.&lt;preset&gt;.&lt;option&gt;`).</summary>
         public static SettingKey<int> NpvOption(string presetSlug, string optionSlug) => new("npv.player." + presetSlug + "." + optionSlug, 0);
@@ -724,6 +724,24 @@ public static partial class Log
         lock (s_ringGate) return SnapshotLocked();
     }
 
+    /// <summary>Total · Warning · ≥Error counts over the ring, walked under the ring gate without copying it (the Settings
+    /// "Log viewer" card's 750 ms tick, ch 27 N12: no per-frame work, no allocation).</summary>
+    public static void Tally(out int total, out int warnings, out int errors)
+    {
+        total = warnings = errors = 0;
+        lock (s_ringGate)
+        {
+            total = s_count;
+            int start = (s_head - s_count + s_ring.Length) % s_ring.Length;   // mirrors SnapshotLocked's walk exactly
+            for (int i = 0; i < s_count; i++)
+            {
+                var level = s_ring[(start + i) % s_ring.Length].Level;
+                if (level == WaveeLogLevel.Warning) warnings++;
+                else if (level >= WaveeLogLevel.Error) errors++;
+            }
+        }
+    }
+
     public static void ClearRing()
     {
         lock (s_ringGate) { Array.Clear(s_ring); s_head = 0; s_count = 0; s_version++; }
@@ -867,9 +885,9 @@ public static partial class Platform
         /// a screenshot taken on any day must be identical (ch 31 §7.3), which needs the FIXED instant.</summary>
         public static bool FakeLiveClock { get; private set; }
 
-        /// <summary>`--headless`: the no-window host (<c>Diagnostics.Probe.TryRun</c>). Boot reads it for one decision —
-        /// a headless run never applies a pending factory reset, because its `--profile` scratch folder is not the
-        /// profile the reset was armed for (headless plan §2.8).</summary>
+        /// <summary>`--headless` or `--stress-audio`: a no-window host (<c>Diagnostics.Probe.TryRun</c>). Boot reads it
+        /// for one decision — a headless run never applies a pending factory reset, because its `--profile` scratch
+        /// folder is not the profile the reset was armed for (headless plan §2.8).</summary>
         public static bool Headless { get; private set; }
 
         /// <summary>`--relaunch-after &lt;pid&gt;`: this process is the restart broker, a courier and not an app
@@ -885,7 +903,7 @@ public static partial class Platform
         {
             Fake = Array.IndexOf(argv, "--fake") >= 0;
             FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
-            Headless = Array.IndexOf(argv, "--headless") >= 0;
+            Headless = Array.IndexOf(argv, "--headless") >= 0 || Array.IndexOf(argv, "--stress-audio") >= 0;
             RelaunchBroker = Array.IndexOf(argv, "--relaunch-after") >= 0;
             Recovery = Array.IndexOf(argv, "--recovery") >= 0;
         }

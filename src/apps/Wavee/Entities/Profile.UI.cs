@@ -423,7 +423,7 @@ public static partial class Profile
         var card = c;
         var data = new Controls.CardData(pl.Uri.Text, title,
             c.Followers > 0 ? CardSubtitle(FollowerCount(Strings.Person.Card.FollowersKey, c.Followers)) : null,
-            url, () => Open(card), () => Playback.PlayContext(pl.Id), Drag: Search.DragOf(hit),
+            url, () => Open(card), () => Playback.PlayOrToggleContext(pl.Id), Drag: Search.DragOf(hit),
             CoverOverride: cover)
         {
             Menu = Search.MenuOf(hit),
@@ -437,7 +437,7 @@ public static partial class Profile
         var hit = new EntityRef(EntityKind.Artist, c.Slot);
         var card = c;
         var data = new Controls.CardData(ar.Uri.Text, ar.Name, CardSubtitle(Loc.Get(Strings.Search.TypeArtist)),
-            Controls.ArtUrl(ar.ImageId), () => Open(card), () => Playback.PlayContext(ar.Id), Circular: true,
+            Controls.ArtUrl(ar.ImageId), () => Open(card), () => Playback.PlayOrToggleContext(ar.Id), Circular: true,
             Drag: Search.DragOf(hit))
         {
             Menu = Search.MenuOf(hit),

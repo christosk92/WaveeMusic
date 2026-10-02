@@ -88,8 +88,7 @@ public static partial class Sidebar
     static SidebarCustomLayout s_layout = SidebarCustomLayout.Empty;
     static SidebarWireCarry s_carry = SidebarWireCarry.Empty;           // forward tolerance: unknown sections round-trip
     static SidebarFirstSeenDto[]? s_firstSeen;                          // the playlist added-at PROXY wire array (F.7.5)
-    static float s_viewportWidth;                                       // last seen; written by the shell's tier effect
-    static bool s_pinNamesDirty;                                        // a TouchPin refresh waiting to ride the next commit
+        static bool s_pinNamesDirty;                                        // a TouchPin refresh waiting to ride the next commit
     static bool s_loaded;                                               // Load() ran; before that no mutation may commit
     static bool s_commitPending;
     static SidebarWriteResult s_pendingPersistenceHealth;
@@ -104,14 +103,14 @@ public static partial class Sidebar
         var design = SidebarDesignInfo.FromInt(Platform.Settings.Get(Platform.Keys.SidebarDesign));
         Design.Value = design;
 
-        // The pane triple for the ACTIVE design, seeded before the first layout: a dragged width is a preference and
-        // seeds verbatim, an undragged one takes the design's tier ladder. The viewport is unknown here (no bounds
-        // callback yet), so this takes the pre-measure fallback and the shell's tier effect commits the real tier
-        // before the first layout without a visible step.
-        var pane = SidebarPaneState.Restore(Platform.Settings, design, viewportWidth: 0f);
+        // The pane pair for the ACTIVE design plus the global rail detent, seeded before the first layout. The window
+        // never writes any of these: the width is the user's preference, presented (yielded) by the shell.
+        var pane = SidebarPaneState.Restore(Platform.Settings, design);
         Width.Value = pane.Width;
-        Collapsed.Value = pane.Collapsed;
-        WidthUserSet = pane.WidthUserSet;
+        Regime.Value = pane.Regime;
+        RailDetent.Value = SidebarPaneState.RestoreDetent(Platform.Settings);
+        Seam.Value = pane.Regime == SidebarRegime.Rail ? SidebarResizeRules.StripOf(RailDetent.Peek()) : pane.Width;
+        PresentedWidth.Value = Seam.Peek();
 
         ClassicPinnedOpen.Value = Platform.Settings.Get(Platform.Keys.ClassicPinnedOpen);
         ClassicLibraryOpen.Value = Platform.Settings.Get(Platform.Keys.ClassicLibraryOpen);
@@ -156,17 +155,6 @@ public static partial class Sidebar
     /// <summary>The active design. The ONE signal the sidebar host reads, so a switch remounts the mode component.</summary>
     public static readonly Signal<SidebarDesign> Design = new(SidebarDesign.Classic);
 
-    /// <summary>The active design's width tiers (locked decision 14). <c>Peek</c>, not <c>Value</c>: the tier ladder
-    /// effect already subscribes to <see cref="Design"/> explicitly and must not gain a second subscription here.</summary>
-    public static (float Narrow, float Mid, float Wide) Tiers => SidebarDesignInfo.Tiers(Design.Peek());
-
-    /// <summary>The shell's tier effect publishes the live viewport width here (a plain field, not a signal — only
-    /// <see cref="SwitchDesign"/> and the reset paths read it, and neither is a render).</summary>
-    public static void SetViewportWidth(float width)
-    {
-        if (width > 0f) s_viewportWidth = width;
-    }
-
     /// <summary>Snapshot the outgoing design's live state into its bag + settings, then reseed every live signal from
     /// the incoming design's bag, then flip <see cref="Design"/>. Applies LIVE (no restart). No-op when unchanged.
     /// The selection is persisted LAST, so a crash mid-switch reopens on the OLD design with its state intact.</summary>
@@ -175,18 +163,18 @@ public static partial class Sidebar
         var cur = Design.Peek();
         if (next == cur) return;
 
-        SidebarPaneState.Snapshot(Platform.Settings, cur, new SidebarPaneSnapshot(Width.Peek(), Collapsed.Peek(), WidthUserSet));
+        SidebarPaneState.Snapshot(Platform.Settings, cur, new SidebarPaneSnapshot(Width.Peek(), Regime.Peek()));
         FlushBagOf(cur);
         Flush();                       // issue any coalesced document write NOW, before the design flips
 
-        var pane = SidebarPaneState.Restore(Platform.Settings, next, s_viewportWidth);
+        var pane = SidebarPaneState.Restore(Platform.Settings, next);
         SeedBagOf(next);
-        WidthUserSet = pane.WidthUserSet;
         // A synchronous burst of signal writes on the UI thread coalesces into one frame's layout commit (a signal
         // write is deferred: it marks dependents stale and asks the host for a frame, drained once per frame) — the
-        // pane animates one width/collapse step, not two.
+        // pane animates one width/regime step, not two. The rail detent is global and is not touched.
         Width.SetIfChanged(pane.Width);
-        Collapsed.SetIfChanged(pane.Collapsed);
+        Regime.SetIfChanged(pane.Regime);
+        Seam.SetIfChanged(pane.Regime == SidebarRegime.Rail ? SidebarResizeRules.StripOf(RailDetent.Peek()) : pane.Width);
         Design.Value = next;
 
         Platform.Settings.Set(Platform.Keys.SidebarDesign, (int)next);
@@ -242,67 +230,76 @@ public static partial class Sidebar
         V3Search.SetIfChanged("");
     }
 
-    // ── pane state (ACTIVE design) ──────────────────────────────────────────────────────────────────────────────────
-    // The pane clamp is ONE pair — SidebarPaneBounds.NavPaneMinW/MaxW (180/460) — and every writer below clamps
-    // through it, directly or via SidebarPaneState; the tier ladder stops applying once WidthUserSet latches.
+    // ── pane state (ACTIVE design) + the global rail detent ─────────────────────────────────────────────────────────
+    // Three stored facts, each with one owner: Width (the EXPANDED width, per design), Regime (per design, persisted as
+    // the `sidebar.<slug>.collapsed` bool) and RailDetent (GLOBAL). Seam and PresentedWidth are derived/transient. The
+    // pure rules live in SidebarResizeRules; every writer below goes through Apply.
 
-    /// <summary>The pane's expanded width. The shell BINDS this signal — the docked pane and the narrow drawer share
-    /// it. <see cref="SwitchDesign"/> writes a new VALUE, never a new signal, so every existing binding stays live.</summary>
-    public static readonly Signal<float> Width = new(300f);
+    /// <summary>The pane EXPANDED width, the user preference. The shell BINDS this signal; <see cref="SwitchDesign"/>
+    /// writes a new VALUE, never a new signal. Never written by the window.</summary>
+    public static readonly Signal<float> Width = new(SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
 
-    /// <summary>The user's collapse PREFERENCE — never "presented compact" (that is <c>narrowShell ∨ Collapsed</c>,
-    /// the shell's own derived signal).</summary>
-    public static readonly Signal<bool> Collapsed = new(false);
+    /// <summary>Expanded or Rail: the user preference (the shell presentation, not the window, decides the rest).</summary>
+    public static readonly Signal<SidebarRegime> Regime = new(SidebarRegime.Expanded);
 
-    /// <summary>True once a committed seam drag pinned the ACTIVE design's width. While false that design's width
-    /// follows its tier ladder; once true nothing but another drag may write it. Per design — pinning V3's width does
-    /// not freeze Classic's ladder. A plain property, not a signal: only <see cref="SwitchDesign"/> and the reset
-    /// paths read it, and neither is a render.</summary>
-    public static bool WidthUserSet { get; private set; }
+    /// <summary>The collapsed rail size. GLOBAL across designs.</summary>
+    public static readonly Signal<SidebarRailDetent> RailDetent = new(SidebarRailDetent.Default);
 
-    /// <summary>DRAG PEEK — TRANSIENT, never persisted, never a write to <see cref="Collapsed"/>: a collapsed sidebar
-    /// is PRESENTED expanded for the rest of one drag once the pointer dwells on the rail. Two readers must agree: the
-    /// pane decides its own presentation, and the shell clips the column's width off the SAME signal.</summary>
+    /// <summary>The splitter raw cell: 1:1 with the pointer during a drag, equal to <see cref="PresentedWidth"/> at rest.</summary>
+    public static readonly Signal<float> Seam = new(SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
+
+    /// <summary>What the column lays out at. Written ONLY by the shell presentation effect
+    /// (<c>SidebarResizeRules.Present</c> / <c>Track</c>).</summary>
+    public static readonly Signal<float> PresentedWidth = new(SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
+
+    /// <summary>DRAG PEEK: TRANSIENT, never persisted, never a write to <see cref="Regime"/>. A rail sidebar is
+    /// PRESENTED expanded for the rest of one drag once the pointer dwells on the rail. Two readers must agree: the
+    /// pane decides its own presentation, and the shell clips the column width off the SAME signal.</summary>
     public static readonly Signal<bool> DragPeek = new(false);
 
-    /// <summary>Drag-commit edge: clamp + persist the width AND latch <see cref="WidthUserSet"/>, for the active
-    /// design only. The grip's own moved-gate still decides whether this is called at all — a zero-movement click on
-    /// the seam is not a width preference.</summary>
-    public static void CommitWidthDrag(float width)
+    /// <summary>The three stored facts as the pure rules input.</summary>
+    public static SidebarResizeRules.State ResizeState() => new(Regime.Peek(), RailDetent.Peek(), Width.Peek());
+
+    /// <summary>Drag-end: resolve the seam into a settle, write the three facts, persist, and park the seam on the target.</summary>
+    public static void CommitSeam(float velocityDipPerSec = 0f)
+        => Apply(SidebarResizeRules.Resolve(Seam.Peek(), ResizeState(), velocityDipPerSec));
+
+    /// <summary>Hamburger / double-click / header chevron: flip the regime, keeping both memories.</summary>
+    public static void ToggleRegime() => Apply(SidebarResizeRules.Toggle(ResizeState()));
+
+    public static void SetRegime(SidebarRegime regime) { if (Regime.Peek() != regime) ToggleRegime(); }
+
+    /// <summary>Keyboard left/right (<paramref name="direction"/> -1/+1; <paramref name="large"/> = Shift).</summary>
+    public static void StepSeam(int direction, bool large) => Apply(SidebarResizeRules.Step(ResizeState(), direction, large));
+
+    /// <summary>Pick the collapsed rail size (Settings, the layout menu). Persists; re-parks the seam when a rail is showing.</summary>
+    public static void SetRailDetent(SidebarRailDetent d)
+    {
+        RailDetent.SetIfChanged(d);
+        Platform.Settings.Set(Platform.Keys.SidebarRailDetent, (int)d);
+        if (Regime.Peek() == SidebarRegime.Rail) Seam.SetIfChanged(SidebarResizeRules.StripOf(d));
+    }
+
+    /// <summary>Set the expanded width outright (Home/End, Settings): clamped to [ExpandedMinW, ExpandedMaxW], regime
+    /// Expanded, persisted through the same path as a drag commit.</summary>
+    public static void SetExpandedWidth(float width)
+    {
+        float w = Math.Clamp(float.IsFinite(width) ? width : Width.Peek(), SidebarResizeRules.ExpandedMinW, SidebarResizeRules.ExpandedMaxW);
+        Apply(new SidebarResizeRules.Settle(SidebarRegime.Expanded, RailDetent.Peek(), w, w));
+    }
+
+    /// <summary>"Reset width": the active design default width, Regime Expanded.</summary>
+    public static void ResetWidth() => SetExpandedWidth(SidebarDesignInfo.DefaultWidth(Design.Peek()));
+
+    static void Apply(in SidebarResizeRules.Settle s)
     {
         var design = Design.Peek();
-        float clamped = SidebarPaneState.CommitWidth(Platform.Settings, design, width);
-        WidthUserSet = true;
-        Width.SetIfChanged(clamped);
-        Platform.Settings.Set(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design)), Collapsed.Peek());
-    }
-
-    /// <summary>Collapse toggle: persist <see cref="Collapsed"/> for the active design. NEVER touches
-    /// <see cref="WidthUserSet"/> — collapsing the pane is not a width choice.</summary>
-    public static void SetCollapsed(bool collapsed)
-    {
-        Collapsed.SetIfChanged(collapsed);
-        Platform.Settings.Set(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(Design.Peek())), collapsed);
-    }
-
-    /// <summary>The responsive tier ladder's ONLY writer. Clamped through the one pane pair; silently no-ops once the
-    /// active design's width is pinned.</summary>
-    public static void SetResponsiveWidth(float width)
-    {
-        if (WidthUserSet) return;
-        var design = Design.Peek();
-        float clamped = Math.Clamp(width, SidebarPaneBounds.NavPaneMinW, SidebarPaneBounds.NavPaneMaxW);
-        Width.SetIfChanged(clamped);
-        Platform.Settings.Set(Platform.Keys.SidebarWidth(SidebarDesignInfo.Slug(design), Tiers.Narrow), clamped);
-    }
-
-    /// <summary>"Reset width": drop the active design's user-set latch and re-seed from its tier ladder, handing the
-    /// width back to the responsive effect.</summary>
-    public static void ResetWidth()
-    {
-        var pane = SidebarPaneState.ResetWidth(Platform.Settings, Design.Peek(), s_viewportWidth);
-        WidthUserSet = false;
-        Width.SetIfChanged(pane.Width);
+        Width.SetIfChanged(s.ExpandedWidth);
+        Regime.SetIfChanged(s.Regime);
+        RailDetent.SetIfChanged(s.Detent);
+        Seam.SetIfChanged(s.TargetWidth);
+        SidebarPaneState.Snapshot(Platform.Settings, design, new SidebarPaneSnapshot(s.ExpandedWidth, s.Regime));
+        if (s.Regime == SidebarRegime.Rail) Platform.Settings.Set(Platform.Keys.SidebarRailDetent, (int)s.Detent);
     }
 
     // ── Classic bag ─────────────────────────────────────────────────────────────────────────────────────────────────

@@ -293,31 +293,6 @@ public class ShellPageMotionTests
 public class ShellResponsiveLayoutTests
 {
     [Fact]
-    public void The_narrow_band_is_hysteretic()
-    {
-        Assert.True(Shell.Layout.NarrowFor(700f, current: false, initialized: true));
-        Assert.True(Shell.Layout.NarrowFor(740f, current: true, initialized: true));    // holds until 760
-        Assert.False(Shell.Layout.NarrowFor(760f, current: true, initialized: true));
-        Assert.False(Shell.Layout.NarrowFor(740f, current: false, initialized: true));  // does not enter until 720
-    }
-
-    [Fact]
-    public void A_zero_width_never_moves_a_band()
-        => Assert.True(Shell.Layout.NarrowFor(0f, current: true, initialized: true));
-
-    [Fact]
-    public void The_nav_pane_widens_at_once_and_shrinks_after_the_dip()
-    {
-        Assert.Equal(Shell.Layout.NavPaneMidW, Shell.Layout.NavPaneDefaultFor(1400f, Shell.Layout.NavPaneNarrowW, true));
-        Assert.Equal(Shell.Layout.NavPaneMidW, Shell.Layout.NavPaneDefaultFor(1380f, Shell.Layout.NavPaneMidW, true));
-        Assert.Equal(Shell.Layout.NavPaneNarrowW, Shell.Layout.NavPaneDefaultFor(1370f, Shell.Layout.NavPaneMidW, true));
-    }
-
-    [Fact]
-    public void An_unmeasured_viewport_takes_the_narrow_tier()
-        => Assert.Equal(Shell.Layout.NavPaneNarrowW, Shell.Layout.InitialNavPaneDefaultForViewport(0f));
-
-    [Fact]
     public void The_drawer_never_outgrows_the_window()
     {
         Assert.Equal(Shell.Layout.DrawerMinW, Shell.Layout.DrawerWidth(1200f, 100f));

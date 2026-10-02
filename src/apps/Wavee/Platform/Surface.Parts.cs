@@ -202,8 +202,10 @@ public static class SurfaceParts
 
     /// <summary>The ROW body: the art square (<see cref="SurfaceShape.ArtEdge"/>, the overlay's FAB at
     /// <see cref="SurfaceShape.Fab"/>) · the text column (<see cref="RowText"/>) · the trailing cluster (the data's
-    /// <c>Trailing</c>, then the "…" slot when the shape places one there) — 12 apart, centred, 8 padding, over the
-    /// shape's floor. A label-less shape (the rail tile) is the art alone, centred in its floor square.
+    /// <c>Trailing</c>; the "…" is a hover overlay over the row's end that reserves no width, or — on a
+    /// <see cref="MenuPlacement.TrailingLane"/> shape — its own reserved lane after the cluster,
+    /// <see cref="SurfaceRules.MenuReservesWidth"/>) — 12 apart, centred, 8 padding, over the shape's floor. A label-less
+    /// shape (the rail tile) is the art alone, centred in its floor square.
     /// <paramref name="text"/> is the host's cached text column (built here when null).</summary>
     public static Element RowBody(Controls.CardData d, in SurfaceShape s, bool overlay, bool chrome, bool hasMenu, Action? onPlay,
                                   Element? text = null)
@@ -225,38 +227,68 @@ public static class SurfaceParts
                 Children = [artBox],
             };
 
-        Element? trailing = RowTrailing(d, in s, chrome, hasMenu);
+        Element? trailing = d.Trailing is null ? null : Action(d.Trailing);
+        // A LANE shape's "…" is the cluster's last cell, laid out at rest whether or not the row is hot (stable per row),
+        // so it sits BESIDE the Follow pill / heart instead of over it and the hot edge reflows nothing.
+        bool lane = SurfaceRules.MenuReservesWidth(in s, hasMenu, d.ShowMenu);
+        if (lane)
+            trailing = trailing is null ? MenuLane(chrome) : new BoxEl
+            {
+                Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children = [trailing, MenuLane(chrome)],
+            };
         Element column = text ?? RowText(d, in s)!;
-        return new BoxEl
+        var flow = new BoxEl
         {
             Direction = 0, Gap = SurfaceGeometry.RowGap, AlignItems = FlexAlign.Center, Grow = 1f,
             MinHeight = s.MinHeight, MinWidth = 0f,
             Padding = Edges4.All(SurfaceGeometry.RowPad),
             Children = trailing is null ? [artBox, column] : [artBox, column, trailing],
         };
-    }
-
-    // The trailing cluster: the data's Trailing, then the "…" — each behind the drag-arm barrier. The "…" SLOT is reserved
-    // whenever the row has a menu to open, and the button mounts into it only while the row is hot: a lazily mounted
-    // 32-DIP control that also took its width on hover would re-ellipsise the title under the pointer. The button is the
-    // standard "…" at rest opacity 0 — a reveal, so it fades in with the row's hover — and it carries no handler: it
-    // re-enters the context funnel and opens the menu the host attached to the shell.
-    static Element? RowTrailing(Controls.CardData d, in SurfaceShape s, bool chrome, bool hasMenu)
-    {
-        if (!SurfaceRules.ShowsMenuTrailing(in s, hasMenu, d.ShowMenu))
-            return d.Trailing is null ? null : Action(d.Trailing);
-        Element more = Action(new BoxEl
-        {
-            Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f,
-            Children = chrome ? [ToolTip.WrapStable(s_trailingMore, Loc.Get(Strings.Common.More)).Skeletonized(false)] : [],
-        });
-        if (d.Trailing is null) return more;
+        // Otherwise the "…" is an OVERLAY, not a lane: it takes no width at rest or on hover, so the title never
+        // re-ellipsises under the pointer and a narrow row keeps its text. It is mounted lazily with the chrome. The ZStack
+        // wrapper exists whenever the row CAN show the "…" (stable per row), so hot only adds the overlay child.
+        if (lane || !SurfaceRules.ShowsMenuTrailing(in s, hasMenu, d.ShowMenu)) return flow;
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Children = [Action(d.Trailing), more],
+            ZStack = true, Grow = 1f, MinWidth = 0f, MinHeight = s.MinHeight,
+            Children = chrome ? [flow, MenuOverlay()] : [flow],
         };
     }
+
+    // The trailing "…" overlay: pinned to the row's end (inside the row padding), centred, over an OPAQUE chip that is
+    // itself a hover reveal — so on hover it covers the end of the trailing lane (or the text) instead of competing with it.
+    // The button is the standard "…" at rest opacity 0 and carries no handler: it re-enters the context funnel and opens
+    // the menu the host attached to the shell. The container passes hits through; only the chip takes them.
+    static Element MenuOverlay() => new BoxEl
+    {
+        HitTestPassThrough = true, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+        Padding = Edges4.All(SurfaceGeometry.RowPad),
+        Children =
+        [
+            Action(new BoxEl
+            {
+                Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f,
+                Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillControlSolid,
+                Opacity = 0f, HoverOpacity = 1f,
+                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+                Children = [ToolTip.WrapStable(s_trailingMore, Loc.Get(Strings.Common.More)).Skeletonized(false)],
+            }),
+        ],
+    };
+
+    // The reserved "…" lane (a TrailingLane shape): the same standard "…" and the same hover reveal as the overlay, but in
+    // a 32 cell of its own after the trailing cluster — so no opaque chip (there is nothing under it to hide). The cell is
+    // laid out at rest; the button mounts into it with the chrome. Action() makes it a drag-arm barrier like every other
+    // trailing control.
+    static Element MenuLane(bool chrome) => Action(new BoxEl
+    {
+        Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Opacity = 0f, HoverOpacity = 1f,
+        HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+        Children = chrome ? [ToolTip.WrapStable(s_trailingMore, Loc.Get(Strings.Common.More)).Skeletonized(false)] : [],
+    });
 
     /// <summary>MOUNT-STABLE (one static delegate for the process), which <see cref="ToolTip.WrapStable"/> requires: the
     /// trailing "…" has no per-row data at all.</summary>

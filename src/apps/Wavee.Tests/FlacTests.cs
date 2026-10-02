@@ -391,6 +391,111 @@ public class FlacTests
         Assert.Equal(3u, t.Tags.PictureKind);                       // the picture survived the splice
     }
 
+    /// <summary>N-3 / V-PA18: the four REPLAYGAIN_* values are kept as ranges (case-insensitive keys), empty when absent, and the
+    /// text they hold parses to the tag's own −18 LUFS figures through <c>Playback.Audio.ReplayGainTags</c>.</summary>
+    [Fact]
+    public void Headers_keep_the_four_replaygain_tags_as_ranges()
+    {
+        byte[] plain = Vector(Baseline);
+        Span<Flac.SeekPoint> seek = stackalloc Flac.SeekPoint[64];
+        Flac.Headers bare = Open(plain, seek);
+        Assert.True(bare.Tags.RgTrackGain.IsEmpty);
+        Assert.True(bare.Tags.RgTrackPeak.IsEmpty);
+        Assert.True(bare.Tags.RgAlbumGain.IsEmpty);
+        Assert.True(bare.Tags.RgAlbumPeak.IsEmpty);
+
+        byte[] tagged = WithComments(plain, "TITLE=x", "replaygain_track_gain=-6.66 dB", "REPLAYGAIN_TRACK_PEAK=0.977000",
+            "ReplayGain_Album_Gain=+1.25 dB", "REPLAYGAIN_ALBUM_PEAK=1.012000");
+        Flac.Headers t = Open(tagged, seek);
+        Assert.Equal("-6.66 dB", Text(tagged, t.Tags.RgTrackGain));
+        Assert.Equal("0.977000", Text(tagged, t.Tags.RgTrackPeak));
+        Assert.Equal("+1.25 dB", Text(tagged, t.Tags.RgAlbumGain));
+        Assert.Equal("1.012000", Text(tagged, t.Tags.RgAlbumPeak));
+
+        var parsed = Playback.Audio.ReplayGainTags.Of(Bytes(tagged, t.Tags.RgTrackGain), Bytes(tagged, t.Tags.RgTrackPeak),
+            Bytes(tagged, t.Tags.RgAlbumGain), Bytes(tagged, t.Tags.RgAlbumPeak));
+        Assert.True(parsed.HasTrackGain);
+        Assert.True(parsed.HasAlbumGain);
+        Assert.Equal(-6.66f, parsed.TrackGainDb);
+        Assert.Equal(0.977f, parsed.TrackPeak);
+        Assert.Equal(1.25f, parsed.AlbumGainDb);
+        Assert.Equal(1.012f, parsed.AlbumPeak);
+    }
+
+    static ReadOnlySpan<byte> Bytes(byte[] file, Flac.ByteRange range) => file.AsSpan(range.Offset, range.Length);
+
+    /// <summary>N-3: with no catalogue figure, the adapter folds a LOCAL file's ReplayGain tags at +4 dB (tags are −18 LUFS, the
+    /// figures everything else uses are −14) — the track pair from the track tags, the album pair from the album tags; a
+    /// catalogue figure wins over tags; an untagged file keeps the (0, 0) it was built with.</summary>
+    [Fact]
+    public void The_adapter_folds_a_local_files_replaygain_tags_at_plus_4_db_only_when_nothing_else_carried_a_figure()
+    {
+        byte[] plain = Vector(Baseline);
+        byte[] tagged = WithComments(plain, "REPLAYGAIN_TRACK_GAIN=-6.50 dB", "REPLAYGAIN_TRACK_PEAK=0.970000",
+            "REPLAYGAIN_ALBUM_GAIN=-5.50 dB", "REPLAYGAIN_ALBUM_PEAK=0.990000");
+        Span<Flac.SeekPoint> seek = stackalloc Flac.SeekPoint[64];
+        var mix = new FluentGpu.Media.MixFormat(Open(tagged, seek).Info.SampleRate, 2);
+
+        var built = new Playback.Audio.FlacAudioDecoder(0f);
+        Assert.True(built.TryOpen(new MemorySource(tagged), mix, out _));
+        Assert.Equal((Playback.Audio.NormalizationFigures?)new Playback.Audio.NormalizationFigures(-2.5f, 0.97f, -1.5f, 0.99f),
+            ((Playback.Audio.IGainFolding)built).AppliedFigures);
+        AssertFoldsItsFigures(built);
+
+        var catalogue = new Playback.Audio.FlacAudioDecoder(-8f, 0.9f);
+        Assert.True(catalogue.TryOpen(new MemorySource(tagged), mix, out _));
+        Assert.Equal((Playback.Audio.NormalizationFigures?)new Playback.Audio.NormalizationFigures(-8f, 0.9f),
+            ((Playback.Audio.IGainFolding)catalogue).AppliedFigures);
+
+        var untagged = new Playback.Audio.FlacAudioDecoder(0f);
+        Assert.True(untagged.TryOpen(new MemorySource(plain), mix, out _));
+        Assert.Equal((Playback.Audio.NormalizationFigures?)new Playback.Audio.NormalizationFigures(0f, 0f),
+            ((Playback.Audio.IGainFolding)untagged).AppliedFigures);
+
+        // Album tags only: the track pair falls back to them rather than playing at no figure at all.
+        byte[] albumOnly = WithComments(plain, "REPLAYGAIN_ALBUM_GAIN=-5.50 dB", "REPLAYGAIN_ALBUM_PEAK=0.990000");
+        var fromAlbum = new Playback.Audio.FlacAudioDecoder(0f);
+        Assert.True(fromAlbum.TryOpen(new MemorySource(albumOnly), mix, out _));
+        Assert.Equal((Playback.Audio.NormalizationFigures?)new Playback.Audio.NormalizationFigures(-1.5f, 0.99f, -1.5f, 0.99f),
+            ((Playback.Audio.IGainFolding)fromAlbum).AppliedFigures);
+    }
+
+    /// <summary>The factor a decoder folded IS the figures it reports under the settings in force — whatever they are, so the
+    /// fact does not depend on another test's setting writes.</summary>
+    static void AssertFoldsItsFigures(Playback.Audio.FlacAudioDecoder decoder)
+    {
+        var figures = ((Playback.Audio.IGainFolding)decoder).AppliedFigures!.Value;
+        bool enabled = Platform.Settings.Get(Platform.Keys.NormalizationEnabled);
+        var mode = Playback.Audio.ModeOf(Platform.Settings.Get(Platform.Keys.NormalizationMode));
+        bool album = Platform.Settings.Get(Platform.Keys.NormalizationAlbum);
+        Assert.Equal(figures.Factor(enabled, mode, album), decoder.AppliedGainLinear);
+    }
+
+    /// <summary>A byte array behind the engine's plain sequential face — a local file, as the adapter sees one.</summary>
+    sealed class MemorySource(byte[] data) : FluentGpu.Media.IMediaByteSource
+    {
+        long _cursor;
+
+        public long? Length => data.Length;
+        public FluentGpu.Media.SourceCaps Caps => new() { Seekable = true, KnownLength = true, ExpensiveSeek = false };
+        public bool TryOpen(in FluentGpu.Media.DataSpec spec) { _cursor = Math.Max(0, spec.Position); return true; }
+
+        public int Read(Span<byte> dst)
+        {
+            if (_cursor >= data.Length) return 0;
+            int n = (int)Math.Min(dst.Length, data.Length - _cursor);
+            data.AsSpan((int)_cursor, n).CopyTo(dst);
+            _cursor += n;
+            return n;
+        }
+
+        public long Seek(long offset) => _cursor = Math.Clamp(offset, 0, data.Length);
+
+        public void Cancel() { }
+
+        public void Close() { }
+    }
+
     [Fact]
     public void Truncated_headers_report_incomplete_rather_than_invalid()
     {
@@ -994,7 +1099,16 @@ public class FlacTests
         foreach (int block in KernelLengths)
         {
             int[] planar = Noise(block * channels, (uint)(block * 7 + channels), bps);
-            // The reference is the pre-optimisation downmix, verbatim: sample × scale, then × k, then accumulate.
+            // The reference is the downmix of RFC 9639 §9.1.3's per-count channel order (P-4), written BY NAME so it does not share
+            // the decoder's plane indexes: FL/FR at 1, FC to both sides at k, BL/SL to L and BR/SR to R at k, BC to both at 0.5,
+            // LFE dropped. Each weight multiplies in the scalar path's order — (sample × scale) × k — and accumulates in the fixed
+            // order FL, FC, the first surround pair, the second pair, BC, so the three paths must agree to the BIT.
+            string[] names = ChannelOrder[channels];
+            int Plane(string name) => Array.IndexOf(names, name);
+            int fc = Plane("FC"), bc = Plane("BC");
+            var pairs = new List<(int L, int R)>();
+            foreach ((string l, string r) in new[] { ("BL", "BR"), ("SL", "SR") })
+                if (Plane(l) >= 0) pairs.Add((Plane(l), Plane(r)));
             var reference = new float[2 * block];
             for (int i = 0; i < block; i++)
             {
@@ -1005,19 +1119,15 @@ public class FlacTests
                 }
                 else
                 {
-                    left = planar[i] * scale;
-                    right = planar[block + i] * scale;
-                    if (channels >= 3) { float c = planar[2 * block + i] * scale * k; left += c; right += c; }
-                    if (channels >= 5)
+                    left = planar[Plane("FL") * block + i] * scale;
+                    right = planar[Plane("FR") * block + i] * scale;
+                    if (fc >= 0) { float c = planar[fc * block + i] * scale * k; left += c; right += c; }
+                    foreach ((int pl, int pr) in pairs)
                     {
-                        left += planar[(channels == 5 ? 3 : 4) * block + i] * scale * k;
-                        right += planar[(channels == 5 ? 4 : 5) * block + i] * scale * k;
+                        left += planar[pl * block + i] * scale * k;
+                        right += planar[pr * block + i] * scale * k;
                     }
-                    if (channels >= 7)
-                    {
-                        left += planar[(channels - 2) * block + i] * scale * k;
-                        right += planar[(channels - 1) * block + i] * scale * k;
-                    }
+                    if (bc >= 0) { float b = planar[bc * block + i] * scale * FoldBc; left += b; right += b; }
                 }
                 reference[2 * i] = left;
                 reference[2 * i + 1] = right;
@@ -1345,6 +1455,561 @@ public class FlacTests
         // kernel that fell off a cliff (a bounds check back in the Rice loop, a byte-wise refill), not to benchmark;
         // the printed number is the benchmark.
         Assert.True(realTime >= 10, $"decoded at only {realTime:N1}x real time ({perChannel:N0} samples/s per channel)");
+    }
+
+    // ── 10. playback smoothness (#167) wave 0: P-4, P-8, S-9, P-1 ───────────────────────────────────────────────────────
+    //
+    // Plan docs/plans/wavee/playback-smoothness-implementation.md §4.17 and §5. The audit's findings, in one line each:
+    //   P-4  The multichannel fold-down used one channel order for every count, so a 4-channel file's BL was treated as the centre
+    //        and its BR dropped, and a 7-channel file's channels were mis-ordered. RFC 9639 §9.1.3 fixes a DIFFERENT order per count.
+    //   P-8  The frame sync is 15 bits (0xFF, then 0b1111100 + the blocking bit); the mask was 0xFC, so a second byte of 0xFA/0xFB
+    //        — the reserved bit set — was accepted as a candidate (CRC-8, STREAMINFO and CRC-16 still rejected it, at a cost).
+    //   S-9  A seek probe whose window ended inside a candidate returned "no frame" even when a whole maximum-size frame would have
+    //        fitted — so a false sync near the window's start discarded the real frame behind it, and the seek decoded forward.
+    //   P-1  A 32-bit stereo stream coded L/S, S/R or M/S carries its side channel at 33 bits (RFC 9639 §9.2): the 32-bit reader
+    //        truncated it to full-scale garbage with a passing CRC-16. Now a 64-bit path (`ReadSignedLong`, `RestoreFixed33`,
+    //        `RestoreLpc33`, `ShiftLeftWide`, `DecorrelateWide`), and `Unsupported` is no longer emitted for it.
+
+    /// <summary>RFC 9639 §9.1.3: the channel order of each count, by name (index = channel count). 1 is mono: duplicated to both
+    /// sides, no table.</summary>
+    static readonly string[][] ChannelOrder =
+    [
+        [],
+        ["M"],
+        ["FL", "FR"],
+        ["FL", "FR", "FC"],
+        ["FL", "FR", "BL", "BR"],
+        ["FL", "FR", "FC", "BL", "BR"],
+        ["FL", "FR", "FC", "LFE", "BL", "BR"],
+        ["FL", "FR", "FC", "LFE", "BC", "SL", "SR"],
+        ["FL", "FR", "FC", "LFE", "BL", "BR", "SL", "SR"],
+    ];
+
+    /// <summary>−3 dB for FC and every surround / side channel; 0.5 for BC, to EACH side.</summary>
+    const float FoldK = 0.7071f, FoldBc = 0.5f;
+
+    /// <summary>What a channel contributes to (left, right) in the stereo downmix.</summary>
+    static (float L, float R) FoldWeight(string name) => name switch
+    {
+        "FL" => (1f, 0f),
+        "FR" => (0f, 1f),
+        "FC" => (FoldK, FoldK),
+        "BL" or "SL" => (FoldK, 0f),
+        "BR" or "SR" => (0f, FoldK),
+        "BC" => (FoldBc, FoldBc),
+        _ => (0f, 0f),                                                       // LFE is dropped
+    };
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    public void Every_channel_lands_on_the_sides_its_rfc_position_says(int channels)
+    {
+        // One channel at half scale and the rest silent, per channel: where does it come out? The decoder's table is the thing
+        // under test, so the expectation is built from the NAMES in the RFC's order, not from plane indexes.
+        string[] names = ChannelOrder[channels];
+        Assert.Equal(channels, names.Length);
+        const int bps = 24, block = 4, level = 1 << 22;                      // 0.5 of full scale at 24 bit
+        for (int c = 0; c < channels; c++)
+        {
+            var planar = new int[channels * block];
+            planar[c * block] = level;
+            var dst = new float[2 * block];
+            Flac.ToFloatMulti(planar, channels, block, bps, 1f, dst);
+
+            (float wl, float wr) = FoldWeight(names[c]);
+            Assert.True(Math.Abs(0.5f * wl - dst[0]) < 1e-6f, $"{channels} ch: {names[c]} (plane {c}) came out {dst[0]} on the left, expected {0.5f * wl}");
+            Assert.True(Math.Abs(0.5f * wr - dst[1]) < 1e-6f, $"{channels} ch: {names[c]} (plane {c}) came out {dst[1]} on the right, expected {0.5f * wr}");
+            for (int i = 2; i < dst.Length; i++) Assert.True(dst[i] == 0f, $"{channels} ch: {names[c]} leaked into sample {i / 2}");
+        }
+    }
+
+    [Fact]
+    public void The_four_and_seven_channel_layouts_are_not_the_old_orders()
+    {
+        // The two counts the old single table got wrong, stated directly. 4 = FL FR BL BR: plane 2 is BL (left only, NOT a centre).
+        var four = new int[4 * 4];
+        four[2 * 4] = 1 << 22;
+        var dst = new float[8];
+        Flac.ToFloatMulti(four, 4, 4, 24, 1f, dst);
+        Assert.True(dst[0] > 0.3f && dst[1] == 0f, $"4 ch: BL must reach the left only (was a centre): L {dst[0]} R {dst[1]}");
+        Array.Clear(four);
+        four[3 * 4] = 1 << 22;                                              // BR: was DROPPED
+        Flac.ToFloatMulti(four, 4, 4, 24, 1f, dst);
+        Assert.True(dst[1] > 0.3f && dst[0] == 0f, $"4 ch: BR must reach the right only (was dropped): L {dst[0]} R {dst[1]}");
+
+        // 7 = FL FR FC LFE BC SL SR: plane 3 is the LFE (dropped), plane 4 the back CENTRE (0.5 to each side).
+        var seven = new int[7 * 4];
+        seven[3 * 4] = 1 << 22;
+        Flac.ToFloatMulti(seven, 7, 4, 24, 1f, dst);
+        Assert.True(dst[0] == 0f && dst[1] == 0f, "7 ch: the LFE is dropped");
+        Array.Clear(seven);
+        seven[4 * 4] = 1 << 22;
+        Flac.ToFloatMulti(seven, 7, 4, 24, 1f, dst);
+        Assert.True(Math.Abs(dst[0] - 0.25f) < 1e-6f && Math.Abs(dst[1] - 0.25f) < 1e-6f, $"7 ch: BC is 0.5 to each side: L {dst[0]} R {dst[1]}");
+    }
+
+    // P-8: the sync code is fifteen bits.
+
+    [Theory]
+    [InlineData(0xF8, true)]                                                // fixed blocking
+    [InlineData(0xF9, true)]                                                // variable blocking
+    [InlineData(0xFA, false)]                                               // the reserved bit set: the 0xFC mask accepted these two
+    [InlineData(0xFB, false)]
+    [InlineData(0xFC, false)]
+    [InlineData(0xFE, false)]
+    [InlineData(0xFF, false)]
+    [InlineData(0xF0, false)]
+    public void The_sync_code_is_fifteen_bits_not_fourteen(int second, bool accepted)
+    {
+        var si = new Flac.StreamInfo { MinBlock = 16, MaxBlock = 4096, SampleRate = 44100, Channels = 2, Bps = 16 };
+        byte[] header = HandHeader(12, 9, 1, 4, 0);
+        header[1] = (byte)second;
+        header[^1] = (byte)Flac.Crc8(header.AsSpan(0, header.Length - 1));    // a VALID CRC-8: only the sync code is wrong
+
+        Assert.Equal(accepted, Flac.LooksLikeHeader(header));
+        Flac.HeaderResult parsed = Flac.ParseFrameHeader(header, si, out _);
+        Assert.Equal(accepted ? Flac.HeaderResult.Ok : Flac.HeaderResult.NotSync, parsed);
+        Assert.Equal(accepted ? 0 : -1, Flac.FindHeader(header, 0, si, out _));
+    }
+
+    // S-9: a probe window that ends inside a candidate.
+
+    /// <summary>The probe fixture: a REAL frame (the third of a 4-frame variable-blocking file, 64 samples each), STREAMINFO with
+    /// its block ceiling raised to 4096 (so a hand-built 4096-sample header is "consistent"), and a false candidate: a header
+    /// with a valid CRC-8 whose first subframe is a VERBATIM one that would need 8 KiB — it can only ever overrun a window.</summary>
+    static (Flac.StreamInfo Si, byte[] Real, long RealSample, byte[] FalseHeader, int RealFrameBytes) ProbeFixture(uint maxFrame)
+    {
+        int[][][] frames = new int[4][][];
+        for (int f = 0; f < frames.Length; f++)
+            frames[f] = [Noise(64, (uint)(f * 11 + 3), 16), Noise(64, (uint)(f * 17 + 5), 16)];
+        byte[] file = Synthetic(44100, 16, 0, frames, variable: true, minBlock: 0, maxBlock: 0);
+        Span<Flac.SeekPoint> seek = stackalloc Flac.SeekPoint[4];
+        Flac.Headers h = Open(file, seek);
+
+        var dec = new Flac.Decoder();
+        dec.Open(h.Info);
+        int at = FrameOffset(file, h, dec, 2);
+        Assert.Equal(Flac.FrameResult.Ok, dec.DecodeFrame(file.AsSpan(at), out int length, out Flac.Block block));
+        Flac.StreamInfo si = h.Info;
+        si.MaxBlock = 4096;
+        si.MaxFrame = maxFrame;
+        return (si, file.AsSpan(at, length).ToArray(), block.SampleNumber, HandHeader(12, 9, 1, 4, 0), length);
+    }
+
+    /// <summary>[false header][0x02 0x00 …: a VERBATIM 16-bit subframe head and filler][the real frame][tail zeros].</summary>
+    static byte[] ProbeWindow(byte[] falseHeader, byte[] real, int gap, int tail)
+    {
+        var window = new byte[falseHeader.Length + gap + real.Length + tail];
+        falseHeader.CopyTo(window, 0);
+        window[falseHeader.Length] = 0x02;                                    // pad 0, type 000001 (VERBATIM), no wasted bits
+        real.CopyTo(window, falseHeader.Length + gap);
+        return window;
+    }
+
+    [Fact]
+    public void A_false_sync_that_runs_off_the_window_with_room_to_spare_is_skipped_and_the_real_frame_behind_it_is_found()
+    {
+        var (si, real, realSample, falseHeader, realBytes) = ProbeFixture(maxFrame: 0);
+        si.MaxFrame = (uint)realBytes + 32;                                  // a plausible STREAMINFO ceiling: ~300 bytes
+        const int gap = 24;
+        byte[] window = ProbeWindow(falseHeader, real, gap, tail: 64);
+        Assert.True(window.Length >= si.MaxFrame, "fixture: the window holds a whole maximum-size frame from the false candidate");
+
+        var dec = new Flac.Decoder();
+        dec.Open(si);
+        Assert.Equal(Flac.FrameResult.Overrun, dec.DecodeFrame(window, out _, out _));   // the candidate IS an overrun…
+
+        Flac.SeekPlan plan = Flac.BeginSeek(si, Array.Empty<Flac.SeekPoint>(), 0, 1_000_000, realSample + 5);
+        Flac.ProbeResult result = Flac.Observe(ref plan, dec, window, windowOffset: 5_000);
+
+        // …and with a whole frame's room behind it, a REAL frame could not have overrun: it is a false sync (the CRC-16 would have
+        // said so had the window been longer). Before S-9 this was NoFrame and the seek decoded forward from the bracket.
+        Assert.Equal(Flac.ProbeResult.Found, result);
+        Assert.Equal(5_000L + falseHeader.Length + gap, plan.Offset);
+        Assert.Equal(realSample, plan.Sample);
+        Assert.True(plan.Resolved);
+    }
+
+    [Fact]
+    public void A_candidate_with_fewer_than_max_frame_bytes_left_is_no_frame_because_a_real_frame_could_be_cut()
+    {
+        var (si, real, _, falseHeader, realBytes) = ProbeFixture(maxFrame: 0);
+        si.MaxFrame = (uint)realBytes + 32;
+        byte[] window = ProbeWindow(falseHeader, real, gap: 24, tail: 64);
+        byte[] shortened = window.AsSpan(0, (int)si.MaxFrame - 1).ToArray();   // one byte short of a whole maximum-size frame
+
+        var dec = new Flac.Decoder();
+        dec.Open(si);
+        Flac.SeekPlan plan = Flac.BeginSeek(si, Array.Empty<Flac.SeekPoint>(), 0, 1_000_000, 100);
+        Assert.Equal(Flac.ProbeResult.NoFrame, Flac.Observe(ref plan, dec, shortened, windowOffset: 0));   // the caller reads a bigger or later window
+        Assert.Equal(0, plan.Probes);                                         // (Observe never counts probes: TryNextProbe does)
+    }
+
+    [Fact]
+    public void A_real_frame_cut_by_the_window_is_no_frame_and_a_whole_one_is_found()
+    {
+        var (si, real, realSample, _, realBytes) = ProbeFixture(maxFrame: 0);
+        si.MaxFrame = (uint)realBytes + 32;
+        var dec = new Flac.Decoder();
+        dec.Open(si);
+
+        Flac.SeekPlan cutPlan = Flac.BeginSeek(si, Array.Empty<Flac.SeekPoint>(), 0, 1_000_000, realSample);
+        Assert.Equal(Flac.ProbeResult.NoFrame, Flac.Observe(ref cutPlan, dec, real.AsSpan(0, real.Length / 2), windowOffset: 0));
+
+        Flac.SeekPlan wholePlan = Flac.BeginSeek(si, Array.Empty<Flac.SeekPoint>(), 0, 1_000_000, realSample);
+        Assert.Equal(Flac.ProbeResult.Found, Flac.Observe(ref wholePlan, dec, real, windowOffset: 777));
+        Assert.Equal(777L, wholePlan.Offset);
+        Assert.Equal(realSample, wholePlan.Sample);
+    }
+
+    [Fact]
+    public void An_unknown_max_frame_makes_every_overrun_skippable()
+    {
+        // STREAMINFO's max frame size is 0 when the encoder did not write it (xiph vector 46): then there is no "a whole frame would
+        // have fitted" to measure, and an Overrun is a false sync like any other.
+        var (si, real, realSample, falseHeader, _) = ProbeFixture(maxFrame: 0);
+        Assert.Equal(0u, si.MaxFrame);
+        byte[] window = ProbeWindow(falseHeader, real, gap: 24, tail: 64);
+
+        var dec = new Flac.Decoder();
+        dec.Open(si);
+        Flac.SeekPlan plan = Flac.BeginSeek(si, Array.Empty<Flac.SeekPoint>(), 0, 1_000_000, realSample + 5);
+        Assert.Equal(Flac.ProbeResult.Found, Flac.Observe(ref plan, dec, window, windowOffset: 0));
+        Assert.Equal((long)(falseHeader.Length + 24), plan.Offset);
+    }
+
+    // P-1: the 33-bit side channel of a 32-bit stereo stream.
+
+    /// <summary>A 32-bit STEREO stream of ONE frame with the side channel written at its true 33 bits — what the suite's
+    /// <see cref="Synthetic"/> cannot do (it computes the side in <c>int</c>, which wraps, and writes at most 32 bits).
+    /// <paramref name="assignment"/> 1/2/3 = left/side, side/right, mid/side. The side is VERBATIM (33 bits) or, with
+    /// <paramref name="fixedSide"/>, a FIXED order-1 predictor whose residuals are one escaped partition of 16-bit values (so the
+    /// data must be a slow ramp: side[i] − side[i−1] fits 16 bits) — the wide path's <c>RestoreFixed33</c>.</summary>
+    static byte[] SyntheticWide(int assignment, int[] left, int[] right, bool fixedSide)
+    {
+        int n = left.Length;
+        var side = new long[n];
+        for (int i = 0; i < n; i++) side[i] = (long)left[i] - right[i];       // −(2^32 − 1) .. 2^32 − 1: 33 bits
+
+        var packed = new byte[n * 8];
+        for (int i = 0; i < n; i++)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(packed.AsSpan(i * 8), left[i]);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(packed.AsSpan(i * 8 + 4), right[i]);
+        }
+        byte[] md5 = MD5.HashData(packed);
+
+        var info = new BitWriter();
+        info.Write((uint)n, 16);
+        info.Write((uint)n, 16);
+        info.Write(0, 24);
+        info.Write(0, 24);
+        info.Write(44100, 20);
+        info.Write(1, 3);                                                    // two channels
+        info.Write(31, 5);                                                   // 32 bits per sample
+        info.Write(0, 4);
+        info.Write((uint)n, 32);
+
+        var output = new List<byte>();
+        Push(output, "fLaC"u8);
+        output.Add(0x80);
+        output.Add(0);
+        output.Add(0);
+        output.Add(Flac.StreamInfoBytes);
+        Push(output, info.ToArray());
+        Push(output, md5);
+
+        var w = new BitWriter();
+        w.Write(0xFF, 8);
+        w.Write(0xF8, 8);                                                    // fixed blocking
+        w.Write(0x70, 8);                                                    // block size code 7, rate from STREAMINFO
+        w.Write((uint)(assignment + 7) << 4, 8);                             // 8 = L/S, 9 = S/R, 10 = M/S; depth from STREAMINFO
+        WriteCodedNumber(w, 0);
+        w.Write((uint)(n - 1) >> 8, 8);
+        w.Write((uint)(n - 1) & 0xFF, 8);
+        w.Write(Flac.Crc8(w.ToArray()), 8);
+
+        void Narrow(int[] samples)
+        {
+            w.Write(0, 1);
+            w.Write(1, 6);                                                   // VERBATIM
+            w.Write(0, 1);
+            foreach (int s in samples) w.WriteSigned(s, 32);
+        }
+
+        void Side()
+        {
+            w.Write(0, 1);
+            if (!fixedSide)
+            {
+                w.Write(1, 6);                                               // VERBATIM, 33 bits per sample
+                w.Write(0, 1);
+                foreach (long s in side) w.WriteLong(s, 33);
+                return;
+            }
+            w.Write(9, 6);                                                   // FIXED, order 1
+            w.Write(0, 1);
+            w.WriteLong(side[0], 33);                                        // the warm-up
+            w.Write(0, 2);                                                   // Rice method 0
+            w.Write(0, 4);                                                   // partition order 0: one partition
+            w.Write(15, 4);                                                  // the escape code: raw residuals…
+            w.Write(16, 5);                                                  // …of 16 bits
+            for (int i = 1; i < n; i++) w.WriteSigned(checked((int)(side[i] - side[i - 1])), 16);
+        }
+
+        switch (assignment)
+        {
+            case 1: Narrow(left); Side(); break;
+            case 2: Side(); Narrow(right); break;
+            default:
+                var mid = new int[n];
+                for (int i = 0; i < n; i++) mid[i] = (int)(((long)left[i] + right[i]) >> 1);
+                Narrow(mid);
+                Side();
+                break;
+        }
+        w.AlignToByte();
+        w.Write(Flac.Crc16(w.ToArray()), 16);
+        Push(output, w.ToArray());
+        return output.ToArray();
+    }
+
+    /// <summary>Full-scale 32-bit extremes first (both signs of the 33-bit side: ±(2^32 − 1)), then noise across the whole range.</summary>
+    static (int[] Left, int[] Right) FullScalePair(int n)
+    {
+        int[] l = Noise(n, 101, 32), r = Noise(n, 202, 32);
+        l[0] = int.MinValue; r[0] = int.MaxValue;                            // side = −(2^32 − 1)
+        l[1] = int.MaxValue; r[1] = int.MinValue;                            // side = 2^32 − 1
+        l[2] = int.MinValue; r[2] = int.MinValue;                            // side = 0
+        l[3] = int.MaxValue; r[3] = int.MaxValue;
+        l[4] = 0; r[4] = int.MinValue;                                       // side = 2^31: the first value an int cannot hold
+        return (l, r);
+    }
+
+    /// <summary>A slow ramp whose side channel sits near +2^32 (the 33rd bit is set from the first sample) and whose
+    /// sample-to-sample step is 1000: a FIXED order-1 side channel with 16-bit residuals.</summary>
+    static (int[] Left, int[] Right) RampPair(int n)
+    {
+        var l = new int[n];
+        var r = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            r[i] = -1_950_000_000 - 100 * i;
+            l[i] = 2_050_000_000 + 900 * i;                                   // side = 4_000_000_000 + 1000 i
+        }
+        return (l, r);
+    }
+
+    [Theory]
+    [InlineData(1, false, false)]               // full-scale noise, VERBATIM 33-bit side: left/side
+    [InlineData(2, false, false)]               // side/right
+    [InlineData(3, false, false)]               // mid/side
+    [InlineData(1, true, false)]                // a ramp near +2^32, VERBATIM side
+    [InlineData(2, true, false)]
+    [InlineData(3, true, false)]
+    [InlineData(1, true, true)]                 // the same ramp, FIXED order-1 side: RestoreFixed33 inside DecodeFrame
+    [InlineData(2, true, true)]
+    [InlineData(3, true, true)]
+    public void A_32_bit_stereo_stream_decodes_bit_exactly_through_the_33_bit_side_channel(int assignment, bool ramp, bool fixedSide)
+    {
+        if (fixedSide) Assert.True(ramp, "fixture: the FIXED side needs the slow ramp (16-bit residuals)");
+        const int n = 64;
+        (int[] left, int[] right) = ramp ? RampPair(n) : FullScalePair(n);
+        byte[] file = SyntheticWide(assignment, left, right, fixedSide);
+
+        Span<Flac.SeekPoint> seek = stackalloc Flac.SeekPoint[4];
+        Flac.Headers h = Open(file, seek);
+        Assert.Equal(32, h.Info.Bps);
+        Assert.Equal(2, h.Info.Channels);
+
+        var dec = new Flac.Decoder();
+        dec.Open(h.Info);
+        Assert.Equal(n, dec.WideLongs);                                       // the 33-bit block exists for exactly this shape
+
+        Flac.FrameResult result = dec.DecodeFrame(file.AsSpan(h.FirstFrame), out int consumed, out Flac.Block block);
+        Assert.Equal(Flac.FrameResult.Ok, result);                            // not Unsupported (and not garbage with a passing CRC)
+        Assert.Equal(file.Length - h.FirstFrame, consumed);
+        Assert.Equal(left, block.Channel(0).ToArray());
+        Assert.Equal(right, block.Channel(1).ToArray());
+
+        using var md5 = new Flac.Md5Verifier();
+        md5.Append(in block);
+        Assert.True(md5.Matches(in h.Info), $"assignment {assignment}, ramp={ramp}, fixed={fixedSide}: MD5 mismatch");
+    }
+
+    [Fact]
+    public void The_wide_block_exists_only_for_a_32_bit_stereo_stream()
+    {
+        Span<Flac.SeekPoint> seek = stackalloc Flac.SeekPoint[4];
+        int[] noise = Noise(64, 7, 32);
+        int[] noise2 = Noise(64, 8, 32);
+
+        // 32-bit stereo (even with INDEPENDENT channels: the shape decides, the assignment is not known at Open): a block's worth.
+        Flac.Headers stereo32 = Open(Synthetic(44100, 32, 0, [[noise, noise2]], variable: false, minBlock: 0, maxBlock: 0), seek);
+        var wide = new Flac.Decoder();
+        wide.Open(stereo32.Info);
+        Assert.Equal(64, wide.WideLongs);
+
+        // 32-bit MONO: no side channel.
+        Flac.Headers mono32 = Open(Synthetic(44100, 32, 0, [[noise]], variable: false, minBlock: 0, maxBlock: 0), seek);
+        var mono = new Flac.Decoder();
+        mono.Open(mono32.Info);
+        Assert.Equal(0, mono.WideLongs);
+
+        // 24-bit stereo: the side channel fits 25 bits, an int is enough.
+        Flac.Headers stereo24 = Open(Synthetic(44100, 24, 0, [[Noise(64, 9, 24), Noise(64, 10, 24)]], variable: false, minBlock: 0, maxBlock: 0), seek);
+        var narrow = new Flac.Decoder();
+        narrow.Open(stereo24.Info);
+        Assert.Equal(0, narrow.WideLongs);
+
+        // A real 16-bit stereo vector.
+        byte[] bytes = Vector(Baseline);
+        Flac.Headers cd = Open(bytes, stackalloc Flac.SeekPoint[64]);
+        var cdDecoder = new Flac.Decoder();
+        cdDecoder.Open(cd.Info);
+        Assert.Equal(0, cdDecoder.WideLongs);
+
+        // Independent 32-bit stereo still decodes (the narrow path: no side channel in the frame).
+        byte[] independent = Synthetic(44100, 32, 0, [[noise, noise2]], variable: false, minBlock: 0, maxBlock: 0);
+        Assert.Equal(Flac.FrameResult.Ok, wide.DecodeFrame(independent.AsSpan(stereo32.FirstFrame), out _, out Flac.Block block));
+        Assert.Equal(noise, block.Channel(0).ToArray());
+        Assert.Equal(noise2, block.Channel(1).ToArray());
+    }
+
+    [Fact]
+    public void ReadSignedLong_sign_extends_every_width_from_one_to_sixty_four_bits()
+    {
+        byte[] bytes = new byte[256];
+        uint x = 0xC0FFEE | 1;
+        for (int i = 0; i < bytes.Length; i++) { x ^= x << 13; x ^= x >> 17; x ^= x << 5; bytes[i] = (byte)x; }
+        bytes.AsSpan(40, 16).Fill(0xFF);                                      // all-ones: −1 at every width
+        bytes.AsSpan(60, 16).Clear();
+
+        var r = new Flac.BitReader(bytes, 0);
+        long bit = 0;
+        int[] widths = [33, 1, 33, 2, 40, 5, 33, 64, 34, 7, 33, 63, 32, 33, 17, 33];
+        for (int round = 0; round < 5; round++)
+            foreach (int width in widths)
+            {
+                if (bit + width > 8L * bytes.Length) return;
+                ulong raw = 0;
+                for (int k = 0; k < width; k++) raw = (raw << 1) | (uint)RefBit(bytes, bit + k);
+                long expected = width == 64 ? (long)raw : (long)(raw << (64 - width)) >> (64 - width);
+                Assert.Equal(expected, r.ReadSignedLong(width));
+                Assert.False(r.Overrun);
+                bit += width;
+            }
+    }
+
+    [Fact]
+    public void RestoreFixed33_matches_the_plain_polynomials_in_64_bit_for_orders_zero_to_four()
+    {
+        for (int order = 0; order <= 4; order++)
+            foreach (int n in new[] { 5, 15, 16, 17, 300 })
+            {
+                var res = Noise(n, (uint)(order * 31 + n), 16);                // 16-bit residuals…
+                var start = new long[n];
+                long[] warm = [4_294_967_295L, -4_294_967_296L, 2_147_483_648L, -2_147_483_649L];   // …on 33-bit warm-ups
+                for (int i = 0; i < order; i++) start[i] = warm[i];
+
+                var expected = (long[])start.Clone();
+                for (int i = order; i < n; i++)
+                {
+                    long prediction = order switch
+                    {
+                        0 => 0,
+                        1 => expected[i - 1],
+                        2 => 2 * expected[i - 1] - expected[i - 2],
+                        3 => 3 * expected[i - 1] - 3 * expected[i - 2] + expected[i - 3],
+                        _ => 4 * expected[i - 1] - 6 * expected[i - 2] + 4 * expected[i - 3] - expected[i - 4],
+                    };
+                    expected[i] = res[i] + prediction;
+                }
+
+                var actual = (long[])start.Clone();
+                Flac.RestoreFixed33(actual, res, order);
+                Assert.True(expected.AsSpan().SequenceEqual(actual), $"RestoreFixed33 order {order} n={n}");
+            }
+    }
+
+    [Fact]
+    public void RestoreLpc33_matches_the_plain_recurrence_in_64_bit_for_every_order()
+    {
+        for (int order = 1; order <= Flac.MaxLpcOrder; order++)
+            foreach (int n in new[] { order + 3, order + 14, 300 })
+            {
+                int[] coefs = Noise(order, (uint)(order * 13 + n), 12);
+                var res = Noise(n, (uint)(order * 7 + n), 16);
+                var start = new long[n];
+                for (int i = 0; i < order; i++) start[i] = (i & 1) == 0 ? 4_294_967_295L - i : -4_294_967_296L + i;   // 33-bit warm-ups
+
+                var expected = (long[])start.Clone();
+                for (int i = order; i < n; i++)
+                {
+                    long sum = 0;
+                    for (int j = 0; j < order; j++) sum += (long)coefs[j] * expected[i - 1 - j];
+                    expected[i] = res[i] + (sum >> 9);
+                }
+
+                var actual = (long[])start.Clone();
+                Flac.RestoreLpc33(actual, res, coefs, 9);
+                Assert.True(expected.AsSpan().SequenceEqual(actual), $"RestoreLpc33 order {order} n={n}");
+            }
+    }
+
+    [Fact]
+    public void ShiftLeftWide_shifts_in_64_bit_for_every_wasted_bit_count_a_33_bit_channel_allows()
+    {
+        // wasted ≥ bps is rejected by the subframe header, and bps is 33 here: 1..32 wasted bits.
+        for (int bits = 0; bits <= 32; bits++)
+        {
+            long[] input = [1, -1, 0, 3, -3, 0x7FFF_FFFF, -0x8000_0000L, 1L << 31];
+            var expected = new long[input.Length];
+            for (int i = 0; i < input.Length; i++) expected[i] = input[i] << bits;
+            var actual = (long[])input.Clone();
+            Flac.ShiftLeftWide(actual, bits);
+            Assert.True(expected.AsSpan().SequenceEqual(actual), $"ShiftLeftWide by {bits}");
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void DecorrelateWide_restores_the_original_pair_at_full_scale(int assignment)
+    {
+        (int[] left, int[] right) = FullScalePair(64);
+        int n = left.Length;
+        var side = new long[n];
+        for (int i = 0; i < n; i++) side[i] = (long)left[i] - right[i];
+
+        var ch0 = new int[n];
+        var ch1 = new int[n];
+        for (int i = 0; i < n; i++)
+            switch (assignment)
+            {
+                case 1: ch0[i] = left[i]; ch1[i] = 0x5A5A5A5A; break;                   // L/S: the narrow channel is the left
+                case 2: ch0[i] = 0x5A5A5A5A; ch1[i] = right[i]; break;                  // S/R: the narrow channel is the right
+                default: ch0[i] = (int)(((long)left[i] + right[i]) >> 1); ch1[i] = 0x5A5A5A5A; break;   // M/S: mid
+            }
+
+        Flac.DecorrelateWide((byte)assignment, ch0, ch1, side);
+
+        Assert.Equal(left, ch0);
+        Assert.Equal(right, ch1);
+
+        // Anything that is not 1..3 is not a decorrelation: a no-op.
+        var a = new[] { 1, 2, 3 };
+        var b = new[] { 4, 5, 6 };
+        Flac.DecorrelateWide(0, a, b, new long[] { 9, 9, 9 });
+        Flac.DecorrelateWide(4, a, b, new long[] { 9, 9, 9 });
+        Assert.Equal(new[] { 1, 2, 3 }, a);
+        Assert.Equal(new[] { 4, 5, 6 }, b);
     }
 
     /// <summary>Deterministic xorshift noise, signed, spanning the whole <paramref name="bps"/>-bit range.</summary>
@@ -1677,6 +2342,17 @@ public class FlacTests
 
         public void WriteSigned(int value, int bits)
             => Write(bits >= 32 ? (uint)value : (uint)value & ((1u << bits) - 1), bits);
+
+        /// <summary>Two's-complement <paramref name="bits"/> (1..64) of a 64-bit value, MSB first — the 33-bit side channel's
+        /// samples (P-1), which <see cref="Write"/> (a 32-bit value) cannot carry.</summary>
+        public void WriteLong(long value, int bits)
+        {
+            for (int i = bits - 1; i >= 0; i--)
+            {
+                _acc = (_acc << 1) | (int)(((ulong)value >> i) & 1);
+                if (++_n == 8) { _bytes.Add((byte)_acc); _acc = 0; _n = 0; }
+            }
+        }
 
         public void AlignToByte()
         {

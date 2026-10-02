@@ -66,6 +66,11 @@ public static partial class Playback
         public const int FastSize = 1 << FastBits;
         public const uint Miss = 0xFFFF_FFFFu;
         public const int MaxCodeLen = 32;
+        /// <summary>P-11: the setup's allocation ceilings, checked BEFORE anything is allocated. A 24-bit entry count (or a
+        /// 16-bit dimension) lets a 15-byte header ask for tens of MB; real encoders' books are a few thousand entries and
+        /// their whole VQ table a few hundred thousand floats, so these are 20×+ above any real file yet keep one hostile
+        /// <c>Open</c> well under 32 MiB.</summary>
+        public const int MaxBookEntries = 1 << 19, MaxLookupValues = 1 << 19, MaxVqFloats = 1 << 20, MaxSortedEntries = 1 << 19;
         /// <summary>Floor 1 posts: 2 + 31 partitions × 8 dimensions.</summary>
         public const int MaxPosts = 2 + 31 * 8;
         /// <summary>Floor 0 per-channel scratch: amplitude + ≤ 255 coefficients + their cosines.</summary>
@@ -604,8 +609,18 @@ public static partial class Playback
 
         /// <summary>§6.2.3 floor 0 curve, multiplied into the spectrum. The one place on the packet path that calls
         /// MathF (a cosine per coefficient and an exp per bark band): floor 0 has not been produced by libvorbis
-        /// since 2002, stb refuses it, and it is here only so a dropped file of that age plays.</summary>
-        static void RenderFloor0(Floor* f, float* coef, float* spec, int n2, int* map, float* cosw)
+        /// since 2002, stb refuses it, and it is here only so a dropped file of that age plays.
+        /// <para>PUBLIC AND PURE (P-2): it reads only its arguments — no decoder state — so a test can render a
+        /// synthetic floor against the spec's pseudocode evaluated in <c>double</c> (the Xiph vectors carry no floor
+        /// 0). <paramref name="f"/> supplies <c>Order</c>, <c>AmplitudeBits</c> and <c>AmplitudeOffset</c>;
+        /// <paramref name="coef"/> is the <see cref="Floor0Stride"/>-float per-channel scratch — [0] the amplitude
+        /// (non-zero), [1..Order] the LSP coefficients as <see cref="DecodeFloor0"/> leaves them — and the cosines of
+        /// the coefficients are written into [1+Order..1+2·Order); <paramref name="map"/> and
+        /// <paramref name="cosw"/> are the §6.2.3 bark map and cos ω per spectrum line for the block (n2 entries,
+        /// <c>cosw[i] = cos(π·map[i] / BarkMapSize)</c>); <paramref name="spec"/> is multiplied in place.</para>
+        /// <para>EVEN ORDER carries the spec's ½: <c>p = (1 − cos ω)/2 ∏ …</c>, <c>q = (1 + cos ω)/2 ∏ …</c>. The
+        /// odd branch has its own ¼ in <c>q</c> and is unchanged.</para></summary>
+        public static void RenderFloor0(Floor* f, float* coef, float* spec, int n2, int* map, float* cosw)
         {
             int order = f->Order;
             float* cc = coef + 1 + order;
@@ -626,8 +641,8 @@ public static partial class Playback
                 }
                 else
                 {
-                    p = 1f - w;
-                    q = 1f + w;
+                    p = 0.5f * (1f - w);                        // Vorbis I §6.2.3: the ½ the spec writes as /2
+                    q = 0.5f * (1f + w);
                     for (int j = 0; j <= (order - 2) / 2; j++)
                     {
                         float tp = cc[2 * j + 1] - w, tq = cc[2 * j] - w;
@@ -1424,6 +1439,9 @@ public static partial class Playback
 
             int _ch, _rate, _n0, _n1, _modeBits, _bookCount, _floorCount, _residueCount, _mappingCount, _modeCount;
             bool _open;
+            // V-PA35: the tables for `SetupHash` are built (a failed or never-run Open leaves it false, so a hash can never name
+            // half-built tables).
+            bool _built;
             float _gain = 1f;
 
             // pointers, taken once at the end of Open
@@ -1462,12 +1480,44 @@ public static partial class Playback
             /// <summary>Bytes held by this decoder's arrays after Open — the number the allocation table states.</summary>
             public long AllocatedBytes { get; private set; }
 
+            /// <summary>64-bit FNV-1a over the identification and setup header bytes (lengths mixed in, so the concatenation is
+            /// unambiguous) of the setup this decoder's tables were last BUILT from; 0 before any successful <see cref="Open"/>
+            /// (and after a failed one). The pool (<c>Playback.Audio.VorbisDecoderPool</c>) rents by it: the decoder whose
+            /// hash matches skips the whole parse (V-PA35).</summary>
+            public ulong SetupHash { get; private set; }
+
+            /// <summary>The hash <see cref="Open"/> stores in <see cref="SetupHash"/> — pure, so the adapter can ask the pool for a
+            /// matching decoder BEFORE it opens one. Never 0 (0 means "no tables").</summary>
+            public static ulong HashSetup(ReadOnlySpan<byte> identification, ReadOnlySpan<byte> setup)
+            {
+                const ulong Basis = 14695981039346656037UL, Prime = 1099511628211UL;
+                ulong h = Basis;
+                h = (h ^ (uint)identification.Length) * Prime;
+                for (int i = 0; i < identification.Length; i++) h = (h ^ identification[i]) * Prime;
+                h = (h ^ (uint)setup.Length) * Prime;
+                for (int i = 0; i < setup.Length; i++) h = (h ^ setup[i]) * Prime;
+                return h == 0 ? 1UL : h;
+            }
+
             /// <summary>Parse the identification and setup headers and size every buffer (the ONLY allocation site).
-            /// The comment header is not needed here. False on any header this decoder cannot play.</summary>
+            /// The comment header is not needed here. False on any header this decoder cannot play. A setup whose
+            /// <see cref="HashSetup"/> equals <see cref="SetupHash"/> (tables already built from exactly these bytes) skips the
+            /// parse: only the overlap state is reset and the gain stored — the cost of a second decoder opened on the same
+            /// track (a seek's voice swap, a scrub) drops to the lapping reset (V-PA35).</summary>
             public bool Open(ReadOnlySpan<byte> identification, ReadOnlySpan<byte> setup, float gainLinear = 1f)
             {
                 _open = false;
                 Frames = 0;
+                ulong hash = HashSetup(identification, setup);
+                if (_built && hash == SetupHash)
+                {
+                    _gain = gainLinear;
+                    _open = true;
+                    Prime();
+                    return true;
+                }
+                _built = false;
+                SetupHash = 0;
                 if (!TryParseIdentification(identification, out Identification id)) return false;
                 if (HeaderType(setup) != 5) return false;
                 _ch = id.Channels;
@@ -1484,6 +1534,8 @@ public static partial class Playback
                 if (!ok) return false;
                 AllocateStreamBuffers();
                 _open = true;
+                _built = true;
+                SetupHash = hash;
                 Prime();
                 return true;
             }
@@ -1738,7 +1790,7 @@ public static partial class Playback
                 *b = default;
                 if (r.Read(24) != 0x56_4342) return false;                          // "BCV"
                 int dims = (int)r.Read(16), entries = (int)r.Read(24);
-                if (r.Overrun || (dims == 0 && entries != 0)) return false;
+                if (r.Overrun || (dims == 0 && entries != 0) || entries > MaxBookEntries) return false;   // P-11: before any scratch grows
                 b->Dims = dims;
                 b->Entries = entries;
                 b->VqOff = -1;
@@ -1769,6 +1821,7 @@ public static partial class Playback
                 if (!BuildCodewords(lens, codes)) return false;
                 int longCount = 0;
                 for (int j = 0; j < entries; j++) if (lens[j] > FastBits) longCount++;
+                if ((long)sortedLen + longCount > MaxSortedEntries) return false;   // P-11: cumulative across the books
                 Grow(ref _fast, fastLen + FastSize);
                 Grow(ref _sorted, sortedLen + longCount);
                 Grow(ref _sortedEntry, sortedLen + longCount);
@@ -1789,12 +1842,14 @@ public static partial class Playback
                 int valueBits = (int)r.Read(4) + 1;
                 bool seq = r.Read(1) != 0;
                 long lookupValues = lookup == 1 ? Lookup1Values(entries, dims) : (long)entries * dims;
-                if (r.Overrun || lookupValues > (1 << 26) || (entries > 0 && lookupValues <= 0)) return false;
+                long total = (long)entries * dims;
+                // P-11: both bounds BEFORE the multiplicand scratch grows — a 256-entry × 40 000-dim type-2 book used to
+                // allocate ~41 MB of `_mults` and only then fail the VQ check.
+                if (r.Overrun || lookupValues > MaxLookupValues || (entries > 0 && lookupValues <= 0)
+                    || vqLen + total > MaxVqFloats) return false;
                 GrowScratch(ref _mults, (int)lookupValues);
                 for (int j = 0; j < lookupValues; j++) _mults[j] = r.Read(valueBits);
                 if (r.Overrun) return false;
-                long total = (long)entries * dims;
-                if (vqLen + total > (1 << 25)) return false;                        // 128 MB of VQ is not a real file
                 Grow(ref _vq, vqLen + (int)total);
                 Span<float> vq = _vq.AsSpan(vqLen, (int)total);
                 for (int e = 0; e < entries; e++)

@@ -93,24 +93,48 @@ public static partial class Crash
             File.WriteAllText(Path.Combine(dir, Files.ReportName), text, new UTF8Encoding(false));
         }
 
-        /// <summary>The last <paramref name="maxLines"/> lines of <paramref name="datedLogPath"/>, each scrubbed
-        /// through <see cref="Feedback.ReportRedactor.Redact"/> with <paramref name="rules"/> — <c>RedactionRules.None</c>
-        /// from a caller with no session to gather rules from (the child, every Hang/ExitCode/UncleanExit bundle).
-        /// Reads with <c>FileShare.ReadWrite | FileShare.Delete</c>, the same share mode the live log's own append
-        /// sink needs, so a tail read never contends with the writer it is reading. <paramref name="datedLogPath"/>
-        /// of <c>null</c>/<c>""</c>/<c>"-"</c> (the child's "no log path" arg) writes an empty tail rather than
-        /// failing the bundle.</summary>
-        public static void WriteTail(string dir, string? datedLogPath, int maxLines, Feedback.RedactionRules rules)
+        /// <summary>The log file a bundle's tail reads, resolved NOW — at bundle time, never at install. The log is daily,
+        /// so a path frozen when the process started names the BOOT day's file and, after midnight, every bundle tailed
+        /// yesterday. <paramref name="logBasePath"/> is the CONFIGURED path (<c>Log.BasePath</c>, <c>wavee.log</c>): the
+        /// parent has it from the log, the crash-handler child from its argv. Today's daily file when it exists, else the
+        /// newest app log in the folder (a crash seconds after midnight, before the new day's first line reached disk)
+        /// — <see cref="LogFileNames.TailPath"/>. Null for null/""/"-" (no log configured, the child's "no log path").</summary>
+        public static string? ResolveTailPath(string? logBasePath)
+        {
+            if (string.IsNullOrEmpty(logBasePath) || logBasePath == "-") return null;
+            try
+            {
+                var today = DateOnly.FromDateTime(DateTime.Now);
+                string dated = LogFileNames.Dated(logBasePath, today);
+                if (File.Exists(dated)) return dated;
+                string? dir = Path.GetDirectoryName(logBasePath);
+                if (dir is null || !Directory.Exists(dir)) return dated;
+                return LogFileNames.TailPath(logBasePath, today, Directory.GetFiles(dir, LogFileNames.Glob(logBasePath)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return null; }
+        }
+
+        /// <summary>The last <paramref name="maxLines"/> lines of <paramref name="logPath"/> (<see cref="ResolveTailPath"/>'s
+        /// answer), then <paramref name="pending"/> — the lines still queued for the file, which the file does not hold
+        /// yet (<see cref="TailAssembler.Merge"/>) — each scrubbed through <see cref="Feedback.ReportRedactor.Redact"/>
+        /// with <paramref name="rules"/> — <c>RedactionRules.None</c> from a caller with no session to gather rules from
+        /// (the child, every Hang/ExitCode/UncleanExit bundle). Reads with <c>FileShare.ReadWrite | FileShare.Delete</c>,
+        /// the same share mode the live log's own append sink needs, so a tail read never contends with the writer it is
+        /// reading. A <paramref name="logPath"/> of <c>null</c>/<c>""</c>/<c>"-"</c> writes an empty tail (plus the
+        /// pending lines) rather than failing the bundle. A caller that has the queue snapshots it BEFORE this call
+        /// (<c>Log.PendingFileLines()</c> as the argument): a line the writer lands in between is then in both and
+        /// deduped, never in neither.</summary>
+        public static void WriteTail(string dir, string? logPath, int maxLines, Feedback.RedactionRules rules, string[]? pending = null)
         {
             Directory.CreateDirectory(dir);
             var lines = new Queue<string>(Math.Max(1, maxLines));
-            if (!string.IsNullOrEmpty(datedLogPath) && datedLogPath != "-")
+            if (!string.IsNullOrEmpty(logPath) && logPath != "-")
             {
                 try
                 {
-                    if (File.Exists(datedLogPath))
+                    if (File.Exists(logPath))
                     {
-                        using var fs = new FileStream(datedLogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                        using var fs = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                         using var reader = new StreamReader(fs);
                         while (reader.ReadLine() is { } line)
                         {
@@ -121,8 +145,9 @@ public static partial class Crash
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             }
-            var sb = new StringBuilder(lines.Count * 96);
-            foreach (string line in lines) sb.Append(Feedback.ReportRedactor.Redact(line, rules)).Append('\n');
+            string[] tail = pending is { Length: > 0 } ? TailAssembler.Merge(lines.ToArray(), pending, maxLines) : lines.ToArray();
+            var sb = new StringBuilder(tail.Length * 96);
+            foreach (string line in tail) sb.Append(Feedback.ReportRedactor.Redact(line, rules)).Append('\n');
             File.WriteAllText(Path.Combine(dir, Files.TailName), sb.ToString(), new UTF8Encoding(false));
         }
 

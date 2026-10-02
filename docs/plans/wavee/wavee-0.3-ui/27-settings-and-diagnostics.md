@@ -65,6 +65,8 @@ glyph.** `SettingsCatalog` (`App/SettingsCatalog.cs:34-120`) is the table; `Sett
 renders `Icons.Settings` *because its name was never mapped* is a **bug the Debug build asserts on**
 (`SettingsGlyphs.cs:70-77`) and logs `settings.glyph.unmapped` once per name in Release.
 
+> 2026-10-02: five table-driven tabs (Privacy & diagnostics added) — see `privacy-diagnostics-tab-implementation.md`.
+
 Three qualifications the catalog states out loud (`SettingsCatalog.cs:20-25`) and 0.3 must keep:
 - **Scope is General · Appearance · Playback · Storage only.** **Notifications** is deliberately excluded — its
   rows are one per `NotifyTopic`, enumerated at runtime, and carry their own `Glyph(NotifyTopic)` switch
@@ -128,6 +130,8 @@ transition; only the `ScrollView` is keyed (`Key = "settings:scroll:" + slug`, `
 **N8 — The Logs tab is the ONLY tab that is not scrolled by the page.** It gets an unconstrained
 `Grow/Shrink/MinHeight=0` lane with `Padding = (36, 16, 36, 16)` so `LogsPanel` owns the full remaining height
 and scrolls its own virtualised list (`SettingsPage.cs:149-164`).
+
+> 2026-10-02 drift: the Logs tab is retired; the viewer is route `logs` (`Screens/LogsPage.UI.cs`); every Settings tab scrolls — the code wins.
 
 **N9 — The storage usage bar is seven fixed hues, never accent tints.** `#4A90D9 · #9B59B6 · #F5A623 · #27AE60 ·
 #1ABC9C · #95A5A6 · #E74C3C` (`SettingsPage.Storage.cs:36-42`), each repeated as a 3-DIP left accent bar on its

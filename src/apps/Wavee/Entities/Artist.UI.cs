@@ -705,7 +705,7 @@ public readonly partial struct Artist
     /// width on the band arm) and fading in. While pending the card is just header + comment + footer, and on a real
     /// failure it stays that way: no flat placeholder block ever stands in for a photo that may never come (the grey
     /// slab a stuck decode used to leave behind).</para></summary>
-    internal static Element PickCard(Artist a, Func<ColorF> accent, bool horizontal)
+    internal static Element PickCard(Artist a, Func<ColorF> accent, bool horizontal, IOverlayService? overlay = null)
     {
         ColorF tint = accent();
         ref readonly ArtistPick pick = ref a.Pick;
@@ -723,7 +723,7 @@ public readonly partial struct Artist
 
         var targetUri = EntityUri.Parse(target);
         Action open = () => Shell.GoTo(Shell.For(targetUri, title));
-        Action play = () => Playback.PlayContext(target);
+        Action play = () => Playback.PlayOrToggleContext(target);
 
         Element wash = new BoxEl
         {
@@ -834,14 +834,39 @@ public readonly partial struct Artist
         // the ownership rule (a clickable, free surface), not from a hand-set copy. The panel's own fill, hairline and
         // card shadow ride on top, and its extent stays the content's (the shell's stack Grow is zeroed).
         var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
-        return SurfaceParts.Shell(new BoxEl { ZStack = true, Grow = 1f, MinWidth = 0f, Children = [wash, content] },
-                                  Shape.Grid, in mode, target) with
+        BoxEl panel = SurfaceParts.Shell(new BoxEl { ZStack = true, Grow = 1f, MinWidth = 0f, Children = [wash, content] },
+                                         Shape.Grid, in mode, target) with
         {
             Grow = 0f, ClipToBounds = true,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
             OnClick = open,
             Draggable = Drag.Source(() => new DragPayload(Drag.KindOfUri(target), target, target, title, ArtUrl: cover)),
         };
+        // The record is a container (or a track) like any other card: right-click opens the same menu.
+        return overlay is not null && !Controls.IsNullOverlay(overlay)
+            ? ContextMenu.Attach(panel, overlay, () => PickMenu(targetUri, title, cover, kind))
+            : panel;
+    }
+
+    /// <summary>The pick's menu: the record's own kind decides — an album, playlist, artist or show gets the one container
+    /// menu, a track the track menu; any other kind has none.</summary>
+    static ContextMenuModel? PickMenu(EntityUri uri, string title, string? cover, string subtitle)
+    {
+        if (!uri.IsValid) return null;
+        if (uri.Kind == EntityKind.Track)
+        {
+            Track.EnsureActions();
+            return Track.Menu([Entities.Track(uri)], new Track.MenuOptions(ShowGoToAlbum: true));
+        }
+        var target = uri.Kind switch
+        {
+            EntityKind.Album => ActionTarget.ForAlbum(uri, title),
+            EntityKind.Playlist => ActionTarget.ForPlaylist(uri, title),
+            EntityKind.Artist => ActionTarget.ForArtist(uri, title),
+            EntityKind.Show => ActionTarget.ForShow(uri, title),
+            _ => default,
+        };
+        return target.Kind == TargetKind.None ? null : Menus.Container(in target, cover, subtitle);
     }
 
     /// <summary>The pick's photograph band, mounted only once its image is Ready (see <see cref="PickCard"/>).

@@ -90,7 +90,7 @@ gh project item-edit --project-id PVT_kwHOAM0O7s4BiKKu --id <itemId> --field-id 
 ```
 
 Bug reports without a version quad / install source / arch → `status: needs-info` and ask the reporter to use
-the form's fields (Settings › About; Settings › Diagnostics › **Copy diagnostics info**). Rendering / text /
+the form's fields (Settings › About, which also has **Copy diagnostics info**). Rendering / text /
 input glitches → `area: engine`, `status: upstream`, point at fluent-gpu. Feature requests that are really
 half-formed ideas → suggest Discussions › Ideas.
 

@@ -23,9 +23,13 @@
 //   the record family (Record / Turntable / Zune / Picture): one face, four skins, over one tonearm machine.
 //
 // Stage-2 fixes owed by ch 23 §6.4, delivered here: (#1) the headshell wires OnDragCanceled → Gesture.Cancel; (#4) a
-// MODEL option (VU needles, Winamp analyser) rebuilds the mounted model in place (`Models.ModelOptionSlug`); (#6)
-// both grips refuse over an unknown duration (`GripRules.Enabled`). §6.4(5) (the scope that never settled) is the
-// model's own `IsSettled`, in `Deck.cs`.
+// MODEL option (the VU needles) rebuilds the mounted model in place (`Models.ModelOptionSlug`); (#6)
+// both grips refuse over an unknown duration (`GripRules.Enabled`). §6.4(5) (the paused analyser that never settled) is
+// the model's own `IsSettled`, in `Deck.cs`.
+//
+// THE ANALYSER DECKS READ THE REAL FFT (docs/plans/wavee/fullscreen-flagship-implementation.md §4.13). Winamp and WMP hold
+// a SPECTRUM lease and read `SpectrumFold` — the rail's own 30 Hz fold of the engine's 48 bands — so nothing synthesises a
+// band any more; the VU holds the level lease and rests without a tap.
 //
 // Rules: faces are FUNCTIONS, built once per host render; everything that moves is a bound Transform/Opacity/Text over
 // the slab; no allocation on the tick path; the live track is read INSIDE thunks and leaf components, never in a face
@@ -118,13 +122,18 @@ public static partial class Deck
             TransitionDynamics.Tween(320f, Easing.SmoothOut), Enter: new EnterExit(Opacity: 0f, Active: true));
 
         /// <summary>The level tap as a PULL (never a subscription: the tap is written off the UI thread). Null — Connect,
-        /// a remote device, <c>--fake</c>, no local audio — is a real answer the synths handle.</summary>
+        /// a remote device, <c>--fake</c>, no local audio — is a real answer: the VU's needles rest.</summary>
         static readonly Func<(float rms, float peak)?> LevelTap = static () =>
         {
             if (!Playback.Audio.Supported.Peek() || Playback.OwnerSignal.Peek() != Playback.Owner.Us) return null;
             var f = Playback.Audio.Levels.Peek();
             return (f.Rms, f.Peak);
         };
+
+        /// <summary>The analyser decks read the rail's OWN 30 Hz fold of the engine bands (<see cref="SpectrumFold.Pull"/>,
+        /// called from the deck clock's tick) — the real FFT, independent of whether the stage is open; nothing synthesises
+        /// bands any more.</summary>
+        static readonly SpectrumPull SpectrumTap = static () => SpectrumFold.Levels;
 
         /// <summary>Which deck — frozen; the view's key remounts on a preset change.</summary>
         public required Rail.PlayerCatalog.Preset Preset;
@@ -144,7 +153,11 @@ public static partial class Deck
         public Host() => Grip = new Gesture(Sig);
 
         public float SideDip => Side > 0f ? Side : DefaultSide;
-        public bool UsesLevels => Preset.Id is Rail.PlayerCatalog.Vu or Rail.PlayerCatalog.Winamp or Rail.PlayerCatalog.Wmp;
+        /// <summary>The VU reads the post-gain level tap (an <c>AcquireLevels</c> lease).</summary>
+        public bool UsesLevels => Preset.Id is Rail.PlayerCatalog.Vu;
+        /// <summary>Winamp and WMP read the engine's 48-band FFT through <see cref="SpectrumFold"/> (an <c>AcquireSpectrum</c>
+        /// lease, which implies the level tap).</summary>
+        public bool UsesSpectrum => Preset.Id is Rail.PlayerCatalog.Winamp or Rail.PlayerCatalog.Wmp;
 
         /// <summary>Re-read per tick: a 33 → 45 flip must reach a model that was built once.</summary>
         public float Rpm() => Models.IsRecordFamily(Preset.Id)
@@ -160,7 +173,7 @@ public static partial class Deck
             if (!_built || !string.Equals(option, _modelOption, StringComparison.Ordinal))
             {
                 var facts = ReadFacts(Sig, Rpm(), null);
-                Model = Models.Create(in Preset, LevelTap, Seed(in facts, Design.FrameTime.NowMs));
+                Model = Models.Create(in Preset, LevelTap, Seed(in facts, Design.FrameTime.NowMs), SpectrumTap);
                 _modelOption = option;
                 _built = true;
             }
@@ -231,7 +244,7 @@ public static partial class Deck
         public required Host Host;
 
         readonly Signal<bool> _settled = new(true);
-        readonly Action _tick, _tickCore, _write, _transport, _loops;
+        readonly Action _tick, _tickCore, _write, _transport, _loops, _readGain;
         readonly Func<Action?> _lease;
         IReadSignal<bool>? _active;
 
@@ -244,6 +257,9 @@ public static partial class Deck
         long? _syntheticSeek;
         Frame _pending;
         float _quantum = 0.5f;
+        /// <summary>The user's band gain (<c>Visualizer.Bands.Gain(Prefs.Stage.Sensitivity(), calm: false)</c>), cached ONCE per
+        /// prefs epoch by <see cref="ReadGain"/> — the tick never reads the prefs registry (O8, V-U18).</summary>
+        float _gain = 1f;
 
         public Clock()
         {
@@ -253,6 +269,7 @@ public static partial class Deck
             _transport = OnTransport;
             _loops = PublishLoops;
             _lease = LeaseLevels;
+            _readGain = ReadGain;
         }
 
         public override Element Render()
@@ -270,7 +287,15 @@ public static partial class Deck
             UseEffect(_transport);
             UseEffect(_loops);
             UseEffect(_lease);
+            UseSignalEffect(_readGain);                    // re-runs on a Prefs.Stage epoch bump — never on a tick
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+
+        /// <summary>The ONE prefs read of the analyser path: sensitivity folded into the gain, cached per epoch (O8). Only an
+        /// analyser deck reads it, so the others subscribe to nothing.</summary>
+        void ReadGain()
+        {
+            if (Host.UsesSpectrum) _gain = Visualizer.Bands.Gain(Prefs.Stage.Sensitivity(), false);
         }
 
         /// <summary>The transport effect (auto-tracked, no re-render): the timestamped position sample, the boundary
@@ -347,6 +372,8 @@ public static partial class Deck
             _prevDur = input.DurationMs;
             _prevPhase = input.Phase;
 
+            // The analyser decks fold the engine's published bands into the rail's shared levels BEFORE the model reads them.
+            if (h.UsesSpectrum) SpectrumFold.Pull(_gain);
             _pending = h.Model.Tick(in input, dt);
             _quantum = ClockRules.AngleQuantumDeg(h.SideDip);
             // ONE batch → ONE frame request, however many bands moved.
@@ -390,15 +417,52 @@ public static partial class Deck
             Host.Sig.LoopsRun.Value = ClockRules.LoopsMayRun(Design.Reduced, Shell.Ui.RailOpen.Value, active, Playback.IsPlaying.Value);
         }
 
-        /// <summary>The level tap does no work until somebody holds a lease — only a visible, moving level deck does.</summary>
+        /// <summary>The audio taps do no work until somebody holds a lease — only a visible, moving analyser deck does: the VU
+        /// holds the level tier, Winamp and WMP the spectrum tier (which implies the level tap).</summary>
         Action? LeaseLevels()
         {
-            bool needs = Host.UsesLevels && (_active?.Value ?? true) && !Design.Reduced && Shell.Ui.RailOpen.Value
+            bool needs = (Host.UsesLevels || Host.UsesSpectrum) && (_active?.Value ?? true) && !Design.Reduced && Shell.Ui.RailOpen.Value
                          && (Playback.IsPlaying.Value || Playback.Buffering.Value || !_settled.Value)
                          && Playback.Audio.Supported.Value && Playback.OwnerSignal.Value == Playback.Owner.Us;
             if (!needs) return null;
-            var lease = Playback.Audio.AcquireLevels();
+            var lease = Host.UsesSpectrum ? Playback.Audio.AcquireSpectrum() : Playback.Audio.AcquireLevels();
             return lease.Dispose;
+        }
+    }
+
+    // ══ 4b. THE SPECTRUM FOLD ════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The rail's own 48-band fold (one per process): CopySpectrum -> Visualizer.Bands.Unit -> AGC -> gain -> Follow
+    /// into <see cref="Levels"/>. Shared by every analyser deck mounted, so the follower is advanced ONCE per published
+    /// spectrum (gated on SpectrumInfo.Sequence) and the no-live release ONCE per frame (gated on the frame clock) — two
+    /// decks never double the attack or the decay (V-D25). Called only from a deck clock's tick (UI thread): static state,
+    /// no allocation, no prefs read (the gain arrives as an argument the clock cached per epoch).</summary>
+    public static class SpectrumFold
+    {
+        static readonly float[] s_db = new float[Visualizer.Bands.Count], s_target = new float[Visualizer.Bands.Count], s_levels = new float[Visualizer.Bands.Count];
+        static long s_seq, s_decayedAtMs;
+        static float s_agc = Visualizer.Bands.AgcFloor;
+
+        /// <summary>The 0..1 band levels the last <see cref="Pull"/> produced (all zeros until a live spectrum arrives).</summary>
+        public static ReadOnlySpan<float> Levels => s_levels;
+
+        /// <param name="gain">The deck clock's cached <c>Visualizer.Bands.Gain(sensitivity, calm: false)</c>.</param>
+        public static void Pull(float gain)
+        {
+            int n = Playback.Audio.CopySpectrum(s_db, out var info);
+            if (n < Visualizer.Bands.Count || !info.Live || info.Muted)
+            {
+                long now = Design.FrameTime.NowMs;
+                if (now != s_decayedAtMs) { s_decayedAtMs = now; Visualizer.Bands.Decay(s_levels); }   // once per frame, however many decks pull
+                return;
+            }
+            if (info.Sequence == s_seq) return;                                                        // this publish was already folded by another deck
+            s_seq = info.Sequence;
+            float frameMax = 0f;
+            for (int i = 0; i < n; i++) { float u = Visualizer.Bands.Unit(s_db[i]); s_target[i] = u; if (u > frameMax) frameMax = u; }
+            float g = Visualizer.Bands.Agc(ref s_agc, frameMax) * gain;
+            for (int i = 0; i < n; i++) s_target[i] = MathF.Min(1f, s_target[i] * g);
+            Visualizer.Bands.Follow(s_target, s_levels, false);
         }
     }
 

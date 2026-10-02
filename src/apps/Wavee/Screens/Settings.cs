@@ -30,10 +30,11 @@ public static partial class Settings
     // ══ 1. THE TAB MODEL ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The seven tabs, in strip order (ch 27 parity 2). The slug is the scroll key's suffix.</summary>
-    public enum Tab : byte { General, Appearance, Playback, Notifications, Storage, Logs, About }
+    public enum Tab : byte { General, Appearance, Playback, Notifications, Storage, PrivacyDiagnostics, About }
 
-    /// <summary>Must stay 1:1 with <see cref="Tab"/> — a missing slug made About IndexOutOfRange in 0.2.9.</summary>
-    public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "logs", "about"];
+    /// <summary>Must stay 1:1 with <see cref="Tab"/> — a missing slug made About IndexOutOfRange in 0.2.9. The log viewer
+    /// is no longer a tab (it is the route <c>logs</c>), so the old <c>logs</c> slug now falls back to General.</summary>
+    public static readonly string[] TabSlugs = ["general", "appearance", "playback", "notifications", "storage", "privacy", "about"];
 
     public static string SlugOf(Tab tab) => (uint)tab < (uint)TabSlugs.Length ? TabSlugs[(int)tab] : TabSlugs[0];
 
@@ -49,9 +50,9 @@ public static partial class Settings
     // ══ 2. THE CATALOG (0.2.9 `App/SettingsCatalog.cs`, verbatim + the tray group) ═════════════════════════════════
     //
     // EVERY ROW CARRIES ITS OWN GLYPH, AND A SECTION'S GLYPH IS NEVER REUSED BY ONE OF ITS OWN ROWS — per SECTION, not
-    // global (ch 27 §0 N3 lists the 17 legitimate cross-section repeats; do not "de-duplicate" them). SCOPE: General,
-    // Appearance, Playback, Storage. Notifications enumerates its rows from `Notify.Prefs.AllTopics`; About and Logs have
-    // no table rows.
+    // global (ch 27 §0 N3 lists the 17 legitimate cross-section repeats; do not "de-duplicate" them). SCOPE: the five
+    // table-driven tabs — General, Appearance, Playback, Storage and Privacy & diagnostics. Notifications enumerates its
+    // rows from `Notify.Prefs.AllTopics`; About has no table rows.
 
     public static class Catalog
     {
@@ -59,8 +60,10 @@ public static partial class Settings
 
         /// <summary><paramref name="RowId"/> is unique within its <paramref name="Tab"/>, not merely its section.
         /// <para><paramref name="DeveloperOnly"/> rows are COMPOSED AWAY outside developer mode — absent, never
-        /// greyed (that shape is reserved for a row whose write is merely unavailable, like the FPS overlay). They stay
-        /// in this table because the row still exists, and its glyph still has to be unique, when the switch is on.</para></summary>
+        /// greyed (that shape is reserved for a row whose write is merely unavailable, like the FPS overlay, Simulate an
+        /// update and Send a test crash report on Privacy &amp; diagnostics — present but greyed while developer mode is
+        /// off, so they are NOT flagged here; only the two Appearance rows are). They stay in this table because the row
+        /// still exists, and its glyph still has to be unique, when the switch is on.</para></summary>
         public readonly record struct Row(Tab Tab, string Section, string RowId, string Glyph, bool DeveloperOnly = false);
 
         public static readonly Section[] Sections =
@@ -70,14 +73,12 @@ public static partial class Settings
             // tray plan §8: between Links and Graphics
             new(Tab.General, "Notification area", "ThisPc"),
             new(Tab.General, "Graphics", "Devices"),
-            // crash-diagnostics-implementation.md §D/§F "E · In-app UI": between Graphics and Developer.
-            new(Tab.General, "Privacy & diagnostics", "Info"),
-            new(Tab.General, "Developer", "Code"),
 
             new(Tab.Appearance, "Theme", "Brush"),
             new(Tab.Appearance, "Lists", "List"),
             new(Tab.Appearance, "Sidebar", "DockLeft"),
             new(Tab.Appearance, "Lyrics", "Microphone"),
+            new(Tab.Appearance, "Fullscreen", "TvMonitor"),
             new(Tab.Appearance, "Now playing", "Album"),
 
             new(Tab.Playback, "Audio", "MusicNote"),
@@ -89,6 +90,13 @@ public static partial class Settings
             new(Tab.Storage, "Playback cache", "Download"),
             new(Tab.Storage, "Metadata cache", "Document"),
             new(Tab.Storage, "Reset", "Delete"),
+
+            // privacy-diagnostics-tab-implementation.md §3.1: the tab that replaced Logs and absorbed General's two sections.
+            new(Tab.PrivacyDiagnostics, "Privacy", "Shield"),
+            new(Tab.PrivacyDiagnostics, "Crash reports", "Warning"),
+            new(Tab.PrivacyDiagnostics, "Logs", "Document"),
+            new(Tab.PrivacyDiagnostics, "Tools", "Repair"),
+            new(Tab.PrivacyDiagnostics, "Developer", "Code"),
         ];
 
         public static readonly Row[] Rows =
@@ -103,23 +111,6 @@ public static partial class Settings
             new(Tab.General, "Notification area", "startOnLogin", "Contact"),
             // "Device" (singular), not "Devices": the section owns the plural.
             new(Tab.General, "Graphics", "preferredGpu", "Device"),
-            // crash-diagnostics-implementation.md §D/§J — Crash.PrivacyRows (Screens/Crash.UI.cs) renders these six;
-            // this table exists so the section's row/glyph invariants stay one fact (SettingsCatalogTests).
-            new(Tab.General, "Privacy & diagnostics", "crashMode", "StatusWarning"),
-            new(Tab.General, "Privacy & diagnostics", "crashDump", "Camera"),
-            new(Tab.General, "Privacy & diagnostics", "crashQueue", "Forward"),
-            new(Tab.General, "Privacy & diagnostics", "crashSaved", "Folder"),
-            new(Tab.General, "Privacy & diagnostics", "crashPrivacy", "OpenInNewWindow"),
-            new(Tab.General, "Privacy & diagnostics", "crashErase", "Delete"),
-            new(Tab.General, "Developer", "developerMode", "Settings"),
-            new(Tab.General, "Developer", "fpsOverlay", "Clock"),
-            new(Tab.General, "Developer", "dealerArchive", "Document"),
-            // realtime-capture-implementation.md unit 6: the two doors beside the toggle itself.
-            new(Tab.General, "Developer", "openCaptureFolder", "FolderOpen"),
-            new(Tab.General, "Developer", "openCaptureViewer", "Devices"),
-            new(Tab.General, "Developer", "simulateUpdate", "Refresh", DeveloperOnly: true),
-            // #165: a full crash report (bundle + live dump + upload) without a crash.
-            new(Tab.General, "Developer", "sendTestCrashReport", "StatusWarning", DeveloperOnly: true),
 
             new(Tab.Appearance, "Theme", "theme", "Sun"),
             new(Tab.Appearance, "Theme", "zoom", "Zoom"),
@@ -140,6 +131,13 @@ public static partial class Settings
             // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
             // is a setting any more. The blur dial is what is left of the section.
             new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
+            // The fullscreen stage's four settings (+ the visualizer pick), mirrored from its gallery. "TvMonitor" is the
+            // section's own glyph, so none of the rows may reuse it.
+            new(Tab.Appearance, "Fullscreen", "stageVisualizer", "Equalizer"),
+            new(Tab.Appearance, "Fullscreen", "stageSensitivity", "Audio"),
+            new(Tab.Appearance, "Fullscreen", "stageLyricsOverlay", "Document"),
+            new(Tab.Appearance, "Fullscreen", "stageSyncOffset", "Clock"),
+            new(Tab.Appearance, "Fullscreen", "stageCalm", "RefineSparkle"),
             new(Tab.Appearance, "Now playing", "npvPresentation", "Picture", DeveloperOnly: true),
             new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
 
@@ -149,6 +147,10 @@ public static partial class Settings
             new(Tab.Playback, "Audio", "autoplay", "Play"),
             // G-132: the normalization switch 0.2.9 persisted but never showed.
             new(Tab.Playback, "Audio", "normalization", "Equalizer"),
+            // D5: the mode combo and album mode. "Speakers"/"Album" are mapped in `Settings.UI.cs`'s `Glyph` and distinct from every
+            // other row in the section (the Sound section owns "Speakers" as ITS header glyph, which is a different section).
+            new(Tab.Playback, "Audio", "normalizationMode", "Speakers"),
+            new(Tab.Playback, "Audio", "normalizationAlbum", "Album"),
             new(Tab.Playback, "Sound", "equalizer", "Equalizer"),
             new(Tab.Playback, "Sound", "crossfade", "Audio"),
             new(Tab.Playback, "Video", "videoQuality", "TvMonitor"),
@@ -173,6 +175,30 @@ public static partial class Settings
             new(Tab.Storage, "Metadata cache", "clearMetadata", "Delete"),
             // "Attention", not "Delete": the section owns Delete.
             new(Tab.Storage, "Reset", "factoryReset", "Attention"),
+
+            // Privacy & diagnostics — only what paints a glyph (the crash-mode radios, the queue InfoBar, the saved-report
+            // bundle rows and the Detail-level / capture items do not). Developer's three items are present but greyed
+            // while developer mode is off (plan D2), so none of them is DeveloperOnly. "Settings" on developerMode is one
+            // of the two deliberate gears (the other is Appearance/npvStyle). Cross-section repeats (Folder,
+            // StatusWarning, Devices, Clock, Refresh) are allowed by N3.
+            new(Tab.PrivacyDiagnostics, "Privacy", "whatLeaves", "Globe"),
+            new(Tab.PrivacyDiagnostics, "Privacy", "crashReports", "StatusWarning"),
+            new(Tab.PrivacyDiagnostics, "Privacy", "crashDump", "Camera"),
+            new(Tab.PrivacyDiagnostics, "Privacy", "crashContents", "Info"),
+            new(Tab.PrivacyDiagnostics, "Privacy", "crashService", "Delete"),
+            new(Tab.PrivacyDiagnostics, "Privacy", "privacyPolicy", "OpenInNewWindow"),
+            new(Tab.PrivacyDiagnostics, "Crash reports", "savedReports", "Folder"),
+            new(Tab.PrivacyDiagnostics, "Logs", "logViewer", "ViewList"),
+            new(Tab.PrivacyDiagnostics, "Logs", "detailLevel", "Filter"),
+            new(Tab.PrivacyDiagnostics, "Logs", "logFiles", "Folder"),
+            new(Tab.PrivacyDiagnostics, "Logs", "reportProblem", "Attention"),
+            new(Tab.PrivacyDiagnostics, "Tools", "playbackRuntime", "MusicNote"),
+            new(Tab.PrivacyDiagnostics, "Tools", "connectDiagnostics", "Devices"),
+            new(Tab.PrivacyDiagnostics, "Tools", "realtimeCapture", "RadioTower"),
+            new(Tab.PrivacyDiagnostics, "Developer", "developerMode", "Settings"),
+            new(Tab.PrivacyDiagnostics, "Developer", "fpsOverlay", "Clock"),
+            new(Tab.PrivacyDiagnostics, "Developer", "simulateUpdate", "Refresh"),
+            new(Tab.PrivacyDiagnostics, "Developer", "sendTestCrashReport", "StatusWarning"),
         ];
 
         public static string SectionGlyph(Tab tab, string title)

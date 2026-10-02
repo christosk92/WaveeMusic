@@ -406,7 +406,7 @@ public static partial class Modules
             Element? subtitle = Trimmed(item.Subtitle) is { } sub
                 ? Design.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null;
             Element? trailing = Trimmed(item.Meta) is { } meta ? Design.Type.TrackMeta(meta) with { Shrink = 0f } : null;
-            rows.Add(Controls.Surface(new Controls.CardData(uri, title, subtitle, Trimmed(item.ImageUrl), play, play, ShowMenu: false)
+            rows.Add(Controls.Surface(new Controls.CardData(uri, title, subtitle, Trimmed(item.ImageUrl), play, play)
                 { Trailing = item.IsLive ? LiveBadge() : trailing }, Shape.Row(40f)) with { Key = key + ":row:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
         budget -= take;
@@ -433,8 +433,7 @@ public static partial class Modules
                 : play ?? NoOp;
             Element? subtitle = Trimmed(item.Subtitle) is { } sub
                 ? Design.Type.TrackMeta(sub) with { MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f } : null;
-            cards.Add(Controls.Surface(new Controls.CardData(playable ?? route ?? "", title, subtitle, Trimmed(item.ImageUrl), open, play,
-                ShowMenu: false), Shape.Shelf(captionLines: 2), CardWidth) with { Key = key + ":card:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            cards.Add(Controls.Surface(new Controls.CardData(playable ?? route ?? "", title, subtitle, Trimmed(item.ImageUrl), open, play), Shape.Shelf(captionLines: 2), CardWidth) with { Key = key + ":card:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
         budget -= take;
         if (cards.Count == 0) return null;

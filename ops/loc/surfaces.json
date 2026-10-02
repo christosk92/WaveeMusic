@@ -10,5 +10,5 @@
   "sidebar": { "surface": "Sidebar", "where": "Left sidebar.", "screenshot": "sidebar-classic" },
   "setup": { "surface": "First-run setup", "where": "Setup wizard.", "screenshot": "" },
   "auth": { "surface": "Sign in", "where": "Login flow.", "screenshot": "" },
-  "crash": { "surface": "Crash reporting", "where": "Crash prompt and its toasts, Settings › Privacy & diagnostics, Settings › Logs › Reports, the Recovery window, the setup wizard's crash-reporting card, and the Report-a-problem dialog.", "screenshot": "" }
+  "crash": { "surface": "Crash reporting", "where": "Crash prompt and its toasts, Settings › Privacy & diagnostics, Settings › Privacy & diagnostics › Crash reports, the Recovery window, the setup wizard's crash-reporting card, and the Report-a-problem dialog.", "screenshot": "" }
 }

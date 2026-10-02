@@ -5,10 +5,14 @@
 // `DiscMachineTests`, `MeterBallisticsTests`, `LevelSynthTests`), plus the four facts ch 23 §8 says were MISSING and must
 // land with the port:
 //   • `RecordModel` gets its own tests (mount-time "already at speed" seed, the 33⇄45 slew, IsSettled);
-//   • `LevelModel.IsSettled` in SCOPE mode — the case that let "a paused Winamp oscilloscope never settles" ship (§6.4(5));
+//   • `LevelModel.IsSettled` for a paused analyser — the case that let "a paused Winamp deck never settles" ship (§6.4(5));
 //   • `ProgressModel` must NOT bump CoverGen on a same-album advance;
 //   • `DriftPath` keys run 0 → 1 without a seam;
 // and the new PURE `Deck.Fold`, which 0.2.9 could not test because it read the bridge and the frame clock directly.
+//
+// The analyser decks read REAL bands (docs/plans/wavee/fullscreen-flagship-implementation.md §4.13): `LevelModel` remaps
+// the stage's 48 folded levels and synthesises nothing, the VU rests without a tap. `Deck.SpectrumFold` is UI (it reads
+// `Playback.Audio`) and is covered by the `--fake` / real-account walk, not here.
 //
 // The tonearm facts are stepped at the deck's own 33 ms cadence and every expectation is derived from the machine's
 // constants, so retuning the choreography retunes the test.
@@ -711,9 +715,53 @@ public class DeckTapeDiscMeterLevelTests
     }
 
     [Fact]
+    public void The_meter_rests_without_a_tap()
+    {
+        // No tap => nothing is invented: both needles hold the rest angle while playing (the old breathing -18 dB needle is
+        // gone). IsSettled is the model's "nothing is moving" claim and is false while the transport plays (the run gate
+        // already keeps the timer on for `playing`); a stopped meter is settled.
+        const float Rest = -45f;                                   // DbToDeg(-20): the needles' rest angle
+        var vu = new Deck.MeterModel(ppm: false, levels: static () => null);
+        var play = DeckIn.Make();
+        for (int i = 0; i < 120; i++)
+        {
+            var f = vu.Tick(play with { NowMs = DeckIn.T0 + i * 33 }, 0.033f);
+            Assert.Equal(Rest, f.Angle0);
+            Assert.Equal(Rest, f.Angle1);
+        }
+        var stop = DeckIn.Make(playWhenReady: false, advancing: false);
+        var rested = vu.Tick(stop, 0.033f);
+        Assert.Equal(Rest, rested.Angle0);
+        Assert.Equal(Rest, rested.Angle1);
+        Assert.True(vu.IsSettled);
+    }
+
+    [Fact]
+    public void A_live_tap_still_moves_both_needles_off_rest_with_a_derived_stereo_spread()
+    {
+        var vu = new Deck.MeterModel(ppm: true, static () => (0.1f, 0.1f));   // -2 dB on the dial: inside the clamp, so the spread shows
+        Deck.Frame f = default;
+        for (int i = 0; i < 40; i++) f = vu.Tick(DeckIn.Make(nowMs: DeckIn.T0 + i * 33), 0.033f);
+        Assert.True(f.Angle0 > -45f + 1f, "the left needle must leave rest on a real level");
+        Assert.True(f.Angle1 > -45f + 1f, "the right needle must leave rest on a real level");
+        Assert.NotEqual(f.Angle0, f.Angle1);                       // the spread is a derivation of the ONE real level
+    }
+
+    // 48 stand-ins for the stage's folded 0..1 band levels: a ramp with a few spikes, every value inside 0..1.
+    static readonly float[] Live48 = BuildLive48();
+
+    static float[] BuildLive48()
+    {
+        var a = new float[48];
+        for (int i = 0; i < a.Length; i++) a[i] = (i % 7) / 6f;
+        a[20] = 0.9f;
+        return a;
+    }
+
+    [Fact]
     public void Level_bands_stay_in_range_and_peaks_never_sit_below_their_band()
     {
-        var m = new Deck.LevelModel(24, scope: false, static () => (0.3f, 0.6f), seed: 1f);
+        var m = new Deck.LevelModel(24, static () => Live48);
         for (int i = 0; i < 300; i++)
         {
             m.Tick(DeckIn.Make(nowMs: i * 33), 0.033f);
@@ -726,35 +774,108 @@ public class DeckTapeDiscMeterLevelTests
     }
 
     [Fact]
+    public void The_analyser_bars_converge_on_the_remapped_real_bands()
+    {
+        // Real magnitudes, not a synthesis: with a constant live spectrum every bar lands on its share's MAX (floored at
+        // the 0.02 resting level), for both deck widths.
+        foreach (int n in new[] { Deck.Models.WinampBands, Deck.Models.WmpBands })
+        {
+            var m = new Deck.LevelModel(n, static () => Live48);
+            for (int i = 0; i < 300; i++) m.Tick(DeckIn.Make(nowMs: i * 33), 0.033f);
+            Assert.Equal(n, m.Bands.Length);
+            Assert.Equal(n, m.Peaks.Length);
+            for (int b = 0; b < n; b++)
+                DeckIn.Near(MathF.Max(0.02f, Deck.LevelModel.Remap(Live48, b, n)), m.Bands[b]);
+        }
+    }
+
+    [Fact]
     public void A_silent_spectrum_relaxes_to_the_floor_and_settles()
     {
-        var m = new Deck.LevelModel(19, scope: false, static () => null, seed: 1f);
+        var m = new Deck.LevelModel(19, spectrum: null);
         for (int i = 0; i < 60; i++) m.Tick(DeckIn.Make(nowMs: i * 33), 0.033f);
-        Assert.False(m.IsSettled);
+        Assert.False(m.IsSettled);                                 // still playing: the ticker owns the deck
         var stop = DeckIn.Make(playWhenReady: false, advancing: false);
         for (int i = 0; i < 300; i++) m.Tick(stop with { NowMs = 2000 + i * 33 }, 0.033f);
         Assert.True(m.IsSettled);
     }
 
     [Fact]
-    public void A_paused_SCOPE_deck_settles_too()
+    public void A_spectrum_that_goes_quiet_releases_the_bars_and_a_paused_deck_then_settles()
     {
-        // ch 23 §6.4(5): the scope branch parks every band at 0.5, and 0.2.9's rule demanded the 0.02 floor, so a paused
-        // oscilloscope burned the 30 Hz ticker forever. The rule is now "not playing AND the trace is flat".
-        var m = new Deck.LevelModel(19, scope: true, static () => null, seed: 1f);
+        var src = new float[48];
+        Array.Fill(src, 1f);
+        var m = new Deck.LevelModel(24, () => src);
+        for (int i = 0; i < 30; i++) m.Tick(DeckIn.Make(nowMs: i * 33), 0.033f);
+        Assert.True(m.Bands[10] > 0.9f, "the loud spectrum must raise the bars");
+
+        Array.Clear(src);                                          // the fold has decayed to silence; the deck still plays
+        for (int i = 0; i < 120; i++) m.Tick(DeckIn.Make(nowMs: 1000 + i * 33), 0.033f);
+        for (int b = 0; b < 24; b++) Assert.InRange(m.Bands[b], 0.02f, 0.025f);
+        Assert.False(m.IsSettled);                                 // playing
+
+        var stop = DeckIn.Make(playWhenReady: false, advancing: false);
+        for (int i = 0; i < 10; i++) m.Tick(stop with { NowMs = 9000 + i * 33 }, 0.033f);
+        Assert.True(m.IsSettled);
+    }
+
+    [Fact]
+    public void A_paused_deck_ignores_a_live_spectrum_and_settles()
+    {
+        // Another surface (the stage) may be folding bands while THIS deck is paused: the bars must still rest.
+        var m = new Deck.LevelModel(19, static () => Live48);
         var stop = DeckIn.Make(playWhenReady: false, advancing: false);
         for (int i = 0; i < 10; i++) m.Tick(stop with { NowMs = i * 33 }, 0.033f);
         Assert.True(m.IsSettled);
+        for (int b = 0; b < 19; b++) Assert.Equal(0.02f, m.Bands[b], 4);
         m.Tick(DeckIn.Make(nowMs: 999), 0.033f);
         Assert.False(m.IsSettled);
     }
 
     [Fact]
-    public void A_null_level_tap_is_a_real_answer()
+    public void A_null_spectrum_pull_rests_at_the_floor()
     {
-        var m = new Deck.LevelModel(24, scope: false, static () => null, seed: 3f);
-        for (int i = 0; i < 30; i++) m.Tick(DeckIn.Make(nowMs: i * 33), 0.033f);
-        for (int b = 0; b < 24; b++) Assert.InRange(m.Bands[b], 0f, 1f);
+        // No spectrum (Connect, `--fake`, no local audio) is a real answer: the bars sit at the resting level and the caps
+        // with them — nothing is synthesised any more.
+        Deck.LevelModel[] models =
+        [
+            new(24, spectrum: null),
+            new(24, static () => default),                         // a pull that answers "nothing"
+            new(24, static () => new float[1]),                    // too short to be a spectrum
+        ];
+        foreach (var m in models)
+        {
+            for (int i = 0; i < 30; i++) m.Tick(DeckIn.Make(nowMs: i * 33), 0.033f);
+            for (int b = 0; b < 24; b++)
+            {
+                Assert.Equal(0.02f, m.Bands[b], 4);
+                Assert.Equal(0.02f, m.Peaks[b], 4);
+            }
+        }
+    }
+
+    [Fact]
+    public void Remap_takes_the_max_of_each_bars_share()
+    {
+        // 48 -> 24: each bar owns exactly two source bands, so on a ramp it reads the upper one.
+        var ramp = new float[48];
+        for (int i = 0; i < ramp.Length; i++) ramp[i] = i / 47f;
+        for (int bar = 0; bar < 24; bar++) Assert.Equal(ramp[2 * bar + 1], Deck.LevelModel.Remap(ramp, bar, 24));
+        // 48 -> 19: the last bar always reaches the last source band.
+        Assert.Equal(1f, Deck.LevelModel.Remap(ramp, 18, 19));
+        // Downsampling never drops a peak: a lone spike is read by at least one bar, at its full height, for every N.
+        foreach (int n in new[] { 19, 24, 48 })
+        {
+            for (int k = 0; k < 48; k++)
+            {
+                var spike = new float[48];
+                spike[k] = 0.9f;
+                float top = 0f;
+                for (int bar = 0; bar < n; bar++) top = MathF.Max(top, Deck.LevelModel.Remap(spike, bar, n));
+                Assert.Equal(0.9f, top);
+            }
+        }
+        Assert.Equal(0f, Deck.LevelModel.Remap(ReadOnlySpan<float>.Empty, 0, 19));
     }
 }
 

@@ -45,7 +45,8 @@ public static partial class Shell
     /// <summary>One kind per destination <see cref="PageFor"/> can render. 32 registered routes (28 in 0.2.9's own
     /// count, +1 for the podcast rework's <see cref="RouteKind.Episode"/>, wave P2, +1 for
     /// <see cref="RouteKind.LibraryAudiobooks"/>, A2 plan §3.6, +2 for the profile pages' <see cref="RouteKind.User"/>
-    /// and <see cref="RouteKind.ProfileList"/>) + connect-diagnostics +
+    /// and <see cref="RouteKind.ProfileList"/>) + connect-diagnostics + capture-diagnostics + the full-page log viewer
+    /// <see cref="RouteKind.Logs"/> (privacy-diagnostics-tab-implementation.md D6) +
     /// <see cref="RouteKind.NotFound"/> (29 in 0.2.9, less ApiConsole — deleted, plan §9.6 Q7).</summary>
     public enum RouteKind : byte
     {
@@ -75,6 +76,10 @@ public static partial class Shell
         // routed exactly like the two rows above it (developer-only, no material) so it is deep-linkable and
         // history-aware from day one rather than repeating the ConnectDiagnostics defect this table exists to close.
         CaptureDiagnostics,
+        // privacy-diagnostics-tab-implementation.md D6: the full-page log viewer, Privacy & diagnostics › Logs › Log
+        // viewer; `wavee://open?route=logs`. Unlike the three diagnostics rows above it is NOT developer-only — a user
+        // reading their own log (and attaching it to a report) is the point of the page.
+        Logs,
         // the fall-through `PageFor` paints when nothing above claims the key
         NotFound,
     }
@@ -195,7 +200,9 @@ public static partial class Shell
         new(RouteKind.ConnectDiagnostics,  "connect-diagnostics",  false, Strings.Nav.ConnectDiagnostics, Icons.MusicNote, true,  false, false),
         // realtime-capture-implementation.md unit 6: same developer-only, non-material shape as the two rows above.
         new(RouteKind.CaptureDiagnostics,  "capture-diagnostics",  false, Strings.Nav.CaptureDiagnostics, Icons.Document, true,  false, false),
-        new(RouteKind.NotFound,            "",                     false, Strings.Nav.PageNotFound,     Icons.MusicNote,   false, false, false),
+        // The log viewer page (D6): a normal user route — NOT developer-only, claims no material, not keyed by arg.
+        new(RouteKind.Logs,                "logs",                 false, Strings.Nav.Logs,             Icons.List,        false, false, false),
+        new(RouteKind.NotFound,           "",                     false, Strings.Nav.PageNotFound,     Icons.MusicNote,   false, false, false),
     ];
 
     /// <summary>The page factories, parallel to <see cref="s_routes"/> and indexed by the SAME kind — the third read
@@ -353,7 +360,8 @@ public static partial class Shell
     /// <summary>Kinds whose <c>Arg</c> is a DISPLAY NAME rather than a slot discriminator. <c>search</c> is in both
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
-        or RouteKind.SidebarCustomize or RouteKind.HomeCustomize or RouteKind.Home);   // Home's arg is a facet id
+        or RouteKind.SidebarCustomize or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
+        or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
     //
@@ -591,6 +599,12 @@ public static partial class Shell
     /// tab on the not-found page and wrote it into the persisted history log.</summary>
     public static DeepLinkVerb DeepLink(ReadOnlySpan<char> uriOrUrl, bool developerMode = false)
     {
+        // A WM_COPYDATA sender that counts its C terminator in cbData delivers `wavee://open?route=home\0`, and the
+        // engine rebuilds the string from cbData / 2 chars — the NUL used to ride into the route id (an unknown route)
+        // and from there into every nav/log line that carried it. The parser is the one door every intake reaches, so
+        // it cuts at the first NUL (privacy-diagnostics audit #16, G10).
+        int nul = uriOrUrl.IndexOf('\0');
+        if (nul >= 0) uriOrUrl = uriOrUrl[..nul];
         if (!TryParseVerb(uriOrUrl, out string name, out string route, out string arg, out string ctx, out string link, out string query))
             return default;
 
@@ -1102,16 +1116,13 @@ public static partial class Shell
         // DERIVED FACTS LIVE ON THE MODEL (ch 18 §7): the sidebar mounts, the player bar and the rail read these instead
         // of each re-deriving "is the window narrow" from three widths at a call site.
 
-        /// <summary>The whole-shell NARROW band (≤ 720 enters, &lt; 760 leaves — <see cref="Layout.NarrowFor"/>). In it
-        /// the inline sidebar is forced to the 56-DIP compact rail and the hamburger opens the drawer instead of writing
-        /// the user's desktop collapse preference.</summary>
-        public static readonly Signal<bool> NarrowShell = new(false);
+        /// <summary>The LAST-RESORT band: the window cannot hold the expanded sidebar floor AND the content floor
+        /// (<see cref="SidebarResizeRules.LastResort"/>: enters below 660, leaves at 700). In it the inline column shows
+        /// the user's rail detent and the hamburger opens the drawer instead of writing the user's regime. Never reached
+        /// on an ordinary desktop window; it is the only way the window width touches the sidebar's regime.</summary>
+        public static readonly Signal<bool> LastResort = new(false);
 
-        /// <summary>What the INLINE sidebar actually presents: <c>NarrowShell ∨ Sidebar.Collapsed</c>. Never the user's
-        /// preference itself — that is <c>Sidebar.Collapsed</c>, which the narrow band must not overwrite.</summary>
-        public static readonly Signal<bool> SidebarPresentedCompact = new(false);
-
-        /// <summary>The narrow drawer is open. Meaningless (and forced false) outside the narrow band.</summary>
+        /// <summary>The narrow drawer is open. Meaningless (and forced false) outside the last-resort band.</summary>
         public static readonly Signal<bool> DrawerOpen = new(false);
 
         // The floating surface's bottom reservation is owner K's `Video.FloatingSurfaceReserve` (the PiP writes it); the
@@ -1854,20 +1865,14 @@ public static partial class Shell
 
         /// <summary>The sidebar column's bound width — THE W12 TRAP. A drag that starts on a COLLAPSED rail presents the
         /// pane expanded for the whole drag (drag peek); the column is <c>ClipToBounds</c>, so deriving its width from
-        /// <paramref name="presentedCompact"/> alone clips a 56-DIP strip of art and tree connectors with every label cut
+        /// <paramref name="presented"/> alone clips a rail-wide strip of art and tree connectors with every label cut
         /// off. The peek term must stay in the same expression.</summary>
-        public static float SidebarPaneWidth(bool presentedCompact, bool dragPeek, float expandedWidth)
-            => presentedCompact && !dragPeek ? Layout.CompactRailW : expandedWidth;
+        public static float SidebarPaneWidth(bool dragPeek, float expanded, float presented)
+            => dragPeek ? expanded : presented;
 
-        /// <summary>Where the sidebar seam grip sits: the pane's resting right edge (the peek does not move the seam).</summary>
-        public static float SidebarSeamX(bool presentedCompact, float expandedWidth)
-            => presentedCompact ? Layout.CompactRailW : expandedWidth;
-
-        /// <summary>The narrow shell has no sidebar seam at all (the rail is fixed at 56 and the drawer owns the width).</summary>
-        public static float SidebarSeamWidth(bool narrow) => narrow ? 0f : SeamStripW;
-
-        /// <summary>The presented-compact fold: narrow forces compact; otherwise the user's preference.</summary>
-        public static bool PresentedCompact(bool narrow, bool collapsed) => narrow || collapsed;
+        /// <summary>The last-resort shell has no sidebar seam at all (the rail is fixed at the user's detent and the
+        /// drawer owns the width).</summary>
+        public static float SidebarSeamWidth(bool lastResort) => lastResort ? 0f : SeamStripW;
 
         /// <summary>The rail's 8-DIP gap exists ONLY while the rail is inline (open AND fits). A closed or floating rail
         /// leaves the page flush to the window edge.</summary>
@@ -1887,9 +1892,11 @@ public static partial class Shell
         /// <summary>The rail seam grip only exists while the rail is open.</summary>
         public static float RailSeamWidth(bool open) => open ? SeamStripW : 0f;
 
-        /// <summary>FULL-SCREEN VIDEO UNMOUNTS THE CHROME ROW AND THE PLAYER BAR — one derived predicate drives both, so the
-        /// surface mounting and the chrome leaving cannot disagree by a frame (ch 18 §0.12).</summary>
-        public static bool ChromeMounted(Video.SurfacePlacement resolved) => resolved != Video.SurfacePlacement.Fullscreen;
+        /// <summary>FULL-SCREEN VIDEO OR THE FULLSCREEN STAGE UNMOUNTS THE CHROME ROW AND THE PLAYER BAR — one derived
+        /// predicate drives both Flow.Show boundaries, so there is exactly one transport on screen and the surface mounting
+        /// and the chrome leaving cannot disagree by a frame (ch 18 §0.12).</summary>
+        public static bool ChromeMounted(Video.SurfacePlacement resolved, bool immersive)
+            => resolved != Video.SurfacePlacement.Fullscreen && !immersive;
 
         /// <summary>What a bare Escape reaching the shell column does, in precedence order.</summary>
         public enum EscapeAction : byte { None, CloseImmersiveLyrics, ExitVideoFullscreen }
@@ -1909,12 +1916,18 @@ public static partial class Shell
         /// focus (Space is not an accelerator — the dispatcher only matches Ctrl/Alt or F-keys).</summary>
         public static bool SpaceTogglesPlayback(bool handled, bool textEditorFocused) => !handled && !textEditorFocused;
 
-        /// <summary>What F11 does. It toggles video fullscreen ONLY while a video is active — with nothing playing there is
-        /// nothing to fill the screen with, so the chord is a no-op rather than an empty stage.</summary>
-        public enum FullscreenToggle : byte { None, Enter, Exit }
+        /// <summary>What F11 does. The fullscreen stage closes first if it is up; otherwise video fullscreen exits / enters
+        /// as before; and with no video fullscreen and none to enter, F11 OPENS the stage (an empty stage is allowed — the
+        /// rail's ⛶ does the same). <see cref="None"/> is the neutral zero value; <see cref="F11"/> never returns it.</summary>
+        public enum FullscreenToggle : byte { None, Enter, Exit, CloseStage, OpenStage }
 
-        public static FullscreenToggle F11(bool isFullscreen, bool videoActive)
-            => isFullscreen ? FullscreenToggle.Exit : videoActive ? FullscreenToggle.Enter : FullscreenToggle.None;
+        /// <summary>F11, in priority order: the stage closes if it is up; else fullscreen video exits; else an active video
+        /// goes fullscreen; else the fullscreen stage opens.</summary>
+        public static FullscreenToggle F11(bool isFullscreen, bool videoActive, bool stageUp)
+            => stageUp ? FullscreenToggle.CloseStage
+             : isFullscreen ? FullscreenToggle.Exit
+             : videoActive ? FullscreenToggle.Enter
+             : FullscreenToggle.OpenStage;
 
         /// <summary>A search-mode flip while the user was IN the search must hand the caret to the new form: field → icon
         /// while the field had focus, or icon → field while the flyout was open (ch 18 W4).</summary>
@@ -2090,7 +2103,13 @@ public static partial class Shell
         public enum ItemKind : byte { Track, Artist, Album, Playlist, Genre, Episode, Podcast, Audiobook, User }
 
         /// <summary>One rich suggestion row.</summary>
-        public sealed record Item(ItemKind Kind, EntityUri Uri, string Title, string? Subtitle = null, string? ImageUrl = null);
+        public sealed record Item(ItemKind Kind, EntityUri Uri, string Title, string? Subtitle = null, string? ImageUrl = null, AlbumKind? ReleaseKind = null)
+        {
+            /// <summary>The row's entity (kind + table slot), allocating the row if unseen; <see cref="EntityRef.IsNone"/>
+            /// for a kind with no table (a genre, an audiobook). <see cref="Subtitle"/> is the DETAIL only (artists / owner /
+            /// publisher / show) — the row composes its kind word and <see cref="TextJoin.Sep"/> (<c>Search.SubtitleText</c>).</summary>
+            public EntityRef Ref => Entities.Ref(Uri.Id);
+        }
 
         /// <summary>One answer: the query completions, then the rich rows.</summary>
         public sealed record Suggestions(IReadOnlyList<string> Queries, IReadOnlyList<Item> Items)

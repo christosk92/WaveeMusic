@@ -1112,8 +1112,9 @@ cannot be checked in `--fake` (verify it live or accept the Actions lane in its 
 71. **Recommendations, all three states.** On an owned playlist: scroll to the bottom cold → the refresh button is a
     spinner; after an empty reply → "No suggestions right now" beside the button; on a non-owned playlist → no header
     row exists at all.
-72. **Single has no selection.** Open a 1–2 track single: Ctrl+A, Select and right-click-multi do nothing — no check
-    lane, no selection command bar (`ItemsSelectionMode.None`).
+72. **Single selects like an album.** Open a 1–2 track single: Ctrl+A, Select and right-click-multi work exactly as on an
+    album - check lane and selection command bar included (`Config.Single` is the album config, `ItemsSelectionMode.Extended`;
+    owner decision, interaction-consistency plan).
 
 ---
 

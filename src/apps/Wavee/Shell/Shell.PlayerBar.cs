@@ -57,7 +57,7 @@ public static partial class Shell
     public enum RowAction : byte { Start, Toggle }
 
     /// <summary>One row of the "⋯" overflow, in BUILD order — which IS the menu order (ch 20 W17).</summary>
-    public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, Video, Mute }
+    public enum OverflowCommand : byte { Previous, Next, Shuffle, Repeat, Lyrics, Queue, NowPlaying, FullScreen, Video, Mute }
 
     /// <summary>What the centre rail IS right now — decided by the source's own timeline, never by whether a duration
     /// happened to be reported (a sliding DVR window reported as a 3-minute "track" is the defect this ends).</summary>
@@ -97,7 +97,7 @@ public static partial class Shell
     public static class PlayerBarRules
     {
         /// <summary>The overflow can hold every <see cref="OverflowCommand"/> at once.</summary>
-        public const int MaxOverflow = 9;
+        public const int MaxOverflow = 10;
 
         /// <summary>The play-next drop's batch cap (G-211, ch 19 #87): a dropped playlist/album inserts at most this
         /// many tracks before the front of the queue; the rest are silently NOT the drop's problem — the toast says
@@ -238,7 +238,8 @@ public static partial class Shell
 
         /// <summary>The "⋯" slot is reserved wherever the IDLE bar already has rows in its menu — the tier-only rows
         /// (shuffle/repeat, queue, now-playing). Every state-dependent row (lyrics, video, mute) only ever ADDS to a menu
-        /// that is already non-empty at that tier, so playback can never make the slot appear or vanish.</summary>
+        /// that is already non-empty at that tier, so playback can never make the slot appear or vanish. The now-playing
+        /// row rides every tier, so the slot is in fact reserved at all of them.</summary>
         public static bool OverflowSlotReserved(in PlayerBarLayout layout)
         {
             Span<OverflowCommand> scratch = stackalloc OverflowCommand[MaxOverflow];
@@ -316,7 +317,12 @@ public static partial class Shell
 
         /// <summary>Everything that left the row, in the fixed order. Returns the count written into
         /// <paramref name="dest"/> (length ≥ <see cref="MaxOverflow"/>). 0.2.9's dead like-branch
-        /// (<c>!showLike &amp;&amp; active</c>, unreachable) is not ported.</summary>
+        /// (<c>!showLike &amp;&amp; active</c>, unreachable) is not ported.
+        /// <para><see cref="OverflowCommand.NowPlaying"/> (the rail's now-playing mode) is carried at EVERY tier: the
+        /// Expand slot of the Full tier now opens the fullscreen stage, so the "⋯" menu is the now-playing rail's one
+        /// door on the bar (it used to appear only where the Expand slot had been dropped).
+        /// <see cref="OverflowCommand.FullScreen"/> (the fullscreen stage) follows it ONLY where the Expand slot — the
+        /// stage's door in the row — is dropped, so there is exactly one stage door at every tier.</para></summary>
         public static int Overflow(in PlayerBarLayout layout, bool ownsTransport, bool active, bool hasVideo,
             Span<OverflowCommand> dest)
         {
@@ -325,7 +331,8 @@ public static partial class Shell
             if (!layout.ShowShuffleRepeat) { dest[n++] = OverflowCommand.Shuffle; dest[n++] = OverflowCommand.Repeat; }
             if (!layout.ShowLyrics && active) dest[n++] = OverflowCommand.Lyrics;
             if (!layout.ShowQueue) dest[n++] = OverflowCommand.Queue;
-            if (!layout.ShowExpand) dest[n++] = OverflowCommand.NowPlaying;
+            dest[n++] = OverflowCommand.NowPlaying;
+            if (!layout.ShowExpand) dest[n++] = OverflowCommand.FullScreen;
             // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
             if (!layout.ShowQueue && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;
@@ -421,40 +428,21 @@ public static partial class Shell
 
     // ══ 3. THE SEEK RAIL ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Accumulation belongs to the intent, not the last delayed backend position sample.</summary>
-    public sealed class PlayerSeekAccumulator
-    {
-        EntityId _id;
-        uint _scope;
-        Playback.Owner _owner;
-        int _device;
-        long _at, _target;
-        bool _pending;
-        public void Reset() => _pending = false;
-        public int Step(EntityId id, uint scope, Playback.Owner owner, int device,
-            long reportedMs, long durationMs, long nowMs, int deltaMs, long minimumMs = 0)
-        {
-            bool same = _pending && _id == id && _scope == scope && _owner == owner && _device == device;
-            bool awaiting = same && nowMs >= _at && nowMs - _at < 2000
-                && Math.Abs(reportedMs - _target) > 1000;
-            long basis = awaiting ? _target : reportedMs;
-            long maximum = Math.Min(Math.Max(0, durationMs), int.MaxValue);
-            _target = Math.Clamp(basis + deltaMs, Math.Clamp(minimumMs, 0, maximum), maximum);
-            _id = id; _scope = scope; _owner = owner; _device = device; _at = nowMs; _pending = true;
-            return (int)_target;
-        }
-    }
+    /// <summary>What a transport key asks for. <c>SeekBack</c> / <c>SeekForward</c> step the keyboard scrub ladder
+    /// (5 s, then 15 s, then 30 s while held — <see cref="KeyboardScrubLadder"/>); the <c>…Fine</c> pair is Shift's 1 s step (D4).</summary>
+    public enum PlayerKeyIntent : byte { None, SeekBack, SeekForward, VolumeDown, VolumeUp, Toggle, SeekBackFine, SeekForwardFine }
 
-    public enum PlayerKeyIntent : byte { None, SeekBack, SeekForward, VolumeDown, VolumeUp, Toggle }
-
-    public static PlayerKeyIntent PlayerKey(int key, bool focusedContainer, bool handled, bool modified)
+    /// <summary>The bar's (and the stage's) key map. <paramref name="modified"/> is Ctrl or Alt — a chord, never ours;
+    /// <paramref name="shift"/> is Shift alone, which only means something on Left / Right (the fine ladder step) and is no
+    /// transport key anywhere else.</summary>
+    public static PlayerKeyIntent PlayerKey(int key, bool focusedContainer, bool handled, bool modified, bool shift)
         => !focusedContainer || handled || modified ? PlayerKeyIntent.None : key switch
         {
-            FluentGpu.Foundation.Keys.Left => PlayerKeyIntent.SeekBack,
-            FluentGpu.Foundation.Keys.Right => PlayerKeyIntent.SeekForward,
-            FluentGpu.Foundation.Keys.Down => PlayerKeyIntent.VolumeDown,
-            FluentGpu.Foundation.Keys.Up => PlayerKeyIntent.VolumeUp,
-            FluentGpu.Foundation.Keys.Space => PlayerKeyIntent.Toggle,
+            FluentGpu.Foundation.Keys.Left => shift ? PlayerKeyIntent.SeekBackFine : PlayerKeyIntent.SeekBack,
+            FluentGpu.Foundation.Keys.Right => shift ? PlayerKeyIntent.SeekForwardFine : PlayerKeyIntent.SeekForward,
+            FluentGpu.Foundation.Keys.Down when !shift => PlayerKeyIntent.VolumeDown,
+            FluentGpu.Foundation.Keys.Up when !shift => PlayerKeyIntent.VolumeUp,
+            FluentGpu.Foundation.Keys.Space when !shift => PlayerKeyIntent.Toggle,
             _ => PlayerKeyIntent.None,
         };
 
@@ -531,12 +519,14 @@ public static partial class Shell
         public static bool CanCommit(in Playback.LiveWindow live, long durationMs)
             => (live.IsLive && live.HasWindow) || durationMs > 0L;
 
-        /// <summary>The position a released gesture commits to: clamped INTO the window for a DVR, into the duration
-        /// for a track.</summary>
+        /// <summary>The position a released gesture commits to: clamped INTO the window for a DVR, and for a track through
+        /// <see cref="Playback.SeekTarget.Clamp"/> — the same clamp the reducer's seek runs, so a drag held at the very end
+        /// shows (and keeps) the tail guard's landing point instead of stepping back by it after the release (U-8).</summary>
         public static long CommitTargetMs(float fraction, long durationMs, in Playback.LiveWindow live)
             => ModeOf(live) == SeekRailMode.Dvr
                 ? Playback.LiveRail.Seek(in live, fraction)
-                : Math.Clamp((long)(fraction * durationMs), 0L, Math.Max(0L, durationMs));
+                : Playback.SeekTarget.Clamp((int)Math.Clamp((long)(fraction * durationMs), 0L, int.MaxValue),
+                    (int)Math.Clamp(durationMs, 0L, int.MaxValue));
 
         /// <summary>How long a released drag keeps showing the DROP point while the seek travels through the model. The
         /// commit is a posted input that lands on the next drain; without the hold, a ticker frame between the release
@@ -544,11 +534,39 @@ public static partial class Shell
         /// the thumb at a position the audio never reached.</summary>
         public const long CommitHoldMs = 750L;
 
-        /// <summary>Is the drop point still held? Released by the first position report after the commit, or by
-        /// <see cref="CommitHoldMs"/> — whichever comes first. <paramref name="committedAtMs"/> ≤ 0 means no commit is
+        /// <summary>Is the drop point still held? Released by a LANDED seek newer than the generation the commit sampled
+        /// (<see cref="Playback.SeekLandedAfter"/>, V-PA12 — the rail's own <c>OnReport</c> ends the hold there; a position report is
+        /// NOT the release, because the committing drain's own publish is one and repaints the pre-seek position), or by
+        /// <see cref="CommitHoldMs"/> — whichever comes first. A commit the reducer turns into no seek (a foreign owner, a parked
+        /// deck) lands nothing, so the timeout is what ends its hold. <paramref name="committedAtMs"/> ≤ 0 means no commit is
         /// pending.</summary>
         public static bool HoldsDrop(long committedAtMs, long nowMs)
             => committedAtMs > 0L && nowMs - committedAtMs < CommitHoldMs;
+
+        /// <summary>Where a ±<c>deltaMs</c> step button lands (the ±10 s podcast buttons): straight from the reported position, clamped —
+        /// a track through <see cref="Playback.SeekTarget.Clamp"/> (the very clamp the reducer's seek runs, so the painted drop point
+        /// and the landing agree), a DVR window into its own edges. There is no accumulator: the reducer paints the drop point at the
+        /// post, so a second press reads it (D4 — <c>PlayerSeekAccumulator</c> is gone).</summary>
+        public static long StepTargetMs(long positionMs, int deltaMs, long durationMs, in Playback.LiveWindow live)
+        {
+            if (live.HasWindow)
+                return Math.Clamp(positionMs + deltaMs, live.SeekableStartMs, Math.Max(live.SeekableStartMs, live.SeekableEndMs));
+            return Playback.SeekTarget.Clamp((int)Math.Clamp(positionMs + deltaMs, 0L, int.MaxValue),
+                (int)Math.Clamp(durationMs, 0L, int.MaxValue));
+        }
+
+        /// <summary>The coordinates the keyboard ladder (<see cref="KeyboardScrubLadder"/>) works in: always <c>[0, SpanMs]</c>, so its
+        /// clamp is the source's. A track is <c>[0, duration]</c> with <c>BaseMs = 0</c>; a DVR window is its width, offset by its
+        /// start (<c>BaseMs</c>). <c>FromMs</c> is where the playhead sits in those coordinates; a committed ladder target
+        /// <c>t</c> seeks to <c>BaseMs + t</c>.</summary>
+        public static (long BaseMs, int SpanMs, int FromMs) KeySpace(in Playback.LiveWindow live, long durationMs, long positionMs)
+        {
+            long start = live.HasWindow ? live.SeekableStartMs : 0L;
+            long end = live.HasWindow ? live.SeekableEndMs : durationMs;
+            int span = (int)Math.Clamp(end - start, 0L, int.MaxValue);
+            int from = (int)Math.Clamp(positionMs - start, 0L, span);
+            return (start, span, from);
+        }
 
         /// <summary>The thumb ring's left edge: centred on the fraction, never past either end of the rail.</summary>
         public static float ThumbX(float railPx, float fraction, float ringDiameter)

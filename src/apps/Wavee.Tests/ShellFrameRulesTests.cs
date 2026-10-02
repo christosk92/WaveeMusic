@@ -16,29 +16,21 @@ namespace Wavee.Tests;
 public class ShellFrameGeometryTests
 {
     [Fact]
-    public void A_drag_peek_presents_the_expanded_width_even_while_compact()
+    public void A_drag_peek_presents_the_expanded_width_even_while_a_rail()
     {
-        Assert.Equal(Shell.Layout.CompactRailW, Shell.FrameRules.SidebarPaneWidth(presentedCompact: true, dragPeek: false, 300f));
-        Assert.Equal(300f, Shell.FrameRules.SidebarPaneWidth(presentedCompact: true, dragPeek: true, 300f));
-        Assert.Equal(300f, Shell.FrameRules.SidebarPaneWidth(presentedCompact: false, dragPeek: false, 300f));
+        // Resting on a Large rail (presented 80): a peek drag shows the expanded pane at its remembered width.
+        Assert.Equal(80f, Shell.FrameRules.SidebarPaneWidth(dragPeek: false, expanded: 300f, presented: 80f));
+        Assert.Equal(300f, Shell.FrameRules.SidebarPaneWidth(dragPeek: true, expanded: 300f, presented: 80f));
+        // Expanded and yielding to the content floor (756 window): the column follows the presented width.
+        Assert.Equal(276f, Shell.FrameRules.SidebarPaneWidth(dragPeek: false, expanded: 300f, presented: 276f));
     }
 
     [Fact]
-    public void The_sidebar_seam_sits_on_the_resting_edge_and_vanishes_when_narrow()
+    public void The_sidebar_seam_vanishes_only_in_the_last_resort_band()
     {
-        Assert.Equal(Shell.Layout.CompactRailW, Shell.FrameRules.SidebarSeamX(presentedCompact: true, 300f));
-        Assert.Equal(300f, Shell.FrameRules.SidebarSeamX(presentedCompact: false, 300f));
-        Assert.Equal(0f, Shell.FrameRules.SidebarSeamWidth(narrow: true));
-        Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.SidebarSeamWidth(narrow: false));
+        Assert.Equal(0f, Shell.FrameRules.SidebarSeamWidth(lastResort: true));
+        Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.SidebarSeamWidth(lastResort: false));
     }
-
-    [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(true, false, true)]
-    [InlineData(false, true, true)]
-    [InlineData(true, true, true)]
-    public void Narrow_forces_compact_without_touching_the_preference(bool narrow, bool collapsed, bool expected)
-        => Assert.Equal(expected, Shell.FrameRules.PresentedCompact(narrow, collapsed));
 
     [Fact]
     public void The_rail_reserves_its_gap_and_width_only_while_inline()
@@ -68,13 +60,19 @@ public class ShellFrameGeometryTests
     }
 
     [Theory]
-    [InlineData(Video.SurfacePlacement.None, true)]
-    [InlineData(Video.SurfacePlacement.Docked, true)]
-    [InlineData(Video.SurfacePlacement.Floating, true)]
-    [InlineData(Video.SurfacePlacement.Detached, true)]
-    [InlineData(Video.SurfacePlacement.Fullscreen, false)]
-    public void Fullscreen_video_and_only_fullscreen_video_unmounts_the_chrome(Video.SurfacePlacement resolved, bool mounted)
-        => Assert.Equal(mounted, Shell.FrameRules.ChromeMounted(resolved));
+    [InlineData(Video.SurfacePlacement.None, false, true)]
+    [InlineData(Video.SurfacePlacement.Docked, false, true)]
+    [InlineData(Video.SurfacePlacement.Floating, false, true)]
+    [InlineData(Video.SurfacePlacement.Detached, false, true)]
+    [InlineData(Video.SurfacePlacement.Fullscreen, false, false)]
+    [InlineData(Video.SurfacePlacement.None, true, false)]
+    [InlineData(Video.SurfacePlacement.Docked, true, false)]
+    [InlineData(Video.SurfacePlacement.Floating, true, false)]
+    [InlineData(Video.SurfacePlacement.Detached, true, false)]
+    [InlineData(Video.SurfacePlacement.Fullscreen, true, false)]
+    public void Fullscreen_video_or_the_fullscreen_stage_unmounts_the_chrome_and_nothing_else_does(
+        Video.SurfacePlacement resolved, bool immersive, bool mounted)
+        => Assert.Equal(mounted, Shell.FrameRules.ChromeMounted(resolved, immersive));
 }
 
 public class ShellFrameKeyRulesTests
@@ -104,11 +102,20 @@ public class ShellFrameKeyRulesTests
         => Assert.Equal(expected, Shell.FrameRules.SpaceTogglesPlayback(handled, editor));
 
     [Fact]
-    public void F11_does_nothing_without_a_video()
+    public void F11_opens_the_stage_when_there_is_no_video_to_toggle()
     {
-        Assert.Equal(Shell.FrameRules.FullscreenToggle.None, Shell.FrameRules.F11(isFullscreen: false, videoActive: false));
-        Assert.Equal(Shell.FrameRules.FullscreenToggle.Enter, Shell.FrameRules.F11(isFullscreen: false, videoActive: true));
-        Assert.Equal(Shell.FrameRules.FullscreenToggle.Exit, Shell.FrameRules.F11(isFullscreen: true, videoActive: false));
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.OpenStage, Shell.FrameRules.F11(isFullscreen: false, videoActive: false, stageUp: false));
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.Enter, Shell.FrameRules.F11(isFullscreen: false, videoActive: true, stageUp: false));
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.Exit, Shell.FrameRules.F11(isFullscreen: true, videoActive: false, stageUp: false));
+    }
+
+    [Fact]
+    public void F11_closes_the_stage_before_anything_else()
+    {
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.CloseStage, Shell.FrameRules.F11(isFullscreen: false, videoActive: false, stageUp: true));
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.CloseStage, Shell.FrameRules.F11(isFullscreen: true, videoActive: true, stageUp: true));
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.CloseStage, Shell.FrameRules.F11(isFullscreen: true, videoActive: false, stageUp: true));
+        Assert.Equal(Shell.FrameRules.FullscreenToggle.CloseStage, Shell.FrameRules.F11(isFullscreen: false, videoActive: true, stageUp: true));
     }
 
     [Fact]

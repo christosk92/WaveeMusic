@@ -127,6 +127,7 @@ public class FetchRoutesTests
     [InlineData(FetchEdge.ArtistReleases, RouteTransport.Pathfinder)]
     [InlineData(FetchEdge.TrackCredits, RouteTransport.Metadata)]
     [InlineData(FetchEdge.TrackWaveform, RouteTransport.Metadata)]
+    [InlineData(FetchEdge.TrackBeats, RouteTransport.Spclient)]
     [InlineData(FetchEdge.AlbumRecommendations, RouteTransport.Metadata)]
     [InlineData(FetchEdge.BrowseSections, RouteTransport.Pathfinder)]
     [InlineData(FetchEdge.HomeSections, RouteTransport.Pathfinder)]
@@ -171,6 +172,17 @@ public class FetchRoutesTests
         Assert.Equal(SpclientRoute.ProfileFollowing, following.Rest);
         Assert.Equal(0u, following.Groups);
         // (EdgeDoorTests' sweep proves both name a relation table and a parent table.)
+    }
+
+    [Fact]
+    public void The_beat_grid_is_one_whole_json_spclient_read_per_track_and_the_build_serves_it()
+    {
+        // WP-D2 (fullscreen flagship §4.5.2): /audio-attributes/v1/audio-analysis/<id>, no groups (an edge route carries none).
+        var route = FetchRoutes.ForEdge(FetchEdge.TrackBeats);
+        Assert.Equal(SpclientRoute.AudioAnalysis, route.Rest);
+        Assert.Equal(0u, route.Groups);
+        Assert.True(Spotify.Api.Serves(in route));
+        Assert.True(Spotify.Api.ServesEdge(FetchEdge.TrackBeats, 0));
     }
 
     [Fact]

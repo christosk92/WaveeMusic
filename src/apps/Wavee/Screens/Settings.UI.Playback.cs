@@ -34,12 +34,14 @@ public static partial class Settings
 {
     // ══ 1. SEAMS, STABLE CONTROL STATE (0.2.9 `SettingsPage.Playback.cs:31-41`, `VideoOverrides.cs:30-40`) ══════════
 
-    /// <summary>Owner B4 assigns <c>Playback.Audio.SetNormalization</c> (G-132). Null → the key is still written and the
-    /// audio open reads it, so the change lands from the next track — which is what the row's own copy promises.</summary>
-    public static Action<bool>? ApplyNormalization;
+    /// <summary><c>Playback.Audio.SetNormalization</c>, assigned at boot (G-132, V-PA27): the three normalization rows (the toggle,
+    /// the mode, album mode) each persist and then call it, and it re-ramps the playing voices to the new setting within 50 ms.
+    /// Null → the key is still written and the next open reads it.</summary>
+    public static Action? ApplyNormalization;
 
     // ComboBox / NumberBox / Slider bind ONE signal instance for their life: these are seeded per page mount.
     static readonly Signal<int> s_quality = new(Platform.Keys.PlaybackQuality.Default);
+    static readonly Signal<int> s_normMode = new(Platform.Keys.NormalizationMode.Default);
     static readonly Signal<int> s_videoQuality = new(0);
     static readonly Signal<int> s_meteredVideo = new(1);
     static readonly Signal<int> s_eqPreset = new(0);
@@ -76,6 +78,7 @@ public static partial class Settings
     {
         var s = Platform.Settings;
         s_quality.Value = Quality.AudioIndex(s.Get(Platform.Keys.PlaybackQuality), Spotify.Audio.CanDerive);
+        s_normMode.Value = Math.Clamp(s.Get(Platform.Keys.NormalizationMode), 0, 2);
         s_videoQuality.Value = Quality.VideoIndex(s.Get(Platform.Keys.VideoQuality));
         s_meteredVideo.Value = Quality.MeteredVideoIndex(s.Get(Platform.Keys.VideoMeteredMaxHeight));
         s_eqPreset.Value = Eq.PresetIndex(s.Get(Platform.Keys.EqualizerPreset));
@@ -109,10 +112,19 @@ public static partial class Settings
             Toggle(Platform.Keys.RememberVolume), RowGlyph(Tab.Playback, "rememberVolume")),
         Row(Loc.Get(Strings.Settings.Playback.Autoplay), Loc.Get(Strings.Settings.Playback.AutoplaySub),
             Toggle(Platform.Keys.AutoplayEnabled), RowGlyph(Tab.Playback, "autoplay")),
-        // G-132: the switch 0.2.9 persisted but never showed.
+        // G-132: the switch 0.2.9 persisted but never showed. D5: it, the mode and album mode all apply LIVE to the playing track.
         Row(Loc.Get(Strings.Settings.Playback.Normalization), Loc.Get(Strings.Settings.Playback.NormalizationSub),
-            Toggle(Platform.Keys.NormalizationEnabled, afterWrite: static on => ApplyNormalization?.Invoke(on)),
+            Toggle(Platform.Keys.NormalizationEnabled, afterWrite: static _ => ApplyNormalization?.Invoke()),
             RowGlyph(Tab.Playback, "normalization")),
+        Row(Loc.Get(Strings.Settings.Playback.NormalizationMode), Loc.Get(Strings.Settings.Playback.NormalizationModeSub),
+            ComboBox.Create([Loc.Get(Strings.Settings.Playback.NormQuiet), Loc.Get(Strings.Settings.Playback.NormNormal), Loc.Get(Strings.Settings.Playback.NormLoud)],
+                s_normMode, width: 200f,
+                itemDescriptions: [Loc.Get(Strings.Settings.Playback.NormQuietSub), Loc.Get(Strings.Settings.Playback.NormNormalSub), Loc.Get(Strings.Settings.Playback.NormLoudSub)],
+                onChange: static i => { Platform.Settings.Set(Platform.Keys.NormalizationMode, i); ApplyNormalization?.Invoke(); }),
+            RowGlyph(Tab.Playback, "normalizationMode")),
+        Row(Loc.Get(Strings.Settings.Playback.NormalizationAlbum), Loc.Get(Strings.Settings.Playback.NormalizationAlbumSub),
+            Toggle(Platform.Keys.NormalizationAlbum, afterWrite: static _ => ApplyNormalization?.Invoke()),
+            RowGlyph(Tab.Playback, "normalizationAlbum")),
 
         SectionHeader(Loc.Get(Strings.Settings.Sound.Title), SectionGlyph(Tab.Playback, "Sound")),
         EqualizerGroup(),
@@ -304,7 +316,11 @@ public static partial class Settings
     ];
 
     /// <summary><c>InitiallyExpanded = eqOn</c> is read at MOUNT (33c): turning the EQ off leaves the open expander open.
-    /// The curve item is <c>Vertical</c> at every width — the full 898-DIP lane at card 1000 (parity 11a, 24).</summary>
+    /// The curve item is <c>Vertical</c> at every width — the full 898-DIP lane at card 1000 (parity 11a, 24).
+    /// <para>The card's content slot is a ROW that shrink-wraps its child (<c>SettingsCard.BuildContent</c>), so the
+    /// curve's column claims the lane with <c>Grow 1 / Basis 0 / MinWidth 0</c>. Without them the column takes its
+    /// CONTENT's width — and the curve, which measures the slot it is handed, measured its own guess back and held it
+    /// (the chart overran the card, and "Reset curve to flat" was cut off at the card's right edge).</para></summary>
     static Element EqualizerGroup()
     {
         bool eqOn = Platform.Settings.Get(Platform.Keys.EqualizerEnabled);
@@ -327,7 +343,7 @@ public static partial class Settings
                     Loc.Get(eqOn ? Strings.Settings.Sound.CurveOn : Strings.Settings.Sound.CurveOff),
                     new BoxEl
                     {
-                        Direction = 1, Gap = Spacing.S,
+                        Direction = 1, Gap = Spacing.S, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
                         Children =
                         [
                             Controls.EqualizerCurve(EqGains(), s_onEqBand, eqOn),

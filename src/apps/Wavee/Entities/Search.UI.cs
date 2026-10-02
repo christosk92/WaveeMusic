@@ -53,6 +53,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Reconciler;
 using FluentGpu.Scene;
+using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -287,7 +288,7 @@ public readonly partial struct Search
         if (hit.Kind is EntityKind.Artist or EntityKind.User) return word;
         var card = new HomeCard(hit);
         string? detail = hit.Kind is EntityKind.Playlist or EntityKind.Collection ? card.OwnerName : card.Subtitle;
-        return string.IsNullOrWhiteSpace(detail) ? word : word + " • " + detail;
+        return SubtitleText(word, detail);
     }
 
     /// <summary>Where opening a hit goes: a page for an album / artist / playlist / show (with the search LOOKUP origin, so
@@ -429,16 +430,31 @@ public readonly partial struct Search
 
         var h = hit;
         var origin = ctx.Origin;
-        bool isTrack = hit.Kind == EntityKind.Track;
         Action open = () => OpenHit(h, origin);
         var menu = MenuOf(hit);
 
         var actions = new List<Element>(4);
         if (CanPlay(hit.Kind)) actions.Add(Controls.PlayButton(accent, () => PlayHit(h)) with { Shrink = 0f });
-        if (CanOpen(hit.Kind) && !isTrack)
-            actions.Add(Button.Create(Loc.Get(Strings.Search.OpenPage), open) with { Shrink = 0f });
         if (TrailingOf(hit, uri, title, compact: false) is { } trailing) actions.Add(trailing);
-        if (menu is not null) actions.Add(Controls.Named(Controls.MoreButton(null, requestsContext: true) with { BlocksDragArm = true }, Loc.Get(Strings.Common.More)));
+        // The "…" is a hover/focus REVEAL on the card (the Surface host's own mechanism, which a hand-built card does not
+        // get for free): the wrapper is NON-interactive, so the engine's hover cascade resolves to the card and the pointer
+        // anywhere on it reveals the button (HoverOpacity); keyboard focus within the card reveals it through the folded
+        // focus edges (Controls.CardChromeRules.FocusWithin — the shell's own edge and the wrapper's subtree edge, so Tab from the
+        // card onto the "…" does not read as a loss). The button itself rests fully opaque inside the wrapper.
+        Action<bool>? cardFocus = null;
+        if (menu is not null)
+        {
+            var revealed = new Signal<bool>(false);
+            bool selfFocus = false, innerFocus = false;
+            cardFocus = f => { selfFocus = f; revealed.Value = Controls.CardChromeRules.FocusWithin(selfFocus, innerFocus); };
+            actions.Add(new BoxEl
+            {
+                Shrink = 0f, Opacity = Prop.Of(() => revealed.Value ? 1f : 0f), HoverOpacity = 1f,
+                HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
+                OnFocusChanged = f => { innerFocus = f; revealed.Value = Controls.CardChromeRules.FocusWithin(selfFocus, innerFocus); },
+                Children = [Controls.Named(Controls.MoreButton(null, requestsContext: true, restOpacity: 1f), Loc.Get(Strings.Common.More))],
+            });
+        }
 
         var chips = new List<Element>(2);
         if ((flags & SearchHitFlags.MatchedTitle) != 0) chips.Add(HeroChip(Loc.Get(Strings.Search.MatchedTitle)));
@@ -475,7 +491,7 @@ public readonly partial struct Search
             ClipToBounds = true, Corners = Radii.CardAll,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
-            OnClick = open, ZStack = true, Draggable = DragOf(hit),
+            OnClick = open, ZStack = true, Draggable = DragOf(hit), OnFocusChanged = cardFocus,
             Children =
             [
                 scheme is { } graded
@@ -793,9 +809,18 @@ public static class SearchHitRules
     /// <summary>The surface shape of a hit row: <see cref="Shape.RowLarge"/> when <paramref name="large"/> (the lead row of
     /// the no-top-hits fallback list — 84 art, the 112 floor, the page-hero title), else the 48-art row in the 64 floor.
     /// A TRACK row whose artwork is hidden (<paramref name="artHidden"/>) holds the play-glyph square instead of the art
-    /// (<see cref="TrackRowRules.ArtEdge"/>), still in the 64 floor.</summary>
+    /// (<see cref="TrackRowRules.ArtEdge"/>), still in the 64 floor. Every shape carries <see cref="MenuPlacement"/>
+    /// = <see cref="RowMenu"/>.</summary>
     public static SurfaceShape ShapeOf(bool large, bool artHidden)
-        => large ? Shape.RowLarge : Shape.Row(TrackRowRules.ArtEdge(RowArt, showArtwork: !artHidden));
+        => (large ? Shape.RowLarge : Shape.Row(TrackRowRules.ArtEdge(RowArt, showArtwork: !artHidden))) with { Menu = RowMenu };
+
+    /// <summary>Where a hit row's "…" goes: its OWN lane after the trailing control
+    /// (<see cref="MenuPlacement.TrailingLane"/>), never the overlay over the row's end. Every kind that has a menu
+    /// (<see cref="Search.HasMenu"/>) also ends in a control (<see cref="TrailingOf"/>: the heart or the Follow pill), so
+    /// the overlay would always land on that control — hiding and blocking the heart, cutting "Follow" to "Fol". The Top
+    /// Result card already places its "…" in a slot of its own beside the same control; the rows (search page and the
+    /// search flyout alike, <c>OmnibarRowRules.RowShape</c>) now do the same.</summary>
+    public const MenuPlacement RowMenu = MenuPlacement.TrailingLane;
 
     /// <summary>A hit's art shows unless the app hides TRACK artwork and the hit is a track — albums, artists, playlists,
     /// shows, episodes and people keep theirs.</summary>

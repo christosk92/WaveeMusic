@@ -36,10 +36,12 @@ public enum SurfaceLayout : byte { Stack, Row }
 /// frame.</summary>
 public enum PlateKind : byte { CardPlate, ListRow, Tile, Outline }
 
-/// <summary>Where the "…" lives: over the cover's top-right (<see cref="Corner"/>, stacks) or as a hot-revealed 32 icon
-/// at the end of the trailing cluster (<see cref="Trailing"/>, rows). <see cref="None"/> = right-click only (the rail
-/// tile has no room for one).</summary>
-public enum MenuPlacement : byte { None, Corner, Trailing }
+/// <summary>Where the "…" lives: over the cover's top-right (<see cref="Corner"/>, stacks); on a row, a hot-revealed 32
+/// icon at the row's end — <see cref="Trailing"/> as an OVERLAY that takes no width (a narrow row keeps its title, and on
+/// hover the "…" covers whatever ends the row), <see cref="TrailingLane"/> in its OWN reserved lane after the trailing
+/// cluster (a surface whose every menu row ends in a control — a Follow pill, a heart — that the overlay would hide and
+/// block). <see cref="None"/> = right-click only (the rail tile has no room for one).</summary>
+public enum MenuPlacement : byte { None, Corner, Trailing, TrailingLane }
 
 /// <summary><see cref="Reveal"/> = the play FAB fades in while the surface is hot (every card and row);
 /// <see cref="Always"/> = the FAB is mounted and visible at rest (a video: play is the surface's whole point).</summary>
@@ -88,7 +90,7 @@ public static class Shape
     public static readonly SurfaceShape Video = Grid with { Play = PlayReveal.Always };
 
     /// <summary>A media row at an <paramref name="edge"/> art square: the list-row plate, the FAB and floor derived from
-    /// the edge, the trailing "…".</summary>
+    /// the edge, the trailing "…" overlay (<see cref="MenuPlacement.Trailing"/>).</summary>
     public static SurfaceShape Row(float edge = 48f)
         => new(SurfaceLayout.Row, PlateKind.ListRow, edge, 1, 1, false, FabFor(edge), MenuPlacement.Trailing,
                PlayReveal.Reveal, RowFloorFor(edge), true);
@@ -111,10 +113,12 @@ public static class Shape
     /// <summary>The sidebar's grid tile: the grid card with the 28 FAB.</summary>
     public static readonly SurfaceShape SidebarTile = Grid with { TitleLines = 1, CaptionLines = 1, Fab = 28f };
 
-    /// <summary>The collapsed rail's tile: a 36 cover in a 40 square, no labels (the tooltip is the label), no FAB, no
+    /// <summary>The collapsed rail's tile at one detent: a cover inset by the 2-DIP accent ring on each side in a
+    /// <paramref name="tile"/> square (<c>SidebarRailMetrics.Tile</c>), no labels (the tooltip is the label), no FAB, no
     /// "…" (right-click only).</summary>
-    public static readonly SurfaceShape RailTile = new(SurfaceLayout.Row, PlateKind.ListRow, 36f, 0, 0, false, 0f,
-                                                       MenuPlacement.None, PlayReveal.Reveal, 40f, Labels: false);
+    public static SurfaceShape RailTileOf(float tile)
+        => new(SurfaceLayout.Row, PlateKind.ListRow, tile - 2f * SidebarRailMetrics.RingInset, 0, 0, false, 0f,
+               MenuPlacement.None, PlayReveal.Reveal, tile, Labels: false);
 
     /// <summary>The art edge a row's 30 FAB stops at: above it the art is a hero's and carries the 44.</summary>
     public const float LargeRowEdge = 56f;
@@ -162,9 +166,19 @@ public static class SurfaceRules
     public static bool ShowsMenuCorner(in SurfaceShape s, bool hasMenu, bool showMenu)
         => hasMenu && showMenu && s.Menu == MenuPlacement.Corner;
 
-    /// <summary>The trailing "…" — the same gate on a <see cref="MenuPlacement.Trailing"/> shape.</summary>
+    /// <summary>The trailing "…" — the same gate on a <see cref="MenuPlacement.Trailing"/> or
+    /// <see cref="MenuPlacement.TrailingLane"/> shape. Whether it overlays the row's end or takes a lane of its own is
+    /// <see cref="MenuReservesWidth"/>.</summary>
     public static bool ShowsMenuTrailing(in SurfaceShape s, bool hasMenu, bool showMenu)
-        => hasMenu && showMenu && s.Menu == MenuPlacement.Trailing;
+        => hasMenu && showMenu && (s.Menu is MenuPlacement.Trailing or MenuPlacement.TrailingLane);
+
+    /// <summary>Does the trailing "…" take layout width? Only on a <see cref="MenuPlacement.TrailingLane"/> shape: its
+    /// 32 lane sits after the trailing cluster and is laid out AT REST (the hot edge only mounts the button into it), so
+    /// the "…" never covers the Follow pill or heart beside it and the title never re-ellipsises under the pointer. On a
+    /// <see cref="MenuPlacement.Trailing"/> shape it is an overlay over the row's end that takes no width, so a narrow
+    /// row keeps its title.</summary>
+    public static bool MenuReservesWidth(in SurfaceShape s, bool hasMenu, bool showMenu)
+        => hasMenu && showMenu && s.Menu == MenuPlacement.TrailingLane;
 
     /// <summary>A title tooltip only when the title is trimmed — except on a label-less shape, where the tooltip IS the
     /// label and always exists.</summary>

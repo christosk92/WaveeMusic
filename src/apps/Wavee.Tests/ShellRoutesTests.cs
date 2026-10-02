@@ -37,8 +37,37 @@ public class ShellRouteTableTests
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
         // 16 exact (15 + LibraryAudiobooks, A2 plan §3.6) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
         // + User + ProfileList (profile pages, #161) + ConnectDiagnostics + CaptureDiagnostics
-        // (realtime-capture-implementation.md unit 6) + NotFound
-        Assert.Equal(35, Shell.RouteKindCount);
+        // (realtime-capture-implementation.md unit 6) + Logs (privacy-diagnostics-tab-implementation.md D6) + NotFound
+        Assert.Equal(36, Shell.RouteKindCount);
+    }
+
+    [Fact]
+    public void Logs_is_a_user_route_with_its_own_label()
+    {
+        // D6: the log viewer is a page of its own, deep-linkable and history-aware from day one. Unlike the two
+        // diagnostics routes it sits beside, it is an ordinary route — no developer mode, no material of its own.
+        Assert.Equal((int)Shell.RouteKind.CaptureDiagnostics + 1, (int)Shell.RouteKind.Logs);
+        Assert.Equal((int)Shell.RouteKind.Logs + 1, (int)Shell.RouteKind.NotFound);
+
+        var row = Shell.Row(Shell.RouteKind.Logs);
+        Assert.Equal(Shell.RouteKind.Logs, row.Kind);
+        Assert.Equal("logs", row.Key);
+        Assert.False(row.IsPrefix);
+        Assert.False(row.DeveloperOnly);
+        Assert.Equal(Strings.Nav.Logs, row.TitleLocKey);
+        Assert.Equal(FluentGpu.Controls.Icons.List, row.Glyph);
+        Assert.False(row.KeyedByArg);
+        Assert.False(row.ClaimsMaterial);
+        Assert.True(row.IsKnown);
+        Assert.True(Shell.IsKnown(new Shell.Route(Shell.RouteKind.Logs), developerMode: false));
+
+        // the key resolves to the kind and back, and the tab strip / history rows say "Logs" (ch 18 §7: its own label)
+        var parsed = Shell.Parse("logs");
+        Assert.Equal(Shell.RouteKind.Logs, parsed.Kind);
+        Assert.Equal("logs", Shell.NameOf(parsed));
+        var dest = Shell.Dest(parsed);
+        Assert.Equal(Loc.Get(Strings.Nav.Logs), dest.Title);
+        Assert.Equal(FluentGpu.Controls.Icons.List, dest.Glyph);
     }
 
     [Fact]
@@ -207,6 +236,7 @@ public class ShellRouteCodecTests
     [InlineData("recents", Shell.RouteKind.Recents)]
     [InlineData("settings", Shell.RouteKind.Settings)]
     [InlineData("playback-diagnostics", Shell.RouteKind.PlaybackDiagnostics)]
+    [InlineData("logs", Shell.RouteKind.Logs)]
     [InlineData("whatsnew", Shell.RouteKind.WhatsNew)]
     [InlineData("sidebar-customize", Shell.RouteKind.SidebarCustomize)]
     [InlineData("home-customize", Shell.RouteKind.HomeCustomize)]
@@ -351,6 +381,19 @@ public class ShellRouteCodecTests
 public class DeepLinkTests
 {
     [Fact]
+    public void A_nul_terminated_payload_parses_as_if_trimmed()
+    {
+        // A WM_COPYDATA sender that counts its C terminator delivers the NUL with the text; it must never reach a route id.
+        var clean = Shell.DeepLink("wavee://open?route=home");
+        var nul = Shell.DeepLink("wavee://open?route=home\0");
+        Assert.Equal(Shell.DeepLinkKind.Open, nul.Kind);
+        Assert.Equal(clean.Route, nul.Route);
+        var entity = Shell.DeepLink("wavee://open?route=artist&arg=spotify:artist:3TVXtAsR1Inumwj472S9r4\0");
+        Assert.Equal(Shell.RouteKind.Artist, entity.Route.Kind);
+        Assert.DoesNotContain('\0', Shell.NameOf(entity.Route));
+    }
+
+    [Fact]
     public void An_entity_verb_composes_its_key_and_the_uri_leaves_the_arg()
     {
         var v = Shell.DeepLink("wavee://open?route=album&arg=spotify:album:1TSZDcvlPtAnekTaItI3qO");
@@ -374,6 +417,41 @@ public class DeepLinkTests
             Shell.DeepLink("wavee://open?route=connect-diagnostics", developerMode: false).Kind);
         Assert.Equal(Shell.DeepLinkKind.Open,
             Shell.DeepLink("wavee://open?route=connect-diagnostics", developerMode: true).Kind);
+    }
+
+    [Fact]
+    public void A_logs_deep_link_opens_without_developer_mode()
+    {
+        // The log viewer is a user route (D6): `wavee://open?route=logs` is the door the CHANGELOG advertises, so it
+        // must not be refused the way the developer diagnostics routes beside it are.
+        var v = Shell.DeepLink("wavee://open?route=logs", developerMode: false);
+        Assert.Equal(Shell.DeepLinkKind.Open, v.Kind);
+        Assert.Equal(Shell.RouteKind.Logs, v.Route.Kind);
+        Assert.Equal("logs", Shell.NameOf(v.Route));
+        Assert.Equal(Shell.DeepLinkKind.Open, Shell.DeepLink("wavee://open?route=logs").Kind);   // developerMode defaults off
+
+        // the neighbour it was modelled on is still refused from outside the app
+        Assert.Equal(Shell.DeepLinkKind.None, Shell.DeepLink("wavee://open?route=capture-diagnostics", developerMode: false).Kind);
+    }
+
+    [Fact]
+    public void A_settings_deep_link_keeps_its_tab_slug_in_the_arg_and_never_as_a_title()
+    {
+        // D4: `route=settings&arg=<tab>` parses as an ordinary Open of Settings whose Arg is a TAB SLUG. The shell host
+        // turns it into a tab selection through its own seam; this pins the two facts the seam relies on.
+        var v = Shell.DeepLink("wavee://open?route=settings&arg=privacy");
+        Assert.Equal(Shell.DeepLinkKind.Open, v.Kind);
+        Assert.Equal(Shell.RouteKind.Settings, v.Route.Kind);
+        Assert.Equal("privacy", Shell.ArgOf(v.Route));
+
+        // …and the arg is never a display name: the tab strip, history rows and pinned rows still say "Settings"
+        var dest = Shell.Dest(v.Route);
+        Assert.Equal(Loc.Get(Strings.Nav.Settings), dest.Title);
+        Assert.NotEqual("privacy", dest.Title);
+        Assert.Equal(Shell.Dest(new Shell.Route(Shell.RouteKind.Settings)), dest);
+
+        // a kind that DOES carry its display name in Arg still shows it
+        Assert.Equal("Today's Top Hits", Shell.Dest(Shell.Parse("pl:spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", "Today's Top Hits")).Title);
     }
 
     [Fact]

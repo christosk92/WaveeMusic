@@ -1137,7 +1137,7 @@ current title snaps. Two different behaviours in one row, and only a pair shows 
 | `Ctrl+K` | toggle the command palette | `:875`, `:2034` |
 | `Ctrl+F` | focus the omnibar (bumps `_searchFocusRequest`) | `:880`, `:2035`, `:2074-2079` |
 | `Alt+←` / `Alt+→` | Back / Forward | `:885`, `:890`, `:2036-2037` |
-| `F11` | toggle video fullscreen **only while a video is active** | F-keys are accelerator-eligible with no modifier | `:895`, `:2041`, `:2067-2072` |
+| `F11` | closes the fullscreen stage if it is up (the stage root handles it first; `ToggleVideoFullscreen` is the unfocused fallback); otherwise toggles video fullscreen **only while a video is active** (`Shell.FrameRules.F11(isFullscreen, videoActive, stageUp)`; `docs/plans/wavee/fullscreen-flagship-implementation.md` §4.12, `docs/guide/fullscreen-visualizers.md`) | F-keys are accelerator-eligible with no modifier | `:895`, `:2041`, `:2067-2072` |
 | `Ctrl+=` / `Ctrl+Shift+=` / `Ctrl+Num+` | zoom in | a `KeyAccelerator` matches EXACT modifiers → 8 chords, 3 verbs | `:901-911`, `:2047-2049` |
 | `Ctrl+-` / `Ctrl+Shift+-` / `Ctrl+Num−` | zoom out | `:916-926`, `:2050-2052` |
 | `Ctrl+0` / `Ctrl+Num0` | zoom 100 % | `:931-936`, `:2053-2054` |

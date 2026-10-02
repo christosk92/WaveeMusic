@@ -599,8 +599,8 @@ public readonly partial struct Recents
         internal void Play(int r)
         {
             var target = RecentsView.EntitySlotOf(ShapeNow.Rows, r);
-            if (target.Kind == EntityKind.Collection) Playback.PlayContext(EntityUri.LikedCollection);
-            else if (!target.IsNone) Playback.PlayContext(target.Id);
+            if (target.Kind == EntityKind.Collection) Playback.PlayOrToggleContext(EntityUri.LikedCollection);
+            else if (!target.IsNone) Playback.PlayOrToggleContext(target.Id);
         }
 
         /// <summary>The container menu (W16): the strip over the container verbs, then the rows, under the card's header.</summary>
@@ -619,28 +619,10 @@ public readonly partial struct Recents
                 case EntityKind.Playlist or EntityKind.Collection: at = ActionTarget.ForPlaylist(uri, facts.Title); break;
                 default: return null;
             }
-            var ctx = new ActionContext(at, Actions.Services);
-            var rows = new List<MenuFlyoutItem>(8);
-            AppBarCommand[] strip;
-            if (target.Kind == EntityKind.Artist)
-            {
-                strip = Actions.Menu.Strip(in ctx, [ActionId.PlayContext]);
-                Actions.Menu.AddRows(rows, in ctx, [ActionId.SaveContext, ActionId.OpenItem, ActionId.PinToSidebar]);
-            }
-            else
-            {
-                strip = Actions.Menu.Strip(in ctx, [ActionId.PlayContext, ActionId.PlayContextNext, ActionId.AddContextToQueue, ActionId.SaveContext]);
-                if (target.Kind == EntityKind.Album)
-                    Actions.Menu.AddRows(rows, in ctx, [ActionId.AddContextToPlaylist, ActionId.OpenItem, ActionId.PinToSidebar, ActionId.GoToAlbumArtist]);
-                else
-                    Actions.Menu.AddRows(rows, in ctx, [ActionId.AddContextToPlaylist, ActionId.OpenItem, ActionId.PinToSidebar]);
-            }
-            if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
             string sub = SubtitleOf(shape, r, in shape.Rows.Rows[r], facts.Subtitle);
-            return new ContextMenuModel(strip, rows,
-                Actions.Menu.Header(facts.Cover, facts.Title, sub.Length > 0 ? sub : Actions.Menu.KindWord(at.Kind),
-                                    circular: target.Kind == EntityKind.Artist,
-                                    leading: target.Kind == EntityKind.Collection ? Sidebar.Cover.Liked(38f) : null));
+            bool liked = target.Kind == EntityKind.Collection;
+            return Menus.Container(in at, facts.Cover, sub,
+                new ContainerExtras { Liked = liked, HeaderLeading = liked ? Sidebar.Cover.Liked(38f) : null });
         }
 
         /// <summary>The resource drag chip; a kind with no Wavee resource starts no drag.</summary>

@@ -156,3 +156,7 @@ ops/release/store/store-credentials.json
 
 # a checkout's own engine pin (Directory.Build.props imports it when present)
 EngineRoot.local.props
+
+# Cloudflare / wrangler local caches (the crash-service deploy tooling)
+.cloudflare/
+.wrangler/

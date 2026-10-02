@@ -11,6 +11,8 @@ Source: `src/apps/Wavee/App/DeepLink.cs`. Boot wiring: `src/apps/Wavee/Program.c
 | URI | Kind | Fields |
 |---|---|---|
 | `wavee://open?route=<name>&arg=<value>` | `DeepLinkKind.Open` | `Route`, optional `Arg` |
+| `wavee://open?route=settings&arg=<tab-slug>` | `DeepLinkKind.Open` | the Settings tab named by the slug (`privacy` = Privacy & diagnostics) |
+| `wavee://open?route=logs` | `DeepLinkKind.Open` | the log viewer page |
 | `wavee://play?ctx=<spotify-context-uri>` | `DeepLinkKind.Play` | `Context` |
 | `wavee://play?link=<http(s)-url>` | `DeepLinkKind.Play` | `Link` — the playback-module intake (YouTube / Twitch / radio), same router as Play ▸ Link… |
 | `wavee://resume` | `DeepLinkKind.Resume` | (none) |
@@ -26,7 +28,12 @@ parser never throws. Percent-encoding is decoded. A raw command line that *conta
 
 `route` / `arg` compose the shell's opaque nav keys:
 
-- pages: `search` `library` `recents` `settings` — `arg` unused
+- pages: `search` `library` `recents` — `arg` unused
+- `settings` — `arg` is a tab slug (`general appearance playback notifications storage privacy about`); it selects
+  the tab through `Shell.OnSettingsTabRequested` and is never committed as a route `Arg` (the strip keeps saying
+  "Settings"). An unknown slug opens General.
+- `logs` — the log viewer page (Settings › Privacy & diagnostics › Logs › Log viewer; `Screens/LogsPage.UI.cs`).
+  A normal route, not developer-only; `arg` unused. Back/Esc returns to Settings › Privacy & diagnostics.
 - `home` — `arg` is a facet chip id (`""` All, `music-chip`, `podcasts-chip`, `audiobooks-chip`, or a Following
   sub-chip id like `music-following-chip`). An unknown/missing id falls back to All
   (`Wavee.HomeUi.FacetRoute.FacetOf`). The facet lives on `Shell.RouteArg(tab)`, a per-tab read signal

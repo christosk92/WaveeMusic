@@ -368,8 +368,8 @@ public static partial class Sidebar
             else Shell.GoTo(Shell.Parse(key, arg));
         }
 
-        public void CollapsePane() => SetCollapsed(true);
-        public void ExpandPane() => SetCollapsed(false);
+        public void CollapsePane() => SetRegime(SidebarRegime.Rail);
+        public void ExpandPane() => SetRegime(SidebarRegime.Expanded);
         public void CreatePlaylist() => PaneRef?.CreatePlaylist();
 
         public void OpenSearch() => SearchOpen.SetIfChanged(true);
@@ -405,21 +405,29 @@ public static partial class Sidebar
             binder.Sync();
         }
 
-        // ── the 56-DIP rail's own affordances (§3.2.13) ──────────────────────────────────────────────────────────
+        // ── the icon rail's own affordances (§3.2.13) ──────────────────────────────────────────────────────────
 
         /// <summary>After the plan's tiles: "Your Library" EXPANDS the pane, and the "+" with the header's own drop spec
         /// (H2 #85) so a collapsed pane accepts what the expanded header does.</summary>
-        public Element? BuildRailFooter() => new BoxEl
+        public Element? BuildRailFooter()
         {
-            Key = "v3-rail-footer",
-            Direction = 1, Gap = 6f, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Children =
-            [
-                Rail.IconTile("v3-rail-expand", Icons.List, false, ExpandPane, Loc.Get(Strings.Sidebar.V3.Expand)),
-                Embed.Comp(() => new CreateButton(CreatePlaylist, menu: CreateMenuFn,
-                    drop: PaneRef?.HeaderCreateDropSpec(), dropActive: HeaderDropActiveFn, box: Rail.Box, glyph: 16f)),
-            ],
-        };
+            // The rail slot that calls this already subscribed to the detent; the tile in the Key remounts the "+"
+            // (a component props freeze at mount).
+            var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
+            float tile = m.Tile, glyph = m.Glyph;
+            return new BoxEl
+            {
+                Key = "v3-rail-footer",
+                Direction = 1, Gap = 6f, AlignItems = FlexAlign.Center, Shrink = 0f,
+                Children =
+                [
+                    Rail.IconTile("v3-rail-expand", Icons.List, false, ExpandPane, Loc.Get(Strings.Sidebar.V3.Expand), in m),
+                    Embed.Comp(() => new CreateButton(CreatePlaylist, menu: CreateMenuFn,
+                        drop: PaneRef?.HeaderCreateDropSpec(), dropActive: HeaderDropActiveFn, box: tile, glyph: glyph))
+                        with { Key = "v3-rail-create:" + tile.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                ],
+            };
+        }
 
         /// <summary>W3 — the nav band's tiles drawn for the rail. The band is chrome (never a document section), so the
         /// rail planner has nothing to draw them from: this reads the same five destinations + <c>TopBar</c> and reuses
@@ -440,6 +448,8 @@ public static partial class Sidebar
             var items = TopBar;
             string route = Shell.NameOf(Shell.Current.Peek());
             var keys = SidebarShortcutsSection.LibraryDestinations;
+            // Peeked: the rail head slot already subscribed to the detent (Rail.RailSlot), and a detent change re-renders it.
+            var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
             var kids = new List<Element>(items.Count + keys.Length);
 
             // A rail is icon-only by construction, so the tooltip carries the destination name.
@@ -448,7 +458,7 @@ public static partial class Sidebar
                 string key = keys[i];
                 var dest = Shell.Dest(Shell.Parse(key));
                 kids.Add(Rail.IconTile(key, dest.Glyph, string.Equals(route, key, StringComparison.Ordinal),
-                    () => Navigate(key, null), dest.Title));
+                    () => Navigate(key, null), dest.Title, in m));
             }
 
             for (int i = 0; i < items.Count; i++)
@@ -457,33 +467,33 @@ public static partial class Sidebar
                 if (item is null || item.Hidden) continue;
                 Element? tile = item.Target switch
                 {
-                    SidebarItemTarget.Action => RailActionTile(item),
-                    SidebarItemTarget.Track => RailEntityTile(item, route, track: true),
-                    SidebarItemTarget.Entity => RailEntityTile(item, route, track: false),
-                    _ => RailRouteTile(item, route),
+                    SidebarItemTarget.Action => RailActionTile(item, in m),
+                    SidebarItemTarget.Track => RailEntityTile(item, route, track: true, in m),
+                    SidebarItemTarget.Entity => RailEntityTile(item, route, track: false, in m),
+                    _ => RailRouteTile(item, route, in m),
                 };
                 if (tile is not null) kids.Add(tile);
             }
             return kids;
         }
 
-        Element RailRouteTile(SidebarItemSpec item, string route)
+        Element RailRouteTile(SidebarItemSpec item, string route, in SidebarRailMetrics m)
         {
             var dest = Shell.Dest(Shell.Parse(item.Key));
             string label = item.LabelOverride is { Length: > 0 } alias ? alias : dest.Title;
             string key = item.Key;
             return Rail.IconTile(item.Id, RowGlyphs.For(item, dest.Glyph),
-                string.Equals(route, key, StringComparison.Ordinal), () => Navigate(key, null), label);
+                string.Equals(route, key, StringComparison.Ordinal), () => Navigate(key, null), label, in m);
         }
 
-        /// <summary>Resolved through the pane's action seam. A binding that cannot resolve at all is omitted — a 56-DIP
+        /// <summary>Resolved through the pane's action seam. A binding that cannot resolve at all is omitted — a rail
         /// tile has no room for the reason text the expanded row's tooltip carries.</summary>
-        Element? RailActionTile(SidebarItemSpec item)
+        Element? RailActionTile(SidebarItemSpec item, in SidebarRailMetrics m)
         {
             if (item.Action is null || PaneRef is not { } pane || pane.Registry is null) return null;
             var a = pane.ResolveActionRow(item);
             string glyph = RowGlyphs.For(item, a.Icon.Glyph is { Length: > 0 } g ? g : Icons.MusicNote);
-            return Rail.IconTile(item.Id, glyph, false, a.Enabled ? a.Click : null, a.Label);
+            return Rail.IconTile(item.Id, glyph, false, a.Enabled ? a.Click : null, a.Label, in m);
         }
 
         /// <summary>A hand-placed playlist/album/artist/show/track as an ART tile: the shared media surface at the rail shape,
@@ -491,17 +501,17 @@ public static partial class Sidebar
         /// playing. A track PLAYS; everything else navigates through the pin scheme's own uri → route map. An entity the pin
         /// scheme refuses has nowhere to go: it stays visible but INERT (the expanded band's own rule) — a null click is the
         /// surface's display-only mode (no hand, Button role or tab stop), through the same <see cref="Rail.ArtTile"/>.</summary>
-        Element? RailEntityTile(SidebarItemSpec item, string route, bool track)
+        Element? RailEntityTile(SidebarItemSpec item, string route, bool track, in SidebarRailMetrics m)
         {
             string uri = item.Key;
             if (uri.Length == 0) return null;
             string label = LabelOf(item);
-            var art = Cover.ArtUrl(item.FallbackImageUrl, uri, Rail.ArtEdge, circular: item.EntityKind == SidebarEntityKind.Artist);
+            var art = Cover.ArtUrl(item.FallbackImageUrl, uri, m.Art, circular: item.EntityKind == SidebarEntityKind.Artist);
             bool selected = !track && SidebarNavBandModel.SelectsRoute(item, route);
             Action? click = track
                 ? () => PaneRef?.PlayTrack(uri)
                 : SidebarNavBandModel.RouteKeyOf(item) is { Length: > 0 } r ? () => Navigate(r, label) : null;
-            return Rail.ArtTile(item.Id, SidebarCards.RailOf(art, label, uri, click, selected));
+            return Rail.ArtTile(item.Id, SidebarCards.RailOf(art, label, uri, click, selected), in m);
         }
 
         public static string LabelOf(SidebarItemSpec item)

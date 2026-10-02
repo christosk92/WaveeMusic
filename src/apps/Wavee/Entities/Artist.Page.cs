@@ -737,7 +737,7 @@ public readonly partial struct Artist
                 Element tracks = Chart(a, accentSignal);
                 if (!pick && !upcomingInRail) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [tracks] };
                 Element featured = pick
-                    ? PickCard(a, accentFn, horizontal: !wide) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
+                    ? PickCard(a, accentFn, horizontal: !wide, _overlay) with { Key = wide ? "featured:pick:rail" : "featured:pick:band" }
                     : SectionBlock(Loc.Get(Strings.Artist.Upcoming), UpcomingCard(a, accentFn, wide), accent)
                         with { Key = wide ? "featured:upcoming:rail" : "featured:upcoming:band" };
                 return new BoxEl
@@ -1047,7 +1047,7 @@ public readonly partial struct Artist
 
         void Play()
         {
-            if (_artist.IsValid) Playback.PlayContext(_artist.Id);
+            if (_artist.IsValid) Playback.PlayOrToggleContext(_artist.Id);
         }
 
         /// <summary>Shuffle ON, then the artist context (Hero Shuffle, ch 08 §6).</summary>
@@ -1195,10 +1195,10 @@ public readonly partial struct Artist
             string sub = al.Year > 0 ? al.Year.ToString(CultureInfo.CurrentCulture) : Detail.Text.KindLabel(al.Kind);
             var data = new Controls.CardData(uri, title, CardSubtitle(sub), cover,
                 OnClick: () => OpenAlbum(item),
-                OnPlay: () => Playback.PlayContext(al.Id),
+                OnPlay: () => Playback.PlayOrToggleContext(al.Id),
                 Drag: Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title, new EntityRef(EntityKind.Album, al.Slot), ArtUrl: cover)))
             {
-                Menu = () => CardMenu(ActionTarget.ForAlbum(al.Uri, title), cover, title, sub, artist: false),
+                Menu = () => Menus.Container(ActionTarget.ForAlbum(al.Uri, title), cover, sub),
             };
             return Controls.Surface(data, s_shelfShape, w);
         }
@@ -1287,10 +1287,10 @@ public readonly partial struct Artist
             string? cover = Controls.ArtUrl(pl.ImageId);
             var data = new Controls.CardData(uri, title, CardSubtitle(sub), cover,
                 OnClick: () => OpenPlaylist(item),
-                OnPlay: () => Playback.PlayContext(pl.Id),
+                OnPlay: () => Playback.PlayOrToggleContext(pl.Id),
                 Drag: Drag.Source(() => new DragPayload(DragKind.Playlist, uri, uri, title, new EntityRef(EntityKind.Playlist, pl.Slot), ArtUrl: cover)))
             {
-                Menu = () => CardMenu(ActionTarget.ForPlaylist(pl.Uri, title), cover, title, sub, artist: false),
+                Menu = () => Menus.Container(ActionTarget.ForPlaylist(pl.Uri, title), cover, sub),
             };
             return Controls.Surface(data, s_shelfShape, w);
         }
@@ -1387,11 +1387,11 @@ public readonly partial struct Artist
             string sub = Loc.Get(Strings.Search.TypeArtist);
             var data = new Controls.CardData(uri, name, CardSubtitle(sub), image,
                 OnClick: () => OpenArtist(item),
-                OnPlay: () => Playback.PlayContext(ar.Id),
+                OnPlay: () => Playback.PlayOrToggleContext(ar.Id),
                 Circular: true,
                 Drag: Drag.Source(() => new DragPayload(DragKind.Artist, uri, uri, name, new EntityRef(EntityKind.Artist, ar.Slot), ArtUrl: image)))
             {
-                Menu = () => CardMenu(ActionTarget.ForArtist(ar.Uri, name), image, name, sub, artist: true),
+                Menu = () => Menus.Container(ActionTarget.ForArtist(ar.Uri, name), image, sub),
             };
             return Controls.Surface(data, s_shelfShape, w);
         }
@@ -1404,32 +1404,7 @@ public readonly partial struct Artist
         // ── the card menu (W27) ──
 
         // Every card on the page (album, playlist, artist, video) carries its menu in the surface's data (`CardData.Menu`);
-        // the host attaches the right-click funnel and the corner "…".
-
-        // Album / playlist card: strip [Play · Play next · Add to queue · Save], rows [Add to playlist · Open · Pin/Unpin ·
-        // Go to artist · Share]. Artist card: strip [Play · Follow], rows [Open · Pin/Unpin · Share · Go to artist radio].
-        static readonly ActionId[] s_containerStrip = [ActionId.PlayContext, ActionId.PlayContextNext, ActionId.AddContextToQueue, ActionId.SaveContext];
-        static readonly ActionId[] s_containerRows = [ActionId.AddContextToPlaylist, ActionId.OpenItem];
-        static readonly ActionId[] s_containerTail = [ActionId.GoToAlbumArtist];
-        static readonly ActionId[] s_artistStrip = [ActionId.PlayContext, ActionId.SaveContext];
-        static readonly ActionId[] s_artistRows = [ActionId.OpenItem];
-        static readonly ActionId[] s_artistTail = [ActionId.GoToArtistRadio];
-
-        /// <summary>The card grammar composed from the registered verbs; a verb nobody registered is simply absent.
-        /// Pin and Unpin are an absolute-state pair: only the one that can run is offered.</summary>
-        static ContextMenuModel? CardMenu(ActionTarget target, string? art, string title, string? subtitle, bool artist)
-        {
-            var ctx = new ActionContext(target, Actions.Services);
-            var strip = Actions.Menu.Strip(in ctx, artist ? s_artistStrip : s_containerStrip);
-            var rows = new List<MenuFlyoutItem>(8);
-            Actions.Menu.AddRows(rows, in ctx, artist ? s_artistRows : s_containerRows);
-            if (AppActions.Find(ActionId.PinToSidebar) is { } pin && pin.EnabledFor(in ctx)) rows.Add(pin.ToMenuItem(in ctx));
-            else if (AppActions.Find(ActionId.UnpinFromSidebar) is { } unpin && unpin.EnabledFor(in ctx)) rows.Add(unpin.ToMenuItem(in ctx));
-            Actions.Menu.AddRows(rows, in ctx, artist ? s_artistTail : s_containerTail);
-            if (Actions.Menu.Share(in ctx) is { } share) { Actions.Menu.OpenGroup(rows); rows.Add(share); }
-            if (strip.Length == 0 && rows.Count == 0) return null;
-            return new ContextMenuModel(strip, rows, Actions.Menu.Header(art, title, subtitle, circular: artist));
-        }
+        // the host attaches the right-click funnel and the corner "…". The container cards' menu is Menus.Container.
 
         // ── 2.7 the biography band (Biography.cs, W18) ──────────────────────────────────────────────────────────────
 
@@ -1721,9 +1696,11 @@ public readonly partial struct Artist
 
     // ── 3.3 the latest-release banner and the tour banner ───────────────────────────────────────────────────────────
 
-    /// <summary>The "just dropped" full-width banner (TopTracks.cs:255-311): cover 72 · "Album · date · N tracks" ·
-    /// the 20/28 title · [▶ Play][View]. Leaf buttons only — the card body does NOT navigate (parity 42); the whole card
-    /// is a drag source.</summary>
+    /// <summary>The "just dropped" full-width banner: ONE shared media surface (<see cref="Shape.Row"/> at a 72 cover) with
+    /// the eyebrow "Single · date · N tracks" over the title. Contract: the whole row opens the release
+    /// (<see cref="Track.GoToAlbum"/>), the hover play affordance toggles its context
+    /// (<see cref="Playback.PlayOrToggleContext(EntityId, string)"/>), the "…" is the container menu, and the row is a drag
+    /// source. There is no separate View button.</summary>
     internal static Element LatestBanner(Album al, ColorF accent)
     {
         string title = al.Title;
@@ -1735,37 +1712,17 @@ public readonly partial struct Artist
                          + (date.Length > 0 ? " · " + date : "")
                          + (tracks > 0 ? " · " + Strings.Artist.TrackCount(tracks) : "");
         var album = al;
-        return new BoxEl
+        var id = al.Id;
+        var data = new Controls.CardData(uri, title, null, cover,
+            OnClick: () => Track.GoToAlbum(album),
+            OnPlay: () => Playback.PlayOrToggleContext(id),
+            Drag: Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title,
+                new EntityRef(EntityKind.Album, album.Slot), ArtUrl: cover)))
         {
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
-            Padding = Edges4.All(Spacing.M), Corners = CornerRadius4.All(Radii.Card),
-            Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-            Draggable = Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title,
-                new EntityRef(EntityKind.Album, album.Slot), ArtUrl: cover)),
-            Children =
-            [
-                new BoxEl { Shrink = 0f, Children = [Controls.Artwork(cover, 72f, 72f, Radii.Control, decodePx: 144)] },
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS,
-                    Children =
-                    [
-                        Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary, MaxLines = 1 },
-                        Subtitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                    ],
-                },
-                new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
-                    Children =
-                    [
-                        Controls.PlayButton(accent, () => Playback.PlayContext(album.Id), Loc.Get(Strings.Artist.Play)),
-                        Button.Create(Loc.Get(Strings.Artist.View), () => Track.GoToAlbum(album),
-                            ButtonAppearance.Outline, ControlSize.Small),
-                    ],
-                }.Skeletonized(false),
-            ],
+            Eyebrow = Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            Menu = () => Menus.Container(ActionTarget.ForAlbum(album.Uri, title), cover, eyebrow),
         };
+        return Controls.Surface(data, Shape.Row(72f) with { Plate = PlateKind.Tile });
     }
 
     /// <summary>The tour announcement (W20, Shelves.cs:27-51): a 44 accent circle, the commit-derived eyebrow /

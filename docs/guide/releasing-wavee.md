@@ -135,8 +135,8 @@ smoke it:
 
 - [ ] Settings › About — `Wavee X.Y.Z "Codename"`, the quad, the sha, the channel pill
 - [ ] the What's new page renders from the **embedded** copy (`Assets/whatsnew/`) with no network
-- [ ] Settings › Diagnostics › **Simulate update** walks every update state (toast → progress → installing →
-      after-update dialog) with no network
+- [ ] Settings › Privacy & diagnostics › Developer › **Simulate an update** walks every update state (toast → progress →
+      installing → after-update dialog) with no network
 - [ ] first-run wizard, sign-in, play a track, `start wavee://open?route=settings` focuses the *running* instance, and
       a test toast round-trips (packaged AUMID path)
 
@@ -240,7 +240,7 @@ and watch a real client move. An update that never arrives is indistinguishable 
 
 A shipped build is NativeAOT with `StackTraceSupport=false` (`src/apps/Wavee/Wavee.Publish.props`), so a crash report
 (`%LOCALAPPDATA%\Wavee\logs\crash\<stamp>-<kind>\report.txt`, or the package's `LocalCache` equivalent; Settings ›
-Logs › Reports › View opens it) prints every frame as an offset from the module base and nothing else:
+Privacy & diagnostics › Crash reports › a report's **…** › View opens it) prints every frame as an offset from the module base and nothing else:
 
 ```
    at Wavee!<BaseAddress>+0x7b1fc6
@@ -703,7 +703,7 @@ the in-app simulator.
 | **Network failure** | pull the network mid-download | `Failed › Network` + Retry; the snooze is untouched |
 | **OS silent path** | installed from a bare `.msix` (no association) | diagnostics shows `association = false` + **Repair auto-update**; after repairing, App Installer applies the next update on a launch |
 | **Unpackaged build** | `dotnet run` | the updater is inert; "Update now" opens the release page |
-| **Every state, no network** | Settings › Diagnostics › **Simulate update** | walks the full state machine, including each failure kind |
+| **Every state, no network** | Settings › Privacy & diagnostics › Developer › **Simulate an update** | walks the full state machine, including each failure kind |
 
 **`--relaunched-after-update`.** `PackageUpdater` calls `RegisterApplicationRestart` before the deployment so Windows
 brings the app back afterwards. It used to pass `null`, which reuses the *original* command line verbatim — so the

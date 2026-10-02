@@ -61,6 +61,10 @@ public readonly partial struct Track
         Func<int, Element> _selectionCommands = null!;
         Action _openSearch = null!, _toggleFind = null!, _exitSelection = null!, _selectAllTracks = null!;
         Action<NodeHandle> _captureSearchButton = null!;
+        // the shared selection lane's providers (cached: the lane's "…" re-reads them when it OPENS)
+        Func<IReadOnlyList<Track>> _laneTracks = null!;
+        Func<IReadOnlyList<Episode>> _laneEpisodes = null!;
+        Func<PlaylistHost> _laneHost = null!;
 
         void InitChrome()
         {
@@ -70,6 +74,9 @@ public readonly partial struct Track
             _toggleFind = () => { if (_searchExpanded.Peek()) CollapseSearch(restoreFocus: false); else _searchExpanded.Value = true; };
             _exitSelection = () => { _selection.ClearSelection(); if (_multi.Peek()) SetMultiSelect(false); };
             _selectAllTracks = SelectAllTracks;
+            _laneTracks = SelectedTracks;
+            _laneEpisodes = SelectedEpisodes;
+            _laneHost = HostFor;
             _captureSearchButton = CaptureSearchButton;
         }
 
@@ -96,7 +103,7 @@ public readonly partial struct Track
         static readonly LayoutTransition s_headerShift = new(TransitionChannels.Position,
             TransitionDynamics.Tween(MotionTok.DisclosureExpand.DurationMs, Easing.FluentDecelerate));
 
-        static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
+        internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
         static PopupOptions RichPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
         { ConstrainToRootBounds = false };
 
@@ -750,7 +757,7 @@ public readonly partial struct Track
         // ══ 5. THE FLYOUT BUTTONS ═══════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>One anchored overlay at a time per button: a second click closes it.</summary>
-        static void ToggleOverlay(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle,
+        internal static void ToggleOverlay(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle,
                                   Func<Element> content, PopupOptions options, Action? closed = null)
         {
             if (Controls.IsNullOverlay(overlay)) return;
@@ -1268,8 +1275,9 @@ public readonly partial struct Track
         Element SelectionSurface(string mode)
             => CommandSurface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0));
 
-        /// <summary>Thumbs · count · Play (+ Play next · Add to queue · Like · Select all at fit ≤ 1) · "…" · ✕, over the
-        /// registered verbs; every verb exits selection after it runs. Fit 0 labels, 1 glyphs, 2 essentials.</summary>
+        /// <summary>The table's host for the shared lane (<see cref="Track.SelectionLane"/>): the live selection picks the
+        /// variant (an episode-capable source may select episode rows, track rows, or both), plus the table's exit and
+        /// select-all. An all-track selection (every OTHER table, always) is the plain track lane.</summary>
         Element SelectionCommands(int fit)
         {
             _ = _selection.Version.Value;
@@ -1278,47 +1286,15 @@ public readonly partial struct Track
             bool wasVisible = _selectionPrevCount > 0;
             _selectionPrevCount = count;
 
-            // B2 (plan §3.3): an episode-capable source may select episode rows, track rows, or both — the verb set
-            // (and hence the whole bar body) forks on the mix. An all-track selection (every OTHER table, always)
-            // falls straight through to the unchanged body below.
+            var kind = SelectionLaneKind.Tracks;
             if (_latest.Source.HasEpisodes)
             {
                 var (anyTrack, anyEpisode) = SelectedKindMix();
-                if (anyEpisode && !anyTrack) return EpisodeSelectionCommands(fit, count, wasVisible);
-                if (anyEpisode) return MixedSelectionCommands(fit, count, wasVisible);
+                if (anyEpisode && !anyTrack) kind = SelectionLaneKind.Episodes;
+                else if (anyEpisode) kind = SelectionLaneKind.Mixed;
             }
-
-            var tracks = SelectedTracks();
-            var ctx = new ActionContext(ActionTarget.ForTracks(tracks, HostFor()), Actions.Services);
-
-            var kids = new List<Element>(12);
-            if (fit <= 1 && Thumbs(tracks) is { Length: > 0 } thumbs)
-                kids.Add(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Children = thumbs });
-            kids.Add(new BoxEl
-            {
-                Key = "selection-count:" + count,
-                Animate = wasVisible ? MotionRecipes.TextSwap : MotionRecipes.TextSwap with { Enter = default },
-                MinWidth = fit == 2 ? 66f : float.NaN,
-                Children = [Ui.Caption(Strings.Detail.SelectedCount(count)) with { Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
-            });
-            kids.Add(SelectionDivider());
-            if (VerbCommand(ActionId.Play, in ctx, fit) is { } play) kids.Add(play);
-            if (fit <= 1)
-            {
-                if (VerbCommand(ActionId.PlayNext, in ctx, fit) is { } next) kids.Add(next);
-                if (VerbCommand(ActionId.AddToQueue, in ctx, fit) is { } queue) kids.Add(queue);
-                if (VerbCommand(ActionId.ToggleLike, in ctx, fit) is { } like) kids.Add(like);
-                kids.Add(SelectionDivider());
-                kids.Add(Command(Icons.Accept, Loc.Get(Strings.Detail.SelectAll), fit, _selectAllTracks, null, true));
-            }
-            kids.Add(Embed.Comp(() => new TableSelectionMore(this, fit)) with { Key = "selection-more:" + fit });
-            kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-            kids.Add(ToolTip.Wrap(GlyphButton(Icons.Cancel, _exitSelection, null, null, true), Loc.Get(Strings.Detail.ClearSelection)));
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 3f, Grow = 1f, MinWidth = 0f, ClipToBounds = true,
-                Children = kids.ToArray(),
-            };
+            var args = new SelectionLaneArgs(kind, count, _laneTracks, _laneEpisodes, _laneHost, _exitSelection, _selectAllTracks, wasVisible);
+            return Track.SelectionLane(fit, in args);
         }
 
         void SelectAllTracks()
@@ -1330,180 +1306,6 @@ public readonly partial struct Track
             _selection.SelectRange(start, start + n - 1);
         }
 
-        // ══ 7b. B2: THE EPISODE / MIXED SELECTION BARS (plan §3.3) ═════════════════════════════════════════════════════
-
-        /// <summary>All-episode selection: Play · Play next · Add to queue · Save/Unsave · Mark played/unplayed
-        /// (absolute pair by state) · Select all.</summary>
-        Element EpisodeSelectionCommands(int fit, int count, bool wasVisible)
-        {
-            Episode.EnsureActions();
-            var episodes = SelectedEpisodes();
-            var ctx = new ActionContext(ActionTarget.ForEpisodes(episodes), Actions.Services);
-            bool allPlayed = episodes.Count > 0;
-            for (int i = 0; i < episodes.Count && allPlayed; i++) allPlayed = Episode.Rules.Played(Episode.ReaderPctOf(episodes[i]));
-            var verbs = SelectionVerbs.For([EntityKind.Episode]);
-            return BuildCommandRow(fit, count, wasVisible, in ctx, verbs, allPlayed);
-        }
-
-        /// <summary>Mixed track+episode selection: Play · Play next · Add to queue · Select all — the three verbs every
-        /// kind agrees on. The transport verbs act on the TRACK subset only (today's <see cref="AppAction"/> table
-        /// reads a track set); a mixed selection whose Play/queue should also carry its episodes is a follow-up.</summary>
-        Element MixedSelectionCommands(int fit, int count, bool wasVisible)
-        {
-            var tracks = SelectedTracks();
-            var ctx = new ActionContext(ActionTarget.ForTracks(tracks, HostFor()), Actions.Services);
-            var verbs = SelectionVerbs.For([EntityKind.Track, EntityKind.Episode]);
-            return BuildCommandRow(fit, count, wasVisible, in ctx, verbs, false);
-        }
-
-        /// <summary>The command row every selection-bar variant shares: count · verbs (in the order
-        /// <see cref="SelectionVerbs.For"/> returns) · Select all · ✕. <see cref="ActionId.MarkPlayed"/> stands for the
-        /// absolute-state pair and is swapped for <see cref="ActionId.MarkUnplayed"/> here — the ONE place that
-        /// substitution happens for the bar, mirroring <c>Episode.Menu.cs</c>'s single-row menu.</summary>
-        Element BuildCommandRow(int fit, int count, bool wasVisible, in ActionContext ctx, ActionId[] verbs, bool allPlayed)
-        {
-            var kids = new List<Element>(12)
-            {
-                new BoxEl
-                {
-                    Key = "selection-count:" + count,
-                    Animate = wasVisible ? MotionRecipes.TextSwap : MotionRecipes.TextSwap with { Enter = default },
-                    MinWidth = fit == 2 ? 66f : float.NaN,
-                    Children = [Ui.Caption(Strings.Detail.SelectedCount(count)) with { Weight = 650, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }],
-                },
-                SelectionDivider(),
-            };
-            foreach (var raw in verbs)
-            {
-                if (raw == ActionId.SelectAll)
-                {
-                    kids.Add(SelectionDivider());
-                    kids.Add(Command(Icons.Accept, Loc.Get(Strings.Detail.SelectAll), fit, _selectAllTracks, null, true));
-                    continue;
-                }
-                var id = raw == ActionId.MarkPlayed && allPlayed ? ActionId.MarkUnplayed : raw;
-                if (VerbCommand(id, in ctx, fit) is { } cmd) kids.Add(cmd);
-            }
-            kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-            kids.Add(ToolTip.Wrap(GlyphButton(Icons.Cancel, _exitSelection, null, null, true), Loc.Get(Strings.Detail.ClearSelection)));
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 3f, Grow = 1f, MinWidth = 0f, ClipToBounds = true,
-                Children = kids.ToArray(),
-            };
-        }
-
-        /// <summary>Up to three stacked covers, de-duplicated by image (an album's tracks share one).</summary>
-        static Element[] Thumbs(List<Track> tracks)
-        {
-            var result = new List<Element>(3);
-            Span<int> seen = stackalloc int[3];
-            for (int i = 0; i < tracks.Count && result.Count < 3; i++)
-            {
-                var t = tracks[i];
-                var image = t.ImageId.IsEmpty && t.Album.IsValid ? t.Album.ImageId : t.ImageId;
-                int key = image.IsEmpty ? -t.Slot : image.GetHashCode();
-                bool dup = false;
-                for (int j = 0; j < result.Count; j++) dup |= seen[j] == key;
-                if (dup) continue;
-                seen[result.Count] = key;
-                result.Add(new BoxEl
-                {
-                    Width = 28f, Height = 28f, Shrink = 0f, Corners = CornerRadius4.All(5f), ClipToBounds = true,
-                    Margin = new Edges4(result.Count == 0 ? 0f : -11f, 0f, 0f, 0f),
-                    BorderWidth = 2f, BorderColor = Tok.FillCardSecondary,
-                    Children = [Controls.Artwork(Controls.ArtUrl(image), 28f, 28f, 5f, decodePx: 56)],
-                });
-            }
-            return result.ToArray();
-        }
-
-        Element? VerbCommand(ActionId id, in ActionContext ctx, int fit)
-        {
-            if (AppActions.Find(id) is not { } action) return null;
-            var c = ctx;
-            bool enabled = action.EnabledFor(in c);
-            var icon = ActionIcons.Resolve(action.IconKey, action.CheckedFor(in c));
-            var exit = _exitSelection;
-            Action invoke = enabled ? () => { action.Execute(c); exit(); } : static () => { };
-            return Command(icon.Glyph ?? "", action.Label(c), fit, invoke, icon.Font, enabled);
-        }
-
-        static Element Command(string glyph, string label, int fit, Action invoke, string? font, bool enabled)
-            => fit == 0
-                ? new BoxEl
-                {
-                    Direction = 0, Height = 32f, AlignItems = FlexAlign.Center, Gap = 6f, Padding = new Edges4(9f, 0f, 10f, 0f),
-                    Corners = Radii.ControlAll, IsEnabled = enabled, Focusable = enabled, Role = AutomationRole.Button, OnClick = invoke,
-                    Children =
-                    [
-                        Icon(glyph, 14f, enabled ? Tok.TextSecondary : Tok.TextDisabled, family: font),
-                        Ui.Caption(label) with { Weight = 600, Color = enabled ? Tok.TextSecondary : Tok.TextDisabled },
-                    ],
-                }.Interactive(Interaction.Subtle)
-                : ToolTip.Wrap(GlyphButton(glyph, invoke, null, font, enabled), label);
-
-        static BoxEl GlyphButton(string glyph, Action invoke, Action<NodeHandle>? realized, string? font, bool enabled) => new BoxEl
-        {
-            Width = 32f, Height = 32f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-            IsEnabled = enabled, Focusable = enabled, Role = AutomationRole.Button, OnClick = invoke, OnRealized = realized,
-            Children = [Icon(glyph, 13f, enabled ? Tok.TextSecondary : Tok.TextDisabled, family: font)],
-        }.Interactive(Interaction.Subtle);
-
-        static Element SelectionDivider() => new BoxEl
-        {
-            Width = 1f, Height = 20f, Fill = Prop.Of(static () => Tok.StrokeDividerDefault), Margin = new Edges4(4f, 0f, 4f, 0f),
-        };
-
-        /// <summary>The selection "…": at the essentials fit the transport verbs move here, then the track menu's rows for the
-        /// selection, then Select all. Built at OPEN, so it names the selection as it stands when clicked.</summary>
-        sealed class TableSelectionMore(TableHost host, int fit) : Component
-        {
-            public override Element Render()
-            {
-                var h = host;
-                var overlay = UseContext(Overlay.Service);
-                var anchor = UseRef<NodeHandle>(default);
-                var handle = UseRef<OverlayHandle?>(null);
-
-                List<MenuFlyoutItem> Items()
-                {
-                    var tracks = h.SelectedTracks();
-                    var hostRows = h.HostFor();
-                    var ctx = new ActionContext(ActionTarget.ForTracks(tracks, hostRows), Actions.Services);
-                    var exit = h._exitSelection;
-                    var items = new List<MenuFlyoutItem>(16);
-                    if (fit >= 2)
-                    {
-                        if (Actions.Menu.Row(ActionId.PlayNext, in ctx, exit) is { } next) items.Add(next);
-                        if (Actions.Menu.Row(ActionId.AddToQueue, in ctx, exit) is { } queue) items.Add(queue);
-                        if (Actions.Menu.Row(ActionId.ToggleLike, in ctx, exit) is { } like) items.Add(like);
-                        if (items.Count > 0) items.Add(MenuFlyoutItem.Separator);
-                    }
-                    if (Track.Menu(tracks, new MenuOptions(Host: hostRows, ShowGoToAlbum: false, PickerOverlay: overlay)) is { } model)
-                        foreach (var row in model.Rows) items.Add(WithExit(row, exit));
-                    items.Add(MenuFlyoutItem.Separator);
-                    items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.SelectAll), Icons.Accept, true, h._selectAllTracks));
-                    return items;
-                }
-
-                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close()), MenuPopup);
-                return ToolTip.Wrap(GlyphButton(Icons.More, Toggle, n => anchor.Value = n, null, true), Loc.Get(Strings.Common.More));
-            }
-
-            static MenuFlyoutItem WithExit(MenuFlyoutItem item, Action exit)
-            {
-                if (item.Kind == MenuItemKind.Separator) return item;
-                if (item.Kind == MenuItemKind.SubMenu && item.SubItems is { } nested)
-                {
-                    var mapped = new MenuFlyoutItem[nested.Count];
-                    for (int i = 0; i < nested.Count; i++) mapped[i] = WithExit(nested[i], exit);
-                    return item with { SubItems = mapped };
-                }
-                if (item.Invoke is not { } invoke) return item;
-                return item with { Invoke = () => { invoke(); exit(); } };
-            }
-        }
     }
 
     // ══ 6. THE EMBEDDED ARM: THE LANE CONSTANTS + THE HEADER SHIM (library rework §5.5, wave L1) ══════════════════════

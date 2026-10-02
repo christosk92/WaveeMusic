@@ -55,7 +55,8 @@ public static partial class Crash
 
         /// <summary>True (and never returns to the caller in the normal sense — <paramref name="exitCode"/> is the
         /// process's exit code) iff <paramref name="args"/> carries <c>--crash-handler &lt;parentPid&gt; &lt;logFolder&gt;
-        /// &lt;datedLogPath|-&gt;</c>. This process's whole life is <see cref="Run"/>: no settings, no store, no app
+        /// &lt;logBasePath|-&gt;</c> (the CONFIGURED log path, wavee.log — the child derives the day's file at bundle time, it
+        /// outlives midnight). This process's whole life is <see cref="Run"/>: no settings, no store, no app
         /// log — only <see cref="Crash.Files"/>/<see cref="Crash.Bundles"/> path arithmetic and Win32 calls.</summary>
         public static bool TryRun(string[] args, out int exitCode)
         {
@@ -64,8 +65,8 @@ public static partial class Crash
             if (at < 0 || at + 3 >= args.Length) return false;
             if (!int.TryParse(args[at + 1], NumberStyles.None, CultureInfo.InvariantCulture, out int parentPid)) return false;
             string logFolder = args[at + 2];
-            string datedLogPathArg = args[at + 3];
-            exitCode = Run(parentPid, logFolder, datedLogPathArg == "-" ? null : datedLogPathArg);
+            string logBasePathArg = args[at + 3];
+            exitCode = Run(parentPid, logFolder, logBasePathArg == "-" ? null : logBasePathArg);
             return true;
         }
 
@@ -73,7 +74,7 @@ public static partial class Crash
 
         static int s_parentPid;
         static string s_logFolder = "";
-        static string? s_datedLogPath;
+        static string? s_logBasePath;
         static nint s_parentHandle;
 
         static long s_lastBeatUnbiased;          // QueryUnbiasedInterruptTime at the last 'B'
@@ -94,11 +95,11 @@ public static partial class Crash
 
         // ── 3. the run: open the parent, start the reader thread, tick until it exits ──────────────────────────────
 
-        static int Run(int parentPid, string logFolder, string? datedLogPath)
+        static int Run(int parentPid, string logFolder, string? logBasePath)
         {
             s_parentPid = parentPid;
             s_logFolder = logFolder;
-            s_datedLogPath = datedLogPath;
+            s_logBasePath = logBasePath;
             s_lastBeatUnbiased = UnbiasedNow();
 
             try { Directory.CreateDirectory(Files.Root(logFolder)); } catch { }
@@ -478,7 +479,7 @@ public static partial class Crash
                 var sb = new StringBuilder(1024);
                 Report.DescribeSynthetic(message, sb);
                 Bundles.WriteReport(dir, sb.ToString());
-                Bundles.WriteTail(dir, s_datedLogPath, 300, Feedback.RedactionRules.None);
+                Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None);
                 bool ok = WriteMiniDump(dir, 0, 0, false);
                 Interlocked.Exchange(ref s_bundleWrittenThisProcess, 1);
                 HandlerLog("hang.dump.written ok=" + (ok ? "true" : "false"));
@@ -509,7 +510,7 @@ public static partial class Crash
                     var sb = new StringBuilder(1024);
                     Report.DescribeSynthetic(message, sb);
                     Bundles.WriteReport(dir, sb.ToString());
-                    Bundles.WriteTail(dir, s_datedLogPath, 300, Feedback.RedactionRules.None);
+                    Bundles.WriteTail(dir, Bundles.ResolveTailPath(s_logBasePath), 300, Feedback.RedactionRules.None);
                     Bundles.PruneNow(s_logFolder);
                 }
                 catch (Exception ex) { HandlerLog("parent.exit.bundle.failed " + ex.Message); }

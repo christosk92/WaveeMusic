@@ -48,7 +48,7 @@ public static partial class Sidebar
     // ══ THE QUICK LAYOUT MENU ══════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The ONE route into the customizer (header button · rail button · pane background · V3's overflow
-    /// submenu): ◉ Spotify Classic · ◉ LibraryV3 · ◉ Custom · ─ · Customize sidebar… · ─ · Reset width.</summary>
+    /// submenu): ◉ Spotify Classic · ◉ LibraryV3 · ◉ Custom · ─ · Customize sidebar… · ─ · Collapsed rail size ▸ (Compact · Default · Large) · Reset width.</summary>
     internal static class LayoutMenu
     {
         public const string CustomizeRoute = "sidebar-customize";
@@ -59,7 +59,8 @@ public static partial class Sidebar
         public static IReadOnlyList<MenuFlyoutItem> Rows()
         {
             var design = Sidebar.Design.Peek();   // open time: never subscribe
-            return new List<MenuFlyoutItem>(7)
+            var detent = Sidebar.RailDetent.Peek();
+            return new List<MenuFlyoutItem>(8)
             {
                 MenuFlyoutItem.RadioItem(Loc.Get("sidebar.layout.classic"), design == SidebarDesign.Classic,
                     static () => SwitchDesign(SidebarDesign.Classic)),
@@ -71,8 +72,18 @@ public static partial class Sidebar
                 // The customizer edits the CURATED document, so it always switches first.
                 new(Loc.Get("sidebar.layout.customize"), ActionIcons.Resolve(ActionIcons.Rename), true, OpenCustomizerRoute),
                 MenuFlyoutItem.Separator,
-                // Dead unless a committed seam drag pinned the width.
-                new(Loc.Get("sidebar.menu.resetWidth"), default, WidthUserSet, ResetWidth),
+                MenuFlyoutItem.SubMenu(Loc.Get("sidebar.rail.size"),
+                [
+                    MenuFlyoutItem.RadioItem(Loc.Get("sidebar.rail.compact"), detent == SidebarRailDetent.Compact,
+                        static () => SetRailDetent(SidebarRailDetent.Compact)),
+                    MenuFlyoutItem.RadioItem(Loc.Get("sidebar.rail.default"), detent == SidebarRailDetent.Default,
+                        static () => SetRailDetent(SidebarRailDetent.Default)),
+                    MenuFlyoutItem.RadioItem(Loc.Get("sidebar.rail.large"), detent == SidebarRailDetent.Large,
+                        static () => SetRailDetent(SidebarRailDetent.Large)),
+                ], Icons.SplitView),
+                // Back to the design's default width; dead while the width already is that.
+                new(Loc.Get("sidebar.menu.resetWidth"), default,
+                    MathF.Abs(Width.Peek() - SidebarDesignInfo.DefaultWidth(design)) > 0.5f, ResetWidth),
             };
         }
 
@@ -224,7 +235,8 @@ public static partial class Sidebar
                 SidebarEntryKind.Album => ContainerModel(s, ActionTarget.ForAlbum(EntityUri.Parse(e.Uri), e.Name), in e,
                     e.Creator.Length > 0 ? e.Creator : null),
                 SidebarEntryKind.Artist => ContainerModel(s, ActionTarget.ForArtist(EntityUri.Parse(e.Uri), e.Name), in e, null),
-                SidebarEntryKind.Show => ShowModel(s, in e),
+                SidebarEntryKind.Show => ContainerModel(s, ActionTarget.ForShow(EntityUri.Parse(e.Uri), e.Name), in e,
+                    e.Publisher is { Length: > 0 } p ? p : Loc.Get("sidebar.v3.kind.show")),
                 SidebarEntryKind.AppRoute => RouteModel(in e),
                 SidebarEntryKind.Track => TrackModel(s, in e),
                 _ => null,
@@ -232,8 +244,9 @@ public static partial class Sidebar
             return Actions.Menu.WithLayoutExtras(menu, extras.Flat());
         }
 
-        /// <summary>[ Play · Play next · Play after · Saved ] strip over: Add to playlist ▸ · Open · ─ · Organize ▸ ·
-        /// Rename · ─ · Share ▸ · ─ · Delete (owner). Liked Songs drops Save exactly as a card does.</summary>
+        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: Organize ▸ takes
+        /// the Pin slot (pin lives inside it), and the owner's Rename · Delete trail behind a separator. Liked Songs drops
+        /// Save exactly as a card does.</summary>
         ContextMenuModel PlaylistModel(ActionServices s, in SidebarLibraryEntry e, IReadOnlyList<MenuFlyoutItem>? organize)
         {
             var caps = PlaylistCaps.CanView
@@ -241,26 +254,25 @@ public static partial class Sidebar
                        | (e.IsOwner ? PlaylistCaps.IsOwner | PlaylistCaps.CanEditMetadata | PlaylistCaps.CanAdministratePermissions : PlaylistCaps.None)
                        | (e.CanEdit && !e.IsOwner ? PlaylistCaps.IsCollaborative : PlaylistCaps.None);
             var uri = EntityUri.Parse(e.Uri);
-            var ctx = new ActionContext(ActionTarget.ForPlaylist(uri, e.Name, new PlaylistHost(uri, caps, Array.Empty<int>())), s);
-            bool liked = EntityUri.IsLikedCollection(e.Uri);
-            AppBarCommand[] strip = liked
-                ? Actions.Menu.Strip(in ctx, [ActionId.PlayContext, ActionId.PlayContextNext, ActionId.AddContextToQueue])
-                : Actions.Menu.Strip(in ctx, [ActionId.PlayContext, ActionId.PlayContextNext, ActionId.AddContextToQueue, ActionId.SaveContext]);
-
-            var rows = new List<MenuFlyoutItem>(10);
-            if (Actions.Menu.Row(ActionId.AddContextToPlaylist, in ctx) is { } add) rows.Add(add);
-            if (Actions.Menu.Row(ActionId.OpenItem, in ctx) is { } open) rows.Add(open);
-            Actions.Menu.Group(rows, Actions.Menu.Organize(organize, MoveOutRow(in e), PinRow(in e)));
-            if (e.IsOwner && Actions.Menu.Row(ActionId.RenamePlaylist, in ctx) is { } rename) rows.Add(rename);
-            Actions.Menu.OpenGroup(rows);
-            if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
+            var target = ActionTarget.ForPlaylist(uri, e.Name, new PlaylistHost(uri, caps, Array.Empty<int>()));
+            var ctx = new ActionContext(target, s);
+            var entry = e;
+            var tail = new List<MenuFlyoutItem>(3);
+            if (e.IsOwner && Actions.Menu.Row(ActionId.RenamePlaylist, in ctx) is { } rename) tail.Add(rename);
             if (e.IsOwner && Actions.Menu.Row(ActionId.DeletePlaylist, in ctx) is { } delete)
             {
-                rows.Add(MenuFlyoutItem.Separator);
-                rows.Add(delete);
+                if (tail.Count > 0) tail.Add(MenuFlyoutItem.Separator);
+                tail.Add(delete);
             }
             string subtitle = e.OwnerName is { Length: > 0 } owner ? owner : Loc.Get("sidebar.v3.kind.playlist");
-            return new ContextMenuModel(strip, rows, Actions.Menu.Header(ArtOf(in e), e.Name, subtitle));
+            return Menus.Container(in target, ArtOf(in e), subtitle, new ContainerExtras
+            {
+                Services = s,
+                Liked = EntityUri.IsLikedCollection(e.Uri),
+                Pin = () => Actions.Menu.Organize(organize, MoveOutRow(in entry), PinRow(in entry)),
+                PinStartsGroup = true,
+                Tail = tail,
+            }) ?? new ContextMenuModel(tail, Actions.Menu.Header(ArtOf(in e), e.Name, subtitle));
         }
 
         /// <summary>The folder verb set — no strip (nothing to play), destructive last.</summary>
@@ -290,36 +302,13 @@ public static partial class Sidebar
                 Actions.Menu.Header(null, name, Loc.Format("sidebar.v3.itemCount", ("count", childCount))));
         }
 
-        /// <summary>Album / artist: the card menu's rows — Play · Save/Follow · (artist radio) · Open · Pin · Share ▸.</summary>
+        /// <summary>Album / artist / show: the card menu (<c>Menus.Container</c>); the sidebar's own pin ids fill the Pin slot.</summary>
         ContextMenuModel ContainerModel(ActionServices s, ActionTarget target, in SidebarLibraryEntry e, string? subtitle)
         {
-            var ctx = new ActionContext(target, s);
-            var rows = new List<MenuFlyoutItem>(8);
-            if (target.Kind == TargetKind.Artist)
-                Actions.Menu.AddRows(rows, in ctx, [ActionId.PlayContext, ActionId.SaveContext, ActionId.GoToArtistRadio, ActionId.OpenItem]);
-            else
-                Actions.Menu.AddRows(rows, in ctx, [ActionId.PlayContext, ActionId.SaveContext, ActionId.OpenItem]);
-            if (PinRow(in e) is { } pin) rows.Add(pin);
-            if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
-            return new ContextMenuModel(rows, Actions.Menu.Header(ArtOf(in e), e.Name,
-                subtitle ?? Actions.Menu.KindWord(target.Kind), circular: e.Circular || e.Kind == SidebarEntryKind.Artist));
-        }
-
-        /// <summary>A show: Play · Open · Pin · Share ▸ (explicit rows — there is no Show target kind).</summary>
-        ContextMenuModel ShowModel(ActionServices s, in SidebarLibraryEntry e)
-        {
-            string uri = e.Uri, name = e.Name;
-            string? route = e.RouteKey;
-            var rows = new List<MenuFlyoutItem>(5)
-            {
-                new(Loc.Get("detail.play"), ActionIcons.Resolve(ActionIcons.Play), uri.Length > 0, () => Play(uri, asTrack: false)),
-                new(Loc.Get("menu.open"), ActionIcons.Resolve(ActionIcons.Open), route is { Length: > 0 }, () => Navigate(route!, name)),
-            };
-            if (PinRow(in e) is { } pin) rows.Add(pin);
-            var ctx = new ActionContext(new ActionTarget(TargetKind.None, Array.Empty<Track>(), EntityUri.Parse(uri), name, PlaylistHost.None), s);
-            if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
-            return new ContextMenuModel(rows, Actions.Menu.Header(ArtOf(in e), name,
-                e.Publisher is { Length: > 0 } p ? p : Loc.Get("sidebar.v3.kind.show")));
+            var entry = e;
+            return Menus.Container(in target, ArtOf(in e), subtitle,
+                       new ContainerExtras { Services = s, Pin = () => PinRow(in entry) })
+                   ?? new ContextMenuModel([], Actions.Menu.Header(ArtOf(in e), e.Name, subtitle));
         }
 
         /// <summary>A pinned / authored app route: Open · Pin.</summary>

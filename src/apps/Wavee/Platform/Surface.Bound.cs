@@ -36,7 +36,20 @@ public static partial class Controls
     public static BoxEl BoundSurface<T>(in BoundItemScope<T> item, SurfaceShape shape, Func<T, CardData?> adapt)
     {
         var scope = item;                                   // a copy the slot factory can hold (an `in` cannot be captured)
-        RowScope row = scope.Row;
+        return SlotRoot(scope.Row, shape, Embed.Comp(() => new SurfaceSlot<T>(scope, shape, adapt)));
+    }
+
+    /// <summary>The same slot root around ONE <see cref="Surface"/> for a caller that is NOT an <see cref="ItemsView"/> but
+    /// owns its own row cursor (the search flyout: focus stays in the text field, an arrow key moves a highlight).
+    /// <paramref name="scope"/> is the caller's synthesized <see cref="RowScope"/>: <see cref="RowScope.IsFocused"/> is the
+    /// "this row is highlighted" fact (the host renders hot while it is true), <see cref="RowScope.OnInteraction"/> is the
+    /// choose action. The data is pushed by the caller's own render, so a re-render re-describes the row.</summary>
+    public static BoxEl SlotSurface(RowScope scope, CardData data, SurfaceShape shape)
+        => SlotRoot(scope, shape, Surface(data, shape));
+
+    /// <summary>The slot root shared by <see cref="BoundSurface{T}"/> and <see cref="SlotSurface"/>.</summary>
+    static BoxEl SlotRoot(RowScope row, SurfaceShape shape, Element content)
+    {
         Func<bool> isEn = row.IsEnabled;
         var interact = row.OnInteraction;
         return new BoxEl
@@ -45,15 +58,14 @@ public static partial class Controls
             Corners = CornerRadius4.All(shape.IsRow ? Radii.Control : Radii.Card),
             FocusVisualMargin = shape.IsRow ? Design.FocusInsetRow : Design.FocusInsetBordered,
             Opacity = Prop.Of(() => isEn() ? 1f : ItemContainer.DisabledOpacity),
-            OnPointerReleased = args => interact(
-                args.ClickCount >= 2 ? ItemContainerTrigger.DoubleTap : ItemContainerTrigger.Tap, args.Mods),
+            OnPointerReleased = args => interact(RowClickPolicy.TriggerOf(args.ClickCount, args.Mods), args.Mods),
             OnKeyDown = args =>
             {
                 if (args.KeyCode == Keys.Enter) { interact(ItemContainerTrigger.EnterKey, args.Mods); args.Handled = true; }
                 else if (args.KeyCode == Keys.Space && !args.IsRepeat) { interact(ItemContainerTrigger.SpaceKey, args.Mods); args.Handled = true; }
             },
             OnFocusChanged = row.OnFocusChanged,
-            Children = [Ctx.Provide<RowScope?>(ItemsView.SlotRow, row, Embed.Comp(() => new SurfaceSlot<T>(scope, shape, adapt)))],
+            Children = [Ctx.Provide<RowScope?>(ItemsView.SlotRow, row, content)],
         };
     }
 

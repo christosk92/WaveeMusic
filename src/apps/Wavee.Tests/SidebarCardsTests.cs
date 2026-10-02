@@ -245,10 +245,10 @@ public class SidebarCardsTests
     [Fact]
     public void The_rail_tile_is_label_less_so_its_title_is_always_the_tooltip()
     {
-        Assert.False(global::Wavee.Shape.RailTile.Labels);
-        Assert.True(SurfaceRules.TitleTip(trimmed: false, hasLabels: global::Wavee.Shape.RailTile.Labels));
+        Assert.False(global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Labels);
+        Assert.True(SurfaceRules.TitleTip(trimmed: false, hasLabels: global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Labels));
         // …and it has neither a FAB nor a "…" slot: play and the menu are the context menu's.
-        Assert.Equal(0f, global::Wavee.Shape.RailTile.Fab);
-        Assert.Equal(MenuPlacement.None, global::Wavee.Shape.RailTile.Menu);
+        Assert.Equal(0f, global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Fab);
+        Assert.Equal(MenuPlacement.None, global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Menu);
     }
 }

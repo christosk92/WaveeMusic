@@ -72,7 +72,7 @@ PowerShell** with `-Arch` when it matters (the Bash tool reports x64 on the ARM6
 # Crash reporting end to end (#165): stamps https://crash.cproducts.dev + the ingest key, quad 0.0.1.0, symbols,
 # proves the stamp in the exe bytes, builds Wavee.symmap and uploads it to R2 as symbols/0.0.1.0/win-<arch>.symmap.
 powershell -File ops\build\publish-wavee-aot.ps1 -Arch arm64 -CrashService
-#   -> artifacts\crash-verify\win-arm64\Wavee.exe ; Settings > Developer > "Send a test crash report"
+#   -> artifacts\crash-verify\win-arm64\Wavee.exe ; Settings › Privacy & diagnostics › Developer › "Send a test crash report"
 #   key: -CrashIngestKey, else INGEST_KEY in ops\crash\worker\.prod.vars (gitignored), else 1Password
 #   -NoSymbolUpload keeps the map local; -Quad 0.0.2.0 for a second verify build
 

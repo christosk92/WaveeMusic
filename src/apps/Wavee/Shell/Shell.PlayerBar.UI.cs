@@ -83,8 +83,11 @@ public static partial class Shell
     /// <summary>The transport's seek rail as a reusable surface — the immersive stage's identity block mounts the same
     /// one (ch 21). <paramref name="feed"/> is the on-media transport's <c>PlayerChromeFeed</c> (null for the player-bar
     /// instance, which has no idle machine to report to): a scrub is chrome activity, so the rail that drives it must be
-    /// able to say so.</summary>
-    public static Element SeekBar(PlayerChromeFeed? feed = null) => Embed.Comp(() => new BarSeekRail(feed));
+    /// able to say so. A <c>PlayerChromeFeed</c> is inert without a <c>MediaPlayerElement</c> owner, so the fullscreen
+    /// stage (which has none) reports a scrub through <paramref name="onScrubbing"/> instead (<c>true</c> on press,
+    /// <c>false</c> on commit or cancel) — its own idle machine's <c>SetScrubbing</c>. Both are STRUCTURAL: fixed at mount.</summary>
+    public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null)
+        => Embed.Comp(() => new BarSeekRail(feed, onScrubbing));
 
     /// <summary>A transport time label. <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
@@ -201,6 +204,7 @@ public static partial class Shell
             var videoMenu = UseRef<OverlayHandle?>(null);
             var overlay = UseContext(Overlay.Service);
             var hooks = UseContext(InputHooks.Current);
+            var begin = UseContext(SharedTransition.Begin);   // the Expand door opens the fullscreen stage with the art's flight captured first (null headless)
             var barNode = UseRef<NodeHandle>(default);
             float artScale = UseContext(Viewport.Scale);
             var rowStamp = UseComputed<(EntityKind Kind, int Slot, uint Version)>(BarRowStamp);
@@ -311,6 +315,12 @@ public static partial class Shell
             bool titleNav = !BarTitleRoute().IsNone;
             // Both lines are KEYED ("np-title"/"np-artists"): the remote-device line is a keyed insert that precedes
             // them, and an unkeyed title would reuse the artists' mounted marquee host (#139).
+            // The plain (non-scrolling) title: the run is also the tooltip's measuring style (below).
+            var titleRun = new TextEl(Prop.Of<string>(BarTitleText))
+            {
+                Size = 14f, Weight = 700, Color = titleInk, Wrap = TextWrap.NoWrap, MaxLines = 1,
+                Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            };
             BoxEl titleEl = marquee
                 ? (BoxEl)Marquee.Of(Prop.Of<string>(BarTitleText), new Marquee.Style
                 {
@@ -326,14 +336,7 @@ public static partial class Shell
                 : new BoxEl
                 {
                     ClipToBounds = true, MinWidth = 0f,
-                    Children =
-                    [
-                        new TextEl(Prop.Of<string>(BarTitleText))
-                        {
-                            Size = 14f, Weight = 700, Color = titleInk, Wrap = TextWrap.NoWrap, MaxLines = 1,
-                            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
-                    ],
+                    Children = [titleRun],
                 };
             titleEl = titleEl with { Key = "np-title" };
             if (titleNav)
@@ -352,7 +355,9 @@ public static partial class Shell
                     Key = "remote-device-line", Animate = BarItemMotion,
                     Children = [Embed.Comp(static () => new BarRemoteDeviceLine())],
                 });
-            metaKids.Add(titleEl);
+            // A scrolling title shows itself in full; a plain one is cut at the slot, so its full text rides a tooltip
+            // that exists only while it is cut.
+            metaKids.Add(marquee ? titleEl : Controls.TrimTip(titleEl, BarTitleText(), titleRun) with { Key = "np-title" });
             if (PlayerBarRules.ShowsArtistLine(facts.State, L.ShowSubtitle))
                 metaKids.Add(marquee
                     ? Marquee.Content(static () => new BarArtistsLine(compact: false), new Marquee.Style
@@ -395,24 +400,38 @@ public static partial class Shell
                 OnClick = artNav ? static () => BarGo(BarArtRoute()) : null,
                 Role = artNav ? AutomationRole.Hyperlink : AutomationRole.None,
                 Focusable = artNav,
-                Children = [Controls.Artwork(BarArtUrl(faceRef), L.ArtSize, L.ArtSize, 6f, scale: artScale)],
+                // The morph tag ONLY: the click above keeps today's navigation and there is NO double-click entry (a
+                // double-click's first click would still navigate, InputDispatcher.DoubleClickMs = 500). The Expand button
+                // is the bar's door; the flight captures this TAGGED art wherever the click lands. A morph-tagged slot
+                // mounts no shimmer and a frozen placeholder — accepted for a 48-DIP thumbnail.
+                Children = [Controls.Artwork(BarArtUrl(faceRef), L.ArtSize, L.ArtSize, 6f, morphKey: Stage.Entry.MorphKey, scale: artScale)],
             };
             // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
             var saveIcon = faceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);
             var saveButton = BarButton(saveIcon.Glyph ?? Icons.Add, static () => BarToggleLike(), likeEnabled, liked,
                 box, glyph, onRealized: h => likeNode.Value = h, platedWhenLatched: false) with { BlocksDragArm = true };
-            Element saveFace = faceIsEpisode ? ToolTip.Wrap(saveButton,
-                Loc.Get(liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)) : saveButton;
+            // Named for BOTH faces (the heart is an icon with no label of its own): an episode saves, a track likes.
+            Element saveFace = ToolTip.Wrap(saveButton, faceIsEpisode
+                ? Loc.Get(liked ? Strings.Podcast.Reader.RemoveSaved : Strings.Podcast.Reader.Save)
+                : Loc.Get(liked ? Strings.Menu.Saved : Strings.Menu.SaveToLiked));
             var likeSlot = Slot("like", box, box, likeLit, saveFace);
 
+            var leftFlow = new BoxEl
+            {
+                Key = "left-flow", Grow = 1f, Shrink = 1f, MinWidth = 0f,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = L.LeftGap, ClipToBounds = true,
+                Children = isEpisode && L.Tier == PlayerBarTier.Minimal ? [art] : L.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
+            };
+            // No hover "…" here: the now-playing cluster's menu is the right-click / Menu key / long-press below (owner,
+            // 2026-10-02) — an overlay "…" landed between the title and the heart, over the end of the title.
             var left = new BoxEl
             {
                 Key = "left", Width = L.LeftW, Shrink = 0f, MinWidth = 0f, Animate = BarMoveMotion,
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = L.LeftGap, ClipToBounds = true,
+                ZStack = true,
                 // The factory PEEKS at promotion time: the mounted cluster outlives every track change. An idle bar is
                 // not a drag handle at all.
                 Draggable = isTrack ? Drag.Source(static () => BarDragPayload()) : null,
-                Children = isEpisode && L.Tier == PlayerBarTier.Minimal ? [art] : L.ShowLikeSlot ? [art, metaCol, likeSlot] : [art, metaCol],
+                Children = [leftFlow],
             };
             // Right-click / Menu key / long-press: the track menu over the now-playing target, with its header. ONE seam
             // feeds this cluster AND the immersive stage (`Stage.NowPlayingMenu`, installed by the track menu's owner);
@@ -560,9 +579,12 @@ public static partial class Shell
                     case RightSlot.Devices:
                         return Slot("devices", w, box, lit, Embed.Comp(() => new BarDevicesButton(box, glyph)));
                     case RightSlot.Expand:
+                        // The bar's door to the fullscreen stage. The now-playing RAIL toggle moved to the "⋯" overflow
+                        // (OverflowCommand.NowPlaying), so the rail keeps a door; this button never latches.
                         return Slot("expand", w, box, lit,
-                            BarButton(Icons.ChevronUp, static () => Ui.Toggle(RailMode.NowPlaying), true,
-                                railOpen && railMode == RailMode.NowPlaying, box, glyph));
+                            ToolTip.Wrap(
+                                BarButton(Icons.FullScreen, () => Stage.Open(begin, "bar-expand"), true, false, box, glyph),
+                                Loc.Get(Strings.Player.Fullscreen)));
                     default:
                         // Reserved only where the idle menu is already non-empty, so the command set is never empty here.
                         return Slot("more", w, box, lit, BarMoreButton(overflowCommands, box, glyph));
@@ -610,13 +632,16 @@ public static partial class Shell
                 OnKeyDown = e =>
                 {
                     var intent = PlayerKey(e.KeyCode, hooks.GetFocus?.Invoke() == barNode.Value,
-                        e.Handled, e.Ctrl || e.Alt || e.Shift);
+                        e.Handled, e.Ctrl || e.Alt, e.Shift);
                     if (intent == PlayerKeyIntent.None) return;
                     e.Handled = true;
                     switch (intent)
                     {
-                        case PlayerKeyIntent.SeekBack: BarSeekBy(-10_000); break;
-                        case PlayerKeyIntent.SeekForward: BarSeekBy(10_000); break;
+                        // The keyboard scrub ladder (D4): 5 s, 15 s, 30 s while held, Shift = 1 s; one seek commits when the key goes quiet.
+                        case PlayerKeyIntent.SeekBack: BarKeyStep(-1, fine: false); break;
+                        case PlayerKeyIntent.SeekForward: BarKeyStep(1, fine: false); break;
+                        case PlayerKeyIntent.SeekBackFine: BarKeyStep(-1, fine: true); break;
+                        case PlayerKeyIntent.SeekForwardFine: BarKeyStep(1, fine: true); break;
                         case PlayerKeyIntent.VolumeDown: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() - .05f, 0f, 1f)); break;
                         case PlayerKeyIntent.VolumeUp: Playback.SetVolume(Math.Clamp(Playback.Volume.Peek() + .05f, 0f, 1f)); break;
                         case PlayerKeyIntent.Toggle: if (!e.IsRepeat) TogglePlayPause("playerbar.space"); break;
@@ -1166,6 +1191,7 @@ public static partial class Shell
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
             var overlay = UseContext(Overlay.Service);
+            var begin = UseContext(SharedTransition.Begin);   // the "Full screen" row captures the art's flight before the stage mounts
             var commands = _commands;
 
             void Toggle()
@@ -1173,7 +1199,7 @@ public static partial class Shell
                 if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
                 if (commands.Length == 0) return;
                 var items = new List<MenuFlyoutItem>(commands.Length);
-                for (int i = 0; i < commands.Length; i++) items.Add(OverflowItem(commands[i]));
+                for (int i = 0; i < commands.Length; i++) items.Add(OverflowItem(commands[i], begin));
                 // A PLAIN MenuFlyout upward — never CommandBarFlyout, whose second clip fought the reveal.
                 handle.Value = overlay.Open(
                     () => anchor.Value,
@@ -1194,7 +1220,7 @@ public static partial class Shell
         }
 
         /// <summary>One overflow row, from LIVE peeks at open time.</summary>
-        static MenuFlyoutItem OverflowItem(OverflowCommand command)
+        static MenuFlyoutItem OverflowItem(OverflowCommand command, Action<string>? begin)
         {
             var facts = TransportFacts(track: false);
             bool railOpen = Ui.RailOpen.Peek();
@@ -1221,6 +1247,9 @@ public static partial class Shell
                     return new MenuFlyoutItem(Loc.Get(Strings.Player.Queue), Icons.Queue, true, static () => Ui.Toggle(RailMode.Queue));
                 case OverflowCommand.NowPlaying:
                     return new MenuFlyoutItem(Loc.Get(Strings.Player.NowPlaying), Icons.ChevronUp, true, static () => Ui.Toggle(RailMode.NowPlaying));
+                case OverflowCommand.FullScreen:
+                    // The stage's door at the tiers without the Expand slot (PlayerBarRules.Overflow).
+                    return new MenuFlyoutItem(Loc.Get(Strings.Player.Fullscreen), Icons.FullScreen, true, () => Stage.Open(begin, "bar-overflow"));
                 case OverflowCommand.Video:
                 {
                     bool live = Video.PlacementCore.IsActive(Video.State.Surface.Peek());
@@ -1490,6 +1519,7 @@ public static partial class Shell
         const float RingDiameter = 22f;      // Slider.DefaultStyle.ThumbRingDiameter
 
         readonly PlayerChromeFeed? _chromeFeed;
+        readonly Action<bool>? _onScrubbing;   // the fullscreen stage's scrub seam (its idle machine's SetScrubbing); null on the bar
         readonly Signal<bool> _scrubbing = new(false);
         readonly FloatSignal _scrubFrac = new(0f);
         readonly FloatSignal _displayFrac = new(0f);
@@ -1497,6 +1527,21 @@ public static partial class Shell
         readonly FloatSignal _chapterHover = new(0f);
         readonly Signal<bool> _chapterHovering = new(false);
         long _committedAtMs;
+        // V-PA12: the seek generation the bar SAW when it committed — sampled BEFORE the commit is posted (the drain that bumps the
+        // generation runs later), so the hold below ends on the first landing past it: the commit's own seek or a newer one's.
+        uint _committedGen;
+
+        // The scrub READOUT (U-7, V-PA40): the time under the pointer, in a bubble over the thumb for the length of a pointer gesture. The thumb
+        // ring is not hit-testable, so it cannot carry a tooltip of its own, and `ToolTip.Wrap` can neither follow a live value (it closes the
+        // bubble on every text change) nor survive a press (it dismisses on one) — so the rail opens the Slider's own kind of bubble, anchored
+        // to the thumb's NODE (a position source only), on the press and closes it on the release, the cancel and the unmount.
+        NodeHandle _thumbNode;
+        OverlayHandle? _readout;
+        IOverlayService? _overlay;
+        readonly Action<NodeHandle> _onThumbRealized;
+        readonly Func<NodeHandle> _readoutAnchor;
+        readonly Func<Element> _readoutContent;
+        readonly Prop<string> _readoutText;
 
         // Wired ONCE: a bind thunk and the handlers are fields, so a re-render allocates none of them.
         readonly Prop<Affine2D> _fillBind;
@@ -1506,9 +1551,14 @@ public static partial class Shell
         readonly Action _onExit;
         readonly Action<RectF> _onBounds;
 
-        public BarSeekRail(PlayerChromeFeed? chromeFeed = null)
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null)
         {
             _chromeFeed = chromeFeed;
+            _onScrubbing = onScrubbing;
+            _onThumbRealized = node => _thumbNode = node;
+            _readoutAnchor = () => _thumbNode;
+            _readoutText = Prop.Of<string>(ReadoutLabel);
+            _readoutContent = ReadoutBubble;
             _fillBind = Prop.Of(() => Affine2D.Scale(MathF.Max(Math.Clamp(_displayFrac.Value, 0f, 1f), 1e-4f), 1f));
             _thumbBind = Prop.Of(() => Affine2D.Translation(SeekRail.ThumbX(_railPx.Value, _displayFrac.Value, RingDiameter), 0f));
             _recompute = Recompute;
@@ -1539,6 +1589,10 @@ public static partial class Shell
             // The pixel-due stepper: armed only while the playhead advances on its own (paused ⇒ disarmed ⇒ no frames).
             // UseInterval also pauses under a parked / minimised window.
             UseInterval(_recompute, dwell, enabled: advances && mode != SeekRailMode.Line);
+            _overlay = UseContext(Overlay.Service);
+            // V-PA24/X5: the rail can be unmounted mid-gesture (the stage closing, a tier remount, a theme swap): a live scrub must not leave
+            // the pump holding the main voice behind a grain voice nobody will ever release. `ScrubCancel` is idempotent.
+            UseEffect(() => () => { if (_scrubbing.Peek()) { Playback.ScrubCancel(); CloseReadout(); } }, DepKey.Empty);
 
             // NOTHING TO REWIND: the rail stops pretending to be one. After every hook, so the hook order never varies.
             if (mode == SeekRailMode.Line) return Embed.Comp(static () => new BarLiveLine());
@@ -1600,7 +1654,7 @@ public static partial class Shell
                         Fill = s.ThumbRing, HoverFill = s.ThumbRing, PressedFill = s.ThumbRing,
                         BorderBrush = s.ThumbBorder, BorderWidth = s.ThumbBorderWidth,
                         Opacity = 0f, HoverOpacity = enabled ? 1f : 0f, PressedOpacity = enabled ? 1f : 0f,
-                        HitTestVisible = false, Transform = _thumbBind,
+                        HitTestVisible = false, Transform = _thumbBind, OnRealized = _onThumbRealized,
                         Children =
                         [
                             new BoxEl
@@ -1618,6 +1672,9 @@ public static partial class Shell
                             },
                         ],
                     },
+                    // The keyboard ladder's commit clock (zero-size; the rail never re-renders for it): mounted wherever a rail is, so the bar,
+                    // the fullscreen stage and the on-media transport all commit their Left/Right steps.
+                    Embed.Comp(static () => new BarKeyLadderTick()) with { Key = "key-ladder-tick" },
                 ],
             };
 
@@ -1645,7 +1702,14 @@ public static partial class Shell
             _ = Playback.Live.Value;
             _ = Playback.IsBehindLive.Value;
             _ = Playback.PhaseSignal.Value;
-            if (_committedAtMs > 0L && !_scrubbing.Peek()) _committedAtMs = 0L;   // the landing arrived
+            _ = Playback.LastSeekLandedGen.Value;    // a landing re-runs this even when no position moved with it
+            _ = s_keyPreviewMs.Value;                // the keyboard ladder's target moves the thumb too
+            // The drop-point hold ends on a LANDING past the generation the commit saw (V-PA12) — not on the first report after
+            // it: the committing drain's own publish is a report, and releasing there repaints the PRE-seek position for the whole
+            // flight of the seek. The same hold covers the bar, the flagship stage and the video overlay (all host this rail).
+            // No landing (a foreign owner, a parked deck) -> SeekRail.CommitHoldMs ends it.
+            if (_committedAtMs > 0L && !_scrubbing.Peek()
+                && Playback.SeekLandedAfter(_committedGen, Playback.LastSeekLandedGen.Peek())) _committedAtMs = 0L;
             Recompute();
         }
 
@@ -1661,8 +1725,11 @@ public static partial class Shell
             {
                 bool advancing = SeekRail.Advances(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(),
                     Playback.PhaseSignal.Peek(), Playback.Buffering.Peek());
-                // THE CLOCK: the model's timestamped sample, extrapolated on the clock it was stamped with.
-                long position = advancing ? Playback.Snap().Position(now)
+                // THE CLOCK: the model's timestamped sample, extrapolated on the clock it was stamped with — or, while the keyboard ladder
+                // is live (stepping, or committed and waiting for its seek to land), the ladder's target.
+                long key = s_keyPreviewMs.Peek();
+                long position = key >= 0L ? key
+                    : advancing ? Playback.Snap().Position(now)
                     : mode == SeekRailMode.Dvr ? live.PositionMs : Playback.PositionMs.Peek();
                 model = SeekRail.ModelFraction(mode, position, Playback.DurationMs.Peek(), live, Playback.IsBehindLive.Peek());
             }
@@ -1673,12 +1740,21 @@ public static partial class Shell
         static bool EnabledNow() => SeekRail.Enabled(!Playback.CurrentId.Peek().IsEmpty, Playback.Error.Peek(),
             Playback.PhaseSignal.Peek(), Playback.CanSeek.Peek());
 
+        /// <summary>Where the pointer stands, in ms: the rail's own commit target (<see cref="SeekRail.CommitTargetMs"/> — a track through the
+        /// reducer's seek clamp, a DVR window into its edges), so what the scrub arms carry, what the labels show and what the release
+        /// commits are one number (U-8).</summary>
+        int ScrubTargetMs() => (int)Math.Clamp(
+            SeekRail.CommitTargetMs(_scrubFrac.Peek(), Playback.DurationMs.Peek(), Playback.Live.Peek()), 0L, int.MaxValue);
+
         void OnDown(Point2 local)
         {
             if (!EnabledNow()) return;
             _scrubbing.Value = true;
             _chromeFeed?.SetScrubbing(true);
+            _onScrubbing?.Invoke(true);
             _scrubFrac.Value = SeekRail.FractionAt(local.X, _railPx.Peek());   // jump to the press point
+            Playback.ScrubBegin(ScrubTargetMs());                               // the reducer decides: grains, or a visual-only scrub
+            OpenReadout();
             Recompute();
         }
 
@@ -1686,6 +1762,7 @@ public static partial class Shell
         {
             if (!EnabledNow()) return;
             _scrubFrac.Value = SeekRail.FractionAt(local.X, _railPx.Peek());
+            Playback.ScrubMove(ScrubTargetMs());
             Recompute();
         }
 
@@ -1696,22 +1773,65 @@ public static partial class Shell
             var live = Playback.Live.Peek();
             long duration = Playback.DurationMs.Peek();
             if (!SeekRail.CanCommit(live, duration)) { OnCancel(); return; }
-            long target = SeekRail.CommitTargetMs(_scrubFrac.Peek(), duration, live);
-            s_barSeek.Reset();
-            Playback.SeekTo((int)Math.Clamp(target, 0L, int.MaxValue));
+            _committedGen = Playback.SeekGen.Peek();   // BEFORE the post: a synchronous marshaller drains (and bumps it) inside ScrubEnd
+            Playback.ScrubEnd(ScrubTargetMs());        // the gesture's ONE seek (the reducer: an audible scrub's release, else an ordinary seek)
             _committedAtMs = Math.Max(1L, Playback.FrameNowMs());
+            CloseReadout();
             _scrubbing.Value = false;
             _chromeFeed?.SetScrubbing(false);
+            _onScrubbing?.Invoke(false);
             Recompute();
         }
 
         void OnCancel()
         {
+            Playback.ScrubCancel();                    // idempotent: a gesture the reducer never began is nothing
+            CloseReadout();
             _scrubbing.Value = false;
             _chromeFeed?.SetScrubbing(false);
+            _onScrubbing?.Invoke(false);
             _committedAtMs = 0L;
             Recompute();
         }
+
+        // ── the scrub readout (U-7) ──
+
+        /// <summary>The readout wants a time at the pointer where the rail is a plain track: not a DVR window (its labels say how far behind
+        /// live) and not an episode's chapter rail (its own timeline already names the chapter under the pointer).</summary>
+        bool ReadoutWanted()
+            => SeekRail.ModeOf(Playback.Live.Peek()) == SeekRailMode.Track && Playback.CurrentId.Peek().Kind != EntityKind.Episode;
+
+        void OpenReadout()
+        {
+            if (_overlay is null || _readout is { IsOpen: true } || !ReadoutWanted()) return;
+            _readout = _overlay.Open(_readoutAnchor, _readoutContent, FlyoutPlacement.Top,
+                new PopupOptions(FocusTrap: false, DismissBehavior: DismissBehavior.None, Chrome: PopupChrome.Raw));
+        }
+
+        void CloseReadout()
+        {
+            var open = _readout;
+            _readout = null;
+            if (open is { IsOpen: true }) open.Close();
+        }
+
+        /// <summary>The bubble's text: the rail's own scrub target, live from the pointer fraction — signal-bound, so the bubble itself never
+        /// re-renders per move (the Slider's thumb tip does the same).</summary>
+        string ReadoutLabel()
+        {
+            float fraction = _scrubFrac.Value;
+            long ms = SeekRail.CommitTargetMs(fraction, Playback.DurationMs.Peek(), Playback.Live.Peek());
+            return s_clockText.Get(ms / 1000L, static sec => Playback.TimeFormat.Clock(sec * 1000L));
+        }
+
+        Element ReadoutBubble() => new BoxEl
+        {
+            Fill = ColorF.Transparent, Acrylic = Tok.AcrylicFlyout,
+            BorderColor = Tok.StrokeFlyoutDefault, BorderWidth = 1f,
+            Corners = Radii.ControlAll, Shadow = Elevation.Flyout,
+            Padding = new Edges4(8f, 3f, 8f, 5f),
+            Children = [new TextEl(_readoutText) { Size = 15f, Color = Tok.TextPrimary }],
+        };
     }
 
     /// <summary>The rail for a broadcast with NOTHING TO REWIND: a 2-DIP accent line that breathes 0.55 ↔ 1 over 3 s —
@@ -1776,6 +1896,11 @@ public static partial class Shell
             long duration = Playback.DurationMs.Value;
             bool isLive = Playback.Live.Value.IsLive;
             long tunedIn = Playback.TunedInAtMs.Value;
+            // U-7: while the pointer drags (the reducer's scrub model) or the keyboard ladder is live, the label follows the TARGET — the
+            // elapsed slot counts up to it and the remaining slot counts down from it. A live broadcast keeps its own clock (tune-in).
+            long scrub = Playback.ScrubPositionMs.Value;
+            long key = s_keyPreviewMs.Value;
+            if (!isLive) position = scrub >= 0L ? scrub : key >= 0L ? key : position;
             var (ms, minus) = TimeLabel.Of(_remaining, Prefs.PlayerBar.ShowRemaining(), position, duration, isLive, tunedIn,
                 isLive ? Playback.UnixNowMs() : 0L);
             long seconds = ms / 1000L;

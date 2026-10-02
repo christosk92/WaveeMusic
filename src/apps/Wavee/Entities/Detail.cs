@@ -1435,8 +1435,9 @@ public static partial class Detail
             Selection: ItemsSelectionMode.Extended, HasTrailing: true, Heart: HeartMode.Save, ShowPlays: true,
             ShowVersions: true, RailScope: RailScope.Album);
 
-        /// <summary>The album surface with no multi-select.</summary>
-        public static Config Single => Album with { Selection = ItemsSelectionMode.None };
+        /// <summary>A single / EP-sized release: the album surface unchanged. Singles select like albums (owner decision,
+        /// interaction-consistency plan) - one gesture set on every track list - so this is the album literal.</summary>
+        public static Config Single => Album;
 
         /// <summary>The album surface with the per-track artist subline (various artists).</summary>
         public static Config Compilation => Album with { ShowTrackArtist = true };

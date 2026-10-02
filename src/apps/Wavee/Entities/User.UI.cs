@@ -584,7 +584,7 @@ public readonly partial struct User
         {
             ZStack = true, Corners = Radii.ControlAll, Fill = Tok.FillSubtleTransparent,
             Focusable = false, FocusVisualMargin = Edges4.All(0f), Role = AutomationRole.Button, Cursor = CursorId.Hand,
-            OnPointerReleased = args => interact(args.ClickCount >= 2 ? ItemContainerTrigger.DoubleTap : ItemContainerTrigger.Tap, args.Mods),
+            OnPointerReleased = args => interact(RowClickPolicy.TriggerOf(args.ClickCount, args.Mods), args.Mods),
             OnKeyDown = args =>
             {
                 if (args.KeyCode == Keys.Enter) { interact(ItemContainerTrigger.EnterKey, args.Mods); args.Handled = true; }

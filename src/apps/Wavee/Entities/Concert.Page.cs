@@ -582,8 +582,8 @@ public readonly partial struct Concert
         static readonly Func<ShelfItem, int, float, Element> s_promoCard = static (item, _, w) => PromoCard(item.Slot, w);
 
         /// <summary>The playlist promo (§0 #12): the shared shelf card — cover, a 2-line title, its source as the caption —
-        /// with NO play FAB (the data carries no <c>OnPlay</c>, so the surface grows no dead one) and no menu; the one
-        /// concert-surface drag source, because it stands for a real playlist. The shelf is measured, so the card sizes
+        /// with the play FAB (pause/resume while the playlist plays, <c>PlayOrToggleContext</c>) and the shared playlist
+        /// container menu (<c>Menus.Container</c>); the one concert-surface drag source, because it stands for a real playlist. The shelf is measured, so the card sizes
         /// itself and nothing here estimates an extent.</summary>
         static Element PromoCard(int slot, float cardW)
         {
@@ -593,10 +593,15 @@ public readonly partial struct Concert
             string source = pl.Owner.IsValid ? s.Resolve(pl.Owner.NameId) : s.Resolve(pl.DescriptionId);
             string? cover = Controls.ArtUrl(pl.ImageId);
             var data = new Controls.CardData(uri, title, null, cover,
-                OnClick: () => OpenPromo(slot),
+                OnClick: () => OpenPromo(slot), OnPlay: () => Playback.PlayOrToggleContext(uri),
                 Drag: Drag.Source(() => new DragPayload(DragKind.Playlist, uri, uri, title, new EntityRef(EntityKind.Playlist, slot), ArtUrl: cover)))
             {
                 Caption = source,
+                Menu = () =>
+                {
+                    var target = ActionTarget.ForPlaylist(new Playlist(slot).Uri, title);
+                    return Menus.Container(in target, cover, source);
+                },
             };
             return Controls.Surface(data, s_promoShape, cardW) with { Key = "promo:" + slot.ToString(CultureInfo.InvariantCulture) };
         }

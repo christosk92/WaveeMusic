@@ -253,23 +253,12 @@ public class TrackDrawerRulesTests
     public void The_sheet_shows_bars_until_answered_then_rows_or_the_empty_line(EdgeState readiness, int count, Rules.CreditsView view)
         => Assert.Equal(view, Rules.CreditsViewFor(readiness, count));
 
-    // ── the facts strip and the waveform ──
+    // ── the facts strip (the waveform columns are WaveformBands.ToColumns — WaveformBandsTests) ──
 
     [Fact]
     public void Only_the_two_dates_and_the_person_take_a_lead_in_label()
     {
         foreach (var kind in Enum.GetValues<FactKind>())
             Assert.Equal(kind is FactKind.Added or FactKind.Released or FactKind.AddedBy, Rules.NeedsLabel(kind));
-    }
-
-    [Fact]
-    public void Waveform_magnitudes_scale_to_unit_peaks_within_the_buffer()
-    {
-        byte[] magnitudes = [0, 255, 51, 102];
-        Span<float> peaks = stackalloc float[3];
-        Assert.Equal(3, Rules.Peaks(magnitudes, peaks));
-        Assert.Equal(0f, peaks[0]);
-        Assert.Equal(1f, peaks[1]);
-        Assert.Equal(0.2f, peaks[2], 5);
     }
 }

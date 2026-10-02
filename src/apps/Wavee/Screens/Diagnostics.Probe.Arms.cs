@@ -55,12 +55,13 @@ public static partial class Diagnostics
 
         // ══ 1. THE WINDOWLESS ARMS ══════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>`--relaunch-after &lt;pid&gt;` and `--qr-dump [text] [out.png]`. False for anything else.</summary>
+        /// <summary>`--relaunch-after &lt;pid&gt;`, `--qr-dump [text] [out.png]` and `--log-sessions`. False for anything else.</summary>
         internal static bool TryRunCliArm(string[] args, out int code)
         {
             code = 0;
             if (Array.IndexOf(args, "--relaunch-after") >= 0) { code = RelaunchBroker(args); return true; }
             if (Array.IndexOf(args, "--qr-dump") >= 0) { code = QrDump(args); return true; }
+            if (Array.IndexOf(args, "--log-sessions") >= 0) { code = LogSessions(); return true; }   // Diagnostics/LogSessions.Probe.cs
             return false;
         }
 

@@ -78,6 +78,9 @@ public enum FetchEdge : byte
     ShowEpisodes,
     // the track drawer's traits (parent = track)
     TrackCredits, TrackVersions, TrackWaveform,
+    /// <summary>The audio-analysis beat grid (<c>Edges.TrackBeats</c>): one spclient JSON read per track
+    /// (<see cref="SpclientRoute.AudioAnalysis"/>), parent = track.</summary>
+    TrackBeats,
     // synthetic subjects' children
     /// <summary>A Home feed's bands (<c>Edges.HomeSection</c>). A band's own cards are no relation here: the section
     /// row's <c>SectionFields.Whole</c> asks them, and the query layer walks them to the end.</summary>
@@ -180,6 +183,9 @@ public enum SpclientRoute : byte
     ProfileFollowers,
     /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;/following</c> (<see cref="FetchEdge.ProfileFollowing"/>).</summary>
     ProfileFollowing,
+    /// <summary><c>/audio-attributes/v1/audio-analysis/&lt;base62&gt;</c> (JSON): the track's beat and bar grid
+    /// (<see cref="FetchEdge.TrackBeats"/>).</summary>
+    AudioAnalysis,
 }
 
 /// <summary>ONE ROUTE: a transport, the groups it fills, and the groups that justify sending it. Exactly one of
@@ -440,6 +446,7 @@ public static class FetchRoutes
         FetchEdge.TrackCredits => FetchRoute.Metadata(CreditsV2, 0),
         FetchEdge.TrackVersions => FetchRoute.Metadata(AudioAssociations, 0),
         FetchEdge.TrackWaveform => FetchRoute.Metadata(ThreeBandWaveforms, 0),
+        FetchEdge.TrackBeats => FetchRoute.Spclient(SpclientRoute.AudioAnalysis, 0),
         FetchEdge.HomeSections => FetchRoute.Pathfinder(PathfinderOp.Home, 0),
         FetchEdge.HomePreviews => FetchRoute.Pathfinder(PathfinderOp.FeedBaselineLookup, 0),
         FetchEdge.SearchResults => FetchRoute.Pathfinder(PathfinderOp.Search, 0),

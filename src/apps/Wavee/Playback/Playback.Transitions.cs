@@ -880,6 +880,18 @@ public static partial class Playback
         fx.NextId = id;
     }
 
+    /// <summary>The pump dropped the join it had scheduled for the prepared row — a seek moved the playhead out from under the
+    /// planned join frame (S-5, V-PA33). The prepared slot no longer leads anywhere, so the arm is forgotten and
+    /// <see cref="ArmNext"/> runs again: with the endgame open it re-emits <see cref="Effects.PrepareNext"/> (an unarmed
+    /// <c>NextArmed</c> never matches the wanted one, so the idempotence gate lets it through); before the endgame
+    /// there is nothing to re-prepare and it emits nothing. Stale for any other load epoch.</summary>
+    static void DoPrepareLost(ref State s, in Input i, ref Effects fx)
+    {
+        if (i.Epoch != s.LoadEpoch) return;
+        s.NextArmed = false;
+        ArmNext(ref s, ref fx);
+    }
+
     /// <summary>The pump's endgame window opened for this load. Prepare the next row now — and, when the context is
     /// about to run out with nothing after it, ask for more EARLY — its next page when the host holds one (G-242), else
     /// autoplay — so the first new row can be prepared and joined gaplessly instead of cut in after a silence.</summary>
@@ -1094,6 +1106,7 @@ public static partial class Playback
         fx.LoadFromMs = s.PosMs;
         fx.LoadWhy = why;
         fx.LoadPaused = paused;
+        fx.SeekGen = s.SeekGen;                           // seeds the pump's generation: its reports for THIS load must match it (V-PA2)
         fx.Adopt = false;                                 // a load supersedes any adoption earlier in this drain
         fx.CancelPrepared = false;
         ArmNext(ref s, ref fx);
@@ -1229,6 +1242,7 @@ public static partial class Playback
         }
         if (Math.Abs(v - s.Volume) * MaxWireVolume < 1f) return;
         s.Volume = v;
+        MarkVolumeDirty(ref s, i.NowMs);                  // persisted by the debounce in DoTick, like a local change (V-1)
         Bump(ref s);
         fx.Volume = true;
         fx.VolumeValue = v;

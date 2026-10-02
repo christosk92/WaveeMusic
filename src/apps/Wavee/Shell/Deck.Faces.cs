@@ -977,13 +977,12 @@ public static partial class Deck
     /// SAME signals); the time is 1 Hz bound text; the title a marquee that scrolls while the deck plays.</summary>
     static class WinampFace
     {
-        const int SpectrumBands = 19, ScopeDots = 24;
+        const int SpectrumBands = 19;
         static readonly FormatCache<int> TimeCache = FormatCache.Create<int>();
 
         public static Element Build(in Rail.PlayerCatalog.Preset preset, float side, Slab sig)
         {
             string skin = Rail.PlayerPrefs.ChoiceSlug(in preset, "skin");
-            bool scope = Rail.PlayerPrefs.ChoiceSlug(in preset, "vis") == "scope";
             ColorF wa1 = skin switch { "modern" => Hex(0x4A4F57), "dark" => Hex(0x1A1C22), _ => Hex(0x3B4459) };
             ColorF wa2 = skin switch { "modern" => Hex(0x2B2E34), "dark" => Hex(0x0E0F13), _ => Hex(0x222A3A) };
             ColorF wa3 = skin switch { "modern" => Hex(0x8C9199), "dark" => Hex(0x5B5F6B), _ => Hex(0x6E7A97) };
@@ -991,12 +990,12 @@ public static partial class Deck
             float w = 0.92f * side, h = w * 116f / 275f, mainY = 0.10f * side;
             return Canvas.Create(side, side,
             [
-                new CanvasChild(0.04f * side, mainY, MainWindow(side, w, h, wa1, wa2, wa3, lcd, scope, sig)),
-                new CanvasChild(0.04f * side, mainY + h + 0.02f * side, EqWindow(side, w, h, wa1, wa2, wa3, lcd, scope, sig)),
+                new CanvasChild(0.04f * side, mainY, MainWindow(side, w, h, wa1, wa2, wa3, lcd, sig)),
+                new CanvasChild(0.04f * side, mainY + h + 0.02f * side, EqWindow(side, w, h, wa1, wa2, wa3, lcd, sig)),
             ]) with { Fill = Hex(0x0F1218) };
         }
 
-        static Element MainWindow(float side, float w, float h, ColorF wa1, ColorF wa2, ColorF wa3, ColorF lcd, bool scope, Slab sig)
+        static Element MainWindow(float side, float w, float h, ColorF wa1, ColorF wa2, ColorF wa3, ColorF lcd, Slab sig)
         {
             float small = MathF.Max(6f, side * 0.024f), lcdSize = MathF.Max(9f, side * 0.064f), stSize = MathF.Max(6f, side * 0.026f);
             float timeX = 0.14f * w, timeY = 0.20f * h, timeW = 0.32f * w, timeH = 0.30f * h, visX = 0.50f * w, visW = 0.34f * w;
@@ -1019,7 +1018,7 @@ public static partial class Deck
                 new(visX, timeY, new BoxEl
                 {
                     Width = visW, Height = timeH, Shrink = 0f, Fill = Hex(0x000000), BorderWidth = 1f, BorderColor = Hex(0x000000), ClipToBounds = true,
-                    Children = [scope ? Scope(visW - 2f, timeH - 2f, sig, lcd) : Bars(visW - 2f, timeH - 2f, sig, lcd, 1f, 2f)],
+                    Children = [Bars(visW - 2f, timeH - 2f, sig, lcd, 1f, 2f)],
                 }),
                 new(timeX, stY, new BoxEl
                 {
@@ -1065,16 +1064,16 @@ public static partial class Deck
             return Window(w, h, wa2, wa3, kids);
         }
 
-        static Element EqWindow(float side, float w, float h, ColorF wa1, ColorF wa2, ColorF wa3, ColorF lcd, bool scope, Slab sig)
+        static Element EqWindow(float side, float w, float h, ColorF wa1, ColorF wa2, ColorF wa3, ColorF lcd, Slab sig)
         {
             float small = MathF.Max(6f, side * 0.024f), gx = 0.06f * w, gy = 0.18f * h, gw = 0.88f * w, gh = 0.68f * h;
             var kids = new List<CanvasChild>(4)
             {
-                new(0f, 0f, TitleBar(w, 0.12f * h, wa1, wa3, small, scope ? "WINAMP OSCILLOSCOPE" : "WINAMP SPECTRUM ANALYZER")),
+                new(0f, 0f, TitleBar(w, 0.12f * h, wa1, wa3, small, "WINAMP SPECTRUM ANALYZER")),
                 new(gx, gy, new BoxEl
                 {
                     Width = gw, Height = gh, Shrink = 0f, Fill = Hex(0x000000), BorderWidth = 1f, BorderColor = Hex(0x000000), ClipToBounds = true,
-                    Children = [scope ? Scope(gw - 2f, gh - 2f, sig, lcd) : Bars(gw - 2f, gh - 2f, sig, lcd, 2f, 3f)],
+                    Children = [Bars(gw - 2f, gh - 2f, sig, lcd, 2f, 3f)],
                 }),
                 new(gx, gy, Grid(gw, gh)),   // the 10 hairlines OVER the bars
             };
@@ -1144,24 +1143,6 @@ public static partial class Deck
             return new BoxEl { Width = w, Height = h, Shrink = 0f, Direction = 0, Gap = gap, Padding = Edges4.All(pad), AlignItems = FlexAlign.End, Children = cols };
         }
 
-        /// <summary>The oscilloscope: 24 one-pixel dots, each translated off the centre line (the synth centres on 0.5).</summary>
-        static Element Scope(float w, float h, Slab sig, ColorF lcd)
-        {
-            const float Dot = 1.5f;
-            float span = MathF.Max(1f, w - Dot);
-            var kids = new List<CanvasChild>(ScopeDots);
-            for (int i = 0; i < ScopeDots; i++)
-            {
-                var band = sig.Bands[i];
-                kids.Add(new CanvasChild(i * span / (ScopeDots - 1), (h - Dot) * 0.5f, new BoxEl
-                {
-                    Width = Dot, Height = Dot, Shrink = 0f, Fill = lcd,
-                    Transform = Prop.Of(() => Affine2D.Translation(0f, (Clamp01(band.Value) - 0.5f) * h)),
-                }));
-            }
-            return Canvas.Create(w, h, kids);
-        }
-
         static Element Grid(float w, float h)
         {
             var lines = new List<CanvasChild>(10);
@@ -1204,7 +1185,7 @@ public static partial class Deck
 
     // ══ 7. WMP VISUALIZER ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A black plate, three presets over the same 24-band synth, a corner cover and a hairline progress line.
+    /// <summary>A black plate, three presets over the same 24 real analyser bands, a corner cover and a hairline progress line.
     /// The colour is a bound channel (theme accent, or the live cover accent), so a theme or album change repaints
     /// without a rebuild.</summary>
     static class WmpFace

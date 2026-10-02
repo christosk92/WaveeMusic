@@ -9,7 +9,7 @@
 // TWO 0.3 DELTAS every fixture in this file codes against:
 //   1. `SidebarLibraryEntry.Cover` is now a `StringId` (was nullable) — a fixture that used to pass `Cover: null`
 //      passes `Cover: default` (== `StringId.Empty`). `MosaicTiles` stays `IReadOnlyList<StringId>?`, still `null`.
-//   2. The pane-width ladder (`NavPaneMinW`/`NavPaneMaxW`/`CompactRailW`, the tier ladder) moved off
+//   2. The pane-width bounds (`NavPaneMinW`/`NavPaneMaxW`; the tier ladder and `CompactRailW` are gone) moved off
 //      `ShellResponsiveLayout` onto `SidebarPaneBounds`, declared right beside `Sidebar.cs`'s planner.
 //
 // These are pure-value tests: no `Entities` handle is ever constructed, so none of these classes boots a scope or
@@ -1756,6 +1756,7 @@ public sealed class SidebarRailPlannerTests
     [Fact]
     public void Rail_extents_are_pitch_or_divider()
     {
+        var m = SidebarRailMetrics.For(SidebarRailDetent.Default);   // pitch 46, tile 40
         var rows = new[]
         {
             new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a"),
@@ -1766,23 +1767,23 @@ public sealed class SidebarRailPlannerTests
 
         // No head/footer: item i IS row i, so — with no chrome to carry it — the first and last rows fold the
         // rail's own top/bottom inset (`SidebarRailExtents.TopPad`/`BottomPad`) into their own extent.
-        Assert.Equal(SidebarRailExtents.Pitch + SidebarRailExtents.TopPad,
-            SidebarRailExtents.ExtentOf(rows, 0, hasHead: false, hasFooter: false, headTiles: 0));
-        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false, headTiles: 0));
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 2, hasHead: false, hasFooter: false, headTiles: 0));
-        Assert.Equal(SidebarRailExtents.Pitch + SidebarRailExtents.BottomPad,
-            SidebarRailExtents.ExtentOf(rows, 3, hasHead: false, hasFooter: false, headTiles: 0));
+        Assert.Equal(SidebarRailExtents.Pitch(in m) + SidebarRailExtents.TopPad,
+            SidebarRailExtents.ExtentOf(rows, 0, hasHead: false, hasFooter: false, headTiles: 0, in m));
+        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false, headTiles: 0, in m));
+        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 2, hasHead: false, hasFooter: false, headTiles: 0, in m));
+        Assert.Equal(SidebarRailExtents.Pitch(in m) + SidebarRailExtents.BottomPad,
+            SidebarRailExtents.ExtentOf(rows, 3, hasHead: false, hasFooter: false, headTiles: 0, in m));
         // Out of range answers the common (tile) case rather than throwing — the count signal lands one layout
         // effect after the plan, so a transient over-read must not crash the layout.
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 99, hasHead: false, hasFooter: false, headTiles: 0));
-        Assert.NotEqual(SidebarRailExtents.Pitch, SidebarRailExtents.DividerExtent);
+        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 99, hasHead: false, hasFooter: false, headTiles: 0, in m));
+        Assert.NotEqual(SidebarRailExtents.DividerExtent, SidebarRailExtents.Pitch(in m));
 
         // With a head AND a footer, THEY carry the inset — item 0 is Head, item 5 is Footer (see
         // `Rail_item_map_places_head_rows_footer_in_order`), and neither edge row gets padded.
-        Assert.Equal(SidebarRailExtents.HeadExtentOf(6), SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: true, headTiles: 6));
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 1, hasHead: true, hasFooter: true, headTiles: 6));
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.ExtentOf(rows, 4, hasHead: true, hasFooter: true, headTiles: 6));
-        Assert.Equal(SidebarRailExtents.FooterEstimate, SidebarRailExtents.ExtentOf(rows, 5, hasHead: true, hasFooter: true, headTiles: 6));
+        Assert.Equal(SidebarRailExtents.HeadExtentOf(6, in m), SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: true, headTiles: 6, in m));
+        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 1, hasHead: true, hasFooter: true, headTiles: 6, in m));
+        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 4, hasHead: true, hasFooter: true, headTiles: 6, in m));
+        Assert.Equal(SidebarRailExtents.FooterEstimate, SidebarRailExtents.ExtentOf(rows, 5, hasHead: true, hasFooter: true, headTiles: 6, in m));
     }
 
     /// <summary>2026-09-25, item J: the Library V3 rail "jumped" by 186 DIP on selecting an item. Every selection
@@ -1792,14 +1793,34 @@ public sealed class SidebarRailPlannerTests
     [Fact]
     public void Rail_head_seed_is_the_heads_exact_extent()
     {
-        Assert.Equal(40f, SidebarRailExtents.Tile);
-        Assert.Equal(287f, SidebarRailExtents.HeadExtentOf(6));                     // the owner's head: 5 destinations + Home
-        Assert.Equal(8f + 40f + 9f, SidebarRailExtents.HeadExtentOf(1));
-        Assert.Equal(8f + 9f, SidebarRailExtents.HeadExtentOf(0));
+        var m = SidebarRailMetrics.For(SidebarRailDetent.Default);
+        Assert.Equal(40f, m.Tile);
+        Assert.Equal(287f, SidebarRailExtents.HeadExtentOf(6, in m));                     // the owner's head: 5 destinations + Home
+        Assert.Equal(8f + 40f + 9f, SidebarRailExtents.HeadExtentOf(1, in m));
+        Assert.Equal(8f + 9f, SidebarRailExtents.HeadExtentOf(0, in m));
         // One more tile adds exactly one tile row's pitch.
-        Assert.Equal(SidebarRailExtents.Pitch, SidebarRailExtents.HeadExtentOf(7) - SidebarRailExtents.HeadExtentOf(6));
+        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.HeadExtentOf(7, in m) - SidebarRailExtents.HeadExtentOf(6, in m));
         var rows = new[] { new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a") };
-        Assert.Equal(287f, SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: false, headTiles: 6));
+        Assert.Equal(287f, SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: false, headTiles: 6, in m));
+    }
+
+    [Fact]
+    public void Rail_extents_follow_the_detent_metrics()
+    {
+        var compact = SidebarRailMetrics.For(SidebarRailDetent.Compact);   // tile 32, pitch 38
+        var large = SidebarRailMetrics.For(SidebarRailDetent.Large);       // tile 64, pitch 70
+        Assert.Equal(38f, SidebarRailExtents.Pitch(in compact));
+        Assert.Equal(70f, SidebarRailExtents.Pitch(in large));
+        Assert.Equal(8f + 6 * 32f + 5 * 6f + 9f, SidebarRailExtents.HeadExtentOf(6, in compact));   // 239
+        Assert.Equal(8f + 6 * 64f + 5 * 6f + 9f, SidebarRailExtents.HeadExtentOf(6, in large));     // 431
+        // The divider row does not scale with the detent.
+        var rows = new[]
+        {
+            new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a"),
+            new SidebarRow(SidebarRowKind.Divider, "s", 0, -1, 0, "s"),
+            new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 1, 0, "b"),
+        };
+        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false, headTiles: 0, in large));
     }
 
     [Fact]
@@ -2917,26 +2938,31 @@ public class SidebarEditPlanTests
 
 #region PANE INVARIANT — SidebarPaneInvariantTests
 // The settled-frame terminal-state validator: the docked pane's rendered facts (which layer is opaque, which is
-// hit-test-visible, is the width in range) either agree with each other or the fault flags say exactly how they do
-// not. `SidebarPaneBounds` (Sidebar.cs) is 0.3's owner of the width ladder that 0.2.9 kept on `ShellResponsiveLayout`.
+// hit-test-visible, is the width what the rules present) either agree with each other or the fault flags say exactly
+// how they do not. The free-resize model: an expanded pane may PRESENT narrower than the stored preference (the window
+// yield) but never wider; a rail (user regime or the last-resort band) renders exactly its detent's strip.
 public class SidebarPaneInvariantTests
 {
-    static SidebarPaneFrameSnapshot Expanded(float preferred = 320f, float rendered = 320f) => new(
-        SidebarDesign.Curated,
-        UserCollapsed: false,
-        PresentedCompact: false,
+    static SidebarPaneFrameSnapshot Expanded(float preferred = 320f, float presented = 320f, float rendered = 320f) => new(
+        Design: SidebarDesign.Curated,
+        Regime: SidebarRegime.Expanded,
+        Detent: SidebarRailDetent.Default,
+        LastResort: false,
         PreferredExpandedWidth: preferred,
+        PresentedWidth: presented,
         RenderedPaneWidth: rendered,
         ExpandedOpacity: 1f,
         RailOpacity: 0f,
         ExpandedHitTestVisible: true,
         RailHitTestVisible: false);
 
-    static SidebarPaneFrameSnapshot Compact(float rendered = SidebarPaneBounds.CompactRailW) => new(
-        SidebarDesign.LibraryV3,
-        UserCollapsed: true,
-        PresentedCompact: true,
+    static SidebarPaneFrameSnapshot Compact(float rendered = 56f, SidebarRailDetent detent = SidebarRailDetent.Default) => new(
+        Design: SidebarDesign.LibraryV3,
+        Regime: SidebarRegime.Rail,
+        Detent: detent,
+        LastResort: false,
         PreferredExpandedWidth: 340f,
+        PresentedWidth: rendered,
         RenderedPaneWidth: rendered,
         ExpandedOpacity: 0f,
         RailOpacity: 1f,
@@ -2954,16 +2980,29 @@ public class SidebarPaneInvariantTests
     public void CompactTerminalState_IsValid()
     {
         var state = Compact();
-        Assert.True(SidebarPaneInvariant.IsValid(in state));
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in state));
+    }
+
+    [Theory]
+    [InlineData(SidebarRailDetent.Compact, 48f)]
+    [InlineData(SidebarRailDetent.Default, 56f)]
+    [InlineData(SidebarRailDetent.Large, 80f)]
+    public void EveryDetentsStripIsAValidRailWidth(SidebarRailDetent detent, float strip)
+    {
+        var state = Compact(strip, detent);
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in state));
     }
 
     [Fact]
     public void ReportedTwentyFourDipSliver_IsRejected()
     {
-        var state = Expanded(rendered: 24f);
-        var fault = SidebarPaneInvariant.Inspect(in state);
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.ExpandedWidthOutOfRange));
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.ExpandedWidthMismatch));
+        // Presented AND rendered at 24: below the expanded floor.
+        var sliver = Expanded(presented: 24f, rendered: 24f);
+        Assert.True(SidebarPaneInvariant.Inspect(in sliver).HasFlag(SidebarPaneInvariantFault.ExpandedWidthOutOfRange));
+
+        // Presented 320 but the column laid out at 24: the rendered width disagrees with the presented one.
+        var mismatch = Expanded(rendered: 24f);
+        Assert.True(SidebarPaneInvariant.Inspect(in mismatch).HasFlag(SidebarPaneInvariantFault.ExpandedWidthMismatch));
     }
 
     [Theory]
@@ -2971,10 +3010,18 @@ public class SidebarPaneInvariantTests
     [InlineData(55.5f, true)]
     [InlineData(56.5f, true)]
     [InlineData(56.51f, false)]
-    public void CompactWidth_UsesHalfDipTolerance(float rendered, bool valid)
+    public void RailWidth_UsesHalfDipTolerance(float rendered, bool valid)
     {
         var state = Compact(rendered);
-        Assert.Equal(valid, SidebarPaneInvariant.IsValid(in state));
+        Assert.Equal(valid, SidebarPaneInvariant.Inspect(in state) == SidebarPaneInvariantFault.None);
+    }
+
+    [Fact]
+    public void RailWidthMustMatchTheDetent()
+    {
+        // Large is 80; a column still laid out at the Default 56 is a settle that never finished.
+        var state = Compact(rendered: 56f, detent: SidebarRailDetent.Large);
+        Assert.True(SidebarPaneInvariant.Inspect(in state).HasFlag(SidebarPaneInvariantFault.RailWidthMismatch));
     }
 
     [Fact]
@@ -2993,11 +3040,41 @@ public class SidebarPaneInvariantTests
     }
 
     [Fact]
-    public void ExpandedWidthMustMatchTheRememberedPreference()
+    public void RenderedWidthMustMatchThePresentedWidth()
     {
-        var state = Expanded(preferred: 360f, rendered: 320f);
+        var state = Expanded(preferred: 320f, presented: 320f, rendered: 300f);
         Assert.True(SidebarPaneInvariant.Inspect(in state)
             .HasFlag(SidebarPaneInvariantFault.ExpandedWidthMismatch));
+    }
+
+    [Fact]
+    public void PresentedMayYieldBelowTheStoredPreference()
+    {
+        // The window yield: preferred 300, presented (and rendered) 276 — valid, the preference is not rewritten.
+        var state = Expanded(preferred: 300f, presented: 276f, rendered: 276f);
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in state));
+    }
+
+    [Fact]
+    public void PresentedMayNotExceedPreferred()
+    {
+        var state = Expanded(preferred: 280f, presented: 320f, rendered: 320f);
+        Assert.True(SidebarPaneInvariant.Inspect(in state).HasFlag(SidebarPaneInvariantFault.PresentedExceedsPreferred));
+    }
+
+    [Fact]
+    public void LastResortPresentsTheRail()
+    {
+        // Regime stays Expanded (the user's choice is untouched) but the band folds the inline column to the rail.
+        var rail = Compact(rendered: 80f, detent: SidebarRailDetent.Large) with { Regime = SidebarRegime.Expanded, LastResort = true };
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in rail));
+
+        // The full expanded pane laid out inline inside the band is a violation.
+        var inline = Expanded() with { LastResort = true };
+        var fault = SidebarPaneInvariant.Inspect(in inline);
+        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.RailWidthMismatch));
+        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.LayerOpacityMismatch));
+        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.HitTestOwnerMismatch));
     }
 
     [Fact]

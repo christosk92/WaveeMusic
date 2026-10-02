@@ -28,8 +28,9 @@
 //   5. A line hand-off is N springs on the LINES: the viewport LATCHES and every line carries a compensating translate
 //      that decays to 0 (`Cascade`), marked TransformDirty only.
 //
-// Props freeze at mount (component-props-contract.md): `ViewCore`'s (large, onMedia, visible) are genuine mount config —
-// each call site mounts one instance per surface for the app's life. Every LIVE value a row reads is a signal.
+// Props freeze at mount (component-props-contract.md): `ViewCore`'s (large, onMedia, visible, onStage) are genuine mount
+// config — each call site mounts one instance per surface for the app's life — and `accent` is a mount-time signal
+// INSTANCE (the stage's slab accent) whose VALUE is the only thing that changes. Every LIVE value a row reads is a signal.
 
 using System.Diagnostics;
 using FluentGpu.Animation;
@@ -51,19 +52,21 @@ public static partial class Lyrics
 {
     // ══ 0. MOUNT POINTS ══════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The immersive stage's reading column: capped at 700, left-anchored, its gutter spelled as TRAILING
-    /// padding (the leading air is the stage band's region gap) and the pivot band's height reserved at the bottom.</summary>
-    const float StageColumnMaxW = 700f, StageColumnGutter = 48f, StagePivotBandH = 72f;
+    /// <summary>The immersive stage's reading column: capped at 1000 (the prototype's <c>.ln { max-width: 1000px }</c>),
+    /// left-anchored, its gutter spelled as TRAILING padding (the leading air is the stage's pane region gap). The pivot
+    /// band is gone — the stage's pane region owns its own height.</summary>
+    const float StageColumnMaxW = 1000f, StageColumnGutter = 24f;
 
     /// <summary>The rail body ticks only while the rail is open ON LYRICS and the stage is not covering it — one ticker
     /// ever runs (ch 22 parity 58).</summary>
     static readonly Func<bool> s_railVisible = static () =>
         Shell.Ui.RailOpen.Value && Shell.Ui.Mode.Value == Shell.RailMode.Lyrics && !Shell.Ui.ImmersiveLyrics.Value;
 
-    /// <summary>The stage column ticks only while the stage is up AND its lyrics pane is the one showing (the queue pane
-    /// parks it — both panes stay mounted).</summary>
+    /// <summary>The stage column ticks only while the stage is up AND its mode is Lyrics (any other mode parks it — the
+    /// pane host keeps it mounted). <c>Prefs</c> inside <c>Lyrics</c> is <c>Lyrics.Prefs</c>, so the stage's preference
+    /// family is spelled <c>global::Wavee.Prefs.Stage</c>; the read is a render-time one (O8).</summary>
     static readonly Func<bool> s_stageVisible = static () =>
-        Shell.Ui.ImmersiveLyrics.Value && Stage.Pane.Current.Value == Stage.Pane.Lyrics;
+        Shell.Ui.ImmersiveLyrics.Value && global::Wavee.Prefs.Stage.Mode() == (int)Stage.Mode.Lyrics;
 
     // MOUNT POINT (stage B contract)
     /// <summary>The rail's lyrics body (`RailMode.Lyrics`): the reading surface at rail metrics on theme ink. The header
@@ -72,21 +75,24 @@ public static partial class Lyrics
         => Embed.Comp(static () => new ViewCore(large: false, onMedia: false, visible: s_railVisible)) with { Key = "lyrics:rail" };
 
     // MOUNT POINT (stage B contract)
-    /// <summary>The lyrics pane's BODY inside the stage's pane frame (A12: the frame, the cross-fade and the pivot are
-    /// `Stage.UI.cs`'s). The SAME view at stage metrics on the stage's ink.</summary>
-    public static Element StagePane() => new BoxEl
+    /// <summary>The lyrics pane's BODY inside the stage's pane region (the frame, the KeepAlive and the entrance are
+    /// `Stage.UI.cs`'s). The SAME view at stage metrics on the stage's ink, with the ART ACCENT for the active-line pill.
+    /// <paramref name="accent"/> is a mount-time signal INSTANCE (the slab's <c>Accent</c>, stable for the stage's life —
+    /// the contract the Slider/ToggleSwitch signal instances follow): props freeze at mount, so only the signal's
+    /// VALUE ever changes.</summary>
+    public static Element StagePane(IReadSignal<ColorF> accent) => new BoxEl
     {
         Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f,
         // LEFT-ANCHORED, never centred: centring converted an over-wide pane into text pushed off-screen.
         Justify = FlexJustify.Start, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(0f, 0f, StageColumnGutter, StagePivotBandH),
+        Padding = new Edges4(0f, 0f, StageColumnGutter, 0f),
         Children =
         [
             new BoxEl
             {
                 // MEASURED, never predicted: the column grows into whatever the pane gives it, capped by MaxWidth.
                 Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, MaxWidth = StageColumnMaxW,
-                Children = [Embed.Comp(static () => new ViewCore(large: true, onMedia: true, visible: s_stageVisible)) with { Key = "lyrics:stage" }],
+                Children = [Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true)) with { Key = "lyrics:stage" }],
             },
         ],
     };
@@ -166,6 +172,12 @@ public static partial class Lyrics
         // ── mount config (frozen at mount — correct: one instance per surface for the app's life) ────────────────────
         internal readonly bool Large;
         internal readonly Ink InkMode;
+        /// <summary>The ART ACCENT the active-line pill fills with — the stage's slab signal INSTANCE (stable for the
+        /// stage's life); null on the rail/reader, which draw no pill. Only its VALUE changes after mount.</summary>
+        internal readonly IReadSignal<ColorF>? Accent;
+        /// <summary>The fullscreen stage's view — an EXPLICIT flag (V-U51): <c>onMedia</c> is also true for the rail's
+        /// on-media mode, which keeps its blur. The stage resolves blur strength 0 (<see cref="BlurPolicy.ResolveFor"/>).</summary>
+        internal readonly bool OnStage;
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
@@ -180,11 +192,16 @@ public static partial class Lyrics
 
         internal bool ObservedPlaybackOwner => _subject == Playback.CurrentId.Value;
 
-        internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default)
+        // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
+        // arguments (`new ViewCore(false, false, static () => true, episode)`).
+        internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
+            IReadSignal<ColorF>? accent = null, bool onStage = false)
         {
             _readerEpisode = readerEpisode;
             Large = large;
             InkMode = new Ink(onMedia);
+            Accent = accent;
+            OnStage = onStage;
             _visible = visible;
             _band = readerEpisode.IsValid ? 0.05f : Surface.FocalBand(large);
             _wakeTick = WakeTick;
@@ -251,6 +268,10 @@ public static partial class Lyrics
         internal readonly Signal<int> Secondary = new(Prefs.None);
         int _strength = BlurPolicy.StrongGpuDefault;   // the RESOLVED 0..100 blur strength
         float _dofScale = 1f;
+        /// <summary>The ACTIVE line's halo / held-note bloom multiplier. Equal to the DoF scale everywhere except the stage,
+        /// whose DoF is forced off (every non-active row a blur layer was its largest cost) while the one or two halo
+        /// layers keep following the user's setting — dropping them too left an unblurred duplicate text layer.</summary>
+        float _haloScale = 1f;
         /// <summary>The strength multiplier for the one RENDER-time consumer (the line-synced ACTIVE row's halo), which
         /// reads it only inside its isActive branch so a slider move re-renders exactly that row.</summary>
         internal readonly FloatSignal HaloScale = new(1f);
@@ -316,7 +337,7 @@ public static partial class Lyrics
             // the rows that do must re-render IN THIS flush so the re-arranged extents are what the next step latches on.
             int secondary = Prefs.SecondaryLine();
             Secondary.Value = secondary;
-            int strength = Prefs.BlurStrength(GpuProfile.IsWeak);
+            int strength = Prefs.BlurStrength(GpuProfile.IsWeak, OnStage);
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
             if (newScale != _dofScale)
@@ -327,7 +348,8 @@ public static partial class Lyrics
                 // decrease never stops part-way on a paused, tickerless surface.
                 Array.Fill(_dofCurrent, float.NaN);
             }
-            HaloScale.Value = newScale;
+            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(GpuProfile.IsWeak, onStage: false)) : newScale;
+            HaloScale.Value = _haloScale;
             // Re-arm the ramp IMMEDIATELY on a strength change — it does not ride the ticker, so it lands paused too.
             UseEffect(() => { if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs); }, DepKey.From(strength));
             // A mode flip changes EVERY row's height: re-arrange, then hard re-latch from the fresh geometry.
@@ -1612,7 +1634,7 @@ public static partial class Lyrics
                     && (MathF.Abs(split - gw.Split) > Wipe.SplitEps || MathF.Abs(softness - gw.Softness) > Wipe.SoftnessEps);
                 if (glowDirty) scene.SetGlyphWipe(glowNode, gw with { Split = split, Softness = softness });
                 // NEVER NEST: while the row's own DoF σ is up, the halo does not paint (a nested blur is a second offscreen blur pass).
-                float sigma = Wipe.GlowSigma(DofDeclaredFor(voiceLine), GlowAlphaOf(voiceLine), Large, _dofScale);
+                float sigma = Wipe.GlowSigma(DofDeclaredFor(voiceLine), GlowAlphaOf(voiceLine), Large, _haloScale);
                 ref var gp = ref scene.Paint(glowNode);
                 if (MathF.Abs(gp.BlurSigma - sigma) > 0.01f) { gp.BlurSigma = sigma; glowDirty = true; }
                 if (glowDirty) scene.Mark(glowNode, NodeFlags.PaintDirty);
@@ -1908,13 +1930,35 @@ public static partial class Lyrics
 
             // Own DoF on a persistent INNER wrapper, separate from the scale/opacity track owner — the σ ramp and the
             // cascade write THIS node. The secondary line sits INSIDE it, so it blurs, fades and travels with its lyric.
-            Element dofContent = new BoxEl
-            {
-                Direction = 1,
-                Blur = blur,
-                OnRealized = _onDof,
-                Children = secondaryText is null ? [textEl] : [textEl, SecondaryText(secondaryText)],
-            };
+            var textColumn = new BoxEl { Direction = 1, Children = secondaryText is null ? [textEl] : [textEl, SecondaryText(secondaryText)] };
+            // THE STAGE adds the ListView-style accent PILL as a ZStack layer INSIDE dofContent (it travels with the row's
+            // σ/cascade owner). The accent is a mount-time signal INSTANCE on the owner (null on the rail/reader ⇒ the
+            // plain column, unchanged), so the tree shape never flips for a mounted row.
+            Element dofContent = owner.Accent is { } accentSig
+                ? new BoxEl
+                {
+                    ZStack = true,
+                    Blur = blur,
+                    OnRealized = _onDof,
+                    Children =
+                    [
+                        textColumn,
+                        // THE PILL (ListView accent bar): in the gutter, vertically centred on the row (V-U9: vertical =
+                        // AlignSelf, horizontal = JustifySelf); accent on the active line, else clear, cross-faded through
+                        // BrushTransitionMs like the ink flip above. `accentSig.Value` is evaluated ONLY on the active,
+                        // non-neutral row — the `&&` short-circuits before the read on every other row — so exactly ONE
+                        // row subscribes to the slab's cross-fade and re-renders at 30 Hz for 600 ms per track change (V-U51).
+                        new BoxEl
+                        {
+                            Width = 3f, Height = 28f, Corners = Radii.Circle(3f), HitTestVisible = false,
+                            AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
+                            OffsetX = -(m.SidePad - Spacing.S),
+                            Fill = isActive && !neutral ? accentSig.Value : ColorF.Transparent,
+                            BrushTransitionMs = Design.Motion.Fast,
+                        },
+                    ],
+                }
+                : new BoxEl { Direction = 1, Blur = blur, OnRealized = _onDof, Children = textColumn.Children };
 
             return new BoxEl
             {

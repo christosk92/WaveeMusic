@@ -7,11 +7,10 @@
 // per-design pane bounds on Sidebar.cs's SidebarPaneBounds, + the settings seam on Platform/Platform.cs). Types
 // kept their 0.2.9 names and dropped the `Wavee.Core.Sidebar` qualifier — everything lives directly under `Wavee`.
 //
-// 0.3 CHANGE carried through every fact below: the per-design width tiers, the 1400/1800 breakpoints, the 24-DIP
-// shrink hysteresis and the [180,460] clamp are NOT on a shell type any more — 0.2.9's `ShellResponsiveLayout` is
-// gone. They all live on `SidebarPaneBounds` (Shell/Sidebar.cs), which every design's tier table
-// (`SidebarDesignInfo.Tiers`) is built on top of. Every fact that used to read `ShellResponsiveLayout.*` now reads
-// `SidebarPaneBounds.*` instead — same numbers, one fewer owner.
+// 0.3 CHANGE carried through every fact below: the [180,460] clamp is NOT on a shell type any more (0.2.9's
+// `ShellResponsiveLayout` is gone); it lives on `SidebarPaneBounds` (Shell/Sidebar.cs). The per-design width tiers,
+// the 1400/1800 breakpoints and the latch are gone too (free-resize model): a design has one DefaultWidth, and the
+// rules for dragging / detents live in `SidebarResizeRules` (SidebarResizeRulesTests.cs).
 //
 // `MemoryAppSettings` (the in-memory `IAppSettings` fake) is NOT redeclared here — it already exists in this
 // project (Wavee.Tests/PlatformTests.cs), in this same namespace, and a second declaration would collide. Reusing
@@ -43,111 +42,50 @@ using Xunit;
 namespace Wavee.Tests;
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// ── REGION 1 — PER-DESIGN PANE STATE: the width tiers, the breakpoints/hysteresis, snapshot/restore/latch ─────────
+// ── REGION 1 — PER-DESIGN PANE STATE: default width, regime, the global rail detent, snapshot/restore ──────────────
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
-// C8.6 — per-mode remembered state (locked decision 3) and the per-design width tiers (locked decision 14). Drives
-// the REAL rules: SidebarPaneState (the snapshot/restore/latch decisions behind a design switch), SidebarDesignInfo
-// and SidebarPaneBounds, over an in-memory MemoryAppSettings. No engine, no window, no registry.
+// C8.6 — per-mode remembered state (locked decision 3). The sidebar width is FREE (no tier ladder, no latch): each
+// design remembers its own expanded width + regime, and the collapsed rail detent is one GLOBAL setting. Drives
+// the REAL rules: SidebarPaneState (the snapshot/restore decisions behind a design switch), SidebarDesignInfo and
+// SidebarPaneBounds, over an in-memory MemoryAppSettings. No engine, no window, no registry.
 public class SidebarPaneStateTests
 {
     const float Min = SidebarPaneBounds.NavPaneMinW;   // 180 (issue #84: lowered from 240)
     const float Max = SidebarPaneBounds.NavPaneMaxW;   // 460
 
-    // SidebarPaneState.WidthKey is PRIVATE in 0.3 (Sidebar.Modes.cs:116) — 0.2.9 exposed the equivalent composition
-    // as public `SidebarKeys.Width(d)`. These three helpers reconstruct exactly what that private method builds
-    // (Platform.Keys.SidebarWidth/WidthUserSet/Collapsed, keyed by SidebarDesignInfo.Slug), so a fact can still read
-    // back what SidebarPaneState wrote through Platform.Keys — but a fact that inspects a key's `.Name`/`.Default`
-    // below is checking that THIS reconstruction agrees with itself, not independently probing the private one.
+    // SidebarPaneState.WidthKey is PRIVATE — these helpers reconstruct exactly what it builds (Platform.Keys.SidebarWidth
+    // / Collapsed, keyed by SidebarDesignInfo.Slug and defaulting to SidebarDesignInfo.DefaultWidth), so a fact can
+    // still read back what SidebarPaneState wrote through Platform.Keys.
     static SettingKey<float> WidthKey(SidebarDesign d)
-        => Platform.Keys.SidebarWidth(SidebarDesignInfo.Slug(d), SidebarDesignInfo.Tiers(d).Narrow);
-    static SettingKey<bool> WidthUserSetKey(SidebarDesign d) => Platform.Keys.SidebarWidthUserSet(SidebarDesignInfo.Slug(d));
+        => Platform.Keys.SidebarWidth(SidebarDesignInfo.Slug(d), SidebarDesignInfo.DefaultWidth(d));
     static SettingKey<bool> CollapsedKey(SidebarDesign d) => Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(d));
 
-    // ── tier tables (locked decision 14) ─────────────────────────────────────────────────────────────────────────────
+    // ── default widths (the former MID tier, decision D4) ─────────────────────────────────────────────────────────────
 
     [Fact]
-    public void EachDesign_HasItsOwnTierTriple()
+    public void EachDesign_HasItsOwnDefaultWidth()
     {
-        Assert.Equal((240f, 280f, 320f), SidebarDesignInfo.Tiers(SidebarDesign.Classic));
-        Assert.Equal((300f, 340f, 380f), SidebarDesignInfo.Tiers(SidebarDesign.LibraryV3));
-        Assert.Equal((280f, 320f, 360f), SidebarDesignInfo.Tiers(SidebarDesign.Curated));
+        Assert.Equal(280f, SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
+        Assert.Equal(340f, SidebarDesignInfo.DefaultWidth(SidebarDesign.LibraryV3));
+        Assert.Equal(320f, SidebarDesignInfo.DefaultWidth(SidebarDesign.Curated));
 
-        // Every tier of every design sits inside the ONE clamp pair — no per-design literal may escape it.
+        // Every default sits inside the ONE clamp pair — no per-design literal may escape it.
         foreach (var d in SidebarDesignInfo.All)
-        {
-            var (narrow, mid, wide) = SidebarDesignInfo.Tiers(d);
-            Assert.InRange(narrow, Min, Max);
-            Assert.InRange(mid, Min, Max);
-            Assert.InRange(wide, Min, Max);
-            Assert.True(narrow <= mid && mid <= wide);
-        }
+            Assert.InRange(SidebarDesignInfo.DefaultWidth(d), Min, Max);
     }
 
-    [Theory]
-    // viewport 1200 → narrow tier · 1500 → mid · 1900 → wide, for all three designs
-    [InlineData(1200f, 240f, 300f, 280f)]
-    [InlineData(1500f, 280f, 340f, 320f)]
-    [InlineData(1900f, 320f, 380f, 360f)]
-    public void FirstVisitToADesign_UsesItsOwnDefaultTier(float viewport, float classic, float v3, float curated)
-    {
-        var s = new MemoryAppSettings();   // nothing written ⇒ no design has ever been user-set
-
-        Assert.Equal(classic, SidebarPaneState.Restore(s, SidebarDesign.Classic, viewport).Width);
-        Assert.Equal(v3, SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, viewport).Width);
-        Assert.Equal(curated, SidebarPaneState.Restore(s, SidebarDesign.Curated, viewport).Width);
-
-        Assert.False(SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, viewport).WidthUserSet);
-    }
-
-    /// <summary>G-066: a FRESH profile's pane state at the exact width the gap's screenshot showed collapsed
-    /// (1,770 DIP — Classic's MID tier, since it sits below <c>NavPaneWideEnterW</c> = 1,800). Pins every fact the
-    /// register asked to compare against 0.2.9: <c>SidebarPaneState.Restore</c> answers an EXPANDED, un-collapsed
-    /// pane (the "sidebar.collapsed" default is <c>false</c> and nothing here ever flips it), and the frame's own
-    /// narrow-band fold (<see cref="Shell.Layout.NarrowFor"/>, <see cref="Shell.FrameRules.PresentedCompact"/>) agrees
-    /// — 1,770 is nowhere near the 720/760 whole-shell narrow band, so nothing forces the 56-DIP compact rail either.
-    /// A collapsed rail at this width on an otherwise-fresh profile is therefore NOT a pure-fold defect: it can only
-    /// be a persisted <c>sidebar.classic.collapsed=true</c> already sitting in the settings store the process opened
-    /// (this batch's report says where to look next).</summary>
+    /// <summary>A FRESH profile restores every design expanded, at that design default width — whatever the
+    /// window is (the viewport is no longer an input).</summary>
     [Fact]
-    public void FreshProfile_At1770_RestoresExpandedAndUncollapsed_G066()
+    public void FreshProfile_RestoresTheDesignDefaultExpanded()
     {
-        var s = new MemoryAppSettings();
-        const float viewport = 1770f;
+        var s = new MemoryAppSettings();   // nothing written
 
-        var pane = SidebarPaneState.Restore(s, SidebarDesign.Classic, viewport);
-        Assert.Equal(280f, pane.Width);          // Classic's MID tier (1,400 ≤ 1,770 < 1,800)
-        Assert.False(pane.Collapsed);
-        Assert.False(pane.WidthUserSet);
-
-        bool narrow = Shell.Layout.NarrowFor(viewport, current: false, initialized: false);
-        Assert.False(narrow);
-        Assert.False(Shell.FrameRules.PresentedCompact(narrow, pane.Collapsed));
-    }
-
-    [Fact]
-    public void Breakpoints_AndHysteresis_AreSharedByEveryDesign()
-    {
-        // The 1400/1800 enters and the 24-DIP shrink hysteresis are identical for all three designs — only the tier
-        // VALUES differ. V3: 1400 widens to 340 at once, and 340 holds down to 1376.
-        var v3 = SidebarDesignInfo.Tiers(SidebarDesign.LibraryV3);
-        Assert.Equal(340f, SidebarPaneBounds.NavPaneDefaultFor(1400f, 300f, true, v3));
-        Assert.Equal(340f, SidebarPaneBounds.NavPaneDefaultFor(1380f, 340f, true, v3));
-        Assert.Equal(300f, SidebarPaneBounds.NavPaneDefaultFor(1370f, 340f, true, v3));
-
-        // …and the no-triple overloads still mean CLASSIC, so every pre-existing call site is unchanged.
-        Assert.Equal(SidebarPaneBounds.NominalNavPaneDefaultFor(1500f),
-                     SidebarPaneBounds.NominalNavPaneDefaultFor(1500f, SidebarDesignInfo.Tiers(SidebarDesign.Classic)));
-        Assert.Equal(280f, SidebarPaneBounds.NominalNavPaneDefaultFor(1500f));
-    }
-
-    [Fact]
-    public void PreMeasureSeed_TakesTheDesignsNarrowTier()
-    {
-        // The shell constructor has no viewport yet; the seed must still be the INCOMING design's own narrow tier.
-        Assert.Equal(240f, SidebarPaneState.TierDefault(SidebarDesign.Classic, 0f));
-        Assert.Equal(300f, SidebarPaneState.TierDefault(SidebarDesign.LibraryV3, 0f));
-        Assert.Equal(280f, SidebarPaneState.TierDefault(SidebarDesign.Curated, 0f));
+        Assert.Equal(new SidebarPaneSnapshot(280f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.Classic));
+        Assert.Equal(new SidebarPaneSnapshot(340f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
+        Assert.Equal(new SidebarPaneSnapshot(320f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.Curated));
+        Assert.Equal(0, s.WrittenCount);   // restoring never writes
     }
 
     // ── snapshot / restore (locked decision 3) ───────────────────────────────────────────────────────────────────────
@@ -156,60 +94,35 @@ public class SidebarPaneStateTests
     public void SwitchingDesigns_SnapshotsOutgoing_AndRestoresIncoming()
     {
         var s = new MemoryAppSettings();
-        const float viewport = 1500f;
 
-        // Classic: the user drags to 410 and collapses the pane.
-        SidebarPaneState.CommitWidth(s, SidebarDesign.Classic, 410f);
-        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(410f, Collapsed: true, WidthUserSet: true));
+        // Classic: the user drags to 410 and collapses the pane to the rail.
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(410f, SidebarRegime.Rail));
 
-        // → Library V3, never visited: its OWN mid tier, not Classic's 410, and not Classic's collapsed state.
-        var v3 = SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, viewport);
-        Assert.Equal(340f, v3.Width);
-        Assert.False(v3.Collapsed);
-        Assert.False(v3.WidthUserSet);
+        // → Library V3, never visited: its OWN default, not Classic 410, and not Classic rail regime.
+        Assert.Equal(new SidebarPaneSnapshot(340f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
 
         // The user drags V3 to 300 and leaves it expanded, then switches back.
-        SidebarPaneState.CommitWidth(s, SidebarDesign.LibraryV3, 300f);
-        SidebarPaneState.Snapshot(s, SidebarDesign.LibraryV3, new SidebarPaneSnapshot(300f, false, true));
+        SidebarPaneState.Snapshot(s, SidebarDesign.LibraryV3, new SidebarPaneSnapshot(300f, SidebarRegime.Expanded));
 
-        // → Classic restores byte-for-byte.
-        var back = SidebarPaneState.Restore(s, SidebarDesign.Classic, viewport);
-        Assert.Equal(new SidebarPaneSnapshot(410f, true, true), back);
+        // → Classic restores byte-for-byte (the expanded width is remembered THROUGH the rail regime).
+        Assert.Equal(new SidebarPaneSnapshot(410f, SidebarRegime.Rail), SidebarPaneState.Restore(s, SidebarDesign.Classic));
 
         // …and V3 still remembers its own, independently.
-        Assert.Equal(new SidebarPaneSnapshot(300f, false, true),
-                     SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, viewport));
+        Assert.Equal(new SidebarPaneSnapshot(300f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
     }
 
     [Fact]
-    public void PinningOneDesignsWidth_NeverLatches_NorClears_Another()
+    public void CollapsedKey_MeansRailRegime()
     {
         var s = new MemoryAppSettings();
 
-        SidebarPaneState.CommitWidth(s, SidebarDesign.LibraryV3, 360f);
+        s.Set(CollapsedKey(SidebarDesign.Classic), true);
+        Assert.Equal(SidebarRegime.Rail, SidebarPaneState.Restore(s, SidebarDesign.Classic).Regime);
 
-        Assert.True(SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, 1900f).WidthUserSet);
-        Assert.False(SidebarPaneState.Restore(s, SidebarDesign.Classic, 1900f).WidthUserSet);
-        // Classic's ladder is therefore still live: it takes its wide tier, not V3's pinned 360.
-        Assert.Equal(320f, SidebarPaneState.Restore(s, SidebarDesign.Classic, 1900f).Width);
-    }
-
-    [Fact]
-    public void TierLadderReSeeds_OnSwitch_WhileTheIncomingDesignIsUnpinned()
-    {
-        var s = new MemoryAppSettings();
-
-        // Curated was last seen at a NARROW window and wrote 280 as its responsive default (never a drag ⇒ never
-        // latched).
-        s.Set(WidthKey(SidebarDesign.Curated), 280f);
-
-        // The window is now wide. Because the flag is false, the stored 280 is only a stale responsive default and
-        // the restore hands back the design's tier at the LIVE viewport — the re-seed obligation.
-        Assert.Equal(360f, SidebarPaneState.Restore(s, SidebarDesign.Curated, 1900f).Width);
-
-        // Once it IS latched, the stored width wins at every viewport.
-        SidebarPaneState.CommitWidth(s, SidebarDesign.Curated, 280f);
-        Assert.Equal(280f, SidebarPaneState.Restore(s, SidebarDesign.Curated, 1900f).Width);
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, SidebarRegime.Expanded));
+        Assert.False(s.Get(CollapsedKey(SidebarDesign.Classic)));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, SidebarRegime.Rail));
+        Assert.True(s.Get(CollapsedKey(SidebarDesign.Classic)));
     }
 
     [Fact]
@@ -217,63 +130,84 @@ public class SidebarPaneStateTests
     {
         var s = new MemoryAppSettings();
 
-        // Collapsing writes ONLY the collapse key — per design.
-        s.Set(CollapsedKey(SidebarDesign.Classic), true);
+        // Collapsing writes ONLY the collapse key — per design; the expanded width stays the design default.
+        s.Set(CollapsedKey(SidebarDesign.Curated), true);
 
-        var restored = SidebarPaneState.Restore(s, SidebarDesign.Classic, 1900f);
-        Assert.True(restored.Collapsed);
-        Assert.False(restored.WidthUserSet);
-        Assert.False(s.WasWritten(WidthUserSetKey(SidebarDesign.Classic)));
-        Assert.Equal(320f, restored.Width);            // the ladder still owns the width
+        var restored = SidebarPaneState.Restore(s, SidebarDesign.Curated);
+        Assert.Equal(SidebarRegime.Rail, restored.Regime);
+        Assert.Equal(320f, restored.Width);
+        Assert.False(s.WasWritten(WidthKey(SidebarDesign.Curated)));
     }
 
     [Fact]
-    public void ResetWidth_ClearsUserSet_AndReSeedsFromTier()
+    public void Snapshot_ClampsThroughTheOneOwner()
     {
         var s = new MemoryAppSettings();
-        SidebarPaneState.CommitWidth(s, SidebarDesign.LibraryV3, 455f);
-        Assert.True(SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, 1500f).WidthUserSet);
+        SidebarPaneState.Snapshot(s, SidebarDesign.Curated, new SidebarPaneSnapshot(9000f, SidebarRegime.Expanded));
+        Assert.Equal(Max, s.Get(WidthKey(SidebarDesign.Curated)));
+        Assert.Equal(Max, SidebarPaneState.Restore(s, SidebarDesign.Curated).Width);
 
-        var reset = SidebarPaneState.ResetWidth(s, SidebarDesign.LibraryV3, 1500f);
-        Assert.False(reset.WidthUserSet);
-        Assert.Equal(340f, reset.Width);               // V3's mid tier at 1500
-        Assert.False(s.Get(WidthUserSetKey(SidebarDesign.LibraryV3)));
-        Assert.Equal(340f, SidebarPaneState.Restore(s, SidebarDesign.LibraryV3, 1500f).Width);
+        SidebarPaneState.Snapshot(s, SidebarDesign.Curated, new SidebarPaneSnapshot(10f, SidebarRegime.Expanded));
+        Assert.Equal(Min, s.Get(WidthKey(SidebarDesign.Curated)));
+        Assert.Equal(Min, SidebarPaneState.Restore(s, SidebarDesign.Curated).Width);
     }
 
     [Fact]
-    public void CommitWidth_ClampsThroughTheOneOwner()
+    public void Restore_ClampsAHandEditedWidth()
     {
         var s = new MemoryAppSettings();
-        Assert.Equal(Max, SidebarPaneState.CommitWidth(s, SidebarDesign.Curated, 9000f));
-        Assert.Equal(Min, SidebarPaneState.CommitWidth(s, SidebarDesign.Curated, 10f));
-        Assert.Equal(Min, SidebarPaneState.Restore(s, SidebarDesign.Curated, 1500f).Width);
-    }
-
-    [Fact]
-    public void AWidthPersistedByAnOlderBuild_IsClampedAtTheSeed_NotUsedRaw()
-    {
-        var s = new MemoryAppSettings();
-        SidebarPaneState.CommitWidth(s, SidebarDesign.Classic, 300f);
         s.Set(WidthKey(SidebarDesign.Classic), 5000f);      // a hand-edited / older-build value
-        Assert.Equal(Max, SidebarPaneState.Restore(s, SidebarDesign.Classic, 1500f).Width);
+        Assert.Equal(Max, SidebarPaneState.Restore(s, SidebarDesign.Classic).Width);
+        s.Set(WidthKey(SidebarDesign.Classic), 12f);
+        Assert.Equal(Min, SidebarPaneState.Restore(s, SidebarDesign.Classic).Width);
+    }
+
+    // ── the GLOBAL rail detent (decision D6) ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void RailDetent_IsGlobal_AndSurvivesADesignSwitch()
+    {
+        var s = new MemoryAppSettings();
+        Assert.Equal(SidebarRailDetent.Default, SidebarPaneState.RestoreDetent(s));   // nothing stored ⇒ Default
+
+        s.Set(Platform.Keys.SidebarRailDetent, (int)SidebarRailDetent.Large);
+
+        // Snapshotting / restoring any design neither reads nor writes the detent: it is not per design.
+        foreach (var d in SidebarDesignInfo.All)
+        {
+            SidebarPaneState.Snapshot(s, d, new SidebarPaneSnapshot(300f, SidebarRegime.Rail));
+            _ = SidebarPaneState.Restore(s, d);
+            Assert.Equal(SidebarRailDetent.Large, SidebarPaneState.RestoreDetent(s));
+        }
+        Assert.Equal("sidebar.rail.detent", Platform.Keys.SidebarRailDetent.Name);
+        Assert.Equal((int)SidebarRailDetent.Default, Platform.Keys.SidebarRailDetent.Default);
+    }
+
+    [Fact]
+    public void AnUnknownStoredDetent_RestoresAsDefault()
+    {
+        var s = new MemoryAppSettings();
+        s.Set(Platform.Keys.SidebarRailDetent, 7);
+        Assert.Equal(SidebarRailDetent.Default, SidebarPaneState.RestoreDetent(s));
+        s.Set(Platform.Keys.SidebarRailDetent, -1);
+        Assert.Equal(SidebarRailDetent.Default, SidebarPaneState.RestoreDetent(s));
     }
 
     [Fact]
     public void SwitchingDesigns_TouchesOnlyThatDesignsPaneKeys()
     {
         // The shared-pins invariant at the persistence layer: a design switch snapshots/restores the per-design PANE
-        // keys and never writes a pin, a V3 custom-order or another design's key.
+        // keys and never writes a pin, a V3 custom-order, another design key or the global rail detent.
         var s = new MemoryAppSettings();
-        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, false, true));
-        _ = SidebarPaneState.Restore(s, SidebarDesign.Curated, 1500f);
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, SidebarRegime.Expanded));
+        _ = SidebarPaneState.Restore(s, SidebarDesign.Curated);
 
-        Assert.Equal(3, s.WrittenCount);
+        Assert.Equal(2, s.WrittenCount);
         Assert.True(s.WasWritten(WidthKey(SidebarDesign.Classic)));
         Assert.True(s.WasWritten(CollapsedKey(SidebarDesign.Classic)));
-        Assert.True(s.WasWritten(WidthUserSetKey(SidebarDesign.Classic)));
         Assert.False(s.WasWritten(WidthKey(SidebarDesign.Curated)));
         Assert.False(s.WasWritten(WidthKey(SidebarDesign.LibraryV3)));
+        Assert.False(s.WasWritten(Platform.Keys.SidebarRailDetent));
     }
 
     // ── the design enum / slug contract (persisted — never renumber, never rename) ────────────────────────────────────
@@ -314,7 +248,6 @@ public class SidebarPaneStateTests
         foreach (var d in SidebarDesignInfo.All)
         {
             Assert.True(names.Add(WidthKey(d).Name));
-            Assert.True(names.Add(WidthUserSetKey(d).Name));
             Assert.True(names.Add(CollapsedKey(d).Name));
             Assert.StartsWith("sidebar." + SidebarDesignInfo.Slug(d) + ".", WidthKey(d).Name);
         }

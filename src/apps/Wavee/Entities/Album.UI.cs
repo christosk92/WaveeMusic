@@ -515,32 +515,6 @@ public readonly partial struct Album
         => PaneHeaderEyebrowLine + PaneTitleLine * Math.Clamp(titleLines, 1, PaneTitleMaxLines)
            + PaneHeaderAttributionLine + PaneHeaderMetaLine + 3f * PaneHeaderGap;
 
-    /// <summary>The pane's ⋯ (the album page's W20 hero menu over a handle), built at OPEN from the live model:
-    /// Add to playlist ▸ (the track menu's own deposit submenu over the album's rows) · Play next · Add to queue (the
-    /// container verbs). No owner rows on an album. Null when nothing is offerable — the caller draws no menu.</summary>
-    // TODO(library-rework): Album.Page.MoreMenu() duplicates this; fold when that file is free.
-    public static ContextMenuModel? MoreMenu(Album a, IOverlayService? overlay)
-    {
-        if (!a.IsValid) return null;
-        var slots = a.TrackSlots;
-        var rows = new List<MenuFlyoutItem>(3);
-        if (slots.Length > 0)
-        {
-            var tracks = new Track[slots.Length];
-            for (int i = 0; i < tracks.Length; i++) tracks[i] = new Track(slots[i]);
-            if (Track.Menu(tracks, new Track.MenuOptions(ShowGoToAlbum: false, PickerOverlay: overlay)) is { } model)
-            {
-                string add = Loc.Get(Strings.Detail.AddToPlaylist);
-                for (int i = 0; i < model.Rows.Count; i++)
-                    if (string.Equals(model.Rows[i].Label, add, StringComparison.Ordinal)) { rows.Add(model.Rows[i]); break; }
-            }
-        }
-        var ctx = new ActionContext(ActionTarget.ForAlbum(a.Uri, a.Title), Actions.Services);
-        if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
-        if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
-        return rows.Count == 0 ? null : new ContextMenuModel(rows);
-    }
-
     /// <summary>The pane's and the reader's secondary verb: the standard 32/r4 <see cref="Controls.IconAction"/>, named
     /// by its tooltip.
     /// <para><c>// Workstream B</c>: was a 36-px subtle CIRCLE — the detail rail's round FAB shape. Every non-media icon

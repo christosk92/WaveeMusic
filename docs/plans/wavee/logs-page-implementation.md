@@ -1,3 +1,5 @@
+> Superseded 2026-10-02 by `privacy-diagnostics-tab-implementation.md` (the viewer moved to the `logs` route; the two level combos moved to Settings › Privacy & diagnostics › Logs › Detail level).
+
 # Logs page — full-height CommandBar log viewer
 
 Approved 2026-09-02 (session plan: onboarding v3 / settings regroup / logs page / dialog fade). Context and the cross-workstream sequencing live in the sibling docs of the same date; this file carries the workstream's real code shapes, component trees and wireframes.

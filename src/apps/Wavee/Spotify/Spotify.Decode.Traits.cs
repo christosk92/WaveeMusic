@@ -15,8 +15,9 @@
 // no allocation after warm-up, rows and runs into a `Staging`, the commit's business after that.
 //
 // Where they land (Entities/Edges.cs §6/§8): a user row's Identity; `Edges.TrackCredits`, `Edges.TrackVersions`,
-// `Edges.TrackWaveform` and `Edges.AlbumRecommendations`, each through a `StagedTraitRun` — whole, Complete, EMPTY
-// INCLUDED, because "this track has no credits" is the answer that stops the drawer asking (finding 27's rule).
+// `Edges.TrackWaveform` (kept as `WaveSample` triples, `Entities/Waveform.cs`) and `Edges.AlbumRecommendations`, each
+// through a `StagedTraitRun` — whole, Complete, EMPTY INCLUDED, because "this track has no credits" is the answer that
+// stops the drawer asking (finding 27's rule).
 
 namespace Wavee;
 
@@ -24,10 +25,6 @@ public static partial class Spotify
 {
     public static partial class Decode
     {
-        /// <summary>How many columns a waveform is reduced to (0.2.9 <c>WaveformColumns</c>): wide enough to read as a
-        /// shape at any drawer width, and 220 bytes where the wire sends ~38 KB.</summary>
-        public const int WaveformColumns = 220;
-
         /// <summary>0.2.9's cap on "playlists featuring this album" (<c>Take(12)</c>).</summary>
         public const int MaxRecommendedPlaylists = 12;
 
@@ -181,13 +178,13 @@ public static partial class Spotify
 
         // ── kind 237: the three-band waveform ────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Kind 237 → <c>Edges.TrackWaveform</c>: <see cref="WaveformColumns"/> magnitudes, 0-255, the loudest
-        /// column 255 (0.2.9 <c>MapWaveform</c>, reduced ONCE here rather than in the renderer).
-        ///
-        /// <para>Two rules ported verbatim. EACH BAND IS WALKED ACROSS ITS OWN LENGTH: the wire ships <c>band_low</c>
-        /// longer than the other two (12,886 vs 12,466 on the reference track), so one cursor over all three drifts ~8 s
-        /// by the end. And MAX, not mean, per column: averaging flattens transients into the same soft blob for every
-        /// track. A body with no bands, or all silence, lands an EMPTY run — an answer, not a shape.</para></summary>
+        /// <summary>Kind 237, THREE-BAND WAVEFORM: f3/f4/f5 are the low/mid/high byte envelopes (f1 = 44100 and f2 = the 20 ms
+        /// hop are skipped — constant on every observed answer). Kept as N <see cref="WaveSample"/> triples, N = the longest
+        /// band capped at <see cref="WaveformBands.MaxSamples"/> (a longer answer is MAX-POOLED onto it, never rejected — V-D9;
+        /// the shorter bands are folded onto the same axis, each across its OWN length — the wire ships <c>band_low</c> longer
+        /// than the other two, 12,886 vs 12,466 on the reference track, so one cursor over all three would drift ~8 s by the
+        /// end); the edge's Count and Total are N. Silence (no bands, or every byte 0 — V-D6) stages an EMPTY run: a Complete
+        /// "no waveform" answer.</summary>
         public static void Waveform(ReadOnlySpan<byte> proto, ReadOnlySpan<byte> entityUri, Staging s)
         {
             var track = Identity(s, entityUri);
@@ -205,41 +202,24 @@ public static partial class Spotify
                     default: r.Skip(); break;
                 }
             }
-
-            Span<int> sums = stackalloc int[WaveformColumns];
-            int peak = 0;
-            if (!(low.IsEmpty && mid.IsEmpty && high.IsEmpty))
-            {
-                for (int i = 0; i < WaveformColumns; i++)
-                {
-                    int sum = BandMax(low, i) + BandMax(mid, i) + BandMax(high, i);
-                    sums[i] = sum;
-                    if (sum > peak) peak = sum;
-                }
-            }
-
             ref var run = ref s.TraitRuns.Add();
             run.Parent = track;
             run.Relation = TraitRelation.TrackWaveform;
             run.Start = s.Traits.Count;
             run.Length = 0;
-            if (peak <= 0) return;                                  // silence: an empty waveform is the answer
-
-            Span<byte> columns = stackalloc byte[WaveformColumns];
-            for (int i = 0; i < WaveformColumns; i++) columns[i] = (byte)((sums[i] * 255 + peak / 2) / peak);
-            run.Bytes = s.AddText(columns);
-
-            // The loudest sample of band[from, to) where the column's span is a FRACTION of the band's own length.
-            static int BandMax(ReadOnlySpan<byte> band, int column)
+            int n = Math.Min(WaveformBands.MaxSamples, Math.Max(low.Length, Math.Max(mid.Length, high.Length)));
+            if (n == 0) return;                                              // no bands: an empty waveform is the answer
+            byte[] scratch = System.Buffers.ArrayPool<byte>.Shared.Rent(3 * n);
+            try
             {
-                if (band.IsEmpty) return 0;
-                int from = (int)((long)column * band.Length / WaveformColumns);
-                int to = Math.Max(from + 1, Math.Min(band.Length, (int)((long)(column + 1) * band.Length / WaveformColumns)));
-                if (from >= band.Length) return 0;
-                byte max = 0;
-                for (int i = from; i < to; i++) if (band[i] > max) max = band[i];
-                return max;
+                Span<byte> bytes = scratch.AsSpan(0, 3 * n);
+                Span<WaveSample> samples = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, WaveSample>(bytes);
+                for (int i = 0; i < n; i++)
+                    samples[i] = new WaveSample(WaveformBands.Fold(low, i, n), WaveformBands.Fold(mid, i, n), WaveformBands.Fold(high, i, n));
+                if (bytes.IndexOfAnyExcept((byte)0) < 0) return;           // silence: every sample 0 — stage NOTHING (DecodeTests)
+                run.Bytes = s.AddText(bytes);
             }
+            finally { System.Buffers.ArrayPool<byte>.Shared.Return(scratch); }
         }
 
         /// <summary>Close a trait run over the members appended since <paramref name="start"/> — even when there are

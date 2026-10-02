@@ -326,7 +326,12 @@ public static partial class Playback
             /// <summary>Bytes of a packet held across a page boundary — diagnostics and tests only.</summary>
             public int OpenPacketBytes => _packetLen;
 
-            public enum Next : byte { Packet, NeedMore, Eos, Corrupt }
+            /// <summary><see cref="Hole"/> (S-7): a page-sequence gap was crossed — pages are MISSING between the last packet
+            /// returned and the next one. The open packet was dropped (as before) and the page that follows is already set up, so
+            /// the NEXT call continues into it. The decoder must re-prime (<c>Decoder.Prime</c>) and the clock owes the gap
+            /// (<c>VorbisClock.Hole</c>): libvorbisfile's <c>OV_HOLE</c>. Never returned for the first page after a seek or a
+            /// refill — only when this reader had a page number to compare against.</summary>
+            public enum Next : byte { Packet, NeedMore, Eos, Corrupt, Hole }
 
             /// <summary>The largest packet a reader assembles across pages by default: 256 KiB. The plan's §7.1 case is a
             /// 70 KB packet over three pages; a Vorbis setup header with very large codebooks can pass 64 KiB, so one
@@ -368,7 +373,8 @@ public static partial class Playback
                         if (!_haveSerial) { _serial = p.Serial; _haveSerial = true; }
                         else if (p.Serial != _serial) { Cursor = at + p.Length; continue; }   // a second logical stream
                         if (FirstPageOffset < 0) FirstPageOffset = abs;
-                        if (_seqKnown && p.Sequence != _expectSeq) _packetLen = 0;            // a hole: drop the open packet
+                        bool hole = _seqKnown && p.Sequence != _expectSeq;
+                        if (hole) _packetLen = 0;                                             // a hole: drop the open packet
                         _expectSeq = p.Sequence + 1;
                         _seqKnown = true;
                         if (p.Granule >= 0) { Index.Add(abs, p.Granule, contiguous: _chain); _chain = true; }
@@ -393,6 +399,9 @@ public static partial class Playback
                                 if (v < 255) break;
                             }
                         }
+                        // S-7: reported AFTER the page is fully set up (the orphan skip included), so the next call walks its
+                        // packets exactly as if it had never been interrupted.
+                        if (hole) return Next.Hole;
                     }
 
                     int start = _bodyPos, len = 0;
@@ -541,6 +550,18 @@ public static partial class Playback
                 _e[at].Contiguous = contiguous && at > 0;
                 if (at + 1 < _n + 1) _e[at + 1].Contiguous = false;                 // a page now sits between them
                 _n++;
+            }
+
+            /// <summary>Seed the index with pages somebody ELSE parsed — the stream layer's landing-time index
+            /// (<c>Body.PageIndexSnapshot</c>, V-PA36): CONTAINER offsets and granules, in no particular order (probes land
+            /// out of order). Every pair goes through <see cref="Add"/> (sorted insert; a known offset is left alone) and none is
+            /// marked contiguous — nothing says the pages are back to back — so the planner treats the bracket as a narrowing to
+            /// land on, never as a proof that needs no read. Allocation-free; returns how many pairs were offered.</summary>
+            public int Merge(ReadOnlySpan<long> offsets, ReadOnlySpan<long> granules)
+            {
+                int n = Math.Min(offsets.Length, granules.Length);
+                for (int i = 0; i < n; i++) Add(offsets[i], granules[i], contiguous: false);
+                return n;
             }
 
             /// <summary>Keep every other entry. Contiguity survives only where BOTH links did.</summary>

@@ -177,16 +177,16 @@ public readonly partial struct Track
             if (counterpart.IsValid) Entities.Ensure(counterpart, TrackFields.Identity);
         }
 
-        // The waveform's 0..1 peaks, re-derived only when the relation's version moves (never per render).
+        // The waveform's 0..1 peaks, re-derived only when the relation's version moves (never per render): the kept
+        // WaveSample triples reduced to the drawer's 220 columns at READ time (WaveformBands.ToColumns).
         float[]? PeaksFor(Edges edges, int parent, uint epoch)
         {
             if (edges.TrackWaveform.State(parent) == EdgeState.Unknown) return null;
             uint version = edges.TrackWaveform.Version(parent);
             if (_peaks is null || _peaksParent != parent || _peaksVersion != version || _peaksEpoch != epoch)
             {
-                var magnitudes = edges.TrackWaveform.Payload(parent);
-                _peaks = new float[magnitudes.Length];
-                DrawerRules.Peaks(magnitudes, _peaks);
+                var columns = new float[WaveformBands.Columns];
+                _peaks = WaveformBands.ToColumns(edges.TrackWaveform.Payload(parent), columns) ? columns : [];
                 (_peaksParent, _peaksVersion, _peaksEpoch) = (parent, version, epoch);
             }
             return _peaks.Length == 0 ? null : _peaks;
@@ -779,14 +779,6 @@ public readonly partial struct Track
 
         /// <summary>The prose facts that take a tertiary lead-in: the two dates and the person (TrackFactsStrip.cs:221).</summary>
         public static bool NeedsLabel(FactKind kind) => kind is FactKind.Added or FactKind.Released or FactKind.AddedBy;
-
-        /// <summary>Kind-237 magnitudes (0-255, loudest = 255) as the waveform control's 0..1 peaks.</summary>
-        public static int Peaks(ReadOnlySpan<byte> magnitudes, Span<float> into)
-        {
-            int n = Math.Min(magnitudes.Length, into.Length);
-            for (int i = 0; i < n; i++) into[i] = magnitudes[i] / 255f;
-            return n;
-        }
 
         /// <summary>The persisted per-uri format override map (ch 01 DATA GAP 14): <c>uri=id;uri=id</c>, oldest first.</summary>
         public static class FormatOverrides

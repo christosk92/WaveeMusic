@@ -300,13 +300,9 @@ public readonly partial struct Show
         {
             var show = _show;
             if (!show.IsValid) return null;
-            var ctx = new ActionContext(ActionTarget.ForShow(show.Uri, show.Knows(ShowFields.Title) ? show.Title : ""), Actions.Services);
-            var rows = new List<MenuFlyoutItem>(6);
-            if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
-            if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
-            if (Actions.Menu.Row(ActionId.PinToSidebar, in ctx) is { } pin) Actions.Menu.Group(rows, pin);
-            Actions.Menu.Group(rows, Episode.ShareMenu(show.Uri, in ctx));
-            return rows.Count == 0 ? null : new ContextMenuModel(rows);
+            var target = ActionTarget.ForShow(show.Uri, show.Knows(ShowFields.Title) ? show.Title : "");
+            return Menus.Container(in target, show.Knows(ShowFields.Image) ? Controls.ArtUrl(show.ImageId) : null, null,
+                new ContainerExtras { OnPage = true });
         }
 
         object? CoverPayload()
@@ -734,6 +730,7 @@ public readonly partial struct Show
         readonly Func<ToolbarStage> _toolbarStageOf;
         readonly Action _syncSelectedWord;
         readonly Func<int, Element> _selectionCommands;
+        readonly Func<IReadOnlyList<Episode>> _selectedEpisodes;
         readonly Func<int> _selectedOf;
         Memo<int>? _selected;
         readonly ItemsViewController _ctl = new();
@@ -774,7 +771,9 @@ public readonly partial struct Show
             OpenFind = () => FindOpen.Value = true;
             CloseFind = () => { FindOpen.Value = false; if (_m is { } m) m.Find.Value = ""; };
             ResetView = () => { _m?.ResetView(); FindOpen.Value = false; };
-            _selectionCommands = fit => EpisodeSelection.Commands(fit, Selection);
+            _selectedEpisodes = Selection.Selected;
+            _selectionCommands = fit => Track.SelectionLane(fit, SelectionLaneArgs.ForEpisodes(
+                Selection.SelectedCount, _selectedEpisodes, Selection.Exit, Selection.SelectAll));
             _selectedOf = () => Selection.SelectedCount;
             _jumpYear = JumpToYear;
             _watchSticky = () =>
@@ -993,6 +992,8 @@ public readonly partial struct Show
             SortWords ??= new Controls.Words.Word[] { new(Loc.Bind(Strings.Podcast.Sort.Newest)), new(Loc.Bind(Strings.Podcast.Sort.Oldest)) };
             _items ??= BoundItems.Project(m.Snap!, static s => s.ItemCount, static (s, i) => s.Items[i], default(ReaderItem));
             int selected = _selected!.Value;
+            // owner decision D3: 2+ selected rows always show the bar; ONE only while multi-select is armed
+            int barCount = SelectionBarRules.Visible(selected, Selection.Selecting.Value) ? selected : 0;
             var years = _yearsMemo!.Value;
             Element list = new BoxEl
             {
@@ -1004,7 +1005,7 @@ public readonly partial struct Show
                         Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false),
                     // the month pinned under the rail, and the selection bar docked at the list's foot
                     StickyMonth(_stickyMonth, Narrow.Value ? ReaderPadNarrow : ReaderPad),
-                    Controls.SelectionBar(selected, _selectionCommands, standalone: true, bottomPadding: BottomReserve, minCount: 1),
+                    Controls.SelectionBar(barCount, _selectionCommands, standalone: true, bottomPadding: BottomReserve, minCount: 1),
                 ],
             };
             // The strip's 30 DIP are ALWAYS reserved: a filter that leaves one year takes the strip's rows away, and a list
@@ -1145,7 +1146,7 @@ public readonly partial struct Show
             if (_m is not { } m) return;
             var e = new Episode(slot);
             if (slot > 0 && e.IsValid) Episode.Invoke(e, () => m.PlayInShow(e));
-            else if (m.Peek().Show is { IsValid: true } show) Playback.PlayContext(show.Id);
+            else if (m.Peek().Show is { IsValid: true } show) Playback.PlayOrToggleContext(show.Id);
         }
 
         public override Element Render()

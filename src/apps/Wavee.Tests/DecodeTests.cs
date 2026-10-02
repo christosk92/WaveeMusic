@@ -1546,11 +1546,12 @@ public class DecodeTests
     }
 
     [Fact]
-    public void A_waveform_is_reduced_once_to_220_columns_with_each_band_walked_across_its_own_length()
+    public void A_waveform_lands_as_WaveSample_triples_capped_at_MaxSamples()
     {
         TestScope.Fresh();
         // band_low is LONGER than the others on the wire; a spike at the very end of each band must land in the LAST
-        // column for all three — one shared cursor would put the shorter bands' spikes early.
+        // sample for all three — one shared cursor would put the shorter bands' spikes early. 12,886 hops exceed
+        // MaxSamples, so the answer is MAX-POOLED 3:1 onto it (never rejected, V-D9).
         var low = new byte[12_886];
         var mid = new byte[12_466];
         var high = new byte[12_466];
@@ -1565,18 +1566,94 @@ public class DecodeTests
         Spotify.Decode.Waveform(proto, UriBytes(EntityKind.Track, 40), s);
         TestScope.CommitAndPublish(s);
 
-        var columns = Entities.Current.Edges.TrackWaveform.Payload(TrackOf(40).Slot);
-        Assert.Equal(Spotify.Decode.WaveformColumns, columns.Length);
-        Assert.Equal(255, columns[^1]);                                    // the loudest column is the ceiling
-        Assert.Equal((byte)((10 * 255 + 300) / 600), columns[0]);          // normalised against the track's own peak
-        Assert.Equal(0, columns[110]);
+        var waveform = Entities.Current.Edges.TrackWaveform;
+        int slot = TrackOf(40).Slot;
+        Assert.Equal(EdgeState.Complete, waveform.State(slot));
+        Assert.Equal(WaveformBands.MaxSamples, waveform.Count(slot));
+        Assert.Equal(WaveformBands.MaxSamples, waveform.Total(slot));          // Count == Total == N (O6)
+        var payload = waveform.Payload(slot);
+        Assert.Equal(new WaveSample(200, 200, 200), payload[^1]);              // each band walked across its OWN length
+        Assert.Equal(new WaveSample(10, 0, 0), payload[0]);
+        Assert.Equal(new WaveSample(0, 0, 0), payload[WaveformBands.MaxSamples / 2]);
 
-        // Silence is an answer too — an empty waveform, Complete.
+        // the drawer's 220 columns derive from the kept samples at read time: the loudest column is the ceiling
+        var columns = new float[WaveformBands.Columns];
+        Assert.True(WaveformBands.ToColumns(payload, columns));
+        Assert.Equal(1f, columns[^1]);
+        Assert.Equal(10f / 600f, columns[0], 5);
+        Assert.Equal(0f, columns[110]);
+
+        // a short answer lands UN-decimated: one sample per hop, each band's own value
+        var shortLow = new byte[2_000];
+        var shortMid = new byte[2_000];
+        var shortHigh = new byte[2_000];
+        for (int i = 0; i < shortLow.Length; i++)
+        {
+            shortLow[i] = (byte)(1 + i % 250);
+            shortMid[i] = (byte)(2 + i % 200);
+            shortHigh[i] = (byte)(3 + i % 100);
+        }
+        var shortAnswer = Staging.Rent();
+        Spotify.Decode.Waveform(new Wf.ThreeBandWaveforms { BandLow = Bs(shortLow), BandMid = Bs(shortMid), BandHigh = Bs(shortHigh) }.ToByteArray(),
+                                UriBytes(EntityKind.Track, 42), shortAnswer);
+        TestScope.CommitAndPublish(shortAnswer);
+        int shortSlot = TrackOf(42).Slot;
+        Assert.Equal(2_000, waveform.Count(shortSlot));
+        Assert.Equal(2_000, waveform.Total(shortSlot));
+        var kept = waveform.Payload(shortSlot);
+        for (int i = 0; i < kept.Length; i++)
+            Assert.Equal(new WaveSample(shortLow[i], shortMid[i], shortHigh[i]), kept[i]);
+
+        // Silence is an answer too — an empty waveform, Complete (every byte 0 stages NOTHING, V-D6).
         var quiet = Staging.Rent();
         Spotify.Decode.Waveform(new Wf.ThreeBandWaveforms { BandLow = Bs(new byte[64]) }.ToByteArray(), UriBytes(EntityKind.Track, 41), quiet);
         TestScope.CommitAndPublish(quiet);
-        Assert.Equal(EdgeState.Complete, Entities.Current.Edges.TrackWaveform.State(TrackOf(41).Slot));
-        Assert.Equal(0, Entities.Current.Edges.TrackWaveform.Count(TrackOf(41).Slot));
+        Assert.Equal(EdgeState.Complete, waveform.State(TrackOf(41).Slot));
+        Assert.Equal(0, waveform.Count(TrackOf(41).Slot));
+
+        // ... and so is a body with no bands at all
+        var bare = Staging.Rent();
+        Spotify.Decode.Waveform(new Wf.ThreeBandWaveforms { SampleRate = 44_100, HopMs = 20 }.ToByteArray(), UriBytes(EntityKind.Track, 43), bare);
+        TestScope.CommitAndPublish(bare);
+        Assert.Equal(EdgeState.Complete, waveform.State(TrackOf(43).Slot));
+        Assert.Equal(0, waveform.Count(TrackOf(43).Slot));
+    }
+
+    [Fact]
+    public void A_staged_beat_grid_lands_as_a_uint_payload_and_an_empty_run_is_a_Complete_empty_answer()
+    {
+        TestScope.Fresh();
+        // WP-D2's decoder stages the grid; the commit arm is WP-D1's, so it is driven here with a hand-staged run: the
+        // uints ride the staging arena as bytes, exactly as a WaveSample triple does.
+        uint[] grid = [500u, 1000u | BeatGrid.DownbeatBit, 1500u];
+        var s = Staging.Rent();
+        ref var run = ref s.TraitRuns.Add();
+        run.Parent = StagedTrackId(44);
+        run.Relation = TraitRelation.TrackBeats;
+        run.Start = s.Traits.Count;
+        run.Length = 0;
+        run.Bytes = s.AddText(System.Runtime.InteropServices.MemoryMarshal.AsBytes(grid.AsSpan()));
+        TestScope.CommitAndPublish(s);
+
+        var beats = Entities.Current.Edges.TrackBeats;
+        int slot = TrackOf(44).Slot;
+        Assert.Equal(EdgeState.Complete, beats.State(slot));
+        Assert.Equal(3, beats.Count(slot));
+        Assert.Equal(3, beats.Total(slot));
+        Assert.Equal(grid, beats.Payload(slot).ToArray());
+        Assert.Equal(500u, BeatGrid.StartMs(beats.Payload(slot)[0]));
+        Assert.True(BeatGrid.IsDownbeat(beats.Payload(slot)[1]));
+
+        // "no grid for this track" is an answer: a Complete run of nothing (Pulse then takes the tempo)
+        var none = Staging.Rent();
+        ref var empty = ref none.TraitRuns.Add();
+        empty.Parent = StagedTrackId(45);
+        empty.Relation = TraitRelation.TrackBeats;
+        empty.Start = none.Traits.Count;
+        empty.Length = 0;
+        TestScope.CommitAndPublish(none);
+        Assert.Equal(EdgeState.Complete, beats.State(TrackOf(45).Slot));
+        Assert.Equal(0, beats.Count(TrackOf(45).Slot));
     }
 
     /// <summary>The kind-15 body as captured: every scalar in a wrapper, images repeated.</summary>

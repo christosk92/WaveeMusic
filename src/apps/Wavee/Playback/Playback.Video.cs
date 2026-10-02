@@ -287,6 +287,12 @@ public static partial class Playback
                 return new SeekCall(true, targetMs, true, hint);
             }
 
+            /// <summary>Has the seek the reducer is owed a <c>Seeked</c> for landed (V-PA2, V-PA12)? A seek the engine took
+            /// lands when the engine stops seeking; a <see cref="SeekVerb.Ride"/> made no engine call, so it lands when
+            /// playback reaches the target. Pure: the host's observer reads the facts, this decides.</summary>
+            public static bool SeekLanded(bool engineSeeking, bool rode, long positionMs, long targetMs)
+                => rode ? positionMs >= targetMs : !engineSeeking;
+
             /// <summary>The ABR height ceiling: the user's pin (0 = auto) and the metered cap (0 or `int.MaxValue` = none),
             /// the lower of the two.</summary>
             public static int QualityCap(int pinnedHeight, int meteredCap)
@@ -337,6 +343,17 @@ public static partial class Playback
         static double s_volume = 1.0;
         static bool s_muted;
         static long s_switchAtMs;                // FrameNowMs at switch.begin — first.frame's sinceSwitchMs
+        // V-PA2: the reducer's seek generation (`State.SeekGen`) every `Position` this host posts is stamped with (`Input.Gen`): the
+        // reducer drops a report whose generation is not its current one, so a position read before the user's last drop point can
+        // never drag the playhead back over it. SEEDED by every `Load` (the reducer's generation when the load starts), STAMPED by
+        // `Seek` AFTER its engine call (a tick that reads the new generation then also reads the seeked position, never the
+        // pre-seek one). 0 = never stamped. The UI thread writes it, the tick thread reads it: under `s_gate`.
+        static uint s_videoSeekGen;
+        // The scrub gesture's PREVIEW (D4): audio is muted for its duration (a keyframe preview restarts playback from the keyframe, so an
+        // unmuted drag stutters snippets), and previews are rate-limited. `s_previewMuted` is the gesture's mute, layered over the user's
+        // own `s_muted` (the gesture never overwrites it); written under `s_gate`. `s_previewAtMs` is UI-thread only.
+        static bool s_previewMuted;
+        static long s_previewAtMs = long.MinValue / 2;
 
         // the pump
         readonly record struct LoadRequest(VideoSource Source, long StartAtMs, uint Epoch);
@@ -387,14 +404,19 @@ public static partial class Playback
         /// <summary>Play <paramref name="source"/> from <paramref name="fromMs"/>, for reducer epoch <paramref name="epoch"/>.
         /// UI thread. Returns immediately: the physical work is one coalesced request on the pump, and a request that
         /// arrives while another is in flight REPLACES it. <paramref name="paused"/> opens paused at the position; a
-        /// <see cref="Pause"/> or <see cref="Play"/> issued before the open lands is honoured by it.</summary>
-        public static void Load(VideoSource source, uint epoch, int fromMs = 0, bool paused = false)
+        /// <see cref="Pause"/> or <see cref="Play"/> issued before the open lands is honoured by it.
+        /// <paramref name="seekGen"/> is the reducer's seek generation (<c>State.SeekGen</c>) at the moment the load starts: the
+        /// <c>Position</c> reports of this load carry it (V-PA2), so the first one is already current.</summary>
+        public static void Load(VideoSource source, uint epoch, int fromMs, bool paused, uint seekGen)
         {
             Boot();
             float rate = RateFor(s_state.CurrentId, s_state.VideoWanted);
+            s_owed = default;                    // a new load owes the old one's seek nothing
             lock (s_gate)
             {
+                s_previewMuted = false;          // a scrub's muted preview belongs to the player the load replaces
                 s_desiredRate = rate;
+                s_videoSeekGen = seekGen;        // V-PA2: seeded from EVERY load, so its first report is current
                 s_pumpEpoch++;
                 s_pending = new LoadRequest(source, Math.Max(0, fromMs), epoch);
                 s_pendingClear = false;
@@ -411,8 +433,10 @@ public static partial class Playback
         /// <summary>Stop and release. A clear INVALIDATES and overtakes a queued load.</summary>
         public static void Stop()
         {
+            s_owed = default;
             lock (s_gate)
             {
+                s_previewMuted = false;
                 s_pumpEpoch++;
                 s_pending = null;
                 s_pendingClear = true;
@@ -464,21 +488,94 @@ public static partial class Playback
         /// <summary>Seek. UI thread. A COMMITTED (<paramref name="accurate"/>) seek at or past a live edge becomes
         /// `GoLiveAsync`. A protected source is planned against the session's keyframe table and buffered ranges
         /// (`SeekPlanner`): a scrub PREVIEW shows the closest buffered keyframe and never fetches while the pointer is
-        /// down; a commit decodes to the target, or rides when playback is about to reach it anyway.</summary>
-        public static void Seek(long ms, bool accurate = true)
+        /// down; a commit decodes to the target, or rides when playback is about to reach it anyway.
+        /// <para><paramref name="gen"/> is the reducer's seek generation (<c>State.SeekGen</c>) for a seek IT emitted (V-PA2); 0 is
+        /// an internal seek (a scrub preview, a same-key reload's start position, <see cref="Go"/>) and changes neither what the
+        /// <c>Position</c> posts are stamped with nor what the reducer is owed. A reducer seek stamps the posts from here on
+        /// EVEN WHEN there was no player to take it (otherwise every later report would carry an older generation and be
+        /// dropped for the rest of the load), and owes the reducer one <c>Seeked</c> for that generation, posted when the
+        /// seek lands (<see cref="Observe"/>) — the release of the seek bar's drop-point hold (V-PA12).</para></summary>
+        public static void Seek(long ms, bool accurate = true, uint gen = 0)
+        {
+            if (accurate) EndPreviewMute();                  // the commit of a scrub (or any real seek) ends the gesture's silence
+            SeekOutcome outcome = IssueSeek(ms, accurate);
+            if (gen == 0) return;
+            uint epoch;
+            // AFTER the engine call: it publishes the target as the position at once, so a tick that reads the new generation reads
+            // the seeked position with it. Stamped first, the same tick could post the PRE-seek position under the NEW generation
+            // and the reducer would accept it — walking the playhead back over the drop point.
+            lock (s_gate) { s_videoSeekGen = gen; epoch = s_epoch; }
+            s_owed = outcome.Issued ? new OwedSeek(gen, outcome.TargetMs, outcome.Rode, epoch) : default;
+        }
+
+        /// <summary>The fastest a scrub preview seeks: ≤ 10 Hz (D4). The reducer's model already coalesces a drag to 20 Hz; a keyframe
+        /// preview costs a decode, and a slower cadence is what keeps the bar responsive over it.</summary>
+        public const long ScrubPreviewIntervalMs = 100;
+
+        /// <summary>One scrub PREVIEW while the pointer drags over the bar (<c>Effects.ScrubMove</c> on the video host): audio muted for
+        /// the whole gesture (first call), then a keyframe-mode seek to the nearest buffered keyframe through the planner
+        /// (<see cref="SeekIntent.Preview"/>: it never fetches while the pointer is down), at most one per
+        /// <see cref="ScrubPreviewIntervalMs"/>. A preview is an INTERNAL seek (<c>gen == 0</c>): it changes neither what the
+        /// <c>Position</c> posts are stamped with nor what the reducer is owed — the release's accurate <see cref="Seek"/> is the one
+        /// the reducer minted a generation for, and it unmutes. UI thread.</summary>
+        public static void ScrubPreview(long ms)
+        {
+            MediaPlayer? p;
+            bool firstOfGesture;
+            lock (s_gate) { p = s_player; firstOfGesture = !s_previewMuted; s_previewMuted = true; }
+            if (firstOfGesture) { try { p?.SetMuted(true); } catch { /* fail-soft */ } }
+            long now = FrameNowMs();
+            if (now - s_previewAtMs < ScrubPreviewIntervalMs) return;
+            s_previewAtMs = now;
+            Seek(ms, accurate: false);
+        }
+
+        /// <summary>The gesture was cancelled (<c>Effects.ScrubCancel</c> on the video host): the audio comes back; the picture stays on the
+        /// last previewed keyframe, which is where the playhead really is. UI thread.</summary>
+        public static void ScrubPreviewEnd() => EndPreviewMute();
+
+        /// <summary>End the gesture's mute: the player returns to the USER's mute setting, never unconditionally to audible.</summary>
+        static void EndPreviewMute()
+        {
+            MediaPlayer? p;
+            bool userMuted;
+            lock (s_gate)
+            {
+                if (!s_previewMuted) return;
+                s_previewMuted = false;
+                p = s_player;
+                userMuted = s_muted;
+            }
+            try { p?.SetMuted(userMuted); } catch { /* fail-soft */ }
+        }
+
+        /// <summary>What <see cref="IssueSeek"/> did. <c>Issued</c> false: nothing took the seek (no session, or it threw).
+        /// <c>Rode</c>: no engine call was made, playback reaches <c>TargetMs</c> on its own.</summary>
+        readonly record struct SeekOutcome(bool Issued, bool Rode, long TargetMs);
+
+        /// <summary>The <c>Seeked</c> the reducer is still owed for the last seek it emitted (V-PA2): its generation, where it
+        /// aims, whether it was a ride, and the load epoch of the session that took it. <c>Gen</c> 0 = nothing owed.
+        /// UI thread only (written by <see cref="Seek"/>, <see cref="Load"/>, <see cref="Stop"/>, settled by
+        /// <see cref="Observe"/>).</summary>
+        readonly record struct OwedSeek(uint Gen, long TargetMs, bool Rode, uint Epoch);
+
+        static OwedSeek s_owed;
+
+        static SeekOutcome IssueSeek(long ms, bool accurate)
         {
             MediaPlayer? p;
             VideoSource? live;
             lock (s_gate) { p = s_player; live = s_live; }
-            if (p is null) return;
+            if (p is null) return default;
             long target = Math.Max(0, ms);
+            bool engaged = p.Session is not null;            // a player still attaching has no session to take the seek
             try
             {
-                if (accurate && IsAtOrPastLiveEdge(p, target)) { _ = p.GoLiveAsync(); return; }
+                if (accurate && IsAtOrPastLiveEdge(p, target)) { _ = p.GoLiveAsync(); return new SeekOutcome(engaged, false, target); }
                 if (p.Session is not ProtectedMediaSession ps)
                 {
                     _ = p.SeekAsync(TimeSpan.FromMilliseconds(target), accurate ? SeekMode.Accurate : SeekMode.Keyframe);
-                    return;
+                    return new SeekOutcome(engaged, false, target);
                 }
 
                 RefillIndex(ps.Player);
@@ -495,15 +592,16 @@ public static partial class Playback
                 if (!call.Engine)
                 {
                     LogLine(new VideoLog.SeekDone(target, target, 0, false));
-                    return;
+                    return new SeekOutcome(true, true, target);
                 }
                 s_seekTargetMs = call.TargetMs;
                 s_seekIssuedAtMs = FrameNowMs();
                 s_seekFetched = plan.Verb == SeekVerb.Fetch;
                 _ = ps.SeekAsync(TimeSpan.FromMilliseconds(call.TargetMs), call.Accurate ? SeekMode.Accurate : SeekMode.Keyframe,
                     call.KeyframeHintMs);
+                return new SeekOutcome(true, false, call.TargetMs);
             }
-            catch (Exception ex) { Log.Warn("video", "seek failed", ex); }
+            catch (Exception ex) { Log.Warn("video", "seek failed", ex); return default; }
         }
 
         /// <summary>The live session's buffered ranges as ascending (start, end) ms pairs into <paramref name="pairs"/>;
@@ -537,8 +635,9 @@ public static partial class Playback
         public static void SetMuted(bool muted)
         {
             MediaPlayer? p;
-            lock (s_gate) { s_muted = muted; p = s_player; }
-            try { p?.SetMuted(muted); } catch { /* fail-soft */ }
+            bool effective;
+            lock (s_gate) { s_muted = muted; p = s_player; effective = muted || s_previewMuted; }   // a scrub's silence outlives an unmute click
+            try { p?.SetMuted(effective); } catch { /* fail-soft */ }
         }
 
         /// <summary>Pin a video height, or 0 for auto (the Settings tab writes the key, then calls this). Applied to the
@@ -1262,9 +1361,9 @@ public static partial class Playback
         {
             PersistLink(force: false);
             MediaPlayer? p;
-            uint epoch;
+            uint epoch, gen;
             bool intent;
-            lock (s_gate) { p = s_player; epoch = s_epoch; intent = s_playIntent; }
+            lock (s_gate) { p = s_player; epoch = s_epoch; intent = s_playIntent; gen = s_videoSeekGen; }
             if (p is null || s_disposed) { StopTicker(); return; }
 
             PlaybackState state = p.State.Peek();
@@ -1315,7 +1414,7 @@ public static partial class Playback
             {
                 case PlaybackState.Playing:
                     if (!s_firstFrameFired) { s_firstFrameFired = true; PostSignal(epoch, AudioSignal.Started, pos); }
-                    else if (s_lastState == PlaybackState.Playing) PostSignal(epoch, AudioSignal.Position, pos);
+                    else if (s_lastState == PlaybackState.Playing) PostSignal(epoch, AudioSignal.Position, pos, gen);   // V-PA2: stamped with the generation read above
                     else PostSignal(epoch, AudioSignal.Started, pos);
                     break;
 
@@ -1372,8 +1471,8 @@ public static partial class Playback
             return edge > 0 && ms >= edge - GoLiveToleranceMs;
         }
 
-        static void PostSignal(uint epoch, AudioSignal signal, long posMs = 0)
-            => Post(Input.Audio(signal, epoch, FrameNowMs(), posMs));
+        static void PostSignal(uint epoch, AudioSignal signal, long posMs = 0, uint gen = 0)
+            => Post(Input.Audio(signal, epoch, FrameNowMs(), posMs, gen));
 
         /// <summary>One typed fault per load. A dead DRM source is forgotten by the memo (its signed urls may be what
         /// died), and a dead LOCAL attachment is quarantined by the shell so the reducer's one retry resolves past it.</summary>
@@ -1441,10 +1540,12 @@ public static partial class Playback
             if (session is null) { Phase.SetIfChanged(SwitchPhase.Attaching); return; }
 
             long firstFrame;
+            bool engineSeeking;
             if (session is ProtectedMediaSession ps)
             {
                 IProtectedVideoPlayer pv = ps.Player;
                 Phase.SetIfChanged(HostRules.PhaseOf(pv.Phase));
+                engineSeeking = pv.IsSeeking;
                 firstFrame = pv.FirstFrameEpoch;
                 int index = pv.IndexEpoch;
                 if (index != s_observedIndexEpoch)
@@ -1462,8 +1563,10 @@ public static partial class Playback
             {
                 bool framed = !p.NaturalSize.Peek().IsEmpty;
                 Phase.SetIfChanged(HostRules.PhaseOfClear(p.State.Peek(), framed));
+                engineSeeking = p.Buffering.Peek().Reason == BufferingReason.Seeking;
                 firstFrame = framed ? 1 : 0;
             }
+            SettleOwedSeek(p, engineSeeking);
 
             if (firstFrame == 0 || firstFrame == s_observedFirstFrame) return;
             s_observedFirstFrame = firstFrame;
@@ -1471,6 +1574,21 @@ public static partial class Playback
             SizeI natural = p.NaturalSize.Peek();
             LogLine(new VideoLog.FirstFrame(Tail(s_key), s_epoch, FrameNowMs() - Interlocked.Read(ref s_switchAtMs), -1,
                 (long)p.Position.Peek().TotalMilliseconds, natural.Width, natural.Height));
+        }
+
+        /// <summary>UI THREAD. Pay the <c>Seeked</c> the reducer is owed for the last seek it emitted (V-PA2): once
+        /// <see cref="HostRules.SeekLanded"/> says it landed, post it with the landed position, the generation the seek was
+        /// stamped with and the load epoch of the session that took it. The reducer then publishes
+        /// <c>LastSeekLandedGen</c>, which releases the seek bar's drop-point hold (V-PA12). A newer seek replaced the debt (its
+        /// own <c>Seeked</c> is the one that counts); a load or a stop cleared it. Idempotent: the debt is cleared before the post.</summary>
+        static void SettleOwedSeek(MediaPlayer p, bool engineSeeking)
+        {
+            OwedSeek owed = s_owed;
+            if (owed.Gen == 0) return;
+            long pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
+            if (!HostRules.SeekLanded(engineSeeking, owed.Rode, pos, owed.TargetMs)) return;
+            s_owed = default;
+            Post(Input.Audio(AudioSignal.Seeked, owed.Epoch, FrameNowMs(), pos, owed.Gen));
         }
 
         // the always-on lines, formatted by `VideoLog` (one shape for the host and the gate) into a per-thread buffer

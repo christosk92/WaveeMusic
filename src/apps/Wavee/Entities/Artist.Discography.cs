@@ -39,6 +39,7 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Render;
+using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
@@ -1065,12 +1066,12 @@ public readonly partial struct Artist
         {
             _stamp = Stamp;
             _click = () => { if (_slot > Table.None) _p.OnToggle(_slot); };
-            _play = () => { if (_slot > Table.None) Playback.PlayContext(new Album(_slot).Id); };
+            _play = () => { if (_slot > Table.None) Playback.PlayOrToggleContext(new Album(_slot).Id); };
             _payload = () => _slot > Table.None
                 ? new DragPayload(Drag.KindOf(EntityKind.Album), _uri, _uri, _title, new EntityRef(EntityKind.Album, _slot), ArtUrl: _cover)
                 : null;
             _drag = Drag.Source(_payload);
-            _menu = () => CardMenu(_slot, _title, _cover, _meta);
+            _menu = () => AlbumMenu();
             // A trampoline into the NEWEST pushed accent thunk (DiscoCellProps never compares it), so the cached opened
             // variant can hold one delegate for its lifetime.
             _accent = () => _p.Accent();
@@ -1117,7 +1118,7 @@ public readonly partial struct Artist
             // index); the host reads the accent inside ITS render, so a palette landing repaints the one expanded card
             // and no other.
             Controls.CardData data = _data!;
-            if (p.Expanded) data = _dataSelected ??= data with { Selected = true, SelectedAccent = _accent };
+            if (p.Expanded) data = _dataSelected ??= data with { Selected = true, SelectedAccent = _accent, Subtitle = SubtitleOf(_meta, Icons.ChevronUp) };
             // A constant key, shared with the seed: the grid's own per-position wrapper already carries the identity, so
             // no per-render key string is built, and a seed hydrating is a props re-push, never a remount.
             return Controls.Surface(data, Shape.Grid) with { Key = "album" };
@@ -1135,25 +1136,30 @@ public readonly partial struct Artist
             _title = al.Title;
             _meta = DiscoCardText.AlbumMeta(al);
             _cover = Controls.ArtUrl(al.ImageId);
-            _data = new Controls.CardData(_uri, _title,
-                Design.Type.TrackMeta(_meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            _data = new Controls.CardData(_uri, _title, SubtitleOf(_meta, Icons.ChevronDown),
                 _cover, _click, OnPlay: _play, Drag: _drag) { Height = height, Menu = _menu };
             _dataSelected = null;
         }
 
-        /// <summary>The album card menu (ch 08 W27): strip [Play · Play next · Add to queue · Save], rows [Add to playlist ·
-        /// Open · Pin · Go to artist · Share], over the container verbs.</summary>
-        static ContextMenuModel? CardMenu(int album, string title, string? cover, string meta)
+        /// <summary>The meta line with a small tertiary disclosure chevron after it: pointing down while the card can open
+        /// its drawer, up while it is the open one (<see cref="Controls.CardData.Selected"/> carries the accent skin; the
+        /// glyph is the quiet "this expands" cue the plain card never had).</summary>
+        static Element SubtitleOf(string meta, string glyph) => new BoxEl
         {
-            var al = new Album(album);
-            if (!al.IsValid) return null;
-            var ctx = new ActionContext(ActionTarget.ForAlbum(al.Uri, title), Actions.Services);
-            ReadOnlySpan<ActionId> strip = [ActionId.PlayContext, ActionId.PlayContextNext, ActionId.AddContextToQueue, ActionId.SaveContext];
-            ReadOnlySpan<ActionId> rowIds = [ActionId.AddContextToPlaylist, ActionId.OpenItem, ActionId.PinToSidebar, ActionId.GoToAlbumArtist];
-            var rows = new List<MenuFlyoutItem>(8);
-            Actions.Menu.AddRows(rows, in ctx, rowIds);
-            if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
-            return new ContextMenuModel(Actions.Menu.Strip(in ctx, strip), rows, Actions.Menu.Header(cover, title, meta));
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = 4f, MinWidth = 0f,
+            Children =
+            [
+                Design.Type.TrackMeta(meta) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Shrink = 1f },
+                Icon(glyph, 9f, Tok.TextTertiary),
+            ],
+        };
+
+        /// <summary>The album card menu: the shared container menu (strip + rows decided by <c>ContainerMenuRules</c>),
+        /// built at OPEN from the cell's current row.</summary>
+        ContextMenuModel? AlbumMenu()
+        {
+            var al = new Album(_slot);
+            return al.IsValid ? Menus.Container(ActionTarget.ForAlbum(al.Uri, _title), _cover, _meta) : null;
         }
     }
 
@@ -1180,19 +1186,55 @@ public readonly partial struct Artist
 
     sealed class DrawerPanel : Component
     {
-        // Per-ALBUM state: the panel is keyed "drawer:" + uri, so a different album is a fresh selection.
-        readonly SelectionModel _sel = new() { Mode = ItemsSelectionMode.Extended };
-        readonly Func<int, Element> _commands;
-        readonly Action _playAlbum, _goAlbum;
+        // Per-ALBUM state: the panel is keyed "drawer:" + uri, so a different album is a fresh selection. The model is
+        // handed to the rows' ItemsView (it sizes ItemCount to the CELLS, the Show-all row included — every count below
+        // therefore clamps to Verdict.Shown, and IsItemSelectable keeps Show-all out of interaction and Ctrl+A).
+        internal readonly SelectionModel Sel = new() { Mode = ItemsSelectionMode.Extended };
+        readonly Action _playAlbum, _exit, _selectAll;
+        readonly Func<RowScope, Element> _slotTemplate;
+        readonly ListOptions _listOptions;
+        readonly Func<int, Track> _trackAt;
+        readonly Func<IReadOnlyList<Track>> _selectedTracks;
+        readonly Func<int, Element> _lane;
+        readonly List<int> _dragIndices = new(8);
+        internal readonly Action GoAlbum;
+        internal readonly Func<bool> ChecksVisible;
+        internal readonly Func<ColorF> AccentNow;
         DrawerProps _p = null!;
         IOverlayService? _overlay;
+        // The rows' ItemsView is mounted once per GEOMETRY (columns x rows-per-column x cells): its layout is frozen at
+        // mount, so a changed geometry is a keyed remount (the selection model is ours and survives it).
+        Element? _list;
+        int _geomCols = -1, _geomRows = -1, _geomCells = -1;
 
         public DrawerPanel()
         {
-            _commands = SelectionCommands;
-            _playAlbum = () => { if (_p.Album.IsValid) Playback.PlayContext(_p.Album.Id); };
-            _goAlbum = () => { if (_p.Album.IsValid) Shell.GoTo(Shell.For(_p.Album.Uri, _p.Album.Title)); };
+            _playAlbum = () => { if (_p.Album.IsValid) Playback.PlayOrToggleContext(_p.Album.Id); };
+            GoAlbum = () => { if (_p.Album.IsValid) Shell.GoTo(Shell.For(_p.Album.Uri, _p.Album.Title)); };
+            AccentNow = () => _p.Accent();
+            _trackAt = TrackAt;
+            _selectedTracks = SelectedTracks;
+            _exit = Sel.DeselectAll;
+            _selectAll = SelectAllShown;
+            ChecksVisible = () => { _ = Sel.Version.Value; return SelectionBarRules.ChecksVisible(SelectedShownCount(), false); };
+            _lane = fit => Track.SelectionLane(fit, SelectionLaneArgs.ForTracks(SelectedShownCount(), _selectedTracks, _exit, _selectAll));
+            _slotTemplate = scope => Embed.Comp(() => new DrawerSlot(this, scope));
+            _listOptions = new ListOptions
+            {
+                SelectionMode = ItemsSelectionMode.Extended,
+                Selection = Sel,
+                Selector = SelectorVisual.None,
+                IsItemInvokedEnabled = true,
+                OnInvoked = InvokeAt,
+                IsItemSelectable = IsSelectable,
+                Grow = 1f,
+                Scroll = new ScrollOptions { SuppressScrollBar = true },
+            };
         }
+
+        internal DrawerProps Current => _p;
+        internal IOverlayService? OverlayHost => _overlay;
+        bool IsSelectable(int index) => index < _p.Verdict.Shown;
 
         public override Element Render()
         {
@@ -1204,14 +1246,10 @@ public readonly partial struct Artist
             _ = Entities.Current.Edges.AlbumTracks.Changed.Value;
             _ = Entities.Current.Albums.Changed.Value;
             var v = p.Verdict;
-            _sel.ItemCount = v.Shown;                          // only the shown rows are selectable (W15)
-            // Subscribe to the selection: the bar's count is re-pushed from THIS render, so a select/clear re-renders
-            // the panel and the bar sees the live number (SelectionModel.Version bumps on every actual change).
-            _ = _sel.Version.Value;
 
             Element body = v.ReadyEmpty ? EmptyNote(p.Retry)
                          : v.Loading ? BuildColumns(v.Shown, v.Columns, s_shimmer)
-                         : Rows(v);
+                         : RowsList(v);
             return new BoxEl
             {
                 Direction = 1, ClipToBounds = true,
@@ -1221,12 +1259,10 @@ public readonly partial struct Artist
                 Children =
                 [
                     Head(p),
-                    // The shared selection bar floats over the drawer's own rows, 8 up from the bottom, the moment a row
-                    // is selected — and ONLY then: the count is the live one (re-pushed every render, above), and the
-                    // default minCount of 1 makes an empty selection render nothing. `minCount: 0` with a frozen 0 kept
-                    // the standalone chrome mounted around an empty command lane: the grey stub pill centred under the
-                    // rows. The commands still read the live selection themselves.
-                    ZStack(body, Controls.SelectionBar(_sel.SelectedCount, _commands, standalone: true, bottomPadding: Spacing.S)),
+                    // The standard selection bar floats over the drawer's own rows, 8 up from the bottom, once the
+                    // selection earns it (SelectionBarRules.Visible: two or more rows). It is a component of its own, so a
+                    // select/clear re-renders only the bar and the bound row chrome - never this panel or the list.
+                    ZStack(body, Embed.Comp(() => new DrawerBar(this)) with { Key = "drawer-bar" }),
                 ],
             };
         }
@@ -1245,7 +1281,7 @@ public readonly partial struct Artist
                     Controls.Artwork(Controls.ArtUrl(al.ImageId), 28f, 28f, Radii.Control, decodePx: 56),
                     new BoxEl
                     {
-                        Grow = 1f, Basis = 0f, MinWidth = 0f, OnClick = _goAlbum, Cursor = CursorId.Hand,
+                        Grow = 1f, Basis = 0f, MinWidth = 0f, OnClick = GoAlbum, Cursor = CursorId.Hand,
                         Children =
                         [
                             new SpanTextEl(
@@ -1264,7 +1300,7 @@ public readonly partial struct Artist
                     {
                         Width = 28f, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         Corners = CornerRadius4.All(14f), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-                        OnClick = _goAlbum, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
+                        OnClick = GoAlbum, Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true,
                         HoverFill = Tok.FillSubtleSecondary,
                         Children = [Icon(Icons.OpenInNewWindow, 11.76f, Tok.TextSecondary)],
                     }, Loc.Get(Strings.Detail.GoToAlbum)),
@@ -1272,64 +1308,40 @@ public readonly partial struct Artist
             };
         }
 
-        /// <summary>Plain, keyed, EAGER rows — at most CapPerColumn × Columns of them, nothing to virtualize. Two
-        /// columns split column-major; the "Show all" row is the last cell of the same sequence.</summary>
-        Element Rows(DrawerVerdict v)
+        /// <summary>The track rows (and the "Show all" cell) as ONE bound list: a vertical stack for one column, or a
+        /// column-major fill-row grid (the FIRST ceil(cells / 2) cells down the left, as the verdict's row count assumes)
+        /// for two. The list is exactly <c>rows x RowPitch</c> tall, so nothing scrolls and the reserved slot height holds.</summary>
+        Element RowsList(DrawerVerdict v)
         {
-            int shown = v.Shown;
-            int cells = shown + (v.ShowAllRow ? 1 : 0);
-            var tracks = Entities.Current.Edges.AlbumTracks.Targets(_p.Album.Slot);
-            var kids = new Element[Math.Max(0, cells)];
-            for (int i = 0; i < cells; i++)
-                kids[i] = i < shown ? TrackCell(i, (uint)i < (uint)tracks.Length ? tracks[i] : Table.None) : ShowAllRow(v.Total);
-            return Split(kids, v.Columns);
-        }
-
-        Element TrackCell(int index, int trackSlot)
-        {
-            if (trackSlot <= Table.None) return new BoxEl { Key = "row:#" + index.ToString(CultureInfo.InvariantCulture), Height = DrawerVerdict.RowPitch };
-            var sel = _sel;
-            int i = index;
-            BoxEl row = new BoxEl
+            int cells = v.Shown + (v.ShowAllRow ? 1 : 0);
+            if (cells <= 0) return new BoxEl();
+            int cols = v.Columns <= 1 ? 1 : v.Columns;
+            int rows = Math.Max(1, v.Rows);
+            if (_list is null || _geomCols != cols || _geomRows != rows || _geomCells != cells)
             {
-                // Height, not MinHeight: the wrapper IS the 32-DIP pitch, so a column totals EXACTLY rows × RowPitch —
-                // the number the reserved slot was sized from.
-                Key = "row:" + trackSlot.ToString(CultureInfo.InvariantCulture), ZStack = true,
-                Height = DrawerVerdict.RowPitch, ClipToBounds = true, Corners = Radii.ControlAll,
-                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                Draggable = Drag.Source(() => RowPayload(i)),
-                // Single click SELECTS (Ctrl toggles, Shift extends from the anchor), DOUBLE click PLAYS — the contract
-                // every track list in the app answers a click with.
-                OnPointerReleased = args =>
-                {
-                    if (args.ClickCount >= 2) PlayFrom(i);
-                    else
-                    {
-                        sel.OnInteractedAction(i, (args.Mods & KeyModifiers.Ctrl) != 0, (args.Mods & KeyModifiers.Shift) != 0);
-                        if ((args.Mods & KeyModifiers.Shift) == 0) sel.AnchorIndex = i;
-                    }
-                },
-                Children =
-                [
-                    Embed.Comp(new DrawerRowProps(_p.Album, i), static () => new DrawerRowHost()) with { Key = "content" },
-                    new BoxEl
-                    {
-                        Key = "pill", Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f),
-                        Corners = CornerRadius4.All(1.5f), AlignSelf = FlexAlign.Center, Fill = _p.Accent(), HitTestVisible = false,
-                        Opacity = Prop.Of(() => { _ = sel.Version.Value; return sel.IsSelected(i) ? 1f : 0f; }),
-                    },
-                ],
-            };
-            // Right-click / long-press / the row's "…": the selection-aware track menu (Explorer semantics).
-            return Controls.IsNullOverlay(_overlay) ? row
-                : ContextMenu.Attach(row, _overlay, () => Track.RowMenu(_sel, i, TrackAt, static _ => -1, s_drawerMenu));
+                _geomCols = cols; _geomRows = rows; _geomCells = cells;
+                // gap 0: the columns butt together and the slot carries the gutter, so row stride == RowPitch exactly.
+                RepeatLayout layout = cols == 1
+                    ? RepeatLayout.Stack(DrawerVerdict.RowPitch)
+                    : RepeatLayout.Custom(new FillRowVirtualLayout(1f, 99999f, 0f, rows, perPageOverride: cols), horizontal: true);
+                _list = ItemsView.CreateBound(cells, _slotTemplate, layout, _listOptions)
+                    with { Key = "rows:" + cols + "x" + rows + ":" + cells };
+            }
+            return new BoxEl { Direction = 1, MinWidth = 0f, Height = rows * DrawerVerdict.RowPitch, Children = [_list] };
         }
 
-        Track TrackAt(int index)
+        internal Track TrackAt(int index)
         {
             var tracks = Entities.Current.Edges.AlbumTracks.Targets(_p.Album.Slot);
             return (uint)index < (uint)Math.Min(tracks.Length, _p.Verdict.Shown) ? new Track(tracks[index]) : default;
+        }
+
+        /// <summary>The list's invoke (Enter, double-click): a track row plays the album FROM that track, the Show-all
+        /// cell opens the album.</summary>
+        void InvokeAt(int index)
+        {
+            if (index >= _p.Verdict.Shown) { GoAlbum(); return; }
+            PlayFrom(index);
         }
 
         void PlayFrom(int index)
@@ -1340,58 +1352,56 @@ public readonly partial struct Artist
             Track.Invoke(t, () => Playback.PlayContext(album.Id, t.Id));
         }
 
+        internal ContextMenuModel? MenuFor(int index) => Track.RowMenu(Sel, index, _trackAt, static _ => -1, s_drawerMenu);
+
         /// <summary>The whole SELECTION when the gesture starts on a selected row, else that one track.</summary>
-        DragPayload? RowPayload(int index)
+        internal DragPayload? DragPayloadFor(int index)
         {
             var t = TrackAt(index);
             if (t.Slot <= Table.None) return null;
-            if (!_sel.IsSelected(index))
-                return new DragPayload(DragKind.Track, t.Uri.Text, t.Uri.Text, t.Title, new EntityRef(EntityKind.Track, t.Slot), Tracks: [t]);
-            var picked = new List<Track>(_sel.SelectedCount);
-            for (int i = 0; i < _sel.ItemCount; i++)
-                if (_sel.IsSelected(i) && TrackAt(i) is { Slot: > Table.None } s) picked.Add(s);
+            SelectionDrag.Indices(Sel, index, _dragIndices);
+            var picked = new List<Track>(_dragIndices.Count);
+            for (int k = 0; k < _dragIndices.Count; k++)
+                if (TrackAt(_dragIndices[k]) is { Slot: > Table.None } s) picked.Add(s);
+            if (picked.Count == 0) picked.Add(t);
             return new DragPayload(DragKind.Track, t.Uri.Text, t.Uri.Text, t.Title, new EntityRef(EntityKind.Track, t.Slot),
                                    Tracks: picked.ToArray());
         }
 
-        Element ShowAllRow(int total) => new BoxEl
+        /// <summary>Selected rows that are TRACKS (the model also spans the Show-all cell).</summary>
+        internal int SelectedShownCount()
         {
-            Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
-            OnClick = _goAlbum,
-            Children = [Ui.Caption(Strings.Detail.Discography.ShowAllTracks(total)) with { Weight = 600, Color = Tok.AccentTextPrimary }],
-        };
-
-        /// <summary>The selection commands: count · Play · Play next · Add to queue · Like, over the registered verbs.</summary>
-        Element SelectionCommands(int fit)
-        {
-            _ = _sel.Version.Value;
-            int count = _sel.SelectedCount;
-            if (count <= 0) return new BoxEl();
-            var picked = new List<Track>(count);
-            for (int i = 0; i < _sel.ItemCount; i++)
-                if (_sel.IsSelected(i) && TrackAt(i) is { Slot: > Table.None } t) picked.Add(t);
-            var ctx = new ActionContext(ActionTarget.ForTracks(picked), Actions.Services);
-            var kids = new List<Element>(6)
+            int shown = _p?.Verdict.Shown ?? 0;
+            int n = 0;
+            for (int r = 0; r < Sel.RangeCount; r++)
             {
-                Ui.Caption(Strings.Detail.SelectedCount(count)) with { Weight = 600, Color = Tok.TextPrimary, MaxLines = 1 },
-            };
-            AddVerb(kids, ActionId.Play, in ctx);
-            if (fit <= 1)
-            {
-                AddVerb(kids, ActionId.PlayNext, in ctx);
-                AddVerb(kids, ActionId.AddToQueue, in ctx);
-                AddVerb(kids, ActionId.ToggleLike, in ctx);
+                var (s, e) = Sel.GetRange(r);
+                if (s >= shown) break;
+                n += Math.Min(e, shown - 1) - s + 1;
             }
-            return new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Grow = 1f, MinWidth = 0f, Children = kids.ToArray() };
-
-            void AddVerb(List<Element> into, ActionId id, in ActionContext c)
-            {
-                if (AppActions.Find(id) is not { } action || !action.EnabledFor(in c)) return;
-                var captured = c;
-                into.Add(Button.Subtle(action.Label(c), () => { action.Execute(captured); _sel.DeselectAll(); }));
-            }
+            return n;
         }
+
+        IReadOnlyList<Track> SelectedTracks()
+        {
+            var picked = new List<Track>(SelectedShownCount());
+            for (int r = 0; r < Sel.RangeCount; r++)
+            {
+                var (s, e) = Sel.GetRange(r);
+                for (int i = s; i <= e; i++)
+                    if (TrackAt(i) is { Slot: > Table.None } t) picked.Add(t);
+            }
+            return picked;
+        }
+
+        void SelectAllShown()
+        {
+            Sel.DeselectAll();
+            int shown = _p.Verdict.Shown;
+            if (shown > 0) Sel.SelectRange(0, shown - 1);
+        }
+
+        internal Func<int, Element> Lane => _lane;
 
         /// <summary>READY BUT EMPTY — offline, a failed read, a trackless album: a fixed 2-row note with a Retry that
         /// re-asks the tracklist while the drawer stays open (W16).</summary>
@@ -1451,6 +1461,137 @@ public readonly partial struct Artist
             }
             return new BoxEl { Direction = 0, Gap = Spacing.XL, Children = cols };
         }
+    }
+
+    /// <summary>The drawer's floating selection bar - its own component, so selecting re-renders only it.</summary>
+    sealed class DrawerBar : Component
+    {
+        readonly DrawerPanel _panel;
+        public DrawerBar(DrawerPanel panel) => _panel = panel;
+
+        public override Element Render()
+        {
+            _ = _panel.Sel.Version.Value;
+            int n = _panel.SelectedShownCount();
+            return Controls.SelectionBar(SelectionBarRules.Visible(n, false) ? n : 0, _panel.Lane, standalone: true, bottomPadding: Spacing.S);
+        }
+    }
+
+    /// <summary>One bound slot of the drawer's list: a track row (check lane, the album's track cells, accent pill) or
+    /// the "Show all" cell. The slot ROOT owns the gesture (press / Enter / Space through the row scope's interaction
+    /// funnel) and focus; the cells inside are click-less content.</summary>
+    sealed class DrawerSlot : Component
+    {
+        readonly DrawerPanel _o;
+        readonly RowScope _scope;
+        readonly Action<PointerEventArgs> _release;
+        readonly Action<KeyEventArgs> _key;
+        readonly Func<ContextMenuModel?> _menu;
+        readonly DragSource _drag;
+        readonly Prop<float> _pillOpacity;
+        readonly Prop<ColorF> _pillFill;
+        Action<PointerEventArgs>? _showAllRelease;
+        Action<KeyEventArgs>? _showAllKey;
+        static readonly Func<DrawerRowHost> s_rowFactory = static () => new DrawerRowHost();
+        static readonly LayoutTransition s_checkShift = new(
+            TransitionChannels.Position, TransitionDynamics.Tween(333f, Easing.FluentDecelerate));
+
+        public DrawerSlot(DrawerPanel owner, RowScope scope)
+        {
+            _o = owner;
+            _scope = scope;
+            var interact = scope.OnInteraction;
+            var checks = owner.ChecksVisible;
+            var isSel = scope.IsSelected;
+            _release = args =>
+            {
+                if (RowClickPolicy.TriggerOf(args.ClickCount, args.Mods) == ItemContainerTrigger.DoubleTap)
+                    interact(ItemContainerTrigger.DoubleTap, args.Mods);
+                else
+                    interact(ItemContainerTrigger.Tap, SelectorVisualsBound.MultiSelectMods(checks(), args.Mods));
+            };
+            _key = args =>
+            {
+                if (args.KeyCode == Keys.Enter) { interact(ItemContainerTrigger.EnterKey, args.Mods); args.Handled = true; }
+                else if (args.KeyCode == Keys.Space && !args.IsRepeat)
+                {
+                    interact(ItemContainerTrigger.SpaceKey, SelectorVisualsBound.MultiSelectMods(checks(), args.Mods));
+                    args.Handled = true;
+                }
+            };
+            _menu = () => owner.MenuFor(scope.Index.Peek());
+            _drag = Drag.Source(() => owner.DragPayloadFor(scope.Index.Peek()));
+            _pillOpacity = Prop.Of(() => isSel() && !checks() ? 1f : 0f);
+            _pillFill = Prop.Of(owner.AccentNow);
+        }
+
+        public override Element Render()
+        {
+            int index = _scope.Index.Value;                       // a recycle writes this: exactly this slot re-renders
+            var overlay = UseContext(Overlay.Service);
+            var p = _o.Current;
+            var v = p.Verdict;
+            if (index >= v.Shown)
+                return v.ShowAllRow && index == v.Shown ? ShowAll(v.Total) : new BoxEl();
+
+            // 2-column gutter: the layout butts the columns together, the slot insets its inner edge.
+            Edges4 margin = v.Columns <= 1 ? default
+                : index / Math.Max(1, v.Rows) == 0 ? new Edges4(0f, 0f, Spacing.M, 0f) : new Edges4(Spacing.M, 0f, 0f, 0f);
+            var skin = new BoxEl
+            {
+                // Height, not MinHeight: the slot IS the 32-DIP pitch, so a column totals EXACTLY rows x RowPitch.
+                ZStack = true, Height = DrawerVerdict.RowPitch, ClipToBounds = true, Corners = Radii.ControlAll, Margin = margin,
+                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                Focusable = false,                                // the ItemsView roving effect owns the one tab stop
+                FocusVisualMargin = Design.FocusInsetRow,
+                Draggable = _drag,
+                OnPointerReleased = _release,
+                OnKeyDown = _key,
+                OnFocusChanged = _scope.OnFocusChanged,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Animate = s_checkShift,
+                        Children =
+                        [
+                            SelectorVisualsBound.BoundCheckLane(_o.ChecksVisible, _scope.IsSelected, _scope.OnInteraction, leftMargin: 4f),
+                            new BoxEl
+                            {
+                                Grow = 1f, Basis = 0f, MinWidth = 0f,
+                                Children = [Embed.Comp(new DrawerRowProps(p.Album, index), s_rowFactory) with { Key = "content" }],
+                            },
+                        ],
+                    },
+                    new BoxEl
+                    {
+                        Key = "pill", Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f),
+                        Corners = CornerRadius4.All(1.5f), AlignSelf = FlexAlign.Center, Fill = _pillFill, HitTestVisible = false,
+                        Opacity = _pillOpacity,
+                    },
+                ],
+            };
+            // Right-click / long-press / the row's "...": the selection-aware track menu (Explorer semantics).
+            return Controls.IsNullOverlay(overlay) ? skin : skin.WithContextMenu(overlay, _menu);
+        }
+
+        /// <summary>The "Show all N tracks" cell: not selectable (the list's IsItemSelectable), opens the album on a
+        /// click, Enter or Space.</summary>
+        Element ShowAll(int total) => new BoxEl
+        {
+            Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
+            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Cursor = CursorId.Hand, Role = AutomationRole.Button,
+            Corners = Radii.ControlAll, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+            Focusable = false, FocusVisualMargin = Design.FocusInsetRow,
+            OnPointerReleased = _showAllRelease ??= _ => _o.GoAlbum(),
+            OnKeyDown = _showAllKey ??= args =>
+            {
+                if (args.KeyCode == Keys.Enter || (args.KeyCode == Keys.Space && !args.IsRepeat)) { _o.GoAlbum(); args.Handled = true; }
+            },
+            OnFocusChanged = _scope.OnFocusChanged,
+            Children = [Ui.Caption(Strings.Detail.Discography.ShowAllTracks(total)) with { Weight = 600, Color = Tok.AccentTextPrimary }],
+        };
     }
 
     sealed record DrawerRowProps(Album Album, int Index);

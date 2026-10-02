@@ -39,6 +39,8 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 | Ctrl+0 / Ctrl+Numpad0 | Reset zoom | `ZoomResetChord` / `ZoomResetNumpadChord` → `ZoomStep(0)` |
 | Ctrl+mouse-wheel | Zoom in/out | `InputHooks.ZoomWheel` (shell mount effect → `ZoomStep(±1)`). Mouse wheel only — the platform consumes Ctrl+touchpad scroll as pinch synthesis before the dispatcher. |
 | Space | Play/pause | `column.OnKeyDown` → `OnShellKey` (not an accelerator) |
+| Left / Right | Seek back / forward: 5 s, accelerating while held (15 s after 0.5 s, 30 s after 1.5 s) | Player bar focused, or the full-screen stage: `PlayerKey` → `Shell.BarKeyStep` → `KeyboardScrubLadder` |
+| Shift+Left / Shift+Right | Fine seek: 1 s steps, no acceleration | same path, `PlayerKeyIntent.SeekBackFine` / `SeekForwardFine` |
 | Mouse XButton1/2 | — | **Not delivered.** `InputDispatcher` handles buttons 0/1/2 only. |
 
 ### Space semantics
@@ -46,6 +48,21 @@ A `>` prefix (VS Code) restricts the scan to commands. Typing without `>` also a
 `InputDispatcher.OnKey` runs focused routing **before** accelerators, and accelerators only match Ctrl/Alt or F1–F12. Bare Space therefore never fires a `KeyAccelerator`. The shell listens on the chrome column's `OnKeyDown` so Space bubbles there only after the focused node declined it.
 
 Buttons consume Space as activation (dispatcher arms click, no bubble). Editors (`AutomationRole.Text` or `InteractionInfo.CharBit`) are skipped in `FocusedIsTextEditor` so a typed space is not also play/pause (`EditableText` inserts Space via `OnChar`, not `OnKeyDown`). Trust that contract; do not add a shell-level Space accelerator.
+
+### Seek keys: the keyboard scrub ladder
+
+Left/Right on the focused player bar (and the full-screen stage, which calls the same `Shell.BarKeyStep`) drive `KeyboardScrubLadder` (`src/apps/Wavee/Playback/Playback.Scrub.cs`, pure, unit-tested in `KeyboardScrubLadderTests`). The engine delivers no key-up, so the ladder steps a **visual** target and commits once the key goes quiet:
+
+| Rule | Value (`KeyboardScrubLadder` constant) |
+|---|---|
+| First step and the first 0.5 s held | 5 s (`StepMs`) |
+| Held for 0.5 s or more | 15 s per step (`MidMs`, after `MidAfterMs = 500`) |
+| Held for 1.5 s or more | 30 s per step (`FastMs`, after `FastAfterMs = 1500`) |
+| Shift | 1 s per step (`FineMs`), never accelerates |
+| Step rate | at most one step per 150 ms (`MinStepIntervalMs`): the OS key repeat runs at about 30 Hz, far too fast to step per repeat; a press inside the interval only keeps the hold and the grace alive |
+| Commit | one seek 250 ms after the last press (`GraceMs`), from the bar's 50 ms tick (`BarKeyLadderTick`, mounted by every seek rail) |
+
+A press after more than 250 ms of silence starts a fresh ladder from the current position, so the acceleration clock restarts. Until the commit, every rail and time label paints the target (`s_keyPreviewMs`), and it stays painted until the seek lands so the thumb never steps back. The target is clamped to the seekable span: `[0, duration]`, or a live podcast's DVR window (`SeekRail.KeySpace`); with no seekable span a press is a no-op and never commits a seek to 0. A track change drops a live ladder. The podcast ±10 s step buttons are separate (`Shell.BarSeekBy`, one seek each, no ladder); `PlayerSeekAccumulator` is gone.
 
 ### Ctrl+F / in-page filter
 
