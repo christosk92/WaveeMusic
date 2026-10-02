@@ -196,6 +196,9 @@ $pubArgs = @($csproj, '-c', $Configuration, '-r', $rid, '-o', $pubDir, '--nologo
 if ($useAot) { $pubArgs += '/p:IlcUseEnvironmentalTools=true' }
 if ($PublicOnly) { $pubArgs += '-p:WaveeSkipPrivateSources=true' }
 if (-not $useAot) { $pubArgs += @('-p:PublishAot=false', '--self-contained', 'true') }
+# Every symbol artifact must be written by THIS publish: a stale obj\ map from an older build (another platform
+# layout, an old tree) once shipped in the x64 symbols zip and failed the Store's PlayPlay proof.
+$publishStartUtc = [DateTime]::UtcNow.AddSeconds(-5)
 & dotnet publish @pubArgs
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)." }
 if (-not (Test-Path (Join-Path $pubDir 'Wavee.exe'))) { throw "Wavee.exe missing from $pubDir" }
@@ -217,21 +220,26 @@ Remove-Item $symDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $symZip -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $symDir | Out-Null
 $objNative = Join-Path $root "src\apps\Wavee\obj\$Configuration\net10.0\$rid\native"
+# A RID publish may also lay out obj\<platform>\<cfg>\... (Platform flows from the RID); both are candidates.
+$objNativePlat = Join-Path $root "src\apps\Wavee\obj\$Arch\$Configuration\net10.0\$rid\native"
 $binNative = Join-Path $root "src\apps\Wavee\bin\$Configuration\net10.0\$rid\native"
 
 function Find-WaveeBuildArtifact {
-  <# The expected locations first; otherwise the newest file of that name anywhere under obj\ and bin\ whose path
-     names this RID (a target-path override in a future SDK must not silently drop the symbols). $null if none. #>
+  <# The newest file of that name written by THIS publish: the expected locations, then anywhere under obj\ and bin\
+     whose path names this RID (a target-path override in a future SDK must not silently drop the symbols). A file
+     older than the publish is never taken - an expected path can hold a stale artifact from another layout or an
+     older tree. $null if none. #>
   param([string]$Name, [string[]]$Expected)
-  foreach ($p in $Expected) { if ($p -and (Test-Path $p)) { return (Get-Item $p) } }
   $hits = @()
+  foreach ($p in $Expected) { if ($p -and (Test-Path $p)) { $hits += Get-Item $p } }
   foreach ($treeRoot in @((Join-Path $root 'src\apps\Wavee\obj'), (Join-Path $root 'src\apps\Wavee\bin'))) {
     if (-not (Test-Path $treeRoot)) { continue }
     $hits += @(Get-ChildItem $treeRoot -Recurse -File -Filter $Name -ErrorAction SilentlyContinue |
                Where-Object { $_.FullName -like "*\$rid\*" })
   }
-  if ($hits.Count -eq 0) { return $null }
-  $hits | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+  $fresh = @($hits | Where-Object { $_.LastWriteTimeUtc -ge $publishStartUtc })
+  if ($fresh.Count -eq 0) { return $null }
+  $fresh | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
 }
 
 $pdb = Find-WaveeBuildArtifact 'Wavee.pdb' @((Join-Path $pubDir 'Wavee.pdb'), (Join-Path $binNative 'Wavee.pdb'))
@@ -256,8 +264,8 @@ Get-ChildItem $pubDir -Recurse -Include *.pdb -ErrorAction SilentlyContinue | Fo
 
 $map = $null
 if ($useAot) {
-  $map = Find-WaveeBuildArtifact 'Wavee.map.xml' @((Join-Path $objNative 'Wavee.map.xml'), (Join-Path $pubDir 'Wavee.map.xml'))
-  if ($null -eq $map) { $map = Find-WaveeBuildArtifact 'Wavee.map' @((Join-Path $objNative 'Wavee.map'), (Join-Path $pubDir 'Wavee.map')) }
+  $map = Find-WaveeBuildArtifact 'Wavee.map.xml' @((Join-Path $objNativePlat 'Wavee.map.xml'), (Join-Path $objNative 'Wavee.map.xml'), (Join-Path $pubDir 'Wavee.map.xml'))
+  if ($null -eq $map) { $map = Find-WaveeBuildArtifact 'Wavee.map' @((Join-Path $objNativePlat 'Wavee.map'), (Join-Path $objNative 'Wavee.map'), (Join-Path $pubDir 'Wavee.map')) }
   if ($null -eq $map) { Write-Warning "IlcGenerateMapFile=true but no Wavee.map.xml was found under $objNative (or anywhere under obj\bin for $rid); the zip ships without the map" }
   else {
     if ($map.DirectoryName -eq (Get-Item $pubDir).FullName) { Move-Item $map.FullName (Join-Path $symDir $map.Name) -Force }
