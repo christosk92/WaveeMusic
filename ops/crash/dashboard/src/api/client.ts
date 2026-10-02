@@ -1,6 +1,6 @@
-/** Base URL for the Worker (`ops/crash/worker`); empty means same-origin (Pages + Worker on one
- *  domain, or a dev proxy). Set via `VITE_API_BASE` at build time. */
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+// The Worker (`ops/crash/worker`) serves this dashboard as its static assets on the same hostname
+// (`crash.cproducts.dev`, docs/plans/wavee/crash-hosting-implementation.md), so every request is a relative,
+// same-origin `/v1/...` path — no base URL, no CORS.
 
 export class ApiError extends Error {
   constructor(
@@ -12,12 +12,12 @@ export class ApiError extends Error {
   }
 }
 
-/** Fetches JSON from the crash Worker with the Cloudflare Access cookie attached
- *  (`credentials: "include"` — plan §4). Throws `ApiError` on a non-2xx response. */
+/** Fetches JSON from the crash Worker. Cloudflare Access sits in front of the hostname; a same-origin
+ *  `fetch` sends its `CF_Authorization` cookie by default, and the Worker verifies that JWT itself.
+ *  Throws `ApiError` on a non-2xx response. */
 export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const response = await fetch(path, {
     ...init,
-    credentials: "include",
     headers: {
       Accept: "application/json",
       ...(init?.body ? { "Content-Type": "application/json" } : {}),

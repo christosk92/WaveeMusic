@@ -3,13 +3,26 @@ main = "src/index.ts"
 compatibility_date = "2025-09-01"
 compatibility_flags = ["nodejs_compat"]
 
+# Served ONLY on crash.cproducts.dev (zone on Cloudflare — README step 0). workers.dev and preview URLs are off so
+# no hostname reaches this Worker without Cloudflare Access in front of it.
+workers_dev = false
+preview_urls = false
+routes = [{ pattern = "crash.cproducts.dev", custom_domain = true }]
+
+# The dashboard (ops/crash/dashboard — `npm run deploy` builds it first) on the same hostname. Cloudflare serves
+# assets directly (behind Access); the Worker runs only for /v1/*. Unknown paths fall back to index.html (SPA routes).
+[assets]
+directory = "../dashboard/dist"
+not_found_handling = "single-page-application"
+run_worker_first = ["/v1/*"]
+
 # ── D1 ──────────────────────────────────────────────────────────────────────
 # Create once: `wrangler d1 create wavee-crash`, then paste the printed
 # database_id below. Apply schema.sql with `wrangler d1 execute` (see README).
 [[d1_databases]]
 binding = "DB"
 database_name = "wavee-crash"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "1a00d669-661e-4fb2-b266-1db1ae1c2e32"
 
 # ── R2 ──────────────────────────────────────────────────────────────────────
 # Create once: `wrangler r2 bucket create wavee-crash`. Lifecycle rule (90-day
@@ -23,16 +36,17 @@ bucket_name = "wavee-crash"
 # into Cloudflare's own rate-limiting infrastructure — never written to our D1
 # rows, R2 objects or logs; see src/index.ts `rateLimitKey`).
 [[ratelimits]]
-binding = "RATE"
+name = "RATE"
 namespace_id = "1001"
 simple = { limit = 30, period = 60 }
 
 # ── Vars ──────────────────────────────────────────────────────────────────
-# INGEST_KEY: set as a secret, NOT a plaintext var — `wrangler secret put INGEST_KEY`.
-# The line below is a placeholder so `wrangler dev --local` has something to read;
-# it is overridden by the real secret on deploy. Never commit a real key here.
+# INGEST_KEY is a secret only (`wrangler secret put INGEST_KEY`), never a [vars] entry: a var and a secret share one
+# binding namespace, so a committed placeholder here could become the live ingest key on deploy. `wrangler dev`
+# reads it from `.dev.vars` (gitignored). Unset → every ingest/erase call is 401 (fails closed).
 [vars]
-INGEST_KEY = "dev-only-placeholder-set-a-real-secret-before-deploy"
-DASHBOARD_ORIGIN = "https://wavee-crash-dashboard.pages.dev"
-
-# Local dev overrides (optional): `wrangler dev --local --var DASHBOARD_ORIGIN:http://localhost:5173`
+# Cloudflare Access (README step 6). Public values, not secrets. Placeholders fail closed: every Access-gated route
+# answers 401 until both are real.
+ACCESS_TEAM_DOMAIN = "https://cproducts.cloudflareaccess.com"
+# AUD tag of the "Wavee crashes" application (the whole host; the ingest Bypass app has its own, never used here).
+ACCESS_AUD = "57c515f6bc8ab398e21bbaa7ee8ea7b989607fa875f7b808ebfbdd6a28b582a2"

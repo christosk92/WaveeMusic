@@ -1,12 +1,14 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, afterAll, beforeAll, beforeEach, vi } from "vitest";
 import worker from "../src/index.js";
 import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
 import { makeFakeD1, makeFakeR2, makeFakeRate, buildSymmap } from "./fixtures.js";
+import { AUD, TEAM, accessHeader, installAccessFetchStub } from "./access.js";
 import type { Env, Summary } from "../src/types.js";
 
-const BASE = "https://crash.wavee.app";
-const ACCESS = { "Cf-Access-Jwt-Assertion": "opaque-jwt" };
+const BASE = "https://crash.cproducts.dev";
+/** A real, verifiable Access JWT header — signed in `beforeAll`. */
+let ACCESS: Record<string, string>;
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -14,7 +16,8 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     BUCKET: makeFakeR2(),
     RATE: makeFakeRate(true),
     INGEST_KEY: "test-ingest-key",
-    DASHBOARD_ORIGIN: "https://dash.example",
+    ACCESS_TEAM_DOMAIN: TEAM,
+    ACCESS_AUD: AUD,
     ...overrides,
   };
 }
@@ -69,6 +72,15 @@ async function ingest(env: Env, summary: Summary): Promise<Response> {
 function get(path: string, env: Env, headers: Record<string, string> = ACCESS): Promise<Response> {
   return worker.fetch(new Request(`${BASE}${path}`, { headers }), env);
 }
+
+beforeAll(async () => {
+  installAccessFetchStub();
+  ACCESS = await accessHeader();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   clearSymmapCacheForTests();

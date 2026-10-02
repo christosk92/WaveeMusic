@@ -48,9 +48,9 @@
                                 │
    ConsentPolicy(off|ask|auto) → Crash.Scrubber → Crash.Bundle.Pack (multipart) → outbox → Crash.Uploader
                                 │
-   POST https://crash.wavee.app/v1/report  (Cloudflare Worker) → R2 objects + D1 rows, symbolicated at ingest
+   POST https://crash.cproducts.dev/v1/report  (Cloudflare Worker) → R2 objects + D1 rows, symbolicated at ingest
                                 │
-   Dashboard (Fluent UI v9, Cloudflare Pages, behind Cloudflare Access)
+   Dashboard (Fluent UI v9, the same Worker's static assets on crash.cproducts.dev, behind Cloudflare Access)
 ```
 
 Five crash classes feed the handler (`Crash.Kind`): `Managed` (any thread's unhandled exception),
@@ -211,10 +211,12 @@ The Worker (`ops/crash/worker`), its D1 schema and R2 layout, and the deploy run
 the service. Route table, request/response shapes, and the `.symmap` binary format the Worker's
 `src/symbolicate.ts` parses are also documented there and in plan §I; do not duplicate them here.
 
-The dashboard (`ops/crash/dashboard`, Vite + React + `@fluentui/react-components` v9, deployed with
-`wrangler pages deploy`, sat behind the same Cloudflare Access policy as the Worker's `GET`/`PATCH`
-routes) is a separate app with its own build/deploy steps — see its own README once WP-11 lands. It reads
-the same `/v1/*` API this guide documents: Overview (`GET /v1/stats` — totals, per-day crash/hang/closed,
+The dashboard (`ops/crash/dashboard`, Vite + React + `@fluentui/react-components` v9) is a separate app
+but not a separate deploy: the Worker's own deploy (`npm --prefix ops/crash/worker run deploy`) builds it
+and uploads its `dist/` as the Worker's static assets, served on the same `crash.cproducts.dev` hostname
+behind the same Cloudflare Access application as the `GET`/`PATCH` routes
+(`docs/plans/wavee/crash-hosting-implementation.md`) — see `ops/crash/dashboard/README.md`. It reads
+the same `/v1/*` API this guide documents, same-origin: Overview (`GET /v1/stats` — totals, per-day crash/hang/closed,
 per-kind counts), Issues (`GET /v1/issues`, grouped by fingerprint) → Issue detail (`GET /v1/issues/:fp`,
 which also carries the latest report's resolved `frames`, the last 50 `occurrences`, a 14-day
 `sparkline14d`, and `breakdowns` by version/arch/GPU tier), Reports (`GET /v1/reports`, a keyset-paginated

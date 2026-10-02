@@ -191,7 +191,8 @@ Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build with
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)
 · `-NoNotes` (requires `-Force`; a degraded release with a placeholder body) · `-InstallFromFeed` (phase 11 installs
 the host-arch package from the published feed) · `-Force` (relaxes the branch / HEAD / staging checks) ·
-`-CrashIngestUrl <url> -CrashIngestKey <key>` (stamped into the build exactly like the update feed's base URL, and
+`-CrashIngestUrl https://crash.cproducts.dev -CrashIngestKey <key>` (the crash Worker's one hostname — ingest, API
+and dashboard; `ops/crash/README.md` step 5 — stamped into the build exactly like the update feed's base URL, and
 what the `symbols` phase uploads maps for; a `stable` release with neither set only `Warn`s — §5b).
 
 ---

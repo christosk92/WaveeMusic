@@ -54,7 +54,10 @@ export interface Env {
   BUCKET: R2Bucket;
   RATE: RateLimiter;
   INGEST_KEY: string;
-  DASHBOARD_ORIGIN: string;
+  /** `https://<team>.cloudflareaccess.com` — wrangler.toml [vars]; the placeholder fails closed (`access.ts`). */
+  ACCESS_TEAM_DOMAIN: string;
+  /** The "Wavee crashes" Access application's AUD tag — wrangler.toml [vars]; the placeholder fails closed. */
+  ACCESS_AUD: string;
 }
 
 /** The subset of the Cloudflare Rate Limiting binding this worker uses. */

@@ -89,15 +89,13 @@ const useStyles = makeStyles({
 // `AppReportDetail` (src/api/types.ts) is only `{ report, thisInstall }` — it carries no report-text/
 // log-tail body. The Worker exposes those as plain-text parts at `GET /v1/reports/:id/:part` (README's
 // route table: `summary|report|tail|dump`), so in real mode this hook fetches that endpoint directly
-// with the platform `fetch` (not `api/client.ts`'s `fetchJson`, which assumes JSON). In mock mode there
-// is no server to hit, so it renders a short deterministic transcript built from the same `AppReport`
-// fields the rest of this page already shows — never inventing data not present on the type.
+// with the platform `fetch` (not `api/client.ts`'s `fetchJson`, which assumes JSON) — a relative,
+// same-origin path: the Worker serves this dashboard on its own hostname, and the browser sends the
+// Cloudflare Access cookie by default. In mock mode there is no server to hit, so it renders a short
+// deterministic transcript built from the same `AppReport` fields the rest of this page already shows —
+// never inventing data not present on the type.
 
 export type LogPart = "report" | "tail";
-
-function apiBase(): string {
-  return (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
-}
 
 function mockPartText(part: LogPart, report: AppReport): string {
   if (part === "report") {
@@ -132,9 +130,7 @@ export function useReportPartText(id: string | undefined, part: LogPart, report:
     queryKey: ["reportPart", id, part],
     queryFn: async () => {
       if (isMockEnabled()) return report ? mockPartText(part, report) : "";
-      const response = await fetch(`${apiBase()}/v1/reports/${encodeURIComponent(id!)}/${part}`, {
-        credentials: "include",
-      });
+      const response = await fetch(`/v1/reports/${encodeURIComponent(id!)}/${part}`);
       if (!response.ok) throw new Error(`Could not load this log (HTTP ${response.status})`);
       return response.text();
     },
@@ -165,7 +161,7 @@ export const DownloadBundleButton = forwardRef<HTMLButtonElement, { id: string; 
         </Tooltip>
       );
     }
-    const base = apiBase();
+    // Plain same-origin download links — relative paths are enough.
     const encodedId = encodeURIComponent(id);
     return (
       <Menu>
@@ -176,9 +172,9 @@ export const DownloadBundleButton = forwardRef<HTMLButtonElement, { id: string; 
         </MenuTrigger>
         <MenuPopover>
           <MenuList>
-            <MenuItemLink href={`${base}/v1/reports/${encodedId}/report`}>report.txt</MenuItemLink>
-            <MenuItemLink href={`${base}/v1/reports/${encodedId}/tail`}>log tail</MenuItemLink>
-            {hasDump && <MenuItemLink href={`${base}/v1/reports/${encodedId}/dump`}>Memory dump</MenuItemLink>}
+            <MenuItemLink href={`/v1/reports/${encodedId}/report`}>report.txt</MenuItemLink>
+            <MenuItemLink href={`/v1/reports/${encodedId}/tail`}>log tail</MenuItemLink>
+            {hasDump && <MenuItemLink href={`/v1/reports/${encodedId}/dump`}>Memory dump</MenuItemLink>}
           </MenuList>
         </MenuPopover>
       </Menu>
@@ -426,7 +422,7 @@ export function MemorySnapshotPanel({ report }: { report: AppReport }) {
     );
   }
   const mock = isMockEnabled();
-  const href = `${apiBase()}/v1/reports/${encodeURIComponent(report.id)}/dump`;
+  const href = `/v1/reports/${encodeURIComponent(report.id)}/dump`;
   const downloadButton = mock ? (
     <Tooltip content="Not available in mock mode" relationship="label">
       <Button appearance="secondary" icon={<ArrowDownload24Regular />} disabled>

@@ -212,7 +212,7 @@ export function AppFrame() {
           <AppItem icon={<Pulse24Regular />} as="a" href="/" onClick={go("/")}>
             <span className={styles.appItemBody}>
               <Body1>Wavee crashes</Body1>
-              <Caption1>crash.wavee.app{isMockEnabled() ? " · mock" : ""}</Caption1>
+              <Caption1>crash.cproducts.dev{isMockEnabled() ? " · mock" : ""}</Caption1>
             </span>
           </AppItem>
           <NavSectionHeader>Monitor</NavSectionHeader>

@@ -1,11 +1,12 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, afterAll, beforeAll, beforeEach, vi } from "vitest";
 import worker from "../src/index.js";
 import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
 import { makeFakeD1, makeFakeR2, makeFakeRate } from "./fixtures.js";
+import { AUD, TEAM, accessHeader, installAccessFetchStub } from "./access.js";
 import type { Env, Summary } from "../src/types.js";
 
-const BASE = "https://crash.wavee.app";
+const BASE = "https://crash.cproducts.dev";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -13,7 +14,8 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     BUCKET: makeFakeR2(),
     RATE: makeFakeRate(true),
     INGEST_KEY: "test-ingest-key",
-    DASHBOARD_ORIGIN: "https://dash.example",
+    ACCESS_TEAM_DOMAIN: TEAM,
+    ACCESS_AUD: AUD,
     ...overrides,
   };
 }
@@ -68,6 +70,14 @@ async function ingest(env: Env, summary: Summary): Promise<Response> {
 function deleteInstallRequest(installId: string, headers: Record<string, string>): Request {
   return new Request(`${BASE}/v1/installs/${installId}`, { method: "DELETE", headers });
 }
+
+beforeAll(() => {
+  installAccessFetchStub();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   clearSymmapCacheForTests();
@@ -182,15 +192,12 @@ describe("DELETE /v1/installs/:installId — right to erasure (plan §J)", () =>
     expect(await store.getIssue(fingerprint)).toBeNull();
   });
 
-  it("accepts the Access header as an alternative to the ingest key (the dashboard's own delete action)", async () => {
+  it("accepts a verified Access JWT as an alternative to the ingest key (the dashboard's own delete action)", async () => {
     const env = makeEnv();
     const installId = crypto.randomUUID();
     await ingest(env, makeSummary({ installId }));
 
-    const res = await worker.fetch(
-      deleteInstallRequest(installId, { "Cf-Access-Jwt-Assertion": "opaque-jwt" }),
-      env,
-    );
+    const res = await worker.fetch(deleteInstallRequest(installId, await accessHeader()), env);
     expect(res.status).toBe(200);
   });
 

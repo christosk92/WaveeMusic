@@ -1,16 +1,15 @@
 # Wavee crash dashboard
 
 A Fluent 2 (Fluent UI React v9) web app for `ops/crash/worker`'s crash-reporting data — Vite + React +
-TypeScript, deployed to Cloudflare Pages behind the same Cloudflare Access policy as the Worker's `/v1/*`
-GET/PATCH routes (see `ops/crash/README.md`). It is a from-scratch rebuild per
-`docs/plans/wavee/crash-dashboard-implementation.md`: every visual control is a stock
-`@fluentui/react-components`/`@fluentui/react-charts` component, one `<main>` scroll container, four
+TypeScript, served by that Worker itself as static assets on `https://crash.cproducts.dev`, next to its
+`/v1/*` API and behind the same Cloudflare Access application as the `GET`/`PATCH` routes (no Cloudflare
+Pages — `docs/plans/wavee/crash-hosting-implementation.md`, `ops/crash/README.md` steps 5–6). It is a
+from-scratch rebuild per `docs/plans/wavee/crash-dashboard-implementation.md`: every visual control is a
+stock `@fluentui/react-components`/`@fluentui/react-charts` component, one `<main>` scroll container, four
 states (loading/empty/error/ready) on every scene, screenshot-verified in both themes.
 
-Overview, Versions, and Symbols are real pages backed by `src/api/hooks.ts`. Issues, Reports, and their
-detail pages (Issue detail, Report detail) are being built in parallel by other work packages against the
-same shell and data layer (plan §3); until wired into `src/app/router.tsx` they render as the
-`"Coming in the next step"` `EmptyState` placeholder.
+All seven pages are real, routed in `src/app/router.tsx` and backed by `src/api/hooks.ts`: Overview,
+Issues → Issue detail, Reports → Report detail, Versions, Symbols.
 
 ## Scripts
 
@@ -23,10 +22,18 @@ npm run shots     # Playwright (system Edge) screenshot pass — see below
 npm run preview   # serve the production build, port 4173
 ```
 
+## Deploy
+
+There is no deploy of its own. `npm --prefix ops/crash/worker run deploy` runs this project's `npm run
+build` (so `npm install` here first) and then `wrangler deploy`, which uploads `dist/` as the Worker's
+static assets (`[assets]` in `ops/crash/worker/wrangler.toml`: the Worker runs first only for `/v1/*`;
+every other path is an asset, unknown ones fall back to `index.html` for the client-side routes). One
+hostname, one deploy, everything same-origin — no CORS, no API base URL.
+
 ## Mock mode
 
-Real data comes from the Worker (`VITE_API_BASE`, `credentials: "include"` for the Access cookie —
-`src/api/client.ts`). Without a Worker to talk to, set `VITE_MOCK=1` and everything in `src/api/hooks.ts`
+Real data comes from the Worker's same-origin `/v1/*` API (`src/api/client.ts`), which only exists on the
+deployed host — see "Real data" below. Without it, set `VITE_MOCK=1` and everything in `src/api/hooks.ts`
 routes through `src/api/mock.ts`'s generated data instead: 128 reports over the last 30 days across 23
 issues, including the plan's named sample issues (`NullReferenceException · Detail.UI.Hero.Render`
 67/19, a 31s hang on the artist route 9/6, a native access violation in `nvwgf2umx.dll` 3/3, an
@@ -47,11 +54,14 @@ Three more env vars, all overridable by an equivalent `?query=` param for one pa
 `?theme=light|dark` is a similar one-shot override on top of `useTheme()`'s normal
 OS-default-plus-persisted-override behaviour (`src/app/theme.ts`) — it does not touch `localStorage`.
 
-## Running against a real Worker
+## Real data
 
-Unset `VITE_MOCK`, set `VITE_API_BASE` to the Worker's origin (or leave it empty for same-origin), and
-sign in through Cloudflare Access in the same browser session — the dashboard sends
-`credentials: "include"` on every request so the Access cookie rides along.
+Real data is only on the deployed host, `https://crash.cproducts.dev`: Cloudflare Access signs you in,
+and every same-origin `fetch` carries its `CF_Authorization` cookie, whose JWT the Worker verifies itself
+(signature against the team's keys, `aud`, `iss`, expiry — `ops/crash/worker/src/access.ts`). Locally,
+use mock mode. `npm run dev` here has no `/v1/*` behind it (no proxy), and a local Worker
+(`npm --prefix ops/crash/worker run dev`, which builds and serves this dashboard the same way) has no
+Access in front of it, so its verification fails closed and every route the dashboard calls answers `401`.
 
 ## Screenshots (`npm run shots`)
 
@@ -67,11 +77,11 @@ required viewports (1280×800, 1920×1080), saving `shots/out/<route>-<state>-<t
 
 | Env var | Read by | Effect |
 |---|---|---|
-| `VITE_API_BASE` | `src/api/client.ts` | Base URL prefixed onto every `/v1/*` request; empty means same-origin (Pages + Worker on one domain, or a dev proxy). |
 | `VITE_MOCK`, `VITE_MOCK_STATE`, `VITE_MOCK_DELAY` | `src/api/mock.ts` | See "Mock mode" above. |
 
-There is no other runtime configuration — the Cloudflare Access cookie is carried automatically via
-`fetch(..., { credentials: "include" })`; the dashboard itself never handles credentials.
+There is no other configuration — no API base URL: every request is a relative, same-origin `/v1/...`
+path, so the browser sends the Cloudflare Access cookie by default; the dashboard itself never handles
+credentials.
 
 ## The shell contract
 
@@ -137,7 +147,10 @@ src/
   pages/Overview/       index.tsx (data + layout), parts.tsx (stat tiles, charts, grid columns, tables)
   pages/Versions/       index.tsx — one Table row per semver+quad+arch, per-kind counts + a total
   pages/Symbols/        index.tsx — one Table row per quad+arch, upload status/debug id/entries/uploaded
-  pages/{Issues,IssueDetail,Reports,ReportDetail}/  placeholders in router.tsx until their work package lands
+  pages/Issues/         index.tsx — filterable multiselect DataGrid over useIssues, parts.tsx
+  pages/IssueDetail/    index.tsx — stack, occurrences, environment breakdowns, 14-day trend, parts.tsx
+  pages/Reports/        index.tsx — filterable, keyset-paginated DataGrid over GET /v1/reports, parts.tsx
+  pages/ReportDetail/   index.tsx — facts, report.txt/log-tail viewer, memory snapshot, install erasure, parts.tsx
   lib/                  format.ts, colors.ts
   test/setup.ts         jsdom polyfills (ResizeObserver, canvas, matchMedia, NodeFilter) for vitest
 shots/take.mjs           Playwright screenshot script (output in shots/out/, gitignored)

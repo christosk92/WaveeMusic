@@ -9,15 +9,19 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit --project tsconfig.test.json",
-    "dev": "npx wrangler@latest dev --local",
-    "deploy": "npx wrangler@latest deploy"
+    "dev": "npm --prefix ../dashboard run build && wrangler dev --local",
+    "deploy": "npm --prefix ../dashboard run build && wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250924.0",
+    "@cloudflare/workers-types": "^5.20261001.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^26.6.2",
     "better-sqlite3": "^11.3.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1"
+    "vitest": "^2.1.1",
+    "wrangler": "^4.146.0"
+  },
+  "dependencies": {
+    "jose": "^6.2.12"
   }
 }

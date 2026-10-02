@@ -1,4 +1,4 @@
-import { corsHeaders, handleOptions } from "./cors.js";
+import { hasValidAccess } from "./access.js";
 import { computeFingerprint } from "./fingerprint.js";
 import { symbolicate } from "./symbolicate.js";
 import { D1Store, deriveTitle, type Store } from "./store.js";
@@ -15,26 +15,13 @@ const PART_FILES: Record<string, string> = {
   dump: "minidump.dmp",
 };
 
-function json(body: unknown, status: number, request: Request, env: Env): Response {
+/** No CORS headers: the dashboard is served from this Worker's own hostname, so every caller is same-origin
+ *  (crash-hosting-implementation.md). */
+function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders(request, env) },
+    headers: { "Content-Type": "application/json" },
   });
-}
-
-/**
- * Cloudflare Access sits in front of this worker's route (zone-level, configured in the dashboard —
- * see ops/crash/README.md "Configure Access"). We do not verify the JWT ourselves: Access already
- * refused the request before it reached the worker if the visitor wasn't authenticated, and it always
- * attaches this header on a request it let through. Checking for the header's mere presence is a cheap
- * defence-in-depth if the worker were ever exposed on a route Access doesn't cover — it is NOT a
- * substitute for verifying the JWT's signature/audience.
- * TODO(#12 follow-up): verify the `Cf-Access-Jwt-Assertion` JWT signature against the team's public keys
- * if this worker ever needs to run on a route Access does not gate — see
- * https://developers.cloudflare.com/cloudflare-one/identity/authorization-cookie/validating-json/
- */
-function requireAccess(request: Request): boolean {
-  return request.headers.get("Cf-Access-Jwt-Assertion") !== null;
 }
 
 function hasValidIngestKey(request: Request, env: Env): boolean {
@@ -86,24 +73,24 @@ function utf8Length(s: string): number {
 
 export async function handleReport(request: Request, env: Env, store: Store): Promise<Response> {
   if (!hasValidIngestKey(request, env)) {
-    return json({ error: "unauthorized" }, 401, request, env);
+    return json({ error: "unauthorized" }, 401);
   }
 
   const rl = await env.RATE.limit({ key: rateLimitKey(request) });
   if (!rl.success) {
-    return json({ error: "rate limited" }, 429, request, env);
+    return json({ error: "rate limited" }, 429);
   }
 
   const contentLength = request.headers.get("content-length");
   if (contentLength && Number(contentLength) > CAP_BYTES) {
-    return json({ error: "payload too large" }, 413, request, env);
+    return json({ error: "payload too large" }, 413);
   }
 
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
-    return json({ error: "malformed multipart body" }, 400, request, env);
+    return json({ error: "malformed multipart body" }, 400);
   }
 
   const summaryText = await partToText(formEntry(form, "summary"));
@@ -114,24 +101,24 @@ export async function handleReport(request: Request, env: Env, store: Store): Pr
     dumpEntry !== null && typeof dumpEntry !== "string" ? await dumpEntry.arrayBuffer() : null;
 
   if (summaryText === null || reportText === null || tailText === null) {
-    return json({ error: "missing required part (summary, report, tail)" }, 400, request, env);
+    return json({ error: "missing required part (summary, report, tail)" }, 400);
   }
 
   const totalBytes =
     utf8Length(summaryText) + utf8Length(reportText) + utf8Length(tailText) + (dumpBuffer?.byteLength ?? 0);
   if (totalBytes > CAP_BYTES) {
-    return json({ error: "payload too large" }, 413, request, env);
+    return json({ error: "payload too large" }, 413);
   }
 
   let summaryJson: unknown;
   try {
     summaryJson = JSON.parse(summaryText);
   } catch {
-    return json({ error: "summary is not valid JSON" }, 400, request, env);
+    return json({ error: "summary is not valid JSON" }, 400);
   }
   const validated = validateSummary(summaryJson);
   if (!validated.ok) {
-    return json({ error: validated.error }, 400, request, env);
+    return json({ error: validated.error }, 400);
   }
   const summary = validated.value;
 
@@ -140,11 +127,11 @@ export async function handleReport(request: Request, env: Env, store: Store): Pr
   // (drop the outbox item); reporting itself isn't disabled, `Crash.Uploader.DeleteRemote` rotates the
   // install id afterwards so the *next* report, if any, arrives under a fresh, unlinkable id.
   if (await store.isInstallDeleted(summary.installId)) {
-    return json({ error: "install id deleted" }, 410, request, env);
+    return json({ error: "install id deleted" }, 410);
   }
 
   if (await store.reportExists(summary.reportId)) {
-    return json({ error: "duplicate report id" }, 409, request, env);
+    return json({ error: "duplicate report id" }, 409);
   }
 
   const prefix = `reports/${summary.quad}/${summary.reportId}/`;
@@ -179,21 +166,21 @@ export async function handleReport(request: Request, env: Env, store: Store): Pr
   });
   await store.upsertIssueFromReports(fingerprint, deriveTitle(summary, frames), summary.kind);
 
-  return json({ id: summary.reportId }, 201, request, env);
+  return json({ id: summary.reportId }, 201);
 }
 
-async function handleListIssues(request: Request, url: URL, env: Env, store: Store): Promise<Response> {
+async function handleListIssues(url: URL, store: Store): Promise<Response> {
   const issues = await store.listIssues({
     since: url.searchParams.get("since") ?? undefined,
     version: url.searchParams.get("version") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
   });
-  return json({ issues }, 200, request, env);
+  return json({ issues }, 200);
 }
 
-async function handleIssueDetail(request: Request, env: Env, store: Store, fingerprint: string): Promise<Response> {
+async function handleIssueDetail(store: Store, fingerprint: string): Promise<Response> {
   const issue = await store.getIssue(fingerprint);
-  if (!issue) return json({ error: "not found" }, 404, request, env);
+  if (!issue) return json({ error: "not found" }, 404);
 
   // crash-dashboard-implementation.md §4: the issue detail page's Stack/Occurrences/Environment tabs
   // and the aside cards (sparkline, breakdowns) all come off this one call.
@@ -204,43 +191,43 @@ async function handleIssueDetail(request: Request, env: Env, store: Store, finge
     store.getSparkline(fingerprint, daysAgoIso(14)),
     store.getBreakdowns(fingerprint),
   ]);
-  return json({ issue, reports, frames, occurrences, sparkline14d, breakdowns }, 200, request, env);
+  return json({ issue, reports, frames, occurrences, sparkline14d, breakdowns }, 200);
 }
 
-async function handlePatchIssue(request: Request, env: Env, store: Store, fingerprint: string): Promise<Response> {
+async function handlePatchIssue(request: Request, store: Store, fingerprint: string): Promise<Response> {
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return json({ error: "malformed JSON body" }, 400, request, env);
+    return json({ error: "malformed JSON body" }, 400);
   }
   const o = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
   const status = typeof o.status === "string" ? o.status : undefined;
   const githubIssue = typeof o.github_issue === "number" ? o.github_issue : undefined;
   const ok = await store.patchIssue(fingerprint, { status, githubIssue });
-  if (!ok) return json({ error: "not found" }, 404, request, env);
+  if (!ok) return json({ error: "not found" }, 404);
   const issue = await store.getIssue(fingerprint);
-  return json({ issue }, 200, request, env);
+  return json({ issue }, 200);
 }
 
-async function handleReportDetail(request: Request, env: Env, store: Store, id: string): Promise<Response> {
+async function handleReportDetail(store: Store, id: string): Promise<Response> {
   const report = await store.getReport(id);
-  if (!report) return json({ error: "not found" }, 404, request, env);
+  if (!report) return json({ error: "not found" }, 404);
   // crash-dashboard-implementation.md §4: Report detail's "This install" card.
   const thisInstall = await store.getThisInstall(report.install_id, daysAgoIso(30));
-  return json({ report, this_install: thisInstall }, 200, request, env);
+  return json({ report, this_install: thisInstall }, 200);
 }
 
-async function handleReportPart(request: Request, env: Env, store: Store, id: string, part: string): Promise<Response> {
+async function handleReportPart(env: Env, store: Store, id: string, part: string): Promise<Response> {
   const fileName = PART_FILES[part];
-  if (!fileName) return json({ error: "unknown part" }, 404, request, env);
+  if (!fileName) return json({ error: "unknown part" }, 404);
 
   const report = await store.getReport(id);
-  if (!report) return json({ error: "not found" }, 404, request, env);
+  if (!report) return json({ error: "not found" }, 404);
 
   const objectKey = `reports/${report.quad}/${id}/${fileName}`;
   const obj = await env.BUCKET.get(objectKey);
-  if (!obj) return json({ error: "not found" }, 404, request, env);
+  if (!obj) return json({ error: "not found" }, 404);
 
   if (part === "dump") {
     return new Response(obj.body, {
@@ -248,32 +235,31 @@ async function handleReportPart(request: Request, env: Env, store: Store, id: st
       headers: {
         "Content-Type": "application/octet-stream",
         "Content-Disposition": `attachment; filename="${id}-minidump.dmp"`,
-        ...corsHeaders(request, env),
       },
     });
   }
 
   const contentType = part === "summary" ? "application/json" : "text/plain; charset=utf-8";
   const text = await obj.text();
-  return new Response(text, { status: 200, headers: { "Content-Type": contentType, ...corsHeaders(request, env) } });
+  return new Response(text, { status: 200, headers: { "Content-Type": contentType } });
 }
 
-async function handleVersions(request: Request, env: Env, store: Store): Promise<Response> {
+async function handleVersions(store: Store): Promise<Response> {
   const versions = await store.listVersions();
-  return json({ versions }, 200, request, env);
+  return json({ versions }, 200);
 }
 
 /** `GET /v1/stats?since=<iso|days>` — the Overview page's stat cards + charts. */
-async function handleStats(request: Request, url: URL, env: Env, store: Store): Promise<Response> {
+async function handleStats(url: URL, store: Store): Promise<Response> {
   const since = resolveSince(url.searchParams.get("since"), 30);
   const stats = await store.getStats(since);
-  return json(stats, 200, request, env);
+  return json(stats, 200);
 }
 
 /** `GET /v1/reports?since=&kind=&quad=&q=&limit=&cursor=` — the Reports page's paged grid. `q` matches
  *  a report id or install id prefix. Keyset-paginated on `(received_at, id)` — see `store.ts`'s cursor
  *  helpers — rather than `OFFSET`, so a page doesn't shift under a caller as new reports arrive. */
-async function handleReportsList(request: Request, url: URL, env: Env, store: Store): Promise<Response> {
+async function handleReportsList(url: URL, store: Store): Promise<Response> {
   const page = await store.listReportsPage({
     since: url.searchParams.get("since") ?? undefined,
     kind: url.searchParams.get("kind") ?? undefined,
@@ -282,14 +268,14 @@ async function handleReportsList(request: Request, url: URL, env: Env, store: St
     limit: clampLimit(url.searchParams.get("limit"), 50, 200),
     cursor: url.searchParams.get("cursor") ?? undefined,
   });
-  return json({ reports: page.rows, nextCursor: page.nextCursor }, 200, request, env);
+  return json({ reports: page.rows, nextCursor: page.nextCursor }, 200);
 }
 
 /** `GET /v1/symbols` — the Symbols page: every `.symmap` the Worker has actually resolved a report
  *  against (see `schema.sql`'s note on why `uploaded_at` here means "first seen", not "uploaded"). */
-async function handleSymbolsList(request: Request, env: Env, store: Store): Promise<Response> {
+async function handleSymbolsList(store: Store): Promise<Response> {
   const symbols = await store.listSymbols();
-  return json({ symbols }, 200, request, env);
+  return json({ symbols }, 200);
 }
 
 const R2_PART_FILES = ["summary.json", "report.txt", "log-tail.txt", "minidump.dmp"];
@@ -297,22 +283,24 @@ const R2_PART_FILES = ["summary.json", "report.txt", "log-tail.txt", "minidump.d
 /**
  * `DELETE /v1/installs/:installId` — right to erasure (plan §J). Accepted with EITHER the app's own
  * `X-Wavee-Ingest` key (the in-product "Delete my data" button, `Crash.Uploader.DeleteRemote`) OR a
- * Cloudflare Access session (the dashboard's Report detail → "Delete this install's data") — unlike
- * every other route, it is not gated by exactly one of those.
+ * verified Cloudflare Access JWT (the dashboard's Report detail → "Delete this install's data"). The path
+ * sits under an Access Bypass so the app can reach it, which means Access neither blocks a forged
+ * `Cf-Access-Jwt-Assertion` here nor injects one — the dashboard's call carries only the
+ * `CF_Authorization` cookie, and `hasValidAccess` verifies whichever is present.
  */
 async function handleDeleteInstall(request: Request, env: Env, store: Store, installId: string): Promise<Response> {
-  if (!hasValidIngestKey(request, env) && !requireAccess(request)) {
-    return json({ error: "unauthorized" }, 401, request, env);
+  if (!hasValidIngestKey(request, env) && !(await hasValidAccess(request, env))) {
+    return json({ error: "unauthorized" }, 401);
   }
 
   const rl = await env.RATE.limit({ key: rateLimitKey(request) });
   if (!rl.success) {
-    return json({ error: "rate limited" }, 429, request, env);
+    return json({ error: "rate limited" }, 429);
   }
 
   const refs = await store.listReportRefsForInstall(installId);
   if (refs.length === 0) {
-    return json({ error: "not found" }, 404, request, env);
+    return json({ error: "not found" }, 404);
   }
 
   for (const ref of refs) {
@@ -329,60 +317,62 @@ async function handleDeleteInstall(request: Request, env: Env, store: Store, ins
 
   await store.tombstoneInstall(installId, new Date().toISOString());
 
-  return json({ deleted: refs.length }, 200, request, env);
+  return json({ deleted: refs.length }, 200);
 }
 
-/** Routes GET/PATCH under Cloudflare Access; `POST /v1/report` is the app's own ingest call and is
- *  authenticated by `X-Wavee-Ingest` instead (see plan §C route table). */
+/** Routes GET/PATCH behind a verified Cloudflare Access JWT (`access.ts`: signature, `aud`, `iss`, expiry — never
+ *  the header's mere presence); `POST /v1/report` is the app's own ingest call and is authenticated by
+ *  `X-Wavee-Ingest` instead (see plan §C route table). */
 async function routeAccessGated(request: Request, url: URL, env: Env, store: Store): Promise<Response> {
-  if (!requireAccess(request)) {
-    return json({ error: "unauthorized" }, 401, request, env);
+  if (!(await hasValidAccess(request, env))) {
+    return json({ error: "unauthorized" }, 401);
   }
 
   if (url.pathname === "/v1/issues" && request.method === "GET") {
-    return handleListIssues(request, url, env, store);
+    return handleListIssues(url, store);
   }
   if (url.pathname === "/v1/versions" && request.method === "GET") {
-    return handleVersions(request, env, store);
+    return handleVersions(store);
   }
   if (url.pathname === "/v1/stats" && request.method === "GET") {
-    return handleStats(request, url, env, store);
+    return handleStats(url, store);
   }
   if (url.pathname === "/v1/reports" && request.method === "GET") {
-    return handleReportsList(request, url, env, store);
+    return handleReportsList(url, store);
   }
   if (url.pathname === "/v1/symbols" && request.method === "GET") {
-    return handleSymbolsList(request, env, store);
+    return handleSymbolsList(store);
   }
   const issueMatch = /^\/v1\/issues\/([^/]+)$/.exec(url.pathname);
   if (issueMatch && request.method === "GET") {
-    return handleIssueDetail(request, env, store, decodeURIComponent(issueMatch[1]!));
+    return handleIssueDetail(store, decodeURIComponent(issueMatch[1]!));
   }
   if (issueMatch && request.method === "PATCH") {
-    return handlePatchIssue(request, env, store, decodeURIComponent(issueMatch[1]!));
+    return handlePatchIssue(request, store, decodeURIComponent(issueMatch[1]!));
   }
   const reportPartMatch = /^\/v1\/reports\/([^/]+)\/([^/]+)$/.exec(url.pathname);
   if (reportPartMatch && request.method === "GET") {
-    return handleReportPart(request, env, store, decodeURIComponent(reportPartMatch[1]!), reportPartMatch[2]!);
+    return handleReportPart(env, store, decodeURIComponent(reportPartMatch[1]!), reportPartMatch[2]!);
   }
   const reportMatch = /^\/v1\/reports\/([^/]+)$/.exec(url.pathname);
   if (reportMatch && request.method === "GET") {
-    return handleReportDetail(request, env, store, decodeURIComponent(reportMatch[1]!));
+    return handleReportDetail(store, decodeURIComponent(reportMatch[1]!));
   }
-  return json({ error: "not found" }, 404, request, env);
+  return json({ error: "not found" }, 404);
 }
 
+/** wrangler.toml's `run_worker_first = ["/v1/*"]` means only `/v1/*` reaches this; every other path is the
+ *  dashboard's static assets, served by Cloudflare directly. */
 export async function route(request: Request, env: Env, store: Store): Promise<Response> {
   const url = new URL(request.url);
 
-  if (request.method === "OPTIONS") return handleOptions(request, env);
   if (url.pathname === "/v1/report" && request.method === "POST") return handleReport(request, env, store);
   const deleteInstallMatch = /^\/v1\/installs\/([^/]+)$/.exec(url.pathname);
   if (deleteInstallMatch && request.method === "DELETE") {
     return handleDeleteInstall(request, env, store, decodeURIComponent(deleteInstallMatch[1]!));
   }
   if (url.pathname.startsWith("/v1/")) return routeAccessGated(request, url, env, store);
-  return json({ error: "not found" }, 404, request, env);
+  return json({ error: "not found" }, 404);
 }
 
 export default {
@@ -392,7 +382,7 @@ export default {
     } catch (err) {
       // Deliberately logs only the error, never the request (which could carry cf-connecting-ip).
       console.error("crash-worker unhandled error", err instanceof Error ? err.message : String(err));
-      return json({ error: "internal error" }, 500, request, env);
+      return json({ error: "internal error" }, 500);
     }
   },
 };

@@ -1,11 +1,14 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, afterAll, beforeAll, beforeEach, vi } from "vitest";
 import worker, { CAP_BYTES } from "../src/index.js";
 import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
 import { makeFakeD1, makeFakeR2, makeFakeRate, buildSymmap } from "./fixtures.js";
+import { AUD, TEAM, accessHeader, installAccessFetchStub } from "./access.js";
 import type { Env, Summary } from "../src/types.js";
 
-const INGEST_URL = "https://crash.wavee.app/v1/report";
+const INGEST_URL = "https://crash.cproducts.dev/v1/report";
+/** A real, verifiable Access JWT header — signed in `beforeAll`. */
+let ACCESS: Record<string, string>;
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -13,7 +16,8 @@ function makeEnv(overrides: Partial<Env> = {}): Env {
     BUCKET: makeFakeR2(),
     RATE: makeFakeRate(true),
     INGEST_KEY: "test-ingest-key",
-    DASHBOARD_ORIGIN: "https://dash.example",
+    ACCESS_TEAM_DOMAIN: TEAM,
+    ACCESS_AUD: AUD,
     ...overrides,
   };
 }
@@ -83,6 +87,15 @@ function buildReportRequest(
     body: form,
   });
 }
+
+beforeAll(async () => {
+  installAccessFetchStub();
+  ACCESS = await accessHeader();
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 
 beforeEach(() => {
   clearSymmapCacheForTests();
@@ -274,15 +287,15 @@ describe("Access-gated GET/PATCH routes", () => {
 
   it("401s GET /v1/issues without Cf-Access-Jwt-Assertion", async () => {
     const env = makeEnv();
-    const res = await worker.fetch(new Request("https://crash.wavee.app/v1/issues"), env);
+    const res = await worker.fetch(new Request("https://crash.cproducts.dev/v1/issues"), env);
     expect(res.status).toBe(401);
   });
 
-  it("lists issues once Access has let the request through", async () => {
+  it("lists issues with a verified Access JWT", async () => {
     const env = makeEnv();
     await seedOneReport(env);
     const res = await worker.fetch(
-      new Request("https://crash.wavee.app/v1/issues", { headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt" } }),
+      new Request("https://crash.cproducts.dev/v1/issues", { headers: ACCESS }),
       env,
     );
     expect(res.status).toBe(200);
@@ -297,8 +310,8 @@ describe("Access-gated GET/PATCH routes", () => {
     const row = await store.getReport(summary.reportId);
 
     const res = await worker.fetch(
-      new Request(`https://crash.wavee.app/v1/issues/${row!.fingerprint}`, {
-        headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt" },
+      new Request(`https://crash.cproducts.dev/v1/issues/${row!.fingerprint}`, {
+        headers: ACCESS,
       }),
       env,
     );
@@ -315,9 +328,9 @@ describe("Access-gated GET/PATCH routes", () => {
     const row = await store.getReport(summary.reportId);
 
     const res = await worker.fetch(
-      new Request(`https://crash.wavee.app/v1/issues/${row!.fingerprint}`, {
+      new Request(`https://crash.cproducts.dev/v1/issues/${row!.fingerprint}`, {
         method: "PATCH",
-        headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt", "Content-Type": "application/json" },
+        headers: { ...ACCESS, "Content-Type": "application/json" },
         body: JSON.stringify({ status: "resolved", github_issue: 42 }),
       }),
       env,
@@ -332,9 +345,9 @@ describe("Access-gated GET/PATCH routes", () => {
   it("PATCH /v1/issues/:fp 404s for an unknown fingerprint", async () => {
     const env = makeEnv();
     const res = await worker.fetch(
-      new Request("https://crash.wavee.app/v1/issues/does-not-exist", {
+      new Request("https://crash.cproducts.dev/v1/issues/does-not-exist", {
         method: "PATCH",
-        headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt", "Content-Type": "application/json" },
+        headers: { ...ACCESS, "Content-Type": "application/json" },
         body: JSON.stringify({ status: "resolved" }),
       }),
       env,
@@ -347,8 +360,8 @@ describe("Access-gated GET/PATCH routes", () => {
     const summary = await seedOneReport(env);
     for (const part of ["summary", "report", "tail"]) {
       const res = await worker.fetch(
-        new Request(`https://crash.wavee.app/v1/reports/${summary.reportId}/${part}`, {
-          headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt" },
+        new Request(`https://crash.cproducts.dev/v1/reports/${summary.reportId}/${part}`, {
+          headers: ACCESS,
         }),
         env,
       );
@@ -364,8 +377,8 @@ describe("Access-gated GET/PATCH routes", () => {
     await worker.fetch(buildReportRequest(env, { summary, dump }), env);
 
     const res = await worker.fetch(
-      new Request(`https://crash.wavee.app/v1/reports/${summary.reportId}/dump`, {
-        headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt" },
+      new Request(`https://crash.cproducts.dev/v1/reports/${summary.reportId}/dump`, {
+        headers: ACCESS,
       }),
       env,
     );
@@ -381,7 +394,7 @@ describe("Access-gated GET/PATCH routes", () => {
     await worker.fetch(buildReportRequest(env, { summary: makeSummary({ quad: "0.3.0.70", arch: "x64", kind: "Hang" }) }), env);
 
     const res = await worker.fetch(
-      new Request("https://crash.wavee.app/v1/versions", { headers: { "Cf-Access-Jwt-Assertion": "opaque-jwt" } }),
+      new Request("https://crash.cproducts.dev/v1/versions", { headers: ACCESS }),
       env,
     );
     expect(res.status).toBe(200);
@@ -390,29 +403,5 @@ describe("Access-gated GET/PATCH routes", () => {
     const hangX64 = body.versions.find((v) => v.quad === "0.3.0.70" && v.arch === "x64" && v.kind === "Hang");
     expect(managedArm64?.count).toBe(2);
     expect(hangX64?.count).toBe(1);
-  });
-});
-
-describe("CORS", () => {
-  it("only reflects the configured DASHBOARD_ORIGIN", async () => {
-    const env = makeEnv();
-    const good = await worker.fetch(
-      new Request("https://crash.wavee.app/v1/issues", {
-        method: "OPTIONS",
-        headers: { Origin: env.DASHBOARD_ORIGIN, "Access-Control-Request-Method": "GET" },
-      }),
-      env,
-    );
-    expect(good.status).toBe(204);
-    expect(good.headers.get("Access-Control-Allow-Origin")).toBe(env.DASHBOARD_ORIGIN);
-
-    const bad = await worker.fetch(
-      new Request("https://crash.wavee.app/v1/issues", {
-        method: "OPTIONS",
-        headers: { Origin: "https://evil.example", "Access-Control-Request-Method": "GET" },
-      }),
-      env,
-    );
-    expect(bad.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 });
