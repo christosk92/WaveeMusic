@@ -349,6 +349,7 @@ public static partial class Spotify
         Audio.ResetKeyLatch();
 
         string account = s.Username.IsEmpty ? "" : Entities.Strings.Resolve(s.Username);
+        Audio.KeyStore.UseAccount(account);   // G-123: saved keys are scoped per account, so G-034 holds across sessions too; pre-opens the file off-thread
         string market = WelcomeMarket(s.Country.IsEmpty ? "" : Entities.Strings.Resolve(s.Country),
                                       Entities.Current?.Key ?? default, account);
         Api.Market = market;

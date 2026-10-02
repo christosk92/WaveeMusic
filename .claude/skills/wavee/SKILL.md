@@ -21,6 +21,11 @@ dotnet build src/apps/Wavee/Wavee.csproj
 dotnet test src/apps/Wavee.Tests/Wavee.Tests.csproj
 ```
 
+A `dotnet run`, a VS publish profile (`bin\...\publish-profiles-*`) or a plain `publish-wavee-aot.ps1` is unstamped:
+Settings › Developer › "Send a test crash report" says *no crash service set up* and the update checker never runs
+(channel `dev`). To exercise either for real, use the verify builds in the `releasing` skill
+(§ Verify builds: `-CrashService`, `-Channel stable -Quad …`).
+
 ## Architecture hub
 
 `docs/plans/wavee/` — and within it **`architecture.md` is the seam canon**: the ports (`ICatalogSource`,

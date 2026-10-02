@@ -104,6 +104,13 @@ public enum FetchEdge : byte
     ArtistCompilations,
     /// <summary>The artist's concert schedule (<c>Edges.ArtistConcerts</c>, the <c>ArtistConcerts</c> query).</summary>
     ArtistConcerts,
+    // a user's profile lists (parent = the USER; profile pages plan). The profile's own playlists and recently played
+    // artists are NOT here: they ride the profile view (UserFields.Social), so an edge bucket of them would send the same
+    // GET the row's route already sends — a side-effect relation "is asked by asking for the row's group", as above.
+    /// <summary>The profile's followers (<c>Edges.ProfileFollowers</c>): one whole, unpaged list, users only.</summary>
+    ProfileFollowers,
+    /// <summary>Who the profile follows (<c>Edges.ProfileFollowing</c>): one whole, unpaged list, artists then users.</summary>
+    ProfileFollowing,
 }
 
 /// <summary>The transport family a route runs on.</summary>
@@ -137,6 +144,9 @@ public enum PathfinderOp : byte
     DiscographyAlbums, DiscographySingles, DiscographyCompilations,
     /// <summary>An artist's concert schedule (Spotify.Api.Concert.cs).</summary>
     ArtistConcerts,
+    /// <summary><c>isFollowingUsers</c> (hash c00e0cb6…, <c>Spotify.Api.ProfileQueries</c>): whether the VIEWER follows a
+    /// user — the <see cref="UserFields.Follow"/> group asked alone, when the profile view is not being sent.</summary>
+    IsFollowingUsers,
 }
 
 /// <summary>The spclient REST routes a route can name.</summary>
@@ -162,6 +172,14 @@ public enum SpclientRoute : byte
     Recents,
     /// <summary><c>/presence-view/v2/init-friend-feed/&lt;connection&gt;</c>.</summary>
     FriendFeed,
+    /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;?playlist_limit=10&amp;artist_limit=10&amp;episode_limit=10&amp;market=from_token</c>
+    /// on spclient.wg (protobuf): the profile's name, avatar, colour, counts, flags and the viewer's follow — AND its
+    /// public playlists and recently played artists, which land their relations from the same answer.</summary>
+    ProfileView,
+    /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;/followers</c> (<see cref="FetchEdge.ProfileFollowers"/>).</summary>
+    ProfileFollowers,
+    /// <summary><c>/user-profile-view/v3/profile/&lt;id&gt;/following</c> (<see cref="FetchEdge.ProfileFollowing"/>).</summary>
+    ProfileFollowing,
 }
 
 /// <summary>ONE ROUTE: a transport, the groups it fills, and the groups that justify sending it. Exactly one of
@@ -279,11 +297,19 @@ public static class FetchRoutes
 
     static readonly FetchRoute[] s_user =
     [
-        // Kind 15 first; the REST profile (`/user-profile-view/v3/profile/<u>`) is the PROVIDER's fallback for the
-        // users kind 15 left unanswered — a retry policy inside one route, not a second route (0.2.9's two-arm fetch).
+        // THE PROFILE VIEW (user-profile-view/v3, protobuf, spclient.wg): name, avatar, colour, counts, flags and the
+        // viewer's follow — plus the public playlists and recently played artists, which land their relations from the
+        // SAME answer. Justified by Social ALONE: an owner chip's / search hit's Identity ask stays the batchable kind-15
+        // POST below, and a Follow-only ask takes the one-op query after it. A page asking Identity|Social|Follow sends
+        // THIS route and nothing else.
+        FetchRoute.Spclient(SpclientRoute.ProfileView,
+            (uint)(UserFields.Identity | UserFields.Social | UserFields.Follow), primary: (uint)UserFields.Social),
+        // Kind 15 — the batchable identity. The provider still runs the profile view for whoever kind 15 leaves
+        // unanswered (Spotify.Api.cs ProfileFallback, G-033) — a retry policy inside one route, not a second route.
         FetchRoute.Metadata(UserProfile, (uint)UserFields.Identity),
+        // Whether the viewer follows this user, asked alone (the profile view above carries it too).
+        FetchRoute.Pathfinder(PathfinderOp.IsFollowingUsers, (uint)UserFields.Follow),
         FetchRoute.Spclient(SpclientRoute.LikedContentFilters, (uint)UserFields.ContentFilters),
-        // Social: no transport carries follower counts in this build. Seals.
     ];
 
     static readonly FetchRoute[] s_concert =
@@ -423,6 +449,8 @@ public static class FetchRoutes
         FetchEdge.ArtistSingles => FetchRoute.Pathfinder(PathfinderOp.DiscographySingles, 0),
         FetchEdge.ArtistCompilations => FetchRoute.Pathfinder(PathfinderOp.DiscographyCompilations, 0),
         FetchEdge.ArtistConcerts => FetchRoute.Pathfinder(PathfinderOp.ArtistConcerts, 0),
+        FetchEdge.ProfileFollowers => FetchRoute.Spclient(SpclientRoute.ProfileFollowers, 0),
+        FetchEdge.ProfileFollowing => FetchRoute.Spclient(SpclientRoute.ProfileFollowing, 0),
         _ => default,
     };
 

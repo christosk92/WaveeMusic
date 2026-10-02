@@ -1,4 +1,6 @@
+import { ApiError } from "./client";
 import type {
+  AppDeleteReportResult,
   AppFrame,
   AppIssue,
   AppIssueBreakdowns,
@@ -7,12 +9,14 @@ import type {
   AppReport,
   AppReportDetail,
   AppReportsPage,
+  AppRetentionResult,
   AppSparklineDay,
   AppStats,
   AppSymbol,
   AppVersionCount,
   IssuesFilter,
   Kind,
+  ReportPart,
   ReportsFilter,
 } from "./types";
 
@@ -129,10 +133,20 @@ interface IssueDef {
   frameName: string | null;
   exitCode: number;
   githubIssue: number | null;
+  /** The fault the native hook captured (Native only) — `exceptionCode`/`faultModule`/`faultOffset`. */
+  native?: { code: number; module: string; offset: number };
+  /** Resolved, then reopened by a report from a newer semver than `resolvedVersion` (status stays "open"). */
+  regressed?: { regressions: number; resolvedVersion: string };
+  /** Every report is past the 90-day retention: none are generated, the issue keeps its lifetime counts,
+   *  versions and `lastFrames` (what the Worker's purge leaves behind). */
+  purged?: { firstSeenDaysAgo: number; lastSeenDaysAgo: number; versions: Record<string, number>; frames: AppFrame[] };
 }
 
-// The 23 issues (plan §4): four named anchors with the exact sample counts, plus 19 filler issues whose
-// counts were chosen so the grand total is exactly 128 reports — the number `mock.ts` is meant to seed.
+// The 24 issues (plan §4): four named anchors with the exact sample counts, plus 19 filler issues whose
+// counts were chosen so the grand total is exactly 128 reports — the number `mock.ts` is meant to seed —
+// plus one purged issue (last) whose reports are all past retention, so it contributes no reports.
+// Lifecycle coverage: [4] regressed, [7] resolved (resolvedVersion = its newest semver), [11] ignored;
+// the Native issues carry fault facts and use the Worker's grouping-v2 title shape.
 const ISSUE_DEFS: IssueDef[] = [
   {
     title: "NullReferenceException · Detail.UI.Hero.Render",
@@ -159,7 +173,7 @@ const ISSUE_DEFS: IssueDef[] = [
     githubIssue: null,
   },
   {
-    title: "AccessViolation · nvwgf2umx.dll",
+    title: "ACCESS_VIOLATION in nvwgf2umx.dll+0x2f10c",
     kind: "Native",
     count: 3,
     installs: 3,
@@ -169,6 +183,7 @@ const ISSUE_DEFS: IssueDef[] = [
     frameName: null,
     exitCode: 0,
     githubIssue: null,
+    native: { code: 0xc0000005, module: "nvwgf2umx.dll", offset: 0x2f10c },
   },
   {
     title: "ExitCode 0xC0000409",
@@ -193,6 +208,7 @@ const ISSUE_DEFS: IssueDef[] = [
     frameName: "Playback.Queue.Advance",
     exitCode: 0,
     githubIssue: null,
+    regressed: { regressions: 2, resolvedVersion: "0.3.1" },
   },
   {
     title: "ArgumentNullException · Sidebar.Planner.Bind",
@@ -243,7 +259,7 @@ const ISSUE_DEFS: IssueDef[] = [
     githubIssue: null,
   },
   {
-    title: "AccessViolation · dxgi.dll",
+    title: "ACCESS_VIOLATION in dxgi.dll+0x4410",
     kind: "Native",
     count: 3,
     installs: 3,
@@ -253,6 +269,7 @@ const ISSUE_DEFS: IssueDef[] = [
     frameName: null,
     exitCode: 0,
     githubIssue: null,
+    native: { code: 0xc0000005, module: "dxgi.dll", offset: 0x4410 },
   },
   {
     title: "ExitCode 0xC0000005",
@@ -315,7 +332,7 @@ const ISSUE_DEFS: IssueDef[] = [
     githubIssue: null,
   },
   {
-    title: "AccessViolation · igd10iumd64.dll",
+    title: "ACCESS_VIOLATION in igd10iumd64.dll+0x9a2",
     kind: "Native",
     count: 2,
     installs: 2,
@@ -325,6 +342,7 @@ const ISSUE_DEFS: IssueDef[] = [
     frameName: null,
     exitCode: 0,
     githubIssue: null,
+    native: { code: 0xc0000005, module: "igd10iumd64.dll", offset: 0x9a2 },
   },
   {
     title: "ExitCode 0xC0000135",
@@ -339,7 +357,7 @@ const ISSUE_DEFS: IssueDef[] = [
     githubIssue: null,
   },
   {
-    title: "StackOverflowException · Scroll.WheelModel.Replan",
+    title: "STACK_OVERFLOW in wavee.exe · Scroll.WheelModel.Replan",
     kind: "Native",
     count: 1,
     installs: 1,
@@ -349,6 +367,7 @@ const ISSUE_DEFS: IssueDef[] = [
     frameName: "Scroll.WheelModel.Replan",
     exitCode: 0,
     githubIssue: null,
+    native: { code: 0xc00000fd, module: "wavee.exe", offset: 0x1a2b40 },
   },
   {
     title: "NullReferenceException · WordsRail.Layout",
@@ -410,6 +429,28 @@ const ISSUE_DEFS: IssueDef[] = [
     exitCode: 0xc000041d,
     githubIssue: null,
   },
+  {
+    title: "System.ObjectDisposedException · Wavee_Wavee_Playback_Engine__Dispose",
+    kind: "Managed",
+    count: 6,
+    installs: 3,
+    status: "open",
+    exceptionType: "System.ObjectDisposedException",
+    exceptionMessage: "Cannot access a disposed object.",
+    frameName: "Wavee_Wavee_Playback_Engine__Dispose",
+    exitCode: 0,
+    githubIssue: null,
+    purged: {
+      firstSeenDaysAgo: 161,
+      lastSeenDaysAgo: 104,
+      versions: { "0.2.9": 4, "0.2.8": 2 },
+      frames: [
+        { rva: 0x3a2f10, offset: 0x2c, name: "Wavee_Wavee_Playback_Engine__Dispose" },
+        { rva: 0x3a1c88, offset: 0x91, name: "Wavee_Wavee_Playback_Session__Stop" },
+        { rva: 0x1f0e04, offset: 0x18, name: "S_P_CoreLib_System_Threading_Tasks_Task__ExecuteWithThreadLocal" },
+      ],
+    },
+  },
 ];
 
 function fingerprintFor(index: number, def: IssueDef): string {
@@ -446,6 +487,11 @@ function generateAll(): { issues: GeneratedIssue[]; allReports: AppReport[] } {
 
   ISSUE_DEFS.forEach((def, defIndex) => {
     const fingerprint = fingerprintFor(defIndex, def);
+    if (def.purged) {
+      // No reports (and no RNG draws, so every other generated value stays exactly what it was).
+      issues.push({ def, fingerprint, reports: [] });
+      return;
+    }
     const installIds = Array.from({ length: def.installs }, (_, i) => `install-${defIndex.toString(16)}${i.toString(16)}-${rng().toString(16).slice(2, 8)}`);
     const reports: AppReport[] = [];
     for (let i = 0; i < def.count; i++) {
@@ -484,6 +530,10 @@ function generateAll(): { issues: GeneratedIssue[]; allReports: AppReport[] } {
         fingerprint,
         receivedAt: isoDaysAgo(days, hourJitter),
         debugId: "3F2504E0-4F89-11D3-9A0C-0305E82C3301",
+        exceptionCode: def.native?.code ?? 0,
+        faultModule: def.native?.module ?? "",
+        faultOffset: def.native?.offset ?? 0,
+        fpVersion: 2,
       };
       reports.push(report);
       allReports.push(report);
@@ -498,21 +548,69 @@ function generateAll(): { issues: GeneratedIssue[]; allReports: AppReport[] } {
 
 const GENERATED = generateAll();
 
+/** Numeric dotted compare — enough for the mock's plain `0.3.2`-style semvers. */
+function compareSemver(a: string, b: string): number {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+type Lifecycle = Pick<AppIssue, "regressedAt" | "regressions" | "resolvedAt" | "resolvedVersion">;
+
+/** The Worker's lifecycle columns for a def: resolving records the newest semver seen; a regression keeps
+ *  `resolvedAt`/`resolvedVersion` and stamps `regressedAt` with the reopening report's time (here: the
+ *  newest one, resolved three days before it). */
+function lifecycleFor(def: IssueDef, versions: Record<string, number>, lastSeen: string): Lifecycle {
+  if (def.regressed) {
+    return {
+      regressedAt: lastSeen,
+      regressions: def.regressed.regressions,
+      resolvedAt: new Date(Date.parse(lastSeen) - 72 * HOUR_MS).toISOString(),
+      resolvedVersion: def.regressed.resolvedVersion,
+    };
+  }
+  if (def.status === "resolved") {
+    const newest = Object.keys(versions).sort(compareSemver).pop() ?? null;
+    return {
+      regressedAt: null,
+      regressions: 0,
+      resolvedAt: new Date(Math.min(Date.now(), Date.parse(lastSeen) + 26 * HOUR_MS)).toISOString(),
+      resolvedVersion: newest,
+    };
+  }
+  return { regressedAt: null, regressions: 0, resolvedAt: null, resolvedVersion: null };
+}
+
 function issueRowFor(g: GeneratedIssue): AppIssue {
-  const versions: Record<string, number> = {};
+  const { def } = g;
+  const versions: Record<string, number> = { ...def.purged?.versions };
   for (const r of g.reports) versions[r.semver] = (versions[r.semver] ?? 0) + 1;
   const receivedTimes = g.reports.map((r) => r.receivedAt).sort();
+  const firstSeen = def.purged ? isoDaysAgo(def.purged.firstSeenDaysAgo, 0) : (receivedTimes[0] ?? isoDaysAgo(29, 0));
+  const lastSeen = def.purged
+    ? isoDaysAgo(def.purged.lastSeenDaysAgo, 0)
+    : (receivedTimes[receivedTimes.length - 1] ?? isoDaysAgo(0, 0));
   return {
     fingerprint: g.fingerprint,
-    title: g.def.title,
-    kind: g.def.kind,
-    firstSeen: receivedTimes[0] ?? isoDaysAgo(29, 0),
-    lastSeen: receivedTimes[receivedTimes.length - 1] ?? isoDaysAgo(0, 0),
-    count: g.def.count,
-    installs: g.def.installs,
+    title: def.title,
+    kind: def.kind,
+    firstSeen,
+    lastSeen,
+    count: def.count,
+    installs: def.installs,
     versions,
-    status: g.def.status,
-    githubIssue: g.def.githubIssue,
+    status: def.status,
+    githubIssue: def.githubIssue,
+    ...lifecycleFor(def, versions, lastSeen),
+    // The Worker rewrites last_frames_json on every occurrence, so it's the newest report's frames.
+    lastFrames: g.reports[0]?.frames ?? def.purged?.frames ?? null,
+    fpVersion: 2,
   };
 }
 
@@ -639,7 +737,8 @@ export function mockIssue(fingerprint: string): Promise<AppIssueDetail | null> {
       return {
         issue,
         reports: g.reports,
-        frames: g.reports[0]?.frames ?? null,
+        // Same fallback as the Worker: no reports left (purged) → the issue's own last_frames_json.
+        frames: g.reports[0]?.frames ?? issue.lastFrames,
         occurrences,
         sparkline14d,
         breakdowns,
@@ -656,7 +755,10 @@ export function mockReportsPage(filter: ReportsFilter): Promise<AppReportsPage> 
       if (filter.kind) rows = rows.filter((r) => r.kind === filter.kind);
       if (filter.quad) rows = rows.filter((r) => r.quad === filter.quad);
       if (filter.since) rows = rows.filter((r) => r.receivedAt >= filter.since!);
-      if (filter.q) rows = rows.filter((r) => r.id.startsWith(filter.q!) || r.installId.startsWith(filter.q!));
+      // Real ids are dash-less hex and the page strips `-` from the query; the mock's ids keep their
+      // readable dashes, so compare dash-less on both sides.
+      const q = filter.q?.replace(/-/g, "");
+      if (q) rows = rows.filter((r) => r.id.replace(/-/g, "").startsWith(q) || r.installId.replace(/-/g, "").startsWith(q));
       const limit = filter.limit ?? 50;
       return { reports: rows.slice(0, limit), nextCursor: rows.length > limit ? "mock-cursor" : null };
     },
@@ -692,4 +794,55 @@ export function mockSymbols(): Promise<AppSymbol[]> {
     () => MOCK_SYMBOLS,
     () => [],
   );
+}
+
+/** `GET /v1/reports/:id/:part` stand-in: a short transcript built only from fields the report already has,
+ *  with no wall-clock timestamps so it is stable in tests and screenshots. */
+export function mockReportPartText(part: ReportPart, report: AppReport): string {
+  if (part === "report") {
+    const lines = [
+      `commit=${report.commitSha}`,
+      `quad=${report.quad}`,
+      `arch=${report.arch}`,
+      `kind=${report.kind}`,
+      `module=Wavee.exe base=0x140000000 size=0x2400000`,
+      `exception=${report.exceptionType || "(none)"}`,
+      report.exceptionMessage ? `message=${report.exceptionMessage}` : null,
+      `exitCode=0x${report.exitCode.toString(16)}`,
+      report.faultModule ? `fault=${report.faultModule}+0x${report.faultOffset.toString(16)}` : null,
+      "",
+      "Frames (RVA)",
+      ...(report.frames.length > 0
+        ? report.frames.map(
+            (f) => `   at Wavee!<BaseAddress>+0x${f.rva.toString(16)}${f.name ? `  (${f.name}+0x${f.offset.toString(16)})` : ""}`,
+          )
+        : ["   (no frames recorded)"]),
+    ].filter((l): l is string => l !== null);
+    return lines.join("\n");
+  }
+  return Array.from(
+    { length: 24 },
+    (_, i) => `[t+${String(i).padStart(3, "0")}s] route=${report.lastRoute} locale=${report.locale} — mock log line ${i + 1}`,
+  ).join("\n");
+}
+
+// ── Mutations ────────────────────────────────────────────────────────────────────────────────────────
+// Mock mode has no server state to change: these answer with the Worker's response shape (after the same
+// delay as the reads) and leave the generated data as it is, so every run stays deterministic.
+
+/** `DELETE /v1/reports/:id` → `{deleted: 1, fingerprint}`, or the Worker's 404 for an unknown id. */
+export async function mockDeleteReport(id: string): Promise<AppDeleteReportResult> {
+  await delay(getMockDelay());
+  const report = MOCK_REPORTS.find((r) => r.id === id);
+  if (!report) throw new ApiError(404, "not found");
+  return { deleted: 1, fingerprint: report.fingerprint };
+}
+
+/** What `POST /v1/retention/run` answers in mock mode (the generated reports are all inside 30 days, so
+ *  this stands for an earlier backlog rather than anything visible on the pages). */
+export const MOCK_RETENTION_RESULT: AppRetentionResult = { deleted: 12, batches: 1, more: false };
+
+export async function mockRunRetention(): Promise<AppRetentionResult> {
+  await delay(getMockDelay());
+  return MOCK_RETENTION_RESULT;
 }

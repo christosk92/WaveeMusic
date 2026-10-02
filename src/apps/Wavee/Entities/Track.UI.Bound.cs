@@ -207,7 +207,12 @@ public readonly partial struct Track
     // ── the # cell ───────────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Two shapes under one keyed cell, swapped by <c>Flow.Show</c> on the rare withheld flip: the reveal shape
-    /// (rest layer fading out, the transport fading in on row hover) and the rest-only shape (no hover reveal).</summary>
+    /// (rest layer fading out, the transport fading in on row hover) and the rest-only shape (no hover reveal).
+    /// <para>The cell is a ZStack, like <c>NumberCell</c>'s, and that is load-bearing: the <c>Flow.Show</c> boundary is a
+    /// default node (Grow 0), so in a ROW cell it shrink-wrapped the shape to its content's natural width — the 24-DIP
+    /// transport box then sat wherever the narrower stack ended and the stack's own clip cut the glyph in half, and the
+    /// number and the equalizer centred in that narrow stack instead of the lane. A ZStack hands its one child the whole
+    /// lane × row, so every layer centres in the lane the header's "#" is centred in.</para></summary>
     static Element BoundNumberCell(BoundRow r, bool classic)
     {
         Element reveal = new BoxEl
@@ -224,7 +229,10 @@ public readonly partial struct Track
                     [
                         new BoxEl
                         {
-                            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                            // The click target fills the lane (Basis 0: its width is never the glyph's) and stacks the ring and
+                            // the transport, both centred — side by side in a row, the (possibly empty) ring boundary shared
+                            // the row's centring with the glyph and could push it off the lane's middle.
+                            ZStack = true, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                             OnClick = r.Play, Cursor = CursorId.Hand, Role = AutomationRole.Button, BlocksDragArm = true,
                             Children =
                             [
@@ -254,7 +262,7 @@ public readonly partial struct Track
         };
         return new BoxEl
         {
-            Key = CellKey.Num, Direction = 0, MinWidth = 0f, ClipToBounds = true,
+            Key = CellKey.Num, ZStack = true, MinWidth = 0f, ClipToBounds = true,
             Children =
             [
                 Flow.Show(() =>

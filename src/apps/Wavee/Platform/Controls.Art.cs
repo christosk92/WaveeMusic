@@ -1,51 +1,55 @@
 // ── Platform/Controls.Art.cs ───────────────────────────────────────────────────────────────────────────────────────
-// MediaCard, PagedShelf, chips, stat tiles, countdowns, face piles, rich text, the shimmer
+// The media surface's shared PARTS (cover stack, corner "…", the now-playing overlay, the card data contract, the
+// chrome rules), chips, stat tiles, countdowns, face piles, rich text, the shimmer
 //
 // Role: UI
 // Owner: L
 // Wave: 4
 // Budget: 1400 lines
-// Spec: DERIVED
+// Spec: DERIVED; the ONE surface: docs/plans/wavee/shared-media-surface-implementation.md
 //
-// ── THE CARD PLATE IS SHARED, AND THAT IS THE POINT (ch 02 §9.2) ─────────────────────────────────────────────────────
+// ── THE SURFACE IS SHARED, AND THAT IS THE POINT (ch 02 §9.2) ────────────────────────────────────────────────────────
 //
-// Every rectangular media card in the app composes THIS plate instead of hand-rolling its own, so the hover grammar
-// cannot drift between surfaces. §2's split of "entity rows/cards" into five `X.UI.cs` files is a drift hazard for
-// exactly this surface: if Album, Artist, Playlist, Show and Search each grew a card, five Wave-5 owners would produce
-// five hover physics. THE CORRECTION, stated here so it cannot be missed: the card SHELL (physics, plate, corner "…",
-// the FABs, the now-playing overlay, the shelf/grid/row skins, the extent maths) is THIS file's, in Wave 4; each
-// `X.UI.cs` contributes only an ADAPTER that fills in cover / title / subtitle / menu / drag for its handle.
+// Every media card, tile and row in the app is ONE surface — `Controls.Surface(CardData, SurfaceShape)` (Surface.Host.cs)
+// — instead of a hand-rolled box, so the hover grammar, the chrome, the menu, the drag, the cursor and the focus stop
+// cannot drift between surfaces. WHAT a surface shows is `CardData` (below: an adapter's data, compared by data); HOW it
+// is laid out is a `SurfaceShape` preset (Surface.Rules.cs); the tree is `SurfaceParts` (Surface.Parts.cs). Each
+// `X.UI.cs` contributes only an ADAPTER that fills in cover / title / subtitle / slots / menu / drag for its handle.
 //
-// That is also why nothing in this file takes a handle. A card is given a cover URL, a title string and two elements —
-// so an entity adapter reads its OWN columns at build time and this file never learns what an album is.
+// That is also why nothing here takes a handle. A surface is given a cover URL, a title string and a few elements — so
+// an entity adapter reads its OWN columns at build time and this file never learns what an album is.
 //
 // ── WHAT MUST NOT BE SIMPLIFIED (ch 02 §9) ───────────────────────────────────────────────────────────────────────────
 //
-//  1. THE HOVER PLATE IS NOT A `HoverFill`. It is a separate, non-hit-testable SIBLING under the content carrying the
-//     subtle-hover FILL alone (no stroke, no shadow — the prototype's fill-only recipe), cross-faded 0 → 1 over the
-//     83 ms rung and deepened to subtle-press while the card is held. It stays a sibling rather than a HoverFill on the
-//     root because the root's own Fill/Border belong to the SELECTED skin (the grid card's accent border over the card
-//     fill), and a reveal child fades on its own authored rung whatever the root carries. Every child self-clips, so
-//     there is still NO `ClipToBounds` on a card root.
-//  2. NO LIFT, NO ELEVATION. A hovered card does not move, scale or cast a halo: the plate's fill IS the hover. That
-//     is what makes the hover read immediately (the old 250 ms lift tween plus a 1.04 cover zoom read as late), and it
-//     is why the card needs no paint-order z-index — nothing it draws on hover reaches past its own bounds.
+//  1. THE HOVER PLATE IS A SIBLING, NOT A `HoverFill` ON THE ROOT. Every surface's shell is a ZStack [plate, content]:
+//     the plate is a non-hit-testable REVEAL under the content carrying its kind's hover/press fills (`SurfacePlate.For`
+//     — ONE table: the card's subtle plate, the list row's, the tile's opaque card fill, the outline's), cross-faded over
+//     the 83 ms rung and deepened while the surface is held. The ROOT's own Fill/Border belong to the kind's STROKE (the
+//     tile's playback-bound hairline, the outline's dashes) and to the SELECTED skin, and a reveal child fades on its own
+//     authored rung whatever the root carries. Every child self-clips, so there is NO `ClipToBounds` on a surface root.
+//  2. NO LIFT, NO ELEVATION, NO SCALE. A hovered surface does not move, scale or cast a halo: the plate's fill IS the
+//     hover. That is what makes it read immediately (the old 250 ms lift tween plus a 1.04 cover zoom read as late), and
+//     why no surface needs a paint-order z-index. A ROW in particular never press-scales: even a 2% swing moves each edge
+//     of a ~1000-px row several DIP and visibly blurs the title mid-scale.
 //  3. THE ZOOM CONTAINER MUST NOT PUSH ITS OWN ROUNDED CLIP. The renderer clamps image/gradient primitives to the
 //     TOPMOST rounded clip only; a clip here would ride the scale out past the card and show square slivers at the
 //     corners. Only a NON-SQUARE cover zooms at all (`CardCover`): a square cover is still.
-//  4. CIRCULAR CARDS DO NOT CLIP THE OVERLAY LAYER — the FAB sits inside the cover's RECTANGLE but outside the avatar
-//     circle, so the clip is conditional on the shape. And only a SQUARE cover can be circular
-//     (`CoverShape.IsCircular`): a wide tile asked to be round would become a pill.
-//  5. `Grow = 1` on the shell is what makes a measured shelf stretch every card to the TALLEST card's height: uniform
+//  4. CIRCULAR COVERS DO NOT CLIP THE OVERLAY LAYER — the FAB sits inside the cover's RECTANGLE but outside the avatar
+//     circle, so the clip is conditional on the shape, and a circular card centres its labels under the circle. Only a
+//     SQUARE cover can be circular (`CoverShape.IsCircular`): a wide tile asked to be round would become a pill.
+//  5. `Grow = 1` on a STACK shell is what makes a measured shelf stretch every card to the TALLEST card's height: uniform
 //     panels, exact, with no reserved worst case. A grid whose ROW is taller than its card (the discography grid folds
 //     its 20-DIP row gap into the row height) must therefore pin the card with `CardData.Height`, which also zeroes
 //     Grow/Shrink — Height alone is only the flex BASIS, and a growing card paints its hover plate into the gap.
-//  6. THE GRID CARD'S COVER CHROME MOUNTS LAZILY. The now-playing overlay (a host + a ToolTip around the FAB) and the
-//     corner "…" (another ToolTip) cost ~1 ms and ~68 KB per card to mount, and 19 of them made the artist page's
-//     navigation frame. They exist only while the card is HOT (pointer inside, or keyboard focus reached it) or while
-//     it RELATES to playback (the equalizer pill) — `CardChromeRules.Mounted`. The FAB fades in over ControlFaster
-//     anyway, so a first-hover frame without it is not visible: the engine seeds the FAB's reveal on mount through its
-//     ToolTip wrapper (hover-scope transparent), so the first hot render already fades it in rather than starting cold.
+//  6. THE CHROME MOUNTS LAZILY, ON EVERY SHAPE, AND THE SLOT ROOT OWNS THE CLICK. The now-playing overlay (a host + a
+//     ToolTip around the FAB) and the "…" (another ToolTip) cost ~1 ms and ~68 KB per surface to mount, and 19 of them
+//     made the artist page's navigation frame. They exist only while the surface is HOT (pointer within, focus within,
+//     or its bound slot focused) or RELATES to playback (the equalizer pill) — `CardChromeRules.Mounted`; a video
+//     (`PlayReveal.Always`) mounts its FAB at rest. The engine made lazy safe: enter/exit are SUBTREE edges (a press on
+//     the FAB is never an exit), and a reveal mounting into an already-hovered surface is seeded on mount through its
+//     transparent ToolTip wrapper. Inside a bound `ItemsView`/`PagedShelf` slot the host learns slot mode from
+//     `ItemsView.SlotRow` and renders click-less and focus-less: the slot root is the ONE gesture owner and the ONE tab
+//     stop (input-a11y.md §6.5) — a surface that also owned them is the shelf's old double tab stop.
 
 using System.Collections.Generic;
 using System.Text;
@@ -81,55 +85,7 @@ public static partial class Controls
     /// <inheritdoc cref="PlaybackSeam"/>
     public static PlaybackSeam? NowPlaying { get; set; }
 
-    // ══ 2. THE CARD PLATE ════════════════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>THE card motion contract: FILL-ONLY, NO LIFT — applied by every rectangular media card (and by the
-    /// authored skins that share its grammar) so the physics cannot drift between surfaces.
-    /// <para>The card ROOT does not move: no translate, no press sink, no scale, no paint-order elevation (file header,
-    /// rule 2). The hover is the plate's subtle fill fading in over 83 ms (<see cref="CardShell"/>) plus, on a
-    /// NON-SQUARE cover only, a slow 1.02 zoom (<see cref="CardCover"/>) — both on INNER nodes, so what is left of the
-    /// contract on the root is the hand cursor that says "the whole card is one target".</para>
-    /// <para>A caller that paints its OWN card surface through this (the artist pick panel) has no plate: its hover is
-    /// whatever its own fill does under the pointer.</para></summary>
-    public static BoxEl CardPhysics(BoxEl card) => card with
-    {
-        Cursor = CursorId.Hand,
-    };
-
-    /// <summary>The card SHELL: a ZStack of [hover plate, content]. The plate is a separate, non-hit-testable sibling
-    /// UNDER the content carrying the subtle-hover FILL alone — no stroke, no shadow — cross-faded 0 → 1 over the 83 ms
-    /// rung and deepened to the subtle-press fill while the card is held. See rule 1 in the file header for why it is
-    /// not a <c>HoverFill</c> on the root.
-    /// <para>NO <c>ClipToBounds</c> on the root: every child self-clips.</para>
-    /// <para>The root IS a focus stop with a button role — 0.2.9's card body was neither, so a keyboard user could not
-    /// reach a card at all (ch 02 §9.12, one of the defects this file FIXES rather than ports). Its NAME is its own
-    /// title text, which the automation tree reads off the content.</para></summary>
-    public static BoxEl CardShell(Element content, Action onClick, DragSource? drag = null)
-        => CardPhysics(new BoxEl
-        {
-            ZStack = true, Grow = 1f, Corners = CornerRadius4.All(Radii.Card),
-            Role = AutomationRole.Button, Focusable = true,
-            FocusVisualMargin = Design.FocusInsetBordered,
-            OnClick = onClick,
-            Draggable = drag,
-            Children =
-            [
-                new BoxEl
-                {
-                    Grow = 1f, HitTestVisible = false,
-                    Opacity = 0f, HoverOpacity = 1f,
-                    HoverDurationMs = MotionTok.ControlFaster.DurationMs, HoverEasing = MotionTok.ControlFaster.Easing,
-                    PressDurationMs = MotionTok.ControlFaster.DurationMs, PressEasing = MotionTok.ControlFaster.Easing,
-                    Corners = CornerRadius4.All(Radii.Card),
-                    // The press reaches this non-hit-testable child because it is a REVEAL (HoverOpacity): the
-                    // engine's press cascade drives a reveal's own press progress, and an explicit PressedFill opts it
-                    // into the recorder's cross-fade (an inherited press never auto-darkens a fill on its own).
-                    Fill = Tok.FillSubtleSecondary,
-                    PressedFill = Tok.FillSubtleTertiary,
-                },
-                content,
-            ],
-        });
+    // ══ 2. THE COVER STACK AND ITS CORNER ═══════════════════════════════════════════════════════════════════════════
 
     /// <summary>The cover STACK inside a card: the art, the overlay layer, and the corner "…". Any zoom the art takes
     /// lives HERE, on its own node, never on the card root — and this node pushes NO rounded clip of its own (rule 3).
@@ -141,7 +97,8 @@ public static partial class Controls
     /// outside the avatar circle, so clipping it would cut the affordance in half. It is honoured only on a SQUARE slot
     /// (<see cref="CoverShape.IsCircular"/>).</para>
     /// <para><paramref name="width"/> × <paramref name="height"/>, not one edge: a wide tile (16:9 header art) is the
-    /// same stack over a non-square slot — <see cref="CoverHeight"/> derives the height the shelf hands in.</para></summary>
+    /// same stack over a non-square slot — <see cref="SurfaceGeometry.CoverHeight"/> derives the height the shelf hands
+    /// in.</para></summary>
     public static Element CardCover(Element art, float width, float height, bool circular, Element? overlay = null,
                                     Element? corner = null)
     {
@@ -201,17 +158,20 @@ public static partial class Controls
 
     // ══ 3. THE NOW-PLAYING OVERLAY ═══════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The card's play affordance and — only when the card RELATES to playback — its equalizer pill.
+    /// <summary>The now-playing equalizer glyph's height — ONE size for "this is the one playing" on the media surface's
+    /// overlay pill and on a sidebar row's accent equalizer, so the cards and the rows cannot drift apart.</summary>
+    public const float EqualizerH = 14f;
+
+    /// <summary>The surface's play affordance and — only when the surface RELATES to playback — its equalizer pill.
     ///
-    /// <para><b>The FAB mounts EAGERLY inside this overlay</b>, and the shelf card and the media row mount the overlay
-    /// eagerly too: an early hover-gated FAB failed twice — a card paged in under a STATIONARY pointer never armed, and
-    /// an exit edge fired before release unmounted the node being clicked. The GRID card (<see cref="GridCardHost"/>)
-    /// gates the whole cover chrome on the card being hot instead, which the engine has since made safe a different way:
-    /// enter/exit are delivered on the card's SUBTREE edges (<c>InputDispatcher.UpdateHoverWithin</c>), so a press on the
-    /// FAB is never an exit from the card; a reveal mounting into an ALREADY-hovered card is seeded on mount through the
-    /// transparent tooltip wrapper, so it does not need a hover edge to fade in. The dispatcher does NOT synthesize
-    /// hover for content appearing under a stationary pointer — a card paged in under a still cursor arms on the next
-    /// real move, same as before.</para>
+    /// <para><b>The media surface mounts this overlay LAZILY</b> (file header, rule 6): only while the surface is hot or
+    /// relates, or at rest on a video (<paramref name="atRest"/>). An early hover-gated FAB failed twice — a card paged in
+    /// under a STATIONARY pointer never armed, and an exit edge fired before release unmounted the node being clicked —
+    /// and the engine has since made the lazy mount safe: enter/exit are delivered on the surface's SUBTREE edges
+    /// (<c>InputDispatcher.UpdateHoverWithin</c>), so a press on the FAB is never an exit from the surface; a reveal
+    /// mounting into an ALREADY-hovered surface is seeded on mount through the transparent tooltip wrapper, so it does
+    /// not need a hover edge to fade in. The dispatcher does NOT synthesize hover for content appearing under a stationary
+    /// pointer — a card paged in under a still cursor arms on the next real move.</para>
     ///
     /// <para><b>ONE SHAPE ON BOTH LEGS</b> — <c>[equalizer slot, FAB]</c>, with an empty box standing in — so the
     /// reconciler keeps the FAB's node while the equalizer mounts and unmounts beside it. A press in flight must never
@@ -219,10 +179,13 @@ public static partial class Controls
     ///
     /// <para><b>The relation is read COARSE-FIRST.</b> An idle overlay reads only <c>HasActiveContext</c> and returns;
     /// it never subscribes to the hot identity signal, so an unrelated track skip re-runs one cheap read per card and
-    /// schedules no render.</para></summary>
+    /// schedules no render.</para>
+    ///
+    /// <para><paramref name="atRest"/>: the FAB is visible at rest instead of fading in on hover — a video
+    /// (<see cref="PlayReveal.Always"/>), whose whole point is play.</para></summary>
     public static Element NowPlayingOverlay(string uri, Action? onPlay, float fab = 44f, bool centred = true,
-                                            string? playName = null)
-        => Embed.Comp(new OverlayProps(uri, onPlay, fab, centred, playName ?? Loc.Get(Strings.Detail.Play)),
+                                            string? playName = null, bool atRest = false)
+        => Embed.Comp(new OverlayProps(uri, onPlay, fab, centred, playName ?? Loc.Get(Strings.Detail.Play), atRest),
                       static () => new NowPlayingOverlayHost()).Skeletonized(false);
 
     /// <summary>The overlay's re-pushed props. Equality is DATA-ONLY: <see cref="OnPlay"/> counts by PRESENCE, never by
@@ -230,14 +193,15 @@ public static partial class Controls
     /// and comparing them by reference re-rendered every overlay on the page 13× a frame. The live handler still reaches
     /// the FAB: the host routes clicks through a trampoline that reads the NEWEST pushed props at invocation time.
     /// <para>Public only so the equality rule can be pinned by a fact (no <c>InternalsVisibleTo</c>).</para></summary>
-    public sealed record OverlayProps(string Uri, Action? OnPlay, float Fab, bool Centred, string PlayName)
+    public sealed record OverlayProps(string Uri, Action? OnPlay, float Fab, bool Centred, string PlayName,
+                                      bool AtRest = false)
     {
         public bool Equals(OverlayProps? other)
             => other is not null && (ReferenceEquals(this, other)
                || (Uri == other.Uri && (OnPlay is null) == (other.OnPlay is null) && Fab.Equals(other.Fab)
-                   && Centred == other.Centred && PlayName == other.PlayName));
+                   && Centred == other.Centred && PlayName == other.PlayName && AtRest == other.AtRest));
 
-        public override int GetHashCode() => HashCode.Combine(Uri, OnPlay is not null, Fab, Centred, PlayName);
+        public override int GetHashCode() => HashCode.Combine(Uri, OnPlay is not null, Fab, Centred, PlayName, AtRest);
     }
 
     /// <summary>An <see cref="IPropsHost"/>: EVERY re-push lands in <see cref="_latest"/> (so a delegate is never stale
@@ -283,7 +247,11 @@ public static partial class Controls
                     Shrink = 0f, Padding = new Edges4(6f, 4f, 6f, 4f),
                     Corners = Radii.PillAll, Fill = Design.OnMedia.ScrimRest,
                     BorderWidth = 1f, BorderColor = Design.OnMedia.Stroke,
-                    Children = [Equalizer(pb!.IsPlaying, () => Design.OnMedia.Ink, 14f)],
+                    // Centred on the cover in the stack's own terms, and handed over to the FAB on hover: at rest the
+                    // playing surface shows THIS (the equalizer on its small scrim), never a pause button (owner, #160).
+                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center,
+                    HoverOpacity = 0f, HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.SmoothOut,
+                    Children = [Equalizer(pb!.IsPlaying, () => Design.OnMedia.Ink, EqualizerH)],
                 }
                 // The STAND-IN. Keeping the slot occupied is what stops the FAB's node being re-keyed when the
                 // equalizer appears beside it.
@@ -322,74 +290,87 @@ public static partial class Controls
             bool playingHere = owns && pb!.IsPlaying.Value;
             return PlayFab(_onPlay, glyph: playingHere ? Icons.Pause : Icons.Play, size: p.Fab) with
             {
-                Opacity = playingHere ? 1f : 0f, HoverOpacity = 1f,
+                // Hover-only even while THIS surface is the one playing: at rest the equalizer pill states it (above), and
+                // the pause appears under the pointer. Only a video's FAB (AtRest) shows at rest.
+                Opacity = p.AtRest ? 1f : 0f, HoverOpacity = 1f,
                 HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.SmoothOut,
             };
         }
     }
 
-    // ══ 4. THE THREE CARD SKINS ══════════════════════════════════════════════════════════════════════════════════════
+    // ══ 4. THE SURFACE'S DATA ════════════════════════════════════════════════════════════════════════════════════════
+    //
+    // What a media surface SHOWS (an adapter's `CardData`) and the pure rules its host feeds. HOW it is laid out is the
+    // shape (Surface.Rules.cs), the tree is `SurfaceParts` (Surface.Parts.cs), and the ONE host is Surface.Host.cs.
 
-    /// <summary>Everything a card renders, filled in by an entity ADAPTER. A record, because a virtualized parent
+    /// <summary>Everything a media surface renders, filled in by an entity ADAPTER. A record, because a virtualized parent
     /// re-pushes it per bind and a frozen constructor field would keep pointing at the slot's FIRST row.
     ///
     /// <para><b>Equality is DATA-ONLY.</b> The adapters build <see cref="OnClick"/>, <see cref="OnPlay"/> and
     /// <see cref="Drag"/>'s payload factory as fresh closures on every parent render, so the compiler's record equality
-    /// (reference on delegates) never held and every <see cref="ShelfCard"/> host re-rendered 13× a frame. Here a delegate
-    /// counts by PRESENCE only (<see cref="OnClick"/> is non-nullable, so it does not count at all) and a
-    /// <see cref="DragSource"/> by its data (<c>Kind</c>, <c>Style</c>); the host invokes the NEWEST pushed delegates
-    /// through trampolines, so a data-equal re-push with fresh handlers is still honoured. The two <see cref="Element"/>
-    /// slots compare by record VALUE — <see cref="Subtitle"/> is a <c>TextEl</c> over a string and a shared static brush,
-    /// so a rebuilt-but-identical subtitle is equal, while a real text change is not; an element that genuinely differs
-    /// (or carries a per-render closure) simply re-renders as before, which is the safe direction.</para></summary>
+    /// (reference on delegates) never held and every surface host re-rendered 13× a frame. Here a delegate counts by
+    /// PRESENCE only (a null <see cref="OnClick"/> is a DISPLAY-ONLY surface, so presence is behaviour: it decides the hand,
+    /// the Button role and the tab stop) and a <see cref="DragSource"/>
+    /// by its data (<c>Kind</c>, <c>Style</c>); the host invokes the NEWEST pushed delegates through trampolines, so a
+    /// data-equal re-push with fresh handlers is still honoured. The <see cref="Element"/> slots compare by record VALUE —
+    /// <see cref="Subtitle"/> is a <c>TextEl</c> over a string and a shared static brush, so a rebuilt-but-identical
+    /// subtitle is equal, while a real text change is not; an element that genuinely differs (or carries a per-render
+    /// closure, or a children array) simply re-renders as before, which is the safe direction.</para>
+    ///
+    /// <para><see cref="OnClick"/> null = a DISPLAY-ONLY surface (<c>SurfaceRules.Ownership(inSlot: false, hasClick: false)</c>):
+    /// no click, no tab stop, no Button role, no hand. An entry with nowhere to go says so here, never with a no-op.</para>
+    ///
+    /// <para>The title's LINE BUDGET is not data: it is the shape's <see cref="SurfaceShape.TitleLines"/> dial.</para></summary>
     public sealed record CardData(
         string Uri,
         string Title,
         Element? Subtitle,
         string? CoverUrl,
-        Action OnClick,
+        Action? OnClick,
         Action? OnPlay = null,
         bool Circular = false,
         DragSource? Drag = null,
         bool ShowMenu = true,
-        int TitleLines = 1,
         Element? CoverOverride = null)
     {
-        // ── The GRID card's shell controls (init-only, defaulted, so the positional adapters keep compiling) ────────
-        // These exist because `GridCard` returns a component, not the shell BoxEl: a caller that used to post-process the
-        // shell (a fixed height, the "selected" skin, an attached context menu) states its intent here and the host
-        // applies it to the OUTERMOST node, where it must sit.
+        // ── The shell controls (init-only, defaulted, so the positional adapters keep compiling) ────────────────────
+        // A surface is a component, not the shell BoxEl: a caller that used to post-process the shell (a fixed height,
+        // the "selected" skin, an attached context menu) states its intent here and the host applies it to the node it
+        // must sit on.
 
         /// <summary>A pinned shell height. NaN (the default) leaves the shell growing to its cell; a number pins it AND
         /// zeroes Grow/Shrink — Height alone is only the flex basis, and a growing card stretches its hover plate into a
         /// row that is taller than the card (the discography grid's folded row gap: file header, rule 5).</summary>
         public float Height { get; init; } = float.NaN;
 
-        /// <summary>The OPENED / chosen card: the 2-DIP <see cref="SelectedAccent"/> border over the brighter card fill,
-        /// so the card answers "where did it open" beside its drawer.</summary>
+        /// <summary>The OPENED / chosen surface: the 2-DIP <see cref="SelectedAccent"/> border over the brighter card fill,
+        /// so a card answers "where did it open" beside its drawer.</summary>
         public bool Selected { get; init; }
 
-        /// <summary>The accent the selected border paints, read INSIDE the host's render — a palette landing repaints
-        /// the one selected card and no other. Counts by presence in equality (a fresh thunk is behaviour, not data).</summary>
+        /// <summary>The accent the selected border paints (null = the theme accent), read INSIDE the host's render — a
+        /// palette landing repaints the one selected surface and no other. Counts by presence in equality (a fresh thunk
+        /// is behaviour, not data).</summary>
         public Func<ColorF>? SelectedAccent { get; init; }
 
-        /// <summary>The card's context menu factory. The host attaches it to the shell through the overlay service in
-        /// context (skipped under the null overlay, exactly as the cells did by hand). Counts by presence.</summary>
+        /// <summary>The surface's context menu factory. The host attaches it to the shell through the overlay service in
+        /// context (skipped under the null overlay) — in free AND slot mode, because the right-click funnel is not a
+        /// gesture owner — and the "…" the shape places (corner or trailing) re-enters that same funnel. Counts by
+        /// presence.</summary>
         public Func<ContextMenuModel?>? Menu { get; init; }
 
         /// <summary>The cover's width ÷ height. 1 (the default) is the square every entity card has always had; a wide
-        /// tile (16:9 header art) states its ratio here and the shelf/grid hosts derive the cover height from it
-        /// (<see cref="CoverHeight"/>), so the label block never moves.</summary>
+        /// tile (16:9 header art) states its ratio here and the stack derives the cover height from it
+        /// (<see cref="SurfaceGeometry.CoverHeight"/>), so the label block never moves.</summary>
         public float CoverAspect { get; init; } = 1f;
 
-        /// <summary>An optional THIRD line under the subtitle — tertiary, one line ("Spotify · 200 songs"). Null (the
+        /// <summary>An optional THIRD line under a stack's subtitle — tertiary, one line ("Spotify · 200 songs"). Null (the
         /// default) renders nothing, so every existing card keeps its two-line label block.</summary>
         public string? Meta { get; init; }
 
-        /// <summary>The second line as a PLAIN string the card renders itself: ONE secondary 12/16 paragraph capped at
-        /// <see cref="CaptionLines"/>, with <see cref="Meta"/> riding INLINE at its tail as a tertiary " · meta" span (the
-        /// prototype's <c>.lead-meta</c> inside <c>.g-cap</c>) instead of its own line. Null (the default) keeps the
-        /// <see cref="Subtitle"/> element and the separate meta line. A string, not an element, so the card's data-only
+        /// <summary>A stack's second line as a PLAIN string the surface renders itself: ONE secondary 12/16 paragraph
+        /// capped at <see cref="CaptionLines"/>, with <see cref="Meta"/> riding INLINE at its tail as a tertiary " · meta"
+        /// span (the prototype's <c>.lead-meta</c> inside <c>.g-cap</c>) instead of its own line. Null (the default) keeps
+        /// the <see cref="Subtitle"/> element and the separate meta line. A string, not an element, so the data-only
         /// equality holds across re-pushes (a span paragraph's array never compares equal).</summary>
         public string? Caption { get; init; }
 
@@ -397,393 +378,94 @@ public static partial class Controls
         /// <c>captionLines</c> reserves). Ignored without a <see cref="Caption"/>.</summary>
         public int CaptionLines { get; init; } = 1;
 
+        // ── The row slots and the rest of the surface's data ──────────────────────────────────────────────────────────
+
+        /// <summary>A row's EYEBROW, over its title ("Lyrics match").</summary>
+        public Element? Eyebrow { get; init; }
+
+        /// <summary>A row's META ROW, under its subtitle (the episode "E · ▣ · 3 Oct · 42 min" row).</summary>
+        public Element? MetaRow { get; init; }
+
+        /// <summary>A row's TRAILING cluster (a duration, a chip, a Follow toggle). The host wraps it in
+        /// <see cref="SurfaceParts.Action"/> — a <c>BlocksDragArm</c> barrier — so a press on a control inside it never
+        /// arms the row's drag; a clickable child is its own gesture owner by the dispatcher's rule.</summary>
+        public Element? Trailing { get; init; }
+
+        /// <summary>A row's last text-column line, under the meta row (an episode's progress bar).</summary>
+        public Element? Below { get; init; }
+
+        /// <summary>A title match to highlight (Browse's chart search, the library search): <c>(0, 0)</c> = none. The
+        /// title renders through <see cref="SearchHighlight"/> at the shape's line budget.</summary>
+        public (int Start, int Length) Highlight { get; init; }
+
+        /// <summary>The drop target the surface IS (a playlist tile accepting tracks). Counts by presence.</summary>
+        public DropTargetSpec? Drop { get; init; }
+
+        /// <summary>A SEED (blank / unresolved) surface: the host renders its bone face from the shape's own geometry — no
+        /// title, no chrome, disabled. The one skeleton description every shape has.</summary>
+        public bool IsSeed { get; init; }
+
+        /// <summary>THE seed. Inside a bound slot the caller also disables the row (<c>IsItemEnabledTyped</c>), so the
+        /// slot root dims and refuses invoke.</summary>
+        public static readonly CardData Seed = new("", "", null, null, null) { IsSeed = true };
+
         public bool Equals(CardData? other)
             => other is not null && (ReferenceEquals(this, other)
                || (Uri == other.Uri && Title == other.Title && CoverUrl == other.CoverUrl
-                   && Circular == other.Circular && ShowMenu == other.ShowMenu && TitleLines == other.TitleLines
+                   && Circular == other.Circular && ShowMenu == other.ShowMenu
                    && CoverAspect.Equals(other.CoverAspect) && Meta == other.Meta
                    && Caption == other.Caption && CaptionLines == other.CaptionLines
-                   && (OnPlay is null) == (other.OnPlay is null)
+                   && Highlight == other.Highlight && IsSeed == other.IsSeed
+                   && (OnClick is null) == (other.OnClick is null) && (OnPlay is null) == (other.OnPlay is null)
                    && Drag?.Kind == other.Drag?.Kind && Equals(Drag?.Style, other.Drag?.Style)
                    // `float.Equals`, not `==`: NaN (the "unpinned" default) must equal NaN.
                    && Height.Equals(other.Height) && Selected == other.Selected
                    && (SelectedAccent is null) == (other.SelectedAccent is null) && (Menu is null) == (other.Menu is null)
-                   && Equals(Subtitle, other.Subtitle) && Equals(CoverOverride, other.CoverOverride)));
+                   && (Drop is null) == (other.Drop is null)
+                   && Equals(Subtitle, other.Subtitle) && Equals(CoverOverride, other.CoverOverride)
+                   && Equals(Eyebrow, other.Eyebrow) && Equals(MetaRow, other.MetaRow)
+                   && Equals(Trailing, other.Trailing) && Equals(Below, other.Below)));
 
-        // The hash stays cheap and consistent with Equals: it walks no Element tree (presence stands in for the two
-        // element slots) — equal records still hash equal, unequal ones merely may collide.
+        // The hash stays cheap and consistent with Equals: it walks no Element tree (presence stands in for every element
+        // slot) — equal records still hash equal, unequal ones merely may collide.
         public override int GetHashCode()
-            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, TitleLines,
+            => HashCode.Combine(Uri, Title, CoverUrl, Circular, ShowMenu, Highlight,
                                 HashCode.Combine(Height, CoverAspect, Meta, Caption, CaptionLines),
                                 (OnPlay is not null ? 1 : 0) | (Drag is not null ? 2 : 0) | (Subtitle is not null ? 4 : 0)
                                 | (CoverOverride is not null ? 8 : 0) | (Selected ? 16 : 0)
-                                | (SelectedAccent is not null ? 32 : 0) | (Menu is not null ? 64 : 0));
-    }
-
-    /// <summary>THE virtualized shelf's cross extent for a SQUARE-cover card whose subtitle may take TWO lines (the
-    /// Artist / module / episode shelves pass subtitles capped at 2): <c>cardW + 66</c> — the general form below at
-    /// aspect 1, two caption lines, no meta line: 4 gutter + 8 plate top + the square cover (w − 16) + 8 gap + 20 title +
-    /// 2 + 32 subtitle + 8 plate bottom. The identity <c>ShelfHeight(w) == w + 66</c> is pinned by test.
-    /// <para>The RENDERER and the ESTIMATOR must both call this. An estimate that disagrees with the rendered height
-    /// makes a measured virtual list re-pin its scroll anchor mid-scroll, which reads as the feed jumping under the
-    /// cursor.</para></summary>
-    public static float ShelfHeight(float cardW) => ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false);
-
-    /// <summary>The EXACT shelf card extent for what the card shows — the renderer (<see cref="ShelfCardHost"/> +
-    /// <see cref="Labels"/>) stacks precisely these, to the DIP:
-    /// <c>ShelfGutterTop (4) + ShelfPlatePad (8) + cover + ShelfPlatePad (8) gap + title 20
-    /// + (captionLines &gt; 0 ? 2 + 16·captionLines : 0) + (metaLine ? 2 + 16 : 0) + ShelfPlatePad (8) + ShelfGutterBottom (0)</c>.
-    /// The cover is <paramref name="coverAspect"/> (width ÷ height) over the card's INNER width (the card less its
-    /// 2 × 8 plate padding). <paramref name="captionLines"/> is the subtitle's line cap (an inline <see cref="CardData.Caption"/>
-    /// carries its meta on those lines); <paramref name="metaLine"/> reserves the separate tertiary
-    /// <see cref="CardData.Meta"/> line a wide tile shows. A card that shows less than its row reserves is merely shorter
-    /// than the row (its plate stretches, the labels stay top-aligned).</summary>
-    public static float ShelfHeight(float cardW, float coverAspect, int captionLines, bool metaLine)
-    {
-        // The chrome is whole DIP, summed FIRST so the cover is added exactly once (no float drift against `w + N`).
-        float chrome = ShelfGutterTop + ShelfPlatePad + ShelfPlatePad + CardTitleLineH
-                       + (captionLines > 0 ? CardLabelGap + CardCaptionLineH * captionLines : 0f)
-                       + (metaLine ? CardLabelGap + CardCaptionLineH : 0f)
-                       + ShelfPlatePad + ShelfGutterBottom;
-        return CoverHeight(cardW - 2f * ShelfPlatePad, coverAspect) + chrome;
-    }
-
-    /// <summary>The shelf card's vertical chrome, read by BOTH <see cref="ShelfHeight(float, float, int, bool)"/> and the
-    /// renderer so the two cannot drift: the outer gutter over the plate (4) and under it (0 — the fill-only hover casts
-    /// no halo that needs room), the plate's padding on every side (8, also the cover → labels gap), the title line
-    /// (14/20), a caption line (12/16) and the labels' inter-line gap (2).</summary>
-    public const float ShelfGutterTop = Spacing.XS, ShelfGutterBottom = 0f, ShelfPlatePad = Spacing.S,
-                       CardTitleLineH = 20f, CardCaptionLineH = 16f, CardLabelGap = Spacing.XXS;
-
-    /// <summary>The cover height a card's inner width derives at <paramref name="aspect"/> (width ÷ height): exactly
-    /// the width when square, else rounded to whole DIP so a 16:9 tile's label block lands on the pixel grid.</summary>
-    public static float CoverHeight(float inner, float aspect)
-        => aspect != 1f ? MathF.Round(inner / aspect) : inner;
-
-    /// <summary>A NON-square (wide) shelf cover's decode target: 512 square, cover-fit into the 16:9 slot. Wider than
-    /// <see cref="ShelfDecodePx"/> because a wide tile spans 330-440 DIP; still ONE literal so every wide tile shares a
-    /// texture per url.</summary>
-    public const int WideDecodePx = 512;
-
-    /// <summary>The GRID cell's extra height above its square cover: the label block's own overhead. Shared by Home,
-    /// Browse and Search, for the same estimator reason <see cref="ShelfHeight"/> is.</summary>
-    public static float GridCardChromeFor(int titleLines, bool hasSubtitle)
-        => GridLabelOverhead + titleLines * GridTitleLineH + (hasSubtitle ? GridSubtitleBlockH : 0f);
-
-    /// <inheritdoc cref="GridCardChromeFor"/>
-    public const float GridTitleLineH = 20f, GridSubtitleBlockH = 18f, GridLabelOverhead = 28f;
-
-    /// <summary>A whole shelf ROW's height for a page estimator: the header, the shelf, and the gaps around it. The
-    /// renderer and the estimator MUST return the same number.</summary>
-    public static float ShelfExtent(float cardW) => 32f + ShelfHeight(cardW) + 2f * Spacing.M;
-
-    /// <summary>The SHELF card — a fixed-width cell inside a horizontally paged shelf.</summary>
-    public static Element ShelfCard(CardData d, float cardW)
-        => Embed.Comp(new ShelfCardProps(d, cardW), static () => new ShelfCardHost()) with
-        {
-            SkeletonProxy = () => Embed.Comp(new ShelfCardProps(d, cardW), static () => new ShelfCardHost())
-                with { DeriveRenderedOutput = true },
-        };
-
-    /// <summary>The shelf card's re-pushed props: the card's DATA (<see cref="CardData"/>'s data-only equality) and its
-    /// width. Public only so the equality rule can be pinned by a fact.</summary>
-    public sealed record ShelfCardProps(CardData Data, float CardW)
-    {
-        public bool Equals(ShelfCardProps? other)
-            => other is not null && (ReferenceEquals(this, other) || (CardW.Equals(other.CardW) && Data.Equals(other.Data)));
-
-        public override int GetHashCode() => HashCode.Combine(Data, CardW);
-    }
-
-    /// <summary>An <see cref="IPropsHost"/> (the <c>PagedShelfCore</c> / <c>Detail.FrameHost</c> pattern): every re-push
-    /// lands in <see cref="_latest"/>, renders gate on the data-equal <see cref="_props"/> signal, and every delegate the
-    /// tree carries is a per-host TRAMPOLINE into <see cref="_latest"/> — including the one handed down to the
-    /// now-playing overlay, so the chain parent → card → overlay never freezes a closure at any link.</summary>
-    sealed class ShelfCardHost : Component, IPropsHost
-    {
-        ShelfCardProps? _latest;
-        readonly Signal<ShelfCardProps?> _props = new(null);
-        readonly Action _onClick, _onPlay;
-        readonly Func<object?> _dragPayload;
-
-        public ShelfCardHost()
-        {
-            _onClick = () => _latest?.Data.OnClick();
-            _onPlay = () => _latest?.Data.OnPlay?.Invoke();
-            _dragPayload = () => _latest?.Data.Drag?.PayloadFactory();
-        }
-
-        public void ApplyProps(object props)
-        {
-            _latest = (ShelfCardProps)props;
-            _props.Value = _latest;
-        }
-
-        public override Element Render()
-        {
-            var p = _props.Value;
-            if (p is null) return new BoxEl();
-            var d = p.Data;
-            float inner = p.CardW - 2f * ShelfPlatePad;
-            // A square card keeps its 256 decode and its edge; a wide tile takes the derived height and the 512 decode.
-            bool square = d.CoverAspect == 1f;
-            // A circle only on a square cover: a wide lead asked to be round would take `inner / 2` and become a pill.
-            bool circular = CoverShape.IsCircular(d.Circular, d.CoverAspect);
-            float coverH = CoverHeight(inner, d.CoverAspect);
-            Element art = d.CoverOverride
-                ?? Artwork(d.CoverUrl, inner, coverH, circular ? inner / 2f : Radii.Card,
-                           decodePx: square ? ShelfDecodePx : WideDecodePx);
-            // The drag source keeps the adapter's DATA (Kind, Style) and swaps in the trampoline payload factory; it is
-            // rebuilt only when this host renders, i.e. when the card's data actually changed.
-            DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
-
-            return new BoxEl
-            {
-                // The gutter (4 over, 0 under) and the plate padding (8 all round, 8 cover → labels) are EXACTLY the
-                // constants `ShelfHeight` sums, so the estimator and the renderer agree to the DIP; nothing reserves a
-                // halo — the fill-only hover neither lifts nor casts one.
-                Padding = new Edges4(0f, ShelfGutterTop, 0f, ShelfGutterBottom),
-                Width = p.CardW, Shrink = 0f,
-                Children =
-                [
-                    CardShell(new BoxEl
-                    {
-                        Direction = 1, Gap = ShelfPlatePad, Grow = 1f,
-                        Padding = Edges4.All(ShelfPlatePad),
-                        Children =
-                        [
-                            CardCover(art, inner, coverH, circular,
-                                      // Presence is the adapter's (a card with no play affordance stays that way); the
-                                      // handler itself is the trampoline.
-                                      overlay: NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true),
-                                      corner: d.ShowMenu ? MoreCorner() : null),
-                            Labels(d, inner),
-                        ],
-                    }, _onClick, drag),
-                ],
-            };
-        }
+                                | (SelectedAccent is not null ? 32 : 0) | (Menu is not null ? 64 : 0)
+                                | (Eyebrow is not null ? 128 : 0) | (MetaRow is not null ? 256 : 0)
+                                | (Trailing is not null ? 512 : 0) | (Below is not null ? 1024 : 0)
+                                | (Drop is not null ? 2048 : 0) | (IsSeed ? 4096 : 0) | (OnClick is not null ? 8192 : 0));
     }
 
     /// <summary>Shelf covers decode at a FIXED 256 square — stable across responsive card widths, so a resize never
     /// forces a re-decode, and a card and a detail cover that pass the same literal resolve to ONE cached texture.</summary>
     public const int ShelfDecodePx = 256;
 
-    /// <summary>The GRID card: the width-agnostic twin of the shelf card, for a fluid grid cell whose exact width is not
-    /// known at template time. A COMPONENT (<see cref="GridCardHost"/>), because its cover chrome mounts lazily (file
-    /// header, rule 6) and that needs per-card hover state; the shell controls a caller used to apply to the returned
-    /// BoxEl now travel in <see cref="CardData"/> (<c>Height</c>, <c>Selected</c>, <c>Menu</c>). A caller that needs a
-    /// reconciler KEY on the card puts it on the returned element (<c>GridCard(d) with { Key = … }</c>).</summary>
-    public static Element GridCard(CardData d)
-        => Embed.Comp(new GridCardProps(d), static () => new GridCardHost());
+    /// <summary>A NON-square (wide) shelf cover's decode target: 512 square, cover-fit into the 16:9 slot. Wider than
+    /// <see cref="ShelfDecodePx"/> because a wide tile spans 330-440 DIP; still ONE literal so every wide tile shares a
+    /// texture per url.</summary>
+    public const int WideDecodePx = 512;
 
-    /// <summary>The grid card's re-pushed props: just the card's DATA, so the compiler's record equality IS
-    /// <see cref="CardData"/>'s data-only equality — a host that keeps one instance per (slot, version) re-pushes the same
-    /// reference and the comparison short-circuits before it touches a field.</summary>
-    public sealed record GridCardProps(CardData Data);
-
-    /// <summary>The ONE pure decision behind the lazy cover chrome: the overlay and the corner "…" exist while the card is
-    /// HOT (pointer inside its subtree, or keyboard focus reached it) or while it RELATES to playback (the equalizer pill
-    /// has to show on a card nobody is pointing at). Pinned by a fact; the host only feeds it.</summary>
+    /// <summary>The pure decisions behind the lazy chrome (file header, rule 6): the overlay and the "…" exist while the
+    /// surface is HOT or RELATES to playback (the equalizer pill has to show on a surface nobody points at). Pinned by
+    /// facts; the host only feeds them.</summary>
     public static class CardChromeRules
     {
         public static bool Mounted(bool hot, bool relates) => hot || relates;
 
-        /// <summary>Hot = pointer inside the card's subtree, OR keyboard focus reached it.</summary>
-        public static bool Hot(bool pointerIn, bool focusIn) => pointerIn || focusIn;
+        /// <summary>Hot = pointer inside the surface's subtree, OR keyboard focus within it.</summary>
+        public static bool Hot(bool pointerIn, bool focusWithin) => pointerIn || focusWithin;
 
-        /// <summary>Focus-in latches on a genuine focus gain, and — on a loss — holds while focus is still somewhere
-        /// inside the shell (a Tab landing on the card's own FAB reads as a loss at the shell, not an exit).</summary>
-        public static bool FocusIn(bool got, bool stillInside) => got || stillInside;
+        /// <summary>Focus WITHIN the surface, from the two ROUTED focus edges the host hears (<c>InputDispatcher.SetFocus</c>:
+        /// an ancestor's <c>OnFocusChanged</c> fires on focus entering/leaving its SUBTREE; the focused node itself keeps
+        /// SELF semantics). <paramref name="self"/> is the shell's own edge (free mode — the shell is the tab stop);
+        /// <paramref name="inner"/> is the non-focusable wrapper around the content, which hears a Tab from the shell onto
+        /// the surface's own FAB as focus ENTERING — exactly the move the shell itself reads as a LOSS. Their OR is focus
+        /// within, with no scene walk.</summary>
+        public static bool FocusWithin(bool self, bool inner) => self || inner;
     }
-
-    /// <summary>The grid card's host — the <see cref="ShelfCardHost"/> pattern (an <see cref="IPropsHost"/>: re-pushes
-    /// land in <see cref="_latest"/>, renders gate on the data-equal <see cref="_props"/> signal, every delegate in the
-    /// tree is a per-host trampoline) plus the hot/cold decision, folded from TWO inputs — <see cref="_pointerIn"/> and
-    /// <see cref="_focusIn"/> — into <see cref="_hot"/> by <see cref="CardChromeRules.Hot"/>:
-    /// <list type="bullet">
-    /// <item><c>OnHoverMove</c> → <see cref="_pointerIn"/> = true. The dispatcher delivers it on the card's SUBTREE-enter
-    /// edge (<c>InputDispatcher.UpdateHoverWithin</c>) — WinUI PointerEntered is subtree-scoped. It does NOT synthesize
-    /// hover for content appearing under a stationary pointer: a card paged in under a still cursor arms on the next
-    /// real move, not on mount — a lazy-mounted reveal that needs to show up already hot is seeded on mount through the
-    /// transparent tooltip wrapper instead (file header, rule 6), not through this bit.</item>
-    /// <item><c>OnPointerExit</c> → <see cref="_pointerIn"/> = false. Subtree-scoped as well: moving onto the FAB or the
-    /// "…" is NOT an exit, so the node being pressed is never unmounted under the press.</item>
-    /// <item><c>OnFocusChanged</c> → <see cref="_focusIn"/> via <see cref="CardChromeRules.FocusIn"/>. A genuine gain
-    /// always latches it true. A loss cools it UNLESS focus is still somewhere inside the shell — the FAB and the "…"
-    /// are focus stops INSIDE the card, the engine has no focus-within notion, and a Tab from the shell onto its own FAB
-    /// reads as a loss there; <see cref="FocusInsideShell"/> checks the CURRENT focused node against the shell's subtree
-    /// before believing the loss. Pointer and focus are independent bits: losing focus while the pointer is still inside
-    /// does not cool the card, and moving the pointer off a keyboard-focused card does not either.</item>
-    /// </list>
-    /// The fold writes <see cref="_hot"/> through the signal's equality gate, so a pointer sweeping across a hot card
-    /// schedules nothing.</summary>
-    sealed class GridCardHost : Component, IPropsHost
-    {
-        GridCardProps? _latest;
-        readonly Signal<GridCardProps?> _props = new(null);
-        readonly Signal<bool> _hot = new(false);
-        bool _pointerIn, _focusIn;
-        NodeHandle _shell;
-        InputHooks? _hooks;
-        readonly Action _onClick, _onPlay, _exit;
-        readonly Action<Point2> _enter;
-        readonly Action<bool> _focus;
-        readonly Action<NodeHandle> _realized;
-        readonly Func<object?> _dragPayload;
-        readonly Func<ContextMenuModel?> _menu;
-
-        public GridCardHost()
-        {
-            _onClick = () => _latest?.Data.OnClick();
-            _onPlay = () => _latest?.Data.OnPlay?.Invoke();
-            _dragPayload = () => _latest?.Data.Drag?.PayloadFactory();
-            _menu = () => _latest?.Data.Menu?.Invoke();
-            _realized = h => _shell = h;
-            _enter = _ => { _pointerIn = true; Fold(); };
-            _exit = () => { _pointerIn = false; Fold(); };
-            _focus = got =>
-            {
-                _focusIn = CardChromeRules.FocusIn(got, stillInside: !got && FocusInsideShell());
-                Fold();
-            };
-        }
-
-        void Fold() => _hot.Value = CardChromeRules.Hot(_pointerIn, _focusIn);
-
-        // Walks the CURRENT focused node up to the shell on the live scene — a Tab onto the card's own FAB reads as a
-        // focus LOSS at the shell (the engine has no focus-within notion), and this is what tells that loss apart from
-        // focus actually leaving the card.
-        bool FocusInsideShell()
-        {
-            var scene = Context.Scene;
-            if (scene is null || _shell.IsNull || _hooks?.GetFocus is null) return false;
-            var focused = _hooks.GetFocus.Invoke();
-            if (focused.IsNull || !scene.IsLive(focused)) return false;
-            for (var n = focused; !n.IsNull; n = scene.Parent(n))
-                if (n == _shell) return true;
-            return false;
-        }
-
-        public void ApplyProps(object props)
-        {
-            _latest = (GridCardProps)props;
-            _props.Value = _latest;
-        }
-
-        public override Element Render()
-        {
-            // The context reads come BEFORE the early return so the hook order never depends on the props being seeded.
-            var overlay = UseContext(Overlay.Service);
-            _hooks = UseContext(InputHooks.Current);
-            var p = _props.Value;
-            if (p is null) return new BoxEl();
-            var d = p.Data;
-
-            // HOT first, then the relation COARSE-first (the NowPlayingOverlayHost discipline): a hot card never asks
-            // `RelatesTo`, so it does not join the hot identity fan-out; an idle card reads one app-wide bool and stops.
-            bool hot = _hot.Value;
-            bool relates = false;
-            if (!hot && NowPlaying is { } pb && pb.HasActiveContext.Value) relates = pb.RelatesTo(d.Uri);
-            bool chrome = CardChromeRules.Mounted(hot, relates);
-
-            // A circle only on a square cover (`CoverShape`): the radius, the clip and the labels all read this one bit.
-            bool circular = CoverShape.IsCircular(d.Circular, d.CoverAspect);
-            Element art = d.CoverOverride ?? ArtworkFill(d.CoverUrl, circular ? Radii.Full : Radii.Card, aspect: d.CoverAspect);
-            Element[] cover = !chrome ? [art]
-                : d.ShowMenu ? [art, NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true), MoreCorner()]
-                : [art, NowPlayingOverlay(d.Uri, d.OnPlay is null ? null : _onPlay, 44f, centred: true)];
-            // The adapter's DATA (Kind, Style) with the trampoline payload factory — rebuilt only when this host renders.
-            DragSource? drag = d.Drag is { } ds ? new DragSource(ds.Kind, _dragPayload) { Style = ds.Style } : null;
-
-            // `CardPhysics` returns the SAME BoxEl it is given, so the shell is the card's outermost hit-testable node and
-            // the hover/exit/focus handlers belong exactly here — the subtree edges the dispatcher delivers them on are
-            // this node's.
-            BoxEl shell = CardShell(new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Grow = 1f,
-                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
-                Children =
-                [
-                    // A square card leaves the box's aspect OFF (the fill image carries its own 1:1), byte-identical
-                    // to before; a wide tile sizes the whole cover stack — overlay and corner included — to its ratio.
-                    new BoxEl
-                    {
-                        ZStack = true, ClipToBounds = !circular, Children = cover,
-                        AspectRatio = d.CoverAspect == 1f ? float.NaN : d.CoverAspect,
-                    },
-                    Labels(d, float.NaN),
-                ],
-            }, _onClick, drag) with { OnHoverMove = _enter, OnPointerExit = _exit, OnFocusChanged = _focus, OnRealized = _realized };
-
-            // A PINNED height zeroes Grow/Shrink with it: Height is only the flex basis, and the shell's Grow = 1 would
-            // otherwise stretch the hover plate into a row taller than the card (file header, rule 5).
-            if (!float.IsNaN(d.Height)) shell = shell with { Height = d.Height, Grow = 0f, Shrink = 0f };
-            // The opened card wears the accent border + the brighter fill. The accent is read HERE, in this host's
-            // render, so a palette landing repaints the one selected card and no other; the NEWEST pushed thunk is
-            // honoured through `_latest`, like every other delegate.
-            if (d.Selected && _latest?.Data.SelectedAccent is { } accent)
-                shell = shell with { BorderColor = accent(), BorderWidth = 2f, Fill = Tok.FillCardDefault };
-            return d.Menu is null || IsNullOverlay(overlay) ? shell : ContextMenu.Attach(shell, overlay, _menu);
-        }
-    }
-
-    // The label block. The title is capped at the caller's line budget and the subtitle at TWO with an explicit width,
-    // and the highlight arm gets the SAME budget as the plain title — so a filter narrowing a grid does not reflow a
-    // card from two lines to one. A `Meta` adds ONE tertiary caption line under the subtitle (2 gap + 16 — the
-    // `metaLine` `ShelfHeight` budgets); an inline `Caption` instead carries the meta as a tertiary tail on its own
-    // `CaptionLines`, so no separate line exists. Without either the block is exactly what it always was.
-    static Element Labels(CardData d, float inner)
-    {
-        var kids = new List<Element>(3)
-        {
-            Design.Type.CardTitle(d.Title) with
-                { Width = inner, MaxLines = d.TitleLines, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-        };
-        if (d.Caption is not null)
-        {
-            if (InlineCaption(d.Caption, d.Meta, d.CaptionLines, inner) is { } caption) kids.Add(caption);
-        }
-        else
-        {
-            if (d.Subtitle is not null) kids.Add(d.Subtitle);
-            if (d.Meta is { Length: > 0 } meta)
-                kids.Add(Design.Type.TrackMeta(meta) with
-                    { Color = Tok.TextTertiary, Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
-        }
-        return new BoxEl
-        {
-            Direction = 1, Gap = CardLabelGap, MinWidth = 0f,
-            AlignItems = CoverShape.IsCircular(d.Circular, d.CoverAspect) ? FlexAlign.Center : FlexAlign.Start,
-            Children = kids.ToArray(),
-        };
-    }
-
-    // The inline caption: the second line and the meta as ONE secondary 12/16 paragraph (the meta a tertiary " · meta"
-    // tail), capped at `lines` — exactly `captionLines` caption lines of `ShelfHeight`, never a separate meta line.
-    // Null when there is nothing to say.
-    static Element? InlineCaption(string caption, string? meta, int lines, float inner)
-    {
-        bool hasMeta = meta is { Length: > 0 };
-        if (caption.Length == 0 && !hasMeta) return null;
-        if (lines < 1) lines = 1;
-        TextSpan[] spans = caption.Length == 0 ? [new TextSpan(meta!, Color: Tok.TextTertiary)]
-            : hasMeta ? [new TextSpan(caption), new TextSpan(" · " + meta, Color: Tok.TextTertiary)]
-            : [new TextSpan(caption)];
-        var style = Design.Type.TrackMeta("");
-        return new SpanTextEl(spans)
-        {
-            Size = style.Size, LineHeight = style.LineHeight, Color = Tok.TextSecondary,
-            Wrap = lines > 1 ? TextWrap.Wrap : TextWrap.NoWrap, MaxLines = lines, Trim = TextTrim.CharacterEllipsis,
-            Width = inner, MinWidth = 0f,
-        };
-    }
-
-    /// <summary>The visual a <see cref="MediaRow"/> wears. <see cref="Plain"/> is the bare row (a caller plates it
-    /// itself); <see cref="ListRow"/> the subtle hover ramp every list has always had (the default); <see cref="Tile"/>
-    /// a bordered card plate whose stroke turns accent while the row RELATES to playback (<see cref="RelatesNow"/>);
-    /// <see cref="Outline"/> a dashed, fill-less "go somewhere" frame (the listening-history tile).</summary>
-    public enum RowSkin : byte { Plain, ListRow, Tile, Outline }
 
     /// <summary>Does <paramref name="uri"/> relate to what is playing RIGHT NOW — the coarse <c>HasActiveContext</c>
     /// gate first (one app-wide bool, so an idle read never joins the hot identity fan-out), then the loose
@@ -791,89 +473,6 @@ public static partial class Controls
     /// with no seam installed.</summary>
     public static bool RelatesNow(string uri)
         => NowPlaying is { } pb && pb.HasActiveContext.Value && pb.RelatesTo(uri);
-
-    /// <summary>The horizontal MEDIA ROW — search results, recents, a rail list. FOUR heights, not one: 64 plain,
-    /// 112 large (a "top result" hero), auto with a 64 floor when it carries an inline detail, and auto with a 72 floor
-    /// for the below-art arm.
-    /// <para><paramref name="skin"/> picks the plate (<see cref="RowSkin"/>); the default is the list-row hover ramp
-    /// every existing caller gets, byte-identical to before.</para></summary>
-    public static Element MediaRow(CardData d, float artEdge = 48f, Element? trailing = null, Element? eyebrow = null,
-                                   Element? meta = null, bool large = false, RowSkin skin = RowSkin.ListRow)
-    {
-        float edge = large ? 84f : artEdge;
-        var text = new List<Element>(4);
-        if (eyebrow is not null) text.Add(eyebrow);
-        text.Add(large
-            ? Design.Type.PageHero(d.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
-            : Design.Type.TrackTitle(d.Title) with
-            {
-                MaxLines = d.TitleLines,
-                Wrap = d.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap,
-                Trim = TextTrim.CharacterEllipsis,
-                MinWidth = 0f,
-            });
-        if (d.Subtitle is not null) text.Add(d.Subtitle);
-        if (meta is not null) text.Add(meta);
-
-        var kids = new List<Element>(4)
-        {
-            new BoxEl
-            {
-                ZStack = true, Width = edge, Height = edge, Shrink = 0f, ClipToBounds = !d.Circular,
-                Children =
-                [
-                    d.CoverOverride ?? Artwork(d.CoverUrl, edge, edge, d.Circular ? edge / 2f : Radii.Control),
-                    NowPlayingOverlay(d.Uri, d.OnPlay, large ? 44f : 30f, centred: true),
-                ],
-            },
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = large ? Spacing.S : 2f,
-                Children = text.ToArray(),
-            },
-        };
-        if (trailing is not null) kids.Add(trailing);
-
-        var row = new BoxEl
-        {
-            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
-            MinHeight = large ? 112f : 64f, MinWidth = 0f,
-            Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.S),
-            Corners = CornerRadius4.All(Radii.Control),
-            Role = AutomationRole.Button, Focusable = true,
-            FocusVisualMargin = Design.FocusInsetRow,
-            Cursor = CursorId.Hand, OnClick = d.OnClick, Draggable = d.Drag,
-            Children = kids.ToArray(),
-        };
-        // A near-full-width row's press acknowledgement is its PressedFill alone — never a PressScale. Even a 2% swing
-        // moves each edge several DIP in opposite directions on a ~1000-px row and visibly blurs the title mid-scale.
-        // None of the recipes below declares motion, so `Interactive` expands only the brush half.
-        switch (skin)
-        {
-            case RowSkin.Plain:
-                return row;
-            case RowSkin.Outline:
-                // The subtle ramp over a dashed hairline: a frame, not a plate — it says "go somewhere", not "an item".
-                return row.Interactive(Interaction.Subtle) with
-                {
-                    BorderWidth = 1f, BorderColor = Tok.StrokeControlSecondary,
-                    BorderDashOn = 3f, BorderDashOff = 3f,
-                };
-            case RowSkin.Tile:
-            {
-                // The card fills, with the stroke taken OUT of the recipe so this node can bind it: the border reads
-                // the playback relation live (a paint-only re-tint on a track edge, never a re-render of the row).
-                string uri = d.Uri;
-                return row.Interactive(Interaction.Tile with { Stroke = null }) with
-                {
-                    BorderWidth = 1f,
-                    BorderColor = Prop.Of(() => RelatesNow(uri) ? Tok.AccentDefault with { A = 0.5f } : Tok.StrokeCardDefault),
-                };
-            }
-            default:
-                return row.Interactive(Interaction.ListRow);
-        }
-    }
 
     // ══ 5. THE COVER SHIMMER ═════════════════════════════════════════════════════════════════════════════════════════
 

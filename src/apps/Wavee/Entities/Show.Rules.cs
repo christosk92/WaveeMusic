@@ -76,8 +76,13 @@ public static class ListenNext
     /// <param name="playing">index into <paramref name="pcts"/> of THIS show's now-playing episode, or -1; an index
     /// outside the span reads as -1.</param>
     /// <param name="upNext">receives up to min(its length, <see cref="UpNextMax"/>) indices, in listening order.</param>
+    /// <param name="skip">PARALLEL to <paramref name="pcts"/> (a shorter or empty span skips nothing past its end):
+    /// indices that are never OFFERED as up next — the episodes the "new since you were here" block already shows (one
+    /// episode, one place; <see cref="ShowReaderRules.FreshMask"/>). They are skipped, not counted: room they would have
+    /// taken is filled by the next candidates. Neither the resume nor the story's anchor reads it.</param>
     /// <returns>the resume index (or -1) and how many indices were written to <paramref name="upNext"/>.</returns>
-    public static (int Resume, int Count) Pick(ReadOnlySpan<float> pcts, ConsumptionOrder order, int playing, Span<int> upNext)
+    public static (int Resume, int Count) Pick(ReadOnlySpan<float> pcts, ConsumptionOrder order, int playing, Span<int> upNext,
+                                               ReadOnlySpan<bool> skip = default)
     {
         int cap = Math.Min(upNext.Length, UpNextMax), n = 0;
         int resume = (uint)playing < (uint)pcts.Length && !Episode.Rules.Played(pcts[playing]) ? playing : -1;
@@ -87,7 +92,7 @@ public static class ListenNext
         if (order != ConsumptionOrder.Sequential)
         {
             for (int i = 0; i < pcts.Length && n < cap; i++)
-                if (i != resume && !Finished(pcts[i])) upNext[n++] = i;
+                if (i != resume && !Finished(pcts[i]) && !Skipped(skip, i)) upNext[n++] = i;
             return (resume, n);
         }
 
@@ -97,11 +102,13 @@ public static class ListenNext
         int anchor = Math.Max(resume, finished);                      // the OLDER of the two is the HIGHER index
         if (anchor < 0) anchor = pcts.Length;                         // never listened: just before episode 1
         for (int i = anchor - 1; i >= 0 && n < cap; i--)              // forward in the story = toward index 0
-            if (i != resume && !Finished(pcts[i])) upNext[n++] = i;
+            if (i != resume && !Finished(pcts[i]) && !Skipped(skip, i)) upNext[n++] = i;
         for (int i = pcts.Length - 1; i > anchor && n < cap; i--)     // then what was skipped, from episode 1 on
-            if (i != resume && !Finished(pcts[i])) upNext[n++] = i;
+            if (i != resume && !Finished(pcts[i]) && !Skipped(skip, i)) upNext[n++] = i;
         return (resume, n);
     }
+
+    static bool Skipped(ReadOnlySpan<bool> skip, int i) => (uint)i < (uint)skip.Length && skip[i];
 }
 
 // ══ 3. THE PLAYED LEDGER ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -445,48 +452,116 @@ public static class ShowReaderShape
 
 // ══ 5b. THE READER'S TOOLBAR AND ITS DATE RAIL ═══════════════════════════════════════════════════════════════════════
 
-/// <summary>How much of the show reader's toolbar still fits. ONE row at ONE height at every stage — the plane the row
-/// sits on is the list's mount-time clip inset, so nothing here may add a second line.</summary>
+/// <summary>How much of the show reader's toolbar still fits, richest first. ONE row at ONE height at every stage — the
+/// plane the row sits on is the list's mount-time clip inset, so nothing here may add a second line. The filter chips
+/// are never squeezed: they keep their natural width at every stage but the last, where they fold into one menu.
+/// <code>
+///   Full         All 326  Unplayed 320  In progress 5  Played 1   [⌕ Find in this show ]  │  Newest Oldest  [✓]
+///   FindIcon     All 326  Unplayed 320  In progress 5  Played 1   ⌕  │  Newest Oldest  [✓]
+///   CompactSort  All 326  Unplayed 320  In progress 5  Played 1   ⌕  ⇅  [✓]
+///   FilterMenu   [Unplayed 320 ▾]                                 ⌕  ⇅  [✓]
+///   (find open at a collapsed stage)  chips stay · [⌕ why ger ......... ✕] takes the sort/select area
+/// </code></summary>
 public enum ToolbarStage : byte
 {
-    /// <summary>The resting shape: filter words with counts · spacer · find field · divider · sort words · select.</summary>
+    /// <summary>The resting shape: filter chips with counts · spacer · find field · divider · sort words · select.</summary>
     Full,
-    /// <summary>The find FIELD becomes a search glyph in the same row (opening it swaps the row's middle for the field
-    /// plus a close affordance — never a second row).</summary>
+    /// <summary>The find FIELD becomes a search glyph in the same row (opening it swaps the sort/select area for the
+    /// field plus a close affordance — never a second row).</summary>
     FindIcon,
-    /// <summary>And the two sort WORDS become one glyph menu, so the filter words keep their counts.</summary>
+    /// <summary>And the two sort WORDS become one glyph menu.</summary>
     CompactSort,
+    /// <summary>And the chips fold into one "selected filter ▾" menu — the only stage at which they give up their words.</summary>
+    FilterMenu,
 }
 
-/// <summary>The show reader's toolbar (report 4a, revised after the three-row build was rejected). There is no
-/// measure-and-classify pass and no pressure classifier: the toolbar is ONE row whose pieces collapse at two
-/// DETERMINISTIC breakpoints on the measured rail width, and a horizontal scroller is never an answer.
-/// <para>THE ARITHMETIC behind the breakpoints, at the rail's own type (<c>Controls.Words</c> 13.5/18, gap 14) inside
-/// the reader's narrow 16-DIP gutters: the four counted filter words run ≈280 DIP, the two sort words ≈90, the search
-/// and select glyphs 30 each, the divider 1, and the row's four 16-DIP gaps ≈64. <see cref="FindCollapsesBelow"/>
-/// (640) is where the 180-DIP find field stops fitting beside all of that; <see cref="SortCollapsesBelow"/> (480)
-/// is where what is LEFT (≈450 DIP) meets the 448 DIP of content 480 leaves, so the sort words go next and the filter
-/// counts — the thing the owner reads the toolbar for — survive to the narrowest window.</para>
-/// <para>A width of 0 is "not measured yet" and reads WIDE, exactly as <see cref="ShowReaderRules.Narrow"/> does: the
-/// first frame must not flash a collapsed arm at a window that turns out to be 1200 DIP.</para></summary>
+/// <summary>What the toolbar's pieces measure when nothing squeezes them (DIP): the chip rail's natural width, the sort
+/// words' natural width and the SELECTED chip's own width — what the last stage's menu button labels itself with. A
+/// rail reports 0 until it has been arranged once.</summary>
+public readonly record struct ToolbarNeeds(float Filters, float Sort, float SelectedWord)
+{
+    /// <summary>Both rails have answered — only then is a stage a decision rather than a guess.</summary>
+    public bool Measured => Filters > 0f && Sort > 0f;
+}
+
+/// <summary>The show reader's toolbar. The toolbar MEASURES ITSELF (its own arranged width, minus its own gutters) against
+/// what its pieces measured (<see cref="ToolbarNeeds"/>, from <c>Controls.Words.Rail</c>'s <c>onMeasured</c>) — the same
+/// shape as the album / playlist command bar (<c>Track.CommandBarLayout.Resolve</c>): the richest stage whose need fits,
+/// with <see cref="Hysteresis"/> DIP of headroom required to go RICHER than the stage already shown (narrowing is
+/// immediate), so a window dragged across a boundary does not flicker between two stages. There are no constants for
+/// "where the chips clip" any more: a chip never clips, because a stage is only chosen when the chips have their natural
+/// width (the last stage gives them up for a menu).
+/// <para>THE ROW. Left group (the chips, or the menu) · gap · right group (find · divider · sort · select, each stage
+/// dropping what it can). Every gap is <see cref="Gap"/>; the gutters are <see cref="Pad"/> (<see cref="PadNarrow"/> under
+/// the reader's narrow arm).</para>
+/// <para>A width or a measure of 0 is "not measured yet" and reads <see cref="ToolbarStage.Full"/>, exactly as
+/// <see cref="ShowReaderRules.Narrow"/> reads wide: the first frame must not flash a collapsed arm at a window that
+/// turns out to be 1200 DIP — and Full is what mounts the rails whose measures the next frame needs.</para></summary>
 public static class ShowToolbarLayout
 {
-    /// <summary>Below this the find field collapses behind a search icon (<see cref="ToolbarStage.FindIcon"/>).</summary>
-    public const float FindCollapsesBelow = 640f;
-    /// <summary>Below this the sort words additionally fold into one compact control
-    /// (<see cref="ToolbarStage.CompactSort"/>). Necessarily below <see cref="FindCollapsesBelow"/>.</summary>
-    public const float SortCollapsesBelow = 480f;
+    /// <summary>The row's gap (<c>Spacing.L</c>) — between the groups and between the pieces of a group.</summary>
+    public const float Gap = 16f;
+    /// <summary>The reader's gutters (<see cref="ShowReaderRules.Pad"/> / <see cref="ShowReaderRules.PadNarrow"/>) the
+    /// toolbar sits inside.</summary>
+    public const float Pad = ShowReaderRules.Pad, PadNarrow = ShowReaderRules.PadNarrow;
+    /// <summary>The find field's width at rest (<see cref="Controls.FindBoxWidth"/>), a glyph toggle, the hairline.</summary>
+    public const float FindWidth = Controls.FindBoxWidth, Glyph = 30f, Divider = 1f;
+    /// <summary>The menu button around the selected chip: its 8-DIP gutters, the 4-DIP gap and the 10-DIP chevron.</summary>
+    public const float MenuChrome = 26f;
+    /// <summary>The selected chip's width before the rail has measured it (a menu button is never narrower than a word).</summary>
+    public const float MenuWordFallback = 72f;
+    /// <summary>Headroom a RICHER stage needs beyond its bare fit (same number as <c>CommandBarLayout.PromotionHysteresis</c>).</summary>
+    public const float Hysteresis = 16f;
 
-    /// <summary>The stage a measured rail width is in (type doc).</summary>
-    public static ToolbarStage Of(float width)
-        => width <= 0f ? ToolbarStage.Full
-         : width < SortCollapsesBelow ? ToolbarStage.CompactSort
-         : width < FindCollapsesBelow ? ToolbarStage.FindIcon
-         : ToolbarStage.Full;
+    /// <summary>The toolbar's content width: its arranged width less both gutters.</summary>
+    public static float InnerWidth(float width, bool narrowPad) => width - 2f * (narrowPad ? PadNarrow : Pad);
 
-    /// <summary>The one bit the find box itself needs: is it collapsed behind the search glyph? True for BOTH collapsed
-    /// stages — <see cref="ToolbarStage.CompactSort"/> folds the sort on top of an already-collapsed find.</summary>
-    public static bool Narrow(float width) => Of(width) != ToolbarStage.Full;
+    /// <summary>The width the left group asks for at <paramref name="stage"/>: the chips' natural width, or the menu
+    /// button around the selected one.</summary>
+    public static float LeftGroup(ToolbarStage stage, in ToolbarNeeds needs)
+        => stage == ToolbarStage.FilterMenu
+            ? (needs.SelectedWord > 0f ? needs.SelectedWord : MenuWordFallback) + MenuChrome
+            : needs.Filters;
+
+    /// <summary>The width the right group asks for at <paramref name="stage"/> (find · divider · sort · select, as far as
+    /// the stage keeps them). An OPEN find field at a collapsed stage takes this very area over — field and close in
+    /// place of the search glyph, the sort and the select — so the area is the same number either way.</summary>
+    public static float RightGroup(ToolbarStage stage, in ToolbarNeeds needs) => stage switch
+    {
+        ToolbarStage.Full => FindWidth + Gap + Divider + Gap + needs.Sort + Gap + Glyph,
+        ToolbarStage.FindIcon => Glyph + Gap + Divider + Gap + needs.Sort + Gap + Glyph,
+        _ => Glyph + Gap + Glyph + Gap + Glyph,                     // search · sort menu · select
+    };
+
+    /// <summary>The content width <paramref name="stage"/> needs: its two groups and the gap between them.</summary>
+    public static float NeedOf(ToolbarStage stage, in ToolbarNeeds needs)
+        => LeftGroup(stage, in needs) + Gap + RightGroup(stage, in needs);
+
+    /// <summary>The room the left group gets beside the right group at <paramref name="stage"/> in a toolbar
+    /// <paramref name="width"/> wide — what the chips are laid out in (they never shrink, so this is ≥ their width at
+    /// every stage <see cref="For"/> picks short of <see cref="ToolbarStage.FilterMenu"/>).</summary>
+    public static float LeftRoom(float width, bool narrowPad, ToolbarStage stage, in ToolbarNeeds needs)
+        => InnerWidth(width, narrowPad) - Gap - RightGroup(stage, in needs);
+
+    /// <summary>The stage for a toolbar <paramref name="width"/> DIP wide (its own arranged width, gutters included);
+    /// <paramref name="previous"/> is the stage on screen (null = none yet). See the type doc.</summary>
+    public static ToolbarStage For(float width, in ToolbarNeeds needs, bool narrowPad, ToolbarStage? previous = null)
+    {
+        if (!(width > 0f) || !needs.Measured) return ToolbarStage.Full;
+        float inner = InnerWidth(width, narrowPad);
+        var fit = Richest(inner, in needs);
+        if (previous is not { } old || fit >= old) return fit;      // narrowing (or no change): immediate
+        // Going richer: the headroom is part of the ask. Never poorer than what is already shown.
+        var relaxed = Richest(inner - Hysteresis, in needs);
+        return relaxed > old ? old : relaxed;
+    }
+
+    static ToolbarStage Richest(float inner, in ToolbarNeeds needs)
+    {
+        for (var stage = ToolbarStage.Full; stage < ToolbarStage.FilterMenu; stage++)
+            if (NeedOf(stage, in needs) <= inner) return stage;
+        return ToolbarStage.FilterMenu;
+    }
 }
 
 /// <summary>The reader's date rail (report 4b) — the Albums list's A–Z jump strip, for dates. It is the SAME kernel

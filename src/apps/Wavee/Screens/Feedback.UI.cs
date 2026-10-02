@@ -51,12 +51,14 @@ public static partial class Feedback
     /// (Feature), the Logs panel's "Report this session…" (Bug + <see cref="ReportPrefill.PastSessionId"/>). UI thread.</summary>
     public static void Open(ReportKind kind, ReportPrefill? prefill = null) => Requests.Open(kind, prefill);
 
-    /// <summary>The crash form's manual door: the Reports list's "View" (WP-E, <c>Crash.ReportsList</c>) and the
-    /// in-app crash prompt's "Report on GitHub instead" (WP-E, <c>Crash.CrashPromptBody</c>) both land here rather
+    /// <summary>The crash form's manual door: the crash prompt's "Report on GitHub instead" (WP-E,
+    /// <c>Crash.CrashPromptBody</c> — the launch prompt and the Reports list's per-row Send) lands here rather
     /// than a fixed <see cref="ReportKind.Crash"/> + a decision record — the crash & diagnostics pipeline (WP-A/B/C)
     /// owns consent and upload now; this dialog is only ever the MANUAL "tell the developer by hand" door for a
-    /// specific bundle's <c>report.txt</c>. UI thread.</summary>
-    public static void OpenCrashReport(string reportTxtPath) => Requests.Open(ReportKind.Crash, new ReportPrefill(CrashReportPath: reportTxtPath));
+    /// specific bundle's <c>report.txt</c>. The bundle's report id rides along so the GitHub form's <c>report-id</c>
+    /// field names the same report the crash service holds (#165). UI thread.</summary>
+    public static void OpenCrashReport(Crash.BundleInfo bundle)
+        => Requests.Open(ReportKind.Crash, new ReportPrefill(CrashReportPath: bundle.ReportTxt, ReportId: bundle.Summary.ReportId));
 
     // ══ 2. THE SEAMS ═══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -402,7 +404,7 @@ public static partial class Feedback
 
             string urlTitle = ReportForm.UrlTitle(draft.Title, c.CrashSummary, Loc.Get(Strings.Report.CrashTitle));
             string url = IssueFormUrl.Build(Kind, c.Identity, urlTitle,
-                ReportForm.UrlFields(Kind, labels, c.Identity, c.Rules, draft), ReportForm.Labels(Kind, c.Identity, draft.Area));
+                ReportForm.UrlFields(Kind, labels, c.Identity, c.Rules, draft, Prefill?.ReportId), ReportForm.Labels(Kind, c.Identity, draft.Area));
             OpenUrl(url, hooks);
 
             Notify.Say(Strings.Report.CopiedPaste(channel.PasteBox), InfoBarSeverity.Success, durationMs: 8000f);

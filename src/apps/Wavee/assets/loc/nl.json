@@ -98,7 +98,10 @@
     "daylistMeta": "Playlist · Spotify · {n} nummers",
     "playingOn": "speelt af op {device}",
     "daylist": {
-      "arrivesAt": "{when} komt om {time}"
+      "arrivesAt": "{when} komt om {time}",
+      "onItsWay": "{daypart} komt eraan",
+      "late": "Je volgende daylist laat op zich wachten",
+      "checkAgain": "Opnieuw controleren"
     },
     "zone": {
       "becauseYouLike": "Omdat je dit leuk vindt",
@@ -1156,5 +1159,77 @@
     "homeAudiobooks": "Start: Audioboeken",
     "homeFollowingOn": "Start: Volgen aan",
     "homeFollowingOff": "Start: Volgen uit"
+  },
+  "person": {
+    "openAccount": "Account openen",
+    "topArtists": "Topartiesten van deze maand",
+    "onlyYou": "Alleen zichtbaar voor jou",
+    "publicPlaylists": "Openbare playlists",
+    "recentArtists": "Onlangs beluisterde artiesten",
+    "following": "Volgend",
+    "followers": "Volgers",
+    "pivot": {
+      "topArtists": "Topartiesten",
+      "playlists": "Playlists",
+      "artists": "Artiesten",
+      "following": "Volgend",
+      "followers": "Volgers"
+    },
+    "stat": {
+      "followers": "{count, plural, one {Volger} other {Volgers}}",
+      "following": "Volgend",
+      "playlists": "{count, plural, one {Openbare playlist} other {Openbare playlists}}"
+    },
+    "card": {
+      "followers": "{count, plural, one {{n} volger} other {{n} volgers}}"
+    },
+    "empty": {
+      "playlists": "Geen openbare playlists",
+      "playlistsOwn": "Nog geen openbare playlists",
+      "playlistsOwnHint": "Playlists die je openbaar maakt, verschijnen hier.",
+      "unavailable": "Dit profiel is niet beschikbaar",
+      "unavailableHint": "Het is misschien privé, of het account is gesloten."
+    },
+    "list": {
+      "nav": {
+        "profile": "Profiel",
+        "lists": "Personen"
+      },
+      "menu": {
+        "profile": "Profiel"
+      },
+      "title": {
+        "following": "Volgend",
+        "followers": "Volgers"
+      },
+      "chip": {
+        "all": "Alles",
+        "artists": "Artiesten",
+        "people": "Personen"
+      },
+      "find": {
+        "following": "Zoeken in volgend",
+        "followers": "Zoeken in volgers"
+      },
+      "card": {
+        "followers": "{count, plural, one {{n} volger} other {{n} volgers}}",
+        "artist": "Artiest",
+        "artistFollowers": "{count, plural, one {Artiest · {n} volger} other {Artiest · {n} volgers}}",
+        "profile": "Profiel"
+      },
+      "empty": {
+        "following": "Volgt nog niemand",
+        "followers": "Nog geen volgers"
+      },
+      "hidden": {
+        "title": "Volglijsten zijn privé",
+        "subtitle": "{name} heeft deze lijsten niet openbaar gemaakt."
+      },
+      "unavailable": {
+        "title": "Dit profiel is niet beschikbaar",
+        "subtitle": "Het is misschien privé, of het account is gesloten."
+      },
+      "fallbackName": "Profiel"
+    }
   }
 }

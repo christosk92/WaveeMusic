@@ -723,6 +723,7 @@ public class SpotifyAudioCtrTests
     }
 }
 
+[Collection(AudioKeyCollection.Name)]       // shares `Spotify.Audio`'s key map and key store with AudioKeyStoreTests (G-123)
 public class SpotifyAudioSeamTests
 {
     /// <summary>With no deriver installed — a public-only checkout — a refused key is a NAMED fault the UI can render,

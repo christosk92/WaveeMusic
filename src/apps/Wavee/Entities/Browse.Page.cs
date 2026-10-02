@@ -517,6 +517,7 @@ public readonly partial struct Browse
                     return HomeCards.ShelfCell(in item, cardW, () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
                                                HomeCardNav.DragOf(in c), host, HomeCardNav.MenuOf(in c));
                 },
+                onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open
                 cardHeight: HomeModuleLayout.ShelfCardHeight,
                 header: header,
                 minCardW: HomeModuleLayout.ShelfCardMin, maxCardW: HomeModuleLayout.ShelfCardMax,
@@ -653,7 +654,7 @@ public readonly partial struct Browse
     // ══ 3. THE CATEGORY SHIMMER (W21) ═══════════════════════════════════════════════════════════════════════════════
 
     /// <summary>A NON-virtualized stand-in for the Shelves geometry: a Related block over five placeholder tiles and two
-    /// shelf bands of six 148 × 220 cards — no PagedShelf, no virtual grid, every box sized off the same constants the
+    /// shelf bands of six shared-surface seed cards — no PagedShelf, no virtual grid, every box sized off the same constants the
     /// real body uses, so nothing measures zero and nothing reflows when the real width lands. Body only: the masthead
     /// is real from frame one. Its words are never shown (the deriver paints bars in their place).</summary>
     static readonly Func<Element> s_shimmer = static () => new BoxEl
@@ -684,26 +685,12 @@ public readonly partial struct Browse
             Children =
             [
                 Design.Type.ModuleHeader(Loc.Get(Strings.Browse.ExploreAll)),
-                new BoxEl { Direction = 0, Gap = Spacing.M, MinWidth = 0f, ClipToBounds = true, Children = cards },
+                new BoxEl { Direction = 0, Gap = HomeModuleLayout.ShelfGap, MinWidth = 0f, ClipToBounds = true, Children = cards },
             ],
         };
     }
 
-    /// <summary>The real shelf card's shape (cover + title + subtitle) at the shelf's MIN width and the real height.</summary>
-    static Element ShimmerCard() => new BoxEl
-    {
-        Width = HomeModuleLayout.ShelfCardMin,
-        Height = HomeModuleLayout.ShelfCardHeight(HomeModuleLayout.ShelfCardMin),
-        Shrink = 0f, Direction = 1, Gap = Spacing.XS,
-        Children =
-        [
-            new BoxEl
-            {
-                Width = HomeModuleLayout.ShelfCardMin, Height = HomeModuleLayout.ShelfCardMin,
-                Fill = Tok.FillSubtleSecondary, Corners = Radii.CardAll,
-            },
-            Design.Type.CardTitle(Loc.Get(Strings.Browse.Genres)),
-            Design.Type.TrackMeta(Loc.Get(Strings.Browse.Charts)),
-        ],
-    };
+    /// <summary>The real shelf card's SEED face (cover + title bar + caption bar) at the shelf's MIN width — the shared
+    /// surface's own skeleton, exactly as tall as <see cref="HomeModuleLayout.ShelfCardHeight"/> says the live card is.</summary>
+    static Element ShimmerCard() => Controls.Surface(Controls.CardData.Seed, Shape.Shelf(), HomeModuleLayout.ShelfCardMin);
 }

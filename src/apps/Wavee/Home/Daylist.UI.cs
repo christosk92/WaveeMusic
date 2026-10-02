@@ -25,12 +25,16 @@
 //     bottom: `DaylistClock` — a stock determinate `ProgressRing` centred beside TWO lines ("Next daylist in
 //             **hh:mm:ss**" body primary, then the caption "{weekday} {next daypart} arrives at HH:mm" secondary),
 //             then five stock determinate `ProgressBar`s (done / current / future, `DaypartTimeline.Fill`)
-//             over their five daypart labels (the current one primary 600, never truncated)
+//             over their five daypart labels (the current one primary 600, never truncated). That is the Counting face;
+//             once the window has ended `DaylistClock` swaps it (keyed by window + face) for Updating (indeterminate
+//             ring, "Updating your daylist…", "{Next daypart} is on its way", the next segment an indeterminate bar)
+//             and, when the rollover ladder gives up, Late ("Your next daylist is running late" + "Check again") —
+//             `DaylistClockFace` over `Home.Feeds.RolloverState`.
 //
 // The "…" button re-enters the engine's context funnel (`ClickRequestsContext`) and finds the card's ATTACHED playlist
 // menu (`HomeCardNav.MenuOf`, the grammar every other card wears) — attaching it needs the overlay service, which the
 // caller hands in. What must SUBSCRIBE (the greeted name) is read in `DaylistCard.Render`; the saved heart is the stock
-// `SaveButton`, which subscribes on its own. The 1-Hz tick lives in `DaylistClock` and reaches the screen through BINDS
+// `SaveButton`, which subscribes on its own. The 1-Hz tick lives in `DaylistCountingClock` and reaches the screen through BINDS
 // only (the countdown spans, the ring, the five bars): no component re-renders on the tick. The cold-load skeleton is
 // the SAME builders fed placeholders (`Daylist.Card`'s `SkeletonProxy`) — the placeholder art slot across the card, no
 // veil — so it shimmers as this card's real shape.
@@ -170,11 +174,11 @@ public sealed class DaylistCard : Component
             Controls.IconAction(Icons.More, null),
             Controls.IconAction(Icons.More, null));
         var current = DaypartRules.OfHour(DateTime.Now.Hour);
-        var line = DaylistClock.Line((TextSpans)new TextSpan[] { new(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))) });
+        var line = DaylistClockBlock.Line((TextSpans)new TextSpan[] { new(Strings.Home.NextDaylistIn(DaypartRules.Countdown(0))) });
         // The caption's placeholder is the real rule read at "now": a caption-width line with the next daypart's word.
         string caption = DaylistNext.Caption(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), current,
                                              TimeZoneInfo.Local, CultureInfo.CurrentCulture);
-        var clock = DaylistClock.Shape(ProgressRing.Determinate(0f, Daylist.RingSize), line, caption, null, (int)current);
+        var clock = DaylistClockBlock.Shape(ProgressRing.Determinate(0f, Daylist.RingSize), line, caption, null, (int)current);
         // The art slot as its watched placeholder across the card (the real shape), and no veil: a component the
         // deriver cannot see into would shimmer as one stray bar.
         return Shape(new Parts(words, Loc.Get(Strings.Home.Layout.Daylist), TagLine(new TextSpan[] { new(words) }, null),
@@ -335,15 +339,87 @@ public sealed class DaylistCard : Component
         => Shell.GoTo(new Shell.Route(Shell.RouteKind.Search, default, Entities.Strings.Intern(tag)));
 }
 
-/// <summary>The card's clock: a stock determinate <see cref="ProgressRing"/> beside two lines — "Next daylist in
+/// <summary>The card's clock, in one of three faces (<see cref="DaylistClockFace"/>): the countdown while the window is
+/// open (<see cref="DaylistCountingClock"/>); once it has ended and the next edition is on its way, a stock
+/// indeterminate ring beside "Updating your daylist…" / "{Next daypart} is on its way" over the timeline with the
+/// finished segment full and the next one an indeterminate bar; and, when the rollover ladder gave up (or never ran —
+/// offline), a static ring beside "Your next daylist is running late" and a "Check again" link that restarts the ladder
+/// (<see cref="Home.Feeds.CheckDaylistAgain"/>). This host reads the window's phase (a 1-Hz watch that only writes on the
+/// flip, so a tick never re-renders it) and the ladder's signal, and keys the face by (window, face) so a face change
+/// remounts only the clock's leaf. Props freeze at mount; the card keys this host on its window and daypart.</summary>
+public sealed class DaylistClock : Component
+{
+    public required long ExpiresAtMs { get; init; }
+    public required long CreatedAtMs { get; init; }
+    public required Daypart Current { get; init; }
+
+    readonly Signal<int> _flip = new(0);
+    readonly Action _watch;
+
+    public DaylistClock() => _watch = Watch;
+
+    /// <summary>The 1-Hz watch while counting: the first tick past the window re-renders this host once.</summary>
+    void Watch()
+    {
+        if (DaylistCountdown.PhaseOf(ExpiresAtMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) != DaylistCountdown.Phase.Counting)
+            _flip.Value++;
+    }
+
+    public override Element Render()
+    {
+        _ = _flip.Value;                                           // the window ended: swap the face once
+        var ladder = Home.Feeds.RolloverState.Value;               // the ladder moved: Updating ↔ Late
+        long expiresAtMs = ExpiresAtMs, createdAtMs = CreatedAtMs;
+        var phase = DaylistCountdown.PhaseOf(expiresAtMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        UseInterval(_watch, 1000f, enabled: phase == DaylistCountdown.Phase.Counting);
+        if (expiresAtMs <= 0) return new BoxEl();
+
+        var face = DaylistClockFace.Of(phase, ladder);
+        var current = Current;
+        string key = "face:" + expiresAtMs.ToString(CultureInfo.InvariantCulture) + ":" + ((int)face).ToString(CultureInfo.InvariantCulture);
+        Element leaf = face switch
+        {
+            DaylistClockFace.Face.Updating => Updating(current),
+            DaylistClockFace.Face.Late => Late(current),
+            _ => Embed.Comp(() => new DaylistCountingClock { ExpiresAtMs = expiresAtMs, CreatedAtMs = createdAtMs, Current = current }),
+        };
+        // The face is the keyed CHILD of a stretch column (a root's own Key is inert in a component's single-child slot).
+        return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [leaf with { Key = key }] };
+    }
+
+    /// <summary>The next edition is on its way: the stock indeterminate ring at the countdown ring's size, the
+    /// card's own "Updating your daylist…" line, then "{Next daypart} is on its way" (the segment AFTER the card's
+    /// current one, the countdown caption's rule), over the timeline whose next segment is an indeterminate bar.</summary>
+    static Element Updating(Daypart current)
+    {
+        string next = Loc.Get(DaypartTimeline.LabelKey((int)DaypartRules.Next(current)));
+        return DaylistClockBlock.Shape(ProgressRing.Indeterminate(Daylist.RingSize), StaticLine(Loc.Get(Strings.Home.DaylistUpdating)),
+                                       Strings.Home.Daylist.OnItsWay(next), null, (int)current, DaylistClockFace.Face.Updating);
+    }
+
+    /// <summary>The ladder ran out: a full, static ring in tertiary ink, the "running late" line and the "Check again"
+    /// link (small, left-aligned in the lines column) that restarts the ladder.</summary>
+    static Element Late(Daypart current)
+    {
+        var check = HyperlinkButton.Create(Loc.Get(Strings.Home.Daylist.CheckAgain), Home.Feeds.CheckDaylistAgain,
+                                           size: ControlSize.Small) with { AlignSelf = FlexAlign.Start, BlocksDragArm = true };
+        return DaylistClockBlock.Shape(ProgressRing.Determinate(1f, Daylist.RingSize, foreground: Tok.TextTertiary, track: Tok.StrokeControlStrongDefault),
+                                       StaticLine(Loc.Get(Strings.Home.Daylist.Late)), "", null, (int)current, DaylistClockFace.Face.Late, check);
+    }
+
+    /// <summary>The first line of a face with a fixed sentence (no per-second count to bind).</summary>
+    static SpanTextEl StaticLine(string text) => DaylistClockBlock.Line((TextSpans)new TextSpan[] { new(text) });
+}
+
+/// <summary>The countdown face: a stock determinate <see cref="ProgressRing"/> beside two lines — "Next daylist in
 /// <b>hh:mm:ss</b>" and, under it, the caption "{weekday} {next daypart} arrives at HH:mm" (<see cref="DaylistNext"/>)
 /// — over the five-segment daypart timeline (five stock determinate <see cref="ProgressBar"/>s over their labels).
 /// A 1-Hz <c>UseInterval</c> writes caller-owned signals — the countdown text, the elapsed fraction, one fill per
 /// segment — and every one of them reaches the screen through a BIND (the first line's bound spans, the ring, the bars'
 /// indicator widths): <see cref="Render"/> reads none of them, so neither this leaf nor anything above it re-renders on
-/// the tick. The caption is static per mount. Props freeze at mount; the card keys this leaf on its window and
-/// daypart, so a new window remounts it (and re-reads the caption).</summary>
-public sealed class DaylistClock : Component
+/// the tick. The caption is static per mount. Props freeze at mount; <see cref="DaylistClock"/> keys this leaf on its
+/// window, so a new window remounts it (and re-reads the caption).</summary>
+public sealed class DaylistCountingClock : Component
 {
     public required long ExpiresAtMs { get; init; }
     public required long CreatedAtMs { get; init; }
@@ -379,7 +455,7 @@ public sealed class DaylistClock : Component
         string caption = DaylistNext.Caption(expiresAtMs, Current, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
 
         // The bound line: one fill of the reused buffer per tick (the scene copies it), a relayout of this one run.
-        var line = Line(Prop.Of(() =>
+        var line = DaylistClockBlock.Line(Prop.Of(() =>
         {
             string count = countdown.Value;                        // subscribe the bind → the per-second update
             spans.Clear();
@@ -389,7 +465,7 @@ public sealed class DaylistClock : Component
             return spans.Current;
         }));
         var ring = ProgressRing.Create(elapsed, Daylist.RingSize, track: Tok.StrokeControlStrongDefault);
-        return Shape(ring, line, caption, segs, current);
+        return DaylistClockBlock.Shape(ring, line, caption, segs, current);
     }
 
     static FloatSignal[] NewSegments()
@@ -398,7 +474,12 @@ public sealed class DaylistClock : Component
         for (int i = 0; i < segs.Length; i++) segs[i] = new FloatSignal(0f);
         return segs;
     }
+}
 
+/// <summary>The clock block every face (and the card's skeleton) is built from: [ring · (line / second line)] over the
+/// five-segment timeline.</summary>
+internal static class DaylistClockBlock
+{
     /// <summary>The countdown line's paragraph: body 14/20, primary, one line; it stretches to the lines column's width
     /// and ellipsises only when the column is narrower than the sentence (the ring never gives way).</summary>
     internal static SpanTextEl Line(Prop<TextSpans> spans)
@@ -411,12 +492,14 @@ public sealed class DaylistClock : Component
         };
     }
 
-    /// <summary>The clock block — shared by <see cref="Render"/> and the card's skeleton: [ring · (line / caption)],
-    /// then the timeline at the block's measured width. The ring is centred against the two-line column (the Fluent
-    /// settings-card stack: a 16–20 icon beside a 14/20 header over a 12/16 description); an empty
-    /// <paramref name="caption"/> leaves the countdown line alone. <paramref name="segs"/> null = static empty bars
-    /// (the skeleton).</summary>
-    internal static Element Shape(Element ring, SpanTextEl line, string caption, FloatSignal[]? segs, int current) => new BoxEl
+    /// <summary>The clock block — shared by every face and the card's skeleton: [ring · (line / second line)], then the
+    /// timeline at the block's measured width. The ring is centred against the two-line column (the Fluent
+    /// settings-card stack: a 16–20 icon beside a 14/20 header over a 12/16 description). The second line is
+    /// <paramref name="action"/> when given (the Late face's link), else the <paramref name="caption"/>; an empty
+    /// caption leaves the first line alone. <paramref name="segs"/> null = static bars: empty for the Counting face (the
+    /// skeleton), the finished segments full for Updating/Late — Updating's next segment an indeterminate bar.</summary>
+    internal static Element Shape(Element ring, SpanTextEl line, string caption, FloatSignal[]? segs, int current,
+                                  DaylistClockFace.Face face = DaylistClockFace.Face.Counting, Element? action = null) => new BoxEl
     {
         Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
         Children =
@@ -431,13 +514,20 @@ public sealed class DaylistClock : Component
                     new BoxEl
                     {
                         Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-                        Children = caption.Length > 0 ? [line, CaptionLine(caption)] : [line],
+                        Children = Lines(line, caption, action),
                     },
                 ],
             },
-            Responsive.Of(w => Timeline(w, segs, current), fallback: DaylistForm.TextMin),
+            Responsive.Of(w => Timeline(w, segs, current, face), fallback: DaylistForm.TextMin),
         ],
     };
+
+    /// <summary>The lines column's children: the first line alone, or under it the action (the Late face's link) or the caption.</summary>
+    static Element[] Lines(SpanTextEl line, string caption, Element? action)
+    {
+        if (action is not null) return [line, action];
+        return caption.Length > 0 ? [line, CaptionLine(caption)] : [line];
+    }
 
     /// <summary>The second line: "{weekday} {next daypart} arrives at HH:mm" at the caption rung (12/16), secondary,
     /// one line with an ellipsis.</summary>
@@ -448,16 +538,21 @@ public sealed class DaylistClock : Component
         };
 
     /// <summary>The timeline at width <paramref name="w"/>: five equal cells (<see cref="DaypartTimeline.CellWidth"/>)
-    /// of stock determinate bars, and the labels on the same cells — tertiary and ellipsised, except the current one,
-    /// primary 600, which holds at least its cell and never truncates (its neighbours give way instead).</summary>
-    static Element Timeline(float w, FloatSignal[]? segs, int current)
+    /// of stock bars, and the labels on the same cells — tertiary and ellipsised, except the current one, primary 600,
+    /// which holds at least its cell and never truncates (its neighbours give way instead). The bars are determinate
+    /// (live per <paramref name="segs"/>, or static: empty for the skeleton, the finished window's fills once it has
+    /// ended); Updating makes the segment after the current one an indeterminate bar.</summary>
+    static Element Timeline(float w, FloatSignal[]? segs, int current, DaylistClockFace.Face face)
     {
         float cell = DaypartTimeline.CellWidth(w);
+        int next = (int)DaypartRules.Next((Daypart)current);
         var bars = new Element[DaypartTimeline.Segments];
         var labels = new Element[DaypartTimeline.Segments];
         for (int i = 0; i < DaypartTimeline.Segments; i++)
         {
-            bars[i] = segs is null ? ProgressBar.Determinate(0f, cell) : ProgressBar.Create(segs[i], cell);
+            bars[i] = face == DaylistClockFace.Face.Updating && i == next ? ProgressBar.Indeterminate(cell)
+                : segs is not null ? ProgressBar.Create(segs[i], cell)
+                : ProgressBar.Determinate(face == DaylistClockFace.Face.Counting ? 0f : DaypartTimeline.Fill(i, current, 1f), cell);
             string label = Loc.Get(DaypartTimeline.LabelKey(i));
             labels[i] = i == current
                 ? Ui.Caption(label).Primary() with { Weight = 600, MaxLines = 1, Wrap = TextWrap.NoWrap, MinWidth = cell, Shrink = 0f }

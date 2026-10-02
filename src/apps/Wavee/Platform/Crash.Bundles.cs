@@ -126,11 +126,59 @@ public static partial class Crash
             File.WriteAllText(Path.Combine(dir, Files.TailName), sb.ToString(), new UTF8Encoding(false));
         }
 
+        /// <summary>Records a bundle's send state — but only into a bundle that still EXISTS. An upload that settles
+        /// after the user deleted the report (or the pruner did) must not resurrect its folder as a <c>send.json</c>
+        /// orphan (#165): a missing folder, before or during the write, makes this a no-op.</summary>
         public static void WriteSend(string dir, SendRecord record)
         {
-            Directory.CreateDirectory(dir);
+            if (!Directory.Exists(dir)) return;
             string json = JsonSerializer.Serialize(record, CrashJson.Default.SendRecord);
-            File.WriteAllText(Path.Combine(dir, Files.SendName), json, new UTF8Encoding(false));
+            try { File.WriteAllText(Path.Combine(dir, Files.SendName), json, new UTF8Encoding(false)); }
+            catch (DirectoryNotFoundException) { }   // deleted between the check and the write — same answer
+        }
+
+        /// <summary>The bundle's <c>summary.json</c>, or null when it is missing or unreadable.</summary>
+        public static Summary? ReadSummary(string dir)
+        {
+            try
+            {
+                string path = Path.Combine(dir, Files.SummaryName);
+                if (!File.Exists(path)) return null;
+                return JsonSerializer.Deserialize(File.ReadAllText(path), CrashJson.Default.Summary);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
+        }
+
+        /// <summary>Read-modify-write of an existing bundle's <c>summary.json</c> — the child's one finalizing write after
+        /// a dump (hasDump/dumpBytes/faultModule/faultOffset, #165 W3a). Never creates anything: a missing folder or
+        /// summary returns false. The new text goes to a sibling temp file first and replaces the old one in a single
+        /// rename, so an interrupted write never leaves a bundle without the one file that makes it a bundle (§B.3).</summary>
+        public static bool UpdateSummary(string dir, Func<Summary, Summary> update)
+        {
+            if (!Directory.Exists(dir) || ReadSummary(dir) is not { } current) return false;
+            string path = Path.Combine(dir, Files.SummaryName), temp = path + ".tmp";
+            try
+            {
+                string json = JsonSerializer.Serialize(update(current), CrashJson.Default.Summary);
+                File.WriteAllText(temp, json, new UTF8Encoding(false));
+                File.Move(temp, path, overwrite: true);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                try { File.Delete(temp); } catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException) { }
+                return false;
+            }
+        }
+
+        /// <summary>Appends <paramref name="line"/> to an existing bundle's <c>report.txt</c> as its own paragraph (a
+        /// blank line before it, a newline after) so a trailer such as the child's <c>fault=&lt;module&gt;+0x&lt;offset&gt;</c>
+        /// never reads as one more entry of the "Frames (RVA)" list above it. A missing folder is a no-op.</summary>
+        public static void AppendReportLine(string dir, string line)
+        {
+            if (!Directory.Exists(dir)) return;
+            try { File.AppendAllText(Path.Combine(dir, Files.ReportName), "\n" + line + "\n", new UTF8Encoding(false)); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
 
         public static SendRecord? ReadSend(string dir)

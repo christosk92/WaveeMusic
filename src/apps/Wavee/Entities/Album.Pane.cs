@@ -71,10 +71,6 @@ public readonly partial struct Album
         /// and a 13th tile is past the horizontal scroller's reach anyway.</summary>
         const int AlsoByCap = 12;
 
-        /// <summary>The strip's viewport height: 96 art + 6 + the 16 title line + 6 + the 14 year line. A ScrollEl is a
-        /// viewport — it has no content height of its own to grow from, so every horizontal rail states one.</summary>
-        const float AlsoByTileH = 96f + 6f + 16f + 6f + 14f;
-
         int _slot, _shimRows, _keySlot = int.MinValue;
         uint _keyEpoch;
         float _rowH = Track.RowMetrics.RowHeight;
@@ -197,7 +193,7 @@ public readonly partial struct Album
             _shimRows = AlbumPaneReadiness.ShimmerRows(a.Knows(AlbumFields.TrackCount), a.TrackCount, tracks.Length);
             LogState(state, edgeState, tracks.Length, in facts);
 
-            BoxEl child = state == AlbumPaneState.Header ? HeaderSkeleton() : Body(a, state);
+            BoxEl child = state == AlbumPaneState.Header ? PaneHeaderSkeleton() : Body(a, state);
             // The host persists; only the child is keyed, so the swap is an orphaned fade under a rising entrance
             // instead of a remount of this component (which would lose the table's scroll and re-ask the model).
             return new BoxEl
@@ -401,10 +397,10 @@ public readonly partial struct Album
             var tracks = Track.EmbeddedTracks;
             var cells = new Element[tracks.Length];
             int k = 0;
-            cells[k++] = Cell(Bar(14f), FlexJustify.Center);
+            cells[k++] = Cell(Controls.PendingBar(14f, 11f), FlexJustify.Center);
             if (set.Heart && k < cells.Length) cells[k++] = new BoxEl();
-            if (k < cells.Length) cells[k++] = Cell(Bar(TitleBarWidth(i)), FlexJustify.Start);
-            if (k < cells.Length) cells[k++] = Cell(Bar(30f), FlexJustify.End);
+            if (k < cells.Length) cells[k++] = Cell(Controls.PendingBar(TitleBarWidth(i), 11f), FlexJustify.Start);
+            if (k < cells.Length) cells[k++] = Cell(Controls.PendingBar(30f, 11f), FlexJustify.End);
             while (k < cells.Length) cells[k++] = new BoxEl();
             float padX = Track.RowMetrics.PadXFor(set.Tier);
             return new GridEl
@@ -420,37 +416,17 @@ public readonly partial struct Album
 
         static float TitleBarWidth(int i) => (i & 3) switch { 0 => 208f, 1 => 264f, 2 => 176f, _ => 232f };
 
-        static Element Bar(float w) => new BoxEl { Width = w, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary };
-
         static Element Cell(Element bar, FlexJustify justify) => new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, MinWidth = 0f, ClipToBounds = true, Children = [bar],
         };
 
-        /// <summary>The whole-header placeholder, painted ONLY while the navigator's own identity demand is still in
-        /// flight (<see cref="AlbumPaneState.Header"/>) — short-lived by construction, and it crossfades like any pane.</summary>
-        static BoxEl HeaderSkeleton() => new()
-        {
-            // The real header's STATED height (Album.UI.cs), not this tree's content height: the skeleton and the header
-            // it crossfades into must occupy the same band, or the crossing is a reflow wearing a fade.
-            Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Height = PaneHeaderHeight, ClipToBounds = true,
-            Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
-            Children =
-            [
-                new BoxEl { Width = PaneCover, Height = PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
-                new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children = [Bar(80f), new BoxEl { Width = 220f, Height = 26f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary }, Bar(120f)],
-                },
-            ],
-        };
-
         // ══ "ALSO BY … IN YOUR LIBRARY" ══════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The other saved albums billed to this album's FIRST billed artist, as 96-px tiles (art r 4 · title
-        /// 12.5 · year 11.5) in the saved edge's own order, each entering on the staggered cascade. Absent when there are
-        /// none. A tile selects IN PLACE through the page's callback — the one library-internal jump that stays.</summary>
+        /// <summary>The other saved albums billed to this album's FIRST billed artist, as the shared media surface
+        /// (<see cref="Shape.Shelf"/> over a 96-px cover) in the saved edge's own order, each entering on the staggered
+        /// cascade. Absent when there are none. A tile selects IN PLACE through the page's callback — the one
+        /// library-internal jump that stays.</summary>
         Element AlsoBy(Album a)
         {
             var billed = a.ArtistSlots;
@@ -473,46 +449,43 @@ public readonly partial struct Album
                 Children =
                 [
                     Design.Type.Eyebrow(Strings.Library.AlsoBy(new Artist(artist).Name)) with { Color = Tok.TextTertiary },
-                    // The house shape for a horizontal rail: a stated height, Grow 0, and the edge fade instead of a
-                    // scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.LibraryV3.cs:1389).
+                    // The house shape for a horizontal rail: a stated height (the surface's own shelf extent — a
+                    // ScrollEl is a viewport with no content height to grow from), Grow 0, and the edge fade instead
+                    // of a scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.LibraryV3.cs:1389).
                     ScrollView(new BoxEl { Direction = 0, Gap = Spacing.M, Children = tiles.ToArray() }, horizontal: true) with
                     {
-                        Grow = 0f, Shrink = 0f, Height = AlsoByTileH, SuppressScrollBar = true,
+                        Grow = 0f, Shrink = 0f, Height = SurfaceMetrics.AlsoByStripH, SuppressScrollBar = true,
                         AutoEdgeFade = true, AutoEdgeFadeBand = 24f,
                     },
                 ],
             };
         }
 
+        /// <summary>One tile: the shared surface at <see cref="SurfaceMetrics.AlsoByCardW"/> (its 8-DIP plate padding around
+        /// a 96 cover) — hover plate, play FAB, the corner "…" with the home card menu, the album drag, the hand cursor
+        /// and the focus stop. The entrance cascade rides a wrapper (an element's own `Animate` belongs on a box).</summary>
         Element Tile(Album o, int i)
         {
             int slot = o.Slot;
+            string uri = o.Uri.Text;
+            string title = o.Title;
+            string? cover = Controls.ArtUrl(o.ImageId);
+            var id = o.Id;
+            var card = new HomeCard(new EntityRef(EntityKind.Album, slot));
+            var data = new Controls.CardData(uri, title, null, cover,
+                OnClick: () => _alsoBy(slot),
+                OnPlay: () => Playback.PlayContext(id),
+                Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
+            {
+                Height = SurfaceMetrics.AlsoByCardH,   // a year-less tile keeps its neighbours' plate height
+                Caption = o.Knows(AlbumFields.Year) && o.Year > 0 ? FormatCache.Int(o.Year) : null,
+                Menu = HomeCardNav.MenuOf(in card),
+            };
             return new BoxEl
             {
-                // 96 exactly, no inset: the wash is the tile's own rounded rect, so the art stays on the strip's grid and
-                // the first tile lines up with the eyebrow above it.
-                Width = 96f, Direction = 1, Gap = 6f, Shrink = 0f, Corners = Radii.ControlAll,
-                HoverScale = Design.Motion.ScaleStandard.Hover, PressScale = Design.Motion.ScaleStandard.Press,
-                Animate = Design.Entrance.Row(i),
-                Cursor = CursorId.Hand, Role = AutomationRole.Button, Focusable = true, OnClick = () => _alsoBy(slot),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = 96f, Height = 96f, Shrink = 0f, Corners = Radii.ControlAll, ClipToBounds = true,
-                        Children = [Controls.Artwork(Controls.ArtUrl(o.ImageId), 96f, 96f, Radii.Control, decodePx: 192)],
-                    },
-                    Design.Type.DenseMeta(o.Title) with
-                    {
-                        Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
-                        BrushTransitionMs = Design.Motion.Faster, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                    Design.Type.MicroMeta(o.Knows(AlbumFields.Year) && o.Year > 0 ? FormatCache.Int(o.Year) : "") with
-                    {
-                        Color = Tok.TextTertiary,
-                    },
-                ],
-            }.Interactive(Interaction.Subtle);
+                Key = "also:" + FormatCache.Int(slot), Direction = 1, Shrink = 0f, Animate = Design.Entrance.Row(i),
+                Children = [Controls.Surface(data, Shape.Shelf(), SurfaceMetrics.AlsoByCardW)],
+            };
         }
     }
 }

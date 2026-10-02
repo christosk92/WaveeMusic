@@ -18,10 +18,12 @@
 //   RailPanel  Pills · ScrollEl[ PlayingFrom · NowPlayingCard · lane[ headers · rows · Show more ] · vacancy ]
 //   StagePane  lane[ rows · Show more ] | "Nothing up next"          (no captions, one page counter, grip + duration)
 //
-// A QUEUE ROW IS NOT `Track.Row` (ch 21 §9.3 #4): it is its own builder over (row ref, QueueEdge) — heart lane, ✕, a
-// drag payload that no playlist may copy, the autoplay dim, the thin-row skeleton, a section-named menu. `Track.UI.cs`'s
-// `TrackRow` controls do not exist yet (WP-4.5 in flight), so the heart is `Controls.SaveButton` and the artist line is
-// plain text.
+// A QUEUE ROW IS NOT `Track.Row` (ch 21 §9.3 #4): it is a builder over (row ref, QueueEdge) — heart, ✕, a drag payload that
+// no playlist may copy, the autoplay dim, a section-named menu. The rail's Modern rows and its now-playing card are the
+// shared media surface (`Controls.Surface` over `Track.RowData` / `Episode.RowData`: the plate, the hand, the play FAB,
+// the pill, the "…" and the right-click menu are the surface's; a row whose title is not known yet is its seed face) with
+// the heart and ✕ as its trailing cluster; `QueueRowRules` holds the decisions. The Classic skin (hairline rows, no art,
+// one folded line) and the stage pane's glass rows stay their own trees — the surface has no hairline or on-media plate.
 //
 // EVERY SLOT IS A PLAIN KEYED CHILD (ch 21 §0 #6): no virtualization, rows Enter/Exit/Slide, visual pagination at 100
 // rows per page. ONE `Reorderable` spans the lane, headers included; `QueueMovePlan` decides a drop and a cross-section
@@ -59,7 +61,7 @@ public static partial class Queue
     /// track) with its outcome raised as the toast through <see cref="RadioToast"/>.</summary>
     public static void InstallUi()
     {
-        Rail.QueueBody = static () => Embed.Comp(static () => new RailPanel());
+        Rail.QueueBody = static () => PanelSlot();
         Stage.QueuePaneBody = static () => Embed.Comp(static () => new StagePane());
         ActionServices s = Actions.Services;
         s.Play = static uri => Playback.PlayContext(uri.Id);
@@ -94,9 +96,13 @@ public static partial class Queue
     /// <summary>A remote device owns playback: the list is its mirror, and local edits would be overwritten.</summary>
     static bool Viewing => Playback.OwnerSignal.Peek() == Playback.Owner.Foreign;
 
-    readonly record struct RowText(string Uri, string Title, string Artists, string? Art, int DurationMs, bool Thin, bool Explicit);
+    /// <summary><see cref="Unavailable"/>: a ruled-unavailable track — the row says so (no artists, no cover) instead of
+    /// painting what the table still holds of it.</summary>
+    readonly record struct RowText(string Uri, string Title, string Artists, string? Art, int DurationMs, bool Thin, bool Explicit,
+                                   bool Unavailable = false);
 
-    /// <summary>What a row paints. A row whose title is not known is THIN (two bars), never a bare uri (ch 21 §7).</summary>
+    /// <summary>What a row paints. A row whose title is not known is THIN (its seed face, or two bars), never a bare uri
+    /// (ch 21 §7).</summary>
     static RowText TextOf(EntityRef r)
     {
         if (r.Kind == EntityKind.Episode && new Episode(r.Slot) is { IsValid: true } e)
@@ -105,7 +111,7 @@ public static partial class Queue
         if (r.Kind != EntityKind.Track || new Track(r.Slot) is not { IsValid: true } t) return new RowText("", "", "", null, 0, true, false);
         // A ruled-unavailable track (Spotify no longer resolves it for this account) is NOT a thin row: it says so.
         if (t.Unplayable())
-            return new RowText(t.Uri.Text, Loc.Get(Strings.Detail.TrackFacts.Unavailable), "", null, 0, false, false);
+            return new RowText(t.Uri.Text, Loc.Get(Strings.Detail.TrackFacts.Unavailable), "", null, 0, false, false, Unavailable: true);
         // The FACTS come off the display row (a relinked id reads its canonical track); the uri stays this row's.
         Track d = t.ForDisplay;
         bool thin = !d.Knows(TrackFields.Title);
@@ -250,11 +256,14 @@ public static partial class Queue
         protected EntityRef Current;
         protected EntityId ContextId;
         protected ContextWire Wire;
-        readonly float _rowExtent;
+
+        /// <summary>The resting height of one row, which the lane's drag maths needs to be EXACT: a skin that changes the
+        /// row's height says so through <see cref="SetRowExtent"/> before it configures the lane.</summary>
+        protected float RowExtent { get; private set; }
 
         protected QueueSurface(float rowExtent)
         {
-            _rowExtent = rowExtent;
+            RowExtent = rowExtent;
             Reorder = new Reorderable(Drag.Resource)
             {
                 ItemExtent = rowExtent,
@@ -275,6 +284,12 @@ public static partial class Queue
         }
 
         protected abstract float ExtentOf(QueueSlot slot);
+
+        protected void SetRowExtent(float extent)
+        {
+            RowExtent = extent;
+            Reorder.ItemExtent = extent;
+        }
 
         /// <summary>Every hook and signal a queue surface reads, in one fixed order, and this render's split.</summary>
         protected ReadOnlySpan<QueueEdge> Prologue()
@@ -325,7 +340,7 @@ public static partial class Queue
             => Viewer ? row : (BoxEl)Reorder.Item(item, row, key: key) with { Direction = 1 };
 
         protected static DragSource? OwnDrag(bool viewer, ulong itemId, int index, EntityRef row)
-            => viewer ? Drag.Source(() => PayloadFor(itemId, index, row)) : null;
+            => QueueRowRules.RowDrags(viewer) ? Drag.Source(() => PayloadFor(itemId, index, row)) : null;
 
         protected Element Attach(BoxEl row, ulong itemId, int index, EntityRef r)
         {
@@ -333,7 +348,7 @@ public static partial class Queue
             return MenuHost is { } host ? row.WithContextMenu(host, () => RowMenu(itemId, index, r, viewer)) : row;
         }
 
-        float ExtentAt(int i) => (uint)i < (uint)View.SlotCount ? ExtentOf(View.Slots[i]) : _rowExtent;
+        float ExtentAt(int i) => (uint)i < (uint)View.SlotCount ? ExtentOf(View.Slots[i]) : RowExtent;
 
         object? PayloadAt(int i)
         {
@@ -366,9 +381,21 @@ public static partial class Queue
 
     // ══ 3. THE RAIL PANEL (ch 21 W3-W5) ═══════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The panel as the rail mounts it. The rail's body slot (<c>Rail.GrowSlot</c>) is a ROW, so a bare component
+    /// anchor in it keeps its CONTENT's natural width and cannot shrink (Shrink 0): the pills row — three toggles that
+    /// neither wrap nor shrink — is wider than a narrow rail's inner width, the panel root measured to it, and the whole
+    /// panel (the now-playing card, every row, their hearts and ✕) was laid out that much wider than the rail and cut off
+    /// at its right edge. A ZStack that grows AND shrinks to the slot and hands its one child the whole slot pins the panel
+    /// to the rail's width whatever its content wants; only the pills row still overflows, clipped by the panel root.</summary>
+    static Element PanelSlot() => new BoxEl
+    {
+        ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f,
+        Children = [Embed.Comp(static () => new RailPanel())],
+    };
+
     sealed class RailPanel : QueueSurface
     {
-        const float QueueArt = 34f, RowExtent = 44f, HeaderRowH = 20f;
+        const float QueueArt = 34f, NowArt = 44f, ClassicExtent = QueueRowRules.ClassicExtent, HeaderRowH = 20f;
         const float HeaderExtent = Spacing.M + HeaderRowH + Spacing.XS;           // 36
         const float HeaderSubExtent = HeaderExtent + Spacing.XXS + 16f;           // 54, the Autoplay header's hint line
         const float MoreRowH = 40f, MoreExtent = MoreRowH + Spacing.XS + Spacing.XXS;
@@ -387,7 +414,7 @@ public static partial class Queue
         readonly Signal<ColorF> _chipAccent = new(Tok.AccentDefault);
         readonly Action _pushChip;
 
-        public RailPanel() : base(RowExtent)
+        public RailPanel() : base(QueueRowRules.Extent(classic: false, QueueArt))
         {
             _pushChip = () => _chipAccent.Value = _chipPending;
             _closeSwipeOnScroll = () =>
@@ -415,7 +442,7 @@ public static partial class Queue
         {
             QueueSlotKind.Header => slot.Section == QueueSection.Autoplay ? HeaderSubExtent : HeaderExtent,
             QueueSlotKind.More => MoreExtent,
-            _ => RowExtent,
+            _ => RowExtent,                 // the live skin's: SetRowExtent, each render
         };
 
         Signal<int> PagesOf(QueueSection s) => s switch { QueueSection.Queue => _userPages, QueueSection.NextUp => _nextPages, _ => _autoPages };
@@ -427,6 +454,7 @@ public static partial class Queue
             UseSignalEffect(_closeSwipeOnScroll);
             bool classic = Prefs.Appearance.TrackRowStyle() == 1;
             bool art = !classic && !Prefs.Appearance.TrackArtworkHidden();
+            SetRowExtent(QueueRowRules.Extent(classic, QueueArt));
             bool shuffle = Playback.Shuffle.Value;
             RepeatMode repeat = Playback.Repeat.Value;
             string cover = Current.IsNone ? "" : TextOf(Current).Art ?? "";
@@ -457,7 +485,7 @@ public static partial class Queue
                 [
                     new BoxEl
                     {
-                        Direction = 0, Gap = 8f, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 4f, 0f, 10f),
+                        Direction = 0, Wrap = true, Gap = 8f, AlignItems = FlexAlign.Center, Padding = new Edges4(0f, 4f, 0f, 10f),
                         Children =
                         [
                             Pill(Icons.Shuffle, Loc.Get(Strings.Player.Shuffle), shuffle, static () => Shell.ToggleShuffle()),
@@ -527,35 +555,9 @@ public static partial class Queue
             EntityRef r = RefAt(index);
             RowText text = TextOf(r);
             ulong itemId = edge.ItemId;
-            bool removable = !Viewer && itemId != 0;
-            var kids = new List<Element>(5) { HeartLane(text, RowExtent) };
-            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => SkipToRow(itemId, index, r), QueueArt, 26f, 72));
-            kids.Add(classic ? ClassicIdentity(text, nowPlaying: false) : Identity(text, Tok.TextPrimary, Tok.TextSecondary));
-            kids.Add(MenuHost is null ? new BoxEl { Width = 0f, Shrink = 0f } : Overflow(classic));
-            kids.Add(removable ? CloseGlyph(() => RemoveRow(itemId, index, r), classic) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f });
-
-            var body = new BoxEl
-            {
-                Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = RowExtent,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.XS, 0f), Children = kids.ToArray(),
-            };
-            var row = new BoxEl
-            {
-                Key = RowKey("", itemId, index) + ":art=" + art + ":classic=" + classic,
-                Draggable = OwnDrag(Viewer, itemId, index, r),
-                ZStack = true, MinHeight = RowExtent, ClipToBounds = classic,
-                Corners = classic ? CornerRadius4.All(0f) : Radii.ControlAll,
-                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                PressScale = Design.Motion.ScaleSubtle.Press,
-                Opacity = section == QueueSection.Autoplay ? 0.72f : 1f,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-                OnClick = () => SkipToRow(itemId, index, r),
-                Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
-                Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
-                Layout = LayoutTransition.Slide,
-                Children = classic ? [body, ClassicHairline()] : [body],
-            };
-            Element el = Attach(row, itemId, index, r);
+            bool removable = QueueRowRules.Removable(Viewer, itemId);
+            Element el = classic ? ClassicRow(text, r, itemId, index, section, removable)
+                                 : SurfaceRow(text, r, itemId, index, section, art, removable);
             if (!removable || !Controls.SwipeArmed) return el;
             var remove = new SwipeAction(ActionIcons.Resolve(ActionIcons.Remove), Loc.Get(Strings.Menu.RemoveFromQueue))
             {
@@ -567,16 +569,96 @@ public static partial class Queue
             return SwipeControl.Create(el, leading: like, trailing: SwipeSide.Of(remove), group: _swipe, touchOnly: true);
         }
 
+        /// <summary>The Modern row: THE shared media surface (<c>Shape.Row</c>) over the row's own adapter — the plate, the
+        /// hand, the play FAB, the pill, the "…" and the right-click menu are the surface's; the heart and ✕ are its trailing
+        /// cluster. A click (and the FAB) is a cursor move inside the live session (<see cref="SkipToRow"/>), and the lane's
+        /// reorder gesture rides the wrapper above the row, so the surface carries a drag of its own only for a viewer, who
+        /// has no lane. The wrapper here carries what the surface has no dial for: the key (a skin flip REMOUNTS), the
+        /// autoplay dim and the Enter/Exit/Slide motion.</summary>
+        Element SurfaceRow(RowText text, EntityRef r, ulong itemId, int index, QueueSection section, bool art, bool removable)
+        {
+            bool viewer = Viewer;
+            Action skip = () => SkipToRow(itemId, index, r);
+            var data = SurfaceData(r, text, art, click: skip, play: skip, draggable: QueueRowRules.RowDrags(viewer), queueItem: itemId,
+                                   menu: () => RowMenu(itemId, index, r, viewer), showMenu: true,
+                                   trailing: RowTrailing(text, removable, () => RemoveRow(itemId, index, r)));
+            var shape = Shape.Row(TrackRowRules.ArtEdge(QueueArt, art)) with { MinHeight = RowExtent };
+            return new BoxEl
+            {
+                Key = RowKey("", itemId, index) + ":art=" + art,
+                Direction = 1, Opacity = QueueRowRules.Dim(section),
+                Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
+                Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
+                Layout = LayoutTransition.Slide,
+                Children = [Controls.Surface(data, shape)],
+            };
+        }
+
+        /// <summary>The Classic row: hairline, square, no art, title and artists folded into one line — a look the surface
+        /// has no plate for, so it stays its own tree.</summary>
+        Element ClassicRow(RowText text, EntityRef r, ulong itemId, int index, QueueSection section, bool removable)
+        {
+            var kids = new List<Element>(4) { HeartLane(text, ClassicExtent), ClassicIdentity(text, nowPlaying: false) };
+            kids.Add(MenuHost is null ? new BoxEl { Width = 0f, Shrink = 0f } : Overflow());
+            kids.Add(removable ? CloseGlyph(() => RemoveRow(itemId, index, r), classic: true) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f });
+
+            var body = new BoxEl
+            {
+                Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = ClassicExtent,
+                Padding = new Edges4(Spacing.S, 0f, Spacing.XS, 0f), Children = kids.ToArray(),
+            };
+            var row = new BoxEl
+            {
+                Key = RowKey("", itemId, index) + ":classic",
+                Draggable = OwnDrag(Viewer, itemId, index, r),
+                ZStack = true, MinHeight = ClassicExtent, ClipToBounds = true,
+                Corners = CornerRadius4.All(0f),
+                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
+                PressScale = Design.Motion.ScaleSubtle.Press,
+                Opacity = QueueRowRules.Dim(section),
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
+                OnClick = () => SkipToRow(itemId, index, r),
+                Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
+                Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
+                Layout = LayoutTransition.Slide,
+                Children = [body, ClassicHairline()],
+            };
+            return Attach(row, itemId, index, r);
+        }
+
+        /// <summary>The playing card: Modern is the surface on the TILE plate (the opaque card fill and a hairline that turns
+        /// accent while it plays) at a 44 art, its click the playing context's page — the context when it has one, else the
+        /// track's album — and, with nowhere to go, NO click: the body is display-only and the FAB still toggles play/pause. The heart is its trailing; no "…"
+        /// (the right-click menu stays, the slot goes), and it drags as the one track it is. Classic stays its hairline row.</summary>
         Element NowPlayingCard(EntityRef current, bool classic)
         {
             RowText text = TextOf(current);
-            var kids = new List<Element>(3);
-            if (!classic) kids.Add(ArtTile(text.Art, text.Uri, static () => Playback.TogglePlay("queue.nowplaying"), 44f, 28f, 96));
-            Element identity = classic ? ClassicIdentity(text, nowPlaying: true) : Identity(text, Tok.AccentTextPrimary, Tok.TextSecondary);
+            var target = NowPlayingTarget(current);
+            if (classic) return ClassicNowPlaying(text, target);
+
+            Action toggle = static () => Playback.TogglePlay("queue.nowplaying");
+            Action? open = QueueRowRules.NowPlayingClickOf(!target.IsNone) == QueueRowRules.NowPlayingClick.OpenContext
+                ? () => Shell.GoTo(target) : null;
+            var data = SurfaceData(current, text, art: true, click: open, play: toggle, draggable: true, queueItem: null, menu: null,
+                                   showMenu: false, trailing: HeartLane(text));
+            var shape = Shape.RowTile with { ArtEdge = NowArt };
+            return new BoxEl
+            {
+                // Keyed by the track: a track change remounts the card with an Enter fade (the cross-fade a row cannot do).
+                Key = "np:" + text.Uri + ":classic=False",
+                Direction = 1, Margin = new Edges4(0f, 0f, 0f, 10f),
+                Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
+                Layout = LayoutTransition.Slide,
+                Children = [Controls.Surface(data, shape)],
+            };
+        }
+
+        Element ClassicNowPlaying(RowText text, Shell.Route target)
+        {
+            Element identity = ClassicIdentity(text, nowPlaying: true);
             // The title is a LINK to where the track plays from (0.2.9 parity, user report 2026-09-16): the context's page
             // when it has one (a playlist, an album, an artist, the liked songs), else the track's album — a station has no
             // page of its own, and the album is the nearest thing to "where this came from".
-            var target = NowPlayingTarget(current);
             if (!target.IsNone)
             {
                 var route = target;
@@ -590,32 +672,77 @@ public static partial class Queue
                     Children = [identity],
                 };
             }
-            kids.Add(identity);
-            kids.Add(new BoxEl
-            {
-                Width = 30f, Height = classic ? RowExtent : 44f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [Heart(text)],
-            });
             var body = new BoxEl
             {
-                Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = classic ? Spacing.S : Spacing.L,
-                MinHeight = classic ? RowExtent : 64f, Padding = classic ? new Edges4(Spacing.S, 0f, Spacing.XS, 0f) : Edges4.All(10f),
-                Children = kids.ToArray(),
+                Direction = 0, Grow = 1f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = ClassicExtent,
+                Padding = new Edges4(Spacing.S, 0f, Spacing.XS, 0f),
+                Children =
+                [
+                    identity,
+                    new BoxEl
+                    {
+                        Width = 30f, Height = ClassicExtent, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Children = [Heart(text)],
+                    },
+                ],
             };
             return new BoxEl
             {
-                // Keyed by the track: a track change remounts the card with an Enter fade (the cross-fade a row cannot do).
-                Key = "np:" + text.Uri + ":classic=" + classic,
-                ZStack = true, MinHeight = classic ? RowExtent : 64f, ClipToBounds = classic,
-                Margin = classic ? default : new Edges4(0f, 0f, 0f, 10f),
-                Corners = classic ? CornerRadius4.All(0f) : Radii.CardAll,
-                Fill = classic ? ColorF.Transparent : Tok.FillCardDefault,
-                BorderWidth = classic ? 0f : 1f, BorderColor = classic ? ColorF.Transparent : Tok.StrokeCardDefault,
+                Key = "np:" + text.Uri + ":classic=True",
+                ZStack = true, MinHeight = ClassicExtent, ClipToBounds = true, Corners = CornerRadius4.All(0f),
+                Fill = ColorF.Transparent,
                 Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
                 Layout = LayoutTransition.Slide,
-                Children = classic ? [body, ClassicHairline()] : [body],
+                Children = [body, ClassicHairline()],
             };
         }
+
+        /// <summary>The surface's data for one queue or now-playing row, through the entity's own adapter: a seed face while
+        /// the row's title is unknown, <c>Episode.RowData</c> for an episode (the compact title + show row), else
+        /// <c>Track.RowData</c> over the row the track DISPLAYS (a relink reads its canonical facts; the uri stays the
+        /// queue's own, which the playback relation matches). A ruled-unavailable track keeps the row's own "Unavailable" in
+        /// place of its title, artists and cover. <paramref name="menu"/> replaces a track's single-track menu with the
+        /// queue-entry menu; <paramref name="queueItem"/> marks the drag a queue reorder no playlist may deposit.</summary>
+        static Controls.CardData SurfaceData(EntityRef r, RowText text, bool art, Action? click, Action play, bool draggable,
+                                             ulong? queueItem, Func<ContextMenuModel?>? menu, bool showMenu, Element trailing)
+        {
+            switch (QueueRowRules.FaceOf(r.Kind, text.Thin))
+            {
+                case QueueRowRules.Face.Seed:
+                    return Controls.CardData.Seed;
+                case QueueRowRules.Face.Episode:
+                {
+                    var episode = new Episode(r.Slot);
+                    var facts = Episode.RowFactsOf(episode);
+                    if (!art) facts = facts with { Cover = null };
+                    var data = Episode.RowData(episode, in facts,
+                        new Episode.RowOptions(OnClick: click, OnPlay: play, ShowMeta: false, ShowGoToShow: true, Trailing: trailing));
+                    // The episode adapter reads a null click as "open the episode page"; the caller's null is display-only.
+                    return click is null ? data with { OnClick = null } : data;
+                }
+                default:
+                {
+                    var options = new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art, ShowExplicit: false,
+                                                           ShowVideo: true, Draggable: draggable, ShowMenu: showMenu,
+                                                           QueueItemId: queueItem, Trailing: trailing);
+                    var data = Track.RowData(new Track(r.Slot).ForDisplay, in options) with { Uri = text.Uri };
+                    if (menu is not null) data = data with { Menu = menu };
+                    return text.Unavailable ? data with { Title = text.Title, Subtitle = null, CoverUrl = null } : data;
+                }
+            }
+        }
+
+        /// <summary>The surface's trailing cluster: the heart, then the ✕ — or its width, so the hearts of removable and
+        /// viewed rows line up.</summary>
+        static Element RowTrailing(RowText text, bool removable, Action remove) => new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
+            Children =
+            [
+                HeartLane(text),
+                removable ? CloseGlyph(remove, classic: false) : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f },
+            ],
+        };
 
         /// <summary>Where the now-playing title navigates: the playing context's page when the context has one, else the
         /// track's album page, else nowhere (<see cref="Shell.Route.IsNone"/>).</summary>
@@ -734,7 +861,9 @@ public static partial class Queue
                 style: Controls.AccentToggleStyle(_chipAccent.Value), parts: parts);
         }
 
-        static Element HeartLane(in RowText text, float height) => new BoxEl
+        /// <summary>The heart's 26-wide lane — the Classic row's leading cell (<paramref name="height"/> its row) and the
+        /// surface's trailing one (NaN: as tall as its cluster).</summary>
+        static Element HeartLane(in RowText text, float height = float.NaN) => new BoxEl
         {
             Width = 26f, Height = height, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
             BlocksDragArm = true, Children = [Heart(text)],
@@ -745,29 +874,6 @@ public static partial class Queue
             if (text.Uri.Length == 0) return new BoxEl();
             string uri = text.Uri, title = text.Title;
             return Embed.Comp(() => new Controls.SaveButton { Uri = uri, Name = title, Glyph = 14f, Box = 26f }) with { Key = "save:" + uri };
-        }
-
-        static Element Identity(in RowText text, ColorF title, ColorF artists)
-        {
-            if (text.Thin)
-                return new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = 4f,
-                    Children =
-                    [
-                        new BoxEl { Width = 120f, Height = 14f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                        new BoxEl { Width = 80f, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                    ],
-                };
-            return new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = 1f,
-                Children =
-                [
-                    new TextEl(text.Title) { Size = 14f, LineHeight = 20f, Weight = 600, Color = title, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                    new TextEl(text.Artists) { Size = 12f, LineHeight = 16f, Color = artists, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                ],
-            };
         }
 
         /// <summary>Classic: no artwork, title and artists folded into ONE 14/20 run, the explicit mark pinned after the
@@ -801,8 +907,9 @@ public static partial class Queue
             Fill = Prop.Of(static () => Tok.StrokeDividerDefault), HitTestVisible = false,
         };
 
-        /// <summary>The hover-revealed "…": re-enters the context funnel, so the row's own menu opens anchored here.</summary>
-        static Element Overflow(bool classic) => new BoxEl
+        /// <summary>The Classic row's hover-revealed "…": re-enters the context funnel, so the row's own menu opens anchored
+        /// here (the surface's own trailing "…" does the same for the Modern row).</summary>
+        static Element Overflow() => new BoxEl
         {
             Opacity = 0f, HoverOpacity = 1f, Shrink = 0f, BlocksDragArm = true,
             Children =
@@ -810,7 +917,7 @@ public static partial class Queue
                 new BoxEl
                 {
                     Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Corners = classic ? CornerRadius4.All(0f) : Radii.ControlAll, HoverFill = Design.Colors.RowPressed,
+                    Corners = CornerRadius4.All(0f), HoverFill = Design.Colors.RowPressed,
                     Role = AutomationRole.Button, Cursor = CursorId.Hand, ClickRequestsContext = true,
                     Children = [new TextEl(Icons.More) { Size = 14f, FontFamily = Theme.IconFont, Color = Tok.TextTertiary, HoverColor = Tok.TextPrimary }],
                 },
@@ -891,7 +998,7 @@ public static partial class Queue
             EntityRef r = RefAt(index);
             RowText text = TextOf(r);
             ulong itemId = edge.ItemId;
-            bool removable = !Viewer && itemId != 0;
+            bool removable = QueueRowRules.Removable(Viewer, itemId);
             var kids = new List<Element>(5)
             {
                 // An affordance, not a control: the whole row is the drag source, and a viewer never sees it.
@@ -991,6 +1098,14 @@ public static partial class Queue
         Entities.Publish();
         Playback.PlayNow(RefAt(cursor), context, cursor);
     }
+
+    /// <summary>Play a queue row from OUTSIDE the panel (the rail's "Next up" rows): the very cursor move a click on the
+    /// panel's own row makes — <see cref="SkipTo"/> trims the rows the skip passes over, then the deck plays the row — and
+    /// a viewed (remote) queue forwards it. The row is found by <paramref name="itemId"/> in the LIVE queue, so a queue
+    /// that shifted since the caller rendered still plays the row the user clicked; <paramref name="index"/> and
+    /// <paramref name="row"/> are only the fallback for an entry that has no item id (0): the index the caller saw and
+    /// the ref it saw there, which must still agree. A row that is gone, or not upcoming, does nothing.</summary>
+    internal static void PlayItem(ulong itemId, int index = -1, EntityRef row = default) => SkipToRow(itemId, index, row);
 
     static void RemoveRow(ulong itemId, int index, EntityRef row)
     {
@@ -1236,4 +1351,51 @@ public static partial class Queue
         for (int i = 0; i < tracks.Count; i++) if (tracks[i].IsValid) refs[n++] = new EntityRef(EntityKind.Track, tracks[i].Slot);
         return n == refs.Length ? refs : refs[..n];
     }
+}
+
+/// <summary>The rail queue row's pure decisions, engine-free so a fact pins each one: the row's height under each skin
+/// (the lane's drag maths needs it EXACT), the autoplay dim, which row has a ✕, which row drags on its own, which adapter
+/// feeds a row, and where a click on the playing card goes. The builders in <c>Queue.UI.cs</c> only feed them.</summary>
+public static class QueueRowRules
+{
+    /// <summary>The Classic row's height: the hairline row, no art.</summary>
+    public const float ClassicExtent = 44f;
+
+    /// <summary>The Autoplay rows' dim — the radio's tail is not the user's own queue.</summary>
+    public const float AutoplayDim = 0.72f;
+
+    /// <summary>The surface row's text column: a title line, the label gap and a caption line — what a row with artists
+    /// stacks beside its art.</summary>
+    public const float TextColumn = SurfaceGeometry.CardTitleLineH + SurfaceGeometry.CardLabelGap + SurfaceGeometry.CardCaptionLineH;
+
+    /// <summary>One row's resting height under a skin: Classic's own, else the surface's.</summary>
+    public static float Extent(bool classic, float artEdge) => classic ? ClassicExtent : SurfaceExtent(artEdge);
+
+    /// <summary>The shared surface's row height: its 8-DIP padding round the taller of the art and the text column. It is
+    /// what the surface renders, so the lane's slot maths (<c>Reorderable.ExtentOf</c>) and the shape's floor both state it.</summary>
+    public static float SurfaceExtent(float artEdge) => 2f * SurfaceGeometry.RowPad + MathF.Max(artEdge, TextColumn);
+
+    /// <summary>The Autoplay section's rows are dimmed; the queue's own are not.</summary>
+    public static float Dim(QueueSection section) => section == QueueSection.Autoplay ? AutoplayDim : 1f;
+
+    /// <summary>A row has a ✕ when the queue is ours to edit and the entry has an item id to name it by.</summary>
+    public static bool Removable(bool viewer, ulong itemId) => !viewer && itemId != 0;
+
+    /// <summary>A row carries a drag of its own only when no reorder lane does: the lane's wrapper is the drag source of
+    /// every row of a queue we own, and a viewed queue has no lane.</summary>
+    public static bool RowDrags(bool viewer) => viewer;
+
+    /// <summary>Which adapter feeds a row: the seed face while its title is unknown, the episode adapter for an episode,
+    /// the track adapter for everything else.</summary>
+    public enum Face : byte { Seed, Track, Episode }
+
+    public static Face FaceOf(EntityKind kind, bool thin)
+        => thin ? Face.Seed : kind == EntityKind.Episode ? Face.Episode : Face.Track;
+
+    /// <summary>Where a click on the playing card goes: the playing context's page when there is one, else nowhere — the
+    /// card body is then DISPLAY-ONLY (<c>CardData.OnClick</c> null: no hand, no Button role, no tab stop), and the play/pause
+    /// FAB is the one control that still toggles playback.</summary>
+    public enum NowPlayingClick : byte { OpenContext, None }
+
+    public static NowPlayingClick NowPlayingClickOf(bool hasPage) => hasPage ? NowPlayingClick.OpenContext : NowPlayingClick.None;
 }

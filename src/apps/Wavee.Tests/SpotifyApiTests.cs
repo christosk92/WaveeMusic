@@ -473,6 +473,32 @@ public class SpotifyApiProviderRouteTests
         Assert.Equal(0u, sealedGroups);
     }
 
+    /// <summary>A profile page asks Identity | Social | Follow: ONE spclient profile-view GET carries all three groups (and
+    /// both riding shelves), so kind 15 and the follow-state query are not sent beside it.</summary>
+    [Fact]
+    public void A_profile_page_ask_is_one_profile_view()
+    {
+        uint need = (uint)(UserFields.Identity | UserFields.Social | UserFields.Follow);
+        var routes = Routes(FetchSubject.Entity, EntityKind.User, need, out uint sealedGroups);
+
+        var only = Assert.Single(routes);
+        Assert.Equal(RouteTransport.Spclient, only.Transport);
+        Assert.Equal(SpclientRoute.ProfileView, only.Rest);
+        Assert.Equal(0u, sealedGroups);
+    }
+
+    /// <summary>A Follow-only ask (the viewer's follow state, no profile) is the one-operation pathfinder query.</summary>
+    [Fact]
+    public void A_follow_only_ask_is_the_one_op_query()
+    {
+        var routes = Routes(FetchSubject.Entity, EntityKind.User, (uint)UserFields.Follow, out uint sealedGroups);
+
+        var only = Assert.Single(routes);
+        Assert.Equal(RouteTransport.Pathfinder, only.Transport);
+        Assert.Equal(PathfinderOp.IsFollowingUsers, only.Op);
+        Assert.Equal(0u, sealedGroups);
+    }
+
     [Theory]
     [InlineData(FetchSubject.Home, (uint)HomeFields.All, PathfinderOp.Home)]
     [InlineData(FetchSubject.HomeSection, (uint)SectionFields.All, PathfinderOp.HomeSection)]
@@ -536,6 +562,10 @@ public class SpotifyApiProviderRouteTests
     [InlineData(FetchEdge.AlbumTracks, 50, true)]
     [InlineData(FetchEdge.AlbumSimilar, 0, true)]
     [InlineData(FetchEdge.SearchResults, 30, true)]
+    // the profile lists are whole and unpaged (research §2): offset 0 only
+    [InlineData(FetchEdge.ProfileFollowers, 0, true)]
+    [InlineData(FetchEdge.ProfileFollowing, 0, true)]
+    [InlineData(FetchEdge.ProfileFollowers, 10, false)]
     [InlineData(FetchEdge.None, 0, false)]
     public void The_edge_gate_answers_only_what_a_fold_can_land(FetchEdge edge, int offset, bool served)
         => Assert.Equal(served, Spotify.Api.ServesEdge(edge, offset));
@@ -910,12 +940,37 @@ public class SpotifyApiListRouteTests
         Assert.Equal(Common | Spotify.HeaderSet.AcceptProtobuf, permission.Headers);
     }
 
+    /// <summary>The profile view is the capture's own spelling: spclient.WG (never the resolved spclient), the protobuf
+    /// Accept, ten cards per shelf, the market from the token; the username escaped as a path segment.</summary>
     [Fact]
-    public void The_profile_route_carries_the_captured_market_and_escapes_the_username()
+    public void The_profile_view_is_the_captured_wg_protobuf_get()
     {
-        var route = Spotify.Api.ProfileRoute("a@b");
-        Assert.Equal("/user-profile-view/v3/profile/a%40b?market=from_token", route.Path);
-        Assert.Equal(Common | Spotify.HeaderSet.AcceptJson, route.Headers);
+        var route = Spotify.Api.ProfileViewRoute("a@b");
+
+        Assert.Equal(Spotify.Verb.Get, route.Verb);
+        Assert.Equal(Spotify.ApiHost.SpclientWg, route.Host);
+        Assert.Equal("/user-profile-view/v3/profile/a%40b?playlist_limit=10&artist_limit=10&episode_limit=10&market=from_token",
+                     route.Path);
+        Assert.Equal(Common | Spotify.HeaderSet.AcceptProtobuf, route.Headers);
+        Assert.Equal(Spotify.RequestKind.Profile, route.Kind);
+    }
+
+    [Fact]
+    public void The_profile_lists_are_whole_wg_gets()
+    {
+        var followers = Spotify.Api.ProfileFollowersRoute("a@b");
+        var following = Spotify.Api.ProfileFollowingRoute("a@b");
+
+        Assert.Equal("/user-profile-view/v3/profile/a%40b/followers?market=from_token", followers.Path);
+        Assert.Equal("/user-profile-view/v3/profile/a%40b/following?market=from_token", following.Path);
+        foreach (var route in new[] { followers, following })
+        {
+            Assert.Equal(Spotify.Verb.Get, route.Verb);
+            Assert.Equal(Spotify.ApiHost.SpclientWg, route.Host);
+            Assert.Equal(Common | Spotify.HeaderSet.AcceptProtobuf, route.Headers);
+            Assert.Equal(Spotify.RequestKind.Profile, route.Kind);
+            Assert.DoesNotContain("limit=", route.Path, StringComparison.Ordinal);          // no paging: the whole list
+        }
     }
 
     [Fact]

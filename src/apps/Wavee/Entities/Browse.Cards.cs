@@ -18,7 +18,9 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>The Home card vocabulary members still used outside Home: the shelf card adapter (Browse's and Search's
-/// paged shelves render over this, never a hand-rolled cell) and the raw artwork slot the fold tile borrows.</summary>
+/// paged shelves render over this, never a hand-rolled cell), the grid card adapter (the section drill page and Browse's
+/// category grid — the same ONE surface, shared-media-surface-implementation.md Appendix A.3) and the raw artwork slot
+/// the fold tile borrows.</summary>
 public static partial class HomeCards
 {
     /// <summary>Art, always through the app's one artwork slot — never a hand-rolled image. <paramref name="decodePx"/>
@@ -60,10 +62,13 @@ public static partial class HomeCards
         return lines;
     }
 
-    /// <summary>A shelf cell over <see cref="Controls.ShelfCard"/>: the shared plate, hover physics, "…" corner and play
-    /// FAB. The entity chrome (drag + menu) rides a column wrapper, because the card itself is a component.
+    /// <summary>A shelf cell: the app's ONE media surface (<see cref="Controls.Surface"/>) at the shelf's card width — the
+    /// shared plate, hover physics, "…" corner and play FAB. The drag and the menu ride IN the data; the surface's host
+    /// attaches the menu to its shell (skipped under the null overlay).
     /// <para><paramref name="coverAspect"/> (width ÷ height) is the cover's ratio for THIS cell — 1 is the square every
-    /// entity card has; a wide cell takes the item's <see cref="ShelfItem.WideArt"/> when it has one.</para></summary>
+    /// entity card has; a wide cell takes the item's <see cref="ShelfItem.WideArt"/> when it has one. The shape reserves
+    /// what the card shows (its caption lines, its separate meta line), so its seed face is the live card's height; the
+    /// shelf's own extent stays the caller's <c>cardHeight</c>.</para></summary>
     public static Element ShelfCell(in ShelfItem item, float cardW, Action onNav, Action onPlay,
                                     DragSource? drag, IOverlayService? menuHost, Func<ContextMenuModel?>? menu,
                                     float coverAspect = 1f)
@@ -79,9 +84,39 @@ public static partial class HomeCards
         string? art = coverAspect != 1f ? item.WideArt ?? item.Art : item.Art;
         var data = new Controls.CardData(item.Card.Uri, item.Title, second, art, onNav, onPlay,
                                          Circular: item.Circular, Drag: drag, ShowMenu: hasMenu)
-            { CoverAspect = coverAspect, Meta = item.Meta, Caption = item.MetaInline ? item.Second : null, CaptionLines = lines };
-        var cell = new BoxEl { Direction = 1, Shrink = 0f, Children = [Controls.ShelfCard(data, cardW)] };
-        return hasMenu ? cell.WithContextMenu(menuHost!, menu!) : cell;
+        {
+            CoverAspect = coverAspect, Meta = item.Meta, Caption = item.MetaInline ? item.Second : null, CaptionLines = lines,
+            Menu = hasMenu ? menu : null,
+        };
+        bool metaLine = !item.MetaInline && item.Meta is { Length: > 0 };
+        return Controls.Surface(data, Shape.Shelf(lines, metaLine), cardW);
+    }
+
+    /// <summary>The GRID surface's data for a Home/Browse card — the one adapter every HomeCard grid uses (the drill page's
+    /// bound slots, Browse's category grid). Null for a blank/seed card. Runs inside a render: the subscribing reads below
+    /// re-describe the card when its title/cover hydrate (a HomeCard is a (Target, SectionSlot) value — the slot's item
+    /// memo does not fire on a column landing). <paramref name="charts"/> blanks the subtitle (a chart's cards carry none).
+    /// <paramref name="open"/> defaults to <see cref="HomeCardNav.Open"/> from the Home origin.</summary>
+    public static Controls.CardData? GridCardData(in HomeCard c, IOverlayService? menuHost, bool charts = false,
+                                                  Action<HomeCard>? open = null)
+    {
+        if (c.IsBlank) return null;
+        var card = c;                                                   // a struct copy the closures can hold
+        _ = Entities.ScopeEpoch.Value;                                  // FIRST: a scope switch re-points the table below
+        _ = SectionTable.CardTable(card.Target.Kind)?.Changed.Value;    // Liked lives in Playlists: CardTable, not TableFor
+        var shape = HomeUi.HomeCardGridShape.Of(card.Kind, charts);
+        var menu = shape.CanMenu ? HomeCardNav.MenuOf(in card) : null;
+        bool hasMenu = menu is not null && !Controls.IsNullOverlay(menuHost);
+        string sub = shape.ShowSubtitle ? PlainText(card.Subtitle) : "";
+        Action onClick = open is null ? () => HomeCardNav.Open(in card, HomeCardNav.HomeOrigin) : () => open(card);
+        return new Controls.CardData(card.Uri, card.Title,
+            sub.Length > 0
+                ? Design.Type.TrackMeta(sub) with
+                    { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }
+                : null,
+            card.ImageUrl, onClick, () => HomeCardNav.Play(in card),
+            Circular: shape.Circular, Drag: shape.CanDrag ? HomeCardNav.DragOf(in card) : null, ShowMenu: hasMenu)
+            { Menu = hasMenu ? menu : null };
     }
 }
 

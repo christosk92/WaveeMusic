@@ -1,15 +1,21 @@
 // ── Screens/Crash.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
 // The in-app crash & diagnostics UI (WP-E): the zero-size overlay chrome that decides prompt / silent-upload / toast
 // for this launch (and arms the hang toast + the --crash-probe timer via Crash.Host.ArmProbe), the crash/hang consent
-// dialog body, Settings › Privacy & diagnostics' rows (incl. the §J right-to-erasure row) and the Logs › Reports list.
+// dialog body (also the Reports list's per-row "Send"), the outcome toasts, Settings › Privacy & diagnostics' rows
+// (incl. the §J right-to-erasure row) and the Logs › Reports list.
 // Everything here reads Crash.Host.* / Crash.Uploader.* / Crash.Scrubber.* (WP-A/B/C) and never writes a bundle
-// itself — a report is only ever read, scrubbed for preview, enqueued or deleted from here.
+// itself — a report is only ever read, scrubbed for preview / copy, enqueued or deleted from here.
 //
 // Role: UI
 // Owner: WP-E
 // Spec: docs/plans/wavee/crash-diagnostics-implementation.md §D, §F "E · In-app UI", §I "WP-E", §J (erasure, added
-//       2026-09-24). Copy is verbatim from the approved prototype artboards (Prompt.dc.html, Toast.dc.html,
-//       Settings.dc.html, Reports.dc.html).
+//       2026-09-24); docs/plans/wavee/crash-production-readiness-implementation.md W3b (#165). Copy is verbatim from
+//       the approved prototype artboards (Prompt.dc.html, Toast.dc.html, Settings.dc.html, Reports.dc.html).
+//
+// TRUTHFUL SEND STATES (#165): no toast claims "sent" before the service said so. Every upload this file starts goes
+// through Uploader.Enqueue with an OutcomeToasts.Track callback, which the uploader calls on the UI thread with each
+// real outcome (queued after a retryable attempt, then sent / failed); all of one report's cards share the dedupe key
+// "crash:<id>" and a newer one replaces the older card.
 //
 // MOUNT ORDER (mirrors Feedback.UI.cs's old crash arm, ch 28 §9.3.8): the overlay layer mounts Setup.WizardChrome
 // FIRST, Feedback.Chrome SECOND, Crash.Chrome THIRD, ReleaseNotes.AfterUpdateChrome FOURTH — Crash.Chrome sets
@@ -58,22 +64,24 @@ public static partial class Crash
                 Host.ThisLaunch = null;                     // one-shot: consumed now, whichever arm fires below
                 ReleaseNotes.CrashNoticeThisLaunch = true;   // the after-update plate waits for the next launch
 
-                var mode = (Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting);
+                // The EFFECTIVE mode: a stored Automatic on a build that can't send behaves as Ask each time.
+                var mode = ConsentPolicy.Effective((Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), Uploader.Configured);
                 bool online = NetworkStatus.IsOnline;
-                switch (ConsentPolicy.Decide(mode, bundle.Summary.Kind, online))
+                var action = ConsentPolicy.Decide(mode, bundle.Summary.Kind, online);
+                switch (action)
                 {
                     case ConsentPolicy.Action.UploadSilently:
+                    case ConsentPolicy.Action.Toast:
+                    {
+                        // Automatic queues the report either way. Online, the only toast is the real outcome; offline,
+                        // say now that it waits (the drain's own "still offline" outcome then stays quiet).
+                        bool offline = action == ConsentPolicy.Action.Toast;
                         bool dumpAllowed = ConsentPolicy.DumpAllowed(mode, bundle.Summary.Kind,
                             Platform.Settings.Get(Platform.Keys.CrashIncludeDump), manualSend: false);
-                        Uploader.Enqueue(bundle, dumpAllowed);
-                        Notify.Say(Strings.Crash.SentToastDetail(ShortId(bundle.Summary.ReportId)), InfoBarSeverity.Success,
-                            title: Loc.Get(Strings.Crash.SentToast), dedupeKey: "crash-sent:" + bundle.Summary.ReportId);
+                        Uploader.Enqueue(bundle, dumpAllowed, OutcomeToasts.Track(bundle, queuedShown: offline));
+                        if (offline) OutcomeToasts.Show(bundle, UploadToasts.For(SendState.Queued, queuedAlreadyShown: false));
                         break;
-                    case ConsentPolicy.Action.Toast:
-                        Notify.Say(Loc.Get(Strings.Crash.QueuedToast), InfoBarSeverity.Warning,
-                            Loc.Get(Strings.Crash.View), () => OpenPrompt(overlay, bundle),
-                            "crash-toast:" + bundle.Summary.ReportId, durationMs: 0f);
-                        break;
+                    }
                     case ConsentPolicy.Action.Prompt:
                         OpenPrompt(overlay, bundle);
                         break;
@@ -109,15 +117,18 @@ public static partial class Crash
         }
     }
 
-    static void OpenPrompt(IOverlayService? overlay, BundleInfo bundle)
+    /// <param name="fromList">The Reports list's per-row "Send": the same manual send (preview + dump checkbox) for any
+    /// saved report, titled "Send this report?" — not "Wavee closed unexpectedly", which is only true of this launch's.</param>
+    static void OpenPrompt(IOverlayService? overlay, BundleInfo bundle, bool fromList = false)
     {
         if (overlay is null) return;
         var session = new PromptSession();
         var handle = ContentDialog.Show(overlay, d =>
         {
-            d.Title = Loc.Get(bundle.Summary.Kind == Kind.Hang ? Strings.Crash.PromptHangTitle : Strings.Crash.PromptTitle);
+            d.Title = Loc.Get(fromList ? Strings.Crash.PromptListTitle
+                : bundle.Summary.Kind == Kind.Hang ? Strings.Crash.PromptHangTitle : Strings.Crash.PromptTitle);
             d.DialogWidth = DialogChrome;
-            d.Content = Embed.Comp(() => new CrashPromptBody { Bundle = bundle, Session = session })
+            d.Content = Embed.Comp(() => new CrashPromptBody { Bundle = bundle, Session = session, FromList = fromList })
                 with { Key = "crash-prompt:" + bundle.Summary.ReportId };
             d.PrimaryText = Loc.Get(Strings.Crash.Send);
             d.CloseText = Loc.Get(Strings.Crash.NotNow);
@@ -129,13 +140,66 @@ public static partial class Crash
         session.Handle = handle;
     }
 
-    static string ShortId(string reportId) => reportId.Length >= 8 ? reportId[..4] + "-" + reportId[4..8] : reportId;
-
     static string ShortInstallId(string id) => id.Length > 10 ? id[..4] + "…" + id[^4..] : id;
 
     static string FormatMb(long bytes) => (bytes / 1_048_576.0).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
 
-    // ══ 2. THE PROMPT BODY ═════════════════════════════════════════════════════════════════════════════════════════
+    /// <summary>Pool thread: the scrubbed text a send would carry — what the prompt previews and the Reports list's
+    /// "Copy" puts on the clipboard. "" when the scrub itself failed (logged).</summary>
+    static string ComposePreview(BundleInfo bundle, Feedback.RedactionRules rules)
+    {
+        string reportTxt = "";
+        try { reportTxt = File.ReadAllText(bundle.ReportTxt); } catch (Exception ex) { Log.Warn("crash", "preview.read.report.failed", ex); }
+        string[] tail = Array.Empty<string>();
+        try { if (File.Exists(bundle.TailTxt)) tail = File.ReadAllLines(bundle.TailTxt); } catch (Exception ex) { Log.Warn("crash", "preview.read.tail.failed", ex); }
+        try { return Scrubber.Preview(Scrubber.Scrub(bundle.Summary, reportTxt, tail, rules)); }
+        catch (Exception ex) { Log.Warn("crash", "preview.scrub.failed", ex); return ""; }
+    }
+
+    // ══ 2. THE OUTCOME TOASTS ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The one door every upload-outcome card goes through (UI thread only). All of one report's cards share
+    /// the dedupe key <c>crash:&lt;id&gt;</c>, and a newer outcome CLOSES the older card first: a coalesced toast keeps
+    /// its first message, so a waiting "queued" card would otherwise swallow the later "sent". Internal for Settings ›
+    /// Developer's "Send a test crash report" (#165), which shows the same real outcome.</summary>
+    internal static class OutcomeToasts
+    {
+        static readonly Dictionary<string, ToastHandle> s_cards = new(StringComparer.Ordinal);
+
+        /// <summary>The <c>settled</c> callback for <see cref="Uploader.Enqueue"/>: each real outcome picks its card via
+        /// <see cref="UploadToasts.For"/>; "queued" is said once per report (<paramref name="queuedShown"/> = the caller
+        /// already said it).</summary>
+        public static Action<SendRecord> Track(BundleInfo bundle, bool queuedShown, bool test = false)
+        {
+            bool shown = queuedShown;
+            return rec =>
+            {
+                var toast = UploadToasts.For(rec.State, shown);
+                if (toast == UploadToasts.Toast.Queued) shown = true;
+                Show(bundle, toast, test);
+            };
+        }
+
+        /// <param name="test">A Settings › Developer test report: its "sent" line names the test, never "Wavee crashed".</param>
+        public static void Show(BundleInfo bundle, UploadToasts.Toast toast, bool test = false)
+        {
+            if (toast == UploadToasts.Toast.None) return;
+            string id = bundle.Summary.ReportId;
+            string key = "crash:" + id;
+            if (s_cards.Remove(id, out var previous)) previous.Close();
+            s_cards[id] = toast switch
+            {
+                UploadToasts.Toast.Sent => Notify.Say(
+                    test ? Strings.Crash.TestReportSentDetail(ShortId(id)) : Strings.Crash.SentToastDetail(ShortId(id)),
+                    InfoBarSeverity.Success, title: Loc.Get(Strings.Crash.SentToast), dedupeKey: key),
+                UploadToasts.Toast.Queued => Notify.Say(Loc.Get(Strings.Crash.QueuedToast), InfoBarSeverity.Warning,
+                    dedupeKey: key, durationMs: 8000f),
+                _ => Notify.Say(Loc.Get(Strings.Crash.SendFailed), InfoBarSeverity.Error, dedupeKey: key, durationMs: 8000f),
+            };
+        }
+    }
+
+    // ══ 3. THE PROMPT BODY ═════════════════════════════════════════════════════════════════════════════════════════
 
     const float DialogChrome = 548f, BodyWidth = 500f, PreviewHeight = 220f;
 
@@ -147,12 +211,15 @@ public static partial class Crash
         public OverlayHandle? Handle;
     }
 
-    /// <summary>Width 500; every signal seeded once from <see cref="Bundle"/> at mount (the prop freezes — a second
-    /// bundle for the same launch never happens, but a re-render must not re-seed the user's in-progress choices).</summary>
+    /// <summary>Width 500; every signal seeded once from <see cref="Bundle"/> at mount (the props freeze — the dialog is
+    /// keyed by report id, and a re-render must not re-seed the user's in-progress choices). <see cref="FromList"/> is
+    /// the Reports list's manual send: the bundle may be days old, so the header shows its date and there is no "last
+    /// time" lead and no "always send" switch.</summary>
     sealed class CrashPromptBody : Component
     {
         public required BundleInfo Bundle;
         public required PromptSession Session;
+        public bool FromList;
 
         public override Element Render()
         {
@@ -171,13 +238,7 @@ public static partial class Crash
                 var bundle = Bundle;
                 Task.Run(() =>
                 {
-                    string reportTxt = "";
-                    try { reportTxt = File.ReadAllText(bundle.ReportTxt); } catch (Exception ex) { Log.Warn("crash", "prompt.read.report.failed", ex); }
-                    string[] tail = Array.Empty<string>();
-                    try { tail = File.ReadAllLines(bundle.TailTxt); } catch (Exception ex) { Log.Warn("crash", "prompt.read.tail.failed", ex); }
-                    string text;
-                    try { text = Scrubber.Preview(Scrubber.Scrub(bundle.Summary, reportTxt, tail, rules)); }
-                    catch (Exception ex) { Log.Warn("crash", "prompt.scrub.failed", ex); text = ""; }
+                    string text = ComposePreview(bundle, rules);
                     if (!cts.IsCancellationRequested) post(() => { if (!cts.IsCancellationRequested) preview.Value = text; });
                 });
                 return (Action?)(() => cts.Cancel());
@@ -192,20 +253,24 @@ public static partial class Crash
                         Notify.Say(Loc.Get(Strings.Report.Preparing), InfoBarSeverity.Informational);
                         return false;
                     }
-                    if (always.Peek()) Platform.Settings.Set(Platform.Keys.CrashReporting, (int)Reporting.Auto);
-                    Platform.Settings.Set(Platform.Keys.CrashConsentAsked, true);
-                    Uploader.Enqueue(Bundle, includeDump.Peek() && Bundle.HasDump);
-                    Notify.Say(Strings.Crash.SentToastDetail(ShortId(Bundle.Summary.ReportId)), InfoBarSeverity.Success,
-                        title: Loc.Get(Strings.Crash.SentToast), dedupeKey: "crash-sent:" + Bundle.Summary.ReportId);
+                    if (!FromList)
+                    {
+                        if (always.Peek()) Platform.Settings.Set(Platform.Keys.CrashReporting, (int)Reporting.Auto);
+                        Platform.Settings.Set(Platform.Keys.CrashConsentAsked, true);
+                    }
+                    // A manual send shows what it sends, so the dump checkbox alone decides (ConsentPolicy.DumpAllowed,
+                    // manualSend). The toast waits for the service's answer.
+                    Uploader.Enqueue(Bundle, includeDump.Peek() && Bundle.HasDump, OutcomeToasts.Track(Bundle, queuedShown: false));
                     return true;
                 };
                 return (Action?)(() => Session.Submit = null);
             }, DepKey.Empty);
 
-            var children = new List<Element>(10) { HeaderInfoBar(Bundle), Lead(Bundle.Summary.Kind) };
+            var children = new List<Element>(10) { HeaderInfoBar(Bundle, FromList) };
+            if (!FromList) children.Add(Lead(Bundle.Summary.Kind));
             children.Add(WhatIsSentBox(showReport, preview.Value));
             if (Bundle.HasDump) children.Add(IncludeDumpRow(includeDump, Bundle.DumpBytes));
-            children.Add(CheckBox.Create(Loc.Get(Strings.Crash.PromptAlways), always));
+            if (!FromList) children.Add(CheckBox.Create(Loc.Get(Strings.Crash.PromptAlways), always));
             children.Add(new BoxEl
             {
                 Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Width = BodyWidth,
@@ -215,7 +280,7 @@ public static partial class Crash
                     new TextEl("·") { Color = Tok.TextTertiary },
                     HyperlinkButton.Create(Loc.Get(Strings.Crash.PromptGithub), () =>
                     {
-                        Feedback.OpenCrashReport(Bundle.ReportTxt);
+                        Feedback.OpenCrashReport(Bundle);
                         Session.Handle?.Close();
                     }),
                 ],
@@ -226,10 +291,12 @@ public static partial class Crash
             return new BoxEl { Direction = 1, Gap = Spacing.M, Width = BodyWidth, Children = children.ToArray() };
         }
 
-        static Element HeaderInfoBar(BundleInfo bundle)
+        static Element HeaderInfoBar(BundleInfo bundle, bool fromList)
         {
             var s = bundle.Summary;
-            string when = Strings.Crash.PromptWhen(bundle.StampLocal.ToString("t", CultureInfo.CurrentCulture));
+            string when = fromList
+                ? bundle.StampLocal.ToString("g", CultureInfo.CurrentCulture)
+                : Strings.Crash.PromptWhen(bundle.StampLocal.ToString("t", CultureInfo.CurrentCulture));
             string message = s.ExceptionType.Length > 0
                 ? when + " · " + s.ExceptionType + (s.ExceptionMessage.Length > 0 ? ": " + s.ExceptionMessage : "")
                 : when;
@@ -305,7 +372,7 @@ public static partial class Crash
 
     const string PrivacyUrl = "https://github.com/christosk92/WaveeMusic/blob/main/PRIVACY.md";
 
-    // ══ 3. SETTINGS › GENERAL › PRIVACY & DIAGNOSTICS ═════════════════════════════════════════════════════════════
+    // ══ 4. SETTINGS › GENERAL › PRIVACY & DIAGNOSTICS ═════════════════════════════════════════════════════════════
 
     const float RowGap = 4f;
 
@@ -323,7 +390,8 @@ public static partial class Crash
             var hooks = UseContext(InputHooks.Current);
             var post = UsePost();
 
-            var mode = UseSignal(Platform.Settings.Get(Platform.Keys.CrashReporting));
+            // Seeded with the EFFECTIVE mode: a stored Automatic on a build that can't send shows (and acts as) Ask.
+            var mode = UseSignal((int)ConsentPolicy.Effective((Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), Uploader.Configured));
             var dump = UseSignal(Platform.Settings.Get(Platform.Keys.CrashIncludeDump));
             var eraseEpoch = UseSignal(0);
             _ = eraseEpoch.Value;   // subscribed so a rotated install id (after a successful erase) re-renders
@@ -368,10 +436,19 @@ public static partial class Crash
             Header = label, Description = sub, HeaderIcon = icon, Content = control, IsEnabled = isEnabled,
         });
 
-        static Element ModeRow(Signal<int> mode) => Row(Loc.Get(Strings.Crash.Mode), Loc.Get(Strings.Crash.ModeSub),
-            ComboBox.Create([Loc.Get(Strings.Crash.ModeOff), Loc.Get(Strings.Crash.ModeAsk), Loc.Get(Strings.Crash.ModeAuto)],
-                mode, width: 200f, onChange: i => Platform.Settings.Set(Platform.Keys.CrashReporting, i)),
-            Icons.StatusWarning);
+        /// <summary>Off / Ask each time / Automatic, index = <see cref="Reporting"/>. A build that can't send keeps the
+        /// Automatic row in the list — disabled, with why — so the choice is explained rather than missing.</summary>
+        static Element ModeRow(Signal<int> mode)
+        {
+            bool canSend = Uploader.Configured;
+            string[]? descriptions = canSend ? null : new[] { "", "", Loc.Get(Strings.Crash.ModeAutoNeedsService) };
+            bool[]? enabled = canSend ? null : new[] { true, true, false };
+            return Row(Loc.Get(Strings.Crash.Mode), Loc.Get(Strings.Crash.ModeSub),
+                ComboBox.Create([Loc.Get(Strings.Crash.ModeOff), Loc.Get(Strings.Crash.ModeAsk), Loc.Get(Strings.Crash.ModeAuto)],
+                    mode, width: 200f, onChange: static i => Platform.Settings.Set(Platform.Keys.CrashReporting, i),
+                    itemDescriptions: descriptions, itemEnabled: enabled),
+                Icons.StatusWarning);
+        }
 
         static Element DumpRow(Signal<bool> dump, int mode) => Row(Loc.Get(Strings.Crash.IncludeDump), Loc.Get(Strings.Crash.IncludeDumpSub),
             ToggleSwitch.Create(dump, onChange: v => Platform.Settings.Set(Platform.Keys.CrashIncludeDump, v),
@@ -422,21 +499,24 @@ public static partial class Crash
         }
     }
 
-    // ══ 4. LOGS › REPORTS ══════════════════════════════════════════════════════════════════════════════════════════
+    // ══ 5. LOGS › REPORTS ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Rows from <see cref="Host.Bundles"/>, remounted on <see cref="Host.ReportsVersion"/> — mounted under
-    /// the Logs panel body (<c>Settings.UI.cs</c>'s <c>LogsTab</c> → <c>Diagnostics.LogsPanel</c>).</summary>
+    /// <summary>Rows from <see cref="Host.Bundles"/>, re-rendered on <see cref="Host.ReportsVersion"/> — mounted under
+    /// the Logs panel body (<c>Settings.UI.cs</c>'s <c>LogsTab</c> → <c>Diagnostics.LogsPanel</c>). Each row carries
+    /// its short report id and <c>[View] [Copy] [Delete] [Send]</c>.</summary>
     public sealed class ReportsList : Component
     {
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
+            var hooks = UseContext(InputHooks.Current);
+            var post = UsePost();
             _ = Host.ReportsVersion.Value;   // subscribed
             var bundles = Host.Bundles();
 
             var rows = new Element[bundles.Count];
             for (int i = 0; i < bundles.Count; i++)
-                rows[i] = ReportRow(bundles[i]) with { Key = "crash:" + bundles[i].Summary.ReportId };
+                rows[i] = ReportRow(bundles[i], overlay, hooks, post) with { Key = "crash:" + bundles[i].Summary.ReportId };
 
             var kids = new List<Element>(2)
             {
@@ -460,7 +540,7 @@ public static partial class Crash
             return new BoxEl { Direction = 1, Gap = Spacing.M, AlignSelf = FlexAlign.Stretch, Children = kids.ToArray() };
         }
 
-        static Element ReportRow(BundleInfo b)
+        static Element ReportRow(BundleInfo b, IOverlayService? overlay, InputHooks hooks, Action<Action> post)
         {
             var s = b.Summary;
             ColorF dot = s.Kind switch
@@ -495,12 +575,29 @@ public static partial class Crash
                 Children =
                 [
                     new BoxEl { Width = 8f, Height = 8f, Corners = Radii.FullAll, Fill = dot, Shrink = 0f },
-                    new TextEl(b.StampLocal.ToString("g", CultureInfo.CurrentCulture)) { Size = 12f, Color = Tok.TextSecondary, Width = 130f, Shrink = 0f },
+                    new BoxEl
+                    {
+                        Direction = 1, Gap = 2f, Width = 130f, Shrink = 0f,
+                        Children =
+                        [
+                            new TextEl(b.StampLocal.ToString("g", CultureInfo.CurrentCulture)) { Size = 12f, Color = Tok.TextSecondary },
+                            new TextEl(Strings.Crash.RowId(ShortId(s.ReportId))) { Size = 11f, Color = Tok.TextTertiary },
+                        ],
+                    },
                     new TextEl(kindLabel) { Size = 13f, Weight = 600, Width = 56f, Shrink = 0f },
                     new TextEl(what) { Size = 13f, Color = Tok.TextSecondary, Grow = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                     new TextEl(state) { Size = 12f, Color = Tok.TextTertiary, Width = 110f, Shrink = 0f },
-                    Button.Standard(Loc.Get(Strings.Crash.View), () => ViewReport(b.ReportTxt)),
-                    canSend ? Button.Accent(Loc.Get(Strings.Crash.SendButton), () => SendOne(b)) : new BoxEl { Width = 0f },
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, Shrink = 0f,
+                        Children =
+                        [
+                            Button.Standard(Loc.Get(Strings.Crash.View), () => ViewReport(b.ReportTxt)),
+                            Button.Standard(Loc.Get(Strings.Crash.RowCopy), () => CopyReport(b, hooks, post)),
+                            Button.Standard(Loc.Get(Strings.Crash.RowDelete), () => ConfirmDelete(overlay, b.Dir)),
+                            canSend ? Button.Accent(Loc.Get(Strings.Crash.SendButton), () => OpenPrompt(overlay, b, fromList: true)) : new BoxEl { Width = 0f },
+                        ],
+                    },
                 ],
             };
         }
@@ -545,11 +642,27 @@ public static partial class Crash
             catch (Exception ex) { Log.Warn("crash", "reports.view.failed", ex); }
         }
 
-        static void SendOne(BundleInfo b)
+        /// <summary>"Copy": exactly what a send would carry — scrubbed and laid out off the UI thread, then the
+        /// clipboard and a toast back on it.</summary>
+        static void CopyReport(BundleInfo b, InputHooks hooks, Action<Action> post)
         {
-            bool dumpAllowed = ConsentPolicy.DumpAllowed((Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), b.Summary.Kind,
-                Platform.Settings.Get(Platform.Keys.CrashIncludeDump), manualSend: false);
-            Uploader.Enqueue(b, dumpAllowed);
+            var rules = Scrubber.RulesNow();   // UI thread: the live account/device seams
+            _ = Task.Run(() =>
+            {
+                string text = ComposePreview(b, rules);
+                if (text.Length == 0) return;   // the scrub failed (logged) — never put an unscrubbed report on the clipboard
+                post(() =>
+                {
+                    hooks.Clipboard?.SetText(text);
+                    Notify.Say(Loc.Get(Strings.Crash.RowCopied), InfoBarSeverity.Success, dedupeKey: "crash-copied:" + b.Summary.ReportId);
+                });
+            });
         }
+
+        /// <summary>"Delete": confirmed, then <c>Crash.Host.Delete</c> — which drops the report's outbox entry first,
+        /// so a queued report is never sent after the user deleted it.</summary>
+        static void ConfirmDelete(IOverlayService? overlay, string dir) => Controls.Confirm(overlay,
+            Loc.Get(Strings.Crash.RowDeleteConfirmTitle), Loc.Get(Strings.Crash.RowDeleteConfirmBody),
+            Loc.Get(Strings.Crash.RowDelete), () => Host.Delete(dir));
     }
 }

@@ -402,13 +402,17 @@ public readonly partial struct Home
         static readonly Action s_rolloverFire = RolloverFire;
         static readonly Action s_rearm = RearmDaylist;
 
+        /// <summary>Where the rollover ladder stands, for the daylist clock and the playlist strip (<see cref="DaylistClockFace"/>
+        /// decides what they show). Written only by the ladder below, on the UI thread, every time it decides.</summary>
+        public static Signal<DaylistRolloverState> RolloverState { get; } = new(DaylistRolloverState.Idle);
+
         /// <summary>The unfiltered feed's daylist card: <c>Notify.Daylist.Note</c> once per (card, window), then the
         /// rollover ladder is (re)armed against the held window. Only a live Spotify scope — a demo launch must not
         /// schedule OS toasts or refetches.</summary>
         static void NoteDaylist()
         {
             var scope = Entities.Current;
-            if (scope.Key.Provider != "spotify") { StopRollover(); return; }
+            if (scope.Key.Provider != "spotify") { StopRollover(); RolloverState.Value = DaylistRolloverState.Idle; return; }
             if (!ReferenceEquals(scope, s_daylistScope))
             {
                 s_daylistScope = scope;
@@ -471,7 +475,9 @@ public readonly partial struct Home
         {
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             int windowEnd = s_daylistSlot > Table.None ? s_daylistExpiresAt : 0;
-            switch (DaylistRollover.Decide(windowEnd, s_rolloverAttempts, now, out long fireAt))
+            var verdict = DaylistRollover.Decide(windowEnd, s_rolloverAttempts, now, out long fireAt);
+            RolloverState.Value = DaylistRollover.StateOf(verdict, s_rolloverAttempts);   // before the Fire arm: an offline fire answers Idle itself
+            switch (verdict)
             {
                 case DaylistRollover.Verdict.Fire:
                     // A decide far past the window (a resume hours later) must not walk the whole ladder at once:
@@ -505,7 +511,11 @@ public readonly partial struct Home
             s_rolloverArmedAt = 0;
             var scope = Entities.Current;
             if (!ReferenceEquals(scope, s_daylistScope) || s_daylistSlot <= Table.None) return;
-            if (!Spotify.Current.IsOnline) return;   // the next scan or activation re-arms
+            if (!Spotify.Current.IsOnline)           // the next scan or activation re-arms; nothing is on its way meanwhile
+            {
+                RolloverState.Value = DaylistRolloverState.Idle;
+                return;
+            }
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             // The timer may run early or a stale post may land late: re-decide before spending a rung.
             if (DaylistRollover.Decide(s_daylistExpiresAt, s_rolloverAttempts, now, out _) != DaylistRollover.Verdict.Fire)
@@ -537,6 +547,17 @@ public readonly partial struct Home
             if (s_daylistScope is null || s_daylistSlot <= Table.None) return;
             long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (DaylistRollover.ResetsOnActivation(s_daylistExpiresAt, s_rolloverLastFireMs, now)) s_rolloverAttempts = 0;
+            ArmRollover();
+        }
+
+        /// <summary>The clock's "Check again" (a user pull): restart the ladder from attempt 0 whatever the last fire's age —
+        /// the user asked, so <see cref="DaylistRollover.MinRefireMs"/> (which guards the automatic triggers) does not
+        /// apply — then decide again. The window has ended, so that decides Fire: <see cref="RolloverFire"/> is the one
+        /// fetch path. UI thread.</summary>
+        public static void CheckDaylistAgain()
+        {
+            if (s_daylistScope is null || s_daylistSlot <= Table.None) return;
+            s_rolloverAttempts = 0;
             ArmRollover();
         }
 

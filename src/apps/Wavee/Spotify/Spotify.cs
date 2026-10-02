@@ -2141,11 +2141,6 @@ public static partial class Spotify
                 return new Request(Verb.Get, ApiHost.Spclient, w.Written,
                     Common | HeaderSet.AcceptJson | HeaderSet.NoStore, default);
 
-            case RequestKind.Profile:
-                w.Append("/user-profile-view/v3/profile/");
-                w.AppendEscaped(args.Id);
-                return new Request(Verb.Get, ApiHost.Spclient, w.Written, Common | HeaderSet.AcceptJson, default);
-
             case RequestKind.Popcount:
                 w.Append("/popcount/v2/playlist/");
                 w.AppendEscaped(args.Id);

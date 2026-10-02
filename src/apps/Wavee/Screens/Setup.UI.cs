@@ -938,8 +938,9 @@ public static partial class Setup
     }
 
     /// <summary>The Terms page's opt-in crash-reporting card (crash-diagnostics plan §D "Wizard consent"): title + an
-    /// "Optional" pill, the one-line question, a three-way <see cref="Segmented"/> choice (No · Ask me first · Always
-    /// send — <see cref="Crash.Reporting"/> Off/Ask/Auto, default Off), the scrub summary and the Privacy link. The
+    /// "Optional" pill, the one-line question, a radio choice (No · Ask me first · Always send —
+    /// <see cref="Crash.Reporting"/> Off/Ask/Auto, default Off; only the first two on a build that can't send,
+    /// <c>Crash.ConsentPolicy.Offered</c>), the scrub summary and the Privacy link. The
     /// choice writes <see cref="Platform.Keys.CrashReporting"/> the instant it changes — never waits for Continue, so a
     /// crash between the click and the wizard's own advance cannot lose it. Consent-asked itself is stamped once, on
     /// Continue, by <see cref="WizardRules.MarkConsentAsked"/> (<c>WizardSession.Primary</c>), not here.</summary>
@@ -949,12 +950,25 @@ public static partial class Setup
 
         public override Element Render()
         {
-            var index = UseSignal(Platform.Settings.Get(Platform.Keys.CrashReporting));   // seeded once from the store
+            // #165: a build that can't send (no ingest URL / key / quad) offers only No · Ask me first — "Always send"
+            // would be a promise it cannot keep. The offered list is a prefix of Off/Ask/Auto, so the radio index stays
+            // the stored Crash.Reporting value; the seed is the EFFECTIVE mode (a stored Auto reads Ask there).
+            bool canSend = Crash.Uploader.Configured;
+            var index = UseSignal((int)Crash.ConsentPolicy.Effective(
+                (Crash.Reporting)Platform.Settings.Get(Platform.Keys.CrashReporting), canSend));   // seeded once from the store
+            var labels = new List<string>(3);
+            foreach (var mode in Crash.ConsentPolicy.Offered(canSend))
+                labels.Add(Loc.Get(mode switch
+                {
+                    Crash.Reporting.Off => Strings.Setup.Terms.CrashNo,
+                    Crash.Reporting.Ask => Strings.Setup.Terms.CrashAsk,
+                    _ => Strings.Setup.Terms.CrashAlways,
+                }));
 
             // A vertical radio group (the Windows privacy-settings shape), not a segmented switcher: three labels of
             // very different length never fit three equal-width segments, and a consent choice reads as a list.
             Element choice = RadioButtons.Create(
-                [Loc.Get(Strings.Setup.Terms.CrashNo), Loc.Get(Strings.Setup.Terms.CrashAsk), Loc.Get(Strings.Setup.Terms.CrashAlways)],
+                labels,
                 index,
                 onChange: static i => Platform.Settings.Set(Platform.Keys.CrashReporting, i));
 

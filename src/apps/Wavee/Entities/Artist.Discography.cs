@@ -781,8 +781,10 @@ public readonly partial struct Artist
 
     const float DiscoMinCol = 180f;
     const float DiscoGap = Spacing.L;
-    /// <summary>GridCard's cover is the cell width; +50 for the padding and the two text lines — one uniform card height,
-    /// so the drawer's hug spacing is exact. RowGap is the vertical gutter, folded into the LazyGrid row extra.</summary>
+    /// <summary>The grid surface's height is the cell width + 50 (the square cover is the cell less its 2 × 8 padding, over the
+    /// 8 gap, the title + caption lines and the 12 bottom pad) — one uniform card height, so the drawer's hug spacing is
+    /// exact; the seed face pinned to it is exactly as tall. RowGap is the vertical gutter, folded into the LazyGrid row
+    /// extra.</summary>
     const float DiscoCardChrome = 50f, DiscoRowGap = 20f;
     /// <summary><c>HeaderH + 2 × RowPitch</c> = 104: enough of the drawer to prove it opened (ch 08 §9 trap).</summary>
     const float DiscoRevealPeek = DrawerVerdict.HeaderH + 2f * DrawerVerdict.RowPitch;
@@ -1036,8 +1038,9 @@ public readonly partial struct Artist
     /// paints (a palette landing repaints the one opened card). The handlers, the drag source and the menu factory are
     /// built ONCE per mount as fields and read the cell's current row; the <see cref="Controls.CardData"/> and the meta
     /// are rebuilt only when the stamp names a different row or version (or the card width moves), never per render.
-    /// The card's shell controls — its pinned height, the opened skin, the menu — travel IN the data: <c>GridCard</c> is
-    /// a component whose chrome mounts lazily, so nothing here post-processes a BoxEl any more.</summary>
+    /// The card's shell controls — its pinned height, the opened skin, the menu — travel IN the data: the shared surface
+    /// (<c>Controls.Surface</c>, <c>Shape.Grid</c>) is a component whose chrome mounts lazily, so nothing here post-processes
+    /// a BoxEl any more. A cell with no row yet is that same surface's SEED face at the card's pinned height.</summary>
     sealed class DiscoCell : Component
     {
         DiscoCellProps _p = null!;
@@ -1055,6 +1058,8 @@ public readonly partial struct Artist
         // The two data variants — plain and OPENED — cached so an expanded cell re-pushes one reference per render
         // (CardData equality short-circuits on ReferenceEquals) instead of cloning a record; both die with Rebuild.
         Controls.CardData? _data, _dataSelected;
+        // The seed (no row yet), pinned to the card's height and re-cut only when the width moves it.
+        Controls.CardData? _seed;
 
         public DiscoCell()
         {
@@ -1096,7 +1101,11 @@ public readonly partial struct Artist
                 _slot = Table.None;
                 _data = null;
                 _dataSelected = null;
-                return Placeholder(p.CardW);
+                // The pinned height keeps the seed the SAME height as a real card (the grid's folded row gap must not
+                // stretch it). Keyed like the card below, so the row landing is a props re-push into the same host.
+                float seedHeight = p.CardW + DiscoCardChrome;
+                if (_seed is null || !_seed.Height.Equals(seedHeight)) _seed = Controls.CardData.Seed with { Height = seedHeight };
+                return Controls.Surface(_seed, Shape.Grid) with { Key = "album" };
             }
             // The PINNED height is part of the data (it is the shell's), so a responsive width change rebuilds it too.
             float height = p.CardW + DiscoCardChrome;
@@ -1109,9 +1118,9 @@ public readonly partial struct Artist
             // and no other.
             Controls.CardData data = _data!;
             if (p.Expanded) data = _dataSelected ??= data with { Selected = true, SelectedAccent = _accent };
-            // A constant key distinct from the placeholder's: the two swap as whole subtrees, and the grid's own
-            // per-position wrapper already carries the identity, so no per-render key string is built.
-            return Controls.GridCard(data) with { Key = "album" };
+            // A constant key, shared with the seed: the grid's own per-position wrapper already carries the identity, so
+            // no per-render key string is built, and a seed hydrating is a props re-push, never a remount.
+            return Controls.Surface(data, Shape.Grid) with { Key = "album" };
         }
 
         /// <summary>The card's data off its row — once per (slot, version, height), never per render. The pinned
@@ -1146,21 +1155,6 @@ public readonly partial struct Artist
             if (Actions.Menu.Share(in ctx) is { } share) rows.Add(share);
             return new ContextMenuModel(Actions.Menu.Strip(in ctx, strip), rows, Actions.Menu.Header(cover, title, meta));
         }
-
-        /// <summary>A card-shaped shimmer cell — the SAME height as a real card, cover squared by AspectRatio.</summary>
-        static Element Placeholder(float cardW) => new BoxEl
-        {
-            Key = "album:placeholder",
-            Direction = 1, Gap = Spacing.S, Height = cardW + DiscoCardChrome,
-            Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
-            Corners = CornerRadius4.All(Radii.Card),
-            Children =
-            [
-                new BoxEl { AspectRatio = 1f, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Height = 13f, AlignSelf = FlexAlign.Stretch, MaxWidth = 150f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Height = 11f, Width = 92f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-            ],
-        };
     }
 
     // ══ 8. THE DRAWER PANEL (UI, ch 08 W15/W16; 0.2.9 AlbumDrawerPanel) ══════════════════════════════════════════════

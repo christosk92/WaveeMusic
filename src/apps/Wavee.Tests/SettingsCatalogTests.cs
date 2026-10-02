@@ -71,12 +71,12 @@ public class SettingsCatalogTests
 
     /// <summary>Everything else is visible in BOTH states — a gate that leaked would empty the page for normal users.</summary>
     [Fact]
-    public void Only_the_three_declared_rows_are_developer_only()
+    public void Only_the_four_declared_rows_are_developer_only()
     {
         var gated = Settings.Catalog.Rows.Where(r => !Settings.Catalog.RowVisible(r.Tab, r.RowId, developerMode: false))
                                          .Select(r => r.Tab + "/" + r.RowId)
                                          .OrderBy(s => s, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion", "General/simulateUpdate" }, gated);
+        Assert.Equal(new[] { "Appearance/npvPresentation", "Appearance/pageMotion", "General/sendTestCrashReport", "General/simulateUpdate" }, gated);
         foreach (var row in Settings.Catalog.Rows)
             Assert.True(Settings.Catalog.RowVisible(row.Tab, row.RowId, developerMode: true));
     }

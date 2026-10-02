@@ -9,16 +9,15 @@
 //
 // Wave 2E (home-redesign-remediation.md F9/§3.6): the grid is `ItemsView.CreateBound` over `RepeatLayout.GridFit` —
 // no measured width, no frozen template, no hand-rolled tier table (`GridFit.Columns6`/`CoverWidth` are gone from
-// this file). The card is a width-free bound row (`AlignSelf = Stretch`, `AspectRatio` cover) built locally as
-// `SectionCard`: the plan's target (§3.3) points this at a bound `Items.GridItem` twin, but `Home/Items.UI.cs`'s
-// `GridItem` still takes an explicit pixel `width` (a shelf-fed value, `PagedShelf`'s own fit) as of this wave and
-// this file's remit does not extend to `Items.UI.cs` — see this file's own remarks on `SectionCard` for the
-// deviation and the follow-up this leaves.
+// this file). Each cell is the app's ONE media surface (#157): `Controls.BoundSurface(item, Shape.Grid, …)` over
+// `HomeCards.GridCardData` — the plate, hover, play FAB, "…", menu, drag, circle and trim tooltip every other card has,
+// with the slot root owning invoke and the roving tab stop. A blank seed is the surface's own seed face.
 //
 // Role: UI
 // Owner: B5
-// Wave: 3 (remediated Wave 2E)
-// Spec: docs/plans/wavee/home-redesign-remediation.md §3.6 (`SectionScreen.UI.cs`), F9, Appendix L (loc keys).
+// Wave: 3 (remediated Wave 2E; shared media surface wave 1a)
+// Spec: docs/plans/wavee/home-redesign-remediation.md §3.6 (`SectionScreen.UI.cs`), F9, Appendix L (loc keys);
+//       docs/plans/wavee/shared-media-surface-implementation.md Appendix A.4.
 
 using System;
 using System.Collections.Generic;
@@ -52,13 +51,10 @@ public sealed class SectionScreen : Component
 
     // The grid's fit knobs: a MIN cell width (RepeatLayout.GridFit derives the column count from it and the engine's
     // own measured cross size — no app-side width/tier math) and a row-height ESTIMATE (the seed before the first
-    // row measures; GridFit corrects to the real measured height itself, this never pins it).
+    // row measures; GridFit corrects to the real measured height itself, this never pins it). The estimate is the
+    // surface's own geometry, never a local sum: an estimate that drifts from the rendered card re-pins the scroll.
     const float SectionCardMinWidth = 176f;
-    const float SectionCardRowEstimate = SectionCardMinWidth + 8f + 20f + 16f;   // + title line (14/20) + caption line (12/16)
-    // A fixed decode bucket for the cover image: `HomeTok.CoverDecodePx` (the plan's §3.3 shared constant) isn't
-    // landed yet (owned by the Items.UI.cs/Metrics.cs wave) — this literal is a decode-quality target, not a
-    // layout width, so it is not the "no width math" rule's target; it stays local until that constant exists.
-    const int SectionCardDecodePx = 320;
+    static readonly float SectionCardRowEstimate = SurfaceGeometry.GridRowEstimate(SectionCardMinWidth, Shape.Grid, hasSubtitle: true);
 
     readonly Signal<IReadOnlyList<HomeCard>> _cardsSig = new(SeedCards);
     // The page's state, written ONLY by Sync (a signal effect) and read reactively: the region's Pending/Failed/Content
@@ -72,9 +68,9 @@ public sealed class SectionScreen : Component
     readonly Func<Element> _contentFn, _failedPanelFn;
     readonly Action _demand, _sync, _retry, _publish;
     readonly Func<BoundItemScope<HomeCard>, Element> _cardTemplate;
+    readonly Func<HomeCard, Controls.CardData?> _adapt;
     readonly Action<int, HomeCard> _onInvoked;
     readonly Func<int, HomeCard, bool> _isEnabled;
-    readonly Func<int, int> _contentTypeOf;
 
     Props? _p;
     HomeCard[] _cards = [];
@@ -82,6 +78,11 @@ public sealed class SectionScreen : Component
     string _scrollScope = "";
     string _title = "";
     bool _demanded;
+    // Read by the adapter at SLOT render time (after this page's render): the overlay that opens a card's menu (Render
+    // reads it from context) and whether the section is a chart (Sync, beside the title and total — a chart's cards
+    // carry no subtitle).
+    IOverlayService? _overlay;
+    bool _charts;
 
     /// <summary>What the page demands of its section row: the band's identity and its WHOLE card list — the query layer's
     /// walk (Spotify.Api.Browse.cs). Also what the error card's Retry re-asks.</summary>
@@ -98,25 +99,18 @@ public sealed class SectionScreen : Component
         _retry = Retry;
         _failedPanelFn = () => Controls.Vacancy(Controls.VacancyVoice.Error, onAction: _retry);
         _cardsSource = BoundItems.From(_cardsSig, HomeCard.Blank());
-        _cardTemplate = SectionCard;
+        _cardTemplate = CardSlot;
+        _adapt = c => HomeCards.GridCardData(in c, _overlay, _charts);
         _onInvoked = static (_, card) => OpenCard(card);
         _isEnabled = static (_, card) => !card.IsBlank;
-        _contentTypeOf = ContentTypeOf;
     }
-
-    /// <summary><c>Corners</c> (<c>BoxEl</c>/<c>ImageEl</c>) is a plain value, not a bindable <c>Prop</c> — a round
-    /// Artist cover and a square Playlist/Album cover cannot both be expressed by one persistent bound slot's
-    /// template. <c>ListOptions&lt;HomeCard&gt;.ContentType</c> keeps Artist cards in their own recycle pool (a
-    /// cross-type reuse REBUILDS the slot instead of rebinding it — the same shape the Recents flat list uses for
-    /// its own heterogeneous rows), so <see cref="SectionCard"/> can bake the corner radius once, at build time,
-    /// from whichever item the fresh slot was built for.</summary>
-    int ContentTypeOf(int index) => _cardsSource.TryPeek(index, out var c) && c.Kind == HomeCardKind.Artist ? 1 : 0;
 
     public override Element Render()
     {
         var p = UseProps<Props>();
         _p = p;
         _scrollScope = UseContext(Shell.PageScrollScope);
+        _overlay = UseContext(Overlay.Service);
 
         UseEffect(_demand, DepKey.From(StringComparer.Ordinal.GetHashCode(p.Uri) ^ (p.Browse ? 1 : 0)));
         UseSignalEffect(_sync);
@@ -179,68 +173,26 @@ public sealed class SectionScreen : Component
     /// width come from the engine's own measured cross size and never from an app-side width read, so there is no
     /// tier flip and no frozen-at-first-measure column count. <see cref="_cardsSource"/> is the reactive item source
     /// (<see cref="_cardsSig"/> starts at <see cref="SeedCards"/> and Sync swaps it to the live row's cards once the
-    /// section's WHOLE list has landed); the row template (<see cref="SectionCard"/>) runs ONCE per recycled slot and
+    /// section's WHOLE list has landed); the row template (<see cref="CardSlot"/>) runs ONCE per recycled slot and
     /// reads the bound item reactively, so a later answer (a feed refresh re-landing the band) just re-skins the slots
     /// the source already realized — no remount, no re-render of this component. The grid never asks for anything: the
-    /// row holds the whole section (file header).</summary>
+    /// row holds the whole section (file header). No content-type pools: a circle is <c>CardData.Circular</c>, which
+    /// the one surface re-renders for, so an artist and a playlist share every slot.</summary>
     Element Grid() => ItemsView.CreateBound(_cardsSource, _cardTemplate,
         RepeatLayout.GridFit(SectionCardMinWidth, Spacing.Card, SectionCardRowEstimate),
         new ListOptions<HomeCard>
         {
             Grow = 1f, SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
             IsItemInvokedEnabled = true, OnInvokedTyped = _onInvoked, IsItemEnabledTyped = _isEnabled,
-            ContentType = _contentTypeOf,
             Scroll = new ScrollOptions { ScrollKey = _scrollScope + "home:section:" + (_p?.Uri ?? "") },
         });
 
-    /// <summary>The bound cell: a square <c>AspectRatio</c> cover (no pixel width — it fills whatever cell
-    /// <c>GridFit</c> arranges it into) + a one-line title + an optional one-line caption, keyed by the card's uri.
-    /// This is the plan's §3.3 <c>Items.SectionCard</c> shape (bound twin of <c>GridItem</c>) built LOCALLY: this
-    /// wave's remit is this file only, and <c>Home/Items.UI.cs</c>'s current <c>GridItem</c> takes an explicit pixel
-    /// <c>width</c> fed by <c>PagedShelf</c>'s own fit (a shelf card, not an <c>ItemsView</c> bound row) — reusing it
-    /// here would mean computing a width from the grid's arranged cell, which no <c>BoundItemScope</c> template
-    /// receives and which the "no width math" rule forbids reintroducing. <see cref="SelectorVisualsBound.None"/>
-    /// wires press/Enter/Space/focus through the row's own <see cref="RowScope.OnInteraction"/> (F21's contract —
-    /// the slot root owns invoke, not a hand-rolled <c>OnClick</c>/<c>Focusable</c>/<c>Cursor</c>); a blank seed card
-    /// is disabled (not invocable) through <c>ListOptions&lt;HomeCard&gt;.IsItemEnabledTyped</c>, which also dims it,
-    /// so it needs no separate "ready" branch here.</summary>
-    Element SectionCard(BoundItemScope<HomeCard> item)
-    {
-        // Corners is a plain (non-bindable) value — safe to bake once here because ContentTypeOf keeps Artist cards
-        // in their own recycle pool, so this slot only ever rebinds within one shape (see ContentTypeOf's remarks).
-        var corners = item.Item.Peek().Kind == HomeCardKind.Artist ? Radii.FullAll : CornerRadius4.All(Radii.Control);
-        var cover = new BoxEl
-        {
-            AlignSelf = FlexAlign.Stretch, AspectRatio = 1f, ClipToBounds = true, Corners = corners,
-            Children =
-            [
-                new ImageEl
-                {
-                    Source = item.Image(static c => c.ImageUrl), Fit = ImageFit.Cover, AspectRatio = 1f,
-                    DecodePx = SectionCardDecodePx, Corners = corners,
-                    Placeholder = item.Value(static c => Design.PlaceholderFor((c.ImageUrl ?? "").AsSpan())),
-                },
-            ],
-        };
-        var title = Design.Type.CardTitle("") with
-        {
-            Text = item.Text(static c => c.IsBlank ? "" : c.Title),
-            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-        };
-        var caption = Design.Type.TrackMeta("") with
-        {
-            Text = item.Text(static c => c.Subtitle ?? ""),
-            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
-            Visible = item.Show(static c => c.Subtitle is { Length: > 0 }),
-        };
-        var content = new BoxEl
-        {
-            Direction = 1, AlignSelf = FlexAlign.Stretch, MinWidth = 0f, Gap = 4f,
-            Corners = CornerRadius4.All(Radii.Card),
-            Children = [cover, title, caption],
-        };
-        return SelectorVisualsBound.None(item.Row, content);
-    }
+    /// <summary>The bound cell: the app's ONE surface inside the slot root (<see cref="Controls.BoundSurface{T}"/> — the
+    /// root owns press/Enter/Space through the row's <see cref="RowScope.OnInteraction"/> and the roving tab stop, F21's
+    /// contract). The adapter (<see cref="HomeCards.GridCardData"/>) runs in the slot's render, so a hydrating title or
+    /// cover re-describes the card. A blank seed renders the surface's seed face and is disabled (not invocable, dimmed)
+    /// through <c>ListOptions&lt;HomeCard&gt;.IsItemEnabledTyped</c>.</summary>
+    Element CardSlot(BoundItemScope<HomeCard> item) => Controls.BoundSurface(in item, Shape.Grid, _adapt);
 
     // ── the demand + the table sync ────────────────────────────────────────────────────────────────────────────────
 
@@ -309,6 +261,7 @@ public sealed class SectionScreen : Component
             var input = SectionReader.Of(s);
             _total.Value = input.TotalCount;
             _liveTitle.Value = input.Title;
+            _charts = s.IsChart;    // BEFORE the cards land: the slots their swap re-renders read it
             var live = input.Cards;
             if (whole && !ReferenceEquals(_cardsSrc, live))
             {

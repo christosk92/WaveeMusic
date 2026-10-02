@@ -1138,7 +1138,6 @@ public class RequestFoldTests
         Assert.Equal("/storage-resolve/v2/files/audio/interactive/0/deadbeef?product=0",
             Fold(Spotify.RequestKind.StorageResolve, "deadbeef").Path);
         Assert.Equal("/melody/v1/time", Fold(Spotify.RequestKind.ServerTime).Path);
-        Assert.Equal("/user-profile-view/v3/profile/bob", Fold(Spotify.RequestKind.Profile, "bob").Path);
         Assert.Equal("/popcount/v2/playlist/abc/count", Fold(Spotify.RequestKind.Popcount, "abc").Path);
     }
 

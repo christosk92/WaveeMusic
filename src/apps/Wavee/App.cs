@@ -153,8 +153,13 @@ public static class App
             Store.Use(Path.Combine(Platform.LocalFolder, Store.FileName));   // the persistent graph (G-007), one file per schema fingerprint; --fake stays memory-only
             // The persisted metadata-cache ceiling, applied at boot (until now only a Storage combo change set it); 0 disables the budget leg.
             Store.Policy = Store.Policy with { ByteBudget = Math.Max(0L, Platform.Settings.Get(Platform.Keys.MetadataCacheBudgetBytes)) };
+            // The saved audio keys (G-123): records the path and the setting and opens NOTHING — the file opens off-thread at the AP welcome or on the first lookup. --fake stays detached.
+            Spotify.Audio.KeyStore.Use(Spotify.Audio.KeyStore.DefaultPath(), OperatingSystem.IsWindows() ? new DpapiProtector() : new NoOpProtector(),
+                static () => Platform.Settings.Get(Platform.Keys.AudioKeyCacheEnabled));
         }
         Settings.ClearMetadataCache = Store.DropCatalog;   // Settings ▸ Storage ▸ Clear metadata cache — dead until now (never assigned); no-ops under --fake (store never opened)
+        Settings.LicenseKeyCount = Spotify.Audio.KeyStore.Count;   // Settings ▸ Storage ▸ Saved license keys: the count sub and the Clear button (G-123, G-272); both answer null / no-op while detached (--fake)
+        Settings.ClearLicenseKeys = Spotify.Audio.KeyStore.Clear;
         Entities.Boot(Platform.Scope);   // table set for the last scope, Store thread, Fetch
         Log.Event(WaveeLogLevel.Info, "app", "boot.entities", "", null, Log.SinceStartMs);
         if (Platform.Args.Fake) Entities.SeedFake(Platform.Clock.SeedEpoch);   // --fake: the offline seed (ch 31), after the tables exist and before any page reads them
@@ -180,6 +185,7 @@ public static class App
             return rows;
         };
         Playback.Boot();                 // state, host loop, audio pump, os bridges
+        Playback.InstallCardSeam();      // Controls.NowPlaying: every media surface's equalizer pill and pause-on-own-card (#160)
         WireMaterialPolicy();            // Materials.EnergySaver ← PowerSession: AFTER Playback.Boot, which holds the live PowerSession.Subscribe()
         if (Platform.Args.Fake) Playback.Audio.UseSilentEndpoint();              // --fake never opens a device
         Modules.Boot();
@@ -234,6 +240,7 @@ public static class App
         Sidebar.Shutdown();
         Spotify.Telemetry.Shutdown();
         Playback.Audio.Shutdown();
+        Spotify.Audio.KeyStore.Shutdown();   // after the pump stopped asking: drain the queued key writes, checkpoint, close
         Playback.Video.Shutdown();
         Modules.Shutdown();              // the module processes and their channels, after playback stopped reading them
         Store.Shutdown();

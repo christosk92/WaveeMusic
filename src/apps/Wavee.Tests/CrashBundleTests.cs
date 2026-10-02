@@ -3,7 +3,8 @@
 // docs/plans/wavee/crash-diagnostics-implementation.md §I ("Worker ingest contract"), §J (erasure): `Crash.Bundle.Pack`
 // is pure and deterministic for a fixed boundary — every byte of the multipart framing is pinned here, the dump-cap
 // drop is pinned, and the JSON part is proven to deserialize back into `Crash.Summary`. `Crash.Uploader.EraseUrl` is
-// the one piece of the right-to-erasure client that needs no network to test. No disk, no HTTP, no process.
+// the one piece of the right-to-erasure client that needs no network to test. No disk, no HTTP, no process. The upload
+// decisions live in CrashUploadPolicyTests; the byte-exact Worker contract in CrashContractTests.
 
 using System.Text;
 using System.Text.Json;
@@ -73,6 +74,16 @@ public class CrashBundleTests
         using var doc = JsonDocument.Parse(json);
         Assert.True(doc.RootElement.TryGetProperty("reportId", out _), "the wire shape is camelCase");
         Assert.False(doc.RootElement.TryGetProperty("ReportId", out _));
+    }
+
+    [Fact]
+    public void BoundaryFor_is_one_fixed_boundary_per_report_id()
+    {
+        // The outbox body is packed at enqueue time and its Content-Type header is written at drain time — both derive
+        // the boundary from the report id alone, so they can never disagree (and the contract fixtures reproduce).
+        Assert.Equal("wavee-3f9c2b1a", Bundle.BoundaryFor("3f9c2b1a"));
+        Assert.Equal(Bundle.BoundaryFor("abc"), Bundle.BoundaryFor("abc"));
+        Assert.NotEqual(Bundle.BoundaryFor("abc"), Bundle.BoundaryFor("abd"));
     }
 
     [Fact]

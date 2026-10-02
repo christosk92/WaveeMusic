@@ -130,8 +130,48 @@ public class FetchRoutesTests
     [InlineData(FetchEdge.AlbumRecommendations, RouteTransport.Metadata)]
     [InlineData(FetchEdge.BrowseSections, RouteTransport.Pathfinder)]
     [InlineData(FetchEdge.HomeSections, RouteTransport.Pathfinder)]
+    [InlineData(FetchEdge.ProfileFollowers, RouteTransport.Spclient)]
+    [InlineData(FetchEdge.ProfileFollowing, RouteTransport.Spclient)]
     public void Every_relation_the_door_accepts_has_a_route(FetchEdge edge, RouteTransport transport)
         => Assert.Equal(transport, FetchRoutes.ForEdge(edge).Transport);
+
+    [Fact]
+    public void A_profile_page_ask_is_one_route_and_an_owner_identity_stays_kind_fifteen()
+    {
+        // The page asks Identity | Social | Follow: the profile view alone carries all three (and both riding shelves).
+        var page = Routes(FetchSubject.Entity, EntityKind.User,
+                          (uint)(UserFields.Identity | UserFields.Social | UserFields.Follow), out uint sealedGroups);
+        var view = Assert.Single(page);
+        Assert.Equal(RouteTransport.Spclient, view.Transport);
+        Assert.Equal(SpclientRoute.ProfileView, view.Rest);
+        Assert.Equal(0u, sealedGroups);
+        Assert.Empty(Kinds(EntityKind.User, (uint)(UserFields.Identity | UserFields.Social | UserFields.Follow)));
+
+        // An owner chip's / search hit's Identity ask stays the batchable kind-15 POST: Social alone justifies the view.
+        Assert.Equal(new[] { FetchRoutes.UserProfile }, Kinds(EntityKind.User, (uint)UserFields.Identity));
+        Assert.Equal(FetchRoutes.UserProfile, Assert.Single(Routes(FetchSubject.Entity, EntityKind.User, (uint)UserFields.Identity, out _)).Extension);
+
+        // Social alone is the view; Follow alone is the one-op query.
+        Assert.Equal(SpclientRoute.ProfileView,
+                     Assert.Single(Routes(FetchSubject.Entity, EntityKind.User, (uint)UserFields.Social, out sealedGroups)).Rest);
+        Assert.Equal(0u, sealedGroups);
+        var follow = Assert.Single(Routes(FetchSubject.Entity, EntityKind.User, (uint)UserFields.Follow, out sealedGroups));
+        Assert.Equal(RouteTransport.Pathfinder, follow.Transport);
+        Assert.Equal(PathfinderOp.IsFollowingUsers, follow.Op);
+        Assert.Equal(0u, sealedGroups);
+    }
+
+    [Fact]
+    public void The_profile_lists_are_whole_spclient_reads_with_no_groups()
+    {
+        var followers = FetchRoutes.ForEdge(FetchEdge.ProfileFollowers);
+        Assert.Equal(SpclientRoute.ProfileFollowers, followers.Rest);
+        Assert.Equal(0u, followers.Groups);
+        var following = FetchRoutes.ForEdge(FetchEdge.ProfileFollowing, offset: 0);
+        Assert.Equal(SpclientRoute.ProfileFollowing, following.Rest);
+        Assert.Equal(0u, following.Groups);
+        // (EdgeDoorTests' sweep proves both name a relation table and a parent table.)
+    }
 
     [Fact]
     public void A_sections_whole_ask_is_the_walk_and_a_browse_bands_identity_ask_is_one_page()

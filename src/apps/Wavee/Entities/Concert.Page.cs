@@ -573,15 +573,18 @@ public readonly partial struct Concert
             var items = new ShelfItem[Math.Min(slots.Length, 16)];
             var playlists = Entities.Current.Playlists;
             for (int i = 0; i < items.Length; i++) items[i] = new ShelfItem(slots[i], playlists.Version[slots[i]]);
-            return PagedShelf.Create(items, s_promoCard, header: SectionCaption(Loc.Get(Strings.Concerts.PlaylistsForScene)),
+            return PagedShelf.Create(items, s_promoCard, onInvoke: static (item, _) => OpenPromo(item.Slot),   // the slot owns the click
+                       header: SectionCaption(Loc.Get(Strings.Concerts.PlaylistsForScene)),
                        headerGap: Spacing.S, measured: true, keyOf: s_itemKey, maxItems: 16)
                    with { Key = "hub-promos:" + head.Kind.ToString(CultureInfo.InvariantCulture) + ":" + Entities.Strings.Resolve(head.Key) };
         }
 
         static readonly Func<ShelfItem, int, float, Element> s_promoCard = static (item, _, w) => PromoCard(item.Slot, w);
 
-        /// <summary>The playlist promo (§0 #12): cover + a 2-line title + its source, NO play FAB; the one concert-surface
-        /// drag source, because it stands for a real playlist.</summary>
+        /// <summary>The playlist promo (§0 #12): the shared shelf card — cover, a 2-line title, its source as the caption —
+        /// with NO play FAB (the data carries no <c>OnPlay</c>, so the surface grows no dead one) and no menu; the one
+        /// concert-surface drag source, because it stands for a real playlist. The shelf is measured, so the card sizes
+        /// itself and nothing here estimates an extent.</summary>
         static Element PromoCard(int slot, float cardW)
         {
             var pl = new Playlist(slot);
@@ -589,25 +592,22 @@ public readonly partial struct Concert
             string title = s.Resolve(pl.TitleId), uri = pl.Uri.Text;
             string source = pl.Owner.IsValid ? s.Resolve(pl.Owner.NameId) : s.Resolve(pl.DescriptionId);
             string? cover = Controls.ArtUrl(pl.ImageId);
-            float inner = MathF.Max(48f, cardW - 2f * Spacing.S);
-            var target = pl.Uri;
-            return new BoxEl
+            var data = new Controls.CardData(uri, title, null, cover,
+                OnClick: () => OpenPromo(slot),
+                Drag: Drag.Source(() => new DragPayload(DragKind.Playlist, uri, uri, title, new EntityRef(EntityKind.Playlist, slot), ArtUrl: cover)))
             {
-                Key = "promo:" + slot.ToString(CultureInfo.InvariantCulture),
-                Direction = 1, Gap = Spacing.S, Grow = 1f, ClipToBounds = true,
-                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M), Corners = Radii.CardAll,
-                Fill = Tok.FillCardDefault, HoverFill = Tok.FillControlSecondary, PressedFill = Tok.FillControlTertiary,
-                BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = s_focusMargin, Cursor = CursorId.Hand,
-                OnClick = () => Shell.GoTo(Shell.For(target, title)),
-                Draggable = Drag.Source(() => new DragPayload(DragKind.Playlist, uri, uri, title, new EntityRef(EntityKind.Playlist, slot), ArtUrl: cover)),
-                Children =
-                [
-                    Controls.Artwork(cover, inner, inner, Radii.Control, decodePx: 256),
-                    Design.Type.TrackTitle(title) with { Width = inner, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
-                    Design.Type.TrackMeta(source) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                ],
+                Caption = source,
             };
+            return Controls.Surface(data, s_promoShape, cardW) with { Key = "promo:" + slot.ToString(CultureInfo.InvariantCulture) };
+        }
+
+        static readonly SurfaceShape s_promoShape = Shape.Shelf() with { TitleLines = 2 };
+
+        /// <summary>The promo card's click, shared with the shelf slot's <c>onInvoke</c>: the playlist's page.</summary>
+        static void OpenPromo(int slot)
+        {
+            var pl = new Playlist(slot);
+            Shell.GoTo(Shell.For(pl.Uri, Entities.Strings.Resolve(pl.TitleId)));
         }
 
         /// <summary>"All events": the LazyGrid over the page scroll (minCol 240, gap 12, rowExtra 86, overscan 3). An append

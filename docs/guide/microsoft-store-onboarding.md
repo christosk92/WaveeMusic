@@ -84,8 +84,14 @@ App behaviour when `Channel == "store"` (or `Package.Current.SignatureKind == St
   with a link `ms-windows-store://pdp/?productid=<StoreId>`; the update toasts and `AppUpdateToasts` states for
   the feed path are never armed.
 - What's new still opens on the first launch of a new version (it reads the bundled `whatsnew.json`).
-- Crash reports/symbols: unchanged — keep uploading the symbols zips to the GitHub release of the same commit; the
-  Store's own crash analytics only work with an `.appxsym`, which our pack does not produce.
+- Crash reports/symbols: the symbols zips still go to the GitHub release of the same commit; the Store's own crash
+  analytics only work with an `.appxsym`, which our pack does not produce. Wavee's own opt-in crash reporting covers
+  the Store build instead: `wavee-store-submit.ps1` stamps both Store packages with the crash ingest URL
+  (`https://crash.cproducts.dev`) and key exactly like the feed release (the key read from 1Password unless
+  `-CrashIngestKey` is passed; the `crash ingest` gate is hard for `store`), proves the stamp in the packed
+  `Wavee.exe` (stamp evidence), and uploads `symbols/<storeQuad>/win-<arch>.symmap` so Store crash reports resolve
+  to method names (`docs/guide/releasing-wavee.md` §5b). A hand-made Store pack (the §3 commands) is unstamped
+  unless it passes `-CrashIngestUrl`/`-CrashIngestKey` itself, and its crashes can't be reported.
 
 ## 4. The submission
 
@@ -137,7 +143,10 @@ and questions: reportapp@microsoft.com.
 Update submissions are scripted: `ops\release\wavee-store-submit.ps1` (walkthrough in
 `docs/guide/releasing-wavee.md` §5c) packs both `store`-channel packages from the release tag into one SDK-built
 `.msixbundle`, wraps that single bundle in a `.msixupload`, and drives the submission through the Store submission API via Microsoft's **msstore-cli** — a
-preview tool (its app-update commands work for free products only; Wavee is free today).
+preview tool (its app-update commands work for free products only; Wavee is free today). Before the bundle is built,
+both packages are crash-stamped and checked (stamp evidence), and a `symbols` phase — after pack, before
+`msixupload` — uploads each architecture's `symbols/<storeQuad>/win-<arch>.symmap` to the crash service's R2 bucket
+with the crash Worker's `wrangler` (skipped under `-DryRun`; §3 above, `releasing-wavee.md` §5b).
 
 Two preconditions and one hard rule:
 
@@ -175,6 +184,12 @@ msstore reconfigure --tenantId <tenant> --sellerId <seller> --clientId <client> 
 Sanity check: `msstore apps get 9NJPVWTQPT9H` must return the product with Package Family Name
 `cproducts.Wavee_thwr6bfjtcshw` — the script's preflight runs exactly this, and an authentication failure here
 usually means the client secret expired.
+
+4. Crash stamping and symbol maps need the same two things as the feed release (`releasing-wavee.md` §2): the crash
+   Worker's `wrangler`, installed with `npm --prefix ops/crash/worker ci` and logged in with `npx wrangler login`
+   inside `ops/crash/worker` (preflight runs `wrangler whoami`), and an unlocked 1Password CLI for the ingest key
+   (`op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu`), unless `-CrashIngestKey`
+   is passed. The key is never logged or written to `store-state.json`.
 
 ## References
 

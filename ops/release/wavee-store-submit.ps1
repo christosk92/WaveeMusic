@@ -13,10 +13,17 @@
   The run is a ledger of phases. Every phase records itself in <staging>\store-state.json, so -Resume restarts
   exactly where a failed run stopped, and -Abort unwinds an uncommitted draft completely.
 
-      0  preflight   hard gate table (versions, tag, tree, quad, notes, msstore, toolchains, Pester)
+      0  preflight   hard gate table (versions, tag, tree, quad, notes, msstore, toolchains, crash ingest,
+                     wrangler, Pester)
       1  packArm64   pack-wavee-msix.ps1 -Channel store -Arch arm64 (unsigned: the Store signs)
          packX64     pack-wavee-msix.ps1 -Channel store -Arch x64   (or -X64Msix <path> to adopt a prebuilt
                      STORE-channel package; identity is re-verified either way)
+                     Both stamp the crash ingest URL + key (the key from 1Password unless -CrashIngestKey), and
+                     every package - fresh, -PackageDir or -X64Msix - must prove it: "stamp evidence <arch>" reads
+                     both back out of the Wavee.exe that ships (Assert-CrashIngestStamp). No stamp, no upload (#165).
+      1b symbols     Publish-WaveeSymbolMap per arch: <staging>\symbols\<quad>\win-<arch>\Wavee.symmap from Wavee.pdb
+                     + the staged package's Wavee.exe, uploaded with the crash Worker's own wrangler to
+                     wavee-crash/symbols/<quad>/win-<arch>.symmap (-DryRun builds the maps and uploads nothing)
       2  msixupload  one SDK dual-architecture bundle inside the upload
       3  notes       store-listing.txt (adopted from the feed release's notes, or rendered by Wavee.ReleaseTool)
       4  draft       msstore publish --noCommit - the FIRST mutating msstore call; record submissionId
@@ -31,7 +38,8 @@
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-store-submit.ps1 -DryRun -SkipTests
-  Packs both store packages, builds the .msixupload, resolves the listing text and stops. No msstore calls.
+  Packs both store packages (stamped, with stamp evidence), builds the symbol maps (no R2 upload) and the
+  .msixupload, resolves the listing text and stops. No msstore calls.
 
 .EXAMPLE
   powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-store-submit.ps1
@@ -75,6 +83,11 @@ param(
     # staging output, artifacts\release\<semver>\notes.
     [string]$NotesDir = '',
     [string]$Configuration = 'Release',
+    # The crash reporting ingest endpoint + key (#165), stamped into both store packages. A store build without
+    # both fails preflight (Get-CrashIngestGate is hard). An empty -CrashIngestKey means "read it from 1Password"
+    # (Resolve-CrashIngestKey); the key is kept in memory only, never in store-state.json.
+    [string]$CrashIngestUrl = 'https://crash.cproducts.dev',
+    [string]$CrashIngestKey = '',
     [string]$OutputDir = 'artifacts/store',
     [int]$PollMinutes = 15,
     # msstore-cli's own --uploadTimeout defaults to 0 (its CustomParser has no DefaultValueFactory - see
@@ -94,6 +107,7 @@ Import-Module (Join-Path $PSScriptRoot 'Wavee.Store.psm1') -Force -DisableNameCh
 Import-Module (Join-Path $PSScriptRoot 'Wavee.StoreSubmission.psm1') -Force -DisableNameChecking
 
 $EmDash = [char]0x2014
+$CrashIngestUrl = "$CrashIngestUrl".Trim()
 
 # ===============================================================================================================
 # Console + process helpers
@@ -125,6 +139,19 @@ function Get-Tools {
         Add-VsInstallerToPath
     }
     $script:Tools
+}
+
+# Crash ingest key (#165): resolved once per process, on first use, and kept in memory only - never printed, never in
+# store-state.json. A -Resume skips preflight, so the first pack phase that needs the key resolves it here instead.
+$script:CrashKey = $null
+function Get-CrashKey {
+    if (-not $script:CrashKey) {
+        $k = Resolve-CrashIngestKey -Explicit $CrashIngestKey
+        $gate = Get-CrashIngestGate -Channel 'store' -CrashIngestUrl $CrashIngestUrl -CrashIngestKey $k.Key
+        if ($gate.Fail) { throw $gate.Message }
+        $script:CrashKey = $k
+    }
+    $script:CrashKey
 }
 
 function Get-JsonProperty {
@@ -250,6 +277,9 @@ try {
 $propsPath = Join-Path $root 'src\apps\Wavee\Wavee.Version.props'
 $packScript = Join-Path $root 'ops\build\pack-wavee-msix.ps1'
 $releaseToolProject = Join-Path $root 'src\apps\Wavee.ReleaseTool'
+# symbol-map is tooling, not application source: build it from the checkout this script runs from (a -SourceRoot pinned
+# to an older tag may predate it), so the map's format is the one the deployed crash Worker reads.
+$symbolToolProject = Join-Path $toolRoot 'src\apps\Wavee.ReleaseTool'
 $playPlayProbe = Join-Path $root 'src\apps\Wavee.PlayPlay\Client\PlayPlayHost.cs'
 $onboardingDoc = 'docs\guide\microsoft-store-onboarding.md'
 
@@ -571,6 +601,21 @@ if (-not (Test-PhaseDone 'preflight')) {
         $script:State.engineCommit = (@($engineHead.Output) -join '').Trim()
         $script:State.engineCommit
     }
+    Add-Check 'crash ingest' 'hard' {
+        # Hard (#165): a store build without the ingest URL + key can never report a crash, and nothing can add them
+        # after the fact. Resolved for -PackageDir too: the stamp evidence reads the key back out of archived packages.
+        $k = Get-CrashKey
+        "stamping $CrashIngestUrl; key from $($k.Source)"
+    }
+    Add-Check 'wrangler (crash symbols)' 'hard' {
+        # The symbols phase uploads each arch's .symmap to R2 with the crash Worker's own wrangler (tool checkout).
+        if ($DryRun) { return 'SKIP: -DryRun uploads no symbol maps' }
+        $w = Get-WranglerPath -RepoRoot $toolRoot
+        $who = Invoke-Native $w @('whoami') -AllowFailure
+        $login = Test-WranglerLogin -ExitCode $who.ExitCode -Output $who.Output
+        if (-not $login.Ok) { throw $login.Detail }
+        "$($login.Detail) ($w)"
+    }
     Add-Check 'gates' 'hard' {
         # Only the release tooling's own Pester suite: the tagged commit already passed the full Debug+Release
         # build and Wavee.Tests gate when the feed release was cut, and this run rebuilds those same sources.
@@ -672,22 +717,36 @@ if ($Resume) {
 # 1  pack (per architecture, store channel)
 # ===============================================================================================================
 
+function Get-StoreSymbolsSource {
+    <#  Where this architecture's symbols came from: the archived -PackageDir, the folder next to an adopted
+        -X64Msix, or this run's staging (pack-wavee-msix.ps1 writes them next to the package it packs). Dir is the
+        symbols folder (Wavee.pdb, Wavee.map.xml, SYMBOLS.txt), Zip the symbols zip beside the package. #>
+    param([Parameter(Mandatory = $true)][string]$A)
+    $base = $stage
+    if ($PackageDir) { $base = $PackageDir }
+    elseif ($A -eq 'x64' -and $X64Msix) { $base = Split-Path -Parent $X64Msix }
+    [pscustomobject]@{
+        Dir = Join-Path $base "symbols\$storeQuad\win-$A"
+        Zip = Join-Path $base "Wavee-$storeQuad-win-$A-symbols.zip"
+    }
+}
+
 function Invoke-StorePack {
     param([Parameter(Mandatory = $true)][string]$A)
     Assert-ReleaseInputs
+    # Needed for an adopted package too: the stamp evidence below reads the key back out of what ships.
+    $crash = Get-CrashKey
 
     $msix = Join-Path $stage (Get-StoreMsixName $storeQuad $A)
 
-    $symbolsDir = Join-Path $stage "symbols\$storeQuad\win-$A"
+    $symbolsDir = (Get-StoreSymbolsSource $A).Dir
     if ($PackageDir) {
         $sourceMsix = Join-Path $PackageDir (Get-StoreMsixName $storeQuad $A)
-        $symbolsDir = Join-Path $PackageDir "symbols\$storeQuad\win-$A"
         Get-WaveeStorePackageEvidence -Msix $sourceMsix -SymbolsDir $symbolsDir -Commit $commit -Quad $storeQuad -Architecture $A -IdentityName $IdentityName -Publisher $StorePublisher | Out-Null
         Copy-Item -LiteralPath $sourceMsix -Destination $msix
     }
     elseif ($A -eq 'x64' -and $X64Msix) {
         Step 'Adopt the prebuilt x64 store package'
-        $symbolsDir = Join-Path (Split-Path -Parent $X64Msix) "symbols\$storeQuad\win-x64"
         Copy-Item $X64Msix $msix -Force
     }
     else {
@@ -707,6 +766,8 @@ function Invoke-StorePack {
             '-BuildDate', $buildDate,
             '-Publisher', $StorePublisher,
             '-OutputDir', $stage,
+            '-CrashIngestUrl', $CrashIngestUrl,
+            '-CrashIngestKey', $crash.Key,
             '-Configuration', $Configuration)
         if (Test-Path (Join-Path $NotesDir 'whatsnew.json')) {
             $packArgs += @('-NotesDir', $NotesDir)
@@ -727,6 +788,9 @@ function Invoke-StorePack {
     if ($id.Publisher -ne $StorePublisher) {
         throw "publisher mismatch in $(Split-Path -Leaf $msix): '$($id.Publisher)' != '$StorePublisher' (that is a feed-channel package; the Store needs Partner Center's identity)"
     }
+    # Stamp evidence (#165): the ingest URL and key read back out of the Wavee.exe that ships - fresh, -PackageDir and
+    # -X64Msix alike. An unstamped store package never reports a crash, so it never reaches the Store. Never prints the key.
+    Good "stamp evidence ${A}: $(Assert-CrashIngestStamp -Msix $msix -Url $CrashIngestUrl -Key $crash.Key)"
     $evidence = Get-WaveeStorePackageEvidence -Msix $msix -SymbolsDir $symbolsDir -Commit $commit -Quad $storeQuad -Architecture $A -IdentityName $IdentityName -Publisher $StorePublisher
     $script:State.packageEvidence = @($script:State.packageEvidence | Where-Object { $_.Architecture -ne $A }) + @($evidence)
     Register-Artifact $msix
@@ -744,6 +808,48 @@ foreach ($a in $arches) {
     else {
         Note "$a already packed"
     }
+}
+
+# ===============================================================================================================
+# 1b  symbols (#165): one Wavee.symmap per architecture, uploaded to R2 for the crash Worker
+# ===============================================================================================================
+
+function Invoke-StoreSymbols {
+    Step 'Build and upload symbol maps'
+    Assert-ReleaseInputs
+    # Resolved here, not cached from preflight: a -Resume skips preflight.
+    $wrangler = ''
+    if (-not $DryRun) { $wrangler = Get-WranglerPath -RepoRoot $toolRoot }
+
+    foreach ($a in $arches) {
+        Step "symbol-map $a"
+        # The map is always built in THIS run's staging: an archived -PackageDir (or the folder next to -X64Msix) is
+        # evidence and is never written to. Its Wavee.pdb is copied over; failing that, the zip beside the package
+        # is expanded by Publish-WaveeSymbolMap (which never overwrites the hash-registered SYMBOLS.txt/map).
+        $symDir = Join-Path $stage "symbols\$storeQuad\win-$a"
+        $src = Get-StoreSymbolsSource $a
+        $stagedPdb = Join-Path $symDir 'Wavee.pdb'
+        $sourcePdb = Join-Path $src.Dir 'Wavee.pdb'
+        if (-not (Test-Path -LiteralPath $stagedPdb) -and (Test-Path -LiteralPath $sourcePdb)) {
+            New-Item -ItemType Directory -Force -Path $symDir | Out-Null
+            Copy-Item -LiteralPath $sourcePdb -Destination $stagedPdb
+            Note "Wavee.pdb <- $($src.Dir)"
+        }
+        $r = Publish-WaveeSymbolMap -Msix (Join-Path $stage (Get-StoreMsixName $storeQuad $a)) -SymbolsDir $symDir `
+            -SymbolsZip $src.Zip -Quad $storeQuad -Arch $a -ReleaseToolProject $symbolToolProject `
+            -Wrangler $wrangler -SkipUpload:$DryRun -SkipReason '-DryRun'
+        Good "$(Split-Path -Leaf $r.Symmap)  $([math]::Round($r.Bytes / 1KB, 1)) KB"
+        if ($r.Uploaded) { Good "uploaded -> wavee-crash/$($r.Key)" }
+        else { Warn "symbols upload skipped ($($r.Reason)): wavee-crash/$($r.Key) was NOT written to R2" }
+    }
+}
+
+if (-not (Test-PhaseDone 'symbols')) {
+    Invoke-StoreSymbols
+    Complete-Phase 'symbols'
+}
+else {
+    Note 'symbol maps already built'
 }
 
 # ===============================================================================================================

@@ -19,12 +19,13 @@ import {
   type TableColumnSizingOptions,
 } from "@fluentui/react-components";
 import { HorizontalBarChart, VerticalBarChart } from "@fluentui/react-charts";
-import { Open16Regular } from "@fluentui/react-icons";
+import { History24Regular, Open16Regular } from "@fluentui/react-icons";
 import { forwardRef, type Ref } from "react";
 import type { AppBreakdownEntry, AppFrame, AppIssue, AppIssueDetail, AppOccurrence, AppSparklineDay } from "../../api/types";
 import { chartColors, kindBadgeColor } from "../../lib/colors";
-import { formatBytes, formatRelativeTime } from "../../lib/format";
-import { GITHUB_REPO_URL, githubIssueUrl } from "../Issues/parts";
+import { formatBytes, formatRelativeTime, nativeFaultText } from "../../lib/format";
+import { EmptyState } from "../../scene/EmptyState";
+import { GITHUB_REPO_URL, githubIssueUrl, isRegressed, regressionSummary } from "../Issues/parts";
 
 const useStyles = makeStyles({
   chartHost: {
@@ -91,11 +92,32 @@ export const GitHubAction = forwardRef<HTMLAnchorElement | HTMLButtonElement, { 
 
 // ── Header subtitle meta ────────────────────────────────────────────────────────────────────────────
 
+/** "Resolved in ≤ 0.3.2 · 3 days ago" for a resolved issue (the Worker records the newest semver seen when it
+ *  was resolved; only a report from a newer one reopens it); null otherwise. */
+export function resolvedNote(issue: AppIssue): string | null {
+  if (issue.status !== "resolved") return null;
+  const head = issue.resolvedVersion ? `Resolved in ≤ ${issue.resolvedVersion}` : "Resolved";
+  return issue.resolvedAt ? `${head} · ${formatRelativeTime(issue.resolvedAt)}` : head;
+}
+
 export function DetailMeta({ detail, topFrame }: { detail: AppIssueDetail; topFrame: string | null }) {
   const styles = useStyles();
   const { issue } = detail;
+  const newest = detail.reports[0];
+  const fault = newest ? nativeFaultText(newest) : null;
+  const resolved = resolvedNote(issue);
   return (
     <span className={styles.metaRow}>
+      {isRegressed(issue) && (
+        <>
+          {/* Plain badge: the summary is right beside it (the Issues list puts it in a tooltip instead). */}
+          <Badge appearance="filled" color="danger" size="small">
+            Regressed
+          </Badge>
+          <Caption1>{regressionSummary(issue)}</Caption1>
+        </>
+      )}
+      {fault && <Text font="monospace">{fault}</Text>}
       {topFrame && <Text font="monospace">{topFrame}</Text>}
       <Badge appearance="tint" color={kindBadgeColor(issue.kind)} size="small">
         {issue.kind}
@@ -104,11 +126,18 @@ export function DetailMeta({ detail, topFrame }: { detail: AppIssueDetail; topFr
         {issue.count} reports · {issue.installs} installs · first {formatRelativeTime(issue.firstSeen)} · last{" "}
         {formatRelativeTime(issue.lastSeen)}
       </Caption1>
+      {resolved && <Caption1>{resolved}</Caption1>}
     </span>
   );
 }
 
 // ── Stack tab ────────────────────────────────────────────────────────────────────────────────────────
+
+/** The frames the Worker sent, else the issue's own `lastFrames` — what remains once every report has
+ *  been purged (a current Worker already falls back to it in `frames`; this covers an older one). */
+export function stackFramesFor(detail: AppIssueDetail): AppFrame[] {
+  return detail.frames ?? detail.issue.lastFrames ?? [];
+}
 
 function hex(n: number): string {
   return `0x${n.toString(16)}`;
@@ -230,11 +259,19 @@ export function EnvironmentTable({ breakdowns }: { breakdowns: AppIssueDetail["b
   );
 }
 
-// ── Log tail tab ─────────────────────────────────────────────────────────────────────────────────────
+// ── No reports left ──────────────────────────────────────────────────────────────────────────────────
 
-/** `AppIssueDetail`/`AppReport` (`api/types.ts`) carry no log-tail field, so there is nothing this tab
- *  can render yet — always the empty state until the Worker/wire shape grows one. */
-export const HAS_LOG_TAIL = false;
+/** What the report-backed tabs (Occurrences, Environment, Log tail) show once the 90-day purge has removed
+ *  every report of an issue: the issue row and its lifetime counts stay, its reports don't. */
+export function PurgedReportsState() {
+  return (
+    <EmptyState
+      icon={<History24Regular />}
+      title="No reports left for this issue"
+      hint="Reports older than 90 days are deleted; this issue's counts are kept."
+    />
+  );
+}
 
 // ── Aside: sparkline + breakdown bars ───────────────────────────────────────────────────────────────
 

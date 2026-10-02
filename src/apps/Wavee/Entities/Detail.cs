@@ -1143,16 +1143,20 @@ public static partial class Detail
             return PreferVisible(incUrl, visUrl) == incUrl;
         }
 
-        /// <summary>Known Spotify size-prefix rank of a 40-char image id (the last 8 hex of the 16-char marker).
-        /// Unknown prefixes rank 0 — a later unknown id still replaces a first paint (upgrade-optimistic) unless
-        /// the visible side is a known-larger prefix.</summary>
+        /// <summary>The PIXEL EDGE a 40-char Spotify image id's size marker names (the last 8 hex of the 16-char prefix) —
+        /// albums 640/300/64, artist portraits 640/320/160, user avatars 300/64 (profile pages research §5). Only the
+        /// ORDER matters (<see cref="PreferVisible"/> compares two ranks); pixels make the families comparable. Unknown
+        /// prefixes rank 0 — a later unknown id still replaces a first paint (upgrade-optimistic) unless the visible side
+        /// is a known-larger prefix.</summary>
         public static int RenditionRank(ReadOnlySpan<char> imageId)
         {
             if (imageId.Length != ImageIdLength) return 0;
             var size = imageId.Slice(8, 8);
-            if (size.Equals("0000b273", StringComparison.OrdinalIgnoreCase)) return 3;
-            if (size.Equals("00001e02", StringComparison.OrdinalIgnoreCase)) return 2;
-            if (size.Equals("00004851", StringComparison.OrdinalIgnoreCase)) return 1;
+            if (size.Equals("0000b273", StringComparison.OrdinalIgnoreCase) || size.Equals("0000e5eb", StringComparison.OrdinalIgnoreCase)) return 640;
+            if (size.Equals("00005174", StringComparison.OrdinalIgnoreCase)) return 320;
+            if (size.Equals("00001e02", StringComparison.OrdinalIgnoreCase) || size.Equals("0000ee85", StringComparison.OrdinalIgnoreCase)) return 300;
+            if (size.Equals("0000f178", StringComparison.OrdinalIgnoreCase)) return 160;
+            if (size.Equals("00004851", StringComparison.OrdinalIgnoreCase) || size.Equals("00003b82", StringComparison.OrdinalIgnoreCase)) return 64;
             return 0;
         }
     }

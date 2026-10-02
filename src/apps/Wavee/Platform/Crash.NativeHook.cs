@@ -1,13 +1,21 @@
 // ── Platform/Crash.NativeHook.cs ───────────────────────────────────────────────────────────────────────────────────
-// WP-0 spike (docs/plans/wavee/crash-diagnostics-implementation.md §B.0, §F row "0 · Spike", §G rows Native AV / Hang /
-// Boot): does SetUnhandledExceptionFilter or AddVectoredExceptionHandler see a fault raised in FOREIGN code (ntdll,
-// not Wavee.exe) under NativeAOT? dotnet/runtime#69336 says NativeAOT does not participate in SEH, so the honest
-// possible answer is "neither" — that is a valid, useful result of this spike, not a bug in it. Both candidates are
-// registered and each logs which one actually fired; the orchestrator records the answer in the plan before WP-B (the
-// real out-of-process handler) is built. This file is a THROWAWAY probe, not the shipped capture path.
+// The native fault hooks, born as the WP-0 spike (docs/plans/wavee/crash-diagnostics-implementation.md §B.0, §F row
+// "0 · Spike", §G rows Native AV / Hang / Boot). Measured 2026-09-25: the VEH is the hook that sees a foreign-code AV;
+// the unhandled filter stays as the NativeAOT fallback. Both fire only for faults OUTSIDE Wavee.exe (`IsForeignFault`)
+// and hand the first one to `Crash.Host.RequestDumpCore` through `OnForeignFault`.
 //
-// Role: PLATFORM (spike)
-// Spec: crash-diagnostics-implementation.md §B.0, §F "0 · Spike", §G "Native AV" / "Hang" / "Boot loop"
+// Role: PLATFORM (Win32 P/Invoke)
+// Spec: crash-diagnostics-implementation.md §B.0, §G "Native AV" / "Hang" / "Boot loop";
+//       crash-production-readiness-implementation.md (#165) "W3a" + appendix A3 (the fault-stack capture)
+//
+// CAPTURE FIRST, ALLOCATION-FREE (#165 W3a). A native bundle's only frames are the ones walked HERE, on the faulting
+// thread, while its stack still exists. `CaptureFaultStack` runs before `LogFired` and before the dump request — both
+// allocate (strings, the bundle writer, the pipe) on a heap that may be what just faulted. It records the exception
+// address plus up to `NativeFrames.MaxCapture` return addresses from `RtlCaptureStackBackTrace` into a `NativeMemory`
+// buffer allocated once by `Install`, whose warm-up call also binds the import (no export lookup — no loader lock —
+// inside a hook). `FaultRvas()` projects the buffer onto Wavee.exe RVAs later, through the pure
+// `NativeFrames.SelectAppRvas` (Crash.Native.cs). The faulting MODULE is not resolved in this process at all: the
+// child reads it out of process (`Crash.Handler.TryReadFault`) while this thread stays parked on the dump reply.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -18,15 +26,21 @@ namespace Wavee;
 
 public static partial class Crash
 {
-    /// <summary>The WP-0 spike: two candidate native crash hooks (filter + VEH), a deliberate foreign-code fault to
-    /// trip them with, and the hang probe. Everything here is best-effort and allocation-free apart from the one log
-    /// line each hook writes when it actually fires — a handler running after a fault is not a place to allocate.</summary>
+    /// <summary>The two native crash hooks (VEH + unhandled filter), the allocation-free fault-stack capture they run
+    /// first, a deliberate foreign-code fault to trip them with, and the hang probe. Everything a hook does before
+    /// <see cref="LogFired"/> is allocation-free — a handler running after a fault is not a place to allocate.</summary>
     public static partial class NativeHook
     {
         static int s_installed;
         static int s_reported;                  // 0/1: the dump hook ran once this process (VEH first, filter as fallback)
         static nint s_imageBase;
         static nuint s_imageSize;
+
+        // The fault-stack capture (#165 W3a): written once, by the hook that wins s_reported, on the faulting thread —
+        // and read back by that same thread inside OnForeignFault, so plain fields suffice.
+        static unsafe nint* s_frames;           // NativeMemory, NativeFrames.MaxCapture slots; allocated by Install, never freed
+        static int s_frameCount;
+        static nint s_faultAddress;
 
         /// <summary>Fault codes the spike watches for: access violation, illegal instruction, in-page error, array
         /// bounds exceeded, integer divide-by-zero — the classes a native crash actually raises.</summary>
@@ -45,6 +59,10 @@ public static partial class Crash
         {
             if (Interlocked.Exchange(ref s_installed, 1) != 0) return;
             CaptureImageRange();
+            s_frames = (nint*)NativeMemory.AllocZeroed((nuint)NativeFrames.MaxCapture, (nuint)sizeof(nint));
+            // Warm-up: binds the ntdll import NOW, so the first real capture inside a hook never resolves an export
+            // (GetProcAddress under the loader lock) on a thread that just faulted. Its one frame is overwritten later.
+            _ = RtlCaptureStackBackTrace(0, 1, s_frames, null);
 
             delegate* unmanaged[Stdcall]<EXCEPTION_POINTERS*, int> filter = &Filter;
             SetUnhandledExceptionFilter((nint)filter);
@@ -78,8 +96,10 @@ public static partial class Crash
         {
             if (IsForeignFault(info, out uint code))
             {
+                bool first = Interlocked.Exchange(ref s_reported, 1) == 0;
+                if (first) CaptureFaultStack(info);   // FIRST: allocation-free, before LogFired / the dump request allocate
                 LogFired("filter", code);
-                if (Interlocked.Exchange(ref s_reported, 1) == 0)
+                if (first)
                     try { OnForeignFault?.Invoke(code, (nint)info); } catch (Exception) { }
                 return ExceptionExecuteHandler;
             }
@@ -94,16 +114,39 @@ public static partial class Crash
         {
             if (IsForeignFault(info, out uint code))
             {
-                LogFired("veh", code);
                 // Measured 2026-09-25 (spike WP-0, CoreCLR run): the VEH is the ONLY hook that sees a foreign-code AV —
                 // the runtime turns it into a fatal AccessViolationException before any unhandled-exception filter runs.
                 // So the dump is requested HERE, while the process is still alive and EXCEPTION_POINTERS is valid; the
-                // filter path below stays as the NativeAOT fallback. Once per process: the filter may still run after.
-                if (Interlocked.Exchange(ref s_reported, 1) == 0)
+                // filter path above stays as the NativeAOT fallback. Once per process: the filter may still run after.
+                bool first = Interlocked.Exchange(ref s_reported, 1) == 0;
+                if (first) CaptureFaultStack(info);   // FIRST: allocation-free, before LogFired / the dump request allocate
+                LogFired("veh", code);
+                if (first)
                     try { OnForeignFault?.Invoke(code, (nint)info); } catch (Exception) { }
             }
             return ExceptionContinueSearch;
         }
+
+        /// <summary>The whole capture: two field writes and one ntdll walk into the preallocated buffer — no managed
+        /// allocation, no lock, no export lookup (<see cref="Install"/>'s warm-up bound the import). Called only after
+        /// <see cref="IsForeignFault"/> validated <paramref name="info"/> and its exception record.</summary>
+        static unsafe void CaptureFaultStack(EXCEPTION_POINTERS* info)
+        {
+            s_faultAddress = ((EXCEPTION_RECORD*)info->ExceptionRecord)->ExceptionAddress;
+            nint* frames = s_frames;
+            s_frameCount = frames != null ? RtlCaptureStackBackTrace(0, (uint)NativeFrames.MaxCapture, frames, null) : 0;
+        }
+
+        /// <summary>The faulting instruction's address as the hook captured it (0 before any native fault) — the
+        /// native headline's "at 0x…" (it used to print the EXCEPTION_POINTERS address instead).</summary>
+        public static nint FaultAddress => s_faultAddress;
+
+        /// <summary>The captured fault stack as Wavee.exe RVAs, innermost first (<see cref="NativeFrames.SelectAppRvas"/>):
+        /// a native bundle's <c>summary.json</c> <c>rvas</c> and its report's "Frames (RVA)" section. Allocates — call it
+        /// from the dump request, never from inside a hook. Empty before any native fault.</summary>
+        public static unsafe long[] FaultRvas() =>
+            NativeFrames.SelectAppRvas(new ReadOnlySpan<nint>(s_frames, s_frames != null ? s_frameCount : 0),
+                s_faultAddress, s_imageBase, s_imageSize);
 
         static unsafe bool IsForeignFault(EXCEPTION_POINTERS* info, out uint code)
         {
@@ -177,5 +220,10 @@ public static partial class Crash
 
         [LibraryImport("ntdll.dll")]
         private static partial void RtlFillMemory(nint destination, nuint length, byte fill);
+
+        /// <summary><c>USHORT RtlCaptureStackBackTrace(ULONG FramesToSkip, ULONG FramesToCapture, PVOID* BackTrace,
+        /// PULONG BackTraceHash)</c> — blittable, so the generated stub is a direct call (no marshaller, no allocation).</summary>
+        [LibraryImport("ntdll.dll")]
+        private static unsafe partial ushort RtlCaptureStackBackTrace(uint framesToSkip, uint framesToCapture, nint* backTrace, uint* backTraceHash);
     }
 }

@@ -2174,7 +2174,15 @@ public static partial class Entities
     /// <para>A batch stamped for a scope that has since been replaced is dropped whole (C7).</para></summary>
     public static void Commit(Staging staging)
     {
-        if (staging.Epoch != 0 && staging.Epoch != Current.Epoch) return;
+        if (staging.Epoch != 0 && staging.Epoch != Current.Epoch)
+        {
+            // Named (2026-10-02): a dropped answer reads to the miss policy as an omission, so a batch fetched under a
+            // scope that was replaced at login would retry, then seal its rows Failed with no other trace.
+            if (Log.IsEnabled(WaveeLogLevel.Info))
+                Log.Info("entities", "commit.dropped stagingEpoch=" + staging.Epoch.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " scopeEpoch=" + Current.Epoch.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
         CommitTracks(staging);
         CommitEpisodes(staging);
         CommitAlbums(staging);

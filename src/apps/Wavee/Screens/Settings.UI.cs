@@ -483,7 +483,7 @@ public static partial class Settings
     /// off — never hidden), the realtime capture (docs/plans/wavee/realtime-capture-implementation.md — the persisted
     /// key/subtitle string are `dealerArchive`/`dealerArchiveSub` verbatim, CLAUDE.md's "no legacy renumbering"; only
     /// what it now switches on and its copy changed) plus its two doors (open the folder / open the in-app viewer), and
-    /// "Simulate an update" (composed away while developer mode is off).</summary>
+    /// "Simulate an update" and "Send a test crash report" (both composed away while developer mode is off).</summary>
     static void AddDeveloperRows(List<Element> kids)
     {
         bool dev = Platform.Settings.Get(Platform.Keys.DeveloperMode);
@@ -506,6 +506,57 @@ public static partial class Settings
             kids.Add(Row(Loc.Get(Strings.Settings.Diag.SimulateUpdate), Loc.Get(Strings.Settings.Diag.SimulateUpdateSub),
                 Button.Standard(Loc.Get(Strings.Settings.Diag.SimulateUpdateButton), static () => Update.Host.SimulateUpdate()),
                 RowGlyph(Tab.General, "simulateUpdate")));
+        if (RowVisible(Tab.General, "sendTestCrashReport", dev))
+        {
+            bool canSend = Crash.Uploader.Configured;
+            kids.Add(Row(Loc.Get(Strings.Settings.Diag.SendTestCrashReport),
+                Loc.Get(canSend ? Strings.Settings.Diag.SendTestCrashReportSub : Strings.Settings.Diag.SendTestCrashReportUnavailable),
+                Button.Standard(Loc.Get(Strings.Settings.Diag.SendTestCrashReportButton), static () => SendTestCrashReport(),
+                    isEnabled: canSend && !s_testCrashBusy),
+                RowGlyph(Tab.General, "sendTestCrashReport")));
+        }
+    }
+
+    /// <summary>True from the click until the test bundle is written and handed to the uploader (UI thread only). It
+    /// guards the GENERATION — one live dump request at a time from here — not the upload: each click is its own
+    /// report, and its outcome card is its own (<c>crash:&lt;id&gt;</c>).</summary>
+    static bool s_testCrashBusy;
+
+    /// <summary>Developer › "Send a test crash report" (#165): <see cref="Crash.Host.WriteTestReport"/> off the UI
+    /// thread (it blocks on the crash handler's dump), then — back on it — the Reports list bump and the NORMAL send:
+    /// <see cref="Crash.Uploader.Enqueue"/> with the dump, whatever the reporting mode (this click is the manual send),
+    /// and the real outcome card (<c>Crash.OutcomeToasts</c>) carrying the report's short id.</summary>
+    static void SendTestCrashReport()
+    {
+        if (s_testCrashBusy || !Crash.Uploader.Configured) return;
+        s_testCrashBusy = true;
+        Bump();
+        var post = s_post;
+        var rules = Crash.Scrubber.RulesNow();   // UI thread: the live account/device tables
+        var writing = Notify.Say(Loc.Get(Strings.Crash.TestReportWriting), InfoBarSeverity.Informational,
+            dedupeKey: "crash-test-report", durationMs: 15000f);
+        _ = Task.Run(() =>
+        {
+            Crash.BundleInfo? bundle = Crash.Host.WriteTestReport(rules);
+            post(() =>
+            {
+                s_testCrashBusy = false;
+                Bump();
+                if (bundle is null)
+                {
+                    writing.Close();
+                    Notify.Say(Loc.Get(Strings.Crash.TestReportFailed), InfoBarSeverity.Error, durationMs: 8000f);
+                    return;
+                }
+                Crash.Host.ReportsVersion.Value++;   // Logs › Reports lists it now
+                var outcome = Crash.OutcomeToasts.Track(bundle, queuedShown: false, test: true);
+                Crash.Uploader.Enqueue(bundle, includeDump: true, settled: rec =>
+                {
+                    writing.Close();
+                    outcome(rec);
+                });
+            });
+        });
     }
 
     /// <summary>Settings › General › Graphics — the render-GPU picker. Its own component so the seeding effect lives on

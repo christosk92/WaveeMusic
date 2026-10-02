@@ -54,7 +54,7 @@ public class ReportChannelsTests
         Assert.Equal("[Crash]: ", ch.TitlePrefix);
         Assert.Equal("crash_report.yml", ch.Template);
         Assert.Null(ch.Category);
-        Assert.Equal(new[] { "version", "install-source", "architecture", "windows-version", "when", "reproduces", "what-were-you-doing" }, ch.FieldIds);
+        Assert.Equal(new[] { "version", "install-source", "architecture", "windows-version", "report-id", "when", "reproduces", "what-were-you-doing" }, ch.FieldIds);
         Assert.Equal(new[] { "what-were-you-doing" }, ch.TruncationOrder);
         Assert.Equal("Crash report", ch.PasteBox);
     }
@@ -774,6 +774,23 @@ public class ReportFormTests
         Assert.Equal("During playback", fields[0].Value);
         Assert.Equal("Once so far", fields[1].Value);
         Assert.Equal("When: During playback \u00b7 Reproduces: Once so far\n\nseeking", fields[2].Value);
+    }
+
+    [Fact]
+    public void Crash_url_carries_report_id()
+    {
+        var draft = new ReportDraft("", "seeking", "", "", 1, 2, NotSure);
+        var fields = ReportForm.UrlFields(ReportKind.Crash, L, Id, RedactionRules.None, draft, reportId: "3f9c2b1a8d7e4c60a1b2c3d4e5f60718");
+
+        // The SHORT id the app shows on the row and in the toast — the crash service's search takes it as an id prefix.
+        Assert.Equal("3f9c-2b1a", fields.Single(f => f.Key == "report-id").Value);
+        string url = IssueFormUrl.Build(ReportKind.Crash, Id, "t", fields, ReportForm.Labels(ReportKind.Crash, Id, draft.Area));
+        Assert.Contains("&report-id=3f9c-2b1a", url, StringComparison.Ordinal);
+
+        // No bundle (the deep link's bare crash form): no report-id field at all, never an empty one.
+        Assert.DoesNotContain(ReportForm.UrlFields(ReportKind.Crash, L, Id, RedactionRules.None, draft), f => f.Key == "report-id");
+        // Only the crash form has the input.
+        Assert.DoesNotContain(ReportForm.UrlFields(ReportKind.Bug, L, Id, RedactionRules.None, draft, reportId: "3f9c2b1a8d7e"), f => f.Key == "report-id");
     }
 
     [Fact]

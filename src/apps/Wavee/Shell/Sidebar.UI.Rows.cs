@@ -97,7 +97,7 @@ public static partial class Sidebar
         public bool Pinned;
         /// <summary>Trailing content (a count badge, a "+").</summary>
         public Element? Trailing;
-        /// <summary>This row's context is the playing one: the 12-DIP accent equalizer.</summary>
+        /// <summary>This row's context is the playing one: the accent equalizer (<see cref="Controls.EqualizerH"/>).</summary>
         public bool Playing;
         /// <summary>Animate the equalizer (playing) vs hold it low (paused on this row).</summary>
         public bool PlayingAnimated;
@@ -223,6 +223,9 @@ public static partial class Sidebar
 
             // ── trailing cluster: chevron · equalizer · pin · trailing, ONE grouped element ──
             bool overflow = spec.Overflow && enabled && spec.MenuOverlay is not null && spec.Menu is not null;
+            // The shared hand-cursor RULE (SurfaceRules): an invokable row — by a plain click or by the modifier-aware
+            // activation — wears the hand, a disabled or click-less one the arrow. The row keeps its own grammar otherwise.
+            var own = SurfaceRules.Ownership(inSlot: false, hasClick: enabled && (activate is not null || spec.OnClick is not null));
             Element? trailingCluster = null;
             int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0)
                               + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
@@ -231,7 +234,7 @@ public static partial class Sidebar
                 var parts = new Element[trailingCount];
                 int t = 0;
                 if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
-                if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, 12f);
+                if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
                 if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
                 if (spec.Trailing is { } trailingContent) parts[t] = trailingContent;
                 trailingCluster = new BoxEl
@@ -287,6 +290,7 @@ public static partial class Sidebar
                     : Prop.Of(() => plateOn() ? Tok.AccentDefault : ColorF.Transparent),
                 Opacity = enabled ? 1f : 0.55f,
                 IsEnabled = enabled,
+                Cursor = SurfaceRules.Cursor(in own),
                 // A row with OnActivate wires the POINTER-RELEASED path: OnClick throws the modifiers away, and Ctrl/Shift
                 // ARE the gesture. A double click always activates plainly (WinUI's DoubleTap rule); a single tap while
                 // the check lane is up gets Ctrl synthesized.
@@ -849,12 +853,10 @@ public static partial class Sidebar
     }
 
     /// <summary>The explicit shimmer shapes (a streaming list has no seed rows to derive a skeleton from). Sized by the
-    /// same ladders the real row uses, so the shimmer→content swap never changes a section's height.</summary>
+    /// same ladders the real row uses, so the shimmer→content swap never changes a section's height. (The rail's pending
+    /// tiles are not here: they are the media surface's own seed face — <c>Rail.SeedStack</c>.)</summary>
     internal static class Skeletons
     {
-        /// <summary>The rail's tile box (= the Rail file's <c>Box</c>, 40).</summary>
-        const float RailTileBox = 40f;
-
         /// <summary>One pending row: pad (9,0,8,0), gap 10, a cover-ladder tile, bars 140×12 (+ 80×10 at gap 4), r4.
         /// Uniform by design (<paramref name="index"/> is position-independent).</summary>
         public static Element Row(int index, SidebarDensity density, bool subtitle, float heightOverride = float.NaN,
@@ -879,20 +881,6 @@ public static partial class Sidebar
                     text,
                 ],
             };
-        }
-
-        /// <summary>One pending rail tile: the rail's own 40-DIP box, r8.</summary>
-        public static Element RailTile() => new BoxEl
-        {
-            Width = RailTileBox, Height = RailTileBox, Corners = CornerRadius4.All(8f), Fill = Tok.FillSubtleSecondary,
-        };
-
-        /// <summary><paramref name="count"/> pending rail tiles at the rail's 6-DIP gap, centred.</summary>
-        public static Element RailStack(int count)
-        {
-            var kids = new Element[count < 0 ? 0 : count];
-            for (int i = 0; i < kids.Length; i++) kids[i] = RailTile();
-            return new BoxEl { Direction = 1, Gap = 6f, AlignItems = FlexAlign.Center, Children = kids };
         }
 
         static Element Bar(float w, float h) => new BoxEl

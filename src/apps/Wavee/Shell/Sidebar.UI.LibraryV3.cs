@@ -407,9 +407,6 @@ public static partial class Sidebar
 
         // ── the 56-DIP rail's own affordances (§3.2.13) ──────────────────────────────────────────────────────────
 
-        /// <summary>A rail art tile's cover edge (0.2.9 <c>SidebarRailItem.ArtEdge</c>: a 40 tile, 36 art).</summary>
-        const float RailArtEdge = 36f;
-
         /// <summary>After the plan's tiles: "Your Library" EXPANDS the pane, and the "+" with the header's own drop spec
         /// (H2 #85) so a collapsed pane accepts what the expanded header does.</summary>
         public Element? BuildRailFooter() => new BoxEl
@@ -489,19 +486,22 @@ public static partial class Sidebar
             return Rail.IconTile(item.Id, glyph, false, a.Enabled ? a.Click : null, a.Label);
         }
 
-        /// <summary>A hand-placed playlist/album/artist/show/track as an ART tile. A track PLAYS; everything else navigates
-        /// through the pin scheme's own uri → route map.</summary>
+        /// <summary>A hand-placed playlist/album/artist/show/track as an ART tile: the shared media surface at the rail shape,
+        /// fed by <c>SidebarCards.RailOf</c> with the item's REAL uri, so the tile wears the now-playing pill for what is
+        /// playing. A track PLAYS; everything else navigates through the pin scheme's own uri → route map. An entity the pin
+        /// scheme refuses has nowhere to go: it stays visible but INERT (the expanded band's own rule) — a null click is the
+        /// surface's display-only mode (no hand, Button role or tab stop), through the same <see cref="Rail.ArtTile"/>.</summary>
         Element? RailEntityTile(SidebarItemSpec item, string route, bool track)
         {
             string uri = item.Key;
             if (uri.Length == 0) return null;
             string label = LabelOf(item);
-            var art = Cover.ArtUrl(item.FallbackImageUrl, uri, RailArtEdge, circular: item.EntityKind == SidebarEntityKind.Artist);
+            var art = Cover.ArtUrl(item.FallbackImageUrl, uri, Rail.ArtEdge, circular: item.EntityKind == SidebarEntityKind.Artist);
             bool selected = !track && SidebarNavBandModel.SelectsRoute(item, route);
             Action? click = track
                 ? () => PaneRef?.PlayTrack(uri)
                 : SidebarNavBandModel.RouteKeyOf(item) is { Length: > 0 } r ? () => Navigate(r, label) : null;
-            return Rail.ArtTile(item.Id, art, selected, click, label);
+            return Rail.ArtTile(item.Id, SidebarCards.RailOf(art, label, uri, click, selected));
         }
 
         public static string LabelOf(SidebarItemSpec item)

@@ -12,12 +12,16 @@
 //
 // ── THE FILE FAMILY ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// `Controls` is ONE static partial class across four files, named on day one (A16):
+// `Controls` is ONE static partial class across the `Controls.*.cs` files, the first four named on day one (A16):
 //   · Controls.cs         — this file: the art surfaces, the row primitives, the states, the dialogs, the toasts.
 //   · Controls.Cta.cs     — the media pill, its icon arm, the standard icon button, the text action, the CTA ramps.
-//   · Controls.Art.cs     — the card plate, the shelf/grid/row skins, the now-playing overlay, chips, stat tiles,
-//                           countdowns, face piles, rich text, the shimmer component.
+//   · Controls.Art.cs     — the media surface's shared parts (cover stack, corner "…", the now-playing overlay, the
+//                           `CardData` contract), chips, stat tiles, countdowns, face piles, rich text, the shimmer
+//                           component.
 //   · Controls.Picker.cs  — the preview-card radio strip and the equalizer curve.
+//   · Surface.*.cs        — THE media surface, `Controls.Surface(CardData, SurfaceShape)`: every media card, tile and row
+//                           (a shelf card, a grid card, a list row, the search hit row, the up-next row) is this one
+//                           surface in a different `SurfaceShape` — never a hand-rolled builder.
 //
 // ── THE SEAMS, AND WHY THEY ARE SEAMS ────────────────────────────────────────────────────────────────────────────────
 //
@@ -103,7 +107,12 @@ public static partial class Controls
         int slot = image.Value & (ArtUrlCacheSize - 1);
         var hit = s_artUrls[slot];
         if (hit is not null && ReferenceEquals(hit.Source, id)) return hit.Url;
-        string url = CdnPrefix + id;
+        // A provider TOKEN resolves to the one file it paints as a single cover (CoverToken.FileIdOf): a spotify:image:
+        // token is that id, a cover-less playlist's spotify:mosaic: (the profile view's public playlists) is its LEAD
+        // tile — the 2×2 is MosaicTiles'. A bare file id is itself; any other spotify: token has no url.
+        ReadOnlySpan<char> file = CoverToken.FileIdOf(id);
+        if (file.IsEmpty) return null;
+        string url = string.Concat(CdnPrefix.AsSpan(), file);
         s_artUrls[slot] = new ArtUrlEntry(id, url);
         return url;
     }
@@ -348,10 +357,13 @@ public static partial class Controls
         WrapNoIconThreshold = 0f,
     };
 
-    /// <summary>The tile's text parts: header and description each ONE line, ellipsised — a tile row is a fixed-height
-    /// grid cell, and the stock card's wrapping text would grow the cell to its longest neighbour. Content-independent
-    /// (reads no signal), so one static instance serves every tile; the two parts are <see cref="TextEl"/>s, hence
-    /// <see cref="TemplateParts.Set{T}"/> rather than the box indexer.</summary>
+    /// <summary>The tile's parts: header and description each ONE line, ellipsised — a tile row is a fixed-height
+    /// grid cell, and the stock card's wrapping text would grow the cell to its longest neighbour — plus the hand on the
+    /// card root. A tile is always invokable (it is built with <c>IsClickEnabled</c>), so it wears the cursor the shared
+    /// rule gives a clickable, free surface (<see cref="SurfaceRules.Cursor"/>); the stock <c>SettingsCard</c> sets none.
+    /// A non-clickable tile would need its own parts (the arrow). Content-independent (reads no signal), so one static
+    /// instance serves every tile; the two text parts are <see cref="TextEl"/>s, hence <see cref="TemplateParts.Set{T}"/>
+    /// rather than the box indexer.</summary>
     public static readonly TemplateParts TileCardParts = BuildTileCardParts();
 
     static TemplateParts BuildTileCardParts()
@@ -359,6 +371,8 @@ public static partial class Controls
         var parts = new TemplateParts();
         parts.Set<TextEl>(SettingsCard.PartHeader, OneLine);
         parts.Set<TextEl>(SettingsCard.PartDescription, OneLine);
+        var hand = SurfaceRules.Cursor(SurfaceRules.Ownership(inSlot: false, hasClick: true));
+        parts[SettingsCard.PartRoot] = root => root with { Cursor = hand };
         return parts;
 
         static TextEl OneLine(TextEl t)

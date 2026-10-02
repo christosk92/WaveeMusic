@@ -474,7 +474,8 @@ public static partial class Shell
     static Element ProfileMenuContent(AccountIdentity identity, Spotify.Tier tier, int unread, bool actionsInMenu,
         IOverlayService overlay, Action<float>? requestTheme, Action close, Action openNotifications)
     {
-        var table = Actions.ProfileRules.Rows(PickAndPlayFile is not null, actionsInMenu, NotificationsLauncher is not null);
+        var table = Actions.ProfileRules.Rows(PickAndPlayFile is not null, actionsInMenu, NotificationsLauncher is not null,
+            hasProfile: User.Me.IsValid);
         bool dark = Theme.Dark;
         var items = new List<MenuFlyoutItem>(table.Length);
         for (int i = 0; i < table.Length; i++)
@@ -482,9 +483,10 @@ public static partial class Shell
             // Every row closes the menu FIRST, then acts (a modal opened over a closing menu would lose its focus restore).
             switch (table[i])
             {
-                case Actions.ProfileRow.Account:
-                    items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.Account), Icons.Contact,
-                        Invoke: () => { close(); OpenWeb(AccountUrl); }));
+                case Actions.ProfileRow.Profile:
+                    // Own profile (#161): `User.Me` through the one composer, so --fake's bare account row routes too.
+                    items.Add(new MenuFlyoutItem(Loc.Get(Strings.Person.List.Menu.Profile), Icons.Contact,
+                        Invoke: () => { close(); GoTo(ProfileRoute.For(User.Me)); }));
                     break;
                 case Actions.ProfileRow.Settings:
                     items.Add(new MenuFlyoutItem(Loc.Get(Strings.Auth.Settings), Icons.Settings,
@@ -531,7 +533,6 @@ public static partial class Shell
         };
     }
 
-    const string AccountUrl = "https://www.spotify.com/account";
 
     /// <summary>A 40-DIP avatar beside name (14/600) · tier line · (email — 0.3 carries no email column, so the line is
     /// omitted, which is also what 0.2.9 did when it had none). Unknown identity keeps the header's height with quiet

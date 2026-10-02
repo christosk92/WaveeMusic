@@ -20,12 +20,24 @@
 //     M1 / M0                              a modal pump opened / closed (FilePicker etc.) — suspends hang detection
 //     X                                    the UI loop returned — the parent is on its way out, not hung
 //     S <epoch>                            a suspend/resume edge (PowerSession) — a stale beat across sleep is not a hang
-//     D <kind> <tid> <ptrHex> <bundleDir>  a dump request: kind is "managed" or "native", ptrHex is the parent's
-//                                          EXCEPTION_POINTERS* (0 for managed — DbgHelp still gets a usable dump
-//                                          without one), bundleDir already holds summary.json/report.txt/log-tail.txt
+//     D <kind> <tid> <ptrHex> <bundleDir>  a dump request: kind is "managed", "native" or "test" (`DumpKinds`), ptrHex
+//                                          is the parent's EXCEPTION_POINTERS* (0 for managed and test — DbgHelp still
+//                                          gets a usable dump without one), bundleDir already holds
+//                                          summary.json/report.txt/log-tail.txt. "test" is Settings › Developer › "Send
+//                                          a test crash report" (`Crash.Host.WriteTestReport`, #165): a snapshot of a
+//                                          parent that keeps RUNNING, so unlike a crash's request it never latches the
+//                                          exit-code bundle (`DumpKinds.LatchesBundle`)
 //   stdout (child → parent), one line per D reply only:
 //     OK <bytes>                           the dump was written; bytes is minidump.dmp's final size
 //     ERR <message>                        it was not
+//
+// THE CHILD FINALIZES THE BUNDLE (#165, crash-production-readiness-implementation.md "W3a"). Before it replies to a D
+// line — so while the parent is still parked inside its hook — the child (1) resolves the faulting module out of process
+// (`TryReadFault`: the parent's EXCEPTION_POINTERS → EXCEPTION_RECORD.ExceptionAddress → its module list), (2) writes
+// the dump, (3) rewrites summary.json once with hasDump/dumpBytes/faultModule/faultOffset (`Bundles.UpdateSummary`) and
+// (4) appends `fault=<module>+0x<offset>` to report.txt. The crashing process no longer rewrites its own summary after
+// `OK`: less allocation on a heap that may be what just faulted, and a dump that outlives the parent's 10 s wait still
+// lands in the summary.
 
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -162,13 +174,48 @@ public static partial class Crash
             }
         }
 
-        // ── 4. dump requests (parent-triggered: managed / native) ───────────────────────────────────────────────────
+        // ── 4. dump requests (parent-triggered: managed / native / test) ────────────────────────────────────────────
+
+        /// <summary>A <c>D</c> line's kind, parsed (<see cref="DumpKinds"/>). <see cref="Unknown"/> is any token this
+        /// build does not know.</summary>
+        public enum DumpKind : byte { Unknown, Managed, Native, Test }
+
+        /// <summary>The <c>D</c> line's kind tokens — one table for both processes (the parent writes
+        /// <see cref="Token"/>, this child reads <see cref="Parse"/>) — and the one decision a kind changes here: whether
+        /// the request latches <c>s_bundleWrittenThisProcess</c>, which suppresses the exit-code bundle when the parent
+        /// later dies with a non-zero code. A managed/native request IS the crash, already bundled; a
+        /// <see cref="DumpKind.Test"/> request is a live snapshot of a parent that keeps running (#165), so a real
+        /// non-zero exit later in the same run must still get its bundle. An unknown token latches, as every request
+        /// did before the kinds were told apart.</summary>
+        public static class DumpKinds
+        {
+            public static string Token(DumpKind kind) => kind switch
+            {
+                DumpKind.Managed => "managed",
+                DumpKind.Native => "native",
+                DumpKind.Test => "test",
+                _ => "unknown",
+            };
+
+            /// <summary>Ordinal and lower-case, exactly as <see cref="Token"/> writes it; anything else is
+            /// <see cref="DumpKind.Unknown"/>.</summary>
+            public static DumpKind Parse(string? token) => token switch
+            {
+                "managed" => DumpKind.Managed,
+                "native" => DumpKind.Native,
+                "test" => DumpKind.Test,
+                _ => DumpKind.Unknown,
+            };
+
+            public static bool LatchesBundle(DumpKind kind) => kind != DumpKind.Test;
+        }
 
         static void HandleDumpRequest(string line)
         {
             string[] parts = line.Split(' ', 5);
             if (parts.Length < 5) { WriteReply("ERR malformed request"); return; }
             string kindToken = parts[1];
+            DumpKind kind = DumpKinds.Parse(kindToken);
             if (!uint.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out uint tid)) tid = 0;
             nint ptrs = 0;
             if (parts[3].Length > 0)
@@ -178,11 +225,25 @@ public static partial class Crash
             }
             string dir = parts[4];
 
-            Interlocked.Exchange(ref s_bundleWrittenThisProcess, 1);
+            if (DumpKinds.LatchesBundle(kind)) Interlocked.Exchange(ref s_bundleWrittenThisProcess, 1);
+            // The order is the contract (header, "THE CHILD FINALIZES THE BUNDLE"): the fault is read FIRST, while the
+            // parent is parked and its EXCEPTION_POINTERS is still a live frame; then the dump; then the one summary
+            // rewrite and the report trailer; only then the reply that lets the parent go.
+            FaultInfo fault = ptrs != 0 ? TryReadFault(ptrs) : default;
             bool ok = WriteMiniDump(dir, tid, ptrs, ptrs != 0);
+            long bytes = ok ? DumpBytes(dir) : 0;
+            try
+            {
+                if (!Bundles.UpdateSummary(dir, s => fault.Resolved
+                        ? s with { HasDump = ok, DumpBytes = bytes, FaultModule = fault.Module, FaultOffset = fault.Offset }
+                        : s with { HasDump = ok, DumpBytes = bytes }))
+                    HandlerLog("summary.update.failed kind=" + kindToken);
+                if (fault.Resolved && fault.Module.Length > 0)
+                    Bundles.AppendReportLine(dir, "fault=" + fault.Module + "+0x" + fault.Offset.ToString("x", CultureInfo.InvariantCulture));
+            }
+            catch (Exception ex) { HandlerLog("summary.update.exception " + ex.Message); }   // the reply below must still go out
             if (ok)
             {
-                long bytes = DumpBytes(dir);
                 HandlerLog("dump.written kind=" + kindToken + " bytes=" + bytes.ToString(CultureInfo.InvariantCulture));
                 WriteReply("OK " + bytes.ToString(CultureInfo.InvariantCulture));
             }
@@ -191,6 +252,90 @@ public static partial class Crash
                 HandlerLog("dump.failed kind=" + kindToken);
                 WriteReply("ERR MiniDumpWriteDump failed");
             }
+        }
+
+        /// <summary>What <see cref="TryReadFault"/> learned: <see cref="Resolved"/> is true once the exception address
+        /// fell inside one of the parent's loaded modules (<see cref="Module"/> may still be "" when that module's name
+        /// fails <see cref="FaultModule.Normalize"/>; <see cref="Offset"/> is then still the offset inside it).</summary>
+        readonly record struct FaultInfo(bool Resolved, nint Address, string Module, long Offset);
+
+        /// <summary>Resolves the faulting module of the parent's native fault OUT OF PROCESS — nothing here runs in the
+        /// crashing process, so nothing takes its loader lock or touches its heap. Same-bitness by construction (the
+        /// child is the parent's own exe), so the parent's EXCEPTION_POINTERS / EXCEPTION_RECORD layouts are this
+        /// process's. Needs PROCESS_VM_READ (ReadProcessMemory) + PROCESS_QUERY_INFORMATION (the K32 module calls),
+        /// both of which <see cref="Run"/> opened the parent with. Never throws; every failed step is one handler.log
+        /// line and an unresolved answer.</summary>
+        static unsafe FaultInfo TryReadFault(nint ptrs)
+        {
+            try
+            {
+                EXCEPTION_POINTERS pointers = default;
+                if (!ReadProcessMemory(s_parentHandle, ptrs, &pointers, (nuint)sizeof(EXCEPTION_POINTERS), out nuint got)
+                    || got != (nuint)sizeof(EXCEPTION_POINTERS) || pointers.ExceptionRecord == 0)
+                    return FaultReadFailed("pointers");
+
+                EXCEPTION_RECORD_HEAD head = default;
+                if (!ReadProcessMemory(s_parentHandle, pointers.ExceptionRecord, &head, (nuint)sizeof(EXCEPTION_RECORD_HEAD), out got)
+                    || got != (nuint)sizeof(EXCEPTION_RECORD_HEAD))
+                    return FaultReadFailed("record");
+                nint address = head.ExceptionAddress;
+
+                if (!TryListModules(out nint[] handles, out int count)) return FaultReadFailed("modules", address);
+                var ranges = new (nint Base, uint Size)[count];
+                for (int i = 0; i < count; i++)
+                {
+                    MODULEINFO info = default;
+                    if (K32GetModuleInformation(s_parentHandle, handles[i], &info, (uint)sizeof(MODULEINFO)))
+                        ranges[i] = (info.BaseOfDll, info.SizeOfImage);
+                }
+                int at = FaultModule.Find(ranges, address);
+                if (at < 0)
+                {
+                    HandlerLog("fault.unresolved address=0x" + unchecked((ulong)address).ToString("x", CultureInfo.InvariantCulture)
+                        + " modules=" + count.ToString(CultureInfo.InvariantCulture));
+                    return new FaultInfo(false, address, "", 0);
+                }
+
+                const int NameChars = 260;   // MAX_PATH; a base name never approaches it
+                char* name = stackalloc char[NameChars];
+                uint len = K32GetModuleBaseNameW(s_parentHandle, handles[at], name, NameChars);
+                string raw = len > 0 ? new string(name, 0, (int)Math.Min(len, (uint)NameChars)) : "";
+                string module = FaultModule.Normalize(raw);
+                long offset = (long)(address - ranges[at].Base);
+                HandlerLog("fault.resolved module=" + (module.Length > 0 ? module : "?") + " offset=0x" + offset.ToString("x", CultureInfo.InvariantCulture));
+                return new FaultInfo(true, address, module, offset);
+            }
+            catch (Exception ex)
+            {
+                HandlerLog("fault.read.exception " + ex.Message);
+                return default;
+            }
+        }
+
+        static FaultInfo FaultReadFailed(string step, nint address = 0)
+        {
+            HandlerLog("fault.read.failed step=" + step + " win32=0x" + Marshal.GetLastPInvokeError().ToString("x8", CultureInfo.InvariantCulture));
+            return new FaultInfo(false, address, "", 0);
+        }
+
+        /// <summary>Every module handle the parent has loaded (<c>LIST_MODULES_ALL</c>), growing the buffer once if the
+        /// first answer says it was too small (a DLL loaded between the two calls is the only way the retry loses).</summary>
+        static unsafe bool TryListModules(out nint[] handles, out int count)
+        {
+            handles = new nint[512];
+            count = 0;
+            for (int attempt = 0; attempt < 3; attempt++)
+            {
+                bool ok;
+                uint needed;
+                fixed (nint* h = handles)
+                    ok = K32EnumProcessModulesEx(s_parentHandle, h, (uint)(handles.Length * sizeof(nint)), out needed, ListModulesAll);
+                if (!ok) return false;
+                int n = (int)(needed / (uint)sizeof(nint));
+                if (n <= handles.Length) { count = n; return true; }
+                handles = new nint[n + 64];
+            }
+            return false;
         }
 
         static void WriteReply(string line)
@@ -225,9 +370,10 @@ public static partial class Crash
                 handle = null;
                 if (!ok && hasExceptionInfo)
                 {
-                    // ERROR_NOACCESS (0x800703e6) seen 2026-09-25 with ClientPointers over the parent's VEH pointers: retry
-                    // ONCE without the exception stream. The faulting thread is still parked inside the hook, so its stack
-                    // (fault frames included) is in the dump either way; only the exception record is lost.
+                    // ERROR_NOACCESS (0x800703e6) seen 2026-09-25 with ClientPointers over the parent's VEH pointers — root
+                    // cause: MINIDUMP_EXCEPTION_INFORMATION lacked Pack = 4 (fixed, #165). Kept as a net: retry ONCE without
+                    // the exception stream. The faulting thread is still parked inside the hook, so its stack (fault frames
+                    // included) is in the dump either way; only the exception record is lost.
                     HandlerLog("dump.writeDump.failed win32=0x" + win32.ToString("x8", CultureInfo.InvariantCulture) + " flags=0x" + DumpFlags.ToString("x", CultureInfo.InvariantCulture) + " hasException=1 retry=noexception");
                     handle = File.OpenHandle(path, FileMode.Create, FileAccess.Write, FileShare.None);
                     ok = MiniDumpWriteDump(s_parentHandle, unchecked((uint)s_parentPid), handle, DumpFlags, 0, 0, 0);
@@ -425,14 +571,77 @@ public static partial class Crash
 
         const uint ProcessSynchronize = 0x0010_0000, ProcessQueryInformation = 0x0400, ProcessVmRead = 0x0010, ProcessDupHandle = 0x0040;
         const uint WaitObjectSignaled = 0, WaitFailed = 0xFFFF_FFFF;
+        const uint ListModulesAll = 0x03;   // LIST_MODULES_ALL (K32EnumProcessModulesEx)
 
-        [StructLayout(LayoutKind.Sequential)]
+        /// <summary>Pack = 4 because minidumpapiset.h wraps this struct in <c>pshpack4.h</c>: on 64-bit the native
+        /// layout is ThreadId@0, ExceptionPointers@4, ClientPointers@12, size 16. Plain Sequential put the pointer at 8
+        /// (size 24), so dbghelp read a "pointer" made of the 4 padding bytes after ThreadId plus the low half of the real
+        /// one — every <c>ClientPointers</c> dump failed with ERROR_NOACCESS and the retry wrote one without the exception
+        /// stream (#165). <see cref="ExceptionInfoLayout"/> pins the layout in a test.</summary>
+        [StructLayout(LayoutKind.Sequential, Pack = 4)]
         struct MINIDUMP_EXCEPTION_INFORMATION
         {
             public uint ThreadId;
             public nint ExceptionPointers;
             public int ClientPointers;   // Win32 BOOL, blittable as int — this struct's address is taken directly, no marshaler involved
         }
+
+        /// <summary>A native struct's measured layout, as <see cref="ExceptionInfoLayout"/> reports it.</summary>
+        public readonly record struct NativeLayout(int Size, int ExceptionPointersOffset, int ClientPointersOffset);
+
+        /// <summary>The managed declaration of <c>MINIDUMP_EXCEPTION_INFORMATION</c> as the CPU sees it — size and field
+        /// offsets taken by pointer arithmetic over a live instance (no reflection, AOT-safe). Public only so
+        /// <c>Wavee.Tests</c> (no InternalsVisibleTo) can pin it to the SDK's pshpack4 layout: 16 / 4 / 12 on 64-bit.</summary>
+        public static unsafe NativeLayout ExceptionInfoLayout()
+        {
+            MINIDUMP_EXCEPTION_INFORMATION probe = default;
+            byte* at = (byte*)&probe;
+            return new NativeLayout(sizeof(MINIDUMP_EXCEPTION_INFORMATION),
+                (int)((byte*)&probe.ExceptionPointers - at), (int)((byte*)&probe.ClientPointers - at));
+        }
+
+        /// <summary>The parent's EXCEPTION_POINTERS, read over ReadProcessMemory (same bitness as this process).</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        struct EXCEPTION_POINTERS
+        {
+            public nint ExceptionRecord;
+            public nint ContextRecord;
+        }
+
+        /// <summary>The head of the parent's EXCEPTION_RECORD — only up to ExceptionAddress; the parameters after it are
+        /// never read.</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        struct EXCEPTION_RECORD_HEAD
+        {
+            public uint ExceptionCode;
+            public uint ExceptionFlags;
+            public nint ExceptionRecordNext;
+            public nint ExceptionAddress;
+        }
+
+        /// <summary>psapi's MODULEINFO (natural packing).</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        struct MODULEINFO
+        {
+            public nint BaseOfDll;
+            public uint SizeOfImage;
+            public nint EntryPoint;
+        }
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static unsafe partial bool ReadProcessMemory(nint hProcess, nint lpBaseAddress, void* lpBuffer, nuint nSize, out nuint lpNumberOfBytesRead);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static unsafe partial bool K32EnumProcessModulesEx(nint hProcess, nint* lphModule, uint cb, out uint lpcbNeeded, uint dwFilterFlag);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static unsafe partial bool K32GetModuleInformation(nint hProcess, nint hModule, MODULEINFO* lpmodinfo, uint cb);
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        private static unsafe partial uint K32GetModuleBaseNameW(nint hProcess, nint hModule, char* lpBaseName, uint nSize);
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         private static partial nint OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, uint dwProcessId);

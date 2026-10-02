@@ -149,6 +149,9 @@ public static partial class Spotify
             public Func<string, byte[], Api.Result> PlaylistChanges =
                 static (id, body) => Api.PlaylistChanges(id, body, CancellationToken.None);
             public Func<string, Api.Result> Playlist = static id => Api.Playlist(id, CancellationToken.None);
+            /// <summary>One user follow / unfollow (<c>Library.FollowUser</c>): the bare, unescaped username and the direction.</summary>
+            public Func<string, bool, Api.Result> FollowUsers =
+                static (bareId, follow) => Api.ProfileQueries.Follow(bareId, follow, CancellationToken.None);
         }
 
         /// <summary>The live transport.</summary>
@@ -387,18 +390,21 @@ public static partial class Spotify
         /// push leaves its head for the settle's dedupe; every library push folds into the pending set and arms the
         /// settle. The one caller is <c>Spotify.Connect.OnDealer</c>'s fall-through for frames it does not read itself.
         /// <paramref name="payload"/> is a view into the dealer thread's scratch: decoded before this returns, never kept.
-        /// An empty one decodes as an unreadable push, which marks the list dirty — never applies.</summary>
-        public static void OnDealerPush(ReadOnlySpan<byte> topic, ReadOnlySpan<byte> payload = default)
+        /// An empty one decodes as an unreadable push, which marks the list dirty — never applies.
+        /// Returns whether the library TOOK the frame — a ban, show or saved-episodes push, a playlist push posted for the
+        /// UI thread to replay or mark dirty (its verdict is the UI thread's, later), or a relation folded into the settle —
+        /// so the caller can tell a handled push from a topic nobody reads (<see cref="DealerFrameDisposition"/>).</summary>
+        public static bool OnDealerPush(ReadOnlySpan<byte> topic, ReadOnlySpan<byte> payload = default)
         {
-            if (OnBanPush(topic)) return;
-            if (OnShowPush(topic, payload)) return;
-            if (Podcasts.OnSavedEpisodesPush(topic)) return;
+            if (OnBanPush(topic)) return true;
+            if (OnShowPush(topic, payload)) return true;
+            if (Podcasts.OnSavedEpisodesPush(topic)) return true;
             var push = LibraryPushRules.Classify(topic);
-            if (push == LibraryPush.None) return;
+            if (push == LibraryPush.None) return false;
             if (push == LibraryPush.Playlist)
             {
                 PostPlaylistPush(System.Text.Encoding.UTF8.GetString(LibraryPushRules.PlaylistId(topic)), DecodePushBody(payload));
-                return;
+                return true;
             }
             if ((push & LibraryPush.Rootlist) != 0) NoteRootlistPush(payload);
             int before, after;
@@ -407,10 +413,11 @@ public static partial class Spotify
                 before = Volatile.Read(ref s_pendingPush);
                 after = before | (int)push;
             } while (Interlocked.CompareExchange(ref s_pendingPush, after, before) != before);
-            if (before != 0) return;                                        // a settle is already armed; this folds into it
+            if (before != 0) return true;                                   // a settle is already armed; this folds into it
             var timer = LazyInitializer.EnsureInitialized(ref s_pushTimer,
                 static () => new System.Threading.Timer(static _ => Post(s_flushPushes), null, Timeout.Infinite, Timeout.Infinite));
             timer.Change(PushSettleMs, Timeout.Infinite);
+            return true;
         }
 
         static void FlushPushes()

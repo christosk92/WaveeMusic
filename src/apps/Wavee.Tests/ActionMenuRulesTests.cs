@@ -43,32 +43,45 @@ public class ActionMenuRulesTests
     {
         Actions.ProfileRow[] wideExpected =
         [
-            Actions.ProfileRow.Account, Actions.ProfileRow.Settings, Actions.ProfileRow.Play,
+            Actions.ProfileRow.Profile, Actions.ProfileRow.Settings, Actions.ProfileRow.Play,
             Actions.ProfileRow.Separator, Actions.ProfileRow.Theme, Actions.ProfileRow.Separator, Actions.ProfileRow.LogOut,
         ];
-        Assert.Equal(wideExpected, Actions.ProfileRules.Rows(canPlay: true, actionsInMenu: false, hasNotifications: true));
+        Assert.Equal(wideExpected, Actions.ProfileRules.Rows(canPlay: true, actionsInMenu: false, hasNotifications: true, hasProfile: true));
 
         Actions.ProfileRow[] foldedExpected =
         [
-            Actions.ProfileRow.Account, Actions.ProfileRow.Settings, Actions.ProfileRow.Play,
+            Actions.ProfileRow.Profile, Actions.ProfileRow.Settings, Actions.ProfileRow.Play,
             Actions.ProfileRow.Separator, Actions.ProfileRow.Notifications, Actions.ProfileRow.Friends,
             Actions.ProfileRow.Separator, Actions.ProfileRow.Theme, Actions.ProfileRow.Separator, Actions.ProfileRow.LogOut,
         ];
-        Assert.Equal(foldedExpected, Actions.ProfileRules.Rows(canPlay: true, actionsInMenu: true, hasNotifications: true));
+        Assert.Equal(foldedExpected, Actions.ProfileRules.Rows(canPlay: true, actionsInMenu: true, hasNotifications: true, hasProfile: true));
     }
 
     [Fact]
     public void Play_is_absent_not_disabled_when_the_build_cannot_play_anything_of_its_own()
     {
-        var rows = Actions.ProfileRules.Rows(canPlay: false, actionsInMenu: false, hasNotifications: true);
+        var rows = Actions.ProfileRules.Rows(canPlay: false, actionsInMenu: false, hasNotifications: true, hasProfile: false);
         Assert.DoesNotContain(Actions.ProfileRow.Play, rows);
-        Assert.Equal(Actions.ProfileRow.Settings, rows[1]);
+        Assert.Equal(Actions.ProfileRow.Settings, rows[0]);
+    }
+
+    [Fact]
+    public void The_profile_row_leads_only_when_the_account_has_a_row_and_there_is_no_account_row()
+    {
+        // #161: "Profile" opens the signed-in user's own page, so it exists only with a user row behind it (ABSENT,
+        // never disabled), first and before Settings. The web account page is the own profile's "Open account" button,
+        // never a menu row.
+        var with = Actions.ProfileRules.Rows(canPlay: false, actionsInMenu: false, hasNotifications: false, hasProfile: true);
+        Assert.Equal([Actions.ProfileRow.Profile, Actions.ProfileRow.Settings], with[..2]);
+        var without = Actions.ProfileRules.Rows(canPlay: false, actionsInMenu: false, hasNotifications: false, hasProfile: false);
+        Assert.DoesNotContain(Actions.ProfileRow.Profile, without);
+        Assert.Equal(Actions.ProfileRow.Settings, without[0]);
     }
 
     [Fact]
     public void Friends_still_folds_when_there_is_no_notification_panel_to_open()
     {
-        var rows = Actions.ProfileRules.Rows(canPlay: false, actionsInMenu: true, hasNotifications: false);
+        var rows = Actions.ProfileRules.Rows(canPlay: false, actionsInMenu: true, hasNotifications: false, hasProfile: false);
         Assert.DoesNotContain(Actions.ProfileRow.Notifications, rows);
         Assert.Contains(Actions.ProfileRow.Friends, rows);
         Assert.Equal(3, Array.FindAll(rows, r => r == Actions.ProfileRow.Separator).Length);

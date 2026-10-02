@@ -36,7 +36,7 @@ public class ControlsGeometryTests
         // 4 gutter + 8 plate top + the cover (w − 16) + 8 gap + 20 title + 2 + 32 two-line subtitle + 8 plate bottom
         // + 0 gutter. The renderer AND the estimator call this; an estimate that disagrees re-pins the scroll anchor
         // mid-scroll and the feed jumps under the cursor.
-        Assert.Equal(cardW + 66f, Controls.ShelfHeight(cardW));
+        Assert.Equal(cardW + 66f, SurfaceGeometry.ShelfHeight(cardW));
     }
 
     [Theory]
@@ -45,8 +45,8 @@ public class ControlsGeometryTests
     [InlineData(188f)]
     public void The_default_shelf_height_is_the_general_form_at_aspect_one_with_two_caption_lines(float cardW)
     {
-        Assert.Equal(Controls.ShelfHeight(cardW), Controls.ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false));
-        Assert.Equal(cardW - 2f * Spacing.S, Controls.CoverHeight(cardW - 2f * Spacing.S, 1f));
+        Assert.Equal(SurfaceGeometry.ShelfHeight(cardW), SurfaceGeometry.ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false));
+        Assert.Equal(cardW - 2f * Spacing.S, SurfaceGeometry.CoverHeight(cardW - 2f * Spacing.S, 1f));
     }
 
     [Theory]
@@ -54,7 +54,7 @@ public class ControlsGeometryTests
     [InlineData(188f)]
     public void A_plain_one_line_shelf_reserves_exactly_one_caption_line(float cardW)
         // 4 + 8 + (w − 16) + 8 + 20 title + 2 + 16 caption + 8 + 0: no dead line under a one-line card.
-        => Assert.Equal(cardW + 50f, Controls.ShelfHeight(cardW, 1f, captionLines: 1, metaLine: false));
+        => Assert.Equal(cardW + 50f, SurfaceGeometry.ShelfHeight(cardW, 1f, captionLines: 1, metaLine: false));
 
     [Theory]
     [InlineData(148f)]
@@ -62,37 +62,38 @@ public class ControlsGeometryTests
     public void A_lead_shelf_reserves_two_caption_lines_and_no_meta_line(float cardW)
     {
         // The lead's meta rides INLINE on its two caption lines: 20 title + 2 + 2·16 = 54 of labels, nothing more.
-        Assert.Equal(cardW + 66f, Controls.ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false));
-        Assert.Equal(16f, Controls.ShelfHeight(cardW, 1f, 2, false) - Controls.ShelfHeight(cardW, 1f, 1, false));
+        Assert.Equal(cardW + 66f, SurfaceGeometry.ShelfHeight(cardW, 1f, captionLines: 2, metaLine: false));
+        Assert.Equal(16f, SurfaceGeometry.ShelfHeight(cardW, 1f, 2, false) - SurfaceGeometry.ShelfHeight(cardW, 1f, 1, false));
     }
 
     [Theory]
     [InlineData(148f)]
     [InlineData(188f)]
     public void A_title_only_card_reserves_no_caption_gap(float cardW)
-        => Assert.Equal(cardW + 32f, Controls.ShelfHeight(cardW, 1f, captionLines: 0, metaLine: false));
+        => Assert.Equal(cardW + 32f, SurfaceGeometry.ShelfHeight(cardW, 1f, captionLines: 0, metaLine: false));
 
     [Fact]
     public void A_wide_tile_stacks_its_rounded_cover_one_caption_line_and_the_meta_line()
     {
         // 428 wide: the inner 412 at 16:9 is 231.75 → 232 (rounded to the pixel grid); + 4 + 8 + 8 + 8 of gutter and
         // plate, 20 title, 2 + 16 caption, 2 + 16 meta = 232 + 84.
-        Assert.Equal(232f, Controls.CoverHeight(428f - 2f * Spacing.S, Design.Size.WideTileAspect));
-        Assert.Equal(232f + 84f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, captionLines: 1, metaLine: true));
+        Assert.Equal(232f, SurfaceGeometry.CoverHeight(428f - 2f * Spacing.S, Design.Size.WideTileAspect));
+        Assert.Equal(232f + 84f, SurfaceGeometry.ShelfHeight(428f, Design.Size.WideTileAspect, captionLines: 1, metaLine: true));
         // The meta line is the labels' 2 gap + one 16 caption line.
-        Assert.Equal(18f, Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1, true)
-                          - Controls.ShelfHeight(428f, Design.Size.WideTileAspect, 1, false));
+        Assert.Equal(18f, SurfaceGeometry.ShelfHeight(428f, Design.Size.WideTileAspect, 1, true)
+                          - SurfaceGeometry.ShelfHeight(428f, Design.Size.WideTileAspect, 1, false));
     }
 
     [Fact]
     public void The_shelf_chrome_constants_are_the_ones_the_card_renders()
     {
-        Assert.Equal(Spacing.XS, Controls.ShelfGutterTop);
-        Assert.Equal(0f, Controls.ShelfGutterBottom);
-        Assert.Equal(Spacing.S, Controls.ShelfPlatePad);
-        Assert.Equal(20f, Controls.CardTitleLineH);
-        Assert.Equal(16f, Controls.CardCaptionLineH);
-        Assert.Equal(2f, Controls.CardLabelGap);
+        // SurfaceGeometry restates the spacing tokens as whole-DIP literals (it is engine-free); these pin the two.
+        Assert.Equal(Spacing.XS, SurfaceGeometry.ShelfGutterTop);
+        Assert.Equal(0f, SurfaceGeometry.ShelfGutterBottom);
+        Assert.Equal(Spacing.S, SurfaceGeometry.ShelfPlatePad);
+        Assert.Equal(20f, SurfaceGeometry.CardTitleLineH);
+        Assert.Equal(16f, SurfaceGeometry.CardCaptionLineH);
+        Assert.Equal(2f, SurfaceGeometry.CardLabelGap);
     }
 
     [Fact]
@@ -115,8 +116,8 @@ public class ControlsGeometryTests
         float leadW = 2f * squareW + Spacing.M;
         float squareInner = squareW - 2f * Spacing.S, leadInner = leadW - 2f * Spacing.S;
         float aspect = leadInner / squareInner;
-        Assert.Equal(squareInner, Controls.CoverHeight(leadInner, aspect));
-        Assert.Equal(Controls.ShelfHeight(squareW, 1f, 2, false), Controls.ShelfHeight(leadW, aspect, 2, false));
+        Assert.Equal(squareInner, SurfaceGeometry.CoverHeight(leadInner, aspect));
+        Assert.Equal(SurfaceGeometry.ShelfHeight(squareW, 1f, 2, false), SurfaceGeometry.ShelfHeight(leadW, aspect, 2, false));
     }
 
     [Fact]
@@ -129,17 +130,13 @@ public class ControlsGeometryTests
     }
 
     [Fact]
-    public void A_whole_shelf_row_adds_its_header_and_its_gaps()
-        => Assert.Equal(32f + Controls.ShelfHeight(160f) + 24f, Controls.ShelfExtent(160f));
-
-    [Fact]
     public void A_grid_cell_grows_by_exactly_one_title_line_per_line()
     {
-        float one = Controls.GridCardChromeFor(1, hasSubtitle: true);
-        float two = Controls.GridCardChromeFor(2, hasSubtitle: true);
-        Assert.Equal(Controls.GridTitleLineH, two - one);
-        Assert.Equal(Controls.GridSubtitleBlockH,
-                     Controls.GridCardChromeFor(1, true) - Controls.GridCardChromeFor(1, false));
+        float one = SurfaceGeometry.GridCardChromeFor(1, hasSubtitle: true);
+        float two = SurfaceGeometry.GridCardChromeFor(2, hasSubtitle: true);
+        Assert.Equal(SurfaceGeometry.GridTitleLineH, two - one);
+        Assert.Equal(SurfaceGeometry.GridSubtitleBlockH,
+                     SurfaceGeometry.GridCardChromeFor(1, true) - SurfaceGeometry.GridCardChromeFor(1, false));
     }
 
     [Fact]
@@ -315,6 +312,49 @@ public class ControlsArtUrlTests
         Assert.Equal("https://i.scdn.co/image/ab67616d0000b273000000000000000000000002", Controls.ArtUrl(b));
         Assert.Same(Controls.ArtUrl(a), Controls.ArtUrl(a));
     }
+
+    private const string TileA = "ab67616d0000b273aaaaaaaaaaaaaaaaaaaaaaaa";
+    private const string TileB = "ab67616d0000b273bbbbbbbbbbbbbbbbbbbbbbbb";
+    private const string TileC = "ab67616d0000b273cccccccccccccccccccccccc";
+    private const string TileD = "ab67616d0000b273dddddddddddddddddddddddd";
+
+    [Fact]
+    public void A_spotify_image_token_resolves_to_its_cdn_url()
+        => Assert.Equal("https://i.scdn.co/image/" + TileA,
+            Controls.ArtUrl(Entities.Strings.Intern("spotify:image:" + TileA)));
+
+    [Fact]
+    public void A_mosaic_token_resolves_to_its_lead_tile()
+        => Assert.Equal("https://i.scdn.co/image/" + TileA,
+            Controls.ArtUrl(Entities.Strings.Intern($"spotify:mosaic:{TileA}:{TileB}:{TileC}:{TileD}")));
+
+    [Fact]
+    public void Any_other_spotify_token_has_no_url()
+        => Assert.Null(Controls.ArtUrl(Entities.Strings.Intern("spotify:other:abc")));
+
+    [Fact]
+    public void MosaicTiles_answers_four_urls_for_a_mosaic_and_none_for_a_cover()
+    {
+        var mosaic = Entities.Strings.Intern($"spotify:mosaic:{TileA}:{TileB}:{TileC}:{TileD}");
+        var tiles = Controls.MosaicTiles(mosaic);
+
+        // each part is the 300-px album tile (CoverToken.MosaicTileId), same suffix, in wire order
+        Assert.Equal(4, tiles.Length);
+        Assert.Equal("https://i.scdn.co/image/ab67616d00001e02" + TileA[16..], tiles[0]);
+        Assert.Equal("https://i.scdn.co/image/ab67616d00001e02" + TileB[16..], tiles[1]);
+        Assert.Equal("https://i.scdn.co/image/ab67616d00001e02" + TileC[16..], tiles[2]);
+        Assert.Equal("https://i.scdn.co/image/ab67616d00001e02" + TileD[16..], tiles[3]);
+
+        // the cache answers the SAME tile strings on a repeat, so a re-render allocates nothing
+        var again = Controls.MosaicTiles(mosaic);
+        for (int i = 0; i < 4; i++) Assert.Same(tiles[i], again[i]);
+
+        Assert.True(Controls.MosaicTiles(default).IsEmpty);
+        Assert.True(Controls.MosaicTiles(Entities.Strings.Intern("https://i.scdn.co/image/" + TileA)).IsEmpty);
+        Assert.True(Controls.MosaicTiles(Entities.Strings.Intern("spotify:image:" + TileA)).IsEmpty);
+        // 1-3 tiles is Mosaic's own "paint one cover" rule: none here, ArtUrl's lead tile instead
+        Assert.True(Controls.MosaicTiles(Entities.Strings.Intern($"spotify:mosaic:{TileA}:{TileB}:{TileC}")).IsEmpty);
+    }
 }
 
 [Collection(EntitiesCollection.Name)]
@@ -407,18 +447,18 @@ public class ControlsRichTextTests
     }
 }
 
-/// <summary>The card family's props gate on DATA. An entity adapter rebuilds its closures (and its subtitle element) on
-/// every parent render; if those counted by identity, every ShelfCard / NowPlayingOverlay host on the page re-rendered
+/// <summary>The surface family's props gate on DATA. An entity adapter rebuilds its closures (and its subtitle element)
+/// on every parent render; if those counted by identity, every surface / NowPlayingOverlay host on the page re-rendered
 /// on every parent render (13× a frame on the artist page). A delegate counts by PRESENCE, never identity.</summary>
 public class ControlsCardEqualityTests
 {
     // Each call returns FRESH delegates and a FRESH subtitle element with the same data — the shape a re-rendering
     // adapter hands over.
     static Controls.CardData Card(string uri = "spotify:album:1", string title = "Blue", string? subtitle = "Joni Mitchell · 1971",
-                                  bool play = true, string? dragKind = "album", bool circular = false, int titleLines = 1)
+                                  bool play = true, string? dragKind = "album", bool circular = false)
         => new(uri, title, subtitle is null ? null : new TextEl(subtitle) { Size = 12f, MaxLines = 1 }, "https://i.scdn.co/image/x",
                OnClick: () => { }, OnPlay: play ? () => { } : null, Circular: circular,
-               Drag: dragKind is null ? null : new DragSource(dragKind, () => null), TitleLines: titleLines);
+               Drag: dragKind is null ? null : new DragSource(dragKind, () => null));
 
     [Fact]
     public void A_card_rebuilt_with_fresh_closures_and_an_identical_subtitle_is_equal()
@@ -441,7 +481,6 @@ public class ControlsCardEqualityTests
         Assert.NotEqual(a, Card(subtitle: "Joni Mitchell · 1969"));
         Assert.NotEqual(a, Card(subtitle: null));
         Assert.NotEqual(a, Card(circular: true));
-        Assert.NotEqual(a, Card(titleLines: 2));
     }
 
     [Fact]
@@ -477,15 +516,6 @@ public class ControlsCardEqualityTests
                      Card() with { Selected = true, SelectedAccent = () => default });
         Assert.Equal(Card() with { Menu = () => null }, Card() with { Menu = () => null });
         Assert.NotEqual(Card(), Card() with { Menu = () => null });
-        Assert.Equal(new Controls.GridCardProps(Card()), new Controls.GridCardProps(Card()));
-    }
-
-    [Fact]
-    public void Shelf_card_props_gate_on_the_card_data_and_the_width()
-    {
-        Assert.Equal(new Controls.ShelfCardProps(Card(), 148f), new Controls.ShelfCardProps(Card(), 148f));
-        Assert.NotEqual(new Controls.ShelfCardProps(Card(), 148f), new Controls.ShelfCardProps(Card(), 172f));
-        Assert.NotEqual(new Controls.ShelfCardProps(Card(), 148f), new Controls.ShelfCardProps(Card(title: "Clouds"), 148f));
     }
 
     [Fact]
@@ -501,13 +531,13 @@ public class ControlsCardEqualityTests
         Assert.NotEqual(a, a with { Fab = 30f });
         Assert.NotEqual(a, a with { Centred = false });
         Assert.NotEqual(a, a with { PlayName = "Pause" });
+        Assert.NotEqual(a, a with { AtRest = true });   // a video's FAB at rest is a different overlay
     }
 }
 
-/// <summary>The grid card's cover chrome (the now-playing overlay and the corner "…") costs ~1 ms and ~68 KB a card to
-/// mount and is invisible until hover, so it exists only while the card is HOT (pointer inside, keyboard focus reached
-/// it) or RELATES to playback (the equalizer pill must show on a card nobody points at). The host feeds the decision;
-/// this pins it.</summary>
+/// <summary>The surface's lazy chrome (the now-playing overlay and the "…") costs ~1 ms and ~68 KB a surface to mount
+/// and is invisible until hover, so it exists only while the surface is HOT (pointer within, focus within) or RELATES to
+/// playback (the equalizer pill must show on a card nobody points at). The host feeds the decision; this pins it.</summary>
 public class CardChromeRulesTests
 {
     [Fact]
@@ -524,27 +554,28 @@ public class CardChromeRulesTests
 
     [Fact]
     public void Hot_is_true_with_the_pointer_in_and_focus_out()
-        => Assert.True(Controls.CardChromeRules.Hot(pointerIn: true, focusIn: false));
+        => Assert.True(Controls.CardChromeRules.Hot(pointerIn: true, focusWithin: false));
 
     [Fact]
-    public void Hot_is_true_with_the_pointer_out_and_focus_in()
-        => Assert.True(Controls.CardChromeRules.Hot(pointerIn: false, focusIn: true));
+    public void Hot_is_true_with_the_pointer_out_and_focus_within()
+        => Assert.True(Controls.CardChromeRules.Hot(pointerIn: false, focusWithin: true));
 
     [Fact]
     public void Hot_is_false_with_neither_bit_set()
-        => Assert.False(Controls.CardChromeRules.Hot(pointerIn: false, focusIn: false));
+        => Assert.False(Controls.CardChromeRules.Hot(pointerIn: false, focusWithin: false));
 
     [Fact]
-    public void FocusIn_latches_true_on_a_genuine_gain()
-        => Assert.True(Controls.CardChromeRules.FocusIn(got: false, stillInside: true));
+    public void FocusWithin_holds_on_the_shells_own_focus()
+        => Assert.True(Controls.CardChromeRules.FocusWithin(self: true, inner: false));
 
     [Fact]
-    public void FocusIn_is_false_on_a_loss_that_lands_outside_the_shell()
-        => Assert.False(Controls.CardChromeRules.FocusIn(got: false, stillInside: false));
+    public void FocusWithin_holds_when_a_Tab_moves_from_the_shell_onto_its_own_FAB()
+        // The shell hears that move as a LOSS (self false); the inner wrapper hears it as focus ENTERING (inner true).
+        => Assert.True(Controls.CardChromeRules.FocusWithin(self: false, inner: true));
 
     [Fact]
-    public void FocusIn_is_true_on_a_gain_regardless_of_stillInside()
-        => Assert.True(Controls.CardChromeRules.FocusIn(got: true, stillInside: false));
+    public void FocusWithin_is_false_once_focus_left_the_surface()
+        => Assert.False(Controls.CardChromeRules.FocusWithin(self: false, inner: false));
 }
 
 /// <summary>The watched placeholder bind is cached per url: the thunk is a pure function of its url, so every slot

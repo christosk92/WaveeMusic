@@ -281,7 +281,7 @@ def build_anomaly_segment(w: FixtureWriter) -> Dict[str, int]:
 
     # FrameIgnored
     root3 = w.new_root(CaptureKind.RemoteRoot, a="hm://connect-state/v1/cluster")
-    w.point(CaptureKind.FrameIgnored, root3, a="StaleServerTime")
+    w.point(CaptureKind.FrameIgnored, root3, a="hm://connect-state/v1/cluster", b="StaleServerTime")
     ids["frame_ignored_root"] = root3
 
     # non-2xx HttpCall

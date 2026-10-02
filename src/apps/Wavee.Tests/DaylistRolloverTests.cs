@@ -35,6 +35,48 @@ public class DaylistRolloverTests
     }
 
     [Fact]
+    public void First_try_is_five_seconds_after_the_window_ends()
+    {
+        Assert.Equal(5_000, DaylistRollover.GraceMs);
+        int end = 1_000;
+        long windowEndMs = (long)end * 1000;
+        Assert.Equal(DaylistRollover.Verdict.Arm, DaylistRollover.Decide(end, 0, windowEndMs + 4_999, out _));
+        Assert.Equal(DaylistRollover.Verdict.Fire, DaylistRollover.Decide(end, 0, windowEndMs + 5_000, out _));
+    }
+
+    [Fact]
+    public void Retry_ladder_steps_are_unchanged_by_the_shorter_grace()
+    {
+        Assert.Equal(new long[] { 30_000, 60_000, 120_000, 300_000 }, DaylistRollover.RetryMs);
+        Assert.Equal(DaylistRollover.MaxAttempts, DaylistRollover.RetryMs.Length);
+    }
+
+    [Theory]
+    [InlineData(DaylistRollover.Verdict.Idle, 0, DaylistRolloverState.Idle)]
+    [InlineData(DaylistRollover.Verdict.Arm, 0, DaylistRolloverState.Waiting)]
+    [InlineData(DaylistRollover.Verdict.Fire, 0, DaylistRolloverState.Waiting)]
+    [InlineData(DaylistRollover.Verdict.Arm, 1, DaylistRolloverState.Fetching)]
+    [InlineData(DaylistRollover.Verdict.Fire, 3, DaylistRolloverState.Fetching)]
+    [InlineData(DaylistRollover.Verdict.Exhausted, 4, DaylistRolloverState.Exhausted)]
+    public void StateOf_reads_the_verdict_and_the_rungs_spent(DaylistRollover.Verdict verdict, int attempts, DaylistRolloverState expected)
+    {
+        Assert.Equal(expected, DaylistRollover.StateOf(verdict, attempts));
+    }
+
+    [Fact]
+    public void StateOf_follows_Decide_up_the_whole_ladder()
+    {
+        int end = 2_000;
+        long afterWindow = (long)end * 1000 + 1;   // inside the grace
+        var v0 = DaylistRollover.Decide(end, 0, afterWindow, out _);
+        Assert.Equal(DaylistRolloverState.Waiting, DaylistRollover.StateOf(v0, 0));
+        var v1 = DaylistRollover.Decide(end, 1, afterWindow, out _);
+        Assert.Equal(DaylistRolloverState.Fetching, DaylistRollover.StateOf(v1, 1));
+        var vMax = DaylistRollover.Decide(end, DaylistRollover.MaxAttempts, afterWindow, out _);
+        Assert.Equal(DaylistRolloverState.Exhausted, DaylistRollover.StateOf(vMax, DaylistRollover.MaxAttempts));
+    }
+
+    [Fact]
     public void Fires_exactly_at_due()
     {
         int end = 1_000;

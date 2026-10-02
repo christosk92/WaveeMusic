@@ -98,7 +98,10 @@
     "daylistMeta": "플레이리스트 · Spotify · 곡 {n}개",
     "playingOn": "{device}에서 재생 중",
     "daylist": {
-      "arrivesAt": "{when} {time}에 도착"
+      "arrivesAt": "{when} {time}에 도착",
+      "onItsWay": "{daypart}이(가) 곧 도착해요",
+      "late": "다음 데일리스트가 늦어지고 있어요",
+      "checkAgain": "다시 확인"
     },
     "zone": {
       "becauseYouLike": "좋아하실 만한 음악",
@@ -1156,5 +1159,77 @@
     "homeAudiobooks": "홈: 오디오북",
     "homeFollowingOn": "홈: 팔로잉 켜기",
     "homeFollowingOff": "홈: 팔로잉 끄기"
+  },
+  "person": {
+    "openAccount": "계정 열기",
+    "topArtists": "이번 달 톱 아티스트",
+    "onlyYou": "나에게만 표시됨",
+    "publicPlaylists": "공개 플레이리스트",
+    "recentArtists": "최근 재생한 아티스트",
+    "following": "팔로잉",
+    "followers": "팔로워",
+    "pivot": {
+      "topArtists": "톱 아티스트",
+      "playlists": "플레이리스트",
+      "artists": "아티스트",
+      "following": "팔로잉",
+      "followers": "팔로워"
+    },
+    "stat": {
+      "followers": "{count, plural, other {팔로워}}",
+      "following": "팔로잉",
+      "playlists": "{count, plural, other {공개 플레이리스트}}"
+    },
+    "card": {
+      "followers": "{count, plural, other {팔로워 {n}명}}"
+    },
+    "empty": {
+      "playlists": "공개 플레이리스트 없음",
+      "playlistsOwn": "아직 공개 플레이리스트가 없습니다",
+      "playlistsOwnHint": "공개로 설정한 플레이리스트가 여기에 표시됩니다.",
+      "unavailable": "이 프로필을 볼 수 없습니다",
+      "unavailableHint": "비공개이거나 계정이 해지되었을 수 있습니다."
+    },
+    "list": {
+      "nav": {
+        "profile": "프로필",
+        "lists": "사람"
+      },
+      "menu": {
+        "profile": "프로필"
+      },
+      "title": {
+        "following": "팔로잉",
+        "followers": "팔로워"
+      },
+      "chip": {
+        "all": "전체",
+        "artists": "아티스트",
+        "people": "사람"
+      },
+      "find": {
+        "following": "팔로잉에서 찾기",
+        "followers": "팔로워에서 찾기"
+      },
+      "card": {
+        "followers": "{count, plural, other {팔로워 {n}명}}",
+        "artist": "아티스트",
+        "artistFollowers": "{count, plural, other {아티스트 · 팔로워 {n}명}}",
+        "profile": "프로필"
+      },
+      "empty": {
+        "following": "아직 팔로우하는 사람이 없습니다",
+        "followers": "아직 팔로워가 없습니다"
+      },
+      "hidden": {
+        "title": "팔로우 목록이 비공개입니다",
+        "subtitle": "{name}님은 팔로우 목록을 공개하지 않았습니다."
+      },
+      "unavailable": {
+        "title": "이 프로필을 볼 수 없습니다",
+        "subtitle": "비공개이거나 계정이 해지되었을 수 있습니다."
+      },
+      "fallbackName": "프로필"
+    }
   }
 }

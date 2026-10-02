@@ -8,7 +8,8 @@
 // a render function so it is unit-testable without a source-text test (CLAUDE.md "No source-text tests": a test
 // never reads/greps production source; it exercises a pure class instead — the `DaypartRules`/`EpisodeCaption`
 // pattern this file follows). The seventh pass adds the daylist card's rules (`DaylistForm`, `DaypartTimeline`,
-// `DaylistCountdownLine`) beside its `DaylistArt`.
+// `DaylistCountdownLine`) beside its `DaylistArt`. The shared media surface (shared-media-surface-implementation.md
+// Appendix A.2, #157) adds `HomeCardGridShape`, what a HomeCard grid cell shows per kind (`HomeCards.GridCardData`).
 
 namespace Wavee.HomeUi;
 
@@ -27,6 +28,18 @@ public static class CardMeta
         if (hasOwner) return owner;
         return null;
     }
+}
+
+/// <summary>What a HomeCard grid cell SHOWS, as a value (`HomeCards.GridCardData`, Entities/Browse.Cards.cs): round art
+/// for an artist, no subtitle on a chart, no drag or menu for the kinds <c>HomeCardNav.DragOf</c>/<c>MenuOf</c> refuse
+/// (an episode has no menu; a track/episode is not a drag source).</summary>
+public readonly record struct HomeCardGridShape(bool Circular, bool ShowSubtitle, bool CanDrag, bool CanMenu)
+{
+    public static HomeCardGridShape Of(HomeCardKind kind, bool charts) => new(
+        Circular: kind == HomeCardKind.Artist,
+        ShowSubtitle: !charts,
+        CanDrag: kind is not (HomeCardKind.Track or HomeCardKind.Episode),
+        CanMenu: kind != HomeCardKind.Episode);
 }
 
 /// <summary>The daylist card's art source (`Daylist.UI.cs`): the daylist's header image, else its square cover, else

@@ -1,0 +1,2 @@
+# Crash upload contract fixtures: byte-exact multipart bodies whose CRLF framing must never be normalized (#165).
+ops/crash/contract/*.multipart binary

@@ -3,6 +3,7 @@ import { DocumentQuestionMark24Regular } from "@fluentui/react-icons";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDeleteInstall, useDeleteReport, useReport } from "../../api/hooks";
+import type { ReportPart } from "../../api/types";
 import { formatDateTime, shortId } from "../../lib/format";
 import { EmptyState } from "../../scene/EmptyState";
 import { ErrorBar } from "../../scene/ErrorBar";
@@ -20,7 +21,6 @@ import {
   PrivacyCheckPanel,
   ReportKindBadge,
   ThisInstallPanel,
-  type LogPart,
 } from "./parts";
 
 const useStyles = makeStyles({
@@ -50,16 +50,16 @@ const useStyles = makeStyles({
   },
 });
 
-/** Report detail (plan §3): facts, the report.txt/log-tail viewer, the memory snapshot, this-install
- *  erasure and the privacy check — everything read from one `useReport(id)` call plus the two erasure
- *  mutations. The report/log-tail text itself isn't on `AppReportDetail` (see `parts.tsx`'s note); this
- *  page's only job with that gap is to pass the id/report down to the hook that works around it. */
+/** Report detail (plan §3): facts (incl. the native fault), the report.txt/log-tail viewer, the memory
+ *  snapshot, this-install erasure and the privacy check — everything read from one `useReport(id)` call
+ *  plus `useReportPartText` (`api/hooks.ts`) for the text parts, and the two erasure mutations:
+ *  `DELETE /v1/reports/:id` (this report) and `DELETE /v1/installs/:id` (every report of its install). */
 export default function ReportDetailPage() {
   const styles = useStyles();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const toast = useAppToast();
-  const [logTab, setLogTab] = useState<LogPart>("report");
+  const [logTab, setLogTab] = useState<ReportPart>("report");
 
   const reportQuery = useReport(id);
   const deleteReportMutation = useDeleteReport();

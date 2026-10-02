@@ -1,5 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { formatBytes, formatCount, formatDeltaPct, formatDurationMs, pctChange, shortId } from "./format";
+import {
+  formatBytes,
+  formatCount,
+  formatDeltaPct,
+  formatDurationMs,
+  hex8,
+  nativeFaultText,
+  normalizeIdQuery,
+  ntStatusName,
+  pctChange,
+  shortId,
+} from "./format";
+
+describe("ntStatusName / hex8", () => {
+  it("names the NTSTATUS codes the Worker's titles use", () => {
+    expect(ntStatusName(0xc0000005)).toBe("ACCESS_VIOLATION");
+    expect(ntStatusName(0xc0000409)).toBe("STACK_BUFFER_OVERRUN (fail-fast)");
+    expect(ntStatusName(0xc00000fd)).toBe("STACK_OVERFLOW");
+    expect(ntStatusName(0xc0000374)).toBe("HEAP_CORRUPTION");
+    expect(ntStatusName(0xc0000094)).toBe("INTEGER_DIVIDE_BY_ZERO");
+    expect(ntStatusName(0xc000001d)).toBe("ILLEGAL_INSTRUCTION");
+    expect(ntStatusName(0xc0000602)).toBe("FAIL_FAST_EXCEPTION");
+  });
+
+  it("falls back to 8-digit upper-case hex, also for a signed 32-bit value", () => {
+    expect(ntStatusName(0xc0000135)).toBe("0xC0000135");
+    expect(ntStatusName(0xc0000005 | 0)).toBe("ACCESS_VIOLATION");
+    expect(hex8(0x9a2)).toBe("000009A2");
+  });
+});
+
+describe("nativeFaultText", () => {
+  it("formats code, module and offset", () => {
+    expect(nativeFaultText({ exceptionCode: 0xc0000005, faultModule: "nvwgf2umx.dll", faultOffset: 0x2f10c })).toBe(
+      "ACCESS_VIOLATION in nvwgf2umx.dll+0x2f10c",
+    );
+  });
+
+  it("names an unknown module and is null without any fault facts", () => {
+    expect(nativeFaultText({ exceptionCode: 0xc0000409, faultModule: "", faultOffset: 0 })).toBe(
+      "STACK_BUFFER_OVERRUN (fail-fast) in unknown module+0x0",
+    );
+    expect(nativeFaultText({ exceptionCode: 0, faultModule: "", faultOffset: 0 })).toBeNull();
+  });
+});
+
+describe("normalizeIdQuery", () => {
+  it("strips dashes so the app's short id matches a dash-less id prefix", () => {
+    expect(normalizeIdQuery("  3f9c-2b1a ")).toBe("3f9c2b1a");
+    expect(normalizeIdQuery("3f9c2b1a-0000-4000-8000-000000000000")).toBe("3f9c2b1a000040008000000000000000");
+    expect(normalizeIdQuery("")).toBe("");
+  });
+});
 
 describe("shortId", () => {
   it("truncates long ids with an ellipsis", () => {

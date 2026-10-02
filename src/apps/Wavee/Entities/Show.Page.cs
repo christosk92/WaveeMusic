@@ -369,10 +369,15 @@ public readonly partial struct Show
         public int[] Slots = [];
         public ReaderItem[] Items = [];
         public int ItemCount, ViewCount, Total;
+        /// <summary><see cref="Filtered"/> IS results mode (<see cref="ShowReaderRules.ResultsMode"/>): a status filter or a
+        /// find is on, so the list is the answer to a question and the head stays out of its way.</summary>
         public bool Filtered, IsEmpty, EmptyShow;
         public bool CanLoadMore, Paging;
         public int NextOffset, LocalAsked;
         public ShowReaderRules.Head Head;
+        /// <summary>Is the visit head painted? False in results mode (it is hidden — never filtered); sort alone leaves it
+        /// shown. Part of the head's fold: it is a fact of what the head paints.</summary>
+        public bool HeadShown = true;
         public ShowLedger Ledger;
         public bool ProgressFailed;
         public ShowCadence.Kind Cadence;
@@ -524,13 +529,19 @@ public readonly partial struct Show
             int lastPlayed = ShowLedger.LastPlayed(playedAt);
             var ledger = ShowLedger.Of(pcts, published, lastPlayed, total, consumption);
             var (cadence, day) = ShowCadence.Of(published);
-            Span<int> up = stackalloc int[ListenNext.UpNextMax];
-            var (resume, upCount) = ListenNext.Pick(pcts, consumption, playing, up);
-            var visit = ShowVisit.Of(ledger.Played + ledger.InProgress > 0, ledger.ToGo, ledger.InProgress);
-            var head = ShowReaderRules.HeadOf(answered, settled, failed, visit, resume, upCount);
             // "new" and the progress counts are claims about the listener's history: made only once the hydrate settled
             // and succeeded (§6.1 — rows show no state rather than a false one).
             bool trusted = settled && !failed;
+            // One episode, one place: the "new since you were here" block shows every fresh episode, so up next never
+            // offers one (it takes the next candidates instead).
+            var freshAt = new bool[n];
+            int freshCount = ShowReaderRules.FreshMask(pcts, published, lastPlayed, trusted, freshAt);
+            Span<int> up = stackalloc int[ListenNext.UpNextMax];
+            var (resume, upCount) = ListenNext.Pick(pcts, consumption, playing, up, freshAt);
+            var visit = ShowVisit.Of(ledger.Played + ledger.InProgress > 0, ledger.ToGo, ledger.InProgress);
+            // The new-since rows are something to come back to too: a Returning listener whose only unfinished episodes
+            // are the fresh ones still gets the Returning head (hero-less, with its new-since block), never "all caught up".
+            var head = ShowReaderRules.HeadOf(answered, settled, failed, visit, resume, upCount + freshCount);
 
             var statusRule = (Episode.Rules.Status)Math.Clamp(status, 0, 3);
             var view = new int[n];
@@ -539,9 +550,13 @@ public readonly partial struct Show
             var shape = new ShowReaderShape.Item[capacity];
             var marks = new Episode.RowMarks[capacity];
             int resumeAt = resume >= 0 ? slots[resume] : 0;
+            // RESULTS MODE: while a status filter or a find is on, the head is HIDDEN (never filtered — it is still built
+            // from every episode, parity #25) and the list is exactly the answer. Sort alone leaves it shown (parity #26).
+            bool results = ShowReaderRules.ResultsMode(statusRule, q);
             // Report 11a: the visit head already SHOWS its episode (the continue hero), so the body must not repeat it
-            // as its first row. Only the Returning head owns one — New's doors and CaughtUp show none.
-            int headSlot = head == ShowReaderRules.Head.Returning && resumeAt > 0 ? resumeAt : -1;
+            // as its first row — but only while the head is shown: a find that matches nothing but the hero's episode
+            // must list it. Only the Returning head owns one — New's doors and CaughtUp show none.
+            int headSlot = ShowReaderRules.HeadSlot(head, resumeAt, headShown: !results);
             // An audiobook has no months (its chapters are a story, not a release calendar): the dates the ITEM LIST
             // sees are empty, so no Group ever opens. Every other rule still reads the real dates.
             var layoutDates = audiobook ? ReadOnlySpan<int>.Empty : published;
@@ -564,11 +579,9 @@ public readonly partial struct Show
 
             var upNext = new int[upCount];
             for (int k = 0; k < upCount; k++) upNext[k] = slots[up[k]];
-            int freshCount = 0;
-            if (trusted) for (int i = 0; i < n; i++) if (ShowLedger.IsFresh(pcts[i], published[i], lastPlayed)) freshCount++;
             var fresh = new int[freshCount];
             for (int i = 0, k = 0; k < freshCount && i < n; i++)
-                if (ShowLedger.IsFresh(pcts[i], published[i], lastPlayed)) fresh[k++] = slots[i];
+                if (freshAt[i]) fresh[k++] = slots[i];
             int trailer = show.Knows(ShowFields.Facts) && !show.TrailerId.IsEmpty
                           && scope.Episodes.TryGetSlot(show.TrailerId, out int trailerSlot) ? trailerSlot : 0;
             // An audiobook names no trailer on the show: its SAMPLE is a member of the membership, lifted out above.
@@ -585,7 +598,7 @@ public readonly partial struct Show
             int resumeSlot = resumeAt;
 
             ulong fold = 14695981039346656037UL;
-            Mix(ref fold, (uint)head);
+            Mix(ref fold, (uint)head | (results ? 0x100u : 0u));      // results mode hides the head: a fact of what it paints
             Mix(ref fold, show.IsValid ? show.Version : 0u);
             Mix(ref fold, (uint)total);
             Mix(ref fold, (uint)consumption | ((uint)cadence << 8) | (day is { } d ? ((uint)d + 1) << 16 : 0u) | ((uint)state << 24));
@@ -610,7 +623,7 @@ public readonly partial struct Show
                 ItemCount = count,
                 ViewCount = viewCount,
                 Total = total,
-                Filtered = statusRule != Episode.Rules.Status.All || !q.IsEmpty,
+                Filtered = results,
                 IsEmpty = viewCount == 0 && answered,
                 EmptyShow = q.IsEmpty && Episode.Rules.IsEmptyShow(edgeTotal, n, statusRule),
                 // A COMPLETE list never shows the pill, whatever the cursor column says; a partial one gates on the cursor.
@@ -619,6 +632,7 @@ public readonly partial struct Show
                 NextOffset = Episode.Rules.NextOffset(edgeAsked, local, n),
                 LocalAsked = local,
                 Head = head,
+                HeadShown = !results,
                 Ledger = ledger,
                 ProgressFailed = failed,
                 Cadence = cadence,
@@ -678,12 +692,28 @@ public readonly partial struct Show
         IReadSignal<float>? _width;
         IReadSignal<Design.PageAccent>? _accent;
         Memo<ColorF>? _tone;
-        readonly RepeatLayout _layout = RepeatLayout.VariableList(ItemEstimate);
+        /// <summary>The list's extents are ANALYTIC (<see cref="ExtentOf"/>): an unmeasured item seeds at its own kind's
+        /// height instead of one global estimate (the head is ~500, the foot ~400, a month header 42), and corrects to its
+        /// measured extent on realize — so a restored scroll position and the scroll anchor start nearly right.</summary>
+        readonly RepeatLayout _layout;
+        readonly Func<int, float> _extentOf;
 
         internal Memo<bool>? Narrow;
-        /// <summary>Which rung of the toolbar's collapse ladder the rail's measured width is on
-        /// (<see cref="ShowToolbarLayout.Of"/>) — the rail is ONE row at every one of them.</summary>
+        /// <summary>Which rung of the toolbar's collapse ladder the toolbar's OWN measured width is on
+        /// (<see cref="ShowToolbarLayout.For"/>) — the rail is ONE row at every one of them.</summary>
         internal Memo<ToolbarStage>? Toolbar;
+        /// <summary>The toolbar's arranged width (its root's bounds, gutters included) and what its two rails measured
+        /// (<see cref="Controls.Words.Measured"/>) — the inputs of <see cref="ShowToolbarLayout.For"/>. Plain signals the
+        /// stage memo reads: a measure re-runs the memo, and the toolbar re-renders only when the STAGE moves.</summary>
+        internal readonly Signal<float> ToolbarWidth = new(0f);
+        readonly Signal<ToolbarNeeds> _needs = new(default);
+        float[] _filterWordW = [];
+        ToolbarStage _stageShown = ToolbarStage.Full;
+        internal readonly Controls.Words.Measured OnFiltersMeasured, OnSortMeasured;
+        internal readonly Action<RectF> OnToolbarBounds;
+        /// <summary>"More like this": ONE request per show visit, owned by the reader (which lives as long as the show's
+        /// page does) — never by the foot, which the list remounts whenever its items move (a keystroke, a filter).</summary>
+        internal Resource<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> Similar;
         /// <summary>The list rows' context (it carries <see cref="EpisodeSelection"/>) and the HEAD's — the visit head's
         /// "new since" rows render over a fixed scope that owns no selection state, so they never wear a check lane.</summary>
         internal Episode.RowContext? RowCtx, HeadRowCtx;
@@ -692,7 +722,9 @@ public readonly partial struct Show
         internal readonly Func<ColorF> Tone;
         /// <summary>The narrow toolbar's collapsed find box (report 4a) — session-only, like the query itself.</summary>
         internal readonly Signal<bool> FindOpen = new(false);
-        internal readonly Action OpenFind, CloseFind, ToggleSelecting;
+        /// <summary>The "nothing matches" reset: the model's reset (filter back to all, find cleared) AND the narrow find
+        /// field closed — a reset that leaves an empty field open is a dangling affordance.</summary>
+        internal readonly Action OpenFind, CloseFind, ToggleSelecting, ResetView;
         internal readonly Func<bool> IsSelecting;
         /// <summary>Bulk selection over the reader's rows (report 5). Armed by the toolbar's select toggle; the bar
         /// appears only above zero.</summary>
@@ -700,6 +732,7 @@ public readonly partial struct Show
 
         readonly Func<bool> _narrowOf, _pending, _failed;
         readonly Func<ToolbarStage> _toolbarStageOf;
+        readonly Action _syncSelectedWord;
         readonly Func<int, Element> _selectionCommands;
         readonly Func<int> _selectedOf;
         Memo<int>? _selected;
@@ -728,12 +761,19 @@ public readonly partial struct Show
         public ReaderHost()
         {
             _narrowOf = () => ShowReaderRules.Narrow(_width?.Value ?? 0f);
-            _toolbarStageOf = () => ShowToolbarLayout.Of(_width?.Value ?? 0f);
+            _toolbarStageOf = ToolbarStageOf;
+            _syncSelectedWord = SyncSelectedWord;
+            OnFiltersMeasured = FiltersMeasured;
+            OnSortMeasured = SortMeasured;
+            OnToolbarBounds = r => { if (MathF.Abs(r.W - ToolbarWidth.Peek()) > 0.5f) ToolbarWidth.Value = r.W; };
+            _extentOf = ExtentOf;
+            _layout = RepeatLayout.Extents(_extentOf, ItemEstimate);
             Selection = new EpisodeSelection(EpisodeAt, () => _m?.Peek().ItemCount ?? 0, IsRowAt);
             IsSelecting = () => Selection.Selecting.Value;
             ToggleSelecting = () => Selection.Arm(!Selection.Selecting.Peek());
             OpenFind = () => FindOpen.Value = true;
             CloseFind = () => { FindOpen.Value = false; if (_m is { } m) m.Find.Value = ""; };
+            ResetView = () => { _m?.ResetView(); FindOpen.Value = false; };
             _selectionCommands = fit => EpisodeSelection.Commands(fit, Selection);
             _selectedOf = () => Selection.SelectedCount;
             _jumpYear = JumpToYear;
@@ -770,6 +810,76 @@ public readonly partial struct Show
         }
 
         internal ReaderModel Model => _m!;
+
+        /// <summary>The reader's measured width (the head lays its columns out from it); <paramref name="subscribe"/> false
+        /// is for a builder that renders what its stamp was computed from.</summary>
+        internal float MeasuredWidth(bool subscribe) => _width is null ? 0f : subscribe ? _width.Value : _width.Peek();
+
+        // ── the measured toolbar (ShowToolbarLayout) ─────────────────────────────────────────────────────────────────
+
+        /// <summary>The stage memo's body: the toolbar's own width against what its rails measured, with the stage on
+        /// screen as the hysteresis' "previous". The memo is equality-gated, so the toolbar re-renders only when the
+        /// stage actually moves — never per resize frame.</summary>
+        ToolbarStage ToolbarStageOf()
+        {
+            var stage = ShowToolbarLayout.For(ToolbarWidth.Value, _needs.Value, ShowReaderRules.Narrow(_width?.Value ?? 0f), _stageShown);
+            _stageShown = stage;
+            return stage;
+        }
+
+        /// <summary>The filter rail's measure: its natural width, and each chip's width — the selected one is what the
+        /// last stage's menu button is sized from.</summary>
+        void FiltersMeasured(float total, float[] words)
+        {
+            if (_filterWordW.Length != words.Length) _filterWordW = new float[words.Length];
+            Array.Copy(words, _filterWordW, words.Length);
+            _needs.Value = _needs.Peek() with { Filters = total, SelectedWord = WordWidth(_m?.Status.Peek() ?? 0) };
+        }
+
+        void SortMeasured(float total, float[] words) => _needs.Value = _needs.Peek() with { Sort = total };
+
+        float WordWidth(int word) => (uint)word < (uint)_filterWordW.Length ? _filterWordW[word] : 0f;
+
+        /// <summary>Another chip became the selected one: the menu button's width follows it.</summary>
+        void SyncSelectedWord()
+        {
+            _ = _props.Value;                                      // a model swap re-runs this for the new model
+            float w = WordWidth(_m?.Status.Value ?? 0);
+            var needs = _needs.Peek();
+            if (needs.SelectedWord != w) _needs.Value = needs with { SelectedWord = w };
+        }
+
+        // ── the list's extents ───────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>One item's SEEDED extent (<see cref="ShowReaderRules.SeedExtent"/> for its kind). A peek: the layout
+        /// calls this on a seed, a resize or a splice — never per frame, never inside a tracked scope.</summary>
+        float ExtentOf(int index)
+        {
+            var s = _m?.Peek();
+            if (s is null || (uint)index >= (uint)s.ItemCount) return ItemEstimate;
+            var it = s.Items[index];
+            return ShowReaderRules.SeedExtent(it.Kind, s.Head, s.HeadShown, (it.Row.Marks & Episode.RowMarks.NoRule) != 0, s.Fresh.Length);
+        }
+
+        /// <summary>The always-on truthfulness line (renderer == estimator — the Artist reader's <c>CheckChrome</c>
+        /// idiom). An item whose height is ARITHMETIC (<see cref="ShowReaderRules.ExactExtent"/>: the month header, the
+        /// "episodes" header) reports its ARRANGED height here, and when that differs by more than half a DIP from the
+        /// number the extent seed reads for the same item, one <c>show.reader.extent</c> line says by exactly how much; no
+        /// line at all IS the proof. Deduped per slot on (declared, measured); an unarranged item (H 0) is not a
+        /// measurement. Nothing is allocated unless it logs, and it logs only on a defect.</summary>
+        internal void CheckExtent(ShowReaderShape.ItemKind kind, bool noRule, float measured, ref float loggedDeclared, ref float loggedMeasured)
+        {
+            var s = _m?.Peek();
+            float declared = s is null ? float.NaN : ShowReaderRules.ExactExtent(kind, noRule, s.IsEmpty);
+            if (!ShowReaderRules.ExtentDisagrees(declared, measured)) return;
+            if (declared == loggedDeclared && measured == loggedMeasured) return;
+            loggedDeclared = declared;
+            loggedMeasured = measured;
+            Log.Event(WaveeLogLevel.Warning, "ui", "show.reader.extent", "Show reader item height disagrees with its extent",
+                null, -1, null,
+                WaveeLogField.Of("item", kind.ToString()), WaveeLogField.Of("declared", declared),
+                WaveeLogField.Of("measured", measured), WaveeLogField.Of("delta", measured - declared));
+        }
 
         /// <summary>THE ROWS' DEMAND lives on the reader, not on whoever mounts it. Auto-tracked: as the membership lands
         /// (a page, a refresh, a model swap), ask for what a row paints — <see cref="ShowReaderRules.RowDemand"/> over the
@@ -852,7 +962,14 @@ public readonly partial struct Show
             _yearsMemo = UseComputed(_yearsOf);
             UseEffect(_demandRows);
             UseSignalEffect(_watchSticky);
+            UseSignalEffect(_syncSelectedWord);
             var m = Model;
+            // "More like this" is the READER's request, not the foot's: the list remounts the foot whenever its items move
+            // (every keystroke of the find, every filter), and a request owned by the foot went out again each time — eleven
+            // identical POSTs in seven seconds of typing. Keyed by the show and the scope, so it is asked once per visit.
+            string subjectText = m.SubjectText;
+            Similar = UseResource(ct => PodcastReaderUI.RecommendationsOf(subjectText, show: true, ct),
+                PodcastReaderUI.RecommendationsSeed, (subjectText, (int)Entities.ScopeEpoch.Value));
             HeadRowCtx ??= new Episode.RowContext
             {
                 Tone = Tone, Play = _play, Menu = s_menu, Overlay = Controls.IsNullOverlay(overlay) ? null : overlay,
@@ -890,10 +1007,13 @@ public readonly partial struct Show
                     Controls.SelectionBar(selected, _selectionCommands, standalone: true, bottomPadding: BottomReserve, minCount: 1),
                 ],
             };
+            // The strip's 30 DIP are ALWAYS reserved: a filter that leaves one year takes the strip's rows away, and a list
+            // that widened by 30 for it (then narrowed again on the way back) reflowed every row sideways — and every
+            // width-derived thing in the head with it.
             return new BoxEl
             {
                 Direction = 0, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f, AlignItems = FlexAlign.Stretch,
-                Children = years.Length > 1 ? [list, YearStrip(years, _stickyMonth, _jumpYear)] : [list],
+                Children = [list, years.Length > 1 ? YearStrip(years, _stickyMonth, _jumpYear) : YearStripReserve()],
             };
         }
 
@@ -946,6 +1066,8 @@ public readonly partial struct Show
         readonly IReadSignal<ReaderItem> _item;
         readonly Func<ShowReaderShape.ItemKind> _kindOf;
         readonly Func<Episode.RowItem> _rowOf;
+        readonly Action<RectF> _onBounds;
+        float _loggedDeclared, _loggedMeasured;
 
         public ReaderSlot(ReaderHost host, BoundItemScope<ReaderItem> scope)
         {
@@ -955,6 +1077,15 @@ public readonly partial struct Show
             _item = item;
             _kindOf = () => item.Value.Kind;
             _rowOf = () => item.Value.Row;
+            _onBounds = OnBounds;
+        }
+
+        /// <summary>This slot's ARRANGED height, checked against its extent (<see cref="ReaderHost.CheckExtent"/>). The
+        /// kind and the marks are read at the moment of the report — a recycled slot reports for the item it holds now.</summary>
+        void OnBounds(RectF r)
+        {
+            var it = _item.Peek();
+            _host.CheckExtent(it.Kind, (it.Row.Marks & Episode.RowMarks.NoRule) != 0, r.H, ref _loggedDeclared, ref _loggedMeasured);
         }
 
         public override Element Render()
@@ -976,6 +1107,7 @@ public readonly partial struct Show
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Padding = new Edges4(pad, 0f, pad, 0f),
+                OnBoundsChanged = _onBounds,
                 Children = [body],
             };
         }
@@ -1285,6 +1417,145 @@ public static class ShowReaderRules
 
     /// <summary>The ledger slot is present once the head is decided and is not a new visitor's.</summary>
     public static bool LedgerShown(Head head) => head is Head.Returning or Head.CaughtUp or Head.Unavailable;
+
+    // ── results mode ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>RESULTS MODE: a status filter or a find is on, so the list is the answer to a question and the visit head
+    /// (hero, up next, new since) is HIDDEN — not filtered: it is still built from every episode (parity #25), it just is
+    /// not painted, because a ~500-DIP head above one result reads as part of the results and pushes them below the fold.
+    /// Sort alone never counts (parity #26): newest/oldest reorders the same list. <paramref name="find"/> is trimmed here,
+    /// like the find itself (<see cref="Matches"/>).</summary>
+    public static bool ResultsMode(Episode.Rules.Status status, ReadOnlySpan<char> find)
+        => status != Episode.Rules.Status.All || !find.Trim().IsEmpty;
+
+    /// <summary>The ONE episode the body must not repeat as a row: the continue hero's, and only while the head is SHOWN
+    /// (<paramref name="headShown"/> = not <see cref="ResultsMode"/>) and is the Returning head that owns one. -1 = none.
+    /// A find that matches nothing but the hero's episode lists it as a row; the head is not there to show it.</summary>
+    public static int HeadSlot(Head head, int resumeSlot, bool headShown)
+        => headShown && head == Head.Returning && resumeSlot > 0 ? resumeSlot : -1;
+
+    /// <summary>The episodes the "new since you were here" block shows, as a mask PARALLEL to the pcts (and the
+    /// <paramref name="publishedAt"/> dates): <see cref="ShowLedger.IsFresh"/>, made only once progress is
+    /// <paramref name="trusted"/> (settled and succeeded — "new" is a claim about the listener's history). Returns how
+    /// many are set. Up next (<see cref="ListenNext.Pick"/>'s <c>skip</c>) never offers one of them.</summary>
+    public static int FreshMask(ReadOnlySpan<float> pcts, ReadOnlySpan<int> publishedAt, int lastPlayedAt, bool trusted, Span<bool> into)
+    {
+        int n = 0;
+        for (int i = 0; i < pcts.Length && i < into.Length; i++)
+        {
+            bool fresh = trusted && ShowLedger.IsFresh(pcts[i], i < publishedAt.Length ? publishedAt[i] : 0, lastPlayedAt);
+            into[i] = fresh;
+            if (fresh) n++;
+        }
+        return n;
+    }
+
+    // ── the up-next card's lead ──────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>What leads an up-next card: the episode's numeral, its 40 × 40 cover, or nothing at all.</summary>
+    public enum MiniLeadKind : byte { Numeral, Art, None }
+
+    /// <summary>The lead for ONE row of up-next cards, decided from the row as a whole so a row NEVER mixes a numeral on
+    /// one card with a cover (or a blank) on the next: every card numbered → numerals (the design, a serial's); otherwise
+    /// every card has a cover → covers (the number, if any, moves into the meta line, like a list row); otherwise no lead
+    /// column at all — never a blank reserved numeral gutter (the "missing image" on a show whose newest episodes are
+    /// unnumbered). An episode that has not loaded yet is neutral: the caller passes what it knows.</summary>
+    public static MiniLeadKind MiniLead(bool allNumbered, bool allHaveArt)
+        => allNumbered ? MiniLeadKind.Numeral : allHaveArt ? MiniLeadKind.Art : MiniLeadKind.None;
+
+    // ── the head's columns ───────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The reader's gutters (24, 16 under the narrow arm) and the date strip's reserved column.</summary>
+    public const float Pad = 24f, PadNarrow = 16f, YearStripWidth = 30f;
+    /// <summary>The head's cards: the door's and the up-next card's minimum width, the gap between them, and how many
+    /// columns at most (the up-next block holds three, the doors three).</summary>
+    public const float DoorMin = Controls.DoorMinWidth, MiniMin = 220f, TileGap = 12f;
+    public const int TileColumns = 3;
+
+    /// <summary>How many EQUAL columns fit <paramref name="width"/> DIP: the prototype's <c>repeat(auto-fit, minmax(min,
+    /// 1fr))</c> as arithmetic — floor((width + gap) / (min + gap)), at least 1, at most <paramref name="max"/>. The head
+    /// lays its cards out in this many columns instead of letting a wrapping row decide (a wrap row that narrowed with
+    /// clean contents overflowed into a line nobody had counted and painted over the next section). A width of 0 is "not
+    /// measured yet" and reads the widest arm.</summary>
+    public static int Columns(float width, float min, float gap, int max)
+    {
+        max = Math.Max(1, max);
+        if (!(width > 0f)) return max;
+        return Math.Clamp((int)MathF.Floor((width + gap) / (min + gap)), 1, max);
+    }
+
+    /// <summary>The head's CONTENT width inside a reader <paramref name="readerWidth"/> wide: both gutters and the date
+    /// strip's reserve (always there, see the strip) taken off. 0 = not measured.</summary>
+    public static float HeadWidth(float readerWidth)
+        => readerWidth > 0f ? MathF.Max(0f, readerWidth - YearStripWidth - 2f * (Narrow(readerWidth) ? PadNarrow : Pad)) : 0f;
+
+    /// <summary>The door and up-next column counts for a reader <paramref name="readerWidth"/> wide.</summary>
+    public static (int Doors, int Minis) HeadColumns(float readerWidth)
+    {
+        float w = HeadWidth(readerWidth);
+        return (Columns(w, DoorMin, TileGap, TileColumns), Columns(w, MiniMin, TileGap, TileColumns));
+    }
+
+    // ── the list's extents ───────────────────────────────────────────────────────────────────────────────────────────
+    //
+    // What the list ASSUMES an item is before it is measured. The seeds are estimates (a head's height is text, the foot's
+    // is a shelf); the chrome whose height is ARITHMETIC — the rail, the month header, the "episodes" header — is exact,
+    // and `Show.UI.cs` states those heights on the elements themselves so the number here and the number there cannot drift
+    // (ReaderHost.CheckExtent logs the day they do).
+
+    /// <summary>The sticky toolbar plane (<c>Show.RailHeight</c>).</summary>
+    public const float RailExtent = 48f;
+    /// <summary>The "episodes N" header at rest: the 30-DIP pivot line and 12 under it.</summary>
+    public const float HeaderLine = 30f, HeaderFoot = 12f, HeaderExtent = HeaderLine + HeaderFoot;
+    /// <summary>A month header: 14 of air above (none right under the "episodes" head), a 24-DIP line, 4 under it.</summary>
+    public const float GroupAir = 14f, GroupLine = 24f, GroupFoot = 4f;
+    /// <summary>A row before it is measured (title + blurb + meta + the padding of a 64-DIP art tile).</summary>
+    public const float RowSeed = 96f;
+    /// <summary>The head's seeds by arm. Pending: 12 + the 30-DIP pivot + 12 + the 124-DIP hero seed + 26. New: the doors
+    /// (a 132-DIP card under a pivot) and the full about. Returning: the pivot, the hero, one row of up-next cards and the
+    /// 26-DIP section gap; new since adds its header and one <see cref="RowSeed"/> per fresh episode. CaughtUp: a pivot and
+    /// a line. Unavailable: one quiet line.</summary>
+    public const float PendingSeed = 204f, NewSeed = 420f, ReturningSeed = 278f, NewSinceChrome = 68f,
+                       CaughtUpSeed = 90f, UnavailableSeed = 58f;
+    /// <summary>The foot: the load-more pill and the "More like this" shelf over the dock reserve.</summary>
+    public const float FootSeed = 400f;
+
+    /// <summary>A month header's height: its air only when it does not sit right under the "episodes" head.</summary>
+    public static float GroupExtent(bool noRule) => (noRule ? 0f : GroupAir) + GroupLine + GroupFoot;
+
+    /// <summary>What an UNMEASURED item of <paramref name="kind"/> is assumed to be (DIP) — the list's per-kind seed.
+    /// A hidden head (results mode) is 0: it paints nothing.</summary>
+    public static float SeedExtent(ShowReaderShape.ItemKind kind, Head head, bool headShown, bool noRule, int fresh) => kind switch
+    {
+        ShowReaderShape.ItemKind.Rail => RailExtent,
+        ShowReaderShape.ItemKind.Head => !headShown ? 0f : head switch
+        {
+            Head.New => NewSeed,
+            Head.Returning => ReturningSeed + (fresh > 0 ? NewSinceChrome + fresh * RowSeed : 0f),
+            Head.CaughtUp => CaughtUpSeed,
+            Head.Unavailable => UnavailableSeed,
+            _ => PendingSeed,
+        },
+        ShowReaderShape.ItemKind.Header => HeaderExtent,
+        ShowReaderShape.ItemKind.Group => GroupExtent(noRule),
+        ShowReaderShape.ItemKind.Foot => FootSeed,
+        _ => RowSeed,
+    };
+
+    /// <summary>The kinds whose arranged height is ARITHMETIC, and that height; <see cref="float.NaN"/> for a kind whose
+    /// height is its content's (a row, the head, the foot — and the "episodes" header while it carries the empty arm).</summary>
+    public static float ExactExtent(ShowReaderShape.ItemKind kind, bool noRule, bool headerEmpty) => kind switch
+    {
+        ShowReaderShape.ItemKind.Rail => RailExtent,
+        ShowReaderShape.ItemKind.Group => GroupExtent(noRule),
+        ShowReaderShape.ItemKind.Header when !headerEmpty => HeaderExtent,
+        _ => float.NaN,
+    };
+
+    /// <summary>Does an ARRANGED height disagree with the declared one by more than half a DIP? An unarranged item
+    /// (<paramref name="measured"/> 0) is not a measurement, and an undeclared extent (NaN) has nothing to disagree with.</summary>
+    public static bool ExtentDisagrees(float declared, float measured)
+        => measured > 0f && !float.IsNaN(declared) && MathF.Abs(measured - declared) > 0.5f;
 
     /// <summary>The find (§4): the trimmed query in the title or the description, ordinal-ignore-case; an empty query
     /// matches everything.</summary>

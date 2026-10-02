@@ -38,6 +38,40 @@ function capitalize(s: string): string {
   return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** Open again because a report from a newer version than the one it was resolved in arrived. */
+export function isRegressed(issue: AppIssue): boolean {
+  return issue.status === "open" && issue.regressedAt !== null;
+}
+
+/** "Resolved in ≤ 0.3.1 · reopened 2 days ago · 2 regressions" — the facts behind a Regressed badge. */
+export function regressionSummary(issue: AppIssue): string {
+  const parts = [
+    issue.resolvedVersion ? `Resolved in ≤ ${issue.resolvedVersion}` : "Was resolved",
+    issue.regressedAt ? `reopened ${formatRelativeTime(issue.regressedAt)}` : "reopened",
+    `${issue.regressions} regression${issue.regressions === 1 ? "" : "s"}`,
+  ];
+  return parts.join(" · ");
+}
+
+/** The Issues grid's status `Badge`; an open issue that regressed shows a filled "Regressed" badge instead
+ *  of "Open", with the regression facts as its tooltip description. */
+export function IssueStatusBadge({ issue }: { issue: AppIssue }) {
+  if (isRegressed(issue)) {
+    return (
+      <Tooltip content={regressionSummary(issue)} relationship="description">
+        <Badge appearance="filled" color="danger" size="small">
+          Regressed
+        </Badge>
+      </Tooltip>
+    );
+  }
+  return (
+    <Badge appearance="tint" color={statusBadgeColor(issue.status)} size="small">
+      {capitalize(issue.status)}
+    </Badge>
+  );
+}
+
 export interface SelectionState {
   isSelected: (fp: string) => boolean;
   toggle: (fp: string) => void;
@@ -87,11 +121,7 @@ export const issueColumns: TableColumnDefinition<AppIssue>[] = [
     columnId: "status",
     compare: (a, b) => a.status.localeCompare(b.status),
     renderHeaderCell: () => "Status",
-    renderCell: (item) => (
-      <Badge appearance="tint" color={statusBadgeColor(item.status)} size="small">
-        {capitalize(item.status)}
-      </Badge>
-    ),
+    renderCell: (item) => <IssueStatusBadge issue={item} />,
   }),
   createTableColumn<AppIssue>({
     columnId: "count",

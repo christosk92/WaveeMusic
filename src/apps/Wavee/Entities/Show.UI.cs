@@ -1,8 +1,8 @@
 // ── Entities/Show.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
 // the show READER's pieces (W1-W3): the sticky word rail's body, the visit head (start here + about │ continue + up
 // next + new since │ caught up), the "episodes N" header and its empty arm, the month headers, the foot, the seeds the
-// skeletons derive from, the rail's publisher line and meta — plus PaneHeader, the library pane's 128-cover show
-// header (the twin of Album.PaneHeader, library rework §5.4)
+// skeletons derive from, the rail's publisher line and meta. The library pane's show header IS Album.PaneHeader (one
+// geometry for both kinds, library rework §5.4) — the show pane calls it directly
 //
 // Role: UI
 // Owner: P
@@ -42,15 +42,16 @@ public readonly partial struct Show
     public const float BottomReserve = Design.Dock.Reserve + Spacing.XXL;
 
     // ── the reader's rhythm (the prototype's .reader / .sec / .wordrail) ──
-    const float ReaderPad = Spacing.XXL, ReaderPadNarrow = Spacing.L;
+    const float ReaderPad = ShowReaderRules.Pad, ReaderPadNarrow = ShowReaderRules.PadNarrow;
     /// <summary>The sticky rail's plane (W1: 40 + the underline's air) — also the list's shared top clip
     /// (<c>ScrollOptions.ItemClipTopInset</c>, a MOUNT-TIME value). The toolbar is ONE row at every rung of
     /// <see cref="ShowToolbarLayout"/>'s collapse ladder, so these two numbers never move: nothing inside the plane
     /// may open a second line.</summary>
-    const float RailHeight = 48f, RailBodyHeight = 40f;
-    const float SectionGap = 26f, HeadTop = 12f, GroupTopPad = 14f, ItemEstimate = 96f;
-    const float HeroArt = 96f, HeroArtNarrow = 64f, HeroTrackMax = 420f, HeroSeedHeight = 124f, MiniMin = 220f;
-    const float AboutMeasure = 620f, PivotSize = 24f, PivotLine = 30f;
+    const float RailHeight = ShowReaderRules.RailExtent, RailBodyHeight = 40f;
+    const float SectionGap = 26f, HeadTop = 12f, GroupTopPad = ShowReaderRules.GroupAir, ItemEstimate = ShowReaderRules.RowSeed;
+    const float HeroArt = 96f, HeroArtNarrow = 64f, HeroTrackMax = 420f, HeroSeedHeight = 124f;
+    const float MiniArt = 40f, MiniNumeral = 34f;
+    const float AboutMeasure = 620f, PivotSize = 24f, PivotLine = ShowReaderRules.HeaderLine, YearStripW = ShowReaderRules.YearStripWidth;
     const int SeedRows = 8;
     const string DisplayFace = "Segoe UI Variable Display";
 
@@ -151,13 +152,26 @@ public readonly partial struct Show
     static Element Column(List<Element> kids, float gap)
         => new BoxEl { Direction = 1, Gap = gap, MinWidth = 0f, Children = kids.ToArray() };
 
-    /// <summary>The prototype's <c>repeat(auto-fit, minmax(N, 1fr))</c>: a wrapping row whose tiles grow from N.</summary>
-    static Element Tiles(List<Element> tiles, float min)
+    /// <summary>The prototype's <c>repeat(auto-fit, minmax(N, 1fr))</c> as COMPUTED equal columns
+    /// (<see cref="ShowReaderRules.Columns"/>): rows of <paramref name="cols"/> tiles, each tile an equal share of its row,
+    /// a short last row padded with empty shares so its tiles keep the others' width. Never a wrapping row — the head's
+    /// height is then the arithmetic of its rows, and nothing can overflow into a line a cached measure never counted.</summary>
+    static Element EqualRows(List<Element> tiles, int cols)
     {
-        var kids = new Element[tiles.Count];
-        for (int i = 0; i < kids.Length; i++)
-            kids[i] = new BoxEl { Direction = 1, Grow = 1f, Basis = min, MinWidth = min, Children = [tiles[i]] };
-        return new BoxEl { Direction = 0, Wrap = true, Gap = Spacing.M, MinWidth = 0f, Children = kids };
+        cols = Math.Max(1, cols);
+        var rows = new List<Element>((tiles.Count + cols - 1) / cols);
+        for (int at = 0; at < tiles.Count; at += cols)
+        {
+            var cells = new Element[cols];
+            for (int c = 0; c < cols; c++)
+                cells[c] = new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = at + c < tiles.Count ? new[] { tiles[at + c] } : Array.Empty<Element>(),
+                };
+            rows.Add(new BoxEl { Direction = 0, Gap = ShowReaderRules.TileGap, MinWidth = 0f, Children = cells });
+        }
+        return rows.Count == 1 ? rows[0] : new BoxEl { Direction = 1, Gap = ShowReaderRules.TileGap, MinWidth = 0f, Children = rows.ToArray() };
     }
 
     static string Joined(string a, string b) => a.Length == 0 ? b : b.Length == 0 ? a : a + " · " + b;
@@ -165,18 +179,20 @@ public readonly partial struct Show
     // ══ 3. THE RAIL BODY (item 0's content — the sticky root itself is a RAW element, Show.Page.cs) ═════════════════
 
     /// <summary>The reader's toolbar — ONE row, <see cref="RailHeight"/> DIP, at EVERY width. Never a horizontal
-    /// <c>ScrollView</c> (the scrollbar the owner reported) and never a measure-and-classify pass over the labels:
+    /// <c>ScrollView</c> (the scrollbar the owner reported) and never a squeezed chip:
     /// <code>
-    ///   Full         all 128  unplayed 41  in progress 3  played 84  ······  [find …]  │  newest oldest  [select]
-    ///   FindIcon     all 128  unplayed 41  in progress 3  played 84  ······  [search]  │  newest oldest  [select]
-    ///   CompactSort  all 128  unplayed 41  in progress 3  played 84  ······  [search] [sort ▾] [select]
-    ///   (find open)  [ find … ..................................................................]  [close]
+    ///   Full         All 326  Unplayed 320  In progress 5  Played 1   [⌕ Find in this show ]  │  Newest Oldest  [✓]
+    ///   FindIcon     All 326  Unplayed 320  In progress 5  Played 1   ⌕  │  Newest Oldest  [✓]
+    ///   CompactSort  All 326  Unplayed 320  In progress 5  Played 1   ⌕  ⇅  [✓]
+    ///   FilterMenu   [Unplayed 320 ▾]                                 ⌕  ⇅  [✓]
+    ///   (find open at a collapsed stage)  the chips stay; [⌕ why ger ........ ✕] takes the sort/select area
     /// </code>
-    /// The stage is <see cref="ShowToolbarLayout.Of"/> over the rail's measured width — two named breakpoints, nothing
-    /// else. Opening the collapsed find swaps the row's MIDDLE for the field plus a close affordance (which clears the
-    /// query), so the plane's height never moves, and no arm may wrap: a second line would resize the list's mount-time
-    /// clip inset. Re-renders on the stage and the find toggle (and, at <see cref="ToolbarStage.CompactSort"/> only, the
-    /// sort order that names its menu button); every word, count and the box itself binds the page's own signals.</summary>
+    /// The stage is <see cref="ShowToolbarLayout.For"/> over THIS row's own arranged width and what its rails measured
+    /// (<c>Controls.Words.Rail</c>'s <c>onMeasured</c>), with 16 DIP of hysteresis — computed by the host's memo, so this
+    /// component re-renders only when the STAGE moves (or the find toggles). Opening the collapsed find swaps the right
+    /// group for the field plus a close affordance (which clears the query), so the plane's height never moves, and no arm
+    /// may wrap: a second line would resize the list's mount-time clip inset. Every word, count and the box itself binds
+    /// the page's own signals.</summary>
     sealed class RailBody(ReaderHost host) : Component
     {
         public override Element Render()
@@ -187,42 +203,103 @@ public readonly partial struct Show
             bool compact = host.Narrow?.Value ?? false;
             var m = host.Model;
             float pad = compact ? ReaderPadNarrow : ReaderPad;
-            var kids = new List<Element>(6);
-            if (stage != ToolbarStage.Full && finding)
+            // LEFT: the chips at their natural width — or, at the last stage only, the menu that folds them.
+            Element left = stage == ToolbarStage.FilterMenu
+                ? FilterMenu(host, m, overlay) with { Key = "tb:left" }
+                : FilterWords(host, m) with { Key = "tb:left" };
+            // RIGHT: find · divider · sort · select, as far as the stage keeps them. An open find at a collapsed stage
+            // takes this very area over (the chips stay).
+            var right = new List<Element>(4);
+            bool takeover = stage != ToolbarStage.Full && finding;
+            if (takeover)
             {
-                kids.Add(FindField(m, fill: true));
-                kids.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, host.CloseFind, host.Tone));
+                right.Add(FindField(m, fill: true));
+                right.Add(RailToggle(Icons.Cancel, Loc.Get(Strings.Detail.Filter.Clear), s_never, host.CloseFind, host.Tone));
             }
             else
             {
-                kids.Add(FilterWords(host, m));
-                kids.Add(stage == ToolbarStage.Full
+                right.Add(stage == ToolbarStage.Full
                     ? FindField(m, fill: false)
                     : RailToggle(Icons.Search, Loc.Get(Strings.Podcast.Find), s_never, host.OpenFind, host.Tone));
-                if (stage == ToolbarStage.CompactSort)
+                if (stage is ToolbarStage.Full or ToolbarStage.FindIcon)
                 {
-                    kids.Add(SortMenu(m, host.Tone, overlay));
+                    right.Add(RailDivider());
+                    right.Add(Controls.Words.Rail(host.SortWords!, m.Order, host.Tone, onMeasured: host.OnSortMeasured));
                 }
                 else
                 {
-                    kids.Add(RailDivider());
-                    kids.Add(Controls.Words.Rail(host.SortWords!, m.Order, host.Tone));
+                    right.Add(SortMenu(m, host.Tone, overlay));
                 }
-                kids.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), host.IsSelecting, host.ToggleSelecting, host.Tone));
+                right.Add(RailToggle(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), host.IsSelecting, host.ToggleSelecting, host.Tone));
             }
+            var group = new BoxEl
+            {
+                Key = "tb:right", Direction = 0, Gap = ShowToolbarLayout.Gap, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                Shrink = 0f, Children = right.ToArray(),
+            };
+            // The open field fills the whole area (the chips stay at their natural width on its left).
+            if (takeover) group = group with { Grow = 1f, Shrink = 1f, Basis = 0f };
+            // The toolbar measures ITSELF (its own arranged width, gutters included) against what its rails measured.
             return new BoxEl
             {
-                Direction = 0, Height = RailBodyHeight, Gap = Spacing.L, AlignItems = FlexAlign.Center, MinWidth = 0f,
-                Padding = new Edges4(pad, 0f, pad, 0f), Children = kids.ToArray(),
+                Direction = 0, Height = RailBodyHeight, Gap = ShowToolbarLayout.Gap, AlignItems = FlexAlign.Center,
+                Justify = FlexJustify.SpaceBetween, MinWidth = 0f, OnBoundsChanged = host.OnToolbarBounds,
+                Padding = new Edges4(pad, 0f, pad, 0f), Children = [left, group],
             };
         }
     }
 
-    /// <summary>The filter words as a `fill` rail: a horizontal-scroll viewport (never a wrap — a second line would grow
-    /// the sticky plane, which is the list's mount-time clip inset) that feathers instead of hard-clipping, and is
-    /// itself the row's flexible child — it takes whatever width the find box / sort words / select toggle leave it.</summary>
+    /// <summary>The filter chips at their NATURAL width — a rail that never shrinks and never scrolls (the toolbar picks a
+    /// stage only when they fit; the last stage folds them into <see cref="FilterMenu"/>). It reports its measure to the
+    /// toolbar's stage rule.</summary>
     static Element FilterWords(ReaderHost host, ReaderModel m)
-        => Controls.Words.Rail(host.FilterWords!, m.Status, host.Tone, fill: true);
+        => Controls.Words.Rail(host.FilterWords!, m.Status, host.Tone, onMeasured: host.OnFiltersMeasured);
+
+    /// <summary>The last stage's chips: ONE button saying the selected filter ("Unplayed 320 ▾") whose menu holds the four
+    /// as radio rows. The label and its count are binds over the model — the toolbar re-renders on stages, never on a
+    /// selection or a count — and the accessible name is the control's, since the label alone cannot say what it is.</summary>
+    static Element FilterMenu(ReaderHost host, ReaderModel m, IOverlayService? overlay)
+    {
+        var tone = host.Tone;
+        var box = new BoxEl
+        {
+            Direction = 0, Gap = Spacing.XS, Height = 30f, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+            Corners = Radii.ControlAll, Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+            ClickRequestsContext = true,
+            Children =
+            [
+                Design.Type.DenseTitle("") with { Text = Prop.Of(() => FilterLabelOf(m, m.Status.Value)), MaxLines = 1 },
+                Icon(Icons.ChevronDown, 10f) with { Color = Prop.Of(() => tone()) },
+            ],
+        }.Interactive(Interaction.Subtle);
+        if (!Controls.IsNullOverlay(overlay)) box = box.WithContextMenu(overlay, () => FilterMenuOf(m));
+        return Controls.Named(box, Loc.Get(Strings.Detail.Filter.Short));
+    }
+
+    static readonly string[] s_filterKeys =
+        [Strings.Podcast.Filter.All, Strings.Podcast.Filter.Unplayed, Strings.Podcast.Filter.InProgress, Strings.Podcast.Filter.Played];
+
+    /// <summary>"Unplayed 320": the chip's word and, once progress is trusted, its count.</summary>
+    static string FilterLabelOf(ReaderModel m, int status)
+    {
+        string word = Loc.Get(s_filterKeys[Math.Clamp(status, 0, s_filterKeys.Length - 1)]);
+        var s = m.Read();
+        string count = status switch { 1 => s.CountUnplayed, 2 => s.CountProgress, 3 => s.CountPlayed, _ => s.CountAll };
+        return count.Length == 0 ? word : word + " " + count;
+    }
+
+    static ContextMenuModel FilterMenuOf(ReaderModel m)
+    {
+        var rows = new MenuFlyoutItem[s_filterKeys.Length];
+        int current = m.Status.Peek();
+        for (int i = 0; i < rows.Length; i++)
+        {
+            int status = i;
+            rows[i] = MenuFlyoutItem.RadioItem(FilterLabelOf(m, status), current == status, () => m.Status.Value = status);
+        }
+        return new ContextMenuModel(rows);
+    }
 
     /// <summary>The hairline between the find box and the sort words.</summary>
     static Element RailDivider() => new BoxEl
@@ -278,7 +355,11 @@ public readonly partial struct Show
 
     // ══ 4. THE VISIT HEAD (item 1) ═══════════════════════════════════════════════════════════════════════════════════
 
-    readonly record struct HeadStamp(ShowReaderRules.Head Kind, bool Narrow, ulong Fold, ColorF Tone);
+    /// <param name="Shown">Is the head painted (false in results mode — the box is then empty, mounted at the same list
+    /// position, and its height corrects to 0)?</param>
+    /// <param name="Doors">The door and up-next column counts (<see cref="ShowReaderRules.HeadColumns"/>): the head
+    /// re-renders when they change, never per resize frame.</param>
+    readonly record struct HeadStamp(ShowReaderRules.Head Kind, bool Narrow, ulong Fold, ColorF Tone, bool Shown, int Doors, int Minis);
 
     /// <summary>The first screen the visitor needs (W1/W2): New → start-here doors + the full about; Returning → the
     /// continue hero, up next, new since you were here; CaughtUp → one line with the usual release day; Unavailable →
@@ -295,7 +376,8 @@ public readonly partial struct Show
             _stamp = () =>
             {
                 var s = host.Model.Read();
-                return new HeadStamp(s.Head, host.Narrow?.Value ?? false, s.HeadFold, host.Tone());
+                var (doors, minis) = ShowReaderRules.HeadColumns(host.MeasuredWidth(subscribe: true));
+                return new HeadStamp(s.Head, host.Narrow?.Value ?? false, s.HeadFold, host.Tone(), s.HeadShown, doors, minis);
             };
             _pending = () => host.Model.Read().Head == ShowReaderRules.Head.Pending;
             _content = () => HeadBody(host);
@@ -303,7 +385,9 @@ public readonly partial struct Show
 
         public override Element Render()
         {
-            _ = UseComputed(_stamp).Value;
+            var stamp = UseComputed(_stamp).Value;
+            // Results mode: nothing painted, the slot stays mounted (and keeps its place in the list).
+            if (!stamp.Shown) return new BoxEl();
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Padding = new Edges4(0f, HeadTop, 0f, SectionGap),
@@ -365,7 +449,7 @@ public readonly partial struct Show
             sections.Add(Column(
             [
                 SecHead(Pivot(Loc.Get(Strings.Podcast.StartHere)), Loc.Get(serial ? Strings.Podcast.SerialHint : Strings.Podcast.EpisodicHint), stack: narrow),
-                Tiles(doors, Controls.DoorMinWidth),
+                EqualRows(doors, ShowReaderRules.HeadColumns(h.MeasuredWidth(subscribe: false)).Doors),
             ], Spacing.M));
         sections.Add(About(s, h));
         return Column(sections, SectionGap);
@@ -379,14 +463,29 @@ public readonly partial struct Show
         string meta = dated && e.Knows(EpisodeFields.Published) ? Joined(Episode.DateLabel(e.PublishedAt), length) : length;
         var model = h.Model;
         return Controls.Door(new DoorData(label, title, DescriptionOf(e), meta, lead, n > 0 ? FormatCache.Int(n) : null,
-            Play: () => Episode.Invoke(e, () => model.PlayInShow(e)), Open: () => Episode.OpenPage(e), Tone: h.Tone));
+            Play: () => Episode.Invoke(e, () => model.PlayInShow(e)), Open: () => Episode.OpenPage(e), Tone: h.Tone,
+            Menu: MenuOf(h, e)), OverlayOf(h));
     }
 
     /// <summary>The trailer door: its own row (outside the membership), played alone — not as the show context.</summary>
     static Element TrailerDoor(Episode t, ReaderHost h)
         => Controls.Door(new DoorData(Loc.Get(Strings.Podcast.Trailer), t.Title, DescriptionOf(t),
             t.Knows(EpisodeFields.Duration) ? Episode.DurationLabel(t.DurationMs) : null, Lead: false, Numeral: null,
-            Play: () => Episode.Invoke(t, () => Playback.PlayContext(t.Id)), Open: () => Episode.OpenPage(t), Tone: h.Tone));
+            Play: () => Episode.Invoke(t, () => Playback.PlayContext(t.Id)), Open: () => Episode.OpenPage(t), Tone: h.Tone,
+            Menu: MenuOf(h, t)), OverlayOf(h));
+
+    /// <summary>The head's episode menu — the SAME one a list row attaches (<see cref="ReaderHost.HeadRowCtx"/>'s
+    /// <c>Menu</c>, built at OPEN time), for a head surface that owns its own right-click (a door, the hero, an up-next
+    /// card). Null without a menu seam.</summary>
+    static Func<ContextMenuModel?>? MenuOf(ReaderHost h, Episode e)
+        => h.HeadRowCtx is { Menu: { } menu } ? () => menu(e) : null;
+
+    /// <summary>The overlay service the head's menus open through (null under the null overlay — then nothing attaches).</summary>
+    static IOverlayService? OverlayOf(ReaderHost h) => h.HeadRowCtx?.Overlay;
+
+    /// <summary><paramref name="el"/> with the head's episode menu attached to it (a right-click anywhere on the card).</summary>
+    static Element WithMenu(ReaderHost h, Episode e, BoxEl el)
+        => MenuOf(h, e) is { } menu && OverlayOf(h) is { } overlay ? ContextMenu.Attach(el, overlay, menu) : el;
 
     static string? DescriptionOf(Episode e)
         => e.IsValid && e.Knows(EpisodeFields.About) && !e.DescriptionId.IsEmpty ? Entities.Strings.Resolve(e.DescriptionId) : null;
@@ -422,13 +521,33 @@ public readonly partial struct Show
         if (s.ResumeSlot > 0) cont.Add(Hero(new Episode(s.ResumeSlot), h, narrow));
         if (s.UpNext.Length > 0)
         {
-            var minis = new List<Element>(s.UpNext.Length);
-            for (int i = 0; i < s.UpNext.Length; i++) minis.Add(Mini(new Episode(s.UpNext[i])));
-            cont.Add(Tiles(minis, MiniMin));
+            var episodes = new Episode[s.UpNext.Length];
+            for (int i = 0; i < episodes.Length; i++) episodes[i] = new Episode(s.UpNext[i]);
+            var lead = MiniLeadOf(episodes);
+            var minis = new List<Element>(episodes.Length);
+            for (int i = 0; i < episodes.Length; i++) minis.Add(Mini(episodes[i], lead, h));
+            cont.Add(EqualRows(minis, ShowReaderRules.HeadColumns(h.MeasuredWidth(subscribe: false)).Minis));
         }
-        var sections = new List<Element>(2) { Column(cont, Spacing.M) };
+        var sections = new List<Element>(2);
+        // New since can be all there is to come back to (up next never repeats it): then there is no "continue" section.
+        if (cont.Count > 1) sections.Add(Column(cont, Spacing.M));
         if (s.Fresh.Length > 0) sections.Add(NewSince(s, h, narrow));
         return Column(sections, SectionGap);
+    }
+
+    /// <summary>The lead for the up-next set (<see cref="ShowReaderRules.MiniLead"/>), from what is KNOWN of its
+    /// episodes: one that has not loaded yet is neutral, so a cold head does not decide on missing data (the head rebuilds
+    /// as each lands — its fold carries every episode's version — and the placeholders reserve the lead decided so far).</summary>
+    static ShowReaderRules.MiniLeadKind MiniLeadOf(Episode[] episodes)
+    {
+        bool numbered = true, art = true;
+        foreach (var e in episodes)
+        {
+            if (!e.IsValid || !e.Knows(EpisodeFields.Title)) continue;
+            numbered &= e.Number > 0;
+            art &= e.Knows(EpisodeFields.Image) && Controls.ArtUrl(e.ImageId) is { Length: > 0 };
+        }
+        return ShowReaderRules.MiniLead(numbered, art);
     }
 
     /// <summary>The continue hero, behind the reader's ONE reveal gate (<see cref="Episode.Reveal"/>): the card once the
@@ -460,16 +579,22 @@ public readonly partial struct Show
         var model = h.Model;
         string title = e.Knows(EpisodeFields.Title) ? Episode.TitleSansNumber(e.Title, e.Number) : "";
         string line = Strings.Podcast.LeftOf(TemplateMarkText, Episode.DurationLabel(e.DurationMs));
-        string leftWords = Episode.DurationWords(Episode.LeftMinutes(e.ProgressMs, e.DurationMs));
         int at = line.IndexOf(TemplateMark);
-        var spans = new List<TextSpan>(3);
-        if (at < 0) spans.Add(new TextSpan(line));
-        else
-        {
-            if (at > 0) spans.Add(new TextSpan(line[..at], Weight: 400, Color: Tok.TextSecondary, Size: 12.5f));
-            spans.Add(new TextSpan(leftWords));
-            if (at + 1 < line.Length) spans.Add(new TextSpan(line[(at + 1)..], Weight: 400, Color: Tok.TextSecondary, Size: 12.5f));
-        }
+        // "17 min left of 31 min": the minutes follow the PLAYBACK clock like a list row's (Episode.PlaybackProgressOf —
+        // the playing episode reads the player's position), through ONE reused span buffer; a fire that says the same
+        // thing re-shapes nothing. A template with no mark has nothing to count down.
+        string before = at > 0 ? line[..at] : "", after = at >= 0 && at + 1 < line.Length ? line[(at + 1)..] : "";
+        var buffer = new SpanBuffer();
+        Prop<TextSpans> spans = at < 0
+            ? (TextSpans)new[] { new TextSpan(line) }
+            : Prop.Of(() =>
+            {
+                buffer.Clear();
+                if (before.Length > 0) buffer.Add(new TextSpan(before, Weight: 400, Color: Tok.TextSecondary, Size: 12.5f));
+                buffer.Add(new TextSpan(s_leftWords.Get(Episode.PlaybackProgressOf(e).LeftMinutes, s_leftWordsFormat)));
+                if (after.Length > 0) buffer.Add(new TextSpan(after, Weight: 400, Color: Tok.TextSecondary, Size: 12.5f));
+                return buffer.Current;
+            });
         var copy = new BoxEl
         {
             Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f,
@@ -480,12 +605,12 @@ public readonly partial struct Show
                     Size = 17f, LineHeight = 22f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 2, Wrap = TextWrap.Wrap,
                     Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
-                new SpanTextEl(spans.ToArray())
+                new SpanTextEl(spans)
                 {
                     FontFamily = DisplayFace, Size = 30f, LineHeight = 34f, Weight = 300, CharSpacing = -20f, Color = t,
                     MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                 },
-                new BoxEl { Direction = 1, MaxWidth = HeroTrackMax, MinWidth = 0f, Children = [Episode.ProgressRule(Episode.ReaderPctOf(e), tone, 4f)] },
+                new BoxEl { Direction = 1, MaxWidth = HeroTrackMax, MinWidth = 0f, Children = [HeroRule(e, tone)] },
             ],
         };
         float edge = narrow ? HeroArtNarrow : HeroArt;
@@ -506,7 +631,7 @@ public readonly partial struct Show
                 Children = [new BoxEl { Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [cover, copy] }, pill],
             }
             : new BoxEl { Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = [cover, copy, pill] };
-        return new BoxEl
+        return WithMenu(h, e, new BoxEl
         {
             Direction = 1, MinWidth = 0f, Padding = Edges4.All(14f), Corners = Radii.CardAll, Fill = Tok.FillCardDefault,
             BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
@@ -514,27 +639,49 @@ public readonly partial struct Show
             Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Episode.OpenPage(e),
             WhileHover = s_lift, Transition = MotionTok.ControlFast,
             Children = [body],
-        };
+        });
     }
+
+    /// <summary>The hero's 4-DIP track in the tone: a fill whose compositor scale follows the PLAYBACK clock
+    /// (<see cref="Episode.PlaybackProgressOf"/>), like a list row's rule — the persisted progress it used to be built from
+    /// stood still while the episode played.</summary>
+    static Element HeroRule(Episode e, Func<ColorF> tone) => new BoxEl
+    {
+        Direction = 0, Height = 4f, Corners = CornerRadius4.All(2f), Fill = Tok.FillSubtleTertiary,
+        ClipToBounds = true, Shrink = 0f,
+        Children =
+        [
+            new BoxEl
+            {
+                Grow = 1f, Fill = Prop.Of(tone), TransformOriginX = 0f,
+                Transform = Prop.Of(() => Affine2D.Scale(MathF.Max(0.001f, Episode.PlaybackProgressOf(e).Pct), 1f)),
+            },
+        ],
+    };
+
+    static readonly FormatCache<int> s_leftWords = new();
+    static readonly Func<int, string> s_leftWordsFormat = static minutes => Episode.DurationWords(minutes);
 
     /// <summary>An up-next mini card behind the reader's ONE reveal gate (<see cref="Episode.Reveal"/>): the card once
     /// the episode's identity is there, a chip-shaped shimmer while it is coming, "unavailable · retry" when its ask
-    /// failed — an unresolved chip is never an empty plate.</summary>
-    static Element Mini(Episode e) => Episode.Reveal(e, () => MiniCard(e), s_miniSeed, () => MiniFailed(e));
+    /// failed — an unresolved chip is never an empty plate. All three reserve the SAME <paramref name="lead"/>
+    /// (<see cref="ShowReaderRules.MiniLead"/>), so the reveal cross-dissolves in place.</summary>
+    static Element Mini(Episode e, ShowReaderRules.MiniLeadKind lead, ReaderHost h)
+        => Episode.Reveal(e, () => MiniCard(e, lead, h), () => MiniPlate(lead, "", null, s_miniSeedTitle, s_miniSeedMeta, trailing: null, onClick: null),
+                          () => MiniFailed(e, lead));
 
     /// <summary>U+2007 FIGURE SPACE runs: the derived shimmer draws a bar only for a run that MEASURES (the row's own
     /// seed idiom, Episode.UI.cs).</summary>
     static readonly string s_miniSeedTitle = new((char)0x2007, 18), s_miniSeedMeta = new((char)0x2007, 10);
 
-    static readonly Func<Element> s_miniSeed = static () => MiniPlate(numeral: "", title: s_miniSeedTitle, meta: s_miniSeedMeta, trailing: null, onClick: null);
-
-    static Element MiniFailed(Episode e)
-        => MiniPlate(numeral: "", title: Loc.Get(Strings.Podcast.Reader.Unavailable), meta: "",
+    static Element MiniFailed(Episode e, ShowReaderRules.MiniLeadKind lead)
+        => MiniPlate(lead, "", null, Loc.Get(Strings.Podcast.Reader.Unavailable), "",
                      trailing: Button.Subtle(Loc.Get(Strings.Podcast.Reader.Retry), () => Episode.RetryRow(e)), onClick: null);
 
-    /// <summary>The up-next mini card: the numeral 22/300 · the title 13/600 on one line · "28 min · Sep 15" (or "N min
-    /// left" when started). Opens the episode.</summary>
-    static Element MiniCard(Episode e)
+    /// <summary>The up-next mini card: its lead (the numeral 22/300, or the 40 × 40 cover) · the title 13/600 on one line ·
+    /// "28 min · Sep 15" (or "N min left" when started). Without a numeral lead the number rides the meta line
+    /// ("#35 · 32 min · Sep 27"), like a list row's. Opens the episode; right-click is the episode menu.</summary>
+    static Element MiniCard(Episode e, ShowReaderRules.MiniLeadKind lead, ReaderHost h)
     {
         int n = e.Knows(EpisodeFields.Title) ? e.Number : 0;
         string title = e.Knows(EpisodeFields.Title) ? Episode.TitleSansNumber(e.Title, n) : "";
@@ -542,37 +689,50 @@ public readonly partial struct Show
         string length = started ? Episode.LeftLabel(e.ProgressMs, e.DurationMs)
                       : e.Knows(EpisodeFields.Duration) ? Episode.DurationLabel(e.DurationMs) : "";
         string meta = Joined(length, e.Knows(EpisodeFields.Published) ? Episode.DateLabel(e.PublishedAt) : "");
-        return MiniPlate(n > 0 ? FormatCache.Int(n) : "", title, meta, trailing: null, onClick: () => Episode.OpenPage(e));
+        if (lead != ShowReaderRules.MiniLeadKind.Numeral && n > 0) meta = Joined("#" + FormatCache.Int(n), meta);
+        string? art = e.Knows(EpisodeFields.Image) ? Controls.ArtUrl(e.ImageId) : null;
+        return MiniPlate(lead, n > 0 ? FormatCache.Int(n) : "", art, title, meta, trailing: null, onClick: () => Episode.OpenPage(e), h, e);
     }
 
     /// <summary>The mini's ONE plate — the card, its seed twin and its failure arm are the same geometry, so the reveal
-    /// cross-dissolves in place. A plate with no <paramref name="onClick"/> is not a link.</summary>
-    static Element MiniPlate(string numeral, string title, string meta, Element? trailing, Action? onClick)
+    /// cross-dissolves in place. A plate with no <paramref name="onClick"/> is not a link. A (B) surface (lead · title ·
+    /// meta): it takes only the shared rules, the hand and the tab stop of the click owner it is, and a tooltip on the
+    /// title only while that is cut. The lead column exists only when <paramref name="lead"/> says so — never a blank
+    /// reserved gutter.</summary>
+    static Element MiniPlate(ShowReaderRules.MiniLeadKind lead, string numeral, string? artUrl, string title, string meta,
+                             Element? trailing, Action? onClick, ReaderHost? host = null, Episode episode = default)
     {
-        var kids = new List<Element>(3)
+        var titleText = Design.Type.DenseTitle(title) with
         {
-            new BoxEl
-            {
-                Width = 34f, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
-                Children = [new TextEl(numeral) { FontFamily = DisplayFace, Size = 22f, LineHeight = 28f, Weight = 300, Color = Tok.TextTertiary, MaxLines = 1 }],
-            },
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                Children =
-                [
-                    Design.Type.DenseTitle(title) with
-                    {
-                        Color = onClick is null ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-                        Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                    Design.Type.MicroMeta(meta) with
-                    {
-                        Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                    },
-                ],
-            },
+            Color = onClick is null ? Tok.TextSecondary : Tok.TextPrimary, MaxLines = 1, Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
+        var kids = new List<Element>(3);
+        if (lead == ShowReaderRules.MiniLeadKind.Numeral)
+            kids.Add(new BoxEl
+            {
+                Width = MiniNumeral, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
+                Children = [new TextEl(numeral) { FontFamily = DisplayFace, Size = 22f, LineHeight = 28f, Weight = 300, Color = Tok.TextTertiary, MaxLines = 1 }],
+            });
+        else if (lead == ShowReaderRules.MiniLeadKind.Art)
+            kids.Add(new BoxEl
+            {
+                Width = MiniArt, Height = MiniArt, Shrink = 0f, Corners = CornerRadius4.All(6f), ClipToBounds = true,
+                Children = [Controls.Artwork(artUrl, MiniArt, MiniArt, 6f)],
+            });
+        kids.Add(new BoxEl
+        {
+            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+            Children =
+            [
+                // Only a live card tips (the seed and the failure arm are not links, and their title is no name).
+                onClick is null ? titleText : Controls.TrimmedTitle(titleText, title),
+                Design.Type.MicroMeta(meta) with
+                {
+                    Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+            ],
+        });
         if (trailing is not null) kids.Add(trailing);
         var plate = new BoxEl
         {
@@ -580,10 +740,15 @@ public readonly partial struct Show
             Corners = CornerRadius4.All(6f), Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeDividerDefault,
             Children = kids.ToArray(),
         };
-        return onClick is null ? plate : plate with
+        if (onClick is null) return plate;
+        // The hand and the tab stop are the surface rule's; the role stays Hyperlink (the card navigates to the episode).
+        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
+        var link = plate with
         {
-            HoverFill = Tok.FillSubtleSecondary, Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
+            HoverFill = Tok.FillSubtleSecondary, Role = AutomationRole.Hyperlink, Focusable = mode.OwnsFocus,
+            Cursor = SurfaceRules.Cursor(in mode), OnClick = onClick,
         };
+        return host is null ? link : WithMenu(host, episode, link);
     }
 
     /// <summary>"new since you were here  2" · mark all played — then the fresh episodes as reader rows (the SAME
@@ -646,9 +811,11 @@ public readonly partial struct Show
         {
             var st = UseComputed(_stamp).Value;
             string count = st.Filtered ? Strings.Podcast.CountOf(FormatCache.Int(st.View), FormatCache.Int(st.Total)) : FormatCache.Int(st.Total);
-            var kids = new List<Element>(2) { PivotTemplate(Strings.Podcast.EpisodesCount(TemplateMarkText), count) };
-            if (st.IsEmpty) kids.Add(EmptyArm(st.EmptyShow, _host.Model.ResetView));
-            return new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, Spacing.M), Children = kids.ToArray() };
+            // The pivot's line is STATED (30): the header's extent is arithmetic (ShowReaderRules.HeaderExtent) until it
+            // carries the empty arm, and ReaderHost.CheckExtent holds the two numbers to each other.
+            var kids = new List<Element>(2) { PivotTemplate(Strings.Podcast.EpisodesCount(TemplateMarkText), count) with { Height = PivotLine } };
+            if (st.IsEmpty) kids.Add(EmptyArm(st.EmptyShow, _host.ResetView));
+            return new BoxEl { Direction = 1, Gap = Spacing.S, MinWidth = 0f, Padding = new Edges4(0f, 0f, 0f, ShowReaderRules.HeaderFoot), Children = kids.ToArray() };
         }
     }
 
@@ -690,10 +857,10 @@ public readonly partial struct Show
             new BoxEl { Height = item.Value(static it => (it.Row.Marks & Episode.RowMarks.NoRule) != 0 ? 0f : GroupTopPad) },
             new TextEl(item.Text(static it => it.GroupKey, s_monthWords, s_monthWord))
             {
-                FontFamily = DisplayFace, Size = 18f, LineHeight = 24f, Weight = 300, CharSpacing = -10f,
-                Color = Tok.TextTertiary, MaxLines = 1,
+                FontFamily = DisplayFace, Size = 18f, LineHeight = ShowReaderRules.GroupLine, Height = ShowReaderRules.GroupLine,
+                Weight = 300, CharSpacing = -10f, Color = Tok.TextTertiary, MaxLines = 1,
             },
-            new BoxEl { Height = Spacing.XS },
+            new BoxEl { Height = ShowReaderRules.GroupFoot },
         ],
     };
 
@@ -759,7 +926,7 @@ public readonly partial struct Show
             string text = s_years.Get(year, s_yearFormat);
             rows[i] = new BoxEl
             {
-                Width = 30f, Height = 15f, ZStack = true, Corners = CornerRadius4.All(3f),
+                Width = YearStripW, Height = 15f, ZStack = true, Corners = CornerRadius4.All(3f),
                 Role = AutomationRole.Button, TabStop = false, Cursor = CursorId.Hand, HoverFill = Tok.FillSubtleSecondary,
                 OnClick = () => jump(year),
                 Children =
@@ -772,10 +939,14 @@ public readonly partial struct Show
         return new BoxEl
         {
             Key = "rd:years",
-            Direction = 1, Width = 30f, Shrink = 0f, Justify = FlexJustify.Center,
+            Direction = 1, Width = YearStripW, Shrink = 0f, Justify = FlexJustify.Center,
             Padding = new Edges4(0f, RailHeight, Spacing.XS, BottomReserve), Children = rows,
         };
     }
+
+    /// <summary>The strip's column when the view holds no more than one year (nothing to jump between): the SAME 30 DIP,
+    /// empty. Same key as the strip, so the two reconcile in place and the list never changes width with the filter.</summary>
+    static Element YearStripReserve() => new BoxEl { Key = "rd:years", Direction = 1, Width = YearStripW, Shrink = 0f };
 
     static TextEl YearInk(string text, ushort weight, Prop<ColorF> ink) => Design.Type.MicroMeta(text) with
     {
@@ -814,10 +985,11 @@ public readonly partial struct Show
         public override Element Render()
         {
             var st = UseComputed(_stamp).Value;
-            var show = _host.Model.Read().Show;
             var children = new List<Element>();
             if (st.CanLoadMore) children.Add(LoadMorePill(st.Paging, _host.Model.LoadMore));
-            children.Add(Embed.Comp(new PodcastReaderUI.RecommendationProps(show.Uri.Text, true), static () => new PodcastReaderUI.Recommendations()));
+            // The request is the READER's (ReaderHost.Similar): this foot is remounted whenever the list's items move, and
+            // a request it owned went out again each time.
+            children.Add(Embed.Comp(new PodcastReaderUI.SimilarProps(_host.Similar), static () => new PodcastReaderUI.SimilarShelf()));
             return new BoxEl
             {
                 Direction = 1, MinWidth = 0, Gap = Spacing.L,
@@ -885,57 +1057,4 @@ public readonly partial struct Show
         meta = Joined(meta, word);
         return sinceYear > 0 ? Joined(meta, Strings.Podcast.Since(sinceYear.ToString(CultureInfo.InvariantCulture))) : meta;
     }
-
-    // ══ 7. THE LIBRARY PANE'S HEADER ═════════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>The library pane's show header — the twin of <see cref="Album.PaneHeader"/>: the same 128 cover (r 6,
-    /// <c>Elevation.Card</c>), the same title link (28/34/600, 2 lines) and the same meta rung, with the publisher line
-    /// standing where an album bills its artists (<paramref name="attribution"/>). ONE geometry for both kinds, so a
-    /// selection crossing album → show moves nothing but the words (library rework §5.4).
-    /// <para>A forward, not a copy: it stays a named seam so the day a show wants its own stance, THIS body changes and
-    /// the album's is left alone. The signature is byte-identical to the album's on purpose — <c>LibraryShowPane</c> only
-    /// re-points its call.</para></summary>
-    public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta)
-        => new BoxEl
-        {
-            // Report 2c: ONE target. The cover, the eyebrow, the title, the publisher and the meta rung are a single
-            // focusable Button that opens the show — not a title-only hyperlink with four inert neighbours, which is
-            // both a smaller pointer target and a keyboard stop that skips most of what it names. The geometry is the
-            // album pane's, rung for rung (Album.PaneHeader), so a selection crossing album -> show moves only words.
-            Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Shrink = 0f,
-            Height = Album.PaneHeaderHeight, ClipToBounds = true,
-            Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
-            Corners = Radii.CardAll, Cursor = CursorId.Hand, Focusable = true, Role = AutomationRole.Button, OnClick = open,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = Album.PaneCover, Height = Album.PaneCover, Shrink = 0f, Corners = Radii.CardAll,
-                    ClipToBounds = true, Shadow = Elevation.Card,
-                    Children = [Controls.Artwork(cover, Album.PaneCover, Album.PaneCover, Radii.Card, decodePx: 256)],
-                },
-                new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, Gap = Album.PaneHeaderGap, MinWidth = 0f, MinHeight = 0f,
-                    ClipToBounds = true,
-                    Children =
-                    [
-                        Design.Type.Eyebrow(eyebrow) with { Color = Tok.TextTertiary },
-                        new TextEl(title)
-                        {
-                            Size = Album.PaneTitleSize, LineHeight = Album.PaneTitleLine, Weight = 600,
-                            Color = Tok.TextPrimary, HoverColor = Tok.AccentTextPrimary,
-                            BrushTransitionMs = Design.Motion.Faster, MaxLines = Album.PaneTitleMaxLines,
-                            Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
-                        attribution,
-                        new TextEl(meta)
-                        {
-                            Size = Album.PaneHeaderMetaSize, LineHeight = Album.PaneHeaderMetaLine, Color = Tok.TextTertiary,
-                            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                        },
-                    ],
-                },
-            ],
-        }.Interactive(Interaction.Subtle);
 }

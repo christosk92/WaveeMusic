@@ -213,7 +213,7 @@ public class SearchFacetRulesTests
     [InlineData(EntityKind.Playlist, true, true, true, false)]
     [InlineData(EntityKind.Show, true, true, true, false)]
     [InlineData(EntityKind.Episode, true, true, false, false)]
-    [InlineData(EntityKind.User, false, false, false, true)]
+    [InlineData(EntityKind.User, false, true, false, true)]      // a profile: "Open page" (#161), still no Play and no menu
     [InlineData(EntityKind.Unknown, false, false, false, false)]
     public void TheHitGatesFollowTheKind(EntityKind kind, bool play, bool open, bool menu, bool round)
     {

@@ -389,14 +389,9 @@ public readonly partial struct Track
             },
             new BoxEl
             {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 6f, Children = [PendingBar(132f, 11f), PendingBar(84f, 9f)],
+                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = 6f, Children = [Controls.PendingBar(132f, 11f), Controls.PendingBar(84f, 9f)],
             },
         ],
-    };
-
-    static Element PendingBar(float w, float h) => new BoxEl
-    {
-        Width = w, Height = h, Shrink = 0f, AlignSelf = FlexAlign.Start, Corners = CornerRadius4.All(h / 2f), Fill = Tok.FillSubtleSecondary,
     };
 
     static Element VersionRow(Track version, Track parent, byte kind, string rowKey, bool isNow, float[]? peaks)

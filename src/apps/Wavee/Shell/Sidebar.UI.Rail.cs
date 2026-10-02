@@ -61,7 +61,7 @@ public static partial class Sidebar
         public static Element Frame(PaneView owner)
         {
             var plan = owner.RailPlan;
-            if (plan.Rows.Count == 0 && Binder is null) return Skeletons.RailStack(PendingTiles);
+            if (plan.Rows.Count == 0 && Binder is null) return SeedStack(PendingTiles);
 
             bool hasHead = owner.HasRailHead;
             bool hasFooter = owner.HasRailFooter;
@@ -213,9 +213,11 @@ public static partial class Sidebar
         }
 
         /// <summary>A projected entry: an app route is a glyph tile; everything else is its cover (circular for an
-        /// artist). A TRACK plays (it has no route); everything else navigates. Only an EDITABLE playlist is a deposit
+        /// artist) as the shared media surface at the rail shape (<c>SidebarCards.RailOf</c>).
+        /// A TRACK plays (it has no route); everything else navigates. Only an EDITABLE playlist is a deposit
         /// target at 56 DIP (and it reuses the expanded row's spec, so the two cannot diverge); every other cover stays pure
-        /// navigation, and the drop machinery keeps a drag crossing it transparent.</summary>
+        /// navigation, and the drop machinery keeps a drag crossing it transparent. An entry whose identity has not landed is
+        /// a BONE — Trap 5 (never the raw uri fragment) and a label-less tile with nothing to put in its tooltip.</summary>
         static Element EntryTile(PaneView owner, string sectionId, SidebarLibraryEntry entry, string sel)
         {
             string key = PaneView.RailTileKey(in entry);
@@ -227,24 +229,10 @@ public static partial class Sidebar
                     () => owner.Navigate(routeKey, null), dest.Title);
             }
 
-            // Same gate as EntryRow's (Trap 5): unresolved shows nothing, never the raw uri fragment.
-            string label = entry.Name.Length > 0 ? entry.Name
-                : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? PaneText.ShortUri(entry.Uri)
-                : "";
-            var art = Cover.Art(entry.Cover, entry.MosaicTiles, entry.Id, ArtEdge,
-                circular: entry.Circular || entry.Kind == SidebarEntryKind.Artist);
-            string? route = entry.RouteKey;
-            Action? click = null;
-            if (entry.IsTrack) click = () => owner.PlayTrack(entry.Uri);
-            else if (route is { Length: > 0 } r) click = () => owner.Navigate(r, entry.Name, in entry);
-            bool selected = route is { Length: > 0 } && string.Equals(route, sel, StringComparison.Ordinal);
-
-            if (entry.Kind != SidebarEntryKind.Playlist || !entry.CanEdit)
-                return ArtTile(key, art, selected, click, label);
-
+            if (SidebarCardRules.IsPending(in entry)) return SeedTile(key);
+            var data = SidebarCards.RailOf(owner, sectionId, in entry, sel);
             string uri = entry.Uri;
-            var drop = owner.ResourceDropSpec(sectionId, slot: -1, uri, entry.Name, railCueUri: uri);
-            return ArtTile(key, art, selected, click, label, drop, () => owner.IsRailDropActive(uri));
+            return ArtTile(key, data, data.Drop is null ? null : () => owner.IsRailDropActive(uri));
         }
 
         /// <summary>A folder cannot disclose in a 56-DIP strip, so its tile opens the side flyout (the pane's
@@ -302,6 +290,9 @@ public static partial class Sidebar
         {
             Element mark = Ui.Icon(glyph, 16f, selected ? Tok.TextPrimary : Tok.TextSecondary);
             bool armed = drop is not null && dropActive is not null;
+            // A glyph tile is the sidebar's own grammar (not media), so it keeps its tree and takes only the shared RULE: the
+            // hand cursor and the Button role belong to an invokable box, never to a caller's whim.
+            var own = SurfaceRules.Ownership(inSlot: false, hasClick: onClick is not null);
             var tile = new BoxEl
             {
                 OnRealized = onRealized,
@@ -312,7 +303,8 @@ public static partial class Sidebar
                 Fill = selected ? global::Wavee.Design.Colors.SelectedRest : ColorF.Transparent,
                 HoverFill = selected ? global::Wavee.Design.Colors.SelectedHover : Tok.FillSubtleSecondary,
                 PressedFill = selected ? global::Wavee.Design.Colors.SelectedPressed : Tok.FillSubtleTertiary,
-                Role = onClick is null ? AutomationRole.None : AutomationRole.Button,
+                Role = own.Role,
+                Cursor = SurfaceRules.Cursor(in own),
                 OnClick = onClick,
                 DropTarget = drop,
                 ZStack = armed,
@@ -322,40 +314,46 @@ public static partial class Sidebar
             return Tip(tile, tooltip);
         }
 
-        /// <summary>An ART tile (a cover at <see cref="ArtEdge"/>); selection is the 2-DIP accent ring (the pill is
-        /// expanded-only). An armed drop borrows the same ring plus an accent@0.35 wash over the cover, both on a BOUND
-        /// overlay painted exactly over the tile's own ring, so a tile that is selected AND armed still shows one ring.
-        /// The tooltip is the tile's only label and a drag never shows it — the chip caption names the target.</summary>
-        public static Element ArtTile(string key, Element art, bool selected, Action? onClick, string? tooltip = null,
-                                      DropTargetSpec? drop = null, Func<bool>? dropActive = null)
+        /// <summary>An ART tile: the shared media surface at the rail shape (<see cref="Shape.RailTile"/>) over a cover at
+        /// <see cref="ArtEdge"/>. It is label-less — the surface wraps itself in the tile's tooltip, the title IS the label,
+        /// and a drag never shows it (the chip caption names the target) — and its states are the surface's: the hand cursor,
+        /// the hover plate, the focus ring, the now-playing pill, and selection as the 2-DIP accent ring (the pill is
+        /// expanded-only). A <paramref name="data"/> with no click is the surface's DISPLAY-ONLY mode — a hand-placed entity
+        /// the pin scheme has no route for stays visible but inert (iron rule 9): no hand, Button role or tab stop, the
+        /// cover and the tooltip label unchanged. An armed drop (a spec in <paramref name="data"/> plus its <paramref name="dropActive"/> cue) adds
+        /// an accent@0.35 wash over the cover and a BOUND ring painted exactly over the tile's own, so a tile that is
+        /// selected AND armed still shows one ring. The wrapper pins the 40×40 box (the tooltip wrapper shrink-wraps a row).</summary>
+        public static Element ArtTile(string key, Controls.CardData data, Func<bool>? dropActive = null)
         {
-            bool armed = drop is not null && dropActive is not null;
-            var tile = new BoxEl
+            Element tile = Controls.Surface(data, global::Wavee.Shape.RailTile);
+            bool armed = data.Drop is not null && dropActive is not null;
+            return new BoxEl
             {
-                Key = key,
-                Width = Box, Height = Box, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Corners = CornerRadius4.All(8f),
-                BorderColor = selected ? Tok.AccentDefault : ColorF.Transparent,
-                BorderWidth = selected || armed ? 2f : 0f,
-                Role = onClick is null ? AutomationRole.None : AutomationRole.Button,
-                OnClick = onClick,
-                DropTarget = armed ? drop : null,
-                ZStack = armed,
-                Children = armed ? new Element[] { art, Wash(8f, dropActive!, ring: true) } : new Element[] { art },
+                Key = key, ZStack = true, Width = Box, Height = Box, Shrink = 0f,
+                Children = armed ? new Element[] { tile, Wash(Radii.Control, dropActive!, ring: true) } : new Element[] { tile },
             };
-            return Tip(tile.Interactive(Interaction.Subtle), tooltip);
+        }
+
+        /// <summary>One pending rail tile: the surface's own seed face at the rail shape (a 36 bone in a 40 box), disabled and
+        /// handler-less — the unit of the pending stack, and what an entry whose identity has not landed renders as.</summary>
+        static Element SeedTile(string? key = null) => new BoxEl
+        {
+            Key = key, Width = Box, Height = Box, Shrink = 0f,
+            Children = [Controls.Surface(Controls.CardData.Seed, global::Wavee.Shape.RailTile)],
+        };
+
+        /// <summary><paramref name="count"/> pending rail tiles at the rail's tile gap, centred.</summary>
+        static Element SeedStack(int count)
+        {
+            var kids = new Element[count < 0 ? 0 : count];
+            for (int i = 0; i < kids.Length; i++) kids[i] = SeedTile();
+            return new BoxEl { Direction = 1, Gap = Pitch - Box, AlignItems = FlexAlign.Center, Children = kids };
         }
 
         /// <summary>The short centred rule between rail bands (24×1, <c>Tok.TextTertiary</c> @ A 0.30, margin 4/4).</summary>
         public static Element Divider() => new BoxEl
         {
             Width = 24f, Height = 1f, Margin = new Edges4(0f, 4f, 0f, 4f), Fill = Tok.TextTertiary with { A = 0.3f },
-        };
-
-        /// <summary>One pending rail tile (40×40 r8 <c>FillSubtleSecondary</c>) — the unit of the pending stack.</summary>
-        public static Element Skeleton() => new BoxEl
-        {
-            Width = Box, Height = Box, Corners = CornerRadius4.All(8f), Fill = Tok.FillSubtleSecondary,
         };
 
         // The drop cue overlay: always mounted (a structural change would need a render), hit-transparent (it can never

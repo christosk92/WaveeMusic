@@ -64,7 +64,7 @@ public static partial class Actions
     // ══ 2. THE PROFILE MENU'S ROW TABLE (ch 19 §6.2) ════════════════════════════════════════════════════════════════
 
     /// <summary>One row slot of the profile menu, in order.</summary>
-    public enum ProfileRow : byte { Account, Settings, Play, Separator, Notifications, Friends, Theme, LogOut }
+    public enum ProfileRow : byte { Settings, Play, Separator, Notifications, Friends, Theme, LogOut, Profile }
 
     public static class ProfileRules
     {
@@ -72,13 +72,17 @@ public static partial class Actions
         /// form's extra 6 DIP of right padding. 90 → 76.</summary>
         public static float NameCap(float nameBudget) => nameBudget - 8f - 6f;
 
-        /// <summary>The rows, in order. Account and Settings always; <c>Play ▸</c> only when the build can play something
-        /// of its own (ABSENT, never disabled); Notifications and Friends only once the chrome ladder has folded them
-        /// out of the trailing island (never both places, never neither), behind a separator that exists only for them;
-        /// then Theme and Log out, each behind its own separator.</summary>
-        public static ProfileRow[] Rows(bool canPlay, bool actionsInMenu, bool hasNotifications)
+        /// <summary>The rows, in order. <c>Profile</c> first when the account has a user row to open
+        /// (<paramref name="hasProfile"/> — ABSENT otherwise, never disabled; #161) — the web account page is the own
+        /// profile's "Open account" button now, not a row — then Settings always; <c>Play ▸</c> only
+        /// when the build can play something of its own (ABSENT, never disabled); Notifications and Friends only once the
+        /// chrome ladder has folded them out of the trailing island (never both places, never neither), behind a
+        /// separator that exists only for them; then Theme and Log out, each behind its own separator.</summary>
+        public static ProfileRow[] Rows(bool canPlay, bool actionsInMenu, bool hasNotifications, bool hasProfile)
         {
-            var rows = new List<ProfileRow>(10) { ProfileRow.Account, ProfileRow.Settings };
+            var rows = new List<ProfileRow>(10);
+            if (hasProfile) rows.Add(ProfileRow.Profile);
+            rows.Add(ProfileRow.Settings);
             if (canPlay) rows.Add(ProfileRow.Play);
             bool notifications = actionsInMenu && hasNotifications;
             if (notifications || actionsInMenu) rows.Add(ProfileRow.Separator);

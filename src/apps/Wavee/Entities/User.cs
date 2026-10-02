@@ -48,16 +48,47 @@ namespace Wavee;
 [Flags]
 public enum UserFields : uint
 {
-    /// <summary>Display name and avatar — what an owner line, an added-by cell and a friend row need.</summary>
+    /// <summary>Display name, avatar and the brand avatar COLOUR — what an owner line, an added-by cell, a friend row and
+    /// the profile hero need. Kind 15 and the profile view both fill it.</summary>
     Identity = 1 << 0,
-    /// <summary>Follower / following counts. Only the account's own row ever carries them today.</summary>
+    /// <summary>THE PROFILE VIEW's facts (user-profile-view/v3, Spotify.Decode.Profile.cs): follower / following counts,
+    /// the public-playlist total, the CurrentUser / ShowFollows / AllowFollows / Unavailable flags — AND the two shelves
+    /// that ride the same answer (<see cref="Edges.ProfilePlaylists"/>, <see cref="Edges.ProfileArtists"/>), which is why
+    /// they have no FetchEdge: they are asked by asking the row for this group. Never persisted (a disk-restored Social
+    /// would leave the riding shelves unasked — profile pages plan, finding 3).</summary>
     Social = 1 << 1,
     /// <summary>The curated Liked-Songs chip set (<c>content-filter/v1/liked-songs</c>, ch 07 §7 G4). Its own group
     /// because its own service answers it, and because an EMPTY answer is a real publish: it is what hands the chip
     /// bar to the descriptor-derived fallback instead of leaving a stale curated bar up for the session.</summary>
     ContentFilters = 1 << 2,
+    /// <summary>Whether the VIEWER follows this user (<see cref="UserFlags.Followed"/>): the profile view's field 6, or
+    /// <c>isFollowingUsers</c> asked alone. Its own group because a follow write moves it alone (User.Follow.cs). Never
+    /// persisted.</summary>
+    Follow = 1 << 3,
 
-    All = Identity | Social | ContentFilters,
+    All = Identity | Social | ContentFilters | Follow,
+}
+
+/// <summary>User booleans as bits (P3), each written under its GROUP's mask: <see cref="SocialMask"/> by a Social answer,
+/// <see cref="FollowMask"/> by a Follow answer — so one never clears the other's bits.</summary>
+[Flags]
+public enum UserFlags : uint
+{
+    None = 0,
+    /// <summary>The profile view's <c>is_current_user</c> (f10): set only on the viewer's own profile.</summary>
+    CurrentUser = 1 << 0,
+    /// <summary><c>show_follows</c> (f24 — research §2 marks 23/24 as a guess).</summary>
+    ShowFollows = 1 << 1,
+    /// <summary><c>allow_follows</c> (f23, same caveat).</summary>
+    AllowFollows = 1 << 2,
+    /// <summary>The profile view answered 404: a KNOWN negative, staged so the planner neither retries it as an omission
+    /// (Fetch.Miss.cs) nor reads it as a failure.</summary>
+    Unavailable = 1 << 3,
+    /// <summary>The VIEWER follows this user (the <see cref="UserFields.Follow"/> group's one bit).</summary>
+    Followed = 1 << 4,
+
+    SocialMask = CurrentUser | ShowFollows | AllowFollows | Unavailable,
+    FollowMask = Followed,
 }
 
 /// <summary>What a <see cref="RootlistEdge"/>'s <c>Kind</c> byte means. The rootlist is a FLAT ordered stream with
@@ -91,7 +122,14 @@ public enum PinKind : byte { Unknown = 0, Playlist = 1, Album = 2, Artist = 3, S
 public sealed class UserTable : Table
 {
     public Column<StringId> Name, Image;
+    /// <summary>The brand avatar colour, 0xFFRRGGBB (kind 15 f11, the profile view f16, a list entry f11); 0 = none
+    /// stated. Identity group; a 0 never blanks a stated colour.</summary>
+    public Column<uint> Color;
     public Column<int> Followers, Following;
+    /// <summary>The profile view's <c>total_public_playlists_count</c> (f9). Social group.</summary>
+    public Column<int> PublicPlaylists;
+    /// <summary><see cref="UserFlags"/>, mask-merged per group (CommitUsers).</summary>
+    public Column<uint> Flags;
 
     /// <summary>This row's curated chips as a RANGE into two shared slabs (ch 07 §7 G4): written whole, read per paint.</summary>
     public Column<int> FilterStart, FilterCount;
@@ -103,8 +141,9 @@ public sealed class UserTable : Table
     /// <summary>Bump allocator over the two chip slabs; never reclaimed — the scope drops in one piece (P5, D9).</summary>
     public int FilterTail;
 
-    /// <summary>Per-group authority (D16); the chip set has its own rung (its own service).</summary>
-    public Column<byte> IdentityAuthority, ExtrasAuthority, FiltersAuthority;
+    /// <summary>Per-group authority (D16); the chip set has its own rung (its own service). <see cref="FollowAuthority"/>
+    /// is held at Local while a follow write is out (User.Follow.cs).</summary>
+    public Column<byte> IdentityAuthority, ExtrasAuthority, FiltersAuthority, FollowAuthority;
 
     public override EntityKind Kind => EntityKind.User;
 
@@ -152,13 +191,17 @@ public sealed class UserTable : Table
     {
         Name.EnsureCapacity(capacity);
         Image.EnsureCapacity(capacity);
+        Color.EnsureCapacity(capacity);
         Followers.EnsureCapacity(capacity);
         Following.EnsureCapacity(capacity);
+        PublicPlaylists.EnsureCapacity(capacity);
+        Flags.EnsureCapacity(capacity);
         FilterStart.EnsureCapacity(capacity);
         FilterCount.EnsureCapacity(capacity);
         IdentityAuthority.EnsureCapacity(capacity);
         ExtrasAuthority.EnsureCapacity(capacity);
         FiltersAuthority.EnsureCapacity(capacity);
+        FollowAuthority.EnsureCapacity(capacity);
     }
 }
 
@@ -408,7 +451,11 @@ public struct StagedUser : IStagedRow
     /// <summary>THE row's identity as the wire gave it (packed gid or uri text) — one field, one resolve.</summary>
     public StagedId Id;
     public TextRef Name, Image;
-    public int Followers, Following;
+    public int Followers, Following, PublicPlaylists;
+    /// <summary>0xFFRRGGBB, 0 = not stated.</summary>
+    public uint Color;
+    /// <summary><see cref="UserFlags"/> this answer asserts — applied per group under that group's mask.</summary>
+    public uint Flags;
     public uint Known;
     public Authority Authority;
 
@@ -465,6 +512,7 @@ public static partial class Entities
                 int slot = s.Slot(t, in row.Id);
                 if (slot == Table.None) continue;   // a row with no identity is not a row
                 var authority = row.Authority == Wavee.Authority.None ? s.Authority : row.Authority;
+                uint settledBefore = t.Settled(slot), took = 0;
 
                 if ((row.Known & (uint)UserFields.Identity) != 0
                     && t.Accepts(slot, (uint)UserFields.Identity, authority, in t.IdentityAuthority))
@@ -472,8 +520,21 @@ public static partial class Entities
                     // The authority ladder, not an "is it empty" test, picks the better name (D16); SetText AddRefs the new
                     // id and releases the overwritten one (defect 1).
                     t.SetText(ref t.Name, slot, s.Intern(row.Name));
-                    t.SetText(ref t.Image, slot, s.Intern(row.Image));
+                    // THE AVATAR (profile pages plan, finding 6): an incoming one passes the cover latch (a 64 never
+                    // replaces a visible 300; different art replaces); an EMPTY one blanks only when the speaker is the
+                    // user's own profile (Full: kind 15 / the profile view say "no image") — a Thin mention that merely
+                    // carried none says nothing about the avatar.
+                    if (!row.Image.IsEmpty)
+                    {
+                        var incoming = s.Intern(row.Image);
+                        if (Detail.CoverLatch.AcceptsImage(t.Image[slot], incoming)) t.SetText(ref t.Image, slot, incoming);
+                    }
+                    else if (authority >= Wavee.Authority.Full) t.ClearText(ref t.Image, slot);
+                    // 0 is "not stated", never a blank — except on a row's FIRST identity fill, where the column may still
+                    // hold the previous tenant of a recycled slot (FreeSlot does not zero it).
+                    if (row.Color != 0 || (t.Known[slot] & (uint)UserFields.Identity) == 0) t.Color[slot] = row.Color;
                     t.Applied(slot, (uint)UserFields.Identity, authority, ref t.IdentityAuthority);
+                    took |= (uint)UserFields.Identity;
                 }
 
                 if ((row.Known & (uint)UserFields.Social) != 0
@@ -481,8 +542,28 @@ public static partial class Entities
                 {
                     t.Followers[slot] = row.Followers;
                     t.Following[slot] = row.Following;
+                    t.PublicPlaylists[slot] = row.PublicPlaylists;
+                    t.Flags[slot] = (t.Flags[slot] & ~(uint)UserFlags.SocialMask) | (row.Flags & (uint)UserFlags.SocialMask);
                     t.Applied(slot, (uint)UserFields.Social, authority, ref t.ExtrasAuthority);
+                    took |= (uint)UserFields.Social;
                 }
+
+                if ((row.Known & (uint)UserFields.Follow) != 0
+                    && t.Accepts(slot, (uint)UserFields.Follow, authority, in t.FollowAuthority))
+                {
+                    t.Flags[slot] = (t.Flags[slot] & ~(uint)UserFlags.FollowMask) | (row.Flags & (uint)UserFlags.FollowMask);
+                    t.Applied(slot, (uint)UserFields.Follow, authority, ref t.FollowAuthority);
+                    took |= (uint)UserFields.Follow;
+                }
+                // THE ACCOUNT ROW'S LEDGER (2026-10-02: the account flyout and the own profile stayed unloaded while
+                // every answer for slot 1 "missed"): one line per staged account row — what it carried, what landed,
+                // what the row already knew and at which per-group authorities — so a refusal names itself.
+                if (slot == Current.MeSlot && Log.IsEnabled(WaveeLogLevel.Info))
+                    Log.Info("entities", "user.commit me staged=0x" + row.Known.ToString("x", CultureInfo.InvariantCulture)
+                        + " took=0x" + took.ToString("x", CultureInfo.InvariantCulture)
+                        + " settledBefore=0x" + settledBefore.ToString("x", CultureInfo.InvariantCulture)
+                        + " authority=" + authority + " auth(i/s/f)=" + t.IdentityAuthority[slot] + "/" + t.ExtrasAuthority[slot]
+                        + "/" + t.FollowAuthority[slot] + " name=" + (row.Name.IsEmpty ? "-" : "set"));
             }
         }
         CommitContentFilters(s);
@@ -528,12 +609,17 @@ public static partial class Entities
 
 // ── persistence (Store.cs's per-kind seam) ──────────────────────────────────────────────────────────────────────────
 
-/// <summary>How a user row survives a restart. Persists <see cref="UserFields.Identity"/> and
-/// <see cref="UserFields.Social"/> only — the curated <see cref="UserFields.ContentFilters"/> chip set is NOT
-/// persisted: it lives in two shared, session-local slabs addressed by a bump-allocated RANGE
+/// <summary>How a user row survives a restart. Persists <see cref="UserFields.Identity"/> ONLY (name, avatar and the brand
+/// colour). <see cref="UserFields.Social"/> and <see cref="UserFields.Follow"/> are never persisted: a disk-restored
+/// Social would leave the two shelves that ride the profile view unasked (a shimmer forever — profile pages plan, finding
+/// 3), and the follow bit is the viewer's live state. The curated <see cref="UserFields.ContentFilters"/> chip set is NOT
+/// persisted either: it lives in two shared, session-local slabs addressed by a bump-allocated RANGE
 /// (<see cref="UserTable.FilterStart"/>/<see cref="UserTable.FilterCount"/>), and its own service answers it
 /// quickly, so the gap costs one extra round trip rather than a wrong range into a slab this session never filled
 /// the same way.
+/// <para>THE DDL CHANGED with the profile pages (the <c>color</c> column in, <c>followers</c> / <c>following</c> /
+/// <c>extras_auth</c> out): <c>Store.FileName</c> fingerprints the DDL, so every install moves to a NEW
+/// <c>library.&lt;fp&gt;.db</c> once — one cold first launch after the update, by design.</para>
 /// <para>STORE THREAD (both halves) — see <see cref="ShowShape"/>'s note; the shape and the rule are the same for
 /// every kind.</para></summary>
 public sealed class UserShape : KindShape
@@ -542,13 +628,11 @@ public sealed class UserShape : KindShape
     [
         new("name", StoreType.Text, StoreColumnFlags.Title),
         new("image", StoreType.Text),
-        new("followers", StoreType.Int),
-        new("following", StoreType.Int),
+        new("color", StoreType.Int),
         new("identity_auth", StoreType.Int, StoreColumnFlags.Authority),
-        new("extras_auth", StoreType.Int, StoreColumnFlags.Authority),
     ];
 
-    const uint PersistedFields = (uint)(UserFields.Identity | UserFields.Social);
+    const uint PersistedFields = (uint)UserFields.Identity;
 
     public override EntityKind Kind => EntityKind.User;
     public override string Table => "user";
@@ -563,25 +647,11 @@ public sealed class UserShape : KindShape
         {
             ref readonly var row = ref span[i];
             uint known = row.Known & PersistedFields;
-            bool identity = (known & (uint)UserFields.Identity) != 0;
-            bool social = (known & (uint)UserFields.Social) != 0;
-
-            if (identity)
-            {
-                w.Text(0, row.Name);
-                w.Text(1, row.Image);
-                w.Int(4, (int)row.Authority);
-            }
-            else { w.Null(0); w.Null(1); w.Null(4); }
-
-            if (social)
-            {
-                w.Int(2, row.Followers);
-                w.Int(3, row.Following);
-                w.Int(5, (int)row.Authority);
-            }
-            else { w.Null(2); w.Null(3); w.Null(5); }
-
+            if (known == 0) continue;                                  // Social / Follow / the 404 negative: never on disk
+            w.Text(0, row.Name);
+            w.Text(1, row.Image);
+            if (row.Color != 0) w.Int(2, row.Color); else w.Null(2);   // NULL coalesces: a colourless answer keeps the stored one
+            w.Int(3, (int)row.Authority);
             w.Emit(row.Id, known, Entities.Now, Entities.Now);
         }
     }
@@ -592,10 +662,9 @@ public sealed class UserShape : KindShape
         row.Id = r.Uri;
         row.Name = r.Text(0);
         row.Image = r.Text(1);
-        row.Followers = (int)r.Int(2);
-        row.Following = (int)r.Int(3);
+        row.Color = (uint)r.Int(2);
         row.Known = r.Known & PersistedFields;
-        row.Authority = (Authority)Math.Max(r.Int(4), r.Int(5));
+        row.Authority = (Authority)r.Int(3);
     }
 }
 

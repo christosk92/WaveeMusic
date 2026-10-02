@@ -406,8 +406,8 @@ public static partial class Modules
             Element? subtitle = Trimmed(item.Subtitle) is { } sub
                 ? Design.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f } : null;
             Element? trailing = Trimmed(item.Meta) is { } meta ? Design.Type.TrackMeta(meta) with { Shrink = 0f } : null;
-            rows.Add(Controls.MediaRow(new Controls.CardData(uri, title, subtitle, Trimmed(item.ImageUrl), play, play, ShowMenu: false),
-                artEdge: 40f, trailing: item.IsLive ? LiveBadge() : trailing) with { Key = key + ":row:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            rows.Add(Controls.Surface(new Controls.CardData(uri, title, subtitle, Trimmed(item.ImageUrl), play, play, ShowMenu: false)
+                { Trailing = item.IsLive ? LiveBadge() : trailing }, Shape.Row(40f)) with { Key = key + ":row:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
         budget -= take;
         if (rows.Count == 0) return null;
@@ -433,8 +433,8 @@ public static partial class Modules
                 : play ?? NoOp;
             Element? subtitle = Trimmed(item.Subtitle) is { } sub
                 ? Design.Type.TrackMeta(sub) with { MaxLines = 2, Wrap = TextWrap.Wrap, MinWidth = 0f } : null;
-            cards.Add(Controls.ShelfCard(new Controls.CardData(playable ?? route ?? "", title, subtitle, Trimmed(item.ImageUrl), open, play,
-                ShowMenu: false), CardWidth) with { Key = key + ":card:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            cards.Add(Controls.Surface(new Controls.CardData(playable ?? route ?? "", title, subtitle, Trimmed(item.ImageUrl), open, play,
+                ShowMenu: false), Shape.Shelf(captionLines: 2), CardWidth) with { Key = key + ":card:" + i.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
         budget -= take;
         if (cards.Count == 0) return null;
@@ -583,6 +583,7 @@ public static partial class Modules
             Children =
             [
                 PagedShelf.Create(model.Shelf, (item, _, w) => VideoCard(item, moduleId, w),
+                    onInvoke: (item, _) => OpenVideo(item, moduleId),   // the slot owns the click: the card's own open
                     header: model.ShelfTitle is { Length: > 0 } t ? Controls.SectionHeader(t) : null,
                     minCardW: 220f, maxCardW: 300f, measured: true,
                     keyOf: static (item, i) => item.EntityId ?? item.PlayableId ?? i.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -591,28 +592,37 @@ public static partial class Modules
         };
     }
 
+    /// <summary>A 16:9 shelf cell: the shared surface's <see cref="Shape.Video"/> — the FAB at rest when the item names a
+    /// playable (no playable, no dead FAB), the now-playing overlay keyed on that playable's uri, the hover plate and the
+    /// hand cursor — over the thumb at 16:9, a 2-line title and the subtitle · meta as the caption. A module's item is
+    /// neither a track nor an entity the app owns, so it carries no menu and no drag.</summary>
     static Element VideoCard(WatchItem item, string moduleId, float width)
     {
         string? playable = item.PlayableId is { Length: > 0 } pid ? ModuleUri.Encode(moduleId, pid) : null;
         string? route = Pages.RouteForEntity(moduleId, item.EntityId);
-        Action open = route is not null ? () => Navigate(route!, item.Title) : playable is not null ? () => PlayOrToggle(playable!) : NoOp;
-        float w = Math.Max(120f, width), h = MathF.Round(w * 9f / 16f);
+        Action open = () => OpenVideo(item, moduleId);
+        Action? play = playable is null ? null : () => PlayOrToggle(playable!);
         string meta = item.Subtitle is { Length: > 0 } s
             ? item.Meta is { Length: > 0 } m ? s + WatchPageModel.FactSeparator + m : s
             : item.Meta ?? "";
-        var kids = new List<Element>(3)
+        var data = new Controls.CardData(playable ?? route ?? "", item.Title, null, item.ImageUrl, open, play)
         {
-            Controls.Artwork(item.ImageUrl, w, h, Radii.Card),
-            Design.Type.CardTitle(item.Title) with { Width = w, MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            CoverAspect = 16f / 9f,
+            Caption = meta.Length > 0 ? meta : null,
         };
-        if (meta.Length > 0) kids.Add(Design.Type.TrackMeta(meta) with { Width = w, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f });
-        return new BoxEl
-        {
-            Direction = 1, Gap = Spacing.XS, Width = w, Shrink = 0f, Padding = new Edges4(0f, 0f, 0f, Spacing.S),
-            Cursor = CursorId.Hand, OnClick = open, Role = AutomationRole.Button, Focusable = true, Corners = Radii.CardAll,
-            Children = kids.ToArray(),
-        }.Interactive(Interaction.Subtle);
+        return Controls.Surface(data, s_watchVideoShape, Math.Max(120f, width));
     }
+
+    /// <summary>A shelf cell's click, shared with the shelf slot's <c>onInvoke</c>: the item's entity page, else its playable
+    /// (a cell that names neither does nothing).</summary>
+    static void OpenVideo(WatchItem item, string moduleId)
+    {
+        if (Pages.RouteForEntity(moduleId, item.EntityId) is { } route) Navigate(route, item.Title);
+        else if (item.PlayableId is { Length: > 0 } pid) PlayOrToggle(ModuleUri.Encode(moduleId, pid));
+    }
+
+    /// <summary>The watch shelf's card: the video shape with the two-line title this shelf has always allowed.</summary>
+    static readonly SurfaceShape s_watchVideoShape = Shape.Video with { TitleLines = 2 };
 
     // ══ 5. SMALL COMPONENTS ════════════════════════════════════════════════════════════════════════════════════════
 

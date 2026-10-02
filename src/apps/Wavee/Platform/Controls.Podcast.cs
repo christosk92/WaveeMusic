@@ -39,9 +39,11 @@ namespace Wavee;
 /// and <paramref name="Meta"/> ("38 min", "Sep 15 · 28 min") are optional; <paramref name="Lead"/> paints the tone
 /// gradient (the door the show wants you to take); <paramref name="Numeral"/> is the 64-px ghost numeral top-right (the
 /// episode number, null for a trailer); a null <paramref name="Play"/> drops the disc. <paramref name="Tone"/> is the
-/// show's tone (label ink, disc fill, lead gradient).</summary>
+/// show's tone (label ink, disc fill, lead gradient). <paramref name="Menu"/> is the door's context menu (built at OPEN
+/// time, null = none) — right-click anywhere on the card; <see cref="Controls.Door"/> attaches it when it is handed an
+/// overlay service.</summary>
 public sealed record DoorData(string Label, string Title, string? Why, string? Meta, bool Lead, string? Numeral,
-                              Action? Play, Action Open, Func<ColorF> Tone);
+                              Action? Play, Action Open, Func<ColorF> Tone, Func<ContextMenuModel?>? Menu = null);
 
 public static partial class Controls
 {
@@ -264,9 +266,16 @@ public static partial class Controls
     /// <summary>A door (W2 / W4): an r8 card — the tone gradient when it LEADS — lifting 1 DIP on hover (150 ms, off
     /// under reduced motion) with a subtle plate. The label 11/700 in the tone, the title 15/600 (≤ 2 lines), the why 12
     /// (≤ 2 lines), then the foot: a 32 tone disc that PLAYS and the meta line. The whole card OPENS; the disc is its own
-    /// tab stop (plan §4). The numeral is a ghost behind the copy, clipped by the card's corners.</summary>
-    public static Element Door(DoorData d)
+    /// tab stop (plan §4). The numeral is a ghost behind the copy, clipped by the card's corners. A (B) surface: it keeps its
+    /// own tree and takes only the shared rules — the click owner's hand / role / tab stop and the title's trim tooltip.
+    /// With a <see cref="DoorData.Menu"/> and a live <paramref name="overlay"/> the card also answers a right-click.</summary>
+    public static Element Door(DoorData d, IOverlayService? overlay = null)
     {
+        var title = new TextEl(d.Title)
+        {
+            Size = 15f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary,
+            MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+        };
         var copy = new List<Element>(5)
         {
             Design.Type.Eyebrow(d.Label) with
@@ -274,11 +283,7 @@ public static partial class Controls
                 Color = Prop.Of(d.Tone),
                 MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             },
-            new TextEl(d.Title)
-            {
-                Size = 15f, LineHeight = 20f, Weight = 600, Color = Tok.TextPrimary,
-                MaxLines = 2, Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            },
+            TrimmedTitle(title, d.Title),   // a tooltip only while the title is cut at two lines
         };
         if (d.Why is { Length: > 0 } why)
             copy.Add(new TextEl(why)
@@ -326,15 +331,18 @@ public static partial class Controls
             Direction = 1, Gap = Spacing.S, Padding = Edges4.All(DoorPad), MinWidth = 0f, Children = copy.ToArray(),
         });
 
-        return new BoxEl
+        // The whole card opens, so it owns its click: the hand, the Button role and the tab stop are the shared surface rule's.
+        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
+        var card = new BoxEl
         {
             ZStack = true, MinHeight = DoorMinHeight, MinWidth = 0f,
             Corners = Radii.CardAll, Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
             Gradient = d.Lead ? LeadGradient(d.Tone()) : (GradientSpec?)null,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = d.Open,
+            Role = mode.Role, Focusable = mode.OwnsFocus, Cursor = SurfaceRules.Cursor(in mode), OnClick = d.Open,
             WhileHover = s_doorLift, Transition = MotionTok.ControlFast,
             Children = layers.ToArray(),
         };
+        return d.Menu is { } menu && overlay is not null && !IsNullOverlay(overlay) ? ContextMenu.Attach(card, overlay, menu) : card;
     }
 
     /// <summary>The lead door's wash: the tone at 26 % in the top-left corner fading into the card fill by 70 % of the

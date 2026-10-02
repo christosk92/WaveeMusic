@@ -11,10 +11,10 @@
 // WHAT A ROW IS MADE OF. The GROUP ARM is 0.2.9's `MediaCard.Row(plated: false)` geometry — 64 tall, `pad(8,0,8,0)`, gap
 // 12, r4, transparent at rest, the ListRow hover ramp, no press scale — composed from the shared parts
 // (`Controls.Artwork`, `Controls.NowPlayingOverlay`, `Controls.RowChip`, `Track.MoreCell`, `Track.ExpandCell`) rather
-// than `Controls.MediaRow`, whose 8-DIP vertical padding and clipped 48-square cover slot cannot carry the Saved row's
-// 60 × 56 stack inside the fixed 64 band (W7). The SINGLE-PLAY ARM (a lone track) and every DRAWER CHILD are
-// `Track.EagerRow` — ch 01's vocabulary, the now-playing ink and the equalizer included; an episode member takes the
-// compact episode row below (the shared row is Track-only).
+// than the shared surface's row (`Controls.Surface`), whose 8-DIP padding and clipped edge-square art slot cannot carry
+// the Saved row's 60 × 56 stack inside the fixed 64 band (W7) — a deliberate (B) surface (#160 as built). The SINGLE-PLAY ARM (a lone track) and every DRAWER CHILD are
+// `Track.EagerRow` — ch 01's vocabulary, the now-playing ink and the equalizer included; an episode member is the
+// app's shared media surface (`Controls.Surface` fed by `Episode.RowData`) at the same band — the track grid is Track-only.
 //
 // NOTHING IS REMOVED TO MAKE ROOM (§0 #17): a `!CanExpand` row keeps a 24 × 24 spacer where the chevron would be, a
 // zero-count day header keeps its rule with an empty caption, and a row whose target has no identity yet keeps its
@@ -40,6 +40,12 @@ public readonly partial struct Recents
 
     const float CardArt = 48f, SavedTile = 40f, ChildWhenCol = 60f;
     const float ChildActionsCol = 40f + Spacing.M + ChildWhenCol;
+
+    /// <summary>An episode member's two bands: the single-play arm is the 64 band the group card and the track row share
+    /// (48 art — <c>Shape.Row(48)</c>'s own floor); a drawer child is a 40 cover in a 56 row (the shared row cannot be
+    /// shorter than its text column plus its 8-DIP padding, so it is taller than a 40-DIP track child).</summary>
+    static readonly SurfaceShape SingleEpisodeShape = global::Wavee.Shape.Row(CardArt);
+    static readonly SurfaceShape ChildEpisodeShape = global::Wavee.Shape.Row(40f) with { MinHeight = 56f };
 
     /// <summary>Drawer child: # · ♥ · art · title* · duration · [when · "…"] (W6); the thumb lane drops with the setting.</summary>
     static readonly Track.ColumnSet ChildCols = new(Album: false, By: false, Date: false, Video: false, Plays: false,
@@ -219,7 +225,7 @@ public readonly partial struct Recents
             Enter = facts.Known ? new EnterExit(Opacity: 0f, Active: true) : null,
             Transition = facts.Known ? MotionTok.ControlNormal : null,
             Children = !facts.Known
-                ? [PendingBar(140f, 10f), PendingBar(90f, 8f)]
+                ? [Controls.PendingBar(140f, 10f), Controls.PendingBar(90f, 8f)]
                 : saved ? [TitleText(facts.Title), SavedMeta(sub)]
                 : sub.Length > 0 ? [TitleText(facts.Title), SubText(sub)]
                 : [TitleText(facts.Title)],
@@ -266,12 +272,6 @@ public readonly partial struct Recents
 
     static TextEl SubText(string sub)
         => Caption(sub) with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-
-    /// <summary>A quiet stand-in bar for a text line whose facts have not landed (geometry, never an invented string).</summary>
-    static Element PendingBar(float width, float height) => new BoxEl
-    {
-        Width = width, Height = height, Shrink = 1f, MinWidth = 0f, Corners = Radii.FullAll, Fill = Tok.FillSubtleSecondary,
-    };
 
     /// <summary>The Saved row's green meta line (W7): a 12 check and the sentence, both <c>SystemFillSuccess</c> at 600.</summary>
     static Element SavedMeta(string text) => new BoxEl
@@ -321,8 +321,8 @@ public readonly partial struct Recents
     {
         var target = shape.Rows.Targets[r];
         bool art = !Prefs.Appearance.TrackArtworkHidden();
-        if (target.Kind == EntityKind.Episode)   // the shared single-track menu is Track-only: the lane stays, inert
-            return EpisodeRow(new Episode(target.Slot), r, RecentsLayout.RowHeight, Track.MoreCell(false, false), art, h.Play);
+        if (target.Kind == EntityKind.Episode)   // the track grid is Track-only: an episode is the shared media row, same band
+            return EpisodeRow(new Episode(target.Slot), SingleEpisodeShape, when: null, h.Play);
         return Track.EagerRow(new Track(target.Slot), r, art ? ChildCols : ChildColsNoArt, art ? SingleTracks : SingleTracksNoArt,
             RecentsLayout.RowHeight, h.Play, new Track.EagerRowOptions(ShowTrackArtist: false));
     }
@@ -397,61 +397,60 @@ public readonly partial struct Recents
     }
 
     /// <summary>ch 16 §1.3's <c>Recents.ChildRow</c>: a drawer member at 40 — the shared eager row (its own menu, heart,
-    /// now-playing ink) with the actions lane [played-at · "…"] in a FIXED 60-DIP caption lane so every "…" aligns.</summary>
+    /// now-playing ink) with the actions lane [played-at · "…"] in a FIXED 60-DIP caption lane so every "…" aligns. An
+    /// episode member is the shared media surface (<see cref="EpisodeRow"/>) with the same played-at lane.</summary>
     internal static Element ChildRow(PageView page, EntityRef target, int ordinal, long playedAtMs, bool art)
     {
-        Element actions = ChildActions(page.PlayedAt(playedAtMs), target.Kind == EntityKind.Track);
+        string when = page.PlayedAt(playedAtMs);
         if (target.Kind == EntityKind.Episode)
         {
             var episode = new Episode(target.Slot);
-            return EpisodeRow(episode, ordinal, RecentsLayout.ChildRowHeight, actions, art, () => Playback.PlayContext(episode.Id));
+            return EpisodeRow(episode, ChildEpisodeShape, when, () => Playback.PlayContext(episode.Id));
         }
         if (target.Kind != EntityKind.Track) return new BoxEl { Height = RecentsLayout.ChildRowHeight };
         var track = new Track(target.Slot);
         return Track.EagerRow(track, ordinal, art ? ChildCols : ChildColsNoArt, art ? ChildTracks : ChildTracksNoArt,
             RecentsLayout.ChildRowHeight, () => Playback.PlayContext(track.Id),
-            new Track.EagerRowOptions(ShowTrackArtist: true, ActionsCell: actions));
+            new Track.EagerRowOptions(ShowTrackArtist: true, ActionsCell: ChildActions(when)));
     }
 
-    static Element ChildActions(string when, bool menu) => new BoxEl
+    static Element ChildActions(string when) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Spacing.M, MinWidth = 0f,
         Children = when.Length == 0
-            ? [Track.MoreCell(menu, false)]
-            : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }, Track.MoreCell(menu, false)],
+            ? [Track.MoreCell(true, false)]
+            : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }, Track.MoreCell(true, false)],
     };
 
-    /// <summary>An episode member (the shared eager row is Track-only): # · art · title/show · duration · actions.</summary>
-    static Element EpisodeRow(Episode e, int ordinal, float rowH, Element actions, bool art, Action play)
+    /// <summary>An episode member (the track grid's rows are Track-only): the app's shared media surface at the lane's
+    /// <paramref name="shape"/>, fed by the episode's own adapter — the show name under the title, the length at the right
+    /// (then the played-at stamp in a drawer: <paramref name="when"/> null = none, "" = a reserved lane with nothing in
+    /// it), and the episode menu behind the "…" and the right-click (the lane used to be an inert placeholder). A click
+    /// plays the member, as the row always did. The surface owns click and focus here (this slot provides no
+    /// <c>SlotRow</c>), exactly as the group card does.</summary>
+    static Element EpisodeRow(Episode e, SurfaceShape shape, string? when, Action play)
     {
-        var kids = new List<Element>(5)
-        {
-            new BoxEl
-            {
-                Width = 30f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [Caption(FormatCache.Int(ordinal + 1)) with { Color = Tok.TextTertiary }],
-            },
-        };
-        if (art) kids.Add(Controls.Artwork(Controls.ArtUrl(e.ImageId), Track.RowMetrics.ThumbSize, Track.RowMetrics.ThumbSize,
-                                           Radii.Control, decodePx: 64));
-        kids.Add(new BoxEl
-        {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
-            Children = [TitleText(e.Title), Design.Type.TrackMeta(e.Show.Title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-        });
-        kids.Add(new BoxEl
+        Element trailing = new BoxEl
         {
             Width = 52f, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
             Children = [Caption(Track.Format.DurationCell(e.DurationMs)) with { Color = Tok.TextSecondary, MaxLines = 1 }],
-        });
-        kids.Add(new BoxEl { Width = rowH > RecentsLayout.ChildRowHeight ? 40f : ChildActionsCol, Shrink = 0f, Direction = 1, Children = [actions] });
-        return new BoxEl
-        {
-            Direction = 0, Height = rowH, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = play,
-            Children = kids.ToArray(),
-        }.Interactive(Interaction.ListRow);
+        };
+        if (when is not null)
+            trailing = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f,
+                Children =
+                [
+                    trailing,
+                    new BoxEl
+                    {
+                        Width = ChildWhenCol, Shrink = 0f, Direction = 0, Justify = FlexJustify.End,
+                        Children = when.Length == 0 ? [] : [Caption(when) with { Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1 }],
+                    },
+                ],
+            };
+        var options = new Episode.RowOptions(OnClick: play, OnPlay: play, ShowMeta: false, Trailing: trailing);
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = [Controls.Surface(Episode.RowData(e, in options), shape)] };
     }
 
     // ══ 7. THE CALENDAR (W11-W14, §9.1 #8-#9) ════════════════════════════════════════════════════════════════════════

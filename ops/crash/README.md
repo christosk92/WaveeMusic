@@ -9,8 +9,10 @@ separate Cloudflare Pages project, no CORS.
 
 Full design: `docs/plans/wavee/crash-diagnostics-implementation.md` §C (architecture, routes, schema)
 and §I (the `.symmap` binary format and the ingest contract other work packages code against); hosting
-(hostname, DNS, Access, the JWT check): `docs/plans/wavee/crash-hosting-implementation.md`. Day-to-day
-reference for engineers and support: `docs/guide/crash-diagnostics.md`.
+(hostname, DNS, Access, the JWT check): `docs/plans/wavee/crash-hosting-implementation.md`; retention,
+alerts, regressions, grouping v2 and report deletion (#165):
+`docs/plans/wavee/crash-production-readiness-implementation.md` §W1. Day-to-day reference for engineers
+and support: `docs/guide/crash-diagnostics.md`.
 
 ## Prerequisites
 
@@ -70,27 +72,39 @@ npx wrangler login
 
 Opens a browser, authorizes the CLI against your Cloudflare account.
 
-## 2. Create the D1 database and apply the schema
+## 2. Create the D1 database, apply the schema, then the migrations
 
 ```powershell
 npx wrangler d1 create wavee-crash
 # → prints a database_id; paste it into wrangler.toml's [[d1_databases]] block.
 
-npx wrangler d1 execute wavee-crash --remote --file schema.sql
+npx wrangler d1 execute wavee-crash --remote --file schema.sql   # once, on a fresh database only
+npx wrangler d1 migrations list  wavee-crash --remote            # what is pending
+npx wrangler d1 migrations apply wavee-crash --remote            # every pending migrations/NNNN_*.sql, in order
 ```
 
-`schema.sql` is idempotent-unsafe by design (plain `CREATE TABLE`, no `IF NOT EXISTS`) — it is meant to
-be run once against a fresh database. If the schema changes later, write a new
-`migrations/NNNN_description.sql` and apply it the same way (`wrangler d1 execute wavee-crash --remote
---file migrations/NNNN_description.sql`) rather than re-running `schema.sql`; `wrangler d1 migrations
-apply` works too once a `migrations/` folder exists, but for a single from-scratch schema a plain
-`execute --file` is simpler and is what this runbook uses.
+`schema.sql` is the **frozen baseline**: idempotent-unsafe by design (plain `CREATE TABLE`, no `IF NOT
+EXISTS`), run once against a fresh database and never edited again. Every later change is a new
+`migrations/NNNN_description.sql` (`wrangler.toml` `migrations_dir = "migrations"`), applied with
+`wrangler d1 migrations apply`, which records each one in the database's `d1_migrations` table and so
+never runs it twice. **Never `d1 execute --file` a migration** — that bypasses the record, and the next
+`migrations apply` would run it again and fail on the duplicate columns. The Worker tests load exactly this
+sequence (`schema.sql`, then `migrations/*.sql` by name — `test/fixtures.ts`).
+
+Write a migration so it is backward compatible with the Worker already deployed (added, defaulted columns;
+new indexes), apply it, **then** deploy the code that needs it (step 5).
+
+| Migration | What it adds |
+|---|---|
+| `0001_retention_alerts_grouping_v2.sql` (#165) | `reports`: `exception_code`, `fault_module`, `fault_offset`, `fp_version`; `issues`: `regressed_at`, `regressions`, `resolved_at`, `resolved_version`, `last_frames_json`, `fp_version`; indexes `reports_received` (the purge key) and `reports_install` |
 
 Sanity check:
 
 ```powershell
 npx wrangler d1 execute wavee-crash --remote --command "SELECT name FROM sqlite_master WHERE type='table'"
-# → reports, issues, symbols
+# → reports, issues, symbols, deleted_installs, d1_migrations
+npx wrangler d1 migrations list wavee-crash --remote
+# → no migrations to apply
 ```
 
 ## 3. Create the R2 bucket and its lifecycle rule
@@ -108,8 +122,11 @@ rule:
   (a report ingested on day 89 still needs its build's `.symmap` to resolve, and old builds stay on
   users' machines far longer than 90 days on the slow-update tail).
 
-This is the retention promise `PRIVACY.md` makes ("Crash reports (opt-in)" § retention): 90 days, R2
-lifecycle rule, `reports/` only.
+The rule is a **backstop** since #165. The retention promise `PRIVACY.md` makes ("Crash reports
+(opt-in)" § retention) is kept by the Worker's daily purge (step 5b): it deletes each `reports` row older
+than 90 days **together with** its R2 objects, so the D1 row — install id, last route, exception message,
+frames — goes too, which an R2 rule alone never did. The rule only catches objects the purge missed (a
+failed run, an object whose row is already gone).
 
 The lifecycle rule can also be created with `wrangler`, but the dashboard is less error-prone for a
 prefix-scoped rule and is the version-controlled source of truth here (screenshot it into your release
@@ -130,8 +147,21 @@ spamming the ingest endpoint and burning the free-tier quota" sense. Rotate it b
 and re-releasing; there is no dual-key grace period in v1 — accept a short window of 401s from
 already-installed builds after a rotation, or stage a release first.
 
-`wrangler.toml`'s `[vars] INGEST_KEY = "dev-only-placeholder…"` value is only ever read by `wrangler dev
---local`; `wrangler secret put` always wins over a `[vars]` entry of the same name once deployed.
+`INGEST_KEY` is never a `wrangler.toml` `[vars]` entry (a var and a secret share one binding namespace, so a
+committed placeholder could become the live key on deploy); `wrangler dev` reads it from the gitignored
+`.dev.vars`. Unset, every ingest/erase call answers `401`.
+
+### 4b. The Discord alert webhook (optional)
+
+```powershell
+npx wrangler secret put DISCORD_WEBHOOK_URL
+# paste the webhook URL: Discord → the alerts channel → Edit Channel → Integrations → Webhooks → New Webhook
+```
+
+A **secret only**, never a `[vars]` entry — the URL alone lets anyone post to the channel. Keep a copy in
+1Password next to the ingest key. Unset (or anything that is not a `https://discord.com/api/webhooks/<id>/<token>`
+URL — `ptb.`/`canary.`/`discordapp.com` are accepted too), alerts are a silent no-op. What an alert says and
+when it fires: step 5b.
 
 ## 5. Deploy the Worker and the dashboard
 
@@ -143,10 +173,13 @@ npm --prefix ops/crash/worker run deploy
 One command ships both: it builds the dashboard (`ops/crash/dashboard` → `dist/`), then `wrangler
 deploy` uploads the Worker plus that `dist/` as its static assets (`[assets]` in `wrangler.toml` — the
 Worker runs first only for `/v1/*`; every other path is an asset, unknown ones fall back to `index.html`
-for the dashboard's client-side routes). It confirms the bindings it picked up (`DB`, `BUCKET`, `RATE`)
-and attaches the Custom Domain `crash.cproducts.dev` from `routes` in `wrangler.toml`, creating its DNS
-record and certificate in the step-0 zone. `workers_dev = false` and `preview_urls = false`: there is no
+for the dashboard's client-side routes). It confirms the bindings it picked up (`DB`, `BUCKET`, `RATE`),
+lists the cron trigger `schedule: 17 3 * * *` (`[triggers]` — the daily purge, step 5b), and attaches the
+Custom Domain `crash.cproducts.dev` from `routes` in `wrangler.toml`, creating its DNS record and
+certificate in the step-0 zone. `workers_dev = false` and `preview_urls = false`: there is no
 `*.workers.dev` or preview URL, so no hostname reaches the Worker without Access in front of it (step 6).
+
+Apply pending migrations (step 2) **before** deploying code that reads their columns.
 
 `https://crash.cproducts.dev` is the one URL every release stamps into the build:
 `ops/release/wavee-release.ps1 -CrashIngestUrl https://crash.cproducts.dev` (`WaveeCrashIngestUrl`,
@@ -154,6 +187,40 @@ WP-G; phase `symbols` uploads the maps this Worker resolves against).
 
 Until step 6 is done the host is not gated: the dashboard's static files are reachable (they carry no
 data) and every data route answers `401`, because `wrangler.toml`'s `ACCESS_*` placeholders fail closed.
+
+### 5b. What the deployed Worker does on its own (#165)
+
+**Retention.** `[triggers] crons = ["17 3 * * *"]` runs `scheduled()` daily at 03:17 UTC: `reports` rows
+with `received_at` older than **90 days** are deleted together with their four R2 objects
+(`reports/<quad>/<id>/{summary.json,report.txt,log-tail.txt,minidump.dmp}`). It is driven from D1, never
+from an R2 listing: batches of 200 rows → one R2 delete of ≤ 800 keys → the same rows deleted, at most 10
+batches (≤ 30 subrequests) per run; a bigger backlog continues on the next run. The dashboard's Overview
+"Run retention now" calls `POST /v1/retention/run` (Access only), which runs the same purge immediately and
+answers `{deleted, batches, more}`. Only counts are logged (`wrangler tail` → `retention.purge`).
+
+**Issues keep their stats.** The purge never touches `issues`: count, installs, versions, first/last seen,
+status and the newest stack (`last_frames_json`) are **lifetime** values, updated incrementally on each
+report. An issue whose reports are all purged stays listed with its counts; its detail page shows the stack
+from `last_frames_json`. Erasure (`DELETE /v1/installs/:id`) and `DELETE /v1/reports/:id` still
+*recompute* the issue from the reports that remain — so after a purge they can shrink its counts to the
+90-day window, and removing an issue's last remaining report deletes the issue (accepted, owner decision
+2026-10-02).
+
+**Grouping v2.** `src/grouping.ts`: Managed groups by exception type + the top three **app** frames
+(BCL/runtime/ThrowHelper/NuGet frames skipped, compiler ordinals normalized); Native by NTSTATUS +
+faulting module + app frames (module + offset when no frame was captured); ExitCode by code; Hang and
+UncleanExit are one issue each. Titles name the status code and the first `Wavee_*` frame. Issues grouped
+before migration 0001 (`fp_version` 1) stay as they are; new reports open v2 issues.
+
+**Alerts and regressions.** With `DISCORD_WEBHOOK_URL` set (step 4b), the Worker posts to Discord when a
+report opens a **new issue** and when it **reopens a resolved one**. Resolving an issue (dashboard, `PATCH
+… {status:"resolved"}`) records `resolved_version` = the newest semver it had seen; only a report from a
+**newer** semver reopens it (status `open`, `regressed_at`, `regressions + 1`) and alerts — the same or an
+older version never does, `ignored` never reopens, and an issue resolved before any version was recorded
+never auto-reopens. Alerts fire only for builds whose `.symmap` the Worker holds (step 7), so the public
+ingest key cannot spam the channel with invented versions. An alert carries the title, kind,
+version/quad/arch, channel, counts, the GitHub issue number and a dashboard link — never an exception
+message, install id, report id or log text — and mentions nobody.
 
 ## 6. Configure Cloudflare Access
 
@@ -210,6 +277,9 @@ curl.exe -i -X DELETE https://crash.cproducts.dev/v1/installs/x -H "X-Wavee-Inge
 # a dashboard route, no session → 302 to the Access login
 curl.exe -i https://crash.cproducts.dev/v1/issues
 
+# deleting a report is dashboard-only: no session → 302 to the Access login (never reachable with the ingest key)
+curl.exe -i -X DELETE https://crash.cproducts.dev/v1/reports/x
+
 # erasure with a forged Access header → 401 (verified, not merely present)
 curl.exe -i -X DELETE https://crash.cproducts.dev/v1/installs/x -H "Cf-Access-Jwt-Assertion: forged"
 ```
@@ -233,6 +303,11 @@ memory per isolate) and opportunistically records it in the `symbols` D1 table s
 tab has something to show — that D1 row is a side effect of the first successful read, not of this
 upload step, so a freshly-uploaded map won't appear in the table until the first crash report that needs
 it comes in.
+
+Frames are resolved **at ingest** and stored in `reports.frames_json`: a report that arrives before its
+map is uploaded stays `<unresolved>`; send a new one after the upload. For a verify build outside a
+release, `ops/build/publish-wavee-aot.ps1 -CrashService` stamps the exe and uploads its map in one step
+(limited to `0.0.x.y` verify quads; see the `releasing` skill, § Verify builds).
 
 ## 8. Local development
 
@@ -276,8 +351,14 @@ npm run typecheck:test  # tsc --noEmit over src/ + test/
 These are plain `vitest` unit/integration tests against hand-written D1/R2 doubles — see
 `vitest.config.ts` and `test/fixtures.ts` for why (`@cloudflare/vitest-pool-workers` needs `workerd`,
 unavailable on this Windows-ARM64 dev box; the D1 double is real in-memory SQLite via `better-sqlite3`
-loaded with the actual `schema.sql`, not a hand-rolled query stub, so `src/store.ts`'s SQL is genuinely
-exercised). They do not need `wrangler`, D1, R2, or network access, and run in well under a second.
+loaded with the actual `schema.sql` plus every `migrations/*.sql`, not a hand-rolled query stub, so
+`src/store.ts`'s SQL is genuinely exercised). They do not need `wrangler`, D1, R2, or network access.
+`test/helpers.ts` holds the shared env/summary/ingest helpers and a recording alert sink; no test reaches
+Discord (`DISCORD_WEBHOOK_URL` is unset unless a test stubs `fetch` itself).
+
+`test/contract.test.ts` POSTs `ops/crash/contract/{managed,native}.multipart` — the byte-exact bodies the
+C# client produces (`ops/crash/contract/README.md`) — so the Worker is tested against the real client's
+bytes, not a re-implementation of them.
 
 ## Free-tier limits — verify these two before relying on them
 
@@ -295,7 +376,9 @@ Plan §H "Verify-at-implementation items" #3:
 
 Other free-tier ceilings this service is sized against (plan §C): Workers 100k requests/day, R2 10 GB +
 no egress fees, D1 5 GB / 5M reads per day, Workers static assets free (asset requests are free and don't
-count against the Worker's requests — it runs only for `/v1/*`), Cloudflare Access free for ≤ 50 users.
+count against the Worker's requests — it runs only for `/v1/*`), Cloudflare Access free for ≤ 50 users,
+≤ 5 cron triggers per account (this Worker uses one), ≤ 50 subrequests per invocation (the purge uses ≤ 30;
+erasure deletes R2 objects 1000 keys per call), ≤ 100 bound parameters per D1 statement.
 None of these should bind at Wavee's current install base; revisit if `GET /v1/versions` or the
 dashboard's polling ever gets chatty.
 
@@ -307,16 +390,29 @@ dashboard's polling ever gets chatty.
 | `DELETE /v1/installs/:installId` | `X-Wavee-Ingest` **or** verified Access JWT; rate-limited | `200 {deleted:n}`, `401`, `404`, `429` |
 | `GET /v1/issues` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401` |
 | `GET /v1/issues/:fp` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401`, `404` |
-| `PATCH /v1/issues/:fp` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401`, `400`, `404` |
+| `PATCH /v1/issues/:fp` (`status`: `open`\|`resolved`\|`ignored`, `github_issue`) | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401`, `400` (malformed body or another status), `404` |
 | `GET /v1/reports` (paged list) | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401` |
 | `GET /v1/reports/:id` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401`, `404` |
+| `DELETE /v1/reports/:id` | verified Access JWT (header or `CF_Authorization` cookie) | `200 {deleted:1, fingerprint}`, `401`, `404` |
 | `GET /v1/reports/:id/:part` (`summary`\|`report`\|`tail`\|`dump`) | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401`, `404` |
 | `GET /v1/versions` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401` |
 | `GET /v1/stats` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401` |
 | `GET /v1/symbols` | verified Access JWT (header or `CF_Authorization` cookie) | `200`, `401` |
+| `POST /v1/retention/run` | verified Access JWT (header or `CF_Authorization` cookie) | `200 {deleted, batches, more}`, `401` |
 
 `wavee-crash/symbols/<quad>/win-<arch>.symmap` is written only via `wrangler r2 object put` (step 7
 above) — there is no HTTP route for it.
+
+**`DELETE /v1/reports/:id`** (the dashboard's "Delete report", #165) deletes that report's four R2 objects
+and its row, then recomputes its issue from the remaining reports (deleting the issue with its last report)
+and answers the issue's fingerprint so the dashboard can refresh or leave it. Unlike an install's erasure it
+writes no tombstone: the install may keep reporting.
+
+**`PATCH /v1/issues/:fp`** with `status: "resolved"` also records `resolved_at` and `resolved_version` (the
+regression baseline, step 5b); reopening by hand clears neither.
+
+**`POST /v1/retention/run`** runs the daily purge now (step 5b); `more: true` means it stopped at its batch
+limit with expired rows left — run it again.
 
 **`POST /v1/report` now also returns `410 Gone`** when `summary.installId` belongs to an install that
 called `DELETE /v1/installs/:installId` (plan §J, "Right to erasure") — the tombstone in the
@@ -338,4 +434,8 @@ a second call after it's already been erased — there's nothing left the second
 `sparkline14d`, `breakdowns`) and `GET /v1/reports/:id` (now also returns `this_install` and `debug_id`)
 responses back the dashboard's Overview/Reports/Issue-detail/Report-detail pages — see
 `docs/plans/wavee/crash-dashboard-implementation.md` §4 for the shapes and which dashboard page reads
-each one.
+each one. Since migration 0001 an issue row also carries `regressed_at`, `regressions`, `resolved_at`,
+`resolved_version`, `last_frames_json` and `fp_version`, and a report row `exception_code`, `fault_module`,
+`fault_offset` and `fp_version`; `GET /v1/issues/:fp`'s `frames` falls back to the issue's
+`last_frames_json` once every report has been purged. `has_dump`/`dump_bytes` are derived from the `dump`
+part actually received, never from the summary's own claim.

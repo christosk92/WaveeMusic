@@ -1,7 +1,7 @@
 // ── Entities/Track.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────
 // the ROW and nothing else: grid + 11 lanes, the # state machine, both skins, the metadata line, the cells, the eager
-// row, ArtCard (G-214), the "+N" artist chip. The track menu composition and the thirteen track verbs are the named
-// partial `Track.Menu.cs`.
+// row, `RowData` (the track adapter of the shared media surface), the "+N" artist chip. The track menu composition and
+// the thirteen track verbs are the named partial `Track.Menu.cs`.
 //
 // Role: UI
 // Owner: M
@@ -14,9 +14,9 @@
 // `Grid` is the single definition of what a track row looks like. The album drawer, Recents, Home's top tracks and the
 // rails call it; the detail table's virtualized rows use its bound twin `BoundGrid` (Track.UI.Bound.cs — same lanes,
 // keys and wrappers, built once per slot). Callers vary only the `ColumnSet` and the container skin (the table's bound
-// skin, `EagerRow`, `ArtCardSelectSkin`). Everything here is built from RESOLVED values and re-run by the HOST — the
-// only members that subscribe on their own are the ones that say so (`StateOf`, `IsNowPlaying`, and the four component
-// hosts: the eager row, the art card, its check lane, the "+N" chip).
+// skin, `EagerRow`). Everything here is built from RESOLVED values and re-run by the HOST — the only members that
+// subscribe on their own are the ones that say so (`StateOf`, `IsNowPlaying`, `RowData`, and the two component hosts:
+// the eager row and the "+N" chip).
 //
 // ── WHAT A RECYCLE COSTS ─────────────────────────────────────────────────────────────────────────────────────────────
 //
@@ -679,7 +679,7 @@ public readonly partial struct Track
         };
     }
 
-    /// <summary>The billed artists as one ellipsized run of per-artist links (Classic's Artist lane, the art card, the
+    /// <summary>The billed artists as one ellipsized run of per-artist links (Classic's Artist lane, the row data's subtitle, the
     /// queue). A span per artist, ", " joined; a name-only artist (no uri) is plain text. Empty box for no artists.</summary>
     public static Element ArtistLinks(Track t, float size, float lineHeight, ColorF color)
     {
@@ -1002,7 +1002,6 @@ public readonly partial struct Track
     // The keys this file adds (scratchpad batch-loc WP-4.5-U1.json) — literal, so the file compiles before the merge
     // regenerates `Strings`.
     const string LocChartNew = "detail.row.chartNew";
-    const string LocPlaysFull = "detail.row.playsFull";
     const string LocMoreArtists = "detail.row.moreArtists";
 
     // ══ 4. THE EAGER ROW ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -1172,215 +1171,120 @@ public readonly partial struct Track
         if (me.Likes(t)) me.Unlike(t); else me.Like(t);
     }
 
-    // ══ 5. THE ART CARD (G-214) ══════════════════════════════════════════════════════════════════════════════════════
+    // ══ 5. THE ROW DATA (the shared media surface's track adapter) ═══════════════════════════════════════════════════
 
-    public enum ArtCardKind : byte { Grid, Rail }
-
-    /// <summary>What an art card shows. Construct with a named argument (see <see cref="GridOptions"/>): <c>default</c>
-    /// reads Kind Grid, Art 0, no duration. <see cref="Art"/> ≤ 0 is treated as 40.
-    /// <see cref="KeySuffix"/> non-null keys the card <c>"tc:{slot}:{suffix}"</c> — the Rail's artwork flag rides here so
-    /// a settings flip remounts rather than re-binds.</summary>
-    public readonly record struct ArtCardOptions(ArtCardKind Kind = ArtCardKind.Rail, float Art = 40f, bool ShowDuration = true,
-        bool ShowHeart = false, bool ShowPlays = false, bool ShowExplicit = true, bool ShowVideo = false,
-        Action? OnPlay = null, Action? OnAdd = null, bool ShowMore = false, Func<ContextMenuModel?>? Menu = null,
-        string? KeySuffix = null);
-
-    /// <summary>THE art-forward track cell (ch 01 W16) — the recommendation rows, the NPV "Next up", the video rail's "Up
-    /// next", module playables. Rail: MinHeight 52, padding 4/2, art 40 under the cover-centred now-playing FAB
-    /// (<c>clamp(art × 0.62, 28, 36)</c>) or, while the row buffers, a scrim + ring; Grid: MinHeight 64, padding 4, the
-    /// full plays line. Hidden track artwork swaps the art for a 32-DIP square play/pause button — the art WAS the play
-    /// affordance (ch 01 W28, parity 65). A component: it reads playback, the Liked edge, the appearance prefs and the
-    /// track table itself. Its selection/tap chrome is <see cref="ArtCardSelectSkin"/>'s. A null
-    /// <see cref="ArtCardOptions.OnPlay"/> plays the one track; a null <see cref="ArtCardOptions.Menu"/> opens the
-    /// single-track menu.</summary>
-    public static Element ArtCard(Track t, in ArtCardOptions o)
+    /// <summary>What a surface varies about a track row's <see cref="Controls.CardData"/> — the per-site choices and
+    /// nothing the surface decides itself (the hover plate, the hand cursor, the play FAB and the "…" are the HOST's,
+    /// derived from the data's presence and the shape). Hand it stable delegates: the host runs the NEWEST pushed handler
+    /// through a trampoline and the data compares them by presence only, so a fresh closure never re-renders a row
+    /// (the subtitle's artist links carry their own click closures, so a caller that re-renders does re-render its rows
+    /// — the safe direction).
+    /// <para><b>Construct with a named argument</b> (<c>new Track.RowDataOptions(OnClick: …)</c>): <c>default</c>
+    /// zero-initialises a record struct and skips the defaults, so <see cref="ShowArtwork"/> would read false.</para>
+    /// <para><see cref="OnClick"/> is the ROW's click — play-at-index in a list, open on a hit; null is a display-only row
+    /// (no hand, no Button role, no tab stop; the FAB still plays). <see cref="OnPlay"/> is
+    /// the cover FAB's "start this" leg; <see cref="Invoke(Track, Action)"/> wraps it, so on the deck row the FAB toggles
+    /// pause instead, and null plays the one track. <see cref="ShowArtwork"/> false is the hidden-artwork look (ch 01 W28):
+    /// the cover's square holds a play glyph — pair it with <see cref="TrackRowRules.ArtEdge"/> for the shape's art edge.
+    /// <see cref="ShowExplicit"/> / <see cref="ShowVideo"/> put the "E" badge / film glyph ahead of the artists.
+    /// <see cref="Draggable"/> hands the row a single-track drag (a row that owns another drag — the queue's
+    /// reorder — says false); <see cref="QueueItemId"/> non-null marks it a queue row (the drag is then a reorder no
+    /// playlist may deposit, and the menu addresses the queue entry). <see cref="ShowMenu"/> false keeps the right-click
+    /// menu and drops the "…" (a narrow surface with no room for the slot). <see cref="MenuArgs"/> is the menu's own
+    /// options (null = the defaults). <see cref="Trailing"/> is the right cluster (heart, duration, add) and
+    /// <see cref="Selected"/> the opened/chosen skin.</para></summary>
+    public readonly record struct RowDataOptions(
+        Action? OnClick, Action? OnPlay = null, bool ShowArtwork = true, bool ShowExplicit = true, bool ShowVideo = false,
+        bool Draggable = true, bool ShowMenu = true, MenuOptions? MenuArgs = null, ulong? QueueItemId = null,
+        Element? Trailing = null, bool Selected = false)
     {
-        Element card = Embed.Comp(new ArtCardProps(t, o), static () => new TrackArtCardHost());
-        return o.KeySuffix is { Length: > 0 } suffix
-            ? card with { Key = string.Concat("tc:", t.Slot.ToString(CultureInfo.InvariantCulture), ":", suffix) }
-            : card;
+        /// <summary><c>new RowDataOptions()</c> means the defaults above (artwork, menu and drag on), not a zeroed struct.</summary>
+        public RowDataOptions() : this(OnClick: null) { }
     }
 
-    sealed record ArtCardProps(Track Track, ArtCardOptions Options)
+    /// <summary>THE track adapter of the shared media surface: the <see cref="Controls.CardData"/> of one track row —
+    /// title, the artists subtitle ([E] · [film] · artist links, each artist its own link), the cover (the track's own,
+    /// else its album's), the play FAB's handler, a single-track drag source and the single-track menu. Feed it to
+    /// <c>Controls.Surface(data, Shape.Row(edge))</c>. A track the table has no row for (slot ≤ 0) yields title-less data
+    /// with no play, no drag and no menu.
+    /// <para>It READS the track table, so the calling component subscribes to it (a per-card host used to): a title or
+    /// credit line landing re-renders the caller, never the page behind it when the rows sit in a component of their
+    /// own.</para></summary>
+    public static Controls.CardData RowData(Track t, in RowDataOptions o)
     {
-        public bool Equals(ArtCardProps? other)
-        {
-            if (other is null) return false;
-            var a = Options;
-            var b = other.Options;
-            return other.Track == Track && a.Kind == b.Kind && a.Art.Equals(b.Art) && a.ShowDuration == b.ShowDuration
-                   && a.ShowHeart == b.ShowHeart && a.ShowPlays == b.ShowPlays && a.ShowExplicit == b.ShowExplicit
-                   && a.ShowVideo == b.ShowVideo && a.ShowMore == b.ShowMore
-                   && (a.OnAdd is null) == (b.OnAdd is null) && (a.Menu is null) == (b.Menu is null)
-                   && string.Equals(a.KeySuffix, b.KeySuffix, StringComparison.Ordinal);
-        }
+        _ = Entities.ScopeEpoch.Value;                    // FIRST (G-179): a scope switch re-points the table read below
+        _ = Entities.Current.Tracks.Changed.Value;
+        var track = t;
+        int slot = t.Slot;
+        var can = TrackRowRules.AffordancesOf(slot, o.Draggable);
+        string uri = can.Play ? t.Uri.Text : "";
+        string title = can.Play ? t.Title : "";
 
-        public override int GetHashCode() => HashCode.Combine(Track.Slot, Options.Kind, Options.Art);
+        Action start = o.OnPlay ?? (() => PlayTracks(new[] { track }));
+        Action? play = can.Play ? () => Invoke(track, start) : null;
+
+        ulong? queueItem = o.QueueItemId;
+        DragSource? drag = can.Drag ? Drag.Source(() => RowPayload(track, queueItem)) : null;
+
+        var args = o.MenuArgs ?? s_defaultMenuOptions;
+        args = args with { QueueItemId = TrackRowRules.MenuQueueItem(queueItem, args.QueueItemId) };
+        Func<ContextMenuModel?>? menu = can.Menu ? () => Menu(new[] { track }, in args) : null;
+
+        var parts = TrackRowRules.SubtitleOf(o.ShowExplicit, can.Play && t.IsExplicit, o.ShowVideo, can.Play && t.HasVideo,
+                                             can.Play && t.ArtistSlots.Length > 0);
+        string? cover = o.ShowArtwork && can.Play ? RowArtUrl(t) : null;
+        return new Controls.CardData(uri, title, RowSubtitle(track, in parts), cover, o.OnClick, play,
+                                     Drag: drag, ShowMenu: o.ShowMenu, CoverOverride: o.ShowArtwork ? null : NoArtworkTile())
+        {
+            Menu = menu, Trailing = o.Trailing, Selected = o.Selected,
+        };
     }
 
-    sealed class TrackArtCardHost : Component
+    /// <summary>The artists subtitle: [E badge] · [film] · the artist links, "·" between the parts that exist. Null when
+    /// there is nothing to say.</summary>
+    static Element? RowSubtitle(Track t, in TrackRowRules.SubtitleParts p)
     {
-        ArtCardProps? _latest;
-        int _likeSlot;
-        bool _likeSaved;
-        Action? _play, _like, _add;
-        Func<ContextMenuModel?>? _menu;
-
-        public override Element Render()
+        if (p.Children == 0) return null;
+        var kids = new Element[p.Children];
+        int k = 0;
+        if (p.Badge) kids[k++] = Controls.ExplicitBadge(14f);
+        if (p.Film)
         {
-            var p = UsePropsOrDefault<ArtCardProps>();
-            var svc = UseContext(Overlay.Service);
-            if (p is null) return new BoxEl();
-            _latest = p;
-            Action play = _play ??= PlayLatest;
-            Action like = _like ??= ToggleLatest;
-            Action add = _add ??= AddLatest;
-            Func<ContextMenuModel?> menu = _menu ??= MenuLatest;
-
-            _ = Entities.Current.Tracks.Changed.Value;
-            bool showArtwork = !Prefs.Appearance.TrackArtworkHidden();
-            var t = p.Track;
-            var o = p.Options;
-            var st = StateOf(t);
-            bool pop = LikeEdge(ref _likeSlot, ref _likeSaved, t, st.Saved);
-            bool grid = o.Kind == ArtCardKind.Grid;
-            float art = o.Art > 0f ? o.Art : 40f;
-
-            // ── the text column: title · [E] · [film] · artists · [plays] ──
-            bool badge = o.ShowExplicit && t.IsExplicit;
-            bool film = o.ShowVideo && t.HasVideo;
-            bool artists = t.ArtistSlots.Length > 0;
-            int metaCount = (badge ? 1 : 0) + (film ? (badge ? 2 : 1) : 0) + (artists ? (badge || film ? 2 : 1) : 0);
-            Element? metaRow = null;
-            if (metaCount > 0)
-            {
-                var meta = new Element[metaCount];
-                int m = 0;
-                if (badge) meta[m++] = Controls.ExplicitBadge(14f);
-                if (film)
-                {
-                    if (m > 0) meta[m++] = Middot();
-                    meta[m++] = Icon(Icons.Movie, 13f, Tok.TextTertiary);
-                }
-                if (artists)
-                {
-                    if (m > 0) meta[m++] = Middot();
-                    meta[m++] = ArtistLinks(t, 12f, 16f, Tok.TextSecondary);
-                }
-                metaRow = new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = meta };
-            }
-
-            var text = new Element[1 + (metaRow is null ? 0 : 1) + (o.ShowPlays ? 1 : 0)];
-            int k = 0;
-            text[k++] = Design.Type.TrackTitle(t.Title) with
-            {
-                Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            };
-            if (metaRow is not null) text[k++] = metaRow;
-            if (o.ShowPlays)
-                // The FULL count here (N0), never the lane's compact form (ch 01 §3); unknown is the dash.
-                text[k++] = Caption(t.PlayCount == 0
-                        ? Format.Dash
-                        : Loc.Format(LocPlaysFull, ("count", t.PlayCount.ToString("N0", CultureInfo.CurrentCulture))))
-                    with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis };
-
-            // ── the trailing cluster: [+] · [♥] · [duration] · […] ──
-            var trailing = new Element[(o.OnAdd is null ? 0 : 1) + (o.ShowHeart ? 1 : 0) + (o.ShowDuration ? 1 : 0) + (o.ShowMore ? 1 : 0)];
-            int r = 0;
-            if (o.OnAdd is not null) trailing[r++] = AddButton(add);
-            if (o.ShowHeart) trailing[r++] = Heart(st.Saved, like, pop, classic: false);
-            if (o.ShowDuration)
-                trailing[r++] = new BoxEl
-                {
-                    Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Caption(Format.DurationCell(t.DurationMs)) with { Color = Tok.TextSecondary }],
-                };
-            if (o.ShowMore) trailing[r++] = MoreCell(true, classic: false);
-
-            var content = new Element[2 + trailing.Length];
-            int c = 0;
-            content[c++] = showArtwork ? ArtStack(t, art, in st, play) : NoArtworkPlay(in st, play);
-            content[c++] = new BoxEl
-            {
-                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS, Justify = FlexJustify.Center,
-                Children = text,
-            };
-            for (int i = 0; i < trailing.Length; i++) content[c++] = trailing[i];
-
-            var root = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                MinHeight = grid ? 64f : 52f, Gap = Spacing.M,
-                Padding = grid ? Edges4.All(Spacing.XS) : new Edges4(Spacing.XS, Spacing.XXS, Spacing.XS, Spacing.XXS),
-                AlignItems = FlexAlign.Center,
-                Children = content,
-            };
-            return Controls.IsNullOverlay(svc) ? root : ContextMenu.Attach(root, svc, menu);
+            if (k > 0) kids[k++] = Middot();
+            kids[k++] = Icon(Icons.Movie, 13f, Tok.TextTertiary);
         }
-
-        static Element Middot() => Caption("·") with { Color = Tok.TextTertiary };
-
-        /// <summary>The art box: the cover under the cover-centred now-playing FAB, or the buffering scrim + ring.</summary>
-        static Element ArtStack(Track t, float art, in RowState st, Action play)
+        if (p.Artists)
         {
-            const float radius = Radii.Control;
-            float fab = Math.Clamp(art * 0.62f, 28f, 36f);
-            Element overlay = st.IsBuffering
-                ? new BoxEl
-                {
-                    Width = art, Height = art, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Fill = Design.OnMedia.CoverScrim, Children = [Spinner()],
-                }
-                : Controls.NowPlayingOverlay(t.Uri.Text, play, fab, centred: true).Skeletonized(false);
-            return new BoxEl
-            {
-                Width = art, Height = art, Shrink = 0f, ZStack = true, ClipToBounds = true,
-                Corners = CornerRadius4.All(radius),
-                Children =
-                [
-                    // Same fallback as the table row (`RowArtUrl`) and as the artist page's video rail: an art-FORWARD
-                    // cell with a flat placeholder where the sleeve should be is the worst place to lose it.
-                    Controls.Artwork(RowArtUrl(t), art, art, radius, decodePx: (int)MathF.Max(64f, art * 2f)),
-                    overlay,
-                ],
-            };
+            if (k > 0) kids[k++] = Middot();
+            kids[k++] = ArtistLinks(t, 12f, 16f, Tok.TextSecondary);
         }
+        return new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids };
+    }
 
-        /// <summary>Hidden artwork: a 32-DIP square play/pause button where the cover was (ch 01 W28).</summary>
-        static Element NoArtworkPlay(in RowState st, Action play) => new BoxEl
-        {
-            Width = Design.Size.ControlH, Height = Design.Size.ControlH, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, BlocksDragArm = true,
-            OnClick = play,
-            Children = [st.IsBuffering ? Spinner() : Icon(st.IsNow && st.IsPlaying ? Icons.Pause : Icons.Play, 14f, Tok.TextPrimary)],
-        }.Interactive(Interaction.Subtle);
+    static Element Middot() => Caption("·") with { Color = Tok.TextTertiary };
 
-        void PlayLatest()
-        {
-            if (_latest is not { } p) return;
-            var track = p.Track;
-            Invoke(track, p.Options.OnPlay ?? (() => PlayTracks(new[] { track })));
-        }
+    /// <summary>Hidden artwork (ch 01 W28): a play glyph where the cover was — the art WAS the play affordance, and the
+    /// row (and the FAB the surface raises over this square while it is hot) is what plays now.</summary>
+    static Element NoArtworkTile() => new BoxEl
+    {
+        Width = TrackRowRules.NoArtworkEdge, Height = TrackRowRules.NoArtworkEdge, Shrink = 0f,
+        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+        Children = [Icon(Icons.Play, 14f, Tok.TextPrimary)],
+    };
 
-        void ToggleLatest()
-        {
-            if (_latest is { } p) ToggleLike(p.Track);
-        }
-
-        void AddLatest() => _latest?.Options.OnAdd?.Invoke();
-
-        ContextMenuModel? MenuLatest()
-        {
-            if (_latest is not { } p) return null;
-            return p.Options.Menu is { } menu ? menu() : Menu(new[] { p.Track }, s_defaultMenuOptions);
-        }
+    /// <summary>The drag a track row carries, built cold at drag promotion: the one-track snapshot every destination acts
+    /// on, its kind the row's own (an episode rides a track row), and — for a queue row — the queue item that marks it a
+    /// reorder no playlist, tab or player-bar surface may read as a deposit.</summary>
+    static DragPayload RowPayload(Track t, ulong? queueItemId)
+    {
+        string uri = t.Uri.Text;
+        return new DragPayload(Drag.PlayableKind(uri), uri, uri, t.Title, new EntityRef(EntityKind.Track, t.Slot),
+                               Tracks: [t], SourceQueueItemId: queueItemId);
     }
 
     /// <summary>The recommendation row's "add to this playlist" button: a bordered 28 circle, Add 15 primary, Emphatic
-    /// hover/press, its own affordance (never a drag handle).</summary>
-    static Element AddButton(Action onAdd) => new BoxEl
+    /// hover/press, its own affordance (never a drag handle). A <see cref="RowDataOptions.Trailing"/> cluster part.</summary>
+    public static Element AddButton(Action onAdd) => new BoxEl
     {
         Width = RowMoreBox, Height = RowMoreBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Corners = Radii.Circle(RowMoreBox), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
@@ -1389,89 +1293,6 @@ public readonly partial struct Track
         Role = AutomationRole.Button, BlocksDragArm = true,
         Children = [Icon(Icons.Add, 15f, Tok.TextPrimary)],
     }.Interactive(Interaction.Subtle);
-
-    static readonly LayoutTransition s_artCardLaneSlide = new(
-        TransitionChannels.Position, TransitionDynamics.Tween(333f, Easing.FluentDecelerate));
-
-    static readonly LayoutTransition s_artCardCheckEnter = new(
-        TransitionChannels.Opacity,
-        TransitionDynamics.Tween(333f, Easing.FluentDecelerate),
-        Enter: new EnterExit(Dx: -28f, Opacity: 0f, Active: true),
-        Exit: new EnterExit(Dx: -28f, Opacity: 0f, Active: true));
-
-    /// <summary>The art card's selection CHROME (ch 01 W16): MinHeight 54 rail / 66 grid, margin 4/2 or 0/1, radius 4,
-    /// <c>FillSubtleSecondary</c> bound to <paramref name="selected"/> (a compositor-only re-skin, no re-render), subtle
-    /// hover/press fills, a transparent border that takes <c>StrokeCardDefault</c> on hover, the Subtle 0.98 press. With
-    /// <paramref name="showCheckbox"/> a 28-DIP check lane slides in over 333 ms and the content lane slides right by the
-    /// same amount. VISUAL ONLY: the caller's slot owns tap / key / focus (returned as a <c>BoxEl</c> so it can add them
-    /// with <c>with</c>); the check is hit-test transparent, so a tap on it reaches the caller's row handler.</summary>
-    public static BoxEl ArtCardSelectSkin(Element content, ArtCardKind kind, Func<bool> selected, bool showCheckbox)
-    {
-        var sel = selected;
-        bool grid = kind == ArtCardKind.Grid;
-        Element lane = new BoxEl
-        {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center,
-            Animate = s_artCardLaneSlide,
-            Children = showCheckbox
-                ?
-                [
-                    new BoxEl
-                    {
-                        Key = "ac-check", Direction = 0, AlignItems = FlexAlign.Center, Width = 28f,
-                        Padding = new Edges4(4f, 0f, 4f, 0f), HitTestVisible = false,
-                        Animate = s_artCardCheckEnter,
-                        Children = [Embed.Comp(new ArtCardCheckProps(sel), static () => new ArtCardCheckHost())],
-                    },
-                    content,
-                ]
-                : [content],
-        };
-        return new BoxEl
-        {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-            MinHeight = grid ? 66f : 54f,
-            Margin = grid ? new Edges4(0f, 1f, 0f, 1f) : new Edges4(Spacing.XS, Spacing.XXS, Spacing.XS, Spacing.XXS),
-            Corners = Radii.ControlAll, ClipToBounds = true,
-            Fill = Prop.Of(() => sel() ? Tok.FillSubtleSecondary : ColorF.Transparent),
-            HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            BorderWidth = 1f, BorderColor = ColorF.Transparent, HoverBorderColor = Tok.StrokeCardDefault,
-            PressScale = Design.Motion.ScaleSubtle.Press,
-            Focusable = false, FocusVisualMargin = Design.FocusInsetRow,
-            Role = AutomationRole.Button,
-            OnPointerExit = static () => { },   // hit-testable: the reveal nodes inside inherit THIS box's hover
-            Children = [lane],
-        };
-    }
-
-    /// <summary>The selection predicate is behaviour, not data: every record compares equal and the host reads the
-    /// newest from its field (component-props-contract "What a props record may compare").</summary>
-    sealed record ArtCardCheckProps(Func<bool> Selected)
-    {
-        public bool Equals(ArtCardCheckProps? other) => other is not null;
-        public override int GetHashCode() => 0;
-    }
-
-    sealed class ArtCardCheckHost : Component
-    {
-        static readonly CheckBox.Style s_style = CheckBox.DefaultStyle with
-        {
-            MinWidth = 0f, MinHeight = 20f, ContentGap = 0f, FocusVisualMargin = Edges4.All(1f),
-        };
-
-        readonly Signal<bool> _on = new(false);
-        Func<bool>? _selected;
-
-        public override Element Render()
-        {
-            var p = UsePropsOrDefault<ArtCardCheckProps>();
-            _selected = p?.Selected;
-            // Auto-tracked: the effect reads the selection predicate, so a selection change re-writes the check's value
-            // without re-rendering this host.
-            UseSignalEffect(() => { if (_selected is { } s) _on.SetIfChanged(s()); });
-            return CheckBox.Create("", _on, null, s_style);
-        }
-    }
 
     // ══ 6. THE "+N" ARTIST CHIP ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -1534,4 +1355,46 @@ public readonly partial struct Track
             };
         }
     }
+}
+
+/// <summary>The track row adapter's pure decisions (<see cref="Track.RowData"/>), engine-free so a fact pins each one:
+/// which affordances a row has, the art edge, which parts the artists subtitle holds, and whose queue item the menu
+/// addresses. The adapter only feeds them.</summary>
+public static class TrackRowRules
+{
+    /// <summary>The play-glyph square that stands where hidden artwork was (ch 01 W28 — it was a 32 button).</summary>
+    public const float NoArtworkEdge = 32f;
+
+    /// <summary>Which affordances a row has. A track the table has no row for (slot ≤ 0) has none; a real one plays and
+    /// has a menu, and drags only when its surface wants it (a row that owns another drag — the queue's reorder — does
+    /// not).</summary>
+    public readonly record struct Affordances(bool Play, bool Menu, bool Drag);
+
+    public static Affordances AffordancesOf(int slot, bool draggable)
+    {
+        bool real = slot > 0;
+        return new Affordances(Play: real, Menu: real, Drag: real && draggable);
+    }
+
+    /// <summary>The art edge of a row's shape: the art's own while artwork shows, else the play-glyph square.</summary>
+    public static float ArtEdge(float art, bool showArtwork) => showArtwork ? art : NoArtworkEdge;
+
+    /// <summary>The parts of the artists subtitle — the "E" badge, the film glyph, the artist links — and how many
+    /// children the row holds with a "·" between each pair.</summary>
+    public readonly record struct SubtitleParts(bool Badge, bool Film, bool Artists)
+    {
+        public int Parts => (Badge ? 1 : 0) + (Film ? 1 : 0) + (Artists ? 1 : 0);
+        public int Children => Parts == 0 ? 0 : 2 * Parts - 1;
+    }
+
+    /// <summary>A badge only when the surface wants it AND the track is explicit; a film glyph only when the surface wants
+    /// it AND the track has a video; the artists whenever the track credits any.</summary>
+    public static SubtitleParts SubtitleOf(bool showExplicit, bool isExplicit, bool showVideo, bool hasVideo, bool hasArtists)
+        => new(showExplicit && isExplicit, showVideo && hasVideo, hasArtists);
+
+    /// <summary>The queue item the track menu addresses (<c>Track.MenuOptions.QueueItemId</c>): a queue row's own non-zero
+    /// item wins, else whatever the caller's menu options already say — a queue row with no item yet (0) is not a
+    /// removable entry.</summary>
+    public static long MenuQueueItem(ulong? queueItemId, long argsQueueItemId)
+        => queueItemId is { } id && id != 0 ? (long)id : argsQueueItemId;
 }

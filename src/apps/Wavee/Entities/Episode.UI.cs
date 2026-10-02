@@ -1,7 +1,8 @@
 // ── Entities/Episode.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // the episode READER ROW (W3) — the show reader's rows, the visit head's "new since you were here" — its figure-space
 // seed twin, and the row's own decisions: the pct the reader reads, "N min left", the duration words, the title without
-// its number, now-playing and the disc's click
+// its number, now-playing and the disc's click — plus `RowData`, the adapter that feeds an episode to the app's shared
+// media surface (Home's episode rows, Recents' members) as `Controls.CardData`
 //
 // Role: UI (with pure statics)
 // Owner: E
@@ -21,14 +22,14 @@
 //
 // ── THE STATES (W3) ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
-//   REST        numeral 30/300 tertiary (46, right) · art 56 r6 · title 14/600 ≤ 2 + chips · blurb 12.5 ≤ 2 · date · length
+//   REST        art 56 r6 · title 14/600 ≤ 2 + chips · blurb 12.5 ≤ 2 · "#n" · date · length
 //   HOVER       the whole row FillSubtleSecondary; the cluster (queue · mark · ♥ · ⋯ + the 36 tone disc) fades in, 120 ms
 //   IN PROGRESS the meta leads with "23 min left" 12/600 in the tone; a 3-DIP rule ≤ 340 under it
-//   PLAYED      numeral, art and copy at 58 % · "✓ played" · no rule
+//   PLAYED      art and copy at 58 % · "✓ played" · no rule
 //   NOW PLAYING a 3-DIP tone bar on the row's left edge · the title in the tone · the equalizer before it
 //   NEW         "new" 10.5/700 tone, +60 tracking, before the date (published after the show's last play — the host's mark)
 //   ROW = LINK  the whole row is a Hyperlink tab stop that opens the episode page; the disc plays (D-3)
-//   NARROW      no numeral, art 48, the cluster is the disc alone and always visible
+//   NARROW      art 48, the cluster is the disc alone and always visible
 //
 // ONE COMPLETION RULE (D-5): the row reads `ReaderPct` — a completed episode (≥ .98 or ≤ 30 s left) is 1 — so "played",
 // the rule and the host's filter/ledger can never disagree about one row.
@@ -102,11 +103,10 @@ public readonly partial struct Episode
     }
 
     // ── the metrics (W3; the prototype's .erow) ──
-    public const float NumeralWidth = 46f, RowArt = 64f, RowArtNarrow = 48f, RowDisc = 36f, RowDiscGlyph = 14f;
+    public const float RowArt = 64f, RowArtNarrow = 48f, RowDisc = 36f, RowDiscGlyph = 14f;
     public const float RowGap = 12f, RowPadX = 0f, RowPadY = 12f, RowRadius = 6f, PlayedInk = 0.85f;
-    public const float RuleHeight = 3f, RuleMaxWidth = 340f, ToneBarWidth = 3f, ActionBox = 30f;
+    public const float RuleHeight = 3f, RuleMaxWidth = 340f, ToneBarWidth = 3f, ActionBox = 30f, MediaRowProgressWidth = 120f;
     const float RuleCorner = 2f, ArtRadius = 6f, ClusterFadeMs = 120f, EqualizerHeight = 11f;
-    const string DisplayFace = "Segoe UI Variable Display";
 
     /// <summary>The explicit mark — the same letter <c>Controls</c>' EXPLICIT badge carries in every locale.</summary>
     const string ExplicitMark = "E";
@@ -452,20 +452,6 @@ public readonly partial struct Episode
         return root;
     }
 
-    static Element Numeral(in BoundItemScope<RowItem> item) => new BoxEl
-    {
-        Width = NumeralWidth, Height = RowArt, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Start,
-        Opacity = item.Opacity(static r => PlayedOf(r.Episode) ? PlayedInk : 1f),
-        Children =
-        [
-            new TextEl(item.Text(static r => NumeralOf(r)))
-            {
-                FontFamily = DisplayFace, Size = 30f, LineHeight = RowArt, Weight = 300, CharSpacing = -30f,
-                Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap,
-            },
-        ],
-    };
-
     static Element Art(in BoundItemScope<RowItem> item, float edge) => new BoxEl
     {
         Width = edge, Height = edge, Shrink = 0f, Corners = CornerRadius4.All(ArtRadius), ClipToBounds = true,
@@ -599,30 +585,6 @@ public readonly partial struct Episode
         Children = [glyph],
     };
 
-    /// <summary>A 30-DIP action; a null <paramref name="onClick"/> draws it disabled with its name (plan D-10).</summary>
-    static Element ActionButton(Element glyph, string name, Action? onClick, Action<bool>? focus = null)
-    {
-        BoxEl box = ActionCell(glyph) with { OnClick = onClick, OnFocusChanged = focus };
-        if (onClick is null) box = box with { IsEnabled = false, Focusable = false, Cursor = null };
-        return Controls.Named(box, name);
-    }
-
-    /// <summary>Mark played ⇄ unplayed — an absolute-state pair; the glyph inks in the tone and the tooltip names the
-    /// verb the click will run.</summary>
-    static Element MarkButton(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, Func<ColorF> tone, Action<bool>? focus = null)
-    {
-        BoxEl box = ActionCell(Icon(Icons.Check, 16f) with
-        {
-            Color = Prop.Of(() => PlayedOf(it.Value.Episode) ? tone() : Tok.TextSecondary),
-        }) with
-        {
-            OnClick = item.Invoke(static r => Entities.MarkEpisode(r.Episode, !PlayedOf(r.Episode))),
-            OnFocusChanged = focus,
-        };
-        return ToolTip.Wrap(box, Prop.Of<string?>(() => Loc.Get(PlayedOf(it.Value.Episode)
-            ? Strings.Podcast.Menu.MarkUnplayed : Strings.Podcast.Menu.MarkPlayed)));
-    }
-
     /// <summary>The 36 tone disc: play, or pause on the playing row (<see cref="Invoke"/> through the host's verb).</summary>
     static Element Disc(in BoundItemScope<RowItem> item, IReadSignal<RowItem> it, RowContext ctx, Action<bool>? focus = null, bool seed = false)
     {
@@ -689,4 +651,146 @@ public readonly partial struct Episode
             new BoxEl { Grow = MathF.Max(0.001f, 1f - pct) },
         ],
     };
+
+    // ══ 6. THE MEDIA ROW — what `Controls.Surface(RowData(…), Shape.EpisodeRow)` is fed ═════════════════════════════
+    //
+    // The reader row above is the show page's own list row. Everywhere else an episode is one more media row on the
+    // app's shared surface (hover plate, hand, play FAB, "…", right-click menu): Home's episode zones and Recents' members.
+    // `RowData` is that surface's ONE adapter for an episode; the shape (`Shape.EpisodeRow`: 56 art, a two-line title,
+    // the 72 floor — or a site's own band) is the caller's. An episode is not a drag source and its menu is
+    // `Episode.Menu`, whichever site draws it.
+
+    /// <summary>What a media row SHOWS of an episode, as plain values: Home states its card's section facts, a resident
+    /// episode's own columns come from <see cref="RowFactsOf"/>, and both feed the SAME rule (<see cref="RowPlan"/>).
+    /// <paramref name="Uri"/> is the identity text the now-playing relation matches; the times are milliseconds, 0 =
+    /// unknown; a <paramref name="ResumeMs"/> above 0 is a resume point the listener left.</summary>
+    public readonly record struct RowFacts(string Uri, string Title, string? Show, string? Cover, bool Explicit, bool Video,
+                                           long ReleasedAtMs, long DurationMs, long ResumeMs);
+
+    /// <summary>The clock a row's date caption reads, stated ONCE per grid so every row of it agrees on "Today".</summary>
+    public readonly record struct RowClock(long NowMs, TimeZoneInfo Tz, CultureInfo Culture)
+    {
+        public static RowClock Now()
+            => new(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+    }
+
+    /// <summary>The per-SITE choices of an episode row; everything else is the episode's. <paramref name="OnClick"/> null
+    /// = the episode page (the reader's verb, D-3); <paramref name="OnPlay"/> null = play the episode's own context;
+    /// <paramref name="ShowMeta"/> = the "E · ▣ · date · length" row under the show name and the resume rung under it
+    /// (false = the compact row: the title and the show name only); <paramref name="ShowGoToShow"/> = the menu's "Go to
+    /// show" (false on the show's own page); <paramref name="Trailing"/> = a right-hand caption cluster (the "…" the
+    /// surface adds sits after it); <paramref name="Clock"/> null = now.
+    /// <para><b>Construct with named arguments</b> — <c>default</c> reads <see cref="ShowMeta"/> and
+    /// <see cref="ShowGoToShow"/> false.</para></summary>
+    public readonly record struct RowOptions(Action? OnClick = null, Action? OnPlay = null, bool ShowMeta = true,
+                                             bool ShowGoToShow = true, Element? Trailing = null, RowClock? Clock = null)
+    {
+        /// <summary><c>new RowOptions()</c> means the defaults above — the full row with Go to show — not a zeroed struct
+        /// (a struct's implicit parameterless constructor would skip the primary one and read both flags false).</summary>
+        public RowOptions() : this(OnClick: null) { }
+    }
+
+    /// <summary>What a media row DECIDES from its facts — pure (no table, no signal, no element), pinned by
+    /// <c>EpisodeRowDataTests</c>. <see cref="Caption"/> is "date · length" (or whichever of the two exists; the length
+    /// is "N min left" while resumed); <see cref="HasMetaRow"/> says the E · ▣ · caption row exists at all;
+    /// <see cref="ShowsProgress"/> is the resume rung under it, drawn only for an episode the listener has resumed;
+    /// <see cref="HasMenu"/> only for a handle that resolves to a row with an identity. Nothing here drags: an episode is
+    /// not a drag source.</summary>
+    public readonly record struct RowPlan(string Caption, bool HasMetaRow, bool ShowsExplicit, bool ShowsVideo,
+                                          bool ShowsProgress, float Progress, bool HasMenu)
+    {
+        /// <param name="date">The date caption ("Today", "23 Sep") — "" when unknown or when the row shows no meta.</param>
+        /// <param name="resolvable">The handle resolves to a resident episode with an identity (the menu's own gate).</param>
+        public static RowPlan Of(in RowFacts f, string date, bool resolvable, bool showMeta)
+        {
+            string caption = showMeta ? JoinCaption(date, LengthOf(f.DurationMs, f.ResumeMs)) : "";
+            bool progress = showMeta && f.ResumeMs > 0;
+            return new RowPlan(caption,
+                HasMetaRow: showMeta && (f.Explicit || f.Video || caption.Length > 0),
+                ShowsExplicit: showMeta && f.Explicit, ShowsVideo: showMeta && f.Video,
+                ShowsProgress: progress,
+                Progress: progress ? (float)HomeUi.EpisodeCaption.ProgressFraction(f.ResumeMs, f.DurationMs) : 0f,
+                HasMenu: resolvable);
+        }
+
+        /// <summary>The row's length: what is LEFT while the listener has resumed it, the whole duration otherwise.</summary>
+        public static string LengthOf(long durationMs, long resumeMs)
+            => resumeMs > 0 ? HomeUi.EpisodeCaption.Remaining(durationMs, resumeMs) : HomeUi.EpisodeCaption.Duration(durationMs);
+
+        /// <summary>"date · length", or whichever of the two exists.</summary>
+        public static string JoinCaption(string date, string length)
+            => date.Length > 0 && length.Length > 0 ? date + " " + MiddleDot + " " + length : date.Length > 0 ? date : length;
+    }
+
+    /// <summary>A resident episode's own facts — the columns read as the other surfaces read them (a title not yet
+    /// known is "", never a guess), the resume point only while in progress (a PEEK of the persisted column: this runs
+    /// in an adapter's render, and the playback clock is a leaf bind's, never a row's).</summary>
+    public static RowFacts RowFactsOf(Episode e)
+    {
+        if (!e.IsValid) return new RowFacts("", "", null, null, false, false, 0L, 0L, 0L);
+        var flags = FlagsOf(e);
+        var show = e.Show;
+        return new RowFacts(e.Uri.Text, TitleOf(e), show.IsValid && show.Knows(ShowFields.Title) ? show.Title : null, ArtOf(e),
+            (flags & EpisodeFlags.Explicit) != 0, (flags & EpisodeFlags.Video) != 0,
+            e.Knows(EpisodeFields.Published) && e.PublishedAt > 0 ? e.PublishedAt * 1000L : 0L,
+            e.Knows(EpisodeFields.Duration) ? e.DurationMs : 0L,
+            Rules.InProgress(Rules.PctOf(e)) ? e.ProgressMs : 0L);
+    }
+
+    /// <summary><see cref="RowData(Episode, in RowFacts, in RowOptions)"/> over a resident episode's own columns.</summary>
+    public static Controls.CardData RowData(Episode e, in RowOptions o) => RowData(e, RowFactsOf(e), in o);
+
+    /// <summary>THE media surface's data for an episode. <paramref name="e"/> is the handle the menu and the defaults
+    /// act on (<c>default</c> = none: no menu, no default verbs); <paramref name="f"/> is what the row shows.
+    /// <list type="bullet">
+    /// <item>title (the shape caps its lines), the show name as the subtitle, the cover, the identity text;</item>
+    /// <item><c>MetaRow</c> = [explicit badge · ▣ · "date · length"] and <c>Below</c> = the resume rung (120 wide) — only
+    /// with <see cref="RowOptions.ShowMeta"/>, and the rung only while resumed;</item>
+    /// <item><c>Menu</c> = <see cref="Menu"/> whenever the handle resolves — the surface shows the "…" and attaches the
+    /// right-click funnel; <c>Drag</c> is null, always.</item>
+    /// </list></summary>
+    public static Controls.CardData RowData(Episode e, in RowFacts f, in RowOptions o)
+    {
+        var episode = e;                                   // a copy the handlers can hold (an `in` cannot be captured)
+        string date = "";
+        if (o.ShowMeta)
+        {
+            var clock = o.Clock ?? RowClock.Now();
+            date = HomeUi.EpisodeCaption.Date(f.ReleasedAtMs, clock.NowMs, clock.Tz, clock.Culture);
+        }
+        var plan = RowPlan.Of(in f, date, resolvable: e.IsValid && e.Uri.IsValid, o.ShowMeta);
+
+        bool goToShow = o.ShowGoToShow;
+        Func<ContextMenuModel?>? menu = plan.HasMenu ? () => Menu(episode, new MenuOptions(ShowGoToShow: goToShow)) : null;
+        Action open = o.OnClick ?? (() => OpenPage(episode));
+        Action play = o.OnPlay ?? (() => Playback.PlayContext(episode.Id));
+        // The rung rides in the text column's own rhythm (the labels' 2-DIP gap) plus the 2 that make it the 4 it always
+        // sat under the meta row.
+        Element? below = null;
+        if (plan.ShowsProgress)
+            below = ProgressBar.Determinate(plan.Progress, MediaRowProgressWidth) with
+            {
+                AlignSelf = FlexAlign.Start, Margin = new Edges4(0f, Spacing.XS - SurfaceGeometry.CardLabelGap, 0f, 0f),
+            };
+
+        return new Controls.CardData(f.Uri, f.Title, f.Show is { Length: > 0 } show ? RowCaption(show) : null, f.Cover,
+            OnClick: open, OnPlay: play, Drag: null)
+        {
+            Menu = menu, MetaRow = plan.HasMetaRow ? MetaRowOf(in plan) : null, Below = below, Trailing = o.Trailing,
+        };
+    }
+
+    /// <summary>The meta row: [explicit badge] · [▣] · the caption, 4 apart, the caption the one that shrinks.</summary>
+    static Element MetaRowOf(in RowPlan p)
+    {
+        var kids = new List<Element>(3);
+        if (p.ShowsExplicit) kids.Add(Controls.ExplicitBadge(14f));
+        if (p.ShowsVideo) kids.Add(Icon(Icons.Video, 12f, Tok.TextTertiary));
+        if (p.Caption.Length > 0) kids.Add(RowCaption(p.Caption) with { Shrink = 1f });
+        return new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = kids.ToArray() };
+    }
+
+    /// <summary>A one-line secondary caption, ellipsised (the show name, the meta caption).</summary>
+    static TextEl RowCaption(string s)
+        => Design.Type.TrackMeta(s) with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
 }

@@ -1,12 +1,17 @@
 import { hasValidAccess } from "./access.js";
-import { computeFingerprint } from "./fingerprint.js";
+import { discordSink, type AlertSink } from "./alerts.js";
+import { computeFingerprint, deriveTitle, FINGERPRINT_VERSION, type GroupingInput } from "./grouping.js";
+import { purgeExpiredReports, reportObjectKeys, type PurgeResult } from "./retention.js";
 import { symbolicate } from "./symbolicate.js";
-import { D1Store, deriveTitle, type Store } from "./store.js";
+import { D1Store, parseFramesJson, type Store } from "./store.js";
 import { validateSummary } from "./validate.js";
-import type { Env } from "./types.js";
+import { ISSUE_STATUSES, type Env, type IssueStatus } from "./types.js";
 
 /** Total multipart body cap — matches `Crash.Bundle.CapBytes` on the client (plan §I ingest contract). */
 export const CAP_BYTES = 20 * 1024 * 1024;
+
+/** R2 keys per delete call — R2's own limit. */
+const R2_DELETE_MAX_KEYS = 1000;
 
 const PART_FILES: Record<string, string> = {
   summary: "summary.json",
@@ -14,6 +19,13 @@ const PART_FILES: Record<string, string> = {
   tail: "log-tail.txt",
   dump: "minidump.dmp",
 };
+
+/** What a request handler needs besides env/store, injected so tests can record alerts and fix the clock
+ *  (production: `discordSink` + `Date.now`, see the default export). */
+export interface Deps {
+  alerts: AlertSink;
+  now: () => number;
+}
 
 /** No CORS headers: the dashboard is served from this Worker's own hostname, so every caller is same-origin
  *  (crash-hosting-implementation.md). */
@@ -38,14 +50,14 @@ function rateLimitKey(request: Request): string {
 
 /** `?since=` on the dashboard read routes accepts either an ISO timestamp or a bare number of days —
  *  crash-dashboard-implementation.md §4 (`GET /v1/stats?since=<iso|days>`). Missing → `defaultDays` ago. */
-function resolveSince(param: string | null, defaultDays: number): string {
-  if (!param) return daysAgoIso(defaultDays);
-  if (/^\d+$/.test(param)) return daysAgoIso(Number(param));
+function resolveSince(param: string | null, defaultDays: number, nowMs: number): string {
+  if (!param) return daysAgoIso(defaultDays, nowMs);
+  if (/^\d+$/.test(param)) return daysAgoIso(Number(param), nowMs);
   return param;
 }
 
-function daysAgoIso(days: number): string {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+function daysAgoIso(days: number, nowMs: number): string {
+  return new Date(nowMs - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function clampLimit(param: string | null, fallback: number, max: number): number {
@@ -71,7 +83,14 @@ function utf8Length(s: string): number {
   return new TextEncoder().encode(s).length;
 }
 
-export async function handleReport(request: Request, env: Env, store: Store): Promise<Response> {
+/** Deletes R2 objects in calls of at most R2_DELETE_MAX_KEYS keys (one subrequest each). */
+async function deleteObjects(bucket: R2Bucket, keys: readonly string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += R2_DELETE_MAX_KEYS) {
+    await bucket.delete(keys.slice(i, i + R2_DELETE_MAX_KEYS));
+  }
+}
+
+export async function handleReport(request: Request, env: Env, store: Store, deps: Deps): Promise<Response> {
   if (!hasValidIngestKey(request, env)) {
     return json({ error: "unauthorized" }, 401);
   }
@@ -134,6 +153,10 @@ export async function handleReport(request: Request, env: Env, store: Store): Pr
     return json({ error: "duplicate report id" }, 409);
   }
 
+  // has_dump/dump_bytes come from the part actually received, never from summary.hasDump (#165).
+  const dumpBytes = dumpBuffer?.byteLength ?? 0;
+  const hasDump = dumpBytes > 0;
+
   const prefix = `reports/${summary.quad}/${summary.reportId}/`;
   await env.BUCKET.put(prefix + "summary.json", summaryText, {
     httpMetadata: { contentType: "application/json" },
@@ -144,27 +167,75 @@ export async function handleReport(request: Request, env: Env, store: Store): Pr
   await env.BUCKET.put(prefix + "log-tail.txt", tailText, {
     httpMetadata: { contentType: "text/plain; charset=utf-8" },
   });
-  if (dumpBuffer) {
+  if (dumpBuffer && hasDump) {
     await env.BUCKET.put(prefix + "minidump.dmp", dumpBuffer, {
       httpMetadata: { contentType: "application/octet-stream" },
     });
   }
 
-  const { frames, debugId, entryCount } = await symbolicate(env.BUCKET, summary.quad, summary.arch, summary.rvas);
-  if (debugId !== null && entryCount !== null) {
-    await store.touchSymbolsMeta(summary.quad, summary.arch, debugId, entryCount, new Date().toISOString());
+  const receivedAt = new Date(deps.now()).toISOString();
+  const sym = await symbolicate(env.BUCKET, summary.quad, summary.arch, summary.rvas, deps.now());
+  if (sym.debugId !== null && sym.entryCount !== null) {
+    await store.touchSymbolsMeta(summary.quad, summary.arch, sym.debugId, sym.entryCount, receivedAt);
   }
 
-  const fingerprint = await computeFingerprint(summary.kind, summary.exceptionType, frames);
-  const receivedAt = new Date().toISOString();
+  // Grouping v2 (src/grouping.ts, plan appendix A1).
+  const g: GroupingInput = {
+    kind: summary.kind,
+    exceptionType: summary.exceptionType,
+    exitCode: summary.exitCode,
+    exceptionCode: summary.exceptionCode,
+    faultModule: summary.faultModule,
+    faultOffset: summary.faultOffset,
+    frames: sym.frames,
+  };
+  const fingerprint = await computeFingerprint(g);
+  const title = deriveTitle(g);
+  const framesJson = JSON.stringify(sym.frames);
 
+  const newInstall = !(await store.installSeenForIssue(fingerprint, summary.installId)); // BEFORE the insert
   await store.insertReport({
     summary,
-    framesJson: JSON.stringify(frames),
+    framesJson,
     fingerprint,
+    fpVersion: FINGERPRINT_VERSION,
     receivedAt,
+    hasDump,
+    dumpBytes,
   });
-  await store.upsertIssueFromReports(fingerprint, deriveTitle(summary, frames), summary.kind);
+  const transition = await store.recordIssueOccurrence({
+    fingerprint,
+    title,
+    kind: summary.kind,
+    semver: summary.version,
+    receivedAt,
+    newInstall,
+    framesJson,
+    fpVersion: FINGERPRINT_VERSION,
+  });
+
+  // Alerts only for builds whose symmap we hold: the ingest key ships in every install, so a made-up quad must not
+  // be able to post to Discord (plan §W1 alerts).
+  if (transition !== "existing" && sym.debugId !== null) {
+    const issue = await store.getIssue(fingerprint);
+    if (issue) {
+      deps.alerts.issueEvent({
+        transition,
+        fingerprint,
+        title: issue.title,
+        kind: summary.kind,
+        semver: summary.version,
+        quad: summary.quad,
+        arch: summary.arch,
+        channel: summary.channel,
+        count: issue.count,
+        installs: issue.installs,
+        githubIssue: issue.github_issue,
+        dashboardOrigin: new URL(request.url).origin,
+        at: receivedAt,
+      });
+    }
+  }
 
   return json({ id: summary.reportId }, 201);
 }
@@ -178,23 +249,25 @@ async function handleListIssues(url: URL, store: Store): Promise<Response> {
   return json({ issues }, 200);
 }
 
-async function handleIssueDetail(store: Store, fingerprint: string): Promise<Response> {
+async function handleIssueDetail(store: Store, fingerprint: string, nowMs: number): Promise<Response> {
   const issue = await store.getIssue(fingerprint);
   if (!issue) return json({ error: "not found" }, 404);
 
   // crash-dashboard-implementation.md §4: the issue detail page's Stack/Occurrences/Environment tabs
   // and the aside cards (sparkline, breakdowns) all come off this one call.
-  const [reports, frames, occurrences, sparkline14d, breakdowns] = await Promise.all([
+  const [reports, latestFrames, occurrences, sparkline14d, breakdowns] = await Promise.all([
     store.listReportsForIssue(fingerprint, 50),
     store.getLatestFrames(fingerprint),
     store.getOccurrences(fingerprint, 50),
-    store.getSparkline(fingerprint, daysAgoIso(14)),
+    store.getSparkline(fingerprint, daysAgoIso(14, nowMs)),
     store.getBreakdowns(fingerprint),
   ]);
+  // Every report may have been purged (90 days); the issue keeps the newest stack in last_frames_json.
+  const frames = latestFrames ?? parseFramesJson(issue.last_frames_json);
   return json({ issue, reports, frames, occurrences, sparkline14d, breakdowns }, 200);
 }
 
-async function handlePatchIssue(request: Request, store: Store, fingerprint: string): Promise<Response> {
+async function handlePatchIssue(request: Request, store: Store, fingerprint: string, nowMs: number): Promise<Response> {
   let body: unknown;
   try {
     body = await request.json();
@@ -202,20 +275,35 @@ async function handlePatchIssue(request: Request, store: Store, fingerprint: str
     return json({ error: "malformed JSON body" }, 400);
   }
   const o = (typeof body === "object" && body !== null ? body : {}) as Record<string, unknown>;
-  const status = typeof o.status === "string" ? o.status : undefined;
+  if (o.status !== undefined && !(ISSUE_STATUSES as readonly unknown[]).includes(o.status)) {
+    return json({ error: `status must be one of ${ISSUE_STATUSES.join(", ")}` }, 400);
+  }
+  const status = o.status as IssueStatus | undefined;
   const githubIssue = typeof o.github_issue === "number" ? o.github_issue : undefined;
-  const ok = await store.patchIssue(fingerprint, { status, githubIssue });
+  const ok = await store.patchIssue(fingerprint, { status, githubIssue }, new Date(nowMs).toISOString());
   if (!ok) return json({ error: "not found" }, 404);
   const issue = await store.getIssue(fingerprint);
   return json({ issue }, 200);
 }
 
-async function handleReportDetail(store: Store, id: string): Promise<Response> {
+async function handleReportDetail(store: Store, id: string, nowMs: number): Promise<Response> {
   const report = await store.getReport(id);
   if (!report) return json({ error: "not found" }, 404);
   // crash-dashboard-implementation.md §4: Report detail's "This install" card.
-  const thisInstall = await store.getThisInstall(report.install_id, daysAgoIso(30));
+  const thisInstall = await store.getThisInstall(report.install_id, daysAgoIso(30, nowMs));
   return json({ report, this_install: thisInstall }, 200);
+}
+
+/** `DELETE /v1/reports/:id` — the dashboard's "Delete report" (#165): the report's R2 objects and row go, and its
+ *  issue is recomputed from the remaining reports (deleted with its last one). No tombstone — that is an install's
+ *  erasure, not one report's. */
+async function handleDeleteReport(env: Env, store: Store, id: string): Promise<Response> {
+  const ref = await store.getReportRef(id);
+  if (!ref) return json({ error: "not found" }, 404);
+  await deleteObjects(env.BUCKET, reportObjectKeys(ref));
+  await store.deleteReport(id);
+  await store.recomputeOrDeleteIssue(ref.fingerprint);
+  return json({ deleted: 1, fingerprint: ref.fingerprint }, 200);
 }
 
 async function handleReportPart(env: Env, store: Store, id: string, part: string): Promise<Response> {
@@ -250,8 +338,8 @@ async function handleVersions(store: Store): Promise<Response> {
 }
 
 /** `GET /v1/stats?since=<iso|days>` — the Overview page's stat cards + charts. */
-async function handleStats(url: URL, store: Store): Promise<Response> {
-  const since = resolveSince(url.searchParams.get("since"), 30);
+async function handleStats(url: URL, store: Store, nowMs: number): Promise<Response> {
+  const since = resolveSince(url.searchParams.get("since"), 30, nowMs);
   const stats = await store.getStats(since);
   return json(stats, 200);
 }
@@ -278,8 +366,6 @@ async function handleSymbolsList(store: Store): Promise<Response> {
   return json({ symbols }, 200);
 }
 
-const R2_PART_FILES = ["summary.json", "report.txt", "log-tail.txt", "minidump.dmp"];
-
 /**
  * `DELETE /v1/installs/:installId` — right to erasure (plan §J). Accepted with EITHER the app's own
  * `X-Wavee-Ingest` key (the in-product "Delete my data" button, `Crash.Uploader.DeleteRemote`) OR a
@@ -288,7 +374,13 @@ const R2_PART_FILES = ["summary.json", "report.txt", "log-tail.txt", "minidump.d
  * `Cf-Access-Jwt-Assertion` here nor injects one — the dashboard's call carries only the
  * `CF_Authorization` cookie, and `hasValidAccess` verifies whichever is present.
  */
-async function handleDeleteInstall(request: Request, env: Env, store: Store, installId: string): Promise<Response> {
+async function handleDeleteInstall(
+  request: Request,
+  env: Env,
+  store: Store,
+  installId: string,
+  nowMs: number,
+): Promise<Response> {
   if (!hasValidIngestKey(request, env) && !(await hasValidAccess(request, env))) {
     return json({ error: "unauthorized" }, 401);
   }
@@ -303,10 +395,8 @@ async function handleDeleteInstall(request: Request, env: Env, store: Store, ins
     return json({ error: "not found" }, 404);
   }
 
-  for (const ref of refs) {
-    const prefix = `reports/${ref.quad}/${ref.id}/`;
-    await env.BUCKET.delete(R2_PART_FILES.map((f) => prefix + f));
-  }
+  // One R2 call per 250 reports, not one per report: the free plan allows 50 subrequests per invocation.
+  await deleteObjects(env.BUCKET, refs.flatMap(reportObjectKeys));
 
   await store.deleteReportsForInstall(installId);
 
@@ -315,15 +405,23 @@ async function handleDeleteInstall(request: Request, env: Env, store: Store, ins
     await store.recomputeOrDeleteIssue(fingerprint);
   }
 
-  await store.tombstoneInstall(installId, new Date().toISOString());
+  await store.tombstoneInstall(installId, new Date(nowMs).toISOString());
 
   return json({ deleted: refs.length }, 200);
 }
 
-/** Routes GET/PATCH behind a verified Cloudflare Access JWT (`access.ts`: signature, `aud`, `iss`, expiry — never
- *  the header's mere presence); `POST /v1/report` is the app's own ingest call and is authenticated by
- *  `X-Wavee-Ingest` instead (see plan §C route table). */
-async function routeAccessGated(request: Request, url: URL, env: Env, store: Store): Promise<Response> {
+/** The retention purge (src/retention.ts) — run daily by `scheduled()` and on demand by `POST /v1/retention/run`.
+ *  Logs counts only. */
+export async function runRetention(env: Env, nowMs: number, store: Store = new D1Store(env.DB)): Promise<PurgeResult> {
+  const r = await purgeExpiredReports(store, env.BUCKET, nowMs);
+  console.log(JSON.stringify({ event: "retention.purge", ...r }));
+  return r;
+}
+
+/** Routes GET/PATCH/DELETE/POST behind a verified Cloudflare Access JWT (`access.ts`: signature, `aud`, `iss`,
+ *  expiry — never the header's mere presence); `POST /v1/report` is the app's own ingest call and is authenticated
+ *  by `X-Wavee-Ingest` instead (see plan §C route table). */
+async function routeAccessGated(request: Request, url: URL, env: Env, store: Store, deps: Deps): Promise<Response> {
   if (!(await hasValidAccess(request, env))) {
     return json({ error: "unauthorized" }, 401);
   }
@@ -335,7 +433,7 @@ async function routeAccessGated(request: Request, url: URL, env: Env, store: Sto
     return handleVersions(store);
   }
   if (url.pathname === "/v1/stats" && request.method === "GET") {
-    return handleStats(url, store);
+    return handleStats(url, store, deps.now());
   }
   if (url.pathname === "/v1/reports" && request.method === "GET") {
     return handleReportsList(url, store);
@@ -343,12 +441,15 @@ async function routeAccessGated(request: Request, url: URL, env: Env, store: Sto
   if (url.pathname === "/v1/symbols" && request.method === "GET") {
     return handleSymbolsList(store);
   }
+  if (url.pathname === "/v1/retention/run" && request.method === "POST") {
+    return json(await runRetention(env, deps.now(), store), 200);
+  }
   const issueMatch = /^\/v1\/issues\/([^/]+)$/.exec(url.pathname);
   if (issueMatch && request.method === "GET") {
-    return handleIssueDetail(store, decodeURIComponent(issueMatch[1]!));
+    return handleIssueDetail(store, decodeURIComponent(issueMatch[1]!), deps.now());
   }
   if (issueMatch && request.method === "PATCH") {
-    return handlePatchIssue(request, store, decodeURIComponent(issueMatch[1]!));
+    return handlePatchIssue(request, store, decodeURIComponent(issueMatch[1]!), deps.now());
   }
   const reportPartMatch = /^\/v1\/reports\/([^/]+)\/([^/]+)$/.exec(url.pathname);
   if (reportPartMatch && request.method === "GET") {
@@ -356,33 +457,42 @@ async function routeAccessGated(request: Request, url: URL, env: Env, store: Sto
   }
   const reportMatch = /^\/v1\/reports\/([^/]+)$/.exec(url.pathname);
   if (reportMatch && request.method === "GET") {
-    return handleReportDetail(store, decodeURIComponent(reportMatch[1]!));
+    return handleReportDetail(store, decodeURIComponent(reportMatch[1]!), deps.now());
+  }
+  if (reportMatch && request.method === "DELETE") {
+    return handleDeleteReport(env, store, decodeURIComponent(reportMatch[1]!));
   }
   return json({ error: "not found" }, 404);
 }
 
 /** wrangler.toml's `run_worker_first = ["/v1/*"]` means only `/v1/*` reaches this; every other path is the
  *  dashboard's static assets, served by Cloudflare directly. */
-export async function route(request: Request, env: Env, store: Store): Promise<Response> {
+export async function route(request: Request, env: Env, store: Store, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
 
-  if (url.pathname === "/v1/report" && request.method === "POST") return handleReport(request, env, store);
+  if (url.pathname === "/v1/report" && request.method === "POST") return handleReport(request, env, store, deps);
   const deleteInstallMatch = /^\/v1\/installs\/([^/]+)$/.exec(url.pathname);
   if (deleteInstallMatch && request.method === "DELETE") {
-    return handleDeleteInstall(request, env, store, decodeURIComponent(deleteInstallMatch[1]!));
+    return handleDeleteInstall(request, env, store, decodeURIComponent(deleteInstallMatch[1]!), deps.now());
   }
-  if (url.pathname.startsWith("/v1/")) return routeAccessGated(request, url, env, store);
+  if (url.pathname.startsWith("/v1/")) return routeAccessGated(request, url, env, store, deps);
   return json({ error: "not found" }, 404);
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  /** `ctx` is optional so tests can call `fetch(request, env)`; without one, an alert is fire-and-forget. */
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     try {
-      return await route(request, env, new D1Store(env.DB));
+      return await route(request, env, new D1Store(env.DB), { alerts: discordSink(env, ctx), now: () => Date.now() });
     } catch (err) {
       // Deliberately logs only the error, never the request (which could carry cf-connecting-ip).
       console.error("crash-worker unhandled error", err instanceof Error ? err.message : String(err));
       return json({ error: "internal error" }, 500);
     }
+  },
+
+  /** wrangler.toml `[triggers]` — the daily retention purge. */
+  scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): void {
+    ctx.waitUntil(runRetention(env, controller.scheduledTime));
   },
 };

@@ -78,11 +78,15 @@ public static partial class Settings
     /// cache", but after D1 it never is.</summary>
     public static Action? ClearMetadataCache;
 
-    /// <summary>B4 assigns (G-220): how many license keys the audio path keeps on disk. Null → the generic sub.</summary>
+    /// <summary>Wired in <c>App.cs</c> to <c>Spotify.Audio.KeyStore.Count</c> (G-123, G-220): how many license keys the
+    /// audio path keeps on disk, called OFF the UI thread. Null (the store is off, detached or broken — it answers null
+    /// itself) → the row shows its generic sub and its size only.</summary>
     public static Func<int?>? LicenseKeyCount;
 
-    /// <summary>B4 assigns (G-220): forget every saved license key. Called OFF the UI thread, before the on-disk
-    /// <c>audiokeys.db</c> is deleted. Null → only the file is deleted.</summary>
+    /// <summary>Wired in <c>App.cs</c> to <c>Spotify.Audio.KeyStore.Clear</c> (G-123, G-272): forget every saved license
+    /// key of every account — the session map, the queued writes and the <c>audiokeys.db</c> file set, safely while a
+    /// track plays. Called OFF the UI thread; the store owns the file, so nothing here deletes it. Null → nothing to
+    /// clear (the toast still shows).</summary>
     public static Action? ClearLicenseKeys;
 
     /// <summary>The "Wavee right now" block as text — the last receipts tick, for the diagnostics copy (0.2.9
@@ -93,9 +97,6 @@ public static partial class Settings
 
     static string AudioCacheDirectory()
         => ChunkDiskCache.ResolveDirectory(Platform.Settings.Get(Platform.Keys.AudioBodyCacheBasePath), Spotify.Audio.DiskCache.DefaultDirectory());
-
-    /// <summary>0.2.9 `LicenseKeyDiskCache.DefaultDbPath()`: the product cache folder, beside `audio\`.</summary>
-    static string LicenseDbPath() => Path.Combine(Platform.LocalFolder, "Wavee", "Cache", "audiokeys.db");
 
     static string RuntimeDirectory() => Path.Combine(Platform.LocalFolder, "playplay");
 
@@ -178,7 +179,7 @@ public static partial class Settings
         long runtime = TreeBytes(RuntimeDirectory());
         long store = FileBytes(Platform.StorePath) + TreeBytes(Path.Combine(root, "WaveeMusic"));
         long audio = status?.Bytes ?? TreeBytes(AudioCacheDirectory());
-        long keys = FileBytes(LicenseDbPath());
+        long keys = Spotify.Audio.KeyStore.DiskBytes();      // the whole WAL set, not just the main file
         long images = TreeBytes(ImageCacheDirectory());
         return new StorageSnapshot(library, runtime, logs, logFiles, store, audio, keys, images,
             library + runtime + logs + store + audio + keys + images);
@@ -234,12 +235,7 @@ public static partial class Settings
     static void ClearAudioBodies()
         => ClearThenRecount(static () => Spotify.Audio.DiskCache.Shared?.ClearAll(), Strings.Settings.Storage.AudioCacheCleared);
 
-    static void ClearSavedKeys() => ClearThenRecount(static () =>
-    {
-        ClearLicenseKeys?.Invoke();
-        string db = LicenseDbPath();
-        if (File.Exists(db)) File.Delete(db);
-    }, Strings.Settings.Storage.LicenseKeysCleared);
+    static void ClearSavedKeys() => ClearThenRecount(static () => ClearLicenseKeys?.Invoke(), Strings.Settings.Storage.LicenseKeysCleared);
 
     static void ClearMetadata() => ClearThenRecount(static () => ClearMetadataCache?.Invoke(), Strings.Settings.Storage.MetadataCleared);
 

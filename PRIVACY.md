@@ -46,26 +46,46 @@ Only these, and only to the parties named:
   same repository. It sends no identifiers; GitHub sees ordinary anonymous file downloads (your IP and user
   agent, as with any download).
 - **Spotify's image CDN**, to fetch album art.
-- **Wavee's own crash-reporting service** (below), and only when you have turned crash reporting on, or
-  when you press Send on a specific report by hand. Off by default; nothing is sent until you opt in.
+- **Wavee's own crash-reporting service** at `https://crash.cproducts.dev` (below), and only when you have
+  set crash reporting to Automatic, or when you press Send on a specific report by hand. Off by default;
+  nothing is sent until you opt in.
 
 Nothing else. In particular: there is no third-party analytics, advertising, or crash SDK anywhere in the
 app — the crash-reporting service above is code in this repository (`ops/crash/`), not a vendor's SDK,
-and it never runs unless you've turned it on.
+and nothing reaches it unless you've chosen Automatic or pressed Send.
 
 ## Crash reports (opt-in)
 
 Wavee can send a report when it crashes or stops responding, to help find and fix bugs. **This is off by
-default.** You are asked once, in the setup wizard, and again the first time Wavee actually crashes; you
-can change your mind at any time in **Settings › Privacy & diagnostics**, where the options are "No" (the
-default), "Ask me first" (review and send each report by hand), or "Always send automatically."
+default.** You are asked once, in the setup wizard, and can change your mind at any time in **Settings ›
+Privacy & diagnostics**. Both offer the same choices:
+
+- **Off** (the default) and **Ask each time** — every time Wavee crashes or stops responding, it shows you a
+  prompt on this PC where you can read the full report and choose to send it. Nothing is uploaded unless you
+  click Send.
+- **Automatic** — reports are sent without asking. If you're offline, the report waits on your PC and goes
+  out once you're back online. Automatic is only offered by builds that can send reports at all; a build
+  without the crash service's address (for example one you compiled yourself) offers only Off and Ask each
+  time.
 
 A report contains, and only contains:
 
 - The error and where it happened — the exception type and message, and the crashing call stack
   (resolved to method names against that exact build's symbols on our server; nothing about your code or
   data, only Wavee's own).
-- Wavee's version and Windows build, and your GPU model and driver tier.
+- For a crash inside native code that isn't Wavee's own (a Windows library, or a driver loaded into Wavee):
+  the Windows exception code, the **name of the program file** the fault happened in — for example a
+  graphics driver's DLL; the file name only, never its folder — and the offset inside that file. Because
+  that file can belong to other software, its name may reveal a piece of software installed on your PC
+  (most often your graphics driver).
+- Wavee's version, build commit, update channel, processor architecture (x64 or ARM64) and whether it is the
+  installed package; your Windows build and display language; your GPU model and driver tier, and whether
+  Windows fell back to software rendering.
+- How that run went: how long Wavee had been running, whether its window had appeared yet, the Wavee page
+  you were on (its address inside Wavee — for example an artist page and that artist's Spotify id), the
+  process exit code, and a random id for that app session (a new one every launch).
+- Technical identifiers of the Wavee program file itself — where Windows loaded it, its size and its build
+  id — so the call stack can be matched to that exact build.
 - The last 300 lines of that session's log, with personal details removed before anything leaves your
   machine: file paths, account and device identifiers, emails, tokens, and IP addresses are all stripped.
   Track, album, and playlist ids from the last few minutes are kept (they help reproduce the crash) — never
@@ -82,24 +102,39 @@ A report contains, and only contains:
 redacted log excerpt above; and your IP address is never stored by the service (see below) even though,
 like any web request, it is visible to the network in transit.
 
-**Where it goes:** our own crash-reporting service, source code in `ops/crash/` of this repository,
-running on Cloudflare's infrastructure (a Cloudflare Worker, with Cloudflare R2 and D1 for storage) — not
-a third-party crash SDK or analytics vendor. Cloudflare is a global network; which of its facilities
-physically handles a given request is not something Wavee controls or guarantees, so no specific
-jurisdiction (EU or otherwise) is promised. The service does not read, log, or store the connection
-address a report arrives from — it sees your IP the way any web server briefly does while handling the
-request, and never writes it to a database row, a file, or a log line.
+**Where it goes:** our own crash-reporting service at `https://crash.cproducts.dev`, source code in
+`ops/crash/` of this repository, running on Cloudflare's infrastructure (a Cloudflare Worker, with
+Cloudflare D1 and R2 for storage) — not a third-party crash SDK or analytics vendor. Cloudflare is a
+global network; which of its facilities physically handles a given request is not something Wavee
+controls or guarantees, so no specific jurisdiction (EU or otherwise) is promised. The service does not
+read, log, or store the connection address a report arrives from — it sees your IP the way any web
+server briefly does while handling the request, and never writes it to a database row, a file, or a log
+line.
 
-**Retention:** crash reports are deleted automatically **90 days** after upload (a Cloudflare R2 lifecycle
-rule enforces this — see `ops/crash/README.md`). Grouped issue statistics (counts, affected versions — no
-report contents) may be kept longer to track whether a bug has been fixed.
+**Alerts:** when the service sees a new kind of crash, or a bug that was marked fixed comes back in a newer
+Wavee version, it posts a short notice to the maintainer's private Discord channel. The notice holds the
+crash type and the Wavee code location it happened in (for a native crash, also the program file named
+above), the Wavee version, architecture and release channel, and how many reports and installs that issue
+has — never the exception message, any report or install id, or the log.
 
-**Seeing, deleting, or sending a report by hand:** every crash report Wavee has saved is listed in
-**Settings › Logs › Reports**, whether or not you have crash reporting turned on — you can open, copy, or
-manually send any individual report from there regardless of your general setting, and delete it from
-your PC (`View` opens it in Notepad; `Send` is a single explicit action). The underlying files live in
-your `logs\crash` folder (see the table above) if you would rather inspect or delete them directly on
-disk.
+**Retention:** every crash report — its database row and its files, including any memory snapshot — is
+deleted **90 days** after upload by a daily clean-up job on the service, with a Cloudflare R2 lifecycle
+rule on the files as a backstop (see `ops/crash/README.md`). What is kept after that are the grouped
+statistics of each issue (an issue collects every report of the same bug): how many reports and installs
+it has had, which Wavee versions, when it was first and last seen, its crash type, and the latest Wavee
+code location it crashed in — method names inside Wavee itself (for a native crash, also the program file
+it happened in). These statistics never hold report contents: no exception message, log, install id, or
+memory snapshot. They are kept to track whether a bug has been fixed.
+
+**Seeing, copying, deleting, or sending a report by hand:** every crash report Wavee has saved is listed
+in **Settings › Logs › Reports**, whether or not you have crash reporting turned on, each with its short
+report id. Each report has its own buttons, which work regardless of your general setting: **View** opens
+it in Notepad; **Copy** puts the redacted report — exactly what would be sent — on your clipboard;
+**Delete** removes it from your PC, and a report deleted before it was sent is never uploaded; **Send**
+shows you the report first and uploads it only when you confirm — a single explicit action. Deleting a
+report from your PC does not remove a copy that was already sent: that copy is deleted after 90 days (see
+"Retention"), or straight away with "Delete my data…" below. The underlying files live in your
+`logs\crash` folder (see the table above) if you would rather inspect or delete them directly on disk.
 
 ### Your rights
 
@@ -107,10 +142,12 @@ Every report the crash service holds is tied to that random install id and nothi
 is straightforward:
 
 - **In the app:** **Settings › Privacy & diagnostics** shows your install id and a **"Delete my data…"**
-  button. Confirming it deletes every report the service has ever received from this install — the report
-  contents, the memory snapshot when one was sent, all of it — usually within moments, and Wavee then
-  starts using a brand-new install id, so anything sent afterward (if reporting stays on) can't be tied to
-  what was deleted.
+  button. Confirming it first drops any report still waiting to send on this PC, then deletes every report
+  the service has ever received from this install — the report contents, the memory snapshot when one was
+  sent, all of it — usually within moments. The service keeps only a note that the old install id was
+  erased (the id and when), so a report still carrying that id can never be stored again: it is refused
+  instead. Wavee then starts using a brand-new install id, so anything sent afterward (if reporting stays
+  on) can't be tied to what was deleted.
 - **After you've uninstalled Wavee**, or if you'd rather ask a person: the install id was shown in that
   same Settings row while Wavee was installed — if you copied it down (or still have it in an old crash
   report on disk), open an issue at <https://github.com/christosk92/WaveeMusic/issues> or use the address

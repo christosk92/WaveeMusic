@@ -31,5 +31,16 @@ public static class QueueEchoDiff
 
 /// <summary>PURE: why a frame was dropped without acting on it — the `FrameIgnored` record's `reason`, an enum,
 /// never a formatted string. Mirrors `Ownership.Fold`'s own F0 stale-guard and the "everything else" fall-through
-/// at `Spotify.Connect.cs:247-255` (§3.3, §6.4).</summary>
-public enum CaptureIgnoreReason { Unclassified, StaleServerTime, NotOurClaim, TruncatedPayload }
+/// of `Spotify.Connect.OnDealer` (§3.3, §6.4). The fall-through's two reasons come from
+/// <see cref="Spotify.DealerFrameDisposition"/>: <c>IgnoredOnPurpose</c> (a decision, never an anomaly) and
+/// <c>Unread</c> (a topic nobody reads; stays one, so a new one is visible).</summary>
+public enum CaptureIgnoreReason { IgnoredOnPurpose, Unread, StaleServerTime, NotOurClaim, TruncatedPayload }
+
+/// <summary>PURE: which `FrameIgnored` records the Diagnostics anomaly list and the roll-up dot count. The record's
+/// field B is the reason's NAME (`Spotify.Connect` writes a = the topic, b = the reason).</summary>
+public static class CaptureIgnoreRules
+{
+    /// <summary>False only for a frame ignored on purpose — a decision, not a fault. Every other reason, and a record
+    /// carrying none, stays an anomaly.</summary>
+    public static bool IsAnomaly(string? reason) => reason != nameof(CaptureIgnoreReason.IgnoredOnPurpose);
+}

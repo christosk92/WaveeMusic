@@ -18,11 +18,36 @@ function isNumberArray(v: unknown): v is number[] {
   return Array.isArray(v) && v.every((x) => isFiniteNumber(x));
 }
 
+/** At most this many frames are symbolicated and stored per report (the client sends ≤ 32). */
+export const MAX_RVAS = 64;
+
+/** `version` becomes a JSON path key in `issues.versions_json` (`$."<version>"`, store.ts), so it is restricted to
+ *  semver characters; anything else is stored as "". */
+const VERSION_RX = /^[0-9A-Za-z.+-]{1,64}$/;
+
+/** Mirrors the client's `Crash.FaultModule.Normalize`: base name only, lower-case, `[a-z0-9._-]`, ≤ 64 chars. */
+const FAULT_MODULE_RX = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+export function sanitizeFaultModule(v: unknown): string {
+  if (!isString(v)) return "";
+  const base = v.slice(Math.max(v.lastIndexOf("/"), v.lastIndexOf("\\")) + 1).trim().toLowerCase();
+  return FAULT_MODULE_RX.test(base) ? base : "";
+}
+
+function uint32(v: unknown): number {
+  return Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 0xffffffff ? (v as number) : 0;
+}
+
+function nonNegativeInt(v: unknown): number {
+  return Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0;
+}
+
 /**
  * Validates the `summary` JSON part of a `POST /v1/report` upload against the Summary shape from
  * plan §I. Only the fields the plan calls out as required are enforced strictly (reportId, installId,
  * kind, quad, arch, rvas, moduleBase, debugId); every other field is optional and defaulted so an
- * older or partial client build still ingests.
+ * older or partial client build still ingests. The native fault fields (#165) are sanitized rather than
+ * refused: a malformed value becomes 0/"" and the report still lands.
  */
 export function validateSummary(json: unknown): ValidateResult {
   if (typeof json !== "object" || json === null || Array.isArray(json)) {
@@ -46,7 +71,7 @@ export function validateSummary(json: unknown): ValidateResult {
     installId: o.installId,
     kind: o.kind as Kind,
     stampUtc: isString(o.stampUtc) ? o.stampUtc : "",
-    version: isString(o.version) ? o.version : "",
+    version: isString(o.version) && VERSION_RX.test(o.version) ? o.version : "",
     quad: o.quad,
     commit: isString(o.commit) ? o.commit : "",
     channel: isString(o.channel) ? o.channel : "",
@@ -63,13 +88,16 @@ export function validateSummary(json: unknown): ValidateResult {
     lastRoute: isString(o.lastRoute) ? o.lastRoute : "",
     exceptionType: isString(o.exceptionType) ? o.exceptionType : "",
     exceptionMessage: isString(o.exceptionMessage) ? o.exceptionMessage : "",
-    rvas: o.rvas,
+    rvas: o.rvas.slice(0, MAX_RVAS),
     moduleBase: o.moduleBase,
     moduleSize: isFiniteNumber(o.moduleSize) ? o.moduleSize : 0,
     debugId: o.debugId,
     exitCode: isFiniteNumber(o.exitCode) ? o.exitCode : 0,
     hasDump: o.hasDump === true,
     dumpBytes: isFiniteNumber(o.dumpBytes) ? o.dumpBytes : 0,
+    exceptionCode: uint32(o.exceptionCode),
+    faultModule: sanitizeFaultModule(o.faultModule),
+    faultOffset: nonNegativeInt(o.faultOffset),
   };
   return { ok: true, value };
 }

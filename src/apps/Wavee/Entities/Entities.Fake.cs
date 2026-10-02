@@ -90,6 +90,9 @@ public static partial class Entities
         0xFF52E0B0, 0xFF52C4E0, 0xFF528AE0, 0xFF6B52E0, 0xFFB052E0, 0xFFE052C4,
     ];
 
+    // The four seeded users' brand avatar colours, 0xFFRRGGBB (the profile hero's tone and the letter plate's ground).
+    static readonly uint[] s_userColors = [0xFF509BF5u, 0xFFE8115Bu, 0xFF1E3264u, 0xFFAF2896u];
+
     /// <summary>Totality for any <c>int</c> (ch 31 §7.2 rule B): a uri-derived index can be huge or negative, and every
     /// table lookup below wraps through this rather than trusting its caller.</summary>
     public static int Wrap(int i, int n) => n <= 0 ? 0 : ((i % n) + n) % n;
@@ -140,6 +143,7 @@ public static partial class Entities
         SeedArtistSurfaces(now0);     // owner N: Entities.Fake.Artist.cs (artist, discography, concerts)
         SeedLibrarySurfaces(now0);    // owner O: Entities.Fake.Library.cs (playlist, local, user, liked facts)
         SeedHomeSurfaces(now0);       // owner P: Entities.Fake.Home.cs (home, search, browse, recents)
+        SeedProfileSurfaces(now0);    // profile pages: Entities.Fake.Profile.cs (the four users' social facts + shelves)
 
         // ONE publication (ch 31 §7.5 step 5 / §1.2): every table this seed touched bumps its Changed signal exactly
         // once, here — never per row and never per relation.
@@ -157,6 +161,7 @@ public static partial class Entities
     static partial void SeedArtistSurfaces(long now0);
     static partial void SeedLibrarySurfaces(long now0);
     static partial void SeedHomeSurfaces(long now0);
+    static partial void SeedProfileSurfaces(long now0);
 
     static string UserUri(int i) => i switch
     {
@@ -192,6 +197,7 @@ public static partial class Entities
             ref var row = ref s.Users.RowFor(s.AddText(Utf8(UserUri(i))), Authority.Seed, (uint)UserFields.Identity);
             row.Name = s.AddText(Utf8(i == 0 ? "Wavee Listener" : s_artistNames[i - 1]));
             row.Image = s.AddText(Utf8(Cover(i)));
+            row.Color = s_userColors[i];
         }
 
         // ── tracks: the 166-row liked pool, reused (via Wrap) as album and playlist membership ─────────────────────

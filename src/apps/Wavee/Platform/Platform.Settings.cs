@@ -528,7 +528,8 @@ public static partial class WaveeLogSessions
 /// <param name="FeedRelease">The rolling release carrying the .appinstaller feed (build-time metadata, never a switch).</param>
 /// <param name="UpdateBaseUrl">Where the feed's assets live; always ends in "/".</param>
 /// <param name="CrashIngestUrl">The opt-in crash pipeline's ingest endpoint (crash & diagnostics plan §B.5); "" on every
-/// `dotnet run` and E2E package, which is what keeps <c>Crash.Uploader.Configured</c> false and uploads off entirely.</param>
+/// `dotnet run` and E2E package, which is what keeps <see cref="CrashReportingAvailable"/> (and so
+/// <c>Crash.Uploader.Configured</c>) false and uploads off entirely.</param>
 /// <param name="CrashIngestKey">The <c>X-Wavee-Ingest</c> public key sent with every crash upload; "" when unstamped.</param>
 public sealed record WaveeVersionInfo(
     string SemVer, string Core, int? Beta, string Quad, string Codename, string Channel, string Commit, string BuildDate,
@@ -542,6 +543,13 @@ public sealed record WaveeVersionInfo(
 
     /// <summary>A build Windows never installed: no quad, or an explicit dev channel. It never sees an update prompt.</summary>
     public bool IsDev => Channel == "dev" || Quad.Length == 0;
+
+    /// <summary>Whether this build can actually deliver a crash report (#165): the ingest URL, the ingest key AND the
+    /// quad must all be stamped. Any one missing and the Worker refuses the report (no URL: nowhere to send; no key:
+    /// 401; no quad: 400 — and a 4xx is never retried, so the report would be dropped for good), so the client never
+    /// offers Automatic and never touches the network.</summary>
+    public bool CrashReportingAvailable =>
+        !string.IsNullOrWhiteSpace(CrashIngestUrl) && !string.IsNullOrWhiteSpace(CrashIngestKey) && !string.IsNullOrWhiteSpace(Quad);
 
     /// <summary>Trim; empty → the default; guarantee the trailing slash (every caller concatenates a tail).</summary>
     public static string NormalizeUpdateBaseUrl(string? raw)

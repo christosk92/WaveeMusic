@@ -172,9 +172,9 @@ public static partial class Recovery
             Loc.Format("crash.recoveryFailedResult", "Couldn't send: {error} — it stays on this PC", ("error", error));
 
         // ── the reset confirm reuses the EXISTING factory-reset confirm copy (assets/loc/en-US.json,
-        //    "factoryResetConfirmTitle"/"factoryResetConfirmBody") rather than a new crash.recovery* pair. ──
-        public static string ResetConfirmTitle => Loc.Get("factoryResetConfirmTitle", "Reset Wavee to a fresh install?");
-        public static string ResetConfirmBody => Loc.Get("factoryResetConfirmBody",
+        //    "settings.storage.factoryResetConfirmTitle"/"…Body") rather than a new crash.recovery* pair. ──
+        public static string ResetConfirmTitle => Loc.Get("settings.storage.factoryResetConfirmTitle", "Reset Wavee to a fresh install?");
+        public static string ResetConfirmBody => Loc.Get("settings.storage.factoryResetConfirmBody",
             "This signs you out and permanently deletes all local Wavee data on this PC — login, library, metadata, " +
             "settings, playback cache, and history. Wavee will restart on the first-launch screen. The app itself is not uninstalled.");
 

@@ -55,6 +55,10 @@ public enum Relation : byte
     Pins,
     /// <summary>§9.6 Q4: parent = album; each edge becomes a <see cref="MerchTable"/> row (Spotify.Decode.Album.cs).</summary>
     AlbumMerch,
+    /// <summary>Appended: parent = the user row; payload = <see cref="ProfileCardEdge"/> (User.Profile.cs). Playlists and
+    /// Artists ride the profile view (UserFields.Social); Followers and Following are their own whole lists, and Following
+    /// is CROSS-KIND (artists then users) — the kind rides the payload.</summary>
+    ProfilePlaylists, ProfileArtists, ProfileFollowers, ProfileFollowing,
 }
 
 // ── 2. the staged edge and its run ───────────────────────────────────────────────────────────────────────────────────
@@ -369,6 +373,7 @@ public static partial class Entities
     static StringId[] s_edgeText = new StringId[64];
     static FormatEdge[] s_edgeFormat = new FormatEdge[64];
     static PreviewEdge[] s_edgePreview = new PreviewEdge[64];
+    static ProfileCardEdge[] s_edgeProfileCard = new ProfileCardEdge[64];
 
     /// <summary>Land every staged run: resolve the parent, resolve the children, build the payload the relation's own
     /// family needs, and <c>Replace</c> or <c>ReplacePage</c>. One arm per PAYLOAD FAMILY and no more — everything else
@@ -590,6 +595,28 @@ public static partial class Entities
                         Land(Current.Edges.AlbumMerch, parent, page.Length, s_edgeNone, in run);
                         break;
                     }
+                case Relation.ProfilePlaylists:
+                case Relation.ProfileArtists:
+                case Relation.ProfileFollowers:
+                case Relation.ProfileFollowing:
+                    {
+                        // A profile shelf or list (User.Profile.cs). CROSS-KIND for Following (artists then users, wire
+                        // order): each target resolves in its OWN kind's table and the kind rides the payload. A kind the
+                        // shelf does not admit is dropped here as well as at decode. Union read: At = followers, B0 = flags.
+                        int n = 0;
+                        for (int j = 0; j < page.Length; j++)
+                        {
+                            ref readonly var e = ref page[j];
+                            var kind = e.Target.Kind(s);
+                            if (!ProfileCardEdge.Admits(run.Relation, kind) || TableFor(kind) is not { } table) continue;
+                            int target = s.Slot(table, in e.Target);
+                            if (target == Table.None) continue;
+                            s_edgeTargets[n] = target;
+                            s_edgeProfileCard[n++] = new ProfileCardEdge(kind, (ProfileCardFlags)e.B0, e.At);
+                        }
+                        Land(ProfileRelation(run.Relation), parent, n, s_edgeProfileCard, in run);
+                        break;
+                    }
                 default:
                     {
                         // Every remaining relation is a plain ordered list with no payload at all: of one kind, of the
@@ -681,7 +708,9 @@ public static partial class Entities
         Relation.ShowEpisodes => Current.Shows,
         Relation.PlaylistTracks => Current.Playlists,
         Relation.Liked or Relation.SavedAlbums or Relation.FollowedArtists or Relation.SavedShows
-            or Relation.Rootlist or Relation.Pins => Current.Users,
+            or Relation.Rootlist or Relation.Pins
+            or Relation.ProfilePlaylists or Relation.ProfileArtists
+            or Relation.ProfileFollowers or Relation.ProfileFollowing => Current.Users,
         Relation.HomeSection => Current.Homes,
         Relation.SectionCards or Relation.SectionPreviewTracks => Current.Sections,
         Relation.SearchResult => Current.Searches,
@@ -732,6 +761,14 @@ public static partial class Entities
         _ => Current.Edges.TrackArtists,
     };
 
+    static EdgeTable<ProfileCardEdge> ProfileRelation(Relation relation) => relation switch
+    {
+        Relation.ProfileArtists => Current.Edges.ProfileArtists,
+        Relation.ProfileFollowers => Current.Edges.ProfileFollowers,
+        Relation.ProfileFollowing => Current.Edges.ProfileFollowing,
+        _ => Current.Edges.ProfilePlaylists,
+    };
+
     static void Grow(int n)
     {
         if (n <= s_edgeTargets.Length) return;
@@ -748,5 +785,6 @@ public static partial class Entities
         s_edgeText = new StringId[size];
         s_edgeFormat = new FormatEdge[size];
         s_edgePreview = new PreviewEdge[size];
+        s_edgeProfileCard = new ProfileCardEdge[size];
     }
 }

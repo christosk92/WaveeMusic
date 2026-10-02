@@ -85,30 +85,80 @@ internal static partial class PodcastReaderUI
     }
 
     internal sealed record RecommendationProps(string Uri, bool Show);
+
+    /// <summary>The shelf's placeholder while its request is in flight (four seed cards).</summary>
+    internal static readonly Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation> RecommendationsSeed = new(
+        Enumerable.Range(0, 4).Select(i => new Spotify.Podcasts.Recommendation("seed:" + i, "Episode title", "", "Show title")).ToArray(), "", 4, "", 200);
+
+    /// <summary>The "More like this" request — ONE definition for the two owners that run it: the episode page's
+    /// <see cref="Recommendations"/> (its own, per mount) and the show reader (<c>ReaderHost.Similar</c>, once per visit).</summary>
+    internal static Task<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> RecommendationsOf(string uri, bool show, CancellationToken ct)
+        => Platform.Args.Fake
+            ? Task.FromResult(new Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>([], "", 0, "", 200))
+            : Spotify.Podcasts.RecommendationsAsync(uri, show, ct);
+
+    /// <summary>"More like this" with a request of its OWN, made at mount (the episode page's).</summary>
     internal sealed class Recommendations : Component
     {
-        static readonly Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation> Seed = new(
-            Enumerable.Range(0, 4).Select(i => new Spotify.Podcasts.Recommendation("seed:" + i, "Episode title", "", "Show title")).ToArray(), "", 4, "", 200);
         public override Element Render()
         {
             var p = UseProps<RecommendationProps>(); uint epoch = Entities.ScopeEpoch.Value;
-            var resource = UseResource(ct => Platform.Args.Fake ? Task.FromResult(new Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>([], "", 0, "", 200)) : Spotify.Podcasts.RecommendationsAsync(p.Uri, p.Show, ct),
-                Seed, epoch + ":" + p.Uri);
-            return Skel.Region(resource.Loadable,
-                page => !page.Ok ? Failed(resource.Refresh) : page.Items.Length == 0 ? new BoxEl()
-                    : PagedShelf.Create(page.Items, Card, cardHeight: Controls.ShelfHeight,
-                        title: Loc.Get(Strings.Podcast.Reader.Related), measured: false, keyOf: static (item, _) => item.Uri,
-                        lift: ShelfLift.None),   // the shared card hovers fill-only: no lift halo to reserve clearance for
-                onFailed: () => Failed(resource.Refresh));
+            var resource = UseResource(ct => RecommendationsOf(p.Uri, p.Show, ct), RecommendationsSeed, epoch + ":" + p.Uri);
+            return RecommendationShelf(resource);
         }
-        static Element Card(Spotify.Podcasts.Recommendation item, int index, float width)
+    }
+
+    /// <summary>"More like this" over a request the CALLER owns (<paramref name="Request"/>): the show reader's foot is
+    /// remounted whenever its list's items move, so the request lives above it and this only paints what it holds.</summary>
+    internal sealed record SimilarProps(Resource<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> Request);
+
+    internal sealed class SimilarShelf : Component
+    {
+        public override Element Render() => RecommendationShelf(UseProps<SimilarProps>().Request);
+    }
+
+    static Element RecommendationShelf(Resource<Spotify.Podcasts.Page<Spotify.Podcasts.Recommendation>> resource)
+        => Skel.Region(resource.Loadable,
+            page => !page.Ok ? Failed(resource.Refresh) : page.Items.Length == 0 ? new BoxEl()
+                : PagedShelf.Create(page.Items, RecommendationCard, onInvoke: static (item, _) => OpenRecommendation(item), cardHeight: SurfaceGeometry.ShelfHeight,
+                    title: Loc.Get(Strings.Podcast.Reader.Related), measured: false, keyOf: static (item, _) => item.Uri,
+                    lift: ShelfLift.None),   // the shared card hovers fill-only: no lift halo to reserve clearance for
+            onFailed: () => Failed(resource.Refresh));
+
+    /// <summary>The recommendation card's click, shared with the shelf slot's <c>onInvoke</c>: its episode or show page.</summary>
+    static void OpenRecommendation(Spotify.Podcasts.Recommendation item)
+    {
+        var uri = EntityUri.Parse(item.Uri);
+        if (uri.IsValid) Shell.GoTo(Shell.For(uri, item.Title));
+    }
+
+    static Element RecommendationCard(Spotify.Podcasts.Recommendation item, int index, float width)
+    {
+        var data = new Controls.CardData(item.Uri, item.Title, Quiet(item.Subtitle), item.Image,
+            OnClick: () => OpenRecommendation(item))
         {
-            var uri = EntityUri.Parse(item.Uri);
-            var data = new Controls.CardData(item.Uri, item.Title, Quiet(item.Subtitle), item.Image,
-                OnClick: () => { if (uri.IsValid) Shell.GoTo(Shell.For(uri, item.Title)); },
-                ShowMenu: false, TitleLines: 2);
-            return Controls.ShelfCard(data, width);
-        }
+            Menu = () => RecommendationMenu(item),
+        };
+        return Controls.Surface(data, Shape.Shelf(captionLines: 2), width);   // the extent above: one title line, two caption lines
+    }
+
+    /// <summary>A recommendation's menu, built at OPEN time: an episode gets the episode menu (with "Go to show"), a show
+    /// the container verbs (play next · add to queue · pin) and Share. The shelf holds wire rows, not library entities, so
+    /// an episode the scope has not seen is menu'd by its uri alone.</summary>
+    static ContextMenuModel? RecommendationMenu(Spotify.Podcasts.Recommendation item)
+    {
+        var uri = EntityUri.Parse(item.Uri);
+        if (!uri.IsValid) return null;
+        if (uri.Kind == EntityKind.Episode)
+            return Episode.Menu(Entities.Episode(uri), new Episode.MenuOptions(ShowGoToShow: true));
+        if (uri.Kind != EntityKind.Show) return null;
+        var ctx = new ActionContext(ActionTarget.ForShow(uri, item.Title), Actions.Services);
+        var rows = new List<MenuFlyoutItem>(6);
+        if (Actions.Menu.Row(ActionId.PlayContextNext, in ctx) is { } next) rows.Add(next);
+        if (Actions.Menu.Row(ActionId.AddContextToQueue, in ctx) is { } queue) rows.Add(queue);
+        if (Actions.Menu.Row(ActionId.PinToSidebar, in ctx) is { } pin) Actions.Menu.Group(rows, pin);
+        Actions.Menu.Group(rows, Episode.ShareMenu(uri, in ctx));
+        return rows.Count == 0 ? null : new ContextMenuModel(rows, Actions.Menu.Header(item.Image.Length > 0 ? item.Image : null, item.Title, item.Subtitle));
     }
 
     internal sealed record RatingProps(EntityUri Subject, Func<ColorF>? Tone);

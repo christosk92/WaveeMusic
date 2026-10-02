@@ -9,7 +9,7 @@
 // component that reads such a counter re-renders on the next frame: `TableRowContent` (Tracks/Albums/Artists/
 // TrackArtists per row), `SectionsHost`, `StackHost`, `ReleasePanelHost`, `FacePileHost`, `PageHost`, `LikedArt`,
 // `LazyGrid` through `DiscoGridHost.Count` — and through THEIR re-render, every child whose props record compares a
-// delegate or an `Element` by reference (`NowPlayingOverlayHost`, `ShelfCardHost`, `ToolTip`). In `--fake` nothing is
+// delegate or an `Element` by reference (`NowPlayingOverlayHost`, `SurfaceHost` — the one `Controls.Surface` host —, `ToolTip`). In `--fake` nothing is
 // dirty during a scroll, so nothing publishes. In real mode covers stream in from the CDN, kind-179 gradings land,
 // hydration answers post: SOMETHING is dirty on almost every frame, so the shell published on almost every frame, and
 // the whole subtree above re-rendered on every scroll frame — 13 rows × ~12 `with {}` clones of a 123-member `BoxEl`

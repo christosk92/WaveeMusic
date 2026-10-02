@@ -8,16 +8,16 @@
 // FIFTH ground-up pass over this file (the four hand-built ones live in git history under this path). Nothing here is a
 // card template or a hover recipe of its own: every zone body is composed from exactly the pieces the app's native pages
 // compose — `PagedShelf` + `HomeCards.ShelfCell` + `HomeCardNav` (Entities/Browse.Page.cs's shelf, verbatim),
-// `Controls.MediaRow` in a `GridEl`, stock `SettingsCard`, `Ui.Card` + `Ui.SectionHeader`, `Controls.Vacancy` — and
+// `Controls.Surface` rows (`Shape.Row*`) in a `GridEl`, stock `SettingsCard`, `Ui.Card` + `Ui.SectionHeader`, `Controls.Vacancy` — and
 // every header is `HomeModules.ModuleHeader` (Entities/Browse.Modules.cs). Type is `Design.Type.*`, rhythm is
 // `Spacing.*`/`Design.Size.*`, radii are `Radii.*`. The data pipeline (`Zone`, `ZoneCluster`, `RecentsCells`,
 // `ReleaseListRules`, `ShelfLead`, `EpisodeCaption`) is untouched.
 //
 // SIXTH pass — the prototype's visuals, each a small general extension of a SHARED control, none a Home-private
-// template: the Recents grid is `MediaRow(skin: RowSkin.Tile)` cells sized by the engine's own auto-fill count
+// template: the Recents grid is `Surface(…, Shape.RowTile)` cells sized by the engine's own auto-fill count
 // (`GridEl.AutoFillColumnCount` → `RecentsPlan.Cells`, always 2·cols − 1 played + the history tile = two full rows),
 // each cell's subtitle carrying a live equalizer + "playing on {device}" swap through `Controls.RelatesNow`; the history
-// tile is the same row in `RowSkin.Outline` with an `IconPlate` cover and a stock `SparkBars` 7-day strip; wide shelves
+// tile is the same row in `Shape.RowOutline` with an `IconPlate` cover and a stock `SparkBars` 7-day strip; wide shelves
 // (WideTiles/VideoTiles) are 16:9 `ShelfCell`s through `CardData.CoverAspect`; a cover shelf whose lead carries a header
 // image gets PagedShelf's 2-span lead cell (`ShelfLead.LeadAspect` keeps the lead cover exactly as tall as the squares);
 // Browse tiles wear `Controls.TileCardStyle`.
@@ -57,16 +57,16 @@
 // ── DISPATCH ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 //   Daylist                                   Daylist.Card (Home/Daylist.UI.cs)                           no header
 //   RecentGrid                                RecentGrid component (+ proxy) → Responsive → GridEl{200, ≤4,  tools: history link
-//                                             64} of MediaRow(Tile) × (2·cols − 1) + the history tile (Outline)
+//                                             64} of Surface(RowTile) × (2·cols − 1) + the history tile (RowOutline)
 //   CoverShelf/MixedCovers/RadioShelf/
 //   ShowGrid                                  PagedShelf of HomeCards.ShelfCell (+ 2-span lead cell)       tools: See all · ‹ pips ›
 //   WideTiles/VideoTiles                      PagedShelf of 16:9 HomeCards.ShelfCell                       tools: See all · ‹ pips ›
-//   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of MediaRow           (sub-block)
-//   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 MediaRow 40)
+//   ReleaseList                               Ui.SectionHeader + GridEl{320, ≤2, 64} of Surface(Row)       (sub-block)
+//   ClusterCards/PodcastGroups                GridEl{300, ≤3} of Ui.Card(SectionHeader + ≤3 Surface(Row(40)))
 //   BrowseTiles                               GridEl{220, ≤4} of SettingsCard + the Charts sub-block (ChartsBlockView:
 //                                             Charts page · Top 50 / Viral 50 playlists picked from Featured Charts)
-//   EpisodeLead/EpisodeRows                   GridEl{320, ≤2} of MediaRow(56, 2-line title, meta)
-//   ContinueEpisodes                          GridEl{320, ≤3} of the same row + ProgressBar
+//   EpisodeLead/EpisodeRows                   GridEl{320, ≤2} of Surface(Episode.RowData, EpisodeRow: 56, 2-line title, meta, "…")
+//   ContinueEpisodes                          GridEl{320, ≤3} of the same row + the resume rung (CardData.Below)
 //   EmptyFacet                                Controls.Vacancy(Empty, … → Browse)                          no header
 
 using System;
@@ -104,7 +104,7 @@ public static class Zones
     public const float RecentsMinCol = 200f;
     const float ListMinCol = 320f, ClusterMinCol = 300f, TilesMinCol = 220f;
     const int RecentsMaxCols = 4, ListMaxCols = 2, ContinueMaxCols = 3, ClusterMaxCols = 3, TilesMaxCols = 4, ChartsMaxCols = 3;
-    const float RowH = 64f, ClusterArt = 40f, EpisodeArt = 56f, TileArt = Design.Size.Thumb48, ProgressW = 120f;
+    const float RowH = 64f, ClusterArt = 40f, TileArt = Design.Size.Thumb48;
     const int ReleaseRowsMax = 6, ClusterMax = 6, ClusterRows = 3;
     /// <summary>The Recents cell's equalizer height, the history tile's 7-day strip box, the header tools' divider.</summary>
     const float EqualizerH = 12f, HistoryStripW = 56f, HistoryStripH = 14f, ToolsDividerH = 16f;
@@ -235,12 +235,12 @@ public static class Zones
         ZoneKind.Daylist => Daylist.Card(zone, overlay),
         // The proxy is the component's own static tree at neutral live facts (see RecentGrid.Skeleton): a cold load
         // shimmers as the tile grid, not as one default bar.
-        ZoneKind.RecentGrid => Embed.Comp(new RecentGridProps(zone, overlay), static () => new RecentGrid())
-            with { SkeletonProxy = () => RecentGrid.Skeleton(zone, overlay) },
+        ZoneKind.RecentGrid => Embed.Comp(new RecentGridProps(zone), static () => new RecentGrid())
+            with { SkeletonProxy = () => RecentGrid.Skeleton(zone) },
         ZoneKind.CoverShelf or ZoneKind.MixedCovers or ZoneKind.RadioShelf or ZoneKind.ShowGrid
             or ZoneKind.WideTiles or ZoneKind.VideoTiles => Shelf(zone, overlay, controller),
-        ZoneKind.ReleaseList => ReleaseList(zone, overlay),
-        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone, overlay),
+        ZoneKind.ReleaseList => ReleaseList(zone),
+        ZoneKind.ClusterCards or ZoneKind.PodcastGroups => ClusterGrid(zone),
         ZoneKind.BrowseTiles => BrowseTiles(zone),
         ZoneKind.EpisodeLead or ZoneKind.EpisodeRows => EpisodeGrid(zone, ListMaxCols),
         ZoneKind.ContinueEpisodes => EpisodeGrid(zone, ContinueMaxCols),
@@ -293,7 +293,7 @@ public static class Zones
         }
 
         float squareAspect = wide ? Design.Size.WideTileAspect : 1f;
-        // The row's cross extent, EXACT for what its cards show (`Controls.ShelfHeight`, the rule the card renders): a
+        // The row's cross extent, EXACT for what its cards show (`SurfaceGeometry.ShelfHeight`, the rule the card renders): a
         // wide cell is its 16:9 cover + title + ONE caption line + the separate meta line; a cover shelf reserves the
         // most caption lines any of its cards shows — 2 when it carries the lead (its meta inline on those lines), else
         // 1 — and no meta line. A square beside the lead is merely 16 shorter than its row (its plate stretches, labels
@@ -302,6 +302,7 @@ public static class Zones
 
         return PagedShelf.Create<HomeCards.ShelfItem>(items,
             (item, i, cardW) => Cell(in item, cardW, squareAspect),
+            onInvoke: static (item, _) => HomeCardNav.Open(item.Card),   // the slot owns the click: the card's own open, the lead cell's too
             cardHeight: cardHeight,
             pager: controller is null ? ShelfPager.Chevrons | ShelfPager.Pips : ShelfPager.None,
             controller: controller,
@@ -325,15 +326,15 @@ public static class Zones
 
     // The shelf extents as cached delegates (one per shape, never a per-render closure).
     static readonly Func<float, float> s_wideCardHeight =
-        static w => Controls.ShelfHeight(w, Design.Size.WideTileAspect, captionLines: 1, metaLine: true);
-    static readonly Func<float, float> s_coverCardHeight1 = static w => Controls.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
-    static readonly Func<float, float> s_coverCardHeight2 = static w => Controls.ShelfHeight(w, 1f, captionLines: 2, metaLine: false);
+        static w => SurfaceGeometry.ShelfHeight(w, Design.Size.WideTileAspect, captionLines: 1, metaLine: true);
+    static readonly Func<float, float> s_coverCardHeight1 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 1, metaLine: false);
+    static readonly Func<float, float> s_coverCardHeight2 = static w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines: 2, metaLine: false);
 
     static Func<float, float> CoverCardHeight(int captionLines) => captionLines switch
     {
         <= 1 => s_coverCardHeight1,
         2 => s_coverCardHeight2,
-        _ => w => Controls.ShelfHeight(w, 1f, captionLines, metaLine: false),
+        _ => w => SurfaceGeometry.ShelfHeight(w, 1f, captionLines, metaLine: false),
     };
 
     /// <summary>The shelf pager in the sticky header's tools slot: ‹ pips › — the stock pips between two stock chevrons
@@ -389,11 +390,11 @@ public static class Zones
         }
     }
 
-    // ── 2.2 recently played: a MediaRow grid, the one component that subscribes to Recents ────────────────────────────
+    // ── 2.2 recently played: a Surface(RowTile) grid, the one component that subscribes to Recents ───────────────────
 
-    public sealed record RecentGridProps(Zone Zone, IOverlayService? Overlay)
+    public sealed record RecentGridProps(Zone Zone)
     {
-        public bool Equals(RecentGridProps? o) => o is not null && Zone.Equals(o.Zone) && ReferenceEquals(Overlay, o.Overlay);
+        public bool Equals(RecentGridProps? o) => o is not null && Zone.Equals(o.Zone);
         public override int GetHashCode() => Zone.GetHashCode();
     }
 
@@ -422,7 +423,7 @@ public static class Zones
 
             long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             var cells = RecentsCells.Of(items, cache.When, User.Me.LikedTrackSlots.Length, nowMs, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
-            return Tree(cells, cache.Week, HostOf(p.Overlay));
+            return Tree(cells, cache.Week);
         }
 
         /// <summary>The embed's <see cref="ComponentEl.SkeletonProxy"/>: the SAME <see cref="Tree"/> Render builds, at
@@ -430,27 +431,27 @@ public static class Zones
         /// signal and creates no hook (a proxy is a plain element factory). The seed's blank cards derive to the tile
         /// shape (48 art + two text lines) and the history tile closes the grid, exactly as the loaded page lays out.
         /// The "playing now" swap is a per-row BOUND prop in both paths, never a Render read.</summary>
-        public static Element Skeleton(Zone zone, IOverlayService? overlay)
+        public static Element Skeleton(Zone zone)
         {
             var cells = RecentsCells.Of(zone.Items, NoPlays, likedSongsCount: 0,
                                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), TimeZoneInfo.Local, CultureInfo.CurrentCulture);
-            return Tree(cells, default, HostOf(overlay));
+            return Tree(cells, default);
         }
 
         static readonly Dictionary<string, long> NoPlays = new(StringComparer.Ordinal);
 
         /// <summary>The whole grid: a <see cref="Responsive"/> box that rebuilds <see cref="Grid"/> at its measured
         /// width. The ONE builder both Render and <see cref="Skeleton"/> call.</summary>
-        static Element Tree(IReadOnlyList<RecentsCell> cells, RecentsWeek week, IOverlayService? host)
-            => Responsive.Of(w => Grid(w, cells, week, host), fallback: HomeModuleLayout.FallbackWidth);
+        static Element Tree(IReadOnlyList<RecentsCell> cells, RecentsWeek week)
+            => Responsive.Of(w => Grid(w, cells, week), fallback: HomeModuleLayout.FallbackWidth);
 
         /// <summary>The grid at one measured width: 2·cols − 1 played tiles + the history tile, two flush rows.</summary>
-        static Element Grid(float w, IReadOnlyList<RecentsCell> cells, RecentsWeek week, IOverlayService? host)
+        static Element Grid(float w, IReadOnlyList<RecentsCell> cells, RecentsWeek week)
         {
             int cols = GridEl.AutoFillColumnCount(w, RecentsMinCol, Spacing.M, RecentsMaxCols);
             int n = RecentsPlan.Cells(cols, cells.Count);
             var rows = new Element[n + 1];
-            for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i, host);
+            for (int i = 0; i < n; i++) rows[i] = Row(cells[i], i);
             rows[n] = HistoryTile(week);
             return new GridEl
             {
@@ -459,18 +460,16 @@ public static class Zones
             };
         }
 
-        /// <summary>One played tile: <c>MediaRow(skin: Tile)</c> whose subtitle is [equalizer · detail · when], the
+        /// <summary>One played tile: <c>Surface(…, Shape.RowTile)</c> whose subtitle is [equalizer · detail · when], the
         /// equalizer PRESENT and the tertiary tail swapped to "playing on {device}" / "Playing now" exactly while the
         /// card relates to what is playing (<see cref="Controls.RelatesNow"/> — a bound prop each, so a track change
         /// touches two node props and re-renders nothing). The equalizer box opts out of skeleton derivation: a
         /// shimmer never shows a "playing" pill. A blank seed card has no uri, so it is keyed by its
         /// <paramref name="index"/> (the shelf's <c>home-shelf-blank:{i}</c> rule) — seven blanks never share a key.</summary>
-        static Element Row(RecentsCell cell, int index, IOverlayService? host)
+        static Element Row(RecentsCell cell, int index)
         {
             var c = cell.Card;
             string uri = c.Uri;
-            var menu = HomeCardNav.MenuOf(in c);
-            bool hasMenu = menu is not null && host is not null;
             string whenTail = cell.When.Length > 0 ? " · " + cell.When : "";
 
             var subtitle = new BoxEl
@@ -496,18 +495,18 @@ public static class Zones
 
             var data = new Controls.CardData(uri, cell.Title, subtitle, c.ImageUrl,
                 () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: cell.Round, Drag: HomeCardNav.DragOf(in c), ShowMenu: hasMenu,
-                CoverOverride: c.Kind == HomeCardKind.Liked ? Sidebar.Cover.Liked(Design.Size.Thumb48) : null);
-            var row = new BoxEl
+                Circular: cell.Round, Drag: HomeCardNav.DragOf(in c),
+                CoverOverride: c.Kind == HomeCardKind.Liked ? Sidebar.Cover.Liked(Design.Size.Thumb48) : null)
+            { Menu = HomeCardNav.MenuOf(in c) };
+            return new BoxEl
             {
                 Key = c.IsBlank ? "recent-blank:" + index.ToString(CultureInfo.InvariantCulture) : "recent:" + uri,
                 Direction = 1, MinWidth = 0f,
-                Children = [Controls.MediaRow(data, skin: Controls.RowSkin.Tile)],
+                Children = [Controls.Surface(data, Shape.RowTile)],
             };
-            return hasMenu ? row.WithContextMenu(host!, menu!) : row;
         }
 
-        /// <summary>The grid's closing tile — the same row in the dashed <c>RowSkin.Outline</c>: a headphones
+        /// <summary>The grid's closing tile — the same row in the dashed <c>Shape.RowOutline</c>: a headphones
         /// <see cref="Controls.IconPlate"/> for a cover, the stock <see cref="SparkBars"/> 7-day strip (left = six days
         /// ago, right = today in the full accent) beside "{n} plays this week", a trailing chevron, no play FAB. Opens
         /// the listening history.</summary>
@@ -539,15 +538,12 @@ public static class Zones
             };
             var data = new Controls.CardData("home:history", Loc.Get(Strings.Home.ListeningHistory), subtitle, null,
                 GoRecents, OnPlay: null, ShowMenu: false,
-                CoverOverride: Controls.IconPlate(Icons.Headphones, Design.Size.Thumb48, Tok.AccentSubtle, Tok.AccentTextPrimary));
+                CoverOverride: Controls.IconPlate(Icons.Headphones, Design.Size.Thumb48, Tok.AccentSubtle, Tok.AccentTextPrimary))
+            { Trailing = Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f } };
             return new BoxEl
             {
                 Key = "recent:history", Direction = 1, MinWidth = 0f,
-                Children =
-                [
-                    Controls.MediaRow(data, trailing: Ui.Icon(Icons.ChevronRight, 14f, Tok.TextTertiary) with { Shrink = 0f },
-                                      skin: Controls.RowSkin.Outline),
-                ],
+                Children = [Controls.Surface(data, Shape.RowOutline)],
             };
         }
 
@@ -581,9 +577,9 @@ public static class Zones
         }
     }
 
-    // ── 2.3 release list: "From artists you follow" — a SectionHeader sub-block over a two-column MediaRow grid ──────
+    // ── 2.3 release list: "From artists you follow" — a SectionHeader sub-block over a two-column Surface(Row) grid ──
 
-    static Element ReleaseList(Zone zone, IOverlayService? overlay)
+    static Element ReleaseList(Zone zone)
     {
         var items = zone.Items;
         int n = Math.Min(items.Count, ReleaseRowsMax);
@@ -592,10 +588,9 @@ public static class Zones
         long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var tz = TimeZoneInfo.Local;
         var culture = CultureInfo.CurrentCulture;
-        var host = HostOf(overlay);
 
         var rows = new Element[n];
-        for (int i = 0; i < n; i++) rows[i] = ReleaseRow(items[i], nowMs, tz, culture, host);
+        for (int i = 0; i < n; i++) rows[i] = ReleaseRow(items[i], nowMs, tz, culture);
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Stretch,
@@ -612,7 +607,7 @@ public static class Zones
         };
     }
 
-    static Element ReleaseRow(HomeCard c, long nowMs, TimeZoneInfo tz, CultureInfo culture, IOverlayService? host)
+    static Element ReleaseRow(HomeCard c, long nowMs, TimeZoneInfo tz, CultureInfo culture)
     {
         string type = ReleaseListRules.TypeLabel(c.Kind);
         string when = ReleaseListRules.DateLabel(c.ReleasedAtMs, nowMs, tz, culture);
@@ -624,26 +619,22 @@ public static class Zones
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f, Children = trailingKids.ToArray(),
         };
 
-        var menu = HomeCardNav.MenuOf(in c);
-        bool hasMenu = menu is not null && host is not null;
         string sub = HomeCards.PlainText(c.Subtitle);
         var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
-            () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-            Drag: HomeCardNav.DragOf(in c), ShowMenu: hasMenu);
-        var row = new BoxEl { Key = "release:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.MediaRow(data, trailing: trailing)] };
-        return hasMenu ? row.WithContextMenu(host!, menu!) : row;
+            () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c), Drag: HomeCardNav.DragOf(in c))
+            { Trailing = trailing, Menu = HomeCardNav.MenuOf(in c) };
+        return new BoxEl { Key = "release:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row())] };
     }
 
-    // ── 2.4 clusters: "Because you like" / "Because you listen to" — Ui.Card(SectionHeader + ≤3 MediaRow) ────────────
+    // ── 2.4 clusters: "Because you like" / "Because you listen to" — Ui.Card(SectionHeader + ≤3 Surface(Row(40))) ───
 
-    static Element ClusterGrid(Zone zone, IOverlayService? overlay)
+    static Element ClusterGrid(Zone zone)
     {
         var clusters = zone.Clusters;
         if (clusters is not { Count: > 0 }) return new BoxEl();
-        var host = HostOf(overlay);
         int n = Math.Min(clusters.Count, ClusterMax);
         var cards = new Element[n];
-        for (int i = 0; i < n; i++) cards[i] = ClusterCard(clusters[i], host);
+        for (int i = 0; i < n; i++) cards[i] = ClusterCard(clusters[i]);
         return new GridEl
         {
             MinColWidth = ClusterMinCol, MaxColumns = ClusterMaxCols,
@@ -651,7 +642,7 @@ public static class Zones
         };
     }
 
-    static Element ClusterCard(ZoneCluster cluster, IOverlayService? host)
+    static Element ClusterCard(ZoneCluster cluster)
     {
         Element header = Ui.SectionHeader(cluster.Name, cluster.Over is { Length: > 0 } ? cluster.Over : null) with { Margin = default, MinWidth = 0f };
         if (cluster.Header is { } h)
@@ -671,14 +662,12 @@ public static class Zones
         for (int i = 0; i < n; i++)
         {
             var c = rowsSrc[i];
-            var menu = HomeCardNav.MenuOf(in c);
-            bool hasMenu = menu is not null && host is not null;
             string sub = HomeCards.PlainText(c.Subtitle);
             var data = new Controls.CardData(c.Uri, c.Title, sub.Length > 0 ? Meta(sub) : null, c.ImageUrl,
                 () => HomeCardNav.Open(in c), () => HomeCardNav.Play(in c),
-                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c), ShowMenu: hasMenu);
-            var row = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.MediaRow(data, artEdge: ClusterArt)] };
-            rows[i] = hasMenu ? row.WithContextMenu(host!, menu!) : row;
+                Circular: c.Kind == HomeCardKind.Artist, Drag: HomeCardNav.DragOf(in c))
+                { Menu = HomeCardNav.MenuOf(in c) };
+            rows[i] = new BoxEl { Key = "cluster-row:" + c.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.Surface(data, Shape.Row(ClusterArt))] };
         }
 
         return Ui.Card(header, new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = rows })
@@ -686,6 +675,9 @@ public static class Zones
     }
 
     // ── 2.5 browse tiles: stock SettingsCards in the tile skin (48 art plate, one-line text), then the Charts sub-block ──
+
+    // Every tile here is clickable (the Browse tiles and the three chart tiles), so they take `Controls.TileCardParts`:
+    // the one-line text and the hand cursor the shared rule gives an invokable surface.
 
     static Element BrowseTiles(Zone zone)
     {
@@ -814,17 +806,16 @@ public static class Zones
         return global::Wavee.BrowseTiles.PageRoute(ChartPages.Charts, Loc.Get(Strings.Home.Charts));
     }
 
-    // ── 2.6 episodes: MediaRow(56, two-line title) with the podcast caption, a ProgressBar while in progress ─────────
+    // ── 2.6 episodes: Shape.EpisodeRow (56, two-line title) fed by Episode.RowData — the podcast caption, the resume rung,
+    //    the episode menu behind the "…" and the right-click ────────────────────────────────────────────────────────────
 
     static Element EpisodeGrid(Zone zone, int maxColumns)
     {
         var cards = ShelfLead.Merge(zone.Items, zone.Lead);   // the lead episode is row 1, once
         if (cards.Count == 0) return new BoxEl();
-        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        var tz = TimeZoneInfo.Local;
-        var culture = CultureInfo.CurrentCulture;
+        var clock = Episode.RowClock.Now();                    // one clock per grid: every row agrees on "Today"
         var rows = new Element[cards.Count];
-        for (int i = 0; i < rows.Length; i++) rows[i] = EpisodeRow(cards[i], nowMs, tz, culture);
+        for (int i = 0; i < rows.Length; i++) rows[i] = EpisodeRow(cards[i], clock);
         return new GridEl
         {
             MinColWidth = ListMinCol, MaxColumns = maxColumns,
@@ -832,29 +823,22 @@ public static class Zones
         };
     }
 
-    static Element EpisodeRow(HomeCard e, long nowMs, TimeZoneInfo tz, CultureInfo culture)
+    /// <summary>One Home episode row: the card's own facts (its section facts win over the columns — a resume point or an
+    /// explicit mark the feed stated) through the episode adapter, so the row has the menu every episode surface has.
+    /// Click opens the episode (the card's own route), the FAB plays it (the card's own play verb).</summary>
+    static Element EpisodeRow(HomeCard e, Episode.RowClock clock)
     {
+        string uri = e.Uri;
         string show = e.ShowName is { Length: > 0 } s ? s : HomeCards.PlainText(e.Subtitle);
-        string date = EpisodeCaption.Date(e.ReleasedAtMs, nowMs, tz, culture);
-        string length = e.ResumeMs > 0 ? EpisodeCaption.Remaining(e.DurationMs, e.ResumeMs) : EpisodeCaption.Duration(e.DurationMs);
-        string caption = date.Length > 0 && length.Length > 0 ? date + " · " + length : date.Length > 0 ? date : length;
-
-        var metaKids = new List<Element>(3);
-        if (e.IsExplicit) metaKids.Add(Controls.ExplicitBadge(14f));
-        if (e.HasVideo) metaKids.Add(Ui.Icon(Icons.Video, 12f, Tok.TextTertiary));
-        if (caption.Length > 0) metaKids.Add(Meta(caption) with { Shrink = 1f });
-        Element metaRow = new BoxEl { Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = metaKids.ToArray() };
-        Element meta = e.ResumeMs > 0
-            ? new BoxEl
-            {
-                Direction = 1, Gap = Spacing.XS, MinWidth = 0f, AlignItems = FlexAlign.Start,
-                Children = [metaRow, ProgressBar.Determinate((float)EpisodeCaption.ProgressFraction(e.ResumeMs, e.DurationMs), ProgressW)],
-            }
-            : metaRow;
-
-        var data = new Controls.CardData(e.Uri, e.Title, show.Length > 0 ? Meta(show) : null, e.ImageUrl,
-            () => HomeCardNav.Open(in e), () => HomeCardNav.Play(in e), TitleLines: 2, ShowMenu: false);
-        return new BoxEl { Key = "episode:" + e.Uri, Direction = 1, MinWidth = 0f, Children = [Controls.MediaRow(data, artEdge: EpisodeArt, meta: meta)] };
+        var episode = e.Target.Kind == EntityKind.Episode ? new Episode(e.Target.Slot) : default;
+        var facts = new Episode.RowFacts(uri, e.Title, show, e.ImageUrl, e.IsExplicit, e.HasVideo,
+                                         e.ReleasedAtMs, e.DurationMs, e.ResumeMs);
+        var options = new Episode.RowOptions(OnClick: () => HomeCardNav.Open(in e), OnPlay: () => HomeCardNav.Play(in e), Clock: clock);
+        return new BoxEl
+        {
+            Key = "episode:" + uri, Direction = 1, MinWidth = 0f,
+            Children = [Controls.Surface(Episode.RowData(episode, in facts, in options), Shape.EpisodeRow)],
+        };
     }
 
     // ── 2.7 the empty facet: the app's one vacancy, with the facet's own words ───────────────────────────────────────

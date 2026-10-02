@@ -1,0 +1,31 @@
+syntax = "proto3";
+package spotify.userprofileview.v3;
+option csharp_namespace = "Wavee.Protocol.UserProfileView";
+
+// GET https://spclient.wg.spotify.com/user-profile-view/v3/profile/{id}?playlist_limit=10&artist_limit=10&episode_limit=10&market=from_token
+// Accept: application/x-protobuf → application/vnd.spotify.user-profile-view. Derived from the 2026-10-01 capture
+// (docs/plans/wavee/profile-pages-api-research.md §2; zero unknown fields, byte-exact round trip). The app decodes it BY
+// HAND (Spotify.Decode.Profile.cs); these generated classes exist for the tests' fixtures.
+message UserProfile {
+  string uri = 1;
+  string name = 2;
+  string image_url = 3;
+  int32 followers_count = 4;
+  int32 following_count = 5;
+  bool is_following = 6;
+  repeated RecentlyPlayedArtist recently_played_artists = 7;
+  repeated PublicPlaylist public_playlists = 8;
+  int32 total_public_playlists_count = 9;
+  bool is_current_user = 10;
+  bool has_spotify_name = 14;
+  bool has_spotify_image = 15;
+  int32 color = 16;
+  bool allow_follows = 23;
+  bool show_follows = 24;
+  string public_id = 35;
+}
+message RecentlyPlayedArtist { string uri = 1; string name = 2; string image_url = 3; int32 followers_count = 4; bool owner_follows = 5; }
+message PublicPlaylist { string uri = 1; string name = 2; string image_url = 3; int32 followers_count = 4; string owner_name = 5; string owner_uri = 6; bool is_following = 7; }
+// GET …/profile/{id}/followers?market=from_token  and  …/following?market=from_token  (whole, unpaged)
+message ProfileList { repeated ProfileEntry entries = 1; }
+message ProfileEntry { string uri = 1; string name = 2; string image_url = 3; int32 followers_count = 4; bool is_following_user = 6; bool is_following = 7; bool flag8 = 8; int32 color = 11; string public_id = 13; }

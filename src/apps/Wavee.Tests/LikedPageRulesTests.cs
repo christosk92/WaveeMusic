@@ -7,7 +7,7 @@
 using System.Text;
 using FluentGpu.Foundation;
 using Xunit;
-using Shape = Wavee.LikedFactsRules.FactShape;
+using FactShape = Wavee.LikedFactsRules.FactShape;
 
 namespace Wavee.Tests;
 
@@ -20,7 +20,7 @@ public class LikedPageRulesTests
 
     /// <summary>A settled summary with exactly the shapes a fact is being asked about.</summary>
     static LikedFactsRules.FactsSummary Summary(
-        Shape years = Shape.Absent, Shape tempo = Shape.Absent, int tempoKnown = 0, Shape blend = Shape.Absent,
+        FactShape years = FactShape.Absent, FactShape tempo = FactShape.Absent, int tempoKnown = 0, FactShape blend = FactShape.Absent,
         int blendSlices = 0, int artists = 0, bool anyStamped = false, bool spread = false)
     {
         var shares = new LikedFactsRules.TagShare[blendSlices];
@@ -62,7 +62,7 @@ public class LikedPageRulesTests
     [Fact]
     public void A_shaped_week_takes_the_time_slot_and_the_years_fall_to_a_pill()
     {
-        var plan = LikedFactsRules.Plan(Summary(years: Shape.Graph, anyStamped: true), Busy, liked: true, new LikedFactsRules.ShapeLatch());
+        var plan = LikedFactsRules.Plan(Summary(years: FactShape.Graph, anyStamped: true), Busy, liked: true, new LikedFactsRules.ShapeLatch());
 
         Assert.True(plan.WeekCard);
         Assert.False(plan.YearsCard);
@@ -73,7 +73,7 @@ public class LikedPageRulesTests
     [Fact]
     public void Without_a_week_the_years_card_takes_the_slot()
     {
-        var plan = LikedFactsRules.Plan(Summary(years: Shape.Graph), Array.Empty<LikedFactsRules.WeekBucket>(), liked: true,
+        var plan = LikedFactsRules.Plan(Summary(years: FactShape.Graph), Array.Empty<LikedFactsRules.WeekBucket>(), liked: true,
                                         new LikedFactsRules.ShapeLatch());
 
         Assert.False(plan.WeekCard);
@@ -84,7 +84,7 @@ public class LikedPageRulesTests
     [Fact]
     public void A_labelled_year_is_a_pill_and_an_absent_one_is_nothing()
     {
-        var label = LikedFactsRules.Plan(Summary(years: Shape.Label), Array.Empty<LikedFactsRules.WeekBucket>(), true, new());
+        var label = LikedFactsRules.Plan(Summary(years: FactShape.Label), Array.Empty<LikedFactsRules.WeekBucket>(), true, new());
         Assert.False(label.YearsCard);
         Assert.True(label.YearsPill);
 
@@ -99,7 +99,7 @@ public class LikedPageRulesTests
         var plan = LikedFactsRules.Plan(Summary(anyStamped: true), Lonely, true, new());
         Assert.False(plan.WeekCard);
         Assert.True(plan.LastActivityClause);
-        Assert.Equal(Shape.Label, plan.Week);
+        Assert.Equal(FactShape.Label, plan.Week);
     }
 
     /// <summary>Liked stamps are always activity; a playlist's single republish instant is not, so the time slot there
@@ -113,7 +113,7 @@ public class LikedPageRulesTests
         var playlist = LikedFactsRules.Plan(republished, Busy, liked: false, new());
         Assert.False(playlist.WeekCard);
         Assert.False(playlist.Stamped);
-        Assert.Equal(Shape.Absent, playlist.Week);
+        Assert.Equal(FactShape.Absent, playlist.Week);
 
         Assert.True(LikedFactsRules.Plan(Summary(anyStamped: true, spread: true), Busy, liked: false, new()).WeekCard);
         Assert.False(LikedFactsRules.Plan(Summary(), Busy, liked: true, new()).WeekCard);
@@ -124,10 +124,10 @@ public class LikedPageRulesTests
     [Fact]
     public void Tempo_mounts_only_with_known_tempos()
     {
-        Assert.True(LikedFactsRules.Plan(Summary(tempo: Shape.Graph, tempoKnown: 30), Lonely, true, new()).TempoCard);
-        Assert.True(LikedFactsRules.Plan(Summary(tempo: Shape.Label, tempoKnown: 30), Lonely, true, new()).TempoPill);
+        Assert.True(LikedFactsRules.Plan(Summary(tempo: FactShape.Graph, tempoKnown: 30), Lonely, true, new()).TempoCard);
+        Assert.True(LikedFactsRules.Plan(Summary(tempo: FactShape.Label, tempoKnown: 30), Lonely, true, new()).TempoPill);
 
-        var unknown = LikedFactsRules.Plan(Summary(tempo: Shape.Graph, tempoKnown: 0), Lonely, true, new());
+        var unknown = LikedFactsRules.Plan(Summary(tempo: FactShape.Graph, tempoKnown: 0), Lonely, true, new());
         Assert.False(unknown.TempoCard);
         Assert.False(unknown.TempoPill);
     }
@@ -138,10 +138,10 @@ public class LikedPageRulesTests
         Assert.True(LikedFactsRules.Plan(Summary(artists: 1), Lonely, true, new()).ArtistsCard);
         Assert.False(LikedFactsRules.Plan(Summary(), Lonely, true, new()).ArtistsCard);
 
-        Assert.True(LikedFactsRules.Plan(Summary(blend: Shape.Graph, blendSlices: 3), Lonely, true, new()).BlendCard);
-        Assert.False(LikedFactsRules.Plan(Summary(blend: Shape.Graph, blendSlices: 0), Lonely, true, new()).BlendCard);
+        Assert.True(LikedFactsRules.Plan(Summary(blend: FactShape.Graph, blendSlices: 3), Lonely, true, new()).BlendCard);
+        Assert.False(LikedFactsRules.Plan(Summary(blend: FactShape.Graph, blendSlices: 0), Lonely, true, new()).BlendCard);
 
-        var label = LikedFactsRules.Plan(Summary(blend: Shape.Label, blendSlices: 3), Lonely, true, new());
+        var label = LikedFactsRules.Plan(Summary(blend: FactShape.Label, blendSlices: 3), Lonely, true, new());
         Assert.False(label.BlendCard);
         Assert.True(label.BlendPill);
     }
@@ -154,27 +154,27 @@ public class LikedPageRulesTests
     {
         var latch = new LikedFactsRules.ShapeLatch();
 
-        var first = LikedFactsRules.Plan(Summary(years: Shape.Label, tempo: Shape.Label, tempoKnown: 10, blend: Shape.Label, blendSlices: 2), Lonely, true, latch);
+        var first = LikedFactsRules.Plan(Summary(years: FactShape.Label, tempo: FactShape.Label, tempoKnown: 10, blend: FactShape.Label, blendSlices: 2), Lonely, true, latch);
         Assert.True(first.YearsPill);
         Assert.True(first.TempoPill);
         Assert.True(first.BlendPill);
 
-        var upgraded = LikedFactsRules.Plan(Summary(years: Shape.Graph, tempo: Shape.Graph, tempoKnown: 30, blend: Shape.Graph, blendSlices: 3), Lonely, true, latch);
+        var upgraded = LikedFactsRules.Plan(Summary(years: FactShape.Graph, tempo: FactShape.Graph, tempoKnown: 30, blend: FactShape.Graph, blendSlices: 3), Lonely, true, latch);
         Assert.True(upgraded.YearsCard);
         Assert.True(upgraded.TempoCard);
         Assert.True(upgraded.BlendCard);
-        Assert.Equal(Shape.Graph, latch.Years);
-        Assert.Equal(Shape.Graph, latch.Tempo);
-        Assert.Equal(Shape.Graph, latch.Blend);
+        Assert.Equal(FactShape.Graph, latch.Years);
+        Assert.Equal(FactShape.Graph, latch.Tempo);
+        Assert.Equal(FactShape.Graph, latch.Blend);
 
-        var straggler = LikedFactsRules.Plan(Summary(years: Shape.Label, tempo: Shape.Absent, tempoKnown: 30, blend: Shape.Label, blendSlices: 3), Lonely, true, latch);
+        var straggler = LikedFactsRules.Plan(Summary(years: FactShape.Label, tempo: FactShape.Absent, tempoKnown: 30, blend: FactShape.Label, blendSlices: 3), Lonely, true, latch);
         Assert.True(straggler.YearsCard);
         Assert.True(straggler.TempoCard);
         Assert.True(straggler.BlendCard);
         Assert.False(straggler.BlendPill);
 
         // A fresh latch (a new context) starts from nothing.
-        Assert.True(LikedFactsRules.Plan(Summary(years: Shape.Label), Lonely, true, new()).YearsPill);
+        Assert.True(LikedFactsRules.Plan(Summary(years: FactShape.Label), Lonely, true, new()).YearsPill);
     }
 
     [Fact]
@@ -183,7 +183,7 @@ public class LikedPageRulesTests
         var latch = new LikedFactsRules.ShapeLatch();
         Assert.True(LikedFactsRules.Plan(Summary(anyStamped: true), Busy, true, latch).WeekCard);
         Assert.True(LikedFactsRules.Plan(Summary(anyStamped: true), Lonely, true, latch).WeekCard);
-        Assert.Equal(Shape.Graph, latch.Week);
+        Assert.Equal(FactShape.Graph, latch.Week);
     }
 
     // ── the chip set ────────────────────────────────────────────────────────────────────────────────────────────────

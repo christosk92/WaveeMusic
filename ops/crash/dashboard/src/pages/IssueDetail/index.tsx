@@ -6,6 +6,7 @@ import {
   DataGridHeaderCell,
   DataGridRow,
   Dropdown,
+  Link,
   MessageBar,
   MessageBarBody,
   Option,
@@ -20,16 +21,15 @@ import {
 } from "@fluentui/react-components";
 import {
   ArrowClockwise24Regular,
-  Bug24Regular,
   CheckmarkCircle24Regular,
   Copy24Regular,
   DocumentQuestionMark24Regular,
 } from "@fluentui/react-icons";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useIssue, usePatchIssue } from "../../api/hooks";
 import type { AppIssueDetail, AppOccurrence } from "../../api/types";
-import { shortId } from "../../lib/format";
+import { formatRelativeTime, shortId } from "../../lib/format";
 import { EmptyState } from "../../scene/EmptyState";
 import { ErrorBar } from "../../scene/ErrorBar";
 import { PageBody } from "../../scene/PageBody";
@@ -37,16 +37,18 @@ import { PageHeader, type Crumb, type HeaderCommand } from "../../scene/PageHead
 import { Panel } from "../../scene/Panel";
 import { DetailSkeleton } from "../../scene/skeletons";
 import { useAppToast } from "../../scene/toast";
+import { LogViewer } from "../ReportDetail/parts";
 import {
   BreakdownBars,
   DetailMeta,
   EnvironmentTable,
   GitHubAction,
-  HAS_LOG_TAIL,
   Last14DaysChart,
+  PurgedReportsState,
   StackTable,
   occurrenceColumnSizingOptions,
   occurrenceColumns,
+  stackFramesFor,
 } from "./parts";
 
 const useStyles = makeStyles({
@@ -87,9 +89,17 @@ function exceptionMessageFor(detail: AppIssueDetail): string {
   return detail.issue.title;
 }
 
-/** Issue detail (plan §3): the fingerprint's frames, occurrences, environment breakdowns and 14-day
- *  trend. `AppIssueDetail` has no log-tail field (see `parts.tsx#HAS_LOG_TAIL`), so that tab is always
- *  the empty state rather than inventing one. */
+const TAB_TITLES: Record<TabKey, string> = {
+  stack: "Stack",
+  occurrences: "Occurrences",
+  environment: "Environment",
+  logtail: "Log tail",
+};
+
+/** Issue detail (plan §3): the fingerprint's frames, occurrences, environment breakdowns, 14-day trend and
+ *  the newest report's log tail. Reports are purged after 90 days while the issue keeps its counts, so an
+ *  issue can have no reports left: the stack then comes from the issue's own `lastFrames` and the
+ *  report-backed tabs show `PurgedReportsState`. */
 export default function IssueDetailPage() {
   const styles = useStyles();
   const { fp } = useParams<{ fp: string }>();
@@ -106,7 +116,10 @@ export default function IssueDetailPage() {
   const detail = issueQuery.data;
   const notFound = !isLoading && !error && detail === null;
 
-  const topFrame = useMemo(() => detail?.frames?.find((f) => f.name)?.name ?? null, [detail]);
+  const frames = useMemo(() => (detail ? stackFramesFor(detail) : []), [detail]);
+  const topFrame = useMemo(() => frames.find((f) => f.name)?.name ?? null, [frames]);
+  // `GET /v1/issues/:fp` lists reports newest first.
+  const newest = detail?.reports[0];
 
   function refetch() {
     void issueQuery.refetch();
@@ -130,6 +143,23 @@ export default function IssueDetailPage() {
         () => toast.success("Fingerprint copied"),
         () => toast.error("Couldn't copy the fingerprint"),
       );
+  }
+
+  /** The Log tail panel's "Open report": a real `href` (middle-click / new tab), client-side on a plain click. */
+  function reportLink(id: string): ReactElement {
+    const href = `/reports/${encodeURIComponent(id)}`;
+    return (
+      <Link
+        href={href}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+          e.preventDefault();
+          navigate(href);
+        }}
+      >
+        Open report
+      </Link>
+    );
   }
 
   const crumbs: Crumb[] = [
@@ -250,18 +280,17 @@ export default function IssueDetailPage() {
 
             <div className={styles.mainColumn}>
               <Panel
-                title={
-                  activeTab === "stack"
-                    ? "Stack"
-                    : activeTab === "occurrences"
-                      ? "Occurrences"
-                      : activeTab === "environment"
-                        ? "Environment"
-                        : "Log tail"
+                title={TAB_TITLES[activeTab]}
+                description={
+                  activeTab === "logtail" && newest
+                    ? `From the newest report, ${shortId(newest.id)} · ${formatRelativeTime(newest.receivedAt)}`
+                    : undefined
                 }
+                action={activeTab === "logtail" && newest ? reportLink(newest.id) : undefined}
               >
-                {activeTab === "stack" && <StackTable frames={detail.frames ?? []} />}
-                {activeTab === "occurrences" && (
+                {activeTab === "stack" && <StackTable frames={frames} />}
+                {activeTab !== "stack" && !newest && <PurgedReportsState />}
+                {activeTab === "occurrences" && newest && (
                   <div className={styles.gridHost}>
                     <DataGrid
                       items={detail.occurrences}
@@ -291,11 +320,8 @@ export default function IssueDetailPage() {
                     </DataGrid>
                   </div>
                 )}
-                {activeTab === "environment" && <EnvironmentTable breakdowns={detail.breakdowns} />}
-                {activeTab === "logtail" &&
-                  (HAS_LOG_TAIL ? null : (
-                    <EmptyState icon={<Bug24Regular />} title="No log tail in this issue" />
-                  ))}
+                {activeTab === "environment" && newest && <EnvironmentTable breakdowns={detail.breakdowns} />}
+                {activeTab === "logtail" && newest && <LogViewer id={newest.id} report={newest} part="tail" />}
               </Panel>
             </div>
 

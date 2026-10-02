@@ -162,6 +162,12 @@ public static partial class Controls
             return MathF.Abs(t - offset) < 0.5f ? float.NaN : t;
         }
 
+        /// <summary>A rail's measure, reported whenever it moves by more than half a DIP: <paramref name="total"/> is the
+        /// row's own arranged width (the words, their counts and the gaps between them — what a toolbar must reserve for a
+        /// rail it never lets shrink) and <paramref name="words"/> each word's arranged width, in word order (a hidden
+        /// word reads 0). The array is the rail's own: read it inside the callback, never keep it.</summary>
+        public delegate void Measured(float total, float[] words);
+
         // ══ THE RAIL ═════════════════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>A rail bound to one int signal: the active word 100 % ink at the heavy weight over a 2-DIP
@@ -177,11 +183,15 @@ public static partial class Controls
         /// <para><paramref name="fill"/> is a horizontal-scroll viewport instead of the natural-width row: a narrow pane
         /// clips nothing and feathers instead, and the selected word is always brought fully into view (on selection, on
         /// resize, on the first frame it answers, and on keyboard focus). <c>false</c> (the default) is exactly today's
-        /// element.</para></summary>
+        /// element.</para>
+        /// <para><paramref name="onMeasured"/> exposes the rail's natural width and each word's width (<see cref="Measured"/>)
+        /// to a host that decides, from numbers, how much room the rail needs — the show reader's toolbar. Mount-time, like
+        /// every other callback here.</para></summary>
         public static Element Rail(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF>? tone = null,
                                    bool big = false, AutomationRole role = AutomationRole.Button,
-                                   Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false)
-            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill));
+                                   Action<int>? onReselect = null, Action<int>? onSelect = null, bool fill = false,
+                                   Measured? onMeasured = null)
+            => Embed.Comp(() => new RailHost(words, selected, tone ?? s_accent, big, role, onReselect, onSelect, fill, onMeasured));
 
         sealed class RailHost : Component
         {
@@ -198,6 +208,11 @@ public static partial class Controls
             // — plain fields, never signals: the slide reads them at the edge and nothing re-renders for them.
             readonly float[] _x, _w;
             readonly NodeHandle[] _bars;
+            // `onMeasured` only: the row's arranged width, and what the callback was last told (so a re-arrange that moved
+            // nothing reports nothing).
+            readonly Measured? _onMeasured;
+            readonly float[]? _sentWords;
+            float _rowW, _sentTotal = -1f;
             // `fill` only: the viewport's scroll handle, and a coarse geometry bump (GeometryKey over its viewport/extent
             // signals) so `AfterLayout` re-runs the reveal on a resize or a late-answering word — never on the user's own
             // scroll (GeometryKey folds in no offset).
@@ -209,16 +224,32 @@ public static partial class Controls
             int _shown = int.MinValue;   // the code whose underline was last on screen — the slide's "from"
 
             public RailHost(IReadOnlyList<Word> words, Signal<int> selected, Func<ColorF> tone, bool big,
-                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill)
+                            AutomationRole role, Action<int>? onReselect, Action<int>? onSelect, bool fill, Measured? onMeasured)
             {
                 _words = words; _selected = selected; _tone = tone; _big = big; _role = role;
                 _onReselect = onReselect; _onSelect = onSelect;
                 _fill = fill;
+                _onMeasured = onMeasured;
                 _codes = new int[words.Count];
                 _x = new float[words.Count];
                 _w = new float[words.Count];
                 _bars = new NodeHandle[words.Count];
+                if (onMeasured is not null) _sentWords = new float[words.Count];
                 if (_fill) _scroll = new ScrollHandle();
+            }
+
+            /// <summary>Tell the host what the rail measures — once per real change (the row's width or any word's moved by
+            /// more than half a DIP). The row and every word each report their own bounds, in whatever order the arrange
+            /// visits them, so this runs from all of them and only the last one to move anything is heard.</summary>
+            void ReportMeasure()
+            {
+                if (_onMeasured is not { } cb || _sentWords is not { } sent || !(_rowW > 0f)) return;
+                bool moved = MathF.Abs(_rowW - _sentTotal) > 0.5f;
+                for (int i = 0; !moved && i < _w.Length; i++) moved = MathF.Abs(_w[i] - sent[i]) > 0.5f;
+                if (!moved) return;
+                _sentTotal = _rowW;
+                Array.Copy(_w, sent, _w.Length);
+                cb(_rowW, _w);
             }
 
             public override Element Render()
@@ -248,6 +279,7 @@ public static partial class Controls
                 {
                     Direction = 0, Height = _big ? BigHeight : Height, Gap = _big ? BigGap : Gap,
                     AlignItems = FlexAlign.Center, Shrink = 0f, Children = kids,
+                    OnBoundsChanged = _onMeasured is null ? null : r => { _rowW = r.W; ReportMeasure(); },
                 };
             }
 
@@ -287,7 +319,7 @@ public static partial class Controls
                     Role = _role, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Tap(code),
                     Opacity = Prop.Of(() => isOn() ? 1f : RestInk), HoverOpacity = HoverInk, Transition = s_inkFade,
                     Visible = w.Visible ?? true,
-                    OnBoundsChanged = r => { _x[i] = r.X; _w[i] = r.W; },
+                    OnBoundsChanged = r => { _x[i] = r.X; _w[i] = r.W; if (_onMeasured is not null) ReportMeasure(); },
                     // Keyboard tabbing onto a word scrolled out of a `fill` rail's viewport brings it back — a no-op
                     // (RevealWord's own `!_fill` guard) on every other rail.
                     OnFocusChanged = on => { if (on) RevealWord(i, Design.Reduced ? Reveal.Snap : Reveal.Glide); },

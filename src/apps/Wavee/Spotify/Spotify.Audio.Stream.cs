@@ -1343,7 +1343,7 @@ public static partial class Spotify
             long _tailGranule = -1, _tailCandidate = -1;
             int _lengthKnown, _mirror, _disposed, _firstServed, _proof, _tailQueued, _sizeDeclared, _ringLogged;
             int _firstStore, _firstServedMs = -1, _gainBits, _peakBits, _gainKnown, _promoted, _resolving, _resolves;
-            int _refusals;
+            int _refusals, _keyProved;
 
             /// <summary>The window a seek's interrupt lasts when the caller names none (see <see cref="Ring.Interrupt"/>).</summary>
             public const int DefaultInterruptMs = 1_000;
@@ -1703,17 +1703,17 @@ public static partial class Spotify
             void Publish(in RangeRequest req, long at, Span<byte> bytes)
             {
                 WriteThrough(at, bytes);
-                if (_decrypt is not null)
+                // The key's proof, ONCE per body, over chunk 0's CIPHERTEXT and before it is decrypted (G-123): a key that opens
+                // the container is saved across sessions, one that does not (a native decryptor's, an MP3's) is not, and a saved
+                // one that does not is forgotten. It is an enqueue — the fetch task never waits on the key file.
+                if (at == 0 && _key is not null && KeyStoreRules.CanProve(bytes.Length) && Interlocked.Exchange(ref _keyProved, 1) == 0)
                 {
-                    if (at == 0 && SpliceProof == 0) Log.Info("audio", $"audio.key file={FileIdHex} native=1");
-                    _decrypt(bytes, at);
+                    KeyProofVerdict proof = KeyProof(FileIdHex, Fmt, bytes, _key, out bool validates);
+                    Log.Info("audio", $"audio.key file={FileIdHex} native={(_decrypt is null ? 0 : 1)} validates={(validates ? 1 : 0)} "
+                                      + $"origin={KeyOriginText(FileIdHex)} proof={proof}");
                 }
-                else if (_key is not null)
-                {
-                    if (at == 0 && SpliceProof == 0)
-                        Log.Info("audio", $"audio.key file={FileIdHex} validates={(Ctr.Validates(bytes, _key) ? 1 : 0)}");
-                    Ctr.DecryptInPlace(bytes, _key, at);
-                }
+                if (_decrypt is not null) _decrypt(bytes, at);
+                else if (_key is not null) Ctr.DecryptInPlace(bytes, _key, at);
                 Land(in req, at, bytes);
             }
 
@@ -2054,12 +2054,14 @@ public static partial class Spotify
             long cachedLength = disk?.KnownSize(fileIdHex) ?? 0;
             bool cached = cachedLength > 0;
             byte[]? cachedChunk0 = null;
+            int cachedChunk0Len = 0;
             if (cached)
             {
                 var chunk = new byte[DiskCache.ChunkBytes];
                 if (disk!.TryReadChunk(fileIdHex, 0, chunk, out int n) && n > Ctr.HeaderBytes)
                 {
                     cachedChunk0 = chunk;
+                    cachedChunk0Len = n;
                     Interlocked.Increment(ref s_statCacheHits);
                 }
             }
@@ -2086,6 +2088,18 @@ public static partial class Spotify
             if (resolveInline && !cached) mirrors = seams.Resolve(file, ct);
             pending.Wait(ct);
 
+            // The key's proof over a cached chunk 0 (G-123): a saved key that does not open its own cached bytes is forgotten
+            // and asked for again here, once, before a byte is decrypted with it.
+            if (fault == Fault.None && cachedChunk0 is not null)
+            {
+                ReadOnlySpan<byte> c0 = cachedChunk0.AsSpan(0, cachedChunk0Len);
+                if (KeyProof(fileIdHex, choice.Fmt, c0, key, out _) == KeyProofVerdict.Forget)
+                {
+                    fault = seams.Key(fileIdHex, choice.FileId, choice.TrackGid, key, ApEligible(choice.Fmt), ct);
+                    if (fault == Fault.None) KeyProof(fileIdHex, choice.Fmt, c0, key, out _);
+                }
+            }
+
             // `verdict=` is the service's own answer for this file, and it belongs HERE rather than only on the
             // re-resolve line: an open that never re-resolves (`resolves=0`) used to print a mirror count and nothing
             // about where it came from, so a url set signed for the wrong object namespace and a url set the account is
@@ -2097,7 +2111,7 @@ public static partial class Spotify
             Log.Info("audio", $"audio.head file={fileIdHex} bytes={head.Length} cached={(cachedChunk0 is null ? 0 : 1)} "
                               + $"mirrors={(mirrors.Ok ? mirrors.Urls.Length : 0)} resolve={(cached ? "lazy" : "asked")} "
                               + $"host={(mirrors.Ok ? HttpRangeSource.HostOf(mirrors.Urls[0]) : "-")} "
-                              + $"status={answer.Status} verdict={answer.Verdict} key={fault} "
+                              + $"status={answer.Status} verdict={answer.Verdict} key={fault} keySrc={KeyOriginText(fileIdHex)} "
                               + $"ms={(long)Stopwatch.GetElapsedTime(t0).TotalMilliseconds}");
             if (fault != Fault.None)
             {

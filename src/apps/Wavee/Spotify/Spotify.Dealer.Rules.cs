@@ -278,6 +278,42 @@ public static partial class Spotify
         }
     }
 
+    /// <summary>What became of one dealer MESSAGE once the host's own handlers had their turn — the capture's call on
+    /// whether it was "ignored". 2026-10-01 flight recorder: 828 <c>FrameIgnored</c> in nine days, 428 of them playlist
+    /// pushes the library applies in place and 12 collection pushes it re-asks, because the record was written BEFORE the
+    /// library looked and said so for every frame. PURE.</summary>
+    public static class DealerFrameDisposition
+    {
+        public enum Verdict : byte
+        {
+            /// <summary>Something here acted on the frame (the playback or telemetry handlers, or the library host): no record.</summary>
+            Handled = 0,
+            /// <summary>Nobody acted, and that is the decision (<c>liked-songs-artist</c>): recorded, never an anomaly.</summary>
+            IgnoredOnPurpose,
+            /// <summary>Nobody acted and nobody decided: a topic this app does not read — the Jam's
+            /// <c>social-connect/v2/broadcast_status_update</c> (reading it is declined for now), or one not seen before. Recorded
+            /// and an anomaly, so a new topic is visible.</summary>
+            Unread,
+        }
+
+        /// <param name="handledLocally">The playback-speed or telemetry-progress handler took the frame.</param>
+        /// <param name="libraryTook">The library host took it (<c>Library.OnDealerPush</c>'s answer): a playlist push it replays
+        /// or marks dirty, a collection or rootlist push it re-asks, a ban, show or saved-episodes push.</param>
+        /// <param name="topic">The topic's own kind, which says what a frame nobody took was.</param>
+        public static Verdict Of(bool handledLocally, bool libraryTook, DealerTopicRules.Kind topic)
+            => handledLocally || libraryTook ? Verdict.Handled
+             : topic == DealerTopicRules.Kind.IgnoredOnPurpose ? Verdict.IgnoredOnPurpose
+             : Verdict.Unread;
+
+        /// <summary>The <c>FrameIgnored</c> record's reason for a frame that is not <see cref="Verdict.Handled"/>; false (and
+        /// no reason) for one that is, which is never recorded.</summary>
+        public static bool TryReason(Verdict verdict, out CaptureIgnoreReason reason)
+        {
+            reason = verdict == Verdict.IgnoredOnPurpose ? CaptureIgnoreReason.IgnoredOnPurpose : CaptureIgnoreReason.Unread;
+            return verdict != Verdict.Handled;
+        }
+    }
+
     /// <summary>When the keepalive gives up on a socket that stopped answering. librespot waits 3 s for a pong; the old
     /// rule here was "70 s without any frame" evaluated on a 30 s tick — up to ninety blind seconds on a half-open socket.
     /// PURE.</summary>

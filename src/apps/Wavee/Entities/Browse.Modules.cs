@@ -24,8 +24,8 @@ using static FluentGpu.Dsl.Ui;
 namespace Wavee;
 
 /// <summary>ONE source of truth for the shelf/grid/fold-tile geometry Browse and Search read, read by the renderer AND
-/// (via <see cref="Design.Size"/>/<see cref="Spacing"/>) anything sizing the same shapes. The shelf height and the grid
-/// chrome DELEGATE to <see cref="Controls"/> so the two cannot be handed different numbers.</summary>
+/// (via <see cref="Design.Size"/>/<see cref="Spacing"/>) anything sizing the same shapes. The shelf height reads
+/// <see cref="SurfaceGeometry"/> — the rule the shared surface renders — so the two cannot be handed different numbers.</summary>
 public static class HomeModuleLayout
 {
     public const float FallbackWidth = 1100f;
@@ -38,11 +38,6 @@ public static class HomeModuleLayout
     public const float ShelfGap = 0f;
 
     public const float GridGap = Spacing.M;
-
-    /// <summary>The cell reserve from how many lines the title may wrap to and whether a metadata line renders (0.2.9's
-    /// clamp of <paramref name="titleLines"/> at 1 kept; the arithmetic is <see cref="Controls.GridCardChromeFor"/>).</summary>
-    public static float GridCardChromeFor(int titleLines, bool hasSubtitle)
-        => Controls.GridCardChromeFor(titleLines < 1 ? 1 : titleLines, hasSubtitle);
 
     // ── the Fold tile ──
     public const float FoldCardHeight = 176f;
@@ -76,7 +71,7 @@ public static class HomeModuleLayout
 
     /// <summary>A Browse/Home shelf cell's extent: title + ONE caption line (the house `ShelfCell` caps its second line at
     /// the item's CaptionLines, 1 by default) — no reserved second line under every card.</summary>
-    public static float ShelfCardHeight(float cardW) => Controls.ShelfHeight(cardW, 1f, captionLines: 1, metaLine: false);
+    public static float ShelfCardHeight(float cardW) => SurfaceGeometry.ShelfHeight(cardW, 1f, captionLines: 1, metaLine: false);
 
     // Memoized per INSTANCE (0.2.9's ConditionalWeakTable, kept): a section-set is immutable, and a page hands a NEW
     // list whenever any section's Version or CardVersion moves, so the key changes exactly when the rendered structure
@@ -214,7 +209,7 @@ public static class HomeModules
             {
                 ItemCount = cards.Count,
                 ItemLayout = new AspectGridVirtualLayout(columns, 1f,
-                    HomeModuleLayout.GridCardChromeFor(p.TitleLines, hasSubtitle: !p.Charts), HomeModuleLayout.GridGap),
+                    SurfaceGeometry.GridCardChromeFor(p.TitleLines < 1 ? 1 : p.TitleLines, hasSubtitle: !p.Charts), HomeModuleLayout.GridGap),
                 RenderItem = i => (uint)i < (uint)cards.Count ? Cell(cards[i], i, tier, p, host) : new BoxEl(),
                 KeyOf = i => key + "" + ((uint)i < (uint)cards.Count && cards[i].Uri.Length > 0
                     ? cards[i].Uri : i.ToString(CultureInfo.InvariantCulture)),
@@ -222,53 +217,15 @@ public static class HomeModules
             };
         }
 
+        // The cell is the app's ONE media surface over the grid adapter: hover, play, "…", now-playing, drag and the hand
+        // cursor come from the host, never from here. A blank card (not hydrated yet) is the shape's seed face; the open
+        // handler reads the host's NEWEST props, so a data-equal re-push with a fresh page closure is honoured.
         Element Cell(HomeCard card, int index, string tier, GridProps p, IOverlayService? host)
         {
-            var c = card;
-            bool circular = c.Kind == HomeCardKind.Artist;
-            ChartTitleMatch.TryFind(c.Title, p.Query, out int matchStart, out int matchLen);
-            Element titleEl = matchLen > 0
-                ? Controls.SearchHighlight(c.Title, matchStart, matchLen, 14f, 600, Tok.TextPrimary, p.TitleLines)
-                : Design.Type.CardTitle(c.Title) with
-                {
-                    MaxLines = p.TitleLines, Wrap = p.TitleLines > 1 ? TextWrap.Wrap : TextWrap.NoWrap,
-                    Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                };
-            string sub = p.Charts ? "" : HomeCards.PlainText(c.Subtitle);
-            var labels = new BoxEl
-            {
-                Direction = 1, Gap = 2f, MinWidth = 0f, AlignItems = circular ? FlexAlign.Center : FlexAlign.Start,
-                Children = sub.Length > 0
-                    ? [titleEl, Design.Type.TrackMeta(sub) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }]
-                    : [titleEl],
-            };
-            var menu = HomeCardNav.MenuOf(in c);
-            bool hasMenu = menu is not null && host is not null;
-            var open = _latest!.Open;
-            BoxEl shell = Controls.CardShell(new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, Grow = 1f,
-                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        ZStack = true, ClipToBounds = !circular,
-                        Children = hasMenu
-                            ? [Controls.ArtworkFill(c.ImageUrl, circular ? Radii.Full : Radii.Card),
-                               Controls.NowPlayingOverlay(c.Uri, () => HomeCardNav.Play(in c), 44f, centred: true),
-                               Controls.MoreCorner()]
-                            : [Controls.ArtworkFill(c.ImageUrl, circular ? Radii.Full : Radii.Card),
-                               Controls.NowPlayingOverlay(c.Uri, () => HomeCardNav.Play(in c), 44f, centred: true)],
-                    },
-                    labels,
-                ],
-            }, () => (_latest?.Open ?? open)(c), HomeCardNav.DragOf(in c));
-            shell = shell with
-            {
-                Key = "home-section-card:" + tier + ":" + (c.Uri.Length > 0 ? c.Uri : index.ToString(CultureInfo.InvariantCulture)),
-            };
-            return hasMenu ? shell.WithContextMenu(host!, menu!) : shell;
+            ChartTitleMatch.TryFind(card.Title, p.Query, out int start, out int len);
+            var data = HomeCards.GridCardData(in card, host, p.Charts, open: c => (_latest?.Open ?? p.Open)(c)) ?? Controls.CardData.Seed;
+            return Controls.Surface(data with { Highlight = (start, len) }, Shape.Grid with { TitleLines = p.TitleLines })
+                with { Key = "home-section-card:" + tier + ":" + (card.Uri.Length > 0 ? card.Uri : index.ToString(CultureInfo.InvariantCulture)) };
         }
     }
 }

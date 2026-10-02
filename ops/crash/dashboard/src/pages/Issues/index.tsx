@@ -46,10 +46,13 @@ const useStyles = makeStyles({
   },
 });
 
+// "All time" sends no `since`: issues keep their lifetime counts after the 90-day report purge, so an issue
+// whose last report is older than that is only listed here.
 const RANGE_OPTIONS = [
   { key: "7", label: "Last 7 days" },
   { key: "30", label: "Last 30 days" },
   { key: "90", label: "Last 90 days" },
+  { key: "all", label: "All time" },
 ] as const;
 
 const STATUS_OPTIONS = ["open", "resolved", "ignored"] as const;
@@ -80,7 +83,7 @@ export default function IssuesPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
 
-  const since = useMemo(() => daysAgoIso(Number(rangeDays)), [rangeDays]);
+  const since = useMemo(() => (rangeDays === "all" ? undefined : daysAgoIso(Number(rangeDays))), [rangeDays]);
 
   const issuesQuery = useIssues({
     since,

@@ -198,6 +198,8 @@ public static partial class Fetch
             FetchEdge.ArtistSingles => e.ArtistSingles,
             FetchEdge.ArtistCompilations => e.ArtistCompilations,
             FetchEdge.ArtistConcerts => e.ArtistConcerts,
+            FetchEdge.ProfileFollowers => e.ProfileFollowers,
+            FetchEdge.ProfileFollowing => e.ProfileFollowing,
             _ => null,
         };
     }
@@ -206,7 +208,8 @@ public static partial class Fetch
     public static Table? ParentTableOf(Scope scope, FetchEdge edge) => edge switch
     {
         FetchEdge.Rootlist or FetchEdge.Liked or FetchEdge.SavedAlbums or FetchEdge.FollowedArtists
-            or FetchEdge.SavedShows or FetchEdge.Pins or FetchEdge.Recents or FetchEdge.Friends => scope.Users,
+            or FetchEdge.SavedShows or FetchEdge.Pins or FetchEdge.Recents or FetchEdge.Friends
+            or FetchEdge.ProfileFollowers or FetchEdge.ProfileFollowing => scope.Users,
         FetchEdge.PlaylistTracks => scope.Playlists,
         FetchEdge.AlbumTracks or FetchEdge.AlbumRecommendations or FetchEdge.AlbumMerch or FetchEdge.AlbumMoreBy or FetchEdge.AlbumSimilar => scope.Albums,
         FetchEdge.ArtistPopular or FetchEdge.ArtistRelated or FetchEdge.ArtistReleases or FetchEdge.ArtistAlbums

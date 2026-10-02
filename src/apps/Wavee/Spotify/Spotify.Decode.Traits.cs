@@ -1,11 +1,12 @@
 // ── Spotify/Spotify.Decode.Traits.cs ────────────────────────────────────────────────────────────────────────────────
-// the five extension kinds the Api asked for and the decoder dropped, plus the profile REST fold (gap batch B1, G-044)
+// the five extension kinds the Api asked for and the decoder dropped (gap batch B1, G-044)
 //
 // Role: CORE
 // Owner: E
 // Wave: gap batch B1
 // Budget: 330 lines
-// Spec: gap register G-044, G-045 (profile) — a named partial of Spotify.Decode.cs, whose 1,600 budget it would pass
+// Spec: gap register G-044 — a named partial of Spotify.Decode.cs, whose 1,600 budget it would pass. (G-045's JSON profile
+// arm is gone: the REST profile is the protobuf view, Spotify.Decode.Profile.cs.)
 //
 // `Api.UserProfiles`, `Api.TrackCredits`, `Api.AlbumRecommendations` and `Api.TrackExpansion` POSTed kinds 15, 186,
 // 151, 98 and 237 and `Decode.Extension` fell through its `default:` for every one of them, so each answered with
@@ -16,8 +17,6 @@
 // Where they land (Entities/Edges.cs §6/§8): a user row's Identity; `Edges.TrackCredits`, `Edges.TrackVersions`,
 // `Edges.TrackWaveform` and `Edges.AlbumRecommendations`, each through a `StagedTraitRun` — whole, Complete, EMPTY
 // INCLUDED, because "this track has no credits" is the answer that stops the drawer asking (finding 27's rule).
-
-using System.Text.Json;
 
 namespace Wavee;
 
@@ -34,26 +33,22 @@ public static partial class Spotify
 
         // ── kind 15: the user profile ────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>Kind 15 (<c>USER_PROFILE</c>) → the user row's <see cref="UserFields.Identity"/>: display name and
-        /// the largest avatar.
+        /// <summary>Kind 15 (<c>USER_PROFILE</c>) → the user row's <see cref="UserFields.Identity"/>: display name, the
+        /// largest avatar and the brand colour.
         ///
         /// <para><b>The body is protobuf, not JSON</b> — captured 2026-08-30 over five accounts: every scalar in a
-        /// wrapper, <c>1:{1:username} 2:{1:name} 3:[{1:w, 2:h, 3:url}]</c>. The WinUI-era client fed it to a JSON parser,
-        /// swallowed the exception and fell back to REST for EVERY owner, so the batch arm never answered once. The
-        /// sniff is kept (0.2.9's rule): judged on the first non-whitespace byte, because 0x0A is BOTH a JSON newline and
-        /// field 1's tag; a JSON object still decodes through <see cref="Profile"/>.</para>
+        /// wrapper, <c>1:{1:username} 2:{1:name} 3:[{1:w, 2:h, 3:url}] 11:{1:0xRRGGBB}</c> (field 11 is the avatar COLOUR,
+        /// not a follower count — research §4). The WinUI-era client fed it to a JSON parser, swallowed the exception and
+        /// fell back to REST for EVERY owner, so the batch arm never answered once.</para>
         ///
         /// <para>The IDENTITY is the envelope's uri — the one the caller asked with — and never the payload's username
         /// (0.2.9 <c>ToOwner</c>): a profile answered for <c>spotify:user:Foo</c> must land on the row that asked.</para></summary>
         public static void UserProfile(ReadOnlySpan<byte> payload, ReadOnlySpan<byte> entityUri, Staging s)
         {
             if (entityUri.IsEmpty || payload.IsEmpty) return;
-            int i = 0;
-            while (i < payload.Length && payload[i] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n') i++;
-            if (i < payload.Length && payload[i] == (byte)'{') { Profile(payload, entityUri, s); return; }
-
             var r = new ProtoReader(payload);
             ReadOnlySpan<byte> name = default, url = default;
+            uint color = 0;
             long bestArea = -1;
             bool any = false;
             while (r.Next())
@@ -79,47 +74,23 @@ public static partial class Spotify
                             if (!u.IsEmpty && w * h > bestArea) { bestArea = w * h; url = u; }
                             break;
                         }
+                    case 11: color = RgbColor((ulong)r.Message().Varint(1)); any = true; break;   // { 1: 0xRRGGBB } (research §4)
                     default: r.Skip(); break;
                 }
             }
             // Bytes that merely START like a tag and name none of the three fields are not a profile (0.2.9's rule):
             // staging an empty Identity for them would seal the row with no name.
             if (!any) return;
-            StageProfile(s, entityUri, name, url);
+            StageProfile(s, entityUri, name, url, color);
         }
 
-        /// <summary>The profile REST answer (<c>/user-profile-view/v3/profile/&lt;username&gt;</c>, G-045) → the same
-        /// Identity. spclient spells it <c>name</c>/<c>image_url</c>, the Web API <c>display_name</c>/<c>images[0].url</c>,
-        /// and both are read. A 200 with neither is still an answer — the row learns it has no public name — so the
-        /// Identity group lands with empty text; only 200 and 404 are answers at all, and a 404 is the CALLER's to seal
-        /// (Spotify.Api.cs's <c>Profile</c> contract).</summary>
-        public static void Profile(ReadOnlySpan<byte> json, ReadOnlySpan<byte> userUri, Staging s)
-        {
-            if (userUri.IsEmpty) return;
-            var r = new Utf8JsonReader(json);
-            if (!r.Read() || r.TokenType != JsonTokenType.StartObject) return;
-            int depth = r.CurrentDepth;
-            TextRef name = default, display = default, url = default, image = default;
-            while (Next(ref r, depth))
-            {
-                if (r.ValueTextEquals("name"u8)) { r.Read(); name = s.AddJson(ref r); }
-                else if (r.ValueTextEquals("display_name"u8)) { r.Read(); display = s.AddJson(ref r); }
-                else if (r.ValueTextEquals("image_url"u8)) { r.Read(); url = s.AddJson(ref r); }
-                else if (r.ValueTextEquals("images"u8)) { r.Read(); var first = FirstUrl(ref r, s); if (image.IsEmpty) image = first; }
-                else SkipValue(ref r);
-            }
-
-            ref var row = ref s.Users.RowFor(Identity(s, userUri), Authority.Full, (uint)UserFields.Identity);
-            row.Name = name.IsEmpty ? display : name;
-            row.Image = url.IsEmpty ? image : url;
-            s.Users.Settle();
-        }
-
-        static void StageProfile(Staging s, ReadOnlySpan<byte> entityUri, ReadOnlySpan<byte> name, ReadOnlySpan<byte> url)
+        static void StageProfile(Staging s, ReadOnlySpan<byte> entityUri, ReadOnlySpan<byte> name, ReadOnlySpan<byte> url,
+                                 uint color)
         {
             ref var row = ref s.Users.RowFor(Identity(s, entityUri), Authority.Full, (uint)UserFields.Identity);
             row.Name = s.AddText(name);
             row.Image = s.AddText(url);
+            row.Color = color;
             s.Users.Settle();
         }
 

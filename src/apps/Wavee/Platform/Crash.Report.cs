@@ -54,12 +54,20 @@ public static partial class Crash
               .Append(MainModuleLine()).Append("\n\nException\n---------\n");
             string text = ex.ToString();
             sb.Append(text).Append('\n');
-            var rvas = ParseRvas(text);
+            AppendRvaSection(sb, ParseRvas(text));
+        }
+
+        /// <summary>The "Frames (RVA)" section — one <c>0x&lt;hex&gt;</c> offset per line from the module base in the
+        /// header, innermost first — shared by the managed report (offsets parsed out of <c>ex.ToString()</c>) and the
+        /// native one (offsets the VEH captured, <see cref="NativeHook.FaultRvas"/>), so a person resolving either with
+        /// <c>ln</c> and the dashboard reading either see one format. Nothing is written for an empty list.</summary>
+        public static void AppendRvaSection(StringBuilder sb, IReadOnlyList<long> rvas)
+        {
             if (rvas.Count == 0) return;
             sb.Append("\nFrames (RVA)\n------------\n")
               .Append("# offsets from the module base above, in stack-trace order (innermost first);\n")
               .Append("# resolve each with `ln Wavee+0x<rva>` against the release's Wavee-<quad>-<rid>-symbols.zip\n");
-            foreach (long rva in rvas) sb.Append("0x").Append(rva.ToString("x", CultureInfo.InvariantCulture)).Append('\n');
+            for (int i = 0; i < rvas.Count; i++) sb.Append("0x").Append(rvas[i].ToString("x", CultureInfo.InvariantCulture)).Append('\n');
         }
 
         /// <summary>Convenience over <see cref="Describe(Exception,StringBuilder)"/> for a caller that just wants the
@@ -72,9 +80,10 @@ public static partial class Crash
         }
 
         /// <summary>The same header block, for a bundle with no managed exception to describe (Native/Hang/ExitCode/
-        /// UncleanExit): <paramref name="message"/> replaces the "Exception" section and no RVA list follows — there
-        /// is no managed stack to offer one from. Used by <c>Crash.Host.RequestDump</c> (the native path) and by
-        /// <c>Crash.Handler</c> (Hang/ExitCode/UncleanExit, written entirely inside the child).</summary>
+        /// UncleanExit): <paramref name="message"/> replaces the "Exception" section. No RVA list follows from here — the
+        /// native path appends the VEH-captured one itself (<see cref="AppendRvaSection"/>); Hang/ExitCode/UncleanExit
+        /// have none. Used by <c>Crash.Host.RequestDump</c> (the native path) and by <c>Crash.Handler</c>
+        /// (Hang/ExitCode/UncleanExit, written entirely inside the child).</summary>
         public static void DescribeSynthetic(string message, StringBuilder sb)
         {
             WaveeVersionInfo? v = null;
@@ -142,9 +151,15 @@ public static partial class Crash
         /// Hang/ExitCode/UncleanExit bundle (written by the child, describing the PARENT it watched) wants for
         /// everything except the two identifiers <see cref="Crash.Host"/> stamps for those by hand
         /// (<paramref name="exceptionType"/>/<paramref name="exceptionMessage"/> override <paramref name="ex"/>'s,
-        /// so a synthetic Hang/ExitCode/UncleanExit report needs no fabricated <see cref="Exception"/>).</summary>
+        /// so a synthetic Hang/ExitCode/UncleanExit report needs no fabricated <see cref="Exception"/>).
+        /// <para>#165 W3a: the summary's exception type/message come from <see cref="Unwrap"/>(<paramref name="ex"/>) — the
+        /// fault, not its <c>TargetInvocationException</c>/<c>TypeInitializationException</c>/single-inner
+        /// <c>AggregateException</c> wrapper — while the RVAs still parse the FULL <c>ex.ToString()</c> (inner frames
+        /// included). <paramref name="rvas"/>, when given, replaces that parse (the native path's VEH-captured frames);
+        /// <paramref name="exceptionCode"/> is the native NTSTATUS (0 otherwise).</para></summary>
         public static Summary BuildSummary(Kind kind, Exception? ex, int exitCode, bool hasDump = false, long dumpBytes = 0,
-            string? exceptionType = null, string? exceptionMessage = null, bool? beforeFirstFrame = null, string? installIdOverride = null)
+            string? exceptionType = null, string? exceptionMessage = null, bool? beforeFirstFrame = null, string? installIdOverride = null,
+            long[]? rvas = null, uint exceptionCode = 0)
         {
             string reportId = Guid.NewGuid().ToString("N");
             string installId = "";
@@ -167,9 +182,10 @@ public static partial class Crash
             }
             catch { debugId = ""; }
 
-            string exType = exceptionType ?? ex?.GetType().FullName ?? "";
-            string exMessage = exceptionMessage ?? ex?.Message ?? "";
-            long[] rvas = ex is not null ? ParseRvas(ex.ToString()).ToArray() : [];
+            Exception? fault = ex is null ? null : Unwrap(ex);
+            string exType = exceptionType ?? fault?.GetType().FullName ?? "";
+            string exMessage = exceptionMessage ?? fault?.Message ?? "";
+            long[] frames = rvas ?? (ex is not null ? ParseRvas(ex.ToString()).ToArray() : []);
 
             string locale = "";
             try { locale = System.Globalization.CultureInfo.CurrentUICulture.Name; } catch { }
@@ -185,7 +201,31 @@ public static partial class Crash
                 GpuProfile.AdapterName, GpuProfile.Tier.ToString(), GpuProfile.IsSoftwareAdapter,
                 packaged, locale,
                 Log.SessionId, Log.SinceStartMs, beforeFirstFrame ?? !Host.FirstFrameSeen, Diagnostics.NavigationFrameWatch.Route,
-                exType, exMessage, rvas, moduleBase, moduleSize, debugId, exitCode, hasDump, dumpBytes);
+                exType, exMessage, frames, moduleBase, moduleSize, debugId, exitCode, hasDump, dumpBytes, exceptionCode);
+        }
+
+        /// <summary>The exception a summary should be TITLED by: peels the wrappers that only say "this happened somewhere
+        /// else" — an <see cref="AggregateException"/> with exactly one inner, a
+        /// <see cref="System.Reflection.TargetInvocationException"/> and a <see cref="TypeInitializationException"/>
+        /// (each only when it carries an inner) — repeatedly, so <c>Aggregate(TargetInvocation(InvalidOperation))</c>
+        /// answers the InvalidOperationException. A multi-inner aggregate stays itself (no single fault to pick). Bounded
+        /// depth, never throws.</summary>
+        public static Exception Unwrap(Exception ex)
+        {
+            Exception current = ex;
+            for (int depth = 0; depth < 16; depth++)
+            {
+                Exception? inner = current switch
+                {
+                    AggregateException { InnerExceptions.Count: 1 } agg => agg.InnerExceptions[0],
+                    System.Reflection.TargetInvocationException { InnerException: { } tie } => tie,
+                    TypeInitializationException { InnerException: { } tye } => tye,
+                    _ => null,
+                };
+                if (inner is null) break;
+                current = inner;
+            }
+            return current;
         }
 
         static (long Base, long Size) MainModuleRange()

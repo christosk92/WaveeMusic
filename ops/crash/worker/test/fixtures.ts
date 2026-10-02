@@ -1,21 +1,32 @@
 import Database from "better-sqlite3";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const WORKER_ROOT = join(__dirname, "..");
+
+/** schema.sql (the frozen baseline) then every `migrations/NNNN_*.sql` in name order — exactly what a database
+ *  created from scratch and brought up with `wrangler d1 migrations apply` holds. */
+function schemaScripts(): string[] {
+  const migrationsDir = join(WORKER_ROOT, "migrations");
+  const migrations = readdirSync(migrationsDir)
+    .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+    .sort()
+    .map((f) => readFileSync(join(migrationsDir, f), "utf8"));
+  return [readFileSync(join(WORKER_ROOT, "schema.sql"), "utf8"), ...migrations];
+}
 
 /**
  * A D1Database double backed by real, in-memory SQLite (better-sqlite3), loaded with the actual
- * schema.sql this worker ships. D1's query surface (`prepare().bind().first()/.all()/.run()`,
- * positional `?N` params, `INSERT ... ON CONFLICT ... DO UPDATE`) maps directly onto SQLite, so this
- * exercises the real SQL in src/store.ts rather than a hand-rolled stub — while staying entirely
+ * schema.sql + migrations this worker ships. D1's query surface (`prepare().bind().first()/.all()/.run()`,
+ * positional `?N` params, `INSERT ... ON CONFLICT ... DO UPDATE`, `meta.changes`) maps directly onto SQLite,
+ * so this exercises the real SQL in src/store.ts rather than a hand-rolled stub — while staying entirely
  * local (no workerd/miniflare, which cannot install on this box; see the handback report).
  */
 export function makeFakeD1(): D1Database {
   const db = new Database(":memory:");
-  const schema = readFileSync(join(__dirname, "..", "schema.sql"), "utf8");
-  db.exec(schema);
+  for (const script of schemaScripts()) db.exec(script);
 
   function toSqliteParams(sql: string, args: unknown[]): { sql: string; args: unknown[] } {
     // D1 uses ?1, ?2, ... . better-sqlite3 *parses* that syntax but only accepts binding it via an
@@ -27,9 +38,24 @@ export function makeFakeD1(): D1Database {
     return { sql: rewritten, args: converted };
   }
 
+  /** D1's `.all()` (and every `batch()` entry) runs any statement: a reader returns its rows; a write — which
+   *  better-sqlite3's own `.all()` refuses — runs and reports `meta.changes`. */
+  function execute<T>(sql: string, boundArgs: unknown[]): D1Result<T> {
+    const { sql: s, args } = toSqliteParams(sql, boundArgs);
+    const stmt = db.prepare(s);
+    if (stmt.reader) return { results: stmt.all(...args) as T[], success: true, meta: { changes: 0 } as never };
+    const info = stmt.run(...args);
+    return { results: [], success: true, meta: { changes: info.changes } as never };
+  }
+
+  interface FakeStatement {
+    /** Synchronous `.all()` — what `batch()` runs inside one SQLite transaction, as D1 does. */
+    executeSync<T>(): D1Result<T>;
+  }
+
   function makeStatement(sql: string) {
     let boundArgs: unknown[] = [];
-    const api: D1PreparedStatement = {
+    const api: D1PreparedStatement & FakeStatement = {
       bind(...args: unknown[]) {
         boundArgs = args;
         return api;
@@ -40,9 +66,7 @@ export function makeFakeD1(): D1Database {
         return (row as T | undefined) ?? null;
       },
       async all<T = unknown>(): Promise<D1Result<T>> {
-        const { sql: s, args } = toSqliteParams(sql, boundArgs);
-        const rows = db.prepare(s).all(...args) as T[];
-        return { results: rows, success: true, meta: {} as never };
+        return execute<T>(sql, boundArgs);
       },
       async run(): Promise<D1Result> {
         const { sql: s, args } = toSqliteParams(sql, boundArgs);
@@ -53,7 +77,10 @@ export function makeFakeD1(): D1Database {
         const { sql: s, args } = toSqliteParams(sql, boundArgs);
         return db.prepare(s).raw().all(...args) as T[];
       },
-    } as unknown as D1PreparedStatement;
+      executeSync<T>(): D1Result<T> {
+        return execute<T>(sql, boundArgs);
+      },
+    } as unknown as D1PreparedStatement & FakeStatement;
     return api;
   }
 
@@ -62,9 +89,9 @@ export function makeFakeD1(): D1Database {
       return makeStatement(sql);
     },
     async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
-      const out: D1Result<T>[] = [];
-      for (const s of statements) out.push(await s.all<T>());
-      return out;
+      return db.transaction(() =>
+        statements.map((s) => (s as unknown as FakeStatement).executeSync<T>()),
+      )();
     },
     async exec(sql: string) {
       db.exec(sql);

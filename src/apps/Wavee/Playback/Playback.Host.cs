@@ -1015,6 +1015,7 @@ public static partial class Playback
         Current.Value = s_state.Current;
         CurrentId.Value = s_state.CurrentId;
         ContextUri.Value = s_state.Context;
+        HasCardContext.Value = CardRelation.Active(s_state.Context, s_state.CurrentId);
         ContextLabel.Value = s_contextWire;
         PhaseSignal.Value = s_state.Phase;
         IsPlaying.Value = s_state.IsPlaying;

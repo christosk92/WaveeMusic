@@ -1,4 +1,4 @@
 {
-  "terms": ["Wavee", "Spotify", "Liked Songs", "Your Library", "playlist", "folder", "pin", "queue", "lossless"],
+  "terms": ["Wavee", "Spotify", "Liked Songs", "Your Library", "playlist", "folder", "pin", "queue", "lossless", "crash report", "install id", "memory snapshot", "crash service", "recovery mode"],
   "tone": "Sentence case except eyebrows. Informal-polite. Desktop music app."
 }

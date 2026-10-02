@@ -25,7 +25,8 @@
 //      route without it signs into the Ogg object namespace whatever it is handed — which is why a FLAC id used to
 //      resolve to mirrors that 404 every range while the id-keyed head service served 80 KiB of the same id. The
 //      answers are still CACHED by file id alone, because a file id has exactly one format.
-//   4. THE KEY. The AP's 0x0c/0x0d exchange first (`Spotify.RequestAudioKey`, owner D). AP audio-key service is
+//   4. THE KEY. The session map, then the saved keys on disk (`KeyStore`, G-123), then the AP's 0x0c/0x0d exchange
+//      (`Spotify.RequestAudioKey`, owner D). AP audio-key service is
 //      ACCOUNT-WIDE: one refusal means it will not serve any track this session, so it is tried once and latched off,
 //      and everything after that goes to the deriver seam below. FLAC IS NOT ELIGIBLE FOR THAT PATH AT ALL — see the
 //      lossless note below.
@@ -731,10 +732,8 @@ public static partial class Spotify
 
         // ── 5. the key: the AP first, then the seam ──────────────────────────────────────────────────────────────────
 
-        const int KeyCacheMax = 256;
-        static readonly Lock KeyGate = new();
-        static readonly Dictionary<string, byte[]> KeyCache = new(KeyCacheMax, StringComparer.OrdinalIgnoreCase);
-        static readonly Queue<string> KeyOrder = new(KeyCacheMax);
+        // The session's key map (256, FIFO), the proof that decides what is saved, and the on-disk store behind it are
+        // `Spotify.Audio.KeyStore.cs`; the record format and every decision it makes are `KeyStore.Rules.cs`.
         static volatile bool s_apKeysDisabled;
 
         /// <summary>True once the AP has refused a key. The AP audio-key service is account-wide: one refusal means it
@@ -748,11 +747,14 @@ public static partial class Spotify
         public static void ResetKeyLatch()
         {
             s_apKeysDisabled = false;
-            lock (KeyGate) { KeyCache.Clear(); KeyOrder.Clear(); }
+            ForgetSessionKeys();
             lock (ChoiceGate) Array.Clear(s_choices);           // a new session may be a new market: its ladder answers anew
         }
 
-        /// <summary>The 16-byte AES key for one (file, track) pair. Cached for the session — a key is immutable.
+        /// <summary>The 16-byte AES key for one (file, track) pair: the session map, then the saved keys on disk
+        /// (<see cref="KeyStore"/>, G-123 — a replay pays no round trip, and a reconnecting AP no longer fails it), then the AP,
+        /// then the deriver. A key is immutable, so it is cached for the session; it is SAVED only once chunk 0 has proved it
+        /// (<see cref="KeyProof"/>).
         ///
         /// <para><paramref name="apEligible"/> is <see cref="ApEligible"/> over the format, and it is an ARGUMENT
         /// rather than something this method works out because the caller is the only one holding the format. False
@@ -763,13 +765,16 @@ public static partial class Spotify
         {
             lock (KeyGate)
             {
-                if (KeyCache.TryGetValue(fileIdHex, out byte[]? cached)) { cached.CopyTo(key16); return Fault.None; }
+                if (KeyCache.TryGetValue(fileIdHex, out KeyEntry? cached)) { cached.Key.CopyTo(key16); return Fault.None; }
             }
+
+            // The disk: a point lookup; false when off, detached, unscoped or broken. Before the AP on purpose.
+            if (KeyStore.TryGet(fileId, key16)) { Remember(fileIdHex, fileId, key16, KeyOrigin.Disk); return Fault.None; }
 
             if (apEligible && !s_apKeysDisabled)
             {
                 AudioKeyResult outcome = RequestAudioKey(fileId, trackGid, key16);
-                if (outcome == AudioKeyResult.Ok) { Remember(fileIdHex, key16); return Fault.None; }
+                if (outcome == AudioKeyResult.Ok) { Remember(fileIdHex, fileId, key16, KeyOrigin.Ap); return Fault.None; }
                 if (outcome == AudioKeyResult.Offline) return Fault.Offline;
                 if (outcome == AudioKeyResult.Rejected)
                 {
@@ -791,19 +796,8 @@ public static partial class Spotify
 
             if (derived is not { Length: AudioKey.KeyLength }) return Fault.NoKey;
             derived.CopyTo(key16);
-            Remember(fileIdHex, key16);
+            Remember(fileIdHex, fileId, key16, KeyOrigin.Derived);
             return Fault.None;
-        }
-
-        static void Remember(string fileIdHex, ReadOnlySpan<byte> key16)
-        {
-            byte[] copy = key16.ToArray();
-            lock (KeyGate)
-            {
-                if (!KeyCache.ContainsKey(fileIdHex)) KeyOrder.Enqueue(fileIdHex);
-                KeyCache[fileIdHex] = copy;
-                while (KeyOrder.Count > KeyCacheMax && KeyOrder.TryDequeue(out string? oldest)) KeyCache.Remove(oldest);
-            }
         }
 
         // ── 6. AES-128-CTR (PURE, and the reason this file has a vector test) ────────────────────────────────────────

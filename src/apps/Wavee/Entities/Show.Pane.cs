@@ -146,7 +146,7 @@ public readonly partial struct Show
             // Gated ONLY on the title (report 2d): never on the episode edge — the navigator that mounted this pane
             // already resolved the row it shows, so there is nothing header-shaped left to wait for.
             bool headerReady = show.IsValid && show.Knows(ShowFields.Title);
-            BoxEl child = !headerReady ? HeaderSkeleton() : Body(show, m);
+            BoxEl child = !headerReady ? Album.PaneHeaderSkeleton() : Body(show, m);
             return new BoxEl
             {
                 ZStack = true, Grow = 1f, Basis = 0f, MinHeight = 0f, ClipToBounds = true,
@@ -168,7 +168,7 @@ public readonly partial struct Show
         {
             var f = m.Facts?.Value ?? default;
             var id = IdentityOf(show, in f);
-            Element header = PaneHeader(id.CoverUrl, id.Eyebrow, id.Title, _open,
+            Element header = Album.PaneHeader(id.CoverUrl, id.Eyebrow, id.Title, _open,
                 Design.Type.DenseMeta(Entities.Strings.Resolve(show.PublisherId))
                     with { Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
                 id.Meta ?? "");
@@ -235,28 +235,5 @@ public readonly partial struct Show
             Actions.Menu.Group(rows, Episode.ShareMenu(show.Uri, in ctx));
             return rows.Count == 0 ? null : new ContextMenuModel(rows);
         }
-
-        /// <summary>Gated ONLY on <c>Knows(ShowFields.Title)</c> — Album's "header never skeletons" rule (Album.Pane.cs
-        /// §"THE HEADER NEVER SKELETONS"): the navigator that mounts this pane already resolved the row it shows, so
-        /// there is nothing header-shaped left to wait for.</summary>
-        static BoxEl HeaderSkeleton() => new()
-        {
-            Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Height = Album.PaneHeaderHeight, ClipToBounds = true,
-            Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
-            Children =
-            [
-                new BoxEl { Width = Album.PaneCover, Height = Album.PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
-                new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                    Children =
-                    [
-                        new BoxEl { Width = 80f, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                        new BoxEl { Width = 220f, Height = 26f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                        new BoxEl { Width = 120f, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                    ],
-                },
-            ],
-        };
     }
 }

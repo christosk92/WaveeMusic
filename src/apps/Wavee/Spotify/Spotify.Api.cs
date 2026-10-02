@@ -474,7 +474,7 @@ public static partial class Spotify
         static string AcceptFor(RequestKind kind) => kind switch
         {
             RequestKind.CollectionPage or RequestKind.CollectionDelta or RequestKind.CollectionWrite => CollectionMediaType,
-            RequestKind.PlaylistSignals => "application/x-protobuf",
+            RequestKind.PlaylistSignals or RequestKind.Profile => "application/x-protobuf",
             _ => "application/protobuf",
         };
 
@@ -653,15 +653,6 @@ public static partial class Spotify
         public static int AlbumRecommendations(string albumUri, Staging into, CancellationToken ct)
             => Extension(albumUri, Xm.ExtensionKind.RecommendedPlaylists, into, ct);
 
-        /// <summary>The batched half of profile resolution: kind 15 for canonical <c>spotify:user:</c> uris. Whatever
-        /// it leaves unresolved goes to <see cref="Profile"/> one at a time.</summary>
-        public static int UserProfiles(ReadOnlySpan<string> userUris, Staging into, CancellationToken ct)
-        {
-            if (userUris.Length == 0) return 0;
-            ReadOnlySpan<int> kind = [FetchRoutes.UserProfile];
-            return PostMetadata(BatchBody(userUris, kind, Market, Catalogue), into, ct);
-        }
-
         /// <summary>The <c>spotify:user:</c> uris of a <c>BatchedExtensionResponse</c> that kind <paramref name="kind"/>
         /// ANSWERED — a 2xx entity header with the extension data present. PURE; the profile fallback's "who is left"
         /// (G-033), read with the same rule <see cref="Decode.ExtendedMetadata"/> stages by.</summary>
@@ -712,10 +703,11 @@ public static partial class Spotify
                 or PathfinderOp.BrowseAll or PathfinderOp.BrowsePage or PathfinderOp.BrowseSection or PathfinderOp.Search or PathfinderOp.SearchGenres or PathfinderOp.SearchSuggestions
                 or PathfinderOp.AlbumMerch or PathfinderOp.SimilarAlbums
                 or PathfinderOp.DiscographyAlbums or PathfinderOp.DiscographySingles or PathfinderOp.DiscographyCompilations
-                or PathfinderOp.Concert or PathfinderOp.ArtistConcerts,
+                or PathfinderOp.Concert or PathfinderOp.ArtistConcerts or PathfinderOp.IsFollowingUsers,
             RouteTransport.Spclient => route.Rest is SpclientRoute.ShowRead or SpclientRoute.PlaylistRead or SpclientRoute.LikedContentFilters or SpclientRoute.PermissionBase
                 or SpclientRoute.Popcount or SpclientRoute.ArtistTopTracksExtended or SpclientRoute.Rootlist
-                or SpclientRoute.CollectionPage or SpclientRoute.Recents,
+                or SpclientRoute.CollectionPage or SpclientRoute.Recents
+                or SpclientRoute.ProfileView or SpclientRoute.ProfileFollowers or SpclientRoute.ProfileFollowing,
             _ => false,
         };
 
@@ -773,6 +765,8 @@ public static partial class Spotify
             // so its answer must decode with landTracks: false (Decode.AlbumAnswer) rather than fold tracksV2 again
             FetchEdge.PlaylistTracks
                 => offset <= 0 && Serves(FetchRoutes.ForEdge(edge, 0)),
+            // The profile lists are whole and unpaged (research §2): a later page has nothing to land.
+            FetchEdge.ProfileFollowers or FetchEdge.ProfileFollowing => offset <= 0 && Serves(FetchRoutes.ForEdge(edge, 0)),
             _ => Serves(FetchRoutes.ForEdge(edge, offset)),
         };
 
@@ -974,8 +968,14 @@ public static partial class Spotify
             }
             // An EMPTY 200 body is an answer too: every asked entity was left out, and the trait kinds' silence settles
             // their groups as known negatives (Decode.TraitNegatives, RCA 2026-09-25 fix 1) — decode it like any other.
+            int usersBefore = s.StagedUsers?.Count ?? 0;
             Decode.ExtendedMetadata(result.Bytes, s, batch);
             LogXm(batch, kinds, uris, result, sent, XmAnswerSummary.Read(result.Bytes, uris, kinds));
+            // A user batch whose answer named its entities yet staged NO user row (2026-10-02: the account row's kind 15
+            // "missed" three times and sealed) — the decoder, not the wire, dropped it; this line says so.
+            if (batch.Kind == EntityKind.User && (s.StagedUsers?.Count ?? 0) == usersBefore && Log.IsEnabled(WaveeLogLevel.Info))
+                Log.Info("spotify", "kind15.staged-none ticket=" + batch.Ticket.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + " bytes=" + result.Body.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             if (batch.Subject == FetchSubject.Entity && batch.Kind == EntityKind.User && kinds.IndexOf(FetchRoutes.UserProfile) >= 0)
                 ProfileFallback(uris, result.Body, s);
@@ -1039,9 +1039,10 @@ public static partial class Spotify
             return (result.Status, XmAnswerSummary.Read(result.Bytes, uris, kinds, keepPayloads: true));
         }
 
-        /// <summary>The REST arm of profile resolution, one user at a time, for the users kind 15 did not answer. Only
-        /// 200 and 404 are answers, and neither decides the batch: kind 15 already did, and a REST outage must not re-POST
-        /// the batch that succeeded — an unresolved user simply stays sealed for the scope.</summary>
+        /// <summary>The REST arm of profile resolution, one user at a time, for the users kind 15 did not answer: the
+        /// protobuf profile view (Spotify.Api.Profile.cs). Only 200 and 404 are answers, and neither decides the batch:
+        /// kind 15 already did, and a REST outage must not re-POST the batch that succeeded — an unresolved user simply
+        /// stays sealed for the scope.</summary>
         static void ProfileFallback(string[] uris, byte[] response, Staging s)
         {
             HashSet<string>? answered = null;
@@ -1050,8 +1051,7 @@ public static partial class Spotify
                 if (!uri.StartsWith(UserPrefix, StringComparison.Ordinal)) continue;
                 answered ??= AnsweredUris(response, FetchRoutes.UserProfile);
                 if (answered.Contains(uri)) continue;
-                Result rest = Profile(UsernameOf(uri), CancellationToken.None);
-                if (rest.Status == 200 && rest.Body.Length > 0) Decode.Profile(rest.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                StageProfileView(ProfileView(UsernameOf(uri), CancellationToken.None), uri, s);
             }
         }
 
@@ -1150,6 +1150,9 @@ public static partial class Spotify
                 case PathfinderOp.ArtistConcerts:
                     result = ArtistConcertsAnswer(uri, offset, s);
                     break;
+                case PathfinderOp.IsFollowingUsers:
+                    result = ProfileQueries.FollowStateAnswer(uri, s);
+                    break;
                 default:
                     return;                                           // not served: nothing was sent, nothing to note
             }
@@ -1182,6 +1185,9 @@ public static partial class Spotify
                 case SpclientRoute.LikedContentFilters:
                     ContentFiltersAnswer(uri, s, ref outcome);
                     return;
+                case SpclientRoute.ProfileView: ProfileViewAnswer(uri, s, ref outcome, groups); return;
+                case SpclientRoute.ProfileFollowers: ProfileListAnswer(uri, Relation.ProfileFollowers, s, ref outcome, groups); return;
+                case SpclientRoute.ProfileFollowing: ProfileListAnswer(uri, Relation.ProfileFollowing, s, ref outcome, groups); return;
                 default:
                     return;
             }
@@ -2016,16 +2022,6 @@ public static partial class Spotify
 
         public static Result PlaylistPermissionBase(string playlistId, CancellationToken ct)
             => Send(PermissionBaseRoute(playlistId), [], ct);
-
-        /// <summary><c>/user-profile-view/v3/profile/&lt;username&gt;?market=from_token</c> — the captured spelling, market
-        /// included. PURE.</summary>
-        public static Route ProfileRoute(string username)
-            => new(Verb.Get, ApiHost.Spclient, "/user-profile-view/v3/profile/" + Escaped(username) + "?market=from_token",
-                   CommonJson);
-
-        /// <summary>The REST arm of profile resolution (G-033). Only 200 and 404 are ANSWERS: a 404 seals "no public
-        /// profile", and every other status means we did not find out.</summary>
-        public static Result Profile(string username, CancellationToken ct) => Send(ProfileRoute(username), [], ct);
 
         /// <summary>The artist page's extended top-track list — a JSON body of bare uris the pathfinder overview does
         /// not carry. The FULL artist uri is the path tail, escaped. The list is capped at

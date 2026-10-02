@@ -26,8 +26,11 @@ public static partial class Sidebar
     /// re-skins exactly the realized rows it touches — never the list.
     ///
     /// <para>NO HOOKS anywhere in this class: every builder is a plain method, so hook order is identical across every
-    /// recycle. The chevrons, the pill, the "+" and the drop zone are hook-owning CHILDREN, and each row kind has its own
-    /// recycle pool (<c>ContentType</c> = row kind), so a header slot never rebinds into a chevron-less shape.</para>
+    /// recycle. The chevrons, the pill, the "+", the drop zone and the hero / grid-tile <c>Controls.Surface</c>s are
+    /// hook-owning CHILDREN, and each row kind has its own recycle pool (<c>ContentType</c> = row kind), so a header slot
+    /// never rebinds into a chevron-less shape. A surface is PROPS-DRIVEN (<c>Embed.Comp(props, factory)</c> re-pushes the
+    /// new <c>CardData</c> on every rebind), which is what makes it legal under a recycling slot: no constructor argument
+    /// freezes at mount (the adapters are Sidebar.Cards.cs).</para>
     ///
     /// <para>Rows never read playback or the route signal themselves: the pane reads both ONCE on behalf of every row
     /// (<see cref="PaneView.RowPlayState"/>, <see cref="PaneView.SelectedRoutePeek"/>).</para></summary>
@@ -645,102 +648,24 @@ public static partial class Sidebar
 
         // ── the hero card ────────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The <c>EntityEmbed</c> spotlight card: cover left (circular for artists), title + subtitle, and — with
-        /// <c>Display.PlayButton</c> — a circular play button revealed on hover that plays the entity AS A CONTEXT. Clicking
-        /// anywhere else navigates. An unresolved entity is still a card: 0.55 opacity, disabled, no click, no menu, from the
-        /// item's cached title/art, play hidden.</summary>
+        /// <summary>The <c>EntityEmbed</c> spotlight card — the shared media surface at the hero shape
+        /// (<see cref="SidebarCardRules.HeroShape"/>): cover left (circular for artists), title + subtitle, and — with
+        /// <c>Display.PlayButton</c> — the surface's own play affordance, which plays the entity AS A CONTEXT and turns into the
+        /// now-playing pill while it is the playing context. Clicking anywhere else navigates; hover, press, the hand cursor,
+        /// the focus ring, the drag and the "…" are the surface's, the menu and the drop spec the pane's
+        /// (<see cref="SidebarCards.Hero"/>). An unresolved entity is still a card: 0.55 opacity and disabled, from the item's
+        /// cached title/art — the adapter withholds its click, menu, play, drag and drop.</summary>
         Element HeroCard(SidebarSectionSpec section, in SidebarRow row, string sel, int index)
         {
-            var item = PaneText.ItemOf(section, row.Key);
-            var entries = _o.Plan.Entries;
-            bool resolved = (uint)row.EntryIndex < (uint)entries.Count;
-            var entry = resolved ? entries[row.EntryIndex] : default;
-            float height = PaneMetrics.CardHeight(section);
-            float cover = PaneMetrics.CardCover(section);
-
-            string title = item?.LabelOverride is { Length: > 0 } cardAlias ? cardAlias
-                : resolved && entry.Name.Length > 0 ? entry.Name
-                : item?.FallbackTitle is { Length: > 0 } cardCached ? cardCached
-                : PaneText.ShortUri(row.Key);
-            string? subtitle = resolved ? PaneText.SubtitleOf(in entry) : Loc.Get(PaneLoc.MissingEntity);
-            bool circular = resolved
-                ? entry.Circular || entry.Kind == SidebarEntryKind.Artist
-                : item?.EntityKind == SidebarEntityKind.Artist;
-            // ForEntry for a resolved card: it owes the entry's kind dispatch (folder tile, route glyph, Liked's cover).
-            Element art = resolved
-                ? Cover.ForEntry(in entry, cover)
-                : Cover.ArtUrl(item?.FallbackImageUrl, row.Key, cover, circular);
-
-            string uri = resolved ? entry.Uri : "";
-            bool track = resolved && entry.IsTrack;
-            string? route = resolved ? entry.RouteKey : SidebarPinId.FromUri(uri);
-            bool selected = _o.RowSelectsRoute(index, sel);
-            var (playing, animated) = _o.RowPlayState(index);
-            bool canPlay = resolved && section.Opts.PlayButton && uri.Length > 0 && entry.IsPlayable;
-            var snapshot = entry;
-
-            Action? activate = null;
-            if (track) activate = () => _o.Play(uri, asTrack: true);
-            else if (route is { Length: > 0 } cardRoute) activate = () => _o.Navigate(cardRoute, title, in snapshot);
-
-            var titleText = new TextEl(title)
+            var (data, resolved) = SidebarCards.Hero(_o, section, in row, sel, index);
+            return new BoxEl
             {
-                Size = 14f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
-            Element[] lines = subtitle is { Length: > 0 } sub
-                ? [titleText, new TextEl(sub) { Size = 12f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
-                : [titleText];
-            var text = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 2f, Children = lines };
-            Element[] children = canPlay
-                ? [art, text, PlayButton(uri, playing && animated, section.Opts.Density)]
-                : [art, text];
-
-            var card = new BoxEl
-            {
-                Key = row.Key,
-                Direction = 0, Height = height, AlignItems = FlexAlign.Center, Gap = 12f,
-                Padding = new Edges4(8f, 0f, 8f, 0f),
-                Corners = CornerRadius4.All(Radii.Card),
-                Fill = selected ? global::Wavee.Design.Colors.SelectedRest : Tok.FillCardSecondary,
-                HoverFill = selected ? global::Wavee.Design.Colors.SelectedHover : Tok.FillSubtleSecondary,
-                PressedFill = selected ? global::Wavee.Design.Colors.SelectedPressed : Tok.FillSubtleTertiary,
-                BorderWidth = selected ? 2f : 1f,
-                BorderColor = selected ? Tok.AccentDefault : Tok.StrokeCardDefault,
+                Direction = 1,
                 // The pane owns the horizontal inset; the card contributes only its vertical breathing room.
                 Margin = new Edges4(0f, 2f, 0f, 2f),
                 Opacity = resolved ? 1f : 0.55f,
                 IsEnabled = resolved,
-                Cursor = activate is null ? CursorId.Arrow : CursorId.Hand,
-                OnClick = resolved ? activate : null,
-                Children = children,
-            };
-            if (resolved && _o.EntryMenu(section, index, in snapshot, item, row.Key) is { } menu)
-                card = card.WithContextMenu(_o.MenuOverlay, menu);
-            return card;
-        }
-
-        /// <summary>The card's circular play button: 28 at Compact, 32 otherwise; revealed on hover, and PINNED at opacity 1
-        /// with the Pause glyph while this card is the playing context. On-accent ink is the token, never a literal white.</summary>
-        Element PlayButton(string uri, bool playingNow, SidebarDensity density)
-        {
-            float box = density == SidebarDensity.Compact ? 28f : 32f;
-            var owner = _o;
-            return new BoxEl
-            {
-                Opacity = playingNow ? 1f : 0f, HoverOpacity = 1f, Shrink = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = box, Height = box, Shrink = 0f,
-                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        Corners = Radii.Circle(box),
-                        Fill = Tok.AccentDefault,
-                        Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                        OnClick = () => owner.Play(uri, asTrack: false),
-                        Children = [Icon(playingNow ? Icons.Pause : Icons.Play, 14f, Tok.TextOnAccentPrimary)],
-                    }.Interactive(Interaction.Subtle),
-                ],
+                Children = [Controls.Surface(data, SidebarCardRules.HeroShape(PaneMetrics.CardHeight(section)))],
             };
         }
 
@@ -749,9 +674,10 @@ public static partial class Sidebar
         /// <summary>One row of a Grid-presentation section: <c>ItemCount</c> cells from <c>Entries[EntryIndex..]</c>.
         /// <para>THE COLUMN COUNT IS THE PLANNER'S. Re-deriving it from width here disagreed with how the planner already
         /// sliced the entries (a ragged grid whose row rhythm changed with the pane). Since the 180-DIP floor (#84) the planned
-        /// count can starve cells below the 40-DIP art floor, so this only WRAPS fewer cells per visual line
+        /// count can starve cells below the 40-DIP cell floor, so this only WRAPS fewer cells per visual line
         /// (<c>SidebarRowGeometry.GridFallbackColumns</c>): the strip grows taller, its cells never narrower. The pane width
-        /// is SUBSCRIBED so the cell edge re-flows with the seam.</para></summary>
+        /// is SUBSCRIBED so the cell edge re-flows with the seam. A cell's cover is its edge less the shared grid card's 2 × 8
+        /// plate padding (<see cref="SidebarCardRules.TileCover"/>), so the chosen column count is honoured down to the floor.</para></summary>
         Element GridStripRow(SidebarSectionSpec section, in SidebarRow row, string sel)
         {
             float pane = _o.ExpandedWidth.Value;
@@ -777,54 +703,16 @@ public static partial class Sidebar
             };
         }
 
+        /// <summary>One cell of a grid strip: the shared media surface at the tile shape, in a column of the strip's derived
+        /// width (a component anchor mirrors its rendered child's size rather than carrying flex props, so the width lands on
+        /// this thin wrapper). Selection, the title gate (Trap 5), the activation, the play, the menu, the drag and the drop spec
+        /// are <see cref="SidebarCards.Tile"/>'s — a grid cell is a different renderer, not a different rule.</summary>
         Element GridCell(SidebarSectionSpec section, SidebarLibraryEntry entry, float edge, string sel)
-        {
-            // A cell is not a plan row (one strip draws several), so it asks the resolver about the ENTRY — the same
-            // predicate the row-level sweep ORs across the strip's range.
-            bool selected = SidebarRowResolve.EntrySelects(in entry, sel);
-            // Same gate as EntryRow's (Trap 5): an unresolved row shows NOTHING rather than "3fMbdgg4jU18AjLCKBhRSm".
-            // A grid cell is a different renderer, not a different rule.
-            string label = entry.Name.Length > 0 ? entry.Name
-                : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? PaneText.ShortUri(entry.Uri)
-                : "";
-            float artEdge = MathF.Max(Cover.S40, edge - Spacing.S);
-            string? route = entry.RouteKey;
-
-            var labelText = new TextEl(label)
+            => new BoxEl
             {
-                Size = 12f, Weight = (ushort)(selected ? 600 : 400), Color = selected ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                Direction = 1, Width = edge, Shrink = 0f,
+                Children = [Controls.Surface(SidebarCards.Tile(_o, section, in entry, edge, sel), global::Wavee.Shape.SidebarTile)],
             };
-            // ForEntry, never the raw cover factory: an app-route entry keeps its glyph tile and Liked its dynamic cover.
-            Element cover = Cover.ForEntry(in entry, artEdge);
-            Element[] kids = section.Opts.Subtitles && PaneText.SubtitleOf(in entry) is { Length: > 0 } sub
-                ? [cover, labelText, global::Wavee.Design.Type.MicroMeta(sub) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]
-                : [cover, labelText];
-
-            Action? click = null;
-            if (entry.IsTrack) click = () => _o.Play(entry.Uri, asTrack: true);
-            else if (route is { Length: > 0 } cellRoute) click = () => _o.Navigate(cellRoute, entry.Name, in entry);
-
-            var cell = new BoxEl
-            {
-                Key = entry.Id,
-                Direction = 1, Width = edge, Shrink = 0f, Gap = Spacing.XS,
-                Padding = Edges4.All(Spacing.XS),
-                Corners = Radii.CardAll,
-                Shadow = Elevation.Card,
-                Cursor = click is null ? CursorId.Arrow : CursorId.Hand,
-                OnClick = click,
-                Children = kids,
-            }.Interactive(Interaction.Card);
-            // AFTER Interactive: the recipe rewrites the border wholesale.
-            cell = cell with
-            {
-                BorderColor = selected ? Tok.AccentDefault : Tok.StrokeCardDefault,
-                BorderWidth = selected ? 2f : 1f,
-            };
-            if (_o.GridCellMenu(in entry) is { } menu) cell = cell.WithContextMenu(_o.MenuOverlay, menu);
-            return cell;
-        }
 
         // ── degraded + affordance rows ───────────────────────────────────────────────────────────────────────────────
 

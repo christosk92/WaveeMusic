@@ -1148,17 +1148,24 @@ public class StoreTests : IDisposable
     }
 
     [Fact]
-    public void User_ddl_and_text_form_round_trip_with_an_independent_social_authority()
+    public void User_identity_round_trips_with_its_colour_and_social_never_reaches_the_disk()
     {
         Store.Register(new UserShape());
         Scope scope = Boot();
         UserTable users = scope.Users;
 
+        // THE DDL (profile pages plan, finding 3): the brand colour is a column; the social counts are not — Social and
+        // Follow are never persisted, so a restored row can never claim to know what it does not.
         string ddl = Store.Ddl();
         Assert.Contains("CREATE TABLE IF NOT EXISTS user(", ddl);
         Assert.Contains("CREATE INDEX IF NOT EXISTS ix_user_title ON user(scope_id, name COLLATE NOCASE);", ddl);
+        string userDdl = ddl.Split('\n').Single(l => l.StartsWith("CREATE TABLE IF NOT EXISTS user(", StringComparison.Ordinal));
+        Assert.Contains(", color INT", userDdl);
+        Assert.DoesNotContain("followers", userDdl);
+        Assert.DoesNotContain("following", userDdl);
 
         const string uri = "spotify:user:store-user-round-trip-20260915";
+        const uint brand = 0xFF1E3264u;
         int slot = users.Slot(uri.AsSpan());
         EntityId id = users.Id[slot];
         Assert.Equal(EntityForm.Text, id.Form);      // a username is never a gid (User.cs's own header)
@@ -1173,9 +1180,11 @@ public class StoreTests : IDisposable
         row1.Id = s1.AddText(System.Text.Encoding.UTF8.GetBytes(uri));
         row1.Name = s1.AddText("Alpha"u8);
         row1.Image = s1.AddText("img"u8);
+        row1.Color = brand;
         row1.Followers = 10;
         row1.Following = 5;
-        row1.Known = (uint)(UserFields.Identity | UserFields.Social);
+        row1.Flags = (uint)(UserFlags.ShowFollows | UserFlags.Followed);
+        row1.Known = (uint)(UserFields.Identity | UserFields.Social | UserFields.Follow);
         row1.Authority = Authority.Full;
         Assert.True(Store.WriteBehind(s1));
         Store.Flush();
@@ -1183,18 +1192,23 @@ public class StoreTests : IDisposable
         Assert.True(Store.Read(scope, users, new[] { slot }, (uint)UserFields.All, FetchPriority.Visible));
         Store.Flush();
         DrainPosts();
+        var user = new User(slot);
         Assert.Equal("Alpha", Entities.Strings.Resolve(users.Name[slot]));
-        Assert.Equal(10, users.Followers[slot]);
+        Assert.Equal(brand, users.Color[slot]);
+        Assert.True(user.Knows(UserFields.Identity));
+        Assert.False(user.Knows(UserFields.Social));      // never on disk: the riding shelves would be left unasked
+        Assert.False(user.Knows(UserFields.Follow));
+        Assert.Equal(0, users.Followers[slot]);
+        Assert.Equal(0, users.Following[slot]);
+        Assert.Equal(0u, users.Flags[slot]);
         Assert.Equal(id, EntityId.Parse(uri.AsSpan()));
         Assert.Equal(slot, users.Slot(uri.AsSpan()));
 
-        // A thin, Social-only answer must not blank the name.
+        // A thin, colourless re-answer says nothing about the name or the colour, so neither is blanked.
         Staging s2 = Staging.Rent();
         ref var row2 = ref s2.Users.Add();
         row2.Id = s2.AddText(System.Text.Encoding.UTF8.GetBytes(uri));
-        row2.Followers = 20;
-        row2.Following = 6;
-        row2.Known = (uint)UserFields.Social;
+        row2.Known = (uint)UserFields.Identity;
         row2.Authority = Authority.Thin;
         Assert.True(Store.WriteBehind(s2));
         Store.Flush();
@@ -1205,7 +1219,8 @@ public class StoreTests : IDisposable
         Store.Flush();
         DrainPosts();
         Assert.Equal("Alpha", Entities.Strings.Resolve(users.Name[slot2]));
-        Assert.Equal(20, users.Followers[slot2]);
+        Assert.Equal(brand, users.Color[slot2]);
+        Assert.Equal(0, users.Followers[slot2]);
     }
 
     [Fact]

@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Wavee — Profile page (Zune voice, Mica)</title>
+<style>
+  /* Tokens: the app's Fluent ramp (same values as daylist-hero-fade-mica.html / the engine's Tok.*). */
+  :root {
+    --page: #f3f5f8; --layer: #fbfbfc; --card: #ffffff; --card-stroke: rgba(0,0,0,.0803);
+    --ctrl: rgba(255,255,255,.78); --ctrl-stroke: rgba(0,0,0,.0803); --subtle: rgba(0,0,0,.0373); --subtle-2: rgba(0,0,0,.0241);
+    --text: #1a1a1a; --text-2: rgba(0,0,0,.786); --text-3: rgba(0,0,0,.5442); --text-4: rgba(0,0,0,.3614);
+    --accent: #005fb8; --on-accent: #ffffff; --accent-text: #003e92;
+    --veil-pull: 16%; --ghost: .045; --bone: rgba(0,0,0,.06);
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --font-d: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --r-ctrl: 4px; --r-card: 8px; --gutter: 40px;
+    --ease: cubic-bezier(.1,.9,.2,1);          /* Fluent "fast out" */
+    --person: #6d6cf7;                          /* the person's colour: avatar colorRaw, or the brand avatar colour */
+  }
+  [data-theme="dark"] {
+    --page: #1c1c1c; --layer: #2b2b2b; --card: #2b2b2b; --card-stroke: rgba(255,255,255,.0698);
+    --ctrl: rgba(255,255,255,.0605); --ctrl-stroke: rgba(255,255,255,.0698); --subtle: rgba(255,255,255,.0605); --subtle-2: rgba(255,255,255,.0326);
+    --text: #ffffff; --text-2: rgba(255,255,255,.786); --text-3: rgba(255,255,255,.5442); --text-4: rgba(255,255,255,.3628);
+    --accent: #60cdff; --on-accent: #003545; --accent-text: #99ebff;
+    --veil-pull: 24%; --ghost: .05; --bone: rgba(255,255,255,.07);
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--page); }
+  body { margin: 0; color: var(--text); background: var(--page); font: 14px/20px var(--font); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
+
+  /* ── the concept document around the mock ─────────────────────────────────────────────────────────────── */
+  .doc { padding: 40px clamp(20px, 4vw, 64px) 120px; max-width: 1480px; margin: 0 auto; }
+  .doc h1 { font: 400 40px/52px var(--font-d); letter-spacing: -.012em; margin: 0 0 10px; text-transform: lowercase; }
+  .doc h2 { font: 400 28px/36px var(--font-d); letter-spacing: -.012em; margin: 72px 0 6px; text-transform: lowercase; }
+  .doc p.lead, .doc p.note { color: var(--text-2); max-width: 82ch; margin: 0 0 10px; }
+  .doc p.note { color: var(--text-3); font-size: 12px; line-height: 16px; }
+  .doc code { font: 12px/16px "Cascadia Mono", Consolas, monospace; background: var(--subtle); padding: 1px 5px; border-radius: 3px; }
+  .principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin: 22px 0 8px; }
+  .principle { background: var(--card); border: 1px solid var(--card-stroke); border-radius: var(--r-card); padding: 14px 16px; }
+  .principle b { display: block; font: 600 14px/20px var(--font); margin-bottom: 4px; }
+  .principle span { color: var(--text-2); font-size: 13px; line-height: 18px; }
+  .controls { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+              padding: 10px 0; margin: 18px 0 12px; background: color-mix(in srgb, var(--page) 86%, transparent); backdrop-filter: blur(24px); }
+  .seg { display: inline-flex; background: var(--subtle); border-radius: var(--r-ctrl); padding: 2px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 4px 12px; border-radius: 3px; cursor: pointer; color: var(--text-2); font-size: 13px; }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--text); box-shadow: 0 0 0 1px var(--card-stroke); }
+  .controls .lbl { color: var(--text-3); font-size: 12px; }
+
+  /* ── the app window frame ─────────────────────────────────────────────────────────────────────────────── */
+  .window { border: 1px solid var(--card-stroke); border-radius: 10px; overflow: hidden; background: var(--page);
+            box-shadow: 0 24px 64px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.12); margin: 0 auto; transition: width .35s var(--ease); width: 100%; }
+  .window.narrow { width: 560px; }
+  .titlebar { height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 14px; color: var(--text-3); font-size: 12px; }
+  .titlebar .crumb b { color: var(--text-2); font-weight: 600; }
+  .titlebar .dots { margin-left: auto; letter-spacing: 10px; }
+  .app { display: flex; height: 980px; }
+  .nav { width: 64px; flex: none; display: flex; flex-direction: column; gap: 10px; align-items: center; padding-top: 8px; }
+  .nav i { width: 36px; height: 36px; border-radius: var(--r-ctrl); background: var(--subtle-2); display: block; }
+  .nav i.on { background: var(--subtle); box-shadow: inset 3px 0 0 var(--accent); }
+  .window.narrow .nav { display: none; }
+  .pane { flex: 1; min-width: 0; overflow: auto; position: relative; border-top-left-radius: 8px; background: var(--layer);
+          border-left: 1px solid var(--card-stroke); border-top: 1px solid var(--card-stroke); scrollbar-width: thin; }
+  [data-theme="dark"] .pane { background: #202020; }
+
+  /* ── HERO: the person's colour, the ghost name, the numerals ─────────────────────────────────────────── */
+  .hero { position: relative; isolation: isolate; overflow: hidden; padding: 64px var(--gutter) 30px; min-height: 360px; }
+  .hero .wash { position: absolute; inset: 0; z-index: -2;
+    --veil: color-mix(in srgb, var(--layer), var(--person) var(--veil-pull));
+    background:
+      radial-gradient(70% 120% at 12% 0%, color-mix(in srgb, var(--person) 30%, transparent), transparent 70%),
+      linear-gradient(to bottom, var(--veil) 0%, color-mix(in srgb, var(--veil) 55%, transparent) 62%, transparent 100%); }
+  [data-theme="dark"] .hero .wash { --veil: color-mix(in srgb, #202020, var(--person) var(--veil-pull)); }
+  .hero .ghost { position: absolute; z-index: -1; right: -.04em; bottom: -.36em; white-space: nowrap; pointer-events: none;
+    font: 600 190px/1 var(--font-d); letter-spacing: -.04em; color: var(--text); opacity: var(--ghost);
+    /* the ghost is texture, never type: its top fades out before it reaches the action row (EdgeFade Top) */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 55%); mask-image: linear-gradient(to bottom, transparent 0%, #000 55%); }
+  .hero-row { display: flex; gap: 36px; align-items: flex-end; }
+  .avatar { flex: none; width: 184px; height: 184px; border-radius: 50%; position: relative; overflow: hidden;
+    box-shadow: 0 0 0 1px var(--card-stroke), 0 18px 40px rgba(0,0,0,.30); background: var(--person); }
+  .avatar .photo { position: absolute; inset: 0; }
+  .avatar .initial { position: absolute; inset: 0; display: grid; place-items: center; color: #fff;
+    font: 600 84px/1 var(--font-d); letter-spacing: -.02em; text-shadow: 0 2px 12px rgba(0,0,0,.18); }
+  .who { min-width: 0; flex: 1; padding-bottom: 2px; }
+  .eyebrow { font: 600 12px/16px var(--font); letter-spacing: .14em; text-transform: lowercase; color: var(--text-2); display: flex; gap: 8px; align-items: center; }
+  .eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--person); box-shadow: 0 0 0 2px color-mix(in srgb, var(--person) 30%, transparent); }
+  .name { font: 400 68px/92px var(--font-d); letter-spacing: -.028em; margin: 2px 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .numerals { display: flex; gap: 0; align-items: stretch; margin-bottom: 22px; }
+  .num { padding: 0 26px; border-left: 1px solid var(--card-stroke); cursor: pointer; border-radius: var(--r-ctrl); transition: background .083s; }
+  .num:first-child { padding-left: 0; border-left: 0; }
+  .num:hover { background: var(--subtle-2); }
+  .num:first-child:hover { background: none; }
+  .num b { display: block; font: 400 40px/52px var(--font-d); letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
+  .num span { display: block; font: 400 12px/16px var(--font); color: var(--text-3); text-transform: lowercase; letter-spacing: .02em; }
+  .num .roll { display: inline-block; animation: roll .42s var(--ease); }
+  @keyframes roll { from { transform: translateY(60%); opacity: 0; } to { transform: none; opacity: 1; } }
+  .actions { display: flex; gap: 10px; align-items: center; }
+  .cta { height: 36px; padding: 0 20px; border-radius: 18px; border: 0; cursor: pointer; font: 600 14px/20px var(--font);
+         display: inline-flex; align-items: center; gap: 8px; transition: background .083s, transform .083s; }
+  .cta.accent { background: var(--accent); color: var(--on-accent); }
+  .cta.accent:hover { background: color-mix(in srgb, var(--accent) 90%, var(--text)); }
+  .cta.std { background: var(--ctrl); color: var(--text); box-shadow: inset 0 0 0 1px var(--ctrl-stroke); backdrop-filter: blur(20px); }
+  .cta.std:hover { background: var(--subtle); }
+  .cta.following:hover .t1 { display: none; } .cta.following .t2 { display: none; } .cta.following:hover .t2 { display: inline; }
+  .icon-btn { width: 36px; height: 36px; border-radius: 18px; border: 0; cursor: pointer; background: var(--ctrl);
+              box-shadow: inset 0 0 0 1px var(--ctrl-stroke); display: grid; place-items: center; color: var(--text-2); }
+  .private { margin-left: 6px; color: var(--text-3); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+  svg.g { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ── PIVOT: lowercase, display face, sticky over acrylic ─────────────────────────────────────────────── */
+  .pivot { position: sticky; top: 0; z-index: 10; display: flex; gap: 30px; padding: 10px var(--gutter) 0; height: 52px;
+           background: color-mix(in srgb, var(--layer) 78%, transparent); backdrop-filter: blur(30px) saturate(1.3);
+           border-bottom: 1px solid transparent; }
+  [data-theme="dark"] .pivot { background: color-mix(in srgb, #202020 78%, transparent); }
+  .pivot.stuck { border-bottom-color: var(--card-stroke); }
+  .pivot button { border: 0; background: none; cursor: pointer; padding: 0; position: relative; height: 36px;
+                  font: 350 19px/25px var(--font-d); letter-spacing: -.006em; color: var(--text-3); text-transform: lowercase; transition: color .083s; }
+  .pivot button:hover { color: var(--text-2); }
+  .pivot button[aria-selected="true"] { color: var(--text); }
+  .pivot button[aria-selected="true"]::after { content: ""; position: absolute; left: 0; bottom: 0; width: 16px; height: 3px; border-radius: 2px; background: var(--accent); }
+  .pivot .count { font: 400 12px/16px var(--font); color: var(--text-4); margin-left: 6px; vertical-align: 3px; }
+  .window.narrow .pivot { gap: 22px; overflow-x: auto; scrollbar-width: none; }
+
+  /* ── sections ───────────────────────────────────────────────────────────────────────────────────────── */
+  .body { padding: 18px var(--gutter) 64px; }
+  .section { margin-top: 30px; }
+  .sh { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .sh .tick { width: 3px; height: 18px; border-radius: 2px; background: var(--accent); }
+  .sh h3 { margin: 0; font: 600 20px/28px var(--font-d); letter-spacing: -.008em; }
+  .sh .chev { color: var(--text-3); margin-left: -2px; }
+  .sh .aside { margin-left: auto; color: var(--text-3); font-size: 12px; display: inline-flex; gap: 6px; align-items: center; }
+  .sh .lock { color: var(--text-3); font: 600 11px/16px var(--font); letter-spacing: .12em; text-transform: lowercase; display: inline-flex; gap: 6px; align-items: center;
+              background: var(--subtle-2); border-radius: 10px; padding: 1px 9px 1px 7px; margin-left: 4px; }
+
+  /* the shared media surface (Controls.Surface, Shape.Shelf / Shape.Grid) */
+  .shelf { display: flex; gap: 0; overflow: hidden; margin: 0 -8px; }
+  .card { flex: none; width: 188px; padding: 8px; border-radius: var(--r-card); cursor: pointer; position: relative; transition: background .083s; }
+  .card:hover { background: var(--subtle); }
+  .card .cover { aspect-ratio: 1; border-radius: var(--r-card); position: relative; overflow: hidden; box-shadow: 0 0 0 1px var(--card-stroke); }
+  .card.round .cover { border-radius: 50%; }
+  .card .fab { position: absolute; right: 8px; bottom: 8px; width: 44px; height: 44px; border-radius: 22px; background: var(--accent); color: var(--on-accent);
+               display: grid; place-items: center; opacity: 0; transform: translateY(6px); transition: all .15s var(--ease); box-shadow: 0 6px 16px rgba(0,0,0,.3); }
+  .card.round .fab { right: 4px; bottom: 4px; }
+  .card:hover .fab { opacity: 1; transform: none; }
+  .card .t { font: 600 14px/20px var(--font); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .c { font: 400 12px/16px var(--font); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card.round .t, .card.round .c { text-align: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 0; margin: 0 -8px; }
+  .grid .card { width: auto; }
+  .window.narrow .card { width: 156px; }
+
+  /* own profile: "this month", ghost rank numerals */
+  .ranks { display: flex; gap: 6px; overflow: hidden; margin: 0 -8px; }
+  .rank { flex: none; width: 214px; position: relative; padding: 8px 8px 8px 46px; cursor: pointer; border-radius: var(--r-card); transition: background .083s; }
+  .rank:hover { background: var(--subtle); }
+  .rank .n { position: absolute; left: -2px; top: -14px; font: 700 84px/96px var(--font-d); letter-spacing: -.028em; color: var(--text); opacity: .10; z-index: 0; }
+  .rank:first-child .n { opacity: .18; color: var(--person); }
+  .rank .cover { position: relative; z-index: 1; width: 160px; height: 160px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px var(--card-stroke), 0 10px 26px rgba(0,0,0,.22); }
+  .rank .t { font: 600 14px/20px var(--font); margin-top: 10px; text-align: center; width: 160px; }
+  .rank .c { font: 400 12px/16px var(--font); color: var(--text-2); text-align: center; width: 160px; }
+
+  /* followers / following preview: faces first */
+  .faces-band { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .window.narrow .faces-band { grid-template-columns: 1fr; }
+  .faces { background: var(--card); border: 1px solid var(--card-stroke); border-radius: var(--r-card); padding: 18px 20px 16px; cursor: pointer; transition: background .083s; }
+  .faces:hover { background: color-mix(in srgb, var(--card) 92%, var(--text)); }
+  .faces .top { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .faces .big { font: 400 40px/52px var(--font-d); letter-spacing: -.012em; font-variant-numeric: tabular-nums; }
+  .faces .lab { font: 400 19px/25px var(--font-d); color: var(--text-2); }
+  .faces .split { margin-left: auto; color: var(--text-3); font-size: 12px; }
+  .mosaic { display: grid; grid-template-columns: repeat(9, 1fr); gap: 8px; }
+  .mosaic .f { aspect-ratio: 1; border-radius: 50%; position: relative; overflow: hidden; box-shadow: 0 0 0 1px var(--card-stroke); }
+  .mosaic .f.more { display: grid; place-items: center; background: var(--subtle); color: var(--text-2); font: 600 12px/16px var(--font); box-shadow: none; }
+  .mosaic .f .ini { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font: 600 15px/1 var(--font-d); }
+
+  /* following pivot */
+  .tools { display: flex; gap: 12px; align-items: center; margin: 22px 0 6px; flex-wrap: wrap; }
+  .chips { display: inline-flex; gap: 6px; }
+  .chip { height: 32px; padding: 0 14px; border-radius: 16px; border: 0; cursor: pointer; background: var(--subtle); color: var(--text-2); font-size: 13px; display: inline-flex; gap: 8px; align-items: center; }
+  .chip[aria-pressed="true"] { background: var(--text); color: var(--page); }
+  .chip em { font-style: normal; opacity: .65; font-variant-numeric: tabular-nums; }
+  .find { height: 32px; min-width: 240px; border-radius: var(--r-ctrl); background: var(--ctrl); box-shadow: inset 0 0 0 1px var(--ctrl-stroke), inset 0 -1px 0 var(--text-4);
+          display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--text-3); font-size: 13px; }
+  .sort { margin-left: auto; color: var(--text-3); font-size: 12px; }
+  .list-wrap { display: flex; gap: 18px; }
+  .list-wrap .grid { flex: 1; }
+  .letter { grid-column: 1 / -1; font: 400 28px/36px var(--font-d); color: var(--text); padding: 18px 8px 4px; text-transform: lowercase; letter-spacing: -.012em; }
+  .card .fol { margin: 8px auto 2px; display: flex; justify-content: center; }
+  .pill { height: 28px; padding: 0 14px; border-radius: 14px; border: 0; cursor: pointer; font: 600 12px/16px var(--font); background: var(--ctrl); box-shadow: inset 0 0 0 1px var(--ctrl-stroke); }
+  .pill.on { background: transparent; color: var(--text-2); }
+  /* the Zune jump list */
+  .jump { flex: none; width: 34px; position: sticky; top: 64px; align-self: flex-start; display: grid; gap: 2px; padding-top: 8px; }
+  .jump a { font: 400 12px/18px var(--font-d); color: var(--text-2); text-align: center; border-radius: 3px; cursor: pointer; text-transform: lowercase; }
+  .jump a:hover { background: var(--subtle); color: var(--text); }
+  .jump a.off { color: var(--text-4); pointer-events: none; }
+  .jump a.cur { color: var(--accent); font-weight: 600; }
+  .window.narrow .jump { display: none; }
+
+  /* states */
+  .bone { background: var(--bone); border-radius: var(--r-ctrl); animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .55; } }
+  .empty { padding: 40px 0 24px; }
+  .empty .big { font: 400 40px/52px var(--font-d); letter-spacing: -.012em; color: var(--text-2); text-transform: lowercase; }
+  .empty .sub { color: var(--text-3); margin-top: 4px; }
+
+  /* narrow window: stack the hero */
+  .window.narrow .hero { padding: 40px 20px 22px; min-height: 0; }
+  .window.narrow .hero-row { flex-direction: column; align-items: flex-start; gap: 18px; }
+  .window.narrow .avatar { width: 112px; height: 112px; }
+  .window.narrow .avatar .initial { font-size: 52px; }
+  .window.narrow .name { font: 400 40px/52px var(--font-d); letter-spacing: -.012em; margin-bottom: 8px; white-space: normal; }
+  .window.narrow .ghost { display: none; }   /* wide tier only: below it there is no panorama to run off */
+  .window.narrow .num { padding: 0 16px; } .window.narrow .num b { font: 400 28px/36px var(--font-d); }
+  .window.narrow .body, .window.narrow .pivot { padding-left: 20px; padding-right: 20px; }
+  .window.narrow .rank { width: 168px; padding-left: 34px; } .window.narrow .rank .cover { width: 120px; height: 120px; } .window.narrow .rank .t, .window.narrow .rank .c { width: 120px; }
+  .window.narrow .rank .n { font-size: 64px; line-height: 72px; }
+  .window.narrow .mosaic { grid-template-columns: repeat(7, 1fr); }
+
+  /* mapping table */
+  table.map { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+  table.map th, table.map td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--card-stroke); vertical-align: top; }
+  table.map th { color: var(--text-3); font-weight: 600; font-size: 12px; }
+  table.map td:first-child { font-weight: 600; white-space: nowrap; }
+  .states { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 16px; margin-top: 16px; }
+  .state { background: var(--card); border: 1px solid var(--card-stroke); border-radius: var(--r-card); padding: 18px; overflow: hidden; }
+  .state .cap { color: var(--text-3); font-size: 12px; margin-bottom: 12px; }
+  .state .cap b { color: var(--text-2); }
+</style>
+</head>
+<body>
+<div class="doc">
+  <h1>profile — a person, not a record</h1>
+  <p class="lead">Every other Wavee page is about a <b>record</b> (an album, a playlist, an artist's catalogue). A profile is about a
+     <b>person</b>, so it borrows the Zune social voice: the person's own colour fills the room, their name is set as
+     panorama typography, counts are numerals rather than labels, and the social lists lead with faces. Everything is built
+     from parts Wavee already has — the artist-hero veil, the shared media surface, the pivot label, the tick header, the
+     capsule CTA, FlipDigit — and stays inside the engine's type policy. Data per
+     <code>profile-pages-api-research.md</code>: one <code>user-profile-view/v3</code> read paints the whole header and
+     overview; the two lists are unpaged; top artists are own-profile only.</p>
+  <div class="principles">
+    <div class="principle"><b>their colour</b><span>The hero veil is <code>colorRaw</code> of the avatar (<code>fetchExtractedColors</code>), or the
+      brand avatar colour from the profile itself when there is no picture — never a generic accent.</span></div>
+    <div class="principle"><b>panorama name</b><span>The name in the display face, and its ghost — the same word, huge and faint, running off the
+      right edge the way Zune's panorama titles did. Door's ghost-numeral idiom, one decorative rung.</span></div>
+    <div class="principle"><b>numerals, not labels</b><span>followers · following · public playlists as 40/52 display numerals with lowercase
+      captions. Each one is a doorway into its pivot; a follow rolls the count with FlipDigit.</span></div>
+    <div class="principle"><b>faces first</b><span>Followers and following preview as a face mosaic with the exact count; the full list gets
+      artists/people chips, find-in-list and a Zune jump list — it is one unpaged response.</span></div>
+  </div>
+
+  <div class="controls">
+    <span class="lbl">profile</span>
+    <span class="seg" id="segVariant">
+      <button data-v="other" aria-pressed="true">someone else</button>
+      <button data-v="own">your own</button>
+      <button data-v="noavatar">no picture</button>
+      <button data-v="loading">loading</button>
+    </span>
+    <span class="lbl">pivot</span>
+    <span class="seg" id="segPivot">
+      <button data-p="overview" aria-pressed="true">overview</button>
+      <button data-p="playlists">playlists</button>
+      <button data-p="following">following</button>
+      <button data-p="followers">followers</button>
+    </span>
+    <span class="lbl">window</span>
+    <span class="seg" id="segWidth"><button data-w="wide" aria-pressed="true">wide</button><button data-w="narrow">560</button></span>
+    <span class="lbl">theme</span>
+    <span class="seg" id="segTheme"><button data-t="dark" aria-pressed="true">dark</button><button data-t="light">light</button></span>
+  </div>
+
+  <div class="window" id="win">
+    <div class="titlebar"><span class="crumb">Search › <b id="crumb">Mira Vos</b></span><span class="dots">• • •</span></div>
+    <div class="app">
+      <div class="nav"><i></i><i class="on"></i><i></i><i></i><i></i></div>
+      <div class="pane" id="pane"></div>
+    </div>
+  </div>
+  <p class="note">Hover the numerals, cards and the Follow capsule (hover "Following" reads "Unfollow"). Click Follow: the
+     followers numeral rolls (FlipDigit) and the capsule settles — exactly what the client does after <code>followUsers</code>
+     returns and the profile is re-read.</p>
+
+  <h2>states</h2>
+  <p class="lead">The page never shows an empty frame: each state has its own face.</p>
+  <div class="states" id="states"></div>
+
+  <h2>engine mapping</h2>
+  <p class="lead">Every element above maps onto an existing token, type rung, control or data field. The two places this page asks
+     for something new are marked <b>new</b>.</p>
+  <table class="map">
+    <tr><th>element</th><th>engine / app</th><th>data (profile-pages-api-research.md)</th></tr>
+    <tr><td>hero veil</td><td><code>Controls.ArtistHeroVeil</code> pull (0.16 light / 0.24 dark) over <code>Tok.FillLayerDefault</code>, plus a soft radial of the same colour; <code>EdgeFade</code> bottom into the page</td><td>avatar <code>colorRaw</code> (Pathfinder <code>fetchExtractedColors</code> on the 300 px URL), else profile field 16 / kind-15 f11 <code>color</code></td></tr>
+    <tr><td>ghost name</td><td><b>new</b>: one decorative display rung (210 px, 600, −40/1000 em, opacity .055/.065, no hit test) — the same family as <code>Controls.Door</code>'s ghost numeral; clipped by the hero</td><td>profile f2 <code>name</code></td></tr>
+    <tr><td>avatar</td><td>184 circle (112 narrow), <code>Tok.StrokeCardDefault</code> ring + <code>Elevation.Card</code> shadow; no picture → initial on the person colour (<code>PersonPicture</code> idiom)</td><td>f3 <code>image_url</code> (300 px <code>ab6775700000ee85…</code>), f15 <code>has_spotify_image</code>, f16 <code>color</code></td></tr>
+    <tr><td>eyebrow</td><td><code>Design.Type.Eyebrow</code>, lowercase "profile" / "your profile"; a 6 px dot in the person colour</td><td>f10 <code>is_current_user</code></td></tr>
+    <tr><td>name</td><td>the <code>Ui.Display</code> ramp pair (68/92) in the display face at 400, −28/1000 em — the <code>SurfaceDisplay</code> liberties, one rung up; <code>MinSize</code> 48 before ellipsis; 40/52 narrow</td><td>f2</td></tr>
+    <tr><td>numerals</td><td><code>Design.Type.SurfaceDisplay</code> (40/52/400) tabular; caption 12/16 lowercase <code>TextTertiary</code>; hairline dividers; each a hover plate + click → pivot; <code>Controls.FlipDigit</code> roll on change</td><td>f4 followers, f5 following, f9 total public playlists</td></tr>
+    <tr><td>Follow / Following</td><td><code>WaveeCta</code> accent capsule ↔ standard capsule with check; hover reads "Unfollow"; optimistic, then re-ensure the profile</td><td>f6 <code>is_following</code>; Pathfinder <code>followUsers</code> / <code>unfollowUsers</code> <code>{usernames:[id]}</code></td></tr>
+    <tr><td>pivot</td><td><code>Design.Type.PivotLabel</code> (19/25/350) lowercase, the Search pivot control; sticky over acrylic (<code>Materials</code>), accent tick under the current; counts as 12/16 <code>TextQuaternary</code></td><td>—</td></tr>
+    <tr><td>section headers</td><td>the existing tick header (<code>ModuleHeader</code> + accent tick + "›")</td><td>—</td></tr>
+    <tr><td>top artists this month</td><td><b>own profile only</b>; circle covers 160 with a ghost rank numeral in the <code>ArtistDisplay</code> cut (84/96/700, low alpha; #1 in the person colour); lock chip "only you"</td><td>Pathfinder <code>userTopContent</code> (10, AFFINITY, SHORT_TERM)</td></tr>
+    <tr><td>public playlists</td><td><code>Controls.Surface(…, Shape.Shelf())</code> in a <code>PagedShelf</code> (overview), <code>Shape.Grid</code> (pivot); mosaic covers composed 2×2</td><td>f8 (≤ <code>playlist_limit</code>), image forms incl. <code>spotify:mosaic:</code></td></tr>
+    <tr><td>recently played artists</td><td><code>Controls.Surface(…, Shape.Grid)</code> circular, in a shelf</td><td>f7 (absent ⇒ section hidden)</td></tr>
+    <tr><td>faces preview</td><td>a card (<code>Tok.FillCardDefault</code>) with the count as a SurfaceDisplay numeral and a 9-up circle mosaic; whole card → pivot</td><td><code>/followers</code>, <code>/following</code> (first 8 entries + exact count)</td></tr>
+    <tr><td>following pivot</td><td>chips artists / people (<code>Controls.Chip</code>), find-in-list (client-side filter), letter groups in <code>SurfaceDisplay</code>-lite 28/36 lowercase, a <b>new</b> jump list (the library navigator's letters, as a rail); artist cards keep a Follow pill</td><td>artists then users, each sorted by name; artist entries f7 <code>is_following</code></td></tr>
+  </table>
+</div>
+
+<script>
+/* ── fake but tasteful art: deterministic gradients ───────────────────────────────────────────────────── */
+function art(seed, kind) {
+  const h = (seed * 47) % 360, h2 = (h + 40 + seed * 13) % 360, h3 = (h + 200) % 360;
+  if (kind === 'person') {
+    const skin = [['#f1d2b4', '#d9a77e'], ['#e3b58e', '#b97f55'], ['#c98d63', '#9a6142'], ['#8d5a3b', '#6a3f27'], ['#f5dcc5', '#e0b493']][seed % 5];
+    const hair = ['#2b1d16', '#5a3a22', '#c99a4b', '#1b1b1f', '#7a3b2a', '#d9c3a1'][(seed * 3) % 6];
+    return `radial-gradient(20% 17% at 50% 33%, ${skin[0]} 0%, ${skin[1]} 92%, transparent 100%),
+      radial-gradient(25% 22% at 50% 27%, ${hair} 0%, ${hair} 88%, transparent 100%),
+      radial-gradient(46% 34% at 50% 100%, hsl(${h2} 35% 30%) 0%, hsl(${h2} 38% 24%) 90%, transparent 100%),
+      radial-gradient(120% 120% at 30% 10%, hsl(${h3} 40% 62%) 0%, hsl(${h} 35% 36%) 70%, hsl(${h} 40% 22%) 100%)`;
+  }
+  if (kind === 'mosaic') return `conic-gradient(from 0deg at 50% 50%, hsl(${h} 60% 45%) 0 25%, hsl(${h2} 55% 55%) 0 50%, hsl(${h3} 50% 40%) 0 75%, hsl(${(h+90)%360} 55% 60%) 0)`;
+  return `radial-gradient(80% 70% at ${20 + seed % 60}% ${20 + (seed * 7) % 50}%, hsl(${h} 75% 62%) 0%, transparent 60%),
+          radial-gradient(70% 90% at 90% 90%, hsl(${h2} 70% 45%) 0%, transparent 70%),
+          linear-gradient(140deg, hsl(${h3} 55% 22%), hsl(${h} 60% 38%))`;
+}
+const ICON = {
+  play: '<svg class="g" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z" fill="currentColor" stroke="none"/></svg>',
+  more: '<svg class="g" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="1" fill="currentColor"/><circle cx="8" cy="8" r="1" fill="currentColor"/><circle cx="12.5" cy="8" r="1" fill="currentColor"/></svg>',
+  add: '<svg class="g" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>',
+  check: '<svg class="g" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg>',
+  lock: '<svg class="g" style="width:12px;height:12px" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>',
+  edit: '<svg class="g" viewBox="0 0 16 16"><path d="M10.5 3l2.5 2.5-7 7H3.5V10z"/></svg>',
+  search: '<svg class="g" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L13 13"/></svg>',
+  chev: '<svg class="g" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>',
+};
+
+/* ── the three people ────────────────────────────────────────────────────────────────────────────────── */
+const PEOPLE = {
+  other: { name: 'Mira Vos', colour: '#6d6cf7', seed: 11, photo: true, own: false, following: false,
+           followers: 118, followingN: 1063, artists: 897, people: 166, playlists: 94, recent: true },
+  own:   { name: 'Alex Moreau', colour: '#e26d4c', seed: 23, photo: true, own: true, following: false,
+           followers: 1, followingN: 18, artists: 12, people: 6, playlists: 30, recent: false },
+  noavatar: { name: 'Jordan Kale', colour: '#f573a0', seed: 5, photo: false, own: false, following: true,
+           followers: 2, followingN: 7, artists: 4, people: 3, playlists: 2, recent: false },
+};
+const PL = ['late trains home', 'kitchen floor disco', 'blue hour', 'sunday, slowly', 'gym but sad', '9:00 pm', 'for the long drive',
+            'soft static', 'paper planes', 'neon rain', 'quiet storm', 'last summer'];
+const AR = ['Halcyon Tides', 'Mae Lorne', 'The Paper Hearts', 'Kobi Arden', 'Lune', 'Okoye', 'Saint Varga', 'Northbound', 'Juno Park',
+            'Velvet Static', 'Ada Rhee', 'Brightwater', 'Coral Bay', 'Dorian Fox', 'Elle Marin', 'Fable', 'Greyson'];
+const PPL = ['ana.k', 'ben de wit', 'cass', 'dani r.', 'eli', 'fien', 'gus', 'hanna m', 'iris', 'jules', 'kim', 'lotte'];
+
+let state = { v: 'other', p: 'overview', w: 'wide', t: 'dark' };
+const fmt = n => n.toLocaleString('en-US');
+
+function avatarEl(who, size) {
+  const style = size ? `style="width:${size}px;height:${size}px"` : '';
+  if (!who.photo) return `<div class="avatar" ${style}><div class="initial">${who.name[0]}</div></div>`;
+  return `<div class="avatar" ${style}><div class="photo" style="background:${art(who.seed, 'person')}"></div></div>`;
+}
+function card(title, cap, seed, opt = {}) {
+  const bg = opt.mosaic ? art(seed, 'mosaic') : art(seed, opt.round ? 'person' : 'cover');
+  return `<div class="card ${opt.round ? 'round' : ''}"><div class="cover" style="background:${bg}">
+      ${opt.noFab ? '' : `<div class="fab">${ICON.play}</div>`}</div>
+      <div class="t">${title}</div>${cap ? `<div class="c">${cap}</div>` : ''}${opt.after || ''}</div>`;
+}
+function header(title, aside = '', link = true) {
+  return `<div class="sh"><div class="tick"></div><h3>${title}</h3>${link ? `<span class="chev">${ICON.chev}</span>` : ''}${aside}</div>`;
+}
+
+function hero(who) {
+  if (state.v === 'loading') return `<div class="hero"><div class="wash" style="--person:#7a7a7a"></div>
+      <div class="hero-row"><div class="avatar bone" style="box-shadow:none"></div>
+      <div class="who"><div class="bone" style="width:70px;height:12px;margin-bottom:14px"></div>
+      <div class="bone" style="width:min(420px,70%);height:56px;margin:0 0 22px"></div>
+      <div style="display:flex;gap:26px;margin-bottom:24px">${[60, 70, 60].map(w => `<div><div class="bone" style="width:${w}px;height:36px;margin-bottom:8px"></div><div class="bone" style="width:${w}px;height:10px"></div></div>`).join('')}</div>
+      <div class="bone" style="width:110px;height:36px;border-radius:18px"></div></div></div></div>`;
+  const followBtn = who.own
+    ? `<button class="cta std">${ICON.edit}Edit profile</button><button class="icon-btn" title="More">${ICON.more}</button>`
+    : who.following
+      ? `<button class="cta std following" id="follow"><span class="t1">${ICON.check} Following</span><span class="t2">Unfollow</span></button><button class="icon-btn" title="More">${ICON.more}</button>`
+      : `<button class="cta accent" id="follow">${ICON.add}Follow</button><button class="icon-btn" title="More">${ICON.more}</button>`;
+  return `<div class="hero" style="--person:${who.colour}"><div class="wash"></div><div class="ghost">${who.name}</div>
+    <div class="hero-row">${avatarEl(who)}
+      <div class="who">
+        <div class="eyebrow"><span class="dot"></span>${who.own ? 'your profile' : 'profile'}</div>
+        <div class="name">${who.name}</div>
+        <div class="numerals">
+          <div class="num" data-go="followers"><b id="nf">${fmt(who.followers)}</b><span>${who.followers === 1 ? 'follower' : 'followers'}</span></div>
+          <div class="num" data-go="following"><b>${fmt(who.followingN)}</b><span>following</span></div>
+          <div class="num" data-go="playlists"><b>${fmt(who.playlists)}</b><span>public playlists</span></div>
+        </div>
+        <div class="actions">${followBtn}${who.own ? `<span class="private">${ICON.lock} only you see your top artists</span>` : ''}</div>
+      </div></div></div>`;
+}
+function pivot(who) {
+  const tabs = [['overview', ''], ['playlists', who.playlists], ['following', who.followingN], ['followers', who.followers]];
+  return `<div class="pivot" id="pv">${tabs.map(([k, n]) =>
+    `<button data-go="${k}" aria-selected="${state.p === k}">${k}${n !== '' ? `<span class="count">${fmt(n)}</span>` : ''}</button>`).join('')}</div>`;
+}
+function facesCard(n, label, split, seedBase, peopleOnly) {
+  const faces = [];
+  for (let i = 0; i < 8; i++) {
+    const noPic = (i * 7 + seedBase) % 5 === 0;
+    faces.push(noPic ? `<div class="f" style="background:hsl(${(i * 61 + seedBase * 9) % 360} 70% 62%)"><div class="ini">${(peopleOnly ? PPL : AR)[i % 12][0].toUpperCase()}</div></div>`
+                     : `<div class="f" style="background:${art(seedBase + i * 3, 'person')}"></div>`);
+  }
+  faces.push(`<div class="f more">+${fmt(Math.max(0, n - 8))}</div>`);
+  return `<div class="faces" data-go="${label}"><div class="top"><span class="big">${fmt(n)}</span><span class="lab">${label}</span>
+          <span class="split">${split}</span></div><div class="mosaic">${faces.join('')}</div></div>`;
+}
+
+function overview(who) {
+  if (state.v === 'loading') {
+    const bones = Array.from({ length: 6 }, () => `<div class="card"><div class="cover bone" style="box-shadow:none"></div>
+      <div class="bone" style="height:12px;width:70%;margin-top:12px"></div><div class="bone" style="height:10px;width:45%;margin-top:8px"></div></div>`).join('');
+    return `<div class="section">${header('Public playlists', '', false)}<div class="shelf">${bones}</div></div>`;
+  }
+  let html = '';
+  if (who.own) {
+    html += `<div class="section">${header('Top artists this month', `<span class="lock">${ICON.lock}only you</span>`)}<div class="ranks">${
+      AR.slice(0, 5).map((a, i) => `<div class="rank"><div class="n">${i + 1}</div><div class="cover" style="background:${art(40 + i * 5, 'person')}"></div>
+        <div class="t">${a}</div><div class="c">Artist</div></div>`).join('')}</div></div>`;
+  }
+  const shown = Math.min(who.playlists, 10);
+  html += `<div class="section">${header('Public playlists', who.playlists > shown ? `<span class="aside">${fmt(who.playlists)} total</span>` : '')}`;
+  html += shown === 0 ? `<div class="empty"><div class="big">nothing public yet.</div></div>` :
+    `<div class="shelf">${PL.slice(0, shown).map((p, i) => card(p, i === 5 ? 'By ' + who.name : fmt((i * 37 + 3) % 90) + ' followers', 60 + i * 9, { mosaic: i === 5 })).join('')}</div>`;
+  html += `</div>`;
+  if (who.recent) {
+    html += `<div class="section">${header('Recently played artists')}<div class="shelf">${AR.slice(5, 12).map((a, i) =>
+      card(a, 'Artist', 90 + i * 7, { round: true })).join('')}</div></div>`;
+  }
+  html += `<div class="section">${header('People', '', false)}<div class="faces-band">
+     ${facesCard(who.followingN, 'following', `${fmt(who.artists)} artists · ${fmt(who.people)} people`, 3, false)}
+     ${facesCard(who.followers, 'followers', '', 17, true)}</div></div>`;
+  return html;
+}
+function playlists(who) {
+  const n = Math.min(who.playlists, 12);
+  return `<div class="section">${header(`${fmt(who.playlists)} public playlists`, `<span class="aside">sorted as ${who.own ? 'your' : 'their'} library</span>`, false)}
+    <div class="grid">${PL.slice(0, n).map((p, i) => card(p, fmt((i * 37 + 3) % 90) + ' followers', 60 + i * 9, { mosaic: i === 5 })).join('')}</div></div>`;
+}
+function following(who, mode) {
+  const isFollowers = mode === 'followers';
+  const names = isFollowers ? PPL : AR.concat(PPL);
+  const groups = {};
+  names.slice().sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' })).forEach(n => (groups[n[0].toLowerCase()] ??= []).push(n));
+  const letters = '#abcdefghijklmnopqrstuvwxyz'.split('');
+  const body = Object.keys(groups).sort().map(l => `<div class="letter">${l}</div>` + groups[l].map((n, i) => {
+    const isArtist = AR.includes(n);
+    const seed = n.length * 13 + i;
+    const noPic = !isArtist && seed % 4 === 0;
+    const cover = noPic ? `<div class="cover" style="background:hsl(${seed * 37 % 360} 70% 62%);display:grid;place-items:center;color:#fff;font:600 44px/1 var(--font-d)">${n[0].toUpperCase()}</div>` : '';
+    const after = isArtist ? `<div class="fol"><button class="pill ${seed % 3 ? '' : 'on'}">${seed % 3 ? 'Follow' : 'Following'}</button></div>` : '';
+    if (noPic) return `<div class="card round">${cover}<div class="t">${n}</div><div class="c">${(seed * 7) % 40} followers</div></div>`;
+    return card(n, isArtist ? fmt(seed * 9871 % 2000000) + ' followers' : (seed * 7) % 40 + ' followers', seed, { round: true, noFab: !isArtist, after });
+  }).join('')).join('');
+  const chips = isFollowers ? '' : `<span class="chips"><button class="chip" aria-pressed="true">all <em>${fmt(who.followingN)}</em></button>
+      <button class="chip">artists <em>${fmt(who.artists)}</em></button><button class="chip">people <em>${fmt(who.people)}</em></button></span>`;
+  return `<div class="tools">${chips}<span class="find">${ICON.search} find in ${isFollowers ? 'followers' : 'following'}</span><span class="sort">a – z · artists first</span></div>
+    <div class="list-wrap"><div class="grid">${body}</div><div class="jump">${letters.map(l =>
+      `<a class="${groups[l] ? (l === 'a' ? 'cur' : '') : 'off'}">${l}</a>`).join('')}</div></div>`;
+}
+
+function render() {
+  const who = PEOPLE[state.v === 'loading' ? 'other' : state.v];
+  document.getElementById('crumb').textContent = state.v === 'loading' ? '…' : who.name;
+  const p = state.v === 'loading' ? 'overview' : state.p;
+  const content = p === 'overview' ? overview(who) : p === 'playlists' ? playlists(who) : following(who, p);
+  document.getElementById('pane').innerHTML = hero(who) + pivot(who) + `<div class="body">${content}</div>`;
+  wire(who);
+}
+function wire(who) {
+  document.querySelectorAll('#pane [data-go]').forEach(el => el.onclick = () => { state.p = el.dataset.go; syncSeg(); render(); });
+  const f = document.getElementById('follow');
+  if (f) f.onclick = () => {
+    who.following = !who.following; who.followers += who.following ? 1 : -1;
+    render();
+    const nf = document.getElementById('nf'); if (nf) nf.innerHTML = `<span class="roll">${fmt(who.followers)}</span>`;
+  };
+  const pane = document.getElementById('pane'), pv = document.getElementById('pv');
+  pane.onscroll = () => pv && pv.classList.toggle('stuck', pane.scrollTop > (pv.offsetTop - 2));
+}
+function syncSeg() {
+  document.querySelectorAll('#segPivot button').forEach(b => b.setAttribute('aria-pressed', b.dataset.p === state.p));
+}
+function seg(id, key, attr, after) {
+  document.querySelectorAll(`#${id} button`).forEach(b => b.onclick = () => {
+    state[key] = b.dataset[attr];
+    document.querySelectorAll(`#${id} button`).forEach(x => x.setAttribute('aria-pressed', x === b));
+    after && after(); render();
+  });
+}
+seg('segVariant', 'v', 'v');
+seg('segPivot', 'p', 'p');
+seg('segWidth', 'w', 'w', () => document.getElementById('win').classList.toggle('narrow', state.w === 'narrow'));
+seg('segTheme', 't', 't', () => document.documentElement.dataset.theme = state.t);
+
+/* ── the states strip ────────────────────────────────────────────────────────────────────────────────── */
+document.getElementById('states').innerHTML = [
+  `<div class="state"><div class="cap"><b>no picture</b> — the initial on the brand avatar colour (profile f16), and the hero
+     veil takes the same colour; no colour request is made.</div>
+   <div style="display:flex;gap:18px;align-items:center">
+     ${['#f573a0', '#19e68c', '#509bf5', '#ff6437', '#ffc864', '#b49bc8'].map((c, i) =>
+       `<div style="width:52px;height:52px;border-radius:50%;background:${c};display:grid;place-items:center;color:#fff;font:600 24px/1 var(--font-d)">${'JAMRSK'[i]}</div>`).join('')}
+   </div></div>`,
+  `<div class="state"><div class="cap"><b>follow</b> — accent capsule → standard capsule with a check; hover reads "Unfollow".
+     The count rolls (FlipDigit) when the re-read lands; the lists are not refetched.</div>
+   <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+     <button class="cta accent">${ICON.add}Follow</button>
+     <button class="cta std">${ICON.check} Following</button>
+     <button class="cta std" style="opacity:.6">Following…</button>
+     <span style="font:400 40px/52px var(--font-d);margin-left:10px">118 → <span class="roll" style="display:inline-block">119</span></span>
+   </div></div>`,
+  `<div class="state"><div class="cap"><b>nothing public</b> — Zune voice, lowercase display type; the own profile adds the way out.</div>
+   <div class="empty" style="padding:6px 0 0"><div class="big">nothing public yet.</div>
+   <div class="sub">Playlists you make public show up here. <a style="color:var(--accent-text)">Choose playlists</a></div></div></div>`,
+  `<div class="state"><div class="cap"><b>unavailable</b> — a profile that 404s (private / deleted); the page keeps its frame.</div>
+   <div class="empty" style="padding:6px 0 0"><div class="big">this profile isn't available.</div>
+   <div class="sub">It may be private, or the account was closed.</div></div></div>`,
+  `<div class="state"><div class="cap"><b>hidden lists</b> — when the owner hides follows (<code>show_follows</code>) the numerals stay
+     but read as plain text, and the two pivots and the People band drop out.</div>
+   <div style="display:flex;gap:26px"><div><div style="font:400 40px/52px var(--font-d)">118</div><div style="color:var(--text-3);font-size:12px">followers</div></div>
+   <div><div style="font:400 40px/52px var(--font-d)">1,063</div><div style="color:var(--text-3);font-size:12px">following</div></div></div></div>`,
+  `<div class="state"><div class="cap"><b>loading</b> — the seed face of the same tree (Controls.Surface seeds, numeral bones); the
+     veil starts neutral and eases to the person colour when it lands (no flash of a wrong colour).</div>
+   <div style="display:flex;gap:16px;align-items:center"><div class="bone" style="width:84px;height:84px;border-radius:50%"></div>
+   <div style="flex:1"><div class="bone" style="height:30px;width:70%;margin-bottom:12px"></div><div class="bone" style="height:12px;width:50%"></div></div></div></div>`,
+].join('');
+
+(function fromHash() {
+  const q = new URLSearchParams(location.hash.slice(1));
+  for (const [k, id, attr] of [['v', 'segVariant', 'v'], ['p', 'segPivot', 'p'], ['w', 'segWidth', 'w'], ['t', 'segTheme', 't']]) {
+    const val = q.get(k); if (!val) continue;
+    const b = document.querySelector(`#${id} button[data-${attr}="${val}"]`); if (b) b.click();
+  }
+})();
+render();
+</script>
+</body>
+</html>

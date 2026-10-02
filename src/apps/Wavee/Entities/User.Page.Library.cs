@@ -177,7 +177,6 @@ public readonly partial struct User
 
     static readonly string[] s_noSuggest = [];
     static readonly Func<bool> s_true = static () => true, s_false = static () => false;
-    static readonly Action s_noop = static () => { };
 
     // ══ 2. THE PAGE ══════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -1383,8 +1382,7 @@ public readonly partial struct User
             {
                 var t = tracks[i];
                 int albumSlot = album.Slot, trackSlot = t.Slot;
-                rows[i] = TrackHitRow("search:t" + trackSlot, Controls.ArtUrl(LibraryRows.ImageOf(EntityKind.Track, trackSlot)),
-                    LibraryRows.TitleOf(EntityKind.Track, trackSlot), t.MatchStart, t.MatchLen, showArt,
+                rows[i] = TrackHitRow("search:t" + trackSlot, trackSlot, t.MatchStart, t.MatchLen, showArt,
                     () => Playback.PlayContext(LibraryRows.IdOf(EntityKind.Album, albumSlot), LibraryRows.IdOf(EntityKind.Track, trackSlot)));
             }
             return (album.Slot, rows);
@@ -1400,11 +1398,10 @@ public readonly partial struct User
             {
                 var a = artists[i];
                 int slot = a.Slot;
-                rows[i] = SearchRow("search:a" + slot, Controls.ArtUrl(LibraryRows.ImageOf(EntityKind.Artist, slot)), circular: true,
-                    LibraryRows.TitleOf(EntityKind.Artist, slot), a.MatchStart, a.MatchLen, "", MatchEyebrow(a.Match),
+                rows[i] = SearchRow("search:a" + slot, EntityKind.Artist, slot, a.MatchStart, a.MatchLen, "", MatchEyebrow(a.Match),
                     slot == selected, () => SelectArtist(slot));
             }
-            return SearchSkel(shimmer, s_skelArtistRow, rows.Length == 0 ? () => SearchMessage(Loc.Get(Strings.Library.NoMatch)) : () => SearchScroll(rows));
+            return SearchSkel(shimmer, s_skelNameRow, rows.Length == 0 ? () => SearchMessage(Loc.Get(Strings.Library.NoMatch)) : () => SearchScroll(rows));
         }
 
         /// <summary>Album hits: the albums view's LEFT column (explained, with its zero-hit message) or the artists view's
@@ -1418,12 +1415,11 @@ public readonly partial struct User
             {
                 var al = albums[i];
                 int slot = al.Slot;
-                rows[i] = SearchRow("search:al" + slot, Controls.ArtUrl(LibraryRows.ImageOf(EntityKind.Album, slot)), circular: false,
-                    LibraryRows.TitleOf(EntityKind.Album, slot), al.MatchStart, al.MatchLen, AlbumSubtitle(slot),
+                rows[i] = SearchRow("search:al" + slot, EntityKind.Album, slot, al.MatchStart, al.MatchLen, AlbumSubtitle(slot),
                     explain ? MatchEyebrow(al.Match) : null, slot == selected, () => SelectAlbum(slot));
             }
             Func<Element> content = explain && rows.Length == 0 ? () => SearchMessage(Loc.Get(Strings.Library.NoMatch)) : () => SearchScroll(rows);
-            return SearchSkel(shimmer, s_skelAlbumRow, content);
+            return SearchSkel(shimmer, s_skelNameRow, content);
         }
 
         Element TrackHits(bool shimmer)
@@ -1491,9 +1487,9 @@ public readonly partial struct User
             Children = rows,
         }) with { Grow = 1f };
 
-        static readonly Func<Element> s_skelArtistRow = static () => SearchRow("", null, true, "", 0, 0, "", null, false, s_noop);
-        static readonly Func<Element> s_skelAlbumRow = static () => SearchRow("", null, false, "", 0, 0, "", null, false, s_noop);
-        static readonly Func<Element> s_skelTrackRow = static () => TrackHitRow("", null, "", 0, 0, true, s_noop);
+        // The shimmer rows are the surface's own seed face at each hit's shape (an artist and an album hit share one).
+        static readonly Func<Element> s_skelNameRow = static () => Controls.Surface(Controls.CardData.Seed, LibrarySearchRowRules.NameShape);
+        static readonly Func<Element> s_skelTrackRow = static () => Controls.Surface(Controls.CardData.Seed, LibrarySearchRowRules.TrackShape(showArtwork: true));
 
         static string AlbumSubtitle(int slot)
         {

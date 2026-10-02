@@ -307,7 +307,7 @@ public readonly partial struct User
         Children = [LetterPlate(Prop.Of(() => LetterText(letter.Value)))],
     };
 
-    static Element LetterPlate(Prop<string> text) => new BoxEl
+    internal static Element LetterPlate(Prop<string> text) => new BoxEl
     {
         Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault,
         BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
@@ -620,64 +620,54 @@ public readonly partial struct User
         Exit: new EnterExit(Opacity: 0f, Active: true),
         ExitDynamics: TransitionDynamics.Tween(70f, Easing.SmoothOut));
 
-    /// <summary>An artist / album hit (h 56): cover 44 (r Full / 4) · optional "why" eyebrow · highlighted title · subtitle.
-    /// The browse-list selection language (subtle fills), never an accent tint.</summary>
-    public static Element SearchRow(string key, string? cover, bool circular, string title, int matchStart, int matchLen,
+    /// <summary>An artist / album hit: the app's shared media row (<c>Controls.Surface</c> over <c>Shape.Row(40)</c> at the
+    /// 56 floor a hit has always had) fed by what the library knows of the row — a circular cover for an artist, an optional
+    /// "why" eyebrow, the title with the search match highlighted, the subtitle. The surface brings what a hit was missing:
+    /// the now-playing pill, the hot-revealed "…" and the right-click menu (the search card grammar, <c>Search.MenuOf</c>),
+    /// and the drag a navigator row carries (<see cref="PayloadOf"/>). <paramref name="selected"/> wears the surface's accent
+    /// skin; the row sits in the layout-transition wrapper so only a real insert / remove / reorder animates.</summary>
+    public static Element SearchRow(string key, EntityKind kind, int slot, int matchStart, int matchLen,
                                     string subtitle, string? eyebrow, bool selected, Action onClick)
     {
-        float r = circular ? Radii.Full : Radii.Control;
-        var text = new List<Element>(3);
-        if (!string.IsNullOrEmpty(eyebrow))
-            text.Add(new TextEl(eyebrow) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-        text.Add(Controls.SearchHighlight(title, matchStart, matchLen, 14f, 600, Tok.TextPrimary));
-        if (subtitle.Length > 0)
-            text.Add(new TextEl(subtitle) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis });
-        return new BoxEl
+        var data = new Controls.CardData(
+            LibraryRows.IdOf(kind, slot).Text, LibraryRows.TitleOf(kind, slot),
+            subtitle.Length > 0
+                ? new TextEl(subtitle) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
+                : null,
+            Controls.ArtUrl(LibraryRows.ImageOf(kind, slot)), onClick,
+            Circular: LibrarySearchRowRules.IsCircular(kind), Drag: HitDrag(kind, slot))
         {
-            Key = key, Animate = SearchRowChange,
-            Direction = 0, Height = 56f, AlignItems = FlexAlign.Center, Gap = Spacing.M, ClipToBounds = true,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
-            Fill = selected ? Tok.FillSubtleSecondary : ColorF.Transparent,
-            HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
-            Children =
-            [
-                new BoxEl { Width = 44f, Height = 44f, Shrink = 0f, Corners = CornerRadius4.All(r), ClipToBounds = true,
-                    SkeletonOverride = CoverSkeleton(44f, r), Children = [Controls.Artwork(cover, 44f, 44f, r)] },
-                new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, Gap = 1f, ClipToBounds = true, MinWidth = 0f, Children = text.ToArray() },
-            ],
+            Menu = Search.MenuOf(new EntityRef(kind, slot)),
+            Eyebrow = string.IsNullOrEmpty(eyebrow)
+                ? null
+                : new TextEl(eyebrow) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+            Highlight = (matchStart, matchLen), Selected = selected,
         };
+        return HitSurface(key, data, LibrarySearchRowRules.NameShape);
     }
 
-    /// <summary>A track hit (h 44): 36 cover (dropped when track artwork is hidden — part of the key) + a 13/600
-    /// highlighted title. A click plays in place.</summary>
-    public static Element TrackHitRow(string key, string? cover, string title, int matchStart, int matchLen, bool showArt, Action onClick)
+    /// <summary>A track hit: the shared track row (<c>Track.RowData</c> — the cover or, with track artwork hidden, the play
+    /// glyph; the artists; the play FAB, the "…" and the right-click track menu, and the single-track drag) with the search
+    /// match highlighted. A click — and the FAB — plays the album from this track in place (<paramref name="onClick"/>),
+    /// never just the one track.</summary>
+    public static Element TrackHitRow(string key, int trackSlot, int matchStart, int matchLen, bool showArt, Action onClick)
     {
-        Element titleBox = new BoxEl
-        {
-            Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, ClipToBounds = true,
-            Children = [Controls.SearchHighlight(title, matchStart, matchLen, 13f, 600, Tok.TextPrimary)],
-        };
-        return new BoxEl
-        {
-            Key = key + (showArt ? ":art=True" : ":art=False"), Animate = SearchRowChange,
-            Direction = 0, Height = 44f, AlignItems = FlexAlign.Center, Gap = Spacing.M, ClipToBounds = true,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
-            Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = onClick,
-            Children = showArt
-                ? [new BoxEl { Width = 36f, Height = 36f, Shrink = 0f, Corners = Radii.ControlAll, ClipToBounds = true,
-                       SkeletonOverride = CoverSkeleton(36f, Radii.Control), Children = [Controls.Artwork(cover, 36f, 36f, Radii.Control)] },
-                   titleBox]
-                : [titleBox],
-        }.Interactive(Interaction.Subtle);
+        var data = Track.RowData(new Track(trackSlot), new Track.RowDataOptions(OnClick: onClick, OnPlay: onClick, ShowArtwork: showArt))
+            with { Highlight = (matchStart, matchLen) };
+        return HitSurface(key, data, LibrarySearchRowRules.TrackShape(showArt));
     }
 
-    /// <summary>The cover slot's honest skeleton: a same-sized tile in the shimmer's bar colour.</summary>
-    static Element CoverSkeleton(float size, float corners) => new BoxEl
+    // The hit's keyed layout-transition wrapper around its surface: retained hits stay put (`SearchRowChange`).
+    static Element HitSurface(string key, Controls.CardData data, SurfaceShape shape) => new BoxEl
     {
-        Width = size, Height = size, Shrink = 0f, Corners = CornerRadius4.All(corners),
-        Fill = SkeletonStyle.Default.BarColor, IsEnabled = false, HitTestVisible = false,
+        Key = key, Animate = SearchRowChange, Direction = 1, MinWidth = 0f,
+        Children = [Controls.Surface(data, shape)],
     };
+
+    /// <summary>An artist / album hit drags exactly what its navigator row does (<see cref="PayloadOf"/>: the entity, with
+    /// an album's tracks resolved lazily) — click-primary, because selecting is the common intent on a hit.</summary>
+    static DragSource HitDrag(EntityKind kind, int slot)
+        => Drag.Source(() => PayloadOf(new LibraryNavItem(kind, slot, 0u)), clickPrimary: true);
 
     /// <summary>A facet header: eyebrow + count (hidden when &lt; 0; faded to 40 % while a newer answer is coming).</summary>
     public static Element FacetHeader(string label, int count, bool refining) => new BoxEl
@@ -709,7 +699,9 @@ public readonly partial struct User
     /// <summary>The save/follow affordances' one seam. <c>IsSaved</c> SUBSCRIBES (the scope epoch + the relation's
     /// <c>Changed</c>) so a heart re-skins the frame the optimistic edge lands; a pending remove reads unsaved. Tracks,
     /// albums, artists and shows go through <see cref="Add"/>/<see cref="Remove"/>; a playlist follows through the
-    /// rootlist (<c>Spotify.Library.FollowPlaylist</c>); the liked collection reads saved and is not toggled.</summary>
+    /// rootlist (<c>Spotify.Library.FollowPlaylist</c>); a user follows through <c>Spotify.Library.FollowUser</c> (read off
+    /// <c>User.IsFollowedByViewer</c>, subscribed through the users table's <c>Changed</c>); the liked collection reads
+    /// saved and is not toggled.</summary>
     public static Controls.LibrarySeam LibrarySeam { get; } = new(IsSavedUri, ToggleSavedUri);
 
     static bool IsSavedUri(string uri)
@@ -724,6 +716,11 @@ public readonly partial struct User
         {
             _ = scope.Edges.Rootlist.Changed.Value;
             return scope.Playlists.TryGetSlot(id, out int p) && scope.Edges.Rootlist.Contains(scope.MeSlot, p);
+        }
+        if (id.Kind == EntityKind.User)
+        {
+            _ = scope.Users.Changed.Value;
+            return scope.Users.TryGetSlot(id, out int u) && new User(u).IsFollowedByViewer;
         }
         if (table is null || Entities.TableFor(id.Kind) is not { } rows) return false;
         _ = table.Changed.Value;
@@ -742,6 +739,12 @@ public readonly partial struct User
         {
             bool following = scope.Playlists.TryGetSlot(id, out int p) && scope.Edges.Rootlist.Contains(me.Slot, p);
             Spotify.Library.FollowPlaylist(uri, !following);
+            return;
+        }
+        if (id.Kind == EntityKind.User)
+        {
+            bool following = scope.Users.TryGetSlot(id, out int u) && new User(u).IsFollowedByViewer;
+            Spotify.Library.FollowUser(uri, !following);                    // a no-op on your own profile
             return;
         }
         if (Entities.TableFor(id.Kind) is not { } rows) return;
@@ -768,4 +771,34 @@ public readonly partial struct User
         EntityKind.Show => scope.Edges.SavedShows,
         _ => null,
     };
+}
+
+/// <summary>The library search rows' pure decisions (<see cref="User.SearchRow"/> / <see cref="User.TrackHitRow"/>), engine-free
+/// so a fact pins each one: the row shape of each kind of hit and which hits wear a circular cover. The adapters only feed
+/// them to <c>Controls.Surface</c>.
+/// <para>A shared row is its art plus <see cref="SurfaceGeometry.RowPad"/> on both sides, and never under
+/// <see cref="Shape.RowFloor"/> unless it states its own floor — so a library hit states the floor it actually renders at
+/// (its art + padding) instead of the 64 every other media row has: an artist / album hit keeps the 56 it has always had
+/// (a 40 cover), a track hit is 52 (a 36 cover) or 48 with its artwork hidden.</para></summary>
+public static class LibrarySearchRowRules
+{
+    /// <summary>The artist / album hit's cover edge and row floor (40 + 2 × 8 = 56).</summary>
+    public const float NameArt = 40f, NameRowFloor = 56f;
+
+    /// <summary>The track hit's cover edge while track artwork shows (the hidden-artwork square is
+    /// <see cref="TrackRowRules.NoArtworkEdge"/>).</summary>
+    public const float TrackArt = 36f;
+
+    /// <summary>An artist is a person: a circular cover. An album (or any other hit) is a square one.</summary>
+    public static bool IsCircular(EntityKind kind) => kind == EntityKind.Artist;
+
+    /// <summary>The artist / album hit's shape.</summary>
+    public static readonly SurfaceShape NameShape = Shape.Row(NameArt) with { MinHeight = NameRowFloor };
+
+    static readonly SurfaceShape s_trackArt = TrackShapeOf(TrackArt), s_trackGlyph = TrackShapeOf(TrackRowRules.NoArtworkEdge);
+
+    /// <summary>The track hit's shape: the art edge follows the hidden-artwork rule (<see cref="TrackRowRules.ArtEdge"/>).</summary>
+    public static SurfaceShape TrackShape(bool showArtwork) => showArtwork ? s_trackArt : s_trackGlyph;
+
+    static SurfaceShape TrackShapeOf(float edge) => Shape.Row(edge) with { MinHeight = edge + 2f * SurfaceGeometry.RowPad };
 }

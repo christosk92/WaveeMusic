@@ -1223,6 +1223,21 @@ public static partial class Detail
         Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW }],
     };
 
+    /// <summary>The page-subject cover's gesture, from the shared surface's ownership rule (<see cref="SurfaceRules"/>). The
+    /// cover stays its own tree — it is the page's SUBJECT, not an item: it keeps its morph and its shadow — but what makes
+    /// a box invokable is ONE rule everywhere: a clickable cover is a Button and a tab stop (Enter / Space invoke through
+    /// the engine's click) with the bordered focus margin and the hand; a display-only cover carries none of them. Applied
+    /// by the rail, the show header and the vertical hero alike.</summary>
+    static BoxEl ClickableCover(BoxEl cover, Action? click)
+    {
+        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: click is not null);
+        return !mode.OwnsClick ? cover : cover with
+        {
+            OnClick = click, Role = mode.Role, Focusable = mode.OwnsFocus,
+            FocusVisualMargin = Design.FocusInsetBordered, Cursor = SurfaceRules.Cursor(in mode),
+        };
+    }
+
     /// <summary>The rail's loaded column: cover · eyebrow (+ a show's badges) / owner / an episode's show link · title ·
     /// attribution · rating · meta · an episode's badges · ledger · daylist · chart · CTA (primary + the fixed group or the
     /// page's satellites) · topics · prerelease · release panel · description · liked facts. The identity rows are
@@ -1252,17 +1267,15 @@ public static partial class Detail
 
         // Cover: the column's ANCHOR — keyed, never animated. The drag source sits on the FRAMING box so an editable
         // cover's own file-drop target inside it is untouched.
-        kids.Add(new BoxEl
+        kids.Add(ClickableCover(new BoxEl
         {
             Key = "rail:cover",
             Width = cover, Height = cover, Corners = CornerRadius4.All(Radii.Card),
             Shadow = Elevation.Card, ClipToBounds = true,
             Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-            OnClick = acts.CoverClick,
-            Cursor = acts.CoverClick is null ? (CursorId?)null : CursorId.Hand,
             Children = [slots.Cover?.Invoke(cover)
                 ?? Controls.Artwork(id.CoverUrl, cover, cover, Radii.Card, decodePx: RailCoverDecodePx, saturation: 1.18f)],
-        });
+        }, acts.CoverClick));
 
         // The lead. The eyebrow asymmetry (W27): the rail shows it for TypeYear only (a show's badges share its line);
         // OwnerRow gets the owner block instead; an EPISODE is led by its show link (its Attribution slot, W4).
@@ -1510,8 +1523,10 @@ public static partial class Detail
         return RailColumnBox(railW, kids.ToArray());
     }
 
-    /// <summary>The skeleton's cover slot: the REAL preview when a url is already known, exempted from the deriver with a
-    /// self-override; else the reserved card-cornered square the deriver paints as a bar.</summary>
+    /// <summary>The skeleton's cover slot — the rail's, the collapsed strip's and the vertical hero's alike (the page
+    /// SUBJECT's own shape, never a media card's, so it is not a <c>Controls.Surface</c> seed): the REAL preview when a url
+    /// is already known, exempted from the deriver with a self-override; else the reserved card-cornered square the
+    /// deriver paints as a bar.</summary>
     static Element SkeletonCover(string? coverUrl, float edge)
     {
         if (coverUrl is { Length: > 0 } url)
@@ -1654,16 +1669,14 @@ public static partial class Detail
             Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,   // centred: balanced, never a wedge
             Children =
             [
-                new BoxEl
+                ClickableCover(new BoxEl
                 {
                     Width = coverSize, Height = coverSize, Corners = CornerRadius4.All(Radii.Card),
                     Shadow = Elevation.Card, ClipToBounds = true, Shrink = 0f,
                     Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-                    OnClick = acts.CoverClick,
-                    Cursor = acts.CoverClick is null ? (CursorId?)null : CursorId.Hand,
                     Children = [slots.Cover?.Invoke(coverSize)
                         ?? Controls.Artwork(id.CoverUrl, coverSize, coverSize, Radii.Card, decodePx: RailCoverDecodePx)],
-                },
+                }, acts.CoverClick),
                 new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XS, Children = info.ToArray() },
             ],
         };
@@ -1763,15 +1776,22 @@ public static partial class Detail
                 Children = [Controls.FacePile(collaborators)],
             };
         string owner = id.OwnerName ?? "";
+        // The owner opens their profile (#161): the avatar + name run is the link (accent on hover), inert when the
+        // page carries no owner uri (a local playlist's "On this device").
+        var profile = ProfileRoute.For(id.Owner, owner);
+        bool go = !profile.IsNone;
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MaxWidth = width,
+            Role = go ? AutomationRole.Button : AutomationRole.None, Focusable = go,
+            Cursor = go ? CursorId.Hand : null, OnClick = go ? () => Shell.GoTo(profile) : null,
             Children =
             [
                 PersonPicture.Create("", 24f, displayName: owner, imageSourcePath: id.OwnerImageUrl),
                 new TextEl(owner)
                 {
                     Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary,
+                    HoverColor = go ? Tok.AccentTextPrimary : default, BrushTransitionMs = Design.Motion.Faster,
                     MinWidth = 0f, Shrink = 1f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                 },
             ],

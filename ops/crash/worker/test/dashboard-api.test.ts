@@ -2,72 +2,12 @@ import { describe, expect, it, afterAll, beforeAll, beforeEach, vi } from "vites
 import worker from "../src/index.js";
 import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
-import { makeFakeD1, makeFakeR2, makeFakeRate, buildSymmap } from "./fixtures.js";
-import { AUD, TEAM, accessHeader, installAccessFetchStub } from "./access.js";
-import type { Env, Summary } from "../src/types.js";
+import { accessHeader, installAccessFetchStub } from "./access.js";
+import { BASE, ingest, makeEnv, makeSummary, putSymmap } from "./helpers.js";
+import type { Env } from "../src/types.js";
 
-const BASE = "https://crash.cproducts.dev";
 /** A real, verifiable Access JWT header — signed in `beforeAll`. */
 let ACCESS: Record<string, string>;
-
-function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
-    DB: makeFakeD1(),
-    BUCKET: makeFakeR2(),
-    RATE: makeFakeRate(true),
-    INGEST_KEY: "test-ingest-key",
-    ACCESS_TEAM_DOMAIN: TEAM,
-    ACCESS_AUD: AUD,
-    ...overrides,
-  };
-}
-
-function makeSummary(overrides: Partial<Summary> = {}): Summary {
-  return {
-    reportId: crypto.randomUUID(),
-    installId: crypto.randomUUID(),
-    kind: "Managed",
-    stampUtc: "2026-09-24T14:30:12.118Z",
-    version: "0.3.0.41",
-    quad: "0.3.0.41",
-    commit: "7e209e37",
-    channel: "stable",
-    arch: "arm64",
-    osBuild: "26100",
-    gpu: "NVIDIA GeForce RTX 4070",
-    gpuTier: "Strong",
-    softwareAdapter: false,
-    packaged: true,
-    locale: "en-US",
-    sessionId: crypto.randomUUID(),
-    uptimeMs: 12_345,
-    beforeFirstFrame: false,
-    lastRoute: "artist",
-    exceptionType: "System.NullReferenceException",
-    exceptionMessage: "boom",
-    rvas: [0x1000],
-    moduleBase: 0x140000000,
-    moduleSize: 0x2800000,
-    debugId: "7E2C1234-AB12-CD34-EF56-1234567890AB-1",
-    exitCode: 0,
-    hasDump: false,
-    dumpBytes: 0,
-    ...overrides,
-  };
-}
-
-async function ingest(env: Env, summary: Summary): Promise<Response> {
-  const form = new FormData();
-  form.set("summary", JSON.stringify(summary));
-  form.set("report", `${summary.exceptionType}: ${summary.exceptionMessage}\n`);
-  form.set("tail", "ts=2026-09-24T14:30:00Z level=Info cat=app event=boot\n");
-  const req = new Request(`${BASE}/v1/report`, {
-    method: "POST",
-    headers: { "X-Wavee-Ingest": env.INGEST_KEY },
-    body: form,
-  });
-  return worker.fetch(req, env);
-}
 
 function get(path: string, env: Env, headers: Record<string, string> = ACCESS): Promise<Response> {
   return worker.fetch(new Request(`${BASE}${path}`, { headers }), env);
@@ -212,7 +152,7 @@ describe("GET /v1/symbols", () => {
     const env = makeEnv();
     const quad = "0.3.0.95";
     const arch = "arm64";
-    await env.BUCKET.put(`symbols/${quad}/win-${arch}.symmap`, buildSymmap([{ rva: 0x1000, size: 0x10, name: "M" }]));
+    await putSymmap(env, quad, arch, [{ rva: 0x1000, size: 0x10, name: "M" }]);
     await ingest(env, makeSummary({ quad, arch, rvas: [0x1000] }));
 
     const res = await get("/v1/symbols", env);
@@ -229,10 +169,7 @@ describe("GET /v1/issues/:fp — extended fields", () => {
     const env = makeEnv();
     const quad = "0.3.0.96";
     const arch = "arm64";
-    await env.BUCKET.put(
-      `symbols/${quad}/win-${arch}.symmap`,
-      buildSymmap([{ rva: 0x1000, size: 0x10, name: "Wavee_Crash_Site" }]),
-    );
+    await putSymmap(env, quad, arch, [{ rva: 0x1000, size: 0x10, name: "Wavee_Crash_Site" }]);
     const s1 = makeSummary({ quad, arch, rvas: [0x1000], version: "0.3.0.96" });
     const s2 = makeSummary({ quad, arch, rvas: [0x1000], version: "0.3.0.97", gpuTier: "Baseline" });
     await ingest(env, s1);

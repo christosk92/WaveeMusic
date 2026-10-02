@@ -63,8 +63,10 @@ public static partial class Feedback
             "diagnostics", "modules", "i18n", "engine", NotSure,
         ];
 
+        /// <summary><c>report-id</c> carries the bundle's short report id (<c>Crash.ShortId</c>) so an issue
+        /// and the crash service's copy of the same report can be matched (#165).</summary>
         public static readonly ReportChannel Crash = new(ReportKind.Crash, "/issues/new", "[Crash]: ", "crash_report.yml", null,
-            ["version", "install-source", "architecture", "windows-version", "when", "reproduces", "what-were-you-doing"],
+            ["version", "install-source", "architecture", "windows-version", "report-id", "when", "reproduces", "what-were-you-doing"],
             ["what-were-you-doing"], "Crash report");
 
         public static readonly ReportChannel Bug = new(ReportKind.Bug, "/issues/new", "[Bug]: ", "bug_report.yml", null,
@@ -114,7 +116,10 @@ public static partial class Feedback
     /// <param name="CrashReportPath">A specific <c>crash-report-*.txt</c> to read (the Crash reports card's "Report…"
     /// row, or the crash toast's action). Takes priority over the crash prompt decision's <c>ReportPath</c>.</param>
     /// <param name="Title">A starting value for the title box.</param>
-    public sealed record ReportPrefill(string? PastSessionId = null, string? CrashReportPath = null, string? Title = null);
+    /// <param name="ReportId">The crash bundle's full report id (<c>Crash.Summary.ReportId</c>); the Crash form's
+    /// <c>report-id</c> field is prefilled with its short form (<see cref="ReportForm.UrlFields"/>).</param>
+    public sealed record ReportPrefill(string? PastSessionId = null, string? CrashReportPath = null, string? Title = null,
+        string? ReportId = null);
 
     // ══ 3. IDENTITY ════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -428,15 +433,18 @@ public static partial class Feedback
 
         /// <summary>The URL's per-channel fields. GitHub's issue UI prefills inputs and textareas from the URL but NEVER
         /// dropdowns (verified 2026-09-02), so every dropdown answer is ALSO written as the first line of the neighbouring
-        /// text field; the dropdown params stay in the URL (harmless, and they light up if GitHub ever supports them).</summary>
+        /// text field; the dropdown params stay in the URL (harmless, and they light up if GitHub ever supports them).
+        /// <paramref name="reportId"/> (Crash only, the bundle's full id) prefills the <c>report-id</c> input with the
+        /// short id the app shows (<c>3f9c-2b1a</c>) — the crash service's search accepts it as an id prefix.</summary>
         public static List<KeyValuePair<string, string>> UrlFields(ReportKind kind, ReportLabels l, ReportIdentity id,
-            RedactionRules rules, in ReportDraft d)
+            RedactionRules rules, in ReportDraft d, string? reportId = null)
         {
-            var fields = new List<KeyValuePair<string, string>>(4);
+            var fields = new List<KeyValuePair<string, string>>(5);
             switch (kind)
             {
                 case ReportKind.Crash:
                 {
+                    if (reportId is { Length: > 0 } rid) fields.Add(new("report-id", global::Wavee.Crash.ShortId(rid)));
                     string when = WhenAt(d.When), repro = ReproducesAt(d.Reproduces);
                     fields.Add(new("when", when));
                     fields.Add(new("reproduces", repro));

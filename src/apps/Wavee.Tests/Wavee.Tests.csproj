@@ -33,6 +33,9 @@
          BUILT in the tests from the generated `Wavee.Protocol` messages instead of checked in, so a decoder is pinned
          against the canonical encoder rather than against a blob nobody can regenerate. -->
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The app ↔ Worker multipart contract (#165): the SAME bytes the Worker's vitest suite parses. CrashContractTests
+         packs fixed bundles and compares byte for byte; a mismatch writes crash-contract-actual\<name>.multipart. -->
+    <None Include="..\..\..\ops\crash\contract\*.multipart" Link="Fixtures\crash-contract\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

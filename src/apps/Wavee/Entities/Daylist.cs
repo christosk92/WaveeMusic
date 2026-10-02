@@ -17,7 +17,7 @@ namespace Wavee;
 /// polling forever.</summary>
 public static class DaylistRollover
 {
-    public const long GraceMs = 30_000;               // Spotify publishes the next edition a little after the stated instant
+    public const long GraceMs = 5_000;                // the first try: an on-time edition lands within seconds of the stated instant
     public static readonly long[] RetryMs = [30_000, 60_000, 120_000, 300_000];
     public const int MaxAttempts = 4;
     public const long MinRefireMs = 60_000;            // activation/resume may reset the ladder only this long after the last fire
@@ -26,6 +26,17 @@ public static class DaylistRollover
         PlaylistFields.Identity | PlaylistFields.Format | PlaylistFields.Daylist | PlaylistFields.TrackCount | PlaylistFields.Accent;
 
     public enum Verdict : byte { Idle, Arm, Fire, Exhausted }
+
+    /// <summary>The ladder as the UI reads it: <see cref="Verdict"/> plus how many rungs are spent. Idle = nothing is
+    /// scheduled (no window held, a demo scope, offline); Waiting = armed for the first try; Fetching = at least one try
+    /// is spent and the next edition has not landed (a landing resets the ladder, so this never outlives a new window);
+    /// Exhausted = the ladder ran out.</summary>
+    public static DaylistRolloverState StateOf(Verdict verdict, int attempts) => verdict switch
+    {
+        Verdict.Idle => DaylistRolloverState.Idle,
+        Verdict.Exhausted => DaylistRolloverState.Exhausted,
+        _ => attempts > 0 ? DaylistRolloverState.Fetching : DaylistRolloverState.Waiting,
+    };
 
     /// <summary>windowEnd&lt;=0 means no daylist to roll: Idle. attempts&gt;=MaxAttempts means the ladder ran out: Exhausted.
     /// Otherwise the due instant is the window's end plus the grace plus the sum of the ladder steps already spent;
@@ -99,6 +110,24 @@ public static class DaylistCountdown
     {
         if (expiresAtMs <= 0) return Phase.Idle;
         return expiresAtMs > nowUnixMs ? Phase.Counting : Phase.Rolling;
+    }
+}
+
+/// <summary>Where the rollover ladder stands (<see cref="DaylistRollover.StateOf"/>); one signal on <c>Home.Feeds</c>.</summary>
+public enum DaylistRolloverState : byte { Idle, Waiting, Fetching, Exhausted }
+
+/// <summary>What the daylist clock shows. The window's phase comes from the frame clock, the ladder from the feed
+/// host: while the window is still open the clock counts; once it has ended the next edition is on its way (the ladder
+/// is armed or retrying — Updating) until the ladder gives up, or was never going to run (offline, a demo scope) —
+/// then nothing is on its way and the clock owns up to it (Late).</summary>
+public static class DaylistClockFace
+{
+    public enum Face : byte { Counting, Updating, Late }
+
+    public static Face Of(DaylistCountdown.Phase phase, DaylistRolloverState ladder)
+    {
+        if (phase != DaylistCountdown.Phase.Rolling) return Face.Counting;
+        return ladder is DaylistRolloverState.Waiting or DaylistRolloverState.Fetching ? Face.Updating : Face.Late;
     }
 }
 

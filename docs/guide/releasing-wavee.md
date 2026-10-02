@@ -93,6 +93,8 @@ in every install.
 | **`ops/build/signing/metadata.json`** (gitignored) | copy `ops/build/signing/metadata.template.json` and fill in account / profile / endpoint |
 | **`gh` authenticated** — `gh auth login` | used for the release, the feed, and (via `gh auth token`) the issue/PR lookups the notes tool makes |
 | **`src/apps/Wavee.PlayPlay` junction** | a release build is **PlayPlay-inclusive**; preflight hard-fails without it. `-PublicOnly` opts out and builds the public variant deliberately |
+| **The crash Worker's `wrangler`, logged in** — the `symbols` phase uploads with `ops\crash\worker\node_modules\.bin\wrangler.cmd`, never a global one | `npm --prefix ops/crash/worker ci`, then `npx wrangler login` inside `ops/crash/worker`; preflight `wrangler (crash symbols)` runs `wrangler whoami` |
+| **1Password CLI (`op`), unlocked** — the crash ingest key (§5b) | `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` must print the key (Windows Hello unlock); or pass `-CrashIngestKey` |
 
 The junction is per-checkout and is **not** inherited by a Claude scratchpad — `CLAUDE.md` carries the exact
 `New-Item -ItemType Junction` recipe if you are releasing from one.
@@ -155,9 +157,9 @@ That is the whole command. The run is a ledger of phases; each one records itsel
 | 1a | `bump` | `<WaveeBuild> + 1`; `CHANGELOG.md` `unreleased` → today (UTC); asserts the diff touched **only** those two files |
 | 2 | `notes` | `Wavee.ReleaseTool validate` → `<staging>\notes\` (`whatsnew.json`, `whatsnew-index.json`, `RELEASE_BODY.md`, `store-listing.txt`, `media/`). Reads the feed's published `whatsnew-index.json` first — a 404 means "first release", and **any other failure stops the run**: phase 10 clobbers that file, so a one-entry index would erase the published history. Exit 2 also when a referenced issue/PR could not be read from GitHub (`--allow-unresolved` ships the authored title/state anyway). When there is a previous `wavee-v*` tag, also writes `<staging>\commits.json` (every commit in `<prevTag>..HEAD`, parsed for closing keywords and PR refs) and passes it with `--previous-tag`/`--commits`, so the tool renders the `## Resolved issues` section and re-does the issue/CHANGELOG cross-check itself. On failure it restores both files and un-marks the bump |
 | 1b | `tag` | commits those two files (`release: Wavee <semver> <codename> (build <quad>)`) and creates the annotated tag — **locally** |
-| 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign`, then asserts the package's identity name / version / arch / publisher — and that `Wavee-<quad>-win-arm64-symbols.zip` (the PDB of exactly that exe, §5b) landed next to it |
-| 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package; its symbols zip is adopted from next to it when present, with a warning otherwise) |
-| 3b | `symbols` | for each arch: `Wavee.ReleaseTool symbol-map --pdb <staging>\symbols\<quad>\win-<arch>\Wavee.pdb --exe <extracted from the staged .msix>` → `Wavee.symmap`, then `wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap`. This is what lets the crash-ingest Worker resolve a report's RVAs server-side (§5b); `-DryRun`/`-NoUpload` build the map but skip the upload with a `Warn` |
+| 3 | `packArm64` | `pack-wavee-msix.ps1 -Arch arm64 … -NoSign` with the crash ingest URL and key, then asserts the package's identity name / version / arch / publisher — that `Wavee-<quad>-win-arm64-symbols.zip` (the PDB of exactly that exe, §5b) landed next to it — and the **stamp evidence**: the packed `Wavee.exe` carries the crash URL and key (§5b) |
+| 4 | `packX64` | the same for x64 (or `-X64Msix <path>` to adopt a prebuilt package; its symbols zip is adopted from next to it when present, with a warning otherwise; an adopted package must pass the stamp evidence too) |
+| 3b | `symbols` | for each arch, `Publish-WaveeSymbolMap`: `Wavee.ReleaseTool symbol-map --pdb <staging>\symbols\<quad>\win-<arch>\Wavee.pdb --exe <extracted from the staged .msix>` → `Wavee.symmap`, then the crash Worker's `wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap --remote`. This is what lets the crash-ingest Worker resolve a report's RVAs server-side (§5b); `-DryRun`/`-NoUpload` build the map but skip the upload with a `Warn` |
 | 5 | `sign` | **one** Azure Trusted Signing `signtool` call over every `.msix`, then verifies each |
 | 6 | `appinstaller` | one `.appinstaller` per architecture from the template; re-parses each to prove the substitution |
 | 7 | `stage` | flattens the assets into the staging folder and writes `MANIFEST.txt`; the symbols zips are version-release assets like the packages (never feed assets) |
@@ -172,9 +174,13 @@ channel needs its own package identity and is not built yet) · staging folder f
 continues it) · working tree clean · on `<Branch>` · `HEAD == origin/<Branch>` · the tag is free locally, on origin and
 as a release · `CHANGELOG.md` has a `## [<semver>] - <date|unreleased>` heading · `ops/release/wavee/<semver>/whatsnew.json`
 exists · the PlayPlay junction is present · Windows SDK tools · x64 cross toolchain · a Trusted Signing token ·
-`gh auth` · `wrangler` CLI present (the `symbols` phase's R2 upload; SKIPs under `-DryRun`/`-NoUpload`) ·
+`gh auth` · **wrangler (crash symbols)** — the crash Worker's `ops\crash\worker\node_modules\.bin\wrangler.cmd`
+is installed (`npm --prefix ops/crash/worker ci`) and `wrangler whoami` says it is logged in (`npx wrangler login`
+in `ops/crash/worker`); it is what the `symbols` phase uploads with, and SKIPs under `-DryRun`/`-NoUpload` ·
 *(soft)* whether a `wavee-beta` feed exists and will be repointed too ·
-*(soft)* **crash ingest** — a `stable` release with no `-CrashIngestUrl` only warns (§5b) · **feed monotonic** (the new quad
+**crash ingest** — hard for `stable`, `beta` and `store`: the URL (default `https://crash.cproducts.dev`) must be
+https and the ingest key non-empty — read from 1Password unless `-CrashIngestKey` is passed (§5b); only `dev` may
+ship unstamped, and the message never contains the key · **feed monotonic** (the new quad
 must be strictly greater than each feed's current root `Version`, on every architecture, and the semver must not go
 backwards — the gate itself is always hard, but an *unreachable* feed is downgraded to a warning under `-DryRun` /
 `-NoUpload`, where nothing can be published) · **issue refs** *(hard)* — every commit in `<prevTag>..HEAD` that
@@ -191,9 +197,10 @@ Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build with
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)
 · `-NoNotes` (requires `-Force`; a degraded release with a placeholder body) · `-InstallFromFeed` (phase 11 installs
 the host-arch package from the published feed) · `-Force` (relaxes the branch / HEAD / staging checks) ·
-`-CrashIngestUrl https://crash.cproducts.dev -CrashIngestKey <key>` (the crash Worker's one hostname — ingest, API
+`-CrashIngestUrl <url>` (defaults to `https://crash.cproducts.dev`, the crash Worker's one hostname — ingest, API
 and dashboard; `ops/crash/README.md` step 5 — stamped into the build exactly like the update feed's base URL, and
-what the `symbols` phase uploads maps for; a `stable` release with neither set only `Warn`s — §5b).
+what the `symbols` phase uploads maps for) · `-CrashIngestKey <key>` (overrides the 1Password read; empty, the
+default, means `op read`. Either way the key is never logged or written to `release-state.json` — §5b).
 
 ---
 
@@ -232,8 +239,8 @@ and watch a real client move. An update that never arrives is indistinguishable 
 ## 5b. Symbolicating a crash report
 
 A shipped build is NativeAOT with `StackTraceSupport=false` (`src/apps/Wavee/Wavee.Publish.props`), so a crash report
-(`%LOCALAPPDATA%\Wavee\logs\crash-report-<stamp>.txt`, or the package's `LocalCache` equivalent) prints every frame as
-an offset from the module base and nothing else:
+(`%LOCALAPPDATA%\Wavee\logs\crash\<stamp>-<kind>\report.txt`, or the package's `LocalCache` equivalent; Settings ›
+Logs › Reports › View opens it) prints every frame as an offset from the module base and nothing else:
 
 ```
    at Wavee!<BaseAddress>+0x7b1fc6
@@ -260,13 +267,30 @@ package can never carry one.
 from the staged `.msix`, calls `Wavee.ReleaseTool symbol-map` (DbgHelp `SymEnumSymbols` over every `SymTagFunction`
 symbol) to write a binary `Wavee.symmap` (magic `WSYM`, sorted `{rva,size,nameOffset}` records + a UTF-8 string
 table — the exact layout is the crash & diagnostics plan's §I contract), and uploads it with
-`wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap`. The Cloudflare Worker that ingests an opt-in
+`wrangler r2 object put wavee-crash/symbols/<quad>/win-<arch>.symmap --remote`. The Cloudflare Worker that ingests an opt-in
 crash report resolves every frame's RVA against that map (binary search, no JSON parse) and stores the resolved
 **names** — so a bundle shows up symbolicated on the crash dashboard with no manual step. It never carries **line
 numbers**: that still means the `cdb` runbook below, run by hand against the archived symbols zip, exactly as before.
-A `stable` release built with no `-CrashIngestUrl`/`-CrashIngestKey` still builds and uploads the `.symmap` (it costs
-nothing and a later Worker deploy can backfill from it); preflight only `Warn`s that no report from this build will
-ever reach the service to resolve.
+Both runbooks share one helper, `Publish-WaveeSymbolMap` (`Wavee.Release.psm1`: extract the exe, build the map,
+upload, remove the temp exe); the Store leg (§5c) runs it in its own `symbols` phase under the **store** quad, so
+`symbols/<storeQuad>/win-<arch>.symmap` exists for the Store packages too. A missing map also means no Discord alert:
+the Worker only alerts for builds whose map it holds (`docs/guide/crash-diagnostics.md` §12).
+
+**wrangler is the crash Worker's own.** The upload runs `ops\crash\worker\node_modules\.bin\wrangler.cmd`
+(`Get-WranglerPath`), never a global `wrangler`: install it once with `npm --prefix ops/crash/worker ci` and log in
+with `npx wrangler login` from inside `ops/crash/worker`. Preflight's `wrangler (crash symbols)` check runs
+`wrangler whoami` against that binary (skipped under `-DryRun`/`-NoUpload`), so an expired login fails before
+anything is packed or signed.
+
+**Every shipping build is stamped.** The ingest URL defaults to `https://crash.cproducts.dev`; the ingest key is read
+from 1Password — `op read "op://Personal/Wavee crash ingest key/credential" --account my.1password.eu` — unless
+`-CrashIngestKey` is passed (`Resolve-CrashIngestKey`). The key is cached for the process, so it also works on
+`-Resume`, and it is **never logged or written to `release-state.json`**; a failing `op read` throws without echoing
+its output. The `crash ingest` gate is **hard** for `stable`, `beta` and `store`: no https URL or no key, no release
+— such a build's crashes could never reach the service. Only `dev` may ship unstamped. After packing, the **stamp
+evidence** check (`Assert-CrashIngestStamp`, per arch, including an adopted `-X64Msix`) reads `Wavee.exe` out of the
+`.msix` and proves it carries both the URL and the key (UTF-8 or UTF-16LE); its log line names the URL and the byte
+offset, never the key.
 
 The report header names the zip to take — `commit=`, `quad=`, `arch=` — and the `module=<path> base=0x… size=0x…`
 line plus the `Frames (RVA)` section (one offset per line, innermost first, inner-exception frames included) are what
@@ -308,6 +332,11 @@ powershell -File ops\release\wavee-store-submit.ps1        # -DryRun to rehearse
 
 It builds one SDK `.msixbundle` containing **both** Store-channel MSIX packages, then wraps that single bundle
 in `Wavee_<storeQuad>_arm64_x64_store.msixupload`. Store quad remains `(M+1).m.(p*100+build).0`.
+The Store packages are crash-stamped exactly like the feed's (§5b): the same `-CrashIngestUrl` / `-CrashIngestKey`
+parameters and 1Password key source, the same hard `crash ingest` and `wrangler (crash symbols)` preflight checks,
+and the stamp evidence after packing (also for `-PackageDir` / `-X64Msix` adoption). A **`symbols`** phase after
+pack and before `msixupload` uploads `symbols/<storeQuad>/win-<arch>.symmap` (`-DryRun` builds the maps and skips
+the upload).
 The script validates the nested manifests, unchanged package hashes and executable/symbol provenance before
 uploading. Partial architecture releases and `-Force` are refused. Source builds additionally require a clean
 engine checkout and record its commit; repair releases should adopt the original archived bytes.

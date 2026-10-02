@@ -16,6 +16,27 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
 
 ### Added
 
+- **Send a test crash report (Developer mode).** Settings › General › Developer can now build a real crash report
+  without crashing — a caught test exception thrown through Wavee's own code, the redacted log tail and a memory
+  snapshot of the running app — and send it to the crash service the normal way, then say whether it arrived, with
+  its report id. Wavee keeps running, and the next launch doesn't mistake the test for a crash. (#165)
+- **Opt-in crash reporting.** Off by default: the setup wizard asks once, and Settings › Privacy & diagnostics offers
+  Off, Ask each time or Automatic. After a crash or a hang the next launch says what happened and lets you read the
+  full, redacted report — and attach a memory snapshot if you like — before you send it. Settings › Logs › Reports
+  lists every saved report with View, Copy, Delete and Send. When Wavee crashes twice in a row before its window
+  appears, it opens a small recovery window instead that can start it again, send the report or reset Wavee. "Delete
+  my data…" erases every report this PC ever sent. Reports go to Wavee's own crash service at crash.cproducts.dev;
+  `PRIVACY.md` lists exactly what one contains. (#165)
+- **Store, stable and beta builds report crashes that resolve to method names.** Every shipping build now carries the
+  crash service's address and key, and every release uploads its symbol map, the Microsoft Store packages included,
+  so a report arrives with Wavee's own method names instead of bare offsets. A release can no longer ship without
+  them. (#165)
+- **Native crashes name the faulting module and Wavee's stack.** A crash inside a driver or a Windows library now
+  reports which program file it happened in and where, plus the Wavee code that called into it, so these crashes
+  group by cause instead of all landing in one bucket. Their memory snapshots keep the exception record, so a
+  debugger opens straight on the faulting instruction. (#165)
+- **Dutch and Korean crash and consent text.** The crash prompt, the recovery window, the Reports list, the privacy
+  settings and the setup wizard's crash-reporting card are translated into Dutch (nl) and Korean (ko-KR). (#165)
 - **`Entities.Invalidate` / `InvalidateEdge` — the planner's fifth mark, `Stale`.** A known group can now be declared
   out of date without blanking it: the row keeps rendering, the planner re-asks through the ordinary demand path, the
   next answer at any authority lands, and the mark clears itself. (#n)
@@ -24,6 +45,12 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
   of showing up as an unattributed long frame. (#n)
 - **`scroll.frames` names the sidebar's re-plans.** Every wheel/drag burst's `scroll.frames` line also says which
   planner input made the sidebar re-plan during the burst (`sidebarReplans= railBumps= causes=`).
+- **Profile pages.** A `spotify:user:` link, a playlist's owner, a user in search, a friend in the activity rail and
+  the account menu's new Profile row now open the person's profile: a round avatar hero with their followers,
+  following and public playlists, Follow, their public playlists and recently played artists, who they follow and who
+  follows them, and — on your own profile — your top artists this month. Following and Followers open full list pages
+  with filter chips, a find box and a letter strip. The page loads the same profile view the official client does and
+  re-reads it on every visit without flashing back to its skeleton. (#161)
 
 ### Changed
 
@@ -35,15 +62,74 @@ the design are in `docs/plans/wavee/scroll-feel-and-recording-defects-2026-09-16
   engine's own per-burst verdict, written while the scroll probe is at Summary or Trace), and Diagnostics gains a Scroll card:
   probe level, feel profile and a CSV export to `logs/scroll-<timestamp>.csv`, both settings persisted. Scroll
   positions are remembered per tab. (scroll rework, issue pending)
+- **A finished daylist says it is updating instead of counting to zero.** When a daylist window ends, Home and the
+  daylist page show "Updating your daylist…" with a spinning ring and the next daypart on its way, instead of
+  "00:00:00" and a full ring; if the new edition is late after every retry, Home says so and offers Check again. The
+  first fetch of the new edition now goes out 5 seconds after the window ends instead of 30. (#162)
 
 ### Fixed
 
+- **A report the crash service already had showed as "Couldn't send".** A duplicate answer from the service now
+  counts as sent. (#165)
+- **Reports waiting to send stayed queued until the network changed.** A report queued in an earlier session now
+  sends when Wavee starts. (#165)
+- **Automatic crash reporting while offline never sent the report.** It now waits on your PC, says so, and sends once
+  you're back online. (#165)
+- **"Crash report sent" appeared before anything was sent.** The message now appears only after the upload succeeds,
+  and a failed upload says it couldn't send. (#165)
+- **Deleted crash reports were still uploaded.** A report deleted from Settings › Logs › Reports is never sent, and
+  its folder no longer comes back. (#165)
+- **Large crash reports with a memory snapshot timed out on slow connections.** An upload now gets time in proportion
+  to its size, up to 10 minutes. (#165)
+- **Builds that can't send crash reports offered Automatic.** Such a build — one you compiled yourself, say — now
+  offers Off and Ask each time, and Settings says why Automatic is unavailable. (#165)
 - **Browse section pages failed to load, showed their title twice, and a decade lost its parent crumb.** Featured
   Charts, Food, drinks & music and every other section drill went straight to "Failed": a section uri
   (`spotify:section:…`) is not a valid entity uri, and the route keyed the page on that validity check instead of on
   the uri itself. The page now loads its section, gives its title to the masthead instead of drawing a second header,
   and a category tile on a category page drills with that page as its parent, so Decades › 00s keeps its breadcrumb.
   Home's "See all" carries the section's title and the Home crumb too. (#156)
+- **Section and Browse grid cards had no hover, play button, menu or now-playing pill.** The section drill grid (Browse ›
+  a category › a section, Home "See all", Featured Charts) drew hand-rolled cards, and the Browse category grid was a
+  second hand-built copy that mounted its chrome eagerly. Both now render the app's one shared media surface — hover
+  plate, hand cursor, play button, "…" and right-click menu, now-playing pill, drag, and a tooltip on a title only while
+  it is cut off — and their loading skeletons are the card's own seed face. A click on a cut-off title inside a grid no
+  longer goes nowhere: the tooltip that wraps it listens to the press without owning the click. (#157)
+- **Library › Artists crushed the artist name and the album titles to one letter in a narrow reader.** The artist band
+  and every album head were single rows in which only the text could shrink, so at a ~390 DIP reader the name read
+  "Tro…" and titles "P…". Below 772 DIP the band stacks its controls under the name (which may take two lines), below
+  640 DIP the album head puts the title on its own line above the length and the circles, the album pane's "Open album"
+  link no longer clips, and a cut-off name or title shows its full text in a tooltip. (#158)
+- **Shelf cards took two Tab stops, and arrow keys after a click started from the old card.** A card inside a shelf now
+  leaves focus and the click to the shelf's slot: one Tab stop per card, arrows move from the card you clicked, and the
+  card still lights up its play button and "…" while its slot has keyboard focus. (#159)
+- **Diagnostics flagged handled playlist and collection updates as ignored.** The flight recorder marked every
+  `hm://playlist/…` and `hm://collection/…` push as an ignored frame although the library applied it — hundreds of
+  false ambers a day in the anomaly list. A frame is now marked ignored only when nothing took it, with whether that
+  was on purpose. (#163)
+- **Podcast pages: filtering, right-click, overlapping cards and the toolbar.** A filter or a search now shows just
+  the matching episodes with a count that matches the rows (sorting keeps the resume card and Up next); a search that
+  matched only the resume episode no longer shows "1 of 326" over an empty list. Up next, the resume card, the
+  new-visitor cards and More like this have a right-click menu; Up next shows covers when the episodes aren't
+  numbered instead of a blank column, and no longer repeats what New since your last visit shows. Cards no longer
+  overlap the next section when a filter changes the list's width. The toolbar measures itself: the search box folds
+  to an icon before any filter chip is cut off. More like this loads once per visit instead of on every keystroke.
+  (#164)
+- **Cards and rows behaved differently depending on the page: some had no hover, no click, no menu or no play button.**
+  Every media card, row and tile is now one shared surface, so the hover plate, hand cursor, focus ring, play button,
+  "…" and right-click menu, now-playing pill, drag and a tooltip on a cut-off title are the same everywhere. The rail's
+  "Next up" rows can be clicked (they skip to that song, exactly as the queue panel does); playlist recommendation rows
+  get a row click, play button and menu; Home and Recents episode rows get the episode menu; album and artist music
+  videos get a real play button, menu and drag; the album page's "More by" rows get their menu; Search and library
+  search results, queue rows, concert and module cards follow the same rules; and the sidebar's pinned cards, grid
+  tiles and collapsed-rail tiles gain hover, focus, the now-playing pill, drag and (on the rail) a right-click menu.
+  Text-first tiles (podcast doors, show cards, Browse and chart tiles, the artist pick, a clickable detail cover) keep
+  their own look but take the same hand cursor, keyboard focus and title tooltip. Loading skeletons are the cards' own
+  shape, and about 1,000 lines of hand-built card, row and skeleton copies are gone. (#160)
+- **No card ever showed the now-playing pill or paused from its own play button.** The playback signal every card asks
+  "is this what's playing?" was declared but never connected. It now is: an album, playlist, artist or show card lights
+  up while its context plays, a track or episode row while it is the item on deck, and pressing that card's play button
+  pauses instead of starting it again. (#160)
 - **Music videos stuttered a few seconds in, and again every time the pop-out was reopened.** Every quality change is a
   decoder and swap-chain rebuild, and the ladder made three of them per play: the throughput estimator discarded every
   sample a fast link produced (a 5 MB burst that finished under 200 ms), then acted on its 2 Mbps prior, and a rebuilt

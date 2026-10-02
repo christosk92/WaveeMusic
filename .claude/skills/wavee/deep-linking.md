@@ -17,6 +17,8 @@ Source: `src/apps/Wavee/App/DeepLink.cs`. Boot wiring: `src/apps/Wavee/Program.c
 | `wavee://pause` | `DeepLinkKind.Pause` | (none) |
 | `wavee://diag?cmd=<verb>` | `DeepLinkKind.Diag` | `Arg` = the verb (`bundle` / `pixel` / `scroll` / `vps` / `probe`) — developer-only; never wakes the window |
 | `spotify:` album / playlist / artist / show | `DeepLinkKind.Open` | translated to the shell's route names (`album` / `pl` / `artist` / `show`) |
+| `spotify:user:<id>` | `DeepLinkKind.Open` | the profile page — route `user` (key `user:spotify:user:<id>`) |
+| `wavee://open?route=user&arg=spotify:user:<id>` | `DeepLinkKind.Open` | the same profile page; `route=user:spotify:user:<id>` (the whole key) also works |
 | `spotify:track:<id>` | `DeepLinkKind.Play` | `Context` = the track uri |
 
 Unknown verbs, missing required args (`open` without `route`, `play` without `ctx`), and garbage are **ignored** — the
@@ -32,8 +34,10 @@ parser never throws. Percent-encoding is decoded. A raw command line that *conta
   switch reuses the mounted `HomeScreen`, never remounts it), so the arg is never a frozen route prop. A facet
   switch pushes a real history entry (`Shell.GoTo(new Route(RouteKind.Home, arg: …))`), so Back/Forward walk
   facets like any other page.
-- entities: `album` `pl` `artist` `show` `prerelease` — `arg` is the Spotify URI; the consumer builds `{route}:{arg}`
+- entities: `album` `pl` `artist` `show` `prerelease` `episode` `user` — `arg` is the Spotify URI; the consumer builds `{route}:{arg}`
   (e.g. `album:spotify:album:…`). `route` may also already be the full key (`album:spotify:album:…`) with no `arg`.
+- profile lists: `people:<facet>:<user uri>` (facet `0` Following, `1` Followers) is a route KEY only — it has no verb word, so
+  deep-link it as `wavee://open?route=people:0:spotify:user:<id>`. A bad facet digit or a missing user uri is refused.
 
 ## Boot order (normal windowed path only)
 

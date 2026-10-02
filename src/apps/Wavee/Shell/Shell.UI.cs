@@ -979,8 +979,11 @@ public static partial class Shell
                   | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
+        // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
+        // the allocator effect publishes the new Chip after Auth flips, so the bar can render once with the stale chip
+        // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
-            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value);
+            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, (int)l.Chip);
     }
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the

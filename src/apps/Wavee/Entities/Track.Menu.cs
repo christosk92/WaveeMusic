@@ -400,7 +400,7 @@ public readonly partial struct Track
     /// <summary>Play a track set from a menu (0.2.9 <c>TrackActions.Play</c>): the first row through the playback host's
     /// ONE play path (<c>Playback.PlayContext</c> — a playable plays as a one-row queue at once), the rest queued behind
     /// it through the queue owner's <c>ActionServices.AddToQueue</c> seam. Never a second context load. The table's own
-    /// "play from here" is its profile's <c>PlayFrom</c>; this is the menu's and the art card's.</summary>
+    /// "play from here" is its profile's <c>PlayFrom</c>; this is the menu's and the track surface's (<c>Track.RowData</c>'s default play).</summary>
     static void PlayTracks(IReadOnlyList<Track> tracks)
     {
         int first = -1;

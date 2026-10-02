@@ -36,8 +36,15 @@ export interface Summary {
   moduleSize: number;
   debugId: string;
   exitCode: number;
+  /** The client's claim only — the Worker derives `has_dump`/`dump_bytes` from the actual `dump` part. */
   hasDump: boolean;
   dumpBytes: number;
+  /** NTSTATUS of a Native fault (uint32); 0 for every other kind or an older client. */
+  exceptionCode: number;
+  /** Faulting module's base name, lower-case `[a-z0-9._-]` (validate.ts sanitizes); "" when unknown. */
+  faultModule: string;
+  /** Fault address minus the faulting module's base; 0 when unknown. */
+  faultOffset: number;
 }
 
 /** One resolved (or unresolved) stack frame, as written into `reports.frames_json`. */
@@ -58,6 +65,8 @@ export interface Env {
   ACCESS_TEAM_DOMAIN: string;
   /** The "Wavee crashes" Access application's AUD tag — wrangler.toml [vars]; the placeholder fails closed. */
   ACCESS_AUD: string;
+  /** Discord webhook for new-issue/regression alerts — a secret only (`wrangler secret put`); unset → no alerts. */
+  DISCORD_WEBHOOK_URL?: string;
 }
 
 /** The subset of the Cloudflare Rate Limiting binding this worker uses. */
@@ -65,17 +74,33 @@ export interface RateLimiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
 
+export const ISSUE_STATUSES = ["open", "resolved", "ignored"] as const;
+export type IssueStatus = (typeof ISSUE_STATUSES)[number];
+
 export interface IssueRow {
   fingerprint: string;
   title: string;
   kind: string;
   first_seen: string;
   last_seen: string;
+  /** Lifetime counters (incremental since migration 0001) — they survive the 90-day report purge. */
   count: number;
   installs: number;
+  /** `{ "<semver>": count }`. */
   versions_json: string;
   status: string;
   github_issue: number | null;
+  // ── migrations/0001 ───────────────────────────────────────────────────────────────────────────────
+  /** Last time a report from a newer semver than `resolved_version` reopened this issue. */
+  regressed_at: string | null;
+  regressions: number;
+  resolved_at: string | null;
+  /** Newest semver in `versions_json` when the issue was resolved; only a newer one reopens it. */
+  resolved_version: string | null;
+  /** The newest report's `frames_json` — the stack outlives the purge of the reports themselves. */
+  last_frames_json: string | null;
+  /** Grouping version the fingerprint was computed with (2 = src/grouping.ts). */
+  fp_version: number;
 }
 
 export interface ReportRow {
@@ -106,6 +131,11 @@ export interface ReportRow {
   fingerprint: string;
   received_at: string;
   debug_id: string | null;
+  // ── migrations/0001 ───────────────────────────────────────────────────────────────────────────────
+  exception_code: number;
+  fault_module: string;
+  fault_offset: number;
+  fp_version: number;
 }
 
 export interface VersionCount {

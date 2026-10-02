@@ -2,59 +2,15 @@ import { describe, expect, it, afterAll, beforeAll, beforeEach, vi } from "vites
 import worker, { CAP_BYTES } from "../src/index.js";
 import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
-import { makeFakeD1, makeFakeR2, makeFakeRate, buildSymmap } from "./fixtures.js";
-import { AUD, TEAM, accessHeader, installAccessFetchStub } from "./access.js";
-import type { Env, Summary } from "../src/types.js";
+import { FINGERPRINT_VERSION } from "../src/grouping.js";
+import { makeFakeRate } from "./fixtures.js";
+import { accessHeader, installAccessFetchStub } from "./access.js";
+import { BASE, days, ingest, makeDeps, makeEnv, makeSummary, putSymmap } from "./helpers.js";
+import type { Env } from "../src/types.js";
 
-const INGEST_URL = "https://crash.cproducts.dev/v1/report";
+const INGEST_URL = `${BASE}/v1/report`;
 /** A real, verifiable Access JWT header — signed in `beforeAll`. */
 let ACCESS: Record<string, string>;
-
-function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
-    DB: makeFakeD1(),
-    BUCKET: makeFakeR2(),
-    RATE: makeFakeRate(true),
-    INGEST_KEY: "test-ingest-key",
-    ACCESS_TEAM_DOMAIN: TEAM,
-    ACCESS_AUD: AUD,
-    ...overrides,
-  };
-}
-
-function makeSummary(overrides: Partial<Summary> = {}): Summary {
-  return {
-    reportId: crypto.randomUUID(),
-    installId: crypto.randomUUID(),
-    kind: "Managed",
-    stampUtc: "2026-09-24T14:30:12.118Z",
-    version: "0.3.0.41",
-    quad: "0.3.0.41",
-    commit: "7e209e37",
-    channel: "stable",
-    arch: "arm64",
-    osBuild: "26100",
-    gpu: "NVIDIA GeForce RTX 4070",
-    gpuTier: "Strong",
-    softwareAdapter: false,
-    packaged: true,
-    locale: "en-US",
-    sessionId: crypto.randomUUID(),
-    uptimeMs: 12_345,
-    beforeFirstFrame: false,
-    lastRoute: "artist",
-    exceptionType: "System.InvalidOperationException",
-    exceptionMessage: "--crash-probe",
-    rvas: [0x7b1fc6, 0x1b616c],
-    moduleBase: 0x140000000,
-    moduleSize: 0x2800000,
-    debugId: "7E2C1234-AB12-CD34-EF56-1234567890AB-1",
-    exitCode: 0,
-    hasDump: false,
-    dumpBytes: 0,
-    ...overrides,
-  };
-}
 
 function buildReportRequest(
   env: Env,
@@ -86,6 +42,21 @@ function buildReportRequest(
     headers: { "X-Wavee-Ingest": opts.ingestKey ?? env.INGEST_KEY, ...opts.headers },
     body: form,
   });
+}
+
+function accessRequest(path: string, init: RequestInit = {}): Request {
+  return new Request(`${BASE}${path}`, { ...init, headers: { ...ACCESS, ...(init.headers as Record<string, string>) } });
+}
+
+function patchIssue(env: Env, fingerprint: string, body: unknown): Promise<Response> {
+  return worker.fetch(
+    accessRequest(`/v1/issues/${fingerprint}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    env,
+  );
 }
 
 beforeAll(async () => {
@@ -181,11 +152,10 @@ describe("POST /v1/report — R2 objects and symbolication", () => {
     const env = makeEnv();
     const quad = "0.3.0.50";
     const arch = "arm64";
-    const symmap = buildSymmap([
+    await putSymmap(env, quad, arch, [
       { rva: 0x1000, size: 0x40, name: "Wavee_Entities_Detail_UI_Hero__Render" },
       { rva: 0x2000, size: 0x80, name: "Wavee_App_Main" },
     ]);
-    await env.BUCKET.put(`symbols/${quad}/win-${arch}.symmap`, symmap);
 
     const summary = makeSummary({ quad, arch, rvas: [0x1010, 0x2050, 0x50] });
     const res = await worker.fetch(buildReportRequest(env, { summary }), env);
@@ -215,13 +185,80 @@ describe("POST /v1/report — R2 objects and symbolication", () => {
   });
 });
 
+describe("POST /v1/report — server-derived and native fault fields (#165)", () => {
+  it("derives has_dump/dump_bytes from the dump part, never from summary.hasDump", async () => {
+    const env = makeEnv();
+    const store = new D1Store(env.DB);
+
+    const claimsDump = makeSummary({ hasDump: true, dumpBytes: 999 });
+    expect((await ingest(env, claimsDump)).status).toBe(201);
+    const noDumpRow = await store.getReport(claimsDump.reportId);
+    expect(noDumpRow!.has_dump).toBe(0);
+    expect(noDumpRow!.dump_bytes).toBe(0);
+    expect(await env.BUCKET.get(`reports/${claimsDump.quad}/${claimsDump.reportId}/minidump.dmp`)).toBeNull();
+
+    const sendsDump = makeSummary({ hasDump: false, dumpBytes: 0 });
+    expect((await ingest(env, sendsDump, { dump: new Uint8Array([0x4d, 0x44, 0x4d, 0x50]) })).status).toBe(201);
+    const dumpRow = await store.getReport(sendsDump.reportId);
+    expect(dumpRow!.has_dump).toBe(1);
+    expect(dumpRow!.dump_bytes).toBe(4);
+  });
+
+  it("stores exceptionCode/faultModule/faultOffset and the grouping version", async () => {
+    const env = makeEnv();
+    const summary = makeSummary({
+      kind: "Native",
+      exceptionType: "",
+      exceptionCode: 0xc0000005,
+      faultModule: "C:\\Windows\\System32\\NTDLL.DLL",
+      faultOffset: 0x1234,
+    });
+    expect((await ingest(env, summary)).status).toBe(201);
+
+    const row = await new D1Store(env.DB).getReport(summary.reportId);
+    expect(row!.exception_code).toBe(3221225477);
+    expect(row!.fault_module).toBe("ntdll.dll");
+    expect(row!.fault_offset).toBe(0x1234);
+    expect(row!.fp_version).toBe(FINGERPRINT_VERSION);
+
+    const issue = await new D1Store(env.DB).getIssue(row!.fingerprint);
+    expect(issue!.fp_version).toBe(FINGERPRINT_VERSION);
+    expect(issue!.title).toBe("ACCESS_VIOLATION in ntdll.dll+0x1234"); // no symmap → no frame names
+  });
+
+  it("sanitizes malformed fault fields and a version unfit for a JSON path to 0/\"\" instead of refusing", async () => {
+    const env = makeEnv();
+    const summary = {
+      ...makeSummary({ kind: "Native" }),
+      exceptionCode: -1,
+      faultModule: "evil module.dll",
+      faultOffset: -5,
+      version: '0.3.0"]',
+    };
+    expect((await ingest(env, summary)).status).toBe(201);
+
+    const row = await new D1Store(env.DB).getReport(summary.reportId);
+    expect(row!.exception_code).toBe(0);
+    expect(row!.fault_module).toBe("");
+    expect(row!.fault_offset).toBe(0);
+    expect(row!.semver).toBe("");
+  });
+
+  it("caps rvas at 64 frames", async () => {
+    const env = makeEnv();
+    const summary = makeSummary({ rvas: Array.from({ length: 100 }, (_, i) => 0x1000 + i) });
+    expect((await ingest(env, summary)).status).toBe(201);
+    const row = await new D1Store(env.DB).getReport(summary.reportId);
+    expect(JSON.parse(row!.frames_json)).toHaveLength(64);
+  });
+});
+
 describe("fingerprint + issue aggregation", () => {
   it("groups two reports with the same kind/exceptionType/top-3 frame names into one issue", async () => {
     const env = makeEnv();
     const quad = "0.3.0.60";
     const arch = "arm64";
-    const symmap = buildSymmap([{ rva: 0x1000, size: 0x40, name: "Wavee_Crash_Site" }]);
-    await env.BUCKET.put(`symbols/${quad}/win-${arch}.symmap`, symmap);
+    await putSymmap(env, quad, arch, [{ rva: 0x1000, size: 0x40, name: "Wavee_Crash_Site" }]);
 
     const s1 = makeSummary({ quad, arch, rvas: [0x1010], installId: "install-a" });
     const s2 = makeSummary({ quad, arch, rvas: [0x1020], installId: "install-b" });
@@ -236,7 +273,8 @@ describe("fingerprint + issue aggregation", () => {
     const issue = await store.getIssue(r1!.fingerprint);
     expect(issue).not.toBeNull();
     expect(issue!.count).toBe(2);
-    expect(issue!.installs).toBe(2); // COUNT DISTINCT install_id
+    expect(issue!.installs).toBe(2);
+    expect(issue!.title).toBe("System.InvalidOperationException · Wavee_Crash_Site");
   });
 
   it("gives different exception types different fingerprints", async () => {
@@ -250,6 +288,25 @@ describe("fingerprint + issue aggregation", () => {
     const r1 = await store.getReport(s1.reportId);
     const r2 = await store.getReport(s2.reportId);
     expect(r1!.fingerprint).not.toBe(r2!.fingerprint);
+  });
+
+  it("keeps lifetime counters incrementally: count, distinct installs, per-version counts, newest frames", async () => {
+    const env = makeEnv();
+    const a = crypto.randomUUID(), b = crypto.randomUUID();
+    await ingest(env, makeSummary({ installId: a, version: "0.3.0" }));
+    await ingest(env, makeSummary({ installId: a, version: "0.3.1" }));
+    const last = makeSummary({ installId: b, version: "0.3.1" });
+    await ingest(env, last);
+
+    const store = new D1Store(env.DB);
+    const fp = (await store.getReport(last.reportId))!.fingerprint;
+    const issue = await store.getIssue(fp);
+    expect(issue!.count).toBe(3);
+    expect(issue!.installs).toBe(2);
+    expect(JSON.parse(issue!.versions_json)).toEqual({ "0.3.0": 1, "0.3.1": 2 });
+    expect(JSON.parse(issue!.last_frames_json!)).toEqual([{ rva: 0x1000, offset: 0, name: null }]);
+    expect(issue!.status).toBe("open");
+    expect(issue!.regressions).toBe(0);
   });
 });
 
@@ -278,26 +335,24 @@ describe("no IP is ever stored", () => {
 });
 
 describe("Access-gated GET/PATCH routes", () => {
-  async function seedOneReport(env: Env): Promise<Summary> {
-    const summary = makeSummary();
+  async function seedOneReport(env: Env, overrides: Parameters<typeof makeSummary>[0] = {}) {
+    const summary = makeSummary(overrides);
     const res = await worker.fetch(buildReportRequest(env, { summary }), env);
     expect(res.status).toBe(201);
-    return summary;
+    const row = await new D1Store(env.DB).getReport(summary.reportId);
+    return { summary, fingerprint: row!.fingerprint };
   }
 
   it("401s GET /v1/issues without Cf-Access-Jwt-Assertion", async () => {
     const env = makeEnv();
-    const res = await worker.fetch(new Request("https://crash.cproducts.dev/v1/issues"), env);
+    const res = await worker.fetch(new Request(`${BASE}/v1/issues`), env);
     expect(res.status).toBe(401);
   });
 
   it("lists issues with a verified Access JWT", async () => {
     const env = makeEnv();
     await seedOneReport(env);
-    const res = await worker.fetch(
-      new Request("https://crash.cproducts.dev/v1/issues", { headers: ACCESS }),
-      env,
-    );
+    const res = await worker.fetch(accessRequest("/v1/issues"), env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { issues: unknown[] };
     expect(body.issues.length).toBe(1);
@@ -305,66 +360,90 @@ describe("Access-gated GET/PATCH routes", () => {
 
   it("GET /v1/issues/:fp returns the issue plus its reports", async () => {
     const env = makeEnv();
-    const summary = await seedOneReport(env);
-    const store = new D1Store(env.DB);
-    const row = await store.getReport(summary.reportId);
+    const { fingerprint } = await seedOneReport(env);
 
-    const res = await worker.fetch(
-      new Request(`https://crash.cproducts.dev/v1/issues/${row!.fingerprint}`, {
-        headers: ACCESS,
-      }),
-      env,
-    );
+    const res = await worker.fetch(accessRequest(`/v1/issues/${fingerprint}`), env);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { issue: { fingerprint: string }; reports: unknown[] };
-    expect(body.issue.fingerprint).toBe(row!.fingerprint);
+    const body = (await res.json()) as { issue: { fingerprint: string; regressions: number }; reports: unknown[] };
+    expect(body.issue.fingerprint).toBe(fingerprint);
+    expect(body.issue.regressions).toBe(0);
     expect(body.reports.length).toBe(1);
+  });
+
+  it("GET /v1/issues/:fp falls back to last_frames_json once every report is purged", async () => {
+    const env = makeEnv();
+    const quad = "0.3.0.61";
+    await putSymmap(env, quad, "arm64", [{ rva: 0x1000, size: 0x40, name: "Wavee_Purged_Site" }]);
+    const old = makeSummary({ quad, rvas: [0x1004] });
+    expect((await ingest(env, old, { deps: makeDeps(Date.now() - days(100)) })).status).toBe(201);
+    const fingerprint = (await new D1Store(env.DB).getReport(old.reportId))!.fingerprint;
+
+    expect((await worker.fetch(accessRequest("/v1/retention/run", { method: "POST" }), env)).status).toBe(200);
+
+    const res = await worker.fetch(accessRequest(`/v1/issues/${fingerprint}`), env);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      issue: { count: number };
+      reports: unknown[];
+      frames: { name: string | null }[] | null;
+    };
+    expect(body.reports).toEqual([]);
+    expect(body.issue.count).toBe(1);
+    expect(body.frames).toEqual([{ rva: 0x1004, offset: 4, name: "Wavee_Purged_Site" }]);
   });
 
   it("PATCH /v1/issues/:fp updates status and github_issue", async () => {
     const env = makeEnv();
-    const summary = await seedOneReport(env);
-    const store = new D1Store(env.DB);
-    const row = await store.getReport(summary.reportId);
+    const { fingerprint } = await seedOneReport(env);
 
-    const res = await worker.fetch(
-      new Request(`https://crash.cproducts.dev/v1/issues/${row!.fingerprint}`, {
-        method: "PATCH",
-        headers: { ...ACCESS, "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "resolved", github_issue: 42 }),
-      }),
-      env,
-    );
+    const res = await patchIssue(env, fingerprint, { status: "resolved", github_issue: 42 });
     expect(res.status).toBe(200);
 
-    const updated = await store.getIssue(row!.fingerprint);
+    const updated = await new D1Store(env.DB).getIssue(fingerprint);
     expect(updated!.status).toBe("resolved");
     expect(updated!.github_issue).toBe(42);
   });
 
+  it("PATCH to resolved records resolved_at and the newest semver seen; reopening by hand keeps them", async () => {
+    const env = makeEnv();
+    const { fingerprint } = await seedOneReport(env, { version: "0.3.0-beta.2" });
+    await seedOneReport(env, { version: "0.3.0" });
+    await seedOneReport(env, { version: "0.2.9" });
+
+    expect((await patchIssue(env, fingerprint, { status: "resolved" })).status).toBe(200);
+    const store = new D1Store(env.DB);
+    const resolved = await store.getIssue(fingerprint);
+    expect(resolved!.resolved_version).toBe("0.3.0");
+    expect(resolved!.resolved_at).not.toBeNull();
+
+    expect((await patchIssue(env, fingerprint, { status: "open" })).status).toBe(200);
+    const reopened = await store.getIssue(fingerprint);
+    expect(reopened!.status).toBe("open");
+    expect(reopened!.resolved_version).toBe("0.3.0");
+    expect(reopened!.resolved_at).toBe(resolved!.resolved_at);
+  });
+
+  it("PATCH /v1/issues/:fp 400s a status other than open/resolved/ignored", async () => {
+    const env = makeEnv();
+    const { fingerprint } = await seedOneReport(env);
+    for (const status of ["closed", "", 1, null]) {
+      const res = await patchIssue(env, fingerprint, { status });
+      expect(res.status, JSON.stringify(status)).toBe(400);
+    }
+    expect((await new D1Store(env.DB).getIssue(fingerprint))!.status).toBe("open");
+  });
+
   it("PATCH /v1/issues/:fp 404s for an unknown fingerprint", async () => {
     const env = makeEnv();
-    const res = await worker.fetch(
-      new Request("https://crash.cproducts.dev/v1/issues/does-not-exist", {
-        method: "PATCH",
-        headers: { ...ACCESS, "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "resolved" }),
-      }),
-      env,
-    );
+    const res = await patchIssue(env, "does-not-exist", { status: "resolved" });
     expect(res.status).toBe(404);
   });
 
   it("GET /v1/reports/:id/summary and /report and /tail return inline text", async () => {
     const env = makeEnv();
-    const summary = await seedOneReport(env);
+    const { summary } = await seedOneReport(env);
     for (const part of ["summary", "report", "tail"]) {
-      const res = await worker.fetch(
-        new Request(`https://crash.cproducts.dev/v1/reports/${summary.reportId}/${part}`, {
-          headers: ACCESS,
-        }),
-        env,
-      );
+      const res = await worker.fetch(accessRequest(`/v1/reports/${summary.reportId}/${part}`), env);
       expect(res.status, part).toBe(200);
       expect(res.headers.get("Content-Disposition")).toBeNull();
     }
@@ -376,12 +455,7 @@ describe("Access-gated GET/PATCH routes", () => {
     const dump = new Uint8Array([9, 9, 9]);
     await worker.fetch(buildReportRequest(env, { summary, dump }), env);
 
-    const res = await worker.fetch(
-      new Request(`https://crash.cproducts.dev/v1/reports/${summary.reportId}/dump`, {
-        headers: ACCESS,
-      }),
-      env,
-    );
+    const res = await worker.fetch(accessRequest(`/v1/reports/${summary.reportId}/dump`), env);
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Disposition")).toContain("attachment");
     expect(res.headers.get("Content-Type")).toBe("application/octet-stream");
@@ -393,15 +467,63 @@ describe("Access-gated GET/PATCH routes", () => {
     await worker.fetch(buildReportRequest(env, { summary: makeSummary({ quad: "0.3.0.70", arch: "arm64", kind: "Managed" }) }), env);
     await worker.fetch(buildReportRequest(env, { summary: makeSummary({ quad: "0.3.0.70", arch: "x64", kind: "Hang" }) }), env);
 
-    const res = await worker.fetch(
-      new Request("https://crash.cproducts.dev/v1/versions", { headers: ACCESS }),
-      env,
-    );
+    const res = await worker.fetch(accessRequest("/v1/versions"), env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { versions: { semver: string; quad: string; arch: string; kind: string; count: number }[] };
     const managedArm64 = body.versions.find((v) => v.quad === "0.3.0.70" && v.arch === "arm64" && v.kind === "Managed");
     const hangX64 = body.versions.find((v) => v.quad === "0.3.0.70" && v.arch === "x64" && v.kind === "Hang");
     expect(managedArm64?.count).toBe(2);
     expect(hangX64?.count).toBe(1);
+  });
+});
+
+describe("DELETE /v1/reports/:id (#165)", () => {
+  function deleteReport(env: Env, id: string, headers: Record<string, string> = ACCESS): Promise<Response> {
+    return worker.fetch(new Request(`${BASE}/v1/reports/${id}`, { method: "DELETE", headers }), env);
+  }
+
+  it("401s without a verified Access JWT — the ingest key does not open it", async () => {
+    const env = makeEnv();
+    const summary = makeSummary();
+    await ingest(env, summary);
+    expect((await deleteReport(env, summary.reportId, {})).status).toBe(401);
+    expect((await deleteReport(env, summary.reportId, { "X-Wavee-Ingest": env.INGEST_KEY })).status).toBe(401);
+    expect(await new D1Store(env.DB).getReport(summary.reportId)).not.toBeNull();
+  });
+
+  it("404s an unknown report id", async () => {
+    const env = makeEnv();
+    expect((await deleteReport(env, "never-seen")).status).toBe(404);
+  });
+
+  it("deletes the row and its R2 objects and recomputes the issue; the last report takes the issue with it", async () => {
+    const env = makeEnv();
+    const s1 = makeSummary({ version: "0.3.0" });
+    const s2 = makeSummary({ version: "0.3.1" });
+    await ingest(env, s1, { dump: new Uint8Array([1, 2, 3]) });
+    await ingest(env, s2);
+    const store = new D1Store(env.DB);
+    const fingerprint = (await store.getReport(s1.reportId))!.fingerprint;
+    expect((await store.getIssue(fingerprint))!.count).toBe(2);
+
+    const res = await deleteReport(env, s1.reportId);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: 1, fingerprint });
+
+    expect(await store.getReport(s1.reportId)).toBeNull();
+    for (const name of ["summary.json", "report.txt", "log-tail.txt", "minidump.dmp"]) {
+      expect(await env.BUCKET.get(`reports/${s1.quad}/${s1.reportId}/${name}`), name).toBeNull();
+    }
+    expect(await env.BUCKET.get(`reports/${s2.quad}/${s2.reportId}/summary.json`)).not.toBeNull();
+
+    const after = await store.getIssue(fingerprint);
+    expect(after!.count).toBe(1);
+    expect(after!.installs).toBe(1);
+    expect(JSON.parse(after!.versions_json)).toEqual({ "0.3.1": 1 });
+
+    expect((await deleteReport(env, s2.reportId)).status).toBe(200);
+    expect(await store.getIssue(fingerprint)).toBeNull();
+    // No tombstone: the install may keep reporting.
+    expect((await ingest(env, makeSummary({ installId: s2.installId }))).status).toBe(201);
   });
 });

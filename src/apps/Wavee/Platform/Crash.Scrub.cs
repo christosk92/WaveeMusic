@@ -92,10 +92,14 @@ public static partial class Crash
             report = ReportRedactor.Redact(report, rules);
             tail = ReportRedactor.Redact(tail, rules);
 
+            // FaultModule (a native crash's faulting module base name, #165) is free text read out of another process's
+            // module list: already normalized to [a-z0-9._-] by the handler, but it still goes through the same redactor
+            // as every other string a stranger's server will see (a module named after the account is not impossible).
             var scrubbedSummary = s with
             {
                 ExceptionMessage = ReportRedactor.Redact(s.ExceptionMessage ?? "", rules),
                 LastRoute = ReportRedactor.Redact(s.LastRoute ?? "", rules),
+                FaultModule = ReportRedactor.Redact(s.FaultModule ?? "", rules),
             };
             return new ScrubbedBundle(scrubbedSummary, report, tail);
         }

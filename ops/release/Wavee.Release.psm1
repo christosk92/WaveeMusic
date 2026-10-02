@@ -2,9 +2,10 @@
 <#
     Wavee.Release.psm1 - the pure helpers behind ops\release\wavee-release.ps1.
 
-    Everything here is either a pure function (semver / quad / manifest / .appinstaller substitution) or a thin,
-    testable wrapper over one external tool (gh) or one HTTP GET (the rolling feed). The orchestrator owns the
-    phase sequencing and the release-state ledger; this module owns the decisions.
+    Everything here is either a pure function (semver / quad / manifest / .appinstaller substitution, the crash
+    ingest gate, stamp evidence) or a thin, testable wrapper over one external tool (gh, op, wrangler, dotnet) or
+    one HTTP GET (the rolling feed). The orchestrators (wavee-release.ps1, wavee-store-submit.ps1) own the phase
+    sequencing and the ledgers; this module owns the decisions.
 
     Style rules: PowerShell 5.1 only, ASCII-only string literals (an em dash is [char]0x2014), UTF-8 without a BOM
     on every file this module writes, no && / || / ternary, and TLS 1.2 forced before every Invoke-WebRequest.
@@ -439,41 +440,287 @@ function Test-AssetContentLength {
     $false
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# Crash reporting (#165): the ingest stamp every shipping build carries, and the symbol maps the crash Worker
+# resolves report RVAs against. Shared by wavee-release.ps1 and wavee-store-submit.ps1.
+#
+# The ingest KEY is a credential: no function here ever prints it, puts it in an exception message, or returns it
+# anywhere but Resolve-CrashIngestKey's .Key. Callers keep it in memory only (never in release-state.json).
+# ---------------------------------------------------------------------------------------------------------------
+
+$script:CrashDefaults = @{
+    Url       = 'https://crash.cproducts.dev'
+    KeyRef    = 'op://Personal/Wavee crash ingest key/credential'
+    OpAccount = 'my.1password.eu'
+}
+
 function Get-CrashIngestGate {
     <#
     .SYNOPSIS
-      Decide whether a release should WARN about shipping with no crash-ingest endpoint stamped (crash & diagnostics
-      plan §B.6).
+      The hard gate: a shipping build (stable / beta / store) must be stamped with an https ingest URL AND the
+      ingest key, or its crashes can never reach the crash service. Only `dev` may ship unstamped.
     .DESCRIPTION
-      A `stable` release with an empty -CrashIngestUrl is not a failure - the Cloudflare Worker may simply not exist
-      yet, or the caller is deliberately rehearsing - but it must never be a SILENT gap: every crash on that build is
-      then unreported and unrecoverable after the fact. Any other channel (beta/dev/store) or a non-empty URL is
-      quiet. wavee-release.ps1 wires this into a 'soft' Add-Check, whose only effect on FAIL is a Warn, never a throw.
+      Whitespace counts as empty. The message names what is missing and never contains the key (nor the URL, so a
+      key pasted into the wrong parameter cannot leak through it either).
     .OUTPUTS
-      pscustomobject @{ Warn = [bool]; Message = [string] }   (Message is '' when Warn is $false)
+      pscustomobject @{ Fail = [bool]; Message = [string] }   (Message is '' when Fail is $false)
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][string]$Channel,
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CrashIngestUrl)
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CrashIngestUrl,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$CrashIngestKey)
 
-    if ($Channel -ne 'stable') { return [pscustomobject]@{ Warn = $false; Message = '' } }
-    if ("$CrashIngestUrl".Trim().Length -gt 0) { return [pscustomobject]@{ Warn = $false; Message = '' } }
+    $shipping = @('stable', 'beta', 'store') -contains $Channel
+    $missing = @()
+    $u = "$CrashIngestUrl".Trim()
+    if ($u.Length -eq 0) { $missing += 'the ingest URL (-CrashIngestUrl)' }
+    elseif ($u -notmatch '^https://') { $missing += 'an https ingest URL' }
+    if ("$CrashIngestKey".Trim().Length -eq 0) { $missing += 'the ingest key' }
+    if (-not $shipping -or $missing.Count -eq 0) { return [pscustomobject]@{ Fail = $false; Message = '' } }
     [pscustomobject]@{
-        Warn    = $true
-        Message = 'stable release with no -CrashIngestUrl: crashes on this build will never reach the crash service (crash & diagnostics plan §B.6)'
+        Fail    = $true
+        Message = "$Channel build without $($missing -join ' and '): its crashes could never reach the crash service"
     }
+}
+
+function Resolve-CrashIngestKey {
+    <#
+    .SYNOPSIS
+      The crash ingest key: -Explicit when given (trimmed), otherwise `op read <Reference> --account <Account>`
+      (the 1Password CLI; reading triggers a 1Password approval).
+    .DESCRIPTION
+      Invoke-Native merges stdout and stderr, so op's notices can surround the secret. The key is the LAST line that
+      looks like one (16-256 characters of [A-Za-z0-9_-.=+/]). Every failure throws WITHOUT echoing op's output: if
+      something unexpected was printed, it may well have been the secret.
+    .OUTPUTS
+      pscustomobject @{ Key = [string]; Source = [string] }   - print .Source, never .Key
+    #>
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()][string]$Explicit = '',
+        [string]$Reference = $script:CrashDefaults.KeyRef,
+        [string]$Account = $script:CrashDefaults.OpAccount)
+
+    $e = "$Explicit".Trim()
+    if ($e) { return [pscustomobject]@{ Key = $e; Source = '-CrashIngestKey' } }
+
+    $r = Invoke-Native 'op' @('read', $Reference, '--account', $Account) -AllowFailure
+    if ($r.ExitCode -eq 127) {
+        throw "could not read the crash ingest key: the 1Password CLI (op) is not installed. Install it, or pass -CrashIngestKey"
+    }
+    if ($r.ExitCode -ne 0) {
+        throw "could not read the crash ingest key from 1Password ($Reference, account $Account; op exited $($r.ExitCode)). Unlock 1Password or pass -CrashIngestKey"
+    }
+    $key = @($r.Output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^[A-Za-z0-9_\-\.=+/]{16,256}$' }) | Select-Object -Last 1
+    if (-not $key) { throw "1Password returned no usable crash ingest key at $Reference (account $Account)" }
+    [pscustomobject]@{ Key = "$key"; Source = "1Password ($Reference)" }
+}
+
+function Get-WranglerPath {
+    <#
+    .SYNOPSIS
+      The crash Worker's own wrangler (ops\crash\worker\node_modules\.bin\wrangler.cmd) - the version the Worker is
+      deployed with. There is deliberately no fallback to a global `wrangler`.
+    #>
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+
+    $p = Join-Path $RepoRoot 'ops\crash\worker\node_modules\.bin\wrangler.cmd'
+    if (-not (Test-Path -LiteralPath $p)) {
+        throw "the crash Worker's wrangler is not installed ($p): run 'npm --prefix ops/crash/worker ci'"
+    }
+    $p
+}
+
+function Test-WranglerLogin {
+    <#
+    .SYNOPSIS
+      Pure: read `wrangler whoami`'s exit code and output. Ok when it exited 0 and does not ask for a login; Detail
+      is the account e-mail when wrangler printed one, else 'logged in', else what to do about it.
+    .OUTPUTS
+      pscustomobject @{ Ok = [bool]; Detail = [string] }
+    #>
+    param([int]$ExitCode, [AllowEmptyCollection()][string[]]$Output)
+
+    $t = @($Output) -join "`n"
+    if ($ExitCode -ne 0) { return [pscustomobject]@{ Ok = $false; Detail = "wrangler whoami exited $ExitCode" } }
+    # The account line first: a logged-in whoami also prints advice text, which must not read as "not logged in".
+    $m = [regex]::Match($t, 'associated with the email\s+(\S+?)\.?(\s|$)')
+    if ($m.Success) { return [pscustomobject]@{ Ok = $true; Detail = $m.Groups[1].Value } }
+    if ($t -match 'not authenticated|wrangler login') {
+        return [pscustomobject]@{ Ok = $false; Detail = "wrangler is not logged in: run 'npx wrangler login' in ops/crash/worker" }
+    }
+    [pscustomobject]@{ Ok = $true; Detail = 'logged in' }
+}
+
+function Get-ZipSingleEntry {
+    <#  Private: the one entry named exactly $Entry (ordinal, case-sensitive) in an open zip, or throw. #>
+    param([Parameter(Mandatory = $true)]$Zip, [Parameter(Mandatory = $true)][string]$Entry, [string]$Path)
+    $hits = @($Zip.Entries | Where-Object { $_.FullName -ceq $Entry })
+    if ($hits.Count -ne 1) { throw "$(Split-Path -Leaf $Path) carries $($hits.Count) '$Entry' entries (expected exactly one)" }
+    $hits[0]
+}
+
+function Get-ZipEntryBytes {
+    <#
+    .SYNOPSIS
+      The bytes of one entry of a zip (an .msix is a plain zip), e.g. Wavee.exe out of a package.
+    .OUTPUTS
+      byte[] (returned whole, never unrolled into the pipeline)
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Entry)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Path).Path)
+    try {
+        $e = Get-ZipSingleEntry -Zip $zip -Entry $Entry -Path $Path
+        if ($e.Length -gt [int]::MaxValue) { throw "$Entry in $(Split-Path -Leaf $Path) is larger than 2 GB" }
+        $buf = New-Object byte[] ([int]$e.Length)
+        $s = $e.Open()
+        try {
+            $off = 0
+            while ($off -lt $buf.Length) {
+                $n = $s.Read($buf, $off, $buf.Length - $off)
+                if ($n -le 0) { throw "$Entry in $(Split-Path -Leaf $Path) is truncated" }
+                $off += $n
+            }
+        }
+        finally { $s.Dispose() }
+    }
+    finally { $zip.Dispose() }
+    , $buf
+}
+
+function Export-ZipEntry {
+    <#  Private: stream one zip entry to a file (overwriting it). #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Entry,
+        [Parameter(Mandatory = $true)][string]$OutFile)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Path).Path)
+    try {
+        $e = Get-ZipSingleEntry -Zip $zip -Entry $Entry -Path $Path
+        $in = $e.Open()
+        try {
+            $out = [IO.File]::Create($OutFile)
+            try { $in.CopyTo($out) } finally { $out.Dispose() }
+        }
+        finally { $in.Dispose() }
+    }
+    finally { $zip.Dispose() }
+}
+
+function Expand-ZipMissing {
+    <#
+      Private: extract every file of a zip into $Destination that is NOT already there. Never overwrites: a symbols
+      folder whose SYMBOLS.txt / Wavee.map.xml are hash-registered evidence keeps exactly those bytes. Refuses an
+      entry that would land outside $Destination.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Destination)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $destFull = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+    [IO.Directory]::CreateDirectory($destFull) | Out-Null
+    # Normalised through GetFullPath like every entry below: Windows PowerShell's GetFullPath expands 8.3 short names
+    # (C:\Users\CHRIST~1\...), so a root left un-normalised would never prefix-match its own entries.
+    $destRoot = [IO.Path]::GetFullPath($destFull).TrimEnd('\') + '\'
+    $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $Path).Path)
+    try {
+        foreach ($e in $zip.Entries) {
+            if (-not $e.Name) { continue }   # a directory entry
+            $dst = [IO.Path]::GetFullPath($destRoot + ($e.FullName -replace '/', '\'))
+            if (-not $dst.StartsWith($destRoot, [StringComparison]::OrdinalIgnoreCase)) { throw "zip entry escapes its destination: $($e.FullName)" }
+            if ([IO.File]::Exists($dst)) { continue }
+            [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($dst)) | Out-Null
+            $in = $e.Open()
+            try {
+                $out = [IO.File]::Create($dst)
+                try { $in.CopyTo($out) } finally { $out.Dispose() }
+            }
+            finally { $in.Dispose() }
+        }
+    }
+    finally { $zip.Dispose() }
+}
+
+function Find-ByteText {
+    <#
+    .SYNOPSIS
+      Where $Text occurs in $Bytes as UTF-8 and as UTF-16LE. The haystack is decoded as Latin-1 (one char per byte,
+      no byte sequence is invalid), so an ordinal IndexOf of the encoded needle is a byte search.
+    .OUTPUTS
+      pscustomobject @{ Utf8 = [int]; Utf16 = [int] }   (byte offsets; -1 when absent)
+    #>
+    param(
+        [Parameter(Mandatory = $true)][byte[]]$Bytes,
+        [Parameter(Mandatory = $true)][string]$Text)
+
+    $l1 = [Text.Encoding]::GetEncoding(28591)
+    $hay = $l1.GetString($Bytes)
+    [pscustomobject]@{
+        Utf8  = $hay.IndexOf($l1.GetString([Text.Encoding]::UTF8.GetBytes($Text)), [StringComparison]::Ordinal)
+        Utf16 = $hay.IndexOf($l1.GetString([Text.Encoding]::Unicode.GetBytes($Text)), [StringComparison]::Ordinal)
+    }
+}
+
+function Assert-CrashIngestStamp {
+    <#
+    .SYNOPSIS
+      Stamp evidence: the Wavee.exe inside -Msix (or the file -ExePath) must carry BOTH the ingest URL and the ingest
+      key, as UTF-8 or UTF-16LE (the csproj stamps them as AssemblyMetadata). Throws naming what is missing.
+    .DESCRIPTION
+      This is what proves a package will report crashes - it reads the bytes that ship, so it holds for a freshly
+      packed package and for an adopted prebuilt one alike. Neither the result nor any message contains the key.
+    .OUTPUTS
+      [string] "Wavee.exe carries <url> (utf8@0x...) and the ingest key (utf16)"
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Msix')]
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'Msix')][string]$Msix,
+        [Parameter(Mandatory = $true, ParameterSetName = 'Exe')][string]$ExePath,
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$Key)
+
+    if ($PSCmdlet.ParameterSetName -eq 'Msix') {
+        if (-not (Test-Path -LiteralPath $Msix)) { throw "stamp evidence: package not found: $Msix" }
+        $what = "Wavee.exe in $(Split-Path -Leaf $Msix)"
+        $bytes = Get-ZipEntryBytes -Path $Msix -Entry 'Wavee.exe'
+    }
+    else {
+        if (-not (Test-Path -LiteralPath $ExePath)) { throw "stamp evidence: executable not found: $ExePath" }
+        $what = $ExePath
+        $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $ExePath).Path)
+    }
+
+    $u = Find-ByteText -Bytes $bytes -Text $Url
+    $k = Find-ByteText -Bytes $bytes -Text $Key
+    $problems = @()
+    if ($u.Utf8 -lt 0 -and $u.Utf16 -lt 0) { $problems += "the ingest URL $Url" }
+    if ($k.Utf8 -lt 0 -and $k.Utf16 -lt 0) { $problems += 'the ingest key (not printed)' }
+    if ($problems.Count -gt 0) {
+        throw "$what does not carry $($problems -join ' or '): it was not built with this -CrashIngestUrl/-CrashIngestKey, so its crashes could never reach the crash service"
+    }
+
+    $uWhere = if ($u.Utf8 -ge 0) { 'utf8@0x{0:X}' -f $u.Utf8 } else { 'utf16@0x{0:X}' -f $u.Utf16 }
+    $kEnc = if ($k.Utf8 -ge 0) { 'utf8' } else { 'utf16' }
+    "Wavee.exe carries $Url ($uWhere) and the ingest key ($kEnc)"
 }
 
 function Invoke-SymbolsUpload {
     <#
     .SYNOPSIS
-      Upload one architecture's .symmap to R2 with `wrangler r2 object put`, or report why it was skipped.
+      Upload one architecture's .symmap to R2 with the crash Worker's wrangler (`r2 object put ... --remote`), or
+      report why it was skipped.
     .DESCRIPTION
-      The R2 key and the wrangler argument list are computed HERE, not inline in wavee-release.ps1's `symbols` phase,
-      so Wavee.Release.Tests.ps1 can assert on them (via a mocked `wrangler`) without a real Cloudflare account or a
-      real .symmap. -Skip covers both -DryRun and -NoUpload - the caller decides which and passes -SkipReason for the
-      Warn text; this function itself never inspects the orchestrator's switches.
+      The R2 key and the wrangler argument list are computed HERE so Wavee.Release.Tests.ps1 can assert on them (via
+      a mocked Invoke-Native) without a real Cloudflare account. -Wrangler (Get-WranglerPath) is required unless
+      -Skip; -Skip covers -DryRun / -NoUpload - the caller decides which and passes -SkipReason for the Warn text.
     .OUTPUTS
       pscustomobject @{ Uploaded = [bool]; Key = "symbols/<quad>/win-<arch>.symmap"; Reason = [string] }
     #>
@@ -482,6 +729,7 @@ function Invoke-SymbolsUpload {
         [Parameter(Mandatory = $true)][string]$SymmapPath,
         [Parameter(Mandatory = $true)][string]$Quad,
         [Parameter(Mandatory = $true)][string]$Arch,
+        [string]$Wrangler = '',
         [string]$Bucket = 'wavee-crash',
         [switch]$Skip,
         [string]$SkipReason = 'nothing will be uploaded')
@@ -490,10 +738,88 @@ function Invoke-SymbolsUpload {
     if ($Skip) {
         return [pscustomobject]@{ Uploaded = $false; Key = $key; Reason = $SkipReason }
     }
-    if (-not (Test-Path $SymmapPath)) { throw "Invoke-SymbolsUpload: symmap not found: $SymmapPath" }
+    if (-not $Wrangler) { throw 'Invoke-SymbolsUpload: -Wrangler <the crash Worker''s wrangler.cmd, see Get-WranglerPath> is required unless -Skip' }
+    if (-not (Test-Path -LiteralPath $SymmapPath)) { throw "Invoke-SymbolsUpload: symmap not found: $SymmapPath" }
 
-    Invoke-Native 'wrangler' @('r2', 'object', 'put', "$Bucket/$key", '--file', $SymmapPath, '--remote') | Out-Null
+    Invoke-Native $Wrangler @('r2', 'object', 'put', "$Bucket/$key", '--file', $SymmapPath, '--remote') | Out-Null
     [pscustomobject]@{ Uploaded = $true; Key = $key; Reason = '' }
+}
+
+function Publish-WaveeSymbolMap {
+    <#
+    .SYNOPSIS
+      Build one architecture's Wavee.symmap with Wavee.ReleaseTool and upload it for the crash Worker.
+    .DESCRIPTION
+      1. Wavee.pdb must be in -SymbolsDir; when it is not (an adopted prebuilt package), -SymbolsZip is expanded
+         there first (files already present are never overwritten).
+      2. -Msix: Wavee.exe is extracted from the package into -SymbolsDir and removed again in a finally.
+         -ExePath: that file is used as-is and never touched.
+      3. dotnet run --project <ReleaseToolProject> -c Release -- symbol-map --pdb --exe --out <SymbolsDir>\Wavee.symmap
+      4. Invoke-SymbolsUpload -Wrangler (skipped under -SkipUpload, which then needs no -Wrangler).
+    .OUTPUTS
+      pscustomobject @{ Symmap; Key; Uploaded; Reason; Bytes }
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Msix')]
+    param(
+        [Parameter(Mandatory = $true, ParameterSetName = 'Msix')][string]$Msix,
+        [Parameter(Mandatory = $true, ParameterSetName = 'Exe')][string]$ExePath,
+        [Parameter(Mandatory = $true)][string]$SymbolsDir,
+        [string]$SymbolsZip = '',
+        [Parameter(Mandatory = $true)][ValidatePattern('^\d+\.\d+\.\d+\.\d+$')][string]$Quad,
+        [Parameter(Mandatory = $true)][ValidateSet('arm64', 'x64')][string]$Arch,
+        [Parameter(Mandatory = $true)][string]$ReleaseToolProject,
+        [string]$Wrangler = '',
+        [string]$Bucket = 'wavee-crash',
+        [switch]$SkipUpload,
+        [string]$SkipReason = '-SkipUpload')
+
+    if (-not $SkipUpload -and -not $Wrangler) {
+        throw 'Publish-WaveeSymbolMap: -Wrangler <the crash Worker''s wrangler.cmd, see Get-WranglerPath> is required unless -SkipUpload'
+    }
+
+    $pdb = Join-Path $SymbolsDir 'Wavee.pdb'
+    if (-not (Test-Path -LiteralPath $pdb)) {
+        if (-not $SymbolsZip -or -not (Test-Path -LiteralPath $SymbolsZip)) {
+            $zipNote = ''
+            if ($SymbolsZip) { $zipNote = " ($SymbolsZip does not exist)" }
+            throw "symbols ($Arch): no Wavee.pdb in $SymbolsDir and no symbols zip to expand it from$zipNote"
+        }
+        Expand-ZipMissing -Path $SymbolsZip -Destination $SymbolsDir
+        if (-not (Test-Path -LiteralPath $pdb)) { throw "symbols ($Arch): $SymbolsZip did not contain Wavee.pdb" }
+    }
+
+    $symmap = Join-Path $SymbolsDir 'Wavee.symmap'
+    $extracted = $null
+    try {
+        if ($PSCmdlet.ParameterSetName -eq 'Msix') {
+            if (-not (Test-Path -LiteralPath $Msix)) { throw "symbols ($Arch): package not found: $Msix" }
+            # Wavee.exe never ships inside the symbols zip; the exe the PDB belongs to is the one inside the package.
+            $extracted = Join-Path $SymbolsDir 'Wavee.exe'
+            Export-ZipEntry -Path $Msix -Entry 'Wavee.exe' -OutFile $extracted
+            $exe = $extracted
+        }
+        else {
+            if (-not (Test-Path -LiteralPath $ExePath)) { throw "symbols ($Arch): executable not found: $ExePath" }
+            $exe = (Resolve-Path -LiteralPath $ExePath).Path
+        }
+        if (Test-Path -LiteralPath $symmap) { Remove-Item -LiteralPath $symmap -Force }
+        Invoke-Native 'dotnet' @('run', '--project', $ReleaseToolProject, '-c', 'Release', '--',
+            'symbol-map', '--pdb', $pdb, '--exe', $exe, '--out', $symmap) | Out-Null
+    }
+    finally {
+        if ($extracted) { Remove-Item -LiteralPath $extracted -Force -ErrorAction SilentlyContinue }
+    }
+    if (-not (Test-Path -LiteralPath $symmap)) { throw "symbols ($Arch): symbol-map did not write $symmap" }
+
+    $upload = Invoke-SymbolsUpload -SymmapPath $symmap -Quad $Quad -Arch $Arch -Wrangler $Wrangler -Bucket $Bucket `
+        -Skip:$SkipUpload -SkipReason $SkipReason
+    [pscustomobject]@{
+        Symmap   = $symmap
+        Key      = $upload.Key
+        Uploaded = $upload.Uploaded
+        Reason   = $upload.Reason
+        Bytes    = (Get-Item -LiteralPath $symmap).Length
+    }
 }
 
 function Publish-WaveeRelease {
@@ -840,7 +1166,14 @@ Export-ModuleMember -Function @(
     'Get-GhReleaseAssetUrl',
     'Test-AssetContentLength',
     'Get-CrashIngestGate',
+    'Resolve-CrashIngestKey',
+    'Get-WranglerPath',
+    'Test-WranglerLogin',
+    'Get-ZipEntryBytes',
+    'Find-ByteText',
+    'Assert-CrashIngestStamp',
     'Invoke-SymbolsUpload',
+    'Publish-WaveeSymbolMap',
     'Publish-WaveeRelease',
     'Update-WaveeFeed',
     'Get-ReleaseState',

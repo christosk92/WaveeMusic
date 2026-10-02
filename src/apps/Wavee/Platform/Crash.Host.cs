@@ -216,9 +216,9 @@ public static partial class Crash
                 Crash.Bundles.MarkPending(LogFolder, dir);
 
                 Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.requested", "", null, -1, null, WaveeLogField.Of("kind", "managed"));
-                if (RequestDumpFromChild(Kind.Managed, GetCurrentThreadId(), 0, dir, out long bytes, out string? err))
+                // The child finalizes summary.json (hasDump/dumpBytes) before it replies — no rewrite here (#165 W3a).
+                if (RequestDumpFromChild(Handler.DumpKind.Managed, GetCurrentThreadId(), 0, dir, out long bytes, out string? err))
                 {
-                    try { Crash.Bundles.WriteSummary(dir, summary with { HasDump = true, DumpBytes = bytes }); } catch { }
                     Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.written", "", null, -1, null, WaveeLogField.Of("bytes", bytes));
                 }
                 else
@@ -242,12 +242,19 @@ public static partial class Crash
             try
             {
                 string dir = Crash.Bundles.Create(LogFolder, kind, DateTimeOffset.Now);
+                // The frames were walked allocation-free inside the hook, before any of this ran
+                // (NativeHook.CaptureFaultStack); FaultRvas only projects them onto Wavee.exe RVAs (#165 W3a).
+                long[] rvas = NativeHook.FaultRvas();
+                // "at" = the faulting instruction (EXCEPTION_RECORD.ExceptionAddress), never the EXCEPTION_POINTERS
+                // address this line used to print.
                 string headline = "native fault 0x" + code.ToString("x8", CultureInfo.InvariantCulture)
-                    + " at 0x" + ptrs.ToString("x", CultureInfo.InvariantCulture);
-                var summary = Report.BuildSummary(kind, null, 0, exceptionType: "Native", exceptionMessage: headline);
+                    + " at 0x" + unchecked((ulong)NativeHook.FaultAddress).ToString("x", CultureInfo.InvariantCulture);
+                var summary = Report.BuildSummary(kind, null, 0, exceptionType: "Native", exceptionMessage: headline,
+                    rvas: rvas, exceptionCode: code);
                 Crash.Bundles.WriteSummary(dir, summary);
                 var sb = new StringBuilder(2048);
                 Report.DescribeSynthetic(headline, sb);
+                Report.AppendRvaSection(sb, rvas);
                 Crash.Bundles.WriteReport(dir, sb.ToString());
                 Crash.Bundles.WriteTail(dir, s_datedLogPath, 300, SafeGatherRules());
                 // NO settings write and NO signal write here: this runs on the CRASHING thread (a pool thread for a worker
@@ -257,9 +264,11 @@ public static partial class Crash
 
                 Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.requested", "", null, -1, null,
                     WaveeLogField.Of("kind", "native"), WaveeLogField.Of("code", "0x" + code.ToString("x8", CultureInfo.InvariantCulture)));
-                if (RequestDumpFromChild(Kind.Native, GetCurrentThreadId(), ptrs, dir, out long bytes, out string? err))
+                // The child resolves the faulting module (this thread stays parked meanwhile, so the EXCEPTION_POINTERS
+                // it reads is still live), writes the dump and finalizes summary.json + report.txt before it replies —
+                // no rewrite here (#165 W3a).
+                if (RequestDumpFromChild(Handler.DumpKind.Native, GetCurrentThreadId(), ptrs, dir, out long bytes, out string? err))
                 {
-                    try { Crash.Bundles.WriteSummary(dir, summary with { HasDump = true, DumpBytes = bytes }); } catch { }
                     Log.Event(WaveeLogLevel.Critical, "crash", "crash.dump.written", "", null, -1, null, WaveeLogField.Of("bytes", bytes));
                 }
                 else
@@ -271,10 +280,18 @@ public static partial class Crash
             catch { }
         }
 
-        /// <summary>Writes <c>D &lt;kind&gt; &lt;tid&gt; &lt;ptrHex&gt; &lt;dir&gt;</c> and blocks (the caller is
-        /// already inside a crash handler — the process is terminating either way) for the child's
-        /// <c>OK &lt;bytes&gt;</c>/<c>ERR &lt;message&gt;</c> reply, up to 10 s.</summary>
-        static bool RequestDumpFromChild(Kind kind, uint tid, nint ptrs, string dir, out long bytes, out string? error)
+        static readonly object s_dumpGate = new();
+        static Task<string?>? s_pendingRead;   // a reply read a timed-out request left running
+        static int s_staleReplies;             // replies still owed to timed-out requests (the pending read's included)
+
+        /// <summary>Writes <c>D &lt;kind&gt; &lt;tid&gt; &lt;ptrHex&gt; &lt;dir&gt;</c> and blocks for the child's
+        /// <c>OK &lt;bytes&gt;</c>/<c>ERR &lt;message&gt;</c> reply, up to 10 s — a crash caller is terminating either
+        /// way; <see cref="WriteTestReport"/> calls it off the UI thread. ONE request at a time (<c>s_dumpGate</c>): a
+        /// test report runs while the app lives on, so a real crash on another thread must neither interleave its line
+        /// with it nor race it for the one stdout reader. The child answers D lines in order, so the replies a timed-out
+        /// request left owed (<c>s_staleReplies</c>, starting with the read it left running) are drained before this
+        /// request's own is read.</summary>
+        static bool RequestDumpFromChild(Handler.DumpKind kind, uint tid, nint ptrs, string dir, out long bytes, out string? error)
         {
             bytes = 0;
             error = null;
@@ -282,32 +299,51 @@ public static partial class Crash
             var stdin = s_stdin;
             if (child is null || stdin is null) { error = "the crash handler is not running"; return false; }
 
-            string kindToken = kind == Kind.Native ? "native" : "managed";
-            string line = "D " + kindToken + " " + tid.ToString(CultureInfo.InvariantCulture)
+            string line = "D " + Handler.DumpKinds.Token(kind) + " " + tid.ToString(CultureInfo.InvariantCulture)
                 + " " + unchecked((ulong)ptrs).ToString("x", CultureInfo.InvariantCulture) + " " + dir;
-            lock (s_writeLock)
+            lock (s_dumpGate)
             {
-                try { stdin.WriteLine(line); }
+                lock (s_writeLock)
+                {
+                    try { stdin.WriteLine(line); }
+                    catch (Exception ex) { error = ex.Message; return false; }
+                }
+
+                try
+                {
+                    long deadline = Environment.TickCount64 + 10_000;
+                    int stale = s_staleReplies;
+                    s_staleReplies = 0;
+                    while (true)
+                    {
+                        var read = s_pendingRead ?? child.StandardOutput.ReadLineAsync();
+                        s_pendingRead = null;
+                        if (!read.Wait(MsLeft(deadline)))
+                        {
+                            // Left running: the next request drains it and the rest owed (this one's own included).
+                            s_pendingRead = read;
+                            s_staleReplies = stale + 1;
+                            error = "timeout waiting for the crash handler";
+                            return false;
+                        }
+                        string? reply = read.Result;
+                        if (reply is null) { error = "the crash handler closed its output"; return false; }
+                        if (stale > 0) { stale--; continue; }   // a timed-out earlier request's answer
+                        if (reply.StartsWith("OK", StringComparison.Ordinal))
+                        {
+                            string[] parts = reply.Split(' ', 2);
+                            if (parts.Length > 1) long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out bytes);
+                            return true;
+                        }
+                        error = reply.StartsWith("ERR ", StringComparison.Ordinal) ? reply[4..] : reply;
+                        return false;
+                    }
+                }
                 catch (Exception ex) { error = ex.Message; return false; }
             }
-
-            try
-            {
-                var readTask = child.StandardOutput.ReadLineAsync();
-                if (!readTask.Wait(10_000)) { error = "timeout waiting for the crash handler"; return false; }
-                string? reply = readTask.Result;
-                if (reply is null) { error = "the crash handler closed its output"; return false; }
-                if (reply.StartsWith("OK", StringComparison.Ordinal))
-                {
-                    string[] parts = reply.Split(' ', 2);
-                    if (parts.Length > 1) long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out bytes);
-                    return true;
-                }
-                error = reply.StartsWith("ERR ", StringComparison.Ordinal) ? reply[4..] : reply;
-                return false;
-            }
-            catch (Exception ex) { error = ex.Message; return false; }
         }
+
+        static int MsLeft(long deadline) => (int)Math.Max(0L, deadline - Environment.TickCount64);
 
         /// <summary>The redaction rules a bundle's log tail is scrubbed with — gathered exactly like
         /// <c>Feedback.ReportComposer</c>'s <c>Rules()</c> (OS account + machine, and, when known, the signed-in
@@ -371,8 +407,14 @@ public static partial class Crash
 
         public static BundleInfo? Read(string dir) => Crash.Bundles.Read(dir);
 
+        /// <summary>Deletes one bundle — its queued upload FIRST (<c>Uploader.ForgetBundle</c>, #165), so a drain racing
+        /// this call can neither send a report the user just deleted nor recreate its folder when it settles (that
+        /// half is <see cref="Crash.Bundles.WriteSend"/>'s no-op on a missing folder). <see cref="DeleteAll"/> goes
+        /// through here per bundle.</summary>
         public static void Delete(string dir)
         {
+            try { Uploader.ForgetBundle(dir); }
+            catch (Exception ex) { Log.Warn("crash", "crash.bundle.forget.failed", ex); }
             try { Directory.Delete(dir, recursive: true); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("crash", "crash.bundle.delete.failed", ex); }
             ReportsVersion.Value++;

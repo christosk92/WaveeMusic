@@ -1,5 +1,6 @@
 import type {
   AppBreakdownEntry,
+  AppDeleteReportResult,
   AppFrame,
   AppIssue,
   AppIssueBreakdowns,
@@ -8,12 +9,14 @@ import type {
   AppReport,
   AppReportDetail,
   AppReportsPage,
+  AppRetentionResult,
   AppSparklineDay,
   AppStats,
   AppSymbol,
   AppThisInstall,
   AppVersionCount,
   WireBreakdownEntry,
+  WireDeleteReportResponse,
   WireFrame,
   WireIssueBreakdowns,
   WireIssueDetailResponse,
@@ -22,6 +25,7 @@ import type {
   WireReportDetailResponse,
   WireReportRow,
   WireReportsPageResponse,
+  WireRetentionRunResponse,
   WireSparklineDay,
   WireStats,
   WireSymbolRow,
@@ -31,6 +35,17 @@ import type {
 
 function bool(n: number): boolean {
   return n !== 0;
+}
+
+/** A `*_json` frames column: an array of frames, or null when absent/empty-string/malformed. */
+function parseFramesJson(json: string | null | undefined): AppFrame[] | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    return Array.isArray(parsed) ? (parsed as WireFrame[]).map(mapFrame) : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseVersionsJson(json: string): Record<string, number> {
@@ -71,17 +86,18 @@ export function mapIssue(w: WireIssueRow): AppIssue {
     versions: parseVersionsJson(w.versions_json),
     status: w.status,
     githubIssue: w.github_issue,
+    regressedAt: w.regressed_at ?? null,
+    regressions: w.regressions ?? 0,
+    resolvedAt: w.resolved_at ?? null,
+    // The Worker's `maxSemver` yields "" when no version was recorded — same meaning as null here.
+    resolvedVersion: w.resolved_version || null,
+    lastFrames: parseFramesJson(w.last_frames_json),
+    fpVersion: w.fp_version ?? 1,
   };
 }
 
 export function mapReport(w: WireReportRow): AppReport {
-  let frames: AppFrame[] = [];
-  try {
-    const parsed = JSON.parse(w.frames_json) as WireFrame[];
-    frames = Array.isArray(parsed) ? parsed.map(mapFrame) : [];
-  } catch {
-    frames = [];
-  }
+  const frames = parseFramesJson(w.frames_json) ?? [];
   return {
     id: w.id,
     installId: w.install_id,
@@ -110,6 +126,10 @@ export function mapReport(w: WireReportRow): AppReport {
     fingerprint: w.fingerprint,
     receivedAt: w.received_at,
     debugId: w.debug_id,
+    exceptionCode: w.exception_code ?? 0,
+    faultModule: w.fault_module ?? "",
+    faultOffset: w.fault_offset ?? 0,
+    fpVersion: w.fp_version ?? 1,
   };
 }
 
@@ -169,4 +189,12 @@ export function mapReportDetail(w: WireReportDetailResponse): AppReportDetail {
 
 export function mapReportsPage(w: WireReportsPageResponse): AppReportsPage {
   return { reports: w.reports.map(mapReport), nextCursor: w.nextCursor };
+}
+
+export function mapDeleteReportResult(w: WireDeleteReportResponse): AppDeleteReportResult {
+  return { deleted: w.deleted, fingerprint: w.fingerprint };
+}
+
+export function mapRetentionResult(w: WireRetentionRunResponse): AppRetentionResult {
+  return { deleted: w.deleted, batches: w.batches, more: w.more };
 }

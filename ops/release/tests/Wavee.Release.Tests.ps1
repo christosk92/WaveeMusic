@@ -35,6 +35,34 @@ function Get-FileBytes {
     [IO.File]::ReadAllBytes($Path)
 }
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+function New-FakeExeBytes {
+    <#  An 'MZ' image carrying each -Utf8 string as UTF-8, then each -Utf16 string as UTF-16LE, every one followed
+        by 7 zero bytes. The first string starts at byte 65 (0x41). #>
+    param([string[]]$Utf8 = @(), [string[]]$Utf16 = @())
+    $ms = New-Object System.IO.MemoryStream
+    $head = [byte[]](0x4D, 0x5A, 0x90, 0x00)
+    $ms.Write($head, 0, $head.Length)
+    $pad = New-Object byte[] 61
+    $ms.Write($pad, 0, $pad.Length)
+    foreach ($s in $Utf8) { $b = [Text.Encoding]::UTF8.GetBytes($s); $ms.Write($b, 0, $b.Length); $ms.Write($pad, 0, 7) }
+    foreach ($s in $Utf16) { $b = [Text.Encoding]::Unicode.GetBytes($s); $ms.Write($b, 0, $b.Length); $ms.Write($pad, 0, 7) }
+    , $ms.ToArray()
+}
+
+function New-FakeMsix {
+    <#  A zip with Wavee.exe (the given bytes) and an AppxManifest.xml at its root - an .msix is a plain zip. #>
+    param([string]$Path, [byte[]]$ExeBytes)
+    $src = $Path + '.src'
+    New-Item -ItemType Directory -Force -Path $src | Out-Null
+    [IO.File]::WriteAllBytes((Join-Path $src 'Wavee.exe'), $ExeBytes)
+    [IO.File]::WriteAllText((Join-Path $src 'AppxManifest.xml'), '<Package/>')
+    if (Test-Path $Path) { Remove-Item $Path -Force }
+    [IO.Compression.ZipFile]::CreateFromDirectory($src, $Path)
+    $Path
+}
+
 # ===================================================================================================================
 
 Describe 'Test-WaveeSemver' {
@@ -645,36 +673,269 @@ Describe 'ConvertFrom-GhJson' {
 
 Describe 'Get-CrashIngestGate' {
 
-    It 'warns on a stable release with no ingest url' {
-        $g = Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl ''
-        $g.Warn | Should Be $true
-        $g.Message.Length | Should BeGreaterThan 0
-    }
+    $url = 'https://crash.cproducts.dev'
+    $key = 'GateKey_0123456789abcdefXYZ'
 
-    It 'is quiet on a stable release once an ingest url is stamped' {
-        $g = Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl 'https://crash.wavee.app'
-        $g.Warn | Should Be $false
-        $g.Message | Should Be ''
-    }
-
-    It 'is quiet on every non-stable channel even with no ingest url' {
-        foreach ($c in @('beta', 'dev', 'store')) {
-            (Get-CrashIngestGate -Channel $c -CrashIngestUrl '').Warn | Should Be $false
+    It 'fails every shipping channel with no ingest url' {
+        foreach ($c in @('stable', 'beta', 'store')) {
+            $g = Get-CrashIngestGate -Channel $c -CrashIngestUrl '' -CrashIngestKey $key
+            $g.Fail | Should Be $true
+            ($g.Message -like "$c build without the ingest URL (-CrashIngestUrl)*") | Should Be $true
         }
     }
 
-    It 'treats a whitespace-only url as empty' {
-        (Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl '   ').Warn | Should Be $true
+    It 'fails every shipping channel with no ingest key' {
+        foreach ($c in @('stable', 'beta', 'store')) {
+            $g = Get-CrashIngestGate -Channel $c -CrashIngestUrl $url -CrashIngestKey ''
+            $g.Fail | Should Be $true
+            ($g.Message -like "$c build without the ingest key*") | Should Be $true
+        }
+    }
+
+    It 'names both when both are missing' {
+        $g = Get-CrashIngestGate -Channel 'store' -CrashIngestUrl '' -CrashIngestKey ''
+        $g.Fail | Should Be $true
+        ($g.Message -like '*the ingest URL (-CrashIngestUrl) and the ingest key*') | Should Be $true
+    }
+
+    It 'fails a url that is not https' {
+        $g = Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl 'http://crash.cproducts.dev' -CrashIngestKey $key
+        $g.Fail | Should Be $true
+        ($g.Message -like '*an https ingest URL*') | Should Be $true
+    }
+
+    It 'treats a whitespace-only url or key as empty' {
+        (Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl '   ' -CrashIngestKey $key).Fail | Should Be $true
+        (Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl $url -CrashIngestKey " `t ").Fail | Should Be $true
+    }
+
+    It 'passes every shipping channel stamped with an https url and a key' {
+        foreach ($c in @('stable', 'beta', 'store')) {
+            $g = Get-CrashIngestGate -Channel $c -CrashIngestUrl $url -CrashIngestKey $key
+            $g.Fail | Should Be $false
+            $g.Message | Should Be ''
+        }
+    }
+
+    It 'is quiet on dev even with nothing stamped' {
+        $g = Get-CrashIngestGate -Channel 'dev' -CrashIngestUrl '' -CrashIngestKey ''
+        $g.Fail | Should Be $false
+        $g.Message | Should Be ''
+    }
+
+    It 'never puts the key in its message - not even a key pasted into the url' {
+        foreach ($u in @('', 'http://crash.cproducts.dev', $key)) {
+            $g = Get-CrashIngestGate -Channel 'stable' -CrashIngestUrl $u -CrashIngestKey $key
+            $g.Fail | Should Be $true
+            $g.Message.Contains($key) | Should Be $false
+        }
     }
 }
+
+# ===================================================================================================================
+
+Describe 'Resolve-CrashIngestKey' {
+
+    It 'returns -Explicit, trimmed, and never calls op' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw 'op must not be invoked when -Explicit is given' }
+        $r = Resolve-CrashIngestKey -Explicit '  ExplicitKey_0123456789abcdef  '
+        $r.Key | Should Be 'ExplicitKey_0123456789abcdef'
+        $r.Source | Should Be '-CrashIngestKey'
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 0 -Exactly -Scope It
+    }
+
+    It 'reads the default 1Password reference with the account flag' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @('OpKey_0123456789abcdefXYZ') } }
+        $r = Resolve-CrashIngestKey
+        $r.Key | Should Be 'OpKey_0123456789abcdefXYZ'
+        ($r.Source -like '1Password (op://*') | Should Be $true
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It -ParameterFilter {
+            $FilePath -eq 'op' -and
+            ($ArgumentList -join '|') -eq 'read|op://Personal/Wavee crash ingest key/credential|--account|my.1password.eu'
+        }
+    }
+
+    It 'treats a whitespace-only -Explicit as absent and asks 1Password' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @('OpKey_0123456789abcdefXYZ') } }
+        (Resolve-CrashIngestKey -Explicit '   ').Key | Should Be 'OpKey_0123456789abcdefXYZ'
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It
+    }
+
+    It 'passes -Reference and -Account through to op' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @('OpKey_0123456789abcdefXYZ') } }
+        Resolve-CrashIngestKey -Reference 'op://Vault/Item/field' -Account 'team.1password.com' | Out-Null
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It -ParameterFilter {
+            ($ArgumentList -join '|') -eq 'read|op://Vault/Item/field|--account|team.1password.com'
+        }
+    }
+
+    It 'takes the last key-looking line, past op notices on stderr' {
+        Mock -ModuleName Wavee.Release Invoke-Native {
+            [pscustomobject]@{ ExitCode = 0; Output = @(
+                    '[WARN] 2026/10/02 a newer version of the 1Password CLI is available',
+                    'OlderKey_0123456789abcdef',
+                    '  NewestKey_0123456789abcdef+/=  ',
+                    '') }
+        }
+        (Resolve-CrashIngestKey).Key | Should Be 'NewestKey_0123456789abcdef+/='
+    }
+
+    It 'throws without echoing what op printed when op exits non-zero' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 1; Output = @('LeakedSecret_0123456789abcdef') } }
+        $msg = ''
+        try { Resolve-CrashIngestKey | Out-Null } catch { $msg = $_.Exception.Message }
+        ($msg -like '*op exited 1*') | Should Be $true
+        $msg.Contains('LeakedSecret_0123456789abcdef') | Should Be $false
+    }
+
+    It 'throws when op printed nothing at all' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @() } }
+        { Resolve-CrashIngestKey } | Should Throw 'no usable crash ingest key'
+    }
+
+    It 'throws without echoing a line that does not look like a key' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @('short-secret') } }
+        $msg = ''
+        try { Resolve-CrashIngestKey | Out-Null } catch { $msg = $_.Exception.Message }
+        ($msg -like '*no usable crash ingest key*') | Should Be $true
+        $msg.Contains('short-secret') | Should Be $false
+    }
+
+    It 'names the missing 1Password CLI' {
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 127; Output = @('op : command not found') } }
+        { Resolve-CrashIngestKey } | Should Throw 'the 1Password CLI (op) is not installed'
+    }
+}
+
+# ===================================================================================================================
+
+Describe 'Get-WranglerPath' {
+
+    It "returns the crash Worker's own wrangler.cmd" {
+        $repo = New-TmpDir 'wrangler-repo'
+        $bin = Join-Path $repo 'ops\crash\worker\node_modules\.bin'
+        New-Item -ItemType Directory -Force -Path $bin | Out-Null
+        [IO.File]::WriteAllText((Join-Path $bin 'wrangler.cmd'), '@echo off')
+        Get-WranglerPath -RepoRoot $repo | Should Be (Join-Path $bin 'wrangler.cmd')
+    }
+
+    It 'throws with the npm ci hint when the Worker has no node_modules' {
+        $repo = New-TmpDir 'wrangler-missing'
+        { Get-WranglerPath -RepoRoot $repo } | Should Throw "npm --prefix ops/crash/worker ci"
+    }
+}
+
+# ===================================================================================================================
+
+Describe 'Test-WranglerLogin' {
+
+    It 'reads the account e-mail out of a logged-in whoami' {
+        $out = @('', ' wrangler 4.40.0', 'Getting User settings...',
+            'You are logged in with an OAuth Token, associated with the email dev@example.test.',
+            'Account Name   Account ID')
+        $r = Test-WranglerLogin -ExitCode 0 -Output $out
+        $r.Ok | Should Be $true
+        $r.Detail | Should Be 'dev@example.test'
+    }
+
+    It 'is ok but generic when whoami names no e-mail' {
+        $r = Test-WranglerLogin -ExitCode 0 -Output @('You are logged in with an API Token.')
+        $r.Ok | Should Be $true
+        $r.Detail | Should Be 'logged in'
+    }
+
+    It 'fails when wrangler is not authenticated, and names the fix' {
+        $r = Test-WranglerLogin -ExitCode 0 -Output @('You are not authenticated. Please run `wrangler login`.')
+        $r.Ok | Should Be $false
+        ($r.Detail -like '*npx wrangler login*') | Should Be $true
+    }
+
+    It 'fails on a non-zero exit' {
+        $r = Test-WranglerLogin -ExitCode 1 -Output @('something went wrong')
+        $r.Ok | Should Be $false
+        ($r.Detail -like '*exited 1*') | Should Be $true
+    }
+}
+
+# ===================================================================================================================
+
+Describe 'Find-ByteText / Assert-CrashIngestStamp' {
+
+    $dir = New-TmpDir 'stamp'
+    $url = 'https://crash.example.test'
+    $key = 'StampKey_0123456789abcdefXYZ'
+
+    It 'finds UTF-8 and UTF-16LE text at its byte offset' {
+        $b = New-FakeExeBytes -Utf8 @('alpha-text') -Utf16 @('bravo-text')
+        $a = Find-ByteText -Bytes $b -Text 'alpha-text'
+        $a.Utf8 | Should Be 65
+        $a.Utf16 | Should Be -1
+        $z = Find-ByteText -Bytes $b -Text 'bravo-text'
+        $z.Utf8 | Should Be -1
+        $z.Utf16 | Should Be 82
+    }
+
+    It 'reports -1 twice for text in neither encoding' {
+        $f = Find-ByteText -Bytes (New-FakeExeBytes -Utf8 @('alpha-text')) -Text 'charlie'
+        $f.Utf8 | Should Be -1
+        $f.Utf16 | Should Be -1
+    }
+
+    It 'accepts a package whose Wavee.exe carries the URL (UTF-8) and the key (UTF-16LE)' {
+        $msix = New-FakeMsix (Join-Path $dir 'ok.msix') (New-FakeExeBytes -Utf8 @($url) -Utf16 @($key))
+        $r = Assert-CrashIngestStamp -Msix $msix -Url $url -Key $key
+        $r | Should Be "Wavee.exe carries $url (utf8@0x41) and the ingest key (utf16)"
+        $r.Contains($key) | Should Be $false
+    }
+
+    It 'accepts the URL as UTF-16LE and the key as UTF-8 just the same' {
+        $msix = New-FakeMsix (Join-Path $dir 'swapped.msix') (New-FakeExeBytes -Utf8 @($key) -Utf16 @($url))
+        $r = Assert-CrashIngestStamp -Msix $msix -Url $url -Key $key
+        ($r -like '*(utf16@0x*) and the ingest key (utf8)') | Should Be $true
+    }
+
+    It 'reads a loose Wavee.exe with -ExePath' {
+        $exe = Join-Path (New-TmpDir 'stamp\loose') 'Wavee.exe'
+        [IO.File]::WriteAllBytes($exe, (New-FakeExeBytes -Utf8 @($url, $key)))
+        $r = Assert-CrashIngestStamp -ExePath $exe -Url $url -Key $key
+        ($r -like "Wavee.exe carries $url *") | Should Be $true
+    }
+
+    It 'throws when the URL is missing, and never prints the key' {
+        $msix = New-FakeMsix (Join-Path $dir 'no-url.msix') (New-FakeExeBytes -Utf8 @($key))
+        $msg = ''
+        try { Assert-CrashIngestStamp -Msix $msix -Url $url -Key $key | Out-Null } catch { $msg = $_.Exception.Message }
+        ($msg -like "*does not carry the ingest URL $url*") | Should Be $true
+        $msg.Contains($key) | Should Be $false
+    }
+
+    It 'throws when the key is missing, and never prints the key' {
+        $msix = New-FakeMsix (Join-Path $dir 'no-key.msix') (New-FakeExeBytes -Utf8 @($url))
+        $msg = ''
+        try { Assert-CrashIngestStamp -Msix $msix -Url $url -Key $key | Out-Null } catch { $msg = $_.Exception.Message }
+        ($msg -like '*does not carry the ingest key*') | Should Be $true
+        $msg.Contains($key) | Should Be $false
+    }
+
+    It 'throws when the package carries no Wavee.exe' {
+        $src = New-TmpDir 'stamp\no-exe.src'
+        [IO.File]::WriteAllText((Join-Path $src 'AppxManifest.xml'), '<Package/>')
+        $msix = Join-Path $dir 'no-exe.msix'
+        [IO.Compression.ZipFile]::CreateFromDirectory($src, $msix)
+        { Assert-CrashIngestStamp -Msix $msix -Url $url -Key $key } | Should Throw "carries 0 'Wavee.exe' entries"
+    }
+}
+
+# ===================================================================================================================
 
 Describe 'Invoke-SymbolsUpload' {
 
     $tmp = New-TmpDir 'symbols-upload'
     $symmap = Join-Path $tmp 'Wavee.symmap'
     [IO.File]::WriteAllBytes($symmap, [byte[]](1, 2, 3, 4))
+    $wrangler = 'C:\repo\ops\crash\worker\node_modules\.bin\wrangler.cmd'
 
-    It 'skips and reports the given reason without ever calling wrangler' {
+    It 'skips and reports the given reason without ever calling wrangler (and needs no -Wrangler)' {
         Mock -ModuleName Wavee.Release Invoke-Native { throw 'wrangler must not be invoked when -Skip is set' }
         $r = Invoke-SymbolsUpload -SymmapPath $symmap -Quad '0.3.0.41' -Arch 'x64' -Skip -SkipReason '-DryRun'
         $r.Uploaded | Should Be $false
@@ -682,20 +943,170 @@ Describe 'Invoke-SymbolsUpload' {
         $r.Key | Should Be 'symbols/0.3.0.41/win-x64.symmap'
     }
 
-    It 'throws when the symmap does not exist and -Skip was not passed' {
-        $missing = Join-Path $tmp 'missing.symmap'
-        { Invoke-SymbolsUpload -SymmapPath $missing -Quad '0.3.0.41' -Arch 'x64' } | Should Throw
+    It 'refuses to upload without -Wrangler' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw 'no native call may run without -Wrangler' }
+        { Invoke-SymbolsUpload -SymmapPath $symmap -Quad '0.3.0.41' -Arch 'x64' } | Should Throw '-Wrangler'
     }
 
-    It 'uploads with the R2 key and wrangler arguments the crash Worker expects' {
+    It 'throws when the symmap does not exist and -Skip was not passed' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw 'no native call may run for a missing symmap' }
+        $missing = Join-Path $tmp 'missing.symmap'
+        { Invoke-SymbolsUpload -SymmapPath $missing -Quad '0.3.0.41' -Arch 'x64' -Wrangler $wrangler } | Should Throw 'symmap not found'
+    }
+
+    It "uploads through the given wrangler with the R2 key and arguments the crash Worker expects" {
         Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @() } }
-        $r = Invoke-SymbolsUpload -SymmapPath $symmap -Quad '0.3.0.41' -Arch 'arm64'
+        $r = Invoke-SymbolsUpload -SymmapPath $symmap -Quad '0.3.0.41' -Arch 'arm64' -Wrangler $wrangler
         $r.Uploaded | Should Be $true
         $r.Key | Should Be 'symbols/0.3.0.41/win-arm64.symmap'
-        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -ParameterFilter {
-            $FilePath -eq 'wrangler' -and
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It -ParameterFilter {
+            $FilePath -eq $wrangler -and
             ($ArgumentList -join ' ') -eq "r2 object put wavee-crash/symbols/0.3.0.41/win-arm64.symmap --file $symmap --remote"
         }
+    }
+}
+
+# ===================================================================================================================
+
+Describe 'Publish-WaveeSymbolMap' {
+
+    $dir = New-TmpDir 'symbol-map'
+    $exeBytes = New-FakeExeBytes -Utf8 @('the exe this pdb belongs to')
+    $msix = New-FakeMsix (Join-Path $dir 'Wavee_0.0.1.0_arm64.msix') $exeBytes
+    $tool = 'C:\repo\src\apps\Wavee.ReleaseTool'
+    $wrangler = 'C:\repo\ops\crash\worker\node_modules\.bin\wrangler.cmd'
+
+    # The symbols zip an adopted package brings along: Wavee.pdb + SYMBOLS.txt.
+    $zipSrc = New-TmpDir 'symbol-map\zip-src'
+    [IO.File]::WriteAllBytes((Join-Path $zipSrc 'Wavee.pdb'), [byte[]](4, 2))
+    [IO.File]::WriteAllText((Join-Path $zipSrc 'SYMBOLS.txt'), 'from the zip')
+    $symZip = Join-Path $dir 'Wavee-0.0.1.0-win-x64-symbols.zip'
+    [IO.Compression.ZipFile]::CreateFromDirectory($zipSrc, $symZip)
+
+    function New-SymbolsDir {
+        param([string]$Name)
+        $d = New-TmpDir "symbol-map\$Name"
+        [IO.File]::WriteAllBytes((Join-Path $d 'Wavee.pdb'), [byte[]](7, 7, 7))
+        $d
+    }
+
+    # `dotnet run ... symbol-map`, faked: copies the --exe it was handed to --out, so a test can prove which exe the
+    # tool saw (and that it existed while the tool ran).
+    $fakeSymbolMap = {
+        $a = @($ArgumentList)
+        [IO.File]::Copy($a[[array]::IndexOf($a, '--exe') + 1], $a[[array]::IndexOf($a, '--out') + 1], $true)
+        [pscustomobject]@{ ExitCode = 0; Output = @() }
+    }
+
+    It 'builds the map from the Wavee.exe inside the package and removes the extracted copy' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = New-SymbolsDir 'from-msix'
+        $r = Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'arm64' -ReleaseToolProject $tool -SkipUpload
+        $r.Symmap | Should Be (Join-Path $sym 'Wavee.symmap')
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes($r.Symmap)) | Should Be ([Convert]::ToBase64String($exeBytes))
+        $r.Bytes | Should Be $exeBytes.Length
+        Test-Path (Join-Path $sym 'Wavee.exe') | Should Be $false
+    }
+
+    It 'runs Wavee.ReleaseTool symbol-map with the pdb, the extracted exe and the output path' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = New-SymbolsDir 'args'
+        $pdb = Join-Path $sym 'Wavee.pdb'
+        $exe = Join-Path $sym 'Wavee.exe'
+        $out = Join-Path $sym 'Wavee.symmap'
+        Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'arm64' -ReleaseToolProject $tool -SkipUpload | Out-Null
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It -ParameterFilter {
+            $FilePath -eq 'dotnet' -and
+            ($ArgumentList -join '|') -eq "run|--project|$tool|-c|Release|--|symbol-map|--pdb|$pdb|--exe|$exe|--out|$out"
+        }
+    }
+
+    It 'removes the extracted Wavee.exe even when symbol-map fails' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native { throw 'dotnet exited 1' } -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = New-SymbolsDir 'tool-fails'
+        { Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'arm64' -ReleaseToolProject $tool -SkipUpload } |
+            Should Throw 'dotnet exited 1'
+        Test-Path (Join-Path $sym 'Wavee.exe') | Should Be $false
+    }
+
+    It 'skips the upload under -SkipUpload and needs no -Wrangler' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = New-SymbolsDir 'skip'
+        $r = Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'arm64' -ReleaseToolProject $tool `
+            -SkipUpload -SkipReason '-DryRun'
+        $r.Uploaded | Should Be $false
+        $r.Reason | Should Be '-DryRun'
+        $r.Key | Should Be 'symbols/0.0.1.0/win-arm64.symmap'
+    }
+
+    It 'uploads the map through -Wrangler' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        Mock -ModuleName Wavee.Release Invoke-Native { [pscustomobject]@{ ExitCode = 0; Output = @() } } -ParameterFilter { $FilePath -like '*wrangler.cmd' }
+        $sym = New-SymbolsDir 'upload'
+        $out = Join-Path $sym 'Wavee.symmap'
+        $r = Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'x64' -ReleaseToolProject $tool -Wrangler $wrangler
+        $r.Uploaded | Should Be $true
+        $r.Key | Should Be 'symbols/0.0.1.0/win-x64.symmap'
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It -ParameterFilter {
+            $FilePath -eq $wrangler -and
+            ($ArgumentList -join ' ') -eq "r2 object put wavee-crash/symbols/0.0.1.0/win-x64.symmap --file $out --remote"
+        }
+    }
+
+    It 'refuses to start without -Wrangler unless -SkipUpload' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        $sym = New-SymbolsDir 'no-wrangler'
+        { Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'arm64' -ReleaseToolProject $tool } |
+            Should Throw '-Wrangler'
+        Test-Path (Join-Path $sym 'Wavee.exe') | Should Be $false
+    }
+
+    It 'expands Wavee.pdb from -SymbolsZip when the symbols folder has none (an adopted package)' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = Join-Path $dir 'adopted\symbols\0.0.1.0\win-x64'
+        $pdb = Join-Path $sym 'Wavee.pdb'
+        $r = Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -SymbolsZip $symZip -Quad '0.0.1.0' -Arch 'x64' `
+            -ReleaseToolProject $tool -SkipUpload
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes($pdb)) | Should Be ([Convert]::ToBase64String([byte[]](4, 2)))
+        Test-Path $r.Symmap | Should Be $true
+        Assert-MockCalled -ModuleName Wavee.Release Invoke-Native -Times 1 -Exactly -Scope It -ParameterFilter {
+            $FilePath -eq 'dotnet' -and (@($ArgumentList) -contains $pdb)
+        }
+    }
+
+    It 'never overwrites a file the symbols folder already has when it expands the zip' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = New-TmpDir 'symbol-map\keep'
+        [IO.File]::WriteAllText((Join-Path $sym 'SYMBOLS.txt'), 'registered evidence')
+        Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -SymbolsZip $symZip -Quad '0.0.1.0' -Arch 'x64' `
+            -ReleaseToolProject $tool -SkipUpload | Out-Null
+        [IO.File]::ReadAllText((Join-Path $sym 'SYMBOLS.txt')) | Should Be 'registered evidence'
+        Test-Path (Join-Path $sym 'Wavee.pdb') | Should Be $true
+    }
+
+    It 'throws when there is neither a Wavee.pdb nor a symbols zip' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        $sym = New-TmpDir 'symbol-map\empty'
+        { Publish-WaveeSymbolMap -Msix $msix -SymbolsDir $sym -SymbolsZip (Join-Path $dir 'no-such.zip') -Quad '0.0.1.0' `
+                -Arch 'arm64' -ReleaseToolProject $tool -SkipUpload } | Should Throw 'no Wavee.pdb'
+    }
+
+    It 'uses -ExePath as-is and never deletes it' {
+        Mock -ModuleName Wavee.Release Invoke-Native { throw "unexpected native call: $FilePath" }
+        Mock -ModuleName Wavee.Release Invoke-Native $fakeSymbolMap -ParameterFilter { $FilePath -eq 'dotnet' }
+        $sym = New-SymbolsDir 'loose'
+        $exe = Join-Path $sym 'Wavee.exe'
+        [IO.File]::WriteAllBytes($exe, $exeBytes)
+        $r = Publish-WaveeSymbolMap -ExePath $exe -SymbolsDir $sym -Quad '0.0.1.0' -Arch 'arm64' -ReleaseToolProject $tool -SkipUpload
+        Test-Path $exe | Should Be $true
+        [Convert]::ToBase64String([IO.File]::ReadAllBytes($r.Symmap)) | Should Be ([Convert]::ToBase64String($exeBytes))
     }
 }
 
@@ -745,24 +1156,6 @@ Describe 'the release scripts themselves' {
         $zip = 'Wavee-0.2.0.7-win-x64-symbols.zip'
         ($zip -match '^Wavee_(?<q>\d+\.\d+\.\d+\.\d+)_(?<a>arm64|x64)\.msix$') | Should Be $false
         ('Wavee_0.2.0.7_x64.msix' -match '^Wavee_(?<q>\d+\.\d+\.\d+\.\d+)_(?<a>arm64|x64)\.msix$') | Should Be $true
-    }
-
-    It 'runs the symbols phase after packing and before signing (crash & diagnostics plan §B.6)' {
-        $text = Get-Content (Join-Path $repoRoot 'ops\release\wavee-release.ps1') -Raw
-        $packIdx = $text.IndexOf('function Invoke-Pack ')
-        $symbolsIdx = $text.IndexOf('function Invoke-Symbols')
-        $signIdx = $text.IndexOf('function Invoke-Sign')
-        $packIdx | Should BeGreaterThan -1
-        $symbolsIdx | Should BeGreaterThan -1
-        $signIdx | Should BeGreaterThan -1
-        $symbolsIdx | Should BeGreaterThan $packIdx
-        $signIdx | Should BeGreaterThan $symbolsIdx
-    }
-
-    It 'wavee-release.ps1 wires -CrashIngestUrl/-CrashIngestKey through to pack-wavee-msix.ps1' {
-        $text = Get-Content (Join-Path $repoRoot 'ops\release\wavee-release.ps1') -Raw
-        $text | Should Match ([regex]::Escape("'-CrashIngestUrl', `$CrashIngestUrl"))
-        $text | Should Match ([regex]::Escape("'-CrashIngestKey', `$CrashIngestKey"))
     }
 }
 

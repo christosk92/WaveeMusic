@@ -42,9 +42,10 @@ public static partial class Shell
     // the back/forward flyout, the sidebar's pinned rows and the not-found glyph. Here they are three READS of ONE
     // table (`Row(kind)`), so a new kind cannot be added with three of the four columns filled in.
 
-    /// <summary>One kind per destination <see cref="PageFor"/> can render. 30 registered routes (28 in 0.2.9's own
+    /// <summary>One kind per destination <see cref="PageFor"/> can render. 32 registered routes (28 in 0.2.9's own
     /// count, +1 for the podcast rework's <see cref="RouteKind.Episode"/>, wave P2, +1 for
-    /// <see cref="RouteKind.LibraryAudiobooks"/>, A2 plan §3.6) + connect-diagnostics +
+    /// <see cref="RouteKind.LibraryAudiobooks"/>, A2 plan §3.6, +2 for the profile pages' <see cref="RouteKind.User"/>
+    /// and <see cref="RouteKind.ProfileList"/>) + connect-diagnostics +
     /// <see cref="RouteKind.NotFound"/> (29 in 0.2.9, less ApiConsole — deleted, plan §9.6 Q7).</summary>
     public enum RouteKind : byte
     {
@@ -59,6 +60,9 @@ public static partial class Shell
         // concert family was: an episode renders the shared detail surface like show/artist, so it needs its own
         // label + glyph rather than falling through to "Your Library".
         Episode,
+        // Profile pages (#161): a person's profile, and its two whole lists (Following, Followers). Both are
+        // installed by one lazy group (`Profile.InstallPages`).
+        User, ProfileList,
         // Renderable by PageFor, NOT in 0.2.9's s_exact — the defect the table closes.
         //
         // 0.2.9: `ContentHost.PageFor` renders `ConnectDiagnosticsPage.Route` but the key is absent from
@@ -182,6 +186,12 @@ public static partial class Shell
         // playing — the same shared-detail-surface treatment as `show:`, so it wears its own label + glyph too.
         new(RouteKind.Episode,             "episode:",             true,  Strings.Nav.Episode,          Icons.RadioTower,  false, true,  false),
 
+        // Profile pages (#161): `user:<uri>` is the profile (claims its own tint like every detail page; Arg = the
+        // display name); `people:<facet>:<uri>` is one of its two whole lists, Discography-shaped — the facet rides in
+        // the key, so Arg is the place discriminator and the tab/history title is the facet word (`Dest`).
+        new(RouteKind.User,                "user:",                true,  Strings.Person.List.Nav.Profile, Icons.Contact, false, true,  false),
+        new(RouteKind.ProfileList,         "people:",              true,  Strings.Person.List.Nav.Lists, Icons.Friends,    false, false, true, PlaceByArg: true),
+
         new(RouteKind.ConnectDiagnostics,  "connect-diagnostics",  false, Strings.Nav.ConnectDiagnostics, Icons.MusicNote, true,  false, false),
         // realtime-capture-implementation.md unit 6: same developer-only, non-material shape as the two rows above.
         new(RouteKind.CaptureDiagnostics,  "capture-diagnostics",  false, Strings.Nav.CaptureDiagnostics, Icons.Document, true,  false, false),
@@ -241,7 +251,7 @@ public static partial class Shell
     //
     // Navigation is UI-thread only (C1): a plain bool is the whole guard, no lock and no Interlocked — PageFor never
     // re-enters itself for the same kind mid-install.
-    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled;
+    static bool s_homeGroupInstalled, s_albumGroupInstalled, s_playlistGroupInstalled, s_profileGroupInstalled;
 
     static void InstallLazyGroupFor(RouteKind kind)
     {
@@ -267,6 +277,13 @@ public static partial class Shell
                 s_playlistGroupInstalled = true;
                 Playlist.InstallPages();
                 break;
+            // The profile pages (#161): Profile.InstallPages registers BOTH kinds (the profile + its Following/Followers
+            // lists), so a miss on either installs the one group.
+            case RouteKind.User or RouteKind.ProfileList:
+                if (s_profileGroupInstalled) return;
+                s_profileGroupInstalled = true;
+                Profile.InstallPages();
+                break;
         }
     }
 
@@ -281,7 +298,7 @@ public static partial class Shell
     public static void RestorePagesForTests(PageFactory?[] snapshot)
     {
         Array.Copy(snapshot, s_pages, s_pages.Length);
-        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = false;
+        s_homeGroupInstalled = s_albumGroupInstalled = s_playlistGroupInstalled = s_profileGroupInstalled = false;
     }
 
     /// <summary>Is there a page behind this route? Developer-gated kinds answer false unless
@@ -296,6 +313,8 @@ public static partial class Shell
         // the prefix" is a uri with TEXT, not a VALID uri: `browse:`, `home-section:`, `browse-section:` and `module:`
         // carry ids (a genre, a section, a module) that are not catalogue entity kinds, and 0.2.9's rule was only
         // `key.Length > prefix.Length`.
+        // A profile list is STRICT: a bad facet digit or a missing user is not a route (`people:9:…`, `people:0:`).
+        if (route.Kind == RouteKind.ProfileList) return ProfileListRoute.TryParse(route, out _, out _);
         return !row.IsPrefix || HasSubject(route.Subject) || (route.Kind == RouteKind.Discography && !route.Arg.IsEmpty);
     }
 
@@ -325,12 +344,15 @@ public static partial class Shell
             if (!string.IsNullOrWhiteSpace(arg))
                 return (route.Kind == RouteKind.ArtistConcerts ? Strings.Nav.ArtistConcerts(arg) : arg, row.Glyph);
         }
+        // A profile list's tab and history rows read its FACET ("Following"), not the generic "People" row title.
+        if (route.Kind == RouteKind.ProfileList && ProfileListRoute.TryParse(route, out var facet, out _))
+            return (Loc.Get(ProfileListRoute.FacetLabelKey(facet)), row.Glyph);
         return (Loc.Get(row.TitleLocKey), row.Glyph);
     }
 
     /// <summary>Kinds whose <c>Arg</c> is a DISPLAY NAME rather than a slot discriminator. <c>search</c> is in both
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
-    static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.WhatsNew
+    static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
         or RouteKind.SidebarCustomize or RouteKind.HomeCustomize or RouteKind.Home);   // Home's arg is a facet id
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
@@ -372,7 +394,9 @@ public static partial class Shell
             {
                 // `disco:<kindInt>:<uri>` — the FACET rides in Arg (0.2.9 has no `disco:` Dest arm, so no display
                 // name is lost by the choice), the artist uri in Subject.
-                RouteKind.Discography => new Route(RouteKind.Discography, DiscoSubject(suffix), Intern(suffix), tab),
+                RouteKind.Discography => new Route(RouteKind.Discography, FacetSubject(suffix), Intern(suffix), tab),
+                // `people:<facetDigit>:<user uri>` — the same shape: the facet rides in Arg, the user uri in Subject.
+                RouteKind.ProfileList => new Route(RouteKind.ProfileList, FacetSubject(suffix), Intern(suffix), tab),
                 // The concert family carries a BARE id, not a uri. Rebuild the uri so the page addresses a handle.
                 RouteKind.ArtistConcerts => new Route(RouteKind.ArtistConcerts, ConcertSubject("spotify:artist:", suffix), Intern(arg), tab),
                 RouteKind.Concert => new Route(RouteKind.Concert, ConcertSubject("spotify:concert:", suffix), Intern(arg), tab),
@@ -394,7 +418,7 @@ public static partial class Shell
         if (!row.IsPrefix) return row.Key;
         return route.Kind switch
         {
-            RouteKind.Discography => row.Key + Entities.Strings.Resolve(route.Arg),
+            RouteKind.Discography or RouteKind.ProfileList => row.Key + Entities.Strings.Resolve(route.Arg),
             RouteKind.ArtistConcerts or RouteKind.Concert => row.Key + BareIdOf(route.Subject),
             _ => row.Key + route.Subject.Text,
         };
@@ -405,7 +429,7 @@ public static partial class Shell
     public static string? ArgOf(in Route route)
     {
         if (route.Arg.IsEmpty) return null;
-        if (route.Kind == RouteKind.Discography) return null;   // the facet is in the key
+        if (route.Kind is RouteKind.Discography or RouteKind.ProfileList) return null;   // the facet is in the key
         string s = Entities.Strings.Resolve(route.Arg);
         return s.Length == 0 ? null : s;
     }
@@ -424,6 +448,7 @@ public static partial class Shell
             EntityKind.Show => RouteKind.Show,
             EntityKind.Concert => RouteKind.Concert,
             EntityKind.Episode => RouteKind.Episode,
+            EntityKind.User => RouteKind.User,
             _ => RouteKind.NotFound,
         };
         return kind == RouteKind.NotFound
@@ -434,7 +459,9 @@ public static partial class Shell
     /// <summary>The entity a route addresses, for the reverse direction (a pin id back to a uri).</summary>
     public static EntityUri UriOf(in Route route) => route.Subject;
 
-    static EntityUri DiscoSubject(ReadOnlySpan<char> suffix)
+    /// <summary>The uri after the first <c>':'</c> of a facet-keyed suffix (<c>1:spotify:artist:…</c>) — shared by
+    /// <c>disco:</c> and <c>people:</c>, which both ride a facet digit in the key.</summary>
+    static EntityUri FacetSubject(ReadOnlySpan<char> suffix)
     {
         int colon = suffix.IndexOf(':');
         return colon < 0 || colon + 1 >= suffix.Length ? default : EntityUri.Parse(suffix[(colon + 1)..]);
@@ -604,11 +631,11 @@ public static partial class Shell
         return default;
     }
 
-    /// <summary>The six route verbs whose <c>arg</c> composes into the key. Spelled out rather than derived from the
+    /// <summary>The route verbs whose <c>arg</c> composes into the key. Spelled out rather than derived from the
     /// prefix table: a deep link names the FAMILY (<c>album</c>), the table names the PREFIX (<c>album:</c>), and
     /// letting the gap close itself would make <c>home-section</c> deep-linkable as a bare word.</summary>
     static bool IsEntityVerb(string route)
-        => route is "album" or "pl" or "artist" or "show" or "prerelease" or "module" or "episode";
+        => route is "album" or "pl" or "artist" or "show" or "prerelease" or "module" or "episode" or "user";
 
     static bool TryParseVerb(ReadOnlySpan<char> raw, out string name, out string route, out string arg,
         out string ctx, out string link, out string query)
@@ -640,8 +667,9 @@ public static partial class Shell
     /// becomes a PLAY — which is what clicking a shared link to one means, and gating it on Track alone is why a
     /// shared track link fell through to "route is null ⇒ refuse" and did nothing at all. An episode is now an OPEN
     /// too (decision D-2, podcast plan §12): a shared episode link lands on the episode page, whose primary is one
-    /// click from playing, rather than starting playback the instant the link is followed. Everything else (users,
-    /// concerts, search links, <c>https://open.spotify.com/…</c> web links) is refused, not guessed at.</summary>
+    /// click from playing, rather than starting playback the instant the link is followed. A <c>spotify:user:&lt;id&gt;</c>
+    /// opens that person's profile page (#161). Everything else (concerts, search links,
+    /// <c>https://open.spotify.com/…</c> web links) is refused, not guessed at.</summary>
     static bool TryParseSpotifyUri(ReadOnlySpan<char> raw, out string name, out string route, out string arg, out string ctx)
     {
         name = route = arg = ctx = "";
@@ -674,6 +702,7 @@ public static partial class Shell
             EntityKind.Artist => "artist",
             EntityKind.Show => "show",
             EntityKind.Episode => "episode",
+            EntityKind.User => "user",
             _ => "",
         };
         if (route.Length == 0) return false;
@@ -991,7 +1020,8 @@ public static partial class Shell
         RouteKind.Module => Design.NavSurface.Module,
         RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show or RouteKind.Prerelease
             or RouteKind.Discography or RouteKind.Concert or RouteKind.ArtistConcerts
-            or RouteKind.HomeSection or RouteKind.BrowseSection => Design.NavSurface.Detail,
+            or RouteKind.HomeSection or RouteKind.BrowseSection
+            or RouteKind.User or RouteKind.ProfileList => Design.NavSurface.Detail,
         _ => Design.NavSurface.TopLevel,
     };
 
@@ -1796,7 +1826,7 @@ public static partial class Shell
             {
                 var r = entries[i].Route;
                 // Only a real DESTINATION earns a taskbar row: never `liked`, never a settings page, never not-found.
-                if (r.Kind is not (RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show)) continue;
+                if (r.Kind is not (RouteKind.Album or RouteKind.Playlist or RouteKind.Artist or RouteKind.Show or RouteKind.User)) continue;
                 string key = NameOf(r);
                 if (!seen.Add(key)) continue;
                 var (title, _) = Dest(r);
@@ -2119,10 +2149,11 @@ public static partial class Shell
         /// Episode arm (it falls to <see cref="Route.None"/>) precisely because choosing one never navigates.</summary>
         public static bool ChoosePlays(ItemKind kind) => kind is ItemKind.Track or ItemKind.Episode;
 
-        /// <summary>Where choosing a row navigates, or <see cref="Route.None"/> for a row that plays (or a profile, which
-        /// has no page in 0.3).</summary>
+        /// <summary>Where choosing a row navigates, or <see cref="Route.None"/> for a row that plays (or a profile row
+        /// whose uri is not a <c>spotify:user:</c> one — a profile with a user uri opens its page, #161).</summary>
         public static Route RouteFor(Item item) => item.Kind switch
         {
+            ItemKind.User when item.Uri.Kind == EntityKind.User => new Route(RouteKind.User, item.Uri, Intern(item.Title)),
             ItemKind.Artist => new Route(RouteKind.Artist, item.Uri, Intern(item.Title)),
             ItemKind.Album => new Route(RouteKind.Album, item.Uri, Intern(item.Title)),
             ItemKind.Playlist => new Route(RouteKind.Playlist, item.Uri, Intern(item.Title)),
@@ -2167,6 +2198,7 @@ public static partial class Shell
                     RouteKind.Playlist => ItemKind.Playlist,
                     RouteKind.Artist => ItemKind.Artist,
                     RouteKind.Show => ItemKind.Podcast,
+                    RouteKind.User => ItemKind.User,
                     _ => null,
                 };
                 if (kind is not { } k || !r.Subject.IsValid) continue;

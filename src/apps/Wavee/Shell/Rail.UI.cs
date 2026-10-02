@@ -507,7 +507,7 @@ public static partial class Rail
                 var merch = track.Album.MerchSlots.Length > 0 ? track.Album.MerchSlots : artist.MerchSlots;
                 if (merch.Length > 0) sections.Add(MerchSection(merch));
             }
-            if (UpNextRows(out Element[] next)) sections.Add(Section(Loc.Get(Strings.Player.NextUp), new BoxEl { Direction = 1, Gap = 2f, Children = next }));
+            if (HasNextUp()) sections.Add(Section(Loc.Get(Strings.Player.NextUp), NextUpList()));
 
             return ScrollView(new BoxEl
             {
@@ -622,6 +622,12 @@ public static partial class Rail
                 Children = [PersonPicture.Create("", 56f, displayName: name, imageSourcePath: Controls.ArtUrl(artist.ImageId))],
             };
 
+        // The name carries the trim tooltip (a long name is cut in a 200-DIP rail). The tip sits in a COLUMN slot the row
+        // sizes — a ToolTip wrapper is Shrink 0 and may never be a shrinking row child.
+        var nameStyle = new TextEl(name)
+            { Size = 18f, LineHeight = 24f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        Element nameTip = Controls.TrimTip(
+            new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [nameStyle] }, name, nameStyle);
         var body = new List<Element>(4)
         {
             new BoxEl
@@ -629,7 +635,7 @@ public static partial class Rail
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
                 Children =
                 [
-                    new TextEl(name) { Size = 18f, LineHeight = 24f, Weight = 600, Color = Tok.TextPrimary, Grow = 1f, Basis = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = [nameTip] },
                     artist.IsVerified ? Icon(Icons.Check, 12f, Tok.AccentTextPrimary) : new BoxEl(),
                 ],
             },
@@ -639,18 +645,32 @@ public static partial class Rail
         if (!string.IsNullOrWhiteSpace(bio))
             body.Add(new TextEl(bio) { Size = 14f, LineHeight = 20f, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 5, Trim = TextTrim.CharacterEllipsis });
         string artistUri = artist.Uri.Text;
-        body.Add(new BoxEl
-        {
-            Direction = 0,
-            Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri }],
-        });
 
+        // A (B) surface — a hero band OVER text is a card, not a row, so it stays its own tree and takes the shared RULES:
+        // the link (the band and the text) is the card's ONE click owner and gets the hand, the Button role and the tab
+        // stop from `SurfaceRules`; the Follow toggle is the FOOTER, a sibling of that link and never inside it (a button
+        // nested in a button role is two tab stops for one gesture, and its press would otherwise start the link's).
+        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
         return Section(Loc.Get(Strings.Detail.AboutTheArtist), new BoxEl
         {
             Direction = 1, Corners = Radii.CardAll, Fill = Tok.FillCardSecondary, ClipToBounds = true,
-            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, HoverFill = Tok.FillCardDefault,
-            Cursor = CursorId.Hand, OnClick = () => GoTo(artist.Uri, name),
-            Children = [band, new BoxEl { Direction = 1, Gap = Spacing.M, Padding = Edges4.All(Spacing.M), Children = body.ToArray() }],
+            BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, Corners = new CornerRadius4(Radii.Card, Radii.Card, 0f, 0f), HoverFill = Tok.FillCardDefault,
+                    Role = mode.Role, Focusable = mode.OwnsFocus, Cursor = SurfaceRules.Cursor(in mode),
+                    FocusVisualMargin = Design.FocusInsetBordered,
+                    OnClick = () => GoTo(artist.Uri, name),
+                    Children = [band, new BoxEl { Direction = 1, Gap = Spacing.M, Padding = Edges4.All(Spacing.M), Children = body.ToArray() }],
+                },
+                new BoxEl
+                {
+                    Direction = 0, Padding = new Edges4(Spacing.M, 0f, Spacing.M, Spacing.M),
+                    Children = [Embed.Comp(() => new Controls.FollowToggle { Uri = artistUri, Name = name }) with { Key = "follow:" + artistUri }],
+                },
+            ],
         });
     }
 
@@ -750,47 +770,79 @@ public static partial class Rail
 
     // ── "Next up" rows (the NPV section and the Video body share them) ───────────────────────────────────────────────
 
-    /// <summary>The user queue + the context continuation, at most five, as the shared rail art cards. False when there
-    /// are none. The caller must already subscribe <c>Edges.Queue.Changed</c>.</summary>
-    static bool UpNextRows(out Element[] rows)
+    /// <summary>The rows the "Next up" list shows: at most five of the queue's upcoming rows, the TRACK ones (an episode is
+    /// not a rail row). The caller must already subscribe <c>Edges.Queue.Changed</c>.</summary>
+    const int NextUpMax = 5;
+
+    /// <summary>A "Next up" row's floor: 52 — the <c>Controls.Surface</c> row shape's 8-DIP padding lifts the 40-art row to
+    /// 56, and the hidden-artwork row (the 32 play glyph) stays on this floor.</summary>
+    const float NextUpRowH = 52f;
+
+    static int NextUpWindow(Span<int> into)
     {
-        if (!Queue.UpNext(out int start, out int length)) { rows = []; return false; }
-        bool art = !Prefs.Appearance.TrackArtworkHidden();
-        int n = Math.Min(5, length), count = 0;
-        var buf = new Element[n];
-        var items = Queue.Rows;
+        if (!Queue.UpNext(out int start, out int length)) return 0;
+        int n = Math.Min(into.Length, length), count = 0;
         for (int i = start; i < start + n; i++)
         {
             var r = Queue.RefAt(i);
             if (r.Kind != EntityKind.Track || r.IsNone) continue;
-            buf[count++] = UpNextCard(new Track(r.Slot), i, items[i].ItemId, art);
+            into[count++] = i;
         }
-        rows = count == n ? buf : buf.AsSpan(0, count).ToArray();
-        return count > 0;
+        return count;
     }
 
-    /// <summary>One "Next up" row: THE shared art-forward cell (<c>Track.ArtCard</c>, Rail kind — G-214; 0.2.9's NPV and
-    /// video panels used <c>TrackRow.ArtCard</c> with these same options) in an r4 wrapper with the subtle hover plate. The
-    /// wrapper's key carries the queue item and the artwork flag, so a settings flip REMOUNTS rather than re-binds. Play
-    /// jumps to the row inside the live queue, resolving its index when clicked: the card keeps its options across a
-    /// queue shift (a props record compares no delegate), so a captured index would go stale.</summary>
-    static Element UpNextCard(Track t, int queueIndex, ulong itemId, bool art)
+    /// <summary>Is there any "Next up" row? The parents ask it to decide whether the section mounts at all.</summary>
+    static bool HasNextUp()
     {
-        Action play = () =>
+        Span<int> window = stackalloc int[NextUpMax];
+        return NextUpWindow(window) > 0;
+    }
+
+    /// <summary>The "Next up" rows, as ONE component: it owns the subscriptions the rows read (the queue edge, the track
+    /// table — a title or an artist line landing late — and the artwork preference), so a table edge re-renders these five
+    /// rows and not the panel that holds them.</summary>
+    static Element NextUpList() => Embed.Comp(static () => new NextUpHost());
+
+    sealed class NextUpHost : Component
+    {
+        public override Element Render()
         {
-            int index = itemId != 0 ? Queue.IndexOfItem(itemId) : queueIndex;
-            if (index < 0 || index >= Queue.Count) return;
-            Playback.PlayNow(Queue.RefAt(index), Playback.ContextUri.Peek(), Queue.CursorOf(index));
-        };
-        return new BoxEl
+            _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table reads below
+            _ = Entities.Current.Edges.Queue.Changed.Value;
+            bool art = !Prefs.Appearance.TrackArtworkHidden();
+            Span<int> window = stackalloc int[NextUpMax];
+            int n = NextUpWindow(window);
+            var rows = new Element[n];
+            var items = Queue.Rows;
+            for (int k = 0; k < n; k++)
+            {
+                int i = window[k];
+                rows[k] = NextUpRow(new Track(Queue.RefAt(i).Slot), i, items[i].ItemId, art);
+            }
+            return new BoxEl { Direction = 1, Gap = 2f, Children = rows };
+        }
+    }
+
+    /// <summary>One "Next up" row on the shared media surface (<c>Shape.Row</c> over <c>Track.RowData</c>): the row plate,
+    /// the hand, the play FAB over the art, a track drag and the right-click menu. The row CLICK plays that queue item —
+    /// the same <c>play</c> the FAB runs (<see cref="Queue.PlayItem"/>, the queue panel's own skip), run through
+    /// <c>Track.Invoke</c> so the deck row toggles pause instead. The item is resolved inside the LIVE queue when clicked:
+    /// the surface keeps its data across a queue shift (a data-equal re-push carries no new delegate into the render), so
+    /// a captured index would go stale. The key carries
+    /// the queue item and the artwork flag, so a settings flip REMOUNTS rather than re-binds. No "…": the rail is 200-500
+    /// DIP wide and a row's "…" would reserve a 44-DIP slot out of its text; the menu stays on right-click, as before.</summary>
+    static Element NextUpRow(Track t, int queueIndex, ulong itemId, bool art)
+    {
+        // The queue panel's own skip (Queue.PlayItem → SkipToRow): resolves the item in the LIVE queue at click time, trims
+        // the rows skipped over and plays — so a rail click and a queue-panel click are the same act.
+        Action play = () => Queue.PlayItem(itemId, queueIndex, new EntityRef(EntityKind.Track, t.Slot));
+        Action click = () => Track.Invoke(t, play);
+        var data = Track.RowData(t, new Track.RowDataOptions(OnClick: click, OnPlay: play, ShowArtwork: art,
+                                                             ShowExplicit: false, ShowVideo: true, ShowMenu: false));
+        var shape = Shape.Row(TrackRowRules.ArtEdge(Design.Size.ArtThumb, art)) with { MinHeight = NextUpRowH };
+        return Controls.Surface(data, shape) with
         {
             Key = (itemId != 0 ? "vrp:i" + itemId : "vrp:e" + queueIndex) + (art ? ":art" : ":noart"),
-            Direction = 1, Corners = Radii.ControlAll, HoverFill = Tok.FillSubtleSecondary,
-            Children =
-            [
-                Track.ArtCard(t, new Track.ArtCardOptions(Kind: Track.ArtCardKind.Rail, Art: Design.Size.ArtThumb,
-                    ShowDuration: false, ShowExplicit: false, ShowVideo: true, OnPlay: play)),
-            ],
         };
     }
 
@@ -816,8 +868,8 @@ public static partial class Rail
             }
             content.Add(new BoxEl { Height = 1f, Shrink = 0f, Fill = Tok.StrokeCardDefault });
             content.Add(Design.Type.Eyebrow(Loc.Get(Strings.Player.VideoUpNext)) with { Color = Tok.TextTertiary });
-            content.Add(UpNextRows(out Element[] rows)
-                ? new BoxEl { Direction = 1, Gap = 2f, Children = rows }
+            content.Add(HasNextUp()
+                ? NextUpList()
                 : Controls.Vacancy(Controls.VacancyVoice.Empty, Controls.VacancyScale.Compact, title: Loc.Get(Strings.Player.QueueEmpty), subtitle: ""));
             return ScrollView(new BoxEl
             {
@@ -955,6 +1007,25 @@ public static partial class Rail
                     },
                 ],
             };
+
+        // The avatar and the name open the friend's profile (#161): nested click owners inside the row's own context
+        // click (the nearest owner wins), each its own affordance so a press on them never arms a row drag.
+        var profile = ProfileRoute.For(user);
+        if (!profile.IsNone)
+        {
+            Action openProfile = () => Shell.GoTo(profile);
+            picture = new BoxEl
+            {
+                Shrink = 0f, Role = AutomationRole.Button, Cursor = CursorId.Hand, BlocksDragArm = true,
+                OnClick = openProfile, Children = [picture],
+            };
+            text[0] = new BoxEl
+            {
+                Direction = 0, MinWidth = 0f, Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
+                BlocksDragArm = true, OnClick = openProfile,
+                Children = [((TextEl)text[0]) with { HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster }],
+            };
+        }
 
         return new BoxEl
         {

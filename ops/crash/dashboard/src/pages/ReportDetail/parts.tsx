@@ -39,12 +39,12 @@ import {
   type SelectTabEvent,
 } from "@fluentui/react-components";
 import { ArrowDownload24Regular, Copy24Regular, Delete24Regular, TextWrap24Regular } from "@fluentui/react-icons";
-import { useQuery } from "@tanstack/react-query";
 import { forwardRef, useMemo, useState } from "react";
+import { useReportPartText } from "../../api/hooks";
 import { isMockEnabled } from "../../api/mock";
-import type { AppReport, AppThisInstall } from "../../api/types";
+import type { AppReport, AppThisInstall, ReportPart } from "../../api/types";
 import { kindBadgeColor, kindLabel } from "../../lib/colors";
-import { formatBytes, formatCount } from "../../lib/format";
+import { formatBytes, formatCount, nativeFaultText } from "../../lib/format";
 import { ErrorBar } from "../../scene/ErrorBar";
 import { Panel } from "../../scene/Panel";
 import { useAppToast } from "../../scene/toast";
@@ -84,59 +84,6 @@ const useStyles = makeStyles({
     gap: tokens.spacingVerticalXS,
   },
 });
-
-// ── The API gap this page works around ──────────────────────────────────────────────────────────────
-// `AppReportDetail` (src/api/types.ts) is only `{ report, thisInstall }` — it carries no report-text/
-// log-tail body. The Worker exposes those as plain-text parts at `GET /v1/reports/:id/:part` (README's
-// route table: `summary|report|tail|dump`), so in real mode this hook fetches that endpoint directly
-// with the platform `fetch` (not `api/client.ts`'s `fetchJson`, which assumes JSON) — a relative,
-// same-origin path: the Worker serves this dashboard on its own hostname, and the browser sends the
-// Cloudflare Access cookie by default. In mock mode there is no server to hit, so it renders a short
-// deterministic transcript built from the same `AppReport` fields the rest of this page already shows —
-// never inventing data not present on the type.
-
-export type LogPart = "report" | "tail";
-
-function mockPartText(part: LogPart, report: AppReport): string {
-  if (part === "report") {
-    const lines = [
-      `commit=${report.commitSha}`,
-      `quad=${report.quad}`,
-      `arch=${report.arch}`,
-      `kind=${report.kind}`,
-      `module=Wavee.exe base=0x140000000 size=0x2400000`,
-      `exception=${report.exceptionType || "(none)"}`,
-      report.exceptionMessage ? `message=${report.exceptionMessage}` : null,
-      `exitCode=0x${report.exitCode.toString(16)}`,
-      "",
-      "Frames (RVA)",
-      ...(report.frames.length > 0
-        ? report.frames.map(
-            (f) => `   at Wavee!<BaseAddress>+0x${f.rva.toString(16)}${f.name ? `  (${f.name}+0x${f.offset.toString(16)})` : ""}`,
-          )
-        : ["   (no frames recorded)"]),
-    ].filter((l): l is string => l !== null);
-    return lines.join("\n");
-  }
-  // "tail": a short, fully deterministic mock log — no wall-clock timestamps, so it's stable in tests/shots.
-  return Array.from(
-    { length: 24 },
-    (_, i) => `[t+${String(i).padStart(3, "0")}s] route=${report.lastRoute} locale=${report.locale} — mock log line ${i + 1}`,
-  ).join("\n");
-}
-
-export function useReportPartText(id: string | undefined, part: LogPart, report: AppReport | undefined) {
-  return useQuery({
-    queryKey: ["reportPart", id, part],
-    queryFn: async () => {
-      if (isMockEnabled()) return report ? mockPartText(part, report) : "";
-      const response = await fetch(`/v1/reports/${encodeURIComponent(id!)}/${part}`);
-      if (!response.ok) throw new Error(`Could not load this log (HTTP ${response.status})`);
-      return response.text();
-    },
-    enabled: !!id,
-  });
-}
 
 // ── The cdb/WinDbg one-liner (releasing-wavee.md §5b) ───────────────────────────────────────────────
 
@@ -196,7 +143,8 @@ export function DeleteReportButton({ onConfirm }: { onConfirm: () => void }) {
           <DialogBody>
             <DialogTitle>Delete this report?</DialogTitle>
             <DialogContent>
-              This removes the report and its stored log/dump parts. This can&apos;t be undone.
+              This removes the report and its stored report, log and dump files, and recounts its issue from
+              the reports that remain (an issue left with none is removed). This can&apos;t be undone.
             </DialogContent>
             <DialogActions>
               <Button appearance="secondary" onClick={() => setOpen(false)}>
@@ -266,7 +214,9 @@ function FactCells({ fact, labelClassName }: { fact: Fact | undefined; labelClas
 
 export function FactsPanel({ report }: { report: AppReport }) {
   const styles = useFactsStyles();
+  const nativeFault = nativeFaultText(report);
   const facts: Fact[] = [
+    ...(nativeFault ? [{ label: "Native fault", value: nativeFault, mono: true }] : []),
     { label: "Version", value: report.semver },
     { label: "Quad", value: report.quad },
     { label: "Commit", value: report.commitSha, mono: true },
@@ -321,9 +271,9 @@ function formatUptime(ms: number): string {
 
 // ── Log panel (the one custom surface: a monospace, scrollable body) ────────────────────────────────
 
-export function LogTabs({ tab, onTabChange }: { tab: LogPart; onTabChange: (tab: LogPart) => void }) {
+export function LogTabs({ tab, onTabChange }: { tab: ReportPart; onTabChange: (tab: ReportPart) => void }) {
   function onTabSelect(_e: SelectTabEvent, data: SelectTabData) {
-    onTabChange(data.value as LogPart);
+    onTabChange(data.value as ReportPart);
   }
   return (
     <div style={{ gridColumn: "span 8" }}>
@@ -335,13 +285,23 @@ export function LogTabs({ tab, onTabChange }: { tab: LogPart; onTabChange: (tab:
   );
 }
 
-export function LogPanel({ id, report, tab }: { id: string; report: AppReport; tab: LogPart }) {
+export function LogPanel({ id, report, tab }: { id: string; report: AppReport; tab: ReportPart }) {
+  return (
+    <Panel title="Log" span={8}>
+      <LogViewer id={id} report={report} part={tab} />
+    </Panel>
+  );
+}
+
+/** One report part's text with find / copy / wrap — the body of Report detail's Log panel, and of Issue
+ *  detail's Log tail tab (the newest report's tail). */
+export function LogViewer({ id, report, part }: { id: string; report: AppReport; part: ReportPart }) {
   const styles = useStyles();
   const toast = useAppToast();
   const [find, setFind] = useState("");
   const [wrap, setWrap] = useState(false);
 
-  const textQuery = useReportPartText(id, tab, report);
+  const textQuery = useReportPartText(id, part, report);
   const lines = useMemo(() => (textQuery.data ?? "").split("\n"), [textQuery.data]);
   const needle = find.trim().toLowerCase();
   const visibleLines = useMemo(() => (needle ? lines.filter((l) => l.toLowerCase().includes(needle)) : lines), [lines, needle]);
@@ -369,7 +329,7 @@ export function LogPanel({ id, report, tab }: { id: string; report: AppReport; t
   }
 
   return (
-    <Panel title="Log" span={8}>
+    <>
       <Toolbar
         aria-label="Log tools"
         size="small"
@@ -377,36 +337,36 @@ export function LogPanel({ id, report, tab }: { id: string; report: AppReport; t
         checkedValues={{ wrap: wrap ? ["wrap"] : [] }}
         onCheckedValueChange={(_e, data) => setWrap(data.checkedItems.includes("wrap"))}
       >
-          <ToolbarGroup role="presentation">
-            <SearchBox
-              aria-label="Find in text"
-              placeholder="Find in text"
-              value={find}
-              onChange={(_e, data) => setFind(data.value)}
-              style={{ minWidth: "200px" }}
-            />
-          </ToolbarGroup>
-          <ToolbarGroup role="presentation">
-            <Tooltip content="Copy" relationship="label">
-              <ToolbarButton icon={<Copy24Regular />} onClick={() => void copyAll()} aria-label="Copy" />
-            </Tooltip>
-            <ToolbarToggleButton name="wrap" value="wrap" icon={<TextWrap24Regular />} aria-label="Wrap">
-              Wrap
-            </ToolbarToggleButton>
-          </ToolbarGroup>
-        </Toolbar>
-        {textQuery.isLoading ? (
-          <Skeleton>
-            <SkeletonItem shape="rectangle" style={{ width: "100%", height: "220px" }} />
-          </Skeleton>
-        ) : textQuery.error ? (
-          <ErrorBar error={textQuery.error} onRetry={() => void textQuery.refetch()} title="Couldn't load this log" />
-        ) : (
-          <pre className={mergeClasses(styles.logBody, wrap ? styles.logBodyWrap : styles.logBodyNoWrap)}>
-            {visibleLines.map((line, i) => renderLine(line, i))}
-          </pre>
-        )}
-    </Panel>
+        <ToolbarGroup role="presentation">
+          <SearchBox
+            aria-label="Find in text"
+            placeholder="Find in text"
+            value={find}
+            onChange={(_e, data) => setFind(data.value)}
+            style={{ minWidth: "200px" }}
+          />
+        </ToolbarGroup>
+        <ToolbarGroup role="presentation">
+          <Tooltip content="Copy" relationship="label">
+            <ToolbarButton icon={<Copy24Regular />} onClick={() => void copyAll()} aria-label="Copy" />
+          </Tooltip>
+          <ToolbarToggleButton name="wrap" value="wrap" icon={<TextWrap24Regular />} aria-label="Wrap">
+            Wrap
+          </ToolbarToggleButton>
+        </ToolbarGroup>
+      </Toolbar>
+      {textQuery.isLoading ? (
+        <Skeleton>
+          <SkeletonItem shape="rectangle" style={{ width: "100%", height: "220px" }} />
+        </Skeleton>
+      ) : textQuery.error ? (
+        <ErrorBar error={textQuery.error} onRetry={() => void textQuery.refetch()} title="Couldn't load this log" />
+      ) : (
+        <pre className={mergeClasses(styles.logBody, wrap ? styles.logBodyWrap : styles.logBodyNoWrap)}>
+          {visibleLines.map((line, i) => renderLine(line, i))}
+        </pre>
+      )}
+    </>
   );
 }
 

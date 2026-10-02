@@ -2,70 +2,9 @@ import { describe, expect, it, afterAll, beforeAll, beforeEach, vi } from "vites
 import worker from "../src/index.js";
 import { D1Store } from "../src/store.js";
 import { clearSymmapCacheForTests } from "../src/symbolicate.js";
-import { makeFakeD1, makeFakeR2, makeFakeRate } from "./fixtures.js";
-import { AUD, TEAM, accessHeader, installAccessFetchStub } from "./access.js";
-import type { Env, Summary } from "../src/types.js";
-
-const BASE = "https://crash.cproducts.dev";
-
-function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
-    DB: makeFakeD1(),
-    BUCKET: makeFakeR2(),
-    RATE: makeFakeRate(true),
-    INGEST_KEY: "test-ingest-key",
-    ACCESS_TEAM_DOMAIN: TEAM,
-    ACCESS_AUD: AUD,
-    ...overrides,
-  };
-}
-
-function makeSummary(overrides: Partial<Summary> = {}): Summary {
-  return {
-    reportId: crypto.randomUUID(),
-    installId: crypto.randomUUID(),
-    kind: "Managed",
-    stampUtc: "2026-09-24T14:30:12.118Z",
-    version: "0.3.0.41",
-    quad: "0.3.0.41",
-    commit: "7e209e37",
-    channel: "stable",
-    arch: "arm64",
-    osBuild: "26100",
-    gpu: "NVIDIA GeForce RTX 4070",
-    gpuTier: "Strong",
-    softwareAdapter: false,
-    packaged: true,
-    locale: "en-US",
-    sessionId: crypto.randomUUID(),
-    uptimeMs: 12_345,
-    beforeFirstFrame: false,
-    lastRoute: "artist",
-    exceptionType: "System.NullReferenceException",
-    exceptionMessage: "boom",
-    rvas: [0x1000],
-    moduleBase: 0x140000000,
-    moduleSize: 0x2800000,
-    debugId: "7E2C1234-AB12-CD34-EF56-1234567890AB-1",
-    exitCode: 0,
-    hasDump: false,
-    dumpBytes: 0,
-    ...overrides,
-  };
-}
-
-async function ingest(env: Env, summary: Summary): Promise<Response> {
-  const form = new FormData();
-  form.set("summary", JSON.stringify(summary));
-  form.set("report", "System.NullReferenceException: boom\n");
-  form.set("tail", "ts=2026-09-24T14:30:00Z level=Info cat=app event=boot\n");
-  const req = new Request(`${BASE}/v1/report`, {
-    method: "POST",
-    headers: { "X-Wavee-Ingest": env.INGEST_KEY },
-    body: form,
-  });
-  return worker.fetch(req, env);
-}
+import { makeFakeRate } from "./fixtures.js";
+import { accessHeader, installAccessFetchStub } from "./access.js";
+import { BASE, ingest, makeEnv, makeSummary } from "./helpers.js";
 
 function deleteInstallRequest(installId: string, headers: Record<string, string>): Request {
   return new Request(`${BASE}/v1/installs/${installId}`, { method: "DELETE", headers });
@@ -171,6 +110,29 @@ describe("DELETE /v1/installs/:installId — right to erasure (plan §J)", () =>
     expect(after).not.toBeNull();
     expect(after!.count).toBe(1);
     expect(after!.installs).toBe(1);
+  });
+
+  it("recompute keeps the issue's status and resolve fields, and takes the remaining report's frames", async () => {
+    const env = makeEnv();
+    const installA = crypto.randomUUID();
+    const installB = crypto.randomUUID();
+    const s1 = makeSummary({ installId: installA, version: "0.3.0", rvas: [0x4242] });
+    const s2 = makeSummary({ installId: installB, version: "0.3.1", rvas: [0x4242] });
+    await ingest(env, s2);
+    await ingest(env, s1);
+    const store = new D1Store(env.DB);
+    const fingerprint = (await store.getReport(s1.reportId))!.fingerprint;
+    expect(await store.patchIssue(fingerprint, { status: "resolved" }, new Date().toISOString())).toBe(true);
+
+    const res = await worker.fetch(deleteInstallRequest(installA, { "X-Wavee-Ingest": env.INGEST_KEY }), env);
+    expect(res.status).toBe(200);
+
+    const after = await store.getIssue(fingerprint);
+    expect(after!.status).toBe("resolved");
+    expect(after!.resolved_version).toBe("0.3.1");
+    expect(after!.resolved_at).not.toBeNull();
+    expect(JSON.parse(after!.versions_json)).toEqual({ "0.3.1": 1 });
+    expect(after!.last_frames_json).toBe((await store.getReport(s2.reportId))!.frames_json);
   });
 
   it("deletes the issue outright once its count reaches 0", async () => {

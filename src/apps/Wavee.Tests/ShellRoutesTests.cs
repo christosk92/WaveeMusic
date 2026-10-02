@@ -36,8 +36,9 @@ public class ShellRouteTableTests
         for (int i = 0; i < Shell.RouteKindCount; i++)
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
         // 16 exact (15 + LibraryAudiobooks, A2 plan §3.6) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
-        // + ConnectDiagnostics + CaptureDiagnostics (realtime-capture-implementation.md unit 6) + NotFound
-        Assert.Equal(33, Shell.RouteKindCount);
+        // + User + ProfileList (profile pages, #161) + ConnectDiagnostics + CaptureDiagnostics
+        // (realtime-capture-implementation.md unit 6) + NotFound
+        Assert.Equal(35, Shell.RouteKindCount);
     }
 
     [Fact]
@@ -106,6 +107,7 @@ public class ShellRouteTableTests
         {
             Shell.RouteKind.Search, Shell.RouteKind.WhatsNew, Shell.RouteKind.SidebarCustomize,
             Shell.RouteKind.HomeCustomize, Shell.RouteKind.Discography, Shell.RouteKind.Module,
+            Shell.RouteKind.ProfileList,
         };
         for (int i = 0; i < Shell.RouteKindCount; i++)
         {
@@ -427,7 +429,6 @@ public class DeepLinkTests
     {
         Assert.Equal(Shell.DeepLinkKind.None, Shell.DeepLink("spotify:user:jane:playlist:abc").Kind);
         Assert.Equal(Shell.DeepLinkKind.None, Shell.DeepLink("https://open.spotify.com/album/abc").Kind);
-        Assert.Equal(Shell.DeepLinkKind.None, Shell.DeepLink("spotify:user:jane").Kind);
     }
 
     [Fact]

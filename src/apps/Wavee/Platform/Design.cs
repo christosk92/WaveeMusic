@@ -98,7 +98,7 @@ public static partial class Design
         public const float ShelfCardMin = 148f, ShelfCardMax = 188f, GridGap = 12f;
 
         /// <summary>The WIDE tile's card-width band and its cover ratio — a 16:9 header image over the same card plate
-        /// (<c>Controls.ShelfHeight(w, WideTileAspect, captionLines: 1, metaLine: true)</c> is its extent). One name, for the same reason
+        /// (<c>SurfaceGeometry.ShelfHeight(w, WideTileAspect, captionLines: 1, metaLine: true)</c> is its extent). One name, for the same reason
         /// as <see cref="ShelfCardMin"/>.</summary>
         public const float WideTileMin = 330f, WideTileMax = 440f, WideTileAspect = 16f / 9f;
 

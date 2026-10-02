@@ -18,15 +18,19 @@ run_worker_first = ["/v1/*"]
 
 # ── D1 ──────────────────────────────────────────────────────────────────────
 # Create once: `wrangler d1 create wavee-crash`, then paste the printed
-# database_id below. Apply schema.sql with `wrangler d1 execute` (see README).
+# database_id below. schema.sql is the frozen baseline (applied once); every later
+# change is a numbered file in migrations/, applied with
+# `wrangler d1 migrations apply wavee-crash --remote` (see README).
 [[d1_databases]]
 binding = "DB"
 database_name = "wavee-crash"
 database_id = "1a00d669-661e-4fb2-b266-1db1ae1c2e32"
+migrations_dir = "migrations"
 
 # ── R2 ──────────────────────────────────────────────────────────────────────
-# Create once: `wrangler r2 bucket create wavee-crash`. Lifecycle rule (90-day
-# expiry on reports/, never on symbols/) is configured separately — see README.
+# Create once: `wrangler r2 bucket create wavee-crash`. The daily purge ([triggers]
+# below) deletes report objects with their rows; the 90-day lifecycle rule on
+# reports/ (never symbols/) stays as a backstop — configured separately, see README.
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "wavee-crash"
@@ -40,10 +44,18 @@ name = "RATE"
 namespace_id = "1001"
 simple = { limit = 30, period = 60 }
 
+# ── Cron ─────────────────────────────────────────────────────────────────────
+# Daily retention purge (src/retention.ts via `scheduled()`): reports rows + their R2 objects older than 90 days.
+# Issues keep their lifetime stats. 03:17 UTC, off the hour.
+[triggers]
+crons = ["17 3 * * *"]
+
 # ── Vars ──────────────────────────────────────────────────────────────────
 # INGEST_KEY is a secret only (`wrangler secret put INGEST_KEY`), never a [vars] entry: a var and a secret share one
 # binding namespace, so a committed placeholder here could become the live ingest key on deploy. `wrangler dev`
 # reads it from `.dev.vars` (gitignored). Unset → every ingest/erase call is 401 (fails closed).
+# DISCORD_WEBHOOK_URL is a secret only, too (`wrangler secret put DISCORD_WEBHOOK_URL`): the crash alerts channel's
+# webhook. Unset → alerts are a no-op.
 [vars]
 # Cloudflare Access (README step 6). Public values, not secrets. Placeholders fail closed: every Access-gated route
 # answers 401 until both are real.

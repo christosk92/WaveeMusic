@@ -398,7 +398,6 @@ public static partial class Sidebar
 
         public static float ArtSize(SidebarSectionSpec section) => SidebarRowGeometry.ArtFor(section.Opts.Density);
         public static float CardHeight(SidebarSectionSpec section) => SidebarRowGeometry.CardHeightFor(section.Opts.Density);
-        public static float CardCover(SidebarSectionSpec section) => CardHeight(section) - 16f;
     }
 
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════

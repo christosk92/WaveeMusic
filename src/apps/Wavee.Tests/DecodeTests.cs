@@ -1596,9 +1596,19 @@ public class DecodeTests
             io.Flush();
             o.WriteTag(3, WireFormat.WireType.LengthDelimited); o.WriteBytes(ByteString.CopyFrom(image.ToArray()));
         }
-        o.WriteTag(11, WireFormat.WireType.LengthDelimited); o.WriteBytes(Wrapped(1, "ignored"));
+        o.WriteTag(11, WireFormat.WireType.LengthDelimited); o.WriteBytes(WrappedInt(1, 0x509BF5));   // the colour (research §4)
         o.Flush();
         return stream.ToArray();
+
+        static ByteString WrappedInt(int field, int value)
+        {
+            using var inner = new MemoryStream();
+            var w = new CodedOutputStream(inner);
+            w.WriteTag(field, WireFormat.WireType.Varint);
+            w.WriteInt32(value);
+            w.Flush();
+            return ByteString.CopyFrom(inner.ToArray());
+        }
 
         static ByteString Wrapped(int field, string value)
         {
@@ -1612,7 +1622,7 @@ public class DecodeTests
     }
 
     [Fact]
-    public void A_user_profile_is_protobuf_the_largest_avatar_wins_and_the_row_is_the_one_that_asked()
+    public void A_user_profile_is_protobuf_the_largest_avatar_wins_the_row_is_the_one_that_asked_and_its_colour_rides_field_eleven()
     {
         TestScope.Fresh();
         var body = ProfileBody("Christos", "Christos K",
@@ -1626,27 +1636,7 @@ public class DecodeTests
         Assert.True(user.Knows(UserFields.Identity));
         Assert.Equal("Christos K", Entities.Strings.Resolve(user.NameId));
         Assert.Equal("https://i.scdn.co/image/large", Entities.Strings.Resolve(user.ImageId));
-    }
-
-    [Fact]
-    public void A_profile_answer_in_json_reads_both_spellings_and_one_with_neither_is_still_an_answer()
-    {
-        TestScope.Fresh();
-        var s = Staging.Rent();
-        Spotify.Decode.Profile("""{"username":"x","display_name":"Web Name","images":[{"url":"https://i/web.jpg"}]}"""u8,
-                               "spotify:user:web"u8, s);
-        Spotify.Decode.Profile("""{"username":"y","name":"Spclient Name","image_url":"https://i/sp.jpg"}"""u8,
-                               "spotify:user:spclient"u8, s);
-        Spotify.Decode.UserProfile(" {\"name\":\"sniffed\"}"u8, "spotify:user:sniffed"u8, s);
-        Spotify.Decode.Profile("{}"u8, "spotify:user:private"u8, s);
-        TestScope.CommitAndPublish(s);
-
-        static User U(string uri) => Entities.User(EntityUri.Parse(uri.AsSpan()));
-        Assert.Equal("Web Name", Entities.Strings.Resolve(U("spotify:user:web").NameId));
-        Assert.Equal("https://i/web.jpg", Entities.Strings.Resolve(U("spotify:user:web").ImageId));
-        Assert.Equal("Spclient Name", Entities.Strings.Resolve(U("spotify:user:spclient").NameId));
-        Assert.Equal("sniffed", Entities.Strings.Resolve(U("spotify:user:sniffed").NameId));   // 0x20 then '{' is JSON
-        Assert.True(U("spotify:user:private").Knows(UserFields.Identity));                     // learned: no public name
+        Assert.Equal(0xFF509BF5u, user.Color);
     }
 
     // ── the rootlist marker stream (G-046, G-047) ───────────────────────────────────────────────────────────────────

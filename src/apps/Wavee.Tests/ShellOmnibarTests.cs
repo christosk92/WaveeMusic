@@ -165,7 +165,12 @@ public class OmnibarRowRulesTests
         Assert.Equal(Shell.RouteKind.Show, Shell.Omnibar.RouteFor(new(Shell.Omnibar.ItemKind.Podcast, show, "A show")).Kind);
         Assert.Equal(Shell.RouteKind.Show, Shell.Omnibar.RouteFor(new(Shell.Omnibar.ItemKind.Audiobook, show, "A book")).Kind);
         Assert.True(Shell.Omnibar.RouteFor(new(Shell.Omnibar.ItemKind.Track, default, "t")).IsNone);
+        // A profile row opens its page (#161) — but only a spotify:user: uri addresses one.
         Assert.True(Shell.Omnibar.RouteFor(new(Shell.Omnibar.ItemKind.User, default, "u")).IsNone);
+        var jane = EntityUri.Parse("spotify:user:jane");
+        var profile = Shell.Omnibar.RouteFor(new(Shell.Omnibar.ItemKind.User, jane, "Jane"));
+        Assert.Equal(Shell.RouteKind.User, profile.Kind);
+        Assert.Equal(jane, profile.Subject);
     }
 
     [Fact]

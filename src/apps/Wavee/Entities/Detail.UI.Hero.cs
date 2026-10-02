@@ -274,17 +274,15 @@ public static partial class Detail
 
             // The page's ANCHOR: no entrance, no morph. The bounds tween grows from the top-left so the cover's corner
             // stays pinned to the title's top across a resize.
-            Element artwork = new BoxEl
+            Element artwork = ClickableCover(new BoxEl
             {
                 Width = art, Height = art, Shrink = 0f,
                 Corners = CornerRadius4.All(Radii.Card), Shadow = Elevation.Card, ClipToBounds = true,
                 Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
                 Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-                OnClick = acts.CoverClick,
-                Cursor = acts.CoverClick is null ? (CursorId?)null : CursorId.Hand,
                 Children = [slots.Cover?.Invoke(art)
                     ?? Controls.Artwork(id.CoverUrl, art, art, Radii.Card, decodePx: decodePx, saturation: 1.18f)],
-            };
+            }, acts.CoverClick);
 
             // Stacked ↔ row is the SAME two children in the same order: the reflow animates as one gesture.
             Element hero = new BoxEl
@@ -448,11 +446,22 @@ public static partial class Detail
                 Children = [Controls.FacePile(collaborators)],
             };
         if (id.OwnerName is { Length: > 0 } owner)
-            return new TextEl(owner)
+        {
+            var ownerText = new TextEl(owner)
             {
                 Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextSecondary,
                 MaxWidth = contentW, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             };
+            // The owner opens their profile (#161) — a text link (accent on hover), inert when the owner has no uri.
+            var profile = ProfileRoute.For(id.Owner, owner);
+            if (profile.IsNone) return ownerText;
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MaxWidth = contentW,
+                Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = () => Shell.GoTo(profile),
+                Children = [ownerText with { HoverColor = Tok.AccentTextPrimary, BrushTransitionMs = Design.Motion.Faster }],
+            };
+        }
         var artists = id.Artists;
         if (artists is not { Count: > 0 }) return new BoxEl();
         var spans = new TextSpan[artists.Count * 2 - 1];
@@ -522,22 +531,12 @@ public static partial class Detail
         };
 
         // The REAL preview cover when one is known (the same 256 bucket the unmeasured hero asks for), exempted from the
-        // deriver with a self-override; else the plain reserved card.
-        Element artwork;
-        if (id.CoverUrl is { Length: > 0 } coverUrl)
-        {
-            Element preview = Controls.Artwork(coverUrl, art, art, Radii.Card, decodePx: 256, saturation: 1.18f);
-            artwork = preview.Skel(preview);
-        }
-        else
-        {
-            artwork = new BoxEl { Width = art, Height = art, Shrink = 0f, Corners = CornerRadius4.All(Radii.Card) };
-        }
-
+        // deriver with a self-override; else the plain reserved card — the page SUBJECT's own shape, the rail's
+        // skeleton cover (Detail.UI.cs) at the hero's edge.
         Element hero = new BoxEl
         {
             Direction = rowFlow ? (byte)0 : (byte)1, Gap = gap, AlignItems = FlexAlign.Start,
-            Children = [artwork, identity],
+            Children = [SkeletonCover(id.CoverUrl, art), identity],
         };
 
         return new BoxEl

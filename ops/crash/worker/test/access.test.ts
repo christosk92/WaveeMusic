@@ -2,28 +2,15 @@ import { describe, expect, it, afterAll, afterEach, beforeAll, vi } from "vitest
 import { generateKeyPair } from "jose";
 import worker from "../src/index.js";
 import { accessConfigured, accessToken } from "../src/access.js";
-import { makeFakeD1, makeFakeR2, makeFakeRate } from "./fixtures.js";
-import { AUD, TEAM, accessCookie, accessHeader, installAccessFetchStub, strayFetches } from "./access.js";
+import { accessCookie, accessHeader, installAccessFetchStub, strayFetches } from "./access.js";
+import { BASE, makeEnv } from "./helpers.js";
 import type { Env } from "../src/types.js";
 
 // crash-hosting-implementation.md: the Worker verifies the Access JWT itself (RS256 against the team's certs,
 // `aud`, `iss`, expiry) — on one hostname the Bypass paths let anyone forge the header, so presence means nothing.
 
-const BASE = "https://crash.cproducts.dev";
 const PLACEHOLDER_TEAM = "https://REPLACE_WITH_TEAM.cloudflareaccess.com";
 const PLACEHOLDER_AUD = "REPLACE_WITH_APPLICATION_AUD_TAG";
-
-function makeEnv(overrides: Partial<Env> = {}): Env {
-  return {
-    DB: makeFakeD1(),
-    BUCKET: makeFakeR2(),
-    RATE: makeFakeRate(true),
-    INGEST_KEY: "test-ingest-key",
-    ACCESS_TEAM_DOMAIN: TEAM,
-    ACCESS_AUD: AUD,
-    ...overrides,
-  };
-}
 
 function listIssues(env: Env, headers: Record<string, string>): Promise<Response> {
   return worker.fetch(new Request(`${BASE}/v1/issues`, { headers }), env);
@@ -98,6 +85,27 @@ describe("Access-gated routes verify the JWT (GET /v1/issues)", () => {
     const env = makeEnv();
     const res = await listIssues(env, { "X-Wavee-Ingest": env.INGEST_KEY });
     expect(res.status).toBe(401);
+  });
+});
+
+describe("DELETE /v1/reports/:id and POST /v1/retention/run — verified Access only (#165)", () => {
+  const routes: [string, string][] = [
+    ["DELETE", "/v1/reports/never-seen"],
+    ["POST", "/v1/retention/run"],
+  ];
+
+  it.each(routes)("%s %s 401s a forged header and the ingest key", async (method, path) => {
+    const env = makeEnv();
+    const variants: Record<string, string>[] = [{ "Cf-Access-Jwt-Assertion": "opaque-jwt" }, { "X-Wavee-Ingest": env.INGEST_KEY }];
+    for (const headers of variants) {
+      const res = await worker.fetch(new Request(`${BASE}${path}`, { method, headers }), env);
+      expect(res.status).toBe(401);
+    }
+  });
+
+  it.each(routes)("%s %s is admitted with a verified Access JWT", async (method, path) => {
+    const res = await worker.fetch(new Request(`${BASE}${path}`, { method, headers: await accessHeader() }), makeEnv());
+    expect(res.status).not.toBe(401);
   });
 });
 

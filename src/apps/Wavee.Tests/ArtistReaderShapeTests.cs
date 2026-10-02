@@ -1,4 +1,4 @@
-// ── Wavee.Tests/ArtistReaderShapeTests.cs — the artist reader's block shape (Entities/Artist.Reader.cs §1) ──────────
+// ── Wavee.Tests/ArtistReaderShapeTests.cs — the artist reader's block shape (Entities/Artist.Reader.Shape.cs) ───────
 //
 // `Artist.ReaderShape` is the whole of what the library's artist reader decides before it renders: which blocks exist,
 // in which order, how tall each one is, and the one string the list remounts on. The plan (library-rework-
@@ -20,7 +20,7 @@ using Wavee;
 using Xunit;
 using ReaderBlock = Wavee.Artist.ReaderBlock;
 using ReaderSort = Wavee.Artist.ReaderSort;
-using Shape = Wavee.Artist.ReaderShape;
+using RS = Wavee.Artist.ReaderShape;
 
 namespace Wavee.Tests;
 
@@ -28,7 +28,8 @@ public class ArtistReaderShapeTests
 {
     // ── 1. ExtentOf: the height the list lays out before a block renders ────────────────────────────────────────────
 
-    // pad 16 + max(cover + 8 + 16, head 44 + rows * 36 + 8) + pad 8 + divider 1.
+    // pad 16 + max(cover + 8 + 16, head + rows * 36 + 8) + pad 8 + divider 1 — the head in its arm: 44 inline (wide),
+    // 72 stacked (narrow, #158; ArtistReaderHeadLayoutTests pins the arms themselves).
 
     [Fact]
     public void A_block_with_no_rows_is_as_tall_as_its_cover_and_the_cover_size_decides()
@@ -36,28 +37,31 @@ public class ArtistReaderShapeTests
         var b = new ReaderBlock(AlbumSlot: 7, Saved: true, Rows: 0, Failed: false, LikedOnly: false);
 
         // wide: 16 + max(120 + 24, 44 + 0 + 8) + 8 + 1 = 16 + 144 + 9
-        Assert.Equal(169f, Shape.ExtentOf(b, narrow: false));
-        // narrow: the 88 cover still wins over a 52-px body — 16 + 112 + 9
-        Assert.Equal(137f, Shape.ExtentOf(b, narrow: true));
+        Assert.Equal(169f, RS.ExtentOf(b, narrow: false));
+        // narrow: the 88 cover still wins over an 80-px body (the stacked 72 head + 8) — 16 + 112 + 9
+        Assert.Equal(137f, RS.ExtentOf(b, narrow: true));
     }
 
     [Fact]
-    public void The_cover_size_stops_mattering_once_the_rows_outgrow_it()
+    public void The_narrow_block_is_28_taller_than_the_wide_one_once_the_body_wins()
     {
-        // 2 rows: body 44 + 72 + 8 = 124 — still under the wide cover (144), already over the narrow one (112).
+        // 2 rows: wide body 44 + 72 + 8 = 124 — still under the wide cover (144); narrow body 72 + 72 + 8 = 152 — over
+        // the narrow cover (112), so the narrow block is the TALLER one already.
         var two = new ReaderBlock(3, false, 2, false, false);
-        Assert.Equal(169f, Shape.ExtentOf(two, narrow: false));
-        Assert.Equal(149f, Shape.ExtentOf(two, narrow: true));
+        Assert.Equal(169f, RS.ExtentOf(two, narrow: false));
+        Assert.Equal(177f, RS.ExtentOf(two, narrow: true));
 
-        // 4 rows: body 44 + 144 + 8 = 196 — the body wins at both widths, so the two answers agree.
+        // 4 rows: wide body 44 + 144 + 8 = 196, narrow 72 + 144 + 8 = 224 — the body wins at both widths, and the two
+        // answers differ by exactly what the stacked head costs (72 − 44 = 28).
         var four = new ReaderBlock(3, false, 4, false, false);
-        Assert.Equal(221f, Shape.ExtentOf(four, narrow: false));
-        Assert.Equal(221f, Shape.ExtentOf(four, narrow: true));
+        Assert.Equal(221f, RS.ExtentOf(four, narrow: false));
+        Assert.Equal(249f, RS.ExtentOf(four, narrow: true));
 
-        // 12 rows: body 44 + 432 + 8 = 484.
+        // 12 rows: body 484 wide, 512 narrow.
         var twelve = new ReaderBlock(3, false, 12, false, false);
-        Assert.Equal(509f, Shape.ExtentOf(twelve, narrow: false));
-        Assert.Equal(509f, Shape.ExtentOf(twelve, narrow: true));
+        Assert.Equal(509f, RS.ExtentOf(twelve, narrow: false));
+        Assert.Equal(537f, RS.ExtentOf(twelve, narrow: true));
+        Assert.Equal(28f, RS.ExtentOf(twelve, narrow: true) - RS.ExtentOf(twelve, narrow: false));
     }
 
     [Fact]
@@ -65,7 +69,7 @@ public class ArtistReaderShapeTests
     {
         var ok = new ReaderBlock(5, false, 6, Failed: false, LikedOnly: false);
         var failed = ok with { Failed = true };
-        Assert.Equal(Shape.ExtentOf(ok, narrow: false), Shape.ExtentOf(failed, narrow: false));
+        Assert.Equal(RS.ExtentOf(ok, narrow: false), RS.ExtentOf(failed, narrow: false));
     }
 
     [Fact]
@@ -74,8 +78,8 @@ public class ArtistReaderShapeTests
         // The extent rule knows nothing about the two groups: a liked-only block with 2 liked rows occupies exactly what
         // a saved block with 2 rows occupies, which is what keeps the list's table honest when a block changes group.
         var liked = new ReaderBlock(9, Saved: true, Rows: 2, Failed: false, LikedOnly: true);
-        Assert.Equal(Shape.ExtentOf(new ReaderBlock(9, true, 2, false, false), narrow: false),
-                     Shape.ExtentOf(liked, narrow: false));
+        Assert.Equal(RS.ExtentOf(new ReaderBlock(9, true, 2, false, false), narrow: false),
+                     RS.ExtentOf(liked, narrow: false));
     }
 
     // ── 2. OrderKey: the identity of the SEQUENCE ──────────────────────────────────────────────────────────────────
@@ -85,31 +89,31 @@ public class ArtistReaderShapeTests
     {
         ReaderBlock[] blocks = [new(11, true, 3, false, false), new(12, true, 9, false, false), new(13, false, 4, false, false)];
 
-        string key = Shape.OrderKey(blocks);
-        Assert.Equal(key, Shape.OrderKey(blocks));                 // same sequence, same key — twice
+        string key = RS.OrderKey(blocks);
+        Assert.Equal(key, RS.OrderKey(blocks));                 // same sequence, same key — twice
         Assert.Matches("^3:[0-9a-f]{16}$", key);                   // count first, so two lengths can never collide
 
-        Assert.StartsWith("0:", Shape.OrderKey(ReadOnlySpan<ReaderBlock>.Empty));
+        Assert.StartsWith("0:", RS.OrderKey(ReadOnlySpan<ReaderBlock>.Empty));
         // ...and the pre-mount sentinel is NOT a key any real shape can produce, so the first compute always counts.
-        Assert.NotEqual(Artist.ReaderShapeKey.Empty.OrderKey, Shape.OrderKey(ReadOnlySpan<ReaderBlock>.Empty));
+        Assert.NotEqual(Artist.ReaderShapeKey.Empty.OrderKey, RS.OrderKey(ReadOnlySpan<ReaderBlock>.Empty));
     }
 
     [Fact]
     public void OrderKey_keys_on_the_slots_and_the_two_group_bits_and_on_nothing_else()
     {
         ReaderBlock[] blocks = [new(11, true, 3, false, false), new(12, false, 4, false, false)];
-        string key = Shape.OrderKey(blocks);
+        string key = RS.OrderKey(blocks);
 
         // A block whose rows landed, or whose tracks edge failed, re-renders ITSELF — it must never remount the list.
         ReaderBlock[] grown = [new(11, true, 18, true, false), new(12, false, 12, false, false)];
-        Assert.Equal(key, Shape.OrderKey(grown));
+        Assert.Equal(key, RS.OrderKey(grown));
 
         // The order is part of the identity...
-        Assert.NotEqual(key, Shape.OrderKey([new(12, false, 4, false, false), new(11, true, 3, false, false)]));
+        Assert.NotEqual(key, RS.OrderKey([new(12, false, 4, false, false), new(11, true, 3, false, false)]));
         // ...and so is "saved", because it decides which group a block sits in and what the block paints.
-        Assert.NotEqual(key, Shape.OrderKey([new(11, false, 3, false, false), new(12, false, 4, false, false)]));
+        Assert.NotEqual(key, RS.OrderKey([new(11, false, 3, false, false), new(12, false, 4, false, false)]));
         // A different slot is a different sequence.
-        Assert.NotEqual(key, Shape.OrderKey([new(11, true, 3, false, false), new(99, false, 4, false, false)]));
+        Assert.NotEqual(key, RS.OrderKey([new(11, true, 3, false, false), new(99, false, 4, false, false)]));
     }
 
     [Fact]
@@ -117,13 +121,13 @@ public class ArtistReaderShapeTests
     {
         // Same slot, same "in your library" bit, same row count — but one lists the whole record and the other lists two
         // liked tracks. That is a different block, not a grown one, so the list must remount rather than re-diff.
-        string saved = Shape.OrderKey([new(11, true, 2, false, LikedOnly: false)]);
-        string likedOnly = Shape.OrderKey([new(11, true, 2, false, LikedOnly: true)]);
+        string saved = RS.OrderKey([new(11, true, 2, false, LikedOnly: false)]);
+        string likedOnly = RS.OrderKey([new(11, true, 2, false, LikedOnly: true)]);
         Assert.NotEqual(saved, likedOnly);
 
         // ...and the bit is hashed per block, not folded into one flag for the sequence.
-        Assert.NotEqual(Shape.OrderKey([new(11, true, 2, false, true), new(12, true, 2, false, false)]),
-                        Shape.OrderKey([new(11, true, 2, false, false), new(12, true, 2, false, true)]));
+        Assert.NotEqual(RS.OrderKey([new(11, true, 2, false, true), new(12, true, 2, false, false)]),
+                        RS.OrderKey([new(11, true, 2, false, false), new(12, true, 2, false, true)]));
     }
 
     // ── 2b. ReaderShapeKey: what a re-compute has to be able to say changed ────────────────────────────────────────
@@ -150,12 +154,12 @@ public class ArtistReaderShapeTests
     public void The_persisted_discography_codes_clamp_to_newest()
     {
         // The reader reuses `LibraryAlbumSort("artists")`, whose old discography values ran 0..4 (§4).
-        Assert.Equal(ReaderSort.Newest, Shape.SortOf(0));
-        Assert.Equal(ReaderSort.Oldest, Shape.SortOf(1));
-        Assert.Equal(ReaderSort.Alphabetical, Shape.SortOf(2));
-        Assert.Equal(ReaderSort.Newest, Shape.SortOf(3));
-        Assert.Equal(ReaderSort.Newest, Shape.SortOf(4));
-        Assert.Equal(ReaderSort.Newest, Shape.SortOf(-1));
+        Assert.Equal(ReaderSort.Newest, RS.SortOf(0));
+        Assert.Equal(ReaderSort.Oldest, RS.SortOf(1));
+        Assert.Equal(ReaderSort.Alphabetical, RS.SortOf(2));
+        Assert.Equal(ReaderSort.Newest, RS.SortOf(3));
+        Assert.Equal(ReaderSort.Newest, RS.SortOf(4));
+        Assert.Equal(ReaderSort.Newest, RS.SortOf(-1));
     }
 }
 
@@ -208,11 +212,11 @@ public class ArtistReaderShapeBuildTests
         var albums = e.ArtistAlbums.Targets(a.Slot);
         var singles = e.ArtistSingles.Targets(a.Slot);
         var compilations = e.ArtistCompilations.Targets(a.Slot);
-        int cap = Shape.Capacity(library.Length, albums.Length, singles.Length, compilations.Length);
+        int cap = RS.Capacity(library.Length, albums.Length, singles.Length, compilations.Length);
         var scratch = new int[cap];
         var perm = new int[cap];
         var into = new ReaderBlock[cap];
-        int n = Shape.Build(a.Slot, scope, sort, library, likedOnly ?? new bool[library.Length],
+        int n = RS.Build(a.Slot, scope, sort, library, likedOnly ?? new bool[library.Length],
                             likedRows ?? new int[library.Length], library.Length,
                             albums, singles, compilations, scratch, perm, into, out libraryCount);
         return into[..n];
@@ -461,7 +465,7 @@ public class ArtistReaderShapeBuildTests
         Assert.Equal("spotify:album:twin-b", new Album(blocks[2].AlbumSlot).Uri.Text);
 
         // ...and the same inputs give the same sequence, every time.
-        Assert.Equal(Shape.OrderKey(blocks), Shape.OrderKey(Build(artist, 1, ReaderSort.Newest, [], out _)));
+        Assert.Equal(RS.OrderKey(blocks), RS.OrderKey(Build(artist, 1, ReaderSort.Newest, [], out _)));
     }
 
     // ── 6. the rows a block lays out, and its failure bit ──────────────────────────────────────────────────────────
@@ -483,7 +487,7 @@ public class ArtistReaderShapeBuildTests
 
         Assert.Equal(7, blocks[0].Rows);                                        // TrackCount wins
         Assert.Equal(2, blocks[1].Rows);                                        // what actually landed
-        Assert.Equal(Shape.ShimmerRows, blocks[2].Rows);                        // the counted skeleton's last resort
+        Assert.Equal(RS.ShimmerRows, blocks[2].Rows);                        // the counted skeleton's last resort
         Assert.Equal(4, blocks[2].Rows);
         Assert.All(blocks, b => Assert.False(b.Failed));
     }
@@ -510,7 +514,7 @@ public class ArtistReaderShapeBuildTests
     {
         TestScope.Fresh();
         var scratch = new int[4];
-        int n = Shape.Build(Table.None, scope: 1, ReaderSort.Newest, [], [], [], 0, [], [], [],
+        int n = RS.Build(Table.None, scope: 1, ReaderSort.Newest, [], [], [], 0, [], [], [],
                             scratch, new int[4], new ReaderBlock[4], out int library);
         Assert.Equal(0, n);
         Assert.Equal(0, library);

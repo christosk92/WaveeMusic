@@ -1,10 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { buildQuery, fetchJson } from "./client";
+import { ApiError, buildQuery, fetchJson } from "./client";
 import {
+  mapDeleteReportResult,
   mapIssue,
   mapIssueDetail,
   mapReportDetail,
   mapReportsPage,
+  mapRetentionResult,
   mapStats,
   mapSymbol,
   mapVersionCount,
@@ -13,30 +15,39 @@ import {
   MOCK_REFETCH_INTERVAL_MS,
   getMockState,
   isMockEnabled,
+  mockDeleteReport,
   mockIssue,
   mockIssues,
   mockReport,
+  mockReportPartText,
   mockReportsPage,
+  mockRunRetention,
   mockStats,
   mockSymbols,
   mockVersions,
 } from "./mock";
 import type {
+  AppDeleteReportResult,
   AppIssue,
   AppIssueDetail,
+  AppReport,
   AppReportDetail,
   AppReportsPage,
+  AppRetentionResult,
   AppStats,
   AppSymbol,
   AppVersionCount,
   IssuePatch,
   IssuesFilter,
+  ReportPart,
   ReportsFilter,
+  WireDeleteReportResponse,
   WireIssueDetailResponse,
   WireIssueRow,
   WireIssuesListResponse,
   WireReportDetailResponse,
   WireReportsPageResponse,
+  WireRetentionRunResponse,
   WireStats,
   WireSymbolsResponse,
   WireVersionsResponse,
@@ -50,6 +61,7 @@ export const queryKeys = {
   issue: (fp: string) => ["issue", fp] as const,
   reports: (filter: ReportsFilter) => ["reports", filter] as const,
   report: (id: string) => ["report", id] as const,
+  reportPart: (id: string, part: ReportPart) => ["reportPart", id, part] as const,
   versions: () => ["versions"] as const,
   symbols: () => ["symbols"] as const,
 };
@@ -60,6 +72,17 @@ export const queryKeys = {
  *  that state. Real (non-mock) queries never set this. */
 function mockRefetchInterval(): number | false {
   return isMockEnabled() && getMockState() === "refetching" ? MOCK_REFETCH_INTERVAL_MS : false;
+}
+
+/** A detail read whose id the Worker doesn't know (404) resolves to null — the page's "not found" state —
+ *  instead of an error: a deleted report or an erased issue is a normal outcome, not a failure. */
+async function nullOn404<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 // ── Reads ────────────────────────────────────────────────────────────────────────────────────────────
@@ -99,8 +122,9 @@ export function useIssue(fingerprint: string | undefined): UseQueryResult<AppIss
     queryFn: async () => {
       if (!fingerprint) return null;
       if (isMockEnabled()) return mockIssue(fingerprint);
-      const wire = await fetchJson<WireIssueDetailResponse>(`/v1/issues/${encodeURIComponent(fingerprint)}`);
-      return mapIssueDetail(wire);
+      return nullOn404(async () =>
+        mapIssueDetail(await fetchJson<WireIssueDetailResponse>(`/v1/issues/${encodeURIComponent(fingerprint)}`)),
+      );
     },
     enabled: !!fingerprint,
   });
@@ -125,8 +149,29 @@ export function useReport(id: string | undefined): UseQueryResult<AppReportDetai
     queryFn: async () => {
       if (!id) return null;
       if (isMockEnabled()) return mockReport(id);
-      const wire = await fetchJson<WireReportDetailResponse>(`/v1/reports/${encodeURIComponent(id)}`);
-      return mapReportDetail(wire);
+      return nullOn404(async () =>
+        mapReportDetail(await fetchJson<WireReportDetailResponse>(`/v1/reports/${encodeURIComponent(id)}`)),
+      );
+    },
+    enabled: !!id,
+  });
+}
+
+/** One plain-text part of a report (`GET /v1/reports/:id/report|tail`) — report.txt or the log tail. Not
+ *  JSON, so this uses the platform `fetch` on the same relative, same-origin path rather than
+ *  `fetchJson`. In mock mode the text is built from `report`'s own fields (`api/mock.ts`). */
+export function useReportPartText(
+  id: string | undefined,
+  part: ReportPart,
+  report: AppReport | undefined,
+): UseQueryResult<string> {
+  return useQuery({
+    queryKey: queryKeys.reportPart(id ?? "", part),
+    queryFn: async () => {
+      if (isMockEnabled()) return report ? mockReportPartText(part, report) : "";
+      const response = await fetch(`/v1/reports/${encodeURIComponent(id!)}/${part}`);
+      if (!response.ok) throw new ApiError(response.status, `Could not load this log (HTTP ${response.status})`);
+      return response.text();
     },
     enabled: !!id,
   });
@@ -194,23 +239,53 @@ export function useDeleteInstall() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
       void queryClient.invalidateQueries({ queryKey: ["issues"] });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.stats() });
+      void queryClient.invalidateQueries({ queryKey: ["issue"] });
+      // Every `useStats(since)` key — the pages pass ISO cutoffs, so `queryKeys.stats()` alone matched none.
+      void queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });
 }
 
-/** There is no `DELETE /v1/reports/:id` route on the Worker (only `/v1/installs/:id` — see
- *  `ops/crash/README.md`'s route table); this mutation is the client-side seam plan §3's Report
- *  detail page names ("Delete report", danger group). It stays a stub returning `{deleted: 0}` until
- *  the Worker grows that route — wired here now so pages don't have to know the difference. */
+/** `DELETE /v1/reports/:id` — removes the report row and its stored parts; the Worker recomputes the issue it
+ *  belonged to (or deletes it when this was its last report) and answers with that fingerprint. */
 export function useDeleteReport() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (_id: string) => {
-      return Promise.resolve({ deleted: 0 });
+    mutationFn: async (id: string): Promise<AppDeleteReportResult> => {
+      if (isMockEnabled()) return mockDeleteReport(id);
+      const wire = await fetchJson<WireDeleteReportResponse>(`/v1/reports/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      return mapDeleteReportResult(wire);
     },
-    onSuccess: () => {
+    onSuccess: (result, id) => {
       void queryClient.invalidateQueries({ queryKey: ["reports"] });
+      void queryClient.invalidateQueries({ queryKey: ["issues"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.issue(result.fingerprint) });
+      void queryClient.invalidateQueries({ queryKey: ["stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["versions"] });
+      // The report is gone: mark it stale without refetching it (that would only be a 404 while the page
+      // that deleted it navigates away); a later visit refetches and shows "Report not found".
+      void queryClient.invalidateQueries({ queryKey: queryKeys.report(id), refetchType: "none" });
+    },
+  });
+}
+
+/** `POST /v1/retention/run` — the daily purge on demand: reports (and their stored parts) older than 90 days
+ *  are deleted, in capped batches; `more` says the cap was hit. Issues keep their counts and status. */
+export function useRunRetention() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<AppRetentionResult> => {
+      if (isMockEnabled()) return mockRunRetention();
+      const wire = await fetchJson<WireRetentionRunResponse>("/v1/retention/run", { method: "POST" });
+      return mapRetentionResult(wire);
+    },
+    onSuccess: (result) => {
+      if (result.deleted === 0) return;
+      for (const key of ["reports", "report", "reportPart", "issue", "stats", "versions"]) {
+        void queryClient.invalidateQueries({ queryKey: [key] });
+      }
     },
   });
 }

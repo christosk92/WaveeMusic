@@ -1,6 +1,6 @@
 import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import IssuesPage from "./index";
@@ -28,6 +28,7 @@ describe("Issues page (mock mode)", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllEnvs();
   });
 
@@ -36,7 +37,14 @@ describe("Issues page (mock mode)", () => {
 
     expect(screen.getByText("Issues")).toBeInTheDocument();
     expect(await screen.findByText(/NullReferenceException · Detail\.UI\.Hero\.Render/, {}, { timeout: 3000 })).toBeInTheDocument();
-    expect(screen.getByText(/AccessViolation · nvwgf2umx\.dll/)).toBeInTheDocument();
+    expect(screen.getByText(/ACCESS_VIOLATION in nvwgf2umx\.dll/)).toBeInTheDocument();
+  });
+
+  it("badges the regressed issue's status", async () => {
+    renderIssues();
+    await screen.findByText(/NullReferenceException · Detail\.UI\.Hero\.Render/, {}, { timeout: 3000 });
+    // `api/mock.ts` seeds exactly one regressed issue (resolved in 0.3.1, reopened by a newer report).
+    expect(screen.getByText("Regressed")).toBeInTheDocument();
   });
 
   it("shows the empty state when VITE_MOCK_STATE=empty", async () => {

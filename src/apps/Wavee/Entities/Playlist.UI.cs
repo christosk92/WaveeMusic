@@ -142,10 +142,13 @@ public readonly partial struct Playlist
             ? Embed.Comp(new CoverProps(p.Slot, size), static () => new CoverEditor()) with { Key = "pl-cover:" + (int)size }
             : CoverArt(p, size);
 
-    /// <summary>The playlist's own cover, else a 2×2 mosaic of member album covers (≥ 4), else the first, else the
-    /// neutral placeholder (0.2.9 <c>PlaylistPicker.CoverOf</c> minus the generated art).</summary>
+    /// <summary>The playlist's own cover — a provider <c>spotify:mosaic:</c> token (a profile card's cover-less public
+    /// playlist) paints as the server-composed 2×2 — else a 2×2 mosaic of member album covers (≥ 4), else the first,
+    /// else the neutral placeholder (0.2.9 <c>PlaylistPicker.CoverOf</c> minus the generated art).</summary>
     internal static Element CoverArt(Playlist p, float size, int decodePx = 0)
     {
+        var server = Controls.MosaicTiles(p.ImageId);                     // a profile card's server-composed 2×2
+        if (server.Length == 4) return Controls.Mosaic(server, size, size, Radii.Card);
         int px = decodePx > 0 ? decodePx : HeaderCoverDecodePx(size, 1f);
         string? url = Controls.ArtUrl(p.ImageId);
         if (url is { Length: > 0 }) return Controls.Artwork(url, size, size, Radii.Card, decodePx: px, saturation: CoverSaturation);
@@ -595,6 +598,10 @@ public readonly partial struct Playlist
             {
                 var owner = p.Owner;
                 string name = NameOf(owner);
+                // The owner opens their profile (#161): the whole run is the link (avatar + name), a hyperlink-looking
+                // name on hover. An owner row that cannot route (an invalid handle) stays the plain, inert run it was.
+                var profile = ProfileRoute.For(owner);
+                bool go = !profile.IsNone;
                 lead = new BoxEl
                 {
                     // Grow/Basis 0 is load-bearing: the name below is Basis 0, and a row with a finite width measures a
@@ -602,10 +609,16 @@ public readonly partial struct Playlist
                     // run was measured 24 + gap + 0 and arranged at that width — the avatar painted, the name got 0 DIP
                     // and ellipsised to nothing. The pile arm stays content-sized, so the invite pill still keeps its x.
                     Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Role = go ? AutomationRole.Button : AutomationRole.None, Focusable = go,
+                    Cursor = go ? CursorId.Hand : null, OnClick = go ? () => Shell.GoTo(profile) : null,
                     Children =
                     [
                         PersonPicture.Create("", 24f, displayName: name, imageSourcePath: Controls.ArtUrl(owner.ImageId)),
-                        Design.Type.TrackTitle(name) with { Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                        Design.Type.TrackTitle(name) with
+                        {
+                            Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                            HoverColor = go ? Tok.AccentTextPrimary : default, BrushTransitionMs = Design.Motion.Faster,
+                        },
                     ],
                 };
             }
@@ -711,7 +724,10 @@ public readonly partial struct Playlist
                 {
                     Direction = 0, Gap = 12f, Height = 44f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
                     Corners = CornerRadius4.All(6f), HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
-                    Role = AutomationRole.MenuItem, Cursor = CursorId.Hand, OnClick = () => handle?.Close(),
+                    // A member opens their profile (#161); the route is built at click time so a name that landed
+                    // while the flyout was open rides on it, and an invalid handle only closes the flyout.
+                    Role = AutomationRole.MenuItem, Cursor = CursorId.Hand,
+                    OnClick = () => { handle?.Close(); var profile = ProfileRoute.For(u); if (!profile.IsNone) Shell.GoTo(profile); },
                     Children =
                     [
                         PersonPicture.Create("", 32f, displayName: name, imageSourcePath: Controls.ArtUrl(u.ImageId)),
@@ -948,8 +964,8 @@ public readonly partial struct Playlist
 
     /// <summary>ch 06 §0.15: a wall-clock sample anchored against the frame clock, re-anchored on
     /// <see cref="DaylistCountdown"/>'s cadence (a stalled frame clock across sleep must not leave the digits behind).
-    /// Past the window the strip is Rolling: zeros in tertiary ink under "Updating your daylist…", the 1 s interval
-    /// still ticking until the new window remounts the strip. Hours clamp at 99 (two fixed cells).</summary>
+    /// Past the window the strip is Rolling: the 1 s interval stops and an indeterminate ring replaces the digits
+    /// (<see cref="Rolled"/>) until the new window remounts the strip. Hours clamp at 99 (two fixed cells).</summary>
     sealed class DaylistHost : Component
     {
         readonly Signal<int> _tick = new(0);
@@ -979,13 +995,16 @@ public readonly partial struct Playlist
             long expiresMs = props.ExpiresAt * 1000L;
             long nowMs = DaylistCountdown.Now(_anchorUnixMs, _anchorFrameMs, frameNow);
             var phase = DaylistCountdown.PhaseOf(expiresMs, nowMs);
-            UseInterval(_onTick, 1000f, enabled: phase != DaylistCountdown.Phase.Idle);
+            // Past the window nothing counts: the tick stops, and the ladder's signal (read here, so it re-renders this
+            // strip) decides what stands in for the digits.
+            var face = DaylistClockFace.Of(phase, Home.Feeds.RolloverState.Value);
+            UseInterval(_onTick, 1000f, enabled: phase == DaylistCountdown.Phase.Counting);
             if (phase == DaylistCountdown.Phase.Idle) return new BoxEl();
-            bool rolling = phase == DaylistCountdown.Phase.Rolling;
+            if (phase == DaylistCountdown.Phase.Rolling) return Rolled(props.Compact, face);
             long left = DaylistCountdown.RemainingMs(expiresMs, nowMs) / 1000L;
 
             float rowH = props.Compact ? Controls.FlipCompactRowHeight : Controls.FlipHeroRowHeight;
-            ColorF ink = rolling ? Tok.TextTertiary : Design.Palette.TextInk(props.Accent());
+            ColorF ink = Design.Palette.TextInk(props.Accent());
             int hours = (int)Math.Min(99L, left / 3600), minutes = (int)(left / 60 % 60), seconds = (int)(left % 60);
             Element[] cells =
             [
@@ -1003,17 +1022,34 @@ public readonly partial struct Playlist
                 _labelFor = props.ExpiresAt;
                 _nextLabel = Strings.Home.NextUpdateAt(DateTimeOffset.FromUnixTimeSeconds(props.ExpiresAt).ToLocalTime().ToString("t", CultureInfo.CurrentCulture));
             }
-            string caption = rolling ? Loc.Get(Strings.Home.DaylistUpdating) : _nextLabel;
-            return new BoxEl
-            {
-                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true,
-                Children =
-                [
-                    new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = cells },
-                    Caption(caption) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                ],
-            };
+            return Strip(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = cells }, _nextLabel);
         }
+
+        /// <summary>The window has ended, so there are no digits to flip. While the next edition is on its way the stock
+        /// indeterminate ring (the row's height) stands in for them beside "Updating your daylist…"; once the rollover
+        /// ladder has given up (or never ran — offline) it is a full, static ring beside "Your next daylist is running
+        /// late". The Home clock's "Check again" is not repeated here.</summary>
+        static Element Rolled(bool compact, DaylistClockFace.Face face)
+        {
+            float size = compact ? Controls.FlipCompactRowHeight : Controls.FlipHeroRowHeight;
+            bool late = face == DaylistClockFace.Face.Late;
+            Element ring = late
+                ? ProgressRing.Determinate(1f, size, foreground: Tok.TextTertiary, track: Tok.StrokeControlStrongDefault)
+                : ProgressRing.Indeterminate(size);
+            string caption = Loc.Get(late ? Strings.Home.Daylist.Late : Strings.Home.DaylistUpdating);
+            return Strip(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [ring] }, caption);
+        }
+
+        /// <summary>The strip: the leading cluster (the flip cells, or the ring) and its tertiary caption.</summary>
+        static Element Strip(BoxEl lead, string caption) => new BoxEl
+        {
+            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true,
+            Children =
+            [
+                lead,
+                Caption(caption) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+            ],
+        };
 
         static Element Colon(float rowH, ColorF ink, bool compact, string key) => new BoxEl
         {
@@ -1038,30 +1074,40 @@ public readonly partial struct Playlist
         bool _hadRows;
         int _slot;
         readonly Action _demand, _refresh;
+        readonly Action<int> _add;
         readonly Func<RecsStamp> _stamp;
 
         /// <summary>What the section paints (W3-A3): the edge's state and failure (the header's spinner / "No
-        /// suggestions"), its version and the recommended rows in order (title, artists, art, duration).</summary>
-        readonly record struct RecsStamp(uint Epoch, EdgeState State, bool Failed, uint Edge, ulong Rows);
+        /// suggestions") and its version — which rows, in which order. A row paints its own facts (title, artists, art,
+        /// duration) from its own subscription (<see cref="RecRowHost"/>), so a track edge re-renders one row and never
+        /// the section.</summary>
+        readonly record struct RecsStamp(uint Epoch, EdgeState State, bool Failed, uint Edge);
 
         public RecsSection()
         {
             _demand = Demand;
             _refresh = () => Spotify.PlaylistEdits.Extend(new Playlist(_slot));
+            _add = AddRecommendation;
             _stamp = Stamp;
         }
 
         RecsStamp Stamp()
         {
             uint epoch = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            var recs = scope.Edges.PlaylistRecs;
+            var recs = Entities.Current.Edges.PlaylistRecs;
             _ = recs.Changed.Value;
-            _ = scope.Tracks.Changed.Value;
             var p = new Playlist(_slot);
-            if (!p.IsValid) return new RecsStamp(epoch, EdgeState.Unknown, false, 0, RowFold.Seed);
-            return new RecsStamp(epoch, recs.State(p.Slot), recs.IsFailed(p.Slot), recs.Version(p.Slot),
-                                 RowFold.Rows(scope.Tracks, p.RecommendationSlots));
+            if (!p.IsValid) return new RecsStamp(epoch, EdgeState.Unknown, false, 0);
+            return new RecsStamp(epoch, recs.State(p.Slot), recs.IsFailed(p.Slot), recs.Version(p.Slot));
+        }
+
+        /// <summary>The "+" of one row: that track is "adding" (its button becomes a spinner) until the write settles.</summary>
+        void AddRecommendation(int track)
+        {
+            var adding = _adding;
+            adding.Value = track;
+            Spotify.PlaylistEdits.AddRecommendation(new Playlist(_slot), new Track(track),
+                _ => { if (adding.Peek() == track) adding.Value = 0; });
         }
 
         public override Element Render()
@@ -1081,7 +1127,9 @@ public readonly partial struct Playlist
 
             var kids = new Element[slots.Length + 1];
             kids[0] = Header(loading, empty);
-            for (int i = 0; i < slots.Length; i++) kids[i + 1] = RecRow(new Track(slots[i]), adding);
+            for (int i = 0; i < slots.Length; i++)
+                kids[i + 1] = Embed.Comp(new RecRowProps(slots[i], adding == slots[i], _add), static () => new RecRowHost())
+                    with { Key = "rec:" + slots[i] };
             return new BoxEl { Direction = 1, Children = kids };
         }
 
@@ -1121,51 +1169,52 @@ public readonly partial struct Playlist
                     }, Loc.Get(Strings.Detail.Recommended)),
             ],
         };
+    }
 
-        /// <summary>An art-forward row clipped to the row height; drags as a COPY (a single-track payload).</summary>
-        Element RecRow(Track t, int adding)
+    /// <summary>One recommendation row's props: the track's slot, whether ITS add is in flight, and the section's one
+    /// add handler (stable — it is the section's own method group, so a re-push with the same values is equal).</summary>
+    sealed record RecRowProps(int Slot, bool Busy, Action<int> Add);
+
+    /// <summary>One recommendation on the shared media surface (<c>Shape.Row</c> over <c>Track.RowData</c>): the row plate,
+    /// the hand, the play FAB over the art, the now-playing pill, a track drag (a COPY — a single-track payload) and the
+    /// single-track menu with its "…". The row CLICK plays the track (the deck row toggles pause, like every list); the
+    /// "+" and the duration are the trailing cluster — the "+" its own gesture owner, a spinner while ITS add is in
+    /// flight. The row is a component of its own because <c>Track.RowData</c> reads the track table: a title landing
+    /// re-renders this row, not the section.</summary>
+    sealed class RecRowHost : Component
+    {
+        const float ArtEdge = 40f, AddBox = 28f, DurationW = 52f;
+
+        /// <summary>The surface's own height at a 40 art (the 8-DIP padding around it): the default 64 floor is for
+        /// rows that carry more, and a recommendation is a title over its artists.</summary>
+        static readonly SurfaceShape s_shape = Shape.Row(ArtEdge) with { MinHeight = ArtEdge + 2f * SurfaceGeometry.RowPad };
+
+        public override Element Render()
         {
-            string title = t.Knows(TrackFields.Title) ? t.Title : "";
-            string artists = Entities.Strings.Resolve(t.ArtistLineId);
-            int slot = t.Slot;
-            bool busy = adding == slot;
-            string uri = t.Uri.Text;
-            var addingSig = _adding;
-            int playlist = _slot;
-            return new BoxEl
+            var p = UseProps<RecRowProps>();
+            var t = new Track(p.Slot);
+            int slot = p.Slot;
+            var add = p.Add;
+
+            Element addCell = p.Busy
+                ? new BoxEl
+                {
+                    Width = AddBox, Height = AddBox, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Children = [Track.Spinner()],
+                }
+                : ToolTip.Wrap(Track.AddButton(() => add(slot)), Loc.Get(Strings.Detail.AddToPlaylist));
+            var trailing = new BoxEl
             {
-                Key = "rec:" + slot, Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
-                MinHeight = Track.RowMetrics.RowHeight, MaxHeight = Track.RowMetrics.RowHeight, ClipToBounds = true,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll, HoverFill = Tok.FillSubtleSecondary,
-                Draggable = Drag.Source(() => new DragPayload(DragKind.Track, uri, uri, title, new EntityRef(EntityKind.Track, slot), Tracks: [new Track(slot)])),
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children =
                 [
-                    Controls.Artwork(Controls.ArtUrl(t.ImageId), 40f, 40f, 4f, decodePx: 80),
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
-                        Children =
-                        [
-                            Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                            Design.Type.TrackMeta(artists) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                        ],
-                    },
-                    ToolTip.Wrap(new BoxEl
-                    {
-                        Width = 32f, Height = 32f, Corners = CornerRadius4.All(16f), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                        HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary, IsEnabled = !busy,
-                        Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-                        OnClick = () =>
-                        {
-                            addingSig.Value = slot;
-                            Spotify.PlaylistEdits.AddRecommendation(new Playlist(playlist), new Track(slot),
-                                _ => { if (addingSig.Peek() == slot) addingSig.Value = 0; });
-                        },
-                        Children = [busy ? Track.Spinner() : Icon(Icons.Add, 14f, Tok.TextSecondary)],
-                    }, Loc.Get(Strings.Detail.AddToPlaylist)),
-                    Design.Type.TrackMeta(Track.Format.TrackTime(t.DurationMs)) with { Width = 52f, MaxLines = 1 },
+                    addCell,
+                    Design.Type.TrackMeta(Track.Format.TrackTime(t.DurationMs)) with { Width = DurationW, MaxLines = 1 },
                 ],
             };
+            var data = Track.RowData(t, new Track.RowDataOptions(
+                OnClick: () => Track.Invoke(t, () => Playback.PlayContext(t.Id)), Trailing: trailing));
+            return Controls.Surface(data, s_shape);
         }
     }
 

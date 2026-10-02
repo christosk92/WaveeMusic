@@ -313,15 +313,18 @@ public static partial class Spotify
                 if (!handledLocally)
                 {
                     NoteUnreadTopic(message.Uri);
+                    bool libraryTook = Library.OnDealerPush(message.Uri, message.Truncated ? default : message.Payload);
                     // §3.3's "everything else … is not an error and is not logged per push" fall-through — made
                     // visible to the CAPTURE (never to the always-on log; §1's own words for why `FrameIgnored`
-                    // exists at all). `Unclassified` here because THIS layer does not know what `Library.OnDealerPush`
-                    // will do with it (a rootlist/collection/playlist push all settle asynchronously there) — the
-                    // capture records "not ours", not "nobody wanted it".
-                    if (Capture.Enabled)
+                    // exists at all), and only for a frame NOBODY took: a playlist/collection/rootlist push the library
+                    // applies or re-asks is handled, not ignored (828 false ambers in nine days, 2026-10-01). What is
+                    // left is either decided (`liked-songs-artist`) or unread (the Jam's broadcast status, a new topic).
+                    if (Capture.Enabled
+                        && DealerFrameDisposition.TryReason(
+                               DealerFrameDisposition.Of(handledLocally, libraryTook, DealerTopicRules.Classify(message.Uri)),
+                               out var reason))
                         Capture.Point(CaptureKind.FrameIgnored, causeId: 0,
-                            a: DealerCaptureLabel(message.Uri), b: CaptureIgnoreReason.Unclassified.ToString());
-                    Library.OnDealerPush(message.Uri, message.Truncated ? default : message.Payload);
+                            a: DealerCaptureLabel(message.Uri), b: reason.ToString());
                 }
             }
         }

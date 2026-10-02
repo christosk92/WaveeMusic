@@ -1,8 +1,15 @@
 import {
   Badge,
   Body1,
+  Button,
   Card,
   Caption1,
+  Dialog,
+  DialogActions,
+  DialogBody,
+  DialogContent,
+  DialogSurface,
+  DialogTitle,
   LargeTitle,
   Link,
   Table,
@@ -23,7 +30,7 @@ import {
 import { DonutChart, HorizontalBarChart, VerticalStackedBarChart } from "@fluentui/react-charts";
 import type { MouseEvent, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { AppDayBucket, AppIssue, AppSymbol, AppVersionCount } from "../../api/types";
+import type { AppDayBucket, AppIssue, AppRetentionResult, AppSymbol, AppVersionCount } from "../../api/types";
 import { chartColors, kindBadgeColor, kindLabel } from "../../lib/colors";
 import { formatCount, formatRelativeTime } from "../../lib/format";
 
@@ -297,6 +304,55 @@ export function SeeAllLink({ to, children }: { to: string; children: ReactNode }
 
 export function InlineBody({ children }: { children: ReactNode }) {
   return <Body1>{children}</Body1>;
+}
+
+// ── Run retention now ────────────────────────────────────────────────────────────────────────────────
+
+/** The confirm for the header's "Run retention now" command. Rendered by the page (not inside the command
+ *  button) so it stays open when the command is clicked from the toolbar's overflow menu. */
+export function RunRetentionDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(_e, data) => onOpenChange(data.open)}>
+      <DialogSurface>
+        <DialogBody>
+          <DialogTitle>Run retention now?</DialogTitle>
+          <DialogContent>
+            This deletes every report older than 90 days, with its stored report, log and dump files — the same
+            purge the service runs once a day. Issues keep their counts and status. This can&apos;t be undone.
+          </DialogContent>
+          <DialogActions>
+            <Button appearance="secondary" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              appearance="primary"
+              onClick={() => {
+                onOpenChange(false);
+                onConfirm();
+              }}
+            >
+              Run retention
+            </Button>
+          </DialogActions>
+        </DialogBody>
+      </DialogSurface>
+    </Dialog>
+  );
+}
+
+/** The success toast's text for a retention run: "12 reports purged", plus a body when the run hit its
+ *  batch cap and expired reports remain. */
+export function retentionToastText(result: AppRetentionResult): { title: string; body?: string } {
+  const title = `${formatCount(result.deleted)} report${result.deleted === 1 ? "" : "s"} purged`;
+  return result.more ? { title, body: "More remain — run it again to continue." } : { title };
 }
 
 /** A stat tile's footer caption when there's no delta to show — single-line, ellipsis when tight

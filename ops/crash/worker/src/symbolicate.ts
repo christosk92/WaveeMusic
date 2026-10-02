@@ -114,12 +114,20 @@ export function symmapR2Key(quad: string, arch: string): string {
   return `symbols/${quad}/win-${arch}.symmap`;
 }
 
-/** Per-isolate cache of parsed maps, keyed by `<quad>/win-<arch>`. `null` = confirmed absent (no repeat
- *  R2 GETs for a quad/arch this isolate has already found nothing for). */
-const cache = new Map<string, ParsedSymmap | null>();
+/** Per-isolate cache of parsed maps, keyed by `<quad>/win-<arch>`. A map, once found, is kept for the isolate's
+ *  lifetime (a quad's map never changes). */
+const maps = new Map<string, ParsedSymmap>();
+
+/** How long a confirmed-absent map is remembered (#165): a report that arrives before its build's map is uploaded
+ *  must not leave that quad unresolved for the isolate's whole lifetime — only for at most 5 minutes. */
+export const NEGATIVE_TTL_MS = 300_000;
+
+/** `<quad>/win-<arch>` → epoch ms until which the map is known to be absent (no repeat R2 GETs inside the window). */
+const missing = new Map<string, number>();
 
 export function clearSymmapCacheForTests(): void {
-  cache.clear();
+  maps.clear();
+  missing.clear();
 }
 
 export interface SymbolicateResult {
@@ -134,18 +142,20 @@ export async function symbolicate(
   quad: string,
   arch: string,
   rvas: readonly number[],
+  nowMs: number,
 ): Promise<SymbolicateResult> {
   const cacheKey = `${quad}/win-${arch}`;
-  let map = cache.get(cacheKey);
-  if (map === undefined) {
+  let map = maps.get(cacheKey) ?? null;
+  const missingUntil = missing.get(cacheKey);
+  if (map === null && (missingUntil === undefined || nowMs >= missingUntil)) {
     const obj = await bucket.get(symmapR2Key(quad, arch));
-    if (!obj) {
-      map = null;
+    if (obj) {
+      map = parseSymmap(await obj.arrayBuffer());
+      maps.set(cacheKey, map);
+      missing.delete(cacheKey);
     } else {
-      const buf = await obj.arrayBuffer();
-      map = parseSymmap(buf);
+      missing.set(cacheKey, nowMs + NEGATIVE_TTL_MS);
     }
-    cache.set(cacheKey, map);
   }
 
   if (!map) {

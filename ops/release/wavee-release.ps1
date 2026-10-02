@@ -10,16 +10,20 @@
   The run is a ledger of phases. Every phase records itself in <staging>\release-state.json, so -Resume restarts
   exactly where a failed run stopped, and -Abort unwinds an un-pushed run completely.
 
-      0  preflight     hard/soft gate table (versions, git, tools, signing, gh, feed monotonicity)
+      0  preflight     hard/soft gate table (versions, git, tools, signing, gh, wrangler, crash ingest, feed monotonicity)
       1a bump          WaveeBuild + 1, CHANGELOG "unreleased" -> today (UTC)
       2  notes         Wavee.ReleaseTool validate -> <staging>\notes (whatsnew.json, index, RELEASE_BODY.md, media)
       1b tag           commit the two hand-edited files, annotated tag (local only)
       3  packArm64     pack-wavee-msix.ps1 -Arch arm64 -NoSign   (+ Wavee-<quad>-win-arm64-symbols.zip: the PDB of that exe)
       4  packX64       pack-wavee-msix.ps1 -Arch x64 -NoSign     (or -X64Msix <path> to adopt a prebuilt package; its
                        symbols zip is adopted from next to it when present)
-      3b symbols       Wavee.ReleaseTool symbol-map (Wavee.pdb + Wavee.exe from the staged msix) -> a .symmap per
-                       arch, `wrangler r2 object put` to wavee-crash/symbols/<quad>/win-<arch>.symmap; a stable
-                       release with no -CrashIngestUrl only warns (crash & diagnostics plan section B.6)
+                       Both stamp the crash ingest URL + key (the key from 1Password unless -CrashIngestKey), and
+                       every package - adopted ones too - must prove it: "stamp evidence <arch>" reads both back out
+                       of the Wavee.exe that ships (Assert-CrashIngestStamp). No stamp, no release (#165).
+      3b symbols       Publish-WaveeSymbolMap per arch: Wavee.ReleaseTool symbol-map (Wavee.pdb + Wavee.exe from the
+                       staged msix) -> Wavee.symmap, uploaded with the crash Worker's own wrangler
+                       (ops\crash\worker\node_modules\.bin) to wavee-crash/symbols/<quad>/win-<arch>.symmap; -DryRun /
+                       -NoUpload build the maps and upload nothing
       5  sign          ONE Azure Trusted Signing signtool call over every .msix, then verify each
       6  appinstaller  one .appinstaller per architecture, pointing at this release's msix and at the rolling feed
       7  stage         flatten assets into <staging>, write MANIFEST.txt (sha256sum format); the symbols zips are
@@ -71,11 +75,10 @@ param(
     [switch]$NoNotes,
     [switch]$InstallFromFeed,
     [switch]$Force,
-    # The opt-in crash & diagnostics pipeline's ingest endpoint + public key (crash & diagnostics plan section B.5/B.6),
-    # stamped into the build exactly like the update feed's base URL and uploaded (via the `symbols` phase) so the
-    # Cloudflare Worker can resolve a report's RVAs. Empty by default: a stable release with no -CrashIngestUrl only
-    # warns (Get-CrashIngestGate) rather than failing - the crash service may simply not exist yet.
-    [string]$CrashIngestUrl = '',
+    # The opt-in crash reporting pipeline's ingest endpoint + key (#165), stamped into the build exactly like the
+    # update feed's base URL. A shipping build without both fails preflight (Get-CrashIngestGate is hard). An empty
+    # -CrashIngestKey means "read it from 1Password" (Resolve-CrashIngestKey); the key is kept in memory only.
+    [string]$CrashIngestUrl = 'https://crash.cproducts.dev',
     [string]$CrashIngestKey = '',
     [string]$Repo = 'christosk92/WaveeMusic',
     [string]$FeedRelease = 'wavee-stable',
@@ -100,6 +103,7 @@ Import-Module (Join-Path $PSScriptRoot 'Wavee.Release.psm1') -Force -DisableName
 if (-not $Metadata) { $Metadata = Join-Path $root 'ops\build\signing\metadata.json' }
 
 $EmDash = [char]0x2014
+$CrashIngestUrl = "$CrashIngestUrl".Trim()
 
 # ===============================================================================================================
 # Console + process helpers
@@ -131,6 +135,23 @@ function Get-Tools {
         Add-VsInstallerToPath
     }
     $script:Tools
+}
+
+# ===============================================================================================================
+# Crash ingest key (#165)
+# ===============================================================================================================
+
+# Resolved once per process, on first use, and kept in memory only: never printed, never in release-state.json. A
+# -Resume skips preflight, so the first pack phase that needs the key resolves it here instead.
+$script:CrashKey = $null
+function Get-CrashKey {
+    if (-not $script:CrashKey) {
+        $k = Resolve-CrashIngestKey -Explicit $CrashIngestKey
+        $gate = Get-CrashIngestGate -Channel $Channel -CrashIngestUrl $CrashIngestUrl -CrashIngestKey $k.Key
+        if ($gate.Fail) { throw $gate.Message }
+        $script:CrashKey = $k
+    }
+    $script:CrashKey
 }
 
 # ===============================================================================================================
@@ -600,21 +621,21 @@ if (-not (Test-PhaseDone 'preflight')) {
         Invoke-Gh @('repo', 'view', $Repo, '--json', 'nameWithOwner') | Out-Null
         $Repo
     }
-    Add-Check 'wrangler CLI' 'hard' {
-        # The `symbols` phase uploads each arch's .symmap to R2 with `wrangler r2 object put`; a missing/broken CLI
-        # is worth failing preflight over rather than discovering it after packing and signing everything.
+    Add-Check 'wrangler (crash symbols)' 'hard' {
+        # The `symbols` phase uploads each arch's .symmap to R2 with the crash Worker's own wrangler; a missing
+        # install or an expired login is worth failing preflight over, not discovering after packing everything.
         if ($DryRun -or $NoUpload) { return 'SKIP: nothing will be uploaded' }
-        $v = Invoke-Native 'wrangler' @('--version') -AllowFailure
-        if ($v.ExitCode -ne 0) { throw "wrangler not found or failed (``wrangler --version`` exited $($v.ExitCode)); npm install -g wrangler" }
-        ($v.Output -join ' ').Trim()
+        $w = Get-WranglerPath -RepoRoot $root
+        $who = Invoke-Native $w @('whoami') -AllowFailure
+        $login = Test-WranglerLogin -ExitCode $who.ExitCode -Output $who.Output
+        if (-not $login.Ok) { throw $login.Detail }
+        "$($login.Detail) ($w)"
     }
-    Add-Check 'crash ingest' 'soft' {
-        # A stable release with no ingest endpoint stamped is not a hard failure - the crash service may simply not
-        # exist yet, or this may be a rehearsal - but it needs to be LOUD every single time, not a silent gap found a
-        # year later staring at a Partner Center Health graph with nothing behind it (crash & diagnostics plan section B.6).
-        $gate = Get-CrashIngestGate -Channel $Channel -CrashIngestUrl $CrashIngestUrl
-        if ($gate.Warn) { throw $gate.Message }
-        if ($CrashIngestUrl) { "stamping $CrashIngestUrl" } else { 'SKIP: not a stable release' }
+    Add-Check 'crash ingest' 'hard' {
+        # Hard for every shipping channel (#165): a build without the ingest URL + key can never report a crash, and
+        # nothing can add them after the fact. -DryRun resolves the key too - a rehearsal stamps what a release would.
+        $k = Get-CrashKey
+        "stamping $CrashIngestUrl; key from $($k.Source)"
     }
     Add-Check 'beta feed present' 'soft' {
         if ($DryRun -or $NoUpload) { return 'SKIP: offline run' }
@@ -938,6 +959,8 @@ function Invoke-Pack {
 
     $msix = Join-Path $stage (Get-MsixName $quad $A)
     $symbols = Join-Path $stage (Get-SymbolsZipName $quad $A)
+    # Needed for an adopted package too: the stamp evidence below reads the key back out of what ships.
+    $crash = Get-CrashKey
 
     if ($A -eq 'x64' -and $X64Msix) {
         Step "Adopt the prebuilt x64 package"
@@ -969,7 +992,7 @@ function Invoke-Pack {
             '-Publisher', $Publisher,
             '-OutputDir', $stage,
             '-CrashIngestUrl', $CrashIngestUrl,
-            '-CrashIngestKey', $CrashIngestKey,
+            '-CrashIngestKey', $crash.Key,
             '-NoSign',
             '-Configuration', $Configuration)
         if ($PublicOnly) { $packArgs += '-PublicOnly' }
@@ -987,6 +1010,9 @@ function Invoke-Pack {
     if ($id.Publisher -ne $Publisher) {
         throw "publisher mismatch in $(Split-Path -Leaf $msix): '$($id.Publisher)' != '$Publisher' (signing would fail with 0x8007000B)"
     }
+    # Stamp evidence (#165): the ingest URL and key read back out of the Wavee.exe that ships - the proof this package
+    # can report a crash, for a freshly packed and an adopted (-X64Msix) package alike. Never prints the key.
+    Good "stamp evidence ${A}: $(Assert-CrashIngestStamp -Msix $msix -Url $CrashIngestUrl -Key $crash.Key)"
     Assert-PlayReadyNativeExport -MsixPath $msix -Arch $A
     Good "$(Split-Path -Leaf $msix)  $([math]::Round((Get-Item $msix).Length / 1MB, 2)) MB"
     if (Test-Path $symbols) { Good "$(Split-Path -Leaf $symbols)  $([math]::Round((Get-Item $symbols).Length / 1MB, 2)) MB" }
@@ -1008,61 +1034,29 @@ if (-not (Test-Path (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'))) {
 }
 
 # ===============================================================================================================
-# 3b  symbols  (crash & diagnostics plan section B.6): one .symmap per architecture, uploaded to R2 for the crash Worker
+# 3b  symbols  (#165): one .symmap per architecture, uploaded to R2 for the crash Worker
 # ===============================================================================================================
 
 function Invoke-Symbols {
     Step 'Build and upload symbol maps'
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $skip = [bool]($DryRun -or $NoUpload)
+    $reason = if ($DryRun) { '-DryRun' } else { '-NoUpload' }
+    # Resolved here, not cached from preflight: a -Resume skips preflight.
+    $wrangler = ''
+    if (-not $skip) { $wrangler = Get-WranglerPath -RepoRoot $root }
 
     foreach ($a in $arches) {
-        $rid = "win-$a"
-        $symDir = Join-Path $stage "symbols\$quad\$rid"
-        $pdb = Join-Path $symDir 'Wavee.pdb'
-        $symZip = Join-Path $stage (Get-SymbolsZipName $quad $a)
-        $msix = Join-Path $stage (Get-MsixName $quad $a)
-        $symmap = Join-Path $symDir 'Wavee.symmap'
-
-        if (-not (Test-Path $pdb)) {
-            # An adopted prebuilt package (-X64Msix) never ran pack-wavee-msix.ps1, so $symDir was never populated -
-            # only the zip it staged next to the package was. Expand it once; everything past this point is identical
-            # to the freshly-packed case.
-            if (-not (Test-Path $symZip)) { throw "symbols: no Wavee.pdb for $a ($symDir missing) and no $symZip to expand it from" }
-            Note "expanding $(Split-Path -Leaf $symZip) -> $symDir"
-            New-Item -ItemType Directory -Force -Path $symDir | Out-Null
-            [IO.Compression.ZipFile]::ExtractToDirectory($symZip, $symDir)
-        }
-        if (-not (Test-Path $pdb)) { throw "symbols: $symZip did not contain Wavee.pdb for $a" }
-        if (-not (Test-Path $msix)) { throw "symbols: $msix not found" }
-
-        # Wavee.exe never ships inside the symbols zip (the pack script purges *.pdb from the layout, but the exe
-        # itself only exists inside the signed-later .msix); pull it out of the staged package instead - an .msix
-        # is a plain zip (releasing-wavee.md section 5b).
-        $exeTmp = Join-Path $symDir 'Wavee.exe'
-        Remove-Item $exeTmp -Force -ErrorAction SilentlyContinue
-        $zip = [IO.Compression.ZipFile]::OpenRead($msix)
-        try {
-            $entry = $zip.Entries | Where-Object { $_.FullName -eq 'Wavee.exe' }
-            if (-not $entry) { throw "symbols: $msix carries no Wavee.exe at its root" }
-            $es = $entry.Open()
-            $fsOut = [IO.File]::Create($exeTmp)
-            try { $es.CopyTo($fsOut) } finally { $es.Dispose(); $fsOut.Dispose() }
-        }
-        finally { $zip.Dispose() }
-
         Step "symbol-map $a"
-        $toolArgs = @('run', '--project', $releaseToolProject, '-c', 'Release', '--',
-            'symbol-map', '--pdb', $pdb, '--exe', $exeTmp, '--out', $symmap)
-        Invoke-Native 'dotnet' $toolArgs | Out-Null
-        Remove-Item $exeTmp -Force -ErrorAction SilentlyContinue
-        if (-not (Test-Path $symmap)) { throw "symbol-map did not write $symmap" }
-        Good "$(Split-Path -Leaf $symmap)  $([math]::Round((Get-Item $symmap).Length / 1KB, 1)) KB"
-
-        $skip = [bool]($DryRun -or $NoUpload)
-        $reason = if ($DryRun) { '-DryRun' } else { '-NoUpload' }
-        $upload = Invoke-SymbolsUpload -SymmapPath $symmap -Quad $quad -Arch $a -Skip:$skip -SkipReason $reason
-        if ($upload.Uploaded) { Good "uploaded -> wavee-crash/$($upload.Key)" }
-        else { Warn "symbols upload skipped ($($upload.Reason)): wavee-crash/$($upload.Key) was NOT written to R2" }
+        # A freshly packed package left Wavee.pdb in symbols\<quad>\win-<arch>; an adopted -X64Msix only staged its
+        # symbols zip, which Publish-WaveeSymbolMap expands there first. Wavee.exe comes out of the staged package.
+        $r = Publish-WaveeSymbolMap -Msix (Join-Path $stage (Get-MsixName $quad $a)) `
+            -SymbolsDir (Join-Path $stage "symbols\$quad\win-$a") `
+            -SymbolsZip (Join-Path $stage (Get-SymbolsZipName $quad $a)) `
+            -Quad $quad -Arch $a -ReleaseToolProject $releaseToolProject `
+            -Wrangler $wrangler -SkipUpload:$skip -SkipReason $reason
+        Good "$(Split-Path -Leaf $r.Symmap)  $([math]::Round($r.Bytes / 1KB, 1)) KB"
+        if ($r.Uploaded) { Good "uploaded -> wavee-crash/$($r.Key)" }
+        else { Warn "symbols upload skipped ($($r.Reason)): wavee-crash/$($r.Key) was NOT written to R2" }
     }
 }
 

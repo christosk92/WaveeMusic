@@ -2,8 +2,11 @@
 //
 // The crash & diagnostics pipeline's engine-free core (docs/plans/wavee/crash-diagnostics-implementation.md §B.2,
 // §B.3, §B.7, §B.8, §I): the Summary/SendRecord JSON round trip, Files' bundle-name arithmetic and pruner, PeDebugId's
-// hand-rolled PE debug-directory reader, HangRules, ConsentPolicy, RecoveryPolicy and InstallId. Pure: no disk beyond
-// an in-memory Stream, no process, no window — every fact here is a table, not an eyeball check.
+// hand-rolled PE debug-directory reader, HangRules, ConsentPolicy, RecoveryPolicy and InstallId — plus #165 W3a's
+// additions (crash-production-readiness-implementation.md): the native-fault summary fields and old-summary
+// compatibility, ConsentPolicy.Offered/Effective, and Report.Unwrap. Pure: no disk beyond an in-memory Stream, no
+// process, no window — every fact here is a table, not an eyeball check (the disk-backed bundle helpers are in
+// CrashNativeTests.cs).
 
 using System.Buffers.Binary;
 using System.Text;
@@ -16,7 +19,7 @@ namespace Wavee.Tests;
 
 public class CrashJsonTests
 {
-    static Crash.Summary Sample() => new(
+    internal static Crash.Summary Sample() => new(
         ReportId: "3f9c2b1a", InstallId: "8a1d9e0f", Kind: Crash.Kind.Managed, StampUtc: "2026-09-24T14:30:12.118Z",
         Version: "0.3.0", Quad: "0.3.0.41", Commit: "7e209e37", Channel: "stable", Arch: "arm64", OsBuild: "26100",
         Gpu: "NVIDIA GeForce RTX", GpuTier: "Strong", SoftwareAdapter: false, Packaged: true, Locale: "en-US",
@@ -46,6 +49,70 @@ public class CrashJsonTests
         Assert.Contains("\"exceptionMessage\"", json, StringComparison.Ordinal);
         Assert.Contains("\"hasDump\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"ReportId\"", json, StringComparison.Ordinal);
+    }
+
+    /// <summary>A summary.json exactly as a build before #165 W3a wrote it: no exceptionCode / faultModule /
+    /// faultOffset. The bundle must still read, with the defaults.</summary>
+    const string PreW3aSummaryJson = """
+        {
+          "reportId": "3f9c2b1a",
+          "installId": "8a1d9e0f",
+          "kind": "Native",
+          "stampUtc": "2026-09-24T14:30:12.118Z",
+          "version": "0.3.0",
+          "quad": "0.3.0.41",
+          "commit": "7e209e37",
+          "channel": "stable",
+          "arch": "arm64",
+          "osBuild": "26100",
+          "gpu": "NVIDIA GeForce RTX",
+          "gpuTier": "Strong",
+          "softwareAdapter": false,
+          "packaged": true,
+          "locale": "en-US",
+          "sessionId": "sess-1",
+          "uptimeMs": 12345,
+          "beforeFirstFrame": false,
+          "lastRoute": "artist:abc",
+          "exceptionType": "Native",
+          "exceptionMessage": "native fault 0xc0000005 at 0x7ff8a1b2c3d4",
+          "rvas": [],
+          "moduleBase": 5368709120,
+          "moduleSize": 33554432,
+          "debugId": "7E2C1B4A-0000-0000-0000-0000000000AA-1",
+          "exitCode": 0,
+          "hasDump": true,
+          "dumpBytes": 4200000
+        }
+        """;
+
+    [Fact]
+    public void A_summary_written_before_the_native_fault_fields_still_deserializes_with_their_defaults()
+    {
+        var back = JsonSerializer.Deserialize(PreW3aSummaryJson, Crash.CrashJson.Default.Summary)!;
+        Assert.Equal(Crash.Kind.Native, back.Kind);
+        Assert.Equal("3f9c2b1a", back.ReportId);
+        Assert.Equal(4_200_000, back.DumpBytes);
+        Assert.Equal(0u, back.ExceptionCode);
+        Assert.Equal("", back.FaultModule);
+        Assert.Equal(0, back.FaultOffset);
+    }
+
+    [Fact]
+    public void The_native_fault_fields_travel_camelCase_and_the_exception_code_is_a_json_number()
+    {
+        var native = Sample() with { Kind = Crash.Kind.Native, ExceptionCode = 0xC0000005, FaultModule = "ntdll.dll", FaultOffset = 0x1a2b };
+        string json = JsonSerializer.Serialize(native, Crash.CrashJson.Default.Summary);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.Equal(JsonValueKind.Number, root.GetProperty("exceptionCode").ValueKind);
+        Assert.Equal(0xC0000005u, root.GetProperty("exceptionCode").GetUInt32());
+        Assert.Equal("ntdll.dll", root.GetProperty("faultModule").GetString());
+        Assert.Equal(JsonValueKind.Number, root.GetProperty("faultOffset").ValueKind);
+        Assert.Equal(0x1a2b, root.GetProperty("faultOffset").GetInt64());
+
+        var back = JsonSerializer.Deserialize(json, Crash.CrashJson.Default.Summary)!;
+        Assert.Equal(native with { Rvas = back.Rvas }, back);
     }
 
     [Theory]
@@ -405,6 +472,96 @@ public class ConsentPolicyTests
     [InlineData(Crash.Reporting.Auto)]
     public void The_dump_toggle_being_off_blocks_an_automatic_dump(Crash.Reporting mode) =>
         Assert.False(Crash.ConsentPolicy.DumpAllowed(mode, Crash.Kind.Managed, includeDump: false, manualSend: false));
+
+    [Fact]
+    public void A_build_that_can_send_offers_all_three_modes_in_order() =>
+        Assert.Equal(new[] { Crash.Reporting.Off, Crash.Reporting.Ask, Crash.Reporting.Auto }, Crash.ConsentPolicy.Offered(configured: true));
+
+    [Fact]
+    public void A_build_that_cannot_send_never_offers_automatic() =>
+        Assert.Equal(new[] { Crash.Reporting.Off, Crash.Reporting.Ask }, Crash.ConsentPolicy.Offered(configured: false));
+
+    [Theory]
+    [InlineData(Crash.Reporting.Off, true, Crash.Reporting.Off)]
+    [InlineData(Crash.Reporting.Ask, true, Crash.Reporting.Ask)]
+    [InlineData(Crash.Reporting.Auto, true, Crash.Reporting.Auto)]
+    [InlineData(Crash.Reporting.Off, false, Crash.Reporting.Off)]
+    [InlineData(Crash.Reporting.Ask, false, Crash.Reporting.Ask)]
+    [InlineData(Crash.Reporting.Auto, false, Crash.Reporting.Ask)]   // persisted Automatic on a build that can't send → the prompt
+    public void The_effective_mode_degrades_automatic_to_ask_only_when_the_build_cannot_send(Crash.Reporting mode, bool configured, Crash.Reporting expected) =>
+        Assert.Equal(expected, Crash.ConsentPolicy.Effective(mode, configured));
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Every_effective_mode_is_one_the_build_offers(bool configured)
+    {
+        foreach (var mode in new[] { Crash.Reporting.Off, Crash.Reporting.Ask, Crash.Reporting.Auto })
+            Assert.Contains(Crash.ConsentPolicy.Effective(mode, configured), Crash.ConsentPolicy.Offered(configured));
+    }
+}
+
+// ── 5b. Report.Unwrap — what a summary is titled by ─────────────────────────────────────────────────────────────────
+
+public class CrashUnwrapTests
+{
+    [Fact]
+    public void A_plain_exception_is_itself()
+    {
+        var ex = new InvalidOperationException("boom");
+        Assert.Same(ex, Crash.Report.Unwrap(ex));
+    }
+
+    [Fact]
+    public void A_single_inner_aggregate_is_peeled()
+    {
+        var inner = new InvalidOperationException("boom");
+        Assert.Same(inner, Crash.Report.Unwrap(new AggregateException(inner)));
+    }
+
+    [Fact]
+    public void A_multi_inner_aggregate_stays_itself()
+    {
+        var agg = new AggregateException(new InvalidOperationException("a"), new ArgumentException("b"));
+        Assert.Same(agg, Crash.Report.Unwrap(agg));
+    }
+
+    [Fact]
+    public void A_target_invocation_exception_is_peeled()
+    {
+        var inner = new ArgumentException("bad");
+        Assert.Same(inner, Crash.Report.Unwrap(new System.Reflection.TargetInvocationException(inner)));
+    }
+
+    [Fact]
+    public void A_type_initialization_exception_is_peeled()
+    {
+        var inner = new FormatException("cctor");
+        Assert.Same(inner, Crash.Report.Unwrap(new TypeInitializationException("Wavee.Some", inner)));
+    }
+
+    [Fact]
+    public void Nested_wrappers_peel_all_the_way_down()
+    {
+        var fault = new InvalidOperationException("the real one");
+        var wrapped = new AggregateException(new System.Reflection.TargetInvocationException(new TypeInitializationException("Wavee.T", fault)));
+        Assert.Same(fault, Crash.Report.Unwrap(wrapped));
+    }
+
+    [Fact]
+    public void A_wrapper_without_an_inner_stays_itself()
+    {
+        var tie = new System.Reflection.TargetInvocationException(null);
+        Assert.Same(tie, Crash.Report.Unwrap(tie));
+    }
+
+    [Fact]
+    public void An_inner_that_is_not_a_wrapper_stops_the_peel()
+    {
+        // InvalidOperationException's own InnerException is NOT a wrapper — the peel stops at the outer fault.
+        var outer = new InvalidOperationException("outer", new ArgumentException("cause"));
+        Assert.Same(outer, Crash.Report.Unwrap(new AggregateException(outer)));
+    }
 }
 
 // ── 6. RecoveryPolicy ────────────────────────────────────────────────────────────────────────────────────────────────

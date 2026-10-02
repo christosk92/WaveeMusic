@@ -451,9 +451,10 @@ public readonly partial struct Search
     public static bool CanPlay(EntityKind kind) => kind is EntityKind.Track or EntityKind.Album or EntityKind.Artist
         or EntityKind.Playlist or EntityKind.Show or EntityKind.Episode;
 
-    /// <summary>The hero's "Open page" gate: a destination with a page (a track's open IS its play).</summary>
+    /// <summary>The hero's "Open page" gate: a destination with a page (a track's open IS its play). A profile has one
+    /// since the profile pages (#161) — "Open page", and still no Play.</summary>
     public static bool CanOpen(EntityKind kind) => kind is EntityKind.Album or EntityKind.Artist or EntityKind.Playlist
-        or EntityKind.Show or EntityKind.Episode;
+        or EntityKind.Show or EntityKind.Episode or EntityKind.User;
 
     /// <summary>Does a hit of this kind resolve a menu (and therefore a "…" button and a right-click)?</summary>
     public static bool HasMenu(EntityKind kind) => kind is EntityKind.Track or EntityKind.Album or EntityKind.Artist

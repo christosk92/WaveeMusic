@@ -381,8 +381,6 @@ public readonly partial struct User
 
     static Element[] FactSkeletonCards()
     {
-        static Element Bar(float w, float h) => new BoxEl
-        { Width = w, Height = h, Corners = CornerRadius4.All(3f), Fill = Tok.FillControlDefault, Shrink = 0f };
         static Element Column(float h) => new BoxEl
         {
             Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 1, Justify = FlexJustify.End, Height = 38f,
@@ -396,7 +394,7 @@ public readonly partial struct User
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.End, MinWidth = 0f,
             Children =
             [
-                new BoxEl { Direction = 1, Gap = Spacing.XS, Shrink = 0f, Children = [Bar(56f, 30f), Bar(72f, 12f)] },
+                new BoxEl { Direction = 1, Gap = Spacing.XS, Shrink = 0f, Children = [Controls.PendingBar(56f, 30f), Controls.PendingBar(72f, 12f)] },
                 new BoxEl { Direction = 0, Gap = 3f, Height = 38f, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Children = columns },
             ],
         });
@@ -409,7 +407,7 @@ public readonly partial struct User
                 Margin = new Edges4(i == 0 ? 0f : -12f, 0f, 0f, 0f),
             };
         var names = new Element[s_factSkelNameWidths.Length];
-        for (int i = 0; i < names.Length; i++) names[i] = Bar(s_factSkelNameWidths[i], 12f);
+        for (int i = 0; i < names.Length; i++) names[i] = Controls.PendingBar(s_factSkelNameWidths[i], 12f);
         var artists = FactCard("fact:artists", CardHead(" ", null), new BoxEl
         {
             Direction = 1, Gap = Spacing.S, MinWidth = 0f,
@@ -422,7 +420,7 @@ public readonly partial struct User
             Children =
             [
                 new BoxEl { Height = 8f, Corners = CornerRadius4.All(4f), Fill = Tok.FillControlDefault },
-                new BoxEl { Direction = 0, Gap = Spacing.M, Children = [Bar(64f, 12f), Bar(52f, 12f), Bar(70f, 12f)] },
+                new BoxEl { Direction = 0, Gap = Spacing.M, Children = [Controls.PendingBar(64f, 12f), Controls.PendingBar(52f, 12f), Controls.PendingBar(70f, 12f)] },
             ],
         });
         // Liked and playlists share the same three silhouettes (Rediscover is too data-bound to fake honestly).

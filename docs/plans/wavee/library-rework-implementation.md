@@ -2165,3 +2165,4 @@ rework (`wavee-0.3-ui/15-library.md`) is the doc-facing record; this is the code
   untouched — chapter 15 §0 #9 and the corrected W14-W17 note both hold).
 - **Gate** — the footprint gate rose 1,470,000 → 1,560,000 for `Table.Failed`.
 - **Gate** — the fake seed's saved-album count is 18.
+- **L** — as built: W6's one-row compact band is replaced by the stacked arm, #158 (`library-reader-narrow-heads-implementation.md`).

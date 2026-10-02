@@ -1099,21 +1099,23 @@ public readonly partial struct Artist
         /// <summary>The magazine's own derived-shimmer shape (chart skeleton + one facet skeleton) — <see cref="PageShimmer"/>'s
         /// bottom half, factored out so the doc above stays readable. There is no second consumer any more (ch 08 BUG F,
         /// restored to 0.2.10's model): the whole page — hero included — is one derived shimmer while the overview is
-        /// unknown, never a hero-then-magazine two-step.</summary>
+        /// unknown, never a hero-then-magazine two-step. The facet's cells are the grid's own card — the shared surface's
+        /// SEED face at <c>Shape.Grid</c> (the discography grid's gap), so a cell is the height of the real card it stands in
+        /// for (<c>cell width + 50</c>) and nothing moves when the grid lands. The face IS already the bone description, so
+        /// each cell hands it to the deriver as-is (<c>Skel</c>): derived, its aspect-only cover declares no extent and
+        /// would collapse to nothing.</summary>
         Element MagazineShimmer()
         {
             var cells = new Element[5];
             for (int i = 0; i < cells.Length; i++)
-                cells[i] = new BoxEl
+            {
+                Element cell = new BoxEl
                 {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.S,
-                    Children =
-                    [
-                        Controls.ArtworkFill(null, Radii.Card),
-                        Design.Type.CardTitle("Album title") with { MaxLines = 1 },
-                        Design.Type.TrackMeta("2026 · 12") with { MaxLines = 1 },
-                    ],
+                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                    Children = [SurfaceParts.Seed(Shape.Grid, float.NaN)],
                 };
+                cells[i] = cell.Skel(cell);
+            }
             Element facet = new BoxEl
             {
                 Direction = 1, Gap = Spacing.M,
@@ -1124,7 +1126,7 @@ public readonly partial struct Artist
                         Direction = 0, AlignItems = FlexAlign.Center,
                         Children = [Controls.AccentHeader(Loc.Get(Strings.Artist.Albums), _accent.Peek())],
                     },
-                    new BoxEl { Direction = 0, Gap = 16f, Children = cells },
+                    new BoxEl { Direction = 0, Gap = DiscoGap, Children = cells },
                 ],
             };
             return Magazine([ChartSkeleton(0, _classic, _showArtwork), facet], _metrics.Gutter);
@@ -1135,20 +1137,25 @@ public readonly partial struct Artist
         /// <summary>A measured PagedShelf under an accent header: auto-fit cards between 150 and 200, gap 12, one row,
         /// edge fade 36, stock chevrons. The items are VALUE records (slot + version), so a publish that changes nothing
         /// a card paints rebuilds no card; a hydrated name bumps the version and rebuilds exactly that card.</summary>
-        static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, ColorF accent)
+        static Element ShelfOf(ShelfEntity[] items, Func<ShelfEntity, int, float, Element> cardAt, string title, ColorF accent,
+                               Func<float, float>? cardHeight = null, Action<ShelfEntity, int>? onInvoke = null)
             => new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
-                // Artist shelf cards use Controls.ShelfCard's fixed square art and label budget. Supplying the
-                // shared height formula keeps the virtual shelf from mounting a probe row of full cards (artwork,
-                // tooltips, playback overlays) just to discover a height it already knows. The probe was a major
-                // source of late mount/layout bursts during navigation and could make the page appear to flicker.
-                Children = [PagedShelf.Create(items, cardAt, cardHeight: Controls.ShelfHeight,
+                // Artist shelf cards are the shared surface's `s_shelfShape`: a fixed square art and label budget (the
+                // videos shelf passes its own 16:9 extent). Supplying the shared height formula keeps the virtual shelf
+                // from mounting a probe row of full cards (artwork, tooltips, playback overlays) just to discover a height
+                // it already knows. The probe was a major source of late mount/layout bursts during navigation and could
+                // make the page appear to flicker.
+                // A shelf of SURFACE cards passes `onInvoke` (the slot root is then the one click/focus owner: one Tab stop
+                // per card, Enter/Space invoke); a shelf whose cards own their click (concert stub, merch, gallery) omits it.
+                Children = [PagedShelf.Create(items, cardAt, onInvoke: onInvoke, cardHeight: cardHeight ?? s_squareHeight,
                     header: Controls.AccentHeader(title, accent), measured: false, keyOf: s_shelfKey,
                     lift: ShelfLift.None)],   // the shared card hovers fill-only: no lift halo to reserve clearance for
             };
 
         static readonly Func<ShelfEntity, int, string> s_shelfKey = static (item, _) => item.Key;
+        static readonly Func<float, float> s_squareHeight = static w => SurfaceGeometry.ShelfHeight(w);
 
         static ShelfEntity[] Items(ReadOnlySpan<int> slots, EntityKind kind, int cap)
         {
@@ -1173,7 +1180,10 @@ public readonly partial struct Artist
 
         Element AppearsOnShelf(Artist a, ColorF accent)
             => ShelfOf(Items(a.AppearsOnSlots, EntityKind.Album, ArtistSections.AppearsOnCap), AlbumCard,
-                       Loc.Get(Strings.Artist.AppearsOn), accent);
+                       Loc.Get(Strings.Artist.AppearsOn), accent, onInvoke: static (item, _) => OpenAlbum(item));
+
+        /// <summary>The album card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
+        static void OpenAlbum(ShelfEntity item) => Track.GoToAlbum(new Album(item.Slot));
 
         /// <summary>Square cover, title, and the year — or the kind when the year is unknown (parity 56).</summary>
         Element AlbumCard(ShelfEntity item, int index, float w)
@@ -1184,12 +1194,19 @@ public readonly partial struct Artist
             string? cover = Controls.ArtUrl(al.ImageId);
             string sub = al.Year > 0 ? al.Year.ToString(CultureInfo.CurrentCulture) : Detail.Text.KindLabel(al.Kind);
             var data = new Controls.CardData(uri, title, CardSubtitle(sub), cover,
-                OnClick: () => Track.GoToAlbum(al),
+                OnClick: () => OpenAlbum(item),
                 OnPlay: () => Playback.PlayContext(al.Id),
-                Drag: Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title, new EntityRef(EntityKind.Album, al.Slot), ArtUrl: cover)));
-            return WithCardMenu(Controls.ShelfCard(data, w),
-                () => CardMenu(ActionTarget.ForAlbum(al.Uri, title), cover, title, sub, artist: false));
+                Drag: Drag.Source(() => new DragPayload(DragKind.Album, uri, uri, title, new EntityRef(EntityKind.Album, al.Slot), ArtUrl: cover)))
+            {
+                Menu = () => CardMenu(ActionTarget.ForAlbum(al.Uri, title), cover, title, sub, artist: false),
+            };
+            return Controls.Surface(data, s_shelfShape, w);
         }
+
+        /// <summary>The artist shelves' card: a square cover, a title and a subtitle capped at two lines
+        /// (<see cref="CardSubtitle"/>) — exactly the extent <see cref="ShelfOf"/> hands the shelf
+        /// (<c>SurfaceGeometry.ShelfHeight(w)</c> = <c>w + 66</c>).</summary>
+        static readonly SurfaceShape s_shelfShape = Shape.Shelf(captionLines: 2);
 
         Element VideosShelf(Artist a, ColorF accent)
         {
@@ -1203,53 +1220,41 @@ public readonly partial struct Artist
                 items[i] = new ShelfEntity(slots[i], new Track(slots[i]).Version, v.Thumb, v.DurationMs,
                     slots[i].ToString(CultureInfo.InvariantCulture));
             }
-            return ShelfOf(items, VideoCard, Loc.Get(Strings.Artist.MusicVideos), accent);
+            return ShelfOf(items, VideoCard, Loc.Get(Strings.Artist.MusicVideos), accent, cardHeight: s_videoHeight,
+                           onInvoke: static (item, _) => PlayVideo(item));
         }
 
-        /// <summary>The 16:9 music-video card: the thumb at card width − 16, the title, the duration (Shelves.cs:58-74,
-        /// MediaCard.VideoCard). It stands for its TRACK — the menu is the track's, the drag carries the track.</summary>
+        /// <summary>The video card's click and ▶, shared with the shelf slot's <c>onInvoke</c>: it plays the track.</summary>
+        static void PlayVideo(ShelfEntity item) => Playback.PlayContext(new Track(item.Slot).Id);
+
+        /// <summary>The 16:9 music-video card: the shared surface's <see cref="Shape.Video"/> (the FAB at rest, the real
+        /// now-playing overlay, the corner "…", the hover plate, the hand cursor) over the thumb at 16:9 and the duration
+        /// as its caption. It stands for its TRACK — the menu is the track's, the drag carries the track, a click plays it.</summary>
         Element VideoCard(ShelfEntity item, int index, float w)
         {
             var t = new Track(item.Slot);
             string uri = t.Uri.Text;
             string title = t.Title;
             string? thumb = Controls.ArtUrl(item.Sub);
-            string duration = item.Aux > 0 ? Track.Format.TrackTime(item.Aux) : "";
-            float inner = MathF.Max(64f, w - 2f * Spacing.S);
-            float thumbH = MathF.Round(inner * 9f / 16f);
-            Action play = () => Playback.PlayContext(t.Id);
-            Element content = new BoxEl
+            Action play = () => PlayVideo(item);
+            var data = new Controls.CardData(uri, title, null, thumb,
+                OnClick: play,
+                OnPlay: play,
+                Drag: Drag.Source(() => new DragPayload(DragKind.Track, uri, uri, title,
+                    new EntityRef(EntityKind.Track, t.Slot), Tracks: [t], ArtUrl: thumb)))
             {
-                Direction = 1, Gap = Spacing.S, Grow = 1f,
-                Padding = new Edges4(Spacing.S, Spacing.S, Spacing.S, Spacing.M),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        ZStack = true, Width = inner, Height = thumbH, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Control),
-                        Children =
-                        [
-                            Controls.Artwork(thumb, inner, thumbH, Radii.Control, decodePx: 480),
-                            Controls.NowPlayingOverlay(uri, play, 44f, centred: true),
-                        ],
-                    },
-                    Design.Type.TrackTitle(title) with { Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    duration.Length == 0
-                        ? new BoxEl()
-                        : Design.Type.TrackMeta(duration) with { Width = inner, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                ],
+                CoverAspect = VideoAspect,
+                Caption = item.Aux > 0 ? Track.Format.TrackTime(item.Aux) : null,
+                Menu = () => Track.Menu([t], in s_trackMenu),
             };
-            Element card = new BoxEl
-            {
-                Width = w, Shrink = 0f, Padding = new Edges4(0f, Spacing.XS, 0f, 2f),
-                Children =
-                [
-                    Controls.CardShell(content, play, Drag.Source(() => new DragPayload(DragKind.Track, uri, uri, title,
-                        new EntityRef(EntityKind.Track, t.Slot), Tracks: [t], ArtUrl: thumb))),
-                ],
-            };
-            return WithCardMenu(card, () => Track.Menu([t], in s_trackMenu));
+            return Controls.Surface(data, Shape.Video, w);
         }
+
+        /// <summary>A video thumb's width ÷ height, and the shelf's extent for it: <c>ShelfHeight</c> at that aspect with
+        /// the video shape's one caption line (the duration) — the renderer and this estimator both read
+        /// <see cref="SurfaceGeometry"/>, so the virtual shelf never mounts a probe row.</summary>
+        const float VideoAspect = 16f / 9f;
+        static readonly Func<float, float> s_videoHeight = static w => SurfaceGeometry.StackExtent(Shape.Video, w, VideoAspect);
 
         static readonly Track.MenuOptions s_trackMenu = new(ShowGoToAlbum: true);
 
@@ -1262,7 +1267,15 @@ public readonly partial struct Artist
             for (int i = 0; i < n; i++)
                 items[i] = new ShelfEntity(slots[i], new Playlist(slots[i]).Version, i < subtitles.Length ? subtitles[i] : default, 0,
                     slots[i].ToString(CultureInfo.InvariantCulture));
-            return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), accent);
+            return ShelfOf(items, PlaylistCard, Loc.Get(Strings.Artist.PlaylistsDiscovery), accent,
+                           onInvoke: static (item, _) => OpenPlaylist(item));
+        }
+
+        /// <summary>The playlist card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
+        static void OpenPlaylist(ShelfEntity item)
+        {
+            var pl = new Playlist(item.Slot);
+            Shell.GoTo(Shell.For(pl.Uri, Entities.Strings.Resolve(pl.TitleId)));
         }
 
         Element PlaylistCard(ShelfEntity item, int index, float w)
@@ -1273,11 +1286,13 @@ public readonly partial struct Artist
             string sub = Entities.Strings.Resolve(item.Sub);
             string? cover = Controls.ArtUrl(pl.ImageId);
             var data = new Controls.CardData(uri, title, CardSubtitle(sub), cover,
-                OnClick: () => Shell.GoTo(Shell.For(pl.Uri, title)),
+                OnClick: () => OpenPlaylist(item),
                 OnPlay: () => Playback.PlayContext(pl.Id),
-                Drag: Drag.Source(() => new DragPayload(DragKind.Playlist, uri, uri, title, new EntityRef(EntityKind.Playlist, pl.Slot), ArtUrl: cover)));
-            return WithCardMenu(Controls.ShelfCard(data, w),
-                () => CardMenu(ActionTarget.ForPlaylist(pl.Uri, title), cover, title, sub, artist: false));
+                Drag: Drag.Source(() => new DragPayload(DragKind.Playlist, uri, uri, title, new EntityRef(EntityKind.Playlist, pl.Slot), ArtUrl: cover)))
+            {
+                Menu = () => CardMenu(ActionTarget.ForPlaylist(pl.Uri, title), cover, title, sub, artist: false),
+            };
+            return Controls.Surface(data, s_shelfShape, w);
         }
 
         Element ConcertsShelf(Artist a, ColorF accent)
@@ -1358,7 +1373,10 @@ public readonly partial struct Artist
         /// pool of followed artists (the section keys differ, so the two never share a subtree).</summary>
         Element ArtistsShelf(ReadOnlySpan<int> slots, ColorF accent)
             => ShelfOf(Items(slots, EntityKind.Artist, ArtistSections.FansCap), ArtistCard,
-                       Loc.Get(Strings.Detail.FansAlsoLike), accent);
+                       Loc.Get(Strings.Detail.FansAlsoLike), accent, onInvoke: static (item, _) => OpenArtist(item));
+
+        /// <summary>The artist card's click, shared with the shelf slot's <c>onInvoke</c>.</summary>
+        static void OpenArtist(ShelfEntity item) => Track.GoToArtist(new Artist(item.Slot));
 
         Element ArtistCard(ShelfEntity item, int index, float w)
         {
@@ -1368,12 +1386,14 @@ public readonly partial struct Artist
             string? image = Controls.ArtUrl(ar.ImageId);
             string sub = Loc.Get(Strings.Search.TypeArtist);
             var data = new Controls.CardData(uri, name, CardSubtitle(sub), image,
-                OnClick: () => Track.GoToArtist(ar),
+                OnClick: () => OpenArtist(item),
                 OnPlay: () => Playback.PlayContext(ar.Id),
                 Circular: true,
-                Drag: Drag.Source(() => new DragPayload(DragKind.Artist, uri, uri, name, new EntityRef(EntityKind.Artist, ar.Slot), ArtUrl: image)));
-            return WithCardMenu(Controls.ShelfCard(data, w),
-                () => CardMenu(ActionTarget.ForArtist(ar.Uri, name), image, name, sub, artist: true));
+                Drag: Drag.Source(() => new DragPayload(DragKind.Artist, uri, uri, name, new EntityRef(EntityKind.Artist, ar.Slot), ArtUrl: image)))
+            {
+                Menu = () => CardMenu(ActionTarget.ForArtist(ar.Uri, name), image, name, sub, artist: true),
+            };
+            return Controls.Surface(data, s_shelfShape, w);
         }
 
         static Element CardSubtitle(string text) => Design.Type.TrackMeta(text) with
@@ -1383,12 +1403,8 @@ public readonly partial struct Artist
 
         // ── the card menu (W27) ──
 
-        Element WithCardMenu(Element card, Func<ContextMenuModel?> menu)
-        {
-            var overlay = _overlay;
-            if (Controls.IsNullOverlay(overlay)) return card;
-            return ContextMenu.Attach(new BoxEl { Direction = 1, MinWidth = 0f, Children = [card] }, overlay, menu);
-        }
+        // Every card on the page (album, playlist, artist, video) carries its menu in the surface's data (`CardData.Menu`);
+        // the host attaches the right-click funnel and the corner "…".
 
         // Album / playlist card: strip [Play · Play next · Add to queue · Save], rows [Add to playlist · Open · Pin/Unpin ·
         // Go to artist · Share]. Artist card: strip [Play · Follow], rows [Open · Pin/Unpin · Share · Go to artist radio].

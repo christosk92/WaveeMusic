@@ -646,7 +646,10 @@
     "daylistMeta": "Playlist · Spotify · {n} songs",
     "playingOn": "playing on {device}",
     "daylist": {
-      "arrivesAt": "{when} arrives at {time}"
+      "arrivesAt": "{when} arrives at {time}",
+      "onItsWay": "{daypart} is on its way",
+      "late": "Your next daylist is running late",
+      "checkAgain": "Check again"
     },
     "zone": {
       "becauseYouLike": "Because you like",
@@ -1309,7 +1312,7 @@
       "usedOfBudget": "{used} of {budget} budget",
       "deleteOldLogsBody": "Delete rolled log files? The live wavee.log file is kept.",
       "clearAudioBody": "Remove all cached encrypted audio bodies from disk?",
-      "clearKeysBody": "Remove all saved license keys from disk?",
+      "clearKeysBody": "Remove all saved license keys from disk? Tracks will ask for their keys again next time they play.",
       "library": "Library database",
       "librarySub": "library.db - albums, artists, playlists, sync state",
       "runtime": "Playback runtime",
@@ -1328,7 +1331,7 @@
       "cacheAudio": "Cache encrypted audio",
       "cacheAudioSub": "Skip re-downloading track bodies you already streamed",
       "cacheKeys": "Cache license keys",
-      "cacheKeysSub": "Reuse obfuscated keys across sessions (self-heals if stale)",
+      "cacheKeysSub": "Reuse decryption keys across sessions so tracks you've played start sooner",
       "bodyBudget": "Audio body budget",
       "bodyBudgetSub": "Fixed, drive-aware, or unlimited - changes apply immediately",
       "fixedSize": "Fixed size",
@@ -1461,6 +1464,10 @@
       "openCaptureViewer": "Open capture viewer",
       "openCaptureViewerSub": "Browse recent causal roots and anomalies without leaving the app.",
       "openCaptureViewerButton": "Open viewer",
+      "sendTestCrashReport": "Send a test crash report",
+      "sendTestCrashReportSub": "Builds a real crash report from a caught test exception — summary, report, log tail and a memory snapshot — and sends it to the crash service. Wavee keeps running.",
+      "sendTestCrashReportButton": "Send test report",
+      "sendTestCrashReportUnavailable": "This build can't send crash reports — it has no crash service set up.",
       "simulateUpdate": "Simulate an update",
       "simulateUpdateSub": "Walks the update state machine locally — toast, notification centre and About — with no network and nothing installed.",
       "simulateUpdateButton": "Run simulation"
@@ -1627,7 +1634,6 @@
     "upgrade": "Go to Premium",
     "useAnotherAccount": "Use a different account",
     "logOut": "Log out",
-    "account": "Account",
     "settings": "Settings",
     "logoutConfirmTitle": "Log out of Wavee?",
     "logoutConfirmBody": "You'll need to authorize Wavee again to stream your library.",
@@ -2675,6 +2681,78 @@
     "paletteNeutral": "Neutral",
     "paletteAccent": "Accent"
   },
+  "person": {
+    "openAccount": "Open account",
+    "topArtists": "Top artists this month",
+    "onlyYou": "Only visible to you",
+    "publicPlaylists": "Public playlists",
+    "recentArtists": "Recently played artists",
+    "following": "Following",
+    "followers": "Followers",
+    "pivot": {
+      "topArtists": "Top artists",
+      "playlists": "Playlists",
+      "artists": "Artists",
+      "following": "Following",
+      "followers": "Followers"
+    },
+    "stat": {
+      "followers": "{count, plural, one {Follower} other {Followers}}",
+      "following": "Following",
+      "playlists": "{count, plural, one {Public playlist} other {Public playlists}}"
+    },
+    "card": {
+      "followers": "{count, plural, one {{n} follower} other {{n} followers}}"
+    },
+    "empty": {
+      "playlists": "No public playlists",
+      "playlistsOwn": "No public playlists yet",
+      "playlistsOwnHint": "Playlists you make public show up here.",
+      "unavailable": "This profile isn’t available",
+      "unavailableHint": "It may be private, or the account was closed."
+    },
+    "list": {
+      "nav": {
+        "profile": "Profile",
+        "lists": "People"
+      },
+      "menu": {
+        "profile": "Profile"
+      },
+      "title": {
+        "following": "Following",
+        "followers": "Followers"
+      },
+      "chip": {
+        "all": "All",
+        "artists": "Artists",
+        "people": "People"
+      },
+      "find": {
+        "following": "Find in following",
+        "followers": "Find in followers"
+      },
+      "card": {
+        "followers": "{count, plural, one {{n} follower} other {{n} followers}}",
+        "artist": "Artist",
+        "artistFollowers": "{count, plural, one {Artist · {n} follower} other {Artist · {n} followers}}",
+        "profile": "Profile"
+      },
+      "empty": {
+        "following": "Not following anyone yet",
+        "followers": "No followers yet"
+      },
+      "hidden": {
+        "title": "Follows are private",
+        "subtitle": "{name} hasn’t made their follows public."
+      },
+      "unavailable": {
+        "title": "This profile isn’t available",
+        "subtitle": "It may be private, or the account was closed."
+      },
+      "fallbackName": "Profile"
+    }
+  },
   "palette": {
     "title": "Command palette",
     "noMatches": "No matching commands",
@@ -2787,6 +2865,7 @@
     "modeOff": "Off",
     "modeAsk": "Ask each time",
     "modeAuto": "Automatic",
+    "modeAutoNeedsService": "Needs a Wavee build that can send reports",
     "includeDump": "Include a memory snapshot",
     "includeDumpSub": "Helps with hard crashes. May contain small pieces of what was on screen.",
     "queued": "Waiting to send",
@@ -2798,7 +2877,7 @@
     "openFolder": "Open folder",
     "deleteAll": "Delete all",
     "deleteAllConfirmTitle": "Delete all saved reports?",
-    "deleteAllConfirmBody": "Deletes every crash report saved on this PC. Reports already sent stay on the crash service until they age out.",
+    "deleteAllConfirmBody": "Deletes every crash report saved on this PC. Reports already sent stay on the crash service until they're 90 days old — Delete my data removes them sooner.",
     "privacy": "Privacy policy",
     "eraseRow": "Your data on the crash service",
     "eraseSub": "Reports are tied to a random install id, never to you.",
@@ -2811,6 +2890,7 @@
     "eraseFailed": "Couldn't reach the crash service — try again later",
     "promptTitle": "Wavee closed unexpectedly",
     "promptHangTitle": "Wavee stopped responding",
+    "promptListTitle": "Send this report?",
     "promptWhen": "Last run ended {time}",
     "promptLead": "Last time, Wavee crashed. Send a report so it can be fixed?",
     "promptHangLead": "Wavee stopped responding for a while, then recovered. Send a report so it can be fixed?",
@@ -2833,6 +2913,9 @@
     "sentToastDetail": "Wavee crashed last time. Report {id}",
     "queuedToast": "Crash report saved — it'll send once you're back online",
     "sendFailed": "Couldn't send the report. It's saved and you can try again from Settings.",
+    "testReportWriting": "Writing a test crash report…",
+    "testReportSentDetail": "Test report {id} reached the crash service.",
+    "testReportFailed": "Couldn't write the test crash report — the log says why.",
     "hangToast": "Wavee stopped responding — a report was saved ({detail})",
     "reports": "Reports",
     "reportsEmpty": "No reports on this PC",
@@ -2848,6 +2931,12 @@
     "stateFailed": "Couldn't send",
     "view": "View",
     "sendButton": "Send",
+    "rowId": "Report {id}",
+    "rowCopy": "Copy",
+    "rowCopied": "Report copied",
+    "rowDelete": "Delete",
+    "rowDeleteConfirmTitle": "Delete this report?",
+    "rowDeleteConfirmBody": "Deletes it from this PC. If it was sent, the crash service keeps its copy until it's 90 days old — Delete my data removes that too.",
     "recoveryTitle": "Wavee couldn't start",
     "recoveryBodySwitch": "You asked Wavee to start in recovery mode.",
     "recoveryBodyBootFailed": "Its settings or data folder could not be opened.",

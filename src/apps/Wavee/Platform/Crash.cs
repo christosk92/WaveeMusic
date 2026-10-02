@@ -44,7 +44,14 @@ public static partial class Crash
     /// <summary><c>summary.json</c> — the machine-readable half of a bundle. Every field is scrubber-safe EXCEPT
     /// <see cref="ExceptionMessage"/> and <see cref="LastRoute"/> (the scrubber, WP-C, rewrites those before a bundle
     /// ever leaves the outbox); the local copy on disk keeps them as captured because the in-app prompt and the
-    /// Reports list show the real thing first.</summary>
+    /// Reports list show the real thing first.
+    /// <para>The three trailing native-fault fields (#165 W3a) are optional constructor parameters ON PURPOSE: a
+    /// <c>summary.json</c> written before they existed has no such properties, and the source-generated reader then
+    /// takes these defaults instead of failing the bundle. <see cref="ExceptionCode"/> is the NTSTATUS the hook saw
+    /// (0 for every non-native kind; a JSON number on the wire); <see cref="FaultModule"/> is the normalized base name
+    /// of the module the fault address fell in (<see cref="Crash.FaultModule.Normalize"/>; "" when unresolved) and
+    /// <see cref="FaultOffset"/> the address's offset inside it — both filled by the CHILD after the dump
+    /// (<c>Crash.Handler</c>, via <see cref="Bundles.UpdateSummary"/>).</para></summary>
     public sealed record Summary(
         string ReportId, string InstallId, Kind Kind, string StampUtc,
         string Version, string Quad, string Commit, string Channel, string Arch, string OsBuild,
@@ -52,7 +59,8 @@ public static partial class Crash
         string SessionId, long UptimeMs, bool BeforeFirstFrame, string LastRoute,
         string ExceptionType, string ExceptionMessage, long[] Rvas, long ModuleBase, long ModuleSize,
         string DebugId,               // RSDS GUID-age from the PE debug directory (PeDebugId.TryRead)
-        int ExitCode, bool HasDump, long DumpBytes);
+        int ExitCode, bool HasDump, long DumpBytes,
+        uint ExceptionCode = 0, string FaultModule = "", long FaultOffset = 0);
 
     /// <summary><c>send.json</c> beside <c>summary.json</c> — the per-bundle send state. Written by the uploader
     /// (WP-C); read by <c>Crash.Host.Bundles()</c> (WP-B) so the Reports list (WP-E) never has to ask the network.</summary>
@@ -377,6 +385,22 @@ public static partial class Crash
         /// "include a memory snapshot", AND the bundle must not be a hang (hang dumps are always ask-first, §B.7).</summary>
         public static bool DumpAllowed(Reporting mode, Kind kind, bool includeDump, bool manualSend)
             => manualSend || (mode != Reporting.Off && includeDump && kind != Kind.Hang);
+
+        static readonly Reporting[] s_canSend = [Reporting.Off, Reporting.Ask, Reporting.Auto];
+        static readonly Reporting[] s_cannotSend = [Reporting.Off, Reporting.Ask];
+
+        /// <summary>The modes a consent surface (the setup wizard's card, Settings' mode combo) offers, in display
+        /// order. <paramref name="configured"/> is whether THIS build can send at all (<c>Uploader.Configured</c>: ingest
+        /// URL, key and quad all stamped); a build that can't send never offers Automatic — nobody opts into an upload
+        /// that can never happen (#165 W3a). Off/Ask stay: the local prompt, Copy and the Reports list work without a
+        /// service.</summary>
+        public static IReadOnlyList<Reporting> Offered(bool configured) => configured ? s_canSend : s_cannotSend;
+
+        /// <summary>The mode the launch decision (<see cref="Decide"/>) actually runs under: a persisted Automatic on a
+        /// build that can't send degrades to Ask (the prompt, with its local Copy/Send states) instead of silently doing
+        /// nothing; every other mode — and Automatic on a build that can send — is itself.</summary>
+        public static Reporting Effective(Reporting mode, bool configured)
+            => mode == Reporting.Auto && !configured ? Reporting.Ask : mode;
     }
 
     // ── 6. recovery (B.2 / B.8) ──────────────────────────────────────────────────────────────────────────────────────

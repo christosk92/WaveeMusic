@@ -1,18 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   mapBreakdowns,
+  mapDeleteReportResult,
   mapIssue,
   mapIssueDetail,
   mapOccurrence,
   mapReport,
   mapReportDetail,
   mapReportsPage,
+  mapRetentionResult,
   mapStats,
   mapSymbol,
   mapThisInstall,
   mapVersionCount,
 } from "./mapping";
 import type {
+  WireDeleteReportResponse,
   WireIssueBreakdowns,
   WireIssueDetailResponse,
   WireIssueRow,
@@ -20,6 +23,7 @@ import type {
   WireReportDetailResponse,
   WireReportRow,
   WireReportsPageResponse,
+  WireRetentionRunResponse,
   WireStats,
   WireSymbolRow,
   WireThisInstall,
@@ -70,6 +74,29 @@ describe("mapReport", () => {
     const app = mapReport({ ...wireReport, frames_json: "not json" });
     expect(app.frames).toEqual([]);
   });
+
+  it("maps the native fault facts and the grouping version", () => {
+    const app = mapReport({
+      ...wireReport,
+      kind: "Native",
+      exception_code: 0xc0000005,
+      fault_module: "nvwgf2umx.dll",
+      fault_offset: 0x2f10c,
+      fp_version: 2,
+    });
+    expect(app.exceptionCode).toBe(0xc0000005);
+    expect(app.faultModule).toBe("nvwgf2umx.dll");
+    expect(app.faultOffset).toBe(0x2f10c);
+    expect(app.fpVersion).toBe(2);
+  });
+
+  it("defaults the native fault facts on a row from before the migration", () => {
+    const app = mapReport(wireReport);
+    expect(app.exceptionCode).toBe(0);
+    expect(app.faultModule).toBe("");
+    expect(app.faultOffset).toBe(0);
+    expect(app.fpVersion).toBe(1);
+  });
 });
 
 describe("mapIssue", () => {
@@ -107,6 +134,53 @@ describe("mapIssue", () => {
       github_issue: null,
     });
     expect(app.versions).toEqual({});
+  });
+
+  const legacyIssue: WireIssueRow = {
+    fingerprint: "fp-3",
+    title: "System.InvalidOperationException · Wavee_Wavee_ArtistPage__Render",
+    kind: "Managed",
+    first_seen: "2026-08-01T00:00:00.000Z",
+    last_seen: "2026-09-01T00:00:00.000Z",
+    count: 5,
+    installs: 2,
+    versions_json: JSON.stringify({ "1.2.1011": 5 }),
+    status: "open",
+    github_issue: null,
+  };
+
+  it("maps the regression / resolution lifecycle fields and last_frames_json", () => {
+    const app = mapIssue({
+      ...legacyIssue,
+      regressed_at: "2026-09-01T00:00:00.000Z",
+      regressions: 2,
+      resolved_at: "2026-08-20T00:00:00.000Z",
+      resolved_version: "1.2.1011",
+      last_frames_json: JSON.stringify([{ rva: 0x3a2f10, offset: 44, name: "Wavee_Wavee_ArtistPage__Render" }]),
+      fp_version: 2,
+    });
+    expect(app.regressedAt).toBe("2026-09-01T00:00:00.000Z");
+    expect(app.regressions).toBe(2);
+    expect(app.resolvedAt).toBe("2026-08-20T00:00:00.000Z");
+    expect(app.resolvedVersion).toBe("1.2.1011");
+    expect(app.lastFrames).toEqual([{ rva: 0x3a2f10, offset: 44, name: "Wavee_Wavee_ArtistPage__Render" }]);
+    expect(app.fpVersion).toBe(2);
+  });
+
+  it("defaults the lifecycle fields when the row predates them", () => {
+    const app = mapIssue(legacyIssue);
+    expect(app.regressedAt).toBeNull();
+    expect(app.regressions).toBe(0);
+    expect(app.resolvedAt).toBeNull();
+    expect(app.resolvedVersion).toBeNull();
+    expect(app.lastFrames).toBeNull();
+    expect(app.fpVersion).toBe(1);
+  });
+
+  it("treats an empty resolved_version and a malformed last_frames_json as absent", () => {
+    const app = mapIssue({ ...legacyIssue, status: "resolved", resolved_version: "", last_frames_json: "[oops" });
+    expect(app.resolvedVersion).toBeNull();
+    expect(app.lastFrames).toBeNull();
   });
 });
 
@@ -212,5 +286,17 @@ describe("mapIssueDetail / mapReportDetail / mapReportsPage", () => {
     const app = mapReportsPage(wire);
     expect(app.reports).toHaveLength(1);
     expect(app.nextCursor).toBe("abc");
+  });
+});
+
+describe("mapDeleteReportResult / mapRetentionResult", () => {
+  it("maps the DELETE /v1/reports/:id response", () => {
+    const wire: WireDeleteReportResponse = { deleted: 1, fingerprint: "fp-1" };
+    expect(mapDeleteReportResult(wire)).toEqual({ deleted: 1, fingerprint: "fp-1" });
+  });
+
+  it("maps the POST /v1/retention/run response", () => {
+    const wire: WireRetentionRunResponse = { deleted: 2000, batches: 10, more: true };
+    expect(mapRetentionResult(wire)).toEqual({ deleted: 2000, batches: 10, more: true });
   });
 });

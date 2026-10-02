@@ -14,21 +14,23 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { ArrowClockwise24Regular, DocumentQuestionMark24Regular } from "@fluentui/react-icons";
+import { ArrowClockwise24Regular, Broom24Regular, DocumentQuestionMark24Regular } from "@fluentui/react-icons";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useIssues, useStats, useSymbols, useVersions } from "../../api/hooks";
+import { useIssues, useRunRetention, useStats, useSymbols, useVersions } from "../../api/hooks";
 import { PageBody } from "../../scene/PageBody";
 import { PageHeader, type HeaderCommand } from "../../scene/PageHeader";
 import { Panel } from "../../scene/Panel";
 import { EmptyState } from "../../scene/EmptyState";
 import { ErrorBar } from "../../scene/ErrorBar";
 import { ChartSkeleton, GridSkeleton, StatsSkeleton } from "../../scene/skeletons";
+import { useAppToast } from "../../scene/toast";
 import { pctChange } from "../../lib/format";
 import {
   DeltaCaption,
   KindDonut,
   ReportsPerDayChart,
+  RunRetentionDialog,
   SeeAllLink,
   StatCaption,
   StatTile,
@@ -37,6 +39,7 @@ import {
   WhereTable,
   issueColumnSizingOptions,
   issueColumns,
+  retentionToastText,
 } from "./parts";
 import type { AppIssue } from "../../api/types";
 
@@ -65,13 +68,29 @@ function daysAgoIso(days: number): string {
 
 /** Overview (plan §3): stat row, reports-per-day, by-kind, top issues, by-version, where-it-happened,
  *  symbols. All four states (loading/empty/error/ready) come from the same react-query calls; mock mode
- *  drives which one renders via `VITE_MOCK_STATE`/`?mockState=`. */
+ *  drives which one renders via `VITE_MOCK_STATE`/`?mockState=`. The header's "Run retention now" runs the
+ *  daily 90-day purge on demand (`POST /v1/retention/run`) after a confirm. */
 export default function OverviewPage() {
   const styles = useStyles();
   const navigate = useNavigate();
+  const toast = useAppToast();
   const [rangeDays, setRangeDays] = useState<(typeof RANGE_OPTIONS)[number]["key"]>("30");
   const [versionFilter, setVersionFilter] = useState<string | null>(null);
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
+  const [retentionConfirmOpen, setRetentionConfirmOpen] = useState(false);
+  const runRetention = useRunRetention();
+
+  function handleRunRetention() {
+    runRetention.mutate(undefined, {
+      onSuccess: (result) => {
+        const text = retentionToastText(result);
+        toast.success(text.title, text.body);
+      },
+      onError: (err) => {
+        toast.error("Couldn't run retention", err instanceof Error ? err.message : undefined);
+      },
+    });
+  }
 
   const since = useMemo(() => daysAgoIso(Number(rangeDays)), [rangeDays]);
 
@@ -139,7 +158,23 @@ export default function OverviewPage() {
     return pctChange(sum(stats.perDay.slice(mid)), sum(stats.perDay.slice(0, mid)));
   }, [stats]);
 
-  const commands: HeaderCommand[] = [];
+  const commands: HeaderCommand[] = [
+    {
+      id: "run-retention",
+      node: (
+        <ToolbarButton
+          icon={<Broom24Regular />}
+          onClick={() => setRetentionConfirmOpen(true)}
+          disabled={runRetention.isPending}
+          // One line, never wrapped: the Overflow measures it at full width, so a narrow header moves it into the
+          // "more commands" menu instead of squeezing it to three lines and pushing the filters off the edge.
+          style={{ whiteSpace: "nowrap", flexShrink: 0 }}
+        >
+          Run retention now
+        </ToolbarButton>
+      ),
+    },
+  ];
   const filters: HeaderCommand[] = [
     {
       id: "range",
@@ -218,6 +253,11 @@ export default function OverviewPage() {
           </Tooltip>
         }
         isFetching={isRefetching}
+      />
+      <RunRetentionDialog
+        open={retentionConfirmOpen}
+        onOpenChange={setRetentionConfirmOpen}
+        onConfirm={handleRunRetention}
       />
       <PageBody isFetching={isRefetching}>
         {error ? (

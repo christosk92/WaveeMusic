@@ -5,6 +5,7 @@
 // which primary pill the rail shows, the width arms, the in-show find, the view, the reader's item list with its row
 // marks, and the per-show view prefs' seed and persist. All pure: spans in, answers out.
 
+using System.Linq;
 using Wavee;
 using Xunit;
 using Head = Wavee.ShowReaderRules.Head;
@@ -108,8 +109,8 @@ public class ShowReaderTests
 
     // ── the width arms ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>ONE width arm is left here: the rows' narrow arm. The toolbar's own widths are
-    /// <see cref="ShowToolbarLayout"/>'s two-rung collapse ladder (PodcastShowToolbarTests), and the sideways-scrolling
+    /// <summary>ONE width arm is left here: the rows' narrow arm. The toolbar's own stages are
+    /// <see cref="ShowToolbarLayout"/>'s measured ladder (PodcastShowToolbarTests), and the sideways-scrolling
     /// rail — the scrollbar the owner reported — is gone with its rule.</summary>
     [Theory]
     [InlineData(0f, false)]             // not measured yet: the wide arm
@@ -280,6 +281,224 @@ public class ShowReaderTests
         Assert.Equal((0, 0), ShowReaderRules.Seed(null, "aaa"));
         Assert.Equal((0, 0), ShowReaderRules.Seed("", ""));
     }
+
+    // ── results mode: a filter or a find hides the head (never filters it); sort alone never does ───────────────────────
+
+    [Fact]
+    public void ResultsMode_IsAStatusFilterOrAFind_NeverSort()
+    {
+        Assert.False(ShowReaderRules.ResultsMode(Status.All, ""));
+        Assert.False(ShowReaderRules.ResultsMode(Status.All, "   "));      // a blank find is no find (trimmed, like Matches)
+        Assert.True(ShowReaderRules.ResultsMode(Status.Unplayed, ""));
+        Assert.True(ShowReaderRules.ResultsMode(Status.InProgress, ""));
+        Assert.True(ShowReaderRules.ResultsMode(Status.Played, "  "));
+        Assert.True(ShowReaderRules.ResultsMode(Status.All, "why ger"));
+        Assert.True(ShowReaderRules.ResultsMode(Status.Played, "why ger"));
+        // sort is not an input at all: oldest-first over the same (All, no find) view is not results mode
+        Assert.False(ShowReaderRules.ResultsMode(Status.All, string.Empty));
+    }
+
+    [Fact]
+    public void HeadSlot_IsTheResumeEpisode_OnlyWhileTheReturningHeadIsShown()
+    {
+        Assert.Equal(40, ShowReaderRules.HeadSlot(Head.Returning, 40, headShown: true));
+        Assert.Equal(-1, ShowReaderRules.HeadSlot(Head.Returning, 40, headShown: false));   // results mode: the head is not there
+        Assert.Equal(-1, ShowReaderRules.HeadSlot(Head.Returning, 0, headShown: true));     // no resume episode
+        foreach (var head in new[] { Head.New, Head.CaughtUp, Head.Pending, Head.Unavailable })
+            Assert.Equal(-1, ShowReaderRules.HeadSlot(head, 40, headShown: true));          // only Returning owns a hero
+    }
+
+    static int RowsOf(int[] view, int skipSlot)
+    {
+        var items = new Item[ShowReaderShape.MaxItems(view.Length)];
+        var marks = new Marks[items.Length];
+        int n = ShowReaderRules.Layout(Slots, Pcts, Dates, view, LastPlayed, trusted: true, items, marks, skipSlot);
+        return items[..n].Count(i => i.Kind == Kind.Row);
+    }
+
+    /// <summary>"why ger" matches only the hero's episode (slot 40): the body must list it — the head that showed it is
+    /// hidden — instead of "Episodes 1 of 326" over an empty list.</summary>
+    [Fact]
+    public void AFindThatMatchesOnlyTheHerosEpisode_ListsExactlyOneRow()
+    {
+        var view = View(Status.All, oldest: false, [false, true, false, false]);
+        Assert.Equal([1], view);
+        bool results = ShowReaderRules.ResultsMode(Status.All, "why ger");
+        int headSlot = ShowReaderRules.HeadSlot(Head.Returning, resumeSlot: 40, headShown: !results);
+        Assert.Equal(1, RowsOf(view, headSlot));
+
+        // the old rule (skip the hero whatever the mode) leaves nothing: the bug
+        Assert.Equal(0, RowsOf(view, skipSlot: 40));
+    }
+
+    /// <summary>The count over the list ("N of Total") is the view's size, and in results mode that IS the rows shown —
+    /// for every filter, with or without a find; with the head shown (sort alone) the hero's row moves into the head.</summary>
+    [Theory]
+    [InlineData(Status.Unplayed, false)]
+    [InlineData(Status.InProgress, false)]
+    [InlineData(Status.Played, false)]
+    [InlineData(Status.All, true)]
+    [InlineData(Status.Unplayed, true)]
+    public void InResultsMode_TheCountIsTheRowsShown(Status status, bool withFind)
+    {
+        bool[]? found = withFind ? [true, true, false, true] : null;
+        var view = View(status, oldest: false, found);
+        bool results = ShowReaderRules.ResultsMode(status, withFind ? "x" : "");
+        Assert.True(results);
+        int headSlot = ShowReaderRules.HeadSlot(Head.Returning, resumeSlot: 40, headShown: !results);
+        Assert.Equal(view.Length, RowsOf(view, headSlot));
+    }
+
+    [Fact]
+    public void WithTheHeadShown_SortAlone_TheHerosEpisodeLeavesTheList()
+    {
+        var view = View(Status.All, oldest: true);
+        Assert.False(ShowReaderRules.ResultsMode(Status.All, ""));
+        int headSlot = ShowReaderRules.HeadSlot(Head.Returning, resumeSlot: 40, headShown: true);
+        Assert.Equal(40, headSlot);
+        Assert.Equal(view.Length - 1, RowsOf(view, headSlot));
+    }
+
+    // ── one episode, one place: up next never offers what "new since you were here" shows ──────────────────────────────
+
+    // newest first: three unplayed after the last play (0, 1, 3), one in progress (2: the resume), one played, one old
+    static readonly float[] UpPcts = [0f, 0f, 0.5f, 0f, 1f, 0f];
+    static readonly int[] UpDates = [At(2026, 9, 20), At(2026, 9, 10), At(2026, 9, 1), At(2026, 8, 20), At(2026, 8, 10), At(2026, 8, 1)];
+    static readonly int UpLastPlayed = At(2026, 8, 15);
+
+    [Fact]
+    public void FreshMask_IsTheNewSinceBlocksOwnPredicate_AndNeedsTrustedProgress()
+    {
+        var mask = new bool[UpPcts.Length];
+        Assert.Equal(3, ShowReaderRules.FreshMask(UpPcts, UpDates, UpLastPlayed, trusted: true, mask));
+        Assert.Equal([true, true, false, true, false, false], mask);
+
+        Assert.Equal(0, ShowReaderRules.FreshMask(UpPcts, UpDates, UpLastPlayed, trusted: false, mask));
+        Assert.All(mask, m => Assert.False(m));
+        Assert.Equal(0, ShowReaderRules.FreshMask(UpPcts, UpDates, lastPlayedAt: 0, trusted: true, mask));   // never played: no "since"
+    }
+
+    [Fact]
+    public void UpNext_AndNewSince_NeverShareAnEpisode()
+    {
+        var fresh = new bool[UpPcts.Length];
+        ShowReaderRules.FreshMask(UpPcts, UpDates, UpLastPlayed, trusted: true, fresh);
+
+        // without the rule the two blocks show the same three episodes ...
+        Span<int> overlapping = stackalloc int[ListenNext.UpNextMax];
+        var (resume0, count0) = ListenNext.Pick(UpPcts, ConsumptionOrder.Episodic, playing: -1, overlapping);
+        Assert.Equal(2, resume0);
+        Assert.Equal([0, 1, 3], overlapping[..count0].ToArray());
+
+        // ... with it, up next takes the next candidates instead
+        Span<int> up = stackalloc int[ListenNext.UpNextMax];
+        var (resume, count) = ListenNext.Pick(UpPcts, ConsumptionOrder.Episodic, playing: -1, up, fresh);
+        Assert.Equal(2, resume);                                    // the resume is never skipped
+        Assert.Equal([5], up[..count].ToArray());
+        for (int i = 0; i < count; i++) Assert.False(fresh[up[i]]);
+    }
+
+    [Fact]
+    public void UpNext_SkipsFreshEpisodes_InASerialsStoryOrderToo()
+    {
+        // newest first = highest number first; nothing listened to yet but the fresh mask covers the two newest
+        float[] pcts = [0f, 0f, 0f, 0f];
+        bool[] fresh = [true, true, false, false];
+        Span<int> up = stackalloc int[ListenNext.UpNextMax];
+        var (resume, count) = ListenNext.Pick(pcts, ConsumptionOrder.Sequential, playing: -1, up, fresh);
+        Assert.Equal(-1, resume);
+        Assert.Equal([3, 2], up[..count].ToArray());                // the story's start, then forward — never a fresh one
+    }
+
+    // ── the up-next card's lead ──────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void MiniLead_EveryCardNumbered_IsTheNumeral()
+    {
+        Assert.Equal(ShowReaderRules.MiniLeadKind.Numeral, ShowReaderRules.MiniLead(allNumbered: true, allHaveArt: true));
+        Assert.Equal(ShowReaderRules.MiniLeadKind.Numeral, ShowReaderRules.MiniLead(allNumbered: true, allHaveArt: false));
+    }
+
+    [Fact]
+    public void MiniLead_OneUnnumbered_WithArt_IsTheCover()
+        => Assert.Equal(ShowReaderRules.MiniLeadKind.Art, ShowReaderRules.MiniLead(allNumbered: false, allHaveArt: true));
+
+    [Fact]
+    public void MiniLead_UnnumberedAndNoArt_IsNoLeadColumnAtAll()
+        => Assert.Equal(ShowReaderRules.MiniLeadKind.None, ShowReaderRules.MiniLead(allNumbered: false, allHaveArt: false));
+
+    // ── the head's columns: computed equal columns, never a wrapping row ─────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(700f, 3)]
+    [InlineData(684f, 3)]       // (684 + 12) / 232 = 3 exactly
+    [InlineData(683f, 2)]
+    [InlineData(452f, 2)]       // (452 + 12) / 232 = 2 exactly
+    [InlineData(451f, 1)]
+    [InlineData(100f, 1)]
+    [InlineData(5000f, 3)]      // capped
+    [InlineData(0f, 3)]         // not measured yet: the widest arm
+    public void Columns_AreFloorOfWidthPlusGapOverMinPlusGap_AtLeastOne_AtMostMax(float width, int columns)
+        => Assert.Equal(columns, ShowReaderRules.Columns(width, 220f, 12f, 3));
+
+    [Fact]
+    public void HeadColumns_TakeTheGuttersAndTheYearStripOffTheReadersWidth()
+    {
+        Assert.Equal(0f, ShowReaderRules.HeadWidth(0f));
+        Assert.Equal(1000f - 30f - 48f, ShowReaderRules.HeadWidth(1000f));
+        Assert.Equal(500f - 30f - 32f, ShowReaderRules.HeadWidth(500f));                 // the narrow arm's 16-DIP gutters
+        Assert.Equal((3, 3), ShowReaderRules.HeadColumns(1000f));
+        Assert.Equal((2, 2), ShowReaderRules.HeadColumns(600f));
+        Assert.Equal((1, 1), ShowReaderRules.HeadColumns(500f));
+        Assert.Equal((3, 3), ShowReaderRules.HeadColumns(0f));
+    }
+
+    // ── the list's extents ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SeedExtents_ArePerKind_AndAHiddenHeadIsZero()
+    {
+        float Seed(Kind k, Head h = Head.Pending, bool shown = true, bool noRule = false, int fresh = 0)
+            => ShowReaderRules.SeedExtent(k, h, shown, noRule, fresh);
+
+        Assert.Equal(48f, Seed(Kind.Rail));
+        Assert.Equal(96f, Seed(Kind.Row));
+        Assert.Equal(400f, Seed(Kind.Foot));
+        Assert.Equal(42f, Seed(Kind.Header));
+        Assert.Equal(42f, Seed(Kind.Group));
+        Assert.Equal(28f, Seed(Kind.Group, noRule: true));             // right under the "episodes" head: no air above
+        Assert.Equal(0f, Seed(Kind.Head, Head.Returning, shown: false, fresh: 2));
+        Assert.Equal(204f, Seed(Kind.Head, Head.Pending));
+        Assert.Equal(420f, Seed(Kind.Head, Head.New));
+        Assert.Equal(278f, Seed(Kind.Head, Head.Returning));
+        Assert.Equal(278f + 68f + 2 * 96f, Seed(Kind.Head, Head.Returning, fresh: 2));    // ≈ the ~500-DIP head the owner saw
+        Assert.True(Seed(Kind.Head, Head.CaughtUp) < Seed(Kind.Head, Head.Returning));
+    }
+
+    [Fact]
+    public void ExactExtents_AreTheArithmeticKinds_AndTheRestHaveNoDeclaration()
+    {
+        Assert.Equal(48f, ShowReaderRules.ExactExtent(Kind.Rail, false, false));
+        Assert.Equal(42f, ShowReaderRules.ExactExtent(Kind.Group, noRule: false, headerEmpty: false));
+        Assert.Equal(28f, ShowReaderRules.ExactExtent(Kind.Group, noRule: true, headerEmpty: false));
+        Assert.Equal(42f, ShowReaderRules.ExactExtent(Kind.Header, false, headerEmpty: false));
+        Assert.True(float.IsNaN(ShowReaderRules.ExactExtent(Kind.Header, false, headerEmpty: true)));   // the empty arm is content
+        Assert.True(float.IsNaN(ShowReaderRules.ExactExtent(Kind.Row, false, false)));
+        Assert.True(float.IsNaN(ShowReaderRules.ExactExtent(Kind.Head, false, false)));
+        Assert.True(float.IsNaN(ShowReaderRules.ExactExtent(Kind.Foot, false, false)));
+    }
+
+    [Fact]
+    public void ExtentDisagrees_IsMoreThanHalfADip_ForAnArrangedItemWithADeclaration()
+    {
+        Assert.False(ShowReaderRules.ExtentDisagrees(42f, 42f));
+        Assert.False(ShowReaderRules.ExtentDisagrees(42f, 42.5f));
+        Assert.True(ShowReaderRules.ExtentDisagrees(42f, 42.6f));
+        Assert.True(ShowReaderRules.ExtentDisagrees(42f, 28f));
+        Assert.False(ShowReaderRules.ExtentDisagrees(42f, 0f));              // an unarranged item is not a measurement
+        Assert.False(ShowReaderRules.ExtentDisagrees(float.NaN, 300f));      // nothing declared, nothing to disagree with
+    }
+
     // ── the date rail over the reader's own items (report 4b) ───────────────────────────────────────────────────────
 
     static (Item[] Items, JumpGroup[] Groups) Reader(int[] slots, int[] dates)

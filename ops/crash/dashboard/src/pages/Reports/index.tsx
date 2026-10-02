@@ -20,6 +20,7 @@ import { useReports, useVersions } from "../../api/hooks";
 import type { AppReport, ReportsFilter } from "../../api/types";
 import { KINDS } from "../../api/types";
 import { kindLabel } from "../../lib/colors";
+import { normalizeIdQuery } from "../../lib/format";
 import { EmptyState } from "../../scene/EmptyState";
 import { ErrorBar } from "../../scene/ErrorBar";
 import { PageBody } from "../../scene/PageBody";
@@ -74,7 +75,8 @@ export default function ReportsPage() {
       since,
       kind: kind ?? undefined,
       quad: quad ?? undefined,
-      q: search.trim() || undefined,
+      // The app shows a report's short id as `3f9c-2b1a`; ids themselves are dash-less hex.
+      q: normalizeIdQuery(search) || undefined,
       limit: PAGE_SIZE,
     }),
     [since, kind, quad, search],

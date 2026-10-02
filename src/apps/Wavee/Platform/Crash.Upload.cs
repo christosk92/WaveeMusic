@@ -1,22 +1,24 @@
 // ── Platform/Crash.Upload.cs ───────────────────────────────────────────────────────────────────────────────────────
 // The crash & diagnostics pipeline's PACKER + UPLOADER (WP-C, half 2): `Crash.Bundle.Pack` turns one scrubbed bundle
-// into the exact multipart/form-data body the Worker ingest contract expects (pure, byte-exact — tested directly);
-// `Crash.Uploader` is the host-side outbox — enqueue, drain with backoff, single-flight, offline-safe — plus the
-// right-to-erasure client (§J).
+// into the exact multipart/form-data body the Worker ingest contract expects (pure, byte-exact — tested directly and
+// pinned against `ops/crash/contract/*.multipart`); `Crash.UploadPolicy` is the pure status → next-step table every
+// upload answer goes through; `Crash.Uploader` is the host-side outbox — enqueue, drain at launch / on every online
+// edge / on its own backoff timer, single-flight with re-loop, offline-safe — plus the right-to-erasure client (§J).
 //
-// Role: CORE (Bundle) + SHELL (Uploader — network, disk, a Signal<int>)
+// Role: CORE (Bundle, UploadPolicy, UploadToasts, OutboxMeta) + SHELL (Uploader — network, disk, a Signal<int>)
 // Owner: WP-C
-// Wave: crash-diagnostics (post-0.3; independent of the migration waves — nothing here renders)
-// Budget: n/a (new file)
-// Spec: docs/plans/wavee/crash-diagnostics-implementation.md §B.5, §F ("C · Scrub + upload"), §I, §J (erasure)
-//
-// `Crash.Uploader` codes against `Crash.Host.LogFolder`, `Crash.Host.WriteSend(dir, SendRecord)` (WP-B, built
-// concurrently) — this file does not implement the crash bundle writer or the Reports list, only what carries a
-// bundle from the local outbox to the ingest endpoint and back.
+// Spec: docs/plans/wavee/crash-diagnostics-implementation.md §B.5, §F ("C · Scrub + upload"), §I, §J (erasure);
+//       docs/plans/wavee/crash-production-readiness-implementation.md W3b + appendix A4 (#165)
 //
 // OUTBOX SHAPE: `<LogFolder>\crash\outbox\<reportId>.bundle` (the packed multipart body, written once) beside
 // `<reportId>.meta` (a small flat `key=value` sidecar — bundleDir/attempts/includeDump/lastTryUtc/launches; not JSON,
-// so no new source-generated JSON context is needed here — `Crash.CrashJson`, WP-A's, is not touched by this file).
+// so no new source-generated JSON context is needed here). `attempts` counts SERVER retries (429/5xx) only — they drive
+// the backoff; `launches` counts the launches that saw a server retry — the third one gives up. A network failure
+// (offline, DNS, timeout) never backs off and never gives up: the next drain simply tries again.
+//
+// THREADING: every send.json write, every Signal<T> write and every `settled` callback goes through the UI poster
+// handed to `Install` (FIFO, so a report's states land in the order they happened); without one (the engine-free
+// recovery dialog) they run inline.
 
 using System.Globalization;
 using System.Net;
@@ -38,6 +40,11 @@ public static partial class Crash
         public const long CapBytes = 20L << 20;
 
         static readonly byte[] Crlf = "\r\n"u8.ToArray();
+
+        /// <summary>The multipart boundary a report is packed AND posted with — one per report id, so the outbox body
+        /// written at enqueue time and the <c>Content-Type</c> header sent at drain time can never disagree, and the
+        /// contract fixtures (<c>ops/crash/contract/*.multipart</c>) are reproducible byte for byte.</summary>
+        public static string BoundaryFor(string reportId) => "wavee-" + reportId;
 
         /// <summary>Builds the <c>multipart/form-data</c> body the Worker ingest contract (§I) expects: parts
         /// <c>summary</c> (<c>application/json</c>, camelCase via <see cref="CrashJson"/>), <c>report</c>/<c>tail</c>
@@ -95,11 +102,90 @@ public static partial class Crash
         }
     }
 
-    // ── 2. the outbox sidecar (flat text, not JSON — see the file header) ──────────────────────────────────────────
+    /// <summary>The short report id a person reads, says and pastes — <c>3f9c-2b1a</c> for <c>3f9c2b1a…</c>: the
+    /// Reports list rows, the "sent" toast, and the GitHub crash form's <c>report-id</c> field. The dashboard's search
+    /// strips the dash and matches it as an id prefix. An id shorter than 8 characters is shown as it is.</summary>
+    public static string ShortId(string reportId) => reportId.Length >= 8 ? reportId[..4] + "-" + reportId[4..8] : reportId;
 
-    /// <summary>The <c>&lt;reportId&gt;.meta</c> sidecar's parsed form. Internal: no other work package reads the
-    /// outbox directly (the Reports list reads <c>send.json</c> via <c>Crash.Host</c>, WP-B).</summary>
-    sealed record OutboxMeta(string BundleDir, int Attempts, bool IncludeDump, DateTime? LastTryUtc, int Launches)
+    // ── 2. UploadPolicy — pure: one HTTP answer → what happens to the outbox entry (appendix A4) ─────────────────────
+
+    /// <summary>What one upload attempt's answer means. <see cref="AlreadySent"/> is the Worker's 409 for a report id it
+    /// already holds — the report IS on the service, so it settles as Sent; <see cref="Erased"/> is the 410 tombstone of
+    /// an install the user erased (§J).</summary>
+    public enum UploadOutcome : byte { Sent, AlreadySent, Rejected, Erased, RetryServer, RetryNetwork }
+
+    public static class UploadPolicy
+    {
+        /// <summary>The launch on which a still-failing SERVER retry gives up (the third launch that saw one).</summary>
+        public const int GiveUpAfterServerRetryLaunches = 3;
+
+        /// <summary>The server-retry backoff never waits longer than this.</summary>
+        public const int MaxBackoffMinutes = 60;
+
+        /// <summary><c>null</c> = no HTTP answer at all (offline, DNS, reset, timeout).</summary>
+        public static UploadOutcome Classify(int? http) => http switch
+        {
+            null => UploadOutcome.RetryNetwork,
+            >= 200 and < 300 => UploadOutcome.Sent,
+            409 => UploadOutcome.AlreadySent,
+            410 => UploadOutcome.Erased,
+            429 or >= 500 => UploadOutcome.RetryServer,
+            _ => UploadOutcome.Rejected,
+        };
+
+        /// <summary>The next step: drop the outbox entry or keep it, and the state <c>send.json</c> records.</summary>
+        public readonly record struct Step(bool DeleteEntry, SendState State, string? Error);
+
+        /// <param name="serverRetryLaunches">How many launches (this one included) have seen a server retry for this
+        /// report — only meaningful for <see cref="UploadOutcome.RetryServer"/>.</param>
+        /// <param name="status">The answer as text (<c>"HTTP 503"</c>) — the error a rejected / retried report keeps.</param>
+        public static Step Next(UploadOutcome o, int serverRetryLaunches, string status) => o switch
+        {
+            UploadOutcome.Sent or UploadOutcome.AlreadySent => new(true, SendState.Sent, null),
+            UploadOutcome.Erased => new(true, SendState.Failed, "install erased"),
+            UploadOutcome.Rejected => new(true, SendState.Failed, status),
+            UploadOutcome.RetryServer when serverRetryLaunches >= GiveUpAfterServerRetryLaunches => new(true, SendState.Failed, "gave up"),
+            UploadOutcome.RetryServer => new(false, SendState.Queued, status),
+            _ => new(false, SendState.Queued, "offline"),   // a network failure never gives up
+        };
+
+        /// <summary>2^n minutes after the n-th server retry, capped at <see cref="MaxBackoffMinutes"/>.</summary>
+        public static TimeSpan Backoff(int serverAttempts) =>
+            TimeSpan.FromMinutes(Math.Min(MaxBackoffMinutes, Math.Pow(2, Math.Max(0, serverAttempts))));
+
+        /// <summary>Whether an entry may be tried now: never server-retried, no recorded try, or its backoff elapsed.</summary>
+        public static bool Due(int serverAttempts, DateTime? lastTryUtc, DateTime nowUtc) =>
+            serverAttempts <= 0 || lastTryUtc is not { } t || nowUtc - t >= Backoff(serverAttempts);
+
+        /// <summary>Per-request timeout: 30 s plus a second per 50 KB (a 20 MB dump on a slow uplink), at most 10 min.
+        /// The HttpClient itself has no timeout — a fixed one either cut big dumps off or let small posts hang.</summary>
+        public static TimeSpan Timeout(long bodyBytes) => TimeSpan.FromSeconds(Math.Clamp(30 + bodyBytes / 50_000, 30, 600));
+
+        /// <summary>An outbox entry whose bundle folder is gone (the user deleted the report): dropped, never sent.
+        /// An entry with no recorded folder is not an orphan — it is still sent, it just cannot record the outcome.</summary>
+        public static bool IsOrphan(string bundleDir, bool exists) => bundleDir.Length > 0 && !exists;
+    }
+
+    /// <summary>Which toast one upload state earns. Every card for one report shares the dedupe key <c>crash:&lt;id&gt;</c>
+    /// (Screens/Crash.UI.cs); "queued" is said once per report, never once per retry.</summary>
+    public static class UploadToasts
+    {
+        public enum Toast : byte { None, Sent, Queued, Failed }
+
+        public static Toast For(SendState s, bool queuedAlreadyShown) => s switch
+        {
+            SendState.Sent => Toast.Sent,
+            SendState.Failed => Toast.Failed,
+            SendState.Queued => queuedAlreadyShown ? Toast.None : Toast.Queued,
+            _ => Toast.None,
+        };
+    }
+
+    // ── 3. the outbox sidecar (flat text, not JSON — see the file header) ──────────────────────────────────────────
+
+    /// <summary>The <c>&lt;reportId&gt;.meta</c> sidecar's parsed form. <see cref="Attempts"/> = server retries so far
+    /// (the backoff exponent); <see cref="Launches"/> = launches that saw a server retry (the give-up counter).</summary>
+    public sealed record OutboxMeta(string BundleDir, int Attempts, bool IncludeDump, DateTime? LastTryUtc, int Launches)
     {
         public static readonly OutboxMeta Empty = new("", 0, true, null, 0);
 
@@ -122,8 +208,10 @@ public static partial class Crash
                     case "includeDump": includeDump = value == "true"; break;
                     case "launches": _ = int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out launches); break;
                     case "lastTryUtc":
+                        // RoundtripKind cannot be combined with Assume*/AdjustToUniversal (TryParse throws) — the "O" text
+                        // carries its own offset; AssumeUniversal covers a bare stamp, AdjustToUniversal yields UTC.
                         if (value.Length > 0 && DateTime.TryParse(value, CultureInfo.InvariantCulture,
-                                DateTimeStyles.RoundtripKind | DateTimeStyles.AssumeUniversal, out var dt)) lastTry = dt.ToUniversalTime();
+                                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt)) lastTry = dt;
                         break;
                 }
             }
@@ -145,31 +233,34 @@ public static partial class Crash
     /// <summary>The result of a right-to-erasure request (§J) — the confirm dialog's toast reads this directly.</summary>
     public sealed record DeleteResult(bool Ok, int Deleted, string? Error);
 
-    // ── 3. Uploader — the host-side outbox ──────────────────────────────────────────────────────────────────────────
+    // ── 4. Uploader — the host-side outbox ──────────────────────────────────────────────────────────────────────────
 
     public static class Uploader
     {
-        /// <summary>Never touches the network when this is false (an unstamped <c>dotnet run</c> or the E2E package) —
-        /// logged once via <see cref="LogUnconfiguredOnce"/> rather than on every <see cref="Drain"/>.</summary>
-        public static bool Configured => Platform.Version.CrashIngestUrl.Length > 0;
+        /// <summary>Never touches the network when this is false (an unstamped <c>dotnet run</c>, the E2E package, or a
+        /// build stamped without the key or the quad — see <see cref="WaveeVersionInfo.CrashReportingAvailable"/>).</summary>
+        public static bool Configured => Platform.Version.CrashReportingAvailable;
 
-        /// <summary>Bumps on every outbox change (enqueue, sent, dropped, discarded) — the Reports list's "N queued"
-        /// row and the Settings "Send now"/"Discard" buttons read it.</summary>
+        /// <summary>Bumps on every outbox change (enqueue, sent, dropped, discarded, forgotten) — the Reports list's
+        /// "N queued" row and the Settings "Send now"/"Discard" buttons read it.</summary>
         public static readonly Signal<int> OutboxVersion = new(0);
 
         static Action<Action>? s_post;
-        static int s_draining;
-        static int s_unconfiguredLogged;
+        static int s_draining, s_drainRequested, s_unconfiguredLogged;
         static IDisposable? s_onlineSub;
-        static readonly HashSet<string> s_launchCounted = new(StringComparer.Ordinal);
-        static readonly object s_launchGate = new();
+        static System.Threading.Timer? s_retryTimer;
+        static readonly object s_gate = new();
+        /// <summary>Report ids whose server-retry launch was already counted by THIS process (see <see cref="OutboxMeta.Launches"/>).</summary>
+        static readonly HashSet<string> s_serverRetryCounted = new(StringComparer.Ordinal);
+        /// <summary>The <see cref="Enqueue"/> callers waiting on a report's outcome, by report id (in memory only).</summary>
+        static readonly Dictionary<string, Action<SendRecord>> s_waiters = new(StringComparer.Ordinal);
 
         static readonly Lazy<HttpClient> s_http = new(BuildClient);
 
-        /// <summary>Wired once by the orchestrator after <c>Update.Host.Start</c>: subscribes to the OS's own
-        /// connectivity connection point (the same NLM pillar <c>Platform.Network.Install</c> uses) and drains on
-        /// every online edge. <paramref name="post"/> is the UI-thread marshaller (every <see cref="Signal{T}"/> write
-        /// in this class goes through it — <see cref="Enqueue"/>/<see cref="Drain"/> both run off the UI thread).</summary>
+        /// <summary>Wired once at boot (App.cs): subscribes to the OS's own connectivity connection point (the same NLM
+        /// pillar <c>Platform.Network.Install</c> uses) and drains on every online edge, then runs the LAUNCH drain — a
+        /// report queued by an earlier run goes out now, not on the next connectivity change. <paramref name="post"/> is
+        /// the UI-thread marshaller every send.json write, Signal write and settled callback goes through.</summary>
         public static void Install(Action<Action> post)
         {
             s_post = post;
@@ -182,6 +273,7 @@ public static partial class Crash
                 Log.Warn("crash", "upload.network.subscribe.failed", ex);
                 s_onlineSub = null;
             }
+            if (Configured) Drain();
         }
 
         public static int QueuedCount()
@@ -194,140 +286,178 @@ public static partial class Crash
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
         }
 
-        /// <summary>Off-thread: scrub → pack → write <c>outbox\&lt;reportId&gt;.bundle</c> + its meta sidecar → mark
-        /// <c>send.json</c> Queued → <see cref="Drain"/>. Fire-and-forget by design (the caller is a UI click or a
-        /// just-written crash bundle; nobody awaits this).</summary>
-        public static void Enqueue(BundleInfo b, bool includeDump) => _ = Task.Run(() => EnqueueCore(b, includeDump));
+        /// <summary>Off-thread: scrub → pack → write the meta sidecar, mark <c>send.json</c> Queued, then publish
+        /// <c>outbox\&lt;reportId&gt;.bundle</c> → <see cref="Drain"/>. Fire-and-forget by design.
+        /// <paramref name="settled"/> (optional) hears this report's upload outcomes ON THE UI THREAD: a Queued record
+        /// after an attempt that will be retried (offline, 429/5xx), then exactly one final Sent or Failed record, after
+        /// which it is dropped. A later <see cref="Enqueue"/> of the same report replaces it.</summary>
+        public static void Enqueue(BundleInfo b, bool includeDump, Action<SendRecord>? settled = null)
+        {
+            if (settled is not null) lock (s_gate) s_waiters[b.Summary.ReportId] = settled;
+            _ = Task.Run(() => EnqueueCore(b, includeDump));
+        }
 
         static void EnqueueCore(BundleInfo b, bool includeDump)
         {
+            string reportId = b.Summary.ReportId;
             try
             {
                 var scrubbed = ScrubForUpload(b, includeDump, out ReadOnlyMemory<byte>? dump);
-                string reportId = b.Summary.ReportId;
-                byte[] packed = Bundle.Pack(scrubbed, dump, Bundle.CapBytes, BoundaryFor(reportId), out bool dumpDropped);
+                byte[] packed = Bundle.Pack(scrubbed, dump, Bundle.CapBytes, Bundle.BoundaryFor(reportId), out bool dumpDropped);
+                bool dumpIncluded = dump is not null && !dumpDropped;
 
                 string dir = Files.OutboxDir(Host.LogFolder);
                 Directory.CreateDirectory(dir);
-                File.WriteAllBytes(Path.Combine(dir, reportId + ".bundle"), packed);
-                WriteMeta(dir, reportId, new OutboxMeta(b.Dir, 0, includeDump && !dumpDropped, null, 0));
+                // Order matters: the meta first and the Queued record posted BEFORE the .bundle appears, so a drain that
+                // is already running can never pick up a body without its sidecar, nor have its "sent" overwritten by
+                // this "queued". The body is written beside and renamed in, so a drain never reads half of it.
+                WriteMeta(dir, reportId, new OutboxMeta(b.Dir, 0, dumpIncluded, null, 0));
+                WriteSendPosted(b.Dir, new SendRecord(SendState.Queued, null, null, 0, dumpIncluded));
+                string bundlePath = Path.Combine(dir, reportId + ".bundle"), tmp = bundlePath + ".tmp";
+                File.WriteAllBytes(tmp, packed);
+                File.Move(tmp, bundlePath, overwrite: true);
 
-                Host.WriteSend(b.Dir, new SendRecord(SendState.Queued, null, null, 0, includeDump && !dumpDropped));
-                Log.Info("crash", "upload.queued id=" + reportId);
+                Log.Info("crash", "upload.queued id=" + reportId + " bytes=" + packed.Length.ToString(CultureInfo.InvariantCulture));
                 Bump();
                 Drain();
             }
             catch (Exception ex)
             {
-                Log.Warn("crash", "upload.enqueue.failed id=" + b.Summary.ReportId, ex);
+                Log.Warn("crash", "upload.enqueue.failed id=" + reportId, ex);
+                Settle(b.Dir, reportId, new SendRecord(SendState.Failed, null, "couldn't queue the report", 0, false), final: true);
             }
         }
 
-        /// <summary>The recovery dialog's / Settings' "Send now": scrub → pack → POST synchronously, returning the
-        /// record it also writes to <c>send.json</c>. Never touches the outbox file — a manual send is one-shot.</summary>
+        /// <summary>The engine-free recovery dialog's "Send": scrub → pack → POST synchronously, returning the record
+        /// it also writes to <c>send.json</c>. A final answer (sent, already sent, rejected, erased) also removes the
+        /// report's outbox entry, if it had one — otherwise a later drain's 409 would rewrite the outcome. A retryable
+        /// answer is reported as not sent (Queued while the outbox still holds the report and will retry it itself,
+        /// else Failed, with the reason).</summary>
         public static async Task<SendRecord> SendNow(BundleInfo b, bool includeDump, CancellationToken ct)
         {
+            string reportId = b.Summary.ReportId;
             SendRecord rec;
+            bool final = false;
             try
             {
                 var scrubbed = ScrubForUpload(b, includeDump, out ReadOnlyMemory<byte>? dump);
-                string reportId = b.Summary.ReportId;
-                byte[] packed = Bundle.Pack(scrubbed, dump, Bundle.CapBytes, BoundaryFor(reportId), out bool dumpDropped);
-                var result = await PostAsync(packed, reportId, ct).ConfigureAwait(false);
-                rec = result.Ok
-                    ? new SendRecord(SendState.Sent, DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture), null, 1, includeDump && !dumpDropped)
-                    : new SendRecord(SendState.Failed, null, result.Error ?? result.Status, 1, includeDump && !dumpDropped);
-                if (result.Ok) Log.Info("crash", "upload.sent id=" + reportId + " status=" + result.Status + " bytes=" + packed.Length.ToString(CultureInfo.InvariantCulture));
-                else Log.Warn("crash", "upload.rejected id=" + reportId + " status=" + result.Status + " bytes=" + packed.Length.ToString(CultureInfo.InvariantCulture));
+                byte[] packed = Bundle.Pack(scrubbed, dump, Bundle.CapBytes, Bundle.BoundaryFor(reportId), out bool dumpDropped);
+                bool dumpIncluded = dump is not null && !dumpDropped;
+                var (code, error) = await PostAsync(packed, reportId, ct).ConfigureAwait(false);
+                var outcome = UploadPolicy.Classify(code);
+                string status = StatusText(code);
+                var step = UploadPolicy.Next(outcome, 0, status);
+                LogOutcome(reportId, outcome, step, status, error, packed.Length, 1);
+                final = step.DeleteEntry;
+                rec = final
+                    ? new SendRecord(step.State, step.State == SendState.Sent ? NowIso() : null, step.Error, 1, dumpIncluded)
+                    : new SendRecord(HasOutboxEntry(reportId) ? SendState.Queued : SendState.Failed, null,
+                        code is null ? error ?? status : status, 1, dumpIncluded);
             }
             catch (Exception ex)
             {
                 rec = new SendRecord(SendState.Failed, null, ex.Message, 1, false);
             }
-            try { Host.WriteSend(b.Dir, rec); } catch (Exception ex) { Log.Warn("crash", "upload.sendnow.writesend.failed", ex); }
+            if (final)
+            {
+                try { DeleteOutboxEntry(Files.OutboxDir(Host.LogFolder), reportId); }
+                catch (Exception ex) { Log.Warn("crash", "upload.sendnow.outbox.failed id=" + reportId, ex); }
+                Bump();
+            }
+            Settle(b.Dir, reportId, rec, final);
             return rec;
         }
 
-        /// <summary>Off-thread, single-flight (a second call while one is already running is a no-op — the running
-        /// drain will see whatever the caller just enqueued because it re-lists the outbox directory each pass): walks
-        /// the outbox oldest-first, POSTing each bundle. 2xx deletes; 4xx (not 429) deletes + logs; 410 (the install
-        /// was erased server-side, §J) deletes with a distinct reason; 429/5xx/network keeps with exponential backoff,
-        /// giving up after 3 launches.</summary>
+        /// <summary>Single-flight with re-loop: a call while a drain is running asks it for one more pass (so a bundle
+        /// enqueued mid-drain, or an online edge that arrives mid-drain, is never stranded). Each pass walks the outbox
+        /// oldest-first: drops orphans (the report was deleted), skips entries still inside their backoff, POSTs the
+        /// rest and settles each through <see cref="UploadPolicy"/> (Classify → Next). A pass that leaves a server
+        /// retry waiting arms a one-shot timer for when it comes due.</summary>
         public static void Drain()
         {
             if (!Configured) { LogUnconfiguredOnce(); return; }
+            Volatile.Write(ref s_drainRequested, 1);
             if (Interlocked.CompareExchange(ref s_draining, 1, 0) != 0) return;
-            _ = Task.Run(DrainCoreAsync);
+            _ = Task.Run(DrainLoopAsync);
         }
 
-        static async Task DrainCoreAsync()
+        static async Task DrainLoopAsync()
         {
-            try
+            while (true)
             {
-                string dir = Files.OutboxDir(Host.LogFolder);
-                if (!Directory.Exists(dir)) return;
-                string[] bundles = Directory.GetFiles(dir, "*.bundle", SearchOption.TopDirectoryOnly);
-                Array.Sort(bundles, static (a, b) => SafeCreationTicks(a).CompareTo(SafeCreationTicks(b)));
-
-                foreach (string bundlePath in bundles)
+                try
                 {
-                    string reportId = Path.GetFileNameWithoutExtension(bundlePath);
-                    string metaPath = Path.Combine(dir, reportId + ".meta");
-                    OutboxMeta meta = ReadMeta(metaPath);
-                    meta = CountLaunchOnce(reportId, metaPath, meta);
-
-                    if (meta.LastTryUtc is { } last && meta.Attempts > 0)
-                    {
-                        double waitMinutes = Math.Pow(2, meta.Attempts);
-                        if ((DateTime.UtcNow - last).TotalMinutes < waitMinutes) continue;
-                    }
-
-                    byte[] bytes;
-                    try { bytes = await File.ReadAllBytesAsync(bundlePath).ConfigureAwait(false); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }
-
-                    var result = await PostAsync(bytes, reportId).ConfigureAwait(false);
-                    int attempts = meta.Attempts + 1;
-                    string bytesStr = bytes.Length.ToString(CultureInfo.InvariantCulture);
-
-                    if (result.Ok)
-                    {
-                        Log.Info("crash", "upload.sent id=" + reportId + " status=" + result.Status + " bytes=" + bytesStr);
-                        DeleteOutboxEntry(dir, reportId);
-                        WriteSendSafe(meta.BundleDir, new SendRecord(SendState.Sent, DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture), null, attempts, meta.IncludeDump));
-                        Bump();
-                    }
-                    else if (result.Status == "HTTP 410")
-                    {
-                        Log.Warn("crash", "upload.rejected id=" + reportId + " status=" + result.Status + " bytes=" + bytesStr);
-                        DeleteOutboxEntry(dir, reportId);
-                        WriteSendSafe(meta.BundleDir, new SendRecord(SendState.Failed, null, "install erased", attempts, meta.IncludeDump));
-                        Bump();
-                    }
-                    else if (!result.Retry)
-                    {
-                        Log.Warn("crash", "upload.rejected id=" + reportId + " status=" + result.Status + " bytes=" + bytesStr);
-                        DeleteOutboxEntry(dir, reportId);
-                        WriteSendSafe(meta.BundleDir, new SendRecord(SendState.Failed, null, result.Error, attempts, meta.IncludeDump));
-                        Bump();
-                    }
-                    else if (meta.Launches >= 3)
-                    {
-                        Log.Warn("crash", "upload.giveup id=" + reportId + " attempt=" + attempts.ToString(CultureInfo.InvariantCulture) + " status=" + result.Status);
-                        DeleteOutboxEntry(dir, reportId);
-                        WriteSendSafe(meta.BundleDir, new SendRecord(SendState.Failed, null, "gave up", attempts, meta.IncludeDump));
-                        Bump();
-                    }
-                    else
-                    {
-                        Log.Warn("crash", "upload.retry id=" + reportId + " attempt=" + attempts.ToString(CultureInfo.InvariantCulture) + " status=" + result.Status);
-                        WriteMeta(dir, reportId, meta with { Attempts = attempts, LastTryUtc = DateTime.UtcNow });
-                        WriteSendSafe(meta.BundleDir, new SendRecord(SendState.Queued, null, result.Error, attempts, meta.IncludeDump));
-                    }
+                    while (Interlocked.Exchange(ref s_drainRequested, 0) != 0)
+                        await DrainPassAsync().ConfigureAwait(false);
                 }
+                catch (Exception ex) { Log.Warn("crash", "upload.drain.failed", ex); }
+                finally { Volatile.Write(ref s_draining, 0); }
+
+                // A request that landed between the last check and the release above must not strand: take the flag
+                // back and go round again (or leave it to the caller that already took it).
+                if (Volatile.Read(ref s_drainRequested) == 0 || Interlocked.CompareExchange(ref s_draining, 1, 0) != 0) return;
             }
-            catch (Exception ex) { Log.Warn("crash", "upload.drain.failed", ex); }
-            finally { Volatile.Write(ref s_draining, 0); }
+        }
+
+        static async Task DrainPassAsync()
+        {
+            string dir = Files.OutboxDir(Host.LogFolder);
+            if (!Directory.Exists(dir)) return;
+            string[] bundles = Directory.GetFiles(dir, "*.bundle", SearchOption.TopDirectoryOnly);
+            Array.Sort(bundles, static (a, b) => SafeCreationTicks(a).CompareTo(SafeCreationTicks(b)));
+
+            DateTime? nextDueUtc = null;
+            foreach (string bundlePath in bundles)
+            {
+                string reportId = Path.GetFileNameWithoutExtension(bundlePath);
+                OutboxMeta meta = ReadMeta(Path.Combine(dir, reportId + ".meta"));
+
+                if (UploadPolicy.IsOrphan(meta.BundleDir, meta.BundleDir.Length > 0 && Directory.Exists(meta.BundleDir)))
+                {
+                    Log.Info("crash", "upload.orphan id=" + reportId);
+                    DeleteOutboxEntry(dir, reportId);
+                    DropWaiter(reportId);
+                    Bump();
+                    continue;
+                }
+
+                if (!UploadPolicy.Due(meta.Attempts, meta.LastTryUtc, DateTime.UtcNow))
+                {
+                    if (meta.LastTryUtc is { } last) nextDueUtc = Earliest(nextDueUtc, last + UploadPolicy.Backoff(meta.Attempts));
+                    continue;
+                }
+
+                byte[] bytes;
+                try { bytes = await File.ReadAllBytesAsync(bundlePath).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }   // deleted / forgotten meanwhile
+
+                var (code, error) = await PostAsync(bytes, reportId).ConfigureAwait(false);
+                var outcome = UploadPolicy.Classify(code);
+                string status = StatusText(code);
+                int launches = outcome == UploadOutcome.RetryServer ? CountServerRetryLaunch(reportId, meta.Launches) : meta.Launches;
+                var step = UploadPolicy.Next(outcome, launches, status);
+                int attempt = meta.Attempts + 1;
+                LogOutcome(reportId, outcome, step, status, error, bytes.Length, attempt);
+
+                if (step.DeleteEntry)
+                {
+                    DeleteOutboxEntry(dir, reportId);
+                    Settle(meta.BundleDir, reportId,
+                        new SendRecord(step.State, step.State == SendState.Sent ? NowIso() : null, step.Error, attempt, meta.IncludeDump), final: true);
+                    Bump();
+                    continue;
+                }
+
+                if (outcome == UploadOutcome.RetryServer)
+                {
+                    DateTime now = DateTime.UtcNow;
+                    var next = meta with { Attempts = meta.Attempts + 1, LastTryUtc = now, Launches = launches };
+                    WriteMeta(dir, reportId, next);
+                    nextDueUtc = Earliest(nextDueUtc, now + UploadPolicy.Backoff(next.Attempts));
+                }
+                Settle(meta.BundleDir, reportId, new SendRecord(SendState.Queued, null, step.Error, attempt, meta.IncludeDump), final: false);
+            }
+            ArmRetry(nextDueUtc);
         }
 
         /// <summary>Settings' "Discard": clears the outbox without sending, marking every bundle it referenced
@@ -343,15 +473,47 @@ public static partial class Crash
                 {
                     string reportId = Path.GetFileNameWithoutExtension(bundlePath);
                     OutboxMeta meta = ReadMeta(Path.Combine(dir, reportId + ".meta"));
-                    if (meta.BundleDir.Length > 0)
-                        WriteSendSafe(meta.BundleDir, new SendRecord(SendState.NotSent, null, null, meta.Attempts, meta.IncludeDump));
                     DeleteOutboxEntry(dir, reportId);
+                    DropWaiter(reportId);
+                    if (meta.BundleDir.Length > 0)
+                        WriteSendPosted(meta.BundleDir, new SendRecord(SendState.NotSent, null, null, meta.Attempts, meta.IncludeDump));
                 }
                 Bump();
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Log.Warn("crash", "upload.discard.failed", ex);
+            }
+        }
+
+        /// <summary>A report folder is about to be deleted (<c>Crash.Host.Delete</c> calls this FIRST): every outbox
+        /// entry whose meta points at <paramref name="bundleDir"/> is removed, so a deleted report is never uploaded
+        /// afterwards. A drain already mid-POST for it settles into a folder that no longer exists, which records
+        /// nothing (<c>Bundles.WriteSend</c> never recreates a folder).</summary>
+        public static void ForgetBundle(string bundleDir)
+        {
+            if (string.IsNullOrEmpty(bundleDir)) return;
+            try
+            {
+                string dir = Files.OutboxDir(Host.LogFolder);
+                if (!Directory.Exists(dir)) return;
+                string target = NormalizeDir(bundleDir);
+                bool any = false;
+                foreach (string metaPath in Directory.GetFiles(dir, "*.meta", SearchOption.TopDirectoryOnly))
+                {
+                    OutboxMeta meta = ReadMeta(metaPath);
+                    if (meta.BundleDir.Length == 0 || !string.Equals(NormalizeDir(meta.BundleDir), target, StringComparison.OrdinalIgnoreCase)) continue;
+                    string reportId = Path.GetFileNameWithoutExtension(metaPath);
+                    DeleteOutboxEntry(dir, reportId);
+                    DropWaiter(reportId);
+                    Log.Info("crash", "upload.forgotten id=" + reportId);
+                    any = true;
+                }
+                if (any) Bump();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("crash", "upload.forget.failed", ex);
             }
         }
 
@@ -372,15 +534,17 @@ public static partial class Crash
 
             try
             {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(UploadPolicy.Timeout(0));
                 string url = EraseUrl(Platform.Version.CrashIngestUrl, installId);
                 using var req = new HttpRequestMessage(HttpMethod.Delete, url);
-                using var resp = await s_http.Value.SendAsync(req, ct).ConfigureAwait(false);
+                using var resp = await s_http.Value.SendAsync(req, timeout.Token).ConfigureAwait(false);
                 if (resp.StatusCode is HttpStatusCode.OK or HttpStatusCode.NotFound)
                 {
                     int deleted = 0;
                     try
                     {
-                        string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        string body = await resp.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
                         using var doc = JsonDocument.Parse(body);
                         if (doc.RootElement.TryGetProperty("deleted", out var d) && d.ValueKind == JsonValueKind.Number)
                             deleted = d.GetInt32();
@@ -413,9 +577,8 @@ public static partial class Crash
         // ── internals ────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Reads report/tail/dump off disk and scrubs them. <paramref name="dump"/> is <c>null</c> exactly
-        /// when no dump should be attempted — NOT an empty span — so <see cref="Bundle.Pack"/> can tell "there is no
-        /// dump" from "there is a zero-byte dump" (the byte[]→<see cref="ReadOnlyMemory{T}"/> conversion is done here,
-        /// explicitly, rather than left to an implicit array conversion at the call site).</summary>
+        /// when no dump should be attempted (or there is none on disk) — NOT an empty span — so
+        /// <see cref="Bundle.Pack"/> can tell "there is no dump" from "there is a zero-byte dump".</summary>
         static ScrubbedBundle ScrubForUpload(BundleInfo b, bool includeDump, out ReadOnlyMemory<byte>? dump)
         {
             string reportTxt = SafeReadText(b.ReportTxt);
@@ -426,25 +589,48 @@ public static partial class Crash
             return Scrubber.Scrub(b.Summary, reportTxt, tailLines, rules);
         }
 
-        static string BoundaryFor(string reportId) => "wavee-" + reportId;
-
-        static async Task<(bool Ok, bool Retry, string Status, string? Error)> PostAsync(byte[] body, string reportId, CancellationToken ct = default)
+        /// <summary>One POST. <c>Status</c> is the HTTP status code, or <c>null</c> when there was no answer at all
+        /// (offline, DNS, reset, the per-request <see cref="UploadPolicy.Timeout"/>, a cancelled <paramref name="ct"/>)
+        /// — then <c>Error</c> says why. Every decision about the answer is <see cref="UploadPolicy"/>'s.</summary>
+        static async Task<(int? Status, string? Error)> PostAsync(byte[] body, string reportId, CancellationToken ct = default)
         {
             try
             {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(UploadPolicy.Timeout(body.LongLength));
                 using var content = new ByteArrayContent(body);
-                content.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + BoundaryFor(reportId));
+                content.Headers.TryAddWithoutValidation("Content-Type", "multipart/form-data; boundary=" + Bundle.BoundaryFor(reportId));
                 string url = Platform.Version.CrashIngestUrl.TrimEnd('/') + "/v1/report";
-                using var resp = await s_http.Value.PostAsync(url, content, ct).ConfigureAwait(false);
-                int code = (int)resp.StatusCode;
-                string status = "HTTP " + code.ToString(CultureInfo.InvariantCulture);
-                if (resp.IsSuccessStatusCode) return (true, false, status, null);
-                bool retry = code == 429 || code >= 500;
-                return (false, retry, status, status);
+                using var resp = await s_http.Value.PostAsync(url, content, timeout.Token).ConfigureAwait(false);
+                return ((int)resp.StatusCode, null);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return (null, "timed out");
             }
             catch (Exception ex)
             {
-                return (false, true, "network error", ex.Message);
+                return (null, ex.Message);
+            }
+        }
+
+        static string StatusText(int? code) => code is int c ? "HTTP " + c.ToString(CultureInfo.InvariantCulture) : "network error";
+
+        static string NowIso() => DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+
+        static void LogOutcome(string reportId, UploadOutcome outcome, UploadPolicy.Step step, string status, string? error, int bytes, int attempt)
+        {
+            string tail = " id=" + reportId + " status=" + status + " bytes=" + bytes.ToString(CultureInfo.InvariantCulture)
+                + " attempt=" + attempt.ToString(CultureInfo.InvariantCulture);
+            switch (outcome)
+            {
+                case UploadOutcome.Sent: Log.Info("crash", "upload.sent" + tail); break;
+                case UploadOutcome.AlreadySent: Log.Info("crash", "upload.sent" + tail + " (already on the service)"); break;
+                case UploadOutcome.Erased: Log.Warn("crash", "upload.erased" + tail); break;
+                case UploadOutcome.Rejected: Log.Warn("crash", "upload.rejected" + tail); break;
+                case UploadOutcome.RetryServer when step.DeleteEntry: Log.Warn("crash", "upload.giveup" + tail); break;
+                case UploadOutcome.RetryServer: Log.Warn("crash", "upload.retry" + tail); break;
+                default: Log.Info("crash", "upload.offline" + tail + " error=" + (error ?? "")); break;
             }
         }
 
@@ -454,7 +640,7 @@ public static partial class Crash
             {
                 PooledConnectionLifetime = TimeSpan.FromMinutes(2), PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
                 MaxConnectionsPerServer = 4,
-            })) { Timeout = TimeSpan.FromSeconds(30) };
+            })) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };   // every request carries its own UploadPolicy.Timeout
             try { http.DefaultRequestHeaders.TryAddWithoutValidation("X-Wavee-Ingest", Platform.Version.CrashIngestKey); } catch { }
             try { http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", Platform.Version.UserAgent(RuntimeInformation.OSDescription, RuntimeInformation.ProcessArchitecture.ToString())); } catch { }
             return http;
@@ -465,24 +651,82 @@ public static partial class Crash
             if (Interlocked.Exchange(ref s_unconfiguredLogged, 1) == 0) Log.Info("crash", "upload.unconfigured");
         }
 
-        static void Bump()
+        static void Post(Action a)
         {
-            if (s_post is { } p) p(static () => OutboxVersion.Update(static v => v + 1));
-            else OutboxVersion.Update(static v => v + 1);
+            if (s_post is { } p) p(a);
+            else a();
         }
 
-        /// <summary>Bumps a bundle's <c>launches</c> counter at most once per PROCESS — a bundle that survives several
-        /// <see cref="Drain"/> calls within the same run (multiple connectivity edges) must not be charged more than
-        /// one "launch" for it.</summary>
-        static OutboxMeta CountLaunchOnce(string reportId, string metaPath, OutboxMeta meta)
+        static void Bump() => Post(static () => OutboxVersion.Update(static v => v + 1));
+
+        /// <summary>Writes <c>send.json</c> (through <c>Crash.Host.WriteSend</c>, which also bumps the Reports list) and
+        /// then hands the record to the report's waiter, both on the UI poster, in that order. A final record drops the
+        /// waiter.</summary>
+        static void Settle(string bundleDir, string reportId, SendRecord rec, bool final)
         {
-            lock (s_launchGate)
+            Action<SendRecord>? waiter;
+            lock (s_gate)
             {
-                if (!s_launchCounted.Add(reportId)) return meta;
+                if (s_waiters.TryGetValue(reportId, out waiter) && final) s_waiters.Remove(reportId);
             }
-            var bumped = meta with { Launches = meta.Launches + 1 };
-            WriteMeta(Path.GetDirectoryName(metaPath) ?? "", reportId, bumped);
-            return bumped;
+            Post(() =>
+            {
+                if (bundleDir.Length > 0)
+                {
+                    try { Host.WriteSend(bundleDir, rec); } catch (Exception ex) { Log.Warn("crash", "upload.writesend.failed", ex); }
+                }
+                if (waiter is not null)
+                {
+                    try { waiter(rec); } catch (Exception ex) { Log.Warn("crash", "upload.settled.callback.failed id=" + reportId, ex); }
+                }
+            });
+        }
+
+        static void WriteSendPosted(string bundleDir, SendRecord rec)
+        {
+            if (bundleDir.Length == 0) return;
+            Post(() =>
+            {
+                try { Host.WriteSend(bundleDir, rec); } catch (Exception ex) { Log.Warn("crash", "upload.writesend.failed", ex); }
+            });
+        }
+
+        static void DropWaiter(string reportId)
+        {
+            lock (s_gate) s_waiters.Remove(reportId);
+        }
+
+        /// <summary>A launch is charged against a report's give-up budget at most once per PROCESS, and only when the
+        /// server (not the network) asked for a retry: a bundle that sees several 5xx in one run costs one launch.</summary>
+        static int CountServerRetryLaunch(string reportId, int launches)
+        {
+            lock (s_gate) return s_serverRetryCounted.Add(reportId) ? launches + 1 : launches;
+        }
+
+        static DateTime? Earliest(DateTime? a, DateTime b) => a is { } x && x <= b ? x : b;
+
+        /// <summary>One-shot: drain again when the earliest server retry comes due (clamped to 1 s … the backoff cap).</summary>
+        static void ArmRetry(DateTime? dueUtc)
+        {
+            if (dueUtc is not { } due) return;
+            double ms = Math.Clamp((due - DateTime.UtcNow).TotalMilliseconds, 1_000, (UploadPolicy.MaxBackoffMinutes + 1) * 60_000.0);
+            lock (s_gate)
+            {
+                s_retryTimer ??= new System.Threading.Timer(static _ => Drain(), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                s_retryTimer.Change((long)ms, System.Threading.Timeout.Infinite);
+            }
+        }
+
+        static bool HasOutboxEntry(string reportId)
+        {
+            try { return File.Exists(Path.Combine(Files.OutboxDir(Host.LogFolder), reportId + ".bundle")); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
+        }
+
+        static string NormalizeDir(string path)
+        {
+            try { return Path.GetFullPath(path).TrimEnd('\\', '/'); }
+            catch (Exception) { return path.TrimEnd('\\', '/'); }
         }
 
         static void WriteMeta(string dir, string reportId, OutboxMeta meta)
@@ -501,12 +745,6 @@ public static partial class Crash
         {
             try { File.Delete(Path.Combine(dir, reportId + ".bundle")); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
             try { File.Delete(Path.Combine(dir, reportId + ".meta")); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-        }
-
-        static void WriteSendSafe(string bundleDir, SendRecord rec)
-        {
-            if (bundleDir.Length == 0) return;
-            try { Host.WriteSend(bundleDir, rec); } catch (Exception ex) { Log.Warn("crash", "upload.writesend.failed", ex); }
         }
 
         static long SafeCreationTicks(string path)

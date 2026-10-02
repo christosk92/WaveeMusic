@@ -1,10 +1,8 @@
 // ── Entities/Album.UI.cs ───────────────────────────────────────────────────────────────────────────────────────────
 // the album surface's self-subscribing components: the billed-artist FACE PILE and its every-artist flyout (ch 05 §0.5,
-// W16, §6), the prerelease COUNTDOWN card in its three states incl. Bare (W13, §5's clock rule), the trailing section
-// STACK (W12: capped at 5, one-way "Show all N"), and the artist page's album DRAWER PANEL (W19: header, 32-pitch rows in
-// one or two column-major columns, shimmer cells, ready-empty + Retry, the two-node caret, selection + selection bar) —
-// plus the LIBRARY PANE STATICS (§5, library rework §5.5): the hero ⋯ menu over a handle, the 36-px command circle,
-// PaneHeader and PaneCommands, which Album.Pane and Artist.Reader paint
+// W16, §6), the prerelease COUNTDOWN card in its three states incl. Bare (W13, §5's clock rule) and the trailing section
+// STACK (W12: capped at 5, one-way "Show all N") — plus the LIBRARY PANE STATICS (§4, library rework §5.5): the hero ⋯
+// menu over a handle, the 36-px command circle, PaneHeader and PaneCommands, which Album.Pane and Artist.Reader paint
 //
 // Role: UI
 // Owner: M
@@ -20,11 +18,10 @@
 // that leaves the stamp equal never re-renders it; W2-A2) and takes only IDENTITY through its props: the pile (album
 // slot + width), the countdown (the
 // instant, keyed `prerelease:<uri>:<ticks>` because its wall-clock anchor freezes at mount), a stack (keyed
-// `trail:<signature>` so a re-bound section remounts with a fresh expand state) and the drawer (keyed `drawer:<uri>`
-// so its SelectionModel is per album). Delegates in a props record are behaviour: Equals compares DATA only.
+// `trail:<signature>` so a re-bound section remounts with a fresh expand state). Delegates in a props record are
+// behaviour: Equals compares DATA only.
 
 using System.Globalization;
-using System.Runtime.InteropServices;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -466,494 +463,14 @@ public readonly partial struct Album
         }
     }
 
-    // ══ 4. THE ARTIST-PAGE ALBUM DRAWER (ch 05 W19, parity 46, 55-58, 65-67) ═════════════════════════════════════════
-
-    /// <summary>The artist page's inline album drawer body: the caret over the clicked card, the header (play circle ·
-    /// cover · "Name · meta" · open-album), the tracks at a 32 pitch in one or two column-major columns, a "Show all N
-    /// tracks" cell that NAVIGATES, shimmer cells while loading, the ready-empty note with Retry, selection + its bar.
-    /// <paramref name="caretCenterX"/> is the clicked card's centre, relative to the panel's left edge. The slot around
-    /// it (<c>DrawerVerdict.SlotHeight</c>, the open/close motion, the reveal peek) is the grid's — owner N.</summary>
-    public static Element DrawerPanel(Album album, int gridColumns, float caretCenterX, Func<ColorF> accent)
-        => Embed.Comp(new DrawerProps(album, gridColumns, caretCenterX, accent), static () => new DrawerHost())
-            with { Key = "drawer:" + album.Uri.Text };
-
-    sealed record DrawerProps(Album Album, int GridColumns, float CaretCenterX, Func<ColorF> Accent)
-    {
-        public bool Equals(DrawerProps? o)
-            => o is not null && Album == o.Album && GridColumns == o.GridColumns && CaretCenterX == o.CaretCenterX;
-        public override int GetHashCode() => HashCode.Combine(Album.Slot, GridColumns, CaretCenterX);
-    }
-
-    const float CaretW = 16f, CaretH = 8f, CaretOverlap = 1f, DrawerRowContentH = 28f;
-
-    sealed class DrawerHost : Component
-    {
-        /// <summary>The wedge is built ONCE; only its offsets move per open card.</summary>
-        static readonly PathData s_caret = BuildCaret();
-
-        readonly SelectionModel _sel = new() { Mode = ItemsSelectionMode.Extended };
-        DrawerProps? _latest;
-        DrawerVerdict _verdict;
-        readonly Signal<float> _panelW = new(0f);
-        readonly Func<int, Element> _cell, _shimmer, _commands;
-        readonly Action _retry, _demand, _demandRows, _syncSelection, _goAlbum, _playAlbum, _exitSelection;
-        readonly Action<RectF> _measure;
-
-        public DrawerHost()
-        {
-            _cell = Cell;
-            _shimmer = ShimmerCell;
-            _commands = Commands;
-            _retry = () => { if (_latest is { } p) Entities.RefreshEdge(FetchEdge.AlbumTracks, p.Album.Slot); };
-            _demand = Demand;
-            _demandRows = DemandRows;
-            _syncSelection = () => { int shown = _verdict.Shown; if (_sel.ItemCount != shown) _sel.ItemCount = shown; };
-            _goAlbum = () => { if (_latest is { } p) Track.GoToAlbum(p.Album); };
-            _playAlbum = () => { if (_latest is { } p && p.Album.IsValid) Playback.PlayContext(p.Album.Id); };
-            _exitSelection = () => _sel.DeselectAll();
-            _measure = r => { if (r.W > 0f && MathF.Abs(r.W - _panelW.Peek()) > 0.5f) _panelW.Value = r.W; };
-        }
-
-        static PathData BuildCaret()
-        {
-            var b = new FluentGpu.Render.PathBuilder();
-            b.MoveTo(0f, CaretH);
-            b.LineTo(CaretW * 0.5f, 0f);
-            b.LineTo(CaretW, CaretH);
-            b.Close();
-            return b.Finish(PathContentEpoch.Mint(), FillRule.NonZero);
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<DrawerProps>();
-            _latest = p;
-            uint scopeEpoch = Entities.ScopeEpoch.Value;
-            var scope = Entities.Current;
-            _ = scope.Albums.Changed.Value;
-            _ = scope.Tracks.Changed.Value;
-            _ = scope.Edges.AlbumTracks.Changed.Value;
-            var a = p.Album;
-            UseEffect(_demand, DepKey.From(a.Slot, (int)scopeEpoch));
-            UseEffect(_demandRows);
-
-            var v = DrawerVerdict.Of(a, p.GridColumns);
-            _verdict = v;
-            UseEffect(_syncSelection, DepKey.From(v.Shown));
-            _ = _sel.Version.Value;                                  // the bar's count re-renders the panel, never a row
-            int selected = _sel.SelectedCount;
-
-            Element body = v.ReadyEmpty ? EmptyNote(_retry)
-                : v.Loading ? BuildColumns(v.Shown, v.Columns, _shimmer)
-                : BuildColumns(v.Shown + (v.ShowAllRow ? 1 : 0), v.Columns, _cell);
-
-            Element panel = new BoxEl
-            {
-                Direction = 1, ClipToBounds = true,
-                Padding = new Edges4(12f, 6f, 12f, 6f),
-                Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardSecondary,
-                BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
-                OnBoundsChanged = _measure,
-                Children =
-                [
-                    Head(a, p.Accent()),
-                    ZStack(body, Controls.SelectionBar(selected, _commands, standalone: true, bottomPadding: Spacing.S)),
-                ],
-            };
-
-            // The caret: a fill wedge PLUS a 1-DIP outline, apex clamped inside the panel's rounded corners, painted LAST
-            // and sunk 1 DIP into the panel so its fill hides the panel's top stroke across the wedge's base.
-            float panelW = _panelW.Value;
-            float apex = panelW > 2f * Radii.Card
-                ? Math.Clamp(p.CaretCenterX, Radii.Card, panelW - Radii.Card)
-                : MathF.Max(Radii.Card, p.CaretCenterX);
-            float caretX = apex - CaretW / 2f;
-            float caretY = DrawerVerdict.TopGap - CaretH + CaretOverlap;
-            return new BoxEl
-            {
-                ZStack = true, Direction = 1,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1,
-                        Children = [new BoxEl { Height = DrawerVerdict.TopGap, HitTestVisible = false }, panel],
-                    },
-                    new PathEl
-                    {
-                        OffsetX = caretX, OffsetY = caretY, Width = CaretW, Height = CaretH,
-                        Geometry = s_caret, Fill = Tok.FillCardSecondary, Rule = FillRule.NonZero,
-                    },
-                    new PolylineStrokeEl
-                    {
-                        OffsetX = caretX, OffsetY = caretY, Width = CaretW, Height = CaretH,
-                        P0 = new Point2(0f, CaretH), P1 = new Point2(CaretW * 0.5f, 0f), P2 = new Point2(CaretW, CaretH),
-                        PointCount = 3, Color = Tok.StrokeCardDefault, Thickness = 1f, RoundCaps = false,
-                    },
-                ],
-            };
-        }
-
-        /// <summary>28 tall: the accent play circle (ink picked off the FILL's luminance — a lifted cover accent is often
-        /// pale), the 28 cover, "Name · meta" as one paragraph, the open-album action.</summary>
-        Element Head(Album a, ColorF accent) => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = 28f,
-            Children =
-            [
-                new BoxEl
-                {
-                    Width = 26f, Height = 26f, Shrink = 0f, Corners = CornerRadius4.All(13f), Fill = accent,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = _playAlbum,
-                    Children = [Icon(Icons.Play, 11f, ColorContrast.PickContrast(accent))],
-                },
-                Controls.Artwork(Controls.ArtUrl(a.ImageId), 28f, 28f, Radii.Control),
-                new BoxEl
-                {
-                    Grow = 1f, Basis = 0f, MinWidth = 0f, Cursor = CursorId.Hand, OnClick = _goAlbum,
-                    Children =
-                    [
-                        new SpanTextEl([
-                            new TextSpan(a.Knows(AlbumFields.Title) ? a.Title : ""),
-                            new TextSpan(" · " + DrawerMeta(a), Weight: 400, Color: Tok.TextSecondary, Size: Ui.Caption("").Size),
-                        ])
-                        {
-                            Size = Design.Type.DenseTitle("").Size, LineHeight = Design.Type.DenseTitle("").LineHeight,
-                            Weight = Design.Type.DenseTitle("").ResolvedWeight, Color = Tok.TextPrimary,
-                            Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1, MinWidth = 0f, Shrink = 1f,
-                        },
-                    ],
-                },
-                ToolTip.Wrap(new BoxEl
-                {
-                    Width = 28f, Height = 28f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Corners = CornerRadius4.All(14f), BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
-                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, OnClick = _goAlbum,
-                    Children = [Icon(Icons.OpenInNewWindow, 12f, Tok.TextSecondary)],
-                }.Interactive(Interaction.Subtle), Loc.Get(Strings.Menu.GoToAlbum)),
-            ],
-        };
-
-        /// <summary>"Nov 4, 2014 · 14 tracks" — the discography card's OWN subtitle rule (0.2.9 <c>DiscoGrid.AlbumMeta</c>,
-        /// owner N's <c>DiscoCardText</c>), so the header and the card it opened from can never disagree.</summary>
-        static string DrawerMeta(Album a) => DiscoCardText.AlbumMeta(a);
-
-        Element Cell(int i)
-        {
-            var v = _verdict;
-            if (i >= v.Shown) return ShowAllRow(v.Total);
-            var p = _latest!;
-            var slots = p.Album.TrackSlots;
-            if ((uint)i >= (uint)slots.Length)
-                return new BoxEl { Key = "row:#" + i.ToString(CultureInfo.InvariantCulture), Height = DrawerVerdict.RowPitch };
-            var t = new Track(slots[i]);
-            return Embed.Comp(new DrawerRowProps(p.Album, t, i, _sel, p.Accent), static () => new DrawerRowHost())
-                with { Key = "row:" + t.Slot.ToString(CultureInfo.InvariantCulture) };
-        }
-
-        /// <summary>Past the cap the last cell NAVIGATES to the album (never lengthens the drawer) — counted in the
-        /// verdict's rows so the reserved slot never guesses.</summary>
-        Element ShowAllRow(int total) => new BoxEl
-        {
-            Key = "row:show-all", Height = DrawerVerdict.RowPitch, AlignItems = FlexAlign.Center,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Cursor = CursorId.Hand, Role = AutomationRole.Button, OnClick = _goAlbum,
-            Children =
-            [
-                Ui.Caption(Strings.Detail.Discography.ShowAllTracks(total))
-                    with { Weight = 600, Color = Tok.AccentTextPrimary, MaxLines = 1 },
-            ],
-        };
-
-        /// <summary>A 16×11 number block and one bar capped at 240 — never a heart, a time or a "…".</summary>
-        static Element ShimmerCell(int i) => new BoxEl
-        {
-            Key = "shimmer:" + i.ToString(CultureInfo.InvariantCulture),
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = DrawerVerdict.RowPitch,
-            Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
-            Children =
-            [
-                new BoxEl { Width = 16f, Height = 11f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-                new BoxEl { Grow = 1f, Basis = 0f, Height = 11f, MaxWidth = 240f, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary },
-            ],
-        };
-
-        /// <summary>Ready but empty: the one error affordance on the surface — the note beside a stock Retry.</summary>
-        static Element EmptyNote(Action retry) => new BoxEl
-        {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-            Padding = new Edges4(Spacing.S, Spacing.M, Spacing.S, Spacing.M),
-            Children =
-            [
-                Design.Type.DenseMeta(Loc.Get(Strings.Detail.Empty.NoTracks))
-                    with
-                    {
-                        Grow = 1f, Basis = 0f, MinWidth = 0f, Color = Tok.TextTertiary,
-                        MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                Button.Standard(Loc.Get(Strings.Common.Retry), retry),
-            ],
-        };
-
-        /// <summary>ONE splitter for the real rows and the shimmer: column-major, the first ⌈n/2⌉ cells left, 20 apart.</summary>
-        static Element BuildColumns(int cellCount, int columns, Func<int, Element> cell)
-        {
-            if (cellCount <= 0) return new BoxEl();
-            if (columns <= 1)
-            {
-                var kids = new Element[cellCount];
-                for (int i = 0; i < cellCount; i++) kids[i] = cell(i);
-                return new BoxEl { Direction = 1, Children = kids };
-            }
-            int perColumn = (cellCount + columns - 1) / columns;
-            var cols = new Element[columns];
-            for (int c = 0; c < columns; c++)
-            {
-                int start = c * perColumn, end = Math.Min(cellCount, start + perColumn);
-                var kids = end > start ? new Element[end - start] : Array.Empty<Element>();
-                for (int i = start; i < end; i++) kids[i - start] = cell(i);
-                cols[c] = new BoxEl
-                {
-                    Key = "col:" + c.ToString(CultureInfo.InvariantCulture),
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Children = kids,
-                };
-            }
-            return new BoxEl { Direction = 0, Gap = Spacing.XL, Children = cols };
-        }
-
-        /// <summary>The selection bar's commands: count · Play (+ Play next · Add to queue · Like above the essentials fit)
-        /// · ✕, over the registered verbs; every verb exits selection after it runs.</summary>
-        Element Commands(int fit)
-        {
-            _ = _sel.Version.Value;
-            int count = _sel.SelectedCount;
-            if (count <= 0 || _latest is not { } p) return new BoxEl();
-            var slots = p.Album.TrackSlots;
-            var tracks = new List<Track>(count);
-            for (int i = 0; i < slots.Length && i < _sel.ItemCount; i++)
-                if (_sel.IsSelected(i)) tracks.Add(new Track(slots[i]));
-            var ctx = new ActionContext(ActionTarget.ForTracks(tracks), Actions.Services);
-            var kids = new List<Element>(7)
-            {
-                Ui.Caption(Strings.Detail.SelectedCount(count))
-                    with { Weight = 600, Color = Tok.TextPrimary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-            };
-            AddVerb(kids, ActionId.Play, in ctx);
-            if (fit <= 1)
-            {
-                AddVerb(kids, ActionId.PlayNext, in ctx);
-                AddVerb(kids, ActionId.AddToQueue, in ctx);
-                AddVerb(kids, ActionId.ToggleLike, in ctx);
-            }
-            kids.Add(new BoxEl { Grow = 1f, MinWidth = 0f });
-            kids.Add(GlyphCommand(Icons.Cancel, null, Loc.Get(Strings.Detail.ClearSelection), true, _exitSelection));
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 3f, Grow = 1f, MinWidth = 0f, ClipToBounds = true,
-                Children = kids.ToArray(),
-            };
-        }
-
-        void AddVerb(List<Element> kids, ActionId id, in ActionContext ctx)
-        {
-            if (AppActions.Find(id) is not { } action) return;
-            var c = ctx;
-            bool enabled = action.EnabledFor(in c);
-            var icon = ActionIcons.Resolve(action.IconKey, action.CheckedFor(in c));
-            var exit = _exitSelection;
-            Action invoke = enabled ? () => { action.Execute(c); exit(); } : static () => { };
-            kids.Add(GlyphCommand(icon.Glyph ?? "", icon.Font, action.Label(c), enabled, invoke));
-        }
-
-        static Element GlyphCommand(string glyph, string? font, string label, bool enabled, Action invoke)
-            => ToolTip.Wrap(new BoxEl
-            {
-                Width = 32f, Height = 32f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                IsEnabled = enabled, Focusable = enabled, Role = AutomationRole.Button, OnClick = invoke,
-                Children = [Icon(glyph, 13f, enabled ? Tok.TextSecondary : Tok.TextDisabled, family: font)],
-            }.Interactive(Interaction.Subtle), label);
-
-        void Demand()
-        {
-            if (_latest is not { } p || !p.Album.IsValid) return;
-            var a = p.Album;
-            Entities.Ensure(a, AlbumFields.Card);
-            if (Entities.Current.Edges.AlbumTracks.State(a.Slot) == EdgeState.Unknown)
-                Entities.EnsureEdge(FetchEdge.AlbumTracks, a.Slot);
-        }
-
-        void DemandRows()
-        {
-            _ = Entities.ScopeEpoch.Value;
-            _ = Entities.Current.Edges.AlbumTracks.Changed.Value;
-            if (_latest is not { } p) return;
-            var slots = p.Album.TrackSlots;
-            if (slots.Length > 0) Entities.Ensure(MemoryMarshal.Cast<int, Track>(slots), TrackFields.Row);
-        }
-    }
-
-    sealed record DrawerRowProps(Album Album, Track Track, int Index, SelectionModel Selection, Func<ColorF> Accent)
-    {
-        public bool Equals(DrawerRowProps? o)
-            => o is not null && Album == o.Album && Track == o.Track && Index == o.Index && ReferenceEquals(Selection, o.Selection);
-        public override int GetHashCode() => HashCode.Combine(Album.Slot, Track.Slot, Index);
-    }
-
-    /// <summary>One drawer row — its own component so a play / pause / like anywhere re-skins THIS row only. Single click
-    /// selects (Ctrl toggles, Shift extends), double click plays, right-click / the "…" opens the selection-aware menu,
-    /// the row drags the selection when the gesture starts on a selected row.</summary>
-    sealed class DrawerRowHost : Component
-    {
-        /// <summary>The drawer's lanes: # 26 · ♥ · Title★ · time 44 · "…" 32 — no thumb, Plays, Album, Date or Video.</summary>
-        static readonly TrackSize[] s_tracks =
-            [TrackSize.Px(26f), TrackSize.Px(Track.RowMetrics.HeartCol), TrackSize.Star(Track.Lane.TitleStar), TrackSize.Px(44f), TrackSize.Px(32f)];
-        static readonly Track.ColumnSet s_set =
-            new(Album: false, By: false, Date: false, Video: false, Plays: false, Heart: true, Thumb: false, Actions: true);
-        static readonly Func<int, int> s_identityIndex = static i => i;
-
-        DrawerRowProps? _p;
-        IOverlayService? _overlay;
-        Signal<bool>? _hovered;
-        DragSource? _dragSource;
-        int _likeSlot;
-        bool _likeSaved;
-        readonly Action _play, _like, _exit;
-        readonly Action<PointerEventArgs> _released;
-        readonly Action<Point2> _hoverMove;
-        readonly Func<float> _pill;
-        readonly Func<object?> _drag;
-        readonly Func<ContextMenuModel?> _menu;
-        readonly Func<int, Track> _trackAt;
-
-        public DrawerRowHost()
-        {
-            _play = Play;
-            _like = Like;
-            _released = Released;
-            _hoverMove = _ => { if (_hovered is { } h && !h.Peek()) h.Value = true; };
-            _exit = () => { if (_hovered is { } h && h.Peek()) h.Value = false; };
-            _pill = () => _p is { } p && p.Selection.Version.Value >= 0 && p.Selection.IsSelected(p.Index) ? 1f : 0f;
-            _drag = DragPayloadNow;
-            _menu = MenuNow;
-            _trackAt = TrackAt;
-        }
-
-        public override Element Render()
-        {
-            var p = UseProps<DrawerRowProps>();
-            _p = p;
-            var hovered = UseSignal(false);
-            _hovered = hovered;
-            var overlay = UseContext(Overlay.Service);
-            _overlay = overlay;
-            _ = Entities.Current.Tracks.Changed.Value;
-
-            var t = p.Track;
-            var st = Track.StateOf(t);
-            bool pop = Track.LikeEdge(ref _likeSlot, ref _likeSaved, t, st.Saved);
-            var set = s_set;
-            Element title = Design.Type.DenseTitle(t.Title)
-                with
-                {
-                    Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
-                    MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-                };
-            var options = new Track.GridOptions(OnPlay: _play, OnLike: _like, LikePop: pop,
-                ActionsCell: Track.MoreCell(true, false), HoverPaused: hovered, Accent: p.Accent);
-            Element grid = Track.Grid(t, p.Index, in st, in set, s_tracks, DrawerRowContentH, title, in options);
-
-            _dragSource ??= Drag.Source(_drag);
-            BoxEl row = new BoxEl
-            {
-                ZStack = true, Height = DrawerVerdict.RowPitch, ClipToBounds = true, Corners = Radii.ControlAll,
-                Fill = ColorF.Transparent, HoverFill = Design.Colors.RowHover, PressedFill = Design.Colors.RowPressed,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand,
-                Draggable = _dragSource, OnPointerReleased = _released,
-                OnHoverMove = _hoverMove, OnPointerExit = _exit,
-                Children =
-                [
-                    new BoxEl { Direction = 1, Height = DrawerVerdict.RowPitch, Justify = FlexJustify.Center, Children = [grid] },
-                    // The 3×16 accent selection pill: always mounted, revealed by a bound opacity (compositor-only).
-                    new BoxEl
-                    {
-                        Width = 3f, Height = 16f, Margin = new Edges4(2f, 0f, 0f, 0f), AlignSelf = FlexAlign.Center,
-                        Corners = CornerRadius4.All(1.5f), Fill = p.Accent(), HitTestVisible = false, Opacity = _pill,
-                    },
-                ],
-            };
-            return Controls.IsNullOverlay(overlay) ? row : ContextMenu.Attach(row, overlay, _menu);
-        }
-
-        void Play()
-        {
-            if (_p is not { } p) return;
-            var t = p.Track;
-            // The ONE not-yet-out predicate refuses here exactly as the table's activation funnel does.
-            if (!t.IsValid || t.NotYetOut(Store.ToUnix(Entities.Now))) return;
-            var album = p.Album;
-            Track.Invoke(t, () => Playback.PlayContext(album.Id, t.Id));
-        }
-
-        void Like()
-        {
-            if (_p is not { } p) return;
-            var me = User.Me;
-            if (me.Slot <= 0 || !p.Track.IsValid) return;
-            if (me.Likes(p.Track)) me.Unlike(p.Track); else me.Like(p.Track);
-        }
-
-        void Released(PointerEventArgs args)
-        {
-            if (_p is not { } p || args.Button != 0) return;
-            if (args.ClickCount >= 2) { Play(); return; }
-            bool ctrl = (args.Mods & KeyModifiers.Ctrl) != 0, shift = (args.Mods & KeyModifiers.Shift) != 0;
-            p.Selection.OnInteractedAction(p.Index, ctrl, shift);
-            if (!shift) p.Selection.AnchorIndex = p.Index;
-        }
-
-        Track TrackAt(int i)
-        {
-            if (_p is not { } p) return default;
-            var slots = p.Album.TrackSlots;
-            return (uint)i < (uint)slots.Length ? new Track(slots[i]) : default;
-        }
-
-        ContextMenuModel? MenuNow()
-            => _p is { } p
-                ? Track.RowMenu(p.Selection, p.Index, _trackAt, s_identityIndex,
-                                new Track.MenuOptions(ShowGoToAlbum: true, PickerOverlay: _overlay))
-                : null;
-
-        /// <summary>The whole selection when the gesture starts on a selected row, else that one track (a COPY source).</summary>
-        object? DragPayloadNow()
-        {
-            if (_p is not { } p || !p.Track.IsValid) return null;
-            Track[] tracks;
-            if (p.Selection.IsSelected(p.Index) && p.Selection.SelectedCount > 1)
-            {
-                var slots = p.Album.TrackSlots;
-                var picked = new List<Track>(p.Selection.SelectedCount);
-                for (int i = 0; i < slots.Length && i < p.Selection.ItemCount; i++)
-                    if (p.Selection.IsSelected(i)) picked.Add(new Track(slots[i]));
-                tracks = picked.ToArray();
-            }
-            else tracks = [p.Track];
-            if (tracks.Length == 0) return null;
-            var first = tracks[0];
-            string uri = first.Uri.Text;
-            return new DragPayload(DragKind.Track, uri, uri, first.Title, new EntityRef(EntityKind.Track, first.Slot), Tracks: tracks);
-        }
-    }
-
-    // ══ 5. THE LIBRARY PANE STATICS (library rework §5.5, wave L1) ════════════════════════════════════════════════════
+    // ══ 4. THE LIBRARY PANE STATICS (library rework §5.5, wave L1) ════════════════════════════════════════════════════
     //
     // What `Album.Pane` (and `Artist.Reader`, which paints the same commands over one release block) calls: the hero ⋯ as
     // a function of a HANDLE, the 36-px command circle, and the pane's header + command row. Every one is a VALUE over its
     // arguments — no hooks, no signals, nothing read but the album it is handed — so a selection change re-skins both
     // panes in place and neither remounts. Accent-NEUTRAL: nothing here reads a palette (ch 15 §0.8).
 
-    /// <summary>The pane covers' one edge — 128, the show twin's too (<c>Show.PaneHeader</c>).</summary>
+    /// <summary>The pane covers' one edge — 128, the show pane's too (it renders this same header).</summary>
     public const float PaneCover = 128f;
 
     /// <summary>The pane header's STATED height: the cover plus its own padding (128 + 20 + 12 = 160). Stated, not
@@ -1043,7 +560,7 @@ public readonly partial struct Album
     /// metrics overrun the budget anyway: it clips, it never reflows.</para></summary>
     public static Element PaneHeader(string? cover, string eyebrow, string title, Action open, Element attribution, string meta) => new BoxEl
     {
-        // ONE target, matching Show.PaneHeader: cover + eyebrow + title + attribution + meta open the album.
+        // ONE target: cover + eyebrow + title + attribution + meta open the album (the show pane's: the show).
         // A title-only hyperlink left the cover inert in the library pane.
         Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Shrink = 0f,
         Height = PaneHeaderHeight, ClipToBounds = true,
@@ -1070,7 +587,7 @@ public readonly partial struct Album
                         Wrap = TextWrap.Wrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
                     },
                     attribution,
-                    // The SAME rung as Show.PaneHeader, by the same constants: "one geometry for both kinds, so
+                    // The SAME rung for the show pane, which renders this header: "one geometry for both kinds, so
                     // a selection crossing album -> show moves nothing but the words" (that file's header, and this
                     // one's). A typography alias here made the album pane's meta 13/18 secondary against the show
                     // pane's 12.5/16 tertiary, and put PaneHeaderTextHeight's arithmetic 2 DIP out.
@@ -1084,33 +601,68 @@ public readonly partial struct Album
         ],
     }.Interactive(Interaction.Subtle);
 
-    /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (32/r4 icon actions each) ·
-    /// spacer · "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule).
-    /// Never a second accent CTA (ch 15 §0.8). <paramref name="save"/> and <paramref name="more"/> are the caller's
-    /// hosts (the SaveButton is keyed per uri, the ⋯ needs the overlay), so this row stays a pure value.</summary>
-    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open) => new BoxEl
+    /// <summary><see cref="PaneHeader"/>'s loading twin, for the album pane AND the show pane (both render <see cref="PaneHeader"/>,
+    /// rung for rung): the cover square and three stand-in bars — eyebrow, title, attribution — in the SAME
+    /// stated <see cref="PaneHeaderHeight"/>, padding, gap and bottom alignment, so the crossfade into the real header is a
+    /// dissolve and never a reflow. The header's STATED height, not this tree's content height, is the point: the two must
+    /// occupy the same band. Inert — no click, no role, no focus (a header that cannot say what it opens offers nothing).</summary>
+    public static BoxEl PaneHeaderSkeleton() => new()
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, Shrink = 0f,
-        Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
+        Direction = 0, Gap = 18f, AlignItems = FlexAlign.End, Height = PaneHeaderHeight, ClipToBounds = true,
+        Padding = new Edges4(Spacing.XL, Spacing.XL, Spacing.XL, Spacing.M),
         Children =
         [
-            Controls.PlayButton(Tok.AccentDefault, play),
-            CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
-            save, more,
-            new BoxEl { Grow = 1f },
+            new BoxEl { Width = PaneCover, Height = PaneCover, Shrink = 0f, Corners = Radii.CardAll, Fill = Tok.FillSubtleSecondary },
             new BoxEl
             {
-                Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 0f,
-                Padding = new Edges4(Spacing.S, 6f, Spacing.S, 6f),
-                Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, BrushTransitionMs = Design.Motion.Faster,
-                Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
-                Children =
-                [
-                    Design.Type.DenseMeta(Loc.Get(Strings.Library.OpenAlbum))
-                        with { Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary },
-                    Icon(Icons.OpenInNewWindow, 14f, Tok.AccentTextPrimary),
-                ],
+                Direction = 1, Gap = Spacing.S, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Children = [Controls.PendingBar(80f, 11f), Controls.PendingBar(220f, 26f), Controls.PendingBar(120f, 11f)],
             },
         ],
     };
+
+    /// <summary>Play (the SYSTEM accent — the one stated exception) · shuffle · save · more (32/r4 icon actions each) ·
+    /// spacer · "Open album ↗" (a 13-px accent text link with the OpenInNewWindow glyph — a hyperlink, not a capsule).
+    /// Never a second accent CTA (ch 15 §0.8). <paramref name="save"/> and <paramref name="more"/> are the caller's
+    /// hosts (the SaveButton is keyed per uri, the ⋯ needs the overlay), so this row stays a pure value.
+    /// <para>The link is the row's one SHRINKING child (#158): the verbs before it are ~300 DIP that never shrink, and
+    /// with the link `Shrink 0` too a pane under ~400 DIP clipped it off the edge. Now the spacer gives way first, then
+    /// the label ellipsizes, and a trimmed label — only a trimmed one — gets its whole text as a tooltip
+    /// (<c>Controls.TrimTip</c>). The tooltip wraps the LABEL, in a column slot of its own, rather than the whole link:
+    /// that slot is exactly the text's box, so the trim test compares like with like (around the link it would measure
+    /// a box 36 DIP wider than the text — padding, gap and glyph), and a ToolTip wrapper is `Shrink 0`, so it can only
+    /// be sized as a COLUMN child (the engine's rule 11).</para></summary>
+    public static Element PaneCommands(Action play, Action shuffle, Element save, Element more, Action open)
+    {
+        string openLabel = Loc.Get(Strings.Library.OpenAlbum);
+        TextEl label = Design.Type.DenseMeta(openLabel) with
+        {
+            Color = Tok.AccentTextPrimary, HoverColor = Tok.AccentTextSecondary,
+            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f,
+        };
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = 10f, Shrink = 0f,
+            Padding = new Edges4(Spacing.XL, Spacing.M, Spacing.XL, Spacing.S),
+            Children =
+            [
+                Controls.PlayButton(Tok.AccentDefault, play),
+                CommandCircle(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle),
+                save, more,
+                new BoxEl { Grow = 1f },
+                new BoxEl
+                {
+                    Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, Corners = Radii.ControlAll, Shrink = 1f, MinWidth = 0f,
+                    Padding = new Edges4(Spacing.S, 6f, Spacing.S, 6f),
+                    Fill = Tok.FillSubtleTransparent, HoverFill = Tok.FillSubtleSecondary, BrushTransitionMs = Design.Motion.Faster,
+                    Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand, OnClick = open,
+                    Children =
+                    [
+                        new BoxEl { Direction = 1, Shrink = 1f, MinWidth = 0f, Children = [Controls.TrimTip(label, openLabel, label)] },
+                        Icon(Icons.OpenInNewWindow, 14f, Tok.AccentTextPrimary),
+                    ],
+                },
+            ],
+        };
+    }
 }

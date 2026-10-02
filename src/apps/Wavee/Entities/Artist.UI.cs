@@ -793,6 +793,7 @@ public readonly partial struct Artist
                 with { Key = "pick-presave:" + target }
             : Controls.PlayButton(tint, play);
         Element metaKind = Design.Type.TrackMeta(kind) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+        TextEl titleText = Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
         Element foot = new BoxEl
         {
             Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
@@ -805,7 +806,7 @@ public readonly partial struct Artist
                     Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
                     Children =
                     [
-                        Design.Type.TrackTitle(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        Controls.TrimmedTitle(titleText, title),   // under the footer column's width, never a shrink-wrapped run
                         new BoxEl
                         {
                             Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center, MinWidth = 0f,
@@ -828,15 +829,19 @@ public readonly partial struct Artist
         };
         Element content = horizontal && photo is not null ? new BoxEl { Direction = 0, Children = [copy, photo] } : copy;
 
-        return Controls.CardPhysics(new BoxEl
+        // The panel keeps its own tree (a quote over a footer), but its clickable shell is the shared one: the plate's
+        // hover/press reveal, the Button role, the tab stop and the hand cursor all come from `SurfaceParts.Shell` and
+        // the ownership rule (a clickable, free surface), not from a hand-set copy. The panel's own fill, hairline and
+        // card shadow ride on top, and its extent stays the content's (the shell's stack Grow is zeroed).
+        var mode = SurfaceRules.Ownership(inSlot: false, hasClick: true);
+        return SurfaceParts.Shell(new BoxEl { ZStack = true, Grow = 1f, MinWidth = 0f, Children = [wash, content] },
+                                  Shape.Grid, in mode, target) with
         {
-            ZStack = true, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Card),
+            Grow = 0f, ClipToBounds = true,
             Fill = Tok.FillCardDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, Shadow = Elevation.Card,
-            Role = AutomationRole.Button, Focusable = true, FocusVisualMargin = Design.FocusInsetBordered,
             OnClick = open,
             Draggable = Drag.Source(() => new DragPayload(Drag.KindOfUri(target), target, target, title, ArtUrl: cover)),
-            Children = [wash, content],
-        });
+        };
     }
 
     /// <summary>The pick's photograph band, mounted only once its image is Ready (see <see cref="PickCard"/>).

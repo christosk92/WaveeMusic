@@ -118,6 +118,8 @@ public static partial class Settings
             new(Tab.General, "Developer", "openCaptureFolder", "FolderOpen"),
             new(Tab.General, "Developer", "openCaptureViewer", "Devices"),
             new(Tab.General, "Developer", "simulateUpdate", "Refresh", DeveloperOnly: true),
+            // #165: a full crash report (bundle + live dump + upload) without a crash.
+            new(Tab.General, "Developer", "sendTestCrashReport", "StatusWarning", DeveloperOnly: true),
 
             new(Tab.Appearance, "Theme", "theme", "Sun"),
             new(Tab.Appearance, "Theme", "zoom", "Zoom"),

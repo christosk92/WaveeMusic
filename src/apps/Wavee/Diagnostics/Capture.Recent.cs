@@ -96,7 +96,8 @@ public sealed class CaptureRecentStore
 // ── the roll-up dot ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>§5.5's coloured dot: green (everything under this root completed cleanly), amber (a soft failure —
-/// a non-2xx, a decode failure, an ignored frame — but the story otherwise completed), red (a Begin with no
+/// a non-2xx, a decode failure, an ignored frame — unless ignored ON PURPOSE, <see cref="CaptureIgnoreRules.IsAnomaly"/> —
+/// but the story otherwise completed), red (a Begin with no
 /// matching End anywhere under this root — `EchoMissing`, §2.5).</summary>
 public enum CaptureRootStatus : byte { Green, Amber, Red }
 
@@ -116,7 +117,8 @@ public static class CaptureRootRollup
             if (e.Phase == CapturePhase.Begin) openBegins.Add(e.Id);
             else if (e.Phase == CapturePhase.End) closedIds.Add(e.Id);
 
-            if (e.Kind is CaptureKind.DecodeFailed or CaptureKind.FrameIgnored) amber = true;
+            if (e.Kind == CaptureKind.DecodeFailed
+                || (e.Kind == CaptureKind.FrameIgnored && CaptureIgnoreRules.IsAnomaly(e.Fields.B))) amber = true;
             if (e.Phase == CapturePhase.End && e.Kind is CaptureKind.HttpCall or CaptureKind.ConnectStatePut
                 && (e.Fields.N0 < 200 || e.Fields.N0 > 299)) amber = true;
         }
@@ -156,7 +158,11 @@ public static class CaptureAnomalyScanner
             else if (e.Kind == CaptureKind.DecodeFailed)
                 result.Add(new CaptureAnomaly(e.RootId, e.Id, CaptureAnomalyKind.DecodeFailed, e.UnixMs, e.Fields.A));
             else if (e.Kind == CaptureKind.FrameIgnored)
-                result.Add(new CaptureAnomaly(e.RootId, e.Id, CaptureAnomalyKind.FrameIgnored, e.UnixMs, e.Fields.A));
+            {
+                // A frame ignored on purpose is a decision, not a fault: it stays in the capture, off this list.
+                if (CaptureIgnoreRules.IsAnomaly(e.Fields.B))
+                    result.Add(new CaptureAnomaly(e.RootId, e.Id, CaptureAnomalyKind.FrameIgnored, e.UnixMs, e.Fields.A));
+            }
             else if (e.Phase == CapturePhase.End && e.Kind is CaptureKind.HttpCall or CaptureKind.ConnectStatePut
                      && (e.Fields.N0 < 200 || e.Fields.N0 > 299))
                 result.Add(new CaptureAnomaly(e.RootId, e.Id, CaptureAnomalyKind.NonSuccessStatus, e.UnixMs,

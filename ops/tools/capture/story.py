@@ -22,6 +22,13 @@ ANOMALY_UI_DISAGREES = "UiDisagreesWithEcho"
 ANOMALY_HTTP_ERROR = "HttpError"
 ANOMALY_DECODE_FAILED = "DecodeFailed"
 ANOMALY_FRAME_IGNORED = "FrameIgnored"
+# A FrameIgnored record carries the topic in `a` and the reason in `b` (Spotify.Connect.cs). A frame dropped ON PURPOSE
+# is not an anomaly — the app's own rule, CaptureIgnoreRules.IsAnomaly (Diagnostics/Capture.EchoDiff.cs).
+IGNORED_ON_PURPOSE = "IgnoredOnPurpose"
+
+
+def _ignored_is_anomaly(rec: Dict[str, Any]) -> bool:
+    return rec.get("b") != IGNORED_ON_PURPOSE
 
 # The write-side convention this tool assumes for a `ConnectStatePutResponse` Point record (documented here since
 # unit 4/5's call sites were not landed when this was written — see decode.py's module docstring for the same
@@ -131,7 +138,7 @@ def _line_anomaly(rec: Dict[str, Any], end: Optional[Dict[str, Any]]) -> Optiona
             return ANOMALY_HTTP_ERROR
     if kind == "DecodeFailed":
         return ANOMALY_DECODE_FAILED
-    if kind == "FrameIgnored":
+    if kind == "FrameIgnored" and _ignored_is_anomaly(rec):
         return ANOMALY_FRAME_IGNORED
     return None
 
@@ -226,8 +233,8 @@ def detect_anomalies(records: List[Dict[str, Any]]) -> List[Anomaly]:
                                     f"matched={r.get('n1')} diff={r.get('b')}", r["root_id"], r))
         elif kind == "DecodeFailed":
             out.append(Anomaly(r["unix_ms"], ANOMALY_DECODE_FAILED, f"{r.get('a')}: {r.get('b')}", r["root_id"], r))
-        elif kind == "FrameIgnored":
-            out.append(Anomaly(r["unix_ms"], ANOMALY_FRAME_IGNORED, f"reason={r.get('a')}", r["root_id"], r))
+        elif kind == "FrameIgnored" and _ignored_is_anomaly(r):
+            out.append(Anomaly(r["unix_ms"], ANOMALY_FRAME_IGNORED, f"{r.get('a')}: reason={r.get('b')}", r["root_id"], r))
         elif kind in ("HttpCall", "ConnectStatePut") and r["phase"] in ("End", CapturePhase.End):
             status = r.get("n0")
             if isinstance(status, int) and not (200 <= status < 300):

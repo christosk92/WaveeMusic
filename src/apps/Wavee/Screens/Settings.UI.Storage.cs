@@ -150,7 +150,7 @@ public static partial class Settings
             }, RowGlyph(Tab.Storage, "cacheLocation")),
             StorageRow(4, "audioBodies", Loc.Get(Strings.Settings.Storage.AudioBodiesSub), s?.AudioBody, audioDir,
                 StorageClearButton(Strings.Settings.Storage.ClearAudio, Strings.Settings.Storage.ClearAudioBody, ClearAudioBodies, hasCache)),
-            StorageRow(5, "licenseKeys", keysSub, s?.LicenseDb, Path.GetDirectoryName(LicenseDbPath()) ?? audioDir,
+            StorageRow(5, "licenseKeys", keysSub, s?.LicenseDb, Path.GetDirectoryName(Spotify.Audio.KeyStore.DefaultPath()) ?? audioDir,
                 StorageClearButton(Strings.Settings.Storage.ClearKeys, Strings.Settings.Storage.ClearKeysBody, ClearSavedKeys)),
 
             SectionHeader(Loc.Get(Strings.Settings.Storage.MetadataCache), SectionGlyph(Tab.Storage, "Metadata cache")),
