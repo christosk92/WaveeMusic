@@ -320,6 +320,10 @@ they're sent.
   of 17,936 events").
 - **A deep link that arrived with a trailing NUL carried it into route ids and log lines.** The NUL is trimmed before
   the link is parsed.
+- **Diagnostics flagged handled playlist and collection updates as ignored.** The flight recorder marked every
+  `hm://playlist/…` and `hm://collection/…` push as an ignored frame although the library applied it — hundreds of
+  false ambers a day in the anomaly list. A frame is now marked ignored only when nothing took it, with whether that
+  was on purpose. (#163)
 
 ### Known limitations
 
@@ -351,10 +355,6 @@ they're sent.
   configuration, and the startup log names the engine flavor (`engine=release|diag`).
 - **Connect put-state warning.** Every accepted put-state whose echo does not name Wavee as the active device now logs
   a warning, so a lost Connect state can be traced.
-- **Diagnostics flagged handled playlist and collection updates as ignored.** The flight recorder marked every
-  `hm://playlist/…` and `hm://collection/…` push as an ignored frame although the library applied it — hundreds of
-  false ambers a day in the anomaly list. A frame is now marked ignored only when nothing took it, with whether that
-  was on purpose. (#163)
 - **Dutch and Korean crash and consent text are drafts.** The crash prompt, the recovery window, the saved-reports list, the
   privacy settings and the setup wizard's crash-reporting card have Dutch (nl) and Korean (ko-KR) drafts; both
   languages stay disabled in the language picker until their tables are reviewed. (#165)
