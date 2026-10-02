@@ -181,6 +181,20 @@ certificate in the step-0 zone. `workers_dev = false` and `preview_urls = false`
 
 Apply pending migrations (step 2) **before** deploying code that reads their columns.
 
+**`Trigger configuration ... was only partially updated` / `[code: 10063] You need a workers.dev
+subdomain`.** The code and assets are live at that point; only the cron failed to register. Cloudflare
+refuses cron triggers on an account that has never had a `workers.dev` subdomain, even though this
+Worker sets `workers_dev = false`. The account owner opens **Workers & Pages** once in the Cloudflare
+dashboard (that creates the subdomain), then `npm run deploy` again. Hit on the first #165 deploy
+(2026-10-02). Check with `npx wrangler triggers deploy` or the Worker's Settings › Triggers page.
+The full error is only in the wrangler log (`%APPDATA%\xdg.config\.wrangler\logs\`), not on the console.
+
+**Smoke paths.** Ingest is `POST /v1/report` (singular). A probe at `/v1/reports` is a dashboard route,
+so a wrong key there gets a 302 to Access, not the JSON 401 step 6 expects. The prod contract smoke (POST
+`ops/crash/contract/managed.multipart` with its own boundary, erase its install, re-POST) goes
+201 / 200 / 410. The local ingest key for scripted smoke tests is `INGEST_KEY` in
+`ops/crash/worker/.prod.vars` (gitignored); never print it.
+
 `https://crash.cproducts.dev` is the one URL every release stamps into the build:
 `ops/release/wavee-release.ps1 -CrashIngestUrl https://crash.cproducts.dev` (`WaveeCrashIngestUrl`,
 WP-G; phase `symbols` uploads the maps this Worker resolves against).

@@ -80,6 +80,8 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 - [deep-linking.md](deep-linking.md) — the `wavee://` verb map and the one activation entry every surface routes through.
 - [receipts.md](receipts.md) — the About "Wavee right now" perf receipts and the GPU-vs-app memory split.
 - [focus-pitfalls.md](focus-pitfalls.md) — programmatic focus: focus the editable node, not its chrome.
+- [ui-pitfalls.md](ui-pitfalls.md) — "updates only after a resize" = a memo key missing an input (the title bar's
+  `ChromeContentVersion`); pill rows need `Wrap = true`; check the running exe's path before diagnosing.
 - [scrolling.md](scrolling.md) — **Scrolling in Wavee**: one `ScrollHandle` + a `ScrollKey` composed under
   `Shell.PageScrollScope` per scroller, `ItemsView` `ScrollOptions`, `WheelTarget`, sticky/clip with scopes and
   `engaged:` signals, hero `Collapse`/`StretchFromTop`/`Parallax`/`Fade`, lyrics `ScrollMove.Follow` + `MeasureAll`, the

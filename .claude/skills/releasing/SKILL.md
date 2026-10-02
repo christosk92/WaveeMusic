@@ -97,6 +97,10 @@ The flags combine, so `-CrashService -Channel stable -Quad 0.0.1.0` tests both. 
   deliberately not crash-stamped.
 - A non-dev loose exe is a normal unpackaged run and writes the real `%LOCALAPPDATA%\Wavee`. Wipe it before testing a
   packaged build (see CLAUDE.md).
+- **The crash service itself** (Worker + dashboard on crash.cproducts.dev) is deployed separately from any release:
+  `ops/crash/README.md` §2 (migrations first) and §5 (`npm run deploy`, the cron error 10063, the smoke paths). Its
+  live state and open verification rows are in `docs/plans/wavee/crash-production-readiness-implementation.md`
+  § Status.
 
 ## Symbolicating a crash report
 

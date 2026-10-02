@@ -439,6 +439,21 @@ foreach ($id in '3821fb615dad14bf9627697c797e91d8','5dfbb2678df2fb42d7fa77ad37a8
 # contract smoke on prod ⚑: POST ops/crash/contract/managed.multipart → 201; DELETE its install → 200; re-POST → 410
 ```
 
+### Status (2026-10-02, commit 4691ccb6)
+
+| Step | State |
+|---|---|
+| `DISCORD_WEBHOOK_URL` secret | Set. Webhook "wavee crashes" validated with a read-only GET. |
+| Migration 0001 on remote D1 | Applied. |
+| `npm run deploy` (Worker + dashboard) | Live on crash.cproducts.dev. |
+| Cron `17 3 * * *` | **Not registered.** Error 10063: the account has no workers.dev subdomain (`ops/crash/README.md` §5). Owner opens Workers & Pages once, then redeploy. Until then retention only runs via the dashboard's "Run retention now". |
+| Smoke tests | Passed: wrong key 401, anonymous DELETE 302 to Access, contract 201 / 200 / 410. |
+| Two synthetic installs | Erased. |
+| Verify-build symbol maps in R2 | `symbols/0.0.1.0/win-arm64.symmap` and `symbols/0.0.2.0/win-arm64.symmap` (see Cleanup). |
+| Real client run | A Developer-mode test report from 0.0.1.0 arrived, but **before** its map existed, so its frames are `<unresolved>` for good (resolved at ingest). Not yet re-run with the map in place. Verification rows 1–14 are still open. |
+| Gates | Worker 178 + typecheck, dashboard 69, Debug build clean. `Wavee.Tests` Debug: 1 failure in `ProfilePageRulesTests.Numeral_GroupsInTheGivenCulture` (profile pages, #161, not crash work). Release test run not done. |
+| Translations (W6) | The nl/ko-KR agent died on a rate limit; drafts are in `ops/loc/work/{nl,ko-KR}/crash-consent.drafts.json`, not reviewed or merged. |
+
 ## Verification
 
 **Gates.** The user's Debug Wavee locks `bin\Debug`, so Debug builds/tests use `--artifacts-path artifacts\gates\debug`.
@@ -451,9 +466,10 @@ foreach ($id in '3821fb615dad14bf9627697c797e91d8','5dfbb2678df2fb42d7fa77ad37a8
 
 **Real client → service run.**
 - Setup:
-  - A NativeAOT verify build: `publish-wavee-aot.ps1 -Symbols -Quad 0.0.1.0 -CrashIngestUrl … -CrashIngestKey $key -OutDir artifacts\crash-verify\win-arm64`.
-  - `Assert-CrashIngestStamp -ExePath …`.
-  - `Publish-WaveeSymbolMap -ExePath … -Quad 0.0.1.0` ⚑ (R2).
+  - A NativeAOT verify build: `powershell -File ops\build\publish-wavee-aot.ps1 -Arch arm64 -CrashService` ⚑ (R2).
+    It stamps the URL and key, proves the stamp, and uploads `symbols/0.0.1.0/win-arm64.symmap` before you send
+    anything; `-Quad 0.0.1.1` for row 11's newer build. Send reports only **after** the map is uploaded: frames
+    resolve at ingest.
   - Run with `--profile $env:TEMP\wavee-crash-verify`, which runs beside the user's Wavee; don't use `--fake`,
     because that forces in-memory settings.
 
