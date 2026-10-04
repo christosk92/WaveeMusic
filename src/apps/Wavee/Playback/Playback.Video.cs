@@ -21,8 +21,12 @@
 // THE SEAM, WHOLE (ch 24 §7 + the video plan §3.4):
 //   1. `Video.Player` is a `Signal<Binding>` of (player, generation). The UI keys its `MediaPlayerElement` on the
 //      GENERATION, never on the source, so a video→video skip keeps the element mounted.
-//   2. SOMETHING MUST PUMP. A session only advances — and only publishes duration and `NaturalSize` — while a mounted
-//      element calls `IMediaPlayer.PumpVideo`. This host builds and reports; it never pumps.
+//   2. THE PLAYER PUMPS ITS OWN STATE (F132). A session's state, position, duration, `NaturalSize` and errors are published
+//      by the `MediaPlayer` itself, one coalesced UI post per engine event, with or without a mounted element; the
+//      element's `IMediaPlayer.PumpVideo` only binds and places the surface. This host builds and reports; it never
+//      pumps, and it WATCHES the heartbeat: `MediaPlayer.StatePumpAgeMs` going stale while a session plays is logged
+//      (`HostRules.StatePumpStalled`), because a frozen playhead with no error is otherwise indistinguishable from a
+//      stalled decode.
 //   3. `Video.Phase` / `Video.FirstFrame` / `Video.Buffered` are written on the UI thread by `Observe`, which the
 //      surfaces' host observer runs whenever the bound player published — the poster/spinner discriminator comes from
 //      the session's EVENTS, never from a timer guess.
@@ -234,6 +238,23 @@ public static partial class Playback
             /// <summary>…to this far before the end, so a restore never opens on the credits.</summary>
             public const long StartClampBackoffMs = 2_000;
 
+            /// <summary>How long a PLAYING clear session may go without a state pump before the host says so (F179). The clear
+            /// engine raises on its position tick, about once a second while playing, so three seconds is two missed ticks and a
+            /// margin: a control plane nobody is driving, never a quiet source.</summary>
+            public const long StatePumpStallMs = 3_000;
+
+            /// <summary>The same budget for a PROTECTED session. Its position samples are deliberately not pump triggers (the
+            /// snapshot carries the timestamped sample), so a steady playing session is pumped by buffer and key events, about
+            /// one a segment: a budget of several segments keeps a healthy session quiet while still catching the case this
+            /// guards against, a session with no pump at all.</summary>
+            public const long ProtectedStatePumpStallMs = 15_000;
+
+            /// <summary>Is a session that reads <paramref name="state"/> overdue for a state pump (<paramref name="idleMs"/> since
+            /// the last)? Only a PLAYING session is expected to raise on a cadence: a paused, opening or ended one is quiet by
+            /// design. The state it reads is the player's own, so a stalled pump is exactly when it still says Playing.</summary>
+            public static bool StatePumpStalled(PlaybackState state, long idleMs, bool protectedSession)
+                => state == PlaybackState.Playing && idleMs > (protectedSession ? ProtectedStatePumpStallMs : StatePumpStallMs);
+
             /// <summary>Where an open lands for a carried <paramref name="fromMs"/> against a known duration (0 = unknown).
             /// Applied BEFORE the open now that the open carries its start position.</summary>
             public static long StartAt(long fromMs, long durationMs)
@@ -430,6 +451,7 @@ public static partial class Playback
         static Timer? s_ticker;
         static bool s_tickerOn;                  // the ticker is wanted (under s_gate): the one-shot timer re-arms only while true
         static int s_tickRunning;                // 1 while a tick body runs (Interlocked): ticks never overlap
+        static bool s_statePumpStallWarned;      // the stall warning fired for this episode (tick-only: ticks never overlap)
         static bool s_disposed;
 
         // A1/A2 (video stutter fix, 2026-09-22): the process-lifetime ABR controller survives a player rebuild. The
@@ -2010,6 +2032,7 @@ public static partial class Playback
                 state = p.State.Peek();
                 pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
                 durMs = (long)p.Duration.Peek().TotalMilliseconds;
+                NoteStatePump(p, state, pos, session is ProtectedMediaSession);
 
                 // (b) liveness, from the engine's timeline and NEVER from a finite duration.
                 TimelineInfo tl = p.Timeline.Peek();
@@ -2121,6 +2144,18 @@ public static partial class Playback
                     break;
                 case TickFold.Failed: ReportFault(epoch, Fault.DecodeFailed, "video playback failed"); break;
             }
+        }
+
+        /// <summary>F179: the always-on heartbeat check. The player pumps its own state (F132); a PLAYING session whose pump has not
+        /// run for <see cref="HostRules.StatePumpStalled"/>'s budget has a frozen playhead and no error to explain it, so say so —
+        /// once per episode, and again only after a pump has been seen. Tick thread; a read of two counters, no allocation until it fires.</summary>
+        static void NoteStatePump(MediaPlayer p, PlaybackState state, long posMs, bool protectedSession)
+        {
+            long idleMs = p.StatePumpAgeMs;
+            if (!HostRules.StatePumpStalled(state, idleMs, protectedSession)) { s_statePumpStallWarned = false; return; }
+            if (s_statePumpStallWarned) return;
+            s_statePumpStallWarned = true;
+            Log.Warn("video", $"[video] state pump stalled — no pump for {idleMs}ms while {state} (pos={posMs}ms pumps={p.StatePumpCount})");
         }
 
         /// <summary>F151: ask the UI thread for the cut. Its own method so the closure is allocated once per window, never by the tick.</summary>

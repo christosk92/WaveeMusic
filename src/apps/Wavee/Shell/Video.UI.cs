@@ -10,7 +10,11 @@
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // ONE PLAYER, TWO PRESENTERS. The main window has a single stay-mounted presenter that Docked, the in-window PiP and
-// fullscreen are GEOMETRY modes of; the pop-out is a second HWND and therefore a second element. Every surface here
+// fullscreen are GEOMETRY modes of; the pop-out is a second HWND and therefore a second element. "Stay-mounted" is
+// exactly `MainWindowHole.Mounted`: it holds across those three placements and the immersive cover (which only HIDES it),
+// and it ends only when nothing resolves to the main window (video off) or the pop-out has presented its first frame.
+// None of that is what keeps the session's state moving: the `MediaPlayer` pumps its own state, position, duration and
+// errors with no element mounted (F132); a presenter only binds and places the surface. Every surface here
 // binds `Playback.Video.Player` (owner H's decode host) and
 // `Video.State` (the one placement value) — none builds a player, none holds a second visibility flag, none issues an
 // engine-video command of its own: play/pause/commit go through the session transport (`Playback.*`), a scrub PREVIEW
@@ -20,9 +24,12 @@
 //
 // THE RULES THIS FILE IS SHAPED BY (ch 24 §0):
 //   1. No LayoutTransition, no Opacity, no offscreen-RT effect, no scale Enter/Exit on ANY ancestor of a video hole.
-//      The hole is a DestOut erase against the real back buffer. Docked/PiP/FS share ONE stay-mounted presenter;
-//      geometry is bound Width/Height/Transform (the PiP pattern). Pop-out is another HWND.
-//   2. Main-window hole is one UseVideoSurface. Docked cap is a hollow reservation that publishes AbsoluteRect.
+//      The hole is a DestOut erase against the real back buffer. Docked/PiP/FS share ONE stay-mounted presenter
+//      (pinned by `VideoMainWindowHoleTests`); geometry is bound Width/Height/Transform (the PiP pattern). Pop-out is
+//      another HWND.
+//   2. Main-window hole is one UseVideoSurface. Docked cap is a hollow reservation the stay-mounted presenter FOLLOWS
+//      through the engine's `FollowRect` (resolved after layout and the animation tick, so the overlay lands on the
+//      reservation's painted rect in the same frame, rail slide included); `DockedSlot` is only the fallback and the log.
 //      Exactly one transport per window (`State.Transport`); engine MediaPlayerElement chrome is off.
 //   3. The stage key is PLAYER identity only (the binding generation). Host-fullscreen is a live signal, not a key bit.
 //   4. A no-player state is the current track's artwork at 0.4 over the letterbox — never a black rectangle — on ALL
@@ -66,8 +73,23 @@ public static partial class Video
     /// it changes long after any surface mounted, so it can only ever reach a child as a signal.</summary>
     public static readonly Signal<JoinVisual> JoinNow = new(JoinVisual.Poster);
 
-    /// <summary>Laid-out window-DIP rect of the hollow docked reservation. The stay-mounted overlay follows this.</summary>
+    /// <summary>Last laid-out window-DIP rect of the hollow docked reservation: the overlay's FALLBACK while it has no
+    /// live reservation to follow (before the first one is realized, across a remount) and the source of the slot log. The
+    /// docked overlay itself follows the reservation NODE (<see cref="s_dockedReservation"/>) in the same frame; this
+    /// signal is sampled on a layout-bounds edge, so it is a frame late and blind to paint-only motion. An unmount resets it
+    /// only when NO successor reservation has registered (docked with nothing mounted collapses, as before); a remount that
+    /// has already registered keeps the last rect, so a re-dock no longer drops a 0x0 hole (and a 2x1 stream resize) in.</summary>
     public static readonly Signal<RectF> DockedSlot = new(default);
+
+    /// <summary>The live docked reservation node (UI thread; written at its realize, cleared at its unmount). The overlay's
+    /// engine <c>FollowRect</c> answers it while the placement is docked. A freed node reads as "nothing to follow", so a
+    /// stale value across a remount is harmless: the overlay then keeps its last placed geometry.</summary>
+    static NodeHandle s_dockedReservation;
+
+    /// <summary>The overlay's <c>FollowRect</c>: ONE cached delegate (a fresh closure per render would re-diff the box). It
+    /// reads the placement with <c>Peek</c> because the engine runs it outside any reactive scope.</summary>
+    static readonly Func<NodeHandle> s_followDockedReservation =
+        static () => MainWindowHole.FollowsReservation(PlacementCore.Resolve(State.Surface.Peek())) ? s_dockedReservation : default;
 
     // MOUNT POINT (stage B contract)
     /// <summary>The right rail's ONE docked card (the Cap face), full-bleed at the rail's width, pinned above the header
@@ -715,7 +737,13 @@ public static partial class Video
             UseEffect(() => () =>
             {
                 State.ReportLive(SurfacePlacement.Docked, false);
-                DockedSlot.Value = default;
+                // Release OUR reservation only if a newer face has not already registered its own. Then (and only then)
+                // is nothing left to cover, so the fallback collapses; a successor keeps the last rect (see DockedSlot).
+                if (!_slot.IsNull && s_dockedReservation == _slot)
+                {
+                    s_dockedReservation = default;
+                    DockedSlot.Value = default;
+                }
             }, DepKey.Empty);
 
             // The slot log's trailing edge: re-armed by every held line, so it fires GeometryLogGapMs after the sweep stops.
@@ -749,7 +777,7 @@ public static partial class Video
             {
                 Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = Tok.MediaLetterbox,
                 HitTestVisible = false,
-                OnRealized = h => _slot = h,
+                OnRealized = h => { _slot = h; s_dockedReservation = h; },
                 OnBoundsChanged = _ => PublishDockedSlot(),
             };
         }
@@ -944,10 +972,13 @@ public static partial class Video
             {
                 Direction = 1, ClipToBounds = true, ZStack = true,
                 // A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes
-                // inactive, the element hides its DComp visual and keeps a STATE-ONLY pump (inert binding: the session
-                // only advances while a mounted element pumps it, but nothing is placed or shown from this slot), and
-                // uncovering re-places the same visual with no new slot.
+                // inactive, the element hides its DComp visual and pumps with an inert binding (nothing is placed or shown
+                // from this slot; the player's own state pump never depended on this element, F132), and uncovering
+                // re-places the same visual with no new slot.
                 Visible = Prop.Of(static () => !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value)),
+                // Docked: the engine places this box over the reservation's painted rect in the same frame (F169) and the
+                // three binds below stand down; every other placement is driven by them as before.
+                FollowRect = s_followDockedReservation,
                 Width = _widthBind,
                 Height = _heightBind,
                 Transform = _transformBind,

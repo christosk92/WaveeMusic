@@ -18,6 +18,8 @@ using Wavee;
 using Xunit;
 
 using static Wavee.Video;
+using PlayHostRules = Wavee.Playback.Video.HostRules;
+using PlaybackState = FluentGpu.Media.PlaybackState;
 using RailMode = Wavee.Shell.RailMode;
 
 namespace Wavee.Tests;
@@ -1358,8 +1360,31 @@ public class VideoMainWindowHoleTests
     public void Engine_transport_stays_off_on_the_shared_hole()
         => Assert.False(MainWindowHole.EngineTransportEnabled);
 
-    // F168: the immersive stage covers a docked video. The presenter is the ONLY thing that pumps the session (position,
-    // state and Ended publish from its pump), so covering must HIDE it, never unmount it.
+    // F169: the stay-mounted presenter's FollowRect (engine, resolved after layout and the animation tick) answers the docked
+    // reservation node only while Docked; the mini player and fullscreen keep their own bound geometry. If this rule widened,
+    // the PiP's remembered rect or fullscreen's viewport size would be overwritten by a reservation that is not in the tree.
+    [Theory]
+    [InlineData(SurfacePlacement.Docked, true)]
+    [InlineData(SurfacePlacement.Floating, false)]
+    [InlineData(SurfacePlacement.Fullscreen, false)]
+    [InlineData(SurfacePlacement.Detached, false)]
+    [InlineData(SurfacePlacement.None, false)]
+    public void Only_a_docked_presenter_follows_the_rail_reservation(SurfacePlacement placement, bool follows)
+        => Assert.Equal(follows, MainWindowHole.FollowsReservation(placement));
+
+    [Fact]
+    public void A_docked_resolve_is_what_the_presenter_follows()
+    {
+        // The overlay's FollowRect reads the RESOLVED placement (the derived truth), exactly as its bound geometry does.
+        Assert.True(MainWindowHole.FollowsReservation(PlacementCore.Resolve(
+            PlacementCore.OpenAt(Vid.Off, SurfacePlacement.Docked))));
+        Assert.False(MainWindowHole.FollowsReservation(PlacementCore.Resolve(
+            PlacementCore.OpenAt(Vid.Off, SurfacePlacement.Floating))));
+    }
+
+    // F168: the immersive stage covers a docked video. Covering must HIDE the presenter, never unmount it: the same slot
+    // shows again on uncover (the header of Video.UI.cs promises ONE stay-mounted presenter across Docked, PiP and fullscreen).
+    // F132 moved the session's state pump onto the player, so this no longer keeps the playhead alive; it keeps the slot.
     [Fact]
     public void Immersive_cover_keeps_the_docked_presenter_mounted_and_hides_it()
     {
@@ -1375,6 +1400,36 @@ public class VideoMainWindowHoleTests
     {
         Assert.True(MainWindowHole.Mounted(placement, popOutPresented: false));
         Assert.False(MainWindowHole.Hidden(placement, immersive: true));   // PiP floats above it, fullscreen replaces it
+    }
+
+    // F179: the header promises ONE stay-mounted presenter for Docked, PiP and fullscreen. The pure rule is pinned for every
+    // reachable combination, so a change that unmounts on a placement hop or on the immersive cover (the shape of the F168
+    // regression) fails here, not on a user's screen. The element and slot identity themselves are the PipSurface's `mounted`
+    // gate (`MainWindowHole.Mounted`), which is the only thing that returns an empty BoxEl.
+    [Theory]
+    [InlineData(SurfacePlacement.Docked, false)]
+    [InlineData(SurfacePlacement.Docked, true)]
+    [InlineData(SurfacePlacement.Floating, false)]
+    [InlineData(SurfacePlacement.Floating, true)]
+    [InlineData(SurfacePlacement.Fullscreen, false)]
+    [InlineData(SurfacePlacement.Fullscreen, true)]
+    public void The_main_window_presenter_stays_mounted_for_docked_pip_and_fullscreen_whatever_the_immersive_cover(
+        SurfacePlacement placement, bool immersive)
+    {
+        Assert.True(MainWindowHole.Owns(placement));
+        Assert.True(MainWindowHole.Mounted(placement, popOutPresented: false));
+        Assert.True(MainWindowHole.Mounted(placement, popOutPresented: true));   // a stale pop-out report never unmounts a main-window placement
+        // The cover decides visibility only, and only for the docked video (PiP floats above it, fullscreen replaces it).
+        Assert.Equal(placement == SurfacePlacement.Docked && immersive, MainWindowHole.Hidden(placement, immersive));
+    }
+
+    [Fact]
+    public void Hopping_between_the_three_main_window_placements_never_passes_through_an_unmounted_state()
+    {
+        var hops = new[] { SurfacePlacement.Docked, SurfacePlacement.Floating, SurfacePlacement.Fullscreen, SurfacePlacement.Floating, SurfacePlacement.Docked };
+        foreach (bool immersive in new[] { false, true })
+            foreach (SurfacePlacement p in hops)
+                Assert.True(MainWindowHole.Mounted(p, popOutPresented: false), $"{p} immersive={immersive}");
     }
 
     [Fact]
@@ -1444,4 +1499,37 @@ public class VideoMainWindowHoleTests
         Assert.True(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.Fullscreen));
         Assert.False(OnMediaTransport.UsesSharedPlayer(SurfacePlacement.None));
     }
+}
+
+// F179: the always-on warning for a playing session whose control plane has gone quiet. The player pumps its own state (F132);
+// the host watches the heartbeat (`MediaPlayer.StatePumpAgeMs`) and `HostRules.StatePumpStalled` decides when it is overdue.
+public class VideoStatePumpHeartbeatTests
+{
+    [Theory]
+    [InlineData(PlaybackState.Playing, 0, false)]
+    [InlineData(PlaybackState.Playing, 1_200, false)]     // one slow position tick is not a stall
+    [InlineData(PlaybackState.Playing, 3_000, false)]     // the budget itself is still healthy
+    [InlineData(PlaybackState.Playing, 3_001, true)]
+    [InlineData(PlaybackState.Playing, 60_000, true)]
+    [InlineData(PlaybackState.Paused, 60_000, false)]     // a paused session is quiet by design
+    [InlineData(PlaybackState.Opening, 60_000, false)]
+    [InlineData(PlaybackState.Buffering, 60_000, false)]
+    [InlineData(PlaybackState.Ended, 60_000, false)]
+    [InlineData(PlaybackState.Failed, 60_000, false)]
+    [InlineData(PlaybackState.Idle, 60_000, false)]
+    public void A_clear_session_is_stalled_only_while_playing_past_the_position_tick_budget(PlaybackState state, long idleMs, bool stalled)
+        => Assert.Equal(stalled, PlayHostRules.StatePumpStalled(state, idleMs, protectedSession: false));
+
+    [Theory]
+    [InlineData(PlaybackState.Playing, 3_001, false)]     // protected samples are not pump triggers: segment-paced events only
+    [InlineData(PlaybackState.Playing, 8_000, false)]
+    [InlineData(PlaybackState.Playing, 15_000, false)]
+    [InlineData(PlaybackState.Playing, 15_001, true)]
+    [InlineData(PlaybackState.Paused, 60_000, false)]
+    public void A_protected_session_gets_a_budget_of_several_segments(PlaybackState state, long idleMs, bool stalled)
+        => Assert.Equal(stalled, PlayHostRules.StatePumpStalled(state, idleMs, protectedSession: true));
+
+    [Fact]
+    public void The_protected_budget_is_wider_than_the_clear_one()
+        => Assert.True(PlayHostRules.ProtectedStatePumpStallMs > PlayHostRules.StatePumpStallMs);
 }
