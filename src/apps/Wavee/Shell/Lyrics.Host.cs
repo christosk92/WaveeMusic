@@ -896,7 +896,9 @@ public static partial class Lyrics
                         outLines.Add(new Line(start, words, []));
                     }
                     if (outLines.Count == 0) return null;
-                    return new Doc(trackId, synced, outLines, synced ? SyncKind.Line : SyncKind.Unsynced, "spotify");
+                    string? language = lyr.TryGetProperty("language", out var lg) && lg.ValueKind == JsonValueKind.String
+                        && lg.GetString() is { Length: > 0 } code ? code : null;
+                    return new Doc(trackId, synced, outLines, synced ? SyncKind.Line : SyncKind.Unsynced, "spotify", Language: language);
                 }
                 catch { return null; }
             }
@@ -1985,6 +1987,29 @@ public static partial class Lyrics
                 if (doc is not null) Prefs.Available.Value = doc.SecondaryAvailable;
                 Changed.Value++;
                 if (upgrade) Upgraded.Value++;
+            });
+        }
+
+        /// <summary>A DERIVED document for a track this store already answered (the on-device aligner, AiLyrics). It must
+        /// be <see cref="Doc.Generated"/>, non-empty and for a known id; it is committed on the UI thread and announced
+        /// through <see cref="Upgraded"/> exactly like an aggregator promotion, but only while it ranks above what the
+        /// store holds (<see cref="Authority.IsRicher"/>: human word timing is never displaced). The aggregator, its
+        /// memory cache and its disk cache are never touched: the derived document is a layer over the provider's,
+        /// re-applied from the aligner's own results cache on the next play. Callable from any thread.</summary>
+        public static void Upgrade(Doc doc)
+        {
+            if (doc is not { Generated: true, Lines.Count: > 0 } || string.IsNullOrEmpty(doc.TrackId)) return;
+            ToUi(() =>
+            {
+                lock (Docs)
+                {
+                    if (!Docs.TryGetValue(doc.TrackId, out var current)) return;          // never asked: not ours to answer
+                    if (current is not null && !Authority.IsRicher(doc, current)) return;
+                    Docs[doc.TrackId] = doc;
+                }
+                Prefs.Available.Value = doc.SecondaryAvailable;
+                Changed.Value++;
+                Upgraded.Value++;
             });
         }
 

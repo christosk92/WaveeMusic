@@ -85,13 +85,20 @@ public static partial class Lyrics
     /// per-scope side table `Lyrics.Host.cs` owns, keyed by track slot, behind `TrackFields.Lyrics`.</summary>
     /// <param name="Provider">The winning source's id — shown by the inspector, and part of the cache key.</param>
     /// <param name="OffsetMsApplied">What the reranker shifted every timestamp by to line up with the reference.</param>
+    /// <param name="Language">The lyric's language (ISO 639-1) when the source names it (Spotify's color-lyrics does);
+    /// the on-device aligner is chosen by it.</param>
+    /// <param name="Origin">For a derived document: the provider id it was built from.</param>
+    /// <param name="Generated">The timing (not the words) was generated on this PC by the on-device AI aligner.</param>
     public sealed record Doc(
         string TrackId,
         bool IsSynced,
         IReadOnlyList<Line> Lines,
         SyncKind Sync = SyncKind.Line,
         string? Provider = null,
-        long OffsetMsApplied = 0)
+        long OffsetMsApplied = 0,
+        string? Language = null,
+        string? Origin = null,
+        bool Generated = false)
     {
         /// <summary>A document with no lines — what a miss publishes, and what an instrumental notice collapses to.</summary>
         public static Doc Empty(string trackId, string? provider = null)
@@ -249,6 +256,20 @@ public static partial class Lyrics
             if (!StringComparer.Ordinal.Equals(a.Translation ?? "", b.Translation ?? "")) return false;
             if (!StringComparer.Ordinal.Equals(a.Romanization ?? "", b.Romanization ?? "")) return false;
             return SameSyllables(a.Syllables, b.Syllables);
+        }
+
+        /// <summary>Per row: does the row mounted for <c>current.Lines[i]</c> survive <c>next.Lines[i]</c>? Writes
+        /// <c>changed[i] = !SameRow(current.Lines[i], next.Lines[i])</c> for every line, so a progressive upgrade that
+        /// times a few lines remounts only those rows. Equal line counts are required (the caller checks; a count change
+        /// is a whole-document change), and <paramref name="changed"/> must hold at least that many entries.</summary>
+        public static void ChangedRows(Doc current, Doc next, Span<bool> changed)
+        {
+            var a = current.Lines; var b = next.Lines;
+            if (a.Count != b.Count)
+                throw new ArgumentException("ChangedRows needs equal line counts (" + a.Count + " vs " + b.Count + ").", nameof(next));
+            if (changed.Length < a.Count)
+                throw new ArgumentException("The changed span is shorter than the line count.", nameof(changed));
+            for (int i = 0; i < a.Count; i++) changed[i] = !SameRow(a[i], b[i]);
         }
 
         static bool SameSyllables(IReadOnlyList<Syllable> a, IReadOnlyList<Syllable> b)
@@ -1066,14 +1087,31 @@ public static partial class Lyrics
             return n;
         }
 
-        /// <summary>A higher rank wins outright; an EQUAL rank is broken by total syllable COUNT; a LOWER rank is
-        /// refused.</summary>
+        /// <summary>A higher rank wins outright; a LOWER rank is refused; an equal rank below the word tier is refused.
+        /// Inside the word tier (rank 3) the ties break in this order:
+        /// <list type="number">
+        /// <item>Human word timing (<see cref="Doc.Generated"/> false) outranks generated word timing whatever the
+        /// counts: a human document replaces a generated one, and a generated one never displaces a human one.</item>
+        /// <item>A later revision of the SAME generated document (both generated, ordinal-equal
+        /// <see cref="Doc.Provider"/>) replaces the earlier one at an equal or higher syllable count: the on-device
+        /// aligner publishes progressively, then once more after its final snap/fill pass, and that last publish may
+        /// time no new word.</item>
+        /// <item>Otherwise the strictly higher total syllable COUNT wins; a tie is refused.</item>
+        /// </list></summary>
         public static bool IsRicher(Doc next, Doc current)
         {
             int nr = Richness(next), cr = Richness(current);
             if (nr != cr) return nr > cr;
             if (nr < 3) return false;
-            return SyllableCount(next) > SyllableCount(current);
+            // Human word timing outranks generated word timing, whatever the counts; generated never displaces human.
+            if (current.Generated && !next.Generated) return true;
+            if (!current.Generated && next.Generated) return false;
+            int ns = SyllableCount(next), cs = SyllableCount(current);
+            // A later revision of the SAME generated document (the aligner publishes progressively, then once more after
+            // its final snap/fill pass) replaces the earlier one even when no new word was timed.
+            if (next.Generated && current.Generated && string.Equals(next.Provider, current.Provider, StringComparison.Ordinal))
+                return ns >= cs;
+            return ns > cs;
         }
 
         /// <summary>May the upgrade be applied RIGHT NOW, or must it be held until the next handoff? Held only while a
