@@ -442,15 +442,7 @@ public static partial class Stage
                 ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false,
                 Children =
                 [
-                    // The art is the cover at 512 px under an 80-DIP baked blur, stretched over the stage: soft content. A
-                    // quarter-scale RepaintBoundary keeps it out of the root's tiles (with the Field drawn after it, the root
-                    // would otherwise hold a second window of tiles just for the art) and costs one small surface instead.
-                    new BoxEl
-                    {
-                        AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, ZStack = true, HitTestVisible = false,
-                        RepaintBoundary = true, RasterScale = 0.25f,
-                        Children = [Embed.Comp(new BackdropArt.Props(url), static () => new BackdropArt())],
-                    },
+                    Embed.Comp(new BackdropArt.Props(url), static () => new BackdropArt()),
                     Visualizer.FieldFace(ctx.Slab, in pal, new Visualizer.FaceSpec(L.W, L.H, Preview: false, CoverUrl: null), opacity: Prop.Bind(ctx.Slab.BaseFieldOp)) with { Key = "stage:field" },
                     new BoxEl
                     {
