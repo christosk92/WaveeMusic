@@ -55,8 +55,16 @@ public static partial class AiLyrics
     /// <summary>Why the current track is not being timed (<see cref="Rules.Eligibility"/>), or why its job stopped.</summary>
     public enum SkipReason : byte { None, NoLyrics, AlreadyWordByWord, LanguageNotInstalled, PlainTextOff, WordSyncOff, Podcast, NotSpotifyAudio, TooLong, BatterySaver, AudioUnavailable, Failed, NeedsSetup }
 
+    /// <summary>The current track's AI state. <c>default</c> (no track yet) reads as empty strings, never null: the
+    /// header renders before the first track is known.</summary>
     public readonly record struct TrackStatus(string TrackId, TrackPhase Phase, SkipReason Reason, string Language,
-        int LinesReady, int LineCount, double ProcessedSeconds, bool FromCache);
+        int LinesReady, int LineCount, double ProcessedSeconds, bool FromCache)
+    {
+        readonly string? _trackId = TrackId;
+        readonly string? _language = Language;
+        public string TrackId { get => _trackId ?? ""; init => _trackId = value; }
+        public string Language { get => _language ?? ""; init => _language = value; }
+    }
 
     /// <summary>The lyrics rail's sparkle button: whether it shows, whether it is lit, its tooltip key and whether a
     /// click opens Settings (only when Settings can fix what the tooltip says).</summary>

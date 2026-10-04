@@ -418,6 +418,18 @@ public class AiLyricsRulesTests
             AiLyrics.Rules.Header(Status(AiLyrics.SetupPhase.Ready), Track(phase, reason), EntityKind.Track));
 
     [Fact]
+    public void A_default_track_status_reads_as_empty_strings_and_renders_a_header()
+    {
+        var none = default(AiLyrics.TrackStatus);
+        Assert.Equal("", none.TrackId);
+        Assert.Equal("", none.Language);
+        Assert.Equal(AiLyrics.TrackPhase.Idle, none.Phase);
+        Assert.Equal("t1", (none with { TrackId = "t1" }).TrackId);
+        var header = AiLyrics.Rules.Header(Status(AiLyrics.SetupPhase.Ready), none, EntityKind.Track);
+        Assert.Equal("lyrics.ai.header.waiting", header.TipKey);
+    }
+
+    [Fact]
     public void Header_offers_ai_timing_over_people_made_word_timing_and_the_way_back()
     {
         var ready = Status(AiLyrics.SetupPhase.Ready);
