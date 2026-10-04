@@ -1164,8 +1164,8 @@ public class SpotifyApiLaneTests
             lanes.Start();
             Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
             Assert.True(busy.Wait(Patience));                    // the lane's worker is parked: what follows has to wait
-            Assert.True(lanes.TryRun(done.Signal, 0, priority: true));   // joins an empty queue
-            Assert.True(lanes.TryRun(done.Signal, 0, priority: true));   // joins behind one
+            Assert.True(lanes.TryRun(() => done.Signal(), 0, priority: true));   // joins an empty queue
+            Assert.True(lanes.TryRun(() => done.Signal(), 0, priority: true));   // joins behind one
             Thread.Sleep(120);
             release.Set();
             Assert.True(done.Wait(Patience));
