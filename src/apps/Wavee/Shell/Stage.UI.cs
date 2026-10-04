@@ -696,7 +696,7 @@ public static partial class Stage
     /// <item>Every slot is KEYED by its role + line index (+ the document's generation), so a hand-off plays the Exit (up and
     /// out) on the outgoing line and the Enter (up from 16 DIP below) on the incoming one — StandardEnter, 300 ms; reduced
     /// motion keeps only the cross-fade.</item>
-    /// <item>The 30 Hz tick (4 Hz paused) writes SCENE COLUMNS only — the wipe split on the two text nodes
+    /// <item>The per-frame tick while playing (4 Hz paused) writes SCENE COLUMNS only — the wipe split on the two text nodes
     /// (<c>scene.SetGlyphWipe</c>), the dots' alpha signals and their breath transform — zero allocation, no render. A render
     /// happens only when the packed view (line + break edge) changes.</item>
     /// </list></summary>
@@ -752,8 +752,11 @@ public static partial class Stage
                 if (pos != _lastReport || advancing != _advancing || !_anchored) { _pos.Anchor(Design.FrameTime.NowMs, pos); _anchored = true; _lastReport = pos; }
                 _advancing = advancing;
             });
-            // 30 Hz while playing (the stage clock's rate — the wipe and the dots' breath), 4 Hz paused (a seek still lands)
-            UseInterval(_tick, playing ? 33f : 250f, enabled: _doc is not null);
+            // PER FRAME while playing (the wipe and the dots' breath — the ticker child below is mounted only then), a 4 Hz
+            // interval paused (a seek still lands)
+            bool perFrame = _doc is not null && playing;
+            UseInterval(_tick, 250f, enabled: _doc is not null && !playing);
+            Element[] ticker = perFrame ? [Embed.Comp(() => new CaptionFrames(_tick))] : [];
 
             // The render resolves the view itself (so a new document never shows the old one's indices for a tick) and
             // SUBSCRIBES to the tick's signal for the next change.
@@ -804,9 +807,13 @@ public static partial class Stage
                         Direction = 1, AlignItems = FlexAlign.Center, Gap = Layout.CaptionLineGap, HitTestVisible = false,
                         Children = kids.ToArray(),
                     },
+                    .. ticker,
                 ],
             };
         }
+
+        /// <summary>The caption's per-frame tick (<see cref="Controls.FrameTicker"/>), named for the <c>[wake]</c> census.</summary>
+        sealed class CaptionFrames(Action tick) : Controls.FrameTicker(tick);
 
         /// <summary>A context line (previous / next): small, one line, the stage ink at a low alpha — never blurred.</summary>
         static Element ContextLine(string text, string key, float size, float line, float alpha, float maxW) => new BoxEl

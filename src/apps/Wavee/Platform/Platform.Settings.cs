@@ -246,8 +246,8 @@ public static partial class Platform
 
 public static partial class Platform
 {
-    /// <summary>The POLICY half of the ambient cadence: the 2 s poll, the two-read hold window and the verdict. The
-    /// values it writes are `Design.Cadence`'s; the poll and the host writes are `Platform.Host.cs`.</summary>
+    /// <summary>The POLICY half of the ambient power verdict: the 2 s poll, the two-read hold window and the verdict. It
+    /// retunes no frame rate (the engine's loop knob is gone); the poll and the host side are `Platform.Host.cs`.</summary>
     public static class AmbientPower
     {
         /// <summary>How long a new reading must hold before it may change the cadence — equal to the poll on purpose, so
@@ -264,8 +264,9 @@ public static partial class Platform
             return !status.HasBattery || status.Source != PowerSource.Dc;
         }
 
-        /// <summary>The loop rate a cadence-less `loop: true` row runs at for a verdict.</summary>
-        public static float LoopHzFor(bool plugged) => plugged ? Design.Cadence.PluggedLoopHz : Design.Cadence.BatteryLoopHz;
+        /// <summary>The host's frame-rate ceiling for an energy-saver reading: <see cref="Design.Cadence.EnergySaverMaxFps"/>
+        /// while Windows Energy Saver is on, else 0 (none). Battery alone caps nothing.</summary>
+        public static int CapFpsFor(bool energySaverOn) => energySaverOn ? Design.Cadence.EnergySaverMaxFps : 0;
 
         /// <summary>The debounce state: the APPLIED verdict and the most recent READ one still inside its window.</summary>
         public struct Debounce
@@ -279,7 +280,7 @@ public static partial class Platform
 
         /// <summary>One debounced sample. A changed reading only re-arms the window; the applied verdict flips when the new
         /// reading has held for <see cref="DebounceSeconds"/>. Returns true exactly when <see cref="Debounce.Applied"/>
-        /// changed (the host then writes the loop rate).</summary>
+        /// changed (the host then logs the new verdict).</summary>
         public static bool Step(ref Debounce d, bool reading, long now, long ticksPerSecond)
         {
             if (reading != d.Pending) { d.Pending = reading; d.PendingSince = now; return false; }

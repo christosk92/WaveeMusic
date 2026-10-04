@@ -739,8 +739,43 @@ public class VisualizerModelTests
     [Fact]
     public void TickHz_matches_Design_Cadence()
     {
-        Assert.Equal(Design.Cadence.PluggedLoopHz, Visualizer.TickHz);
-        Assert.Equal(1000f / 30f, Visualizer.TickMs, 4);
+        Assert.Equal(Design.Cadence.ClockHz, Visualizer.TickHz);
+        Assert.Equal(1000f / 60f, Visualizer.TickMs, 4);
+    }
+
+    [Fact]
+    public void Model_is_rate_independent_two_60Hz_ticks_land_where_one_30Hz_tick_does()
+    {
+        // The per-tick constants were authored at 30 Hz (Bands.RefHz); the clock runs at TickHz. A rising live frame and
+        // then silence exercise the attack, the release, the peak hold and the peak fall.
+        var at30 = new Visualizer.Model();
+        var at60 = new Visualizer.Model();
+        var on = Inp(live: true, rms: 0.1f);
+        float[] loud = Flat(-20f);
+        Run(at30, on, loud, NoBands, NoBeats, 6);
+        for (int i = 0; i < 12; i++) at60.Tick(in on, loud, NoBands, NoBeats, 1f / 60f);
+        var off = Inp(playing: false);
+        Run(at30, off, NoDb, NoBands, NoBeats, 15);                      // 10 held ticks, then 5 of fall
+        for (int i = 0; i < 30; i++) at60.Tick(in off, NoDb, NoBands, NoBeats, 1f / 60f);
+
+        for (int i = 0; i < Visualizer.Bands.Count; i++)
+        {
+            Assert.Equal(at30.Level[i], at60.Level[i], 4);
+            Assert.Equal(at30.Peak[i], at60.Peak[i], 4);
+        }
+        Assert.True(at30.Peak[0] < at30.Level[0] + 0.8f && at30.Peak[0] > at30.Level[0], "the scenario must end mid-fall, above the band");
+    }
+
+    [Fact]
+    public void PerTicks_is_exact_at_one_reference_tick()
+    {
+        Assert.Equal(Visualizer.Bands.Attack, Visualizer.Bands.PerTicks(Visualizer.Bands.Attack, 1f));
+        float dt = Dt, ticks = dt * Visualizer.Bands.RefHz;
+        Assert.Equal(1f, ticks);                                         // the 30 Hz Dt is exactly one reference tick
+        // two half ticks compound to one: 1 − (1 − k)^½ applied twice
+        float k = Visualizer.Bands.PerTicks(Visualizer.Bands.Release, 0.5f), v = 1f;
+        v -= v * k; v -= v * k;
+        Assert.Equal(1f - Visualizer.Bands.Release, v, 5);
     }
 
     [Fact]

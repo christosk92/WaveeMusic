@@ -276,13 +276,6 @@ public class AmbientPowerPolicyTests
     }
 
     [Fact]
-    public void The_loop_rate_is_the_design_cadence()
-    {
-        Assert.Equal((float)Design.Cadence.PluggedLoopHz, Platform.AmbientPower.LoopHzFor(true));
-        Assert.Equal((float)Design.Cadence.BatteryLoopHz, Platform.AmbientPower.LoopHzFor(false));
-    }
-
-    [Fact]
     public void A_reading_must_hold_for_the_debounce_before_the_cadence_flips()
     {
         const long F = 1000;   // ticks per second

@@ -1,6 +1,6 @@
 // ── Shell/Visualizer.cs ────────────────────────────────────────────────────────────────────────────────────────────
 // Visualizer.Kind/Need/Tier/Source, Catalog, Demand, Bands, the eight face models (Field, Halo, Horizon, Matrix, Aurora,
-// Spectrum, Pulse, Tape) and the ONE alloc-free Model.Tick the clock folds every 30 Hz tick through
+// Spectrum, Pulse, Tape) and the ONE alloc-free Model.Tick the clock folds every tick through
 //
 // Role: CORE
 // Owner: K
@@ -10,7 +10,7 @@
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // WHAT A FACE IS MADE OF. The engine publishes 48 log bands in dB (SpectrumAnalyzer) ~60×/s; the UI PULLS them at
-// 30 Hz into the clock's 48-float dB buffer and this file turns them into every scalar a face binds: `Bands.Unit` (dB → 0..1 with the
+// every frame into the clock's 48-float dB buffer and this file turns them into every scalar a face binds: `Bands.Unit` (dB → 0..1 with the
 // sensitivity and the calm gain), `Bands.Follow` (the prototype's 0.55/0.10 attack/release), `Bands.Peaks` (hold 10
 // ticks, fall 0.018), the low/mid/high averages, the Halo/Matrix/Spectrum index maps, the Aurora ribbons and the
 // Horizon window written into preallocated series buffers, the Pulse beat phase (TrackBeats → tempo grid), the Tape's
@@ -79,7 +79,7 @@ public static partial class Visualizer
             return Catalog.NeedsOf(kind) switch { Need.Spectrum => Tier.Spectrum, Need.Breath => Tier.Level, _ => Tier.None };
         }
 
-        /// <summary>Does the 30 Hz clock run? While the stage is up and not occluded/reduced, and either playing or
+        /// <summary>Does the clock run? While the stage is up and not occluded/reduced, and either playing or
         /// something is still settling (a release tail, the reels coasting).</summary>
         public static bool Ticks(bool stageUp, bool playing, bool settled, bool occluded, bool reduced)
             => stageUp && !occluded && !reduced && (playing || !settled);
@@ -98,6 +98,14 @@ public static partial class Visualizer
         /// <summary>Auto-gain: a slow running maximum of the frame max; the frame is normalised by max(agc, AgcFloor).</summary>
         public const float AgcDecay = 0.995f, AgcFloor = 0.40f, AgcMaxGain = 2f;
 
+        /// <summary>The clock rate every per-tick constant in this file was authored at (the prototype's 30 Hz). The model
+        /// steps by <c>dtSec · RefHz</c> REFERENCE ticks, so the look is the same at any clock rate (<see cref="TickHz"/>).</summary>
+        public const float RefHz = 30f;
+
+        /// <summary>A per-reference-tick fraction <paramref name="k"/> over <paramref name="ticks"/> reference ticks:
+        /// <c>1 − (1 − k)^ticks</c>. Exactly <paramref name="k"/> at one tick, so a 30 Hz step is bit-identical.</summary>
+        public static float PerTicks(float k, float ticks) => ticks == 1f ? k : 1f - MathF.Pow(1f - k, ticks);
+
         public static float ClampSensitivity(float v) => float.IsFinite(v) ? Math.Clamp(v, MinSensitivity, MaxSensitivity) : 1f;
 
         /// <summary>dB → 0..1 through the floor/ceiling window. RAW: the AGC and the user gain are applied AFTER (V-U32).</summary>
@@ -107,28 +115,38 @@ public static partial class Visualizer
         public static float Gain(float sensitivity, bool calm) => sensitivity * (calm ? CalmGain : 1f);
 
         /// <summary>One AGC step: returns the gain to apply to this frame's unit values.</summary>
-        public static float Agc(ref float agc, float frameMax)
+        public static float Agc(ref float agc, float frameMax) => Agc(ref agc, frameMax, 1f);
+
+        /// <summary><see cref="Agc(ref float, float)"/> over <paramref name="ticks"/> reference ticks.</summary>
+        public static float Agc(ref float agc, float frameMax, float ticks)
         {
-            agc = MathF.Max(frameMax, agc * AgcDecay);
+            agc = MathF.Max(frameMax, agc * (ticks == 1f ? AgcDecay : MathF.Pow(AgcDecay, ticks)));
             return MathF.Min(AgcMaxGain, 1f / MathF.Max(agc, AgcFloor));
         }
 
         /// <summary>The prototype's follower: fast up (0.55; 0.25 calm), slow down (0.10).</summary>
-        public static void Follow(ReadOnlySpan<float> target, Span<float> level, bool calm)
+        public static void Follow(ReadOnlySpan<float> target, Span<float> level, bool calm) => Follow(target, level, calm, 1f);
+
+        /// <summary><see cref="Follow(ReadOnlySpan{float}, Span{float}, bool)"/> over <paramref name="ticks"/> reference ticks.</summary>
+        public static void Follow(ReadOnlySpan<float> target, Span<float> level, bool calm, float ticks)
         {
-            float atk = calm ? CalmAttack : Attack;
+            float atk = PerTicks(calm ? CalmAttack : Attack, ticks), rel = PerTicks(Release, ticks);
             int n = Math.Min(target.Length, level.Length);
             for (int i = 0; i < n; i++)
             {
                 float v = level[i], t = target[i];
-                level[i] = v + (t - v) * (t > v ? atk : Release);
+                level[i] = v + (t - v) * (t > v ? atk : rel);
             }
         }
 
         /// <summary>Release every band toward 0 (no live frame this tick).</summary>
-        public static void Decay(Span<float> level)
+        public static void Decay(Span<float> level) => Decay(level, 1f);
+
+        /// <summary><see cref="Decay(Span{float})"/> over <paramref name="ticks"/> reference ticks.</summary>
+        public static void Decay(Span<float> level, float ticks)
         {
-            for (int i = 0; i < level.Length; i++) level[i] -= level[i] * Release;
+            float rel = PerTicks(Release, ticks);
+            for (int i = 0; i < level.Length; i++) level[i] -= level[i] * rel;
         }
 
         /// <summary>Peak caps: hold 10 ticks at the band's level, then fall 0.018 per tick, never below the band.</summary>
@@ -140,6 +158,19 @@ public static partial class Visualizer
                 if (level[i] >= peak[i]) { peak[i] = level[i]; hold[i] = PeakHoldTicks; }
                 else if (hold[i] > 0) hold[i]--;
                 else peak[i] = MathF.Max(level[i], peak[i] - PeakFall);
+            }
+        }
+
+        /// <summary><see cref="Peaks(ReadOnlySpan{float}, Span{float}, Span{int})"/> over <paramref name="ticks"/> reference
+        /// ticks, the hold counted in (fractional) reference ticks — the same 10-tick hold and 0.018-per-tick fall in time.</summary>
+        public static void Peaks(ReadOnlySpan<float> level, Span<float> peak, Span<float> hold, float ticks)
+        {
+            int n = Math.Min(level.Length, Math.Min(peak.Length, hold.Length));
+            for (int i = 0; i < n; i++)
+            {
+                if (level[i] >= peak[i]) { peak[i] = level[i]; hold[i] = PeakHoldTicks; }
+                else if (hold[i] > 0f) hold[i] -= ticks;
+                else peak[i] = MathF.Max(level[i], peak[i] - PeakFall * ticks);
             }
         }
 
@@ -295,7 +326,7 @@ public static partial class Visualizer
     public sealed class Model
     {
         public readonly float[] Target = new float[Bands.Count], Level = new float[Bands.Count], Peak = new float[Bands.Count];
-        readonly int[] _hold = new int[Bands.Count];
+        readonly float[] _hold = new float[Bands.Count];   // in REFERENCE ticks (Bands.RefHz), fractional
         public readonly float[] HorizonLow = new float[Horizon.Points], HorizonMid = new float[Horizon.Points], HorizonHigh = new float[Horizon.Points];
         public readonly float[] AuroraLow = new float[Aurora.Points], AuroraMid = new float[Aurora.Points], AuroraHigh = new float[Aurora.Points];
         float _t, _agc = Bands.AgcFloor, _speed, _angleL, _angleR, _kick;
@@ -308,6 +339,7 @@ public static partial class Visualizer
         public Frame Tick(in Input input, ReadOnlySpan<float> liveDb, ReadOnlySpan<WaveSample> bands, ReadOnlySpan<uint> beats, float dtSec)
         {
             _t += dtSec;
+            float ticks = dtSec * Bands.RefHz;   // every per-tick constant below was authored at 30 Hz
             bool live = input.HaveLive && !input.Muted && liveDb.Length >= Bands.Count;
             float userGain = Bands.Gain(Bands.ClampSensitivity(input.Sensitivity), input.Calm);
 
@@ -316,12 +348,12 @@ public static partial class Visualizer
             {
                 float frameMax = 0f;
                 for (int i = 0; i < Bands.Count; i++) { float u = Bands.Unit(liveDb[i]); Target[i] = u; if (u > frameMax) frameMax = u; }
-                float gain = Bands.Agc(ref _agc, frameMax) * userGain;          // AGC first, then sensitivity/calm (V-U32)
+                float gain = Bands.Agc(ref _agc, frameMax, ticks) * userGain;          // AGC first, then sensitivity/calm (V-U32)
                 for (int i = 0; i < Bands.Count; i++) Target[i] = MathF.Min(1f, Target[i] * gain);
-                Bands.Follow(Target, Level, input.Calm);
+                Bands.Follow(Target, Level, input.Calm, ticks);
             }
-            else Bands.Decay(Level);
-            Bands.Peaks(Level, Peak, _hold);
+            else Bands.Decay(Level, ticks);
+            Bands.Peaks(Level, Peak, _hold, ticks);
 
             // 2. the three energies and the level: live from the bands, else the precomputed waveform at the playhead
             float low, mid, high, level;
@@ -351,14 +383,14 @@ public static partial class Visualizer
             else if (BeatGrid.TempoPhase(input.TempoX10, input.PositionMs, out phase, out float periodMs)) { hasBeat = true; beatIndex = periodMs > 0f ? (int)(input.PositionMs / periodMs) : 0; if (source == Source.Breath) source = Source.TempoGrid; }
             else { hasBeat = false; beatIndex = 0; }                             // Phase leaves -1 behind on an empty grid
             float kickTarget = hasBeat && input.Playing ? Pulse.Kick(phase) * (input.Calm ? 0.3f : 1f) : 0f;
-            _kick = kickTarget > _kick ? kickTarget : _kick + (kickTarget - _kick) * 0.35f;
+            _kick = kickTarget > _kick ? kickTarget : _kick + (kickTarget - _kick) * Bands.PerTicks(0.35f, ticks);
 
             // 4. series: Horizon from the payload (empty ⇒ flat), Aurora always drifting
             Horizon.Fill(bands, input.PositionMs, input.DurationMs, HorizonLow, HorizonMid, HorizonHigh);
             Aurora.Fill(AuroraLow, AuroraMid, AuroraHigh, low, mid, high, _t);
 
             // 5. tape: eased speed, area-conserving radii, hubs turning at Speed/radius
-            _speed += ((input.Playing ? Tape.Speed : 0f) - _speed) * Tape.SpeedEase;
+            _speed += ((input.Playing ? Tape.Speed : 0f) - _speed) * Bands.PerTicks(Tape.SpeedEase, ticks);
             if (_speed < 0.05f) _speed = 0f;
             float progress = input.DurationMs > 0 ? input.PositionMs / (float)input.DurationMs : 0f;
             var (rL, rR) = Tape.Radii(progress);
@@ -372,8 +404,10 @@ public static partial class Visualizer
         }
     }
 
-    /// <summary>The clock's cadence — Design.Cadence.PluggedLoopHz (30), restated so this file stays System-only; a test pins the two.</summary>
-    public const int TickHz = 30;
+    /// <summary>The NOMINAL step — Design.Cadence.ClockHz, restated so this file stays System-only; a test pins the two. The
+    /// clock ticks once per produced frame (Controls.FrameTicker); this is only the first tick's dt (no previous tick to diff).
+    /// The model is rate-independent (<see cref="Bands.RefHz"/>).</summary>
+    public const int TickHz = 60;
     public const float TickMs = 1000f / TickHz;
     public const float DtMinSec = 0.001f, DtMaxSec = 0.080f;
     public static float DeltaSec(long lastTickMs, long nowMs)

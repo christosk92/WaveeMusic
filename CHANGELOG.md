@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.1] - unreleased
+
+### Changed
+
+- **Motion runs at your display's refresh rate.** The buffering spinner, loading shimmers, the now-playing equalizer,
+  the decks, the full-screen visualizer and the full-screen lyrics caption were held to 30 frames a second (24 on
+  battery), which looked choppy on a 120 or 144 Hz screen. They now run at the panel rate, and Wavee no longer slows
+  its animations down when its window loses focus. With Windows Energy Saver on, all motion is capped at 30 frames a
+  second; scrolling and dragging never are.
+- **Context menus open faster.** A menu that fits inside the window is drawn in the window instead of in a separate
+  popup window, so a track's right-click menu reaches the screen in less than half the time.
+
 ## [0.3.0] - 2026-10-02
 
 Crest is Wavee rebuilt from the ground up. Every page, the playback engine, Spotify Connect and the local library were

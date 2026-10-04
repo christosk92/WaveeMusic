@@ -324,7 +324,7 @@ public static partial class Platform
     static FluentGpu.Hosting.AppHost? s_powerHost;
     static AmbientPower.Debounce s_power;
 
-    /// <summary>Bind the ambient cadence to the host and apply the launch verdict immediately (no debounce at launch).
+    /// <summary>Bind the ambient power verdict to the host and apply the launch verdict immediately (no debounce at launch).
     /// Called once per launch from the engine's pre-loop hook (`FluentApp.DiagnosticRun`, installed by
     /// `Diagnostics.Probe.InstallGuiArms`) — the only app-reachable point that holds the host. The recurring poll
     /// itself is NOT a raw <see cref="Timer"/> (that kept waking a minimized/suspended window): <see cref="Shell"/>'s
@@ -333,9 +333,9 @@ public static partial class Platform
     public static void AttachAmbientPower(FluentGpu.Hosting.AppHost host)
     {
         s_powerHost = host;
-        host.InactiveFrameIntervalMs = Design.Cadence.InactiveFrameIntervalMs;
         s_power = AmbientPower.Debounce.Start(ReadPlugged(), System.Diagnostics.Stopwatch.GetTimestamp());
         ApplyPower();
+        ApplyPowerCap();
     }
 
     /// <summary>The recurring half of the ambient power poll (ch 00 §9.5, G-086) — the root component's
@@ -348,6 +348,7 @@ public static partial class Platform
         if (AmbientPower.Step(ref s_power, ReadPlugged(), System.Diagnostics.Stopwatch.GetTimestamp(),
                 System.Diagnostics.Stopwatch.Frequency))
             ApplyPower();
+        ApplyPowerCap();
     }
 
     /// <summary>Stop the power poll (the exit tail, via `Diagnostics.Shutdown`). The root component's `UseInterval`
@@ -376,12 +377,25 @@ public static partial class Platform
         }
     }
 
+    /// <summary>Record the debounced verdict. It retunes no frame rate — the engine's DefaultLoopHz knob it used to write
+    /// (30 Hz plugged, 24 on battery) was deleted, so loops run at the display rate, and being on battery alone throttles
+    /// nothing — but the verdict stays in the log beside the [wake] census.</summary>
     static void ApplyPower()
     {
+        if (s_powerHost is null) return;
+        Log.Info("app", "ambient power " + (s_power.Applied ? "plugged" : "battery"));
+    }
+
+    /// <summary>The host's ONE frame-rate ceiling (<c>AppHost.PowerCapFps</c>), from Windows Energy Saver only — the
+    /// user asking the OS for less work (<see cref="AmbientPower.CapFpsFor"/>). Not debounced: the saver is a deliberate
+    /// toggle, not a flickering line status. Called on every poll; writes and logs only on a change.</summary>
+    static void ApplyPowerCap()
+    {
         if (s_powerHost is not { } host) return;
-        float hz = AmbientPower.LoopHzFor(s_power.Applied);
-        host.Animation.DefaultLoopHz = hz;
-        Log.Info("app", "ambient cadence " + (s_power.Applied ? "plugged" : "battery") + " loopHz=" + hz.ToString(CultureInfo.InvariantCulture));
+        int cap = AmbientPower.CapFpsFor(FluentGpu.Dsl.Materials.EnergySaver);
+        if (host.PowerCapFps == cap) return;
+        host.PowerCapFps = cap;
+        Log.Info("app", "power cap " + (cap > 0 ? cap.ToString(CultureInfo.InvariantCulture) + " fps (energy saver)" : "off"));
     }
 }
 
@@ -931,7 +945,11 @@ public static partial class Log
     /// appear in a screenshot at all, so there is no pixel to check.</item>
     /// <item><c>[media.chrome]</c> — one line per visibility edge, with the cause and the holds.</item>
     /// <item><c>[overlay] wantWindowed</c> — its ABSENCE is the evidence. An in-app <c>PopupChrome.Popup</c> must
-    /// never lease an HWND, and the only way to state that is a line that does not appear.</item>
+    /// never lease an HWND, and neither must a menu that fits inside the window; the only way to state that is a line
+    /// that does not appear.</item>
+    /// <item><c>[overlay.popup]</c> — one line per OS popup window when it closes: what its lease held the UI thread
+    /// and parked the render thread for, when its first frame landed and its window showed, and its per-frame cost while
+    /// up. The only record of what opening a menu cost the whole window.</item>
     /// <item><c>[window.move]</c> / <c>[window.size]</c> — the OS move/size loop edges. A stuck resize capture is a
     /// <c>begin</c> with no <c>end</c>, which is unreadable if the pair is Debug-gated.</item>
     /// <item><c>[pointer]</c> — one line per LOST primary contact (capture stolen, leave-while-down, the OS move loop
@@ -956,6 +974,7 @@ public static partial class Log
         => s.StartsWith("[video]", StringComparison.Ordinal)
         || s.StartsWith("[media.chrome]", StringComparison.Ordinal)
         || s.StartsWith("[overlay] wantWindowed", StringComparison.Ordinal)
+        || s.StartsWith("[overlay.popup]", StringComparison.Ordinal)
         || s.StartsWith("[window.move]", StringComparison.Ordinal)
         || s.StartsWith("[window.loop]", StringComparison.Ordinal)
         || s.StartsWith("[window.size]", StringComparison.Ordinal)
