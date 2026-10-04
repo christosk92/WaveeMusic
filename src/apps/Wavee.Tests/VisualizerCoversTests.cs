@@ -242,6 +242,40 @@ public class VisualizerCoversTests
     }
 
     [Fact]
+    public void NextResident_turns_only_to_a_cover_another_tile_shows()
+    {
+        int[] shown = [0, 3, 3, 7, -1, 9, 0, 3];
+        for (int beat = 0; beat < 300; beat++)
+            for (int t = 0; t < shown.Length; t++)
+            {
+                int cur = shown[t];
+                int next = C.Flips.NextResident(cur, beat, t, shown, 12);
+                Assert.NotEqual(cur, next);
+                Assert.True(Array.IndexOf(shown, next) >= 0);
+                Assert.InRange(next, 0, 11);
+            }
+    }
+
+    [Fact]
+    public void NextResident_is_NextCover_when_that_cover_is_resident()
+    {
+        int[] all = new int[12];
+        for (int i = 0; i < all.Length; i++) all[i] = i;
+        for (int beat = 0; beat < 200; beat++)
+            for (int cur = 0; cur < 12; cur++)
+                Assert.Equal(C.Flips.NextCover(cur, beat, beat % 9, 12), C.Flips.NextResident(cur, beat, beat % 9, all, 12));
+    }
+
+    [Fact]
+    public void NextResident_gives_up_when_nothing_else_is_resident()
+    {
+        Assert.Equal(-1, C.Flips.NextResident(2, 4, 0, [2, 2, -1], 12));
+        Assert.Equal(-1, C.Flips.NextResident(0, 4, 0, [0, 1], 1));
+        Assert.Equal(-1, C.Flips.NextResident(0, 4, 0, [], 12));
+        Assert.Equal(1, C.Flips.NextResident(0, 4, 0, [0, 1], 2));
+    }
+
+    [Fact]
     public void A_flip_takes_about_a_second_and_calm_halves_the_rate()
     {
         float flip = 1f; int frames = 0;
@@ -295,6 +329,25 @@ public class VisualizerCoversTests
         Assert.Equal(60_000f, C.Spot.SpanMs(100));              // 10 bpm clamps
         Assert.Equal(8_000f, C.Spot.SpanMs(4000));              // 400 bpm clamps
         Assert.InRange(C.Spot.FadeMs(16_000f), 900f, 2_400f);
+    }
+
+    [Fact]
+    public void The_next_photo_preloads_for_the_last_bars_only_capped_in_time()
+    {
+        Assert.Equal(2, C.Spot.PreloadBars(16_000f, weak: false));     // 2 s bars: the last two (4 s ahead)
+        Assert.Equal(1, C.Spot.PreloadBars(60_000f, weak: false));     // 7.5 s bars: two would be 15 s — one
+        Assert.Equal(1, C.Spot.PreloadBars(16_000f, weak: true));      // weak: 2 s ahead, one bar
+        Assert.Equal(1, C.Spot.PreloadBars(60_000f, weak: true));      // never less than the last bar
+        Assert.Equal(1, C.Spot.PreloadBars(0f, weak: false));
+        for (int cycle = 0; cycle < 4; cycle++)
+            for (int k = 0; k < C.Spot.BarsPerPhoto; k++)
+            {
+                int bar = cycle * C.Spot.BarsPerPhoto + k;
+                Assert.Equal(k >= C.Spot.BarsPerPhoto - 2, C.Spot.Preload(bar, cycle, 16_000f, weak: false));
+                Assert.Equal(k == C.Spot.BarsPerPhoto - 1, C.Spot.Preload(bar, cycle, 16_000f, weak: true));
+            }
+        Assert.True(C.Spot.Preload(17, 1, 16_000f, false));             // past the cycle, before the switching downbeat
+        Assert.False(C.Spot.Preload(3, 1, 16_000f, false));             // a seek back under the cycle
     }
 
     [Fact]

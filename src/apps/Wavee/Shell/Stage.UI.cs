@@ -85,6 +85,9 @@ public static partial class Stage
         public readonly Signal<Mode> Mode = new(Stage.Mode.Lyrics);
         public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
         public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
+        /// <summary>The gallery is open AND the layout has room for it (<c>Layout.ShowGallery</c>) — the pane's mount gate
+        /// minus the mode and the idle chrome; the visualizer clock's lease and ribbon gate read it (SurfaceCore writes it).</summary>
+        public readonly Signal<bool> GalleryShown = new(true);
         public readonly FloatSignal Sensitivity = new(1f), SyncOffsetMs = new(0f);
         /// <summary>The chrome is mounted (the idle machine's output) · the playing track has timed lyrics (LyricFacts writes it).</summary>
         public readonly Signal<bool> Chrome = new(true), HasTimedLyrics = new(false);
@@ -195,6 +198,8 @@ public static partial class Stage
 
             // ── the ONE layout signal, equality-gated (Signal<T>.SetIfChanged) ──
             UseSignalEffect(() => { var size = vp.Value; ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek())); });
+            // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip) ──
+            UseSignalEffect(() => ctx.GalleryShown.SetIfChanged(ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery));
 
             // ── EVERY preference, once per Prefs.Stage epoch, into the context's signals (O8) — the only Prefs.Stage reads on the stage ──
             UseSignalEffect(() =>
@@ -683,7 +688,7 @@ public static partial class Stage
 
     // ══ 3. THE FACE HOST ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The chosen face, remounted per (kind, width) on a KEYED CHILD (a Key on a component's root is inert in a
+    /// <summary>The chosen face, remounted per (kind, 8-DIP width bucket) on a KEYED CHILD (a Key on a component's root is inert in a
     /// single-child slot — V-U11; the width is in the key so opening or closing the gallery re-centres the subject under the
     /// same 0.55 s FluentDecelerate instead of jumping), inset on the right while the gallery is open. The face is told its
     /// SAFE rect (Layout.FaceSafe: clear of the now-playing card, the caption when it shows, the transport). Reads the
@@ -702,6 +707,8 @@ public static partial class Stage
             var safe = L.FaceSafe(galleryOpen, caption);
             var track = ctx.RowValue();
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
+            // the stage face is a scope reader while its kind draws the slab's scope series (Scope, Flow)
+            Visualizer.UseScopeReader(Context, ctx.Slab, Visualizer.Catalog.UsesScope(kind));
             return new BoxEl
             {
                 Width = w, Height = L.H, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start, HitTestVisible = false,
@@ -709,7 +716,9 @@ public static partial class Stage
                 [
                     new BoxEl
                     {
-                        Key = "viz:" + (int)kind + ":" + (int)w, Width = w, Height = L.H,
+                        // the width in the key is quantised to 8 DIP: the gallery's open/close still remounts (re-centres)
+                        // the face, a window drag no longer rebuilds it (and its sims) on every pixel
+                        Key = "viz:" + (int)kind + ":" + ((int)w >> 3), Width = w, Height = L.H,
                         Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(550f, Easing.FluentDecelerate),
                             Enter: new EnterExit(Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
                         Children = [Visualizer.Face(kind, ctx.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,

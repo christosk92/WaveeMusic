@@ -503,10 +503,14 @@ public static partial class Visualizer
             }
         }
 
-        /// <summary>A new pool: fill the tiles still blank, and keep the lead tile on the current cover (the pool's head).</summary>
+        /// <summary>A new pool: re-point every tile's pool index at the url it shows (the pool may have re-ordered under it —
+        /// the flips pick only covers a tile already shows), fill the tiles still blank, and keep the lead tile on the
+        /// current cover (the pool's head).</summary>
         void SeedTiles()
         {
-            if (Pool.Count == 0 || _plan.Length == 0) return;
+            if (_plan.Length == 0) return;
+            for (int t = 0; t < _plan.Length; t++) _cover[t] = PoolIndexOf(_pending[t] ?? _url[t].Peek());
+            if (Pool.Count == 0) return;
             Span<int> fresh = stackalloc int[_plan.Length];
             Covers.Tiles.Assign(_plan, Pool.Count, Seed, fresh);
             for (int t = 0; t < _plan.Length; t++)
@@ -566,11 +570,22 @@ public static partial class Visualizer
             }
         }
 
-        /// <summary>Choose the tile's next cover (Covers.Flips.NextCover); a tile already mid-flip keeps its flip.</summary>
+        /// <summary>The pool index of <paramref name="url"/>, −1 when it is blank or no longer in the pool. Alloc-free.</summary>
+        int PoolIndexOf(string url)
+        {
+            if (url.Length == 0) return -1;
+            for (int i = 0; i < Pool.Count; i++) if (string.Equals(Pool.Urls[i], url, StringComparison.Ordinal)) return i;
+            return -1;
+        }
+
+        /// <summary>Choose the tile's next cover among those another tile already shows (Covers.Flips.NextResident: a shown
+        /// cover is decoded at the wall's one size, so the flip never reveals a placeholder); a tile already mid-flip keeps
+        /// its flip.</summary>
         void Arm(int t, int beat, bool instant)
         {
             if ((uint)t >= (uint)_pending.Length || _pending[t] is not null) return;
-            int c = Covers.Flips.NextCover(_cover[t], beat, t, Pool.Count);
+            int c = Covers.Flips.NextResident(_cover[t], beat, t, _cover, Pool.Count);
+            if (c < 0) return;
             string? url = Pool.Urls[c];
             if (url is null || string.Equals(url, _url[t].Peek(), StringComparison.Ordinal)) return;
             _cover[t] = c;
@@ -650,16 +665,30 @@ public static partial class Visualizer
     /// reversed), its url, its cycle and whether it is the blurred-cover fallback.</summary>
     readonly record struct SpotLayer(string? Key, string Url, int Cycle, bool Blur);
 
-    /// <summary>The photo stack: the previous layer (held under), the current one (fading in over it) and the NEXT photo
-    /// mounted invisible at the same decode, so the cross-fade never reveals a placeholder. The cycle follows the slab's
-    /// downbeat bar (Covers.Spot.CycleOf), so a photo changes only ON an 8-bar downbeat.</summary>
+    /// <summary>The Spotlight clock, one signal: the track it was computed for (a render for another track reads cycle 0),
+    /// its 8-bar cycle, and whether the next photo is due to decode under the current one (Covers.Spot.Preload).</summary>
+    readonly record struct SpotClock(int Slot, int Cycle, bool Preload);
+
+    /// <summary>The photo stack: the previous layer (held under only while the current one fades in over it — dropped once
+    /// the fade lands), the current one, and — in the last bars of the cycle only — the NEXT photo mounted invisible at the
+    /// same decode, so the cross-fade never reveals a placeholder: two full-res photos resident, three only briefly. The
+    /// cycle follows the slab's downbeat bar (Covers.Spot.CycleOf over min(Downbeat, Bar)), so a photo changes only ON an
+    /// 8-bar downbeat, and a new track starts at cycle 0.</summary>
     sealed class SpotlightBody : Component
     {
         public Slab Slab = null!;
         public float W, H;
         public bool Preview;
         readonly string[] _urls = new string[Covers.Spot.MaxPhotos];
+        readonly Signal<int> _layers = new(0);
+        readonly Action _clearPrevious;
         SpotLayer _shown, _previous;
+        int _shownSeq;
+        // the clock's track-change guard: the slab's (Downbeat, Bar) as they stood at the change — still the OLD track's
+        // until the visualizer clock ticks the new one, so they must not pick the new track's cycle
+        int _clockSlot = int.MinValue, _staleDownbeat = int.MinValue, _staleBar = int.MinValue;
+
+        public SpotlightBody() { _clearPrevious = ClearPrevious; }
 
         public override Element Render()
         {
@@ -668,15 +697,19 @@ public static partial class Visualizer
             uint epoch = Entities.ScopeEpoch.Peek();
             _ = Entities.Current.Artists.Changed.Value;
             _ = Entities.Current.Edges.ArtistGallery.Changed.Value;
+            _ = _layers.Value;                                   // the fade-out timeout's "drop the previous layer"
             var track = ZuneTrack(ctx);
             var artist = Rail.NowPlayingArtist(track);
             int artistSlot = artist.Slot;
             // the gallery rides the artist overview (Spotify.Decode.Artist: an overview with no gallery lands it Complete-empty)
             UseEffect(() => { if (artistSlot > 0) Entities.Ensure(new Artist(artistSlot), ArtistFields.Overview); }, DepKey.From(artistSlot, (int)epoch));
-            var cycleSig = UseSignal(0);
+            var clock = UseSignal(default(SpotClock));
             var slab = Slab; bool preview = Preview;
-            UseSignalEffect(() => { if (!preview) cycleSig.SetIfChanged(Covers.Spot.CycleOf(slab.Downbeat.Value)); });
-            int cycle = preview ? 0 : cycleSig.Value;
+            // per bar (and per track change), allocation-free: re-renders only when the cycle, the preload or the track moves
+            UseSignalEffect(() => { if (!preview) clock.SetIfChanged(Step(ZuneTrack(ctx), slab.Downbeat.Value, slab.Bar.Value)); });
+            var sc = clock.Value;
+            bool mine = !preview && sc.Slot == (track.IsValid ? track.Slot : 0);
+            int cycle = mine ? sc.Cycle : 0;
             int n = Photos(artist, track, out bool blur);
             int tempo = track.IsValid && track.Knows(TrackFields.Audio) ? track.Tempo : 0;
             float span = Covers.Spot.SpanMs(tempo), fade = Covers.Spot.FadeMs(span);
@@ -688,17 +721,45 @@ public static partial class Visualizer
             {
                 string url = _urls[Covers.Spot.PhotoAt(cycle, n)];
                 string key = "sp:" + cycle.ToString(CultureInfo.InvariantCulture) + ":" + url;
-                if (!string.Equals(key, _shown.Key, StringComparison.Ordinal)) { _previous = _shown; _shown = new SpotLayer(key, url, cycle, blur); }
+                if (!string.Equals(key, _shown.Key, StringComparison.Ordinal)) { _previous = _shown; _shown = new SpotLayer(key, url, cycle, blur); _shownSeq++; }
                 bool hasPrevious = !preview && _previous.Key is { Length: > 0 };
                 if (hasPrevious) kids.Add(Layer(_previous, fadeIn: false, span, fade, decode));
                 kids.Add(Layer(_shown, fadeIn: hasPrevious, span, fade, decode));
-                if (!preview && n > 1)
+                if (!preview && n > 1 && mine && sc.Preload)
                 {
                     string next = _urls[Covers.Spot.PhotoAt(cycle + 1, n)];
                     kids.Add(new BoxEl { Key = "pre:" + next, Width = W, Height = H, ZStack = true, Opacity = 0f, HitTestVisible = false, Children = [SpotImage(next, decode, false)] });
                 }
             }
+            // the previous photo leaves once the cross-fade has landed (restarted by every new shown layer)
+            UseTimeout(_clearPrevious, fade + 150f, DepKey.From(_shownSeq));
             return new BoxEl { Width = W, Height = H, ZStack = true, ClipToBounds = true, HitTestVisible = false, Children = kids.ToArray() };
+        }
+
+        void ClearPrevious()
+        {
+            if (_previous.Key is null) return;
+            _previous = default;
+            _layers.Value = _layers.Peek() + 1;
+        }
+
+        /// <summary>The clock for the slab's bar pair: a track change resets to cycle 0 and holds it while the bars are still
+        /// the old track's; afterwards the cycle of min(Downbeat, Bar) (a new track's bar 0 wins over the old downbeat) and
+        /// the preload window. The first run (a mount mid-song) trusts the bars.</summary>
+        SpotClock Step(Track track, int downbeat, int bar)
+        {
+            int slot = track.IsValid ? track.Slot : 0;
+            if (slot != _clockSlot)
+            {
+                bool mount = _clockSlot == int.MinValue;
+                _clockSlot = slot;
+                if (!mount) { _staleDownbeat = downbeat; _staleBar = bar; return new SpotClock(slot, 0, false); }
+            }
+            else if (downbeat == _staleDownbeat && bar == _staleBar) return new SpotClock(slot, 0, false);
+            _staleDownbeat = _staleBar = int.MinValue;
+            int cycle = Covers.Spot.CycleOf(Math.Min(downbeat, bar));
+            int tempo = track.IsValid && track.Knows(TrackFields.Audio) ? track.Tempo : 0;
+            return new SpotClock(slot, cycle, Covers.Spot.Preload(bar, cycle, Covers.Spot.SpanMs(tempo), GpuProfile.IsWeak));
         }
 
         Element Layer(SpotLayer l, bool fadeIn, float span, float fade, int decode)

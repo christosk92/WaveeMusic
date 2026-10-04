@@ -353,8 +353,8 @@ public static partial class Visualizer
 
         if (!pv)
         {
-            // the tempo: kind-222's ×10 BPM, read when the track or the beat moves (the audio fields land after the track
-            // does; the beat is the heartbeat that re-reads them). One string per tempo change, never per tick.
+            // the tempo: kind-222's ×10 BPM, read when the track moves or the track table changes (the audio fields land
+            // after the track does — paused too, so no beat heartbeat). One string per tempo change, never per tick.
             var current = Playback.Current;
             ushort lastTempo = ushort.MaxValue; string label = Geo.BpmLabel(0);
             float size = Math.Clamp(0.061f * m, 28f, 72f), boxW = 0.3f * m, boxH = size * 1.25f + 22f;
@@ -365,7 +365,8 @@ public static partial class Visualizer
                 [
                     new TextEl(Prop.Of(() =>
                     {
-                        _ = beat.Value;
+                        _ = Entities.ScopeEpoch.Value;                // FIRST: a scope switch re-points the table read below
+                        _ = Entities.Current.Tracks.Changed.Value;    // the audio group landing re-reads the tempo
                         var cur = current.Value;
                         ushort tempo = 0;
                         if (cur.Kind == EntityKind.Track && !cur.IsNone) { var tr = new Track(cur.Slot); if (tr.IsValid && tr.Knows(TrackFields.Audio)) tempo = tr.Tempo; }
@@ -516,13 +517,17 @@ public static partial class Visualizer
         float tickTop = mid + amp + MathF.Max(12f, 0.017f * h), tickLen = MathF.Max(5f, 0.0068f * h), headLen = 2f * amp + MathF.Max(32f, 0.044f * h);
         ColorF tickInk = Ink.Ink with { A = 0.35f }, headInk = Ink.Ink with { A = 0.95f };
         var barPhase = slab.BarPhase; var beatPhase = slab.BeatPhase; var level = slab.Level; var sb = slab.B;
+        var bar = slab.Bar; var beat = slab.BeatIndex;
+        var bars = new Geo.BarCounter();   // the bar's real beat count, learned from the bar edges (never assumes 4/4)
         kids.Add(new CanvasChild(0f, 0f, new SpriteFieldEl
         {
             Width = w, Height = h, Kernel = SpriteKernel.Capsule,
             Instances = Prop.Of(() =>
             {
-                float px = Geo.PlayedX(progress.Value, x0, tw), ph = beatPhase.Value;
-                int inBar = Geo.BeatInBar(barPhase.Value, ph);
+                float px = Geo.PlayedX(progress.Value, x0, tw), ph = beatPhase.Value, bp = barPhase.Value;
+                int bi = beat.Value;
+                bars.Observe(bar.Value, bi, bp);
+                int inBar = bars.BeatInBar(bi, bp, ph), span = bars.Span;
                 ColorF a = sa.Value, b = sb.Value;
                 var s = overlay.Buffer; int at = 0;
                 if (glow) s[at++] = FluentSprite(px, mid, headLen + 16f, 22f, FluentHalfPi, 1f, a with { A = Geo.PlayheadGlow(level.Value, motion, dark) });
@@ -530,7 +535,7 @@ public static partial class Visualizer
                 {
                     float x = px + (j - ph) * step;
                     if (x < x0 || x > x0 + tw) continue;
-                    bool down = Geo.IsDownbeat(inBar, j);
+                    bool down = Geo.IsDownbeat(inBar, j, span);
                     float len = down ? 2f * tickLen : tickLen, fade = Geo.TickFade(j - ph, Geo.TickSpan);
                     s[at++] = FluentSprite(x, tickTop + 0.5f * len, len, 2f, FluentHalfPi, 0f, down ? b with { A = 0.85f * fade } : tickInk with { A = tickInk.A * fade });
                 }
@@ -585,8 +590,8 @@ public static partial class Visualizer
     // ══ THE PURE ARITHMETIC (Wavee.Tests: VisualizerFluentGeometryTests) ═════════════════════════════════════════════
 
     /// <summary>Every number the Fluent faces compute: band maps, levels, ripple easing, arc chains, beat spin, the aurora
-    /// wave, the timeline resample, the beat ruler, the BPM label. No engine type, no signal, no allocation (except the
-    /// BPM string). Public: this assembly has no InternalsVisibleTo.</summary>
+    /// wave, the timeline resample, the beat ruler (and its bar counter), the BPM label. No engine type, no signal, no
+    /// allocation (except the BPM string and one BarCounter per face build). Public: this assembly has no InternalsVisibleTo.</summary>
     public static class FluentGeometry
     {
         public const float RestBar = 0.03f, RippleGrowth = 2.1f;
@@ -723,13 +728,64 @@ public static partial class Visualizer
         /// <summary>The playhead's x: the timeline's left edge plus the clamped progress of its width.</summary>
         public static float PlayedX(float progress, float x0, float width) => x0 + Unit(progress) * width;
         /// <summary>Which beat of the bar is the current one (0 = the downbeat), from the bar and beat phases.</summary>
-        public static int BeatInBar(float barPhase, float beatPhase)
+        public static int BeatInBar(float barPhase, float beatPhase) => BeatInBar(barPhase, beatPhase, BeatsPerBar);
+        /// <summary>The same over a bar of <paramref name="beatsPerBar"/> beats (the phase is the beat's place over the bar's
+        /// real beat count — Visualizer.Model's BarOfGrid).</summary>
+        public static int BeatInBar(float barPhase, float beatPhase, int beatsPerBar)
         {
-            int b = (int)MathF.Round(Unit(barPhase) * BeatsPerBar - Unit(beatPhase));
-            return ((b % BeatsPerBar) + BeatsPerBar) % BeatsPerBar;
+            int n = Math.Max(1, beatsPerBar);
+            int b = (int)MathF.Round(Unit(barPhase) * n - Unit(beatPhase));
+            return ((b % n) + n) % n;
         }
         /// <summary>Is the tick <paramref name="j"/> beats from now a bar start?</summary>
-        public static bool IsDownbeat(int beatInBar, int j) => (((beatInBar + j) % BeatsPerBar) + BeatsPerBar) % BeatsPerBar == 0;
+        public static bool IsDownbeat(int beatInBar, int j) => IsDownbeat(beatInBar, j, BeatsPerBar);
+        /// <summary>The same over bars of <paramref name="beatsPerBar"/> beats.</summary>
+        public static bool IsDownbeat(int beatInBar, int j, int beatsPerBar)
+        {
+            int n = Math.Max(1, beatsPerBar);
+            return (((beatInBar + j) % n) + n) % n == 0;
+        }
+
+        /// <summary>The longest bar the ruler believes (a longer gap between two downbeats is a seek, not a bar).</summary>
+        public const int MaxBeatsPerBar = 12;
+        /// <summary>A bar edge counts as a CROSSING only while the new bar's phase is under this (a seek lands anywhere).</summary>
+        public const float EdgePhase = 0.25f;
+
+        /// <summary>The beat ruler's bar clock: the beats per bar LEARNED from the slab's bar edges (the beats between two
+        /// consecutive downbeats crossed — a 3/4 or 6/8 grid marks its own bars), and the beat inside the bar counted from
+        /// the last downbeat crossed. Until an edge anchors it (a mount, a seek) it reads the bar phase over the last
+        /// learned span (4 to start). Allocation-free; one per Timeline face, fed by its bind.</summary>
+        public sealed class BarCounter
+        {
+            int _bar = int.MinValue, _anchorBeat = -1, _span = BeatsPerBar;
+
+            /// <summary>The beats per bar the ruler marks.</summary>
+            public int Span => _span;
+
+            /// <summary>Feed the slab's bar, beat index and bar phase. An edge to the NEXT bar that lands near its start (a
+            /// crossing) anchors the count; two anchored edges in a row measure the span (2..<see cref="MaxBeatsPerBar"/>).
+            /// Any other bar change (a seek) drops the anchor and keeps the span.</summary>
+            public void Observe(int bar, int beat, float barPhase)
+            {
+                if (bar == _bar) return;
+                bool edge = _bar != int.MinValue && bar == _bar + 1 && Unit(barPhase) < EdgePhase;
+                if (edge)
+                {
+                    int span = beat - _anchorBeat;
+                    if (_anchorBeat >= 0 && span >= 2 && span <= MaxBeatsPerBar) _span = span;
+                    _anchorBeat = beat;
+                }
+                else _anchorBeat = -1;
+                _bar = bar;
+            }
+
+            /// <summary>The current beat's place in its bar (0 = the downbeat): counted from the anchor, else the phases.</summary>
+            public int BeatInBar(int beat, float barPhase, float beatPhase)
+            {
+                int k = beat - _anchorBeat;
+                return _anchorBeat >= 0 && k >= 0 ? k % _span : FluentGeometry.BeatInBar(barPhase, beatPhase, _span);
+            }
+        }
         /// <summary>A ruler tick's alpha by its distance from the playhead in beats: 1 at the head, fading to 0 past the span.</summary>
         public static float TickFade(float beatsAway, int span)
         {

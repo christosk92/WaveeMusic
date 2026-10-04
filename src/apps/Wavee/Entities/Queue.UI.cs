@@ -959,7 +959,7 @@ public static partial class Queue
         const float RowH = 56f, RowArt = 38f, TimeW = 44f, GripW = 28f;
         const float NextH = 104f, NextArt = 80f, NextGap = Spacing.M;
         const float HeaderH = 40f;
-        const float MoreRowH = 40f, MoreExtent = MoreRowH + Spacing.XS + Spacing.XXS;
+        const float MoreRowH = 40f;
 
         readonly Signal<int> _pages = new(1);
         float _s = 1f;
@@ -971,7 +971,7 @@ public static partial class Queue
 
         protected override float ExtentOf(QueueSlot slot) => slot.Kind switch
         {
-            QueueSlotKind.More => MoreExtent * _s,
+            QueueSlotKind.More => Px(MoreRowH) + Px(Spacing.XS) + Px(Spacing.XXS),   // = ShowMore's rendered height + margins (each term rounded as rendered)
             QueueSlotKind.Header => HeaderH * _s,
             _ => IsNextSlot(slot) ? (NextH + NextGap) * _s : RowH * _s,
         };
@@ -1169,15 +1169,16 @@ public static partial class Queue
             return new BoxEl
             {
                 Key = "stagemore:" + Tag(section),
-                Direction = 0, Height = MoreRowH, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                BlocksDragArm = true, Margin = new Edges4(0f, Spacing.XS, 0f, Spacing.XXS), Corners = Radii.ControlAll,
+                // scaled like every other stage slot: height + margins sum to ExtentOf's More extent (the virtualizer's offsets)
+                Direction = 0, Height = Px(MoreRowH), Gap = Px(Spacing.S), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                BlocksDragArm = true, Margin = new Edges4(0f, Px(Spacing.XS), 0f, Px(Spacing.XXS)), Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => _pages.Value = _pages.Peek() + 1,
                 Layout = LayoutTransition.Slide,
                 Children =
                 [
-                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary },
-                    new TextEl("·  " + remaining) { Size = 12f, LineHeight = 16f, Color = Ink.InkTertiary },
+                    new TextEl(Icons.ChevronDown) { Size = Px(12f), FontFamily = Theme.IconFont, Color = Ink.InkSecondary },
+                    new TextEl("·  " + remaining) { Size = Px(12f), LineHeight = Px(16f), Color = Ink.InkTertiary },
                 ],
             };
         }

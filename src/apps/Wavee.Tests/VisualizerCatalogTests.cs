@@ -226,11 +226,11 @@ public class VisualizerCatalogTests
     [Fact]
     public void Demand_pulls_the_scope_only_for_a_face_that_reads_it()
     {
-        Assert.True(Visualizer.Demand.PullsScope(Visualizer.Tier.Scope, K.Scope, visualizerMode: true, galleryShown: false));
-        Assert.True(Visualizer.Demand.PullsScope(Visualizer.Tier.Spectrum, K.Bloom, visualizerMode: true, galleryShown: true));   // the Scope tile
-        Assert.False(Visualizer.Demand.PullsScope(Visualizer.Tier.Spectrum, K.Bars, visualizerMode: true, galleryShown: false));
-        Assert.False(Visualizer.Demand.PullsScope(Visualizer.Tier.Level, K.Scope, visualizerMode: true, galleryShown: true));     // no spectrum lease: no tap
-        Assert.False(Visualizer.Demand.PullsScope(Visualizer.Tier.Scope, K.Scope, visualizerMode: false, galleryShown: true));
+        Assert.True(Visualizer.Demand.PullsScope(Visualizer.Tier.Scope, visualizerMode: true, readers: 1));        // the stage Scope face
+        Assert.True(Visualizer.Demand.PullsScope(Visualizer.Tier.Spectrum, visualizerMode: true, readers: 1));     // a live Scope tile under a Bloom stage
+        Assert.False(Visualizer.Demand.PullsScope(Visualizer.Tier.Spectrum, visualizerMode: true, readers: 0));    // the gallery open alone is no reason
+        Assert.False(Visualizer.Demand.PullsScope(Visualizer.Tier.Level, visualizerMode: true, readers: 2));       // no spectrum lease: no tap
+        Assert.False(Visualizer.Demand.PullsScope(Visualizer.Tier.Scope, visualizerMode: false, readers: 1));
     }
 
     [Fact]

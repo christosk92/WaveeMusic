@@ -516,6 +516,30 @@ public class VisualizerModelTests
         Assert.False(p.Tick(Inp(playing: false, pos: 2_010, tempo: 1200), NoDb, NoBands, NoBeats, Dt).DownbeatEdge);
     }
 
+    [Fact]
+    public void Model_a_forward_seek_of_exactly_one_bar_is_not_a_downbeat()
+    {
+        // 120 BPM tempo, 2 s bars: mid bar 0 → mid bar 1 in one tick lands on the NEXT bar, but it was a seek
+        var m = new Visualizer.Model();
+        m.Tick(Inp(pos: 1_000, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        var f = m.Tick(Inp(pos: 3_000, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.Equal(1, f.Bar);
+        Assert.False(f.DownbeatEdge);
+        Assert.Equal(0, f.Downbeat);
+
+        // the same over a grid's bar marks; playing on from there still crosses the next downbeat
+        uint[] grid = Grid(64, barsFrom: 0);
+        var g = new Visualizer.Model();
+        g.Tick(Inp(pos: 1_900, beats: true), NoDb, NoBands, grid, Dt);
+        f = g.Tick(Inp(pos: 3_900, beats: true), NoDb, NoBands, grid, Dt);
+        Assert.Equal(1, f.Bar);
+        Assert.False(f.DownbeatEdge);
+        g.Tick(Inp(pos: 3_990, beats: true), NoDb, NoBands, grid, Dt);
+        f = g.Tick(Inp(pos: 4_020, beats: true), NoDb, NoBands, grid, Dt);
+        Assert.True(f.DownbeatEdge);                                     // one frame's step across beat 8: bar 2
+        Assert.Equal(2, f.Downbeat);
+    }
+
     // ── the fold: progress, ripples, flux, onsets, energy ───────────────────────────────────────────────────────────
 
     [Fact]

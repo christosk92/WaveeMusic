@@ -204,7 +204,8 @@ public static partial class Visualizer
 
         /// <summary>A LINEAR fade from the colours CAPTURED at its start to the target over a fixed duration, landing
         /// exactly on the target at <c>start + duration</c> whatever the tick rate (an exponential step never lands —
-        /// V-U17). <see cref="Moment"/> marks a moment rotation (the clock drives <c>Slab.MomentMix</c> only then).</summary>
+        /// V-U17). <see cref="Moment"/> marks a moment rotation (the clock drives <c>Slab.MomentMix</c> only then; a track
+        /// fade resets it to 0 at its start, so a gradient follows MOMENTS only — solid fills cross-fade on a track).</summary>
         public struct Fade
         {
             public Palette From, To;

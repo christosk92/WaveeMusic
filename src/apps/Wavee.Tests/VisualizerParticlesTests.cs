@@ -196,6 +196,17 @@ public class VisualizerParticlesTests
     }
 
     [Fact]
+    public void Magneto_time_starts_at_zero_and_trails_the_physics_by_one_step()
+    {
+        var m = new Visualizer.Particles.Magneto(12);
+        Assert.Equal(0f, m.Time);                                     // before the first step: never negative
+        m.Step(Visualizer.Particles.StepSec * 0.5f, Levels(0.5f), 0f);
+        Assert.Equal(0f, m.Time);
+        Run(60, 2f, dt => m.Step(dt, Levels(0.5f), 0f));
+        Assert.InRange(m.Time, 2f - 2f * Visualizer.Particles.StepSec, 2f);
+    }
+
+    [Fact]
     public void Magneto_loud_bands_push_particles_out_and_quiet_bands_pull_them_in()
     {
         static float Spread(Visualizer.Particles.Magneto m) { float s = 0f; for (int i = 0; i < m.N; i++) s += MathF.Sqrt(m.X[i] * m.X[i] + m.Y[i] * m.Y[i]); return s / m.N; }

@@ -207,6 +207,30 @@ public static partial class Visualizer
                 return (from + hop) % poolCount;
             }
 
+            /// <summary><see cref="NextCover"/> restricted to covers already RESIDENT — shown on some tile (<paramref name="shown"/>
+            /// is each tile's pool index, −1 = none). The wall decodes every tile at one size, so a shown cover is a decoded
+            /// one and a flip never lands on a placeholder. The first resident of the next eight after the tile's own, from
+            /// NextCover's hashed hop; else a hashed tile's cover; −1 when no other cover is resident.</summary>
+            public static int NextResident(int current, int beat, int tile, ReadOnlySpan<int> shown, int poolCount)
+            {
+                if (poolCount <= 1 || shown.IsEmpty) return -1;
+                int from = (uint)current < (uint)poolCount ? current : 0;
+                int span = Math.Min(8, poolCount - 1);
+                int start = (int)(Hash(Salt, beat, tile * 2 + 40) % (uint)span);
+                for (int i = 0; i < span; i++)
+                {
+                    int c = (from + 1 + (start + i) % span) % poolCount;
+                    if (c != current && shown.IndexOf(c) >= 0) return c;
+                }
+                int t0 = (int)(Hash(Salt, beat, tile * 2 + 41) % (uint)shown.Length);
+                for (int i = 0; i < shown.Length; i++)
+                {
+                    int c = shown[(t0 + i) % shown.Length];
+                    if ((uint)c < (uint)poolCount && c != current) return c;
+                }
+                return -1;
+            }
+
             /// <summary>How far a flip travels in <paramref name="dtSec"/>.</summary>
             public static float Step(float dtSec, bool calm) => RatePerSec * MathF.Max(0f, dtSec) * (calm ? CalmScale : 1f);
 
@@ -245,6 +269,25 @@ public static partial class Visualizer
 
             /// <summary>The cross-fade: 8 % of the span, 0.9–2.4 s.</summary>
             public static float FadeMs(float spanMs) => Math.Clamp(spanMs * 0.08f, 900f, 2_400f);
+
+            /// <summary>The next photo is decoded under the current one for at most the last two bars of a cycle, and no
+            /// more than 10 s ahead (2 s on a weak GPU) — but never less than the last bar, so the switch never reveals a
+            /// placeholder. Outside that window only the shown photo (and, while it fades out, the previous) is resident.</summary>
+            public const int PreloadBarsMax = 2;
+            public const float PreloadAheadMs = 10_000f, PreloadAheadWeakMs = 2_000f;
+
+            /// <summary>How many bars before the switch the next photo mounts, for an 8-bar span of <paramref name="spanMs"/>.</summary>
+            public static int PreloadBars(float spanMs, bool weak)
+            {
+                float barMs = spanMs / BarsPerPhoto;
+                if (!(barMs > 0f)) return 1;
+                return Math.Clamp((int)MathF.Floor((weak ? PreloadAheadWeakMs : PreloadAheadMs) / barMs), 1, PreloadBarsMax);
+            }
+
+            /// <summary>Is the next photo due: <paramref name="bar"/> (the bar under the playhead) is within the last
+            /// <see cref="PreloadBars"/> bars of <paramref name="cycle"/>, or past its end before the switching downbeat.</summary>
+            public static bool Preload(int bar, int cycle, float spanMs, bool weak)
+                => (long)(cycle + 1) * BarsPerPhoto - bar <= PreloadBars(spanMs, weak);
 
             /// <summary>The pan for a cycle: 1.04 → 1.14, ±3 % across alternating by cycle, a hashed ±1.5 % drift down or up.</summary>
             public static KenBurns Pan(int cycle)

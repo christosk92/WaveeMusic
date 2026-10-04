@@ -126,10 +126,14 @@ public static partial class Verse
         public FloatSignal[] Alpha = [], Dy = [];
         public FloatSignal?[] Swell = [], Bloom = [];
         public Signal<int>[] State = [];
-        public NodeHandle[] Nodes = [], Text = [], BloomText = [];
+        /// <summary>The word nodes, their text nodes, the held words' halo text and halo blur box (its σ written only while
+        /// the bloom is lit, so a held word costs a blur layer only while it holds).</summary>
+        public NodeHandle[] Nodes = [], Text = [], BloomText = [], Halo = [];
         public readonly FloatSignal BlockAlpha = new(1f), BlockDy = new(0f), Progress = new(0f), Echo = new(0f);
         public NodeHandle BlockNode, WholeText;
         public Signal<int>? Lit;
+        /// <summary>The ghost depth the live line echoes (0 = none in the stack — the echo lane never runs).</summary>
+        public int EchoD;
         public bool Wipes(int i) => Mode == TimingMode.Word && !Whole && !Rtl && Words[i].SylCount > 1;
     }
 
@@ -165,13 +169,14 @@ public static partial class Verse
         float _beatMs;
         int _lastBeat = int.MinValue;
         long _lastBeatWallMs;
-        readonly Action _tick, _tickCore, _onBeat, _rearm;
+        readonly Action _tick, _tickCore, _onBeat, _onPausedSeek, _rearm;
 
         public Host()
         {
             _tickCore = Tick;
             _tick = () => Reactive.Untrack(_tickCore);
             _onBeat = OnBeat;
+            _onPausedSeek = OnPausedSeek;
             _rearm = () => _live.Value = true;
         }
 
@@ -313,7 +318,9 @@ public static partial class Verse
             int newest = dots ? anchor : anchor - 1;
             int next = anchor + 1 < count ? Math.Max(0, anchor + 1) : -1;
 
-            string key = _gen + ":" + view + ":" + (int)r.Base + ":" + (int)r.ColumnW + ":" + (int)r.Aspect;
+            // the rig freezes the blur choice, the arm's inks and the reduced-motion values: a flip of any rebuilds it
+            string key = _gen + ":" + view + ":" + (int)r.Base + ":" + (int)r.ColumnW + ":" + (int)r.Aspect + ":"
+                         + (blurOn ? "b" : "-") + (dark ? "d" : "l") + (_reduced ? "r" : "-");
             var rig = _rig is { } kept && kept.Key == key ? kept : (_rig = BuildRig(song, key, live, next, dots, in r, now, blurOn));
 
             float lineH = MathF.Round(r.Base * Geometry.LineK);
@@ -322,6 +329,7 @@ public static partial class Verse
             int depth = Geometry.GhostsThatFit(in r, liveTop);
             if (live < 0) depth = Math.Min(depth, 2);          // a break gives the stage to the song's words
             int echoD = live >= 0 ? Sections.EchoGhost(song.Sections, live, depth) : 0;
+            rig.EchoD = echoD;
 
             var kids = new List<Element>(5) { Ghosts(lines, rig, in r, newest, depth, echoD, liveTop - Geometry.BlockAir, H, dark) };
             float lowerTop = liveTop + blockH + Geometry.BlockAir;
@@ -403,7 +411,7 @@ public static partial class Verse
             bool playing = Playback.IsPlaying.Peek();
             rig.Alpha = new FloatSignal[n]; rig.Dy = new FloatSignal[n]; rig.State = new Signal<int>[n];
             rig.Swell = new FloatSignal?[n]; rig.Bloom = new FloatSignal?[n];
-            rig.Nodes = new NodeHandle[n]; rig.Text = new NodeHandle[n]; rig.BloomText = new NodeHandle[n];
+            rig.Nodes = new NodeHandle[n]; rig.Text = new NodeHandle[n]; rig.BloomText = new NodeHandle[n]; rig.Halo = new NodeHandle[n];
             bool still = _reduced || rig.Dense;
             for (int i = 0; i < n; i++)
             {
@@ -575,12 +583,18 @@ public static partial class Verse
                 GlyphWipe? haloWipe = null;
                 if (wipe) { onHalo = h => rig.BloomText[i] = h; haloWipe = new GlyphWipe(glow, glow with { A = 0f }, split, soft); }
                 var halo = main with { Color = dark ? Prop.Bind(slab.A) : (Prop<ColorF>)glow, Wipe = haloWipe, OnRealized = onHalo };
+                // the halo's σ only while the bloom is lit (the driver writes it on and off): an unlit held word is no
+                // blur layer, so at most the line's two held words blur, and only while they hold
                 content = new BoxEl
                 {
                     ZStack = true, HitTestVisible = false,
                     Children =
                     [
-                        new BoxEl { Direction = 1, Blur = Stage.Tone.CaptionBloomSigma, Opacity = (Prop<float>)bloom, HitTestVisible = false, Children = [halo] },
+                        new BoxEl
+                        {
+                            Direction = 1, Blur = HaloSigma(bloom.Peek()), Opacity = (Prop<float>)bloom, HitTestVisible = false,
+                            OnRealized = h => rig.Halo[i] = h, Children = [halo],
+                        },
                         main,
                     ],
                 };
@@ -959,6 +973,7 @@ public static partial class Verse
                         held |= g > 0f;
                         WriteFloat(swell, Hold.Swell(g, low, _reduced, _calm), SwellEps);
                         WriteFloat(bloom, Hold.Bloom(g, level, playing), AlphaEps);
+                        WriteBlur(scene, rig.Halo[i], HaloSigma(bloom.Peek()));
                     }
                 }
             }
@@ -979,12 +994,16 @@ public static partial class Verse
             }
             WriteFloat(rig.Progress, HairProgress(rig, now), 0f);
             voice = rig.SungOutMs < Lanes.None && now >= rig.StartMs && now < rig.SungOutMs;
-            float e = Echo.Alpha(now, rig.StartMs, _beatMs, _reduced);
+            // the echo lane runs only when the stack holds a ghost to light (most lines echo nothing)
+            float e = rig.EchoD > 0 ? Echo.Alpha(now, rig.StartMs, _beatMs, _reduced) : 0f;
             WriteFloat(rig.Echo, e, AlphaEps);
             echo = e > 0f;
         }
 
         const float AlphaEps = 1f / 256f, DyEps = 0.05f, SwellEps = 1f / 512f, BlurEps = 0.25f;
+
+        /// <summary>A held word's halo σ: the bloom sigma while its bloom is lit, exactly 0 (no layer) while it is not.</summary>
+        static float HaloSigma(float bloom) => bloom > 0f ? Stage.Tone.CaptionBloomSigma : 0f;
 
         /// <summary>Value-gated: an endpoint (0, 1, an exact rest) is written exactly; a move under the gate writes nothing.</summary>
         static void WriteFloat(FloatSignal s, float v, float eps)
@@ -1029,7 +1048,9 @@ public static partial class Verse
         }
 
         /// <summary>The beat period from the grid's own index edges (one effect run per beat, while the visualizer clock runs):
-        /// what the count-in and the echo count in. Without a grid it stays 0 and both fall back to 500 ms.</summary>
+        /// what the count-in and the echo count in. Without a grid it stays 0 and both fall back to 500 ms. The edges are
+        /// timed on the wall clock and the period is used against MEDIA time, so it is scaled by the media clock's content
+        /// rate (a 1.5× podcast beat is 1.5× longer in media ms).</summary>
         void OnBeat()
         {
             if (_slab is not { } slab) return;
@@ -1037,16 +1058,26 @@ public static partial class Verse
             long t = FrameTime.NowMs;
             if (_lastBeat != int.MinValue && b == _lastBeat + 1)
             {
-                float d = t - _lastBeatWallMs;
+                float d = (float)((t - _lastBeatWallMs) * Math.Max(0.25, _clock.ContentRate));
                 if (d is > 200f and < 2000f) _beatMs = _beatMs <= 0f ? d : _beatMs + (d - _beatMs) * 0.25f;
             }
             _lastBeat = b;
             _lastBeatWallMs = t;
         }
 
+        /// <summary>A paused seek (the host's position report moving while paused) re-resolves the view once, and so does the
+        /// pause itself (the still, lit picture lands) — no timer polls a paused face. Playing, the ticker / one-shot wake
+        /// own the clock, so a report is ignored here (one compare, no allocation).</summary>
+        void OnPausedSeek()
+        {
+            _ = Playback.PositionMs.Value;
+            if (!_timed.Value || Playback.IsPlaying.Value) return;
+            _tick();
+        }
+
         /// <summary>The motion-demand child: the paced per-frame ticker while a lane moves, a one-shot wake at the next media
-        /// instant otherwise, a 4 Hz re-check while paused (a seek still lands). Its own component, so a lane flip re-renders
-        /// only it.</summary>
+        /// instant otherwise, and while paused nothing but a signal effect on the position (a seek still lands). Its own
+        /// component, so a lane flip re-renders only it.</summary>
         sealed class Driver(Host host) : Component
         {
             public override Element Render()
@@ -1055,7 +1086,7 @@ public static partial class Verse
                 bool playing = Playback.IsPlaying.Value;
                 var wake = host._wake.Value;
                 UseSignalEffect(host._onBeat);
-                UseInterval(host._tick, 250f, enabled: timed && !playing);
+                UseSignalEffect(host._onPausedSeek);
                 Element? child = !timed || !playing ? null
                     : live ? Embed.Comp(() => new Frames(host._tick)) with { Key = "verse:frames" }
                     : wake.DelayMs >= 0f ? Embed.Comp(() => new Waker(host)) with { Key = "verse:wake" }

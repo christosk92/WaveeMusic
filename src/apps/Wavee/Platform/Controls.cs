@@ -813,8 +813,10 @@ public static partial class Controls
             UseSignalEffect(() =>
             {
                 // Parked (a hidden KeepAlive pane, a minimized or suspended window): read ONLY the activation, so there is
-                // no frame subscription and no wake — the pause UseInterval used to give these clocks for free.
-                if (!active.Value) return;
+                // no frame subscription and no wake — the pause UseInterval used to give these clocks for free. The park
+                // drops the subscription, so the first run after a reactivation only re-subscribes: ticking there would
+                // run inline with the stale frame time from before the park.
+                if (!active.Value) { _subscribed = false; return; }
                 _ = frame.Value;                                            // the subscription is the request for frames
                 if (!_subscribed) { _subscribed = true; return; }           // the first subscribing run: subscribe, never tick
                 Reactive.Untrack(tick);

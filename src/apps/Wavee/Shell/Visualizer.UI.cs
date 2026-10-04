@@ -21,10 +21,13 @@
 // THE PALETTE. SurfaceCore derives the cover's palette (`StageCtx.BasePalette`); the clock owns what faces see: the
 // slab's `A/B/C/Deep` cross-fade from the colours CAPTURED at a change (600 ms on a track change, 900 ms / 1.4 s calm on
 // a moment), `FadeFrom/FadeTo/FadeMix` carry the same fade to gradient nodes that bind `GradientTo/GradientMix`, and on
-// landing `PaletteEpoch` bumps and `StageCtx.Palette` (the value a face builds with) is republished. Nothing here decides:
-// the tick's inputs and every constant come from `Visualizer` (CORE) and `Stage` (CORE).
+// landing `PaletteEpoch` bumps and `StageCtx.Palette` (the value a face builds with) is republished. A face gradient on
+// `MomentMix` follows MOMENTS only: a track fade rests it at 0 at its start (solid fills cross-fade on a track, the
+// gradient lands with the republished palette). Nothing here decides: the tick's inputs and every constant come from
+// `Visualizer` (CORE) and `Stage` (CORE).
 
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
@@ -86,8 +89,9 @@ public static partial class Visualizer
         public readonly Signal<ColorF> A = new(s_seed.A), B = new(s_seed.B), C = new(s_seed.C), Deep = new(s_seed.Deep);
         /// <summary>Bumps when a palette fade LANDS (gradient nodes keyed by it remount on the new colours, never per tick).</summary>
         public readonly Signal<int> PaletteEpoch = new(0);
-        /// <summary>0 → 1 across a MOMENT's fade, 0 at rest (a gradient node: Gradient = the palette it was built with,
-        /// GradientTo = its <c>Rotated()</c>, GradientMix = this; the epoch remount lands it).</summary>
+        /// <summary>0 → 1 across a MOMENT's fade, 0 at rest — and back to 0 when a track fade starts, so it never freezes
+        /// part-way (a gradient node: Gradient = the palette it was built with, GradientTo = its <c>Rotated()</c>,
+        /// GradientMix = this; the epoch remount lands it).</summary>
         public readonly FloatSignal MomentMix = new(0f);
         /// <summary>Any fade (a track change or a moment): Gradient = <see cref="FadeFrom"/>, GradientTo = <see cref="FadeTo"/>,
         /// GradientMix = <see cref="FadeMix"/> (0 → 1; 1 at rest, so <see cref="FadeTo"/> shows). From/To change once per
@@ -112,10 +116,16 @@ public static partial class Visualizer
 
         // ── series ──
         /// <summary>The scope line: 512 samples 0..1 (0.5 = silence) for a Cartesian SeriesEl; the polar ring: 256 radius
-        /// fractions (SeriesShape.Polar). Filled only while a mounted face reads them; <see cref="ScopeLive"/> says the
-        /// engine's tap (true) or the spectral synthesis (false) drew them.</summary>
+        /// fractions (SeriesShape.Polar). Filled only while a mounted face reads them (<see cref="ScopeReaders"/>);
+        /// <see cref="ScopeLive"/> says the engine's tap (true) or the spectral synthesis (false) drew them.</summary>
         public readonly SeriesSource Scope = new(Oscilloscope.Points), ScopeRadial = new(Oscilloscope.RadialPoints);
         public readonly Signal<bool> ScopeLive = new(false);
+        int _scopeReaders;
+        /// <summary>How many MOUNTED faces read <see cref="Scope"/> / <see cref="ScopeRadial"/> off this slab
+        /// (<see cref="UseScopeReader"/>). A plain count, never a signal: the clock Peeks it per tick (no re-lease, no render).</summary>
+        public int ScopeReaders => _scopeReaders;
+        internal void AddScopeReader() => _scopeReaders++;
+        internal void RemoveScopeReader() => _scopeReaders = Math.Max(0, _scopeReaders - 1);
         public readonly SeriesSource AuroraLow = new(Aurora.Points), AuroraMid = new(Aurora.Points), AuroraHigh = new(Aurora.Points);
         /// <summary>The WHOLE song's kind-237 waveform as 360 buckets — static per track (empty ⇒ all zeros).</summary>
         public readonly SeriesSource TimelineLow = new(Timeline.Points), TimelineMid = new(Timeline.Points), TimelineHigh = new(Timeline.Points);
@@ -167,6 +177,19 @@ public static partial class Visualizer
 
     static void SetSlabColour(Signal<ColorF> s, ColorF v) { if (!v.Equals(s.Peek())) s.Value = v; }
 
+    /// <summary>Count the calling component as a reader of <paramref name="slab"/>'s scope series while
+    /// <paramref name="reads"/> holds (and it stays mounted): the clock fills them only while one exists
+    /// (<see cref="Demand.PullsScope"/>). The MOUNT SITES call it (the stage's FaceHost for a Scope/Flow face, a LIVE
+    /// gallery tile of those kinds); a face builder never does, it is not a component and would count twice. Call it
+    /// unconditionally, in stable hook order (<c>reads</c> is the effect's dependency).</summary>
+    public static void UseScopeReader(RenderContext rc, Slab slab, bool reads, [CallerFilePath] string? __hf = null, [CallerLineNumber] int __hl = 0)
+        => rc.UseEffect(() =>
+        {
+            if (!reads) return null;
+            slab.AddScopeReader();
+            return slab.RemoveScopeReader;
+        }, DepKey.From(reads), __hf, __hl);
+
     // ══ 2. THE CLOCK ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Mounted ONCE by Stage.UI.cs's SurfaceCore (zero-size), inside its <c>Ctx.Provide(Stage.StageContext, …)</c>.
@@ -200,9 +223,11 @@ public static partial class Visualizer
         Palette.Fade _fade;
         bool _paletteSeeded, _fadeSignalsPending;
         Moments.Schedule _moments;
-        // the scope: pulled only while a mounted face reads it (the lease effect decides)
-        bool _pullScope, _scopeFresh, _scopeLive, _onsetPrimed;
-        long _lastSequence, _lastOnsetSequence, _timelineKey = -1;
+        // the scope: filled only while a mounted face reads it (Slab.ScopeReaders, peeked per tick), the synthesis at most
+        // at the spectrum's publish rate; the Aurora ribbons only while something can show them
+        bool _scopeFresh, _scopeLive, _onsetPrimed, _ribbons;
+        long _lastSequence, _lastOnsetSequence, _timelineKey = -1, _lastSynthMs;
+        uint _timelineScope;
         float _scopeAgc, _scopeT;
 
         public Clock()
@@ -259,18 +284,19 @@ public static partial class Visualizer
         sealed class VisualizerFrames(Action tick) : Controls.FrameTicker(tick, paceable: true);
 
         /// <summary>The ONE lease: the tier the VISIBLE consumers need — the selected face in Visualizer mode raised to the
-        /// open gallery's preview tier, the base Field's breath otherwise (V-U55) — under the stage/playing/owner/supported/
-        /// occluded/reduced gates (Visualizer.Demand.For). Spectrum implies level (the engine's AcquireSpectrum does that);
-        /// Scope is the spectrum lease plus the per-tick waveform pull.</summary>
+        /// shown gallery's preview tier, the base Field's breath otherwise (V-U55) — under the stage/playing/owner/supported/
+        /// occluded/reduced gates (Visualizer.Demand.For). "Shown" is <c>StageCtx.GalleryShown</c>: open AND the layout has
+        /// room (the gallery's own mount gate minus the idle chrome, which would re-lease on every idle flip). Spectrum
+        /// implies level (the engine's AcquireSpectrum does that); Scope is the spectrum lease plus the per-tick waveform
+        /// pull, which the tick gates on a mounted reader (Demand.PullsScope).</summary>
         Action? Lease()
         {
             var ctx = _ctx!;
-            bool viz = ctx.Mode.Value == Stage.Mode.Visualizer, gallery = ctx.GalleryOpen.Value;
+            bool viz = ctx.Mode.Value == Stage.Mode.Visualizer, gallery = ctx.GalleryShown.Value;
             var kind = ctx.Kind.Value;
             var tier = Demand.For(kind, viz, gallery, Shell.Ui.ImmersiveLyrics.Value, Playback.IsPlaying.Value,
                                   Playback.OwnerSignal.Value == Playback.Owner.Us, Playback.Audio.Supported.Value,
                                   _hooks?.WindowOccluded?.Value ?? false, Design.Reduced);
-            _pullScope = Demand.PullsScope(tier, kind, viz, gallery);
             ctx.Slab.LastTier = tier;
             Stage.Diagnostics.NoteLease(tier);
             if (tier == Tier.None) return null;
@@ -316,11 +342,12 @@ public static partial class Visualizer
             if (!t.Knows(TrackFields.Audio)) Entities.Ensure(t, TrackFields.Audio);
         }
 
-        /// <summary>The whole-song Timeline series, ONCE per (track, payload): resampled when the waveform edge lands, into
-        /// the live slab and the poster slab — an effect, not the tick, so a paused stage shows the song too.</summary>
+        /// <summary>The whole-song Timeline series, ONCE per (scope, track, payload write): resampled when the waveform edge
+        /// lands, into the live slab and the poster slab — an effect, not the tick, so a paused stage shows the song too. The
+        /// key carries the parent's edge VERSION (bumped by every write), so a same-length replacement re-reads too.</summary>
         void OnTimeline()
         {
-            _ = Entities.ScopeEpoch.Value;                    // FIRST: a scope switch re-points the table read below
+            uint scope = Entities.ScopeEpoch.Value;           // FIRST: a scope switch re-points the table read below
             var cur = Playback.Current.Value;
             var edges = Entities.Current.Edges;
             _ = edges.TrackWaveform.Changed.Value;
@@ -329,10 +356,10 @@ public static partial class Visualizer
             if (cur.Kind == EntityKind.Track && !cur.IsNone && edges.TrackWaveform.State(cur.Slot) == EdgeState.Complete)
             {
                 bands = edges.TrackWaveform.Payload(cur.Slot);
-                key = ((long)cur.Slot << 32) | (uint)bands.Length;
+                key = ((long)cur.Slot << 32) | edges.TrackWaveform.Version(cur.Slot);
             }
-            if (key == _timelineKey || _ctx is not { } ctx) return;
-            _timelineKey = key;
+            if ((key == _timelineKey && scope == _timelineScope) || _ctx is not { } ctx) return;
+            _timelineKey = key; _timelineScope = scope;
             Timeline.Resample(bands, _tlLow, _tlMid, _tlHigh);
             foreach (var slab in new[] { ctx.Slab, ctx.PosterSlab })
             {
@@ -432,19 +459,22 @@ public static partial class Visualizer
                 if (t.IsValid && t.Knows(TrackFields.Audio)) tempo = t.Tempo;
             }
             // every preference is a PEEK of a context signal (O8) — never Prefs.* on the tick
-            bool playing = Playback.IsPlaying.Peek(), calm = ctx.Calm.Peek();
+            bool playing = Playback.IsPlaying.Peek(), calm = ctx.Calm.Peek(), viz = ctx.Mode.Peek() == Stage.Mode.Visualizer;
             float sensitivity = ctx.Sensitivity.Peek();
+            // the Aurora ribbon arrays: only while an Aurora stage face or the shown gallery could put them on screen
+            _ribbons = viz && (Catalog.Successor(ctx.Kind.Peek()) == Kind.Aurora || ctx.GalleryShown.Peek());
             var input = new Input(playing, calm, sensitivity, _haveLive, info.Muted, rms, pos, dur, haveBands, haveBeats, tempo,
-                                  ctx.Mode.Peek() == Stage.Mode.Visualizer, HaveLevel: haveLevel, Flux: info.Flux, Onset: onset, OnsetStrength: info.OnsetStrength);
+                                  viz, HaveLevel: haveLevel, Flux: info.Flux, Onset: onset, OnsetStrength: info.OnsetStrength, Ribbons: _ribbons);
             _pending = _model.Tick(in input, _db, bands, beats, dt);
 
             // a moment: on the 8th bar's downbeat (or a face's force), rotate the live palette and fade to it
             if (_paletteSeeded && _moments.Step(_pending.Bar, _pending.DownbeatEdge, ctx.Moments.Peek(), Moments.ForcedSequence))
                 BeginFade(_live.Rotated(), Moments.FadeMsFor(calm), moment: true);
 
-            // the scope: the engine's window on a fresh publish, else (no tap: Connect, --fake) the spectral synthesis
+            // the scope, while a mounted face reads it: the engine's window on a fresh publish, else (no tap: Connect,
+            // --fake) the spectral synthesis — on a fresh publish too, else at most once per Oscilloscope.SynthesizeMs
             _scopeFresh = false;
-            if (_pullScope)
+            if (Demand.PullsScope(slab.LastTier, viz, slab.ScopeReaders))
             {
                 if (_haveLive)
                 {
@@ -460,8 +490,12 @@ public static partial class Visualizer
                 else
                 {
                     if (playing) _scopeT += dt;
-                    Oscilloscope.Synthesize(_model.Level, _scopeT, _scopeLine, _scopeRadial);
-                    _scopeFresh = true; _scopeLive = false;
+                    if (fresh || now - _lastSynthMs >= Oscilloscope.SynthesizeMs)
+                    {
+                        _lastSynthMs = now;
+                        Oscilloscope.Synthesize(_model.Level, _scopeT, _scopeLine, _scopeRadial);
+                        _scopeFresh = true; _scopeLive = false;
+                    }
                 }
             }
             if (Context.Runtime is { } rt) rt.Batch(_write); else WriteCore();
@@ -483,7 +517,7 @@ public static partial class Visualizer
             if (s.Downbeat.Peek() != f.Downbeat) s.Downbeat.Value = f.Downbeat;
             if (s.Section.Peek() != f.Section) s.Section.Value = f.Section;
             if (s.Source.Peek() != f.Source) { s.Source.Value = f.Source; Stage.Diagnostics.NoteSource(f.Source); }
-            Copy(m.AuroraLow, s.AuroraLow); Copy(m.AuroraMid, s.AuroraMid); Copy(m.AuroraHigh, s.AuroraHigh);
+            if (_ribbons) { Copy(m.AuroraLow, s.AuroraLow); Copy(m.AuroraMid, s.AuroraMid); Copy(m.AuroraHigh, s.AuroraHigh); }
             if (_scopeFresh)
             {
                 Copy(_scopeLine, s.Scope); Copy(_scopeRadial, s.ScopeRadial);
@@ -498,10 +532,14 @@ public static partial class Visualizer
                 if (!next.Equals(s.Accent.Peek())) s.Accent.Value = next;
                 if (p >= 1f) _fadeStartMs = 0;
             }
-            // the palette fade: the gradient channels' endpoints once at the start (with the mix reset), then the lerp
+            // the palette fade: the gradient channels' endpoints once at the start (with the mix reset), then the lerp. A
+            // TRACK fade also rests MomentMix at 0 in this batch: the tick drives it only through a moment's fade, so a
+            // track change landing mid-moment would freeze it part-way (gradients follow moments only; solid fills carry
+            // the track's cross-fade and the gradient lands with the republished palette)
             if (_fadeSignalsPending)
             {
                 s.FadeFrom.Value = _fade.From; s.FadeTo.Value = _fade.To; Set(s.FadeMix, 0f);
+                if (!_fade.Moment) Set(s.MomentMix, 0f);
                 _fadeSignalsPending = false;
             }
             if (_fade.Active)

@@ -186,8 +186,9 @@ public static partial class Visualizer
 
             /// <summary>Fraction of the next step already elapsed — the drawing interpolates prev → current by it.</summary>
             public float Alpha => (float)(_acc / StepSec);
-            /// <summary>The time the drawn picture shows (one step behind the physics, like the interpolated bodies).</summary>
-            public float Time => (float)(_stepT + _acc - StepSec);
+            /// <summary>The time the drawn picture shows (one step behind the physics, like the interpolated bodies); 0 until
+            /// the first step has run, never negative.</summary>
+            public float Time => (float)Math.Max(0.0, _stepT + _acc - StepSec);
             public int BandOf(int i) => _band[i];
 
             /// <summary>Core <paramref name="k"/> (0/1) in normalised face units at time <paramref name="t"/> seconds.</summary>

@@ -285,6 +285,67 @@ public class VisualizerFluentGeometryTests
     }
 
     [Fact]
+    public void Beat_ruler_marks_a_three_beat_bar_from_the_phase_over_its_span()
+    {
+        Assert.Equal(0, Geo.BeatInBar(0f, 0f, 3));
+        Assert.Equal(1, Geo.BeatInBar(1f / 3f, 0f, 3));
+        Assert.Equal(2, Geo.BeatInBar(2f / 3f + 0.4f / 3f, 0.4f, 3));
+        Assert.True(Geo.IsDownbeat(0, 3, 3));
+        Assert.True(Geo.IsDownbeat(1, -1, 3));
+        Assert.False(Geo.IsDownbeat(0, 4, 3));
+        Assert.Equal(Geo.IsDownbeat(2, 2), Geo.IsDownbeat(2, 2, Geo.BeatsPerBar));
+    }
+
+    /// <summary>Feeds a BarCounter a played grid of <paramref name="beatsPerBar"/>-beat bars, beat by beat, the way the
+    /// slab moves: the bar index and the bar phase at each beat's start.</summary>
+    static Geo.BarCounter Play(int beatsPerBar, int beats, int firstBeat = 0)
+    {
+        var c = new Geo.BarCounter();
+        for (int b = firstBeat; b < firstBeat + beats; b++) c.Observe(b / beatsPerBar, b, (b % beatsPerBar) / (float)beatsPerBar);
+        return c;
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(6)]
+    [InlineData(7)]
+    public void Bar_counter_learns_the_real_bar_from_two_crossed_downbeats(int beatsPerBar)
+    {
+        var c = Play(beatsPerBar, 3 * beatsPerBar + 2);
+        Assert.Equal(beatsPerBar, c.Span);
+        int beat = 3 * beatsPerBar + 1;                              // the second beat of the fourth bar
+        Assert.Equal(1, c.BeatInBar(beat, 1f / beatsPerBar, 0f));
+        Assert.True(Geo.IsDownbeat(c.BeatInBar(beat, 1f / beatsPerBar, 0f), beatsPerBar - 1, c.Span));
+    }
+
+    [Fact]
+    public void Bar_counter_starts_at_four_and_a_seek_drops_the_anchor_but_keeps_the_span()
+    {
+        var fresh = new Geo.BarCounter();
+        Assert.Equal(Geo.BeatsPerBar, fresh.Span);
+        Assert.Equal(2, fresh.BeatInBar(10, 0.5f, 0f));               // no edge seen yet: the phase over 4 beats
+
+        var c = Play(3, 10);
+        Assert.Equal(3, c.Span);
+        c.Observe(40, 121, 0.66f);                                    // a seek into the middle of bar 40: not a crossing
+        Assert.Equal(3, c.Span);
+        Assert.Equal(2, c.BeatInBar(121, 2f / 3f, 0f));              // un-anchored: the phase over the learned span
+        c.Observe(41, 123, 0f);                                       // the next downbeat crossed re-anchors
+        Assert.Equal(0, c.BeatInBar(123, 0f, 0f));
+        Assert.Equal(1, c.BeatInBar(124, 1f / 3f, 0f));
+        Assert.Equal(3, c.Span);                                      // one anchored edge never re-measures
+    }
+
+    [Fact]
+    public void Bar_counter_ignores_a_gap_longer_than_any_bar()
+    {
+        var c = Play(4, 9);
+        c.Observe(3, 9 + Geo.MaxBeatsPerBar + 4, 0f);                 // bar 2 → 3 after far too many beats
+        Assert.Equal(4, c.Span);
+    }
+
+    [Fact]
     public void Ruler_ticks_fade_away_from_the_playhead()
     {
         Assert.Equal(1f, Geo.TickFade(0f, Geo.TickSpan));

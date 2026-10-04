@@ -74,15 +74,22 @@ public static partial class Visualizer
     }
 
     /// <summary>Mounts the face's ticker only while it can move: playing and the window visible (the clock's own gates;
-    /// reduced motion never builds a host — the face binds its rest pose instead). Paused ⇒ unmounted ⇒ no frame wake.</summary>
+    /// reduced motion never builds a host — the face binds its rest pose instead). Paused ⇒ unmounted ⇒ no frame wake.
+    /// Each tick runs inside ONE <c>Runtime.Batch</c> (the clock's TickCore discipline): a sim that writes an instance
+    /// publish and a clock signal or two still costs one frame request.</summary>
     sealed class SimHost(Action tick) : Component
     {
+        Action? _batched;
+
         public override Element Render()
         {
             var hooks = UseContext(InputHooks.Current);
             bool run = Playback.IsPlaying.Value && !(hooks.WindowOccluded?.Value ?? false);
-            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = run ? [Embed.Comp(() => new SimFrames(tick))] : [] };
+            var batched = _batched ??= Batched;
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = run ? [Embed.Comp(() => new SimFrames(batched))] : [] };
         }
+
+        void Batched() { if (Context.Runtime is { } rt) rt.Batch(tick); else tick(); }
     }
 
     /// <summary>A face simulation's per-frame tick, paceable by the GPU governor; named for the <c>[wake]</c> census.</summary>
@@ -108,7 +115,7 @@ public static partial class Visualizer
     /// blur). No sim: the thunk reads the bands and peaks, so reduced motion is the same face.</summary>
     public static Element ClassicFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = Ink.IsDark;
+        bool pv = spec.Preview, dark = pal.Dark;
         int cols = pv ? 16 : 28, rows = pv ? 9 : 18;
         float k = pv ? 1f : SimScale(in spec);
         float gx = (pv ? 3f : 8f) * k, gy = (pv ? 2f : 5f) * k;
@@ -181,7 +188,7 @@ public static partial class Visualizer
     /// speed, colours A/B/C by star. Additive on dark. Preview and reduced: the stars hold still, length by the level.</summary>
     public static Element WarpFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = Ink.IsDark, live = !pv && !Design.Reduced;
+        bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Warp.PreviewCount : GpuProfile.IsWeak ? Particles.Warp.WeakCount : Particles.Warp.Count;
         var sim = new WarpSim(slab, dark, count, spec.W, spec.H, spec.H * (pv ? 0.5f : 0.46f), pv ? 0.3f : 1f);
         var kids = new List<CanvasChild>(2)
@@ -227,8 +234,8 @@ public static partial class Visualizer
         int n = pv ? Particles.Tunnel.PreviewFrames : Particles.Tunnel.Frames;
         float m = MathF.Min(spec.W, spec.H), side = 1.6f * m, cx = spec.W * 0.5f, cy = spec.H * (pv ? 0.5f : 0.46f);
         float minSide = (pv ? 2f : 6f) * (pv ? 1f : SimScale(in spec)), border = MathF.Max(pv ? 1f : 1.5f, 0.006f * side);
-        float arm = Ink.IsDark ? 1f : 0.8f;
-        var sim = new TunnelSim(slab, Ink.IsDark);
+        float arm = pal.Dark ? 1f : 0.8f;
+        var sim = new TunnelSim(slab, pal.Dark);
         var phase = sim.Phase; var spin = sim.Spin; var level = slab.Level;
         var kids = new List<CanvasChild>(n + 1);
         for (int k = n - 1; k >= 0; k--)
@@ -272,7 +279,7 @@ public static partial class Visualizer
     /// and the halo a darker tint (coloured glass, not lamps). Preview / reduced: the orbs hold their orbit position.</summary>
     public static Element AmbienceFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = Ink.IsDark, live = !pv && !Design.Reduced;
+        bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Ambience.PreviewCount : GpuProfile.IsWeak ? Particles.Ambience.WeakCount : Particles.Ambience.Count;
         var sim = new AmbienceSim(slab, dark, count, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H), pv ? 1.4f : 1f);
         var kids = new List<CanvasChild>(2)
@@ -315,7 +322,7 @@ public static partial class Visualizer
     {
         bool pv = spec.Preview, live = !pv && !Design.Reduced;
         int parts = pv ? Particles.Kaleido.PreviewParts : Particles.Kaleido.Parts, copies = pv ? Particles.Kaleido.PreviewCopies : Particles.Kaleido.Copies;
-        var sim = new KaleidoSim(slab, Ink.IsDark, parts, copies, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H) * (pv ? 1.2f : 1f));
+        var sim = new KaleidoSim(slab, pal.Dark, parts, copies, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H) * (pv ? 1.2f : 1f));
         var kids = new List<CanvasChild>(2)
         {
             new CanvasChild(0f, 0f, SimField(in spec, SpriteKernel.Capsule, PaintBlend.SrcOver, live ? Prop.Of(() => sim.Src.Current) : Prop.Of(() => sim.Bound()))),
@@ -355,7 +362,7 @@ public static partial class Visualizer
     /// ribbon on light). Preview: the line alone. Weak: no glow (no blur layer).</summary>
     public static Element ScopeFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = Ink.IsDark, glow = !pv && !GpuProfile.IsWeak;
+        bool pv = spec.Preview, dark = pal.Dark, glow = !pv && !GpuProfile.IsWeak;
         float k = SimScale(in spec), x0 = spec.W * 0.06f, w = spec.W * 0.88f, mid = spec.H * 0.48f, amp = spec.H * (pv ? 0.38f : 0.2f);
         var scope = slab.Scope;
         var kids = new List<CanvasChild>(2);
@@ -420,12 +427,12 @@ public static partial class Visualizer
                 }));
             return FaceFrame(spec, kids);
         }
-        var sim = new DriftSim(slab, Ink.IsDark, ring);
+        var sim = new DriftSim(slab, pal.Dark, ring);
         var dt = sim.Dt; var time = sim.Time; var src = ring.Src;
         float pivotY = cy - spec.H * 0.5f;
         kids.Add(new CanvasChild(0f, 0f, new BoxEl
         {
-            Width = spec.W, Height = spec.H, HitTestVisible = false,
+            Width = spec.W, Height = spec.H, HitTestVisible = false, ClipToBounds = true,   // the trail covers the clip
             Feedback = new FeedbackSpec(Particles.Feedback.DriftDecay, GpuProfile.IsWeak ? 0.25f : 0.5f, Ink.Veil with { A = 0f }),
             FeedbackTransform = Prop.Of(() => Particles.Feedback.Drift(slab.Mid.Value, slab.Kick.Value, dt.Value, 0f, pivotY)),
             FeedbackDecay = Prop.Of(() => Particles.Feedback.Decay(Particles.Feedback.DriftDecay, dt.Value)),

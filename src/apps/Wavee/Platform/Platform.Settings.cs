@@ -41,8 +41,8 @@ public static partial class Platform
         // ── the fullscreen stage (docs/plans/wavee/fullscreen-flagship-implementation.md §2.11) — all written through Prefs.Stage ──
         /// <summary>Stage.Mode as an int (0 Lyrics · 1 Visualizer · 2 Queue · 3 Artist); unknown ⇒ Lyrics.</summary>
         public static readonly SettingKey<int> StageMode = new("stage.mode", 0);
-        /// <summary>Visualizer.Kind as an int (append-only, 0 … 25); a first-generation face (0-7 but Aurora) migrates to its
-        /// successor and anything unknown is Bloom (9) — <c>Visualizer.Catalog.Coerce</c>.</summary>
+        /// <summary>Visualizer.Kind as an int (append-only, 0 … <c>Visualizer.Catalog.Count</c> − 1); a first-generation
+        /// face (0-7 but Aurora) migrates to its successor and anything unknown is Bloom (9) — <c>Visualizer.Catalog.Coerce</c>.</summary>
         public static readonly SettingKey<int> StageVisualizer = new("stage.visualizer", 9);
         /// <summary>Band gain, clamped [0.3, 1.5].</summary>
         public static readonly SettingKey<float> StageSensitivity = new("stage.sensitivity", 1f);

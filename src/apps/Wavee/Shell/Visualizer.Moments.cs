@@ -13,7 +13,7 @@
 // moves the bar, it is not an edge) whose bar is a multiple of 8. The bars come from the beat grid's downbeat marks, else
 // every 4th beat of the grid or the tempo; without either there are no bars and so no moments (honest). A forced moment
 // lands at once; the scheduled one after it is skipped when it would follow within 8 bars, so the palette never turns
-// twice in a phrase.
+// twice in a phrase. Only a forced moment holds one back: a scheduled bar re-crossed after a backward seek turns again.
 //
 // The CLOCK owns the fade (Visualizer.Palette.Fade): it captures the slab's current colours, lerps A/B/C/Deep toward the
 // rotated palette, drives `Slab.MomentMix` 0 → 1, and on landing bumps `Slab.PaletteEpoch` and republishes
@@ -48,27 +48,30 @@ public static partial class Visualizer
         public struct Schedule
         {
             long _forcedSeen;
-            int _lastBar;
-            bool _primed, _any;
+            int _forcedBar;
+            bool _primed, _forcedLive;
 
             /// <summary>One tick: true when a moment fires now. <paramref name="forcedSequence"/> is
             /// <see cref="ForcedSequence"/>; a request made before the first step (a stale one) is ignored. Disabled
-            /// (<c>StageMoments</c> off) nothing fires and a pending request is dropped.</summary>
+            /// (<c>StageMoments</c> off) nothing fires and a pending request is dropped. Only a FORCED moment holds the next
+            /// scheduled one back: a scheduled moment re-crossed after a backward seek turns again, and a seek back before
+            /// the forced bar forgets it.</summary>
             public bool Step(int bar, bool downbeatEdge, bool enabled, long forcedSequence)
             {
                 if (!_primed) { _primed = true; _forcedSeen = forcedSequence; }
                 bool forced = forcedSequence != _forcedSeen;
                 _forcedSeen = forcedSequence;
+                if (_forcedLive && bar < _forcedBar) _forcedLive = false;        // rewound past the forced moment
                 if (!enabled) return false;
-                if (forced) { _lastBar = bar; _any = true; return true; }
+                if (forced) { _forcedBar = bar; _forcedLive = true; return true; }
                 if (!Scheduled(bar, downbeatEdge)) return false;
-                if (_any && bar >= _lastBar && bar - _lastBar < Bars) return false;   // a forced moment just turned it
-                _lastBar = bar; _any = true;
+                if (_forcedLive && bar - _forcedBar < Bars) return false;        // a forced moment just turned it
+                _forcedLive = false;
                 return true;
             }
 
             /// <summary>A new track: the next scheduled moment is not held back by the last track's.</summary>
-            public void Reset() => _any = false;
+            public void Reset() => _forcedLive = false;
         }
     }
 }

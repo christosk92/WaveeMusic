@@ -223,6 +223,67 @@ public class VerseRulesTests
         Assert.Equal(0, Verse.Sections.EchoGhost(m, 99, 4));
     }
 
+    [Fact]
+    public void A_chorus_longer_than_the_block_cap_is_still_all_chorus()
+    {
+        const int Len = 16;
+        Assert.True(Len > Verse.Sections.MaxBlockLines);
+        var chorus = Enumerable.Range(0, Len).Select(i => "chorus line " + i).ToArray();
+        var texts = new List<string> { "intro a", "intro b" };
+        texts.AddRange(chorus);
+        texts.AddRange(["verse x", "verse y"]);
+        texts.AddRange(chorus);
+        var m = Verse.Sections.Detect(VerseKit.Texts(texts.ToArray()));
+        int first = 2, second = 2 + Len + 2;
+        for (int k = 0; k < Len; k++)
+        {
+            Assert.Equal(Verse.Part.Chorus, m.Parts[first + k]);
+            Assert.Equal(Verse.Part.Chorus, m.Parts[second + k]);
+            Assert.Equal(1, m.Instance[first + k]);
+            Assert.Equal(2, m.Instance[second + k]);
+            Assert.Equal(first + k, m.EchoOf[second + k]);
+        }
+        Assert.True(m.IsChorusEntry(first));
+        Assert.True(m.IsChorusEntry(second));
+        Assert.Equal(Verse.Part.Verse, m.Parts[0]);
+        Assert.Equal(Verse.Part.Verse, m.Parts[first + Len]);
+    }
+
+    [Fact]
+    public void A_song_at_the_line_cap_still_finds_every_chorus()
+    {
+        var texts = new List<string>();
+        for (int r = 0; r < 50; r++)
+        {
+            for (int v = 0; v < 4; v++) texts.Add("verse " + r + " line " + v);
+            texts.AddRange(["hold on", "dont let go", "into the night", "we run"]);
+        }
+        Assert.Equal(Verse.Sections.MaxLines, texts.Count);
+        var m = Verse.Sections.Detect(VerseKit.Texts(texts.ToArray()));
+        for (int r = 0; r < 50; r++)
+        {
+            int at = r * 8 + 4;
+            Assert.True(m.IsChorusEntry(at));
+            Assert.Equal(r + 1, m.Instance[at]);
+            Assert.Equal(Verse.Part.Chorus, m.Parts[at + 3]);
+            Assert.NotEqual(Verse.Part.Chorus, m.Parts[r * 8]);
+        }
+        // past the cap every line is verse (no search at all)
+        texts.Add("one more line");
+        Assert.All(Verse.Sections.Detect(VerseKit.Texts(texts.ToArray())).Parts, p => Assert.Equal(Verse.Part.Verse, p));
+    }
+
+    [Fact]
+    public void Vocables_are_one_list_for_the_count_and_the_chorus_compare()
+    {
+        foreach (var v in new[] { "ooh", "yeah", "woah", "whoa", "hey" })
+        {
+            Assert.True(Verse.Memory.IsStop(v));
+            Assert.Equal("hold on", Verse.Sections.Normalise("Hold on, " + v));
+        }
+        Assert.Null(Verse.Memory.Normalise("Yeah!"));
+    }
+
     // ── memory ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
     static Verse.Song Song(params string[] lines)

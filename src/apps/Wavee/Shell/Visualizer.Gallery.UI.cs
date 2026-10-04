@@ -14,7 +14,8 @@
 // to the stage slab) when it is the selected face, the one under the pointer or the keyboard cursor, or one of the
 // selected face's neighbours on a strong GPU — at most six (Visualizer.Catalog.LodFor). Every other tile is a POSTER: the
 // same face bound to the stage's poster slab, which nothing ticks — a still, palette-coloured rest pose, never a dead
-// floor, zero writes. Each tile decides for itself in an effect and re-renders only when ITS verdict flips.
+// floor, zero writes. Each tile decides for itself in an effect and re-renders only when ITS verdict flips. A hover
+// promotes only after the pointer RESTS on a tile (GalleryState.HoverPromoteMs): a sweep across the grid mounts nothing.
 //
 // The tiles bind the slab's A/B/C like the stage faces, so a cover change re-tints in place; a tile re-renders once per
 // LANDED palette fade (the live `StageCtx.Palette`, for the gradient stops a face cannot bind). Ink is stage ink: plate,
@@ -31,6 +32,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -49,10 +51,16 @@ public static partial class Visualizer
     /// (indices into <see cref="Catalog.Shown"/>; −1 = none). One per pane; the tiles read it in their LOD effects.</summary>
     sealed class GalleryState
     {
+        /// <summary>How long the pointer must rest on a tile before its preview goes live (a sweep promotes nothing).</summary>
+        public const float HoverPromoteMs = 120f;
         public readonly Signal<int> Hovered = new(-1), Cursor = new(-1);
         public readonly Signal<bool> Focused = new(false);
-        /// <summary>The tile the live budget follows besides the selection: the hovered one, else the cursor while focused.</summary>
-        public int FocusIndex() => Hovered.Value >= 0 ? Hovered.Value : Focused.Value ? Cursor.Value : -1;
+        /// <summary><see cref="Hovered"/> after <see cref="HoverPromoteMs"/> of quiet — the pane installs its debounce at
+        /// render (before any tile's effect reads it); until then the raw hover.</summary>
+        public IReadSignal<int> Resting;
+        public GalleryState() => Resting = Hovered;
+        /// <summary>The tile the live budget follows besides the selection: the RESTING hover, else the cursor while focused.</summary>
+        public int FocusIndex() { int h = Resting.Value; return h >= 0 ? h : Focused.Value ? Cursor.Value : -1; }
     }
 
     sealed class GalleryPane : Component
@@ -69,6 +77,7 @@ public static partial class Visualizer
             var ctx = UseContext(Stage.StageContext)!;
             var accent = ctx.Accent.Value;
             var state = _state;
+            state.Resting = UseDebouncedValue((IReadSignal<int>)state.Hovered, GalleryState.HoverPromoteMs);   // the same cell every render
             float inner = MathF.Max(TileMinW, p.W - 2f * PadX);
             int cols = Math.Max(2, (int)((inner + TileGap) / (TileMinW + TileGap)));
             float tileW = MathF.Floor((inner - TileGap * (cols - 1)) / cols);
@@ -231,6 +240,11 @@ public static partial class Visualizer
     {
         public sealed record Props(int Index, float W, float PreviewH, GalleryState State);
         readonly Signal<bool> _live = new(false);
+        readonly Action<NodeHandle> _onRealized;
+        NodeHandle _node;
+        bool _cursorShown;
+
+        public GalleryTile() => _onRealized = h => _node = h;
 
         public override Element Render()
         {
@@ -244,7 +258,19 @@ public static partial class Visualizer
                 int selected = Catalog.IndexOf(ctx.Kind.Value);
                 _live.SetIfChanged(Catalog.LodFor(index, selected, state.FocusIndex(), GpuProfile.IsWeak) == Lod.Preview);
             });
+            // the keyboard cursor ARRIVING here brings the tile into the gallery's scroller (minimal move, a 10-DIP gutter;
+            // the scene seam resolves the nearest scrolling ancestor — the pane's ScrollEl)
+            UseSignalEffect(() =>
+            {
+                bool cursor = state.Focused.Value && state.Cursor.Value == index;
+                if (cursor == _cursorShown) return;
+                _cursorShown = cursor;
+                if (cursor && !_node.IsNull && Context.Scene is { } scene)
+                    scene.BringIntoView(_node, float.NaN, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide, TileGapDip);
+            });
             bool live = _live.Value;
+            // a LIVE Scope/Flow tile reads the stage slab's scope series: count it, so the clock fills them only then
+            UseScopeReader(Context, ctx.Slab, live && Catalog.UsesScope(kind));
             var pal = ctx.Palette.Value;                       // the LIVE palette: re-renders once per landed fade (gradient stops)
             var accent = ctx.Accent.Value;
             var kindSig = ctx.Kind;
@@ -256,6 +282,7 @@ public static partial class Visualizer
             var tile = new BoxEl
             {
                 Width = p.W, Direction = 1, Gap = 6f, Padding = new Edges4(6f, 6f, 6f, 8f), Corners = CornerRadius4.All(6f), Fill = Ink.Plate,
+                OnRealized = _onRealized,
                 HoverFill = Ink.PlateHover, BrushTransitionMs = Design.Motion.Fast, Cursor = CursorId.Hand, Role = AutomationRole.Button,
                 BorderWidth = 2f,
                 BorderColor = Prop.Of(() => kindSig.Value == kind ? pickBorder : state.Focused.Value && state.Cursor.Value == index ? cursorBorder : restBorder),
@@ -307,6 +334,9 @@ public static partial class Visualizer
             };
             return ToolTip.Wrap(tile, Loc.Get(TipKey(kind)));
         }
+
+        /// <summary>The gutter kept between a cursor tile brought into view and the scroller's edge (the grid's tile gap).</summary>
+        const double TileGapDip = 10.0;
     }
 
     static readonly Slider.SliderOptions SensitivityOptions = new() { Min = Bands.MinSensitivity, Max = Bands.MaxSensitivity, Step = 0.05f, IsThumbToolTipEnabled = true, ThumbToolTipValueConverter = static v => ((int)MathF.Round(v * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%" };

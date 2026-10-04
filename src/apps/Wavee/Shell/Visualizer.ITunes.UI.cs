@@ -36,7 +36,7 @@ public static partial class Visualizer
     /// only. Preview and reduced: the bodies hold their seeded places, sized by their bands, the cores by the kick.</summary>
     public static Element MagnetoFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = Ink.IsDark, weak = GpuProfile.IsWeak, live = !pv && !Design.Reduced;
+        bool pv = spec.Preview, dark = pal.Dark, weak = GpuProfile.IsWeak, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Magneto.PreviewCount : weak ? Particles.Magneto.WeakCount : Particles.Magneto.Count;
         bool rays = !pv && !weak;
         float m = MathF.Min(spec.W, spec.H), cx = spec.W * 0.5f, cy = spec.H * (pv ? 0.5f : 0.46f);
@@ -129,7 +129,7 @@ public static partial class Visualizer
 
     /// <summary>A feedback box (F6): each advance the last picture turns <c>sin(0.2t)·0.02 + 0.012·Mid</c> and zooms
     /// (1.012, 1.006) + 0.02·Low about a centre that drifts across the face, fading toward the transparent veil (0.05 per
-    /// 60 Hz frame, scaled by dt). The fresh content is the scope's ring (<c>slab.ScopeRadial</c>, Polar, a 1.4 : 1 box)
+    /// 60 Hz frame, scaled by dt). The fresh content is the scope's ring (<c>slab.ScopeRadial</c>, a square Polar ring stretched to 1.4 : 1)
     /// turning slowly, its colour drifting A ↔ C. Weak: the trail at quarter resolution. Preview: Scope's line.
     /// Reduced: the ring alone, still, answering the music.</summary>
     public static Element FlowFace(Slab slab, in Palette pal, in FaceSpec spec)
@@ -142,24 +142,26 @@ public static partial class Visualizer
             kids.Add(new CanvasChild(px0, spec.H * 0.48f - pamp, ScopeLine(slab.Scope, slab.MomentMix, in pal, spec.W * 0.88f, 2f * pamp, 1.6f)));
             return FaceFrame(spec, kids);
         }
-        float side = MathF.Min(spec.W / 1.4f, spec.H) * 0.8f, rw = 1.4f * side, cx = spec.W * 0.5f, cy = spec.H * 0.5f;
+        // a Polar series draws a CIRCLE of min(W, H): the ring is a square series stretched by a static ScaleX of
+        // FlowAspect on its own box (the prototype's 1.4 : 1 ellipse), the turn on the box around it
+        float side = MathF.Min(spec.W / FlowAspect, spec.H) * 0.8f, cx = spec.W * 0.5f, cy = spec.H * 0.5f;
         float thick = MathF.Max(1.5f, 2.5f * SimScale(in spec));
         var radial = slab.ScopeRadial;
         if (!live)
         {
-            kids.Add(new CanvasChild(cx - rw * 0.5f, cy - side * 0.5f, new SeriesEl
+            kids.Add(new CanvasChild(cx - side * 0.5f, cy - side * 0.5f, FlowEllipse(side, new SeriesEl
             {
-                Width = rw, Height = side, Shape = SeriesShape.Polar, Thickness = thick, AntiAlias = true,
+                Width = side, Height = side, Shape = SeriesShape.Polar, Thickness = thick, AntiAlias = true,
                 Color = ColorF.Lerp(pal.A, pal.C, 0.5f), Samples = Prop.Of(() => radial.Current),
-            }));
+            })));
             return FaceFrame(spec, kids);
         }
-        var sim = new FlowSim(slab, Ink.IsDark);
+        var sim = new FlowSim(slab, pal.Dark);
         var dt = sim.Dt; var time = sim.Time;
         float w = spec.W, h = spec.H;
         kids.Add(new CanvasChild(0f, 0f, new BoxEl
         {
-            Width = w, Height = h, HitTestVisible = false,
+            Width = w, Height = h, HitTestVisible = false, ClipToBounds = true,   // the trail covers the clip
             Feedback = new FeedbackSpec(Particles.Feedback.FlowDecay, GpuProfile.IsWeak ? 0.25f : 0.5f, Ink.Veil with { A = 0f }),
             FeedbackTransform = Prop.Of(() => Particles.Feedback.Flow(time.Value, slab.Mid.Value, slab.Low.Value, dt.Value, w, h)),
             FeedbackDecay = Prop.Of(() => Particles.Feedback.Decay(Particles.Feedback.FlowDecay, dt.Value)),
@@ -167,18 +169,18 @@ public static partial class Visualizer
             [
                 Canvas.Create(w, h,
                 [
-                    new CanvasChild(cx - rw * 0.5f, cy - side * 0.5f, new BoxEl
+                    new CanvasChild(cx - side * 0.5f, cy - side * 0.5f, new BoxEl
                     {
-                        Width = rw, Height = side, HitTestVisible = false, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
+                        Width = side, Height = side, HitTestVisible = false, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
                         Transform = Prop.Of(() => Affine2D.Rotation(time.Value * 0.2f)),
                         Children =
                         [
-                            new SeriesEl
+                            FlowEllipse(side, new SeriesEl
                             {
-                                Width = rw, Height = side, Shape = SeriesShape.Polar, Thickness = thick, AntiAlias = true, GradientAxis = SeriesGradientAxis.Along,
+                                Width = side, Height = side, Shape = SeriesShape.Polar, Thickness = thick, AntiAlias = true, GradientAxis = SeriesGradientAxis.Along,
                                 Gradient = SolidGradient(pal.A), GradientTo = SolidGradient(pal.C), GradientMix = Prop.Of(() => 0.5f + 0.5f * MathF.Sin(time.Value * 0.4f)),
                                 Samples = Prop.Of(() => radial.Current),
-                            },
+                            }),
                         ],
                     }),
                 ]),
@@ -187,6 +189,17 @@ public static partial class Visualizer
         kids.Add(SimChild(sim));
         return FaceFrame(spec, kids);
     }
+
+    /// <summary>Flow's ring is the prototype's 1.4 : 1 ellipse.</summary>
+    const float FlowAspect = 1.4f;
+
+    /// <summary>The square ring's box, stretched to the ellipse by a STATIC ScaleX about its centre — its own node, so the
+    /// bound turn on the box around it stays that node's only transform (one transform owner per node).</summary>
+    static BoxEl FlowEllipse(float side, SeriesEl ring) => new()
+    {
+        Width = side, Height = side, HitTestVisible = false, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
+        ScaleX = FlowAspect, Children = [ring],
+    };
 
     /// <summary>Flow's clock: the advance dt (warp and decay scale by it) and the drift time (s). The wave itself is the
     /// slab's ScopeRadial, published by the visualizer clock.</summary>

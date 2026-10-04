@@ -245,10 +245,12 @@ public static partial class Visualizer
             return galleryShown && Catalog.PreviewTier > face ? Catalog.PreviewTier : face;
         }
 
-        /// <summary>Does the clock pull the time-domain waveform this tick? Under a spectrum-or-better lease, in Visualizer
-        /// mode, when the stage face reads it or the gallery (whose Scope/Flow tiles read it) is shown.</summary>
-        public static bool PullsScope(Tier tier, Kind kind, bool visualizerMode, bool galleryShown)
-            => tier >= Tier.Spectrum && visualizerMode && (Catalog.UsesScope(kind) || galleryShown);
+        /// <summary>Does the clock fill the scope series this tick? Under a spectrum-or-better lease, in Visualizer mode, while
+        /// at least one MOUNTED face reads them (<paramref name="readers"/>: the live slab's <c>ScopeReaders</c> — the stage
+        /// Scope/Flow face and the LIVE gallery tiles of those kinds count themselves; an open gallery whose Scope tile is a
+        /// poster is no reason).</summary>
+        public static bool PullsScope(Tier tier, bool visualizerMode, int readers)
+            => tier >= Tier.Spectrum && visualizerMode && readers > 0;
 
         /// <summary>Does the clock run? While the stage is up and not occluded/reduced, and either playing or
         /// something is still settling (a release tail, a ripple fading out).</summary>
@@ -564,6 +566,9 @@ public static partial class Visualizer
         /// <summary>The polar ring's rest radius and swing (fractions of the half-box), and the seam blend length.</summary>
         public const float RadialBase = 0.62f, RadialSwing = 0.30f;
         public const int SeamBlend = 24;
+        /// <summary>The spectral stand-in redraws no faster than the engine publishes a spectrum (~60/s): a 144 Hz frame
+        /// clock would otherwise run the 12-sine synthesis over 768 samples more than twice per new picture.</summary>
+        public const float SynthesizeMs = 1000f / 60f;
 
         /// <summary>Fill both lines from a tap window. <paramref name="gain"/> is the user's gain (sensitivity × calm).</summary>
         public static void Fill(ReadOnlySpan<float> wave, Span<float> line, Span<float> radial, ref float agc, float gain, float ticks)
@@ -650,15 +655,18 @@ public static partial class Visualizer
     /// <summary>What one tick reads. The band/beat spans travel beside it (a readonly record struct cannot hold a span).
     /// <paramref name="HaveLevel"/>: a level-tap RMS is valid this tick (a level lease, no spectrum); <paramref name="Flux"/>:
     /// the last publish's spectral flux (dB); <paramref name="Onset"/>: the engine reported a NEW onset since the last tick
-    /// (the clock compares <c>SpectrumInfo.OnsetSequence</c>) with <paramref name="OnsetStrength"/> 0..1.</summary>
+    /// (the clock compares <c>SpectrumInfo.OnsetSequence</c>) with <paramref name="OnsetStrength"/> 0..1;
+    /// <paramref name="Ribbons"/>: refill the Aurora ribbon arrays this tick (the clock passes Visualizer mode with an Aurora
+    /// stage or the gallery shown) — false skips the 3 × 256-sample fill, the phases still drift.</summary>
     public readonly record struct Input(
         bool Playing, bool Calm, float Sensitivity, bool HaveLive, bool Muted, float Rms,
         long PositionMs, long DurationMs, bool HaveBands, bool HaveBeats, ushort TempoX10, bool Visualizer,
-        bool HaveLevel = false, float Flux = 0f, bool Onset = false, float OnsetStrength = 0f);
+        bool HaveLevel = false, float Flux = 0f, bool Onset = false, float OnsetStrength = 0f, bool Ribbons = true);
 
     /// <summary>Every scalar the slab writes after a tick. <see cref="Bar"/> is the bar under the playhead (0 before the
     /// first downbeat); <see cref="Downbeat"/> is the bar index of the last downbeat CROSSED while playing (a seek moves
-    /// the bar, never the downbeat), and <see cref="DownbeatEdge"/> is true on the tick it was crossed.</summary>
+    /// the bar, never the downbeat — a forward seek of exactly one bar included), and <see cref="DownbeatEdge"/> is true
+    /// on the tick it was crossed.</summary>
     public readonly record struct Frame(
         float Low, float Mid, float High, float Level, float Kick, int BeatIndex, float BeatPhase, float BaseFieldOp,
         int Bar, float BarPhase, int Downbeat, bool DownbeatEdge, bool HasBars,
@@ -678,7 +686,7 @@ public static partial class Visualizer
         // the bar counter over a grid: incremental (a forward play adds the beats it crossed; a backward seek recounts)
         int _gridLength = -1; uint _gridFirst, _gridLast; bool _gridHasBars;
         int _countedTo = -1, _downbeats, _lastDownbeatBeat = -1;
-        int _lastBar, _downbeat; bool _barPrimed;
+        int _lastBar, _downbeat; bool _barPrimed; long _lastPositionMs;
         // the track's mean kind-237 level (the section's reference), recomputed when the payload changes
         int _meanLength = -1; long _meanDuration; float _trackMean;
         byte _section = Sections.Normal;
@@ -768,9 +776,13 @@ public static partial class Visualizer
             int bar = 0; float barPhase = 0f; bool hasBars = hasBeat;
             if (fromGrid) (bar, barPhase) = BarOfGrid(beats, beatIndex, phase);
             else if (hasBeat) (bar, barPhase) = Beat.BarOfTempo(beatIndex, phase);
-            bool edge = hasBars && playing && _barPrimed && bar == _lastBar + 1;
+            // an edge is the NEXT bar reached by playing on: a forward seek of exactly one bar moves the playhead a whole bar
+            // in one tick, continuous playback at most a beat (or one clamped tick, whichever is longer)
+            long stepMs = input.PositionMs - _lastPositionMs;
+            bool continuous = stepMs >= 0L && stepMs <= MathF.Max(periodMs, DtMaxSec * 1000f);
+            bool edge = hasBars && playing && _barPrimed && continuous && bar == _lastBar + 1;
             if (edge || !_barPrimed) _downbeat = bar;
-            _lastBar = bar; _barPrimed = hasBars;
+            _lastBar = bar; _barPrimed = hasBars; _lastPositionMs = input.PositionMs;
 
             // 5. ripples: an onset under a live spectrum, else each beat (calm: every other one); ≥ 0.15 s apart
             float lifeStep = dtSec / Beat.RippleLifeSec;
@@ -809,14 +821,15 @@ public static partial class Visualizer
                 _section = Sections.Normal;
             }
 
-            // 8. the Aurora ribbons: phases drift with the energy (near-still in silence, frozen when paused)
+            // 8. the Aurora ribbons: phases drift with the energy (near-still in silence, frozen when paused); the arrays are
+            //    refilled only while something can show them (Input.Ribbons)
             if (playing)
             {
                 _auroraL = (_auroraL + dtSec * Aurora.LowSpeed * (Aurora.StillFloor + low)) % (MathF.Tau * 100f);
                 _auroraM = (_auroraM + dtSec * Aurora.MidSpeed * (Aurora.StillFloor + mid)) % (MathF.Tau * 100f);
                 _auroraH = (_auroraH + dtSec * Aurora.HighSpeed * (Aurora.StillFloor + high)) % (MathF.Tau * 100f);
             }
-            Aurora.Fill(AuroraLow, AuroraMid, AuroraHigh, low, mid, high, _auroraL, _auroraM, _auroraH);
+            if (input.Ribbons) Aurora.Fill(AuroraLow, AuroraMid, AuroraHigh, low, mid, high, _auroraL, _auroraM, _auroraH);
 
             IsSettled = !playing && Bands.Settled(Level) && _kick < 0.002f && _flux < 0.002f && _onset == 0f && RipplesSpent();
             return new Frame(low, mid, high, level, _kick, beatIndex, phase, Field.BaseOpacity(low, input.Visualizer),

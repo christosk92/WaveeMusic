@@ -68,6 +68,22 @@ public class VisualizerMomentsTests
     }
 
     [Fact]
+    public void A_scheduled_bar_re_crossed_after_a_backward_seek_turns_again()
+    {
+        var s = new Visualizer.Moments.Schedule();
+        Assert.True(s.Step(8, true, true, NoForce));                          // bar 8's downbeat
+        Assert.False(s.Step(7, false, true, NoForce));                        // a seek back into bar 7 …
+        Assert.True(s.Step(8, true, true, NoForce));                          // … and playing on crosses bar 8 again
+
+        // only a FORCED moment holds the next one back, and a seek back before it forgets it
+        var f = new Visualizer.Moments.Schedule();
+        f.Step(12, false, true, NoForce);
+        Assert.True(f.Step(13, false, true, 1));                              // forced at bar 13
+        Assert.False(f.Step(10, false, true, 1));                             // rewound before the forced bar
+        Assert.True(f.Step(16, true, true, 1));                               // bar 16 is no longer "3 bars after it"
+    }
+
+    [Fact]
     public void Force_bumps_the_shared_sequence()
     {
         long before = Visualizer.Moments.ForcedSequence;

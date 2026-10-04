@@ -191,16 +191,26 @@ public static partial class Verse
     {
         public const int MinTokenLength = 3;
 
+        /// <summary>The sung vocables ("oh", "yeah", "na"…): never a counted word here, and stripped from a line's tail
+        /// before the chorus comparison (<see cref="Sections.Normalise"/>). ONE list for both rules.</summary>
+        internal static readonly string[] Vocables = ["oh", "ooh", "yeah", "ah", "hey", "woah", "whoa", "uh", "mm", "na", "la"];
+
         /// <summary>Function words and vocables that would otherwise win every count. Small on purpose: the cloud and the
         /// repetition growth should surface the song's own words, not grammar.</summary>
-        static readonly HashSet<string> s_stop = new(StringComparer.Ordinal)
+        static readonly HashSet<string> s_stop = StopWords();
+
+        static HashSet<string> StopWords()
         {
-            "the", "and", "you", "your", "yours", "but", "for", "with", "that", "this", "these", "those", "are", "was", "were",
-            "have", "has", "had", "not", "all", "can", "will", "just", "what", "when", "where", "who", "why", "how", "its",
-            "it's", "i'm", "you're", "we're", "they're", "don't", "can't", "won't", "ain't", "i'll", "i've", "she", "her", "his",
-            "him", "our", "out", "get", "got", "from", "into", "there", "then", "than", "they", "them", "too", "let", "let's",
-            "ooh", "yeah", "woah", "whoa", "hey",
-        };
+            var stop = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "the", "and", "you", "your", "yours", "but", "for", "with", "that", "this", "these", "those", "are", "was", "were",
+                "have", "has", "had", "not", "all", "can", "will", "just", "what", "when", "where", "who", "why", "how", "its",
+                "it's", "i'm", "you're", "we're", "they're", "don't", "can't", "won't", "ain't", "i'll", "i've", "she", "her", "his",
+                "him", "our", "out", "get", "got", "from", "into", "there", "then", "than", "they", "them", "too", "let", "let's",
+            };
+            stop.UnionWith(Vocables);
+            return stop;
+        }
 
         public static bool IsStop(string token) => s_stop.Contains(token);
 
@@ -300,10 +310,13 @@ public static partial class Verse
         public const int SingleLineRepeats = 4;
         /// <summary>A non-repeating run this long between the second and the last chorus is a bridge.</summary>
         public const int BridgeMinLines = 2;
-        /// <summary>Past this many lines (a transcript, not a song) the cubic block search is skipped: every line is verse.</summary>
+        /// <summary>Past this many lines (a transcript, not a song) the block search is skipped: every line is verse.</summary>
         public const int MaxLines = 400;
+        /// <summary>The longest block searched as ONE chorus. A longer repeated passage is still found — as consecutive
+        /// blocks of at most this length — and the search stays O(n² · MaxBlockLines) instead of cubic.</summary>
+        public const int MaxBlockLines = 12;
 
-        static readonly HashSet<string> s_fillers = new(StringComparer.Ordinal) { "oh", "ooh", "yeah", "ah", "hey", "woah", "whoa", "uh", "mm", "na", "la" };
+        static readonly HashSet<string> s_fillers = new(Memory.Vocables, StringComparer.Ordinal);
 
         /// <summary>The comparison form of a line: lower-case letters and digits, parenthesised asides dropped, whitespace
         /// collapsed, trailing vocables ("…, oh yeah") stripped — unless the whole line is vocables.</summary>
@@ -326,10 +339,11 @@ public static partial class Verse
             return string.Join(' ', tokens, 0, n);
         }
 
-        /// <summary>Repeated contiguous blocks of ≥ 2 lines that occur ≥ 2 times are choruses (greedy, longest first, never
-        /// overlapping); a single line repeated <see cref="SingleLineRepeats"/> times is one too. A non-repeating run of
-        /// ≥ <see cref="BridgeMinLines"/> after the second chorus begins and before the last chorus is a bridge; everything
-        /// else is verse.</summary>
+        /// <summary>Repeated contiguous blocks of ≥ 2 lines that occur ≥ 2 times are choruses (greedy, longest first — at
+        /// most <see cref="MaxBlockLines"/> — never overlapping); a single line repeated <see cref="SingleLineRepeats"/> times
+        /// is one too. A non-repeating run of ≥ <see cref="BridgeMinLines"/> after the second chorus begins and before the
+        /// last chorus is a bridge; everything else is verse. "Is this run free" is O(1) over a prefix count of the lines
+        /// already taken (or empty), rebuilt only when a block is claimed.</summary>
         public static SectionMap Detect(IReadOnlyList<Lyrics.Line> lines)
         {
             int n = lines.Count;
@@ -349,8 +363,10 @@ public static partial class Verse
             Array.Fill(group, -1);
             Array.Fill(echo, -1);
             var starts = new List<int>();
+            var taken = new int[n + 1];   // taken[k]: lines before k already in a block or empty (Free is one subtraction)
+            Recount();
             int groups = 0;
-            for (int len = n <= MaxLines ? n / 2 : 0; len >= 1; len--)
+            for (int len = n <= MaxLines ? Math.Min(n / 2, MaxBlockLines) : 0; len >= 1; len--)
             {
                 int need = len == 1 ? SingleLineRepeats : 2;
                 for (int i = 0; i + len <= n; i++)
@@ -359,7 +375,7 @@ public static partial class Verse
                     starts.Clear();
                     starts.Add(i);
                     for (int j = i + len; j + len <= n; j++)
-                        if (Free(j, len) && Same(i, j, len)) { starts.Add(j); j += len - 1; }
+                        if (keys[j] == keys[i] && Free(j, len) && Same(i, j, len)) { starts.Add(j); j += len - 1; }
                     if (starts.Count < need) continue;
                     for (int s = 0; s < starts.Count; s++)
                         for (int o = 0; o < len; o++)
@@ -369,6 +385,7 @@ public static partial class Verse
                             echo[at] = s == 0 ? -1 : i + o;
                         }
                     groups++;
+                    Recount();
                 }
             }
             // the bridge: after the second chorus occurrence begins, before the last one
@@ -390,11 +407,11 @@ public static partial class Verse
             }
             return new SectionMap(parts, keys, group, instance, echo);
 
-            bool Free(int at, int len)
+            void Recount()
             {
-                for (int k = at; k < at + len; k++) if (group[k] >= 0 || keys[k] < 0) return false;
-                return true;
+                for (int k = 0; k < n; k++) taken[k + 1] = taken[k] + (group[k] >= 0 || keys[k] < 0 ? 1 : 0);
             }
+            bool Free(int at, int len) => taken[at + len] - taken[at] == 0;
             bool Same(int a, int b, int len)
             {
                 for (int k = 0; k < len; k++) if (keys[a + k] != keys[b + k]) return false;
