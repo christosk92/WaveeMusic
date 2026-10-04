@@ -17,6 +17,10 @@ versions separately under `v*` and is not tracked in this file.)
   background is drawn at a quarter of the screen resolution (it is a soft gradient, so it looks the same). Before, every
   frame of the visualizer redrew all of a 3440 x 1440 screen, which took about half of the GPU at 120 Hz on a
   Snapdragon X laptop.
+- **The fullscreen stage no longer draws the app hidden behind it.** While the stage is open, the pages under it are
+  left out of every frame, and the stage's background (the blurred cover, the drifting colours and the dark tint) is
+  drawn as one layer instead of three. In the offline demo on a Snapdragon X laptop at 120 Hz, the stage takes 1.93 ms
+  of GPU time per frame instead of 2.35 ms (Task Manager: about 27% GPU instead of 32%).
 
 ## [0.3.0] - 2026-10-02
 
