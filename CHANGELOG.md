@@ -19,6 +19,15 @@ versions separately under `v*` and is not tracked in this file.)
   second; scrolling and dragging never are.
 - **Context menus open faster.** A menu that fits inside the window is drawn in the window instead of in a separate
   popup window, so a track's right-click menu reaches the screen in less than half the time.
+- **Full-screen Now Playing uses a big screen.** On an ultrawide or a large monitor the cover grows to fill its
+  column, the lyrics grow with the stage, and Up next rows get larger art and type. The Up next list stops at a
+  readable width, opens with the next song set apart, splits into sections with their counts, numbers each row and
+  marks explicit tracks.
+
+### Fixed
+
+- **Light mode in full screen.** The player bar, the now-playing card and the visualizer gallery stayed dark with
+  dark text in light mode, and a few controls kept white outlines. They now follow the theme.
 
 ## [0.3.0] - 2026-10-02
 

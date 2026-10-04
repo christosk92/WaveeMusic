@@ -306,6 +306,15 @@ public static partial class Stage
         public float LyricsTypeSize => Math.Clamp(MathF.Round(MathF.Min(0.046f * H, PaneW / 30f) * 0.5f) * 2f, LyricsTypeMin, LyricsTypeMax);
         /// <summary><see cref="LyricsTypeSize"/> over the authored size — what the lyrics view scales its row metrics by.</summary>
         public float LyricsTypeScale => LyricsTypeSize / LyricsTypeMin;
+
+        /// <summary>The Up next rows' scale: min(the pane's width / 1100, H / 864), floored to an eighth so a resize steps it
+        /// rarely, clamped 1–1.5. The board (a 1084-DIP pane) stays at 1; a 2560×1080 ultrawide reads 1.25; 3440×1440 reaches
+        /// the 1.5 ceiling. Every row metric (height, art, type, gaps) scales by it; the pane's gutters do not.</summary>
+        public const float QueueScaleMax = 1.5f, QueueListBaseW = 1100f;
+        public float QueueScale => Math.Clamp(MathF.Floor(MathF.Min(PaneW / QueueListBaseW, H / 864f) * 8f) / 8f, 1f, QueueScaleMax);
+        /// <summary>Where the Up next list stops (left-aligned): 1100 DIP × <see cref="QueueScale"/>, so the duration sits beside
+        /// the song instead of across a 1500-DIP pane.</summary>
+        public float QueueListMaxW => MathF.Min(PaneW, QueueListBaseW * QueueScale);
         public float PaneH => MathF.Max(0f, H - PaneTop - PaneBottom);
 
         /// <summary>Title type per aspect and mode: the hero reads TitleLarge 40/52, the thumb Subtitle 20/28; small

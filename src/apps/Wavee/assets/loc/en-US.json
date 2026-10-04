@@ -3582,6 +3582,7 @@
     "reduceMotion": "Reduce motion",
     "syncOffset": "Sync offset",
     "upNext": "Up next",
+    "nextTrack": "Next",
     "nextFrom": "Next from {context}",
     "playingFrom": "Playing from {kind}",
     "kind": {

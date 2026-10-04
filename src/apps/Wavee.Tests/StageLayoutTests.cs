@@ -439,6 +439,25 @@ public class StageLayoutTests
     }
 
     [Fact]
+    public void Queue_rows_scale_with_a_big_stage_and_the_list_stops_short_of_the_pane()
+    {
+        Assert.Equal(1f, L.Seed(1920f, 1080f).QueueScale);               // the board: today's 56-DIP rows
+        Assert.Equal(1.25f, L.Seed(2560f, 1080f).QueueScale);            // min(PaneW / 1100 ≈ 1.4, 1080 / 864 = 1.25)
+        Assert.Equal(L.QueueScaleMax, L.Seed(3440f, 1440f).QueueScale);  // the ceiling
+        var uw = L.Seed(2560f, 1080f);
+        Assert.Equal(1100f * 1.25f, uw.QueueListMaxW);                   // the list stops at 1375 DIP of a ~1560-DIP pane
+
+        for (float w = 600f; w <= 6000f; w += 97f)
+            for (float h = 300f; h <= 2400f; h += 71f)
+            {
+                var l = L.Seed(w, h);
+                Assert.InRange(l.QueueScale, 1f, L.QueueScaleMax);
+                Assert.Equal(0f, l.QueueScale * 8f % 1f);                // eighths: a resize steps it rarely
+                Assert.True(l.QueueListMaxW <= l.PaneW + 0.01f);
+            }
+    }
+
+    [Fact]
     public void Lyrics_type_grows_with_a_big_stage_and_keeps_the_board()
     {
         Assert.Equal(36f, L.Seed(1920f, 1080f).LyricsTypeSize);         // the board: a 1084 pane / 30 → 36, the authored size
