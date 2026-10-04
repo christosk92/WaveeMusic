@@ -43,8 +43,10 @@
 // this, a lit badge's click opened two protected sessions in the same millisecond and destroyed one. Every prepared
 // session is now adopted or disposed; `Landed` is the only place one can come to rest. (2) The WARM KEEPER: while a
 // video surface is wanted, the content keys of the playing row and the next queued one are pre-acquired on a 10 s beat
-// (the licence is 2 010 ms of a measured 2 477 ms cold switch), which also brings the native runtime back up whenever it
-// shed. The beat stops when the surface closes, and the app lets go 30 s later — D15, and the engine's own window.
+// (a warm licence is ~140 ms and a cold one finishes before SetSource, so the point is the runtime: its ~650 ms bring-up is
+// the part of a ~2.1 s cold switch the keeper can remove; Media Foundation's ~1.2 s load to first frame is the rest),
+// which also brings the native runtime back up whenever it shed. The beat stops when the surface
+// closes, and the app lets go 30 s later — D15, and the engine's own window.
 //
 // WHY THE PUMP IS STILL SERIALIZED AND EPOCHED. One worker, one coalescing slot, one epoch: a load that arrives while
 // another is in flight REPLACES it (latest wins, C8), and every result goes back as a posted `Input` carrying the epoch
@@ -558,8 +560,9 @@ public static partial class Playback
         static bool s_warmed;
 
         /// <summary>The Playback tab's switch, DEFAULT ON: may the app fetch a video licence before the user asks for
-        /// the video? Off leaves <see cref="Boot"/>'s native preload as the only warm, and the licence — ~80 % of a cold
-        /// switch — is then paid on the switch itself. Declared beside its only reader rather than in
+        /// the video? Off leaves <see cref="Boot"/>'s native preload as the only warm. A cold licence (~820 ms, most of it
+        /// waiting on the runtime bring-up, F216) still runs in parallel with the attach and finishes before SetSource, so
+        /// what turning this off really costs is the cold runtime bring-up. Declared beside its only reader rather than in
         /// <c>Platform.Keys</c>, the shape <c>Detail.SortKeys</c> already uses; the storage name follows the
         /// <c>playback.video.*</c> family it belongs to.</summary>
         public static readonly SettingKey<bool> PrepareAhead = new("playback.video.prepareAhead", true);
@@ -1512,8 +1515,8 @@ public static partial class Playback
         /// <summary>Was the warm path ACTUALLY in hand for this load — the `warm=` of `[video] switch.begin`? Either a
         /// prepared session for its row is parked or registered AND the backend will still hand it over (its own expiry
         /// rule, <see cref="ProtectedMediaBackend.TryPeekPrepared"/>: the open takes it by init url and the switch is one
-        /// attach), or its content key is already usable in the runtime's cache (the licence round trip, ~80 % of a cold
-        /// switch, is already paid). `warm=false` therefore means exactly one thing: this switch pays for everything.
+        /// attach), or its content key is already usable in the runtime's cache (the licence round trip, ~140 ms, is already paid and the runtime
+        /// that held it is up). `warm=false` therefore means exactly one thing: this switch pays for everything.
         /// <para>The runtime's own lock is taken OUTSIDE <see cref="s_gate"/>, never nested under it.</para></summary>
         static bool WarmFor(VideoSource source)
         {

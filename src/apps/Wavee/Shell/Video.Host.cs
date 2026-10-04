@@ -29,6 +29,13 @@
 // reports the close to the placement model — and the MODEL, not this component, decides that "closed the pop-out"
 // means "keep watching in the mini player" rather than "off".
 //
+// OPEN IS DEFERRED, CLOSE IS A PARK (F110). Opening builds a second window, swapchain and AppHost, which is far too much
+// to do inside the reactive flush that noticed the placement edge, so the effect only starts the hand-off and POSTS the
+// open to the next UI frame (re-deciding against the placement it finds then). A STATE-driven close does not dispose the
+// window: it hides it and parks its host (`IDetachedVideoWindow.Park`: tree and swapchain kept, nothing produced), and the
+// next open reuses it (`Unpark`) instead of rebuilding everything. A parked window is disposed after `ParkIdleMs` without a
+// reuse, when the platform refuses to park it, or when the shell unmounts (and the engine reaps it with its parent).
+//
 // THE SEAM. `IDetachedVideoWindow` / `DetachedWindowRequest` / `InputHooks.OpenDetachedWindow` are the ENGINE's
 // (`FluentGpu.Engine/Hooks/Context.cs`), host-wired by `AppHost`, and this file is their ONLY caller in the app — the
 // shape ch 24 §9 asks for. The window's CONTENT is `Video.UI.cs`'s (stage 2), handed in through
@@ -275,7 +282,15 @@ public static partial class Video
         /// the user last put the window so it reopens there instead of jumping back to the default corner.</summary>
         public IAppSettings? Settings { get; init; }
 
+        /// <summary>How long a parked (hidden, warm) pop-out is kept for a reuse before it is disposed (F110). A parked host costs
+        /// only its window, swapchain and mounted tree, and no frames; the next open inside this window skips building them.</summary>
+        public const int ParkIdleMs = 120_000;
+
         TimerHandle _handoffGrace;   // re-armed by Open: the make-before-break deadline (a stale fire is inert)
+        TimerHandle _parkIdle;       // armed by a park: disposes the warm window if nothing reused it (a stale fire is inert)
+        IDetachedVideoWindow? _parked;   // F110: the warm, hidden window awaiting reuse (at most one)
+        bool _openQueued;            // F110: an open is posted to the next frame and has not run yet
+        bool _unmounted;             // the shell swapped this owner out: a queued open must not run
 
         public override Element Render()
         {
@@ -284,6 +299,8 @@ public static partial class Video
             var post = UsePost();                                  // UI marshal for the render thread's OnRenderFailed
             // Armed (RestartIn) only by Open; the mount-time arm of the hook fires into no hand-off and is inert.
             _handoffGrace = UseTimeout(static () => State.ExpirePopOutHandoff(), State.PopOutHandoffGraceMs, DepKey.Empty);
+            // Armed (RestartIn) only by a park; the mount-time arm fires into no parked window and is inert.
+            _parkIdle = UseTimeout(() => DisposeParked("idle"), ParkIdleMs, DepKey.Empty);
 
             // The decode host asks "could a second window open?" when it folds the host capability; THIS file sets the
             // hook (the video-engine plan §3.4: "the pop-out HWND is K's; Video.Host.cs sets the hook"). Mount-wired
@@ -305,15 +322,15 @@ public static partial class Video
                 bool alive = live is { IsOpen: true };
                 var action = PlacementCore.DecideOwned(PlacementCore.Resolve(state), Owned, alive);
 
-                if (action == MountAction.Open) Open(hooks, handle, post);
+                if (action == MountAction.Open) QueueOpen(hooks, handle, post);
                 else if (action == MountAction.Close)
                 {
                     live!.OnClosed = null;   // a STATE-driven close is not a user-close → it must not trigger the fallback
-                    live.Close();
                     handle.Value = null;
-                    State.DetachedFullscreen.Value = false;   // the window is gone; the mode it described goes with it
+                    State.DetachedFullscreen.Value = false;   // the mode the window described goes with it (before the park persists its rect)
                     State.EndPopOutHandoff();
                     State.ReportLive(Owned, mounted: false);
+                    ParkOrClose(live, post);
                 }
             });
 
@@ -357,14 +374,76 @@ public static partial class Video
             // would survive into the next mount and open the next pop-out already fullscreen.
             UseEffect(() => () =>
             {
+                _unmounted = true;
                 var h = handle.Value;
                 handle.Value = null;
                 State.DetachedFullscreen.Value = false;
                 State.EndPopOutHandoff();
                 if (h is not null) { h.OnClosed = null; h.Close(); }
+                DisposeParked("unmount");
             }, DepKey.Empty);
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+
+        /// <summary>F110: the reconcile effect runs inside the parent's reactive flush, so it must not build a window, a swapchain and
+        /// a whole child AppHost there. It starts the make-before-break hand-off (a signal write, so the main presenter stays mounted
+        /// through the frame the open waits for) and posts the open to the next UI frame. The open re-decides against the placement
+        /// it finds then, so an edge that reversed in between opens nothing; one open is ever queued.</summary>
+        void QueueOpen(InputHooks hooks, Ref<IDetachedVideoWindow?> handle, Action<Action> post)
+        {
+            if (_openQueued) return;
+            _openQueued = true;
+            State.BeginPopOutHandoff();
+            post(() =>
+            {
+                _openQueued = false;
+                if (_unmounted) { State.EndPopOutHandoff(); return; }
+                bool alive = handle.Value is { IsOpen: true };
+                if (PlacementCore.DecideOwned(PlacementCore.Resolve(State.Surface.Peek()), Owned, alive) != MountAction.Open)
+                {
+                    State.EndPopOutHandoff();   // the placement moved on before the frame came: nothing to open
+                    return;
+                }
+                Open(hooks, handle, post);
+            });
+        }
+
+        /// <summary>F110: a state-driven close parks the window warm instead of disposing it, so the next open skips the window,
+        /// swapchain and tree construction. Only one warm window is kept; a window the platform will not park (still revealing,
+        /// render path failed, no warm reuse) is closed as before. While parked it must not report to the placement model, so its
+        /// callbacks are replaced: a close of the parked window just forgets it, a render failure disposes it.</summary>
+        void ParkOrClose(IDetachedVideoWindow live, Action<Action> post)
+        {
+            DisposeParked("replaced");
+            if (!live.IsOpen || !live.Park())
+            {
+                live.OnClosed = null;
+                live.Close();
+                return;
+            }
+            live.BoundsChanged = null;   // a hidden window is not moved by anyone
+            live.OnRevealed = null;
+            live.OnFirstVideoBound = null;
+            live.OnClosed = () => { if (ReferenceEquals(_parked, live)) { _parked = null; _parkIdle.Cancel(); } };
+            live.OnRenderFailed = () => post(() => { if (ReferenceEquals(_parked, live)) DisposeParked("render-failed"); });
+            _parked = live;
+            _parkIdle.RestartIn(ParkIdleMs);
+            Log.Info(State.LogCategory, "pop-out parked warm idleMs=" + ParkIdleMs);
+        }
+
+        /// <summary>F110: dispose the warm window (idle timeout, replaced by a newer park, render failure, shell unmount). A no-op when
+        /// nothing is parked. The engine's own reaper tears it down on its next tick, fence-scoped like any other close.</summary>
+        void DisposeParked(string why)
+        {
+            _parkIdle.Cancel();
+            var w = _parked;
+            if (w is null) return;
+            _parked = null;
+            w.OnClosed = null;
+            w.OnRenderFailed = null;
+            w.Close();
+            Log.Info(State.LogCategory, "pop-out parked window disposed why=" + why);
         }
 
         void Open(InputHooks hooks, Ref<IDetachedVideoWindow?> handle, Action<Action> post)
@@ -384,23 +463,40 @@ public static partial class Video
             // names the real stages instead. The open line carries the two synchronous ones (native window creation and
             // placement, then the child host constructor); the window is created hidden and only revealed once its first
             // frame has presented, so the reveal line - first RunFrame and first present - arrives on a later frame.
-            // MAKE-BEFORE-BREAK: the main window's presenter stays mounted (hidden) from here until this window's own
+            // MAKE-BEFORE-BREAK: the main window's presenter stays mounted (hidden) from QueueOpen until this window's own
             // element presents its first frame, so the quarter second the window and swapchain take to build is never a
-            // moment with no video composited anywhere.
-            State.BeginPopOutHandoff();
+            // moment with no video composited anywhere. A reused window whose tree is unchanged raises no new first frame:
+            // the hand-off grace (State.PopOutHandoffGraceMs) releases the main presenter then.
+            // (The hand-off began in QueueOpen, a frame ago. This runs from a UI post, outside the reactive flush that asked for it.)
             var content = ContentFactory;
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var tree = content?.Invoke();
-            var win = tree is null ? null : hooks.OpenDetachedWindow?.Invoke(new DetachedWindowRequest(
-                TitleFactory(), new Size2(DefaultWidthDip, DefaultHeightDip), tree,
-                AlwaysOnTop: Prefs.AlwaysOnTop(Settings),
-                InitialBoundsPx: restored,
-                MinClientSizeDip: new Size2(MinWidthDip, MinHeightDip)));
+            IDetachedVideoWindow? win = null;
+            bool reused = false;
+            if (tree is not null)
+            {
+                var request = new DetachedWindowRequest(
+                    TitleFactory(), new Size2(DefaultWidthDip, DefaultHeightDip), tree,
+                    AlwaysOnTop: Prefs.AlwaysOnTop(Settings),
+                    InitialBoundsPx: restored,
+                    MinClientSizeDip: new Size2(MinWidthDip, MinHeightDip));
+                // WARM REUSE (F110): a parked window comes back with its tree and swapchain (the request's content is ignored: the
+                // frozen-signal tree follows live state), skipping the window, swapchain and mount cost. A parked window that
+                // cannot be reused is disposed and a fresh one opened.
+                _parkIdle.Cancel();
+                if (_parked is { } warm)
+                {
+                    _parked = null;
+                    if (warm.Unpark(request)) { win = warm; reused = true; }
+                    else { warm.OnClosed = null; warm.OnRenderFailed = null; warm.Close(); }
+                }
+                win ??= hooks.OpenDetachedWindow?.Invoke(request);
+            }
             long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
             var openTiming = win?.OpenTiming ?? default;
             Log.Info(State.LogCategory, $"pop-out open syncMs={(t1 - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.#} " +
                 $"windowCreateMs={openTiming.WindowCreateMs:0.#} hostCtorMs={openTiming.HostCtorMs:0.#} " +
-                $"restored={(restored.W > 0 ? "yes" : "no")} opened={win is not null}");
+                $"restored={(restored.W > 0 ? "yes" : "no")} reused={(reused ? "yes" : "no")} opened={win is not null}");
             if (win is not null)
             {
                 // The open line above is only the synchronous half. The reveal says the child presented ITS first frame (renderPresentMs

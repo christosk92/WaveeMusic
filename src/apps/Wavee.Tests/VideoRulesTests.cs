@@ -540,20 +540,35 @@ public class VideoRetentionWindowTests
     [Fact]
     public void The_window_is_byte_capped_and_a_480p_rung_fits_it_whole()
     {
-        Assert.Equal(32L * 1024 * 1024, V.RetentionWindow.StoreBudgetBytes);
+        Assert.Equal(32L * 1024 * 1024, V.RetentionWindow.DefaultStoreBudgetBytes);
+        Assert.Equal(16L * 1024 * 1024, V.RetentionWindow.MinStoreBudgetBytes);
+        Assert.Equal(128L * 1024 * 1024, V.RetentionWindow.MaxStoreBudgetBytes);
 
-        const int p480 = 200_000;    // ≈ 1.6 Mbps video + audio: 90 s ≈ 18 MB, inside the 32 MiB budget
+        const int p480 = 200_000;    // ≈ 1.6 Mbps video + audio: 90 s ≈ 18 MB, so the derived budget is 28.8 MB
+        Assert.Equal(28_800_000, V.RetentionWindow.StoreBudgetFor(p480));
         Assert.True(V.RetentionWindow.FitsBudget(p480));
         Assert.Equal(30_000, V.RetentionWindow.BehindAffordableMs(p480));
         Assert.Equal(60_000, V.RetentionWindow.AheadAffordableMs(p480));
 
-        // A fat rung cannot buy the whole window: the BEHIND half is honoured first, because it is what makes a
-        // backward seek free, and the ahead half takes what is left.
-        const int fat = 4_000_000;   // 32 MiB ≈ 8.3 s at this rate
-        Assert.False(V.RetentionWindow.FitsBudget(fat));
-        Assert.Equal(8_388, V.RetentionWindow.BehindAffordableMs(fat));
-        Assert.Equal(0, V.RetentionWindow.AheadAffordableMs(fat));
+        // A 5 Mbps 1080p rung used to collapse the window inside a fixed 32 MiB; its budget now holds all of it.
+        const int p1080 = 625_000;
+        Assert.Equal(90_000_000, V.RetentionWindow.StoreBudgetFor(p1080));
+        Assert.True(V.RetentionWindow.FitsBudget(p1080));
+        Assert.Equal(30_000, V.RetentionWindow.BehindAffordableMs(p1080));
+        Assert.Equal(60_000, V.RetentionWindow.AheadAffordableMs(p1080));
 
+        // The budget is clamped: a tiny rung gets the floor, an enormous one the ceiling.
+        Assert.Equal(V.RetentionWindow.MinStoreBudgetBytes, V.RetentionWindow.StoreBudgetFor(50_000));
+        Assert.Equal(V.RetentionWindow.MaxStoreBudgetBytes, V.RetentionWindow.StoreBudgetFor(4_000_000));
+
+        // A rung past the ceiling cannot buy the whole window: the BEHIND half is honoured first, because it is what
+        // makes a backward seek free, and the ahead half takes what is left.
+        const int fat = 4_000_000;   // 128 MiB ≈ 33.5 s at this rate
+        Assert.False(V.RetentionWindow.FitsBudget(fat));
+        Assert.Equal(30_000, V.RetentionWindow.BehindAffordableMs(fat));
+        Assert.Equal(3_554, V.RetentionWindow.AheadAffordableMs(fat));
+
+        Assert.Equal(V.RetentionWindow.DefaultStoreBudgetBytes, V.RetentionWindow.StoreBudgetFor(0));
         Assert.True(V.RetentionWindow.FitsBudget(0));    // an unknown bitrate is not a reason to trim
     }
 

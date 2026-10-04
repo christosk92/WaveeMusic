@@ -1405,7 +1405,9 @@ public class VideoMainWindowHoleTests
     // F179: the header promises ONE stay-mounted presenter for Docked, PiP and fullscreen. The pure rule is pinned for every
     // reachable combination, so a change that unmounts on a placement hop or on the immersive cover (the shape of the F168
     // regression) fails here, not on a user's screen. The element and slot identity themselves are the PipSurface's `mounted`
-    // gate (`MainWindowHole.Mounted`), which is the only thing that returns an empty BoxEl.
+    // gate (`MainWindowHole.Mounted`), which is the only thing that returns an empty BoxEl. The same walk is pinned through a
+    // real headless AppHost by the engine's `gate.video.presenter-stays-mounted` (FluentGpu.VerticalSlice, ControlsSuite.StayMountedPresenter):
+    // one MediaPlayerElement instance, one VideoSurface slot and a pump in every step, across the placements, the cover and the hand-off.
     [Theory]
     [InlineData(SurfacePlacement.Docked, false)]
     [InlineData(SurfacePlacement.Docked, true)]

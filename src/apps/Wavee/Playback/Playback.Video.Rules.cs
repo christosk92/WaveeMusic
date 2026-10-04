@@ -177,9 +177,11 @@ public static partial class Playback
         /// <see cref="WarmTarget.Drm"/> is a row whose manifest named a KID.</summary>
         public enum WarmTarget : byte { Clear, Unknown, Drm }
 
-        /// <summary>D15's keeper. The licence is ~80 % of a cold switch (measured: 2 010 ms of a 2 477 ms first frame),
-        /// and the native runtime's create is most of the rest (521 ms) — so while a video surface is wanted the app
-        /// keeps the content keys of the playing row and the next queued one in hand, and lets go
+        /// <summary>D15's keeper. Measured budget (F216): a warm licence is ~140 ms of HTTP and CDM round trips and a cold one
+        /// ~820-850 ms of which ~650 is the wait for the native runtime's bring-up; it is usable BEFORE SetSource, so it is off
+        /// the critical path. A cold switch (~2.1 s to first frame) is dominated by that runtime bring-up and by Media
+        /// Foundation's load → first frame (~1.2 s). So while a video surface is wanted the app keeps the content keys of the
+        /// playing row and the next queued one in hand, which also keeps the runtime up, and lets go
         /// <see cref="ShedMs"/> after the surface closes. Pure: the host supplies the facts and owns the timer.</summary>
         public static class WarmPolicy
         {
@@ -430,12 +432,31 @@ public static partial class Playback
         // ── 5. the retention window (§3.2.1 item 3, §3.5) ───────────────────────────────────────────────────────────
 
         /// <summary>What the segment store keeps, in TIME and capped in BYTES — the fix for `kRetainBehind = 300` SAMPLES
-        /// (≈ 6.4 s of AAC), which is why a ten-second backward seek refetched (S4).</summary>
+        /// (≈ 6.4 s of AAC), which is why a ten-second backward seek refetched (S4). The byte budget FOLLOWS the selected
+        /// representation's bandwidth (F040): the engine derives it per rung (`ProtectedVideoSession.StoreBudgetFor`, mirrored here
+        /// by <see cref="StoreBudgetFor"/>), so the whole window fits until the ceiling.</summary>
         public static class RetentionWindow
         {
             public const long RetainBehindMs = 30_000;
             public const long BufferAheadMs = 60_000;
-            public const long StoreBudgetBytes = 32L * 1024 * 1024;   // per live session; ≤ 2 sessions, both in the census
+            /// <summary>The budget when no bitrate is known (per live session; ≤ 2 sessions, both in the census).</summary>
+            public const long DefaultStoreBudgetBytes = 32L * 1024 * 1024;
+            /// <summary>The floor of a derived budget.</summary>
+            public const long MinStoreBudgetBytes = 16L * 1024 * 1024;
+            /// <summary>The ceiling of a derived budget: ≤ 2 live sessions hold at most 256 MiB of media.</summary>
+            public const long MaxStoreBudgetBytes = 128L * 1024 * 1024;
+
+            /// <summary>The budget one rung needs to hold the whole window (30 s behind + 60 s ahead) at its byte rate: window x
+            /// bytes per second x 1.2 headroom, grossed up by 4/3 (the video track owns three quarters of the store), clamped to
+            /// [<see cref="MinStoreBudgetBytes"/>, <see cref="MaxStoreBudgetBytes"/>]. Integer math, identical to the engine's
+            /// `ProtectedVideoSession.StoreBudgetFor` and the native `fgpr::StoreBudgetForBitrate` (headroom x gross-up = 8/5).
+            /// An unknown rate keeps <see cref="DefaultStoreBudgetBytes"/>.</summary>
+            public static long StoreBudgetFor(int bytesPerSecond)
+            {
+                if (bytesPerSecond <= 0) return DefaultStoreBudgetBytes;
+                long windowBytes = (RetainBehindMs + BufferAheadMs) * bytesPerSecond / 1000;
+                return Math.Clamp(windowBytes / 5 * 8, MinStoreBudgetBytes, MaxStoreBudgetBytes);
+            }
 
             public static long WindowStart(long positionMs) => positionMs > RetainBehindMs ? positionMs - RetainBehindMs : 0;
 
@@ -457,20 +478,21 @@ public static partial class Playback
             public static long BehindAffordableMs(int bytesPerSecond)
             {
                 if (bytesPerSecond <= 0) return RetainBehindMs;
-                long afford = StoreBudgetBytes * 1000 / bytesPerSecond;
+                long afford = StoreBudgetFor(bytesPerSecond) * 1000 / bytesPerSecond;
                 return afford < RetainBehindMs ? afford : RetainBehindMs;
             }
 
             public static long AheadAffordableMs(int bytesPerSecond)
             {
                 if (bytesPerSecond <= 0) return BufferAheadMs;
-                long left = StoreBudgetBytes - BytesFor(BehindAffordableMs(bytesPerSecond), bytesPerSecond);
+                long left = StoreBudgetFor(bytesPerSecond) - BytesFor(BehindAffordableMs(bytesPerSecond), bytesPerSecond);
                 if (left <= 0) return 0;
                 long afford = left * 1000 / bytesPerSecond;
                 return afford < BufferAheadMs ? afford : BufferAheadMs;
             }
 
-            /// <summary>True when the whole 30 s / 60 s window fits the byte budget at this bitrate — the 480p rung does.</summary>
+            /// <summary>True when the whole 30 s / 60 s window fits the (derived) byte budget at this bitrate — every rung up to the
+            /// ceiling does (about 7.4 Mbps of video).</summary>
             public static bool FitsBudget(int bytesPerSecond)
                 => BehindAffordableMs(bytesPerSecond) == RetainBehindMs && AheadAffordableMs(bytesPerSecond) == BufferAheadMs;
 
