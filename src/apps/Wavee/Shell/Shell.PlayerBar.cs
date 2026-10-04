@@ -486,6 +486,14 @@ public static partial class Shell
         public static long SpanMs(in Playback.LiveWindow live, long durationMs)
             => live.IsLive && live.HasWindow ? live.WindowMs : durationMs;
 
+        /// <summary>Is the pixel stepper armed? The playhead must advance on its own on a rail with something to rewind,
+        /// and someone must be able to SEE it: not while the on-media strip is concealed (<paramref name="concealed"/>:
+        /// faded out under a playing video, hit-test off) and not while the whole window is covered or cloaked
+        /// (<paramref name="windowHidden"/>, <c>InputHooks.WindowOccluded</c>; a minimized window already parks every
+        /// interval). Either way each tick is a recorded and presented full-window frame for nothing.</summary>
+        public static bool Ticks(bool advances, SeekRailMode mode, bool concealed, bool windowHidden)
+            => advances && mode != SeekRailMode.Line && !concealed && !windowHidden;
+
         /// <summary>How long the playhead dwells on one pixel: <c>clamp(span / railPx, 33, 250)</c> ms.</summary>
         public static float DwellMs(long spanMs, float railPx)
             => spanMs <= 0L || railPx <= 1f ? UnknownDwellMs : Math.Clamp(spanMs / railPx, MinDwellMs, MaxDwellMs);

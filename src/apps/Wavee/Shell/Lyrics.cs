@@ -927,8 +927,10 @@ public static partial class Lyrics
     /// <param name="Playing">Whether the MEDIA clock is advancing. Every media-clock lane (the wipe, the glow
     /// envelope, the interlude dots' fill/breath) is frozen while paused, so a paused surface demands nothing from
     /// them.</param>
-    /// <param name="VoiceActive">A line is being sung right now: its wipe split and glow envelope both move every
-    /// frame.</param>
+    /// <param name="VoiceActive">The voice line has PER-FRAME OUTPUT right now (<see cref="MotionDemand.VoiceMoves"/>): a
+    /// word-synced line's wipe and held-note glow move every frame, a line-synced one only while its glow fades in or
+    /// out. A line-synced line on its flat glow plateau is being sung but writes the same value every frame, so it is
+    /// NOT active — the surface wakes at the plateau's end instead (<see cref="MotionDemand.VoicePlateauEndMs"/>).</param>
     /// <param name="DotsActive">The interlude dots are up — fill and breath are both media-clock driven.</param>
     /// <param name="GlowFadeActive">An OUTGOING halo cross-fade is still in flight (wall-clock, ~240 ms).</param>
     /// <param name="DofRampPending">The σ ramp has not reached its target (the pass self-quiesces).</param>
@@ -987,11 +989,21 @@ public static partial class Lyrics
         /// the lead and goes live instead of arming again.</summary>
         public const long ArmLeadMs = 32L;
 
-        /// <summary>The re-check period for the states that have NO media-clock deadline at all: no document yet, an
-        /// untimed one, or sync suppressed by a video. The condition that ends them is not a clock instant, so the
-        /// ticker polls it on a slow TIMER (which wakes nothing that produces frames) instead of subscribing the frame
-        /// clock.</summary>
-        public const float UnresolvedRecheckMs = 250f;
+        /// <summary>Does the voice line have per-frame OUTPUT at <paramref name="nowMs"/>? A word-synced line always does
+        /// (the karaoke wipe and the held-note glow are functions of the clock). A line-synced line has no wipe: its only
+        /// per-frame output is the halo alpha, <c>min(fade-in, melt-out)</c> (<see cref="Glow.VoiceAlpha"/>), which moves
+        /// during the first <see cref="Wipe.GlowFadeMs"/> and the last <see cref="Wipe.GlowOutMs"/> and sits flat at 1 in
+        /// between. Mounting the frame stepper across that plateau only rewrote an equal value at display rate (F237).</summary>
+        public static bool VoiceMoves(Line line, long sungOutMs, long nowMs)
+            => (line.IsWordByWord && line.Syllables.Count > 0)
+            || nowMs < line.StartMs + (long)Wipe.GlowFadeMs
+            || nowMs >= VoicePlateauEndMs(line, sungOutMs);
+
+        /// <summary>The media instant a line-synced voice line's glow plateau ends and its melt-out begins — the event a
+        /// quiescent surface arms its wake for. <see cref="None"/> for a word-synced line (never quiescent while it is
+        /// the voice) and for a line with no known end.</summary>
+        public static long VoicePlateauEndMs(Line line, long sungOutMs)
+            => (line.IsWordByWord && line.Syllables.Count > 0) || sungOutMs >= None ? None : sungOutMs - (long)Wipe.GlowOutMs;
 
         /// <summary>The lane test on its own: is something moving RIGHT NOW (deadline not consulted)?</summary>
         public static bool LanesMoving(in MotionLanes l)
@@ -1028,6 +1040,22 @@ public static partial class Lyrics
             }
             return None;
         }
+    }
+
+    /// <summary>The cadence the frame stepper steps at (F237). The stepper used to subscribe the frame clock, i.e. ask the
+    /// host for EVERY vblank — ~115 steps and presents a second on a 120 Hz panel. A wipe moves ~1.7 px per frame at that
+    /// rate, so 60 Hz loses nothing visible; the side rail, a weak GPU and a window that is not the foreground one get
+    /// 30 Hz, where each present costs the most or is seen the least.</summary>
+    public static class StepCadence
+    {
+        public const float FullMs = 1000f / 60f;
+        public const float ReducedMs = 1000f / 30f;
+
+        /// <param name="weakGpu"><c>GpuProfile.IsWeak</c>.</param>
+        /// <param name="sideRail">The surface is the narrow side rail (or a transcript pane), not the immersive stage.</param>
+        /// <param name="windowFocused">The window is the foreground one (alt-tab / the pop-out having focus clears it).</param>
+        public static float PeriodMs(bool weakGpu, bool sideRail, bool windowFocused)
+            => weakGpu || sideRail || !windowFocused ? ReducedMs : FullMs;
     }
 
     // ── 11. the upgrade authority ───────────────────────────────────────────────────────────────────────────────────

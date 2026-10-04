@@ -97,6 +97,22 @@ public static partial class Playback
             /// rounded UP, never fewer than one (the segment holding P is the whole point — S1).</summary>
             public static int SegmentsFor(long segmentLengthMs)
                 => segmentLengthMs <= 0 ? 1 : (int)((PrefetchAheadMs + segmentLengthMs - 1) / segmentLengthMs);
+
+            /// <summary>Does a prepare aimed at <paramref name="preparedAtMs"/> still hold the media an open at
+            /// <paramref name="atMs"/> would fetch first? Its window is the segment holding the position and
+            /// <see cref="PrefetchAheadMs"/> after it: an open BEFORE it (a seek back) or past it finds none of it, and the
+            /// open pays the segment fetch cold even though the session is parked.</summary>
+            public static bool CoversPosition(long preparedAtMs, long atMs)
+                => atMs >= preparedAtMs && atMs - preparedAtMs < PrefetchAheadMs;
+
+            /// <summary>The level actually in hand, for the schedule's <c>Already</c>. A recorded <see cref="PrefetchLevel.Full"/>
+            /// is only as good as the session behind it: one the backend no longer hands over (expired, disposed, shed) or
+            /// whose window the position has left is the licence and the manifest again, so the schedule asks for
+            /// <see cref="PrefetchLevel.Full"/> afresh instead of trusting a level that stopped being true.</summary>
+            public static PrefetchLevel EffectiveLevel(PrefetchLevel recorded, bool preparedAlive, long preparedAtMs, long atMs)
+                => recorded == PrefetchLevel.Full && !(preparedAlive && CoversPosition(preparedAtMs, atMs))
+                    ? PrefetchLevel.ManifestAndLicense
+                    : recorded;
         }
 
         // ── 2b. the prefetch/load race, and the warm keeper (§3.1.5, §6.2 G1, D15) ──────────────────────────────────
@@ -147,7 +163,19 @@ public static partial class Playback
                 => !preparing ? PrepareFate.Idle
                  : Same(in preparingRow, in loading) ? PrepareFate.Adopt
                  : PrepareFate.Drop;
+
+            /// <summary>RULE 3 (F167) — a prefetch or a keeper pass never joins a manifest GET that is already in the air:
+            /// the memo's single-flight waiter BLOCKS its api worker on the owner's task, and the pool has four of them. The
+            /// owner (the load's resolve, or the first of the two warmers) fills the memo; the skipped one is asked again on
+            /// the next signal edge or beat. A row with no manifest id (the wire tier) cannot be matched to a flight, so it
+            /// is never skipped.</summary>
+            public static bool ShouldSkipInFlight(string manifestId, bool manifestInFlight) => manifestId.Length > 0 && manifestInFlight;
         }
+
+        /// <summary>What the keeper knows about one of its two targets. <see cref="WarmTarget.Unknown"/> is a wanted row the keeper has
+        /// not resolved yet; <see cref="WarmTarget.Clear"/> is no row, or a row whose resolve found no protected video;
+        /// <see cref="WarmTarget.Drm"/> is a row whose manifest named a KID.</summary>
+        public enum WarmTarget : byte { Clear, Unknown, Drm }
 
         /// <summary>D15's keeper. The licence is ~80 % of a cold switch (measured: 2 010 ms of a 2 477 ms first frame),
         /// and the native runtime's create is most of the rest (521 ms) — so while a video surface is wanted the app
@@ -170,6 +198,11 @@ public static partial class Playback
             /// open it would otherwise have done — so a stalled prepare costs nothing that was not already lost.</summary>
             public const int AdoptBudgetMs = 1_500;
 
+            /// <summary>F225: how long after the playing row's FIRST FRAME the keeper may start the NEXT row's licence. The
+            /// challenge's CDM round trips run on the one native runtime thread that also carries the new session's
+            /// time-update, handle and stream-size items, so they wait until the watched session is past its startup.</summary>
+            public const int NextAfterFirstFrameMs = 5_000;
+
             /// <summary>Is the keeper beating? Only while a video surface is wanted AND the user left pre-acquisition on
             /// — stopping the licence POSTs for videos nobody may watch is the setting's whole job.</summary>
             public static bool Beats(bool videoOn, bool prepareAhead) => videoOn && prepareAhead;
@@ -184,6 +217,55 @@ public static partial class Playback
             /// flight — is never asked for twice, because a second challenge for one KID is the one the CDM rejects.</summary>
             public static bool Acquires(bool videoOn, bool prepareAhead, bool audioBusy, bool keyInHand)
                 => Beats(videoOn, prepareAhead) && !audioBusy && !keyInHand;
+
+            /// <summary>F218: warm on INTENT. The surface is off but the user has asked for a video this session and the
+            /// playing row carries one, so the gesture "listen with the badge lit, then turn video on" finds the runtime up
+            /// and the key in hand instead of paying the whole cold bring-up (450-675 ms) and a cold challenge. Only the
+            /// playing row is warmed this way, and only while the pre-acquisition setting is on.</summary>
+            public static bool WarmsOnIntent(bool videoOn, bool prepareAhead, bool videoUsed, bool currentHasVideo)
+                => !videoOn && prepareAhead && videoUsed && currentHasVideo;
+
+            /// <summary><see cref="Acquires"/> for the intent beat: the same audio-first and never-twice rules.</summary>
+            public static bool AcquiresOnIntent(bool intent, bool audioBusy, bool keyInHand) => intent && !audioBusy && !keyInHand;
+
+            /// <summary>What the keeper knows of a target. A row nobody wants is <see cref="WarmTarget.Clear"/>; a wanted row
+            /// not tried yet is <see cref="WarmTarget.Unknown"/>; a tried one is Drm only when its manifest named a KID.</summary>
+            public static WarmTarget TargetOf(bool wanted, bool tried, bool drm)
+                => !wanted ? WarmTarget.Clear : !tried ? WarmTarget.Unknown : drm ? WarmTarget.Drm : WarmTarget.Clear;
+
+            /// <summary>The PLAYING row's target. A row the video host owns was loaded by the host's own switch, so the keeper never
+            /// resolved it and its memory says nothing: the live source is the truth — none yet (still loading) is
+            /// <see cref="WarmTarget.Unknown"/>, a protected one <see cref="WarmTarget.Drm"/>, any other <see cref="WarmTarget.Clear"/>,
+            /// so a clear video on the host lets the pin go. Every other row is <see cref="TargetOf"/>.</summary>
+            public static WarmTarget CurrentTargetOf(bool hostOwns, bool liveKnown, bool liveDrm, bool wanted, bool tried, bool drm)
+                => !hostOwns || !wanted ? TargetOf(wanted, tried, drm)
+                 : !liveKnown ? WarmTarget.Unknown : liveDrm ? WarmTarget.Drm : WarmTarget.Clear;
+
+            /// <summary>F165: does the keeper pin the native runtime (a second D3D11 device, an IMFMediaEngine, the CDM and
+            /// the PMP process)? Only when there is a protected target: a row whose manifest named a KID, or a protected
+            /// session live. A target not resolved yet keeps what is already held and never takes anything on speculation;
+            /// once both targets are clear the pin is let go and the runtime's own 30 s idle window finishes the job.</summary>
+            public static bool HoldsRuntime(WarmTarget current, WarmTarget next, bool protectedLive, bool alreadyHeld)
+                => protectedLive || current == WarmTarget.Drm || next == WarmTarget.Drm
+                   || (alreadyHeld && (current == WarmTarget.Unknown || next == WarmTarget.Unknown));
+
+            /// <summary>Is this row's content key still to fetch? A row nobody tried needs one; a tried row with no KID has
+            /// no protected video and is left alone; a key that FAILED is not hammered, only one the runtime lost
+            /// (<paramref name="keyLost"/>, after it shed) or one that <paramref name="keyExpired"/> is re-acquired.
+            /// <paramref name="expiryOnly"/> (F225) is the row the video host already owns: its own switch acquired the key,
+            /// so the keeper only re-acquires an expiry — a probe plus an api item for nothing otherwise.</summary>
+            public static bool NeedsKey(bool expiryOnly, bool tried, bool kidKnown, bool keyLost, bool keyExpired)
+            {
+                if (!tried) return !expiryOnly;
+                if (!kidKnown) return false;
+                return keyExpired || (keyLost && !expiryOnly);
+            }
+
+            /// <summary>F225: may the NEXT row's licence start? Always while the playing row is not on the video host; while
+            /// it is, only <see cref="NextAfterFirstFrameMs"/> past its first frame (<paramref name="sinceFirstFrameMs"/>
+            /// negative = no first frame yet).</summary>
+            public static bool NextMayStart(bool hostOwns, long sinceFirstFrameMs)
+                => !hostOwns || sinceFirstFrameMs >= NextAfterFirstFrameMs;
         }
 
         // ── 3. the seek planner (§3.2.2) ────────────────────────────────────────────────────────────────────────────
@@ -309,9 +391,9 @@ public static partial class Playback
 
         // ── 4. the audio hand-off across the switch (§3.1.4) ────────────────────────────────────────────────────────
 
-        /// <summary>The song is cut, not faded out and waited on: the graph's master ramp goes to zero over
-        /// <see cref="FadeMs"/> and the video's soundtrack starts at the audio clock's own value plus that fade. Pure
-        /// timing — the caller supplies the positions; nothing here reads a clock.</summary>
+        /// <summary>The song is cut, not faded out and waited on: the parked song's own pause ramp (the engine's de-click
+        /// envelope) fades it out and the video's soundtrack starts at the audio clock's own value plus that fade
+        /// (<c>ParkAndCut.Cut</c>, F151). Pure timing — the caller supplies the positions; nothing here reads a clock.</summary>
         public static class AudioHandoff
         {
             public const int FadeMs = 80;               // the TransportRamp de-click envelope the graph already owns
@@ -323,15 +405,6 @@ public static partial class Playback
             public static long CutAtMs(long audioPositionNowMs, int sampleRate, int fadeMs = FadeMs)
                 => SnapToSample(audioPositionNowMs + (fadeMs > 0 ? fadeMs : 0), sampleRate);
 
-            /// <summary>The fade in whole sample frames. A requested fade always costs at least one frame, so the envelope
-            /// can never be a zero-length step — that step is the click this exists to prevent.</summary>
-            public static int FadeFrames(int fadeMs, int sampleRate)
-            {
-                if (fadeMs <= 0 || sampleRate <= 0) return 0;
-                long frames = ((long)fadeMs * sampleRate + 500) / 1000;
-                return frames < 1 ? 1 : (int)frames;
-            }
-
             /// <summary>Truncate a millisecond position to the sample frame that contains it.</summary>
             public static long SnapToSample(long ms, int sampleRate)
                 => sampleRate <= 0 || ms <= 0 ? (ms < 0 ? 0 : ms) : ms * sampleRate / 1000 * 1000 / sampleRate;
@@ -339,6 +412,12 @@ public static partial class Playback
             /// <summary>The `gapMs=` field: silence between the end of the song's fade and the first audible video sample.
             /// Zero or negative is an overlap-free cut; positive is a gap the gate must see shrink.</summary>
             public static long GapMs(long cutAtMs, long firstAudibleVideoMs) => firstAudibleVideoMs - cutAtMs;
+
+            /// <summary>The MEASURED gap, from what the video actually did: the wall time since the cut, minus how far the video
+            /// has played since (it starts at the cut position, which a seek publishes at once, so only progress past it
+            /// counts), minus the fade the cut position already allows for. Independent of the tick's granularity.</summary>
+            public static long CutGapMs(long sinceCutMs, long playedMs, int fadeMs = FadeMs)
+                => sinceCutMs - Math.Max(0, playedMs) - Math.Max(0, fadeMs);
 
             /// <summary>What "cut, not gap" means as a predicate (§3.5).</summary>
             public static bool IsCut(long gapMs) => gapMs <= CutToleranceMs;

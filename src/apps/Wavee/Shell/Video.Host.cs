@@ -80,6 +80,59 @@ public static partial class Video
         /// without a generation remount. Pop-out uses <see cref="DetachedFullscreen"/> on its own HWND.</summary>
         public static readonly Signal<bool> MainHostFullscreen = new(false);
 
+        /// <summary>What the owners actually have mounted right now (the scoped fold of every surface's
+        /// <see cref="ReportLive"/>). Deliberately NOT part of <see cref="Surface"/>: nothing resolves from it and it is
+        /// written from passive effects, so a report inside the shared signal re-rendered the player bar, the rail frame
+        /// and every video surface once or twice per placement change for a value only the diagnostics line reads.
+        /// A plain field — non-reactive by design, UI thread only.</summary>
+        public static SurfacePlacement LiveSurface { get; private set; }
+
+        /// <summary>Make-before-break for the pop-out: true once the pop-out's own element has presented its first frame
+        /// (or the hand-off grace expired), which is the moment the main window's outgoing presenter may be released
+        /// (<see cref="MainWindowHole.Mounted"/>). False whenever no pop-out hand-off is in flight. Written only by
+        /// <see cref="BeginPopOutHandoff"/> / <see cref="ReportPopOutPresented"/> / <see cref="ExpirePopOutHandoff"/> /
+        /// <see cref="EndPopOutHandoff"/>.</summary>
+        public static readonly Signal<bool> PopOutPresented = new(false);
+
+        /// <summary>How long the main presenter waits for the pop-out's first frame before it lets go anyway (a pop-out
+        /// whose source has no surface yet must not pin a second pumping element for the rest of the session).</summary>
+        public const int PopOutHandoffGraceMs = 2000;
+
+        static long s_handoffStartTs;   // 0 = no hand-off in flight
+
+        /// <summary>The pop-out is opening: the main presenter stays mounted (hidden) until the pop-out presents.</summary>
+        public static void BeginPopOutHandoff()
+        {
+            s_handoffStartTs = System.Diagnostics.Stopwatch.GetTimestamp();
+            PopOutPresented.Value = false;
+        }
+
+        /// <summary>The pop-out's element reported its first presented frame: release the main presenter. Inert when no
+        /// hand-off is in flight (a later generation remount inside the pop-out reports again).</summary>
+        public static void ReportPopOutPresented() => FinishPopOutHandoff("presented");
+
+        /// <summary>The grace ran out before the pop-out presented: release the main presenter anyway.</summary>
+        public static void ExpirePopOutHandoff() => FinishPopOutHandoff("grace-expired");
+
+        /// <summary>The pop-out window is gone (closed, refused, or the owner unmounted): no hand-off remains.</summary>
+        public static void EndPopOutHandoff()
+        {
+            s_handoffStartTs = 0;
+            PopOutPresented.Value = false;
+        }
+
+        static void FinishPopOutHandoff(string how)
+        {
+            long start = s_handoffStartTs;
+            if (start == 0) return;
+            s_handoffStartTs = 0;
+            // ALWAYS-ON: the gap this hand-off covered (open -> the pop-out's first composited frame) is the number the
+            // make-before-break exists to hide; "grace-expired" means the pop-out never got a surface in time.
+            double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - start) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            Log.Info(LogCategory, $"pop-out hand-off {how} gapMs={ms:0.#}");
+            PopOutPresented.Value = true;
+        }
+
         /// <summary>The resolved placement — what should be mounted right now.</summary>
         public static SurfacePlacement Resolved => PlacementCore.Resolve(Surface.Peek());
 
@@ -105,7 +158,7 @@ public static partial class Video
             if (next.Preferred != before.Preferred) PersistPreferred(next.Preferred);
             long gen = Playback.Video.Player.Peek().Generation;
             Log.Info(LogCategory, "video placement " + PlacementCore.Resolve(before) + " -> " + resolved
-                + " requested=" + next.Requested + " preferred=" + next.Preferred + " live=" + next.Live
+                + " requested=" + next.Requested + " preferred=" + next.Preferred + " live=" + LiveSurface
                 + " transport=" + Transport.Peek() + " hostFs=" + MainHostFullscreen.Peek()
                 + " gen=" + gen + " hole=" + (MainWindowHole.Owns(resolved) ? "main" : "other"));
         }
@@ -141,8 +194,11 @@ public static partial class Video
         /// itself and may only RELEASE it if it still holds it.</summary>
         public static void ReportLive(SurfacePlacement surface, bool mounted)
         {
-            var s = Surface.Peek();
-            Commit(PlacementCore.WithLive(s, PlacementCore.LiveAfterReport(s.Live, surface, mounted)));
+            var before = LiveSurface;
+            var after = PlacementCore.LiveAfterReport(before, surface, mounted);
+            if (after == before) return;
+            LiveSurface = after;
+            Log.Info(LogCategory, "video live " + before + " -> " + after);
         }
 
         /// <summary>Re-stamp the availability THIS playable actually has. Required before acting on an intent: a
@@ -219,10 +275,15 @@ public static partial class Video
         /// the user last put the window so it reopens there instead of jumping back to the default corner.</summary>
         public IAppSettings? Settings { get; init; }
 
+        TimerHandle _handoffGrace;   // re-armed by Open: the make-before-break deadline (a stale fire is inert)
+
         public override Element Render()
         {
             var hooks = UseContext(InputHooks.Current);            // the pop-out seam
             var handle = UseRef<IDetachedVideoWindow?>(null);      // the live window (null / !IsOpen = none)
+            var post = UsePost();                                  // UI marshal for the render thread's OnRenderFailed
+            // Armed (RestartIn) only by Open; the mount-time arm of the hook fires into no hand-off and is inert.
+            _handoffGrace = UseTimeout(static () => State.ExpirePopOutHandoff(), State.PopOutHandoffGraceMs, DepKey.Empty);
 
             // The decode host asks "could a second window open?" when it folds the host capability; THIS file sets the
             // hook (the video-engine plan §3.4: "the pop-out HWND is K's; Video.Host.cs sets the hook"). Mount-wired
@@ -235,8 +296,8 @@ public static partial class Video
             }, DepKey.Empty);
 
             // Reactive reconcile: it READS the resolved placement, so it re-runs whenever that changes and drives the
-            // window to match. It reports reality back through ReportLive, which converges after exactly one extra
-            // pass (the reconcile then decides "nothing to do").
+            // window to match. It reports reality back through ReportLive, which only folds into the non-reactive
+            // LiveSurface: the report never wakes this effect, so there is no extra pass.
             UseSignalEffect(() =>
             {
                 var state = State.Surface.Value;                   // subscribe
@@ -244,13 +305,14 @@ public static partial class Video
                 bool alive = live is { IsOpen: true };
                 var action = PlacementCore.DecideOwned(PlacementCore.Resolve(state), Owned, alive);
 
-                if (action == MountAction.Open) Open(hooks, handle);
+                if (action == MountAction.Open) Open(hooks, handle, post);
                 else if (action == MountAction.Close)
                 {
                     live!.OnClosed = null;   // a STATE-driven close is not a user-close → it must not trigger the fallback
                     live.Close();
                     handle.Value = null;
                     State.DetachedFullscreen.Value = false;   // the window is gone; the mode it described goes with it
+                    State.EndPopOutHandoff();
                     State.ReportLive(Owned, mounted: false);
                 }
             });
@@ -298,13 +360,14 @@ public static partial class Video
                 var h = handle.Value;
                 handle.Value = null;
                 State.DetachedFullscreen.Value = false;
+                State.EndPopOutHandoff();
                 if (h is not null) { h.OnClosed = null; h.Close(); }
             }, DepKey.Empty);
 
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
 
-        void Open(InputHooks hooks, Ref<IDetachedVideoWindow?> handle)
+        void Open(InputHooks hooks, Ref<IDetachedVideoWindow?> handle, Action<Action> post)
         {
             // Reopen where the user left it. The host clamps a restored rect into the nearest VISIBLE monitor's work
             // area, so a position remembered on a display that is now unplugged still lands somewhere reachable — and
@@ -314,26 +377,37 @@ public static partial class Video
                     st.Get(Platform.Keys.VideoWindowRect), out float rx, out float ry, out float rw, out float rh))
                 restored = new RectF(rx, ry, rw, rh);
 
-            // ALWAYS-ON cost line. Opening the pop-out builds a SECOND AppHost, device resources and swapchain on the
+            // ALWAYS-ON cost lines. Opening the pop-out builds a SECOND AppHost, device resources and swapchain on the
             // UI thread, so a slow one is a hard freeze of the whole app with nothing else in the log to show for it
-            // ("it mega froze going from the player to the out-of-process window"). Time the two halves separately —
-            // the content tree and the host's window creation are very different suspects.
+            // ("it mega froze going from the player to the out-of-process window"). The content factory is a bare
+            // `new PopOutRoot()` (its tree is built by the child host), so timing it said nothing; the engine's own split
+            // names the real stages instead. The open line carries the two synchronous ones (native window creation and
+            // placement, then the child host constructor); the window is created hidden and only revealed once its first
+            // frame has presented, so the reveal line - first RunFrame and first present - arrives on a later frame.
+            // MAKE-BEFORE-BREAK: the main window's presenter stays mounted (hidden) from here until this window's own
+            // element presents its first frame, so the quarter second the window and swapchain take to build is never a
+            // moment with no video composited anywhere.
+            State.BeginPopOutHandoff();
             var content = ContentFactory;
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             var tree = content?.Invoke();
-            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
             var win = tree is null ? null : hooks.OpenDetachedWindow?.Invoke(new DetachedWindowRequest(
                 TitleFactory(), new Size2(DefaultWidthDip, DefaultHeightDip), tree,
                 AlwaysOnTop: Prefs.AlwaysOnTop(Settings),
                 InitialBoundsPx: restored,
                 MinClientSizeDip: new Size2(MinWidthDip, MinHeightDip)));
-            long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
-            double ms(long a, long b) => (b - a) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-            Log.Info(State.LogCategory, $"pop-out open contentMs={ms(t0, t1):0.#} windowMs={ms(t1, t2):0.#} " +
-                $"totalMs={ms(t0, t2):0.#} restored={(restored.W > 0 ? "yes" : "no")} opened={win is not null}");
+            long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
+            var openTiming = win?.OpenTiming ?? default;
+            Log.Info(State.LogCategory, $"pop-out open syncMs={(t1 - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency:0.#} " +
+                $"windowCreateMs={openTiming.WindowCreateMs:0.#} hostCtorMs={openTiming.HostCtorMs:0.#} " +
+                $"restored={(restored.W > 0 ? "yes" : "no")} opened={win is not null}");
+            if (win is not null)
+                win.OnRevealed = t => Log.Info(State.LogCategory,
+                    $"pop-out revealed firstFrameMs={t.FirstFrameMs:0.#} firstPresentMs={t.FirstPresentMs:0.#} timedOut={t.TimedOut}");
             handle.Value = win;
             if (win is null)
             {
+                State.EndPopOutHandoff();
                 // The platform refused a second window (a child host, headless, or no secondary swapchains) — or no
                 // content is compiled in. That is a placement that is not actually AVAILABLE, so report it as a close:
                 // the model falls back to the mini player instead of leaving the button lit pointing at a window that
@@ -342,6 +416,7 @@ public static partial class Video
                 State.ReportClosed(Owned);
                 return;
             }
+            _handoffGrace.RestartIn(State.PopOutHandoffGraceMs);
             win.OnClosed = () =>
             {
                 // Identity guard: if this dead window is no longer the CURRENT handle (a newer window B was opened in
@@ -353,9 +428,20 @@ public static partial class Video
                 // Drop the fullscreen mode BEFORE reporting the close: the window it describes is already gone, and
                 // the report below may resolve the placement to something that is not Detached at all.
                 State.DetachedFullscreen.Value = false;
+                State.EndPopOutHandoff();
                 State.ReportLive(Owned, mounted: false);
                 State.ReportClosed(Owned);
             };
+            // A pop-out whose render path failed (a non-device-loss exception on the shared render thread) is latched dead by
+            // the engine and never presents again: it would sit on screen frozen. Report it as a close so the model falls back
+            // inline, exactly as for a refused window; the reconcile then closes the dead window. The event fires on the RENDER
+            // thread, so the model write is marshalled to the UI thread, behind the same identity guard as OnClosed.
+            win.OnRenderFailed = () => post(() =>
+            {
+                if (!ReferenceEquals(handle.Value, win)) return;
+                Log.Info(State.LogCategory, "pop-out render failed - falling back inline");
+                State.ReportClosed(Owned);
+            });
             // Persist the window's SETTLED position (the host debounces — one call per gesture, not one per pixel).
             // …but NEVER while the pop-out is presenting fullscreen. Entering borderless fullscreen is a move+resize to
             // the whole monitor rect and is reported here like any other settled change; saving it would overwrite the

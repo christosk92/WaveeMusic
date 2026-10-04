@@ -88,6 +88,68 @@ public class VideoPrefetchRaceTests
     }
 }
 
+// ── superseded loads (F155) and the adopt timeout (F160) ─────────────────────────────────────────────────────────────
+
+public class VideoLoadSupersessionTests
+{
+    static V.RowKey Row(string uri = "", string key = "") => new(uri, key);
+
+    [Fact]
+    public void A_request_is_current_only_while_neither_the_pump_nor_the_reducer_moved_past_it()
+    {
+        Assert.False(V.LoadSupersession.IsStale(pumpEpoch: 4, requestPumpEpoch: 4, requestReducerEpoch: 9, latestReducerEpoch: 9));
+        Assert.True(V.LoadSupersession.IsStale(pumpEpoch: 5, requestPumpEpoch: 4, requestReducerEpoch: 9, latestReducerEpoch: 9));
+    }
+
+    [Fact]
+    public void A_load_the_reducer_already_replaced_is_stale_before_the_pump_epoch_moves()
+    {
+        // The window F155 lives in: B's resolve is still on the api pool, so Video.Load(B) has not bumped the pump epoch,
+        // but the reducer started B (epoch 10) and the worker is holding A (epoch 9).
+        Assert.True(V.LoadSupersession.IsStale(pumpEpoch: 4, requestPumpEpoch: 4, requestReducerEpoch: 9, latestReducerEpoch: 10));
+    }
+
+    [Fact]
+    public void A_stale_request_never_condemns_the_prepare_of_the_row_that_replaced_it()
+    {
+        // B's prefetch is in flight (armed while B was Loading); the stale A reaches ResolvePrepareAsync. A current A would
+        // Drop it; a stale one must leave it alone, or Landed disposes B's warm prepare and B opens cold.
+        var preparing = Row("spotify:track:bbb", "");
+        var loading = Row("spotify:track:aaa", "aaaa");
+        Assert.Equal(V.PrepareFate.Drop, V.LoadSupersession.FateOf(false, true, in preparing, in loading));
+        Assert.Equal(V.PrepareFate.Idle, V.LoadSupersession.FateOf(true, true, in preparing, in loading));
+    }
+
+    [Fact]
+    public void A_stale_request_does_not_wait_to_adopt_a_prepare()
+    {
+        var preparing = Row("spotify:track:aaa", "");
+        var loading = Row("spotify:track:aaa", "aaaa");
+        Assert.Equal(V.PrepareFate.Adopt, V.LoadSupersession.FateOf(false, true, in preparing, in loading));
+        Assert.Equal(V.PrepareFate.Idle, V.LoadSupersession.FateOf(true, true, in preparing, in loading));
+    }
+
+    [Fact]
+    public void A_current_request_keeps_the_race_rules_exactly()
+    {
+        var loading = Row("spotify:track:aaa", "aaaa");
+        Assert.Equal(V.PrepareFate.Idle, V.LoadSupersession.FateOf(false, false, in V.RowKey.None, in loading));
+    }
+
+    [Fact]
+    public void An_adopt_that_timed_out_condemns_the_prepare_still_in_the_slot_so_it_lands_disposed()
+    {
+        // F160: the load opened cold; the late prepare would be a second protected session for the same row, parked for nobody.
+        Assert.Equal(V.PrepareFate.Drop, V.LoadSupersession.FateAfterAdoptTimeout(slotStillHoldsThisPrepare: true));
+    }
+
+    [Fact]
+    public void An_adopt_timeout_never_condemns_a_prepare_that_already_landed_or_a_newer_one()
+    {
+        Assert.Equal(V.PrepareFate.Idle, V.LoadSupersession.FateAfterAdoptTimeout(slotStillHoldsThisPrepare: false));
+    }
+}
+
 // ── the warm keeper (D15) ────────────────────────────────────────────────────────────────────────────────────────────
 
 public class VideoWarmPolicyTests
@@ -166,5 +228,140 @@ public class VideoWarmPolicyTests
         // have done anyway, so the budget only has to stay under the cold switch it is betting against.
         Assert.True(V.WarmPolicy.AdoptBudgetMs > V.Budgets.WarmSwitchAfterIdleMs);
         Assert.True(V.WarmPolicy.AdoptBudgetMs < V.WarmPolicy.ShedMs);
+    }
+}
+
+// ── what the keeper pins, warms on intent and leaves alone (F165, F218, F225, F167) ──────────────────────────────────
+
+public class VideoWarmTargetTests
+{
+    static V.WarmTarget Clear => V.WarmTarget.Clear;
+    static V.WarmTarget Unknown => V.WarmTarget.Unknown;
+    static V.WarmTarget Drm => V.WarmTarget.Drm;
+
+    [Fact]
+    public void F165_a_target_is_clear_unknown_or_protected_by_what_the_keeper_learnt_of_its_row()
+    {
+        Assert.Equal(Clear, V.WarmPolicy.TargetOf(wanted: false, tried: false, drm: false));
+        Assert.Equal(Clear, V.WarmPolicy.TargetOf(wanted: false, tried: true, drm: true));     // a row nobody wants is no target
+        Assert.Equal(Unknown, V.WarmPolicy.TargetOf(wanted: true, tried: false, drm: false));
+        Assert.Equal(Clear, V.WarmPolicy.TargetOf(wanted: true, tried: true, drm: false));     // resolved: no KID, nothing protected
+        Assert.Equal(Drm, V.WarmPolicy.TargetOf(wanted: true, tried: true, drm: true));
+    }
+
+    [Fact]
+    public void F165_songs_without_protected_video_never_pin_the_runtime()
+    {
+        // The user who leaves the surface on and plays songs: no D3D11 device, media engine, CDM or PMP process for them.
+        Assert.False(V.WarmPolicy.HoldsRuntime(Clear, Clear, protectedLive: false, alreadyHeld: false));
+        Assert.False(V.WarmPolicy.HoldsRuntime(Unknown, Clear, protectedLive: false, alreadyHeld: false));   // never on speculation
+        Assert.False(V.WarmPolicy.HoldsRuntime(Unknown, Unknown, protectedLive: false, alreadyHeld: false));
+    }
+
+    [Fact]
+    public void F165_a_protected_target_or_a_live_protected_session_pins_it()
+    {
+        Assert.True(V.WarmPolicy.HoldsRuntime(Drm, Clear, protectedLive: false, alreadyHeld: false));
+        Assert.True(V.WarmPolicy.HoldsRuntime(Clear, Drm, protectedLive: false, alreadyHeld: false));
+        Assert.True(V.WarmPolicy.HoldsRuntime(Clear, Clear, protectedLive: true, alreadyHeld: false));
+    }
+
+    [Fact]
+    public void F165_the_pin_is_let_go_once_both_targets_are_clear_and_kept_while_one_is_still_resolving()
+    {
+        Assert.False(V.WarmPolicy.HoldsRuntime(Clear, Clear, protectedLive: false, alreadyHeld: true));
+        // A row change leaves the new row Unknown for one resolve: dropping and re-taking would be churn for nothing.
+        Assert.True(V.WarmPolicy.HoldsRuntime(Unknown, Clear, protectedLive: false, alreadyHeld: true));
+        Assert.True(V.WarmPolicy.HoldsRuntime(Clear, Unknown, protectedLive: false, alreadyHeld: true));
+    }
+
+    [Fact]
+    public void F165_a_clear_video_on_the_host_lets_the_pin_go_because_the_live_source_is_the_truth()
+    {
+        // The keeper never resolves the row the host owns, so its memory (tried: false) would read Unknown for as long as
+        // it plays and, once held, pin the runtime for a clear video. The live source says what it is.
+        var current = V.WarmPolicy.CurrentTargetOf(hostOwns: true, liveKnown: true, liveDrm: false, wanted: true, tried: false, drm: false);
+        Assert.Equal(Clear, current);
+        Assert.False(V.WarmPolicy.HoldsRuntime(current, Clear, protectedLive: false, alreadyHeld: true));
+    }
+
+    [Fact]
+    public void F165_a_host_row_still_loading_is_unknown_and_a_protected_one_is_protected()
+    {
+        Assert.Equal(Unknown, V.WarmPolicy.CurrentTargetOf(hostOwns: true, liveKnown: false, liveDrm: false, wanted: true, tried: false, drm: false));
+        Assert.Equal(Drm, V.WarmPolicy.CurrentTargetOf(hostOwns: true, liveKnown: true, liveDrm: true, wanted: true, tried: false, drm: false));
+    }
+
+    [Fact]
+    public void F165_a_row_the_host_does_not_own_is_judged_by_the_keepers_memory()
+    {
+        Assert.Equal(Unknown, V.WarmPolicy.CurrentTargetOf(hostOwns: false, liveKnown: true, liveDrm: false, wanted: true, tried: false, drm: false));
+        Assert.Equal(Drm, V.WarmPolicy.CurrentTargetOf(hostOwns: false, liveKnown: false, liveDrm: false, wanted: true, tried: true, drm: true));
+        Assert.Equal(Clear, V.WarmPolicy.CurrentTargetOf(hostOwns: true, liveKnown: true, liveDrm: true, wanted: false, tried: false, drm: false));   // no row, no target
+    }
+
+    [Fact]
+    public void F218_the_surface_off_after_a_video_was_asked_for_warms_the_playing_row_on_intent()
+    {
+        Assert.True(V.WarmPolicy.WarmsOnIntent(videoOn: false, prepareAhead: true, videoUsed: true, currentHasVideo: true));
+        Assert.False(V.WarmPolicy.WarmsOnIntent(videoOn: true, prepareAhead: true, videoUsed: true, currentHasVideo: true));    // the beat itself
+        Assert.False(V.WarmPolicy.WarmsOnIntent(videoOn: false, prepareAhead: false, videoUsed: true, currentHasVideo: true));  // the setting is the off switch
+        Assert.False(V.WarmPolicy.WarmsOnIntent(videoOn: false, prepareAhead: true, videoUsed: false, currentHasVideo: true));  // never asked for a video
+        Assert.False(V.WarmPolicy.WarmsOnIntent(videoOn: false, prepareAhead: true, videoUsed: true, currentHasVideo: false));  // a song with no video
+    }
+
+    [Fact]
+    public void F218_the_intent_beat_keeps_audio_first_and_never_asks_for_a_key_twice()
+    {
+        Assert.True(V.WarmPolicy.AcquiresOnIntent(intent: true, audioBusy: false, keyInHand: false));
+        Assert.False(V.WarmPolicy.AcquiresOnIntent(intent: true, audioBusy: true, keyInHand: false));
+        Assert.False(V.WarmPolicy.AcquiresOnIntent(intent: true, audioBusy: false, keyInHand: true));
+        Assert.False(V.WarmPolicy.AcquiresOnIntent(intent: false, audioBusy: false, keyInHand: false));
+    }
+
+    [Fact]
+    public void F225_a_row_the_video_host_owns_is_not_re_acquired_unless_its_key_expired()
+    {
+        // Its own switch acquired the key: an untried row, or a lost cache, is not the keeper's business.
+        Assert.False(V.WarmPolicy.NeedsKey(expiryOnly: true, tried: false, kidKnown: false, keyLost: false, keyExpired: false));
+        Assert.False(V.WarmPolicy.NeedsKey(expiryOnly: true, tried: true, kidKnown: true, keyLost: true, keyExpired: false));
+        Assert.True(V.WarmPolicy.NeedsKey(expiryOnly: true, tried: true, kidKnown: true, keyLost: false, keyExpired: true));
+    }
+
+    [Fact]
+    public void The_key_rules_for_a_row_the_host_does_not_own_are_unchanged()
+    {
+        Assert.True(V.WarmPolicy.NeedsKey(expiryOnly: false, tried: false, kidKnown: false, keyLost: false, keyExpired: false));
+        Assert.False(V.WarmPolicy.NeedsKey(expiryOnly: false, tried: true, kidKnown: false, keyLost: false, keyExpired: false));   // no KID: no protected video
+        Assert.False(V.WarmPolicy.NeedsKey(expiryOnly: false, tried: true, kidKnown: true, keyLost: false, keyExpired: false));    // usable, pending or failed
+        Assert.True(V.WarmPolicy.NeedsKey(expiryOnly: false, tried: true, kidKnown: true, keyLost: true, keyExpired: false));      // the runtime shed
+        Assert.True(V.WarmPolicy.NeedsKey(expiryOnly: false, tried: true, kidKnown: true, keyLost: false, keyExpired: true));
+    }
+
+    [Fact]
+    public void F225_the_next_rows_challenge_waits_past_the_first_frame_of_the_session_being_watched()
+    {
+        Assert.True(V.WarmPolicy.NextMayStart(hostOwns: false, sinceFirstFrameMs: -1));
+        Assert.False(V.WarmPolicy.NextMayStart(hostOwns: true, sinceFirstFrameMs: -1));     // no first frame yet
+        Assert.False(V.WarmPolicy.NextMayStart(hostOwns: true, sinceFirstFrameMs: 0));
+        Assert.False(V.WarmPolicy.NextMayStart(hostOwns: true, sinceFirstFrameMs: V.WarmPolicy.NextAfterFirstFrameMs - 1));
+        Assert.True(V.WarmPolicy.NextMayStart(hostOwns: true, sinceFirstFrameMs: V.WarmPolicy.NextAfterFirstFrameMs));
+        Assert.True(V.WarmPolicy.NextAfterFirstFrameMs < V.WarmPolicy.HeartbeatMs);          // a beat after it still lands inside the row
+    }
+
+    [Fact]
+    public void F167_a_warmer_never_joins_a_manifest_fetch_already_in_the_air()
+    {
+        Assert.True(V.PrefetchRace.ShouldSkipInFlight("0123456789abcdef0123456789abcdef", manifestInFlight: true));
+        Assert.False(V.PrefetchRace.ShouldSkipInFlight("0123456789abcdef0123456789abcdef", manifestInFlight: false));
+        // A row with no manifest id (the wire tier) cannot be matched to a flight: it is never skipped.
+        Assert.False(V.PrefetchRace.ShouldSkipInFlight("", manifestInFlight: true));
+    }
+
+    [Fact]
+    public void F167_a_manifest_nobody_asked_for_is_not_in_flight()
+    {
+        Assert.False(V.ManifestMemo.IsInFlight("ffffffffffffffffffffffffffffffff"));
+        Assert.False(V.ManifestMemo.IsInFlight(""));
     }
 }

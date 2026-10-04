@@ -823,6 +823,73 @@ public class LyricsMotionDemandTests
         Assert.Equal(Lyrics.MotionDemand.None, Lyrics.MotionDemand.NextEventMs(lines, 0, 99_999, 140));
         Assert.Equal(Lyrics.MotionDemand.None, Lyrics.MotionDemand.NextEventMs(null, 0, 0, 140));
     }
+
+    // F237: a line-synced line on its flat glow plateau is the voice, but it writes the same alpha every frame.
+
+    [Fact]
+    public void A_line_synced_voice_line_moves_only_while_its_glow_fades_in_or_out()
+    {
+        var line = Lyr.Timed(10_000, 20_000, "a");
+        long fadeIn = (long)Lyrics.Wipe.GlowFadeMs;
+        long plateauEnd = Lyrics.MotionDemand.VoicePlateauEndMs(line, 20_000);
+        Assert.Equal(20_000 - (long)Lyrics.Wipe.GlowOutMs, plateauEnd);
+
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 10_000));                  // the fade-in
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 10_000 + fadeIn - 1));
+        Assert.False(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 10_000 + fadeIn));        // the plateau: nothing to step
+        Assert.False(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 15_000));
+        Assert.False(Lyrics.MotionDemand.VoiceMoves(line, 20_000, plateauEnd - 1));
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, plateauEnd));              // the melt-out
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 19_999));
+    }
+
+    [Fact]
+    public void A_word_synced_voice_line_always_moves_and_arms_no_plateau_wake()
+    {
+        var line = Lyr.Line(1000, "ab", Lyr.S(1000, 1500, "a"), Lyr.S(1500, 2000, "b"));
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 2000, 1000));
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 2000, 1750));
+        Assert.Equal(Lyrics.MotionDemand.None, Lyrics.MotionDemand.VoicePlateauEndMs(line, 2000));
+    }
+
+    [Fact]
+    public void A_line_with_no_known_end_has_no_plateau_wake()
+        => Assert.Equal(Lyrics.MotionDemand.None,
+            Lyrics.MotionDemand.VoicePlateauEndMs(Lyr.Timed(1000, 2000, "a"), long.MaxValue));
+
+    [Fact]
+    public void A_quiescent_plateau_arms_the_wake_at_the_melt_out_instead_of_mounting_the_stepper()
+    {
+        Lyrics.Line[] lines = [Lyr.Timed(10_000, 20_000, "a"), Lyr.Timed(20_000, 30_000, "b")];
+        long now = 15_000;
+        long plateauEnd = Lyrics.MotionDemand.VoicePlateauEndMs(lines[0], 20_000);
+        long next = Math.Min(Lyrics.MotionDemand.NextEventMs(lines, 0, now, 140), plateauEnd);
+        Assert.Equal(plateauEnd, next);   // the melt-out comes before the next hand-off
+
+        var d = Lyrics.MotionDemand.Evaluate(Quiet(now, next) with { VoiceActive = Lyrics.MotionDemand.VoiceMoves(lines[0], 20_000, now) });
+        Assert.False(d.NeedsTicks);
+        Assert.Equal(plateauEnd - Lyrics.MotionDemand.ArmLeadMs, d.WakeAtMs);
+    }
+}
+
+public class LyricsStepCadenceTests
+{
+    [Theory]
+    [InlineData(false, false, true, false)]   // the immersive stage on a strong GPU in the foreground: full cadence
+    [InlineData(true, false, true, true)]     // weak GPU
+    [InlineData(false, true, true, true)]     // the side rail
+    [InlineData(false, false, false, true)]   // a window that is not the foreground one (the pop-out has focus)
+    public void The_stepper_drops_to_the_reduced_cadence_where_a_present_costs_most_or_is_seen_least(
+        bool weakGpu, bool sideRail, bool focused, bool reduced)
+        => Assert.Equal(reduced ? Lyrics.StepCadence.ReducedMs : Lyrics.StepCadence.FullMs,
+            Lyrics.StepCadence.PeriodMs(weakGpu, sideRail, focused));
+
+    [Fact]
+    public void The_full_cadence_is_below_a_120_Hz_panels_rate_and_above_the_reduced_one()
+    {
+        Assert.True(Lyrics.StepCadence.FullMs > 1000f / 120f);
+        Assert.True(Lyrics.StepCadence.ReducedMs > Lyrics.StepCadence.FullMs);
+    }
 }
 
 public class LyricsAuthorityTests

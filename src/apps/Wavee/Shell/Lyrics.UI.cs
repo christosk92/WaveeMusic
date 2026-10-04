@@ -18,9 +18,10 @@
 // THE FIVE THINGS THIS FILE IS SHAPED BY (ch 22 §0, §9):
 //   1. Zero re-render per frame. The per-frame lane (`OnFrame`) writes SCENE COLUMNS (σ, transform, glyph wipe) and a
 //      handful of value-gated signals; a row re-renders only when ITS OWN packed emphasis changes.
-//   2. Lyrics wake only for the words (2026-09-12). The frame stepper is a frame-clock SUBSCRIBER, and its subscription
-//      IS the request for panel-rate frames — so it is mounted only while `MotionDemand` says a lane is moving, and a
-//      quiescent surface re-arms from a one-shot timeout at the next media instant instead.
+//   2. Lyrics wake only for the words (2026-09-12). The frame stepper asks the host for a frame at its cadence (60 Hz,
+//      30 Hz on the rail / a weak GPU / a background window: `StepCadence`) — so it is mounted only while `MotionDemand`
+//      says a lane is moving, and a quiescent surface (no media-clock lane live, a line-synced line on its glow plateau)
+//      re-arms from a one-shot timeout at the next media instant instead.
 //   3. Motion samples the frame clock. The media position is the playback host's (position, stamp) sample mapped onto
 //      `Design.FrameTime.NowQpc` through `MediaClock` + `SampleClock`; `Environment.TickCount64` appears nowhere.
 //   4. Two indices. `_activeLine` (lead-shifted: emphasis + follow) and `_voiceLine` (true time: wipe + glow); neither
@@ -296,7 +297,6 @@ public static partial class Lyrics
         // ── motion demand ────────────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<bool> _motionLive = new(true);   // starts live: the first step decides for itself
         readonly Signal<MotionWake> _motionWake = new(new MotionWake(0, -1f));
-        readonly Signal<bool> _motionRecheck = new(false);
         int _motionWakeSeq;
         double _motionWakeRate = 1;
         long _motionWakeAtMs = long.MinValue;
@@ -313,7 +313,6 @@ public static partial class Lyrics
         internal bool CascadeRunningValue => _cascadeRunning.Value;
         internal bool MotionLiveValue => _motionLive.Value;
         internal MotionWake MotionWakeValue => _motionWake.Value;
-        internal bool MotionRecheckValue => _motionRecheck.Value;
         internal string TrackId => _trackId;
 
         void WakeTick() { if (!ProbeSyncMode) OnFrame(); }
@@ -1217,13 +1216,14 @@ public static partial class Lyrics
             _motionWake.Value = new MotionWake(++_motionWakeSeq, -1f);
         }
 
-        /// <summary>No document, an untimed one, or sync suppressed by a video: no media deadline to re-arm from, so the
-        /// ticker re-checks on a slow TIMER (which asks the host for no frames) while playback runs.</summary>
+        /// <summary>No document, an untimed one, or sync suppressed by a video: no media deadline to re-arm from. Nothing
+        /// polls for the end of those states (a 4 Hz timer used to, for nothing but the video flag): a document landing,
+        /// a clear or an ownership flip already <see cref="WakeMotion"/>, and the Ticker's edge effect re-steps on a
+        /// transport, position or <see cref="Playback.VideoActive"/> edge.</summary>
         void QuiesceUnresolved()
         {
             _motionLive.Value = false;
             ClearMotionWake();
-            _motionRecheck.Value = OwnsPlayback && Playback.IsPlaying.Peek();
         }
 
         // ── 2.10 the follow ─────────────────────────────────────────────────────────────────────────────────────────
@@ -1589,9 +1589,16 @@ public static partial class Lyrics
             }
 
             // ── motion demand: this step's OUTCOME, published after every lane ran ──
+            // A line-synced line on its flat glow plateau is the voice but has no per-frame output: it arms a wake at the
+            // melt-out instead of holding the stepper (F237). While a user scroll defers the glow (`!runGlow`) the alpha was
+            // NOT written this step, so the voice counts as moving until a step writes it.
+            bool voiceMoving = voiceLine >= 0 && (!runGlow || MotionDemand.VoiceMoves(doc.Lines[voiceLine], SungOutMs(doc, voiceLine), nowMs));
+            long nextEventMs = MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs);
+            if (voiceLine >= 0)
+                nextEventMs = Math.Min(nextEventMs, MotionDemand.VoicePlateauEndMs(doc.Lines[voiceLine], SungOutMs(doc, voiceLine)));
             var demand = MotionDemand.Evaluate(new MotionLanes(
                 Playing: playing,
-                VoiceActive: voiceLine >= 0,
+                VoiceActive: voiceMoving,
                 DotsActive: dotsUp,
                 GlowFadeActive: _glowOutLine >= 0,
                 DofRampPending: _dofRampPending,
@@ -1600,8 +1607,7 @@ public static partial class Lyrics
                 FollowUnsettled: (!_scrollSnapped && active >= 0) || _reserveRelatchFrames > 0,
                 Following: Follow_.Peek() == FollowMode.Following,
                 NowMs: nowMs,
-                NextEventMs: MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs)));
-            _motionRecheck.Value = false;
+                NextEventMs: nextEventMs));
             _motionLive.Value = demand.NeedsTicks;
             if (demand.NeedsTicks) ClearMotionWake();
             else ArmMotionWake(demand.WakeAtMs, nowMs);
@@ -2021,7 +2027,7 @@ public static partial class Lyrics
     /// otherwise re-arms from a one-shot timeout at the next media instant — "lyrics wake only for the words".
     /// <para>NO STEP RUNS INSIDE THIS RENDER (the G-259 lost wakeup, found here by R4-0). A signal effect's body runs
     /// EAGERLY when its hook is created, i.e. inside this render, which has already read <c>_motionLive</c>,
-    /// <c>_cascadeRunning</c>, <c>Follow_</c>, the wake and the re-check and is still running; a step writes those, and the
+    /// <c>_cascadeRunning</c>, <c>Follow_</c> and the wake and is still running; a step writes those, and the
     /// engine drops a write into a running computation (<c>Computation.MarkDirty</c> returns early while Dirty, D42). The
     /// Ticker then kept a stale gate: a Stepper polling every frame after the step had quiesced, or none mounted when it
     /// asked for motion. So the edge effect's mount run only SUBSCRIBES — the mount's first step is owed by
@@ -2050,13 +2056,14 @@ public static partial class Lyrics
                 _ = Playback.PositionMs.Value;
                 _ = Playback.EpisodeSpeed.Value;
                 _ = Playback.CurrentId.Value;
+                _ = Playback.VideoActive.Value;   // a video starting or ending flips the sync suppression: step on the edge, no polling
                 if (!_edgeSubscribed) { _edgeSubscribed = true; return; }
                 if (ViewCore.ProbeSyncMode && playing) return;
                 owner.OnFrame(forceVisual: !playing);
             });
 
-            // Mounting CONDITIONALLY (not gating inside) is what lets the loop idle: an unmounted stepper is not a
-            // frame-clock subscriber, so it contributes no wake reason at all. The two edges beside `motionLive` arm work
+            // Mounting CONDITIONALLY (not gating inside) is what lets the loop idle: an unmounted stepper has no interval
+            // armed, so it contributes no wake reason at all. The two edges beside `motionLive` arm work
             // from OUTSIDE a step: a cascade that must finish across a pause, and the detached/resync countdown.
             bool needsTicks = motionLive || cascading || follow != FollowMode.Following;
             Element? stepper = needsTicks && !ViewCore.ProbeSyncMode ? Embed.Comp(() => new Stepper(owner)) : null;
@@ -2066,30 +2073,26 @@ public static partial class Lyrics
             var timer = UseTimeout(owner._wakeTick, MathF.Max(wake.DelayMs, 1f), DepKey.From(wake.Seq));
             if (needsTicks || wake.DelayMs < 0f) timer.Cancel();
 
-            // …and the slow re-check for the states with no media deadline (no document, untimed, video-suppressed).
-            UseInterval(owner._wakeTick, MotionDemand.UnresolvedRecheckMs, enabled: owner.MotionRecheckValue && !needsTicks);
-
             return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f, Children = stepper is null ? [] : [stepper] };
         }
     }
 
-    /// <summary>The per-frame step: a frame-clock subscriber running ONE step per produced frame. Its subscription is the
-    /// request for those frames; unmounting it lets the loop idle. It never re-renders its owner. It mounts INSIDE the
-    /// <see cref="Ticker"/>'s render, so its eager mount run only subscribes and every step comes from a later tick's flush,
-    /// where the Ticker is Clean and hears the gate writes in that same flush (the lost wakeup, see Ticker).</summary>
+    /// <summary>The per-frame step: ONE step per <see cref="StepCadence"/> period, on a host timer. It used to subscribe the
+    /// frame clock, which is the request for EVERY vblank (~115 presents a second on a 120 Hz panel, F237); a timer asks
+    /// for a frame only when a step is due, and its period is the surface's cadence — 60 Hz on the immersive stage, 30 Hz
+    /// on the rail, on a weak GPU, or while the window is not the foreground one. Unmounting it lets the loop idle. It
+    /// never re-renders its owner (a focus edge re-renders THIS component, which only re-times the interval). It mounts
+    /// INSIDE the <see cref="Ticker"/>'s render and its first step is one period later, never inside that render, so the
+    /// Ticker is Clean and hears the gate writes of the step (the lost wakeup, see Ticker). The interval auto-pauses
+    /// under a parked or minimized window.</summary>
     sealed class Stepper(ViewCore owner) : Component
     {
-        bool _subscribed;
-
         public override Element Render()
         {
-            var tick = UseContextSignal(FrameClock.Tick);
-            UseSignalEffect(() =>
-            {
-                _ = tick.Value;                                              // the subscription is the request for frames
-                if (!_subscribed) { _subscribed = true; return; }            // the eager mount run: subscribe, never step
-                owner.OnFrame();
-            });
+            var hooks = UseContext(InputHooks.Current);
+            _ = hooks.WindowChromeEpoch?.Value;                   // subscribe: a focus / blur re-times the cadence
+            bool focused = hooks.IsWindowActive?.Invoke() ?? true;
+            UseInterval(owner._wakeTick, StepCadence.PeriodMs(GpuProfile.IsWeak, !owner.Large, focused));
             return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
         }
     }

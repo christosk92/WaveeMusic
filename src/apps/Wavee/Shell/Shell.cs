@@ -1077,6 +1077,12 @@ public static partial class Shell
         /// <summary>The rail's expanded width in DIP.</summary>
         public static readonly FloatSignal RailWidth = new(RailDefaultW);
 
+        /// <summary>F243: the rail splitter's PREVIEW width. A drag writes THIS, never <see cref="RailWidth"/>: the content
+        /// column, the rail card and the docked video all lay out against the committed <see cref="RailWidth"/>, so a drag
+        /// reflows nothing (and the PlayReady stream is resized once, on release) while the seam and its guide follow the
+        /// pointer. Equal to <see cref="RailWidth"/> at rest; <c>FrameRules.RailDragCommit</c> is the one commit rule.</summary>
+        public static readonly FloatSignal RailDragWidth = new(RailDefaultW);
+
         /// <summary>Docked music-video cap height in DIP. Floor is 16:9 of <see cref="RailWidth"/>; the vertical
         /// splitter only grows from there.</summary>
         public static readonly FloatSignal DockedVideoHeight = new(DockedVideoNaturalH(RailDefaultW));
@@ -1892,9 +1898,22 @@ public static partial class Shell
         /// <summary>The rail seam grip only exists while the rail is open.</summary>
         public static float RailSeamWidth(bool open) => open ? SeamStripW : 0f;
 
-        /// <summary>FULL-SCREEN VIDEO OR THE FULLSCREEN STAGE UNMOUNTS THE CHROME ROW AND THE PLAYER BAR — one derived
-        /// predicate drives both Flow.Show boundaries, so there is exactly one transport on screen and the surface mounting
-        /// and the chrome leaving cannot disagree by a frame (ch 18 §0.12).</summary>
+        /// <summary>F243: the width a rail splitter drag COMMITS to <c>Ui.RailWidth</c> (and the settings) on release: the
+        /// preview width through the one rail clamp, or null when there is nothing to commit (a non-finite preview, or the
+        /// pointer ended where the rail already was). Nothing reaches the layout, the docked video or the settings until
+        /// this answers a width.</summary>
+        public static float? RailDragCommit(float dragWidth, float committedWidth)
+        {
+            if (!float.IsFinite(dragWidth)) return null;
+            float w = ClampRailWidth(dragWidth);
+            return MathF.Abs(w - committedWidth) < 0.01f ? null : w;
+        }
+
+        /// <summary>FULL-SCREEN VIDEO OR THE FULLSCREEN STAGE COLLAPSES THE CHROME ROW, THE CONTENT REGION AND THE PLAYER
+        /// BAR — one derived predicate drives all three bound <c>Visible</c> channels, so there is exactly one transport on
+        /// screen and the surface mounting and the chrome leaving cannot disagree by a frame (ch 18 §0.12). A collapse, not
+        /// an unmount: the bands stay mounted (out of layout, paint, hit-test and focus, their subtree inactive), so leaving
+        /// fullscreen does not rebuild the tab row and the whole player bar.</summary>
         public static bool ChromeMounted(Video.SurfacePlacement resolved, bool immersive)
             => resolved != Video.SurfacePlacement.Fullscreen && !immersive;
 

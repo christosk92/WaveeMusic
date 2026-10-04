@@ -624,14 +624,24 @@ public static partial class Controls
     /// NON-UNIFORM shape instead, so a reduced-motion user can still tell "is this the one playing" from a mid-list
     /// glance without anything ever looping).</para>
     ///
-    /// <para>Window-inactive/minimized is deliberately NOT an input: the engine's interval hook already folds the
-    /// activation signal and auto-pauses every interval — this one included — while the window is minimized or power
-    /// suspended. There is nothing for app code to decide for that half.</para></summary>
-    public static bool ShouldTick(bool playing, bool hoverPaused, bool reducedMotion)
-        => playing && !hoverPaused && !reducedMotion;
+    /// <para>Minimized / power-suspended is not an input: the engine's interval hook already folds the activation signal
+    /// and auto-pauses every interval — this one included — while the window is minimized or power suspended. A window
+    /// that is merely COVERED or cloaked (<c>InputHooks.WindowOccluded</c>) is not parked, so that half IS an input
+    /// (<paramref name="windowHidden"/>): nobody can see the bars, and each tick is a full-window present.</para>
+    ///
+    /// <para><paramref name="videoLive"/> (a video surface is the thing on screen, docked or in the pop-out) turns the
+    /// loop off too: the bars settle into the still "playing" shape instead — a 30 Hz full-window present beside a
+    /// playing video competes with it for the GPU and the compositor, and the picture is what the user is watching.</para></summary>
+    public static bool ShouldTick(bool playing, bool hoverPaused, bool reducedMotion, bool windowHidden = false, bool videoLive = false)
+        => playing && !hoverPaused && !reducedMotion && !windowHidden && !videoLive;
 
     /// <inheritdoc cref="ShouldTick"/>
-    public static bool ShouldShowStillShape(bool playing, bool reducedMotion) => playing && reducedMotion;
+    public static bool ShouldShowStillShape(bool playing, bool reducedMotion, bool videoLive = false)
+        => playing && (reducedMotion || videoLive);
+
+    /// <summary>The equalizer's tick period: ~30 Hz, or ~15 Hz on a weak GPU (<c>GpuProfile.IsWeak</c>), where every
+    /// full-window present costs the most.</summary>
+    public static float EqTickMs(bool weakGpu) => weakGpu ? 1000f / 15f : 1000f / 30f;
 
     /// <summary>Three bottom-anchored bars, looping and phase-staggered while PLAYING, settled at a low static height
     /// when paused. Shared by the track rows' number cell and the cards' now-playing overlay.
@@ -677,11 +687,10 @@ public static partial class Controls
     sealed class EqHost : Component
     {
         const float LoopMs = 850f;
-        // ~30 Hz. Be honest about the trade: there is no partial repaint, so every visible change costs a FULL-WINDOW
-        // present — motion IS presents, and the tick rate IS the present rate for this widget. 15 Hz with 2-device-px
-        // steps read as a visibly choppy meter; 30 Hz with 1-px steps is the smoothness floor that still costs a
-        // quarter of a continuous per-frame track.
-        const float TickMs = 1000f / 30f;
+        // ~30 Hz (EqTickMs; ~15 Hz on a weak GPU). Be honest about the trade: there is no partial repaint, so every visible
+        // change costs a FULL-WINDOW present — motion IS presents, and the tick rate IS the present rate for this widget.
+        // 15 Hz with 2-device-px steps read as a visibly choppy meter; 30 Hz with 1-px steps is the smoothness floor that
+        // still costs a quarter of a continuous per-frame track — which is why only the weak tier drops to 15.
 
         static readonly float[][] Patterns =
         [
@@ -701,21 +710,24 @@ public static partial class Controls
             bool animate = p.Playing.Value;           // subscribe — a bound row's play↔pause flip re-renders THIS host in place
             bool paused = p.Paused?.Value ?? false;   // subscribe — pause without a remount
             bool reduced = Design.Reduced;            // a VALUE, never a hook branch
+            bool videoLive = Playback.VideoActive.Value;   // subscribe — a video surface settles the bars (F240)
+            bool hidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;   // subscribe — covered/cloaked: no ticks
             float scale = UseContext(Viewport.Scale);
             if (scale <= 0f) scale = 1f;
 
+            bool still = ShouldShowStillShape(animate, reduced, videoLive);
             UseEffect(() =>
             {
                 if (!animate) { WriteAll(0.4f); return; }
                 // A settled, NON-UNIFORM snapshot states "this is playing" without ever looping — flat 0.4 bars would
                 // read identically to the paused branch above, and looping is exactly the continuous motion reduced
-                // motion asks the app not to run.
-                if (ShouldShowStillShape(animate, reduced)) { WriteStill(); return; }
+                // motion (or a playing video) asks the app not to run.
+                if (still) { WriteStill(); return; }
                 _startMs = Design.FrameTime.NowMs;
                 Tick(p.Height, scale);
-            }, animate);
+            }, DepKey.From(!animate ? 0 : still ? 1 : 2));
 
-            UseInterval(() => Tick(p.Height, scale), TickMs, enabled: ShouldTick(animate, paused, reduced));
+            UseInterval(() => Tick(p.Height, scale), EqTickMs(GpuProfile.IsWeak), enabled: ShouldTick(animate, paused, reduced, hidden, videoLive));
 
             return new BoxEl
             {

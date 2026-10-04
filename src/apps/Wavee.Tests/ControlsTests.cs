@@ -248,6 +248,28 @@ public class ControlsMotionPolicyTests
         Assert.False(Controls.ShouldShowStillShape(playing: true, reducedMotion: false));
     }
 
+    [Fact]
+    public void A_covered_window_or_a_live_video_stops_the_loop()
+    {
+        Assert.True(Controls.ShouldTick(true, false, false, windowHidden: false, videoLive: false));
+        Assert.False(Controls.ShouldTick(true, false, false, windowHidden: true));   // covered / cloaked: nobody sees the bars
+        Assert.False(Controls.ShouldTick(true, false, false, videoLive: true));      // the picture is the thing on screen
+    }
+
+    [Fact]
+    public void A_live_video_settles_a_playing_row_to_the_still_shape_and_a_paused_one_stays_flat()
+    {
+        Assert.True(Controls.ShouldShowStillShape(playing: true, reducedMotion: false, videoLive: true));
+        Assert.False(Controls.ShouldShowStillShape(playing: false, reducedMotion: false, videoLive: true));
+    }
+
+    [Fact]
+    public void The_weak_tier_halves_the_equalizer_rate()
+    {
+        Assert.Equal(1000f / 30f, Controls.EqTickMs(weakGpu: false), 3);
+        Assert.Equal(1000f / 15f, Controls.EqTickMs(weakGpu: true), 3);
+    }
+
     [Theory]
     [InlineData(1200f, 0)]
     [InlineData(760f, 0)]

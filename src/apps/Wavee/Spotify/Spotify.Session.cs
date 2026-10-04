@@ -324,8 +324,9 @@ public static partial class Spotify
         // No TokenGate here: a login5 refresh holds it for a whole HTTP round trip and this runs on the UI thread (C9). A
         // refresh racing past these writes is harmless — `AccessToken` refuses to answer once the login is gone.
         Volatile.Write(ref s_login, null);
-        Volatile.Write(ref s_accessToken, null);
-        Volatile.Write(ref s_accessExpiresAtMs, 0);
+        Volatile.Write(ref s_access, null);
+        Volatile.Write(ref s_accessRetryAtMs, 0);
+        DisarmAccessTimer();
     }
 
     /// <summary>Its own method, so a host with no window never even compiles a reference to the OS surfaces.</summary>
@@ -517,7 +518,11 @@ public static partial class Spotify
     /// <summary>UI THREAD (both close bits in ONE fold — the login ended: a sign-out, a disconnect, a refusal, a login over a
     /// running one): the login's own token goes too, so a bearer or attestation mint in flight on an api thread stops
     /// rather than landing on a login that is gone. A transport's drop never reaches here.</summary>
-    static void CloseLogin() => Abandon(ref s_sessionCts);
+    static void CloseLogin()
+    {
+        Abandon(ref s_sessionCts);
+        DisarmAccessTimer();                 // the ahead-of-need mint belongs to the login: the next login's mint arms it again
+    }
 
     /// <summary>Start the AP thread for this AP epoch, once. The guard is a flag the thread itself clears in its
     /// <c>finally</c> rather than <c>Thread.IsAlive</c>, because a retry can arrive while the previous thread is
@@ -1355,21 +1360,156 @@ public static partial class Spotify
 
     // ── 9. the tokens (client-token attestation, then login5) ────────────────────────────────────────────────────────
 
+    // F220. A token is an IMMUTABLE grant published through `Volatile`: every reader (`Stamp` runs on every api request, on
+    // four-plus workers) takes it lock-free and a bearer refresh can no longer stall them. `TokenGate` guards only the
+    // access-token MINT — the login5 round trip — so the only callers that ever wait on it are the ones whose bearer is gone.
+    // The bearer is minted AHEAD of its expiry (`ArmAccessTimer`; the clock is `AccessLeadMs`), and the old one keeps serving
+    // until then.
+
+    /// <summary>A token with the clock it was minted under. Never mutated: a refresh publishes a new one. <paramref name="Owner"/>
+    /// is the username of the login a bearer was minted for (empty for the client token): a bearer is never served to another.</summary>
+    sealed record TokenGrant(string Token, long ExpiresAtMs, long MintedAtMs, string Owner = "");
+
     static readonly Lock TokenGate = new();
-    static string? s_clientToken, s_accessToken;
-    static long s_clientTokenExpiresAtMs, s_accessExpiresAtMs;
+    static TokenGrant? s_client, s_access;
+    static Timer? s_accessTimer;
+    static int s_accessRefreshRunning;
+    /// <summary>Unix ms before which no ahead-of-need mint is started: a failed one backs off, so a dead login5 costs one
+    /// attempt per <see cref="AccessRetryMs"/> and not one per request that finds the bearer in its lead window.</summary>
+    static long s_accessRetryAtMs;
 
     static long NowMs => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+    /// <summary>The attestation as the login5 request carries it: the token, or null when none is held (a failed mint parks a
+    /// grant with an empty token only to keep its retry clock).</summary>
+    static string? ClientTokenValue() => Volatile.Read(ref s_client) is { Token.Length: > 0 } grant ? grant.Token : null;
+
+    static long ClientExpiresAtMs => Volatile.Read(ref s_client)?.ExpiresAtMs ?? 0;
 
     static void MintTokens(CancellationToken ct)
     {
         string? clientToken = MintClientToken(ct);
         Publish(new SessionEvent(SessionEventKind.ClientTokenMinted,
-            Text: Text.Add(clientToken ?? string.Empty), Number: s_clientTokenExpiresAtMs));
+            Text: Text.Add(clientToken ?? string.Empty), Number: ClientExpiresAtMs));
 
-        string access = MintAccessToken(force: true, ct);
+        // Forced — a (re)login starts from a bearer minted for it — except when one was minted a few seconds ago (the request
+        // path's lazy mint just before this): that one is the answer, not a second login5 round trip.
+        TokenGrant access = MintAccessToken(force: true, rejected: null, ct, out _);
         Publish(new SessionEvent(SessionEventKind.AccessTokenMinted,
-            Text: Text.Add(access), Number: s_accessExpiresAtMs));
+            Text: Text.Add(access.Token), Number: access.ExpiresAtMs));
+    }
+
+    // ── the bearer's clock (F220) ───────────────────────────────────────────────────────────────────────────────────
+    //
+    // The bearer is minted AHEAD of its expiry on a session thread, so no request pays the login5 round trip inline: a timer
+    // fires `AccessLeadMs` before expiry (5 minutes, or half the token's life when it is shorter). Until the mint lands the
+    // still-valid old bearer keeps being served — a request only waits for a mint when the bearer is truly gone. All pure:
+    // the clock and the held token are arguments.
+
+    /// <summary>How long before its expiry the bearer is re-minted ahead of need.</summary>
+    public const long AccessProactiveLeadMs = 300_000;
+
+    /// <summary>A bearer with less than this left is treated as gone: it would die in flight.</summary>
+    public const long AccessSafetyMs = 10_000;
+
+    /// <summary>A bearer minted this recently satisfies a forced re-mint that names no rejected token (the AP's re-login
+    /// right after a request-path mint minted a second one back to back).</summary>
+    public const long AccessFreshMintMs = 10_000;
+
+    /// <summary>The wait before a failed ahead-of-need mint is tried again.</summary>
+    public const long AccessRetryMs = 30_000;
+
+    /// <summary>The floor of the ahead-of-need timer, so a very short-lived token cannot spin the mint.</summary>
+    public const long AccessMinRearmMs = 30_000;
+
+    /// <summary>The lead for a token minted at <paramref name="mintedAtMs"/> that expires at <paramref name="expiresAtMs"/>.</summary>
+    public static long AccessLeadMs(long mintedAtMs, long expiresAtMs)
+        => Math.Min(AccessProactiveLeadMs, Math.Max(0, (expiresAtMs - mintedAtMs) / 2));
+
+    /// <summary>Is the bearer inside its lead window — due for an ahead-of-need mint? 0 = none held, which is always due.</summary>
+    public static bool AccessDue(long nowMs, long mintedAtMs, long expiresAtMs)
+        => expiresAtMs <= 0 || nowMs >= expiresAtMs - AccessLeadMs(mintedAtMs, expiresAtMs);
+
+    /// <summary>Can the bearer still be sent? False inside <see cref="AccessSafetyMs"/> of its expiry.</summary>
+    public static bool AccessUsable(long nowMs, long expiresAtMs) => expiresAtMs > 0 && nowMs < expiresAtMs - AccessSafetyMs;
+
+    /// <summary>How long from <paramref name="nowMs"/> until the ahead-of-need mint of a token should fire.</summary>
+    public static long AccessRearmDelayMs(long nowMs, long mintedAtMs, long expiresAtMs)
+        => Math.Max(AccessMinRearmMs, expiresAtMs - AccessLeadMs(mintedAtMs, expiresAtMs) - nowMs);
+
+    /// <summary>What a request that wants the bearer does with the one held.</summary>
+    public enum AccessServe : byte
+    {
+        /// <summary>Send it; nothing to do.</summary>
+        Serve,
+        /// <summary>Send it, and start the ahead-of-need mint now (the timer is late — a sleeping machine — or failed).</summary>
+        ServeAndRefresh,
+        /// <summary>Gone: the request waits for a mint.</summary>
+        Mint,
+    }
+
+    /// <summary>The request-path read of a held bearer. Lock-free by construction: it is a function of one immutable grant.</summary>
+    public static AccessServe AccessServeFor(long nowMs, long mintedAtMs, long expiresAtMs)
+    {
+        if (!AccessUsable(nowMs, expiresAtMs)) return AccessServe.Mint;
+        return AccessDue(nowMs, mintedAtMs, expiresAtMs) ? AccessServe.ServeAndRefresh : AccessServe.Serve;
+    }
+
+    /// <summary>Inside the mint gate: does this ask still need a login5 round trip? <paramref name="rejected"/> is the bearer a
+    /// 401 named — if the held one differs, another request already replaced it and that one is answered (single-flight);
+    /// with no witness a forced ask is satisfied by a bearer minted within <see cref="AccessFreshMintMs"/>. A held bearer
+    /// minted for another login (<paramref name="sameLogin"/> false: an account switch) is never an answer.</summary>
+    public static bool AccessMintNeeded(long nowMs, string? held, long mintedAtMs, long expiresAtMs, bool force, string? rejected,
+        bool sameLogin = true)
+    {
+        if (!sameLogin || string.IsNullOrEmpty(held) || !AccessUsable(nowMs, expiresAtMs)) return true;
+        if (!force) return AccessDue(nowMs, mintedAtMs, expiresAtMs);
+        if (rejected is not null) return string.Equals(held, rejected, StringComparison.Ordinal);
+        return nowMs - mintedAtMs >= AccessFreshMintMs;
+    }
+
+    // ── the bearer's ahead-of-need mint ──
+
+    /// <summary>(Re)arm the one-shot that mints the bearer before it is needed.</summary>
+    static void ArmAccessTimer(long delayMs)
+    {
+        var next = new Timer(static _ => RefreshAccessAhead(fromTimer: true), null, (int)Math.Clamp(delayMs, 0, int.MaxValue), Timeout.Infinite);
+        Interlocked.Exchange(ref s_accessTimer, next)?.Dispose();
+    }
+
+    static void DisarmAccessTimer() => Interlocked.Exchange(ref s_accessTimer, null)?.Dispose();
+
+    /// <summary>The timer's tick, and the request path's nudge when it finds the bearer inside its lead window: start ONE
+    /// mint on its own named thread (never an api worker, never the pool — it blocks on a socket) and return at once. Only the
+    /// request path's nudge honours the retry backoff: the timer IS the retry, and it can fire a tick before the backoff's
+    /// instant, so gating it too would swallow the retry and end the chain.</summary>
+    static void RefreshAccessAhead(bool fromTimer = false)
+    {
+        if (s_login is null) return;
+        if (!fromTimer && NowMs < Volatile.Read(ref s_accessRetryAtMs)) return;
+        if (Interlocked.CompareExchange(ref s_accessRefreshRunning, 1, 0) != 0) return;
+        new Thread(static () => MintAccessAhead()) { IsBackground = true, Name = "wavee-spotify-token" }.Start();
+    }
+
+    static void MintAccessAhead()
+    {
+        CancellationToken ct = SessionToken;
+        try
+        {
+            TokenGrant grant = MintAccessToken(force: false, rejected: null, ct, out bool minted);
+            long now = NowMs;
+            // Not minted: the clock said "not yet" (the timer fired a tick early) — wait out what is left.
+            if (!minted && !AccessDue(now, grant.MintedAtMs, grant.ExpiresAtMs))
+                ArmAccessTimer(AccessRearmDelayMs(now, grant.MintedAtMs, grant.ExpiresAtMs));
+        }
+        catch (Exception ex)
+        {
+            // The held bearer keeps serving until its expiry; the next attempt is a timer's, not a request's.
+            Log.Warn("spotify", "access-token refresh ahead of expiry failed", ex);
+            Volatile.Write(ref s_accessRetryAtMs, NowMs + AccessRetryMs);
+            if (s_login is not null && !ct.IsCancellationRequested) ArmAccessTimer(AccessRetryMs);
+        }
+        finally { Volatile.Write(ref s_accessRefreshRunning, 0); }
     }
 
     /// <summary>The attestation clienttoken.spotify.com hands out. Best effort: a missing one surfaces downstream as a
@@ -1398,11 +1538,9 @@ public static partial class Spotify
                 {
                     case Wavee.Protocol.ClientToken.ClientTokenResponseType.ResponseGrantedTokenResponse:
                         var granted = response.GrantedToken;
-                        lock (TokenGate)
-                        {
-                            s_clientToken = granted.Token;
-                            s_clientTokenExpiresAtMs = NowMs + 1000L * (granted.RefreshAfterSeconds > 0 ? granted.RefreshAfterSeconds : 7200);
-                        }
+                        long mintedAt = NowMs;
+                        Volatile.Write(ref s_client, new TokenGrant(granted.Token,
+                            mintedAt + 1000L * (granted.RefreshAfterSeconds > 0 ? granted.RefreshAfterSeconds : 7200), mintedAt));
                         Log.Info("spotify", "client-token minted");
                         return granted.Token;
                     case Wavee.Protocol.ClientToken.ClientTokenResponseType.ResponseChallengesResponse:
@@ -1507,14 +1645,24 @@ public static partial class Spotify
 
     /// <summary>login5 exchanges the reusable blob for the bearer spclient accepts (the OAuth token is a Web-API
     /// audience and spclient refuses it). Solves the hashcash if challenged — this variant hashes context =
-    /// login_context with a RAW-byte suffix, where the client-token variant uses an empty context and hex.</summary>
-    static string MintAccessToken(bool force, CancellationToken ct)
+    /// login_context with a RAW-byte suffix, where the client-token variant uses an empty context and hex.
+    ///
+    /// <para>Single-flight (F220): the gate is held for the round trip, and a caller that gets in after another's mint asks
+    /// <see cref="AccessMintNeeded"/> again — <paramref name="rejected"/> is the bearer its 401 named, so a held one that
+    /// differs is the answer and N rejected requests cost ONE login5 call. <paramref name="minted"/> says whether this call
+    /// minted or answered with the grant already held.</para></summary>
+    static TokenGrant MintAccessToken(bool force, string? rejected, CancellationToken ct, out bool minted)
     {
+        minted = false;
         lock (TokenGate)
         {
-            if (!force && s_accessToken is { Length: > 0 } && NowMs < s_accessExpiresAtMs - 120_000) return s_accessToken;
-
+            // The login is read BEFORE the held check: a bearer minted for another account (a login over a running session)
+            // is no answer, however fresh.
             var login = s_login ?? throw new InvalidOperationException("login5 before a welcome");
+            TokenGrant? held = Volatile.Read(ref s_access);
+            if (held is not null && !AccessMintNeeded(NowMs, held.Token, held.MintedAtMs, held.ExpiresAtMs, force, rejected,
+                    sameLogin: string.Equals(held.Owner, login.Username, StringComparison.Ordinal))) return held;
+
             var request = new Wavee.Protocol.Login.LoginRequest
             {
                 ClientInfo = new Wavee.Protocol.Login.ClientInfo { ClientId = Identity.ClientId, DeviceId = Platform.DeviceId },
@@ -1528,15 +1676,19 @@ public static partial class Spotify
             for (int attempt = 0; attempt < 4; attempt++)
             {
                 byte[] bytes = PostProto("https://login5.spotify.com/v3/login", request.ToByteArray(),
-                    s_clientToken, Identity.UserAgent, ct);
+                    ClientTokenValue(), Identity.UserAgent, ct);
                 var response = Wavee.Protocol.Login.LoginResponse.Parser.ParseFrom(bytes);
                 if (response.Ok is { } ok)
                 {
-                    s_accessToken = ok.AccessToken;
-                    s_accessExpiresAtMs = NowMs + 1000L * (ok.AccessTokenExpiresIn > 0 ? ok.AccessTokenExpiresIn : 3600);
-                    Log.Info("spotify", "access token minted (expires in "
-                        + (ok.AccessTokenExpiresIn > 0 ? ok.AccessTokenExpiresIn : 3600) + "s)");
-                    return ok.AccessToken;
+                    var lifetime = ok.AccessTokenExpiresIn > 0 ? ok.AccessTokenExpiresIn : 3600;
+                    long mintedAt = NowMs;
+                    var grant = new TokenGrant(ok.AccessToken, mintedAt + 1000L * lifetime, mintedAt, login.Username);
+                    Volatile.Write(ref s_access, grant);
+                    Volatile.Write(ref s_accessRetryAtMs, 0);
+                    ArmAccessTimer(AccessRearmDelayMs(mintedAt, mintedAt, grant.ExpiresAtMs));
+                    minted = true;
+                    Log.Info("spotify", "access token minted (expires in " + lifetime + "s)");
+                    return grant;
                 }
                 if (response.Challenges is { } challenges && challenges.Challenges_.Count > 0)
                 {
@@ -1574,21 +1726,36 @@ public static partial class Spotify
         request.LoginContext = response.LoginContext;
     }
 
-    /// <summary>The bearer for an spclient / pathfinder request. SHELL THREADS ONLY — it blocks while a refresh is in
-    /// flight (C9). <paramref name="force"/> is the 401 path: a cached provider would hand back the rejected token.
+    /// <summary>The bearer for an spclient / pathfinder request. SHELL THREADS ONLY (C9), but it blocks only when no usable
+    /// bearer is held: a held one is read lock-free, and inside its lead window it is served while the next one is minted on
+    /// a session thread (F220). <paramref name="force"/> is the 401 path: a cached provider would hand back the rejected
+    /// token; <paramref name="rejected"/> names it, so a bearer another request has since minted is returned as it is.
     /// Returns null when there is no session to mint from.</summary>
-    public static string? AccessToken(bool force = false)
+    public static string? AccessToken(bool force = false, string? rejected = null)
     {
-        if (s_login is null) return null;
+        var login = s_login;
+        if (login is null) return null;
+        // A grant minted for another account falls through to the mint, so the request path never serves a stale account's bearer.
+        if (!force && Volatile.Read(ref s_access) is { } held && string.Equals(held.Owner, login.Username, StringComparison.Ordinal))
+        {
+            switch (AccessServeFor(NowMs, held.MintedAtMs, held.ExpiresAtMs))
+            {
+                case AccessServe.Serve:
+                    return held.Token;
+                case AccessServe.ServeAndRefresh:
+                    RefreshAccessAhead();
+                    return held.Token;
+            }
+        }
         try
         {
-            string token = MintAccessToken(force, SessionToken);
-            if (force)
+            TokenGrant grant = MintAccessToken(force, rejected, SessionToken, out bool minted);
+            if (force && minted)
             {
                 Publish(new SessionEvent(SessionEventKind.AccessTokenMinted,
-                    Text: Text.Add(token), Number: s_accessExpiresAtMs));
+                    Text: Text.Add(grant.Token), Number: grant.ExpiresAtMs));
             }
-            return token;
+            return grant.Token;
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException)
         {
@@ -1604,27 +1771,27 @@ public static partial class Spotify
     /// clienttoken.spotify.com costs one attempt a minute, not one per request.</summary>
     public static string? ClientToken()
     {
-        string? token;
-        long expiresAt;
-        lock (TokenGate) { token = s_clientToken; expiresAt = s_clientTokenExpiresAtMs; }
-        if (s_login is null || !TokenDue(NowMs, expiresAt)) return token;
+        TokenGrant? held = Volatile.Read(ref s_client);
+        string? token = held is { Token.Length: > 0 } ? held.Token : null;
+        if (s_login is null || !TokenDue(NowMs, held?.ExpiresAtMs ?? 0)) return token;     // lock-free while it is fresh
 
         lock (ClientTokenRefreshGate)
         {
-            lock (TokenGate)
-            {
-                // Another api thread refreshed it while this one waited for the gate.
-                if (!TokenDue(NowMs, s_clientTokenExpiresAtMs)) return s_clientToken;
-            }
+            // Another api thread refreshed it while this one waited for the gate.
+            held = Volatile.Read(ref s_client);
+            token = held is { Token.Length: > 0 } ? held.Token : null;
+            if (!TokenDue(NowMs, held?.ExpiresAtMs ?? 0)) return token;
+
             string? fresh = null;
             try { fresh = MintClientToken(SessionToken); }
             catch (OperationCanceledException) { }                   // the login closed mid-mint: the stale value stands
             if (fresh is null)
             {
-                lock (TokenGate) s_clientTokenExpiresAtMs = NowMs + ClientTokenRetryMs + TokenRefreshLeadMs;
+                Volatile.Write(ref s_client, new TokenGrant(token ?? string.Empty,
+                    NowMs + ClientTokenRetryMs + TokenRefreshLeadMs, held?.MintedAtMs ?? 0));
                 return token;
             }
-            Publish(new SessionEvent(SessionEventKind.ClientTokenMinted, Text: Text.Add(fresh), Number: s_clientTokenExpiresAtMs));
+            Publish(new SessionEvent(SessionEventKind.ClientTokenMinted, Text: Text.Add(fresh), Number: ClientExpiresAtMs));
             return fresh;
         }
     }
@@ -1816,6 +1983,7 @@ public static partial class Spotify
         var frame = new MemoryStream(64 * 1024);
         bool forceToken = false;
         bool retried = false;
+        string? dealerToken = null;          // the bearer the last attempt connected with: the one a forced re-mint names as rejected
 
         while (true)
         {
@@ -1823,9 +1991,10 @@ public static partial class Spotify
             try
             {
                 s_dealerCleanClose = false;
-                string? token = AccessToken(forceToken);
+                string? token = AccessToken(forceToken, forceToken ? dealerToken : null);
                 forceToken = false;
                 if (token is null) throw new IOException("no access token for the dealer");
+                dealerToken = token;
 
                 string host = s_dealerHosts.Current ?? TextOf(Current.DealerHost);
                 if (host.Length == 0) host = "dealer.spotify.com";

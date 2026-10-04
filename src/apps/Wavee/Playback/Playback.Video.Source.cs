@@ -137,11 +137,22 @@ public static partial class Playback
             if (source is not null && tier is SourceTier.Manifest or SourceTier.Wire) source = source with { PlayableUri = uri };
 
             Log.Info("video", $"[video] resolve track={Tail(uri)} tier={TierName(tier)} key={(source is null ? "(none)" : Tail(source.Key))} " +
-                              $"cached={(cached ? "true" : "false")} override={decision.Tier} ms={FrameNowMs() - t0}");
+                              $"cached={(cached ? "true" : "false")} override={decision.Tier} for={(forPlayback ? "playback" : "warm")} ms={FrameNowMs() - t0}");
             return source;
         }
 
         static readonly Action s_markResolving = static () => Phase.SetIfChanged(SwitchPhase.Resolving);
+
+        /// <summary>F257/F259: the source's tier as the `[video.mount]` line names it — <c>override</c> (the user's attached
+        /// local file, a clear MF MP4), <c>playready</c> (the protected path) or <c>clear</c> (a url a module row answered).
+        /// The ghost A/B reads it next to the natural / content / device sizes (docs/guide/video-ghost-ab.md).</summary>
+        public static string MountTier(VideoSource? source) => source switch
+        {
+            null => "none",
+            { FilePath: not null } => "override",
+            { IsDrm: true } => "playready",
+            _ => "clear",
+        };
 
         static string TierName(SourceTier t) => t switch
         {
@@ -234,6 +245,15 @@ public static partial class Playback
                 lock (s_gate)
                     return s_entries.TryGetValue(manifestId, out Entry? e) && e.Done.Task.IsCompletedSuccessfully
                         && e.Done.Task.Result is not null && PrefetchSchedule.IsFresh(FrameNowMs() - e.AtMs);
+            }
+
+            /// <summary>Is a fetch for <paramref name="manifestId"/> in the air right now? A caller that would only WARM the
+            /// memo (the prefetch, the keeper) skips instead of parking an api worker on the owner's task (F167,
+            /// <see cref="PrefetchRace.ShouldSkipInFlight"/>).</summary>
+            public static bool IsInFlight(string manifestId)
+            {
+                lock (s_gate)
+                    return s_entries.TryGetValue(manifestId, out Entry? e) && !e.Done.Task.IsCompleted;
             }
 
             /// <summary>Forget one id — a source that proved dead must not be handed back for the rest of its TTL.</summary>
@@ -716,8 +736,9 @@ public static partial class Playback
         /// authenticated session and hands the licence back. The content key never crosses into managed code.
         /// <para><b>Never on the CDM thread (G-145).</b> The runtime calls the relay on the KeyMessage thread and continues
         /// on the returned task; a relay that did the POST synchronously inside the call blocked the CDM for the whole round
-        /// trip. The POST runs on an api thread (<see cref="Spotify.Api.RunAsync{T}"/>: named, bounded) and the task is
-        /// handed back at once.</para></summary>
+        /// trip. The POST runs on an api thread (<see cref="Spotify.Api.RunPriorityAsync{T}"/>: named, bounded, and on the
+        /// priority lane — the licence is 80 % of a cold switch and must not queue behind catalogue batches, F162) and the
+        /// task is handed back at once.</para></summary>
         public static class License
         {
             const string DefaultRoute = "/playready-license";
@@ -731,13 +752,13 @@ public static partial class Playback
             public static Func<LicenseRequest, ValueTask<LicenseResponse>> Relay(string? endpoint)
             {
                 string route = Normalize(endpoint);
-                return request => new ValueTask<LicenseResponse>(Spotify.Api.RunAsync(() => Acquire(route, request)));
+                return request => new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(route, request)));
             }
 
             /// <summary>The relay the process-lifetime protected backend is built with: it serves the PREPARE path (which has
             /// no per-open relay) and any re-acquisition after an expiry, finding the endpoint by the challenge's KID.</summary>
             public static readonly Func<LicenseRequest, ValueTask<LicenseResponse>> ByKeyId = static request =>
-                new ValueTask<LicenseResponse>(Spotify.Api.RunAsync(() => Acquire(RouteFor(request.KeyId), request)));
+                new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(RouteFor(request.KeyId), request)));
 
             static readonly Dictionary<string, string> s_routes = new(StringComparer.Ordinal);
             static readonly Lock s_gate = new();
@@ -761,6 +782,10 @@ public static partial class Playback
 
             static LicenseResponse Acquire(string route, LicenseRequest request)
             {
+                // The runtime cancels an attempt that stalls past its timeout, or whose licence was replaced: one still
+                // waiting in the api queue never goes out, and one in flight frees its connection (Send answers a transport
+                // failure when the token fires, which is read as the cancellation it was).
+                request.Cancel.ThrowIfCancellationRequested();
                 byte[] challenge = MemoryMarshal.TryGetArray(request.Challenge, out ArraySegment<byte> seg)
                                    && seg.Offset == 0 && seg.Count == seg.Array!.Length
                     ? seg.Array
@@ -773,9 +798,18 @@ public static partial class Playback
                     Body = challenge,
                     Headers = RequestHeaders,
                 };
-                Spotify.Api.Result result = Spotify.Api.Send(Spotify.RequestKind.Custom, in args, CancellationToken.None);
+                Spotify.Api.Result result = Spotify.Api.Send(Spotify.RequestKind.Custom, in args, request.Cancel);
+                request.Cancel.ThrowIfCancellationRequested();
                 if (!result.Ok || result.Body.Length == 0)
-                    throw new InvalidOperationException($"Spotify PlayReady licence POST to {route} failed (HTTP {result.Status}).");
+                {
+                    string message = $"Spotify PlayReady licence POST to {route} failed (HTTP {result.Status}).";
+                    // A transport failure (no status) or a 5xx / 408 / 429 is what the engine's one retry is for, and it reads
+                    // exactly this exception type; any other answer (a rejected challenge, a switched account) is final.
+                    if (result.Status is 0 or 408 or 429 or >= 500)
+                        throw new System.Net.Http.HttpRequestException(message, null,
+                            result.Status == 0 ? null : (System.Net.HttpStatusCode)result.Status);
+                    throw new InvalidOperationException(message);
+                }
                 return new LicenseResponse(result.Body);
             }
 

@@ -99,6 +99,40 @@ public class VideoPrefetchScheduleTests
         Assert.Equal(3, V.PrefetchSchedule.SegmentsFor(3_000));    // the tail rounds UP
         Assert.Equal(1, V.PrefetchSchedule.SegmentsFor(0));        // an unknown stride is one segment, not a divide by zero
     }
+
+    [Fact]
+    public void F007_a_prepare_covers_the_segment_at_its_position_and_eight_seconds_after_it_and_nothing_else()
+    {
+        Assert.True(V.PrefetchSchedule.CoversPosition(83_000, 83_000));
+        Assert.True(V.PrefetchSchedule.CoversPosition(83_000, 90_999));
+        Assert.False(V.PrefetchSchedule.CoversPosition(83_000, 91_000));   // one tick past the window: the fetch is cold again
+        Assert.False(V.PrefetchSchedule.CoversPosition(83_000, 82_999));   // a seek back finds none of it
+    }
+
+    [Fact]
+    public void F007_a_full_level_is_only_as_good_as_the_session_behind_it()
+    {
+        // The session is parked, in range: Full stands, so the schedule does not re-prepare for nothing.
+        Assert.Equal(V.PrefetchLevel.Full,
+            V.PrefetchSchedule.EffectiveLevel(V.PrefetchLevel.Full, preparedAlive: true, preparedAtMs: 10_000, atMs: 12_000));
+
+        // The backend no longer hands it over (expired / disposed / shed): back to the licence, so Decide asks for Full.
+        var lapsed = V.PrefetchSchedule.EffectiveLevel(V.PrefetchLevel.Full, preparedAlive: false, preparedAtMs: 10_000, atMs: 12_000);
+        Assert.Equal(V.PrefetchLevel.ManifestAndLicense, lapsed);
+        Assert.Equal(V.PrefetchLevel.Full, V.PrefetchSchedule.Decide(In(videoOn: true, isCurrent: true, already: lapsed, manifestFresh: true)));
+
+        // Alive but the playhead left its window (a seek, or a long listen): re-prepare AT the new position.
+        var moved = V.PrefetchSchedule.EffectiveLevel(V.PrefetchLevel.Full, preparedAlive: true, preparedAtMs: 10_000, atMs: 70_000);
+        Assert.Equal(V.PrefetchLevel.ManifestAndLicense, moved);
+        Assert.Equal(V.PrefetchLevel.Full, V.PrefetchSchedule.Decide(In(videoOn: true, isCurrent: true, already: moved, manifestFresh: true)));
+    }
+
+    [Theory]
+    [InlineData(V.PrefetchLevel.None)]
+    [InlineData(V.PrefetchLevel.Manifest)]
+    [InlineData(V.PrefetchLevel.ManifestAndLicense)]
+    public void F007_a_level_below_full_has_no_session_to_judge_and_is_left_alone(V.PrefetchLevel recorded)
+        => Assert.Equal(recorded, V.PrefetchSchedule.EffectiveLevel(recorded, preparedAlive: false, preparedAtMs: 0, atMs: 500_000));
 }
 
 // ── the seek planner (§3.2.2) ──────────────────────────────────────────────────────────────────────────────────────
@@ -438,16 +472,6 @@ public class VideoAudioHandoffTests
     }
 
     [Fact]
-    public void A_requested_fade_always_costs_at_least_one_frame()
-    {
-        Assert.Equal(3_840, V.AudioHandoff.FadeFrames(80, 48_000));
-        Assert.Equal(3_528, V.AudioHandoff.FadeFrames(80, 44_100));
-        Assert.Equal(1, V.AudioHandoff.FadeFrames(1, 100));       // rounds to zero frames ⇒ forced to one: no step, no click
-        Assert.Equal(0, V.AudioHandoff.FadeFrames(0, 48_000));    // no fade asked for, no frames spent
-        Assert.Equal(0, V.AudioHandoff.FadeFrames(80, 0));
-    }
-
-    [Fact]
     public void It_is_a_cut_not_a_gap()
     {
         // §3.5's acceptance line: the soundtrack's first audible sample within 100 ms of the fade's end is a CUT. The
@@ -458,6 +482,19 @@ public class VideoAudioHandoffTests
         Assert.True(V.AudioHandoff.IsCut(V.AudioHandoff.GapMs(pc, pc + 60)));    // one GOP of decode: inaudible as a gap
         Assert.True(V.AudioHandoff.IsCut(V.AudioHandoff.GapMs(pc, pc - 20)));    // a slight overlap is still a cut
         Assert.False(V.AudioHandoff.IsCut(V.AudioHandoff.GapMs(pc, pc + 101)));  // silence the user can hear
+    }
+
+    [Fact]
+    public void The_measured_gap_is_the_wall_time_not_covered_by_the_fade_or_by_video_progress()
+    {
+        // 400 ms after the cut the video has played 300 ms past its start: 400 - 300 - 80 fade = 20 ms of silence.
+        Assert.Equal(20, V.AudioHandoff.CutGapMs(400, 300));
+        Assert.True(V.AudioHandoff.IsCut(V.AudioHandoff.CutGapMs(400, 300)));
+        // 1 s after the cut it has played only 200 ms: 720 ms of silence, which the gate must see.
+        Assert.Equal(720, V.AudioHandoff.CutGapMs(1_000, 200));
+        Assert.False(V.AudioHandoff.IsCut(V.AudioHandoff.CutGapMs(1_000, 200)));
+        Assert.Equal(-80, V.AudioHandoff.CutGapMs(0, 0));                         // a negative progress never inflates it
+        Assert.Equal(V.AudioHandoff.CutGapMs(500, 0), V.AudioHandoff.CutGapMs(500, -50));
     }
 
     [Fact]

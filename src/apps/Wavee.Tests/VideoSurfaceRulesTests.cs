@@ -13,6 +13,7 @@
 // process-wide static and xunit runs a class's facts sequentially. No window is opened and no engine loop is started.
 
 using System.IO;
+using FluentGpu.Signals;
 using Wavee;
 using Xunit;
 
@@ -385,6 +386,18 @@ public class VideoSurfaceMountTests
         Assert.True(SurfaceMount.ShouldMountPlayerStage(playerPresent: true));
         Assert.False(SurfaceMount.ShouldMountPlayerStage(playerPresent: false));
     }
+
+    /// <summary>F174: the stage wrapper never changes shape at first frame (always a ZStack of [stage, poster]); the poster is
+    /// collapsed, not removed, once the picture is the only thing on screen.</summary>
+    [Theory]
+    [InlineData(true, JoinVisual.Video, false)]
+    [InlineData(true, JoinVisual.Poster, true)]
+    [InlineData(true, JoinVisual.Working, true)]
+    [InlineData(true, JoinVisual.Failed, true)]
+    [InlineData(false, JoinVisual.Video, true)]
+    [InlineData(false, JoinVisual.Poster, true)]
+    public void The_poster_is_collapsed_only_when_the_live_picture_is_alone(bool stage, JoinVisual join, bool shown)
+        => Assert.Equal(shown, SurfaceMount.PosterShown(stage, join));
 }
 
 public class VideoAspectPersistenceTests
@@ -897,6 +910,8 @@ public sealed class VideoStateTests : IDisposable
     {
         Video.State.HostCapability.Value = PlacementSet.Docked | PlacementSet.Floating;
         Video.State.DetachedFullscreen.Value = false;
+        Video.State.EndPopOutHandoff();
+        foreach (var p in PlacementCore.AllPlacements) Video.State.ReportLive(p, mounted: false);
         Video.State.Commit(PlacementState.Music);
     }
 
@@ -947,9 +962,84 @@ public sealed class VideoStateTests : IDisposable
     {
         Video.State.ReportLive(SurfacePlacement.Detached, mounted: true);
         Video.State.ReportLive(SurfacePlacement.Floating, mounted: false);
-        Assert.Equal(SurfacePlacement.Detached, Video.State.Surface.Peek().Live);
+        Assert.Equal(SurfacePlacement.Detached, Video.State.LiveSurface);
         Video.State.ReportLive(SurfacePlacement.Detached, mounted: false);
-        Assert.Equal(SurfacePlacement.None, Video.State.Surface.Peek().Live);
+        Assert.Equal(SurfacePlacement.None, Video.State.LiveSurface);
+    }
+
+    // F170: Live is reality bookkeeping written from passive effects. It used to ride the shared Surface signal, so every
+    // report woke the player bar, the rail frame, the video surfaces and the keeper for a value nothing resolves from.
+    [Fact]
+    public void Live_reports_never_wake_a_surface_subscriber()
+    {
+        Video.State.FoldAvailability(hasVideo: true);
+        Video.State.OpenAt(SurfacePlacement.Docked);
+        var runtime = new ReactiveRuntime();
+        int runs = 0;
+        using var reader = new Effect(runtime, () => { _ = Video.State.Surface.Value; runs++; });
+        runtime.Flush();
+        Assert.Equal(1, runs);
+
+        Video.State.ReportLive(SurfacePlacement.Docked, mounted: false);
+        Video.State.ReportLive(SurfacePlacement.Floating, mounted: true);
+        Video.State.ReportLive(SurfacePlacement.Floating, mounted: false);
+        runtime.Flush();
+        Assert.Equal(1, runs);                                        // no re-render for any report
+        Assert.Equal(SurfacePlacement.None, Video.State.LiveSurface);
+
+        Video.State.OpenAt(SurfacePlacement.Floating);                // a real placement change still wakes it, once
+        runtime.Flush();
+        Assert.Equal(2, runs);
+    }
+
+    [Fact]
+    public void Live_reports_do_not_touch_the_published_placement_value()
+    {
+        Video.State.FoldAvailability(hasVideo: true);
+        Video.State.OpenAt(SurfacePlacement.Floating);
+        var before = Video.State.Surface.Peek();
+        Video.State.ReportLive(SurfacePlacement.Floating, mounted: true);
+        Assert.Equal(before, Video.State.Surface.Peek());
+        Assert.Equal(SurfacePlacement.Floating, Video.State.LiveSurface);
+    }
+
+    // F180: the pop-out hand-off the main presenter's release rides on.
+    [Fact]
+    public void Pop_out_hand_off_releases_the_main_presenter_on_the_first_presented_frame()
+    {
+        Assert.False(Video.State.PopOutPresented.Peek());
+        Video.State.ReportPopOutPresented();                          // nothing in flight: inert
+        Assert.False(Video.State.PopOutPresented.Peek());
+
+        Video.State.BeginPopOutHandoff();
+        Assert.False(Video.State.PopOutPresented.Peek());
+        Video.State.ReportPopOutPresented();
+        Assert.True(Video.State.PopOutPresented.Peek());
+
+        Video.State.EndPopOutHandoff();                               // the window went away: the next pop-out starts clean
+        Assert.False(Video.State.PopOutPresented.Peek());
+    }
+
+    [Fact]
+    public void Pop_out_hand_off_grace_expiry_releases_the_main_presenter_too()
+    {
+        Video.State.BeginPopOutHandoff();
+        Video.State.ExpirePopOutHandoff();
+        Assert.True(Video.State.PopOutPresented.Peek());
+        Video.State.EndPopOutHandoff();
+
+        Video.State.ExpirePopOutHandoff();                            // a stale timer with no hand-off in flight is inert
+        Assert.False(Video.State.PopOutPresented.Peek());
+    }
+
+    [Fact]
+    public void A_later_report_inside_the_pop_out_does_not_re_release_a_finished_hand_off()
+    {
+        Video.State.BeginPopOutHandoff();
+        Video.State.ReportPopOutPresented();
+        Video.State.EndPopOutHandoff();
+        Video.State.ReportPopOutPresented();                          // a generation remount inside the window reports again
+        Assert.False(Video.State.PopOutPresented.Peek());
     }
 
     [Fact]
@@ -1267,6 +1357,81 @@ public class VideoMainWindowHoleTests
     [Fact]
     public void Engine_transport_stays_off_on_the_shared_hole()
         => Assert.False(MainWindowHole.EngineTransportEnabled);
+
+    // F168: the immersive stage covers a docked video. The presenter is the ONLY thing that pumps the session (position,
+    // state and Ended publish from its pump), so covering must HIDE it, never unmount it.
+    [Fact]
+    public void Immersive_cover_keeps_the_docked_presenter_mounted_and_hides_it()
+    {
+        Assert.True(MainWindowHole.Mounted(SurfacePlacement.Docked, popOutPresented: false));
+        Assert.False(MainWindowHole.Hidden(SurfacePlacement.Docked, immersive: false));
+        Assert.True(MainWindowHole.Hidden(SurfacePlacement.Docked, immersive: true));
+    }
+
+    [Theory]
+    [InlineData(SurfacePlacement.Floating)]
+    [InlineData(SurfacePlacement.Fullscreen)]
+    public void Only_a_docked_video_is_covered_by_the_immersive_stage(SurfacePlacement placement)
+    {
+        Assert.True(MainWindowHole.Mounted(placement, popOutPresented: false));
+        Assert.False(MainWindowHole.Hidden(placement, immersive: true));   // PiP floats above it, fullscreen replaces it
+    }
+
+    [Fact]
+    public void Nothing_is_mounted_when_video_is_off()
+    {
+        Assert.False(MainWindowHole.Mounted(SurfacePlacement.None, popOutPresented: false));
+        Assert.False(MainWindowHole.Mounted(SurfacePlacement.None, popOutPresented: true));
+    }
+
+    // F180: make-before-break. Moving to the pop-out keeps the main presenter mounted (hidden) until the pop-out has
+    // presented, then releases it, so there is never a moment with no presenter, and never two VISIBLE ones.
+    [Fact]
+    public void Moving_to_the_pop_out_is_make_before_break()
+    {
+        Assert.True(MainWindowHole.Mounted(SurfacePlacement.Detached, popOutPresented: false));
+        Assert.True(MainWindowHole.Hidden(SurfacePlacement.Detached, immersive: false));
+        Assert.False(MainWindowHole.Mounted(SurfacePlacement.Detached, popOutPresented: true));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_pop_out_that_is_up_is_never_shown_alongside_a_visible_main_presenter(bool immersive)
+    {
+        foreach (bool presented in new[] { false, true })
+            Assert.False(MainWindowHole.Mounted(SurfacePlacement.Detached, presented)
+                && !MainWindowHole.Hidden(SurfacePlacement.Detached, immersive));
+    }
+
+    /// <summary>The transition walk the plan pins: docked, PiP, fullscreen, immersive and detached each keep exactly one
+    /// VISIBLE presenter (zero when off), and the only moment two presenters are MOUNTED is the Detached overlap, where
+    /// the main one is hidden.</summary>
+    [Fact]
+    public void Every_placement_transition_keeps_one_visible_presenter()
+    {
+        var steps = new (SurfacePlacement P, bool Immersive, bool PopOutPresented, int Visible, int Mounted)[]
+        {
+            (SurfacePlacement.None,       false, false, 0, 0),
+            (SurfacePlacement.Docked,     false, false, 1, 1),
+            (SurfacePlacement.Docked,     true,  false, 0, 1),   // immersive over docked: hidden, still the pump
+            (SurfacePlacement.Docked,     false, false, 1, 1),   // uncovered: the same presenter shows again
+            (SurfacePlacement.Floating,   false, false, 1, 1),
+            (SurfacePlacement.Fullscreen, false, false, 1, 1),
+            (SurfacePlacement.Detached,   false, false, 1, 2),   // overlap: hidden main + the opening pop-out
+            (SurfacePlacement.Detached,   true,  false, 1, 2),
+            (SurfacePlacement.Detached,   false, true,  1, 1),   // released: only the pop-out
+            (SurfacePlacement.Floating,   false, false, 1, 1),
+        };
+        foreach (var s in steps)
+        {
+            bool mainMounted = MainWindowHole.Mounted(s.P, s.PopOutPresented);
+            bool mainVisible = mainMounted && !MainWindowHole.Hidden(s.P, s.Immersive);
+            bool popOut = s.P == SurfacePlacement.Detached;
+            Assert.Equal(s.Visible, (mainVisible ? 1 : 0) + (popOut ? 1 : 0));
+            Assert.Equal(s.Mounted, (mainMounted ? 1 : 0) + (popOut ? 1 : 0));
+        }
+    }
 
     [Fact]
     public void On_media_transport_is_the_shared_player_on_every_visible_placement()

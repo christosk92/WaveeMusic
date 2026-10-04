@@ -70,7 +70,7 @@ public class ShellFrameGeometryTests
     [InlineData(Video.SurfacePlacement.Floating, true, false)]
     [InlineData(Video.SurfacePlacement.Detached, true, false)]
     [InlineData(Video.SurfacePlacement.Fullscreen, true, false)]
-    public void Fullscreen_video_or_the_fullscreen_stage_unmounts_the_chrome_and_nothing_else_does(
+    public void Fullscreen_video_or_the_fullscreen_stage_collapses_the_chrome_and_nothing_else_does(
         Video.SurfacePlacement resolved, bool immersive, bool mounted)
         => Assert.Equal(mounted, Shell.FrameRules.ChromeMounted(resolved, immersive));
 }

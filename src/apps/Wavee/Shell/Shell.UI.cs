@@ -10,14 +10,18 @@
 //
 // THE FRAME, BOTTOM-UP (ch 18 §1-§6). Everything under `OverlayHost` is one ZStack:
 //
-//   tinted[ MaterialLayer · column ]  ·  Stage.View  ·  Overlays  ·  file-drop cue  ·  CommandPalette
-//         ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  drag preview
+//   tinted[ MaterialLayer · column ]  ·  Stage.View  ·  Video.PipLayer  ·  Video.FullscreenLayer  ·  Overlays
+//         ·  file-drop cue  ·  CommandPalette  ·  drag preview
+//
+//   The video layers sit BELOW the banner, toast and drop-cue layers: the video is a hole in the UI swapchain (a DestOut
+//   erase over a DComp visual beneath it), so everything drawn BEFORE it is erased where it overlaps and everything
+//   drawn AFTER it covers the picture. Those layers are pass-through, so the mini player still takes its drag.
 //
 //   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
-//            └ both bracketed bands UNMOUNT under full-screen video OR the fullscreen stage (FrameRules.ChromeMounted)
+//            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
+//              OR the fullscreen stage (FrameRules.ChromeMounted): out of layout, paint and hit-test, subtree inactive
 //   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
-//                            rail seam · rail overlay(Rail.Frame) · narrow drawer ]
-//            └ COLLAPSES (bound Visible) while the fullscreen stage is up
+//                            rail overlay(Rail.Frame) · rail seam · narrow drawer ]
 //
 // THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. Every geometry/precedence/gating answer below is a
 // call into `Shell.FrameRules`, `Shell.Chrome`, `TabWorkspace`, `Notify` or an owner's rule table — each pinned by a
@@ -120,6 +124,7 @@ public static partial class Shell
         if (s_frameSeeded) return;
         s_frameSeeded = true;
         Ui.RailWidth.Value = ClampRailWidth(Platform.Settings.Get(Platform.Keys.ShellRailWidth));
+        Ui.RailDragWidth.Value = Ui.RailWidth.Peek();
         Ui.DockedVideoHeight.Value = ClampDockedVideoHeight(Platform.Settings.Get(Platform.Keys.ShellDockedVideoHeight), Ui.RailWidth.Peek());
         if (Session.ShellSection is { } shell && shell.RailMode >= (int)RailMode.Lyrics && shell.RailMode <= (int)RailMode.Video)
         {
@@ -161,9 +166,11 @@ public static partial class Shell
         Min = SidebarResizeRules.RailFloorW, Max = SidebarResizeRules.ExpandedMaxW, ShowIndicator = false,
     };
 
+    // The indicator is the drag GUIDE (F243): the rail seam writes Ui.RailDragWidth, so nothing else moves until release;
+    // BuildRailSeamParts shows the 2-DIP thumb only while a drag is in flight (never on hover).
     static readonly Splitter.SplitterOptions RailSeamOptions = new()
     {
-        Min = RailMinW, Max = RailMaxW, Polarity = SplitterPolarity.Leading, ShowIndicator = false, InvertCollapsed = true,
+        Min = RailMinW, Max = RailMaxW, Polarity = SplitterPolarity.Leading, ShowIndicator = true, InvertCollapsed = true,
     };
 
     // The shell chords. KeyPreview is modifier-blind, so every chord rides the dispatcher's accelerator seam (matched after
@@ -201,12 +208,14 @@ public static partial class Shell
         readonly Signal<float> _sidebarFade = new(1f);
         readonly Signal<float> _railFade = new(1f);
         readonly Signal<bool> _sidebarDragging = new(false);
+        readonly Signal<bool> _railDragging = new(false);
         /// <summary>A module watch page's stage would host what is playing — split from the resize-rate effect so the
         /// playable-uri reads run at navigation/track rate, not per resize pixel.</summary>
         readonly Signal<bool> _pageStageHosts = new(false);
 
         bool _lastResortSeeded;
         TemplateParts? _seamParts;
+        TemplateParts? _railSeamParts;
         // The seam release velocity: (seam - last) / dt sampled by the presentation effect while dragging (plain fields).
         float _seamLast = float.NaN;
         long _seamLastQpc;
@@ -249,6 +258,7 @@ public static partial class Shell
             var post = UsePost();
             var overlay = UseContext(Overlay.Service);
             _seamParts ??= BuildSeamParts(overlay);
+            _railSeamParts ??= BuildRailSeamParts(_railDragging);
             // Float the engine's toast lane above the docked player bar (the idempotent registration idiom).
             Toast.EdgeInset = Design.Size.PlayerBarH;
             var vp = UseContextSignal(Viewport.Size);
@@ -303,6 +313,14 @@ public static partial class Shell
                     : SidebarResizeRules.Present(in state, vpW, MinContentW));
             });
             UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
+            // F243: a rail drag ends (the splitter clears `dragging` AFTER its commit). A COMMITTED drag already made the
+            // preview equal; a CANCELLED one never commits, so the preview falls back to the committed width here.
+            UseSignalEffect(() =>
+            {
+                if (_railDragging.Value) return;
+                float committed = Ui.RailWidth.Peek();
+                if (Ui.RailDragWidth.Peek() != committed) Ui.RailDragWidth.Value = committed;
+            });
             // Session chrome, not a preference: reopening restores the rail exactly as it was.
             UseSignalEffect(static () => Session.CaptureShell(Ui.RailOpen.Value, (int)Ui.Mode.Value));
 
@@ -476,12 +494,14 @@ public static partial class Shell
                     Chord(ZoomOutPadChord, static () => ZoomStep(-1)),
                     Chord(ZoomResetChord, static () => ZoomStep(0)),
                     Chord(ZoomResetPadChord, static () => ZoomStep(0)),
-                    // FULL-SCREEN VIDEO UNMOUNTS THE CHROME: every layer left above the video costs GPU, and the docked bar
-                    // is what stacked a second transport under the video's own. A predicate, so the edge never re-renders
-                    // the frame.
-                    Flow.Show(s_chromeMounted, ChromeRow()),
+                    // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
+                    // costs GPU, and the docked bar is what stacked a second transport under the video's own, but a
+                    // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
+                    // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
+                    // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
+                    ChromeRow() with { Visible = Prop.Of(s_chromeMounted) },
                     ContentRegion(vp),
-                    Flow.Show(s_chromeMounted, PlayerBarDock()),
+                    PlayerBarDock() with { Visible = Prop.Of(s_chromeMounted) },
                 ],
             };
 
@@ -504,11 +524,14 @@ public static partial class Shell
                     Enter = Stage.EnterTerminal, Exit = Stage.ExitTerminal,
                     Children = [Stage.View()],
                 }),
+                // The video layers come BEFORE the in-stack overlays: the hole erases whatever is drawn under it, so the
+                // runtime banner, the toasts and the drop pill must be painted after it to stay over a floating or
+                // fullscreen picture (every one of them is pass-through, so the mini player's drag still lands).
+                Video.PipLayer(),
+                Video.FullscreenLayer(),
                 Overlays(),
                 FileDropLayer(),
                 CommandPalette(),
-                Video.PipLayer(),
-                Video.FullscreenLayer(),
                 Embed.Comp(static () => new CoverScrim()),
                 DragPreviewLayer.Of(Drag.Preview),
                 Diagnostics.FpsOverlay()) with { Grow = 1f };
@@ -597,14 +620,6 @@ public static partial class Shell
                         fade: _sidebarFade, dragging: _sidebarDragging, parts: _seamParts),
                 ],
             },
-            // The rail seam: exists only while the rail is open.
-            new BoxEl
-            {
-                Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value)),
-                Transform = Prop.Of(() => Affine2D.Translation(FrameRules.RailSeamX(vp.Value.Width, Ui.RailWidth.Value), 0f)),
-                Children = [Splitter.Create(Ui.RailWidth, CommitRailDrag, RailSeamOptions, collapsed: Ui.RailOpen, fade: _railFade)],
-            },
             // The rail overlay: final width always; Rail.Frame owns the translate, the coats and the bodies.
             new BoxEl
             {
@@ -635,17 +650,31 @@ public static partial class Shell
                     },
                 ],
             },
+            // The rail seam: exists only while the rail is open. It paints AFTER (above) the rail overlay: the rail no longer
+            // moves during a drag, so a narrowing drag carries the guide into the rail's rect, and it must stay visible over
+            // the rail's content. At rest the strip lies wholly left of the rail, so hit-testing is unchanged.
+            new BoxEl
+            {
+                Direction = 1, ClipToBounds = true,
+                Width = Prop.Of(static () => FrameRules.RailSeamWidth(Ui.RailOpen.Value)),
+                Transform = Prop.Of(() => Affine2D.Translation(FrameRules.RailSeamX(vp.Value.Width, Ui.RailDragWidth.Value), 0f)),
+                Children =
+                [
+                    Splitter.Create(Ui.RailDragWidth, CommitRailDrag, RailSeamOptions, collapsed: Ui.RailOpen, fade: _railFade,
+                        dragging: _railDragging, parts: _railSeamParts),
+                ],
+            },
             Embed.Comp(static () => new NarrowDrawer())) with
         {
             // The ONE region that yields when the window is shorter than the column; clipped so a settling page never
             // paints into the dock slot. The drag spotlight scrim is scoped to it (chrome and dock stay lit).
-            // The bound Visible COLLAPSES the whole shell body while the fullscreen stage is up: out of layout, paint and
-            // hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
+            // The bound Visible COLLAPSES the whole shell body while the fullscreen stage OR full-screen video is up: out of
+            // layout, paint and hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
             // tab switch — every consumer reviewed benign, V-U37). It sits on THIS node, which carries no MorphId: the
             // content row's MorphId stays on an inner node with an unbound Visible (the BindContract rule guards the
             // tagged node itself).
             Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
-            Visible = Prop.Of(static () => !Ui.ImmersiveLyrics.Value),
+            Visible = Prop.Of(s_chromeMounted),
             OnRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnBoundsChanged = static _ => PublishScrimClip(),
         };
@@ -726,6 +755,19 @@ public static partial class Shell
         return parts;
     }
 
+    /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down
+    /// and never on hover (the rail itself does not move until release).</summary>
+    static TemplateParts BuildRailSeamParts(Signal<bool> dragging)
+    {
+        var parts = new TemplateParts();
+        parts[Splitter.PartIndicator] = b => b with
+        {
+            HoverOpacity = float.NaN, PressedOpacity = float.NaN,
+            Opacity = Prop.Of(() => dragging.Value ? 1f : 0f),
+        };
+        return parts;
+    }
+
     static void OnSeamKey(KeyEventArgs e)
     {
         if (e.Handled) return;
@@ -758,10 +800,13 @@ public static partial class Shell
         Sidebar.ToggleRegime();
     }
 
+    /// <summary>F243: the drag's release. The seam wrote only <c>Ui.RailDragWidth</c>; the rail's layout width and
+    /// the persisted setting change here, once, so the page reflows and the PlayReady stream resizes once per drag.</summary>
     static void CommitRailDrag()
     {
-        float w = ClampRailWidth(Ui.RailWidth.Peek());
+        if (FrameRules.RailDragCommit(Ui.RailDragWidth.Peek(), Ui.RailWidth.Peek()) is not { } w) return;
         Ui.RailWidth.Value = w;
+        Ui.RailDragWidth.Value = w;
         Platform.Settings.Set(Platform.Keys.ShellRailWidth, w);
     }
 

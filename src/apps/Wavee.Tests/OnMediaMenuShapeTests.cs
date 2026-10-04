@@ -150,4 +150,45 @@ public class OnMediaMenuShapeTests
                 Assert.False(items[i].IsSeparator && items[i - 1].IsSeparator, "two separators in a row at " + i);
         });
     }
+
+    static IReadOnlyList<MenuFlyoutItem> QualityCascade()
+        => Cascades(OnMedia.MoreMenu()).Single(s => s.Label == Loc.Get(Strings.Player.QualityMenu)).SubItems!;
+
+    /// <summary>F176: the on-media Quality rows go through the SAME writer as Settings (persist, then apply live). The
+    /// session-side pin alone died with the session — a rebuild derives its ceiling from the stored key and starts Auto — so
+    /// a pick that never reached the store reverted on the next track and the radio kept reading the old value.</summary>
+    [Fact]
+    public void Pinning_a_quality_persists_the_height_and_the_radio_follows_the_store()
+    {
+        WithStore(() =>
+        {
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.VideoQuality));
+            Assert.True(QualityCascade()[0].IsChecked, "Auto is checked while nothing is pinned");
+
+            Playback.Video.PinQuality(720);
+
+            Assert.Equal(720, Platform.Settings.Get(Platform.Keys.VideoQuality));
+            Assert.False(QualityCascade()[0].IsChecked, "a persisted pin un-checks Auto the next time the menu opens");
+        });
+    }
+
+    /// <summary>The Auto row is a real pick too: it clears the stored pin, and a negative height is Auto, never a stored
+    /// nonsense value.</summary>
+    [Fact]
+    public void The_auto_row_clears_the_stored_pin()
+    {
+        WithStore(() =>
+        {
+            Playback.Video.PinQuality(1080);
+            Assert.Equal(1080, Platform.Settings.Get(Platform.Keys.VideoQuality));
+
+            QualityCascade()[0].Invoke!();
+
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.VideoQuality));
+            Assert.True(QualityCascade()[0].IsChecked);
+
+            Playback.Video.PinQuality(-5);
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.VideoQuality));
+        });
+    }
 }

@@ -103,3 +103,79 @@ public class RailFriendsTests
     public void A_row_routes_context_then_album_then_artist(int context, int album, int artist, F.Target target)
         => Assert.Equal(target, F.TargetOf(context, album, artist));
 }
+
+// F243: a rail splitter drag previews on `Ui.RailDragWidth` and only the release writes `Ui.RailWidth` (the layout width the
+// page, the rail card and the docked PlayReady stream follow) and the persisted setting.
+public class RailDragCommitTests
+{
+    [Theory]
+    [InlineData(340f, 340f)]
+    [InlineData(340f, 340.004f)]
+    [InlineData(200f, 200f)]
+    public void A_drag_that_ends_where_the_rail_was_commits_nothing(float committed, float dragged)
+        => Assert.Null(Shell.FrameRules.RailDragCommit(dragged, committed));
+
+    [Theory]
+    [InlineData(340f, 412f, 412f)]
+    [InlineData(340f, 120f, Shell.RailMinW)]
+    [InlineData(340f, 900f, Shell.RailMaxW)]
+    public void A_moved_drag_commits_its_width_through_the_one_rail_clamp(float committed, float dragged, float expected)
+        => Assert.Equal(expected, Shell.FrameRules.RailDragCommit(dragged, committed));
+
+    [Fact]
+    public void A_drag_clamped_back_onto_the_committed_width_commits_nothing()
+        => Assert.Null(Shell.FrameRules.RailDragCommit(50f, Shell.RailMinW));
+
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public void A_non_finite_preview_never_reaches_the_layout(float dragged)
+        => Assert.Null(Shell.FrameRules.RailDragCommit(dragged, 340f));
+}
+
+// F243 / F257 / F259: the ghost A/B's diagnostics. The tier a `[video.mount]` line names, and the spacing gate that keeps a
+// swept resize from writing a docked fit / slot line per frame.
+public class VideoGhostAbDiagnosticsTests
+{
+    [Fact]
+    public void A_local_file_is_the_override_tier_and_a_url_is_clear()
+    {
+        Assert.Equal("override", Playback.Video.MountTier(Playback.Video.VideoSource.LocalFile(@"C:\clips\a.mp4")));
+        Assert.Equal("clear", Playback.Video.MountTier(Playback.Video.VideoSource.Clear("https://example.test/a.mp4")));
+        Assert.Equal("none", Playback.Video.MountTier(null));
+    }
+
+    [Fact]
+    public void The_gate_passes_the_first_line_then_holds_a_sweep_and_reports_how_many()
+    {
+        var gate = new global::Wavee.Video.GeometryLogGate();
+        Assert.True(gate.TryPass(1_000L, 250, out int held));
+        Assert.Equal(0, held);
+        Assert.False(gate.TryPass(1_010L, 250, out held));
+        Assert.False(gate.TryPass(1_020L, 250, out held));
+        Assert.False(gate.TryPass(1_249L, 250, out held));
+        Assert.True(gate.TryPass(1_250L, 250, out held));
+        Assert.Equal(3, held);
+        Assert.False(gate.TryPass(1_300L, 250, out held));
+        Assert.True(gate.TryPass(1_500L, 250, out held));
+        Assert.Equal(1, held);
+    }
+
+    [Fact]
+    public void The_trailing_flush_writes_the_settled_value_once_and_only_when_lines_were_held()
+    {
+        var gate = new global::Wavee.Video.GeometryLogGate();
+        Assert.False(gate.TryFlush(900L, out int held));      // the timer's fire at mount: nothing pending
+        Assert.Equal(0, held);
+        Assert.True(gate.TryPass(1_000L, 250, out held));
+        Assert.False(gate.TryFlush(1_010L, out held));        // a passed line leaves nothing to flush
+        Assert.False(gate.TryPass(1_020L, 250, out held));
+        Assert.False(gate.TryPass(1_040L, 250, out held));
+        Assert.True(gate.TryFlush(1_290L, out held));         // the sweep stopped: the settled rect is written, 2 were held
+        Assert.Equal(2, held);
+        Assert.False(gate.TryFlush(1_300L, out held));        // and only once
+        Assert.False(gate.TryPass(1_400L, 250, out held));    // the flush restarted the spacing window
+        Assert.True(gate.TryFlush(1_650L, out held));
+        Assert.Equal(1, held);
+    }
+}

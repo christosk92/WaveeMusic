@@ -474,20 +474,62 @@ public static partial class Video
     // ── the shared stage (the mini player, the pop-out, the fullscreen surface) ─────────────────────────────────────
 
     /// <summary>What a HOST hands the shared stage: its transport identity and what its fullscreen affordance does (ENTER
-    /// from an inline surface, EXIT from the fullscreen surface, TOGGLE the pop-out's own window mode).</summary>
-    readonly record struct StageHost(TransportOwner Identity, Action FullscreenRequested);
+    /// from an inline surface, EXIT from the fullscreen surface, TOGGLE the pop-out's own window mode) and, for the
+    /// pop-out, the report that its own surface presented (the main presenter's make-before-break release).</summary>
+    readonly record struct StageHost(TransportOwner Identity, Action FullscreenRequested, Action? SurfacePresented = null);
 
     /// <summary>One presenter of the bound player. Props freeze at mount: the host bundle is constant per surface.
     /// Host-fullscreen is a live signal so Docked↔PiP↔FS never remounts the hole. Engine transport is always off.</summary>
     sealed class PlayerStage(StageHost host, IReadSignal<bool> hostFullscreen, Signal<bool> chromeVisible, PlayerChromeFeed feed) : Component
     {
         long _loggedGen = -1;
+        NodeHandle _box;
+        float _scale = 1f;
+        long _mountLoggedFrame;
+
+        /// <summary>F257/F259: ONE line per source this presenter shows a first frame for, carrying every term the ghost A/B
+        /// reads: the tier (override = a local file, clear, playready), the natural size, the content size the stream is
+        /// worth at this rect and the device rect. dev is the FITTED picture rect (the uniform fit of the natural size
+        /// inside the stage box, centred), the rect `content` is computed from, so content == dev reads scale 1.0 exactly as
+        /// in the engine's `[video.surface] place` line (an estimate under a non-Uniform aspect mode); box is the raw
+        /// stage box. Written when both the first frame and a laid-out rect exist, so a hidden presenter says nothing.</summary>
+        void TryLogMount()
+        {
+            long frame = Playback.Video.FirstFrame.Peek();
+            if (frame <= 0 || frame == _mountLoggedFrame) return;
+            var scene = Context.Scene;
+            if (scene is null || _box.IsNull || !scene.IsLive(_box)) return;
+            var r = scene.AbsoluteRect(_box);
+            if (r.W < 1f || r.H < 1f) return;
+            _mountLoggedFrame = frame;
+            var source = Playback.Video.Source.Peek();
+            SizeI natural = Playback.Video.Player.Peek().Player?.NaturalSize.Peek() ?? default;
+            float s = _scale > 0f ? _scale : 1f;
+            var fitted = r;
+            if (!natural.IsEmpty)
+            {
+                float k = MathF.Min(r.W / natural.Width, r.H / natural.Height);
+                float fw = natural.Width * k, fh = natural.Height * k;
+                fitted = new RectF(r.X + (r.W - fw) * 0.5f, r.Y + (r.H - fh) * 0.5f, fw, fh);
+            }
+            SizeI content = VideoStreamSizing.ContentSizeFor(natural, fitted, s);
+            Log.Info(State.LogCategory, $"[video.mount] owner={host.Identity} placement={PlacementCore.Resolve(State.Surface.Peek())} " +
+                $"tier={Playback.Video.MountTier(source)} natural={natural.Width}x{natural.Height} content={content.Width}x{content.Height} " +
+                $"dev=({fitted.X * s:0},{fitted.Y * s:0},{fitted.W * s:0},{fitted.H * s:0}) box=({r.X * s:0},{r.Y * s:0},{r.W * s:0},{r.H * s:0}) " +
+                $"scale={s:0.##} key={Show(source?.Key)}");
+        }
 
         public override Element Render()
         {
-            UseSignalEffect(static () => { _ = Prefs.Epoch.Value; SyncAspect(); });
+            _scale = UseContext(Viewport.Scale);
+            UseSignalEffect(() =>
+            {
+                _ = Playback.Video.FirstFrame.Value;
+                TryLogMount();
+            });
+            // No `hostFullscreen.Value` read here: the element reads HostFullscreen itself (MediaPlayerElement), so a
+            // fullscreen edge re-renders only the element that cares, not this stage and its transport strip too.
             var binding = Playback.Video.Player.Value;
-            _ = hostFullscreen.Value;
             if (binding.Player is not { } player) return new BoxEl { Grow = 1f, MinHeight = 0f };
             var cursor = StageInput.HidesCursorWindowed(host.Identity) ? CursorAutoHidePolicy.Always : CursorAutoHidePolicy.FullscreenOnly;
             if (_loggedGen != binding.Generation)
@@ -501,6 +543,8 @@ public static partial class Video
             return new BoxEl
             {
                 Grow = 1f, MinHeight = 0f, ZStack = true, ClipToBounds = true, Fill = ColorF.Transparent,
+                OnRealized = h => _box = h,
+                OnBoundsChanged = _ => TryLogMount(),
                 Children =
                 [
                     Embed.Comp(() => new MediaPlayerElement
@@ -514,9 +558,14 @@ public static partial class Video
                         CustomAspectRatio = s_customRatio,
                         AspectModeChanged = s_aspectChanged,
                         PosterContent = LivePoster.Make(),
+                        // The join poster (Poster(join)) stacks ABOVE this element and the host owns every loading and failure
+                        // visual through JoinNow, so the engine's own status overlay would only animate under it (and flash a
+                        // "Seeking" pill over the picture on a seek). Off: no ring, timer or tween runs for covered pixels.
+                        ShowStatusOverlay = false,
                         AreTransportControlsEnabled = MainWindowHole.EngineTransportEnabled,
                         SuppressTransport = true,
                         FullscreenRequested = host.FullscreenRequested,
+                        SurfacePresented = host.SurfacePresented,
                         HostFullscreen = hostFullscreen,
                         CursorAutoHide = cursor,
                         ChromeVisibleOut = chromeVisible,
@@ -547,6 +596,42 @@ public static partial class Video
 
     static string GenKey(long generation) => "gen:" + generation.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>F243: a minimum spacing for a log line that rides a GEOMETRY signal (the docked slot). A window or splitter
+    /// resize writes it per frame; the line is for the settled value, not the sweep. A line that passes carries how many
+    /// were held back, and <see cref="TryFlush"/> (a trailing timer) writes the held value once the sweep stops, so the
+    /// LAST line is always the settled one.</summary>
+    public struct GeometryLogGate
+    {
+        long _lastMs;
+        int _held;
+
+        /// <summary>True when a line may be written now; <paramref name="held"/> is how many were dropped since the last one.</summary>
+        public bool TryPass(long nowMs, int minGapMs, out int held)
+        {
+            if (_lastMs != 0 && nowMs - _lastMs < minGapMs)
+            {
+                _held++;
+                held = 0;
+                return false;
+            }
+            _lastMs = nowMs;
+            held = _held;
+            _held = 0;
+            return true;
+        }
+
+        /// <summary>The trailing edge: true when lines were held back since the last write, so the caller writes the
+        /// settled value now. Nothing pending (the timer's fire at mount, or after a passed line) writes nothing.</summary>
+        public bool TryFlush(long nowMs, out int held)
+        {
+            held = _held;
+            if (_held == 0) return false;
+            _held = 0;
+            _lastMs = nowMs;
+            return true;
+        }
+    }
+
     // ══ 2. THE DOCKED CARD (Cap + PageStage faces) ═══════════════════════════════════════════════════════════════════
 
     /// <summary>The docked music-video surface: video that simply LIVES in the app at zero commitment. Two faces, one
@@ -554,16 +639,20 @@ public static partial class Video
     /// PageStage (the page owns the envelope). NO transition, NO shadow, NO corners of its own.</summary>
     sealed class DockedSurface(DockedFace face, string? ownerStagePlayable) : Component
     {
+        /// <summary>F243: the docked slot lines are at most one per this many ms, the settled rect always written last (see
+        /// <see cref="GeometryLogGate"/>). The fit line is not gated: it follows discrete events, not a per-frame signal.</summary>
+        const int GeometryLogGapMs = 250;
+
         NodeHandle _slot;
         string? _fittedFor;
+        GeometryLogGate _slotGate;
+        TimerHandle _slotFlush;
         (string Key, float RailW, int Nw, int Nh, float H, bool Pinned, string Src) _loggedFit;
         (VideoAspectMode Mode, double Custom, TransportOwner Owner) _loggedPolicy = ((VideoAspectMode)255, -1d, (TransportOwner)255);
         (SurfacePlacement Resolved, string? Playing, string Active, bool Mounts) _loggedHost = ((SurfacePlacement)255, " ", " ", false);
 
         public override Element Render()
         {
-            UseSignalEffect(static () => { _ = Prefs.Epoch.Value; SyncAspect(); });
-
             // The Cap follows the CONTENT's aspect at the rail's width: the catalogue's kind-99 size seeds it before any
             // resolve (G-058), the manifest's dims replace that at resolve, and the decoder's report is a CONFIRM
             // (`NaturalSeed`; 16:9 when nothing is known). A splitter drag pins it — for THIS source only.
@@ -629,6 +718,9 @@ public static partial class Video
                 DockedSlot.Value = default;
             }, DepKey.Empty);
 
+            // The slot log's trailing edge: re-armed by every held line, so it fires GeometryLogGapMs after the sweep stops.
+            _slotFlush = UseTimeout(FlushSlotLog, GeometryLogGapMs);
+
             if (!mount) return new BoxEl();
 
             BoxEl card = new BoxEl
@@ -673,8 +765,24 @@ public static partial class Video
                 && MathF.Abs(DockedSlot.Peek().H - rect.H) < 0.5f)
                 return;
             DockedSlot.Value = rect;
-            Log.Info(State.LogCategory, $"docked slot face={face} rect={rect.X:0.#},{rect.Y:0.#} {rect.W:0.#}x{rect.H:0.#}");
+            if (!_slotGate.TryPass(Environment.TickCount64, GeometryLogGapMs, out int held))
+            {
+                _slotFlush.Restart();
+                return;
+            }
+            LogSlot(rect, held);
         }
+
+        /// <summary>The timer's fire: the sweep stopped, so write the SETTLED rect if lines were held back.</summary>
+        void FlushSlotLog()
+        {
+            if (!_slotGate.TryFlush(Environment.TickCount64, out int held)) return;
+            LogSlot(DockedSlot.Peek(), held);
+        }
+
+        void LogSlot(RectF rect, int held) =>
+            Log.Info(State.LogCategory, $"docked slot face={face} rect={rect.X:0.#},{rect.Y:0.#} {rect.W:0.#}x{rect.H:0.#}" +
+                (held > 0 ? $" held={held}" : ""));
     }
 
     static void EnterFullscreen()
@@ -718,6 +826,34 @@ public static partial class Video
 
     // ══ 3. THE IN-WINDOW MINI PLAYER ═════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>What the main-window presenter shows: the bound player's stage over the poster. Its OWN component so the
+    /// switch's edges (Source, Player, JoinNow — three to five per switch) re-render this small subtree and not the whole
+    /// <see cref="PipSurface"/> (its chrome, its eight resize bands, its tooltips and its geometry binds).
+    /// <para>The wrapper's SHAPE never changes: always a ZStack of [stage?, poster], the poster KEYED and merely collapsed
+    /// (<c>Visible</c> false, which also takes it out of hit-test and paint) once the first frame is up. Swapping
+    /// between a ZStack and a bare box at first frame re-laid the stage out on the very frame the hole went live.</para></summary>
+    sealed class MainVideoArea : Component
+    {
+        public override Element Render()
+        {
+            _ = Playback.Video.Source.Value;
+            var binding = Playback.Video.Player.Value;
+            var join = JoinNow.Value;
+            bool stage = SurfaceMount.ShouldMountPlayerStage(binding.Player is not null);
+            var poster = Poster(join) with { Key = "poster", Visible = SurfaceMount.PosterShown(stage, join) };
+            Element[] kids = stage
+                ? new Element[]
+                {
+                    Embed.Comp(static () => new PlayerStage(
+                        new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed))
+                        with { Key = "mainstage:" + GenKey(binding.Generation) },
+                    poster,
+                }
+                : new Element[] { poster };
+            return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = kids };
+        }
+    }
+
     /// <summary>The stay-mounted main-window presenter: docked overlay, in-window PiP, and fullscreen share one
     /// MediaPlayerElement. Geometry lives in bound <c>Transform</c>/<c>Width</c>/<c>Height</c> thunks.</summary>
     sealed class PipSurface : Component
@@ -733,6 +869,10 @@ public static partial class Video
         NodeHandle _dragNode;
         readonly NodeHandle[] _bandNodes = new NodeHandle[8];
         IReadSignal<Size2>? _vpSig;
+        // Wired ONCE (first render): the geometry binds read everything they depend on, so a re-render of this component
+        // (a placement edge) hands the reconciler the SAME thunks and rebinds nothing, as `BarSeekRail` does.
+        Prop<float> _widthBind, _heightBind;
+        Prop<Affine2D> _transformBind;
         float _startX, _startY, _startW, _startH, _startPx, _startPy;
 
         public override Element Render()
@@ -752,11 +892,17 @@ public static partial class Video
 
             var vp = UseContextSignal(Viewport.Size);
             _vpSig = vp;
+            // The ONE aspect sync for every presenter (the docked card, the mini player, the pop-out and fullscreen all read
+            // `s_aspect` / `s_customRatio`): PipSurface is mounted once for the process by `PipLayer`, so a single effect
+            // re-reads the persisted aspect under the video-prefs epoch instead of one per presenter mount.
             UseSignalEffect(static () => { _ = Prefs.Epoch.Value; SyncAspect(); });
 
             var resolved = PlacementCore.Resolve(State.Surface.Value);
-            bool covered = resolved == SurfacePlacement.Docked && Shell.Ui.ImmersiveLyrics.Value;
-            bool owns = MainWindowHole.Owns(resolved) && !covered;
+            // The presenter is mounted for EVERY reason the main window may need to pump the session: the immersive stage
+            // covering a docked video HIDES it (the bound Visible below) rather than unmounting it, and a pop-out
+            // hand-off keeps it mounted (hidden) until the pop-out presents. The Detached-only read keeps every other
+            // placement from subscribing to the hand-off signal.
+            bool mounted = MainWindowHole.Mounted(resolved, resolved == SurfacePlacement.Detached && State.PopOutPresented.Value);
             bool livePip = resolved == SurfacePlacement.Floating;
             UseEffect(() => State.ReportLive(SurfacePlacement.Floating, livePip), DepKey.From(livePip));
             UseSignalEffect(() =>
@@ -785,14 +931,26 @@ public static partial class Video
                 _h.Value = Pip.FitHeight(w, ratio, vp.Value.Height);
             });
 
-            if (!owns) return new BoxEl();
+            if (!mounted) return new BoxEl();
+
+            if (!_widthBind.IsBound)
+            {
+                _widthBind = Prop.Of(() => OverlayWidth(PlacementCore.Resolve(State.Surface.Value), vp.Value, _w.Value, DockedSlot.Value));
+                _heightBind = Prop.Of(() => OverlayHeight(PlacementCore.Resolve(State.Surface.Value), vp.Value, _h.Value, DockedSlot.Value));
+                _transformBind = Prop.Of(() => OverlayTransform(PlacementCore.Resolve(State.Surface.Value), vp.Value, _placed.Value, _x.Value, _y.Value, _w.Value, _h.Value, DockedSlot.Value));
+            }
 
             var surface = new BoxEl
             {
                 Direction = 1, ClipToBounds = true, ZStack = true,
-                Width = Prop.Of(() => OverlayWidth(PlacementCore.Resolve(State.Surface.Value), vp.Value, _w.Value, DockedSlot.Value)),
-                Height = Prop.Of(() => OverlayHeight(PlacementCore.Resolve(State.Surface.Value), vp.Value, _h.Value, DockedSlot.Value)),
-                Transform = Prop.Of(() => OverlayTransform(PlacementCore.Resolve(State.Surface.Value), vp.Value, _placed.Value, _x.Value, _y.Value, _w.Value, _h.Value, DockedSlot.Value)),
+                // A BOUND Visible, so covering or releasing the picture re-renders and remounts nothing: the subtree goes
+                // inactive, the element hides its DComp visual and keeps a STATE-ONLY pump (inert binding: the session
+                // only advances while a mounted element pumps it, but nothing is placed or shown from this slot), and
+                // uncovering re-places the same visual with no new slot.
+                Visible = Prop.Of(static () => !MainWindowHole.Hidden(PlacementCore.Resolve(State.Surface.Value), Shell.Ui.ImmersiveLyrics.Value)),
+                Width = _widthBind,
+                Height = _heightBind,
+                Transform = _transformBind,
                 Fill = ColorF.Transparent,
                 Corners = resolved == SurfacePlacement.Floating ? CornerRadius4.All(Radii.Card) : default,
                 BorderWidth = resolved == SurfacePlacement.Floating ? 1f : 0f,
@@ -807,7 +965,7 @@ public static partial class Video
 
         Element[] OverlayChildren(SurfacePlacement resolved)
         {
-            var kids = new List<Element>(4) { VideoArea() };
+            var kids = new List<Element>(4) { Embed.Comp(static () => new MainVideoArea()) with { Key = "video-area" } };
             if (resolved == SurfacePlacement.Docked) kids.Add(DockedOverlayChrome());
             if (resolved == SurfacePlacement.Floating) { kids.Add(Chrome()); kids.Add(ResizeBands()); }
             return kids.ToArray();
@@ -833,20 +991,6 @@ public static partial class Video
             if (resolved == SurfacePlacement.Docked) return Affine2D.Translation(slot.X, slot.Y);
             var (ax, ay) = placed ? (x, y) : Pip.Anchor(w, h, vp.Width, vp.Height);
             return Affine2D.Translation(PipGesture.ClampX(ax, vp.Width, w), PipGesture.ClampY(ay, vp.Height, h));
-        }
-
-        static Element VideoArea()
-        {
-            _ = Playback.Video.Source.Value;
-            var binding = Playback.Video.Player.Value;
-            var join = JoinNow.Value;
-            if (!SurfaceMount.ShouldMountPlayerStage(binding.Player is not null)) return Poster(join);
-            var stage = Embed.Comp(static () => new PlayerStage(
-                new StageHost(TransportOwner.Docked, s_toggleMainFullscreen), State.MainHostFullscreen, s_mainChrome, s_mainFeed))
-                with { Key = "mainstage:" + GenKey(binding.Generation) };
-            if (join != JoinVisual.Video)
-                return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true, Fill = ColorF.Transparent, Children = [stage, Poster(join)] };
-            return new BoxEl { Grow = 1f, MinHeight = 0f, ClipToBounds = true, Fill = ColorF.Transparent, Children = [stage] };
         }
 
         /// <summary>The hover strip: a drag surface and the ✕, inset by the corner width and the edge band so neither sits
@@ -1107,7 +1251,7 @@ public static partial class Video
                     Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
                     Children =
                     [
-                        Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
+                        Embed.Comp(static () => new PlayerStage(new StageHost(TransportOwner.PopOut, s_toggleDetachedFullscreen, State.ReportPopOutPresented), State.DetachedFullscreen, s_popOutChrome, s_popOutFeed))
                             with { Key = "stage:" + GenKey(Playback.Video.Player.Peek().Generation) },
                         join == JoinVisual.Video ? new BoxEl { HitTestVisible = false } : Poster(join),
                         TitleBand(band, bandRef),
@@ -1193,7 +1337,7 @@ public static partial class Video
     }
 
     /// <summary>A REAL fullscreen: the OS window goes borderless-fullscreen on its monitor and restores what it found; the
-    /// shell unmounts its chrome for the duration (one transport). Its lifetime IS the mode — mount = enter, unmount =
+    /// shell collapses its chrome for the duration (one transport). Its lifetime IS the mode — mount = enter, unmount =
     /// exit, for every route out.</summary>
     sealed class FullscreenSurface : Component
     {
@@ -1217,7 +1361,7 @@ public static partial class Video
                 return () => { if (!priorOsFullscreen.Value) hooks.WindowSetFullscreen?.Invoke(false); };
             }, DepKey.Empty);
 
-            // A focus SCOPE at the root (Tab cannot walk into the unmounted chrome); focus parks INSIDE the video — but only
+            // A focus SCOPE at the root (Tab cannot walk into the collapsed chrome); focus parks INSIDE the video — but only
             // when the user asked for fullscreen; on unmount the scope pops and focus returns to whatever invoked it.
             UseLayoutEffect(() =>
             {

@@ -50,6 +50,20 @@ public class VideoSwitchPlanTests
     public void Two_manifest_ids_that_differ_only_in_case_are_two_videos()
         => Assert.Equal(V.SwitchAction.Switch, V.Plan(new V.SwitchInput(true, false, "ABC", "abc", 0)));
 
+    // F152: a Stop closes the session but keeps the ONE player bound (`HasPlayer` stays true, the live key is cleared), so
+    // the next video — after any audio row, or a placement toggled off and on — is a Switch on that player: no `PlayerChanged`,
+    // no stage remount, no new facade. Only a player that never existed (cold start) or a fault that cannot re-open in place
+    // is a Rebuild.
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(5_000L)]
+    public void After_a_stop_the_next_video_is_a_switch_on_the_kept_player_never_a_rebuild(long startAtMs)
+    {
+        var input = new V.SwitchInput(HasPlayer: true, Faulted: false, LiveKey: "", RequestKey: "A", StartAtMs: startAtMs);
+        Assert.Equal(V.SwitchAction.Switch, V.PlanWithReason(in input, out V.SwitchReason reason));
+        Assert.Equal(V.SwitchReason.KeyChanged, reason);
+    }
+
     // `PlanWithReason` must never disagree with `Plan` (the un-reasoned entry point delegates to it) and the two
     // independent `Rebuild` causes — no player at all vs. a faulted one — must read apart in the `why=` a
     // `switch.begin` line carries, even though they choose the identical action.
@@ -547,5 +561,191 @@ public class VideoPlacementEdgeTests
         Assert.Equal((1080, 1920), (w, h));                   // a vertical video opens vertical before the resolve
         Assert.Equal(NaturalSource.None, NaturalSeed.Pick(0, 0, 0, 0, 0, 0, out w, out h));
         Assert.Equal("track", NaturalSeed.Name(NaturalSource.Catalogue));
+    }
+}
+
+// ── the fault ladder (F157, F163) and the tick's stamp (F158) ────────────────────────────────────────────────────────
+
+public class VideoFaultLadderTests
+{
+    static MediaError Err(MediaErrorCategory category, MediaRecovery recovery, long? code = null)
+        => new(category, "scripted", code, null, recovery);
+
+    // F163: a faulted live player re-opens IN PLACE when the fault was transient; only a non-transient fault, or no
+    // player at all, is a rebuild.
+    [Theory]
+    [InlineData(true, true, true, "A", "A", 0, V.SwitchAction.Switch, V.SwitchReason.Faulted)]
+    [InlineData(true, true, true, "A", "A", 5_000, V.SwitchAction.Switch, V.SwitchReason.Faulted)]    // the carried start rides the re-open, not a seek
+    [InlineData(true, true, true, "A", "B", 0, V.SwitchAction.Switch, V.SwitchReason.KeyChanged)]      // a different row is a plain switch
+    [InlineData(true, true, false, "A", "A", 0, V.SwitchAction.Rebuild, V.SwitchReason.Faulted)]
+    [InlineData(true, true, false, "A", "B", 0, V.SwitchAction.Rebuild, V.SwitchReason.Faulted)]
+    [InlineData(false, true, true, "", "A", 0, V.SwitchAction.Rebuild, V.SwitchReason.NoPlayer)]       // no player to re-open
+    [InlineData(true, false, true, "A", "A", 0, V.SwitchAction.None, V.SwitchReason.None)]             // retryable means nothing without a fault
+    [InlineData(true, false, true, "A", "A", 1, V.SwitchAction.SeekOnly, V.SwitchReason.SeekOnly)]
+    public void A_transient_fault_reopens_the_same_player_in_place(bool hasPlayer, bool faulted, bool retryable, string liveKey,
+        string requestKey, long startAtMs, V.SwitchAction expectedAction, V.SwitchReason expectedReason)
+    {
+        var input = new V.SwitchInput(hasPlayer, faulted, liveKey, requestKey, startAtMs, retryable);
+        Assert.Equal(expectedAction, V.PlanWithReason(in input, out V.SwitchReason reason));
+        Assert.Equal(expectedReason, reason);
+        Assert.Equal(expectedAction, V.Plan(in input));
+    }
+
+    [Fact]
+    public void The_old_five_argument_input_still_means_a_faulted_player_is_rebuilt()
+        => Assert.Equal(V.SwitchAction.Rebuild, V.Plan(new V.SwitchInput(true, true, "A", "A", 0)));
+
+    [Fact]
+    public void A_hardware_reset_code_is_recognised_in_both_the_unsigned_and_the_sign_extended_form()
+    {
+        long[] codes = { 0x8004CD12, 0x8004DD2E, 0x887A0005, 0x887A0007, 0xC00D3E85 };
+        foreach (long code in codes)
+        {
+            Assert.True(V.HostRules.IsResetClass(code), $"0x{code:X}");
+            Assert.True(V.HostRules.IsResetClass(unchecked((int)(uint)code)), $"int 0x{code:X}");   // an HRESULT stored as a signed int
+        }
+        Assert.False(V.HostRules.IsResetClass(null));
+        Assert.False(V.HostRules.IsResetClass(0));
+        Assert.False(V.HostRules.IsResetClass(unchecked((int)0x80004005)));    // E_FAIL: not a reset
+        Assert.False(V.HostRules.IsResetClass(403));
+    }
+
+    [Fact]
+    public void Only_a_signed_url_status_asks_for_a_fresh_manifest()
+    {
+        foreach (long code in new long[] { 403, 404, 410, 0x80190193, 0x80190194, 0x8019019A, unchecked((int)0x80190193) })
+            Assert.True(V.HostRules.IsSignedUrlError(code), $"0x{code:X}");
+        foreach (long code in new long[] { 0, 200, 429, 500, 503, 0x80004005, 0x8004CD12 })
+            Assert.False(V.HostRules.IsSignedUrlError(code), $"0x{code:X}");
+        Assert.False(V.HostRules.IsSignedUrlError(null));
+    }
+
+    [Fact]
+    public void Only_a_transient_error_is_reopened_in_place()
+    {
+        Assert.True(V.HostRules.IsReopenable(Err(MediaErrorCategory.Source, MediaRecovery.Retryable)));
+        Assert.True(V.HostRules.IsReopenable(Err(MediaErrorCategory.Decode, MediaRecovery.Retryable)));
+        Assert.True(V.HostRules.IsReopenable(Err(MediaErrorCategory.Network, MediaRecovery.NeedsNetwork)));    // a segment GET that failed
+        Assert.False(V.HostRules.IsReopenable(Err(MediaErrorCategory.Drm, MediaRecovery.NeedsLicense)));
+        Assert.False(V.HostRules.IsReopenable(Err(MediaErrorCategory.UnsupportedCodec, MediaRecovery.PickLowerQuality)));
+        Assert.False(V.HostRules.IsReopenable(Err(MediaErrorCategory.Lifecycle, MediaRecovery.Fatal)));
+        Assert.False(V.HostRules.IsReopenable(Err(MediaErrorCategory.Drm, MediaRecovery.None)));
+        Assert.False(V.HostRules.IsReopenable(null));                                                           // the watchdog has no error
+    }
+
+    [Fact]
+    public void A_key_gets_one_in_place_reopen_until_it_makes_progress_again()
+    {
+        Assert.True(V.HostRules.MayReopenInPlace(true, "A", null));
+        Assert.True(V.HostRules.MayReopenInPlace(true, "A", "B"));            // the budget was spent on another key
+        Assert.False(V.HostRules.MayReopenInPlace(true, "A", "A"));           // spent: the next fault is a rebuild
+        Assert.False(V.HostRules.MayReopenInPlace(false, "A", null));
+    }
+
+    [Theory]
+    [InlineData(true, 403L, true, true)]       // a signed url died: always re-fetch, even though a re-open is allowed
+    [InlineData(true, null, true, false)]      // a transient first fault keeps the manifest: the re-open needs no api GET
+    [InlineData(true, null, false, true)]      // the re-open is spent (or the error is not transient): the manifest is the suspect
+    [InlineData(true, 500L, false, true)]
+    [InlineData(false, 403L, false, false)]    // a clear source has no manifest to forget
+    public void The_manifest_is_forgotten_only_when_it_is_the_suspect(bool isDrm, long? code, bool reopenNow, bool expected)
+        => Assert.Equal(expected, V.HostRules.InvalidateManifest(isDrm, code, reopenNow));
+
+    [Fact]
+    public void A_hardware_reset_is_never_a_licence_verdict()
+    {
+        Assert.Equal(Playback.Fault.Unknown, V.HostRules.MapError(Err(MediaErrorCategory.Drm, MediaRecovery.Retryable, 0x8004CD12)));
+        Assert.Equal(Playback.Fault.Unknown, V.HostRules.MapError(Err(MediaErrorCategory.Output, MediaRecovery.Retryable, unchecked((int)0x887A0005))));
+        Assert.False(Playback.AutoSkip.IsTerminal(Playback.Fault.Unknown));
+        // the same code on a non-retryable error keeps its category's meaning
+        Assert.Equal(Playback.Fault.DrmRequired, V.HostRules.MapError(Err(MediaErrorCategory.Drm, MediaRecovery.NeedsLicense, 0x8004CD12)));
+    }
+
+    [Theory]
+    [InlineData(MediaErrorCategory.Network, Playback.Fault.Network)]
+    [InlineData(MediaErrorCategory.Drm, Playback.Fault.DrmRequired)]
+    [InlineData(MediaErrorCategory.Decode, Playback.Fault.DecodeFailed)]
+    [InlineData(MediaErrorCategory.UnsupportedCodec, Playback.Fault.DecodeFailed)]
+    [InlineData(MediaErrorCategory.Source, Playback.Fault.Unavailable)]
+    [InlineData(MediaErrorCategory.Lifecycle, Playback.Fault.Unknown)]
+    [InlineData(MediaErrorCategory.Output, Playback.Fault.Unknown)]
+    public void An_engine_error_maps_to_the_reducers_fault_by_category(MediaErrorCategory category, Playback.Fault expected)
+        => Assert.Equal(expected, V.HostRules.MapError(Err(category, MediaRecovery.None)));
+
+    [Theory]
+    [InlineData(false, ProtectedVideoPhase.Licensing, Playback.Fault.Network)]     // a clear source has no licence to blame
+    [InlineData(true, ProtectedVideoPhase.Buffering, Playback.Fault.Network)]      // media never arrived from the CDN
+    [InlineData(true, ProtectedVideoPhase.Licensing, Playback.Fault.DrmRequired)]
+    [InlineData(true, ProtectedVideoPhase.Attaching, Playback.Fault.DrmRequired)]
+    [InlineData(true, ProtectedVideoPhase.Resolving, Playback.Fault.DrmRequired)]  // no session yet: the licence path
+    public void A_stalled_start_is_named_by_where_it_stuck(bool drm, ProtectedVideoPhase phase, Playback.Fault expected)
+        => Assert.Equal(expected, V.HostRules.WatchdogFault(drm, phase));
+
+    // F158: the tick believes only the session this load opened.
+    [Fact]
+    public void The_tick_ignores_the_previous_loads_session_and_the_gap_with_no_session()
+    {
+        var previous = new object();
+        var next = new object();
+        Assert.False(V.HostRules.OwnsTick(null, previous));        // old session disposed, the new one not assigned yet
+        Assert.False(V.HostRules.OwnsTick(previous, previous));    // the window before the old session is disposed
+        Assert.True(V.HostRules.OwnsTick(next, previous));
+        Assert.True(V.HostRules.OwnsTick(next, null));             // a fresh player's first session
+        Assert.False(V.HostRules.OwnsTick(null, null));
+    }
+
+    [Fact]
+    public void The_previous_loads_error_is_not_this_loads()
+    {
+        MediaError old = Err(MediaErrorCategory.Source, MediaRecovery.Retryable), fresh = Err(MediaErrorCategory.Source, MediaRecovery.Retryable);
+        Assert.False(V.HostRules.IsFreshError(old, old));          // the retry must not fault before its open began
+        Assert.True(V.HostRules.IsFreshError(fresh, old));         // an equal-looking new error is still a new error
+        Assert.True(V.HostRules.IsFreshError(fresh, null));
+        Assert.False(V.HostRules.IsFreshError(null, old));
+    }
+
+    [Theory]
+    [InlineData(false, false, 192_000L, PlaybackState.Playing, false)]   // the previous video's state and position: no progress for THIS load
+    [InlineData(false, false, 0L, PlaybackState.Failed, false)]
+    [InlineData(false, true, 0L, PlaybackState.Opening, false)]
+    [InlineData(false, true, 1L, PlaybackState.Opening, true)]
+    [InlineData(false, true, 0L, PlaybackState.Paused, true)]            // a paused open presenting its first frame
+    [InlineData(false, true, 0L, PlaybackState.Playing, true)]
+    [InlineData(true, false, 0L, PlaybackState.Idle, true)]              // sticky once proven
+    public void Only_the_sessions_own_state_is_progress(bool already, bool ownsTick, long positionMs, PlaybackState state, bool expected)
+        => Assert.Equal(expected, V.HostRules.Progressed(already, ownsTick, positionMs, state));
+
+    [Theory]
+    [InlineData(PlaybackState.Playing, PlaybackState.Idle, false, V.TickFold.Started)]       // the first frame of the load
+    [InlineData(PlaybackState.Playing, PlaybackState.Playing, true, V.TickFold.Position)]
+    [InlineData(PlaybackState.Playing, PlaybackState.Paused, true, V.TickFold.Started)]      // resumed
+    [InlineData(PlaybackState.Playing, PlaybackState.Buffering, true, V.TickFold.Started)]
+    [InlineData(PlaybackState.Paused, PlaybackState.Playing, true, V.TickFold.Paused)]
+    [InlineData(PlaybackState.Paused, PlaybackState.Paused, true, V.TickFold.None)]
+    [InlineData(PlaybackState.Ready, PlaybackState.Idle, false, V.TickFold.Paused)]
+    [InlineData(PlaybackState.Opening, PlaybackState.Idle, false, V.TickFold.Buffering)]
+    [InlineData(PlaybackState.Stalled, PlaybackState.Playing, true, V.TickFold.Buffering)]
+    [InlineData(PlaybackState.Stalled, PlaybackState.Stalled, true, V.TickFold.None)]
+    [InlineData(PlaybackState.Ended, PlaybackState.Playing, true, V.TickFold.Ended)]
+    [InlineData(PlaybackState.Ended, PlaybackState.Ended, true, V.TickFold.None)]
+    [InlineData(PlaybackState.Failed, PlaybackState.Playing, true, V.TickFold.Failed)]
+    [InlineData(PlaybackState.Idle, PlaybackState.Idle, false, V.TickFold.None)]
+    public void The_state_fold_is_edge_triggered(PlaybackState state, PlaybackState last, bool firstFrameFired, V.TickFold expected)
+        => Assert.Equal(expected, V.HostRules.Fold(state, last, firstFrameFired));
+
+    // The race F158 names, end to end over the pure rules: the player still reads Playing at the old row's position
+    // while the new open has not assigned its session. The tick must neither post Started nor disarm the watchdog.
+    [Fact]
+    public void A_stale_playing_player_during_a_switch_posts_no_started_and_leaves_the_watchdog_armed()
+    {
+        var oldSession = new object();
+        bool owned = V.HostRules.OwnsTick(null, oldSession);                                         // the gap
+        bool progressed = V.HostRules.Progressed(false, owned, 192_000, PlaybackState.Playing);
+        Assert.False(progressed);
+
+        var dog = new V.StartWatchdog(1_000);
+        dog.Arm(0);
+        Assert.False(dog.ShouldFault(500, true, progressed));
+        Assert.True(dog.ShouldFault(1_500, true, progressed));                                       // an open that never lands still faults
     }
 }

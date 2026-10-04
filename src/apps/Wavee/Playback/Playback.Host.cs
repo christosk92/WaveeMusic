@@ -35,11 +35,13 @@
 //
 // THE SEAMS TO OWNER H (`Playback.Audio.cs` / `Playback.Video.cs` / `Playback.Os.cs` — parts of THIS partial class).
 // Execute routes by the host that holds the row (`s_hostKind`): a Video row goes to `Video`, everything else to
-// `Audio`, and a load that changes hosts stops the outgoing one first (`MediaSwitch.HostChanges`).
+// `Audio`. A load that changes hosts goes through `ParkAndCut.Load` (`Playback.ParkAndCut.cs`, F151): turning the video
+// on under a PLAYING song keeps the song going until the video presents its first frame and then cuts to it; turning it
+// off resumes the parked song. Every other host change still stops the outgoing host first (`MediaSwitch.HostChanges`).
 //
 //   static class Audio { Load(row, id, kind, epoch, fromMs, seekGen); Stop(); Pause(); Resume(); Seek(ms, epoch, gen);
 //                        SetVolume(linear01); Prepare(row, id); }
-//   static class Video { Load(source, epoch, fromMs, paused, seekGen); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
+//   static class Video { Load(source, epoch, fromMs, paused, seekGen, muted); Stop(); Play(); Pause(); Seek(ms, accurate, gen);
 //                        SetVolume(amplitude); }
 //   static class Os    { Publish(in State s); }
 //   partial void PumpAdopt(uint from, uint to);  PumpPrefetch(row, id);  PumpCancelPrepared();   ← owner H implements
@@ -667,28 +669,34 @@ public static partial class Playback
             s_uids.ReseedCounter(Queue.Rows);         // a fresh activation restarts the q<n> mint at q0, above every uid still booked
         }
         if (s_fx.Stop) StopHost();
-        if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused, s_fx.SeekGen);
-        else if (s_fx.Adopt) PumpAdopt(s_fx.AdoptFrom, s_fx.AdoptTo);
+        if (s_fx.Load) LoadHost(s_fx.LoadRow, s_fx.LoadId, s_fx.LoadKind, s_fx.LoadEpoch, s_fx.LoadFromMs, s_fx.LoadPaused, s_fx.SeekGen, s_fx.LoadWhy);
+        else if (s_fx.Adopt)
+        {
+            ParkAndCut.OnAdopt();                     // a gapless join while a video attached: the song is the row now, the video is moot
+            PumpAdopt(s_fx.AdoptFrom, s_fx.AdoptTo);
+        }
         if (s_fx.CancelPrepared) PumpCancelPrepared();
-        if (s_fx.PauseHost) { if (s_hostKind == PlayableKind.Video) Video.Pause(); else Audio.Pause(); }
-        if (s_fx.ResumeHost) { if (s_hostKind == PlayableKind.Video) Video.Play(); else Audio.Resume(); }
+        // The host that takes the transport: the video's, except while it is still ATTACHING under the song (F151).
+        bool onVideo = MediaSwitch.VideoIsAudible(s_hostKind, ParkAndCut.Attaching);
+        if (s_fx.PauseHost) { ParkAndCut.OnTransport(play: false); if (onVideo) Video.Pause(); else Audio.Pause(); }
+        if (s_fx.ResumeHost) { ParkAndCut.OnTransport(play: true); if (onVideo) Video.Play(); else Audio.Resume(); }
         // The scrub gesture BEFORE the seek (V-PA5): an audible scrub's release IS the seek, set INSTEAD of `Seek`; a cancel that
         // rides with a plain seek (a release the pump will not run) must have let go of the held voice first.
         if (s_fx.ScrubBegin) Audio.ScrubBegin(s_fx.ScrubMs);
         if (s_fx.ScrubMove)
         {
-            if (s_hostKind == PlayableKind.Video) Video.ScrubPreview(s_fx.ScrubMs);
+            if (onVideo) Video.ScrubPreview(s_fx.ScrubMs);
             else Audio.ScrubMove(s_fx.ScrubMs, s_fx.ScrubVelocity);
         }
         if (s_fx.ScrubEnd) Audio.ScrubEnd(s_fx.SeekMs, s_fx.SeekEpoch, s_fx.SeekGen);
         if (s_fx.ScrubCancel)
         {
-            if (s_hostKind == PlayableKind.Video) Video.ScrubPreviewEnd();
+            if (onVideo) Video.ScrubPreviewEnd();
             else Audio.ScrubCancel();
         }
         if (s_fx.Seek)
         {
-            if (s_hostKind == PlayableKind.Video) Video.Seek(s_fx.SeekMs, accurate: true, s_fx.SeekGen);
+            if (onVideo) Video.Seek(s_fx.SeekMs, accurate: true, s_fx.SeekGen);
             else Audio.Seek(s_fx.SeekMs, s_fx.SeekEpoch, s_fx.SeekGen);
         }
         if (s_fx.Volume)
@@ -751,25 +759,22 @@ public static partial class Playback
     /// <summary>OWNER H: the prepared row stopped being next — dispose the slot and any join not yet live (G-112).</summary>
     static partial void PumpCancelPrepared();
 
-    static void StopHost()
-    {
-        if (s_hostKind == PlayableKind.Video) Video.Stop();
-        else Audio.Stop();
-    }
+    /// <summary>Stop the host that holds the row, and with it whatever the hand-off kept alive for it: the song a video is
+    /// still attaching under, the parked song, the parked video (F151, <see cref="ParkAndCut.Stop"/>).</summary>
+    static void StopHost() => ParkAndCut.Stop(s_hostKind);
 
-    /// <summary>Route a load to the host its kind names, stopping the other host first when the kind crosses the video
-    /// line (G-140). A paused load is followed by the host's own pause in the same pass. <paramref name="fromMs"/> is
-    /// already the episode's resume point when a Claim or an Advance started one "from the top": the reducer's load tail
-    /// resolves it on the deck (<c>EpisodeStartOf</c> in <c>EmitLoad</c>), so a paused load shows it from the first frame.</summary>
-    static void LoadHost(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, bool paused, uint seekGen)
+    /// <summary>Route a load to the host its kind names, through the hand-off (<see cref="ParkAndCut.Load"/>, F151): the
+    /// song keeps playing while a video attaches under it, a parked song resumes when the video goes, and every other host
+    /// change stops the outgoing host first (G-140). A paused load is followed by the host's own pause in the same pass.
+    /// <paramref name="fromMs"/> is already the episode's resume point when a Claim or an Advance started one "from the top":
+    /// the reducer's load tail resolves it on the deck (<c>EpisodeStartOf</c> in <c>EmitLoad</c>), so a paused load shows it
+    /// from the first frame. <paramref name="origin"/> is the reducer's reason for the load (<see cref="Effects.LoadWhy"/>).</summary>
+    static void LoadHost(EntityRef row, EntityId id, PlayableKind kind, uint epoch, int fromMs, bool paused, uint seekGen, LoadOrigin origin)
     {
         Pending.Load.Value = true;
-        if (MediaSwitch.HostChanges(s_hostKind, kind)) StopHost();
-        s_hostKind = kind;
+        Video.NoteLoadEpoch(epoch);                        // F155: a video load still on the pump is superseded from here, not only once this one's resolve lands
         EnsureRow(id);                                     // an inbound row may have a slot and no identity yet
-        if (kind == PlayableKind.Video) { LoadVideo(row, id, epoch, fromMs, paused, seekGen); return; }
-        Audio.Load(row, id, kind, epoch, fromMs, seekGen);
-        if (paused) Audio.Pause();
+        ParkAndCut.Load(row, id, kind, epoch, fromMs, paused, seekGen, origin);
     }
 
     /// <summary>Where, and under which seek generation, a resolved video load actually starts (V-PA2). The reducer may have taken a
@@ -787,14 +792,16 @@ public static partial class Playback
 
     /// <summary>Resolve on an api thread, load on the UI thread — unless a newer load superseded this one meanwhile. A
     /// row with no source demotes to audio through the reducer (<see cref="AudioSignal.VideoUnavailable"/>).</summary>
-    static void LoadVideo(EntityRef row, EntityId id, uint epoch, int fromMs, bool paused, uint seekGen)
+    static void LoadVideo(EntityRef row, EntityId id, uint epoch, int fromMs, bool paused, uint seekGen, bool muted)
     {
         string gid = row.Kind == EntityKind.Track && !row.IsNone && Entities.Current is not null
                      && (uint)row.Slot < (uint)Entities.Current.Tracks.Count
             ? ManifestIdOfRow(new Track(row.Slot))
             : "";
         Func<EntityId, string, CancellationToken, Video.VideoSource?> resolver = VideoResolver;
-        bool queued = Spotify.Api.Run(() =>
+        // F162: the load's resolve + manifest ride the api pool's PRIORITY lane — a switch must not queue behind the catalogue
+        // batches the page the user clicked from started.
+        bool queued = Spotify.Api.RunPriority(() =>
         {
             Video.VideoSource? source = null;
             try { source = resolver(id, gid, CancellationToken.None); }
@@ -810,7 +817,7 @@ public static partial class Playback
                 // drop point is where the open must land, so the position follows the generation (else the first report walks
                 // the playhead back to where the load began).
                 (uint gen, int startMs) = VideoLoadStart(s_state.SeekGen, s_state.PosMs, seekGen, fromMs);
-                Video.Load(resolved, epoch, startMs, paused, gen);
+                Video.Load(resolved, epoch, startMs, paused, gen, muted);
             });
         });
         if (!queued) Post(Input.Audio(AudioSignal.VideoUnavailable, epoch, FrameNowMs()));
@@ -1384,6 +1391,7 @@ public static partial class Playback
         s_identity = default;
         s_hellos = 0;
         s_hostKind = PlayableKind.Audio;
+        ParkAndCut.ResetForTests();
         s_draining = false;
         s_redrain = false;
         s_queueVersion = 0;

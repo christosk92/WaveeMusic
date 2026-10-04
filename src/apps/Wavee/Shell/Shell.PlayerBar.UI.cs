@@ -85,14 +85,21 @@ public static partial class Shell
     /// instance, which has no idle machine to report to): a scrub is chrome activity, so the rail that drives it must be
     /// able to say so. A <c>PlayerChromeFeed</c> is inert without a <c>MediaPlayerElement</c> owner, so the fullscreen
     /// stage (which has none) reports a scrub through <paramref name="onScrubbing"/> instead (<c>true</c> on press,
-    /// <c>false</c> on commit or cancel) — its own idle machine's <c>SetScrubbing</c>. Both are STRUCTURAL: fixed at mount.</summary>
-    public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null)
-        => Embed.Comp(() => new BarSeekRail(feed, onScrubbing));
+    /// <c>false</c> on commit or cancel) — its own idle machine's <c>SetScrubbing</c>. Both are STRUCTURAL: fixed at mount.
+    /// <paramref name="reveal"/> (also structural) is the on-media transport's chrome-visible signal: while it reads
+    /// <c>false</c> the strip is only faded out, not unmounted, so the rail parks its pixel stepper and its report
+    /// effect instead of moving a transform nobody can see (each tick is a recorded and presented main-window frame);
+    /// the reveal re-syncs the fraction before the fade-in. Null = always live (the bar, the stage).</summary>
+    public static Element SeekBar(PlayerChromeFeed? feed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
+        => Embed.Comp(() => new BarSeekRail(feed, onScrubbing, reveal));
 
     /// <summary>A transport time label. <paramref name="remaining"/> picks the right slot (−remaining ⇄ duration, or
     /// the live mark while live); <paramref name="ink"/> is the stage's theme-invariant on-media override (null = the
-    /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life.</summary>
-    public static Element TimeText(bool remaining, ColorF? ink = null) => Embed.Comp(() => new BarTimeText(remaining, ink));
+    /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
+    /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
+    /// position, and the reveal brings it current.</summary>
+    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null)
+        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal));
 
     // ── the motion specs (ch 20 §5) ─────────────────────────────────────────────────────────────────────────────────
 
@@ -213,6 +220,16 @@ public static partial class Shell
             bool isEpisode = Playback.CurrentId.Value.Kind == EntityKind.Episode;
             var L = isEpisode ? PodcastBarLayout(_layout.Value) : _layout.Value;
             bool marquee = Prefs.Appearance.Marquee();
+            // F239: an unattended title is a perpetual compositor loop - a render wake and a present every 17-33 ms for the whole
+            // song. On a weak GPU, and while a video surface is live (the bar then sits beside a playing video, whose frames
+            // are the thing worth the GPU), both lines scroll only while HOVERED. The trigger is fixed at mount, so a change of
+            // policy remounts the two lines through their key (like BarVolumeButton). Reads the signal: the bar re-renders on
+            // the edge only. The engine itself also parks both lines while the window is inactive or covered
+            // (Marquee.Style.ParkInBackground, default on).
+            bool barHoverOnly = GpuProfile.IsWeak || Playback.VideoActive.Value;
+            var barTrigger = barHoverOnly ? Marquee.TriggerMode.Hover : Marquee.TriggerMode.Always;
+            string titleKey = marquee && barHoverOnly ? "np-title-hover" : "np-title";
+            string artistsKey = marquee && barHoverOnly ? "np-artists-hover" : "np-artists";
 
             // ── the low-frequency facts ──
             _ = rowStamp.Value;
@@ -331,14 +348,17 @@ public static partial class Shell
                     // hover gate left a long title permanently cut off for anyone who never hovered. The 0.2.9 worry
                     // (a 27-second idle scroll parked mid-word, S2 #12) is gone — the engine now glides the text home
                     // on deactivation instead of freezing it wherever it was. `titleLinkHover` still drives the link ink.
-                    Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
+                    // (HOVER on a weak GPU or beside a live video: `barTrigger`.) SyncCycle: the title and the artist line
+                    // share one cycle length, so they start, travel and rest together and the window changes pixels in one
+                    // span (and, rows sharing the render thread's per-period sampling clock, on the same ticks).
+                    Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
                 })
                 : new BoxEl
                 {
                     ClipToBounds = true, MinWidth = 0f,
                     Children = [titleRun],
                 };
-            titleEl = titleEl with { Key = "np-title" };
+            titleEl = titleEl with { Key = titleKey };
             if (titleNav)
                 titleEl = titleEl with
                 {
@@ -357,15 +377,15 @@ public static partial class Shell
                 });
             // A scrolling title shows itself in full; a plain one is cut at the slot, so its full text rides a tooltip
             // that exists only while it is cut.
-            metaKids.Add(marquee ? titleEl : Controls.TrimTip(titleEl, BarTitleText(), titleRun) with { Key = "np-title" });
+            metaKids.Add(marquee ? titleEl : Controls.TrimTip(titleEl, BarTitleText(), titleRun) with { Key = titleKey });
             if (PlayerBarRules.ShowsArtistLine(facts.State, L.ShowSubtitle))
                 metaKids.Add(marquee
                     ? Marquee.Content(static () => new BarArtistsLine(compact: false), new Marquee.Style
                     {
                         Speed = BarMarqueeSpeed, CycleMs = BarMarqueeCycleMs, EndPauseMs = BarMarqueeEndPauseMs,
                         StartDelayMs = BarMarqueeStartDelayMs,
-                        Mode = Marquee.ScrollMode.PingPong, Trigger = Marquee.TriggerMode.Always,
-                    }) with { Key = "np-artists" }
+                        Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
+                    }) with { Key = artistsKey }
                     : new BoxEl
                     {
                         Key = "np-artists", ClipToBounds = true, MinWidth = 0f,
@@ -1520,6 +1540,7 @@ public static partial class Shell
 
         readonly PlayerChromeFeed? _chromeFeed;
         readonly Action<bool>? _onScrubbing;   // the fullscreen stage's scrub seam (its idle machine's SetScrubbing); null on the bar
+        readonly IReadSignal<bool>? _reveal;   // the on-media strip's chrome-visible signal (null = always live); see SeekBar
         readonly Signal<bool> _scrubbing = new(false);
         readonly FloatSignal _scrubFrac = new(0f);
         readonly FloatSignal _displayFrac = new(0f);
@@ -1551,10 +1572,11 @@ public static partial class Shell
         readonly Action _onExit;
         readonly Action<RectF> _onBounds;
 
-        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null)
+        public BarSeekRail(PlayerChromeFeed? chromeFeed = null, Action<bool>? onScrubbing = null, IReadSignal<bool>? reveal = null)
         {
             _chromeFeed = chromeFeed;
             _onScrubbing = onScrubbing;
+            _reveal = reveal;
             _onThumbRealized = node => _thumbNode = node;
             _readoutAnchor = () => _thumbNode;
             _readoutText = Prop.Of<string>(ReadoutLabel);
@@ -1586,9 +1608,12 @@ public static partial class Shell
 
             // A report (position, duration, window, edge, phase) re-derives the RESTING fraction — an effect, not Render.
             UseSignalEffect(_onReport);
-            // The pixel-due stepper: armed only while the playhead advances on its own (paused ⇒ disarmed ⇒ no frames).
+            // The pixel-due stepper: armed only while the playhead advances on its own (paused ⇒ disarmed ⇒ no frames), and
+            // only while someone can see it (SeekRail.Ticks: the on-media strip revealed, the window not covered).
             // UseInterval also pauses under a parked / minimised window.
-            UseInterval(_recompute, dwell, enabled: advances && mode != SeekRailMode.Line);
+            bool concealed = _reveal is { } reveal && !reveal.Value;   // subscribe — the reveal re-renders and re-arms
+            bool windowHidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;
+            UseInterval(_recompute, dwell, enabled: SeekRail.Ticks(advances, mode, concealed, windowHidden));
             _overlay = UseContext(Overlay.Service);
             // V-PA24/X5: the rail can be unmounted mid-gesture (the stage closing, a tier remount, a theme swap): a live scrub must not leave
             // the pump holding the main voice behind a grain voice nobody will ever release. `ScrubCancel` is idempotent.
@@ -1697,6 +1722,9 @@ public static partial class Shell
 
         void OnReport()
         {
+            // Concealed (the on-media strip faded out): nothing paints, so no report writes the transform. The read is the
+            // effect's subscription to the reveal, so showing the strip re-runs this and re-syncs the fraction first.
+            if (_reveal is { } reveal && !reveal.Value) return;
             _ = Playback.PositionMs.Value;
             _ = Playback.DurationMs.Value;
             _ = Playback.Live.Value;
@@ -1881,17 +1909,23 @@ public static partial class Shell
     {
         readonly bool _remaining;
         readonly ColorF? _ink;
+        readonly IReadSignal<bool>? _reveal;   // the on-media strip's chrome-visible signal (null = always live)
+        string _shown = "";                    // the last text the bind produced: what a concealed label keeps holding
         readonly Prop<string> _label;
 
-        public BarTimeText(bool remaining, ColorF? ink)
+        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null)
         {
             _remaining = remaining;
             _ink = ink;
+            _reveal = reveal;
             _label = Prop.Of<string>(Label);
         }
 
         string Label()
         {
+            // Concealed: hold the last text. Returning before the position read drops this bind's subscription to it, so a
+            // hidden label wakes nothing at 1 Hz; the reveal (read first, so it stays subscribed) re-runs the bind.
+            if (_reveal is { } reveal && !reveal.Value) return _shown;
             long position = Playback.PositionMs.Value;
             long duration = Playback.DurationMs.Value;
             bool isLive = Playback.Live.Value.IsLive;
@@ -1904,7 +1938,7 @@ public static partial class Shell
             var (ms, minus) = TimeLabel.Of(_remaining, Prefs.PlayerBar.ShowRemaining(), position, duration, isLive, tunedIn,
                 isLive ? Playback.UnixNowMs() : 0L);
             long seconds = ms / 1000L;
-            return minus
+            return _shown = minus
                 ? s_minusClockText.Get(seconds, static sec => "-" + Playback.TimeFormat.Clock(sec * 1000L))
                 : s_clockText.Get(seconds, static sec => Playback.TimeFormat.Clock(sec * 1000L));
         }

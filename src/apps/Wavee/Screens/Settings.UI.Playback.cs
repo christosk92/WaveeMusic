@@ -456,8 +456,7 @@ public static partial class Settings
             {
                 if ((uint)i >= (uint)Quality.VideoHeights.Length) return;
                 int height = Quality.VideoHeights[i];   // stored as a height; 0 = Auto
-                Platform.Settings.Set(Platform.Keys.VideoQuality, height);
-                Playback.Video.SetPreferredHeight(height);   // the live pin: the ABR ceiling + the engine's selection
+                Playback.Video.PinQuality(height);   // persist, then the live pin: the ABR ceiling + the engine's selection
                 Bump();
             });
 

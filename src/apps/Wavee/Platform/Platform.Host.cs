@@ -924,11 +924,14 @@ public static partial class Log
            && !s.Contains("dwmGlitches", StringComparison.Ordinal);
 
     /// <summary>The engine instruments that must clear the Info file gate without pretending to be a fault. All of
-    /// them are edge- or value-gated, so none can spam:
+    /// them are edge-, value- or settle-gated, so none can spam (a value gate alone does not bound a line whose value
+    /// changes every frame, so <c>[video] pump</c> is additionally debounced to settled geometry):
     /// <list type="bullet">
     /// <item><c>[video] pump</c> — the placement geometry (area / viewport / videoRect / host-fullscreen). It is the
     /// only oracle for "is the picture where it should be": a DirectComposition visual behind a DestOut hole does not
-    /// appear in a screenshot at all, so there is no pixel to check.</item>
+    /// appear in a screenshot at all, so there is no pixel to check. Written once per SETTLED placement, not per
+    /// frame: the element logs it from the full pump that runs ~200 ms after the last moved frame of a drag, resize or
+    /// animation, so a motion burst is one line carrying its final geometry.</item>
     /// <item><c>[media.chrome]</c> — one line per visibility edge, with the cause and the holds.</item>
     /// <item><c>[overlay] wantWindowed</c> — its ABSENCE is the evidence. An in-app <c>PopupChrome.Popup</c> must
     /// never lease an HWND, and the only way to state that is a line that does not appear.</item>
