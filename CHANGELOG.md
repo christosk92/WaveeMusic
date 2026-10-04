@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.4.0] - unreleased
+
+### Fixed
+
+- **The pop-out video window no longer slows down the main window.** The pop-out used the main window's frame slot, so
+  opening a flyout or resizing could freeze the app for up to 0.6 s while a video played in the pop-out. Each window now
+  presents on its own, and opening and closing the pop-out no longer shows an empty window. (#171)
+- **No more ghost edges around DRM video.** The picture and the hole the UI leaves for it now move in the same frame, the
+  video is scaled smoothly instead of with blocky pixels, and the last frame of the previous video no longer shows
+  through after a switch. (#172)
+- **Switching videos and moving the video between docked, fullscreen and the pop-out is faster.** Turning video on keeps
+  the music playing until the first video frame, an outdated load is cancelled, and leaving fullscreen no longer drops
+  the video to its lowest quality. (#173)
+- **Steadier video playback.** Lyrics, the player-bar text and the equalizer no longer redraw the window every frame
+  when they are hidden or the window is in the background, and the diagnostics log now records dropped frames and how
+  long each switch takes. (#174)
+
 ## [0.3.0] - 2026-10-02
 
 Crest is Wavee rebuilt from the ground up. Every page, the playback engine, Spotify Connect and the local library were
