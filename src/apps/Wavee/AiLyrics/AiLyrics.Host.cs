@@ -728,6 +728,7 @@ public static partial class AiLyrics
             }
             if (!have || _models is null || !_models.Aligners.TryGetValue(req.Language, out var aligner))
             {
+                Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=LanguageNotInstalled language={req.Language} installed={string.Join(",", _installed)} loaded={_models is not null}");
                 s_post(() => Skip(req.TrackId, SkipReason.LanguageNotInstalled, "language " + req.Language + " not installed"));
                 return;
             }
