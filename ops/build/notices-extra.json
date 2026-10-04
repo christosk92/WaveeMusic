@@ -89,5 +89,19 @@
     "license": "MIT (via Ultimate Vocal Remover; VERIFY the model's own terms)",
     "url": "https://github.com/TRvlvr/model_repo",
     "note": "Vocal separator used before word timing, converted to fp16 ONNX. Downloaded from models.cproducts.dev at the user's request."
+  },
+  {
+    "name": "wav2vec2-large-xlsr-53-dutch",
+    "version": "jonatasgrosman/wav2vec2-large-xlsr-53-dutch (revision 46f22138)",
+    "license": "Apache-2.0",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-dutch",
+    "note": "Dutch letter recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1 and CSS10, converted like the English one. Optional download from models.cproducts.dev."
+  },
+  {
+    "name": "wav2vec2-large-xlsr-korean",
+    "version": "kresnik/wav2vec2-large-xlsr-korean (revision 629c9a35)",
+    "license": "Apache-2.0",
+    "url": "https://huggingface.co/kresnik/wav2vec2-large-xlsr-korean",
+    "note": "Korean syllable recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on the Zeroth-Korean corpus (OpenSLR 40, CC BY 4.0, by Lucas Jo and Wonkyum Lee, Atlas Guide Inc.; https://www.openslr.org/40/), converted like the English one. Optional download from models.cproducts.dev."
   }
 ]

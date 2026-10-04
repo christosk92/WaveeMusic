@@ -98,10 +98,20 @@ wav2vec2-large-960h-lv60-self  facebook/wav2vec2-large-960h-lv60-self
   url:     https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self
   note:    English letter recognizer for word timing, converted to five fp16 ONNX graphs (the first convolution rewritten as framing + MatMul). Downloaded from models.cproducts.dev at the user's request.
 
+wav2vec2-large-xlsr-53-dutch  jonatasgrosman/wav2vec2-large-xlsr-53-dutch (revision 46f22138)
+  license: Apache-2.0
+  url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-dutch
+  note:    Dutch letter recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1 and CSS10, converted like the English one. Optional download from models.cproducts.dev.
+
 wav2vec2-large-xlsr-53-spanish  jonatasgrosman/wav2vec2-large-xlsr-53-spanish
   license: Apache-2.0
   url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish
   note:    Spanish letter recognizer for word timing, converted like the English one. Optional download.
+
+wav2vec2-large-xlsr-korean  kresnik/wav2vec2-large-xlsr-korean (revision 629c9a35)
+  license: Apache-2.0
+  url:     https://huggingface.co/kresnik/wav2vec2-large-xlsr-korean
+  note:    Korean syllable recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on the Zeroth-Korean corpus (OpenSLR 40, CC BY 4.0, by Lucas Jo and Wonkyum Lee, Atlas Guide Inc.; https://www.openslr.org/40/), converted like the English one. Optional download from models.cproducts.dev.
 
 Windows 11 OOBE onboarding animations (eula / connect / patch Lottie)  Bodymovin 5.6.5 exports, as redistributed by Rise Media Player
   license: UNVERIFIED -- Microsoft-owned artwork; no licence located
