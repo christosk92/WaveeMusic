@@ -233,6 +233,20 @@ public static partial class Playback
         /// <summary>The host's own small decisions, pure (`VideoHostRulesTests`).</summary>
         public static class HostRules
         {
+            /// <summary>F215: `first.frame`'s time since the switch began. When the player stamped the first frame itself
+            /// (<paramref name="firstFrameQpc"/>, a Stopwatch timestamp, 0 = none) and the switch has its own
+            /// (<paramref name="switchAtQpc"/>), it is the time between those two stamps, so a late UI observation (a stage that unmounted the
+            /// pump, a busy frame) cannot inflate it; otherwise it is the tick-clock difference <c>now - switchAtMs</c>, the old figure.</summary>
+            public static long FirstFrameSinceSwitchMs(long switchAtMs, long switchAtQpc, long firstFrameQpc, long nowMs)
+                => switchAtQpc != 0 && firstFrameQpc >= switchAtQpc
+                    ? (long)System.Diagnostics.Stopwatch.GetElapsedTime(switchAtQpc, firstFrameQpc).TotalMilliseconds
+                    : nowMs - switchAtMs;
+
+            /// <summary>F215: how long after the player's own first-frame stamp this observation ran, in ms; -1 when there is no stamp.</summary>
+            public static long ObservedLateMs(long firstFrameQpc, long nowQpc)
+                => firstFrameQpc == 0 || nowQpc < firstFrameQpc ? -1
+                   : (long)System.Diagnostics.Stopwatch.GetElapsedTime(firstFrameQpc, nowQpc).TotalMilliseconds;
+
             /// <summary>A carried position within this of the end is pulled back…</summary>
             public const long StartClampGuardMs = 250;
             /// <summary>…to this far before the end, so a restore never opens on the credits.</summary>
@@ -483,6 +497,7 @@ public static partial class Playback
         static double s_volume = 1.0;
         static bool s_muted;
         static long s_switchAtMs;                // FrameNowMs at switch.begin — first.frame's sinceSwitchMs
+        static long s_switchAtQpc;               // F215: the same instant as a Stopwatch (QPC) timestamp: the origin the NATIVE first-frame stamp is measured from
         // V-PA2: the reducer's seek generation (`State.SeekGen`) every `Position` this host posts is stamped with (`Input.Gen`): the
         // reducer drops a report whose generation is not its current one, so a position read before the user's last drop point can
         // never drag the playhead back over it. SEEDED by every `Load` (the reducer's generation when the load starts), STAMPED by
@@ -1438,6 +1453,7 @@ public static partial class Playback
             req = req with { StartAtMs = HostRules.StartAt(req.StartAtMs, req.Source.DrmDescriptor?.DurationMs ?? 0) };
             SwitchAction plan = PlanWithReason(new SwitchInput(live is not null, faulted, liveKey, req.Source.Key, req.StartAtMs, faultRetryable), out SwitchReason why);
             Interlocked.Exchange(ref s_switchAtMs, FrameNowMs());
+            Interlocked.Exchange(ref s_switchAtQpc, System.Diagnostics.Stopwatch.GetTimestamp());
             if (plan is SwitchAction.Switch or SwitchAction.Rebuild) Volatile.Write(ref s_firstFrameAtMs, 0);   // F225: a new session's first frame is still to come
             // F163: a faulted in-place re-open of the same key spends that key's one retry; every other load starts afresh.
             bool reopen = plan == SwitchAction.Switch && faulted && string.Equals(liveKey, req.Source.Key, StringComparison.Ordinal);
@@ -1582,9 +1598,20 @@ public static partial class Playback
             }
             if (IsStale(req, epoch)) return;
             if (built.Error.Peek() is { } err) { ReportFault(req.Epoch, HostRules.MapError(err), err.Message, err); return; }
-            Log.Info("video", $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openMs={FrameNowMs() - startedAt} rebuild=true");
+            Log.Info("video", OpenOkLine(req, startedAt, rebuild: true));
             ReleasePrepared(keepKey: null);        // the open took it (the dispose is then a no-op) or never will
             SettleIntent(built, req, epoch);
+        }
+
+        /// <summary>F215: the `open.ok` line. `openCallMs` is how long the open CALL took, which for a protected source is only the
+        /// session being built and the attach being posted: the attach (SetSource), metadata, canplay and first frame all happen after it,
+        /// and are on the engine's one `[video] switch.budget` line (the old `openMs=3` beside `setSourceMs=940` read as a fast open).
+        /// `sinceSwitchMs` counts from switch.begin, so the resolve and the prepare wait before the open are on it.</summary>
+        static string OpenOkLine(LoadRequest req, long startedAt, bool rebuild)
+        {
+            long now = FrameNowMs();
+            return $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openCallMs={now - startedAt} " +
+                   $"sinceSwitchMs={now - Interlocked.Read(ref s_switchAtMs)} rebuild={(rebuild ? "true" : "false")}";
         }
 
         /// <summary>A different video on a HEALTHY player: re-open the same instance. No `PlayerChanged`, so the mounted
@@ -1613,7 +1640,7 @@ public static partial class Playback
                     ReportFault(req.Epoch, HostRules.MapError(err), err.Message, err);   // no open.ok line, no Play on a Failed session
                     return;
                 }
-                Log.Info("video", $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openMs={FrameNowMs() - startedAt} rebuild=false");
+                Log.Info("video", OpenOkLine(req, startedAt, rebuild: false));
                 ReleasePrepared(keepKey: null);    // the open took it (the dispose is then a no-op) or never will
                 SettleIntent(live, req, epoch);
             }
@@ -2291,6 +2318,7 @@ public static partial class Playback
             }
 
             long firstFrame;
+            long firstFrameQpc = 0;                // F215: the native FIRSTFRAMEREADY QPC (0 = this session has none)
             bool engineSeeking;
             if (session is ProtectedMediaSession ps)
             {
@@ -2298,6 +2326,7 @@ public static partial class Playback
                 Phase.SetIfChanged(HostRules.PhaseOf(pv.Phase));
                 engineSeeking = pv.IsSeeking;
                 firstFrame = pv.FirstFrameEpoch;
+                firstFrameQpc = pv.FirstFrameQpc;  // read AFTER the epoch: the engine stamps the QPC before it bumps the epoch
                 int index = pv.IndexEpoch;
                 if (index != s_observedIndexEpoch)
                 {
@@ -2324,11 +2353,17 @@ public static partial class Playback
 
             if (firstFrame == 0 || firstFrame == s_observedFirstFrame) return;
             s_observedFirstFrame = firstFrame;
-            Volatile.Write(ref s_firstFrameAtMs, FrameNowMs());
+            long observedAtMs = FrameNowMs();
+            Volatile.Write(ref s_firstFrameAtMs, observedAtMs);
             FirstFrame.Value = FirstFrame.Peek() + 1;
             SizeI natural = p.NaturalSize.Peek();
-            LogLine(new VideoLog.FirstFrame(Tail(s_key), s_epoch, FrameNowMs() - Interlocked.Read(ref s_switchAtMs), -1,
-                (long)p.Position.Peek().TotalMilliseconds, natural.Width, natural.Height));
+            // F215: sinceSwitchMs is the NATIVE first-frame instant when the player has one (a fullscreen stage that unmounted the
+            // pump used to make it 2.4 s late: sinceSwitchMs=4575 against a native sinceAttachMs=2121); observedLateMs is how long
+            // after the frame this observation ran.
+            LogLine(new VideoLog.FirstFrame(Tail(s_key), s_epoch,
+                HostRules.FirstFrameSinceSwitchMs(Interlocked.Read(ref s_switchAtMs), Interlocked.Read(ref s_switchAtQpc), firstFrameQpc, observedAtMs), -1,
+                (long)p.Position.Peek().TotalMilliseconds, natural.Width, natural.Height,
+                HostRules.ObservedLateMs(firstFrameQpc, System.Diagnostics.Stopwatch.GetTimestamp())));
         }
 
         /// <summary>UI THREAD. Pay the <c>Seeked</c> the reducer is owed for the last seek it emitted (V-PA2): once

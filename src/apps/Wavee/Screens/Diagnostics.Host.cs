@@ -591,9 +591,16 @@ public static partial class Diagnostics
                 sb.Append(" | gpu bytes=").Append(Mb(g.Bytes)).Append(" resources=").Append(g.Count);
                 if (FluentApp.GpuCensusLine() is { Length: > 0 } detail) sb.Append(detail);
             }
+            // The media stack's named owners (F197) and the cross-window dual-handle count (F235): engines with natural sizes, protected
+            // sessions with segment-store bytes, prepared sessions, runtime up/down. PMP decode inside mfpmp.exe is NOT counted.
+            sb.Append(MediaSegment(global::FluentGpu.Media.MediaCensus.Capture()));
             // Warning only on a new working-set peak above 400 MB (MemorySamplePolicy): a steady 800 MB used to warn every 5 s.
             Log.Event(MemorySamplePolicy.LevelFor(ws, previousPeak, MemorySamplePolicy.WarnBytes), "mem", "mem.sample", sb.ToString());
         }
+
+        /// <summary>The <c>mem.sample</c> media segment: the separator and the engine's one-line census (<c>videoEngines=..
+        /// protectedSessions=.. storeBytes=.. prepared=.. protectedRuntime=up|down dualHandleSlots=.. pmpDecode=not-counted</c>). Pure.</summary>
+        public static string MediaSegment(global::FluentGpu.Media.MediaCensusSnapshot media) => " | media " + media.Format();
 
         /// <summary>The process-lifetime peak, after the UI loop (no engine read after host disposal).</summary>
         internal static void SampleProcessEnd()

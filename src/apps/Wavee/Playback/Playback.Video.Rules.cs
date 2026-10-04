@@ -570,7 +570,8 @@ public static partial class Playback
             public const int MaxLineChars = 256;
 
             public readonly record struct SwitchBegin(string Key, long FromMs, SwitchAction Plan, SwitchReason Why, bool Warm, uint Epoch);
-            public readonly record struct FirstFrame(string Key, uint Epoch, long SinceSwitchMs, long SinceAttachMs, long PosMs, int Width, int Height);
+            public readonly record struct FirstFrame(string Key, uint Epoch, long SinceSwitchMs, long SinceAttachMs, long PosMs, int Width, int Height,
+                                                     long ObservedLateMs = -1);
             public readonly record struct AudioCut(int FadeMs, long SongPosMs, long VideoPosMs, long GapMs);
             public readonly record struct SeekPlanned(long TargetMs, SeekIntent Intent, SeekVerb Verb, long KeyframeMs, int SegmentIndex, long DecodeMs);
             public readonly record struct SeekDone(long TargetMs, long LandedMs, long ElapsedMs, bool Fetched);
@@ -591,6 +592,7 @@ public static partial class Playback
                 b.Text("[video] first.frame key="); b.Text(l.Key); b.Text(" epoch="); b.Num(l.Epoch);
                 b.Text(" sinceSwitchMs="); b.Num(l.SinceSwitchMs); b.Text(" sinceAttachMs="); b.Num(l.SinceAttachMs);
                 b.Text(" pos="); b.Num(l.PosMs); b.Text("ms natural="); b.Num(l.Width); b.Text("x"); b.Num(l.Height);
+                if (l.ObservedLateMs >= 0) { b.Text(" observedLateMs="); b.Num(l.ObservedLateMs); }   // F215: only when the time came from the native stamp
                 return b.Done;
             }
 

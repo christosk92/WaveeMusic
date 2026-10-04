@@ -1148,6 +1148,55 @@ public class SpotifyApiLaneTests
         finally { release.Set(); lanes.Complete(); }
     }
 
+    // F226: every item is stamped when it is queued, and the observer is told how long it waited and how deep the queue it joined was,
+    // so "was it the api queue" is read off a line instead of reconstructed from thread-crossing timestamps.
+    [Fact]
+    public void The_observer_reports_how_long_each_item_waited_and_the_depth_it_found()
+    {
+        var waits = new List<Spotify.Api.QueueWait>();
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 4, priorityWorkers: 1, priorityDepth: 8, "fact-lanes-f",
+            observe: w => { lock (waits) waits.Add(w); });
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(1);
+        using var done = new CountdownEvent(2);
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
+            Assert.True(busy.Wait(Patience));                    // the lane's worker is parked: what follows has to wait
+            Assert.True(lanes.TryRun(done.Signal, 0, priority: true));   // joins an empty queue
+            Assert.True(lanes.TryRun(done.Signal, 0, priority: true));   // joins behind one
+            Thread.Sleep(120);
+            release.Set();
+            Assert.True(done.Wait(Patience));
+
+            Spotify.Api.QueueWait[] seen;
+            lock (waits) seen = waits.ToArray();
+            Assert.Equal(3, seen.Length);                        // the parked item, then the two that waited behind it
+            Assert.All(seen, w => Assert.True(w.Priority));
+            Assert.Equal(0, seen[1].DepthAtEnqueue);
+            Assert.Equal(1, seen[2].DepthAtEnqueue);
+            Assert.True(seen[1].QueuedMs >= 100.0 && seen[2].QueuedMs >= 100.0, $"waits {seen[1].QueuedMs} / {seen[2].QueuedMs}");
+            Assert.StartsWith("p", seen[1].Worker);              // the priority lane's own worker took them
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+
+    [Fact]
+    public void A_throwing_observer_never_costs_the_work()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 4, priorityWorkers: 1, priorityDepth: 4, "fact-lanes-g",
+            observe: _ => throw new InvalidOperationException("telemetry"));
+        using var ran = new ManualResetEventSlim();
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(ran.Set, 0, priority: true));
+            Assert.True(ran.Wait(Patience), "an observer that threw swallowed the item");
+        }
+        finally { lanes.Complete(); }
+    }
+
     [Fact]
     public void Both_lanes_full_refuses_the_item()
     {

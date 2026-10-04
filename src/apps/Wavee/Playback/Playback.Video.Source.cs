@@ -737,7 +737,8 @@ public static partial class Playback
         /// <para><b>Never on the CDM thread (G-145).</b> The runtime calls the relay on the KeyMessage thread and continues
         /// on the returned task; a relay that did the POST synchronously inside the call blocked the CDM for the whole round
         /// trip. The POST runs on an api thread (<see cref="Spotify.Api.RunPriorityAsync{T}"/>: named, bounded, and on the
-        /// priority lane — the licence is 80 % of a cold switch and must not queue behind catalogue batches, F162) and the
+        /// priority lane — a licence a switch is waiting on must not queue behind catalogue batches, F162; its queue wait and HTTP time
+        /// ride back on the <see cref="LicenseResponse"/> into the runtime's <c>license.budget</c> line, F226) and the
         /// task is handed back at once.</para></summary>
         public static class License
         {
@@ -752,13 +753,20 @@ public static partial class Playback
             public static Func<LicenseRequest, ValueTask<LicenseResponse>> Relay(string? endpoint)
             {
                 string route = Normalize(endpoint);
-                return request => new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(route, request)));
+                return request =>
+                {
+                    long enqueued = System.Diagnostics.Stopwatch.GetTimestamp();   // F226: the api queue wait is measured from here
+                    return new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(route, request, enqueued)));
+                };
             }
 
             /// <summary>The relay the process-lifetime protected backend is built with: it serves the PREPARE path (which has
             /// no per-open relay) and any re-acquisition after an expiry, finding the endpoint by the challenge's KID.</summary>
             public static readonly Func<LicenseRequest, ValueTask<LicenseResponse>> ByKeyId = static request =>
-                new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(RouteFor(request.KeyId), request)));
+            {
+                long enqueued = System.Diagnostics.Stopwatch.GetTimestamp();
+                return new ValueTask<LicenseResponse>(Spotify.Api.RunPriorityAsync(() => Acquire(RouteFor(request.KeyId), request, enqueued)));
+            };
 
             static readonly Dictionary<string, string> s_routes = new(StringComparer.Ordinal);
             static readonly Lock s_gate = new();
@@ -780,8 +788,11 @@ public static partial class Playback
                 lock (s_gate) return s_routes.TryGetValue(kid.ToLowerInvariant(), out string? route) ? route : DefaultRoute;
             }
 
-            static LicenseResponse Acquire(string route, LicenseRequest request)
+            static LicenseResponse Acquire(string route, LicenseRequest request, long enqueuedTimestamp)
             {
+                // F226: how long this attempt waited for an api worker. The runtime folds it, and the HTTP time below, into its one
+                // `license.budget` line, so a regression in the lane reads differently from a slow licence server.
+                long queuedMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(enqueuedTimestamp).TotalMilliseconds;
                 // The runtime cancels an attempt that stalls past its timeout, or whose licence was replaced: one still
                 // waiting in the api queue never goes out, and one in flight frees its connection (Send answers a transport
                 // failure when the token fires, which is read as the cancellation it was).
@@ -798,7 +809,9 @@ public static partial class Playback
                     Body = challenge,
                     Headers = RequestHeaders,
                 };
+                long sendStart = System.Diagnostics.Stopwatch.GetTimestamp();
                 Spotify.Api.Result result = Spotify.Api.Send(Spotify.RequestKind.Custom, in args, request.Cancel);
+                long httpMs = (long)System.Diagnostics.Stopwatch.GetElapsedTime(sendStart).TotalMilliseconds;
                 request.Cancel.ThrowIfCancellationRequested();
                 if (!result.Ok || result.Body.Length == 0)
                 {
@@ -810,7 +823,7 @@ public static partial class Playback
                             result.Status == 0 ? null : (System.Net.HttpStatusCode)result.Status);
                     throw new InvalidOperationException(message);
                 }
-                return new LicenseResponse(result.Body);
+                return new LicenseResponse(result.Body, queuedMs, httpMs);
             }
 
             /// <summary>The manifest gives a path, an absolute URL or an <c>@webgate</c>-style prefix; <c>Spotify.Api</c>

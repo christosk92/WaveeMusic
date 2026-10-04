@@ -132,16 +132,23 @@ public static partial class Spotify
         /// booting the process-wide pool (which registers the real fetch provider).</summary>
         public sealed class Lanes
         {
-            readonly BlockingCollection<(Action Work, long Cause)> _shared, _priority;
+            /// <summary>One queued item: the work, its capture cause, and (F226) when it was queued and how deep the queue it joined was.</summary>
+            readonly record struct Item(Action Work, long Cause, long EnqueuedTimestamp, int DepthAtEnqueue, bool Priority);
+
+            readonly BlockingCollection<Item> _shared, _priority;
             readonly int _sharedWorkers, _priorityWorkers;
             readonly string _name;
+            readonly Action<QueueWait>? _observe;
             int _started;
 
-            public Lanes(int sharedWorkers, int sharedDepth, int priorityWorkers, int priorityDepth, string name)
+            /// <summary>The lanes. <c>observe</c> (F226) is called on the worker thread for every item the moment it leaves the queue, with how
+            /// long it waited and the depth it found; null = unobserved. It must not block (a throw is swallowed).</summary>
+            public Lanes(int sharedWorkers, int sharedDepth, int priorityWorkers, int priorityDepth, string name, Action<QueueWait>? observe = null)
             {
                 _sharedWorkers = sharedWorkers;
                 _priorityWorkers = priorityWorkers;
                 _name = name;
+                _observe = observe;
                 _shared = new(sharedDepth);
                 _priority = new(priorityDepth);
             }
@@ -167,8 +174,9 @@ public static partial class Spotify
             /// only when the lane it ended up in is full.</summary>
             public bool TryRun(Action work, long cause, bool priority)
             {
-                if (priority && _priority.TryAdd((work, cause))) return true;
-                return _shared.TryAdd((work, cause));
+                long stamp = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (priority && _priority.TryAdd(new Item(work, cause, stamp, _priority.Count, Priority: true))) return true;
+                return _shared.TryAdd(new Item(work, cause, stamp, _shared.Count, priority));
             }
 
             /// <summary>Let the threads end once their queues drain (a fact's pool; the process-wide one never ends).</summary>
@@ -178,19 +186,46 @@ public static partial class Spotify
                 _priority.CompleteAdding();
             }
 
-            void Drain(BlockingCollection<(Action Work, long Cause)> queue, string label)
+            void Drain(BlockingCollection<Item> queue, string label)
             {
-                foreach ((Action work, long cause) in queue.GetConsumingEnumerable())
+                foreach (Item item in queue.GetConsumingEnumerable())
                 {
-                    t_workerCause = cause;
-                    try { work(); }
+                    if (_observe is { } observe)
+                    {
+                        try
+                        {
+                            observe(new QueueWait(label, item.Priority,
+                                System.Diagnostics.Stopwatch.GetElapsedTime(item.EnqueuedTimestamp).TotalMilliseconds, item.DepthAtEnqueue));
+                        }
+                        catch { /* telemetry never costs the work */ }
+                    }
+                    t_workerCause = item.Cause;
+                    try { item.Work(); }
                     catch (Exception ex) { Log.Error("spotify", "api worker " + label + " faulted", ex); }
                     finally { t_workerCause = 0; }
                 }
             }
         }
 
-        static readonly Lanes Pool = new(Workers, QueueDepth, PriorityWorkers, PriorityQueueDepth, "wavee-spotify-api");
+        /// <summary>F226: what one api work item waited in its queue. <paramref name="Worker"/> is the thread label that took it
+        /// (<c>p0</c>.. = the priority lane's), <paramref name="Priority"/> whether it asked for the priority lane (a full lane spills
+        /// into the shared queue, so this can be true on a shared worker), <paramref name="QueuedMs"/> the wait and
+        /// <paramref name="DepthAtEnqueue"/> how many items were already queued ahead of it.</summary>
+        public readonly record struct QueueWait(string Worker, bool Priority, double QueuedMs, int DepthAtEnqueue);
+
+        /// <summary>A catalogue item that waited this long for a worker is worth a line: the lane was saturated or starved.</summary>
+        const double SlowQueueWaitMs = 250.0;
+
+        /// <summary>F226: the process pool's observer. A PRIORITY item (a video switch's resolve, manifest and licence relay) always logs
+        /// its wait and the depth it found: a handful per switch, and the one line that says whether the api queue was the delay. Any
+        /// other item logs only when it waited <see cref="SlowQueueWaitMs"/> or more, so a busy catalogue is not a log flood.</summary>
+        static void LogQueueWait(QueueWait w)
+        {
+            if (!w.Priority && w.QueuedMs < SlowQueueWaitMs) return;
+            Log.Info("spotify", $"api.queue worker={w.Worker} priority={(w.Priority ? 1 : 0)} queuedMs={(long)w.QueuedMs} depth={w.DepthAtEnqueue}");
+        }
+
+        static readonly Lanes Pool = new(Workers, QueueDepth, PriorityWorkers, PriorityQueueDepth, "wavee-spotify-api", LogQueueWait);
 
         /// <summary>The capture cause of the api work item running on THIS worker (realtime-capture §2.2): captured from
         /// the poster when the item is queued (<see cref="Run"/>), restored around the item here, and stamped onto every

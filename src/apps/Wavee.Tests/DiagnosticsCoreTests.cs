@@ -316,3 +316,36 @@ public class FrameWatchRulesTests
         Assert.Equal(before + 1, Diagnostics.Connect.Version.Peek());
     }
 }
+
+/// <summary>The media segment of the always-on <c>mem.sample</c> line (F197 / F235): pure formatting of the engine's census, so a field
+/// log can name engines, protected sessions with store bytes, prepared sessions, the runtime and the cross-window dual-handle count,
+/// and says outright that PMP decode inside mfpmp.exe is not in the numbers.</summary>
+public class MemorySamplerMediaSegmentTests
+{
+    [Fact]
+    public void The_media_segment_prints_the_census_as_one_run_after_the_separator()
+    {
+        var census = new global::FluentGpu.Media.MediaCensusSnapshot(
+            VideoEngines: 2, VideoEngineSizes: "1920x1080,0x0", ProtectedSessions: 1, ProtectedAttached: 1, ProtectedStoreBytes: 33_554_432,
+            PreparedSessions: 0, ProtectedRuntimeUp: true, ProtectedRuntimeStarts: 1, DualHandleSlots: 1, DualHandlePeak: 2);
+
+        string segment = Diagnostics.MemorySampler.MediaSegment(census);
+
+        Assert.StartsWith(" | media videoEngines=2[1920x1080,0x0] ", segment, StringComparison.Ordinal);
+        Assert.Contains("protectedSessions=1 attached=1 storeBytes=33554432 prepared=0", segment);
+        Assert.Contains("protectedRuntime=up(starts=1)", segment);
+        Assert.Contains("dualHandleSlots=1 dualHandlePeak=2", segment);
+        Assert.EndsWith("pmpDecode=not-counted", segment, StringComparison.Ordinal);   // mfpmp.exe is a separate process: never implied to be inside these numbers
+        Assert.DoesNotContain("\n", segment, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_empty_census_reads_zero_engines_and_a_down_runtime_without_a_size_list()
+    {
+        string segment = Diagnostics.MemorySampler.MediaSegment(new global::FluentGpu.Media.MediaCensusSnapshot(0, "", 0, 0, 0, 0, false, 0, 0, 0));
+
+        Assert.StartsWith(" | media videoEngines=0 protectedSessions=0 ", segment, StringComparison.Ordinal);
+        Assert.Contains("protectedRuntime=down(starts=0)", segment);
+        Assert.DoesNotContain("[", segment);
+    }
+}

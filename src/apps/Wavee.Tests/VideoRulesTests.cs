@@ -784,6 +784,32 @@ public class VideoLogFormatTests
         Assert.Equal("[video] audio.cut fadeMs=80 songPos=83000ms videoPos=83080ms gapMs=0", new string(buf, 0, n));
     }
 
+    // F215: first.frame's time comes from the player's own first-frame stamp when it has one, so a pump that was unmounted for seconds
+    // (a fullscreen stage) cannot make the frame look late: the observation lag is printed on its own.
+    [Fact]
+    public void First_frame_counts_from_the_native_stamp_and_prints_how_late_it_was_observed()
+    {
+        char[] buf = new char[V.VideoLog.MaxLineChars];
+        int n = V.VideoLog.Format(new V.VideoLog.FirstFrame("spotify:video:abc", 7, 2_134, -1, 83_000, 854, 480, ObservedLateMs: 2_441), buf);
+        Assert.Equal("[video] first.frame key=spotify:video:abc epoch=7 sinceSwitchMs=2134 sinceAttachMs=-1 pos=83000ms natural=854x480 observedLateMs=2441",
+            new string(buf, 0, n));
+
+        long qpc = System.Diagnostics.Stopwatch.Frequency;   // one second of ticks
+        // switch at tick 10 s, first frame at 12.1 s on the native clock, observed 4.575 s after the switch on the tick clock
+        // (a tick frequency that is not 10 MHz truncates the double conversion by up to a millisecond)
+        Assert.InRange(V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 10 * qpc, firstFrameQpc: 10 * qpc + qpc * 21 / 10, nowMs: 5_575), 2_099, 2_100);
+        // no native stamp (a clear session, a fake): the tick-clock difference, as before
+        Assert.Equal(4_575, V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 10 * qpc, firstFrameQpc: 0, nowMs: 5_575));
+        // a stamp from BEFORE this switch began (a stale one) is never trusted
+        Assert.Equal(4_575, V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 10 * qpc, firstFrameQpc: 9 * qpc, nowMs: 5_575));
+        // no switch stamp yet: the tick clock
+        Assert.Equal(4_575, V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 0, firstFrameQpc: 12 * qpc, nowMs: 5_575));
+
+        Assert.InRange(V.HostRules.ObservedLateMs(firstFrameQpc: 10 * qpc, nowQpc: 12 * qpc), 1_999, 2_000);
+        Assert.Equal(-1, V.HostRules.ObservedLateMs(firstFrameQpc: 0, nowQpc: 12 * qpc));
+        Assert.Equal(-1, V.HostRules.ObservedLateMs(firstFrameQpc: 12 * qpc, nowQpc: 10 * qpc));
+    }
+
     [Fact]
     public void The_seek_timeline_formats_the_plan_and_the_landing()
     {

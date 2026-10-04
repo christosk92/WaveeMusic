@@ -402,8 +402,14 @@ public static partial class Video
                 $"windowCreateMs={openTiming.WindowCreateMs:0.#} hostCtorMs={openTiming.HostCtorMs:0.#} " +
                 $"restored={(restored.W > 0 ? "yes" : "no")} opened={win is not null}");
             if (win is not null)
+            {
+                // The open line above is only the synchronous half. The reveal says the child presented ITS first frame (renderPresentMs
+                // is the render thread's own stamp of that present, firstPresentMs when the UI noticed it); the picture is behind the
+                // first successful video bind, which follows the native handle and can land after the reveal.
                 win.OnRevealed = t => Log.Info(State.LogCategory,
-                    $"pop-out revealed firstFrameMs={t.FirstFrameMs:0.#} firstPresentMs={t.FirstPresentMs:0.#} timedOut={t.TimedOut}");
+                    $"pop-out revealed firstFrameMs={t.FirstFrameMs:0.#} firstPresentMs={t.FirstPresentMs:0.#} renderPresentMs={t.RenderPresentMs:0.#} timedOut={t.TimedOut}");
+                win.OnFirstVideoBound = ms => Log.Info(State.LogCategory, $"pop-out first video bound ms={ms:0.#}");
+            }
             handle.Value = win;
             if (win is null)
             {

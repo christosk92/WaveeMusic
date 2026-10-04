@@ -11,10 +11,24 @@
 //       `WarmPolicy` in Playback/Playback.Video.Rules.cs
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// WHY THIS EXISTS, in numbers (live log, session sid=515080bf). A cold song→video switch measured 2 477 ms to the
-// first frame. Of that, `license.start` → `license.ok` was 2 010 ms (cached=false) and `runtime.create` →
-// `runtime.ready` 521 ms; the manifest resolved in ~50 ms and was already memoised. So the licence IS the switch, and
-// the one thing that makes a switch feel instant is having the content key before the user clicks.
+// WHY THIS EXISTS, in numbers (F216; owner logs wavee-20261001-20261001-205240.log 11953-12225 and wavee-20261002.log
+// 26362-26401, `t=` is the native runtime clock in ms). This header used to say a cold switch's `license.start` →
+// `license.ok` was 2 010 ms and "so the licence IS the switch": that was one old session (sid=515080bf) and is withdrawn.
+// A COLD song→video switch reaches its first frame in about 2.1 s, and the time goes here:
+//   runtime bring-up   `runtime.create` t=2 → `runtime.ready` t=678 (~650-675 ms). The licence's StartAcquisition and the
+//                      attach both queue behind it on the runtime thread, and the init fetch is serialised behind it (F217).
+//   licence, cold      acquire → usable 817-848 ms, of which ~675 is that bring-up wait; then CreateSession +
+//                      GenerateRequest 66-126 ms, api queue ~0, HTTP 63-104 ms, deliver 3-6 ms, Update + key status
+//                      12-21 ms. It is usable BEFORE SetSource (t=853 against t=945): off the critical path.
+//   licence, warm      138-231 ms: the same stages without the wait.
+//   engine             SetSource t=945, first source Start t=1246, CANPLAY and the start-position correction t=1260, the
+//                      second source Start t=2119, first frame t=2134: MF load → CANPLAY → first frame is ~1.2 s.
+// So what makes a switch feel instant is a WARM RUNTIME (the keep-alive token below) with the key already in its cache;
+// pre-acquiring the key on its own saves only the ~140-230 ms of the warm licence, not the switch. These are the numbers
+// from BEFORE the video audit's fixes; every switch now writes its own decomposition, so read those lines before tuning:
+// `[video] switch.budget` (bringUpMs, licenseMs / licenseQueuedMs / licenseHttpMs, initStartMs, attachAtMs, setSourceMs,
+// metadataMs, canplayMs, startCorrectionMs, firstFrameMs, sinceOpenMs) and `[video.native] license.budget` (bringUpWaitMs,
+// cdmMs, relayMs, queuedMs, httpMs, deliverMs).
 //
 // WHAT IT DOES. While a video surface is wanted (`PlacementPost.WantsVideo`), a 10 s beat keeps the content keys of
 // the row that is PLAYING and of the next queued one in the runtime's KID cache. Pre-acquiring a key is also what
