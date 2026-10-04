@@ -21,6 +21,12 @@ versions separately under `v*` and is not tracked in this file.)
   left out of every frame, and the stage's background (the blurred cover, the drifting colours and the dark tint) is
   drawn as one layer instead of three. In the offline demo on a Snapdragon X laptop at 120 Hz, the stage takes 1.69 ms
   of GPU time per frame instead of 2.35 ms (Task Manager: about 22-25% GPU instead of 32%).
+- **Opening pages leaves less memory behind.** Spotify's answers (the Home feed, artist and album pages, track
+  metadata, playlists, Connect updates) are now read into reused buffers and decoded in place instead of being copied
+  into fresh memory several times over. A large answer used to leave two to five times its own size of garbage in the
+  part of memory that is the slowest to clean up and the easiest to fragment: about 2.7 MB for the Home feed and up to
+  10 MB for a large metadata batch. The play history is also written to disk without building the whole file in
+  memory first.
 
 ## [0.3.0] - 2026-10-02
 

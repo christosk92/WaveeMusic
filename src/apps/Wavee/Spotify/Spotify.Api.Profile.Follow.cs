@@ -57,7 +57,7 @@ public static partial class Spotify
             public static Result FollowStateAnswer(string userUri, Staging s)
             {
                 Result result = IsFollowingQuery(userUri, CancellationToken.None);
-                if (result.Ok && result.Body.Length > 0) Decode.FollowState(result.Body, userUri, s);
+                if (result.Ok && result.Length > 0) Decode.FollowState(result.Body, userUri, s);
                 return result;
             }
         }

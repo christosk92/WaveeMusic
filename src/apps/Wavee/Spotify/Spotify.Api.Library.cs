@@ -144,18 +144,26 @@ public static partial class Spotify
         /// <summary>A zstd frame → the bytes it wraps; a body that is not one comes back as itself; a frame that does not
         /// decode is null (the caller's "this answer is unreadable", never an empty list). The one-shot decode needs the
         /// frame's content size, which some answers omit — the streamed decode does not.</summary>
-        public static byte[]? Unzstd(byte[] body)
+        public static byte[]? Unzstd(byte[] body) => IsZstd(body) ? Unzstd((ReadOnlySpan<byte>)body) : body;
+
+        /// <summary><see cref="Unzstd(byte[])"/> over a body read in place (a lent answer, Platform/Bodies.cs); a body
+        /// that is not a frame comes back as a copy. The output grows in pooled buffers and is copied ONCE at its exact
+        /// size — not a <c>MemoryStream</c> guessed at four times the frame, doubled past it and copied out again, which
+        /// for a large playlist left that whole chain on the large-object heap.</summary>
+        public static unsafe byte[]? Unzstd(ReadOnlySpan<byte> body)
         {
-            if (!IsZstd(body)) return body;
+            if (!IsZstd(body)) return body.ToArray();
             try
             {
-                using var source = new MemoryStream(body);
-                using var stream = new ZstdSharp.DecompressionStream(source);
-                using var output = new MemoryStream(body.Length * 4);
-                stream.CopyTo(output);
-                // A frame that decodes to nothing is not an answer these routes send (an empty answer is a 0-byte
-                // body, never a framed one): unreadable, like any other frame that does not decode.
-                return output.Length == 0 ? null : output.ToArray();
+                fixed (byte* frame = body)
+                {
+                    using var source = new UnmanagedMemoryStream(frame, body.Length);
+                    using var stream = new ZstdSharp.DecompressionStream(source);
+                    byte[] output = Bodies.ReadOwned(stream, body.Length * 4L);
+                    // A frame that decodes to nothing is not an answer these routes send (an empty answer is a 0-byte
+                    // body, never a framed one): unreadable, like any other frame that does not decode.
+                    return output.Length == 0 ? null : output;
+                }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -167,7 +175,7 @@ public static partial class Spotify
         /// <summary>A MUTATION's answer unwrapped: the status stands whatever the body does (the server accepted or
         /// refused the write), and an undecodable body is simply empty.</summary>
         static Result Unwrapped(in Result result)
-            => IsZstd(result.Body) ? result.WithBody(Unzstd(result.Body) ?? Array.Empty<byte>()) : result;
+            => IsZstd(result.Bytes) ? result.WithBody(Unzstd(result.Bytes) ?? Array.Empty<byte>()) : result;
 
         // ── 3. the edge half of the fetch provider (G-042) ───────────────────────────────────────────────────────────
 
@@ -189,6 +197,7 @@ public static partial class Spotify
 
             for (int i = 0; i < batch.Count; i++)
             {
+                using Bodies.LendScope lent = Bodies.Lend();   // this parent's answers go back to the pool before the next parent
                 if (Stale(batch)) return;
                 string parent = batch.Uri(i);
                 if (parent.Length == 0) continue;
@@ -252,7 +261,7 @@ public static partial class Spotify
             long started = System.Diagnostics.Stopwatch.GetTimestamp();
             Result diff = Send(WithPushReason(ListDiffRoute(kind, id, revision), kind, id), [], CancellationToken.None);
             ListReplay.Outcome decided = diff.Ok || diff.NotModified
-                ? ListReplay.Decide(kind == ListKind.Rootlist, diff.Body, revision, kind == ListKind.Recents ? null : baseline)
+                ? ListReplay.Decide(kind == ListKind.Rootlist, diff.Bytes, revision, kind == ListKind.Recents ? null : baseline)
                 : ListReplay.Refused(ListReplay.StatusReason(diff.Status));          // a 509 (too stale), a failure
             ListRead read;
             switch (decided.Verdict)
@@ -265,7 +274,7 @@ public static partial class Spotify
                     outcome.Note(in diff);
                     if (kind == ListKind.Rootlist)
                     {
-                        var root = Pl.SelectedListContent.Parser.ParseFrom(diff.Body);
+                        var root = Pl.SelectedListContent.Parser.ParseFrom(diff.Bytes);
                         read = root.Contents is { } contents && (contents.Truncated || (root.HasLength && contents.Items.Count < root.Length))
                             ? new ListRead(FullRead(kind, id, ref outcome)) : new ListRead(diff.Body);
                     }
@@ -288,7 +297,7 @@ public static partial class Spotify
         {
             Result full = kind == ListKind.Rootlist ? Rootlist(id, CancellationToken.None) : Send(WithPushReason(ListRoute(kind, id), kind, id), [], CancellationToken.None);
             outcome.Note(in full);
-            if (full.Ok && full.Body.Length > 0) return full.Body;
+            if (full.Ok && full.Length > 0) return full.Body;
             if (!full.Ok) Log.Warn("library", "list read failed (" + kind + ", status " + full.Status + ")");
             return null;
         }
@@ -391,7 +400,7 @@ public static partial class Spotify
             if (!result.Ok) return false;                              // fall back to the full walk, quietly
 
             var items = new List<CollectionDeltaItem>();
-            bool possible = Decode.LibraryDelta(result.Body, items, out string newSyncToken);
+            bool possible = Decode.LibraryDelta(result.Bytes, items, out string newSyncToken);
             if (!LibrarySyncLedger.CanApplyDelta(possible, newSyncToken)) return false;    // fall back, quietly, on any doubt
 
             int added = 0, removed = 0;
@@ -457,6 +466,7 @@ public static partial class Spotify
             bool terminal = false;
             for (int page = 0; page < MaxCollectionPages; page++)
             {
+                using Bodies.LendScope lent = Bodies.Lend();   // this page's answers go back to the pool before the next page
                 if (Stale(batch)) { run.Discard(); otherItems?.Clear(); return; }
                 Result result = CollectionPage(CollectionPageBody(username, wire, token, CollectionPageSize), CancellationToken.None);
                 if (!result.Ok)
@@ -466,10 +476,10 @@ public static partial class Spotify
                     outcome.Note(in result);                           // half a library is not an answer
                     return;
                 }
-                Decode.LibraryPageItems(result.Body, isPins ? null : kind, s, ref run);
-                if (otherItems is not null) Decode.LibraryPageItems(result.Body, otherKind, s, otherItems);
-                lastSyncToken = SyncTokenOf(result.Body);
-                token = NextPageToken(result.Body);
+                Decode.LibraryPageItems(result.Bytes, isPins ? null : kind, s, ref run);
+                if (otherItems is not null) Decode.LibraryPageItems(result.Bytes, otherKind, s, otherItems);
+                lastSyncToken = SyncTokenOf(result.Bytes);
+                token = NextPageToken(result.Bytes);
                 if (token.Length == 0) { terminal = true; break; }
             }
 
@@ -582,8 +592,8 @@ public static partial class Spotify
             for (int attempt = 0; attempt < 2; attempt++)
             {
                 Result first = Send(route, [], ct);
-                if (!first.Ok || first.Body.Length == 0) return first;
-                var merged = Pl.SelectedListContent.Parser.ParseFrom(first.Body);
+                if (!first.Ok || first.Length == 0) return first;
+                var merged = Pl.SelectedListContent.Parser.ParseFrom(first.Bytes);
                 if (merged.Contents is not { } contents) return first;
                 bool retry = false;
                 while (contents.Truncated || (merged.HasLength && contents.Items.Count < merged.Length))
@@ -592,7 +602,7 @@ public static partial class Spotify
                     Route nextRoute = route with { Path = route.Path + "&from=" + offset.ToString(System.Globalization.CultureInfo.InvariantCulture) };
                     Result next = Send(nextRoute, [], ct);
                     if (!next.Ok) return next;
-                    var page = Pl.SelectedListContent.Parser.ParseFrom(next.Body);
+                    var page = Pl.SelectedListContent.Parser.ParseFrom(next.Bytes);
                     if (!page.Revision.Equals(merged.Revision)) { retry = true; break; }
                     if (page.Contents is not { } part || part.Pos != offset || part.Items.Count == 0) return Result.Transport;
                     contents.Items.Add(part.Items);
