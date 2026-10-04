@@ -236,6 +236,11 @@ public static partial class Playback
         /// or the window is not yet latency-aligned).</summary>
         public static int CopySpectrum(Span<float> into, out SpectrumInfo info) => s_effects.CopySpectrum(into, out info);
 
+        /// <summary>Copy the latest time-domain window (mono, −1..1, the centre <c>AudioEffects.WaveformSamples</c> of the same
+        /// latency-aligned window the bands came from) tear-free — the stage's scope line. Same spectrum lease, same
+        /// sequence; 0 ⇒ nothing published.</summary>
+        public static int CopyWaveform(Span<float> into, out WaveformInfo info) => s_effects.CopyWaveform(into, out info);
+
         /// <summary>Mirror of <c>Prefs.Stage.SyncOffsetMs</c> onto the analysis window (positive = read earlier).</summary>
         public static void SetSpectrumOffsetMs(float ms) => s_effects.SpectrumOffsetMs = ms;
 

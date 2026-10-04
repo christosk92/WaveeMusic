@@ -10,6 +10,20 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.1] - unreleased
 
+### Added
+
+- **Nineteen visualizers in full screen.** The visualizer gallery now has five groups. Lyrics has Verse, where the
+  song's words land as they are sung, held notes grow and a returning chorus lights up. Fluent has Bloom, Bars, Ring,
+  Orbit, Aurora and Timeline. Classics, after Winamp and Windows Media Player, has Classic, Warp, Tunnel, Ambience,
+  Kaleido, Scope and Drift. Zune has Type, Mosaic and Spotlight, and iTunes has Magneto and Flow. Every face takes its
+  colours from the cover, works in light and dark mode, and keeps moving from the song's own waveform when Spotify
+  Connect plays elsewhere. The gallery animates only the faces you can see.
+- **Change with the music.** Every eight bars, on the downbeat, the visualizer rotates the cover's colours with a short
+  cross-fade, and a returning chorus does the same. Turn it off in the gallery or in Settings > Appearance.
+- **A new Artist pane in full screen.** The artist's photo fills the band, with monthly listeners and world rank, Follow
+  and Go to artist. Below it: the full biography, a photo strip, this song's credits grouped by person, the five most
+  popular songs, where people listen and related artists.
+
 ### Changed
 
 - **Motion runs at your display's refresh rate.** The buffering spinner, loading shimmers, the now-playing equalizer,

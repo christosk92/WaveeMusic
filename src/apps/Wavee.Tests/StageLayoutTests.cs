@@ -1,4 +1,4 @@
-// ── Wavee.Tests/StageLayoutTests.cs — the fullscreen stage's allocator, mode rules, tone arithmetic and entry rule ─────
+// ── Wavee.Tests/StageLayoutTests.cs — the fullscreen stage's allocator, mode rules, face-safe rect, tone and entry ─────
 //
 // Replaces `StageTests.cs` (the wide⇄compact allocator, its height fold ladder, the scrim ladder and `Stage.Pane`, all
 // deleted with the old `Stage.cs`). `Stage.Layout` is now the four-ASPECT allocator of fullscreen-flagship-implementation.md
@@ -701,13 +701,95 @@ public class StageLayoutTests
         Assert.Equal(M.Visualizer, m4);
         Assert.True(open4);
 
-        // ShowsCaption: over the face when asked for, in Lyrics mode when there is no pane — only with a timed line.
+        // ShowsCaption: over a face that leaves room for it when asked for, in Lyrics mode when there is no pane — only
+        // with a timed line. Never over Verse (its lyrics ARE the face), whatever the overlay says.
         foreach (var mode in new[] { M.Lyrics, M.Visualizer, M.Queue, M.Artist })
             foreach (bool overlay in new[] { false, true })
                 foreach (bool timed in new[] { false, true })
                     foreach (bool pane in new[] { false, true })
-                        Assert.Equal(timed && ((mode == M.Visualizer && overlay) || (mode == M.Lyrics && !pane)),
-                                     Stage.ModeRules.ShowsCaption(mode, overlay, timed, pane));
+                        foreach (var kind in new[] { Visualizer.Kind.Bloom, Visualizer.Kind.Verse, Visualizer.Kind.Timeline })
+                        {
+                            bool friendly = Visualizer.Catalog.CaptionFriendly(kind);
+                            Assert.Equal(timed && ((mode == M.Visualizer && overlay && friendly) || (mode == M.Lyrics && !pane)),
+                                         Stage.ModeRules.ShowsCaption(mode, overlay, timed, pane, kind));
+                        }
+        Assert.False(Stage.ModeRules.ShowsCaption(M.Visualizer, true, true, false, Visualizer.Kind.Verse));
+        Assert.True(Stage.ModeRules.ShowsCaption(M.Visualizer, true, true, false, Visualizer.Kind.Bloom));
+        Assert.True(Stage.ModeRules.ShowsCaption(M.Lyrics, false, true, false, Visualizer.Kind.Verse));   // the kind only gates the face's caption
+    }
+
+    [Fact]
+    public void ModeRules_face_keys_are_the_bracket_pair()
+    {
+        Assert.Equal(-1, Stage.ModeRules.FaceStep(Stage.ModeRules.PreviousFaceKey));
+        Assert.Equal(1, Stage.ModeRules.FaceStep(Stage.ModeRules.NextFaceKey));
+        Assert.Equal(0, Stage.ModeRules.FaceStep(FluentGpu.Foundation.Keys.G));
+        Assert.Equal(0, Stage.ModeRules.FaceStep(FluentGpu.Foundation.Keys.Left));   // ← stays the seek key
+        Assert.Equal(219, Stage.ModeRules.PreviousFaceKey);                         // VK_OEM_4 '['
+        Assert.Equal(221, Stage.ModeRules.NextFaceKey);                             // VK_OEM_6 ']'
+    }
+
+    // ── the face-safe rect ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FaceSafe_clears_the_card_the_caption_and_the_transport_on_the_board()
+    {
+        var l = L.Seed(1920f, 1080f);
+        var open = l.FaceSafe(galleryOpen: true, captionShown: false);
+        Assert.Equal(0f, open.X);
+        Assert.Equal(1920f - (L.GalleryDesktopW + 2f * L.Pad), open.Right);              // left of the docked gallery (1428)
+        Assert.Equal(L.NowPlayingCardY + L.NowPlayingCardH + L.Pad, open.Y);              // 224: under the now-playing card
+        Assert.Equal(224f, open.Y);
+        Assert.Equal(l.TransportTop - L.Pad, open.Bottom);                                // above the transport's gutter
+
+        var closed = l.FaceSafe(galleryOpen: false, captionShown: false);
+        Assert.Equal(1920f, closed.Right);                                                // the whole width without the pane
+        Assert.Equal(open.Y, closed.Y);
+
+        var captioned = l.FaceSafe(galleryOpen: false, captionShown: true);
+        Assert.Equal(l.CaptionTopMin - L.Pad, captioned.Bottom);                           // the subject never sits under the words
+        Assert.True(captioned.Bottom < closed.Bottom);
+        Assert.Equal(captioned.Y + captioned.H * 0.5f, captioned.CentreY);
+    }
+
+    [Theory]
+    [InlineData(1920f, 1080f)]
+    [InlineData(2560f, 1080f)]
+    [InlineData(3440f, 1440f)]
+    [InlineData(1080f, 1920f)]
+    [InlineData(1100f, 440f)]
+    [InlineData(599f, 900f)]
+    public void FaceSafe_is_never_inverted_and_stays_on_the_stage(float w, float h)
+    {
+        var l = L.Seed(w, h);
+        foreach (bool gallery in new[] { false, true })
+            foreach (bool caption in new[] { false, true })
+            {
+                var r = l.FaceSafe(gallery, caption);
+                Assert.True(r.W >= 1f && r.H >= 1f, $"{l.Aspect} gallery={gallery} caption={caption}: {r}");
+                Assert.True(r.X >= 0f && r.Right <= w + 0.01f, $"{l.Aspect}: {r} leaves the width {w}");
+                Assert.True(r.Y >= L.TopBarH, $"{l.Aspect}: {r} reaches under the top bar");
+            }
+    }
+
+    [Fact]
+    public void FaceSafe_portrait_sheet_and_compact_strip()
+    {
+        // Portrait: the gallery is a bottom SHEET — the face keeps its width, the safe rect ends above the sheet
+        var p = L.Seed(1080f, 1920f);
+        Assert.Equal(A.Portrait, p.Aspect);
+        var sheet = p.FaceSafe(galleryOpen: true, captionShown: false);
+        Assert.Equal(1080f, sheet.Right);
+        Assert.Equal(p.SheetTop - L.Pad, sheet.Bottom);
+        Assert.True(sheet.Bottom < p.FaceSafe(galleryOpen: false, captionShown: false).Bottom);
+
+        // Compact: the strip right of the art (the transport's column), the top bar's gutter on top
+        var c = L.Seed(1100f, 440f);
+        Assert.Equal(A.Compact, c.Aspect);
+        var strip = c.FaceSafe(galleryOpen: true, captionShown: false);
+        Assert.Equal(c.TransportLeft, strip.X);
+        Assert.Equal(1100f - L.Pad, strip.Right);
+        Assert.Equal(L.TopBarH + L.Pad, strip.Y);
     }
 
     // ── entry ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -747,5 +829,21 @@ public class StageLayoutTests
         Assert.True(Stage.Tone.ScrimA > Stage.Tone.ScrimVisualizerA);
         Assert.True(Stage.Tone.BaseFieldVisualizerA > Stage.Tone.BaseFieldA);
         Assert.True(Stage.Tone.ScrimA < 1f && Stage.Tone.ScrimVisualizerA > 0f);
+
+        // Verse sits between the two (big words over a bright cover), and only in Visualizer mode
+        Assert.Equal(0.40f, Stage.Tone.ScrimVerseA);
+        Assert.True(Stage.Tone.ScrimVisualizerA < Stage.Tone.ScrimVerseA && Stage.Tone.ScrimVerseA < Stage.Tone.ScrimA);
+        Assert.Equal(Stage.Tone.ScrimVerseA, Stage.Tone.ScrimFor(M.Visualizer, Visualizer.Kind.Verse));
+        Assert.Equal(Stage.Tone.ScrimVisualizerA, Stage.Tone.ScrimFor(M.Visualizer, Visualizer.Kind.Bloom));
+        foreach (var mode in new[] { M.Lyrics, M.Queue, M.Artist })
+            Assert.Equal(Stage.Tone.ScrimA, Stage.Tone.ScrimFor(mode, Visualizer.Kind.Verse));
+    }
+
+    [Fact]
+    public void Tone_moment_fades_are_the_plans()
+    {
+        Assert.Equal(900f, Stage.Tone.MomentFadeMs);
+        Assert.Equal(1400f, Stage.Tone.MomentCalmFadeMs);
+        Assert.True(Stage.Tone.MomentFadeMs > Stage.Tone.CrossFadeMs);   // a moment is slower than a skip
     }
 }

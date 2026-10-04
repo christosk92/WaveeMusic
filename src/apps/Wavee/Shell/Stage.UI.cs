@@ -83,18 +83,24 @@ public static partial class Stage
     {
         public readonly Signal<Layout> Layout = new(Stage.Layout.Seed(1920f, 1080f));
         public readonly Signal<Mode> Mode = new(Stage.Mode.Lyrics);
-        public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Kind.Horizon);
-        public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false);
+        public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
+        public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
         public readonly FloatSignal Sensitivity = new(1f), SyncOffsetMs = new(0f);
         /// <summary>The chrome is mounted (the idle machine's output) · the playing track has timed lyrics (LyricFacts writes it).</summary>
         public readonly Signal<bool> Chrome = new(true), HasTimedLyrics = new(false);
         public readonly Signal<AccentSet> Accent = new(AccentSet.From(ColorF.FromRgba(0xff, 0x9e, 0xc4)));
-        public readonly Signal<Visualizer.Palette> Palette = new(Visualizer.Palette.From(ColorF.FromRgba(0xff, 0x9e, 0xc4), null));
+        /// <summary>The cover's palette for the active arm (SurfaceCore derives it) — the clock's fade TARGET.</summary>
+        public readonly Signal<Visualizer.Palette> BasePalette = new(Visualizer.Palette.From(ColorF.FromRgba(0xff, 0x9e, 0xc4), null, Ink.IsDark));
+        /// <summary>The LIVE palette a face builds with: the base, rotated by the moments; the clock republishes it when a
+        /// fade LANDS (so a face re-renders once per change, never per tick — solid fills bind the slab instead).</summary>
+        public readonly Signal<Visualizer.Palette> Palette = new(Visualizer.Palette.From(ColorF.FromRgba(0xff, 0x9e, 0xc4), null, Ink.IsDark));
         /// <summary>(slot ≪ 32) | the row's Version for the playing TRACK; 0 = nothing playing / not a track.</summary>
         public readonly Signal<long> TrackKey = new(0L);
         /// <summary>The gallery toggle's realized node — the TeachingTip's anchor (V-U16).</summary>
         public readonly Signal<NodeHandle> GalleryButton = new(default);
         public readonly Visualizer.Slab Slab = new();
+        /// <summary>The gallery's frozen slab: poster tiles bind it, nothing ticks it (the clock recolours it on a landing).</summary>
+        public readonly Visualizer.Slab PosterSlab = Visualizer.Slab.CreatePoster();
         public Action<Mode> SetMode = static _ => { };
         public Action ToggleGallery = static () => { }, Exit = static () => { }, Activity = static () => { };
         /// <summary>The idle machine's holds: pointer over a control · a menu/tip/flyout open (counted) · a seek scrub.</summary>
@@ -158,7 +164,7 @@ public static partial class Stage
         InputHooks? _hooks;
         Action<string>? _begin;
         NodeHandle _root;
-        bool _cursorHidden;
+        bool _cursorHidden, _paletteSeeded;
         OverlayHandle? _tip;
 
         public SurfaceCore()
@@ -200,6 +206,7 @@ public static partial class Stage
                 ctx.GalleryOpen.SetIfChanged(Prefs.Stage.GalleryOpen());
                 ctx.LyricsOverlay.SetIfChanged(Prefs.Stage.LyricsOverlay());
                 ctx.Calm.SetIfChanged(Prefs.Stage.Calm());
+                ctx.Moments.SetIfChanged(Prefs.Stage.Moments());
                 ctx.Sensitivity.SetIfChanged(Prefs.Stage.Sensitivity());
                 ctx.SyncOffsetMs.SetIfChanged(Prefs.Stage.SyncOffsetMs());
             });
@@ -329,7 +336,7 @@ public static partial class Stage
                     Embed.Comp(static () => new PaneHost()) with { Key = "stage:pane" },
                     // the lyric caption: a full-bleed LAYER (the Show's child carries the fade); CaptionHost places its block from the
                     // allocator's caption geometry (Layout.CaptionX/W/Bottom) — centred in the face's region, above the transport
-                    Flow.Show(() => ModeRules.ShowsCaption(ctx.Mode.Value, ctx.LyricsOverlay.Value, ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane), Layer with
+                    Flow.Show(() => ModeRules.ShowsCaption(ctx.Mode.Value, ctx.LyricsOverlay.Value, ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane, ctx.Kind.Value), Layer with
                     {
                         Key = "stage:caption", HitTestVisible = false, HitTestPassThrough = false,
                         Enter = new EnterExit(Dy: 12f, Opacity: 0f, Active: true), Exit = fade, Transition = MotionTok.ControlNormal,
@@ -359,7 +366,8 @@ public static partial class Stage
         }
 
         /// <summary>The accent derivation (one definition, two triggers). Reads the track KEY (not the table), the cover's late
-        /// grading and the theme; writes the three outputs equality-gated, so the second trigger on the same inputs is a no-op.</summary>
+        /// grading and the theme; writes the outputs (the accent set, the base palette, the accent target) equality-gated, so
+        /// the second trigger on the same inputs is a no-op.</summary>
         void PublishAccent()
         {
             var ctx = _ctx;
@@ -368,11 +376,21 @@ public static partial class Stage
             if (url.Length > 0) _ = global::Wavee.Palette.Watch(url).Value;
             ColorF accentBase = Ink.Accent(url);
             ctx.Accent.SetIfChanged(AccentSet.From(accentBase));
-            ctx.Palette.SetIfChanged(Visualizer.Palette.From(accentBase, Design.SchemeFor(url)));
+            var palette = Visualizer.Palette.From(accentBase, Design.SchemeFor(url), Ink.IsDark);
+            ctx.BasePalette.SetIfChanged(palette);
+            if (!_paletteSeeded)
+            {
+                // the FIRST derivation seeds what the faces and the backdrop read, before any child mounts; from here on the
+                // clock owns the live palette (it fades to every later base and rotates it on the moments)
+                _paletteSeeded = true;
+                ctx.Palette.Value = palette;
+                ctx.Slab.SetPalette(palette);
+                ctx.PosterSlab.SetPalette(palette);
+            }
             AccentSignal.SetIfChanged(accentBase);
         }
 
-        /// <summary>Esc / F11 close; everything else is the player bar's own key map (Shell.PlayerBar.UI.cs:645-659 via
+        /// <summary>Esc / F11 close; [ / ] step the face, G the gallery; everything else is the player bar's own key map (Shell.PlayerBar.UI.cs:645-659 via
         /// Shell.PlayerKey, Shell.PlayerBar.cs:448-459) so Space / ← → / ↑ ↓ work in fullscreen (O9). Media keys need nothing:
         /// they arrive through SMTC regardless of focus (Playback.Os.cs:309-323). Any key is idle activity.</summary>
         void OnKey(KeyEventArgs e)
@@ -382,6 +400,19 @@ public static partial class Stage
             if (e.Handled) return;
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.Escape) { e.Handled = true; Close(_begin, "escape"); return; }
             if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.F11) { e.Handled = true; Close(_begin, "f11"); return; }
+            // [ / ] the previous / next face (Shift: the group) in Visualizer mode; G the gallery (from another mode it
+            // switches to Visualizer first — ModeRules.ToggleGallery)
+            int step = e.Ctrl || e.Alt || _ctx.Mode.Peek() != Mode.Visualizer ? 0 : ModeRules.FaceStep(e.KeyCode);
+            if (step != 0)
+            {
+                e.Handled = true;
+                var kind = _ctx.Kind.Peek();
+                var next = e.Shift ? Visualizer.Catalog.StepGroup(kind, step) : Visualizer.Catalog.Step(kind, step);
+                Prefs.Stage.SetVisualizer((int)next);
+                Diagnostics.NotePick(next);
+                return;
+            }
+            if (e.Mods == KeyModifiers.None && e.KeyCode == Keys.G && !e.IsRepeat) { e.Handled = true; _ctx.ToggleGallery(); return; }
             var intent = Shell.PlayerKey(e.KeyCode, true, e.Handled, e.Ctrl || e.Alt, e.Shift);
             if (intent == Shell.PlayerKeyIntent.None) return;
             e.Handled = true;
@@ -426,7 +457,8 @@ public static partial class Stage
 
     // ══ 1b. THE LAYERS (each a component on the context's SIGNALS — SurfaceCore's tree is static, V-U50) ═════════════
 
-    /// <summary>Backdrop: the baked cover (old layer kept under the new), the base Field, the scrim.</summary>
+    /// <summary>Backdrop: the baked cover (old layer kept under the new), the base Field (the palette's roles, cross-fading
+    /// with it), the scrim (deeper under Verse — Tone.ScrimFor).</summary>
     sealed class Backdrop : Component
     {
         public override Element Render()
@@ -434,7 +466,7 @@ public static partial class Stage
             var ctx = UseContext(StageContext)!;
             var L = ctx.Layout.Value;
             var mode = ctx.Mode.Value;
-            var pal = ctx.Palette.Value;
+            var kind = ctx.Kind.Value;
             var track = ctx.RowValue();
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             return Layer with   // full height from Grow, not from whichever child happens to declare L.H
@@ -443,11 +475,11 @@ public static partial class Stage
                 Children =
                 [
                     Embed.Comp(new BackdropArt.Props(url), static () => new BackdropArt()),
-                    Visualizer.FieldFace(ctx.Slab, in pal, new Visualizer.FaceSpec(L.W, L.H, Preview: false, CoverUrl: null), opacity: Prop.Bind(ctx.Slab.BaseFieldOp)) with { Key = "stage:field" },
+                    Visualizer.BackdropField(ctx.Slab, L.W, L.H, Prop.Bind(ctx.Slab.BaseFieldOp)) with { Key = "stage:field" },
                     new BoxEl
                     {
                         AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                        Fill = Shade(mode == Mode.Visualizer ? Tone.ScrimVisualizerA : Tone.ScrimA), BrushTransitionMs = Tone.CrossFadeMs,   // a static fill cross-fades; a bound one would snap
+                        Fill = Shade(Tone.ScrimFor(mode, kind)), BrushTransitionMs = Tone.CrossFadeMs,   // a static fill cross-fades; a bound one would snap
                     },
                 ],
             };
@@ -593,7 +625,7 @@ public static partial class Stage
                     {
                         Mode.Lyrics => PaneFrame(Lyrics.StagePane(slab.Accent)),
                         Mode.Queue => PaneFrame(Embed.Comp(static () => new QueuePane())),
-                        Mode.Artist => PaneFrame(Embed.Comp(static () => new ArtistPane())),
+                        Mode.Artist => PaneFrame(Embed.Comp(static () => new ArtistStage())),
                         _ => new BoxEl { HitTestVisible = false },
                     }),
                 ],
@@ -651,8 +683,11 @@ public static partial class Stage
 
     // ══ 3. THE FACE HOST ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The chosen face, remounted per kind on a KEYED CHILD (a Key on a component's root is inert in a single-child slot —
-    /// V-U11), inset on the right while the gallery is open; a 0.55 s scale/fade per kind. Reads the context's signals only (O8).</summary>
+    /// <summary>The chosen face, remounted per (kind, width) on a KEYED CHILD (a Key on a component's root is inert in a
+    /// single-child slot — V-U11; the width is in the key so opening or closing the gallery re-centres the subject under the
+    /// same 0.55 s FluentDecelerate instead of jumping), inset on the right while the gallery is open. The face is told its
+    /// SAFE rect (Layout.FaceSafe: clear of the now-playing card, the caption when it shows, the transport). Reads the
+    /// context's signals only (O8); the live palette re-renders it once per landed fade, never per tick.</summary>
     sealed class FaceHost : Component
     {
         public override Element Render()
@@ -661,7 +696,10 @@ public static partial class Stage
             var L = ctx.Layout.Value;
             var kind = ctx.Kind.Value;
             var pal = ctx.Palette.Value;
-            float w = L.W - L.FaceRight(ctx.GalleryOpen.Value);
+            bool galleryOpen = ctx.GalleryOpen.Value;
+            float w = L.W - L.FaceRight(galleryOpen);
+            bool caption = ModeRules.ShowsCaption(Mode.Visualizer, ctx.LyricsOverlay.Value, ctx.HasTimedLyrics.Value, L.ShowPane, kind);
+            var safe = L.FaceSafe(galleryOpen, caption);
             var track = ctx.RowValue();
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             return new BoxEl
@@ -671,10 +709,11 @@ public static partial class Stage
                 [
                     new BoxEl
                     {
-                        Key = "viz:" + (int)kind, Width = w, Height = L.H,
+                        Key = "viz:" + (int)kind + ":" + (int)w, Width = w, Height = L.H,
                         Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(550f, Easing.FluentDecelerate),
                             Enter: new EnterExit(Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
-                        Children = [Visualizer.Face(kind, ctx.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null))],
+                        Children = [Visualizer.Face(kind, ctx.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,
+                            SafeLeft: safe.X, SafeTop: safe.Y, SafeRight: safe.Right, SafeBottom: safe.Bottom))],
                     },
                 ],
             };
@@ -1470,87 +1509,4 @@ public static partial class Stage
         }
     }
 
-    /// <summary>The artist: the rail's about card over the hero image, Follow / Go to artist, and this track's credits.
-    /// The artist slot is resolved exactly as the rail's NowPlayingBody does (Rail.NowPlayingArtist).</summary>
-    sealed class ArtistPane : Component
-    {
-        public override Element Render()
-        {
-            var ctx = UseContext(StageContext)!;
-            var begin = UseContext(SharedTransition.Begin);
-            var track = ctx.RowValue();
-            _ = Entities.ScopeEpoch.Value;                     // FIRST: a scope switch re-points the table reads below
-            uint epoch = Entities.ScopeEpoch.Peek();
-            _ = Entities.Current.Artists.Changed.Value;
-            _ = Entities.Current.Edges.TrackCredits.Changed.Value;
-            var artist = Rail.NowPlayingArtist(track);        // the rail's resolver, made internal (§4.12)
-            UseEffect(() => { if (artist.IsValid) Entities.Ensure(artist, ArtistFields.Overview); if (track.IsValid) Entities.EnsureEdge(FetchEdge.TrackCredits, track.Slot); }, DepKey.From(artist.Slot, track.Slot, (int)epoch, 0));
-            var kids = new List<Element>(3);
-            if (artist.IsValid)
-            {
-                kids.Add(new BoxEl
-                {
-                    Height = 240f, Corners = Radii.CardAll, ClipToBounds = true, ZStack = true, BorderWidth = 1f, BorderColor = Ink.Stroke,
-                    Children =
-                    [
-                        // Controls.Artwork returns Element (no Align/Justify): a stretched BoxEl hosts it (V-U6). HeroImageId already falls back to the portrait.
-                        new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
-                                    Children = [Controls.Artwork(Controls.ArtUrl(artist.HeroImageId), 1200f, 240f, 0f, decodePx: 1024)] },
-                        // the caption gradient: BOTTOM (AlignSelf End) across the width (JustifySelf Stretch) — V-U9
-                        new BoxEl
-                        {
-                            AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.L, Padding = new Edges4(Spacing.XXL, Spacing.XL, Spacing.XXL, Spacing.XL),
-                            Gradient = GradientDown(new GradientStop(0f, Shade(0f)), new GradientStop(1f, Shade(0.72f))),
-                            Children =
-                            [
-                                new BoxEl
-                                {
-                                    Grow = 1f, Direction = 1, MinWidth = 0f,
-                                    Children =
-                                    [
-                                        new TextEl(Loc.Get(Strings.Stage.Mode.Artist)) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary },
-                                        new TextEl(artist.Name) { Size = 28f, LineHeight = 36f, Weight = 600, FontFamily = DisplayFace, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                                        new TextEl(Strings.Stage.MonthlyListeners(FormatCache.Int((int)Math.Min(artist.MonthlyListeners, int.MaxValue)))) { Size = 14f, LineHeight = 20f, Color = Ink.InkSecondary },   // FormatCache.Int(int) is a method (FormatCache.cs:61, V-U6)
-                                    ],
-                                },
-                                Button.Create(Loc.Get(Strings.Stage.GoToArtist), () => { var route = Shell.LinkFor(track, Shell.LinkSlot.Artist); if (route.Kind == Shell.RouteKind.NotFound) return; Close(begin, "navigate"); Shell.GoTo(route); },   // V-U29
-                                              ButtonAppearance.Standard, ControlSize.Small),
-                            ],
-                        },
-                    ],
-                });
-                if (!artist.BioLeadId.IsEmpty)
-                    kids.Add(Card(new TextEl(Entities.Strings.Resolve(artist.BioLeadId)) { Size = 14f, LineHeight = 20f, Color = Ink.InkSecondary, Wrap = TextWrap.Wrap, MaxLines = 6, Trim = TextTrim.CharacterEllipsis }));
-            }
-            kids.Add(Credits(track));
-            return new ScrollEl { Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "stageartist", Content = new BoxEl { Direction = 1, Gap = Spacing.M, Children = kids.ToArray() } };
-        }
-
-        static Element Card(params Element[] body) => new BoxEl
-        {
-            Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.XL, Spacing.L, Spacing.XL, Spacing.L), Corners = Radii.CardAll,
-            Fill = Ink.Plate, BorderWidth = 1f, BorderColor = Ink.Stroke, Children = body,
-        };
-
-        /// <summary>Credits · {title}: name · role rows from Edges.TrackCredits (the drawer's source, Track.Drawer.cs:617-636).</summary>
-        static Element Credits(Track track)
-        {
-            if (!track.IsValid) return new BoxEl { HitTestVisible = false };
-            var credits = Entities.Current.Edges.TrackCredits;
-            var payload = credits.Payload(track.Slot);
-            if (payload.Length == 0) return new BoxEl { HitTestVisible = false };
-            var rows = new List<Element>(payload.Length + 1) { new TextEl(Strings.Stage.Credits(track.Title)) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink } };
-            for (int i = 0; i < payload.Length && i < 12; i++)
-            {
-                var c = payload[i];
-                rows.Add(new BoxEl
-                {
-                    Direction = 0, Gap = Spacing.L,
-                    Children = [new TextEl(Entities.Strings.Resolve(c.Role)) { Size = 14f, LineHeight = 20f, Color = Ink.InkSecondary, Width = 140f, Shrink = 0f },
-                                new TextEl(Entities.Strings.Resolve(c.Name)) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f }],
-                });
-            }
-            return Card(rows.ToArray());
-        }
-    }
 }

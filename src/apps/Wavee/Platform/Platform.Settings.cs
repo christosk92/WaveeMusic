@@ -41,16 +41,19 @@ public static partial class Platform
         // ── the fullscreen stage (docs/plans/wavee/fullscreen-flagship-implementation.md §2.11) — all written through Prefs.Stage ──
         /// <summary>Stage.Mode as an int (0 Lyrics · 1 Visualizer · 2 Queue · 3 Artist); unknown ⇒ Lyrics.</summary>
         public static readonly SettingKey<int> StageMode = new("stage.mode", 0);
-        /// <summary>Visualizer.Kind as an int (0 Field … 7 Tape); unknown ⇒ Horizon (2).</summary>
-        public static readonly SettingKey<int> StageVisualizer = new("stage.visualizer", 2);
+        /// <summary>Visualizer.Kind as an int (append-only, 0 … 25); a first-generation face (0-7 but Aurora) migrates to its
+        /// successor and anything unknown is Bloom (9) — <c>Visualizer.Catalog.Coerce</c>.</summary>
+        public static readonly SettingKey<int> StageVisualizer = new("stage.visualizer", 9);
         /// <summary>Band gain, clamped [0.3, 1.5].</summary>
         public static readonly SettingKey<float> StageSensitivity = new("stage.sensitivity", 1f);
         /// <summary>The active lyric line is drawn over the visualizer.</summary>
         public static readonly SettingKey<bool> StageLyricsOverlay = new("stage.lyricsOverlay", true);
         /// <summary>Analysis-window offset in ms (positive = earlier), clamped ±500.</summary>
         public static readonly SettingKey<int> StageSyncOffsetMs = new("stage.syncOffsetMs", 0);
-        /// <summary>Calmer faces: ×0.55 gain, slower attack, no beat kick (the gallery's "Reduce motion").</summary>
+        /// <summary>Calmer faces: ×0.55 gain, slower attack, a softer kick, no onset flashes (the gallery's "Calm motion").</summary>
         public static readonly SettingKey<bool> StageCalm = new("stage.calm", false);
+        /// <summary>"Change with the music": every 8 bars, on the downbeat, the face's colours rotate (Visualizer.Moments).</summary>
+        public static readonly SettingKey<bool> StageMoments = new("stage.moments", true);
         /// <summary>The gallery pane is open in Visualizer mode.</summary>
         public static readonly SettingKey<bool> StageGalleryOpen = new("stage.galleryOpen", true);
         /// <summary>The "Pick your visualizer" tip has been dismissed once.</summary>

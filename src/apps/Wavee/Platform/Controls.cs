@@ -798,15 +798,18 @@ public static partial class Controls
     /// <para>Replaced the fixed-rate <c>UseInterval</c> clocks (the deck, the stage visualizer, the stage caption): a timer
     /// samples continuous motion at its own rate whatever the panel does; this runs at the display rate, and the host's
     /// one power ceiling (<c>AppHost.PowerCapFps</c>) still reaches it. Subclass it per clock so the <c>[wake]</c> census
-    /// names the owner (<c>pollersSeen=</c> prints the component type).</para></summary>
-    public class FrameTicker(Action tick) : Component
+    /// names the owner (<c>pollersSeen=</c> prints the component type).</para>
+    /// <para><paramref name="paceable"/>: subscribe <c>FrameClock.PaceableTick</c> instead — the twin the adaptive GPU
+    /// governor may pace on a weak or hot GPU. For decorative per-frame motion (the stage visualizer and its faces' sims),
+    /// never for a clock the user reads (a karaoke wipe, a seek).</para></summary>
+    public class FrameTicker(Action tick, bool paceable = false) : Component
     {
         bool _subscribed;
 
         public override Element Render()
         {
             var active = UseIsActive();
-            var frame = UseContextSignal(FrameClock.Tick);
+            var frame = UseContextSignal(paceable ? FrameClock.PaceableTick : FrameClock.Tick);
             UseSignalEffect(() =>
             {
                 // Parked (a hidden KeepAlive pane, a minimized or suspended window): read ONLY the activation, so there is

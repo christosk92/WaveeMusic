@@ -46,9 +46,17 @@ public static partial class Stage
         public static (Mode Mode, bool Open) ToggleGallery(Mode current, bool open)
             => current == Mode.Visualizer ? (current, !open) : (Mode.Visualizer, true);
         /// <summary>The caption line carries the active lyric where no lyrics pane does: over the face when the user wants
-        /// it, and in Lyrics mode when the aspect has no room for the pane (Compact) — never without a timed line.</summary>
-        public static bool ShowsCaption(Mode m, bool overlayOn, bool hasTimedLyrics, bool paneShown)
-            => hasTimedLyrics && ((m == Mode.Visualizer && overlayOn) || (m == Mode.Lyrics && !paneShown));
+        /// it and the face leaves room for it (<see cref="Visualizer.Catalog.CaptionFriendly"/> — never over Verse, whose
+        /// lyrics ARE the face), and in Lyrics mode when the aspect has no room for the pane (Compact) — never without a
+        /// timed line.</summary>
+        public static bool ShowsCaption(Mode m, bool overlayOn, bool hasTimedLyrics, bool paneShown, Visualizer.Kind kind)
+            => hasTimedLyrics && ((m == Mode.Visualizer && overlayOn && Visualizer.Catalog.CaptionFriendly(kind)) || (m == Mode.Lyrics && !paneShown));
+
+        /// <summary>The stage's face keys (Visualizer mode): <c>[</c> the previous shown face, <c>]</c> the next (Shift: the
+        /// previous / next GROUP), <c>G</c> the gallery. VK_OEM_4 / VK_OEM_6 — FluentGpu.Foundation.Keys names neither.</summary>
+        public const int PreviousFaceKey = 219, NextFaceKey = 221;
+        /// <summary>−1 for <c>[</c>, +1 for <c>]</c>, 0 for any other key.</summary>
+        public static int FaceStep(int keyCode) => keyCode == PreviousFaceKey ? -1 : keyCode == NextFaceKey ? 1 : 0;
     }
 
     // ── 2. the allocator ────────────────────────────────────────────────────────────────────────────────────────────
@@ -296,6 +304,27 @@ public static partial class Stage
         /// <summary>The face's right inset while the gallery is open (the prototype's <c>.pane .stg { right: 492px }</c>) — THIS
         /// layout's gallery width plus the two gutters (Ultrawide's docked column is 19 % of W, not 444 — V-U45).</summary>
         public float FaceRight(bool galleryOpen) => galleryOpen && ShowGallery && Aspect != Aspect.Portrait ? GalleryW + 2f * Pad : 0f;
+
+        /// <summary>The top edge of Portrait's gallery SHEET (55 % of H, parked above the transport and its two gutters).</summary>
+        public float SheetTop => H - (TransportH + 2f * Pad) - GalleryH;
+
+        /// <summary>The FACE-SAFE rect (viz-app-plan §3.7, §5) in stage coordinates: where a face may centre its subject without
+        /// the chrome rows over it — left of the open gallery; below the now-playing card when it shows (64 + 136 + 24 = 224),
+        /// else below the top bar; above the caption block at its tallest when the caption shows, else above the transport
+        /// card's gutter; above Portrait's open sheet; on Compact the strip right of the art. Never inverted (at least one
+        /// DIP tall and wide). Chrome hidden (idle) does not grow it: a face keeps its geometry (only Verse uses the room).</summary>
+        public FaceSafeRect FaceSafe(bool galleryOpen, bool captionShown)
+        {
+            bool compact = Aspect == Aspect.Compact;
+            float left = compact ? TransportLeft : 0f;
+            float right = compact ? W - Pad : W - FaceRight(galleryOpen);
+            float top = ShowChips ? NowPlayingCardY + NowPlayingCardH + Pad : TopBarH + Pad;
+            float bottom = captionShown ? CaptionTopMin - Pad : TransportTop - Pad;
+            if (Aspect == Aspect.Portrait && galleryOpen && ShowGallery) bottom = MathF.Min(bottom, SheetTop - Pad);
+            right = MathF.Max(right, left + 1f);
+            bottom = MathF.Max(bottom, top + 1f);
+            return new FaceSafeRect(left, top, right - left, bottom - top);
+        }
         /// <summary>The pane's width from its two edges; never negative.</summary>
         public float PaneW => MathF.Max(0f, W - PaneX - PaneRight);
 
@@ -334,6 +363,15 @@ public static partial class Stage
             + (IconOnlySelector ? 0 : 1) + (int)(TransportH * 0.01f);
     }
 
+    /// <summary>A rectangle in stage DIPs (Stage.cs stays System-only, so not the engine's RectF).</summary>
+    public readonly record struct FaceSafeRect(float X, float Y, float W, float H)
+    {
+        public float Right => X + W;
+        public float Bottom => Y + H;
+        public float CentreX => X + W * 0.5f;
+        public float CentreY => Y + H * 0.5f;
+    }
+
     // ── 3. what the transport may do (unchanged from the previous stage) ────────────────────────────────────────────
 
     public static class Transport
@@ -354,8 +392,14 @@ public static partial class Stage
         /// <summary>The accent cross-fade on a track change (the prototype's <c>transition: --acc 1s</c>, tightened to the
         /// Fluent "slow" neighbourhood so a skip-skip-skip never lags the art).</summary>
         public const float CrossFadeMs = 600f;
-        /// <summary>The scrim over the backdrop: deep under lyrics/queue/artist, light under a face.</summary>
-        public const float ScrimA = 0.56f, ScrimVisualizerA = 0.22f;
+        /// <summary>The scrim over the backdrop: deep under lyrics/queue/artist, light under a face, between the two under
+        /// Verse (big words over a bright cover need it — verse-plan D4).</summary>
+        public const float ScrimA = 0.56f, ScrimVisualizerA = 0.22f, ScrimVerseA = 0.40f;
+        /// <summary>The scrim for a mode and the selected face.</summary>
+        public static float ScrimFor(Mode mode, Visualizer.Kind kind)
+            => mode != Mode.Visualizer ? ScrimA : kind == Visualizer.Kind.Verse ? ScrimVerseA : ScrimVisualizerA;
+        /// <summary>A moment's palette fade ("change with the music", viz-app-plan §3.5), and its calm length.</summary>
+        public const float MomentFadeMs = 900f, MomentCalmFadeMs = 1400f;
         /// <summary>The caption's inks: unsung glyphs, the previous and next context lines (alphas over the stage ink), the
         /// active line's accent bloom (its layer opacity and blur σ), the soft veil's centre, and the rise every line hand-off
         /// travels (in from below, out above).</summary>

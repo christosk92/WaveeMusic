@@ -2,7 +2,7 @@
 // the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
 // row density + hide artwork, track list style, track page layout + the two rail rows) · Sidebar (the design picker's three
 // compact cards + "Customize sidebar") · Lyrics (blur) · Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset,
-// reduce motion — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
+// calm motion, change with the music — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
 //
 // * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
@@ -19,7 +19,7 @@
 // EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
 // row density / track list style → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
 // the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
-// tab reads that epoch); the five Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
+// tab reads that epoch); the six Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
 // gallery writes show here live). The tab body reads the store directly (never a foreign epoch it does not need), so a write
 // re-renders this page once, through `Bump()`.
 //
@@ -60,8 +60,9 @@ public static partial class Settings
 
     // The fullscreen stage's three value controls (a ComboBox and two sliders). Each is bound for the control's life, so a
     // child component re-seeds it from Prefs.Stage on every epoch (StageVisualizerPicker / StageSensitivitySlider /
-    // StageSyncSlider below) and a pick made in the stage's gallery shows here live.
-    static readonly Signal<int> s_stageVisualizer = new((int)Visualizer.Kind.Horizon);
+    // StageSyncSlider below) and a pick made in the stage's gallery shows here live. The combo's value is an INDEX into
+    // Visualizer.Catalog.Shown (the gallery's order), never the persisted Kind int.
+    static readonly Signal<int> s_stageVisualizer = new(Visualizer.Catalog.IndexOf(Visualizer.Catalog.Default));
     static readonly FloatSignal s_stageSensitivity = new(1f), s_stageSyncOffset = new(0f);
     static readonly Slider.SliderOptions s_stageSensitivityOptions = new()
     {
@@ -80,7 +81,7 @@ public static partial class Settings
     static partial void SeedAppearance()
     {
         s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength), GpuProfile.IsWeak);
-        s_stageVisualizer.Value = Prefs.Stage.Visualizer();
+        s_stageVisualizer.Value = VisualizerIndex();
         s_stageSensitivity.Value = Prefs.Stage.Sensitivity();
         s_stageSyncOffset.Value = Prefs.Stage.SyncOffsetMs();
     }
@@ -150,6 +151,8 @@ public static partial class Settings
             Embed.Comp(static () => new StageSyncSlider()), RowGlyph(Tab.Appearance, "stageSyncOffset")));
         kids.Add(Row(Loc.Get(Strings.Stage.Settings.Calm), Loc.Get(Strings.Stage.Settings.CalmSub),
             StageToggle(Platform.Keys.StageCalm), RowGlyph(Tab.Appearance, "stageCalm")));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Moments), Loc.Get(Strings.Stage.Settings.MomentsSub),
+            StageToggle(Platform.Keys.StageMoments), RowGlyph(Tab.Appearance, "stageMoments")));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.NowPlaying.Title), SectionGlyph(Tab.Appearance, "Now playing"),
             Loc.Get(Strings.Settings.NowPlaying.Subtitle)));
@@ -742,11 +745,17 @@ public static partial class Settings
 
     // ══ 7. FULLSCREEN STAGE ═══════════════════════════════════════════════════════════════════════════════════════════
 
-    static string[] VisualizerLabels() =>
-    [
-        Loc.Get(Strings.Stage.Viz.Field), Loc.Get(Strings.Stage.Viz.Halo), Loc.Get(Strings.Stage.Viz.Horizon), Loc.Get(Strings.Stage.Viz.Matrix),
-        Loc.Get(Strings.Stage.Viz.Aurora), Loc.Get(Strings.Stage.Viz.Spectrum), Loc.Get(Strings.Stage.Viz.Pulse), Loc.Get(Strings.Stage.Viz.Tape),
-    ];
+    /// <summary>The shown faces' names in the gallery's order (the combo's items).</summary>
+    static string[] VisualizerLabels()
+    {
+        var shown = Visualizer.Catalog.Shown;
+        var labels = new string[shown.Length];
+        for (int i = 0; i < shown.Length; i++) labels[i] = Loc.Get(Visualizer.NameKey(shown[i]));
+        return labels;
+    }
+
+    /// <summary>The stored face (already migrated by Prefs.Stage) as its index in the combo.</summary>
+    static int VisualizerIndex() => Math.Max(0, Visualizer.Catalog.IndexOf((Visualizer.Kind)Prefs.Stage.Visualizer()));
 
     /// <summary>The two toggles read `Platform.SettingsChanged` through `Toggle` as every Appearance toggle does; the bump wakes the stage.</summary>
     static Element StageToggle(SettingKey<bool> key) => Toggle(key, afterWrite: static _ => Prefs.Stage.Bump());
@@ -755,9 +764,9 @@ public static partial class Settings
     {
         public override Element Render()
         {
-            UseSignalEffect(static () => s_stageVisualizer.Value = Prefs.Stage.Visualizer());   // the gallery's pick lands here live
+            UseSignalEffect(static () => s_stageVisualizer.Value = VisualizerIndex());   // the gallery's pick lands here live
             return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: 220f,
-                onChange: static i => { if ((uint)i < (uint)Visualizer.Catalog.Count) Prefs.Stage.SetVisualizer(i); });
+                onChange: static i => { if ((uint)i < (uint)Visualizer.Catalog.ShownCount) Prefs.Stage.SetVisualizer((int)Visualizer.Catalog.Shown[i]); });
         }
     }
     sealed class StageSensitivitySlider : Component
