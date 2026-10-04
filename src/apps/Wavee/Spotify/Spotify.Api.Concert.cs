@@ -46,7 +46,7 @@ public static partial class Spotify
         public static Result ConcertAnswer(string concertUri, Staging s)
         {
             Result result = Concert(concertUri, authenticated: true, CancellationToken.None);
-            if (result.Ok && result.Body.Length > 0) Decode.ConcertDetail(result.Bytes, s);
+            if (result.Ok && result.Length > 0) Decode.ConcertDetail(result.Bytes, s);
             return result;
         }
 
@@ -57,7 +57,7 @@ public static partial class Spotify
         {
             _ = offset;
             Result result = ArtistConcerts(artistUri, ConcertPlaces.SavedGeoHash, includeNearby: true, CancellationToken.None);
-            if (result.Ok && result.Body.Length > 0) Decode.ArtistConcerts(result.Bytes, Encoding.UTF8.GetBytes(artistUri), s);
+            if (result.Ok && result.Length > 0) Decode.ArtistConcerts(result.Bytes, Encoding.UTF8.GetBytes(artistUri), s);
             return result;
         }
 
