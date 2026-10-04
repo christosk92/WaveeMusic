@@ -130,6 +130,15 @@ public static partial class AiLyrics
                 nint session;
                 string load = cached ? ctx : modelPath;
                 fixed (char* p = load) Check(((delegate* unmanaged<nint, char*, nint, nint*, nint>)_api[I_CreateSession])(_env, p, so, &session));
+                if (!cached && File.Exists(ctx))
+                {
+                    // The compiling session keeps the source graph and QNN's compile buffers alive: about 3 GB of
+                    // private memory for the English pack. Release it and run from the cache it just wrote (private
+                    // memory then stays near 70 MB; the compiled weights are file-mapped and reclaimable).
+                    ((delegate* unmanaged<nint, void>)_api[I_ReleaseSession])(session);
+                    session = 0;
+                    return CreateNpuSession(modelPath, freeDims);
+                }
                 return new OrtSession(this, session);
             }
             finally { ((delegate* unmanaged<nint, void>)_api[I_ReleaseSessionOptions])(so); }

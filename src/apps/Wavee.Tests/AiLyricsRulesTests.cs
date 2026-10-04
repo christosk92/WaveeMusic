@@ -41,6 +41,7 @@ public class AiLyricsRulesTests
         return new Lyrics.Doc("t1", true, l, Lyrics.SyncKind.Syllable, "musixmatch");
     }
 
+    static readonly string[] SpanishLines = ["Sí, sabes que ya llevo un rato mirándote", "Tengo que bailar contigo hoy", "Vi que tu mirada ya estaba llamándome"];
     static readonly string[] English = ["hello darkness my old friend", "ive come to talk with you again", "because a vision softly creeping"];
     static readonly string[] OnlyEn = ["en"];
 
@@ -169,11 +170,11 @@ public class AiLyricsRulesTests
     [Fact]
     public void Language_must_be_installed()
     {
-        var spanish = LineDoc(English) with { Language = "es" };
+        var spanish = LineDoc(SpanishLines) with { Language = "es" };
         Assert.Equal(AiLyrics.SkipReason.LanguageNotInstalled, Elig(spanish));
         Assert.Equal(AiLyrics.SkipReason.None, Elig(spanish, languages: ["en", "es"]));
         Assert.Equal(AiLyrics.SkipReason.None, Elig(LineDoc(English) with { Language = "EN-us" }));
-        Assert.Equal(AiLyrics.SkipReason.LanguageNotInstalled, Elig(LineDoc(English) with { Language = "fr" }, languages: ["en", "es"]));
+        Assert.Equal(AiLyrics.SkipReason.LanguageNotInstalled, Elig(LineDoc(Portuguese) with { Language = "fr" }, languages: ["en", "es"]));
     }
 
     [Fact]
@@ -187,18 +188,43 @@ public class AiLyricsRulesTests
         // order: TooLong wins over BatterySaver, LanguageNotInstalled over both
         Assert.Equal(AiLyrics.SkipReason.TooLong, Elig(LineDoc(English), durationMs: 30L * 60 * 1000, energySaver: true));
         Assert.Equal(AiLyrics.SkipReason.LanguageNotInstalled,
-            Elig(LineDoc(English) with { Language = "es" }, durationMs: 30L * 60 * 1000, energySaver: true));
+            Elig(LineDoc(SpanishLines) with { Language = "es" }, durationMs: 30L * 60 * 1000, energySaver: true));
     }
 
     // ── language, keys, hash ────────────────────────────────────────────────────────────────────────────────────────
+
+    // words that read as neither English nor Spanish: only the tag can tell
+    static readonly string[] Portuguese = ["eu sei que vou amar você", "minha vida inteira", "saudade do seu olhar"];
 
     [Theory]
     [InlineData("es", "es")]
     [InlineData("ES-mx", "es")]
     [InlineData("pt_BR", "pt")]
-    [InlineData(" en ", "en")]
-    public void LanguageOf_trusts_the_source_tag(string tag, string expected)
-        => Assert.Equal(expected, AiLyrics.Rules.LanguageOf(LineDoc(English) with { Language = tag }));
+    [InlineData(" fr ", "fr")]
+    public void LanguageOf_trusts_the_source_tag_when_the_words_cannot_tell(string tag, string expected)
+        => Assert.Equal(expected, AiLyrics.Rules.LanguageOf(LineDoc(Portuguese) with { Language = tag }));
+
+    [Fact]
+    public void LanguageOf_recognises_korean_and_dutch_lyrics()
+    {
+        Assert.Equal("ko", AiLyrics.Rules.LanguageOf(LineDoc("너를 처음 만난 그날", "Baby 내 맘을 몰라", "사랑해 오늘 밤")));
+        // decomposed Hangul (jamo) counts once composed
+        Assert.Equal("ko", AiLyrics.Rules.LanguageOf(LineDoc("사랑해 너만을 바라봐".Normalize(System.Text.NormalizationForm.FormD), "오늘 밤 함께해")));
+        // a single Korean word in an English song does not make it Korean
+        Assert.Equal("en", AiLyrics.Rules.LanguageOf(LineDoc([.. English, "you are my love 사랑", "and the vision that was planted in my brain"])));
+        Assert.Equal("nl", AiLyrics.Rules.LanguageOf(LineDoc("Ik wil je niet kwijt", "Want jij bent alles voor mij", "Zonder jou is het nacht")));
+        Assert.Equal("en", AiLyrics.Rules.LanguageOf(LineDoc(English) with { Language = "nl" }));
+    }
+
+    [Theory]
+    [InlineData("sv")]
+    [InlineData("pt-BR")]
+    [InlineData("es")]
+    [InlineData("z1")]
+    public void LanguageOf_lets_clearly_english_words_overrule_a_wrong_tag(string tag)
+        => Assert.Equal("en", AiLyrics.Rules.LanguageOf(LineDoc(
+            "Everybody loves you, baby", "You should trademark your face", "Linin' down the block to be around you",
+            "But, baby, I'm first in place") with { Language = tag }));
 
     [Fact]
     public void LanguageOf_guesses_between_english_and_spanish()
@@ -388,8 +414,25 @@ public class AiLyricsRulesTests
     [InlineData(AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.Podcast, false, "lyrics.ai.header.skipped.podcast", false)]
     [InlineData(AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.NeedsSetup, false, "lyrics.ai.header.setup", true)]
     public void Header_when_ready_follows_the_track(AiLyrics.TrackPhase phase, AiLyrics.SkipReason reason, bool active, string tip, bool opens)
-        => Assert.Equal(new AiLyrics.HeaderState(true, active, tip, opens),
+        => Assert.Equal(new AiLyrics.HeaderState(true, active, tip, opens, TogglesPreference: reason == AiLyrics.SkipReason.AlreadyWordByWord),
             AiLyrics.Rules.Header(Status(AiLyrics.SetupPhase.Ready), Track(phase, reason), EntityKind.Track));
+
+    [Fact]
+    public void Header_offers_ai_timing_over_people_made_word_timing_and_the_way_back()
+    {
+        var ready = Status(AiLyrics.SetupPhase.Ready);
+        // a provider has word timing: a click asks for AI timing for this song
+        var offer = AiLyrics.Rules.Header(ready, Track(AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.AlreadyWordByWord), EntityKind.Track);
+        Assert.True(offer.TogglesPreference);
+        Assert.False(offer.OpensSettings);
+        // chosen: working, then lit, and a click goes back to the provider
+        var working = AiLyrics.Rules.Header(ready, Track(AiLyrics.TrackPhase.Working), EntityKind.Track, prefersAi: true);
+        Assert.Equal(new AiLyrics.HeaderState(true, false, "lyrics.ai.header.workingOverride", false, true), working);
+        var done = AiLyrics.Rules.Header(ready, Track(AiLyrics.TrackPhase.Done), EntityKind.Track, prefersAi: true);
+        Assert.Equal(new AiLyrics.HeaderState(true, true, "lyrics.ai.header.overriding", false, true), done);
+        // without the preference a done track is the plain "on" state
+        Assert.False(AiLyrics.Rules.Header(ready, Track(AiLyrics.TrackPhase.Done), EntityKind.Track).TogglesPreference);
+    }
 
     [Fact]
     public void Footer_shows_while_working_and_when_done()
@@ -398,9 +441,30 @@ public class AiLyricsRulesTests
         Assert.True(AiLyrics.Rules.ShowsFooter(Track(AiLyrics.TrackPhase.Done)));
         Assert.False(AiLyrics.Rules.ShowsFooter(Track(AiLyrics.TrackPhase.Waiting)));
         Assert.False(AiLyrics.Rules.ShowsFooter(Track(AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.Failed)));
-        Assert.Equal("lyrics.ai.footer.working", AiLyrics.Rules.FooterKey(Track(AiLyrics.TrackPhase.Working)));
+        Assert.Equal("lyrics.ai.footer.progress", AiLyrics.Rules.FooterKey(Track(AiLyrics.TrackPhase.Working)));
         Assert.Equal("lyrics.ai.footer.generated", AiLyrics.Rules.FooterKey(Track(AiLyrics.TrackPhase.Done)));
     }
+
+    [Fact]
+    public void Footer_shows_progress_only_while_a_live_job_runs()
+    {
+        Assert.True(AiLyrics.Rules.FooterShowsProgress(Track(AiLyrics.TrackPhase.Working)));
+        Assert.False(AiLyrics.Rules.FooterShowsProgress(Track(AiLyrics.TrackPhase.Done)));
+        var cached = Track(AiLyrics.TrackPhase.Working) with { FromCache = true };
+        Assert.False(AiLyrics.Rules.FooterShowsProgress(cached));
+        Assert.Equal("lyrics.ai.footer.generated", AiLyrics.Rules.FooterKey(cached));
+        Assert.Equal("lyrics.ai.footer.generated", AiLyrics.Rules.FooterKey(Track(AiLyrics.TrackPhase.Done) with { FromCache = true }));
+    }
+
+    [Theory]
+    [InlineData(30.0, 120.0, 0.25f)]
+    [InlineData(0.0, 120.0, 0f)]
+    [InlineData(-5.0, 120.0, 0f)]
+    [InlineData(130.0, 120.0, 1f)]
+    [InlineData(30.0, 0.0, 0f)]
+    [InlineData(30.0, -1.0, 0f)]
+    public void Footer_bar_fraction_is_clamped_and_zero_without_a_duration(double part, double whole, float expected)
+        => Assert.Equal(expected, AiLyrics.Rules.Fraction(part, whole), 4);
 
     [Fact]
     public void Models_unload_after_ten_idle_minutes()

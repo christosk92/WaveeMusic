@@ -60,7 +60,9 @@ public static partial class AiLyrics
 
     /// <summary>The lyrics rail's sparkle button: whether it shows, whether it is lit, its tooltip key and whether a
     /// click opens Settings (only when Settings can fix what the tooltip says).</summary>
-    public readonly record struct HeaderState(bool Visible, bool Active, string TipKey, bool OpensSettings);
+    /// <param name="TogglesPreference">A click switches this song between AI timing and the provider's people-made word
+    /// timing (<see cref="AiLyrics.SetPreferAi"/>).</param>
+    public readonly record struct HeaderState(bool Visible, bool Active, string TipKey, bool OpensSettings, bool TogglesPreference = false);
 
     public static partial class Rules
     {
@@ -185,6 +187,12 @@ public static partial class AiLyrics
         /// make up a real share of it, else "en". (Portuguese also reads as Spanish here; only en/es aligners exist.)</summary>
         public static string LanguageOf(Lyrics.Doc doc)
         {
+            // The words decide when they clearly read as a language we have a model for: a provider's tag can be wrong
+            // (an English song tagged with another language would otherwise be skipped as "no model installed").
+            if (MostlyHangul(doc.Lines)) return "ko";
+            if (LooksSpanish(doc.Lines)) return "es";
+            if (Looks(doc.Lines, DutchWords, ratio: 6)) return "nl";
+            if (LooksEnglish(doc.Lines)) return "en";
             string? tag = doc.Language;
             if (!string.IsNullOrWhiteSpace(tag))
             {
@@ -192,7 +200,64 @@ public static partial class AiLyrics
                 string primary = (cut > 0 ? tag[..cut] : tag).Trim().ToLowerInvariant();
                 if (primary.Length > 0 && primary != "und" && primary != "zxx") return primary;
             }
-            return LooksSpanish(doc.Lines) ? "es" : "en";
+            return "en";
+        }
+
+        static readonly HashSet<string> EnglishWords = new(StringComparer.Ordinal)
+        {
+            "the", "and", "you", "your", "i", "me", "my", "a", "to", "of", "in", "on", "it", "is", "that", "this", "with",
+            "for", "be", "are", "was", "we", "our", "they", "she", "he", "her", "his", "but", "not", "so", "all", "just",
+            "what", "when", "can", "do", "don", "t", "s", "m", "ll", "re", "ve", "im", "ive", "dont", "cant", "like", "love",
+            "know", "baby", "oh", "yeah", "if", "at", "up", "down", "out", "no", "now", "never", "because", "again", "around",
+        };
+
+        static readonly HashSet<string> DutchWords = new(StringComparer.Ordinal)
+        {
+            "de", "het", "een", "ik", "je", "jij", "jou", "niet", "van", "dat", "die", "op", "met", "voor", "zijn", "maar",
+            "als", "wat", "mijn", "wij", "we", "ze", "er", "nog", "ook", "naar", "bij", "door", "om", "te", "heb", "ben",
+            "kan", "zo", "nu", "hier", "waar", "alles", "liefde", "hart", "nooit", "altijd", "wil", "weet", "jouw", "mij",
+            "zij", "geen", "meer", "dan", "nacht", "dag", "laat", "gaan", "komt", "zonder", "samen",
+        };
+
+        /// <summary>Korean lyrics: at least a quarter of the letters are Hangul syllables (K-pop mixes in English, which
+        /// the Korean model cannot align; those words get interpolated timing).</summary>
+        static bool MostlyHangul(IReadOnlyList<Lyrics.Line> lines)
+        {
+            int letters = 0, hangul = 0;
+            for (int li = 0; li < lines.Count; li++)
+                foreach (char ch in (lines[li].Text ?? "").Normalize(System.Text.NormalizationForm.FormC))
+                {
+                    if (!char.IsLetter(ch)) continue;
+                    letters++;
+                    if (ch is >= '\uAC00' and <= '\uD7A3') hangul++;
+                }
+            return hangul >= 4 && hangul * 4 >= letters;
+        }
+
+        static bool LooksEnglish(IReadOnlyList<Lyrics.Line> lines) => Looks(lines, EnglishWords, ratio: 5);
+
+        /// <summary>At least three hits on <paramref name="words"/>, two of them different, and one in
+        /// <paramref name="ratio"/> words a hit.</summary>
+        static bool Looks(IReadOnlyList<Lyrics.Line> lines, HashSet<string> words, int ratio)
+        {
+            int tokens = 0, hits = 0;
+            var distinct = new HashSet<string>(StringComparer.Ordinal);
+            for (int li = 0; li < lines.Count; li++)
+            {
+                string text = lines[li].Text ?? "";
+                int start = -1;
+                for (int i = 0; i <= text.Length; i++)
+                {
+                    char c = i < text.Length ? text[i] : ' ';
+                    if (char.IsLetter(c)) { if (start < 0) start = i; continue; }
+                    if (start < 0) continue;
+                    string word = text[start..i].ToLowerInvariant();
+                    start = -1;
+                    tokens++;
+                    if (words.Contains(word)) { hits++; distinct.Add(word); }
+                }
+            }
+            return hits >= 3 && distinct.Count >= 2 && hits * ratio >= tokens;
         }
 
         static readonly HashSet<string> SpanishWords = new(StringComparer.Ordinal)
@@ -352,12 +417,19 @@ public static partial class AiLyrics
         static readonly HeaderState Hidden = new(false, false, "", false);
 
         /// <summary>The rail's sparkle button. Hidden while the feature is off or cannot run; podcasts say so; before
-        /// Ready it asks to finish setup (click opens Settings); when Ready it reflects the track (lit when Done).</summary>
-        public static HeaderState Header(Status status, TrackStatus track, EntityKind kind)
+        /// Ready it asks to finish setup (click opens Settings); when Ready it reflects the track (lit when Done).
+        /// <paramref name="prefersAi"/>: the user chose AI timing for this song over the provider's word timing; the
+        /// button then offers the way back.</summary>
+        public static HeaderState Header(Status status, TrackStatus track, EntityKind kind, bool prefersAi = false)
         {
             if (!status.Enabled || status.Phase is SetupPhase.Unavailable or SetupPhase.Off) return Hidden;
             if (IsPodcast(kind)) return new(true, false, "lyrics.ai.header.skipped.podcast", false);
             if (status.Phase != SetupPhase.Ready) return new(true, false, "lyrics.ai.header.setup", true);
+            if (prefersAi && track.Phase is TrackPhase.Working or TrackPhase.Done)
+                return new(true, track.Phase == TrackPhase.Done,
+                    track.Phase == TrackPhase.Done ? "lyrics.ai.header.overriding" : "lyrics.ai.header.workingOverride", false, TogglesPreference: true);
+            if (track.Phase == TrackPhase.Skipped && track.Reason == SkipReason.AlreadyWordByWord)
+                return new(true, false, "lyrics.ai.header.skipped.alreadyWordByWord", false, TogglesPreference: true);
             return track.Phase switch
             {
                 TrackPhase.Working => new(true, false, "lyrics.ai.header.working", false),
@@ -386,8 +458,19 @@ public static partial class AiLyrics
         /// <summary>The end-of-lyrics disclosure shows while a job runs and once its timing is on screen.</summary>
         public static bool ShowsFooter(TrackStatus track) => track.Phase is TrackPhase.Working or TrackPhase.Done;
 
+        /// <summary>While a live job runs the footer shows its progress (the "x of y lines" line and the buffer bar); a done
+        /// or cached result shows the disclosure alone.</summary>
+        public static bool FooterShowsProgress(TrackStatus track) => track.Phase == TrackPhase.Working && !track.FromCache;
+
+        /// <summary>The footer's line: the progress key (placeholders {ready}, {total}) while <see cref="FooterShowsProgress"/>,
+        /// else the disclosure.</summary>
         public static string FooterKey(TrackStatus track)
-            => track.Phase == TrackPhase.Working ? "lyrics.ai.footer.working" : "lyrics.ai.footer.generated";
+            => FooterShowsProgress(track) ? "lyrics.ai.footer.progress" : "lyrics.ai.footer.generated";
+
+        /// <summary>A 0..1 share of a whole for the footer's buffer bar (the timed region, the playhead); 0 while the whole
+        /// is unknown.</summary>
+        public static float Fraction(double part, double whole)
+            => whole > 0 && part > 0 ? (float)Math.Min(1.0, part / whole) : 0f;
 
         /// <summary>Free the NPU contexts after <see cref="IdleUnloadMs"/> without a job.</summary>
         public static bool UnloadAfterIdle(long lastJobEndMs, long nowMs) => nowMs - lastJobEndMs >= IdleUnloadMs;

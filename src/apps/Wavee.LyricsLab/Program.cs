@@ -16,6 +16,7 @@ static class Program
     static int Main(string[] args)
     {
         if (args.Length >= 2 && args[0] == "--check-lrc") return CheckLrc(args[1..]);
+        if (args.Length >= 2 && args[0] == "--ai-mem") return AiMemory(args[1], args.Length >= 3 ? args[2] : "en");
         string profile = Arg(args, "--profile"), outDir = Arg(args, "--out"), tracks = Arg(args, "--tracks");
         bool skipAudio = args.Contains("--no-audio");
         if (!args.Contains("--headless") || profile.Length == 0 || outDir.Length == 0 || tracks.Length == 0)
@@ -144,6 +145,30 @@ static class Program
             if (!skipAudio && !DumpAudio(req, Path.Combine(dir, "audio.ogg"))) failures++;
         }
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>--ai-mem &lt;ai dir&gt; [en,es]: load the models (no Spotify) and print the process memory before and after,
+    /// so the steady-state cost of the loaded NPU sessions can be measured on its own.</summary>
+    static int AiMemory(string aiDir, string langs)
+    {
+        static string Mem()
+        {
+            using var p = System.Diagnostics.Process.GetCurrentProcess();
+            return $"working set {p.WorkingSet64 >> 20} MB, private {p.PrivateMemorySize64 >> 20} MB, peak ws {p.PeakWorkingSet64 >> 20} MB";
+        }
+        Console.WriteLine("before: " + Mem());
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using (var models = AiLyrics.LoadedModels.Load(Path.Combine(aiDir, "runtime"), Path.Combine(aiDir, "models"), langs.Split(','),
+            (done, total, cached) => Console.WriteLine($"  {done}/{total}{(cached ? " (cached)" : "")} at {sw.Elapsed.TotalSeconds:0.0}s: {Mem()}"),
+            CancellationToken.None))
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers();
+            Console.WriteLine($"loaded in {sw.Elapsed.TotalSeconds:0.0}s: {Mem()}");
+            Thread.Sleep(3000);
+            Console.WriteLine("after 3 s: " + Mem());
+        }
+        Console.WriteLine("disposed: " + Mem());
+        return 0;
     }
 
     /// <summary>The real C# pipeline (AiLyrics.TrackJob on the NPU) over each track: Spotify's lyrics, the decoded audio, a

@@ -30,6 +30,88 @@ public static partial class AiLyrics
     /// <summary>The current track's AI state. Written on the UI thread only.</summary>
     public static readonly Signal<TrackStatus> Track = new(default);
 
+    /// <summary>The current (or last) job for the lyrics inspector and the footer's buffer bar. Written on the UI thread.</summary>
+    public static readonly Signal<JobInfo?> Job = new(null);
+
+    /// <summary>What the inspector shows about one track's AI timing.</summary>
+    /// <param name="Outcome">working, done, cached, cancelled, stopped (people-made word timing arrived), skipped, failed.</param>
+    public sealed record JobInfo(string TrackId, string Language, int LineCount, int LinesReady, double DurationSeconds,
+        double ProcessedSeconds, double SeparateSeconds, double AlignSeconds, long ElapsedMs, bool FromCache,
+        string ResultPath, string Outcome, string Detail);
+
+    /// <summary>The results file of a track (the inspector shows it and can delete it to time the song again).</summary>
+    public static string ResultPathOf(string trackId) => Path.Combine(ResultsDir, Results.FileName(trackId, PackVersion));
+
+    /// <summary>The inspector's "Time again": forget the saved result of <paramref name="trackId"/> and, when it is the
+    /// playing track, run the job again.</summary>
+    public static void Retime(string trackId)
+    {
+        if (trackId.Length == 0) return;
+        if (s_jobTrack == trackId) CancelJob();
+        s_lastPublished.Remove(trackId);
+        string path = ResultPathOf(trackId);
+        _ = Task.Run(() =>
+        {
+            try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            s_post(() =>
+            {
+                if (Track.Peek().TrackId == trackId) Track.Value = default;
+                Lyrics.Store.Refetch(trackId);
+            });
+        });
+    }
+
+    // ── per-song preference: AI timing over the provider's people-made word timing ────────────────────────────────
+
+    static readonly HashSet<string> s_preferAi = new(StringComparer.Ordinal);
+    const int PreferAiCap = 2000;
+    static string PreferAiPath => Path.Combine(Root, "prefer-ai.txt");
+
+    /// <summary>Bumped when a song's preference changes, so the header and the inspector re-render.</summary>
+    public static readonly Signal<int> PreferEpoch = new(0);
+
+    /// <summary>True when the user chose AI timing for <paramref name="trackId"/> over the provider's word timing.
+    /// Reads <see cref="PreferEpoch"/>, so a render that asks re-renders on a change. UI thread.</summary>
+    public static bool PrefersAi(string trackId)
+    {
+        _ = PreferEpoch.Value;
+        return trackId.Length > 0 && s_preferAi.Contains(trackId);
+    }
+
+    /// <summary>Use AI timing for this song even when a provider has people-made word timing (on), or go back to the
+    /// provider's (off: the provider's document is fetched again; the saved AI result stays for next time). Remembered
+    /// across restarts in ai\lyrics\prefer-ai.txt. UI thread.</summary>
+    public static void SetPreferAi(string trackId, bool on)
+    {
+        if (trackId.Length == 0 || (on ? !s_preferAi.Add(trackId) : !s_preferAi.Remove(trackId))) return;
+        if (on && s_preferAi.Count > PreferAiCap) s_preferAi.Remove(s_preferAi.First());
+        Log.Info("ai-lyrics", $"ai.prefer track={trackId} ai={on}");
+        string[] snapshot = [.. s_preferAi];
+        _ = Task.Run(() =>
+        {
+            try { Directory.CreateDirectory(Root); File.WriteAllLines(PreferAiPath, snapshot); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", "prefer-ai save failed", ex); }
+        });
+        if (!on)
+        {
+            if (s_jobTrack == trackId) CancelJob();
+            if (Track.Peek().TrackId == trackId) Track.Value = default;
+            if (Lyrics.Store.Doc(trackId) is { Generated: true }) Lyrics.Store.Refetch(trackId);
+        }
+        PreferEpoch.Value++;                                                       // re-runs the driver, which starts the job when on
+    }
+
+    static void LoadPreferAi()
+    {
+        try
+        {
+            if (!File.Exists(PreferAiPath)) return;
+            var ids = File.ReadAllLines(PreferAiPath);
+            s_post(() => { foreach (var id in ids) if (id.Trim().Length > 0) s_preferAi.Add(id.Trim()); PreferEpoch.Value++; });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", "prefer-ai read failed", ex); }
+    }
+
     /// <summary>Set by the Settings card while it is on screen: a toast is redundant then (Rules.ToastOnReady).</summary>
     public static bool SettingsCardVisible { get; set; }
 
@@ -46,7 +128,7 @@ public static partial class AiLyrics
     static int s_posMs, s_playing;
     static long s_posAtTick;
 
-    static readonly string[] s_languageOrder = ["en", "es"];
+    static readonly string[] s_languageOrder = ["en", "es", "nl", "ko"];
 
     // ══ boot and shutdown ═════════════════════════════════════════════════════════════════════════════════════════
 
@@ -71,6 +153,7 @@ public static partial class AiLyrics
             var missing = Pack.Missing(PackManifest.Embedded.FilesFor(languages));
             long used = Pack.DiskUsed();
             SweepResults();
+            LoadPreferAi();
             var npu = Rules.SupportedNpu(npus);
             Log.Info("ai-lyrics", $"ai.capability arm64={arm64} build={build} npus={npus.Count} availability={availability} " +
                                   $"npu=\"{npu?.Description}\" driver={npu?.DriverVersion} missing={missing.Count}");
@@ -400,6 +483,7 @@ public static partial class AiLyrics
         _ = Lyrics.Store.Changed.Value;
         bool saver = Platform.Power.EnergySaver.Value;
         _ = Prefs.AiLyrics.Epoch.Value;
+        _ = PreferEpoch.Value;
 
         if (!st.Enabled || st.Phase != SetupPhase.Ready || !id.IsValid)
         {
@@ -433,9 +517,23 @@ public static partial class AiLyrics
                 Track.Value = new TrackStatus(trackId, TrackPhase.Done, SkipReason.None, doc.Language ?? "", doc.Lines.Count, doc.Lines.Count, 0, true);
             return;
         }
+        bool prefersAi = s_preferAi.Contains(trackId);
+        if (doc is { Sync: Lyrics.SyncKind.Syllable } && !prefersAi)
+        {
+            // people-made word timing arrived (often a background provider pass after the line-synced first answer):
+            // it outranks ours, so stop the job and say so instead of claiming AI timing that is not on screen
+            if (s_jobTrack == trackId)
+            {
+                CancelJob();
+                if (Job.Peek() is { } j && j.TrackId == trackId) Job.Value = j with { Outcome = "stopped", Detail = doc.Provider ?? "" };
+            }
+            if (Track.Peek().TrackId != trackId || Track.Peek().Reason != SkipReason.AlreadyWordByWord)
+                Track.Value = new TrackStatus(trackId, TrackPhase.Skipped, SkipReason.AlreadyWordByWord, Rules.LanguageOf(doc), 0, doc.Lines.Count, 0, false);
+            return;
+        }
         if (s_lastPublished.TryGetValue(trackId, out var last) && doc is not null && last.Lines.Count == doc.Lines.Count)
         {
-            Lyrics.Store.Upgrade(last);                                            // a provider pass overwrote ours: re-layer
+            Lyrics.Store.Upgrade(last, prefersAi);                                 // a provider pass overwrote ours: re-layer
             return;
         }
         if (s_jobTrack == trackId) return;                                         // already working on it
@@ -443,21 +541,25 @@ public static partial class AiLyrics
         var reason = Rules.Eligibility(doc, id.Kind, track.Uri.Text.StartsWith("spotify:track:", StringComparison.Ordinal),
             track.DurationMs, Platform.Settings.Get(Platform.Keys.AiLyricsWordSync), Platform.Settings.Get(Platform.Keys.AiLyricsPlainText),
             st.Languages, saver, Platform.Settings.Get(Platform.Keys.AiLyricsOnBatterySaver), st.Phase);
+        if (reason == SkipReason.AlreadyWordByWord && prefersAi) reason = SkipReason.None;   // the user chose ours
         if (reason != SkipReason.None)
         {
+            if (Track.Peek().TrackId != trackId || Track.Peek().Reason != reason)
+                Log.Info("ai-lyrics", $"ai.skip track={trackId} reason={reason} provider={doc?.Provider} sync={doc?.Sync} tag={doc?.Language} language={(doc is null ? "" : Rules.LanguageOf(doc))}");
             Track.Value = new TrackStatus(trackId, TrackPhase.Skipped, reason, doc is null ? "" : Rules.LanguageOf(doc), 0, doc?.Lines.Count ?? 0, 0, false);
             return;
         }
         string language = Rules.LanguageOf(doc!);
         s_jobTrack = trackId;
         Track.Value = new TrackStatus(trackId, TrackPhase.Working, SkipReason.None, language, 0, doc!.Lines.Count, 0, false);
+        Job.Value = new JobInfo(trackId, language, doc.Lines.Count, 0, track.DurationMs / 1000.0, 0, 0, 0, 0, false, ResultPathOf(trackId), "working", "");
         s_worker ??= new Worker();
-        s_worker.Start(new JobRequest(trackId, track.Uri.Text, track.DurationMs, doc, language));
+        s_worker.Start(new JobRequest(trackId, track.Uri.Text, track.DurationMs, doc, language, prefersAi));
     }
 
     // ══ the worker thread ═════════════════════════════════════════════════════════════════════════════════════════
 
-    sealed record JobRequest(string TrackId, string Uri, long DurationMs, Lyrics.Doc Source, string Language);
+    sealed record JobRequest(string TrackId, string Uri, long DurationMs, Lyrics.Doc Source, string Language, bool OverrideProvider);
 
     sealed class Worker
     {
@@ -584,7 +686,7 @@ public static partial class AiLyrics
                     && Results.Overlay(cached, req.Source, hash) is { } overlay)
                 {
                     Log.Info("ai-lyrics", $"ai.results.hit track={req.TrackId}");
-                    Publish(req, overlay, new JobProgress(req.Source.Lines.Count, req.Source.Lines.Count, 0, true), fromCache: true);
+                    Publish(req, overlay, new JobProgress(req.Source.Lines.Count, req.Source.Lines.Count, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0);
                     return;
                 }
             }
@@ -592,7 +694,7 @@ public static partial class AiLyrics
 
             if (_models is null || !_models.Aligners.TryGetValue(req.Language, out var aligner))
             {
-                s_post(() => Skip(req.TrackId, SkipReason.LanguageNotInstalled));
+                s_post(() => Skip(req.TrackId, SkipReason.LanguageNotInstalled, "language " + req.Language + " not installed"));
                 return;
             }
             var sw = Stopwatch.StartNew();
@@ -600,33 +702,41 @@ public static partial class AiLyrics
             if (pcm is null)
             {
                 Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=audio fault={fault}");
-                s_post(() => Skip(req.TrackId, SkipReason.AudioUnavailable));
+                s_post(() => Skip(req.TrackId, SkipReason.AudioUnavailable, "audio: " + fault));
                 return;
             }
             Log.Info("ai-lyrics", $"ai.job.start track={req.TrackId} language={req.Language} lines={req.Source.Lines.Count}");
             try
             {
                 var job = new TrackJob(req.Source, req.Language, _models.Separator, aligner, pcm, PlayheadSeconds);
-                var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false), ct);
+                var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds), ct);
                 Directory.CreateDirectory(ResultsDir);
                 string tmp = resultPath + ".tmp";
                 File.WriteAllText(tmp, Results.Encode(final, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
                 File.Move(tmp, resultPath, overwrite: true);
                 Log.Info("ai-lyrics", $"ai.job.done track={req.TrackId} ms={sw.ElapsedMilliseconds} separate={job.SeparateSeconds:0.0}s align={job.AlignSeconds:0.0}s");
             }
-            catch (OperationCanceledException) { Log.Info("ai-lyrics", $"ai.job.cancel track={req.TrackId}"); }
+            catch (OperationCanceledException)
+            {
+                Log.Info("ai-lyrics", $"ai.job.cancel track={req.TrackId}");
+                s_post(() => { if (Job.Peek() is { Outcome: "working" } j && j.TrackId == req.TrackId) Job.Value = j with { Outcome = "cancelled" }; });
+            }
             catch (Exception ex)
             {
                 Log.Warn("ai-lyrics", $"ai.job.failed track={req.TrackId}", ex);
-                s_post(() => Skip(req.TrackId, SkipReason.Failed));
+                s_post(() => Skip(req.TrackId, SkipReason.Failed, ex.GetType().Name + ": " + ex.Message));
             }
         }
 
-        static void Publish(JobRequest req, Lyrics.Doc doc, JobProgress p, bool fromCache)
+        static void Publish(JobRequest req, Lyrics.Doc doc, JobProgress p, bool fromCache, double separate, double align, long elapsedMs)
         {
-            Lyrics.Store.Upgrade(doc);
+            Lyrics.Store.Upgrade(doc, req.OverrideProvider);
             s_post(() =>
             {
+                if (Job.Peek() is not { } j0 || j0.TrackId != req.TrackId || j0.Outcome is "working" or "done" or "cached")
+                    Job.Value = new JobInfo(req.TrackId, req.Language, p.LineCount, p.LinesReady, req.DurationMs / 1000.0, p.ProcessedSeconds,
+                        separate, align, elapsedMs, fromCache, ResultPathOf(req.TrackId),
+                        fromCache ? "cached" : p.Final ? "done" : "working", "");
                 s_lastPublished[req.TrackId] = doc;
                 if (s_lastPublished.Count > 32) s_lastPublished.Remove(s_lastPublished.Keys.First());
                 if (Track.Peek().TrackId != req.TrackId && Track.Peek().TrackId.Length > 0) return;
@@ -636,8 +746,9 @@ public static partial class AiLyrics
             });
         }
 
-        static void Skip(string trackId, SkipReason reason)
+        static void Skip(string trackId, SkipReason reason, string detail)
         {
+            if (Job.Peek() is { } j && j.TrackId == trackId) Job.Value = j with { Outcome = reason == SkipReason.Failed ? "failed" : "skipped", Detail = detail };
             if (s_jobTrack == trackId) { s_jobTrack = ""; s_lastJobEndMs = Environment.TickCount64; }
             if (Track.Peek().TrackId == trackId)
                 Track.Value = Track.Peek() with { Phase = TrackPhase.Skipped, Reason = reason };

@@ -43,7 +43,7 @@ public static partial class AiLyrics
             public Vocab(Dictionary<string, int> ids)
             {
                 _ids = ids;
-                Blank = ids.TryGetValue("<pad>", out int b) ? b : 0;
+                Blank = ids.TryGetValue("<pad>", out int b) || ids.TryGetValue("[PAD]", out b) ? b : 0;   // [PAD]: the Korean model's blank (1204)
                 Separator = ids["|"];
                 Classes = ids.Values.Max() + 1;
                 Upper = ids.ContainsKey("E");
@@ -61,7 +61,8 @@ public static partial class AiLyrics
             /// accent, then dropped. Empty when nothing is left (digits, symbols).</summary>
             public void Tokens(string word, List<int> into)
             {
-                string w = (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'');
+                // NFC first: lyrics can carry decomposed Hangul (jamo) or decomposed accents; the vocabularies are composed
+                string w = (Upper ? word.ToUpperInvariant() : word.ToLowerInvariant()).Replace('’', '\'').Normalize(System.Text.NormalizationForm.FormC);
                 foreach (char c in w)
                 {
                     string ch = c.ToString();

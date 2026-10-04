@@ -420,6 +420,8 @@ public static partial class Settings
         {
             "en" => Loc.Get(AiS.Lang.En),
             "es" => Loc.Get(AiS.Lang.Es),
+            "nl" => Loc.Get(AiS.Lang.Nl),
+            "ko" => Loc.Get(AiS.Lang.Ko),
             _ => lang.ToUpperInvariant(),
         };
 
@@ -439,6 +441,8 @@ public static partial class Settings
             var order = new List<string>(langs.Count);
             if (langs.ContainsKey("en")) order.Add("en");
             if (langs.ContainsKey("es")) order.Add("es");
+            if (langs.ContainsKey("nl")) order.Add("nl");
+            if (langs.ContainsKey("ko")) order.Add("ko");
             var rest = new List<string>();
             foreach (var key in langs.Keys)
                 if (!AiContains(order, key)) rest.Add(key.ToLowerInvariant());

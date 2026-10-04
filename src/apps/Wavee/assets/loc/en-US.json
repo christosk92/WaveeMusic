@@ -1231,6 +1231,8 @@
         "lang": {
           "en": "English",
           "es": "Spanish",
+          "nl": "Dutch",
+          "ko": "Korean",
           "installed": "Installed",
           "download": "Download",
           "remove": "Remove"
@@ -3368,7 +3370,31 @@
       "referenceConsensus": "Reference: consensus of {sources}",
       "referenceNone": "No reference",
       "matchLine": "Match: {detail}",
-      "rerankLine": "Rerank: {detail}"
+      "rerankLine": "Rerank: {detail}",
+      "ai": {
+        "$comment": "The Providers tab's first card: the on-device AI word timing for this track (Screens/Diagnostics.UI.cs AiCard, decided by Diagnostics.LyricsReport.AiLineOf).",
+        "title": "On-device AI",
+        "setup": "setup: {phase}",
+        "working": "Working — {ready}/{total} lines, timed through {processed}s of {duration}s",
+        "onScreen": "On screen — word timing generated on this PC",
+        "cached": "On screen — replayed from the saved result",
+        "outranked": "Not used — people-made word timing from {provider} outranks it",
+        "replaced": "Not on screen — the lyrics shown now come from {provider}",
+        "skipped": "Skipped — {reason}",
+        "failed": "Failed — {detail}",
+        "cancelled": "Cancelled — the job stopped before it finished",
+        "waiting": "Waiting for this track's lyrics",
+        "idle": "No AI timing for this track yet",
+        "off": "Off — turn it on in Settings › Lyrics",
+        "notReady": "Not ready — finish the setup in Settings › Lyrics",
+        "meta": "separate {separate}s · align {align}s · total {total}s · language {language} · pack v{pack}",
+        "npu": "NPU {name} · driver {driver}",
+        "result": "Saved result {path} · {size}",
+        "resultNone": "No saved result — {path}",
+        "resultChecking": "Saved result {path} · checking…",
+        "timeAgain": "Time again",
+        "openFolder": "Open folder"
+      }
     },
     "runtime": {
       "noSessionTitle": "No playback session yet",
@@ -3645,11 +3671,13 @@
       "header": {
         "on": "Words timed on this PC by AI",
         "working": "Timing words on your NPU…",
+        "workingOverride": "Timing words on your NPU instead of using the provider's timing. Click to go back.",
+        "overriding": "Words timed on this PC by AI instead of the provider's timing. Click to go back.",
         "waiting": "Waiting for lyrics…",
         "setup": "AI lyrics need setup. Click to finish.",
         "skipped": {
           "noLyrics": "No lyrics to time",
-          "alreadyWordByWord": "This song already has word timing",
+          "alreadyWordByWord": "A lyrics provider has word timing for this song. Click to time it with AI instead.",
           "language": "No model for this language is installed. Click to download one.",
           "plainOff": "These lyrics have no timing. Turn on \"Time lyrics that have no timing\" to align them.",
           "wordSyncOff": "Word-by-word upgrades are off in Settings.",
@@ -3662,7 +3690,7 @@
       },
       "footer": {
         "generated": "Word timing generated on this PC by AI. It can be off by a moment.",
-        "working": "Timing words on your NPU…"
+        "progress": "Timing words · {ready} of {total} lines"
       }
     },
     "inspector": {

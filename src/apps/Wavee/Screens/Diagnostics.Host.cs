@@ -586,7 +586,8 @@ public static partial class Diagnostics
     /// the final document as TSVs — into <c>logs\lyrics-evidence\&lt;utc&gt;-&lt;track&gt;</c> and return the folder. Null
     /// with an empty <paramref name="error"/> when there is nothing to write; null with the reason when the disk refused.
     /// Never throws. BLOCKING I/O: the inspector calls it through Task.Run and posts the answer back.</summary>
-    public static string? SaveLyricsBundle(string trackId, Lyrics.SearchReport? report, Lyrics.Inspection? insp, out string error)
+    public static string? SaveLyricsBundle(string trackId, Lyrics.SearchReport? report, Lyrics.Inspection? insp, out string error,
+        LyricsReport.AiFacts? ai = null)
     {
         error = "";
         if (report is null && insp is null) return null;
@@ -594,7 +595,7 @@ public static partial class Diagnostics
         {
             string folder = Path.Combine(Platform.LogFolder, "lyrics-evidence", LyricsReport.BundleFolderName(trackId, DateTime.UtcNow));
             Directory.CreateDirectory(folder);
-            File.WriteAllText(Path.Combine(folder, "report.txt"), LyricsReport.BuildReport(trackId, report, insp), s_lyricsBundleUtf8);
+            File.WriteAllText(Path.Combine(folder, "report.txt"), LyricsReport.BuildReport(trackId, report, insp, ai), s_lyricsBundleUtf8);
             if (insp is not null)
             {
                 var seen = new Dictionary<string, int>(StringComparer.Ordinal);
