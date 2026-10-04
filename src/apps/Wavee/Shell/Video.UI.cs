@@ -512,7 +512,7 @@ public static partial class Video
                 float fw = natural.Width * k, fh = natural.Height * k;
                 fitted = new RectF(r.X + (r.W - fw) * 0.5f, r.Y + (r.H - fh) * 0.5f, fw, fh);
             }
-            SizeI content = VideoStreamSizing.ContentSizeFor(natural, fitted, s);
+            SizeI content = VideoStreamSizing.BucketedSizeFor(natural, fitted, s, default);   // the bucket the session requests for this rect (F071)
             Log.Info(State.LogCategory, $"[video.mount] owner={host.Identity} placement={PlacementCore.Resolve(State.Surface.Peek())} " +
                 $"tier={Playback.Video.MountTier(source)} natural={natural.Width}x{natural.Height} content={content.Width}x{content.Height} " +
                 $"dev=({fitted.X * s:0},{fitted.Y * s:0},{fitted.W * s:0},{fitted.H * s:0}) box=({r.X * s:0},{r.Y * s:0},{r.W * s:0},{r.H * s:0}) " +
