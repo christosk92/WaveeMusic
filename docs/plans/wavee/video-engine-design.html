@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FluentGpu Video Engine Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a single technical-manual column with a fixed side index on wide screens; numbered sections because the manual is read in order. */
+:root{
+  --bg:#f3f5f6; --paper:#ffffff; --ink:#15202b; --muted:#5a6773; --rule:#d5dde3;
+  --accent:#0b6e75; --accent-soft:#dcefef;
+  --done:#1f7a46; --done-bg:#e1f2e7; --prog:#9a5b00; --prog-bg:#fbefd9; --plan:#566170; --plan-bg:#e7ebef;
+  --warn:#a23b2a;
+  --f-display:"Archivo","Segoe UI",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f161c; --paper:#151e26; --ink:#e3e9ee; --muted:#9aa7b2; --rule:#2a3843;
+  --accent:#4fc0c6; --accent-soft:#16343a;
+  --done:#5fcf8c; --done-bg:#16301f; --prog:#f0b357; --prog-bg:#3a2b12; --plan:#a6b1bc; --plan-bg:#24303a; --warn:#ef8a78; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f161c; --paper:#151e26; --ink:#e3e9ee; --muted:#9aa7b2; --rule:#2a3843;
+  --accent:#4fc0c6; --accent-soft:#16343a;
+  --done:#5fcf8c; --done-bg:#16301f; --prog:#f0b357; --prog-bg:#3a2b12; --plan:#a6b1bc; --plan-bg:#24303a; --warn:#ef8a78; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;padding-inline:16px;padding-block:0 64px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:220px minmax(0,1fr);gap:40px}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)} nav.toc{display:none}}
+header.doc{grid-column:1/-1;padding-block:40px 24px;border-bottom:2px solid var(--ink)}
+.docid{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(28px,4vw,42px);line-height:1.1;margin:8px 0 12px;text-wrap:balance}
+.lede{max-width:68ch;color:var(--muted);margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-family:var(--f-mono);font-size:12.5px;color:var(--muted)}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 24px);align-self:start;padding-top:28px;font-size:13.5px}
+nav.toc ol{list-style:none;margin:0;padding:0;display:grid;gap:6px;counter-reset:t}
+nav.toc a{color:var(--muted);text-decoration:none;display:flex;gap:8px}
+nav.toc a:hover,nav.toc a:focus-visible{color:var(--accent)}
+nav.toc .n{font-family:var(--f-mono);font-size:12px;min-width:2.2em;color:var(--accent)}
+main{min-width:0}
+section{padding-block:28px 8px;border-bottom:1px solid var(--rule)}
+h2{font-family:var(--f-display);font-weight:700;font-size:24px;margin:0 0 4px;display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;text-wrap:balance}
+h2 .n{font-family:var(--f-mono);font-size:15px;color:var(--accent);font-weight:600}
+h3{font-family:var(--f-display);font-weight:700;font-size:17px;margin:22px 0 6px}
+p,li{max-width:72ch}
+p{margin:8px 0}
+ul,ol{padding-left:22px;margin:8px 0}
+li{margin:3px 0}
+code{font-family:var(--f-mono);font-size:.86em;background:var(--accent-soft);padding:1px 5px;border-radius:3px;overflow-wrap:anywhere}
+.chip{font-family:var(--f-mono);font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.done{color:var(--done);background:var(--done-bg)} .prog{color:var(--prog);background:var(--prog-bg)} .plan{color:var(--plan);background:var(--plan-bg)}
+.note{border-left:3px solid var(--accent);background:var(--paper);padding:10px 14px;margin:14px 0;max-width:72ch}
+.warning{border-left:3px solid var(--warn);background:var(--paper);padding:10px 14px;margin:14px 0;max-width:72ch}
+.warning b,.note b{font-family:var(--f-display);letter-spacing:.04em;text-transform:uppercase;font-size:12.5px}
+.fig{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:16px;margin:16px 0;overflow-x:auto}
+.fig figcaption{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-top:8px}
+pre.mermaid{margin:0;background:transparent;text-align:center}
+.tbl{overflow-x:auto;margin:14px 0}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--paper)}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--rule)}
+th{font-family:var(--f-display);font-weight:700;font-size:13px;letter-spacing:.03em;border-bottom:2px solid var(--ink)}
+td.mono,.mono{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.grid2>div{min-width:0}
+.stat{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.stat div{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:10px 14px;min-width:140px}
+.stat b{display:block;font-family:var(--f-display);font-size:26px;font-variant-numeric:tabular-nums}
+.stat span{font-size:12.5px;color:var(--muted)}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>document.addEventListener("DOMContentLoaded",()=>mermaid.initialize({startOnLoad:true,theme:matchMedia("(prefers-color-scheme: dark)").matches?"dark":"default"}));</script>
+</head>
+<body>
+
+<div class="wrap">
+<header class="doc">
+  <div class="docid">FGPU-VID-SDD-001 | System design description | Written in ASD-STE100</div>
+  <h1>FluentGpu video and DRM playback engine</h1>
+  <p class="lede">This document gives the technical design of the video engine in FluentGpu and its use in Wavee. It shows the threads, the frame paths, the composition tree, the window topology and the playback state. It also shows which parts of the design are complete and which parts are not complete.</p>
+  <div class="meta"><span>Status date: 2026-10-04</span><span>Branch: fix/video-audit (not committed)</span><span>Source audit: 164 confirmed findings</span></div>
+</header>
+
+<nav class="toc" aria-label="Contents"><ol>
+  <li><a href="#s1"><span class="n">1</span>Scope and status</a></li>
+  <li><a href="#s2"><span class="n">2</span>System overview</a></li>
+  <li><a href="#s3"><span class="n">3</span>Thread model</a></li>
+  <li><a href="#s4"><span class="n">4</span>Clear video path</a></li>
+  <li><a href="#s5"><span class="n">5</span>Protected video path</a></li>
+  <li><a href="#s6"><span class="n">6</span>Composition tree</a></li>
+  <li><a href="#s7"><span class="n">7</span>Hole and picture sync</a></li>
+  <li><a href="#s8"><span class="n">8</span>Pop-out window topology</a></li>
+  <li><a href="#s9"><span class="n">9</span>Readiness and control plane</a></li>
+  <li><a href="#s10"><span class="n">10</span>Switch procedure</a></li>
+  <li><a href="#s11"><span class="n">11</span>Adaptive bitrate</a></li>
+  <li><a href="#s12"><span class="n">12</span>Recovery and lifetime</a></li>
+  <li><a href="#s13"><span class="n">13</span>Frame production policy</a></li>
+  <li><a href="#s14"><span class="n">14</span>Diagnostics</a></li>
+  <li><a href="#s15"><span class="n">15</span>Change process</a></li>
+</ol></nav>
+
+<main>
+
+<section id="s1">
+  <h2><span class="n">1</span>Scope and status</h2>
+  <p>This document applies to the video subsystem of the FluentGpu engine and to the video code in the Wavee app. It does not apply to audio playback. It does not apply to PlayPlay, which is the audio DRM.</p>
+  <p>An audit found 164 defects in this subsystem. A team of agents now changes the code in four parallel lanes. Then a serial phase does the changes that cross more than one lane.</p>
+  <div class="stat">
+    <div><b>164</b><span>confirmed findings</span></div>
+    <div><b>62</b><span>work packages</span></div>
+    <div><b>~31</b><span>packages reviewed and staged</span></div>
+    <div><b>0</b><span>builds so far</span></div>
+  </div>
+  <div class="warning"><b>Warning</b><p>The staged code is not compiled and not tested. The owner decided to do one build at the end. Do not use the "implemented" status as proof that the code works. The final build and the test suites give that proof.</p></div>
+  <p>Each section has a status chip:</p>
+  <ul>
+    <li><span class="chip done">Implemented</span> The code is written and an Opus reviewer approved it. The code is staged in a lane worktree.</li>
+    <li><span class="chip prog">In progress</span> Some packages are complete. Other packages in the same area are not complete.</li>
+    <li><span class="chip plan">Planned</span> The design is approved. The code is not written yet.</li>
+  </ul>
+</section>
+
+<section id="s2">
+  <h2><span class="n">2</span>System overview <span class="chip prog">In progress</span></h2>
+  <p>Wavee is one process. The engine has no separate video process. The pop-out window is a second engine host in the same process.</p>
+  <p>Media Foundation decodes the video. It writes the frames into its own swapchain. The engine does not copy the frames. DirectComposition (DComp) shows that swapchain below the UI. The UI cuts a transparent hole where the picture must show.</p>
+  <figure class="fig">
+<pre class="mermaid">
+flowchart LR
+  subgraph NET["Network"]
+    CDN["Spotify CDN<br/>DASH segments"]
+    LIC["License relay"]
+  end
+  subgraph PROC["Wavee.exe (one process)"]
+    direction LR
+    APP["Wavee app<br/>Playback.Video"]
+    MP["MediaPlayer<br/>engine facade"]
+    CLR["Clear engine<br/>IMFMediaEngineEx"]
+    PRT["Protected runtime<br/>native DLL"]
+    REG["VideoSurfaceRegistry"]
+    UI["UI thread<br/>AppHost x2"]
+    RT["Render thread<br/>D3D12 + DComp"]
+  end
+  PMP["mfpmp.exe<br/>protected pipeline"]
+  DWM["DWM compositor"]
+  CDN --> PRT
+  LIC --> PRT
+  APP --> MP
+  MP --> CLR
+  MP --> PRT
+  PRT <--> PMP
+  CLR -- "DComp surface handle" --> REG
+  PRT -- "DComp surface handle" --> REG
+  UI -- "placement intent" --> REG
+  REG --> RT
+  UI -- "scene frame" --> RT
+  RT -- "UI swapchain + video visuals" --> DWM
+</pre>
+    <figcaption>Figure 1. Main components and data flow.</figcaption>
+  </figure>
+  <p>All Spotify video uses PlayReady. Thus the protected path is the usual path in Wavee. The clear path plays local files and module video.</p>
+</section>
+
+<section id="s3">
+  <h2><span class="n">3</span>Thread model <span class="chip done">Implemented</span></h2>
+  <p>The table gives each thread, its owner and its work. The rule is: one owner per resource. Other threads send messages to the owner. They do not call the resource directly.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Thread</th><th>Owns</th><th>Work</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr><td>UI thread</td><td>Both AppHosts, the component trees, the registry intent store</td><td>Win32 messages, reconcile, layout, scene record, video pumps (phase 7.2)</td><td class="mono">Normal</td></tr>
+      <tr><td><code>fgpu-render</code></td><td>D3D12 queue, all swapchains, the one DComp device, all video presenters</td><td>Submit, present, video placement drain, DComp commit</td><td class="mono">AboveNormal <span class="chip plan">Planned</span></td></tr>
+      <tr><td>VideoMediaEngine</td><td>One IMFMediaEngineEx, its D3D11 device and DXGI manager</td><td>Commands in, snapshots out (seqlock)</td><td class="mono">Normal</td></tr>
+      <tr><td>Protected runtime (native)</td><td>CDM, PMP host, the shared protected engine, the license table</td><td>Attach, engine events, license updates</td><td class="mono">Normal</td></tr>
+      <tr><td>Feeder (native, one per session)</td><td>One SegmentStore</td><td>HTTP GET of init and media segments</td><td class="mono">Normal</td></tr>
+      <tr><td>Wavee load worker</td><td>The load queue</td><td>Plan and run Rebuild, Switch or Seek</td><td class="mono">Pool</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note"><b>Note</b><p>Before the fix, a detached child host wrote process-wide statics such as <code>HostDispatch.Current</code>. It set them to null when it closed. Now a child host does not write process-wide statics. The child also unmounts its component tree when it closes (F104, F112, F105).</p></div>
+  <p>The command queue of the clear engine is now safe for many writers (F203). The Wavee load worker does not write player state. It sends each write to the UI thread (F185).</p>
+</section>
+
+<section id="s4">
+  <h2><span class="n">4</span>Clear video path <span class="chip prog">In progress</span></h2>
+  <p>The clear engine uses Media Foundation in windowless swapchain mode. The engine thread asks for the swapchain handle after the metadata loads. It publishes the handle in a snapshot. The UI thread reads the snapshot during a pump.</p>
+  <figure class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant W as Wavee worker
+  participant MP as MediaPlayer
+  participant E as Engine thread
+  participant MF as Media Foundation
+  participant UI as UI thread
+  participant R as Render thread
+  W->>MP: OpenAsync(url, generation g)
+  MP->>E: Detach old source, then SetSource(url)
+  E->>MF: SetSource
+  MF-->>E: LOADEDMETADATA
+  E->>E: GetVideoSwapchainHandle
+  MF-->>E: First frame of source g
+  E-->>UI: Snapshot (handle, epoch, first frame g)
+  UI->>UI: Pump: read hole rect, check readiness
+  UI->>R: Placement intent (rect, handle, visible)
+  R->>R: Bind handle, place visual, Commit
+</pre>
+    <figcaption>Figure 2. Clear video open and first frame.</figcaption>
+  </figure>
+  <h3>Rules</h3>
+  <ul>
+    <li>The engine does not mark a source as live when <code>GetDuration</code> returns NaN (F052).</li>
+    <li>The engine sets <code>SetDefaultPlaybackRate</code> and <code>SetPlaybackRate</code> together (F068).</li>
+    <li>The player clears the surface, natural size and position at each open (F122).</li>
+    <li>The player publishes the surface only on the first frame of the current source (F159).</li>
+    <li>Each open has a generation number. The player discards a session from an older generation (F141).</li>
+  </ul>
+  <p><span class="chip plan">Planned</span> All clear engines will share one D3D11 video device and one DXGI manager for each adapter (F067). The engine will dispose a faulted engine outside its lock (F062).</p>
+</section>
+
+<section id="s5">
+  <h2><span class="n">5</span>Protected video path <span class="chip prog">In progress</span></h2>
+  <p>The native DLL <code>FluentGpu.PlayReady.Native.dll</code> holds one runtime for each process. The runtime has one protected media engine. Each source is a session with a custom media source and a feeder thread.</p>
+  <figure class="fig">
+<pre class="mermaid">
+flowchart TB
+  subgraph RT["Runtime (one per process)"]
+    Q["Runtime thread + work queue"]
+    CDM["CDM + PMP host"]
+    ENG["Protected IMFMediaEngine<br/>windowless swapchain"]
+    LT["License table<br/>KID-keyed, 8 slots"]
+  end
+  subgraph S["Session (one per source)"]
+    F["Feeder thread"]
+    ST["SegmentStore<br/>time and byte window"]
+    SRC["CencMediaSource<br/>CENC fMP4 demux"]
+  end
+  CDN["CDN"] --> F --> ST --> SRC
+  SRC -- "cenc://fluentgpu/id" --> ENG
+  CDM <--> PMP["mfpmp.exe"]
+  ENG --> CDM
+  LT --> CDM
+  ENG -- "surface handle" --> MAN["Managed ProtectedVideoSession"]
+</pre>
+    <figcaption>Figure 3. Protected runtime and one session.</figcaption>
+  </figure>
+  <h3>Open sequence after the fixes</h3>
+  <ol>
+    <li>The session starts the feeder when it is created. The feeder does not wait for the CDM (F217).</li>
+    <li>The runtime sets the start position before Play. It does not do a correction seek after CANPLAY (F222, partial).</li>
+    <li>The runtime does not run the ITA preflight on the first attach (F038).</li>
+    <li>The runtime always sets the default playback rate for each session (F033).</li>
+    <li>The engine reports FORMATCHANGE as a size change only. It does not resize the swapchain again (F003, F199).</li>
+    <li>The session hides its surface until the first frame of this attach. It hides the surface again on detach (F020, F267).</li>
+  </ol>
+  <h3>Segment store</h3>
+  <ul>
+    <li>A seek to a position that is not in the buffer flushes the store. The next sample is a keyframe (F034).</li>
+    <li>The store trims history only at a keyframe boundary (F046).</li>
+    <li>The byte cap and the time window use one consistent rule (F040).</li>
+    <li>A transient GET failure causes a retry with backoff. It does not end the track (F035).</li>
+    <li>WAITING and STALLED events set the state to buffering (F030).</li>
+  </ul>
+  <p><span class="chip plan">Planned</span> Attach replaces the source directly (F015). The runtime does not join the feeder on its own thread (F017). Native events go through a ring buffer, not through direct managed calls (F014, F192). The source sends a complete H.264 media type (F261, F028).</p>
+</section>
+
+<section id="s6">
+  <h2><span class="n">6</span>Composition tree <span class="chip done">Implemented</span></h2>
+  <p>Each window has one DComp target. The UI swapchain visual is on top. Video visuals are below it. The UI erases a hole with a DestOut operation. DWM shows the video through the hole.</p>
+  <figure class="fig">
+<pre class="mermaid">
+flowchart TB
+  ROOT["Window root visual"]
+  UIV["UI swapchain visual<br/>(top, premultiplied alpha)"]
+  SLOT["Video slot n"]
+  CLIP["Clip parent<br/>device-space rect, rounded clip<br/>no transform"]
+  BLK["Black backing<br/>opaque, same clip"]
+  CON["Content visual<br/>scale = rect / content<br/>LINEAR filter, HARD border"]
+  ROOT --> SLOT
+  ROOT --> UIV
+  SLOT --> CLIP
+  CLIP --> BLK
+  CLIP --> CON
+</pre>
+    <figcaption>Figure 4. Visual tree for one window. Children render in list order: the slot first, then the UI on top.</figcaption>
+  </figure>
+  <h3>Pixel rule R</h3>
+  <p>The DComp rect and the erase rect use the same rounding rule. Round X, Y, Right and Bottom independently to the nearest device pixel. Use <code>MidpointRounding.AwayFromZero</code>. Thus the hole edge and the picture edge are on the same pixel (F073, F078, F088).</p>
+  <h3>Other rules</h3>
+  <ul>
+    <li>The clip is in device space. It is not in the scaled content space (F088).</li>
+    <li>The black backing stops Mica and the desktop from showing through gaps (F086).</li>
+    <li>The engine hides a slot with a real remove. It does not use an empty clip (F081).</li>
+    <li>The erase honours the opacity and the corner radii of the element (F078).</li>
+    <li>On device loss, the engine disposes each presenter before it releases the DComp device (F075).</li>
+  </ul>
+</section>
+
+<section id="s7">
+  <h2><span class="n">7</span>Hole and picture sync <span class="chip prog">In progress</span></h2>
+  <p>The ghost on DRM video has one main cause. The hole is in the UI swapchain. The picture is a DComp visual. Before the fix, the two moved on two paths. They became visible in different DWM frames.</p>
+  <div class="grid2">
+    <figure class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  participant UI as UI thread
+  participant REG as Registry
+  participant R as Render thread
+  participant D as DWM
+  UI->>R: Frame N (hole at new rect)
+  UI->>REG: Placement N+1 (live write)
+  R->>D: Present frame N
+  R->>REG: Read live placement
+  R->>D: Commit placement N+1
+  Note over D: Hole N and picture N+1<br/>in one composition = ghost
+</pre>
+      <figcaption>Figure 5a. Before: two clocks.</figcaption>
+    </figure>
+    <figure class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  participant UI as UI thread
+  participant R as Render thread
+  participant D as DWM
+  UI->>R: Frame N + VideoPresentIntent[N]
+  R->>R: Apply intent N to visuals
+  R->>D: Present frame N
+  R->>D: One Commit for frame N
+  Note over D: Hole N and picture N<br/>in one composition
+</pre>
+      <figcaption>Figure 5b. Target: one frame, one commit.</figcaption>
+    </figure>
+  </div>
+  <p><span class="chip done">Implemented</span> On the settle frame after a resize, the render thread drains the video placement before Present and DwmFlush (F101).</p>
+  <p><span class="chip plan">Planned</span> The published render frame will carry an immutable array of video intents (X-02, F070, F183). The render thread will be the only reader. It will apply the intents for the parent and all children. Then it will do one Commit for each turn (X-01, F080, F208).</p>
+</section>
+
+<section id="s8">
+  <h2><span class="n">8</span>Pop-out window topology <span class="chip prog">In progress</span></h2>
+  <p>The pop-out window is a detached child host. It runs on the UI thread of the main window. Its frames present on the same render thread. The fixes make sure that one window does not wait for the other window.</p>
+  <figure class="fig">
+<pre class="mermaid">
+flowchart TB
+  T["Render turn starts<br/>(vsync tick or wake)"] --> P{"Park requested?"}
+  P -- yes --> PK["Stop at once<br/>(interruptible wait)"]
+  P -- no --> M["Parent: wait own latency credit"]
+  M --> MS["Parent: submit + present<br/>own swapchain"]
+  MS --> VD["Drain video placements"]
+  VD --> C{"Child frame ready<br/>and child slot free?"}
+  C -- no --> SK["Skip child this turn<br/>(no blocking wait)"]
+  C -- yes --> CS["Child: composite into<br/>CHILD swapchain"]
+  CS --> CP["Present DO_NOT_WAIT"]
+  CP --> E["Turn ends"]
+  SK --> E
+</pre>
+    <figcaption>Figure 6. One render turn with a pop-out window.</figcaption>
+  </figure>
+  <h3>Rules</h3>
+  <ul>
+    <li><span class="chip done">Implemented</span> The child composites into its own swapchain. Before the fix, it wrote into the main back buffer and used the main latency credit. This caused 1000 ms timeouts (F090).</li>
+    <li><span class="chip done">Implemented</span> Each host has its own tile range. The tiles of one window cannot overwrite the tiles of the other window (F229).</li>
+    <li><span class="chip done">Implemented</span> Each swapchain holds its own latency credit. A credit clears only when a Present runs. A cloaked pop-out counts as parked (F107).</li>
+    <li><span class="chip done">Implemented</span> A park request interrupts the slot wait. The UI thread does not wait for a full render turn (F207).</li>
+    <li><span class="chip done">Implemented</span> Pacing, catch-up and the present ledger are per target. Only parent motion marks the parent tick as presented (F094, F097).</li>
+    <li><span class="chip done">Implemented</span> The child produces a frame only on the display tick. A secondary present does not block (F106; F085 partial, needs a measurement).</li>
+    <li><span class="chip plan">Planned</span> The engine creates the child window hidden. It shows the window after the first present and the first video bind (F115, F110). Close waits only for the fences of that target (F117).</li>
+    <li><span class="chip plan">Planned</span> A modal move or size of the pop-out does not stop the main frame loop (F093).</li>
+  </ul>
+</section>
+
+<section id="s9">
+  <h2><span class="n">9</span>Readiness and control plane <span class="chip prog">In progress</span></h2>
+  <p>Readiness tells the element when it can show the picture and remove the poster. Before the fix, readiness was one bit for the whole player. The bit did not reset on a switch. Thus the last frame of the previous video showed through the hole.</p>
+  <figure class="fig">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Opening: OpenAsync (generation g)
+  Opening --> Bound: Handle bound for source g
+  Bound --> Ready: First frame of source g
+  Ready --> Opening: Switch (reset size, surface, position)
+  Ready --> Hidden: Detach / element inactive
+  Hidden --> Ready: Element active, viewport not empty
+  Opening --> Faulted: Error
+  Faulted --> Opening: In-place retry (retryable)
+</pre>
+    <figcaption>Figure 7. Readiness state for one slot.</figcaption>
+  </figure>
+  <p>The element shows the picture only when all these conditions are true:</p>
+  <ol>
+    <li>The session is ready for the current source.</li>
+    <li>This slot has a visual with a bound handle.</li>
+    <li>The element is active.</li>
+    <li>The viewport is not empty.</li>
+    <li>The content is not audio only.</li>
+  </ol>
+  <p>The element writes the visibility last. The session does not set the visibility itself (F074, F130, F076).</p>
+  <p><span class="chip done">Implemented</span> The element reads <code>Buffering</code>, <code>ActiveCue</code> and the area bounds only in the leaves that need them (F123, F124, F134). Geometry-only pumps skip the full session publish (F120).</p>
+  <p><span class="chip plan">Planned</span> State, position, duration, errors and DRM phase will advance in the player, not in the element (X-04, F132). Then the playhead does not freeze when no element is mounted.</p>
+</section>
+
+<section id="s10">
+  <h2><span class="n">10</span>Switch procedure <span class="chip done">Implemented</span></h2>
+  <p>Wavee now keeps one MediaPlayer for the life of the process. A change between audio and video is a switch on the live engine. It is not a rebuild (F152, F190).</p>
+  <figure class="fig">
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant W as Wavee worker
+  participant A as Audio player
+  participant V as Video MediaPlayer
+  participant E as Shared engine
+  U->>W: Turn video on (same track)
+  W->>W: New pump epoch, cancel older loads
+  W->>V: OpenAsync(video, token)
+  V->>E: SetSource on live engine
+  Note over A: Audio keeps playing (park)
+  E-->>V: First frame
+  V-->>W: Ready
+  W->>A: Cut audio at video position
+  Note over V: Picture and sound continue
+</pre>
+    <figcaption>Figure 8. Park-and-cut hand-off from audio to video.</figcaption>
+  </figure>
+  <h3>Rules</h3>
+  <ul>
+    <li>Each load has a cancellation token. A newer load cancels the older load before it opens (F155).</li>
+    <li>A late prepare from an old request cannot remove the prepare of a new request (F160).</li>
+    <li>A retryable fault on a live player causes an in-place retry. It does not cause a rebuild (F163).</li>
+    <li>The Switch path sees open failures (F157).</li>
+    <li>The main presenter stays mounted under immersive lyrics and during a pop-out hand-off (F168, F180).</li>
+    <li>The warm keeper warms the runtime only when a video row plays and the user used video in this session (F165, F218, F225).</li>
+    <li>A prepared session expires from its last use, not from its creation (F007).</li>
+  </ul>
+</section>
+
+<section id="s11">
+  <h2><span class="n">11</span>Adaptive bitrate <span class="chip done">Implemented</span></h2>
+  <p>The ABR controller selects a representation (a rung) for the protected stream. Before the fix, a cap change selected rung 0. Each switch also deleted the buffer.</p>
+  <figure class="fig">
+<pre class="mermaid">
+flowchart TB
+  S["Throughput sample<br/>(duration-weighted EWMA)"] --> C["Effective cap =<br/>min(policy cap, settled viewport cap)"]
+  C --> B["Best rung under cap"]
+  B --> P{"Switch pending?"}
+  P -- yes --> N["No decision"]
+  P -- no --> I{"Min switch interval<br/>passed?"}
+  I -- no --> N
+  I -- yes --> D{"Downswitch?"}
+  D -- no --> UPS["Upswitch: append at buffer end"]
+  D -- yes --> G{"Forward buffer > 25 s?"}
+  G -- yes --> N
+  G -- no --> X{"Buffer < 10 s?"}
+  X -- yes --> T["Emergency: truncate near playhead"]
+  X -- no --> DN["Downswitch: append at buffer end"]
+</pre>
+    <figcaption>Figure 9. ABR decision for one sample.</figcaption>
+  </figure>
+  <ul>
+    <li>The policy cap and the viewport cap are separate values. <code>MaxHeight</code> stays as a compatible property (F149).</li>
+    <li>The viewport cap applies only after the geometry settles (F140, F175).</li>
+    <li>The controller resets for each new source (F149).</li>
+    <li>A small slice has less weight than a full segment (F150).</li>
+  </ul>
+</section>
+
+<section id="s12">
+  <h2><span class="n">12</span>Recovery and lifetime <span class="chip prog">In progress</span></h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Event</th><th>Engine action</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>GPU device lost</td><td>Dispose presenters, rebuild visuals, bind again</td><td><span class="chip done">Implemented</span></td></tr>
+      <tr><td>Hardware DRM context reset</td><td>Mark runtime poisoned, rebuild runtime, retry in place</td><td><span class="chip done">Implemented</span></td></tr>
+      <tr><td>Idle teardown races a new session</td><td>New session rescues the runtime</td><td><span class="chip done">Implemented</span></td></tr>
+      <tr><td>Protected device adapter</td><td>Use the LUID of the renderer adapter</td><td><span class="chip done">Implemented</span></td></tr>
+      <tr><td>Key status changes</td><td>Map all eight statuses, evict dead rows</td><td><span class="chip prog">In progress</span></td></tr>
+      <tr><td>D3D11 device removed (clear)</td><td>Mark engine faulted</td><td><span class="chip plan">Planned</span></td></tr>
+      <tr><td>Swapchain handle per source</td><td>Own the NT handle and close it</td><td><span class="chip plan">Planned</span></td></tr>
+      <tr><td>Notify CCW release</td><td>Free only at refcount zero</td><td><span class="chip plan">Planned</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s13">
+  <h2><span class="n">13</span>Frame production policy <span class="chip plan">Planned</span></h2>
+  <p>Steady UI work also loads the GPU that the video uses. On the owner's Adreno X1-85 at 120 Hz, the lyrics stepper alone causes about 115 presents per second.</p>
+  <ul>
+    <li>The engine will apply a central cadence cap. On a weak GPU, loops run at 30 Hz or less (F245).</li>
+    <li>An inactive or covered window will throttle all autonomous wakes (F241, F118).</li>
+    <li>Marquees will move in whole pixels at about 30 Hz (F239).</li>
+    <li>The governor threshold will be a fraction of the display period (F250).</li>
+    <li>The lyrics stepper, the equalizer and the seek rail will run only when they are visible (F237, F240, F182).</li>
+  </ul>
+</section>
+
+<section id="s14">
+  <h2><span class="n">14</span>Diagnostics <span class="chip plan">Planned</span></h2>
+  <p>The audit found that the old logs pointed at the wrong stages. For example, the license took about 140 ms, not 2 s. The new diagnostics measure each stage.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Signal</th><th>Content</th><th>Target value</th></tr></thead>
+    <tbody>
+      <tr><td class="mono">[video] switch.budget</td><td>Bring-up, license, init, SetSource, CANPLAY, first frame</td><td>Warm &lt; 700 ms, cold &lt; 1.5 s</td></tr>
+      <tr><td class="mono">frames rendered / dropped</td><td>MF GetStatistics every 500 ms</td><td>Dropped &lt; 1%</td></tr>
+      <tr><td class="mono">render.pace (split)</td><td>Submit, fence, present, latency wait, video drain, child wait</td><td>0 slot timeouts</td></tr>
+      <tr><td class="mono">pop-out cost</td><td>Gesture to first child present and first bind</td><td>&lt; 150 ms</td></tr>
+      <tr><td class="mono">placement delta</td><td>Hole rect minus placed rect, per frame</td><td>0 outside motion start</td></tr>
+    </tbody>
+  </table></div>
+  <p>One A/B test decides the ghost cause. Play a clear local MP4 and a DRM video at the same pop-out size. If both show a ghost, the cause is the compositing path, not the DRM (F259).</p>
+</section>
+
+<section id="s15">
+  <h2><span class="n">15</span>Change process <span class="chip prog">In progress</span></h2>
+  <figure class="fig">
+<pre class="mermaid">
+flowchart LR
+  A["Audit<br/>164 findings"] --> P["Opus planner<br/>62 packages"]
+  P --> L1["Lane L1<br/>host, present, pop-out"]
+  P --> L2["Lane L2<br/>engine media"]
+  P --> L3["Lane L3<br/>PlayReady DRM"]
+  P --> L4["Lane L4<br/>Wavee app"]
+  L1 --> M["Merge into<br/>integration tree"]
+  L2 --> M
+  L3 --> M
+  L4 --> M
+  M --> X["Cross packages<br/>X-01 to X-10, serial"]
+  X --> B["One final build<br/>Debug + Release, all tests"]
+  B --> F["Fix until green"]
+</pre>
+    <figcaption>Figure 10. How the change is made.</figcaption>
+  </figure>
+  <p>For each package, do these steps:</p>
+  <ol>
+    <li>A Sonnet 5.5 agent reads the finding specifications and changes the code.</li>
+    <li>An Opus 5.5 agent reviews the change. It also checks the code as a compiler would.</li>
+    <li>If the reviewer finds a problem, the Sonnet agent corrects it. This can occur two times.</li>
+    <li>The reviewer stages the approved change. Nothing is committed and nothing is pushed.</li>
+  </ol>
+  <div class="note"><b>Note</b><p>The work is in separate worktrees under <code>C:\wavee\vfix</code>. The owner's checkouts and the running Wavee are not changed.</p></div>
+</section>
+
+</main>
+</div>
+
+</body>
+</html>
