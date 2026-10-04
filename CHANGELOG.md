@@ -17,9 +17,11 @@ versions separately under `v*` and is not tracked in this file.)
   Orbit, Aurora and Timeline. Classics, after Winamp and Windows Media Player, has Classic, Warp, Tunnel, Ambience,
   Kaleido, Scope and Drift. Zune has Type, Mosaic and Spotlight, and iTunes has Magneto and Flow. Every face takes its
   colours from the cover, works in light and dark mode, and keeps moving from the song's own waveform when Spotify
-  Connect plays elsewhere. The gallery animates only the faces you can see.
+  Connect plays elsewhere. Press `[` and `]` to step through the faces and `G` to open the gallery; the gallery
+  animates only the previews you can see, and a preview you rest the pointer on comes to life.
 - **Change with the music.** Every eight bars, on the downbeat, the visualizer rotates the cover's colours with a short
-  cross-fade, and a returning chorus does the same. Turn it off in the gallery or in Settings > Appearance.
+  cross-fade, and a returning chorus does the same. A new song cross-fades to its own colours. Turn it off in the
+  gallery or in Settings > Appearance > "Change with the music".
 - **A new Artist pane in full screen.** The artist's photo fills the band, with monthly listeners and world rank, Follow
   and Go to artist. Below it: the full biography, a photo strip, this song's credits grouped by person, the five most
   popular songs, where people listen and related artists.
