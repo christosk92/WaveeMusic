@@ -566,7 +566,8 @@ public static partial class AiLyrics
         readonly BlockingCollection<Action> _queue = new();
         readonly Thread _thread;
         LoadedModels? _models;
-        string _loadedLanguages = "";
+        string _installedKey = "";
+        IReadOnlyList<string> _installed = [];
         CancellationTokenSource? _jobCts;
         volatile bool _loaded;
 
@@ -595,12 +596,25 @@ public static partial class AiLyrics
             _queue.Add(() => DoLoad(languages, key, reload));
         }
 
-        void DoLoad(IReadOnlyList<string> languages, string key, bool reload)
+        /// <summary>Every installed language is compiled once (setup), but only <paramref name="keep"/> stays loaded —
+        /// the first installed language at setup, then whatever language the playing song needs
+        /// (<see cref="EnsureLanguage"/>). Each loaded language holds its own NPU buffers.</summary>
+        void DoLoad(IReadOnlyList<string> languages, string key, bool reload, string? keep = null)
         {
-            if (_models is not null && !reload && key == _loadedLanguages) { s_post(() => SetReady()); return; }
+            if (_models is not null && !reload && key == _installedKey) { s_post(() => SetReady()); return; }
             _models?.Dispose(); _models = null; _loaded = false;
+            _installed = languages;
+            _installedKey = key;
+            string active = keep ?? (languages.Count > 0 ? languages[0] : "en");
+            var others = new List<string>();
+            foreach (var l in languages) if (l != active) others.Add(l);
             var graphs = new List<string> { Path.Combine(ModelsDir, "separator.onnx") };
-            foreach (var l in languages) foreach (var stg in Aligner.StageNames) graphs.Add(Path.Combine(ModelsDir, $"align-{l}.{stg}.onnx"));
+            foreach (var stg in Aligner.StageNames) graphs.Add(Path.Combine(ModelsDir, $"align-{active}.{stg}.onnx"));
+            foreach (var l in others) foreach (var stg in Aligner.StageNames)
+            {
+                string g = Path.Combine(ModelsDir, $"align-{l}.{stg}.onnx");
+                if (!File.Exists(LoadedModels.CtxPath(g))) graphs.Insert(0, g);   // compiled first, then released
+            }
             var weights = Rules.PrepareWeights(graphs, static p => File.Exists(p) ? new FileInfo(p).Length : 0);
             long weightTotal = 0; foreach (var w in weights) weightTotal += w;
             bool anyUncached = graphs.Exists(g => !File.Exists(LoadedModels.CtxPath(g)));
@@ -608,7 +622,7 @@ public static partial class AiLyrics
             var sw = Stopwatch.StartNew();
             try
             {
-                _models = LoadedModels.Load(RuntimeDir, ModelsDir, languages, (done, total, cached) =>
+                _models = LoadedModels.Load(RuntimeDir, ModelsDir, [active], (done, total, cached) =>
                 {
                     if (!anyUncached) return;
                     long wd = 0; for (int i = 0; i < done && i < weights.Length; i++) wd += weights[i];
@@ -617,10 +631,9 @@ public static partial class AiLyrics
                         if (Current.Peek().Phase == SetupPhase.Preparing)
                             Current.Value = Current.Peek() with { Prepare = new PrepareProgress(done, total, wd, weightTotal, false, false) };
                     });
-                }, CancellationToken.None);
-                _loadedLanguages = key;
+                }, CancellationToken.None, others);
                 _loaded = true;
-                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} graphs={graphs.Count} ort={_models.Ort.Version} compiled={anyUncached}");
+                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={active} installed={key} graphs={graphs.Count} ort={_models.Ort.Version} compiled={anyUncached}");
                 s_post(() =>
                 {
                     bool wasPreparing = Current.Peek().Phase == SetupPhase.Preparing;
@@ -655,9 +668,23 @@ public static partial class AiLyrics
             Current.Value = st with { Phase = SetupPhase.Ready, Error = SetupError.None, ErrorDetail = "" };
         }
 
+        /// <summary>On the worker: make sure the aligner for <paramref name="language"/> is the loaded one (about 1.5 s
+        /// from the compiled cache when it is not). False when the language is not installed.</summary>
+        bool EnsureLanguage(string language)
+        {
+            if (_models is not null && _models.Aligners.ContainsKey(language)) return true;
+            if (!_installed.Contains(language)) return false;
+            var sw = Stopwatch.StartNew();
+            _models?.Dispose(); _models = null; _loaded = false;
+            _models = LoadedModels.Load(RuntimeDir, ModelsDir, [language], null, CancellationToken.None);
+            _loaded = true;
+            Log.Info("ai-lyrics", $"ai.models.switch active={language} ms={sw.ElapsedMilliseconds}");
+            return true;
+        }
+
         public void Unload() => _queue.Add(() =>
         {
-            _models?.Dispose(); _models = null; _loaded = false; _loadedLanguages = "";
+            _models?.Dispose(); _models = null; _loaded = false; _installedKey = "";
             Log.Info("ai-lyrics", "ai.models.unloaded");
         });
 
@@ -686,13 +713,20 @@ public static partial class AiLyrics
                     && Results.Overlay(cached, req.Source, hash) is { } overlay)
                 {
                     Log.Info("ai-lyrics", $"ai.results.hit track={req.TrackId}");
-                    Publish(req, overlay, new JobProgress(req.Source.Lines.Count, req.Source.Lines.Count, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0);
+                    Publish(req, overlay, new JobProgress(req.Source.Lines.Count, req.Source.Lines.Count, req.DurationMs / 1000.0, true), fromCache: true, 0, 0, 0, ct);
                     return;
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", "results read failed", ex); }
 
-            if (_models is null || !_models.Aligners.TryGetValue(req.Language, out var aligner))
+            bool have;
+            try { have = (_models is not null || _installed.Count > 0) && EnsureLanguage(req.Language); }
+            catch (Exception ex) when (ex is OrtException or IOException or UnauthorizedAccessException)
+            {
+                Log.Warn("ai-lyrics", $"ai.models.switch failed language={req.Language}", ex);
+                have = false;
+            }
+            if (!have || _models is null || !_models.Aligners.TryGetValue(req.Language, out var aligner))
             {
                 s_post(() => Skip(req.TrackId, SkipReason.LanguageNotInstalled, "language " + req.Language + " not installed"));
                 return;
@@ -709,7 +743,7 @@ public static partial class AiLyrics
             try
             {
                 var job = new TrackJob(req.Source, req.Language, _models.Separator, aligner, pcm, PlayheadSeconds);
-                var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds), ct);
+                var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct), ct);
                 Directory.CreateDirectory(ResultsDir);
                 string tmp = resultPath + ".tmp";
                 File.WriteAllText(tmp, Results.Encode(final, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
@@ -728,11 +762,16 @@ public static partial class AiLyrics
             }
         }
 
-        static void Publish(JobRequest req, Lyrics.Doc doc, JobProgress p, bool fromCache, double separate, double align, long elapsedMs)
+        static void Publish(JobRequest req, Lyrics.Doc doc, JobProgress p, bool fromCache, double separate, double align, long elapsedMs,
+            CancellationToken ct)
         {
+            if (ct.IsCancellationRequested) return;
             Lyrics.Store.Upgrade(doc, req.OverrideProvider);
             s_post(() =>
             {
+                // A progress post that was already queued when the job stopped (people-made word timing arrived, the
+                // track changed, the feature went off) must not bring "Timing words · x of y" back.
+                if (s_jobTrack != req.TrackId || ct.IsCancellationRequested) return;
                 if (Job.Peek() is not { } j0 || j0.TrackId != req.TrackId || j0.Outcome is "working" or "done" or "cached")
                     Job.Value = new JobInfo(req.TrackId, req.Language, p.LineCount, p.LinesReady, req.DurationMs / 1000.0, p.ProcessedSeconds,
                         separate, align, elapsedMs, fromCache, ResultPathOf(req.TrackId),

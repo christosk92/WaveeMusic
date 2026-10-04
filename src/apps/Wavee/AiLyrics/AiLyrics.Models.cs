@@ -119,8 +119,11 @@ public static partial class AiLyrics
         /// <summary>Loads ONNX Runtime and the QNN provider from <paramref name="runtimeDir"/>, then one session per
         /// graph from <paramref name="modelsDir"/>. <paramref name="preparing"/>(done, total, cachedAlready) is called
         /// around each session: a graph without a compiled cache takes tens of seconds the first time.</summary>
+        /// <para><paramref name="compileOnly"/>: installed languages that are not needed now. A graph of theirs without a
+        /// compiled cache is compiled (the one-time step happens at setup, not when a song in that language plays) and
+        /// released at once: every loaded language holds its own NPU buffers.</para>
         public static LoadedModels Load(string runtimeDir, string modelsDir, IReadOnlyList<string> languages,
-            Action<int, int, bool>? preparing, CancellationToken ct)
+            Action<int, int, bool>? preparing, CancellationToken ct, IReadOnlyList<string>? compileOnly = null)
         {
             var ort = Ort.Load(runtimeDir);
             try
@@ -130,16 +133,31 @@ public static partial class AiLyrics
                 var graphs = new List<string> { Path.Combine(modelsDir, "separator.onnx") };
                 foreach (string lang in languages)
                     foreach (string st in Aligner.StageNames) graphs.Add(Path.Combine(modelsDir, $"align-{lang}.{st}.onnx"));
-                int done = 0;
+                var compile = new List<string>();
+                foreach (string lang in compileOnly ?? [])
+                    foreach (string st in Aligner.StageNames)
+                    {
+                        string g = Path.Combine(modelsDir, $"align-{lang}.{st}.onnx");
+                        if (!File.Exists(CtxPath(g))) compile.Add(g);
+                    }
+                int done = 0, total = graphs.Count + compile.Count;
+                foreach (string g in compile)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    preparing?.Invoke(done, total, false);
+                    Open(ort, g, separator: false).Dispose();                    // writes the cache; the session goes
+                    done++;
+                    preparing?.Invoke(done, total, false);
+                }
                 var sessions = new Dictionary<string, OrtSession>(StringComparer.OrdinalIgnoreCase);
                 foreach (string g in graphs)
                 {
                     ct.ThrowIfCancellationRequested();
                     bool cached = File.Exists(CtxPath(g));
-                    preparing?.Invoke(done, graphs.Count, cached);
+                    preparing?.Invoke(done, total, cached);
                     sessions[g] = Open(ort, g, g.EndsWith("separator.onnx", StringComparison.OrdinalIgnoreCase));
                     done++;
-                    preparing?.Invoke(done, graphs.Count, cached);
+                    preparing?.Invoke(done, total, cached);
                 }
                 var sep = new Separator(sessions[graphs[0]].WithNames("input", "output"));
                 var aligners = new Dictionary<string, Aligner>(StringComparer.OrdinalIgnoreCase);
