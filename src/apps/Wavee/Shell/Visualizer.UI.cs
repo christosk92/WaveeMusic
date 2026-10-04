@@ -268,7 +268,13 @@ public static partial class Visualizer
 
         static void Set(FloatSignal s, float v) { if (v != s.Peek()) s.Value = v; }
         static float Q(float v, float q) => MathF.Round(v / q) * q;
-        static void Copy(float[] src, SeriesSource dst) { src.AsSpan().CopyTo(dst.Buffer); dst.Count = src.Length; dst.Publish(); }
+        /// <summary>Bit-identical samples publish NOTHING: Horizon's window steps only when the playhead crosses a waveform
+        /// sample, so most ticks refill the same values, and a version bump re-records every bound SeriesEl for no pixel.</summary>
+        static void Copy(float[] src, SeriesSource dst)
+        {
+            if (dst.Count == src.Length && src.AsSpan().SequenceEqual(dst.Buffer.AsSpan(0, src.Length))) return;
+            src.AsSpan().CopyTo(dst.Buffer); dst.Count = src.Length; dst.Publish();
+        }
     }
 
     // ══ 3. THE FACES ═════════════════════════════════════════════════════════════════════════════════════════════════
@@ -311,7 +317,11 @@ public static partial class Visualizer
         }
         return new BoxEl
         {
-            Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false,
+            // The four blobs drift every frame under the whole stage: a RepaintBoundary keeps that drift in this slice
+            // instead of re-rastering every stage tile (art, scrim, bars, caption) above and below it. They are pure
+            // radial gradients, so the slice rasters at a quarter of the window scale and is upsampled — the same look
+            // for 1/16 of the raster work, and no window-sized tiles held.
+            Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = true, RasterScale = 0.25f,
             Opacity = opacity ?? (Prop<float>)slab.FaceFieldOp,
             Children = [Canvas.Create(spec.W, spec.H, kids)],
         };
@@ -614,9 +624,11 @@ public static partial class Visualizer
 
     /// <summary>The clipped box a face fills; <c>Canvas.Create</c> takes the children list directly (IReadOnlyList&lt;CanvasChild&gt;,
     /// Canvas.cs:16) — no wrapper record (V-U2). Named FaceFrame: <see cref="Frame"/> is the model's output record.</summary>
+    /// A face animates every frame while the content under and over it (backdrop art, scrim, caption, panels) stays still,
+    /// so it is a RepaintBoundary: its motion re-rasters only its own slice, never the tiles of the stage around it.
     static Element FaceFrame(in FaceSpec spec, List<CanvasChild> kids) => new BoxEl
     {
-        Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false,
+        Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = true,
         Children = [Canvas.Create(spec.W, spec.H, kids)],
     };
 

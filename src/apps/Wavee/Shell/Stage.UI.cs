@@ -331,7 +331,10 @@ public static partial class Stage
                     // allocator's caption geometry (Layout.CaptionX/W/Bottom) — centred in the face's region, above the transport
                     Flow.Show(() => ModeRules.ShowsCaption(ctx.Mode.Value, ctx.LyricsOverlay.Value, ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane), Layer with
                     {
-                        Key = "stage:caption", HitTestVisible = false, HitTestPassThrough = false,
+                        // The caption animates every frame (its clock is per-frame) over the still scrim and art: a
+                        // RepaintBoundary keeps that motion in its own slice (tiles over the text only) instead of re-
+                        // rastering the full-window root tiles under it on every frame.
+                        Key = "stage:caption", HitTestVisible = false, HitTestPassThrough = false, RepaintBoundary = true,
                         Enter = new EnterExit(Dy: 12f, Opacity: 0f, Active: true), Exit = fade, Transition = MotionTok.ControlNormal,
                         Children = [Embed.Comp(static () => new CaptionHost())],
                     }),

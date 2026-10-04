@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.1] - unreleased
+
+### Changed
+
+- **The fullscreen visualizer redraws only what moves.** The drifting background and the visualizer bars no longer
+  redraw the whole screen on every frame, the frosted panels stop re-blurring when nothing under them changed, and the
+  background is drawn at a quarter of the screen resolution (it is a soft gradient, so it looks the same). Before, every
+  frame of the visualizer redrew all of a 3440 x 1440 screen, which took about half of the GPU at 120 Hz on a
+  Snapdragon X laptop.
+
 ## [0.3.0] - 2026-10-02
 
 Crest is Wavee rebuilt from the ground up. Every page, the playback engine, Spotify Connect and the local library were
