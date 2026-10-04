@@ -54,5 +54,40 @@
     "license": "UNVERIFIED -- Microsoft-owned artwork; no licence located",
     "url": "https://github.com/Rise-Software/Rise-Media-Player",
     "note": "user accepted the redistribution risk on 2026-09-02"
+  },
+  {
+    "name": "ONNX Runtime",
+    "version": "1.30.0",
+    "license": "MIT",
+    "url": "https://github.com/microsoft/onnxruntime",
+    "note": "Runs the on-device AI lyrics models. Not bundled: downloaded from PyPI (onnxruntime win_arm64 wheel) only when the user turns the feature on. Copyright (c) Microsoft Corporation."
+  },
+  {
+    "name": "ONNX Runtime QNN execution provider / Qualcomm AI Engine Direct (QAIRT)",
+    "version": "2.6.0 (QAIRT 2.42)",
+    "license": "MIT (provider) and the Qualcomm license shipped in the package",
+    "url": "https://github.com/onnxruntime/onnxruntime-qnn",
+    "note": "Runs the models on the Qualcomm Hexagon NPU. Not bundled: downloaded from PyPI (onnxruntime-qnn win_arm64 wheel) at the user's request; the Qualcomm libraries keep their own license (Qualcomm_LICENSE.pdf in the wheel). VERIFY: QAIRT redistribution terms before bundling ever."
+  },
+  {
+    "name": "wav2vec2-large-960h-lv60-self",
+    "version": "facebook/wav2vec2-large-960h-lv60-self",
+    "license": "Apache-2.0",
+    "url": "https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self",
+    "note": "English letter recognizer for word timing, converted to five fp16 ONNX graphs (the first convolution rewritten as framing + MatMul). Downloaded from models.cproducts.dev at the user's request."
+  },
+  {
+    "name": "wav2vec2-large-xlsr-53-spanish",
+    "version": "jonatasgrosman/wav2vec2-large-xlsr-53-spanish",
+    "license": "Apache-2.0",
+    "url": "https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish",
+    "note": "Spanish letter recognizer for word timing, converted like the English one. Optional download."
+  },
+  {
+    "name": "MDX-Net Kim_Vocal_2 (Ultimate Vocal Remover model)",
+    "version": "Kim_Vocal_2",
+    "license": "MIT (via Ultimate Vocal Remover; VERIFY the model's own terms)",
+    "url": "https://github.com/TRvlvr/model_repo",
+    "note": "Vocal separator used before word timing, converted to fp16 ONNX. Downloaded from models.cproducts.dev at the user's request."
   }
 ]

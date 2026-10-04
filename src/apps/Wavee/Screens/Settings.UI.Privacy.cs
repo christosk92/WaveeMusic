@@ -64,7 +64,7 @@ public static partial class Settings
 
     // ══ 2. PRIVACY ════════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The collapsed answer is "No telemetry"; inside, the four places anything leaves this PC and why. Items
+    /// <summary>The collapsed answer is "No telemetry"; inside, the five places anything leaves this PC and why. Items
     /// carry no control — they are facts.</summary>
     static Element WhatLeavesExpander() => SettingsExpander.Create(new SettingsExpander.Options
     {
@@ -77,6 +77,7 @@ public static partial class Settings
             Item(Loc.Get(PvFacts.Spotify), Loc.Get(PvFacts.SpotifySub)),
             Item(Loc.Get(PvFacts.Lyrics), Loc.Get(PvFacts.LyricsSub)),
             Item(Loc.Get(PvFacts.Github), Loc.Get(PvFacts.GithubSub)),
+            Item(Loc.Get(PvFacts.AiModels), Loc.Get(PvFacts.AiModelsSub), icon: RowGlyph(Tab.PrivacyDiagnostics, "whatLeavesAi")),
             Item(Loc.Get(PvFacts.CrashService), Loc.Get(PvFacts.CrashServiceSub)),
         ],
         ItemsFooter = ExpanderFooter(FooterNote(Loc.Get(PvFacts.Footer))),

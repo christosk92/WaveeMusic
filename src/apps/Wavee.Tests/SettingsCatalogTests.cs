@@ -127,7 +127,7 @@ public class SettingsCatalogTests
         Assert.Equal(new[] { "Shield", "Warning", "Document", "Repair", "Code" },
             Settings.Catalog.Sections.Where(s => s.Tab == privacy).Select(s => s.Glyph).ToArray());
 
-        Assert.Equal(new[] { "whatLeaves", "crashReports", "crashDump", "crashContents", "crashService", "privacyPolicy" }, RowIds(privacy, "Privacy"));
+        Assert.Equal(new[] { "whatLeaves", "whatLeavesAi", "crashReports", "crashDump", "crashContents", "crashService", "privacyPolicy" }, RowIds(privacy, "Privacy"));
         Assert.Equal(new[] { "savedReports" }, RowIds(privacy, "Crash reports"));
         Assert.Equal(new[] { "logViewer", "detailLevel", "logFiles", "reportProblem" }, RowIds(privacy, "Logs"));
         Assert.Equal(new[] { "playbackRuntime", "connectDiagnostics", "realtimeCapture" }, RowIds(privacy, "Tools"));

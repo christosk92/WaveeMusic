@@ -1165,7 +1165,102 @@
     "lyrics": {
       "$comment": "The Lyrics GROUP eyebrow only. The rows it holds keep their historical settings.appearance.lyrics* keys — moving them would rename the generated Strings.Settings.Appearance.Lyrics* constants for no user-visible gain.",
       "title": "Lyrics",
-      "subtitle": "The reading surface for synced lyrics"
+      "subtitle": "The reading surface for synced lyrics",
+      "ai": {
+        "$comment": "On-device AI lyrics (AiLyrics; plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4-5). The Settings card under Appearance > Lyrics.",
+        "title": "Word-by-word lyrics with on-device AI",
+        "sub": "Times every word as it is sung. Runs on this PC's NPU; your music and lyrics stay on this PC.",
+        "unavailable": {
+          "arm64": "Needs a Copilot+ PC with a Snapdragon processor.",
+          "os": "Needs Windows 11, version 24H2 or later.",
+          "noNpu": "This PC has no NPU.",
+          "npuVendor": "Your NPU isn't supported yet. Snapdragon NPUs are supported today."
+        },
+        "setup": {
+          "title": "Download the AI models",
+          "sub": "One-time download of {size} from models.cproducts.dev and pypi.org. You can remove it later.",
+          "action": "Download"
+        },
+        "metered": {
+          "title": "You're on a metered connection",
+          "body": "This download is {size}. Download anyway?",
+          "confirm": "Download"
+        },
+        "downloading": {
+          "title": "Downloading {label}",
+          "metric": "{done} / {total} · {speed}/s"
+        },
+        "eta": {
+          "seconds": "{n} s left",
+          "minutes": "{n} min left",
+          "hours": "about {n} h left",
+          "unknown": "estimating…"
+        },
+        "checking": "Checking…",
+        "verifying": "Verifying…",
+        "installing": "Installing…",
+        "pause": "Pause",
+        "resume": "Resume",
+        "cancel": "Cancel",
+        "retry": "Try again",
+        "details": "Details",
+        "remove": "Remove…",
+        "openSettings": "Open settings",
+        "paused": {
+          "title": "Download paused",
+          "sub": "{done} of {total} downloaded. Wavee keeps what it already has."
+        },
+        "preparing": {
+          "title": "Optimizing for your NPU",
+          "sub": "One time: each model is compiled for this NPU. {done} of {total}",
+          "again": "Your NPU driver or runtime changed, so Wavee is optimizing the models again.",
+          "finishing": "Finishing this step…"
+        },
+        "ready": {
+          "title": "Ready",
+          "sub": "{npu} · driver {driver}"
+        },
+        "wordSync": "Word-by-word for line-synced lyrics",
+        "wordSyncSub": "Upgrade lyrics that are timed by line.",
+        "plainText": "Time lyrics that have no timing",
+        "plainTextSub": "Also align plain lyrics that arrive without timestamps.",
+        "batterySaver": "Keep running on battery saver",
+        "batterySaverSub": "Off: the AI pauses while Windows battery saver is on.",
+        "languages": "Languages",
+        "languagesSub": "One model per language, about {size} each.",
+        "lang": {
+          "en": "English",
+          "es": "Spanish",
+          "installed": "Installed",
+          "download": "Download",
+          "remove": "Remove"
+        },
+        "files": "Downloaded files",
+        "filesSub": "{size} on this PC",
+        "openFolder": "Open folder",
+        "removeConfirm": {
+          "title": "Remove the AI models?",
+          "body": "This frees {size}. Word-by-word lyrics stop until you download them again.",
+          "action": "Remove"
+        },
+        "removeDeferred": "Some files are in use and will be removed the next time Wavee starts.",
+        "toast": {
+          "ready": "AI lyrics are ready",
+          "failed": "AI lyrics setup failed: {reason}"
+        },
+        "error": {
+          "offline": "You're offline. Connect and try again.",
+          "network": "The connection dropped. Wavee kept what it already downloaded.",
+          "notFound": "The AI models aren't available for download right now.",
+          "hash": "A downloaded file was damaged and was removed. Try again.",
+          "diskFull": "Not enough free space for the AI models.",
+          "runtime": "The AI runtime couldn't start.",
+          "noNpuDevice": "The NPU driver didn't respond. Update your NPU driver and try again.",
+          "compile": "Couldn't prepare the models for your NPU.",
+          "unknown": "Something went wrong.",
+          "detail": "Details: {detail}"
+        }
+      }
     },
     "nowPlaying": {
       "$comment": "The Now playing GROUP eyebrow only (docs/plans/wavee/npv-player-styles-implementation.md). Its two rows keep the settings.appearance.npv* keys since they write the same WaveeSettings.Npv* prefs the header row and flyout do.",
@@ -1432,7 +1527,7 @@
         "title": "Privacy",
         "subtitle": "What leaves this PC, and the one thing you can opt into",
         "whatLeaves": "What leaves this PC",
-        "whatLeavesSub": "Spotify, lyrics providers and GitHub. Nothing else unless you send a report.",
+        "whatLeavesSub": "Spotify, lyrics providers, GitHub and, if you turn on AI lyrics, the model download. Nothing else unless you send a report.",
         "noTelemetry": "No telemetry",
         "spotify": "Spotify",
         "spotifySub": "Sign-in, catalogue, playlists, Connect and streaming — including the play events the official client sends, which keep Recently Played and your listening history working",
@@ -1440,6 +1535,8 @@
         "lyricsSub": "Only when a track has no Spotify lyrics: the title, artist and duration — never your account",
         "github": "GitHub",
         "githubSub": "Update checks and release notes, as plain anonymous downloads",
+        "aiModels": "AI model download",
+        "aiModelsSub": "Only when you turn on word-by-word lyrics with on-device AI: the model files from models.cproducts.dev and pypi.org. Your music and lyrics never leave this PC.",
         "crashService": "Wavee's crash service",
         "crashServiceSub": "crash.cproducts.dev — only when reports are on, or when you press Send on one",
         "footer": "Wavee has no analytics and no telemetry of its own.",
@@ -3543,6 +3640,31 @@
     "emptyFilter": "No matching logs"
   },
   "lyrics": {
+    "ai": {
+      "$comment": "On-device AI lyrics on the lyrics surfaces: the rail header sparkle's tooltip and the disclosure under the lyrics.",
+      "header": {
+        "on": "Words timed on this PC by AI",
+        "working": "Timing words on your NPU…",
+        "waiting": "Waiting for lyrics…",
+        "setup": "AI lyrics need setup. Click to finish.",
+        "skipped": {
+          "noLyrics": "No lyrics to time",
+          "alreadyWordByWord": "This song already has word timing",
+          "language": "No model for this language is installed. Click to download one.",
+          "plainOff": "These lyrics have no timing. Turn on \"Time lyrics that have no timing\" to align them.",
+          "wordSyncOff": "Word-by-word upgrades are off in Settings.",
+          "batterySaver": "Paused while battery saver is on",
+          "audio": "The song's audio isn't available for timing right now",
+          "failed": "Word timing failed for this song",
+          "podcast": "Not available for podcasts",
+          "tooLong": "Too long to time on this PC"
+        }
+      },
+      "footer": {
+        "generated": "Word timing generated on this PC by AI. It can be off by a moment.",
+        "working": "Timing words on your NPU…"
+      }
+    },
     "inspector": {
       "reportCopied": "Lyrics report copied",
       "evidenceSaved": "Lyrics evidence bundle saved",

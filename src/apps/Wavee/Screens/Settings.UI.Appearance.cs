@@ -1,8 +1,9 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
 // the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
 // row density + hide artwork, track list style, track page layout + the two rail rows) · Sidebar (the design picker's three
-// compact cards + "Customize sidebar") · Lyrics (blur) · Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset,
-// reduce motion — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
+// compact cards + "Customize sidebar") · Lyrics (blur, the on-device AI lyrics card) · Fullscreen (visualizer, sensitivity,
+// lyrics overlay, sync offset, reduce motion — the fullscreen stage's gallery settings, mirrored through `Prefs.Stage`) · Now
+// playing (hero*, player style)
 //
 // * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
@@ -132,11 +133,13 @@ public static partial class Settings
             Loc.Get(Strings.Settings.Sidebar.Subtitle)));
         kids.Add(Embed.Comp(static () => new SidebarDesignCard()));
 
-        // ONE row left in this section: the second line and the animated backdrop are no longer settings at all.
+        // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).
+        // The second line and the animated backdrop are no longer settings at all.
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
         kids.Add(Row(Loc.Get(Strings.Settings.Appearance.LyricsBlur), Loc.Get(Strings.Settings.Appearance.LyricsBlurSub),
             LyricsBlurControl(lyricsBlurAuto), RowGlyph(Tab.Appearance, "lyricsBlur")));
+        kids.Add(AiLyrics.SettingsCard());
 
         // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
         kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));

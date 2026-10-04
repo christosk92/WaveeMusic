@@ -25,11 +25,12 @@ public static partial class AiLyrics
         const float Compensate = 1.009f;
 
         readonly OrtSession _s;
-        readonly Dsp.Stft _stft = new(NFft, Hop);
+        // one STFT plan and scratch per channel: the two channels transform on two cores at once
+        readonly Dsp.Stft[] _stft = [new(NFft, Hop), new(NFft, Hop)];
         readonly float[] _input = new float[4 * DimF * DimT];
         float[] _output = new float[4 * DimF * DimT];
-        readonly float[] _re = new float[DimF * DimT], _im = new float[DimF * DimT];
-        readonly float[] _wave = new float[Window];
+        readonly float[][] _re = [new float[DimF * DimT], new float[DimF * DimT]], _im = [new float[DimF * DimT], new float[DimF * DimT]];
+        readonly float[][] _wave = [new float[Window], new float[Window]];
         static readonly long[] s_shape = [1, 4, DimF, DimT];
 
         public Separator(OrtSession session) { _s = session; }
@@ -37,26 +38,28 @@ public static partial class AiLyrics
         /// <summary>Separates one window. <paramref name="left"/>/<paramref name="right"/> are exactly
         /// <see cref="Window"/> samples; <paramref name="vocalsL"/>/<paramref name="vocalsR"/> receive
         /// <see cref="Block"/> samples (the window without its <see cref="Trim"/> edges).</summary>
-        public void Run(ReadOnlySpan<float> left, ReadOnlySpan<float> right, Span<float> vocalsL, Span<float> vocalsR)
+        public void Run(float[] left, float[] right, float[] vocalsL, float[] vocalsR)
         {
             int plane = DimF * DimT;
-            for (int c = 0; c < 2; c++)
+            Parallel.For(0, 2, c =>
             {
-                _stft.Forward(c == 0 ? left : right, _re, _im, DimF);
-                _re.AsSpan().CopyTo(_input.AsSpan((2 * c) * plane, plane));
-                _im.AsSpan().CopyTo(_input.AsSpan((2 * c + 1) * plane, plane));
-            }
-            for (int ch = 0; ch < 4; ch++) _input.AsSpan(ch * plane, 3 * DimT).Clear();   // the lowest three bins, as trained
+                _stft[c].Forward(c == 0 ? left : right, _re[c], _im[c], DimF);
+                _re[c].AsSpan().CopyTo(_input.AsSpan((2 * c) * plane, plane));
+                _im[c].AsSpan().CopyTo(_input.AsSpan((2 * c + 1) * plane, plane));
+                _input.AsSpan((2 * c) * plane, 3 * DimT).Clear();               // the lowest three bins, as trained
+                _input.AsSpan((2 * c + 1) * plane, 3 * DimT).Clear();
+            });
             _s.Run(_input, s_shape, ref _output);
-            for (int c = 0; c < 2; c++)
+            float[] output = _output;
+            Parallel.For(0, 2, c =>
             {
-                _output.AsSpan((2 * c) * plane, plane).CopyTo(_re);
-                _output.AsSpan((2 * c + 1) * plane, plane).CopyTo(_im);
-                _stft.Inverse(_re, _im, DimT, DimF, _wave);
+                output.AsSpan((2 * c) * plane, plane).CopyTo(_re[c]);
+                output.AsSpan((2 * c + 1) * plane, plane).CopyTo(_im[c]);
+                _stft[c].Inverse(_re[c], _im[c], DimT, DimF, _wave[c]);
                 var dst = c == 0 ? vocalsL : vocalsR;
-                var src = _wave.AsSpan(Trim, Block);
+                var src = _wave[c].AsSpan(Trim, Block);
                 for (int i = 0; i < Block; i++) dst[i] = src[i] * Compensate;
-            }
+            });
         }
 
         public void Dispose() => _s.Dispose();

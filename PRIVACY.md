@@ -24,6 +24,7 @@ out yourself:
 | Playback session & navigation history | `session.json` | So Wavee reopens where you left off. |
 | Local play log | under `%LOCALAPPDATA%\Wavee` | Powers the local "recently played" surfaces. |
 | Settings | Windows registry, `HKCU` | Typed keys only. |
+| On-device AI lyrics | `ai\lyrics\` | Only when you turn on word-by-word lyrics with on-device AI: the downloaded models and runtime, their compiled NPU caches, and the word timing of songs you played. Settings › Appearance › Lyrics removes them. |
 | Dealer WebSocket archive | off by default | A debugging capture of Spotify's push frames, enabled only in Settings › Privacy & diagnostics › Tools › Realtime capture. Local file. |
 
 ## What leaves your machine
@@ -46,6 +47,11 @@ Only these, and only to the parties named:
   same repository. It sends no identifiers; GitHub sees ordinary anonymous file downloads (your IP and user
   agent, as with any download).
 - **Spotify's image CDN**, to fetch album art.
+- **The AI model hosts**, only when you turn on word-by-word lyrics with on-device AI and confirm the
+  download: the model files from `models.cproducts.dev` (a Cloudflare R2 bucket the author runs) and the ONNX
+  Runtime and Qualcomm QNN runtime from `files.pythonhosted.org` (PyPI). These are anonymous file downloads.
+  The song and its lyrics are processed on this PC's NPU and are never uploaded; this feature does not use
+  Windows AI or Copilot services.
 - **Wavee's own crash-reporting service** at `https://crash.cproducts.dev` (below), and only when you have
   set crash reporting to Automatic, or when you press Send on a specific report by hand. Off by default;
   nothing is sent until you opt in.

@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.4.0] - unreleased
+
+### Added
+
+- **Word-by-word lyrics with on-device AI.** On a Copilot+ PC with a Snapdragon NPU, Settings › Appearance ›
+  Lyrics can download the AI models once (about 700 MB, English; Spanish optional). Wavee then times every word
+  of a song's line-synced lyrics on the NPU while the song plays, so the lyrics wipe word by word. The song and
+  its lyrics never leave the PC, and a ✦ in the lyrics header shows when the word timing is AI-generated. (#175)
+
 ## [0.3.0] - 2026-10-02
 
 Crest is Wavee rebuilt from the ground up. Every page, the playback engine, Spotify Connect and the local library were

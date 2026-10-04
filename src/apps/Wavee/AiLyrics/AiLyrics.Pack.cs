@@ -173,11 +173,16 @@ public static partial class AiLyrics
 
         public static long DownloadBytes(IReadOnlyList<PackFile> files) { long n = 0; foreach (var f in files) n += f.Bytes; return n; }
 
-        /// <summary>Downloads, verifies and installs <paramref name="files"/>. Throws <see cref="SetupException"/>.</summary>
-        public static async Task InstallAsync(IReadOnlyList<PackFile> files, string modelBase, Action<DownloadProgress> progress, CancellationToken ct)
+        /// <summary>Downloads, verifies and installs <paramref name="files"/>. Throws <see cref="SetupException"/>.
+        /// <paramref name="alreadyDone"/> is the bytes of the set that an earlier run already installed, so a resumed
+        /// download continues the bar from where it was instead of starting again from zero.</summary>
+        public static async Task InstallAsync(IReadOnlyList<PackFile> files, string modelBase, Action<DownloadProgress> progress, CancellationToken ct,
+            long alreadyDone = 0)
         {
             if (files.Count == 0) return;
-            progress(new DownloadProgress(DownloadPhase.Checking, 0, DownloadBytes(files), 0, ""));
+            // the user downloads again: a removal deferred by a loaded runtime DLL no longer applies
+            try { File.Delete(Path.Combine(Root, ".remove")); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            progress(new DownloadProgress(DownloadPhase.Checking, alreadyDone, alreadyDone + DownloadBytes(files), 0, ""));
             if (!NetworkInterface.GetIsNetworkAvailable()) throw new SetupException(SetupError.Offline, "no network");
             Directory.CreateDirectory(PartialDir); Directory.CreateDirectory(ModelsDir); Directory.CreateDirectory(RuntimeDir);
             long need = DiskNeed(files);
@@ -185,7 +190,7 @@ public static partial class AiLyrics
             if (drive.AvailableFreeSpace < need + need / 10)
                 throw new SetupException(SetupError.DiskFull, Rules.FormatBytes(need + need / 10) + "|" + drive.Name);
 
-            long total = DownloadBytes(files), doneBefore = 0;
+            long total = alreadyDone + DownloadBytes(files), doneBefore = alreadyDone;
             var meter = new Rules.SpeedMeter();
             foreach (var f in files)
             {
@@ -302,7 +307,13 @@ public static partial class AiLyrics
                     string dst = Path.Combine(RuntimeDir, Path.GetFileName(e.FullName));
                     string tmp = dst + ".tmp";
                     e.ExtractToFile(tmp, overwrite: true);
-                    File.Move(tmp, dst, overwrite: true);
+                    try { File.Move(tmp, dst, overwrite: true); }
+                    catch (IOException) when (File.Exists(dst) && new FileInfo(dst).Length == e.Length)
+                    {
+                        // a download again after a deferred remove: this runtime DLL is still loaded in this process,
+                        // and it is the same file (same wheel, same entry size), so the loaded copy stays
+                        File.Delete(tmp);
+                    }
                 }
             }
             File.Delete(partial);
