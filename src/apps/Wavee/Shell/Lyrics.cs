@@ -1155,6 +1155,12 @@ public static partial class Lyrics
     {
         /// <summary>A single-line row: line box + the two vertical pads (the inter-line gap is 2 × pad).</summary>
         public float Estimate => LineHeight + 2f * RowPad;
+
+        /// <summary>The type and its rhythm (size, line, pads) scaled by <paramref name="k"/> and rounded to whole DIPs —
+        /// the big-stage growth (<c>Stage.Layout.LyricsTypeScale</c>). The side gutter is a frame, not type: unchanged.
+        /// Exactly this row at <paramref name="k"/> = 1.</summary>
+        public RowMetrics Scaled(float k) => k == 1f ? this
+            : this with { FontSize = MathF.Round(FontSize * k), LineHeight = MathF.Round(LineHeight * k), RowPad = MathF.Round(RowPad * k) };
     }
 
     /// <summary>The fixed metrics of the two surfaces (the 340-DIP rail and the immersive stage) — one table, so the

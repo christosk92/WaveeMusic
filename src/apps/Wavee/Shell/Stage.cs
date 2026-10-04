@@ -77,7 +77,12 @@ public static partial class Stage
         public const float HairlineH = 3f;
         public const float SelectorItemW = 128f, SelectorIconOnlyW = 44f;
         public const float ThumbDesktop = 96f, ThumbSmall = 64f;
-        public const float HeroMin = 168f, HeroMax = 640f, SmallHeroMin = 96f, SmallHeroMax = 320f;
+        /// <summary>The hero's clamp. The ceiling was 640 — the 1920×1080 board's art plus a little — which left a big
+        /// monitor's stage mostly empty; it is now only a sanity bound, the per-class fractions do the sizing.</summary>
+        public const float HeroMin = 168f, HeroMax = 960f, SmallHeroMin = 96f, SmallHeroMax = 320f;
+        /// <summary>Ultrawide's hero share of W (was 0.21 — the prototype's — which tied a 2560×1080 stage's art to the
+        /// board's 536 while 1000+ DIP of pane sat empty beside short lyric lines).</summary>
+        public const float UltrawideHeroFrac = 0.26f;
         /// <summary>The art is quantised to this grid so a resize pixel re-renders nothing (the previous stage's rule, kept).</summary>
         public const float ArtQuantum = 4f;
 
@@ -116,9 +121,15 @@ public static partial class Stage
             {
                 case Aspect.Ultrawide:
                 {
-                    float hero = Math.Clamp(Q4(MathF.Min(0.21f * w, 0.82f * h - 340f)), HeroMin, HeroMax);
+                    // The height term is the REAL column budget, not the prototype's 0.82·H − 340 (which reserves a
+                    // two-line title the art then never gets): from the identity top to the transport gutter, minus the
+                    // title gap and a ONE-line title block. TitleMaxLines already drops a long title to one line when
+                    // two do not clear the transport, so the art may take that room.
+                    float identityTop = Q4(0.12f * h);
+                    float column = h - Pad - TransportDesktopH - Pad - identityTop - Pad - HeroTitleBlock1H;
+                    float hero = Math.Clamp(Q4(MathF.Min(UltrawideHeroFrac * w, column)), HeroMin, HeroMax);
                     float padX = Q4(0.05f * w);
-                    return new Layout(a, w, h, hero, ThumbDesktop, padX, Q4(0.12f * h),
+                    return new Layout(a, w, h, hero, ThumbDesktop, padX, identityTop,
                         PaneX: padX + hero + Q4(0.045f * w), PaneRight: Q4(0.04f * w), PaneTop: 88f, PaneBottom: 168f,
                         GalleryW: Q4(0.19f * w), GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottom), TransportH: TransportDesktopH,
                         ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: true, IconOnlySelector: false);
@@ -174,6 +185,10 @@ public static partial class Stage
         /// <summary>The titles column's rhythm (Hero: Gap XS between title · meta · chips; the chips row's top margin S and
         /// its 24-DIP chip) — what <see cref="TitleBlockH"/> adds up.</summary>
         public const float TitleGap = 4f, ChipsTop = 8f, ChipH = 24f;
+        /// <summary>The hero identity block with ONE title line on the wide classes (TitleLarge 52 · meta 24 · chips) —
+        /// <see cref="TitleBlockH"/>(Lyrics, 1) as a constant, so <see cref="Resolve"/> can budget the art before the
+        /// layout exists. A test pins the two.</summary>
+        public const float HeroTitleBlock1H = 52f + TitleGap + 24f + TitleGap + ChipsTop + ChipH;
         /// <summary>The identity block's height with <paramref name="lines"/> title lines: title · meta · (chips).</summary>
         public float TitleBlockH(Mode mode, int lines)
         {
@@ -283,6 +298,14 @@ public static partial class Stage
         public float FaceRight(bool galleryOpen) => galleryOpen && ShowGallery && Aspect != Aspect.Portrait ? GalleryW + 2f * Pad : 0f;
         /// <summary>The pane's width from its two edges; never negative.</summary>
         public float PaneW => MathF.Max(0f, W - PaneX - PaneRight);
+
+        /// <summary>The lyrics pane's type: the authored 36 DIP (<c>Lyrics.Surface.Timed(large: true)</c>) grown on a big
+        /// stage to min(4.6 % of H, the pane's width / 30), an even size, clamped 36–64. The board (1920×1080, a 1084-DIP
+        /// pane) stays at 36; a 2560×1080 ultrawide reads 50; a 1400-DIP-tall stage with a wide pane reaches 64.</summary>
+        public const float LyricsTypeMin = 36f, LyricsTypeMax = 64f;
+        public float LyricsTypeSize => Math.Clamp(MathF.Round(MathF.Min(0.046f * H, PaneW / 30f) * 0.5f) * 2f, LyricsTypeMin, LyricsTypeMax);
+        /// <summary><see cref="LyricsTypeSize"/> over the authored size — what the lyrics view scales its row metrics by.</summary>
+        public float LyricsTypeScale => LyricsTypeSize / LyricsTypeMin;
         public float PaneH => MathF.Max(0f, H - PaneTop - PaneBottom);
 
         /// <summary>Title type per aspect and mode: the hero reads TitleLarge 40/52, the thumb Subtitle 20/28; small

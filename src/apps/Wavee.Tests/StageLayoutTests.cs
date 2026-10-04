@@ -126,7 +126,8 @@ public class StageLayoutTests
     public void The_hero_is_the_prototypes_formula_quantised_and_clamped()
     {
         Assert.Equal(536f, L.Seed(1920f, 1080f).HeroArt);            // min(0.28·1920 = 537.6, 0.82·1080 − 340 = 545.6) → 536
-        Assert.Equal(640f, L.Seed(3440f, 1440f).HeroArt);            // Ultrawide 0.21·3440 = 722.4 → capped at HeroMax
+        Assert.Equal(892f, L.Seed(3440f, 1440f).HeroArt);            // Ultrawide min(0.26·3440 = 894.4, column 968) → 892
+        Assert.Equal(652f, L.Seed(2560f, 1080f).HeroArt);            // Ultrawide min(0.26·2560 = 665.6, column 652) — was 536
         Assert.Equal(248f, L.Seed(1280f, 720f).HeroArt);             // min(358.4, 0.82·720 − 340 = 250.4) = 250.4 → 248
         Assert.Equal(L.HeroMin, L.Seed(800f, 500f).HeroArt);         // a very short window → the floor (168)
         Assert.Equal(224f, L.Seed(900f, 1600f).HeroArt);             // Portrait: min(0.14·1600, 0.26·900) = 224
@@ -411,6 +412,47 @@ public class StageLayoutTests
                 var l = L.Seed(w, h);
                 if (l.TitleMaxLines(M.Lyrics) == 2)
                     Assert.True(l.TitleY(M.Lyrics) + l.TitleBlockH(M.Lyrics, 2) <= l.TransportTop - L.Pad, $"a two-line title reaches the transport at {w}×{h}");
+            }
+    }
+
+    [Fact]
+    public void Ultrawide_hero_takes_the_column_down_to_a_one_line_title_above_the_transport()
+    {
+        // The budget constant is the real block: TitleBlockH(Lyrics, 1) on a wide class.
+        Assert.Equal(L.HeroTitleBlock1H, L.Seed(2560f, 1080f).TitleBlockH(M.Lyrics, 1));
+
+        // 2560×1080 (a 5120×2160 panel at 200 %): the art grows from the board's 536 to 652 and the one-line block lands
+        // exactly on the transport gutter: 128 + 652 + 24 + 116 = 920 = 1080 − 24 − 112 − 24.
+        var uw = L.Seed(2560f, 1080f);
+        Assert.Equal(A.Ultrawide, uw.Aspect);
+        Assert.Equal(uw.TransportTop - L.Pad, uw.TitleY(M.Lyrics) + uw.TitleBlockH(M.Lyrics, 1));
+        Assert.Equal(1, uw.TitleMaxLines(M.Lyrics));                    // two would not clear the transport
+
+        // Everywhere the hero is above its floor, the one-line block clears the transport card.
+        for (float w = 1200f; w <= 6000f; w += 61f)
+            for (float h = 470f; h <= 2400f; h += 43f)
+            {
+                var l = L.Seed(w, h);
+                if (l.Aspect != A.Ultrawide || l.HeroArt <= L.HeroMin) continue;
+                Assert.True(l.TitleY(M.Lyrics) + l.TitleBlockH(M.Lyrics, 1) <= l.TransportTop - L.Pad, $"the one-line block reaches the transport at {w}×{h}");
+            }
+    }
+
+    [Fact]
+    public void Lyrics_type_grows_with_a_big_stage_and_keeps_the_board()
+    {
+        Assert.Equal(36f, L.Seed(1920f, 1080f).LyricsTypeSize);         // the board: a 1084 pane / 30 → 36, the authored size
+        Assert.Equal(1f, L.Seed(1920f, 1080f).LyricsTypeScale);
+        Assert.Equal(50f, L.Seed(2560f, 1080f).LyricsTypeSize);         // min(0.046·1080 = 49.7, 1568 / 30 = 52.3) → 50
+        Assert.Equal(64f, L.Seed(3440f, 1440f).LyricsTypeSize);         // min(0.046·1440 = 66.2, 2088 / 30 = 69.6) → the 64 ceiling
+        Assert.Equal(36f, L.Seed(1280f, 720f).LyricsTypeSize);          // small stages never shrink below the authored size
+
+        for (float w = 600f; w <= 6000f; w += 97f)
+            for (float h = 300f; h <= 2400f; h += 71f)
+            {
+                float s = L.Seed(w, h).LyricsTypeSize;
+                Assert.InRange(s, L.LyricsTypeMin, L.LyricsTypeMax);
+                Assert.Equal(0f, s % 2f);                                 // an even size, like the caption's
             }
     }
 

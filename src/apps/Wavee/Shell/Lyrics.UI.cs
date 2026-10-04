@@ -80,22 +80,36 @@ public static partial class Lyrics
     /// <paramref name="accent"/> is a mount-time signal INSTANCE (the slab's <c>Accent</c>, stable for the stage's life —
     /// the contract the Slider/ToggleSwitch signal instances follow): props freeze at mount, so only the signal's
     /// VALUE ever changes.</summary>
-    public static Element StagePane(IReadSignal<ColorF> accent) => new BoxEl
+    public static Element StagePane(IReadSignal<ColorF> accent) => Embed.Comp(() => new StageColumn(accent));
+
+    /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
+    /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it.
+    /// The view is KEYED by the type size, so a size step remounts it with fresh measured extents and run lengths (the
+    /// view freezes its metrics per mount) instead of re-flowing rows whose measurements were taken at the old size.</summary>
+    sealed class StageColumn(IReadSignal<ColorF> accent) : Component
     {
-        Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f,
-        // LEFT-ANCHORED, never centred: centring converted an over-wide pane into text pushed off-screen.
-        Justify = FlexJustify.Start, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(0f, 0f, StageColumnGutter, 0f),
-        Children =
-        [
-            new BoxEl
+        public override Element Render()
+        {
+            float scale = UseContext(Stage.StageContext)?.Layout.Value.LyricsTypeScale ?? 1f;
+            return new BoxEl
             {
-                // MEASURED, never predicted: the column grows into whatever the pane gives it, capped by MaxWidth.
-                Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, MaxWidth = StageColumnMaxW,
-                Children = [Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true)) with { Key = "lyrics:stage" }],
-            },
-        ],
-    };
+                Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f,
+                // LEFT-ANCHORED, never centred: centring converted an over-wide pane into text pushed off-screen.
+                Justify = FlexJustify.Start, AlignItems = FlexAlign.Stretch,
+                Padding = new Edges4(0f, 0f, StageColumnGutter, 0f),
+                Children =
+                [
+                    new BoxEl
+                    {
+                        // MEASURED, never predicted: the column grows into whatever the pane gives it, capped by MaxWidth.
+                        Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, MaxWidth = StageColumnMaxW * scale,
+                        Children = [Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: scale))
+                            with { Key = "lyrics:stage:" + ((int)MathF.Round(scale * Stage.Layout.LyricsTypeMin)).ToString(System.Globalization.CultureInfo.InvariantCulture) }],
+                    },
+                ],
+            };
+        }
+    }
 
     // MOUNT POINT (stage B contract)
     /// <summary>The now-playing panel's two-row lyrics reel. Absent — a bare zero-size box, no spine, no gap — unless
@@ -181,7 +195,10 @@ public static partial class Lyrics
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
-        internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast);
+        internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        /// <summary>The stage's type scale over the authored stage metrics (<see cref="Stage.Layout.LyricsTypeScale"/>,
+        /// frozen at mount — the stage re-keys the view on a step); 1 on the rail and the reader.</summary>
+        internal readonly float TypeScale;
         readonly float _band;
 
         readonly EntityId _readerEpisode;
@@ -195,10 +212,11 @@ public static partial class Lyrics
         // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
-            IReadSignal<ColorF>? accent = null, bool onStage = false)
+            IReadSignal<ColorF>? accent = null, bool onStage = false, float typeScale = 1f)
         {
             _readerEpisode = readerEpisode;
             Large = large;
+            TypeScale = typeScale > 0f && float.IsFinite(typeScale) ? typeScale : 1f;
             InkMode = new Ink(onMedia);
             Accent = accent;
             OnStage = onStage;
@@ -922,7 +940,7 @@ public static partial class Lyrics
         /// ellipsised — no highlight, no follow, no wipe, no blur ladder.</summary>
         Element UnsyncedContent(Doc doc)
         {
-            var m = Surface.Unsynced(Large, IsPodcast);
+            var m = Surface.Unsynced(Large, IsPodcast).Scaled(TypeScale);
             var ink = InkMode.Primary with { A = Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
             var rows = new Element[doc.Lines.Count];
             for (int i = 0; i < rows.Length; i++)
