@@ -303,7 +303,7 @@ public static partial class Visualizer
 
     /// <summary>Also the stage's always-on backdrop layer (Stage.UI.cs Backdrop): <paramref name="opacity"/> is the slab's
     /// Face/BaseFieldOp as a Prop.</summary>
-    public static Element FieldFace(Slab slab, in Palette pal, in FaceSpec spec, Prop<float>? opacity = null)
+    public static Element FieldFace(Slab slab, in Palette pal, in FaceSpec spec, Prop<float>? opacity = null, bool boundary = true)
     {
         float d = 1.1f * Max(in spec);
         var kids = new List<CanvasChild>(Field.Blobs);
@@ -320,8 +320,9 @@ public static partial class Visualizer
             // The four blobs drift every frame under the whole stage: a RepaintBoundary keeps that drift in this slice
             // instead of re-rastering every stage tile (art, scrim, bars, caption) above and below it. They are pure
             // radial gradients, so the slice rasters at a quarter of the window scale and is upsampled — the same look
-            // for 1/16 of the raster work, and no window-sized tiles held.
-            Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = true, RasterScale = 0.25f,
+            // for 1/16 of the raster work, and no window-sized tiles held. The stage's backdrop passes boundary: false: it draws
+            // the whole backdrop (floor, art, Field, scrim) in ONE quarter-scale boundary of its own.
+            Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = boundary, RasterScale = boundary ? 0.25f : 1f,
             Opacity = opacity ?? (Prop<float>)slab.FaceFieldOp,
             Children = [Canvas.Create(spec.W, spec.H, kids)],
         };
