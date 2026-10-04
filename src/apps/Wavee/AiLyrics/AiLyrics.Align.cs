@@ -68,13 +68,21 @@ public static partial class AiLyrics
                     string ch = c.ToString();
                     if (!_ids.ContainsKey(ch))
                     {
-                        string bare = StripAccent(ch);
+                        string bare = c is >= '가' and <= '힣' ? WithoutFinal(c) : StripAccent(ch);
                         if (!_ids.ContainsKey(bare)) continue;
                         ch = bare;
                     }
                     if (ch == "|") continue;
                     into.Add(_ids[ch]);
                 }
+            }
+
+            /// <summary>A Hangul syllable without its final consonant (랗 → 라, 꽉 → 꽈): the Korean model knows 1,202 of
+            /// the 11,172 syllables, and the open syllable is the nearest sound it has.</summary>
+            public static string WithoutFinal(char syllable)
+            {
+                int index = syllable - '가';
+                return ((char)('가' + index - index % 28)).ToString();
             }
 
             static string StripAccent(string s)

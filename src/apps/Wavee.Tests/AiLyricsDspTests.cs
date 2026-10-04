@@ -129,3 +129,36 @@ public class AiLyricsDspTests
         Assert.Equal(-20.0, env.At(50), 1);
     }
 }
+
+public class AiLyricsVocabTests
+{
+    static AiLyrics.Align.Vocab Korean() => new(new Dictionary<string, int>(StringComparer.Ordinal)
+        { ["|"] = 0, ["라"] = 1, ["사"] = 2, ["해"] = 3, ["[UNK]"] = 4, ["[PAD]"] = 5 });
+
+    [Fact]
+    public void The_korean_blank_is_pad()
+    {
+        var v = Korean();
+        Assert.Equal(5, v.Blank);
+        Assert.Equal(0, v.Separator);
+        Assert.Equal(6, v.Classes);
+    }
+
+    [Fact]
+    public void A_syllable_the_model_lacks_falls_back_to_its_open_syllable()
+    {
+        Assert.Equal("라", AiLyrics.Align.Vocab.WithoutFinal('랗'));
+        Assert.Equal("꽈", AiLyrics.Align.Vocab.WithoutFinal('꽉'));
+        var into = new List<int>();
+        Korean().Tokens("랗사해", into);                  // 랗 is unknown: 라
+        Assert.Equal([1, 2, 3], into);
+    }
+
+    [Fact]
+    public void Decomposed_hangul_is_composed_before_lookup()
+    {
+        var into = new List<int>();
+        Korean().Tokens("사랑해".Normalize(System.Text.NormalizationForm.FormD), into);   // 랑 → 라
+        Assert.Equal([2, 1, 3], into);
+    }
+}

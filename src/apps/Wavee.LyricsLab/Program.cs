@@ -17,11 +17,15 @@ static class Program
     {
         if (args.Length >= 2 && args[0] == "--check-lrc") return CheckLrc(args[1..]);
         if (args.Length >= 2 && args[0] == "--ai-mem") return AiMemory(args[1], args.Length >= 3 ? args[2] : "en");
-        string profile = Arg(args, "--profile"), outDir = Arg(args, "--out"), tracks = Arg(args, "--tracks");
+        if (args.Length >= 2 && args[0] == "--ai-bench") return AiBench(args[1], args.Length >= 3 ? args[2] : "en");
+        string profile = Arg(args, "--profile"), outDir = Arg(args, "--out"), tracks = Arg(args, "--tracks"), search = Arg(args, "--search");
+        string langArg = Arg(args, "--langs");
+        string[] langs = (langArg.Length > 0 ? langArg : "en,es").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         bool skipAudio = args.Contains("--no-audio");
-        if (!args.Contains("--headless") || profile.Length == 0 || outDir.Length == 0 || tracks.Length == 0)
+        if (!args.Contains("--headless") || profile.Length == 0 || (search.Length == 0 && (outDir.Length == 0 || tracks.Length == 0)))
         {
-            Console.Error.WriteLine("usage: Wavee.LyricsLab --headless --profile <scratch dir> --out <dir> --tracks id1,id2 [--no-audio] [--ai <ai dir>]");
+            Console.Error.WriteLine("usage: Wavee.LyricsLab --headless --profile <scratch dir> --out <dir> --tracks id1,id2 [--no-audio] [--ai <ai dir> [--langs en,es,nl,ko]]");
+            Console.Error.WriteLine("       Wavee.LyricsLab --headless --profile <scratch dir> --search \"query one;query two\"");
             return 64;
         }
         string live = Path.GetFullPath(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Wavee"));
@@ -66,7 +70,12 @@ static class Program
         string[] ids = tracks.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         Task.Run(async () =>
         {
-            try { exit = Arg(args, "--ai").Length > 0 ? await AiWork(ids, outDir, Arg(args, "--ai")) : await Work(ids, outDir, skipAudio); }
+            try
+            {
+                exit = search.Length > 0 ? await SearchWork(search)
+                    : Arg(args, "--ai").Length > 0 ? await AiWork(ids, outDir, Arg(args, "--ai"), langs)
+                    : await Work(ids, outDir, skipAudio);
+            }
             catch (Exception ex) { Console.Error.WriteLine(ex); exit = 70; }
             finally
             {
@@ -173,7 +182,7 @@ static class Program
 
     /// <summary>The real C# pipeline (AiLyrics.TrackJob on the NPU) over each track: Spotify's lyrics, the decoded audio, a
     /// simulated playhead that starts with the job. Writes align.vocals.cs.json (the lab's format) and prints timings.</summary>
-    static async Task<int> AiWork(string[] ids, string outDir, string aiDir)
+    static async Task<int> AiWork(string[] ids, string outDir, string aiDir, string[] langs)
     {
         while (!Spotify.Current.IsOnline)
         {
@@ -181,7 +190,7 @@ static class Program
             await Task.Delay(100);
         }
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        using var models = AiLyrics.LoadedModels.Load(Path.Combine(aiDir, "runtime"), Path.Combine(aiDir, "models"), ["en", "es"],
+        using var models = AiLyrics.LoadedModels.Load(Path.Combine(aiDir, "runtime"), Path.Combine(aiDir, "models"), langs,
             (done, total, cached) => Console.WriteLine($"  preparing {done}/{total}{(cached ? " (cached)" : "")} at {sw.Elapsed.TotalSeconds:0.0}s"),
             CancellationToken.None);
         Console.WriteLine($"models loaded in {sw.Elapsed.TotalSeconds:0.0}s, ORT {models.Ort.Version}, NPU vendor '{models.Ort.NpuVendor}'");
@@ -196,7 +205,9 @@ static class Program
             var cand = await spotify.FetchAsync(req, CancellationToken.None);
             if (cand is null) { Console.Error.WriteLine(id + ": no Spotify lyrics"); failures++; continue; }
             var src = cand.Document;
-            string lang = src.Language is "es" ? "es" : "en";
+            string lang = AiLyrics.Rules.LanguageOf(src);
+            if (!models.Aligners.ContainsKey(lang)) { Console.Error.WriteLine($"{id}: language '{lang}' not loaded (--langs)"); failures++; continue; }
+            Console.WriteLine($"{req.Title} - {req.ArtistsJoined}: language {lang}, {src.Lines.Count} lines, sync {src.Sync}");
             using var pcm = AiLyrics.SpotifyPcm.Open(req.Uri, req.DurationMs, CancellationToken.None, out var fault);
             if (pcm is null) { Console.Error.WriteLine(id + ": audio " + fault); failures++; continue; }
             var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -246,6 +257,80 @@ static class Program
                               $"word-synced lines {timed}/{doc.Lines.Count}, ready after sung {late}");
         }
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>--search "q1;q2": the app's own track search (the Pathfinder searchTracks query), printing the top hits as
+    /// "id  title - artists (duration)" so tracks can be picked for the other modes.</summary>
+    static async Task<int> SearchWork(string queries)
+    {
+        long deadline = Environment.TickCount64 + 30_000;
+        while (!Spotify.Current.IsOnline)
+        {
+            if (Spotify.Current.Phase == Spotify.SessionPhase.Failed) { Console.Error.WriteLine("login failed"); return 77; }
+            if (Environment.TickCount64 > deadline) { Console.Error.WriteLine("login timeout"); return 75; }
+            await Task.Delay(100);
+        }
+        foreach (string q in queries.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var r = Spotify.Api.Search(Spotify.Api.SearchFacet.Tracks, q, 0, 6, CancellationToken.None);
+            Console.WriteLine($"# {q} (status {r.Status})");
+            if (r.Status != 200) continue;
+            using var doc = JsonDocument.Parse(r.Body);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            Walk(doc.RootElement, seen);
+        }
+        return 0;
+
+        static void Walk(JsonElement e, HashSet<string> seen)
+        {
+            if (e.ValueKind == JsonValueKind.Array) { foreach (var x in e.EnumerateArray()) Walk(x, seen); return; }
+            if (e.ValueKind != JsonValueKind.Object) return;
+            if (e.TryGetProperty("uri", out var u) && u.ValueKind == JsonValueKind.String && u.GetString() is { } uri
+                && uri.StartsWith("spotify:track:", StringComparison.Ordinal) && e.TryGetProperty("name", out var n) && seen.Add(uri))
+            {
+                var artists = new List<string>();
+                if (e.TryGetProperty("artists", out var a) && a.ValueKind == JsonValueKind.Object && a.TryGetProperty("items", out var items))
+                    foreach (var it in items.EnumerateArray())
+                        if (it.TryGetProperty("profile", out var p) && p.TryGetProperty("name", out var an)) artists.Add(an.GetString() ?? "");
+                long ms = e.TryGetProperty("duration", out var d) && d.ValueKind == JsonValueKind.Object && d.TryGetProperty("totalMilliseconds", out var t) ? t.GetInt64() : 0;
+                Console.WriteLine($"  {uri["spotify:track:".Length..]}  {n.GetString()} - {string.Join(", ", artists)} ({ms / 1000}s)");
+            }
+            foreach (var p in e.EnumerateObject()) Walk(p.Value, seen);
+        }
+    }
+
+    /// <summary>--ai-bench &lt;ai dir&gt; [en,es]: load the models (no Spotify), print each graph's preparation time
+    /// (compile or cached), then time one aligner chunk (10 s of audio through the five graphs) per language.</summary>
+    static int AiBench(string aiDir, string langs)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        double last = 0;
+        string[] list = langs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        using var models = AiLyrics.LoadedModels.Load(Path.Combine(aiDir, "runtime"), Path.Combine(aiDir, "models"), list,
+            (done, total, cached) =>
+            {
+                double now = sw.Elapsed.TotalSeconds;
+                if (done > 0 && now > last) Console.WriteLine($"  graph {done}/{total}{(cached ? " (cached)" : " (compiled)")}: {now - last:0.0}s");
+                last = now;
+            },
+            CancellationToken.None);
+        Console.WriteLine($"models loaded in {sw.Elapsed.TotalSeconds:0.0}s, ORT {models.Ort.Version}");
+        var rng = new Random(1);
+        var chunk = new float[AiLyrics.Aligner.Samples];
+        foreach (string lang in list)
+        {
+            var a = models.Aligners[lang];
+            var logp = new float[AiLyrics.Aligner.StepFrames * a.Vocab.Classes];
+            for (int i = 0; i < chunk.Length; i++)
+                chunk[i] = (float)(Math.Sqrt(-2 * Math.Log(1 - rng.NextDouble())) * Math.Cos(2 * Math.PI * rng.NextDouble()));
+            int classes = a.Run(chunk, logp);                                                  // warm-up
+            const int runs = 20;
+            var t = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < runs; i++) a.Run(chunk, logp);
+            Console.WriteLine($"{lang}: {classes} classes (vocab {a.Vocab.Classes}, blank {a.Vocab.Blank}, separator {a.Vocab.Separator}), " +
+                              $"{t.Elapsed.TotalMilliseconds / runs:0.0} ms per 10 s chunk ({8.0 * runs / t.Elapsed.TotalSeconds:0}x real time at the 8 s step)");
+        }
+        return 0;
     }
 
     static bool DumpAudio(Lyrics.Request req, string path)

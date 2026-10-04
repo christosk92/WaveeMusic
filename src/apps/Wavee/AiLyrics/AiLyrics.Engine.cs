@@ -100,7 +100,7 @@ public static partial class AiLyrics
             long totalMix = long.MaxValue;                                       // known at EOF
 
             var chunk = new float[Aligner.Samples];
-            var logp = new float[Aligner.StepFrames * 64];
+            var logp = new float[Aligner.StepFrames * _aln.Vocab.Classes];   // Korean has 1,205 classes
             long ctcPos = 0;                                                     // 16 kHz samples covered by emissions
             int linesReady = 0;
 

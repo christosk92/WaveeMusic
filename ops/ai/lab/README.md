@@ -35,6 +35,7 @@ profile: copy `store.json` (and the PlayPlay runtime store) into a scratch folde
 | `npu_bench.py`, `npu_bisect.py` | ONNX Runtime + QNN on the Hexagon NPU: timings, and the bisection that found which wav2vec2 parts fail on the NPU. |
 | `conv0_fix.py` | Shows the HTP computes the first single-channel strided Conv wrong (~96% error) and that framing + MatMul is exact. |
 | `w2v_npu.py` | Exports wav2vec2 as the five NPU graphs (conv0 as framing + MatMul, conv1, convs, layers_a, layers_b). |
+| `export_pack.py` | One pack language: `w2v_npu` export at 10 s + fp16 (`keep_io_types`) -> `align-<lang>.<stage>.onnx` and `align-<lang>.vocab.json`; reproduces `align-es.*` byte for byte. `--verify` compares PyTorch fp32 with the fp16 graphs on the CPU and the NPU. |
 | `npu_pipeline.py` | Separator and aligner both on the NPU, whole song. |
 | `aligner.py` | The alignment core: graph with optional parenthesised words, online Viterbi, line-time prior, commits. |
 | `stream.py` | The streaming engine: block-by-block separation and alignment, just-in-time commits, silence snap. |
