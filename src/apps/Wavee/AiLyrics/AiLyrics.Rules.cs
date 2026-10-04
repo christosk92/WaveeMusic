@@ -53,7 +53,7 @@ public static partial class AiLyrics
     public enum TrackPhase : byte { Idle, Waiting, Working, Done, Skipped }
 
     /// <summary>Why the current track is not being timed (<see cref="Rules.Eligibility"/>), or why its job stopped.</summary>
-    public enum SkipReason : byte { None, NoLyrics, AlreadyWordByWord, LanguageNotInstalled, PlainTextOff, WordSyncOff, Podcast, NotSpotifyAudio, TooLong, BatterySaver, AudioUnavailable, Failed, NeedsSetup }
+    public enum SkipReason : byte { None, NoLyrics, AlreadyWordByWord, LanguageNotInstalled, PlainTextOff, WordSyncOff, Podcast, NotSpotifyAudio, TooLong, BatterySaver, AudioUnavailable, Failed, NeedsSetup, Metered }
 
     /// <summary>The current track's AI state. <c>default</c> (no track yet) reads as empty strings, never null: the
     /// header renders before the first track is known.</summary>
@@ -417,6 +417,10 @@ public static partial class AiLyrics
         /// NeedsSetup silently.</summary>
         public static bool ErrorOffersRetry(SetupError error) => error is not (SetupError.None or SetupError.Cancelled);
 
+        /// <summary>"Try again" loads the models again for a runtime, NPU or compile error; anything else downloads again
+        /// (resuming from the partial files).</summary>
+        public static bool RetryLoadsModels(SetupError error) => error is SetupError.RuntimeLoad or SetupError.NoNpuDevice or SetupError.Compile;
+
         /// <summary>A runtime that will not start or models that will not compile also offer "Remove and download again".</summary>
         public static bool ErrorOffersRemove(SetupError error) => error is SetupError.RuntimeLoad or SetupError.Compile;
 
@@ -459,6 +463,7 @@ public static partial class AiLyrics
             SkipReason.TooLong => new(true, false, "lyrics.ai.header.skipped.tooLong", false),
             SkipReason.BatterySaver => new(true, false, "lyrics.ai.header.skipped.batterySaver", true),
             SkipReason.Failed => new(true, false, "lyrics.ai.header.skipped.failed", false),
+            SkipReason.Metered => new(true, false, "lyrics.ai.header.skipped.metered", false),
             SkipReason.NeedsSetup => new(true, false, "lyrics.ai.header.setup", true),
             _ => new(true, false, "lyrics.ai.header.waiting", false),
         };

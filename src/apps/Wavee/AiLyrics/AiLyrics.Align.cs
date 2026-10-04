@@ -122,8 +122,10 @@ public static partial class AiLyrics
         // ── the graph ───────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>The lyric as CTC tokens. <see cref="OwnerLine"/>/<see cref="OwnerWord"/> are -1 on separators.
-        /// Skip edges (<see cref="SkipSrc"/> -> <see cref="SkipDst"/>, both STATE indices) jump over an optional word:
-        /// from the blank before its first letter to the blank after its last.</summary>
+        /// Skip edges (<see cref="SkipSrc"/> -> <see cref="SkipDst"/>, both STATE indices) jump over an optional word
+        /// and the separator before it: from the blank before that separator (before its first letter for the first
+        /// word) to the blank after its last letter. Consecutive optional words chain (one's target is the next's
+        /// source).</summary>
         public sealed class Graph
         {
             public readonly int[] Tokens, OwnerLine, OwnerWord, SkipSrc, SkipDst;
@@ -144,11 +146,15 @@ public static partial class AiLyrics
                         buf.Clear();
                         vocab.Tokens(words[wi].Text, buf);
                         if (buf.Count == 0) continue;
-                        if (tokens.Count > 0) { tokens.Add(vocab.Separator); ol.Add(-1); ow.Add(-1); }
+                        int sep = -1;
+                        if (tokens.Count > 0) { sep = tokens.Count; tokens.Add(vocab.Separator); ol.Add(-1); ow.Add(-1); }
                         int k0 = tokens.Count;
                         foreach (int t in buf) { tokens.Add(t); ol.Add(li); ow.Add(wi); }
                         int k1 = tokens.Count - 1;
-                        if (words[wi].Optional) { ss.Add(2 * k0); sd.Add(2 * (k1 + 1)); }
+                        // From the blank before the word's own separator (state 2*sep) to the blank after its last letter:
+                        // the skipped word takes its separator with it, so the path emits ONE "|" between its neighbours
+                        // and skipping costs only the skip cost. A first word has no separator before it.
+                        if (words[wi].Optional) { ss.Add(2 * (sep >= 0 ? sep : k0)); sd.Add(2 * (k1 + 1)); }
                     }
                 }
                 return new Graph(tokens.ToArray(), ol.ToArray(), ow.ToArray(), ss.ToArray(), sd.ToArray());
@@ -410,7 +416,7 @@ public static partial class AiLyrics
                     l = lineStart; r = l + 0.4 * run;
                     if (nextStart is double ns) r = Math.Min(r, ns);
                 }
-                else if (left is null) { r = right!.Value; l = Math.Max(r - 0.3 * run, Math.Min(lineStart, r - 0.3 * run)); }
+                else if (left is null) { r = right!.Value; l = Math.Min(r, Math.Max(lineStart, r - 0.3 * run)); }   // not before the line
                 else if (right is null)
                 {
                     l = left.Value; r = l + 0.3 * run;
@@ -426,8 +432,11 @@ public static partial class AiLyrics
         }
 
         /// <summary>A word-synced line from the provider's line and the word times: syllable texts are the line text cut
-        /// at word starts, so they join back to <see cref="Lyrics.Line.Text"/> exactly (the wipe measures against it).</summary>
-        public static Lyrics.Line WordSyncedLine(Lyrics.Line src, IReadOnlyList<LyricWord> words, WordTime[] times, double? nextStartS)
+        /// at word starts, so they join back to <see cref="Lyrics.Line.Text"/> exactly (the wipe measures against it).
+        /// No word starts before <paramref name="prevStartMs"/> (the previous line's start): line starts stay in order,
+        /// which the line resolve's binary search relies on.</summary>
+        public static Lyrics.Line WordSyncedLine(Lyrics.Line src, IReadOnlyList<LyricWord> words, WordTime[] times, double? nextStartS,
+            long? prevStartMs = null)
         {
             string text = src.Text;
             var syl = new List<Lyrics.Syllable>(words.Count);
@@ -436,6 +445,7 @@ public static partial class AiLyrics
                 int from = i == 0 ? 0 : words[i].Index;
                 int to = i + 1 < words.Count ? words[i + 1].Index : text.Length;
                 long s = (long)Math.Round(times[i].Start * 1000), e = (long)Math.Round(times[i].End * 1000);
+                if (prevStartMs is long ps) s = Math.Max(s, ps);
                 if (i + 1 == words.Count && nextStartS is double ns) e = Math.Min(e, (long)Math.Round(ns * 1000));
                 e = Math.Max(e, s);
                 syl.Add(new Lyrics.Syllable(s, e, text.Substring(from, to - from)));

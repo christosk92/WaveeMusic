@@ -8,7 +8,9 @@
 //
 //   resumable   a file downloads into .partial\<sha256>.part; a pause, a crash or a dropped connection resumes it with
 //               HTTP Range (the hash of the bytes already on disk is recomputed first)
-//   verified    the whole file's SHA-256 must match before it moves into place; a mismatch deletes it
+//   verified    each 64 MiB part's SHA-256 is checked as its byte range completes (a bad part is cut off again, so a
+//               retry resumes from the last good one); the whole file's SHA-256 must match before it moves into place
+//   stall-proof a read that brings no byte for ReadIdle fails as a network error (a half-open connection), and resumes
 //   atomic      installed.json records what is verified; a file is "installed" only when listed there with its hash
 //   roomy       free space for the download and the compiled NPU caches is checked before the first byte
 
@@ -98,9 +100,56 @@ public static partial class AiLyrics
         }
     }
 
+    /// <summary>The per-part SHA-256 check of one model file: its bytes are fed in file order, and each manifest part is
+    /// verified the moment its byte range completes. Bytes past the last part are not checked here (the whole-file hash
+    /// covers them).</summary>
+    public sealed class PartHashes : IDisposable
+    {
+        readonly IReadOnlyList<PackPart> _parts;
+        readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        int _part;
+        long _pos, _partStart, _partEnd;
+
+        public PartHashes(IReadOnlyList<PackPart> parts)
+        {
+            _parts = parts;
+            _partEnd = parts.Count > 0 ? parts[0].Bytes : long.MaxValue;
+        }
+
+        /// <summary>The parts verified so far.</summary>
+        public int Verified => _part;
+
+        /// <summary>Feeds the next bytes of the file. Returns -1 while every completed part matched, otherwise the file
+        /// offset where the first mismatching part starts (where the file must be cut back to); feed nothing after
+        /// that.</summary>
+        public long Append(ReadOnlySpan<byte> data)
+        {
+            while (data.Length > 0 && _part < _parts.Count)
+            {
+                int take = (int)Math.Min(data.Length, _partEnd - _pos);
+                _hash.AppendData(data[..take]);
+                _pos += take;
+                data = data[take..];
+                if (_pos < _partEnd) continue;
+                string sha = Convert.ToHexStringLower(_hash.GetHashAndReset());
+                if (!string.Equals(sha, _parts[_part].Sha256, StringComparison.OrdinalIgnoreCase)) return _partStart;
+                _part++;
+                _partStart = _pos;
+                _partEnd = _part < _parts.Count ? _pos + _parts[_part].Bytes : long.MaxValue;
+            }
+            return -1;
+        }
+
+        public void Dispose() => _hash.Dispose();
+    }
+
     public static class Pack
     {
         const int Buffer = 1 << 20;
+
+        /// <summary>A read that brings no byte for this long fails as <see cref="SetupError.Network"/>: a half-open
+        /// connection otherwise stalls the download forever. Retry resumes from the bytes on disk.</summary>
+        public static readonly TimeSpan ReadIdle = TimeSpan.FromSeconds(60);
         static HttpClient? s_http;
 
         static HttpClient Http
@@ -217,18 +266,27 @@ public static partial class AiLyrics
             long have = File.Exists(partial) ? new FileInfo(partial).Length : 0;
             if (have > f.Bytes) { File.Delete(partial); have = 0; }
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using var parts = f.IsWheel ? null : new PartHashes(f.Parts);
             var buf = new byte[Buffer];
+            long cut = -1;                                                    // where a bad part starts: cut back to it
             if (have > 0)
             {
+                // the bytes already on disk are re-hashed, and the parts they complete re-verified
                 using var existing = new FileStream(partial, FileMode.Open, FileAccess.Read, FileShare.Read, Buffer);
                 int n;
-                while ((n = await existing.ReadAsync(buf, ct).ConfigureAwait(false)) > 0) hash.AppendData(buf, 0, n);
+                while ((n = await existing.ReadAsync(buf, ct).ConfigureAwait(false)) > 0)
+                {
+                    hash.AppendData(buf, 0, n);
+                    if (parts is not null && (cut = parts.Append(buf.AsSpan(0, n))) >= 0) break;
+                }
             }
+            if (cut >= 0) CutBack(partial, cut, f);
             onBytes(have);
 
             var segments = f.IsWheel
                 ? new List<(string Url, long Start, long Bytes)> { (f.Url!, 0, f.Bytes) }
                 : SegmentsOf(f, modelBase);
+            using var idle = CancellationTokenSource.CreateLinkedTokenSource(ct);
             await using (var fs = new FileStream(partial, FileMode.Append, FileAccess.Write, FileShare.Read, Buffer, useAsync: true))
             {
                 foreach (var (url, start, bytes) in segments)
@@ -239,19 +297,23 @@ public static partial class AiLyrics
                     using var req = new HttpRequestMessage(HttpMethod.Get, url);
                     if (skip > 0) req.Headers.Range = new RangeHeaderValue(skip, null);
                     HttpResponseMessage resp;
-                    try { resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false); }
+                    idle.CancelAfter(ReadIdle);
+                    try { resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, idle.Token).ConfigureAwait(false); }
                     catch (HttpRequestException ex) { throw new SetupException(SetupError.Network, ex.Message); }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Stalled(url); }
                     using (resp)
                     {
                         if (resp.StatusCode == HttpStatusCode.NotFound) throw new SetupException(SetupError.NotFound, url);
                         if (!resp.IsSuccessStatusCode) throw new SetupException(SetupError.Network, "HTTP " + (int)resp.StatusCode + " " + url);
-                        await using var body = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                         long toDrop = skip > 0 && resp.StatusCode != HttpStatusCode.PartialContent ? skip : 0;   // the server ignored the range
                         try
                         {
-                            int n;
-                            while ((n = await body.ReadAsync(buf, ct).ConfigureAwait(false)) > 0)
+                            await using var body = await resp.Content.ReadAsStreamAsync(idle.Token).ConfigureAwait(false);
+                            while (true)
                             {
+                                idle.CancelAfter(ReadIdle);                         // re-armed per read: an idle deadline, not a total one
+                                int n = await body.ReadAsync(buf, idle.Token).ConfigureAwait(false);
+                                if (n <= 0) break;
                                 int off = 0;
                                 if (toDrop > 0) { int d = (int)Math.Min(toDrop, n); toDrop -= d; off = d; if (off == n) continue; }
                                 int len = (int)Math.Min(n - off, end - have);
@@ -260,21 +322,37 @@ public static partial class AiLyrics
                                 hash.AppendData(buf, off, len);
                                 have += len;
                                 onBytes(have);
+                                if (parts is not null && (cut = parts.Append(buf.AsSpan(off, len))) >= 0) break;
                             }
                         }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw Stalled(url); }
                         catch (IOException ex) when (!ct.IsCancellationRequested) { throw new SetupException(SetupError.Network, ex.Message); }
                         catch (HttpRequestException ex) { throw new SetupException(SetupError.Network, ex.Message); }
                     }
+                    if (cut >= 0) break;
                     if (have < end) throw new SetupException(SetupError.Network, "the download ended early: " + url);
                 }
                 await fs.FlushAsync(ct).ConfigureAwait(false);
             }
+            if (cut >= 0) CutBack(partial, cut, f);
             string sha = Convert.ToHexStringLower(hash.GetHashAndReset());
             if (!string.Equals(sha, f.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 File.Delete(partial);
                 throw new SetupException(SetupError.HashMismatch, f.Name);
             }
+        }
+
+        static SetupException Stalled(string url)
+            => new(SetupError.Network, "no data for " + (int)ReadIdle.TotalSeconds + " s: " + url);
+
+        /// <summary>A part failed its hash: drop it and everything after it, so a retry downloads it again and keeps
+        /// every good part before it.</summary>
+        [System.Diagnostics.CodeAnalysis.DoesNotReturn]
+        static void CutBack(string partial, long at, PackFile f)
+        {
+            using (var t = new FileStream(partial, FileMode.Open, FileAccess.Write, FileShare.None)) t.SetLength(at);
+            throw new SetupException(SetupError.HashMismatch, f.Name + " @" + at);
         }
 
         static List<(string, long, long)> SegmentsOf(PackFile f, string modelBase)
@@ -308,15 +386,56 @@ public static partial class AiLyrics
                     string tmp = dst + ".tmp";
                     e.ExtractToFile(tmp, overwrite: true);
                     try { File.Move(tmp, dst, overwrite: true); }
-                    catch (IOException) when (File.Exists(dst) && new FileInfo(dst).Length == e.Length)
+                    catch (IOException) when (SameContent(tmp, dst))
                     {
                         // a download again after a deferred remove: this runtime DLL is still loaded in this process,
-                        // and it is the same file (same wheel, same entry size), so the loaded copy stays
+                        // and it is byte-for-byte the file just unpacked, so the loaded copy stays
                         File.Delete(tmp);
                     }
                 }
             }
             File.Delete(partial);
+        }
+
+        /// <summary>Same length and SHA-256. A file this process has loaded (a runtime DLL) is still readable; anything
+        /// that cannot be read counts as different.</summary>
+        public static bool SameContent(string a, string b)
+        {
+            try
+            {
+                if (!File.Exists(a) || !File.Exists(b) || new FileInfo(a).Length != new FileInfo(b).Length) return false;
+                return HashOf(a).AsSpan().SequenceEqual(HashOf(b));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return false; }
+
+            static byte[] HashOf(string path)
+            {
+                using var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, Buffer);
+                return SHA256.HashData(s);
+            }
+        }
+
+        /// <summary>Deletes one language's model files, their compiled NPU caches and their installed.json entries. Runs
+        /// on the worker once that language's sessions are unloaded. A file that cannot be deleted is logged and left;
+        /// it is no longer listed as installed, so a later download replaces it.</summary>
+        public static void RemoveLanguage(string language)
+        {
+            if (!PackManifest.Embedded.Languages.TryGetValue(language, out var files)) return;
+            var installed = Installed();
+            foreach (var f in files)
+            {
+                string path = Path.Combine(ModelsDir, f.Name);
+                try
+                {
+                    if (Directory.Exists(ModelsDir)) LoadedModels.DeleteCompiled(path);
+                    File.Delete(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", $"ai.remove.language file={f.Name} failed", ex); }
+                installed.Remove(f.Name);
+            }
+            try { SaveInstalled(installed); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("ai-lyrics", "ai.remove.language installed.json not saved", ex); }
+            Log.Info("ai-lyrics", $"ai.remove.language language={language} files={files.Count}");
         }
 
         /// <summary>Deletes every downloaded file and result. A runtime DLL already loaded in this process cannot be

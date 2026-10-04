@@ -417,6 +417,25 @@ public class AiLyricsRulesTests
         => Assert.Equal(new AiLyrics.HeaderState(true, active, tip, opens, TogglesPreference: reason == AiLyrics.SkipReason.AlreadyWordByWord),
             AiLyrics.Rules.Header(Status(AiLyrics.SetupPhase.Ready), Track(phase, reason), EntityKind.Track));
 
+    [Theory]
+    [InlineData(AiLyrics.SetupError.RuntimeLoad, true)]
+    [InlineData(AiLyrics.SetupError.NoNpuDevice, true)]
+    [InlineData(AiLyrics.SetupError.Compile, true)]
+    [InlineData(AiLyrics.SetupError.Network, false)]
+    [InlineData(AiLyrics.SetupError.HashMismatch, false)]
+    [InlineData(AiLyrics.SetupError.DiskFull, false)]
+    public void Try_again_reloads_for_model_errors_and_downloads_for_the_rest(AiLyrics.SetupError error, bool loads)
+        => Assert.Equal(loads, AiLyrics.Rules.RetryLoadsModels(error));
+
+    [Fact]
+    public void A_song_skipped_on_a_metered_connection_says_so_and_offers_nothing_to_click()
+    {
+        var h = AiLyrics.Rules.Header(Status(AiLyrics.SetupPhase.Ready), Track(AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.Metered), EntityKind.Track);
+        Assert.Equal("lyrics.ai.header.skipped.metered", h.TipKey);
+        Assert.False(h.OpensSettings);
+        Assert.False(h.TogglesPreference);
+    }
+
     [Fact]
     public void A_default_track_status_reads_as_empty_strings_and_renders_a_header()
     {

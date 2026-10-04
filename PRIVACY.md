@@ -24,7 +24,7 @@ out yourself:
 | Playback session & navigation history | `session.json` | So Wavee reopens where you left off. |
 | Local play log | under `%LOCALAPPDATA%\Wavee` | Powers the local "recently played" surfaces. |
 | Settings | Windows registry, `HKCU` | Typed keys only. |
-| On-device AI lyrics | `ai\lyrics\` | Only when you turn on word-by-word lyrics with on-device AI: the downloaded models and runtime, their compiled NPU caches, and the word timing of songs you played. Settings › Appearance › Lyrics removes them. |
+| On-device AI lyrics | `ai\lyrics\` | Only when you turn on word-by-word lyrics with on-device AI: the downloaded models and runtime, their compiled NPU caches, and for each song you played its lyric lines and their word timing (so a replay needs no NPU), plus the songs where you chose AI timing over a provider's. Settings › Appearance › Lyrics removes them. |
 | Dealer WebSocket archive | off by default | A debugging capture of Spotify's push frames, enabled only in Settings › Privacy & diagnostics › Tools › Realtime capture. Local file. |
 
 ## What leaves your machine
@@ -52,6 +52,9 @@ Only these, and only to the parties named:
   Runtime and Qualcomm QNN runtime from `files.pythonhosted.org` (PyPI). These are anonymous file downloads.
   The song and its lyrics are processed on this PC's NPU and are never uploaded; this feature does not use
   Windows AI or Copilot services.
+  To time a song, Wavee fetches that song's audio from Spotify's CDN once more (about 10 MB, the same encrypted
+  file the player uses at that quality), decodes it in memory and discards it. It does not do this on a metered
+  connection; a song that was timed before replays from the saved result without fetching anything.
 - **Wavee's own crash-reporting service** at `https://crash.cproducts.dev` (below), and only when you have
   set crash reporting to Automatic, or when you press Send on a specific report by hand. Off by default;
   nothing is sent until you opt in.

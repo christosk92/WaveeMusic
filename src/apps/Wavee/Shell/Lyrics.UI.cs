@@ -805,8 +805,8 @@ public static partial class Lyrics
             WakeMotion();
         }
 
-        /// <summary>The per-row half of the upgrade question (plan §3.4). For a swap on the SAME track with the SAME line
-        /// count where at least one row survives, re-key exactly the rows <see cref="RowShape.ChangedRows"/> reports and
+        /// <summary>The per-row half of the upgrade question (plan §3.4). For an AI publish (<see cref="RowShape.PerRowSwap"/>:
+        /// the SAME track with the SAME line count, either side generated) where at least one row survives, re-key exactly the rows <see cref="RowShape.ChangedRows"/> reports and
         /// return true: the virtual list then remounts only those rows (fresh line, fresh handles reported through
         /// <see cref="ReportLineNode"/>/<see cref="ReportGlowNode"/>/<see cref="ReportDofNode"/>), while every survivor
         /// keeps its mount, its handles, its run length and σ continuity, and the extent table keeps every measured row
@@ -815,8 +815,8 @@ public static partial class Lyrics
         /// stack memory for any realistic document.</summary>
         bool RekeyChangedRows(Doc previous, Doc next)
         {
+            if (!RowShape.PerRowSwap(previous, next)) return false;
             int n = next.Lines.Count;
-            if (n == 0 || previous.Lines.Count != n || !StringComparer.Ordinal.Equals(previous.TrackId, next.TrackId)) return false;
             // The per-line state must be the previous document's (it always is while a document is held — defensive).
             if (_rowEpoch.Length != n || _lineNodes.Length != n || _glowNodes.Length != n || _dofNodes.Length != n
                 || _lineRunLen.Length != n || _lineEmphasis.Length != n || _glowAlpha.Length != n)

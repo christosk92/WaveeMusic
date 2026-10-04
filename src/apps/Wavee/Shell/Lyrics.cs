@@ -89,6 +89,9 @@ public static partial class Lyrics
     /// the on-device aligner is chosen by it.</param>
     /// <param name="Origin">For a derived document: the provider id it was built from.</param>
     /// <param name="Generated">The timing (not the words) was generated on this PC by the on-device AI aligner.</param>
+    /// <param name="Override">A <paramref name="Generated"/> document the user chose for this song over the provider's
+    /// people-made word timing. Set only by `Lyrics.Store.Upgrade` (never by a source); <see cref="Authority.IsRicher"/>
+    /// then lets it displace human timing and keeps it until the user turns the choice off (the AI host re-fetches).</param>
     public sealed record Doc(
         string TrackId,
         bool IsSynced,
@@ -98,7 +101,8 @@ public static partial class Lyrics
         long OffsetMsApplied = 0,
         string? Language = null,
         string? Origin = null,
-        bool Generated = false)
+        bool Generated = false,
+        bool Override = false)
     {
         /// <summary>A document with no lines — what a miss publishes, and what an instrumental notice collapses to.</summary>
         public static Doc Empty(string trackId, string? provider = null)
@@ -257,6 +261,14 @@ public static partial class Lyrics
             if (!StringComparer.Ordinal.Equals(a.Romanization ?? "", b.Romanization ?? "")) return false;
             return SameSyllables(a.Syllables, b.Syllables);
         }
+
+        /// <summary>May a swap keep its unchanged rows (<see cref="ChangedRows"/>) instead of remounting the whole
+        /// document? Only for an on-device AI publish (either side <see cref="Doc.Generated"/>: the aligner times a few
+        /// lines per publish) on the same track with the same, non-zero line count. A provider promotion keeps the
+        /// whole-document swap.</summary>
+        public static bool PerRowSwap(Doc previous, Doc next)
+            => (previous.Generated || next.Generated) && next.Lines.Count > 0 && previous.Lines.Count == next.Lines.Count
+               && StringComparer.Ordinal.Equals(previous.TrackId, next.TrackId);
 
         /// <summary>Per row: does the row mounted for <c>current.Lines[i]</c> survive <c>next.Lines[i]</c>? Writes
         /// <c>changed[i] = !SameRow(current.Lines[i], next.Lines[i])</c> for every line, so a progressive upgrade that
@@ -1087,8 +1099,11 @@ public static partial class Lyrics
             return n;
         }
 
-        /// <summary>A higher rank wins outright; a LOWER rank is refused; an equal rank below the word tier is refused.
-        /// Inside the word tier (rank 3) the ties break in this order:
+        /// <summary>The user's choice comes first: a generated <see cref="Doc.Override"/> document replaces anything
+        /// (an earlier revision of itself included), and one in place is replaced by nothing else — not by people-made
+        /// timing from a background provider pass — until the choice is turned off. Otherwise a higher rank wins
+        /// outright; a LOWER rank is refused; an equal rank below the word tier is refused. Inside the word tier
+        /// (rank 3) the ties break in this order:
         /// <list type="number">
         /// <item>Human word timing (<see cref="Doc.Generated"/> false) outranks generated word timing whatever the
         /// counts: a human document replaces a generated one, and a generated one never displaces a human one.</item>
@@ -1100,6 +1115,8 @@ public static partial class Lyrics
         /// </list></summary>
         public static bool IsRicher(Doc next, Doc current)
         {
+            if (next is { Generated: true, Override: true }) return true;
+            if (current is { Generated: true, Override: true }) return false;
             int nr = Richness(next), cr = Richness(current);
             if (nr != cr) return nr > cr;
             if (nr < 3) return false;
@@ -1113,6 +1130,12 @@ public static partial class Lyrics
                 return ns >= cs;
             return ns > cs;
         }
+
+        /// <summary>Does an aggregator promotion (a background provider pass) take the store's slot? Always, except
+        /// over the user's AI choice (<see cref="Doc.Override"/>), which only a richer document by
+        /// <see cref="IsRicher"/> — i.e. another override — may replace.</summary>
+        public static bool PromotionReplaces(Doc? next, Doc? current)
+            => current is not { Generated: true, Override: true } || (next is not null && IsRicher(next, current));
 
         /// <summary>May the upgrade be applied RIGHT NOW, or must it be held until the next handoff? Held only while a
         /// timed document is playing and the reader is mid-line.</summary>

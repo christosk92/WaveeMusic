@@ -35,6 +35,14 @@ public static partial class AiLyrics
             I_GetEpDevices = 303, I_AppendExecutionProviderV2 = 304, I_HardwareDeviceType = 307, I_HardwareDeviceVendor = 309,
             I_EpDeviceEpName = 312, I_EpDeviceDevice = 316;
 
+        static readonly int[] s_used = [I_GetErrorMessage, I_CreateEnv, I_CreateSession, I_Run, I_CreateSessionOptions,
+            I_SetGraphOptimizationLevel, I_SetIntraOpNumThreads, I_CreateTensorWithData, I_GetTensorMutableData,
+            I_GetDimensionsCount, I_GetDimensions, I_GetTensorTypeAndShape, I_CreateCpuMemoryInfo, I_ReleaseEnv,
+            I_ReleaseStatus, I_ReleaseMemoryInfo, I_ReleaseSession, I_ReleaseValue, I_ReleaseTensorTypeAndShapeInfo,
+            I_ReleaseSessionOptions, I_AddFreeDimensionOverrideByName, I_AddSessionConfigEntry,
+            I_RegisterExecutionProviderLibrary, I_GetEpDevices, I_AppendExecutionProviderV2, I_HardwareDeviceType,
+            I_HardwareDeviceVendor, I_EpDeviceEpName, I_EpDeviceDevice];
+
         const int LogWarning = 2, OrtDeviceAllocator = 0, OrtMemTypeDefault = 0, TensorFloat = 1, HardwareNpu = 2;
         public const string QnnProvider = "QNNExecutionProvider";
 
@@ -62,14 +70,21 @@ public static partial class AiLyrics
             void** api = ((delegate* unmanaged<uint, void**>)apiBase[0])(ApiVersion);
             string version = Utf8(((delegate* unmanaged<byte*>)apiBase[1])());
             if (api is null) throw new OrtException("ONNX Runtime " + version + " is older than the API this build needs (" + ApiVersion + ")");
+            // every member this binding calls must be in the table: a null slot would be a jump to address zero
+            foreach (int i in s_used)
+                if (api[i] is null) throw new OrtException("ONNX Runtime " + version + " lacks API member " + i);
             var ort = new Ort(lib, api, version);
-            nint env;
-            fixed (byte* id = "wavee-ai-lyrics\0"u8) ort.Check(((delegate* unmanaged<int, byte*, nint*, nint>)api[I_CreateEnv])(LogWarning, id, &env));
-            ort._env = env;
-            nint mi;
-            ort.Check(((delegate* unmanaged<int, int, nint*, nint>)api[I_CreateCpuMemoryInfo])(OrtDeviceAllocator, OrtMemTypeDefault, &mi));
-            ort._memInfo = mi;
-            return ort;
+            try
+            {
+                nint env;
+                fixed (byte* id = "wavee-ai-lyrics\0"u8) ort.Check(((delegate* unmanaged<int, byte*, nint*, nint>)api[I_CreateEnv])(LogWarning, id, &env));
+                ort._env = env;
+                nint mi;
+                ort.Check(((delegate* unmanaged<int, int, nint*, nint>)api[I_CreateCpuMemoryInfo])(OrtDeviceAllocator, OrtMemTypeDefault, &mi));
+                ort._memInfo = mi;
+                return ort;
+            }
+            catch { ort.Dispose(); throw; }                                // the environment must not outlive a failed load
         }
 
         /// <summary>Registers the QNN plugin execution provider and finds its NPU device. Returns false when the
@@ -139,6 +154,9 @@ public static partial class AiLyrics
                     session = 0;
                     return CreateNpuSession(modelPath, freeDims);
                 }
+                // No cache written: this session still holds the source graph and the compile buffers, and every later
+                // load compiles again. It works, so it is used, but never silently.
+                if (!cached) Log.Warn("ai-lyrics", $"ai.ort.no-ctx model={Path.GetFileName(modelPath)}: ONNX Runtime wrote no compiled cache; running from the compiling session");
                 return new OrtSession(this, session);
             }
             finally { ((delegate* unmanaged<nint, void>)_api[I_ReleaseSessionOptions])(so); }

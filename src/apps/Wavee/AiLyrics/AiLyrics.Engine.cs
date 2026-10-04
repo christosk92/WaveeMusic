@@ -241,7 +241,7 @@ public static partial class AiLyrics
                 }
                 double lineStart = _src.IsSynced ? src.StartMs / 1000.0 : (lines.Count > 0 ? (lines[^1].EndMs ?? lines[^1].StartMs) / 1000.0 : 0);
                 if (!Align.Fill(times[li], lineStart, next)) { lines.Add(src); continue; }
-                lines.Add(Align.WordSyncedLine(src, _words[li], times[li], next));
+                lines.Add(Align.WordSyncedLine(src, _words[li], times[li], next, lines.Count > 0 ? lines[^1].StartMs : null));
             }
             return _src with
             {

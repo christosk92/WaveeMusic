@@ -215,7 +215,7 @@ public static partial class Settings
             AiS.Paused.Sub(AiLyrics.Rules.FormatBytes(st.Download.Done), AiLyrics.Rules.FormatBytes(st.Download.Total)),
             AiRow(
                 ProgressBar.Create(fraction, AiBarWidth, ProgressBarState.Paused, s_aiFillEase),
-                Button.Standard(Loc.Get(AiS.Resume), static () => AiLyrics.ResumeDownload()),
+                Button.Standard(Loc.Get(AiS.Resume), static () => AiDownloadThen(AiRemainingBytes(), static () => AiLyrics.ResumeDownload())),
                 HyperlinkButton.Create(Loc.Get(AiS.Cancel), static () => AiLyrics.CancelDownload())));
 
         /// <summary>The first NPU compile: "x of y" (why, when a stale cache is rebuilt), the bar by compile weight.</summary>
@@ -281,7 +281,12 @@ public static partial class Settings
             if (AiLyrics.Rules.ErrorOffersRemove(error))
                 actions.Add(Button.Standard(Loc.Get(AiS.Remove), () => AiConfirmRemove(installed)));
             if (AiLyrics.Rules.ErrorOffersRetry(error))
-                actions.Add(Button.Accent(Loc.Get(AiS.Retry), static () => AiLyrics.Retry()));
+                actions.Add(Button.Accent(Loc.Get(AiS.Retry), static () =>
+                {
+                    // a download error downloads again: the same metered question as Download (a model error does not)
+                    if (AiLyrics.Rules.RetryLoadsModels(AiLyrics.Current.Peek().Error)) AiLyrics.Retry();
+                    else AiDownloadThen(AiRemainingBytes(), static () => AiLyrics.Retry());
+                }));
             return InfoBar.Create(InfoBarSeverity.Error,
                 Loc.Get(AiLyrics.Rules.ErrorKey(error)),
                 details && detail.Length > 0 ? AiS.Error.Detail(detail) : "",
@@ -367,6 +372,14 @@ public static partial class Settings
         // ── verbs with a question first ─────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>A download above the metered threshold asks first (the ONE confirm shape, Cancel the default).</summary>
+        /// <summary>What a resumed download still fetches: the paused progress when there is one, else the pending total.</summary>
+        static long AiRemainingBytes()
+        {
+            var st = AiLyrics.Current.Peek();
+            long left = st.Download.Total - st.Download.Done;
+            return left > 0 ? left : st.PendingDownloadBytes;
+        }
+
         static void AiDownloadThen(long bytes, Action start)
         {
             if (AiLyrics.Rules.NeedsMeteredConfirm(Platform.Network.IsMetered, bytes))

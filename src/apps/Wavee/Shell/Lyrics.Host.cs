@@ -1981,7 +1981,12 @@ public static partial class Lyrics
         {
             ToUi(() =>
             {
-                lock (Docs) Docs[trackId] = doc;
+                lock (Docs)
+                {
+                    // The user's AI choice (Doc.Override) outlives a background provider pass until it is turned off.
+                    if (upgrade && Docs.TryGetValue(trackId, out var current) && !Authority.PromotionReplaces(doc, current)) return;
+                    Docs[trackId] = doc;
+                }
                 // Derived facts live on the model: the capability bits are computed at COMMIT, never scanned by the
                 // UI, and the secondary-line toggle is composed only when they are non-zero.
                 if (doc is not null) Prefs.Available.Value = doc.SecondaryAvailable;
@@ -1997,17 +2002,20 @@ public static partial class Lyrics
         /// memory cache and its disk cache are never touched: the derived document is a layer over the provider's,
         /// re-applied from the aligner's own results cache on the next play. Callable from any thread.</summary>
         /// <para><paramref name="overrideProvider"/>: the user chose AI timing for this song over the provider's
-        /// people-made word timing, so the authority order is skipped (the document is still only placed for a track
-        /// the store was asked about).</para>
+        /// people-made word timing. The document is placed as <see cref="Doc.Override"/> (the store owns that flag: it is
+        /// set to exactly this argument), which ranks above everything in <see cref="Authority.IsRicher"/> — so the view
+        /// takes it too, and a background provider pass does not displace it — until the user turns the choice off and
+        /// the AI host calls <see cref="Refetch"/>. It is still only placed for a track the store was asked about.</para>
         public static void Upgrade(Doc doc, bool overrideProvider = false)
         {
             if (doc is not { Generated: true, Lines.Count: > 0 } || string.IsNullOrEmpty(doc.TrackId)) return;
+            if (doc.Override != overrideProvider) doc = doc with { Override = overrideProvider };
             ToUi(() =>
             {
                 lock (Docs)
                 {
                     if (!Docs.TryGetValue(doc.TrackId, out var current)) return;          // never asked: not ours to answer
-                    if (current is not null && !overrideProvider && !Authority.IsRicher(doc, current)) return;
+                    if (current is not null && !Authority.IsRicher(doc, current)) return;
                     Docs[doc.TrackId] = doc;
                 }
                 Prefs.Available.Value = doc.SecondaryAvailable;

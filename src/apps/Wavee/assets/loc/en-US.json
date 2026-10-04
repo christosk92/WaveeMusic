@@ -3685,7 +3685,8 @@
           "audio": "The song's audio isn't available for timing right now",
           "failed": "Word timing failed for this song",
           "podcast": "Not available for podcasts",
-          "tooLong": "Too long to time on this PC"
+          "tooLong": "Too long to time on this PC",
+          "metered": "Not timed on a metered connection: it needs the song's audio once more"
         }
       },
       "footer": {

@@ -107,18 +107,26 @@ public static partial class AiLyrics
         public void Dispose() { foreach (var s in _stages) s.Dispose(); }
     }
 
-    /// <summary>The runtime and the models, loaded once for the worker's lifetime.</summary>
+    /// <summary>The runtime and the models, loaded once for the worker's lifetime. The ORT environment, the QNN
+    /// registration and the separator stay for that lifetime; the aligner is swapped per language
+    /// (<see cref="SwapAligner"/>) because every loaded language holds its own NPU buffers.</summary>
     public sealed class LoadedModels : IDisposable
     {
+        readonly Dictionary<string, Aligner> _aligners = new(StringComparer.OrdinalIgnoreCase);
+
         public Ort Ort { get; }
         public Separator Separator { get; }
-        public IReadOnlyDictionary<string, Aligner> Aligners { get; }
 
-        LoadedModels(Ort ort, Separator sep, Dictionary<string, Aligner> aligners) { Ort = ort; Separator = sep; Aligners = aligners; }
+        /// <summary>The loaded aligners by language: the ones <see cref="Load"/> opened, then exactly the one the last
+        /// <see cref="SwapAligner"/> opened (none when that swap failed).</summary>
+        public IReadOnlyDictionary<string, Aligner> Aligners => _aligners;
+
+        LoadedModels(Ort ort, Separator sep) { Ort = ort; Separator = sep; }
 
         /// <summary>Loads ONNX Runtime and the QNN provider from <paramref name="runtimeDir"/>, then one session per
         /// graph from <paramref name="modelsDir"/>. <paramref name="preparing"/>(done, total, cachedAlready) is called
-        /// around each session: a graph without a compiled cache takes tens of seconds the first time.</summary>
+        /// around each session: a graph without a compiled cache takes tens of seconds the first time. Cancellation is
+        /// honoured between graphs; on any failure everything opened so far is released.</summary>
         /// <para><paramref name="compileOnly"/>: installed languages that are not needed now. A graph of theirs without a
         /// compiled cache is compiled (the one-time step happens at setup, not when a song in that language plays) and
         /// released at once: every loaded language holds its own NPU buffers.</para>
@@ -126,50 +134,87 @@ public static partial class AiLyrics
             Action<int, int, bool>? preparing, CancellationToken ct, IReadOnlyList<string>? compileOnly = null)
         {
             var ort = Ort.Load(runtimeDir);
+            Separator? sep = null;
+            LoadedModels? models = null;
             try
             {
                 string qnn = Path.Combine(runtimeDir, "onnxruntime_providers_qnn.dll");
                 if (!ort.UseQnnNpu(qnn)) throw new NoNpuException(string.Join(", ", ort.Devices));
-                var graphs = new List<string> { Path.Combine(modelsDir, "separator.onnx") };
-                foreach (string lang in languages)
-                    foreach (string st in Aligner.StageNames) graphs.Add(Path.Combine(modelsDir, $"align-{lang}.{st}.onnx"));
                 var compile = new List<string>();
                 foreach (string lang in compileOnly ?? [])
                     foreach (string st in Aligner.StageNames)
                     {
-                        string g = Path.Combine(modelsDir, $"align-{lang}.{st}.onnx");
+                        string g = StagePath(modelsDir, lang, st);
                         if (!File.Exists(CtxPath(g))) compile.Add(g);
                     }
-                int done = 0, total = graphs.Count + compile.Count;
+                int done = 0, total = 1 + languages.Count * Aligner.StageNames.Length + compile.Count;
                 foreach (string g in compile)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    preparing?.Invoke(done, total, false);
-                    Open(ort, g, separator: false).Dispose();                    // writes the cache; the session goes
-                    done++;
-                    preparing?.Invoke(done, total, false);
-                }
-                var sessions = new Dictionary<string, OrtSession>(StringComparer.OrdinalIgnoreCase);
-                foreach (string g in graphs)
-                {
-                    ct.ThrowIfCancellationRequested();
-                    bool cached = File.Exists(CtxPath(g));
-                    preparing?.Invoke(done, total, cached);
-                    sessions[g] = Open(ort, g, g.EndsWith("separator.onnx", StringComparison.OrdinalIgnoreCase));
-                    done++;
-                    preparing?.Invoke(done, total, cached);
-                }
-                var sep = new Separator(sessions[graphs[0]].WithNames("input", "output"));
-                var aligners = new Dictionary<string, Aligner>(StringComparer.OrdinalIgnoreCase);
+                    OpenReporting(ort, g, separator: false, ref done, total, preparing, ct).Dispose();   // writes the cache; the session goes
+                // WithNames moves the native session into a new wrapper; the old one is left holding nothing
+                sep = new Separator(OpenReporting(ort, Path.Combine(modelsDir, "separator.onnx"), separator: true, ref done, total, preparing, ct)
+                    .WithNames("input", "output"));
+                models = new LoadedModels(ort, sep);
                 foreach (string lang in languages)
-                {
-                    var stages = Aligner.StageNames.Select(st => sessions[Path.Combine(modelsDir, $"align-{lang}.{st}.onnx")]).ToArray();
-                    var vocab = Align.Vocab.Parse(File.ReadAllText(Path.Combine(modelsDir, $"align-{lang}.vocab.json")));
-                    aligners[lang] = new Aligner(stages, vocab);
-                }
-                return new LoadedModels(ort, sep, aligners);
+                    models._aligners[lang] = OpenAligner(ort, modelsDir, lang, ref done, total, preparing, ct);
+                return models;
             }
-            catch { ort.Dispose(); throw; }
+            catch
+            {
+                if (models is not null) models.Dispose();
+                else { sep?.Dispose(); ort.Dispose(); }
+                throw;
+            }
+        }
+
+        /// <summary>Make <paramref name="language"/>'s aligner the only loaded one: the current aligner(s) are released
+        /// first (their NPU buffers go before the new ones are taken), then its vocabulary and five sessions are opened —
+        /// a stage without a compiled cache is compiled now, reported through <paramref name="preparing"/>(done, 5,
+        /// cachedAlready). The runtime and the separator are untouched. A no-op when it already is the only one. On
+        /// failure (cancellation included) no aligner is loaded and the exception propagates; the models stay usable
+        /// for the next swap.</summary>
+        public void SwapAligner(string modelsDir, string language, Action<int, int, bool>? preparing, CancellationToken ct)
+        {
+            if (_aligners.Count == 1 && _aligners.ContainsKey(language)) return;
+            foreach (var a in _aligners.Values) a.Dispose();
+            _aligners.Clear();
+            int done = 0;
+            _aligners[language] = OpenAligner(Ort, modelsDir, language, ref done, Aligner.StageNames.Length, preparing, ct);
+        }
+
+        static string StagePath(string modelsDir, string language, string stage) => Path.Combine(modelsDir, $"align-{language}.{stage}.onnx");
+
+        /// <summary>One language's aligner. The vocabulary is read first, so a missing or corrupt one fails before any
+        /// NPU work; a stage that fails releases the stages already open.</summary>
+        static Aligner OpenAligner(Ort ort, string modelsDir, string language, ref int done, int total,
+            Action<int, int, bool>? preparing, CancellationToken ct)
+        {
+            var vocab = Align.Vocab.Parse(File.ReadAllText(Path.Combine(modelsDir, $"align-{language}.vocab.json")));
+            var stages = new OrtSession[Aligner.StageNames.Length];
+            int opened = 0;
+            try
+            {
+                for (; opened < stages.Length; opened++)
+                    stages[opened] = OpenReporting(ort, StagePath(modelsDir, language, Aligner.StageNames[opened]), separator: false, ref done, total, preparing, ct);
+                return new Aligner(stages, vocab);
+            }
+            catch
+            {
+                for (int i = 0; i < opened; i++) stages[i].Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>One session, with the cancellation check before it and the progress report around it.</summary>
+        static OrtSession OpenReporting(Ort ort, string model, bool separator, ref int done, int total,
+            Action<int, int, bool>? preparing, CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            bool cached = File.Exists(CtxPath(model));
+            preparing?.Invoke(done, total, cached);
+            var session = Open(ort, model, separator);
+            done++;
+            preparing?.Invoke(done, total, cached);
+            return session;
         }
 
         public static string CtxPath(string model) => Path.ChangeExtension(model, null) + ".ctx.onnx";
@@ -195,8 +240,9 @@ public static partial class AiLyrics
 
         public void Dispose()
         {
+            foreach (var a in _aligners.Values) a.Dispose();
+            _aligners.Clear();
             Separator.Dispose();
-            foreach (var a in Aligners.Values) a.Dispose();
             Ort.Dispose();
         }
     }
