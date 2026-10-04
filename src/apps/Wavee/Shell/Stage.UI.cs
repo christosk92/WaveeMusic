@@ -566,7 +566,7 @@ public static partial class Stage
                     {
                         Width = Layout.NowPlayingCardW, Height = Layout.NowPlayingCardH, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                         Margin = new Edges4(Layout.NowPlayingCardX, Layout.NowPlayingCardY, 0f, 0f), Corners = Radii.CardAll,
-                        Acrylic = AcrylicSpec.InAppBase, Shadow = Elevation.Card, HitTestVisible = false,
+                        Acrylic = Ink.Card, Shadow = Elevation.Card, HitTestVisible = false,
                         Enter = new EnterExit(Dy: -8f, Opacity: 0f, Active: true, DelayMs: 150f), Exit = new EnterExit(Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
                     }),
                 ],
@@ -1166,7 +1166,7 @@ public static partial class Stage
             return new BoxEl
             {
                 Grow = 1f, Height = L.TransportH, Direction = 1, Padding = new Edges4(20f, 10f, 20f, 0f), Corners = Radii.CardAll,
-                Acrylic = AcrylicSpec.InAppBase, Shadow = Elevation.Card, ClipToBounds = true,
+                Acrylic = Ink.Card, Shadow = Elevation.Card, ClipToBounds = true,
                 OnHoverMove = _ => ctx.OverControls(true), OnPointerExit = () => ctx.OverControls(false),
                 Children =
                 [
@@ -1280,7 +1280,7 @@ public static partial class Stage
             {
                 RailFill = Ink.Ink with { A = 0.545f }, RailFillDisabled = Ink.Ink with { A = 0.235f },
                 ValueFill = p.Set.Fill, ValueFillPointerOver = p.Set.FillSecondary, ValueFillPressed = p.Set.FillTertiary, ValueFillDisabled = p.Set.Fill with { A = 0.3f },
-                ThumbRing = ColorF.FromRgba(0x45, 0x45, 0x45), ThumbFill = p.Set.Fill, ThumbFillPointerOver = p.Set.FillSecondary, ThumbFillPressed = p.Set.FillTertiary, ThumbFillDisabled = p.Set.Fill with { A = 0.3f },
+                ThumbRing = Tok.FillControlSolid, ThumbFill = p.Set.Fill, ThumbFillPointerOver = p.Set.FillSecondary, ThumbFillPressed = p.Set.FillTertiary, ThumbFillDisabled = p.Set.Fill with { A = 0.3f },
                 ThumbBorder = GradientSpec.Solid(Ink.Stroke),
             };
             return Slider.Create(_level, static v => Playback.SetVolume(v), Options, length: p.Length, thickness: 32f, style: style);
@@ -1439,9 +1439,11 @@ public static partial class Stage
                 Foreground = Ink.Ink, MinWidth = 40f,
             };
             Element? rows = QueuePaneBody?.Invoke();
+            var layout = ctx.Layout.Value;
+            float s = layout.QueueScale;
             return new BoxEl
             {
-                Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true,
+                Direction = 1, Grow = 1f, MinHeight = 0f, MinWidth = 0f, ClipToBounds = true, MaxWidth = layout.QueueListMaxW,
                 Children =
                 [
                     new BoxEl
@@ -1449,11 +1451,11 @@ public static partial class Stage
                         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Margin = new Edges4(0f, 0f, 0f, Spacing.M),
                         Children =
                         [
-                            new TextEl(Loc.Get(Strings.Stage.UpNext)) { Size = 28f, LineHeight = 36f, Weight = 600, FontFamily = DisplayFace, Color = Ink.Ink },
+                            new TextEl(Loc.Get(Strings.Stage.UpNext)) { Size = MathF.Round(28f * s), LineHeight = MathF.Round(36f * s), Weight = 600, FontFamily = DisplayFace, Color = Ink.Ink },
                             new BoxEl
                             {
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                                Children = [new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = 14f, LineHeight = 20f, Color = Ink.Ink },
+                                Children = [new TextEl(Loc.Get(Strings.Player.Autoplay)) { Size = MathF.Round(14f * s), LineHeight = MathF.Round(20f * s), Color = Ink.Ink },
                                             ToggleSwitch.Create(_autoplay, static on => Platform.Settings.Set(Platform.Keys.AutoplayEnabled, on), style: toggle)],
                             },
                         ],
@@ -1527,7 +1529,7 @@ public static partial class Stage
         static Element Card(params Element[] body) => new BoxEl
         {
             Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.XL, Spacing.L, Spacing.XL, Spacing.L), Corners = Radii.CardAll,
-            Fill = ColorF.FromRgba(255, 255, 255, 13), BorderWidth = 1f, BorderColor = ColorF.FromRgba(255, 255, 255, 15), Children = body,
+            Fill = Ink.Plate, BorderWidth = 1f, BorderColor = Ink.Stroke, Children = body,
         };
 
         /// <summary>Credits · {title}: name · role rows from Edges.TrackCredits (the drawer's source, Track.Drawer.cs:617-636).</summary>

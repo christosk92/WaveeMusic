@@ -655,14 +655,14 @@ public static partial class Visualizer
         float tileW = (layout.GalleryW - 40f - 10f) * 0.5f, previewH = 78f, tileH = previewH + 56f;
         // frozen at mount BY DESIGN (the grid is keyed by palette + accent, so a new accent remounts the tiles): plain colour
         // locals, so the border thunk reads only the kind signal inside it
-        ColorF pickBorder = accent.Fill, restBorder = ColorF.FromRgba(255, 255, 255, 15);
+        ColorF pickBorder = accent.Fill, restBorder = Ink.Stroke;
         Element tile(int i)
         {
             var kind = (Kind)i;
             return new BoxEl
             {
-                Direction = 1, Gap = 6f, Padding = new Edges4(6f, 6f, 6f, 8f), Corners = CornerRadius4.All(6f), Fill = ColorF.FromRgba(255, 255, 255, 10),
-                HoverFill = ColorF.FromRgba(255, 255, 255, 19), BrushTransitionMs = Design.Motion.Fast, Cursor = CursorId.Hand,
+                Direction = 1, Gap = 6f, Padding = new Edges4(6f, 6f, 6f, 8f), Corners = CornerRadius4.All(6f), Fill = Ink.Plate,
+                HoverFill = Ink.PlateHover, BrushTransitionMs = Design.Motion.Fast, Cursor = CursorId.Hand,
                 BorderWidth = 2f, BorderColor = Prop.Of(() => kindSig.Value == kind ? pickBorder : restBorder),
                 Children =
                 [
@@ -672,7 +672,7 @@ public static partial class Visualizer
                         Gradient = new GradientSpec(GradientShape.Linear, 135f, [new GradientStop(0f, p.F1), new GradientStop(1f, p.F4)]),
                         Children =
                         [
-                            new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = ColorF.FromRgba(14, 12, 14, 115) },
+                            new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = Ink.Veil with { A = 0.45f } },
                             Face(kind, slab, in p, new FaceSpec(tileW - 12f, previewH, Preview: true, CoverUrl: null)),
                             // the check disc: TOP (AlignSelf) RIGHT (JustifySelf) — V-U9
                             new BoxEl
@@ -697,11 +697,11 @@ public static partial class Visualizer
             };
         }
         var sliderStyle = Slider.DefaultStyle with { ValueFill = accent.Fill, ValueFillPointerOver = accent.FillSecondary, ValueFillPressed = accent.FillTertiary, ThumbFill = accent.Fill, ThumbFillPointerOver = accent.FillSecondary, ThumbFillPressed = accent.FillTertiary };   // rail + thumb ring stay the theme's (the stage follows the app theme)
-        var toggleStyle = ToggleSwitch.DefaultStyle with { OnFill = accent.Fill, OnHover = accent.FillSecondary, OnPressed = accent.FillTertiary, OnKnob = accent.Ink, MinWidth = 40f, OffBorder = ColorF.FromRgba(255, 255, 255, 153), OffKnob = ColorF.FromRgba(255, 255, 255, 204) };
+        var toggleStyle = ToggleSwitch.DefaultStyle with { OnFill = accent.Fill, OnHover = accent.FillSecondary, OnPressed = accent.FillTertiary, OnKnob = accent.Ink, MinWidth = 40f, OffFill = Ink.GlassRest, OffHover = Ink.GlassHover, OffPressed = Ink.GlassPressed, OffBorder = Ink.InkSecondary, OffKnob = Ink.InkSecondary, Foreground = Ink.Ink };
         return new BoxEl
         {
             Width = layout.GalleryW, Height = layout.GalleryH, Direction = 1, Gap = 10f, Padding = new Edges4(20f, 14f, 20f, 20f), Corners = Radii.CardAll,
-            Acrylic = AcrylicSpec.InAppBase, Shadow = Elevation.Flyout, ClipToBounds = true,
+            Acrylic = Ink.Card, Shadow = Elevation.Flyout, ClipToBounds = true,
             Children =
             [
                 new BoxEl
@@ -749,7 +749,7 @@ public static partial class Visualizer
     static Element SettingRow(string glyph, string label, Element control) => new BoxEl
     {
         Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Gap = Spacing.M, MinHeight = 48f,
-        Padding = new Edges4(16f, 0f, 12f, 0f), Corners = Radii.ControlAll, Fill = ColorF.FromRgba(255, 255, 255, 13), BorderWidth = 1f, BorderColor = ColorF.FromRgba(255, 255, 255, 15),
+        Padding = new Edges4(16f, 0f, 12f, 0f), Corners = Radii.ControlAll, Fill = Ink.Plate, BorderWidth = 1f, BorderColor = Ink.Stroke,
         Children =
         [
             new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = [new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary }, new TextEl(label) { Size = 14f, LineHeight = 20f, Color = Ink.Ink }] },

@@ -600,6 +600,22 @@ public static partial class Design
         public ColorF SkeletonBar => Ink with { A = SkeletonA };
 
         const float SkeletonA = 0.12f;
+
+        // ── the stage's floating cards ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The acrylic under the stage's floating cards (the transport, the now-playing card, the visualizer
+        /// gallery). The dark arm is the in-app base recipe; the light arm is its light-theme twin (WinUI's light
+        /// AcrylicInAppFillColorBase). The dark recipe under the light arm's near-black ink was the unreadable transport.</summary>
+        public AcrylicSpec Card => Dark ? AcrylicSpec.InAppBase
+            : new(ColorF.FromRgba(0xF3, 0xF3, 0xF3), 0f, 30f, 0.02f, 0.90f, ColorF.FromRgba(0xEE, 0xEE, 0xEE));
+
+        /// <summary>A quiet plate INSIDE a card or on the stage (a settings row, a gallery tile, the artist card): ink at a
+        /// low alpha, so it reads as a step on either ground. It replaced white-alpha literals that vanished on light.</summary>
+        public ColorF Plate => Ink with { A = PlateA };
+        /// <inheritdoc cref="Plate"/>
+        public ColorF PlateHover => Ink with { A = PlateHoverA };
+
+        const float PlateA = 0.045f, PlateHoverA = 0.075f;
     }
 
     /// <summary>The LIVE facade over <see cref="StageArm"/>. <see cref="Arm"/> is the pure entry point; everything else
@@ -637,6 +653,9 @@ public static partial class Design
         public static ColorF ButtonFillPressed => Live.ButtonFillPressed;
         public static ColorF ButtonInk => Live.ButtonInk;
         public static ColorF SkeletonBar => Live.SkeletonBar;
+        public static AcrylicSpec Card => Live.Card;
+        public static ColorF Plate => Live.Plate;
+        public static ColorF PlateHover => Live.PlateHover;
 
         /// <summary>The stage's accent for a cover url. The cover LOOKUP lives here rather than on
         /// <see cref="StageArm"/> so the arm stays a pure value type over the token layer — which is what lets value
