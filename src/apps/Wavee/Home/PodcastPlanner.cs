@@ -310,7 +310,7 @@ public static class PodcastPlanner
 
     static IReadOnlyList<Zone> EmptyResult() => [new Zone(ZoneKind.EmptyFacet, "podcasts:empty", null, null, [])];
 
-    static bool IsUsable(HomeCard card) => !string.IsNullOrEmpty(card.Uri) && card.IsPlayable;
+    static bool IsUsable(HomeCard card) => !card.Id.IsEmpty && card.IsPlayable;   // Id, not Uri: Uri formats a string for a gid id
 
     /// <summary>A section titled "{phrase} {rest}" (one space between them, as the server always writes it) yields
     /// <paramref name="rest"/>; anything else answers false.</summary>
