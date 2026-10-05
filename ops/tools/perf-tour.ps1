@@ -311,7 +311,7 @@ for ($lap = 1; $startupPolicy.RunTour -and $lap -le $Laps; $lap++) {
         $stepLog += [pscustomobject]@{ Lap = $lapName; Name = $step.Name; Uri = $step.Route; StartedAt = $t; Scrolled = $step.Scroll; Input = $inputResult }
     }
 }
-if ($startupPolicy.RunTour) { Start-Sleep -Seconds 6 }   # the last nav window + a periodic mem.sample
+if ($startupPolicy.RunTour) { Start-Sleep -Seconds 31 }   # the last nav window + a periodic mem.sample (the app samples every 30 s when the working set holds still, every 5 s only while it moves 64 MB)
 
 # ── Managed heap attribution (JIT builds only: dotnet-gcdump needs the runtime's diagnostic port, which NativeAOT
 # does not have). Who owns the managed heap after two laps — the number the mem.sample "heap"/"loh" columns cannot name.

@@ -255,7 +255,7 @@ public static partial class Spotify
             new Thread(GaboLoop) { IsBackground = true, Name = "wavee-spotify-gabo" }.Start();
             s_gaboHeartbeat = new Timer(static _ => { RestoreGabo(s_outboxAccount); GaboQueue.TryAdd(new GaboWork(null, Tick: true)); }, null,
                 GaboFlushIntervalMs, GaboFlushIntervalMs);
-            s_resumeTicker = new Timer(static _ => Api.Run(FlushResumePoints), null,
+            s_resumeTicker = new Timer(static _ => { if (ResumeWorkPending()) Api.Run(FlushResumePoints); }, null,
                 ResumeFlushMs, ResumeFlushMs);
         }
 
@@ -785,6 +785,14 @@ public static partial class Spotify
                 ResumeQueue.Add(revision);
                 PersistResumeJournal();
             }
+        }
+
+        /// <summary>Is anything queued for the 2 s ticker to send (resume points or completion marks, including ones retained
+        /// after a failed write)? An idle player's tick then costs a lock and two counts instead of a pool work item, an array
+        /// copy and an account scope.</summary>
+        static bool ResumeWorkPending()
+        {
+            lock (ResumeGate) return ResumeQueue.Count > 0 || CompletionQueue.Count > 0;
         }
 
         static void FlushResumePoints()

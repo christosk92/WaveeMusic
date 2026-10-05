@@ -58,7 +58,7 @@ public static partial class AiLyrics
             {
                 _ct.ThrowIfCancellationRequested();
                 int n = _dec.Read(interleavedStereo);
-                if (n == -3) { Thread.Sleep(20); continue; }                 // the bytes are still on their way
+                if (n == -3) { _ct.WaitHandle.WaitOne(20); continue; }             // the bytes are still on their way; a cancel ends the wait at once
                 if (n <= 0) return n;
                 if (_ungain != 1f) foreach (ref float s in interleavedStereo[..(n * 2)]) s *= _ungain;
                 return n;

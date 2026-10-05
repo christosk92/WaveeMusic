@@ -3861,6 +3861,23 @@ public static partial class Playback
         /// never a cumulative count — a count says "something has been wrong for a while", an incident says when. Each incident
         /// also goes into the session's <see cref="GlitchLedger"/> (D1), whose verdict rides on the line: the log and the
         /// health card tell the same story.</summary>
+        static readonly DeviceUnderrunBaseline s_deviceUnderruns = new();
+
+        /// <summary>The device-side counterpart of the xrun incidents: the output device's own queue ran empty while streaming
+        /// (WASAPI <c>GetCurrentPadding</c> == 0 at a write). The xrun ledger only sees the app's ring running dry, so a stall
+        /// below it (the RT callback scheduled late, audiodg) read "clean" while the user heard a glitch. One Warning per tick that
+        /// saw new ones, with the running total. Tick thread only.</summary>
+        static void NoteDeviceUnderruns(PcmAudioSession sess, long posMs, PlaybackState state, EntityId track)
+        {
+            long total = sess.DeviceUnderrunCount;
+            long fresh = s_deviceUnderruns.Take(sess, total);
+            if (fresh <= 0) return;
+            s_ledger.RecordDeviceUnderruns((int)Math.Min(fresh, int.MaxValue), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            Log.Event(WaveeLogLevel.Warning, "audio", "audio.glitch.device", "device queue ran dry", null, -1, null,
+                WaveeLogField.Of("new", fresh), WaveeLogField.Of("total", total), WaveeLogField.Of("posMs", posMs),
+                WaveeLogField.Of("state", state.ToString()), WaveeLogField.Of("track", track.Text));
+        }
+
         static void DrainXruns(PcmAudioSession sess, long posMs, PlaybackState state)
         {
             bool live;
@@ -3876,6 +3893,7 @@ public static partial class Playback
                     track = s_id;
                 }
             }
+            if (live) NoteDeviceUnderruns(sess, posMs, state, track);
             int rate = sess.Format.SampleRate;
             // Read BEFORE draining: an incident's event carries only its FIRST block's shortfall (the feed latches once per
             // incident) while every later block of the same stall accrues into XrunFramesLost. What the drained events do not

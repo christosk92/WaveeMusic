@@ -264,6 +264,11 @@ public static class MemorySamplePolicy
     /// <summary>400 MB: where a player's working set stops being unremarkable.</summary>
     public const long WarnBytes = 400L << 20;
 
+    /// <summary>The periodic sampler's due rule, checked on every frame: nothing before <paramref name="checkMs"/> since the last sample;
+    /// then one at <paramref name="steadyMs"/>, or at once when the working set moved by <paramref name="growthBytes"/> either way.</summary>
+    public static bool PeriodicDue(double sinceLastMs, long workingSetDeltaBytes, double checkMs = 5000, double steadyMs = 30_000, long growthBytes = 64L << 20)
+        => sinceLastMs >= checkMs && (sinceLastMs >= steadyMs || Math.Abs(workingSetDeltaBytes) >= growthBytes);
+
     public static WaveeLogLevel LevelFor(long workingSet, long previousPeak, long thresholdBytes)
         => workingSet > thresholdBytes && workingSet > previousPeak ? WaveeLogLevel.Warning : WaveeLogLevel.Info;
 }

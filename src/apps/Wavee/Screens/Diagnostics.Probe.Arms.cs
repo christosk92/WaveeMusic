@@ -136,7 +136,8 @@ public static partial class Diagnostics
         {
             if (Interlocked.Exchange(ref s_guiInstalled, 1) != 0) return;
             s_options = ProbeOptions.Parse(args);
-            if (s_options.WantsConsole) { AttachParentConsole(); s_echo = true; }
+            s_frameBench = FrameBenchOptions.Parse(args);   // Diagnostics.Probe.FrameBench.cs
+            if (s_options.WantsConsole || s_frameBench.Enabled) { AttachParentConsole(); s_echo = true; }
             // Silence the lyrics surface's async stepper BEFORE anything mounts, so the advance probe alone drives the media
             // clock synchronously (0.2.9 WaveeApp.cs:34-40, minus the env read).
             if (s_options.LyricsAdvance) Lyrics.ViewCore.ProbeSyncMode = true;
@@ -145,7 +146,8 @@ public static partial class Diagnostics
             {
                 Platform.AttachAmbientPower(host);
                 s_host = host;
-                return TryStartupBench(host, window, device) || TryPerfBench(host, window, device) || TryMenuBench(host, window, device)
+                return TryStartupBench(host, window, device) || TryPerfBench(host, window, device) || TryFrameBench(host, window, device)
+                    || TryMenuBench(host, window, device)
                     || TryLyricsAdvanceProbe(host, window, device) || TryLyricsDemo(host, window, device);
             };
 
