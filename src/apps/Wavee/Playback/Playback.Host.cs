@@ -128,6 +128,9 @@ public static partial class Playback
     /// name) and the artist page it came from — <c>default</c> when nobody said.</summary>
     public static readonly Signal<Queue.ContextWire> ContextLabel = new(default);
     public static readonly Signal<Phase> PhaseSignal = new(Phase.Idle);
+    /// <summary><see cref="Environment.TickCount64"/> when <see cref="PhaseSignal"/> last changed (0 = never). The memory
+    /// governor reads it: a blocking collection waits until the transport has been settled for a while (Residency.Heap.cs).</summary>
+    public static long PhaseChangedAtMs { get; private set; }
     /// <summary>The play/pause glyph. Derived once here rather than re-derived at each of its six readers.</summary>
     public static readonly Signal<bool> IsPlaying = new(false);
     /// <summary>Refilling — distinct from <see cref="Phase.Loading"/>, which is "opening".</summary>
@@ -1071,6 +1074,7 @@ public static partial class Playback
         ContextUri.Value = s_state.Context;
         HasCardContext.Value = CardRelation.Active(s_state.Context, s_state.CurrentId);
         ContextLabel.Value = s_contextWire;
+        if (PhaseSignal.Peek() != s_state.Phase) PhaseChangedAtMs = Environment.TickCount64;
         PhaseSignal.Value = s_state.Phase;
         IsPlaying.Value = s_state.IsPlaying;
         Buffering.Value = s_state.Buffering;

@@ -960,6 +960,10 @@ public abstract class Table : Publishable
     /// holding the old (slot, version) pair can tell.</summary>
     public readonly Stack<int> Free = new();
 
+    /// <summary>Where the store's memory trim resumes its scan (<c>Store.TrimMemory</c>): one pass examines a bounded
+    /// number of rows, and the next one starts where it stopped, so every row of a big table is eventually seen.</summary>
+    internal int TrimCursor = 1;
+
     /// <summary>Bumps on every write to the row (D8). A bound row compares it across frames — cost 1 (P5).</summary>
     public Column<uint> Version;
     /// <summary>Which field groups are filled, as the kind's <c>&lt;Kind&gt;Fields</c> bits (P3). Replaces every

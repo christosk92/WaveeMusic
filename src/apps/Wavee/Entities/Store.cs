@@ -2698,16 +2698,24 @@ public static partial class Store
 
         MemoryPins? pins = Pins;
         int n = 0;
-        for (int slot = 1; slot < table.Count && n < cap; slot++)
+        // A pass looks at no more than `cap` rows, so it resumes where the last one stopped (Table.TrimCursor) and wraps:
+        // starting at slot 1 every time meant a table past `cap` rows had its tail examined by no pass, ever.
+        int slot = table.TrimCursor;
+        if (slot < 1 || slot >= table.Count) slot = 1;
+        for (int visited = 0, rows = table.Count - 1; visited < rows && n < cap; visited++)
         {
             // A slot with no identity is slot 0 or one already on the free list: `FreeSlot` blanks the cell.
-            if (table.Id[slot].Form == EntityForm.None) continue;
-            bool pinned = table.Inflight[slot] != 0
-                       || (table.Kind == EntityKind.User && slot == scope.MeSlot)
-                       || (pins is not null && pins.IsPinned(table.Kind, slot));
-            s_trimRows[n++] = new SweepRow(slot, table.Touched[slot], table.FetchedAt[slot], MemoryBytesPerRow,
-                                           pinned ? SweepFlags.Pinned : SweepFlags.None);
+            if (table.Id[slot].Form != EntityForm.None)
+            {
+                bool pinned = table.Inflight[slot] != 0
+                           || (table.Kind == EntityKind.User && slot == scope.MeSlot)
+                           || (pins is not null && pins.IsPinned(table.Kind, slot));
+                s_trimRows[n++] = new SweepRow(slot, table.Touched[slot], table.FetchedAt[slot], MemoryBytesPerRow,
+                                               pinned ? SweepFlags.Pinned : SweepFlags.None);
+            }
+            if (++slot >= table.Count) slot = 1;
         }
+        table.TrimCursor = slot;
         if (n == 0) return default;
 
         // ByteBudget 0 disables the budget leg (see above); everything else is the policy the disk sweep runs under,

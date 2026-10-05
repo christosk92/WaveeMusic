@@ -5,8 +5,9 @@
 // 0.2.10's `LibraryStore`/`CachedStore`) has no reverse index from a slot to the pages pointing at it yet
 // (`Entities/Store.cs`'s `MemoryPins` doc block explains why the trim is opt-in until a pin source exists).
 //
-// Two arenas, matching the plan:
+// The arenas:
 //   Priority 1 "prefetch-art"  — the engine's image cache, trimmed to its own budget (ports verbatim from 0.2.10).
+//   Priority 2/4 "metadata-cache" — the extension-metadata cache, cut to half / a quarter of its byte budget.
 //   Priority 3 "entity-store"  — `Store.TrimMemory(Entities.Current)` over `ShellPins` below. 0.2.10's priority 2
 //                                 ("detail-cache", `LibraryStore.ShedDetails`) has no 0.3 replacement: the type it
 //                                 shed no longer exists, and the plan folds what is left into one line at priority 3.
@@ -114,6 +115,14 @@ public static partial class Residency
             images.TrimToBudget();
             return Math.Max(0L, before - (images.UsedBytes + images.DerivedUsedBytes));
         });
+
+        // Priority 2 and 4 — the extension-metadata cache (Spotify.Api.MetadataCache): a second, protobuf copy of answers
+        // the entity graph already decoded, kept for the ETag round trip. Losing an entry costs one full answer instead
+        // of a 304 the next time that entity is asked for, and nothing on screen reads it, so it goes before anything a
+        // page holds: half the budget at Moderate, a quarter at Critical. It never takes the PROCESS to Normal on its
+        // own; it is the cheap part of what pressure asks for.
+        Register(2, "metadata-cache", static () => Spotify.Api.TrimMetadata(Spotify.Api.MetadataCache.DefaultBudgetBytes / 2));
+        Register(4, "metadata-cache-critical", static () => Spotify.Api.TrimMetadata(Spotify.Api.MetadataCache.DefaultBudgetBytes / 4));
 
         // Priority 3 — the entity store's unpinned rows, shed only under CRITICAL pressure. The pin snapshot is
         // rebuilt fresh on every tick (not cached across ticks): now-playing, the queue and the nav stack all move

@@ -711,6 +711,28 @@ public class StoreTests : IDisposable
         Assert.Equal(EntityForm.Text, t.Id[pinned].Form);
     }
 
+    /// <summary>A pass looks at a bounded number of rows; the next one resumes where it stopped. Before the cursor every
+    /// pass started at slot 1, so in a table bigger than one pass the tail was never examined at all — however cold.
+    /// The pins hold across the wrap exactly as they do inside one pass.</summary>
+    [Fact]
+    public void Successive_trims_reach_every_row_and_keep_the_pinned_ones()
+    {
+        Scope scope = Boot();
+        Table t = scope.Tracks;
+        var slots = new int[10];
+        for (int i = 0; i < slots.Length; i++) slots[i] = t.Slot($"wavee:local:file:cursor-{i}-20261005".AsSpan());
+        int pinned = slots[7];
+        Store.Pins = new PinOneSlot(pinned);
+        Entities.Now = 3_000_000;                                // every row is past the TTL
+
+        int freed = 0;
+        for (int pass = 0; pass < 4; pass++) freed += Store.TrimMemory(scope, t, SweepPolicy.Default, maxRows: 3).Victims;
+
+        Assert.Equal(slots.Length - 1, freed);                  // 3 rows per pass reach the tail by the fourth pass
+        Assert.Equal(EntityForm.Text, t.Id[pinned].Form);       // …and the pinned one survived every pass
+        Assert.Equal(1, t.LiveCount);
+    }
+
     /// <summary>The trim is memory's, not the file's: it works with no database at all, which is also the shape a
     /// <c>--fake</c> session and every unit test runs in.</summary>
     [Fact]
