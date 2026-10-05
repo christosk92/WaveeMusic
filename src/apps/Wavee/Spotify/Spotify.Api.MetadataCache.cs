@@ -12,7 +12,12 @@ public static partial class Spotify
         public static void InvalidateMetadata(string uri) => s_metadataCache.Invalidate(uri);
 
         /// <summary>Account-scoped extension cache. The gate coalesces concurrent overlapping requests;
-        /// each response is rebuilt with authoritative payloads, including per-entity 304 answers.</summary>
+        /// each response is rebuilt with authoritative payloads, including per-entity 304 answers.
+        ///
+        /// <para>BODIES (Platform/Bodies.cs). The wire answer is parsed and dropped right here, so it is always LENT and
+        /// never becomes an array: these answers run to 2.2 MB (the logged <c>fetch.xm</c> max, an artist batch). The
+        /// rebuilt answer is lent too when the caller holds a scope (the fetch provider does) — the caller only decodes
+        /// it — and is one exact array otherwise.</para></summary>
         public sealed class MetadataCache
         {
             public const int MaxEntitiesPerRequest = 300;
@@ -63,9 +68,13 @@ public static partial class Spotify
                         var batch = new Xm.BatchedEntityRequest { Header = request.Header?.Clone() };
                         int end = Math.Min(missing.Count, offset + MaxEntitiesPerRequest);
                         for (int i = offset; i < end; i++) batch.EntityRequest.Add(missing[i]);
-                        Result result = send(batch.ToByteArray());
-                        if (!result.Ok) return result;
-                        var returned = Xm.BatchedExtensionResponse.Parser.ParseFrom(result.Body);
+                        Xm.BatchedExtensionResponse returned;
+                        using (Bodies.Lend())
+                        {
+                            Result result = send(batch.ToByteArray());
+                            if (!result.Ok) return result.Owned();
+                            returned = Xm.BatchedExtensionResponse.Parser.ParseFrom(result.Bytes);
+                        }
                         foreach (var group in returned.ExtendedMetadata)
                         {
                             foreach (var item in group.ExtensionData)
@@ -100,7 +109,7 @@ public static partial class Spotify
                     {
                         foreach (var key in _entries.Keys) { _entries.Remove(key); break; }
                     }
-                    return new Result(200, answer.ToByteArray());
+                    return Bodies.Lending ? Result.Lent(200, answer) : new Result(200, answer.ToByteArray());
 
                     void Add(Xm.ExtensionKind kind, Xm.EntityExtensionData data, Xm.EntityExtensionDataArrayHeader? header)
                     {

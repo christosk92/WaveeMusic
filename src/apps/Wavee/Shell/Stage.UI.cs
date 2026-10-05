@@ -295,7 +295,7 @@ public static partial class Stage
             var fade = new EnterExit(Opacity: 0f, Active: true);
             return Ctx.Provide(StageContext, ctx, new BoxEl
             {
-                Width = L.W, Height = L.H, ZStack = true, ClipToBounds = true, Focusable = true, Fill = Ink.Floor,   // explicit size (V-U49)
+                Width = L.W, Height = L.H, ZStack = true, ClipToBounds = true, Focusable = true,   // explicit size (V-U49); the floor is the Backdrop's
                 OnRealized = h => _root = h,
                 OnHoverMove = p => { idle.PointerMoved(p.X, p.Y, Now()); Sync(); },
                 OnPointerExit = () => { idle.PointerLeft(Now()); Sync(); },
@@ -331,7 +331,10 @@ public static partial class Stage
                     // allocator's caption geometry (Layout.CaptionX/W/Bottom) — centred in the face's region, above the transport
                     Flow.Show(() => ModeRules.ShowsCaption(ctx.Mode.Value, ctx.LyricsOverlay.Value, ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane), Layer with
                     {
-                        Key = "stage:caption", HitTestVisible = false, HitTestPassThrough = false,
+                        // The caption animates every frame (its clock is per-frame) over the still scrim and art: a
+                        // RepaintBoundary keeps that motion in its own slice (tiles over the text only) instead of re-
+                        // rastering the full-window root tiles under it on every frame.
+                        Key = "stage:caption", HitTestVisible = false, HitTestPassThrough = false, RepaintBoundary = true,
                         Enter = new EnterExit(Dy: 12f, Opacity: 0f, Active: true), Exit = fade, Transition = MotionTok.ControlNormal,
                         Children = [Embed.Comp(static () => new CaptionHost())],
                     }),
@@ -439,11 +442,16 @@ public static partial class Stage
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             return Layer with   // full height from Grow, not from whichever child happens to declare L.H
             {
-                ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false,
+                // ONE quarter-scale repaint boundary for the whole backdrop: the floor, the cover under an 80-DIP baked blur, the
+                // Field's radial blobs and the flat scrim are all soft or flat, so they raster together into one small surface
+                // and composite as ONE upsampled quad. Separately they were three window-sized layers composited every frame
+                // (the Field drifts under all of them), and the bars' acrylic re-blurred all three.
+                ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false, Fill = Ink.Floor,
+                RepaintBoundary = true, RasterScale = 0.25f,
                 Children =
                 [
                     Embed.Comp(new BackdropArt.Props(url), static () => new BackdropArt()),
-                    Visualizer.FieldFace(ctx.Slab, in pal, new Visualizer.FaceSpec(L.W, L.H, Preview: false, CoverUrl: null), opacity: Prop.Bind(ctx.Slab.BaseFieldOp)) with { Key = "stage:field" },
+                    Visualizer.FieldFace(ctx.Slab, in pal, new Visualizer.FaceSpec(L.W, L.H, Preview: false, CoverUrl: null), opacity: Prop.Bind(ctx.Slab.BaseFieldOp), boundary: false) with { Key = "stage:field" },
                     new BoxEl
                     {
                         AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
