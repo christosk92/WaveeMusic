@@ -80,6 +80,20 @@ public sealed class GlitchLedger
         }
     }
 
+    /// <summary>The output DEVICE's own queue ran dry <paramref name="count"/> times (the engine's device-underrun count, folded in by the
+    /// tick). Each is an incident whose cause is the device side (the ring still held audio), so the health card's verdict agrees with the
+    /// <c>audio.glitch.device</c> log line. The gap length is unknown, so no frames are added.</summary>
+    public void RecordDeviceUnderruns(int count, long nowUnixMs)
+    {
+        if (count <= 0) return;
+        lock (_gate)
+        {
+            _incidents += count;
+            _deviceLate += count;
+            _lastStallAtUnixMs = nowUnixMs;
+        }
+    }
+
     /// <summary>The byte seam starved for <paramref name="stallMs"/> before the pump called it "Reconnecting".</summary>
     public void RecordByteWait(long stallMs)
     {
@@ -119,4 +133,24 @@ public sealed class GlitchLedger
          : _byteWaits > 0 && _producerStarves > 0 ? VerdictByteStarved
          : _producerStarves > _deviceLate ? VerdictProducerStarved
          : VerdictDeviceLate;
+}
+
+/// <summary>Turns a session's cumulative device-underrun count into "how many are new since the last look". Baselined per session
+/// (a new session starts a new count); the engine keeps the count monotonic across a device switch inside one session, so a swap
+/// never hides underruns behind an old, higher baseline.</summary>
+public sealed class DeviceUnderrunBaseline
+{
+    object? _session;
+    long _seen;
+
+    /// <summary>New underruns since the previous call for the same <paramref name="session"/>; 0 on the first call for a session
+    /// (it only sets the baseline) and when the total did not grow. A total that went DOWN re-baselines rather than going negative.</summary>
+    public long Take(object session, long total)
+    {
+        if (!ReferenceEquals(_session, session)) { _session = session; _seen = total; return 0; }
+        if (total < _seen) { _seen = total; return 0; }
+        long fresh = total - _seen;
+        _seen = total;
+        return fresh;
+    }
 }
