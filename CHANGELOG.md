@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.3] - unreleased
+
+### Fixed
+
+- **What's new shows the pictures of earlier releases again.** Opening an older release on the What's new page, or
+  the welcome after an update, showed its highlight cards with empty grey bands: only the installed version's
+  pictures were ever on disk. Wavee now downloads a release's pictures with its notes and keeps them offline.
+
 ## [0.3.2] - 2026-10-05
 
 ### Fixed

@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.3",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "Every release's pictures in What's new, plus clean song changes, lighter AI lyrics, and a search box, full screen and Settings back in shape.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "switch-and-memory",
+      "title": "Clean song changes, lighter AI lyrics",
+      "body": "Switching songs fades the old one out at once, instead of letting it play on while the next one opens and then cutting it off with a click. And word-by-word AI lyrics no longer leave hundreds of megabytes behind: timing a song reuses its buffers, and the memory goes back to Windows when the AI models unload after 10 idle minutes.",
+      "kind": "improved",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/ai-lyrics.jpg",
+        "alt": "Word-by-word lyrics timed on the NPU in full screen, the sung words lit as the song plays",
+        "width": 1200,
+        "height": 675
+      }
+    },
+    {
+      "id": "layout-fixes",
+      "title": "Search, full screen and Settings, back in shape",
+      "body": "After a visit to the search page, the title bar's search box no longer stays shrunk to a sliver on every page. With the visualizer gallery open in full screen, the gallery no longer hides when the controls fade, so the visualizer is no longer cut off beside an empty column. And after zooming in or out, Settings' expandable cards keep their full width instead of squeezing their headers into a sliver.",
+      "kind": "improved",
+      "issues": [],
+      "media": {
+        "kind": "image",
+        "src": "media/gallery-search.jpg",
+        "alt": "The full-screen visualizer gallery open beside the Aurora visualizer, and the search page with its title-bar search box at full width",
+        "width": 1200,
+        "height": 675
+      }
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
