@@ -480,6 +480,8 @@ public static partial class Diagnostics
             // PlayContext: --fake has no network to resolve a playlist context against.
             EntityRef row = Entities.Ref(EntityId.Parse("spotify:track:tr0"));
             if (row.IsNone) { Say("[play-demo] the seeded track is missing"); return false; }
+            // `--play-demo-title <text>`: a title long enough to overflow the player bar, so the census sees its marquee scroll.
+            if (s_options.PlayDemoTitle.Length > 0) Entities.FakeRetitle("spotify:track:tr0", s_options.PlayDemoTitle);
             Span<EntityRef> one = [row];
             Playback.PlayRows(one, 0, EntityId.Parse("spotify:playlist:pl0"));
             Shell.Ui.RailOpen.Value = false;
@@ -488,7 +490,8 @@ public static partial class Diagnostics
             while (!w.IsClosed && Environment.TickCount64 < until && !Playback.Snap().IsPlaying) FrameFast(host, w, gpu);
             for (int i = 0; i < 120 && !w.IsClosed; i++) FrameFast(host, w, gpu);   // the meters mount on the playing edge
             var snap = Playback.Snap();
-            Say("[play-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text);
+            Say("[play-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text
+                + " title=" + Entities.Track(EntityUri.Parse("spotify:track:tr0")).Title);
             if (s_options.PlayDemoShot.Length > 0) PlayDemoShot(host, w, gpu, s_options.PlayDemoShot);
             return false;
         }
@@ -818,7 +821,8 @@ public static partial class Diagnostics
     // ── the probe arms' argv (a pure parse — 0.2.9's EnvInt knobs as flags; out-of-range or garbage → the default) ──
     public readonly record struct ProbeOptions(bool PerfBench, bool StartupBench, string CrashProbe, bool LyricsAdvance,
         string ProbeOut, int PlaybackFrames, int LyricsFrames, int IdleSec, int NavHops, int OpenHops,
-        bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false, bool PlayDemo = false, string PlayDemoShot = "")
+        bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false, bool PlayDemo = false, string PlayDemoShot = "",
+        string PlayDemoTitle = "")
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
@@ -838,12 +842,14 @@ public static partial class Diagnostics
             string outDir = outAt >= 0 && outAt + 1 < args.Length && !args[outAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[outAt + 1] : "";
             int shotAt = Array.IndexOf(args, "--play-demo-shot");
             string shot = shotAt >= 0 && shotAt + 1 < args.Length && !args[shotAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[shotAt + 1] : "";
+            int titleAt = Array.IndexOf(args, "--play-demo-title");
+            string title = titleAt >= 0 && titleAt + 1 < args.Length && !args[titleAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[titleAt + 1] : "";
             return new ProbeOptions(Array.IndexOf(args, "--perf-bench") >= 0, Array.IndexOf(args, "--startup-bench") >= 0, mode,
                 Array.IndexOf(args, "--lyrics-advance-probe") >= 0, outDir,
                 Int(args, "--probe-playback-frames", 5400, 120, 36000), Int(args, "--probe-lyrics-frames", 3600, 60, 36000),
                 Int(args, "--bench-idle-sec", 10, 3, 120), Int(args, "--bench-nav-hops", 12, 4, 60), Int(args, "--bench-open-hops", 8, 2, 40),
                 Array.IndexOf(args, "--menu-bench") >= 0, Int(args, "--bench-menu-rounds", 5, 1, 40),
-                Array.IndexOf(args, "--lyrics-demo") >= 0, Array.IndexOf(args, "--play-demo") >= 0, shot);
+                Array.IndexOf(args, "--lyrics-demo") >= 0, Array.IndexOf(args, "--play-demo") >= 0, shot, title);
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)
