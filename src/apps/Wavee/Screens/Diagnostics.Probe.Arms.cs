@@ -146,7 +146,7 @@ public static partial class Diagnostics
                 Platform.AttachAmbientPower(host);
                 s_host = host;
                 return TryStartupBench(host, window, device) || TryPerfBench(host, window, device) || TryMenuBench(host, window, device)
-                    || TryLyricsAdvanceProbe(host, window, device) || TryLyricsDemo(host, window, device);
+                    || TryMemSoak(host, window, device) || TryLyricsAdvanceProbe(host, window, device) || TryLyricsDemo(host, window, device);
             };
 
             if (s_options.CrashProbe.Length > 0)
@@ -776,13 +776,14 @@ public static partial class Diagnostics
     // ── the probe arms' argv (a pure parse — 0.2.9's EnvInt knobs as flags; out-of-range or garbage → the default) ──
     public readonly record struct ProbeOptions(bool PerfBench, bool StartupBench, string CrashProbe, bool LyricsAdvance,
         string ProbeOut, int PlaybackFrames, int LyricsFrames, int IdleSec, int NavHops, int OpenHops,
-        bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false)
+        bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false,
+        bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0)
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
 
         /// <summary>A GUI arm that wants the parent console (every one of them is a CLI-launched GUI run).</summary>
-        public bool WantsConsole => PerfBench || StartupBench || LyricsAdvance || MenuBench || CrashProbe.Length > 0;
+        public bool WantsConsole => PerfBench || StartupBench || LyricsAdvance || MenuBench || MemSoak || CrashProbe.Length > 0;
 
         public static ProbeOptions Parse(string[] args)
         {
@@ -799,7 +800,9 @@ public static partial class Diagnostics
                 Int(args, "--probe-playback-frames", 5400, 120, 36000), Int(args, "--probe-lyrics-frames", 3600, 60, 36000),
                 Int(args, "--bench-idle-sec", 10, 3, 120), Int(args, "--bench-nav-hops", 12, 4, 60), Int(args, "--bench-open-hops", 8, 2, 40),
                 Array.IndexOf(args, "--menu-bench") >= 0, Int(args, "--bench-menu-rounds", 5, 1, 40),
-                Array.IndexOf(args, "--lyrics-demo") >= 0);
+                Array.IndexOf(args, "--lyrics-demo") >= 0,
+                Array.IndexOf(args, "--mem-soak") >= 0, Int(args, "--mem-soak-rounds", 6, 1, 200), Int(args, "--mem-soak-idle-sec", 40, 5, 600),
+                Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048));
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)
