@@ -2079,8 +2079,7 @@ public static partial class Spotify
 
                     Volatile.Write(ref _mirror, index);
                     if (total > landed) Publish(in req, start + landed, dst.Span[landed..total]);
-                    Log.Info("audio", $"audio.range file={FileIdHex} at={start} len={total} src=cdn pingMs={_fetcher.PingMs} "
-                                      + $"kbps={_fetcher.BytesPerSecond * 8 / 1000} ms={ElapsedMs()}");
+                    LogRange(start, total, "cdn", $"pingMs={_fetcher.PingMs} kbps={_fetcher.BytesPerSecond * 8 / 1000} ");
                     return new FetchResult(total, headersAt, attemptAt);
                 }
                 if (ct.IsCancellationRequested) return new FetchResult(bestLanded > 0 ? bestLanded : -1, headersAt);
@@ -2340,7 +2339,7 @@ public static partial class Spotify
             internal void Settle(in RangeRequest req, Source source)
             {
                 if (source == Source.Local)
-                    Log.Info("audio", $"audio.range file={FileIdHex} at={req.Start} len={req.End - req.Start} src=local ms={ElapsedMs()}");
+                    LogRange(req.Start, req.End - req.Start, "local", "");
                 if (req.ViewOnly) { _ring.ViewSettled(req, source == Source.Refused); return; }   // the second reader's: the fill's identity is not touched
                 if (req.Tail) return;
                 _ring.Settled(req, source == Source.Refused);
@@ -2406,6 +2405,20 @@ public static partial class Spotify
             }
 
             long ElapsedMs() => (long)Stopwatch.GetElapsedTime(_t0).TotalMilliseconds;
+
+            // A stream's first ranges say how it opened (which store, how fast); after that a landed range is routine and only
+            // counts toward the minute's audio.range.summary. Refusals, partials and faults keep their own Warn lines.
+            const int DetailedRanges = 4;
+            static readonly RoutineSummary s_rangeSummary = RoutineSummary.Create("audio", "audio.range.summary");
+            int _rangesLogged;
+
+            void LogRange(long at, long len, string src, string detail)
+            {
+                if (Interlocked.Increment(ref _rangesLogged) <= DetailedRanges)
+                    Log.Info("audio", $"audio.range file={FileIdHex} at={at} len={len} src={src} {detail}ms={ElapsedMs()}");
+                else
+                    s_rangeSummary.Note(len, 0);
+            }
 
             /// <summary>Cancel this file's work, release a blocked read, hand the ring's slots back to the shared budget and
             /// its arrays to the pool.</summary>

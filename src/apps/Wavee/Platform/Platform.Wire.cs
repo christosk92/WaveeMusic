@@ -280,6 +280,10 @@ public static class Wire
             Log.Warn("wire", $"wire.storm {endpoint} — {storm}+ calls inside {WireRules.StormWindowMs / 1000}s ({total} this session): something is asking in a loop");
     }
 
+    /// <summary>A routine call is at least this slow before it gets its own log line.</summary>
+    const double SlowCallMs = 1500;
+    static readonly RoutineSummary Routine = RoutineSummary.Create("wire", "wire.summary");
+
     static void Note(string client, bool storms, HttpRequestMessage request, int status, long? responseBytes, long start, Exception? error)
     {
         Uri? uri = request.RequestUri;
@@ -291,7 +295,11 @@ public static class Wire
         string range = request.Headers.Range is { } r ? " range=" + r.ToString() : "";
         string tail = error is null ? "" : " error=" + error.GetType().Name;
 
-        Log.Info("wire", $"wire.call client={client} {method} {host}{path} status={status} ms={ms:F0} sent={sent} recv={responseBytes?.ToString() ?? "?"}{range}{tail}");
+        // Steady state is one summary line a minute; a call that failed, errored or ran long keeps its own full line.
+        if (error is not null || status is < 200 or >= 400 || ms >= SlowCallMs)
+            Log.Info("wire", $"wire.call client={client} {method} {host}{path} status={status} ms={ms:F0} sent={sent} recv={responseBytes?.ToString() ?? "?"}{range}{tail}");
+        else
+            Routine.Note(sent + (responseBytes ?? 0), (long)ms);
 
         if (!storms) return;
         Storm(WireRules.EndpointOf(method, host, path));

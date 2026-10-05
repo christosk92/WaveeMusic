@@ -490,7 +490,10 @@ public static partial class Diagnostics
     /// thread (the census is a UI-thread read).</summary>
     public static partial class MemorySampler
     {
-        const double IntervalMs = 5000;
+        const double IntervalMs = 5000;          // how often a frame checks whether a sample is due
+        const double SteadyIntervalMs = 30_000;  // the sample cadence while the working set holds still
+        const long GrowthBytes = 64L << 20;      // a working-set move this large between checks samples at once
+        static long s_lastSampledWs;
         static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
         static double s_lastAt = double.NegativeInfinity;
         static long s_lastAllocBytes, s_lastAllocTicks, s_peakWorkingSet;
@@ -535,12 +538,18 @@ public static partial class Diagnostics
 
         internal static void OnFrame()
         {
-            if (Clock.Elapsed.TotalMilliseconds - s_lastAt >= IntervalMs) Sample("periodic");
+            double since = Clock.Elapsed.TotalMilliseconds - s_lastAt;
+            if (since < IntervalMs) return;
+            // Steady state is one sample per 30 s; a working set that moved by 64 MB (either way) since the last sample is the thing
+            // this line exists to attribute, so it still gets its sample within the 5 s check.
+            if (since >= SteadyIntervalMs || Math.Abs(Environment.WorkingSet - s_lastSampledWs) >= GrowthBytes) Sample("periodic");
         }
 
         public static void Sample(string reason)
         {
             s_lastAt = Clock.Elapsed.TotalMilliseconds;
+            s_lastSampledWs = Environment.WorkingSet;
+            RoutineSummary.FlushAll();   // the per-request summaries ride this frame-driven tick: no timer thread of their own
             long nowTicks = System.Diagnostics.Stopwatch.GetTimestamp(), allocNow = GC.GetTotalAllocatedBytes(precise: false);
             double rate = s_lastAllocTicks != 0 && nowTicks > s_lastAllocTicks
                 ? (allocNow - s_lastAllocBytes) / ((nowTicks - s_lastAllocTicks) / (double)System.Diagnostics.Stopwatch.Frequency) / 1048576.0 : 0;
