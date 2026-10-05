@@ -46,6 +46,7 @@ public static partial class Video
     public static void Install()
     {
         Overrides.Attach(Platform.Settings);
+        Overrides.FakeClip = Platform.Args.FakeVideo;   // --fake --fake-video: in memory only (never in the roster, so never persisted)
         Overrides.BrokenLink -= OnBrokenLink;
         Overrides.BrokenLink += OnBrokenLink;
         Playback.Video.InstallLog();
@@ -216,7 +217,9 @@ public static partial class Video
             // The prefetch brings the CURRENT row's video to the schedule's level while it plays as audio — the row
             // already playing on the video host needs none, its load IS the fetch. The keeper is the other half: while a
             // video surface is wanted it holds the content keys of the playing row and the next queued one, which is
-            // what makes the second and third switch of a session near-instant and what keeps the native runtime up.
+            // what makes the second and third switch of a session near-instant and what keeps the native runtime up —
+            // while one of them is PROTECTED (F165), and for the playing row alone once the surface is off but a video
+            // was asked for this session (F218). The row the video host already owns is not re-warmed (F225).
             UseSignalEffect(static () =>
             {
                 EntityRef row = Playback.Current.Value;
@@ -240,7 +243,7 @@ public static partial class Video
                 string gid = hasVideo ? Entities.Strings.Resolve(new Track(row.Slot).VideoGidId) : "";
                 NextVideoRow(out EntityId nextId, out string nextGid);
                 Playback.Video.KeepWarm(new Playback.Video.WarmRequest(
-                    videoOn, audioBusy, hasVideo ? id : default, gid, nextId, nextGid));
+                    videoOn, audioBusy, hasVideo ? id : default, gid, nextId, nextGid, HostOwns: onVideoHost));
 
                 if (onVideoHost || !hasVideo) return;
                 var already = Playback.Video.PrefetchedLevel(id);

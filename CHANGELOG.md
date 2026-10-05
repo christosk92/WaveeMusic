@@ -63,6 +63,20 @@ versions separately under `v*` and is not tracked in this file.)
 
 - **Light mode in full screen.** The player bar, the now-playing card and the visualizer gallery stayed dark with
   dark text in light mode, and a few controls kept white outlines. They now follow the theme.
+- **The pop-out video window no longer slows down the main window, and video never slows the main window.** The pop-out
+  used the main window's frame slot, so opening a flyout or resizing could freeze the app for up to 0.6 s while a video
+  played in the pop-out. Each window now presents on its own, the pop-out's frame is presented before the main window
+  waits for its own, and opening and closing the pop-out no longer shows an empty window. Nothing is throttled for it:
+  the main window keeps its full frame rate whether or not a video plays, docked or popped out. (#171)
+- **No more ghost edges around DRM video.** The picture and the hole the UI leaves for it now move in the same frame, the
+  video is scaled smoothly instead of with blocky pixels, and the last frame of the previous video no longer shows
+  through after a switch. (#172)
+- **Switching videos and moving the video between docked, fullscreen and the pop-out is faster.** Turning video on keeps
+  the music playing until the first video frame, an outdated load is cancelled, and leaving fullscreen no longer drops
+  the video to its lowest quality. (#173)
+- **Steadier video playback.** Lyrics, the player-bar text and the equalizer no longer redraw the window when they are
+  hidden or the window is covered, the player-bar title glides at the display rate as before and keeps scrolling beside
+  a video, and the diagnostics log now records dropped frames and how long each switch takes. (#174)
 
 ## [0.3.0] - 2026-10-02
 

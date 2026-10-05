@@ -471,20 +471,136 @@ public class MediaSwitchTests
     [Fact]
     public void Only_a_video_boundary_actually_moves_the_host_instance()
     {
-        // Audio↔LocalFile is a KIND change (so the outgoing host stops) but the same host reloads, which is what keeps
-        // the fast-start / prepared-next path untouched.
-        Assert.True(Playback.MediaSwitch.ShouldStopOutgoingHost(Playback.PlayableKind.Audio, Playback.PlayableKind.LocalFile));
+        // Audio<->LocalFile is a KIND change but the same host reloads, which is what keeps the fast-start / prepared-next
+        // path untouched.
         Assert.False(Playback.MediaSwitch.HostChanges(Playback.PlayableKind.Audio, Playback.PlayableKind.LocalFile));
 
         Assert.True(Playback.MediaSwitch.HostChanges(Playback.PlayableKind.Audio, Playback.PlayableKind.Video));
         Assert.True(Playback.MediaSwitch.HostChanges(Playback.PlayableKind.Video, Playback.PlayableKind.LocalFile));
         Assert.False(Playback.MediaSwitch.HostChanges(Playback.PlayableKind.Video, Playback.PlayableKind.Video));
 
-        // At every real host swap the stop-first rule agrees with the swap trigger.
+        // Only a real host swap ever hands off; the same host is a plain reload, whatever the origin.
         foreach (var from in new[] { Playback.PlayableKind.Audio, Playback.PlayableKind.Video, Playback.PlayableKind.LocalFile })
             foreach (var to in new[] { Playback.PlayableKind.Audio, Playback.PlayableKind.Video, Playback.PlayableKind.LocalFile })
-                if (Playback.MediaSwitch.HostChanges(from, to))
-                    Assert.True(Playback.MediaSwitch.ShouldStopOutgoingHost(from, to));
+                foreach (Playback.LoadOrigin origin in Enum.GetValues<Playback.LoadOrigin>())
+                    Assert.Equal(!Playback.MediaSwitch.HostChanges(from, to),
+                        Playback.MediaSwitch.Handoff(from, to, origin, outgoingPlaying: true, parkedAgeMs: 0) == Playback.MediaSwitch.HostHandoff.SameHost);
+    }
+}
+
+// -- F151: the audio/video hand-off rules -----------------------------------------------------------------------------
+
+public class MediaSwitchHandoffTests
+{
+    const Playback.PlayableKind Audio = Playback.PlayableKind.Audio;
+    const Playback.PlayableKind Video = Playback.PlayableKind.Video;
+    const Playback.PlayableKind Local = Playback.PlayableKind.LocalFile;
+
+    static Playback.MediaSwitch.HostHandoff H(Playback.PlayableKind from, Playback.PlayableKind to, Playback.LoadOrigin origin,
+        bool playing = true, long parkedAgeMs = -1)
+        => Playback.MediaSwitch.Handoff(from, to, origin, playing, parkedAgeMs);
+
+    [Fact]
+    public void Audio_and_a_local_file_share_a_host_so_nothing_hands_off()
+    {
+        foreach (Playback.LoadOrigin origin in Enum.GetValues<Playback.LoadOrigin>())
+        {
+            Assert.Equal(Playback.MediaSwitch.HostHandoff.SameHost, H(Audio, Local, origin));
+            Assert.Equal(Playback.MediaSwitch.HostHandoff.SameHost, H(Local, Audio, origin));
+            Assert.Equal(Playback.MediaSwitch.HostHandoff.SameHost, H(Audio, Audio, origin));
+            Assert.Equal(Playback.MediaSwitch.HostHandoff.SameHost, H(Video, Video, origin));
+        }
+    }
+
+    [Fact]
+    public void The_song_outlives_the_click_only_for_a_toggle_made_while_it_plays()
+    {
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.StopAfterSuccessor, H(Audio, Video, Playback.LoadOrigin.MediaKindRefresh, playing: true));
+
+        // Not playing: nothing audible to keep. Any other origin: a natural end, a Next, a restore has no song to carry over.
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Audio, Video, Playback.LoadOrigin.MediaKindRefresh, playing: false));
+        foreach (Playback.LoadOrigin origin in Enum.GetValues<Playback.LoadOrigin>())
+            if (origin != Playback.LoadOrigin.MediaKindRefresh)
+                Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Audio, Video, origin, playing: true));
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Local, Video, Playback.LoadOrigin.MediaKindRefresh, playing: true));
+    }
+
+    [Theory]
+    [InlineData(Playback.LoadOrigin.MediaKindRefresh)]
+    [InlineData(Playback.LoadOrigin.VideoRecovery)]
+    public void The_way_back_resumes_the_parked_song_inside_its_ttl(Playback.LoadOrigin origin)
+    {
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.ResumeParked, H(Video, Audio, origin, parkedAgeMs: 0));
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.ResumeParked, H(Video, Audio, origin, parkedAgeMs: Playback.Video.AudioHandoff.ParkTtlMs));
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Video, Audio, origin, parkedAgeMs: Playback.Video.AudioHandoff.ParkTtlMs + 1));
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Video, Audio, origin, parkedAgeMs: -1));   // nothing parked for this row
+    }
+
+    [Fact]
+    public void The_way_back_never_resumes_for_any_other_origin_or_into_a_local_file()
+    {
+        foreach (Playback.LoadOrigin origin in Enum.GetValues<Playback.LoadOrigin>())
+            if (origin is not (Playback.LoadOrigin.MediaKindRefresh or Playback.LoadOrigin.VideoRecovery))
+                Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Video, Audio, origin, parkedAgeMs: 0));
+        Assert.Equal(Playback.MediaSwitch.HostHandoff.StopFirst, H(Video, Local, Playback.LoadOrigin.MediaKindRefresh, parkedAgeMs: 0));
+    }
+
+    [Fact]
+    public void A_load_while_attaching_keeps_the_song_only_for_the_same_rows_own_recovery()
+    {
+        static Playback.MediaSwitch.LoadPlan P(bool sameRow, Playback.PlayableKind next, Playback.LoadOrigin origin, bool songAlive = true)
+            => Playback.MediaSwitch.PlanLoad(attaching: true, sameRow, Video, next, origin, songAlive, parkedAgeMs: -1);
+
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.RetryAttach, P(true, Video, Playback.LoadOrigin.VideoRecovery));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.KeepAudio, P(true, Audio, Playback.LoadOrigin.VideoRecovery));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.KeepAudio, P(true, Local, Playback.LoadOrigin.VideoRecovery));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.KeepAudio, P(true, Audio, Playback.LoadOrigin.MediaKindRefresh));   // the toggle undone before the cut
+
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.AbortAttach, P(false, Video, Playback.LoadOrigin.VideoRecovery));    // another row
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.AbortAttach, P(true, Video, Playback.LoadOrigin.Advance));           // a natural end, a Next
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.AbortAttach, P(true, Audio, Playback.LoadOrigin.Claim));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.AbortAttach, P(true, Video, Playback.LoadOrigin.VideoRecovery, songAlive: false));   // the song died: nothing to keep
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.AbortAttach, P(true, Audio, Playback.LoadOrigin.MediaKindRefresh, songAlive: false));
+    }
+
+    [Fact]
+    public void A_load_with_nothing_attaching_follows_the_handoff_decision()
+    {
+        static Playback.MediaSwitch.LoadPlan P(Playback.PlayableKind from, Playback.PlayableKind to, Playback.LoadOrigin origin, bool playing, long age)
+            => Playback.MediaSwitch.PlanLoad(attaching: false, sameRowAsAttach: false, from, to, origin, playing, age);
+
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.BeginAttach, P(Audio, Video, Playback.LoadOrigin.MediaKindRefresh, true, -1));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.ResumeParked, P(Video, Audio, Playback.LoadOrigin.MediaKindRefresh, false, 5_000));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.Plain, P(Audio, Video, Playback.LoadOrigin.Advance, true, -1));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.Plain, P(Video, Audio, Playback.LoadOrigin.MediaKindRefresh, false, 31_000));
+        Assert.Equal(Playback.MediaSwitch.LoadPlan.Plain, P(Audio, Audio, Playback.LoadOrigin.MediaKindRefresh, true, -1));
+    }
+
+    [Fact]
+    public void Transport_belongs_to_the_song_until_the_video_has_taken_over()
+    {
+        Assert.True(Playback.MediaSwitch.VideoIsAudible(Video, attaching: false));
+        Assert.False(Playback.MediaSwitch.VideoIsAudible(Video, attaching: true));
+        Assert.False(Playback.MediaSwitch.VideoIsAudible(Audio, attaching: false));
+        Assert.False(Playback.MediaSwitch.VideoIsAudible(Local, attaching: true));
+    }
+
+    [Fact]
+    public void The_attach_window_cuts_on_a_frame_prerolls_a_silent_open_and_gives_up_without_one()
+    {
+        // A presented frame is the cut, whenever it lands (even after the preroll, even past the budget).
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.Cut, Playback.MediaSwitch.JudgeAttach(0, sessionOpen: false, framePresented: true, prerolled: false));
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.Cut, Playback.MediaSwitch.JudgeAttach(Playback.MediaSwitch.AttachBudgetMs + 1, true, true, true));
+
+        // No frame yet: wait, until a session that is open and still has none is played muted ONCE.
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.Wait, Playback.MediaSwitch.JudgeAttach(1_000, true, false, false));
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.Wait, Playback.MediaSwitch.JudgeAttach(Playback.MediaSwitch.AttachPrerollAfterMs, false, false, false));   // no session to play
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.Preroll, Playback.MediaSwitch.JudgeAttach(Playback.MediaSwitch.AttachPrerollAfterMs, true, false, false));
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.Wait, Playback.MediaSwitch.JudgeAttach(Playback.MediaSwitch.AttachPrerollAfterMs + 1, true, false, true));   // already prerolled
+
+        // Past the budget with nothing presented: a video fault (the song keeps playing).
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.TimedOut, Playback.MediaSwitch.JudgeAttach(Playback.MediaSwitch.AttachBudgetMs, true, false, true));
+        Assert.Equal(Playback.MediaSwitch.AttachVerdict.TimedOut, Playback.MediaSwitch.JudgeAttach(Playback.MediaSwitch.AttachBudgetMs, false, false, false));
     }
 }
 

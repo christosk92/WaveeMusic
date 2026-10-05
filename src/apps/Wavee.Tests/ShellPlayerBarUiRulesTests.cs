@@ -770,6 +770,18 @@ public class SeekRailRulesTests
         => Assert.Equal(expected, Shell.SeekRail.DwellMs(span, px), 2);
 
     [Fact]
+    public void The_stepper_is_parked_while_nobody_can_see_the_rail()
+    {
+        var track = Shell.SeekRailMode.Track;
+        Assert.True(Shell.SeekRail.Ticks(true, track, concealed: false, windowHidden: false));
+        Assert.True(Shell.SeekRail.Ticks(true, Shell.SeekRailMode.Dvr, concealed: false, windowHidden: false));
+        Assert.False(Shell.SeekRail.Ticks(true, track, concealed: true, windowHidden: false));    // the on-media strip faded out
+        Assert.False(Shell.SeekRail.Ticks(true, track, concealed: false, windowHidden: true));    // a covered / cloaked window
+        Assert.False(Shell.SeekRail.Ticks(false, track, concealed: false, windowHidden: false));  // paused
+        Assert.False(Shell.SeekRail.Ticks(true, Shell.SeekRailMode.Line, concealed: false, windowHidden: false));   // nothing to rewind
+    }
+
+    [Fact]
     public void The_ticker_runs_only_while_the_playhead_moves_on_its_own()
     {
         Assert.True(Shell.SeekRail.Advances(true, Playback.Fault.None, Playback.Phase.Playing, false));

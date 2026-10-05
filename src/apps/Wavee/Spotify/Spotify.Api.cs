@@ -19,7 +19,8 @@
 // THREADING (C9/C1). Every call here BLOCKS — `HttpClient.Send`, not `SendAsync`, exactly like `Spotify.Session.cs`,
 // whose comment this file inherits: these paths exist to block. None of them may run on the UI thread. `Run` is the
 // door: a bounded work queue (C8 — 256 deep, and a full queue REFUSES and says so rather than growing) drained by
-// four named threads `wavee-spotify-api-0..3`. Nothing here touches a table, a signal or `Entities.Strings` (C1): an
+// four named threads `wavee-spotify-api-0..3`, plus a small priority lane (`RunPriority`, threads `-p0..1`) for the
+// work a video switch waits on (F162). Nothing here touches a table, a signal or `Entities.Strings` (C1): an
 // answer is decoded into a `Staging` on the worker thread and handed to the UI thread through `Spotify.Post`.
 //
 // THE PROVIDER (§5, gap batch B1b). The planner hands over a batch that shares a NEED — (subject, kind, groups) for
@@ -145,11 +146,117 @@ public static partial class Spotify
         // Four threads, not the thread pool and not `Task.Run`: the pool's threads are the engine's too, and a blocking
         // `HttpClient.Send` on one of them is a frame the loop did not get. Four is `Fetch.MaxInFlight` — the planner
         // never has more than four batches out, so a fifth thread would idle by construction.
+        //
+        // F162: a video switch's own network (the load's resolve + manifest, the licence relay) must not queue behind
+        // catalogue batches the page the user clicked from started, so it has a LANE of its own: a second small queue
+        // drained by two dedicated threads. Dedicated, not "first pick of the shared four": the catalogue keeps all four of
+        // its threads (it is never starved by the lane) and the lane never waits on one of them. A lane that is full spills
+        // into the shared queue rather than refusing — slower, never lost.
 
         const int Workers = 4;
         const int QueueDepth = 256;
+        const int PriorityWorkers = 2;
+        const int PriorityQueueDepth = 32;
 
-        static readonly BlockingCollection<(Action Work, long Cause)> Work = new(QueueDepth);
+        /// <summary>A bounded work queue pair — the shared lane and the priority lane — each drained by its own threads. The
+        /// api pool is one of these; a fact builds its own with different numbers, so the ordering rule is pinned without
+        /// booting the process-wide pool (which registers the real fetch provider).</summary>
+        public sealed class Lanes
+        {
+            /// <summary>One queued item: the work, its capture cause, and (F226) when it was queued and how deep the queue it joined was.</summary>
+            readonly record struct Item(Action Work, long Cause, long EnqueuedTimestamp, int DepthAtEnqueue, bool Priority);
+
+            readonly BlockingCollection<Item> _shared, _priority;
+            readonly int _sharedWorkers, _priorityWorkers;
+            readonly string _name;
+            readonly Action<QueueWait>? _observe;
+            int _started;
+
+            /// <summary>The lanes. <c>observe</c> (F226) is called on the worker thread for every item the moment it leaves the queue, with how
+            /// long it waited and the depth it found; null = unobserved. It must not block (a throw is swallowed).</summary>
+            public Lanes(int sharedWorkers, int sharedDepth, int priorityWorkers, int priorityDepth, string name, Action<QueueWait>? observe = null)
+            {
+                _sharedWorkers = sharedWorkers;
+                _priorityWorkers = priorityWorkers;
+                _name = name;
+                _observe = observe;
+                _shared = new(sharedDepth);
+                _priority = new(priorityDepth);
+            }
+
+            /// <summary>Start the threads, once. Background threads named <c>{name}-0..</c> (shared) and <c>{name}-p0..</c>
+            /// (priority).</summary>
+            public void Start()
+            {
+                if (Interlocked.CompareExchange(ref _started, 1, 0) != 0) return;
+                for (int i = 0; i < _sharedWorkers; i++)
+                {
+                    string label = i.ToString();
+                    new Thread(() => Drain(_shared, label)) { IsBackground = true, Name = _name + "-" + label }.Start();
+                }
+                for (int i = 0; i < _priorityWorkers; i++)
+                {
+                    string label = "p" + i;
+                    new Thread(() => Drain(_priority, label)) { IsBackground = true, Name = _name + "-" + label }.Start();
+                }
+            }
+
+            /// <summary>Queue <paramref name="work"/>. A priority item that finds its lane full goes to the shared queue; false
+            /// only when the lane it ended up in is full.</summary>
+            public bool TryRun(Action work, long cause, bool priority)
+            {
+                long stamp = System.Diagnostics.Stopwatch.GetTimestamp();
+                if (priority && _priority.TryAdd(new Item(work, cause, stamp, _priority.Count, Priority: true))) return true;
+                return _shared.TryAdd(new Item(work, cause, stamp, _shared.Count, priority));
+            }
+
+            /// <summary>Let the threads end once their queues drain (a fact's pool; the process-wide one never ends).</summary>
+            public void Complete()
+            {
+                _shared.CompleteAdding();
+                _priority.CompleteAdding();
+            }
+
+            void Drain(BlockingCollection<Item> queue, string label)
+            {
+                foreach (Item item in queue.GetConsumingEnumerable())
+                {
+                    if (_observe is { } observe)
+                    {
+                        try
+                        {
+                            observe(new QueueWait(label, item.Priority,
+                                System.Diagnostics.Stopwatch.GetElapsedTime(item.EnqueuedTimestamp).TotalMilliseconds, item.DepthAtEnqueue));
+                        }
+                        catch { /* telemetry never costs the work */ }
+                    }
+                    t_workerCause = item.Cause;
+                    try { item.Work(); }
+                    catch (Exception ex) { Log.Error("spotify", "api worker " + label + " faulted", ex); }
+                    finally { t_workerCause = 0; }
+                }
+            }
+        }
+
+        /// <summary>F226: what one api work item waited in its queue. <paramref name="Worker"/> is the thread label that took it
+        /// (<c>p0</c>.. = the priority lane's), <paramref name="Priority"/> whether it asked for the priority lane (a full lane spills
+        /// into the shared queue, so this can be true on a shared worker), <paramref name="QueuedMs"/> the wait and
+        /// <paramref name="DepthAtEnqueue"/> how many items were already queued ahead of it.</summary>
+        public readonly record struct QueueWait(string Worker, bool Priority, double QueuedMs, int DepthAtEnqueue);
+
+        /// <summary>A catalogue item that waited this long for a worker is worth a line: the lane was saturated or starved.</summary>
+        const double SlowQueueWaitMs = 250.0;
+
+        /// <summary>F226: the process pool's observer. A PRIORITY item (a video switch's resolve, manifest and licence relay) always logs
+        /// its wait and the depth it found: a handful per switch, and the one line that says whether the api queue was the delay. Any
+        /// other item logs only when it waited <see cref="SlowQueueWaitMs"/> or more, so a busy catalogue is not a log flood.</summary>
+        static void LogQueueWait(QueueWait w)
+        {
+            if (!w.Priority && w.QueuedMs < SlowQueueWaitMs) return;
+            Log.Info("spotify", $"api.queue worker={w.Worker} priority={(w.Priority ? 1 : 0)} queuedMs={(long)w.QueuedMs} depth={w.DepthAtEnqueue}");
+        }
+
+        static readonly Lanes Pool = new(Workers, QueueDepth, PriorityWorkers, PriorityQueueDepth, "wavee-spotify-api", LogQueueWait);
 
         /// <summary>The capture cause of the api work item running on THIS worker (realtime-capture §2.2): captured from
         /// the poster when the item is queued (<see cref="Run"/>), restored around the item here, and stamped onto every
@@ -183,21 +290,23 @@ public static partial class Spotify
         public static void Boot()
         {
             if (Interlocked.CompareExchange(ref s_booted, 1, 0) != 0) return;
-            for (int i = 0; i < Workers; i++)
-            {
-                int index = i;
-                new Thread(() => WorkerLoop(index)) { IsBackground = true, Name = "wavee-spotify-api-" + index }.Start();
-            }
+            Pool.Start();
             Fetch.Register(Transport);
         }
 
         /// <summary>Run <paramref name="work"/> on an api thread. Returns false when the queue is full — a caller must
         /// treat that as a failure it answers for (the fetch provider calls <see cref="Fetch.Failed"/>), never as a
         /// request that is merely slow.</summary>
-        public static bool Run(Action work)
+        public static bool Run(Action work) => Enqueue(work, priority: false);
+
+        /// <summary><see cref="Run"/> on the PRIORITY lane (F162): the work a video switch is waiting on — the load's resolve,
+        /// the licence relay. Everything else (catalogue, badges, warm-keeper, telemetry) stays on <see cref="Run"/>.</summary>
+        public static bool RunPriority(Action work) => Enqueue(work, priority: true);
+
+        static bool Enqueue(Action work, bool priority)
         {
             if (Volatile.Read(ref s_booted) == 0) Boot();
-            if (Work.TryAdd((work, Capture.Enabled ? CurrentCause() : 0))) return true;
+            if (Pool.TryRun(work, Capture.Enabled ? CurrentCause() : 0, priority)) return true;
             Interlocked.Increment(ref s_dropped);
             Log.Warn("spotify", "api queue full (" + QueueDepth + ") — request refused");
             return false;
@@ -206,27 +315,21 @@ public static partial class Spotify
         /// <summary>Run a blocking call on an api thread and hand its value back as a task — the door for a caller that
         /// lives in async code (the palette's filler, the lyrics stack) and must not park a pool thread on a socket. A
         /// full queue FAULTS the task (C8); it is never queued somewhere else.</summary>
-        public static Task<T> RunAsync<T>(Func<T> work)
+        public static Task<T> RunAsync<T>(Func<T> work) => RunAsyncOn(work, priority: false);
+
+        /// <summary><see cref="RunAsync{T}"/> on the priority lane (F162) — the licence relay's door.</summary>
+        public static Task<T> RunPriorityAsync<T>(Func<T> work) => RunAsyncOn(work, priority: true);
+
+        static Task<T> RunAsyncOn<T>(Func<T> work, bool priority)
         {
             var done = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-            bool queued = Run(() =>
+            bool queued = Enqueue(() =>
             {
                 try { done.TrySetResult(work()); }
                 catch (Exception ex) { done.TrySetException(ex); }
-            });
+            }, priority);
             if (!queued) done.TrySetException(new InvalidOperationException("api queue full (" + QueueDepth + ")"));
             return done.Task;
-        }
-
-        static void WorkerLoop(int index)
-        {
-            foreach ((Action work, long cause) in Work.GetConsumingEnumerable())
-            {
-                t_workerCause = cause;
-                try { work(); }
-                catch (Exception ex) { Log.Error("spotify", "api worker " + index + " faulted", ex); }
-                finally { t_workerCause = 0; }
-            }
         }
 
         // ── 3. the runner ────────────────────────────────────────────────────────────────────────────────────────────
@@ -284,8 +387,10 @@ public static partial class Spotify
 
         /// <summary>THE request. Blocks; api threads only (C9).
         ///
-        /// <para>One retry, and only one, and only for 401: <c>AccessToken(force: true)</c> re-mints and the request
-        /// goes again. Everything else — 429, 5xx, a socket that died — comes back as a status, because the retry
+        /// <para>One retry, and only one, and only for 401: <c>AccessToken(force: true, rejected)</c> re-mints — unless
+        /// another request already replaced the rejected bearer, in which case the new one is used (F220: N workers that
+        /// each got a 401 cost one login5 round trip, not N in series) — and the request goes again. Everything else —
+        /// 429, 5xx, a socket that died — comes back as a status, because the retry
         /// policy belongs to the caller that knows whether a retry buys anything (<see cref="Fetch.Backoff"/> for a
         /// catalog batch; a dropped flush for gabo).</para></summary>
         public static Result Send(RequestKind kind, scoped in RequestArgs args, CancellationToken ct)
@@ -320,10 +425,11 @@ public static partial class Spotify
             for (int attempt = 0; ; attempt++)
             {
                 if (!AccountRequestIsCurrent()) return new Result(409, []);
-                Result result = SendOnce(verb, url, headers, kind, body, syncReason, ct, contentType, contentEncoding, ifNoneMatch, identity);
+                Result result = SendOnce(verb, url, headers, kind, body, syncReason, ct, contentType, contentEncoding, ifNoneMatch, identity,
+                    out string? sentBearer);
                 if (result.Status != 401 || attempt > 0) return result;
                 if (!AccountRequestIsCurrent()) return new Result(409, []);
-                if (AccessToken(force: true) is null) return result;
+                if (AccessToken(force: true, rejected: sentBearer) is null) return result;
             }
         }
 
@@ -337,13 +443,14 @@ public static partial class Spotify
 
         static Result SendOnce(Verb verb, string url, HeaderSet headers, RequestKind kind, byte[] body,
             string syncReason, CancellationToken ct, string? contentType, string? contentEncoding, string? ifNoneMatch,
-            ClientIdentity? identity = null)
+            ClientIdentity? identity, out string? sentBearer)
         {
+            sentBearer = null;
             try
             {
                 using var message = new HttpRequestMessage(MethodOf(verb), url);
                 StampCause(message);
-                Stamp(message, headers, kind, body, syncReason);
+                Stamp(message, headers, kind, body, syncReason, out sentBearer);
                 if (identity is { } client)
                 {
                     message.Headers.TryAddWithoutValidation("App-Platform", client.AppPlatform);
@@ -446,14 +553,19 @@ public static partial class Spotify
 
         /// <summary>Turn the header BIT FIELD into headers. This is the whole of 0.2.9's middleware stack: the set is a
         /// constant the fold chose, so "which headers does this route need" is answered without a dictionary.</summary>
-        static void Stamp(HttpRequestMessage message, HeaderSet headers, RequestKind kind, byte[] body, string syncReason)
+        static void Stamp(HttpRequestMessage message, HeaderSet headers, RequestKind kind, byte[] body, string syncReason, out string? sentBearer)
         {
             HttpRequestHeaders h = message.Headers;
             bool web = (headers & HeaderSet.PathfinderWeb) != 0;
             bool pathfinder = web || (headers & HeaderSet.PathfinderDesktop) != 0;
 
+            // The bearer this request carries is reported back: a 401 names the token it rejected (single-flight re-mint, F220).
+            sentBearer = null;
             if ((headers & HeaderSet.Bearer) != 0 && AccessToken() is { Length: > 0 } bearer)
+            {
                 h.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+                sentBearer = bearer;
+            }
             if ((headers & HeaderSet.ClientToken) != 0 && ClientToken() is { Length: > 0 } clientToken)
                 h.TryAddWithoutValidation("client-token", clientToken);
 
@@ -2239,8 +2351,8 @@ public static partial class Spotify
             }
             for (int attempt = 0; ; attempt++)
             {
-                Result result = GetTextOnce(url, ct);
-                if (result.Status == 401 && attempt == 0 && AccessToken(force: true) is not null) continue;
+                Result result = GetTextOnce(url, ct, out string? sentBearer);
+                if (result.Status == 401 && attempt == 0 && AccessToken(force: true, rejected: sentBearer) is not null) continue;
                 return result.Ok && result.Length > 0 ? Encoding.UTF8.GetString(result.Bytes) : null;
             }
         }
@@ -2249,14 +2361,19 @@ public static partial class Spotify
         /// <c>Lyrics.Boot(resolve, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl)</c>.</summary>
         public static Task<string?> GetTextAsync(string url, CancellationToken ct) => RunAsync(() => GetText(url, ct));
 
-        static Result GetTextOnce(string url, CancellationToken ct)
+        static Result GetTextOnce(string url, CancellationToken ct, out string? sentBearer)
         {
+            sentBearer = null;
             try
             {
                 using var message = new HttpRequestMessage(HttpMethod.Get, url);
                 StampCause(message);
                 HttpRequestHeaders h = message.Headers;
-                if (AccessToken() is { Length: > 0 } bearer) h.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+                if (AccessToken() is { Length: > 0 } bearer)
+                {
+                    h.TryAddWithoutValidation("Authorization", "Bearer " + bearer);
+                    sentBearer = bearer;
+                }
                 h.TryAddWithoutValidation("App-Platform", "Android");
                 h.TryAddWithoutValidation("Spotify-App-Version", Identity.AppVersion);
                 h.TryAddWithoutValidation("Accept", "application/json");

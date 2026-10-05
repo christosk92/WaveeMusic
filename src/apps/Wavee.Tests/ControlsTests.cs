@@ -248,6 +248,15 @@ public class ControlsMotionPolicyTests
         Assert.False(Controls.ShouldShowStillShape(playing: true, reducedMotion: false));
     }
 
+    [Fact]
+    public void A_covered_window_stops_the_loop_and_nothing_else_about_the_window_does()
+    {
+        Assert.True(Controls.ShouldTick(true, false, false, windowHidden: false));
+        Assert.False(Controls.ShouldTick(true, false, false, windowHidden: true));   // covered / cloaked: nobody sees the bars
+        // There is no live-video, GPU-tier or focus input: a visible meter keeps its rate (motion policy, 2026-10-03).
+        Assert.False(Controls.ShouldShowStillShape(playing: true, reducedMotion: false));
+    }
+
     [Theory]
     [InlineData(1200f, 0)]
     [InlineData(760f, 0)]

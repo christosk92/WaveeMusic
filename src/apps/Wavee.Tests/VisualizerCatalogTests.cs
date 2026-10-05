@@ -165,14 +165,12 @@ public class VisualizerCatalogTests
     public void LodFor_keeps_the_selected_and_focused_tiles_live_and_the_rest_posters()
     {
         int bloom = Visualizer.Catalog.IndexOf(K.Bloom), warp = Visualizer.Catalog.IndexOf(K.Warp), flow = Visualizer.Catalog.IndexOf(K.Flow);
-        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(bloom, bloom, -1, weak: false));
-        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(bloom, bloom, -1, weak: true));          // selected: always live
-        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(flow, bloom, flow, weak: true));         // hovered: always live
-        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(bloom + 2, bloom, -1, weak: false));     // a neighbour
-        Assert.Equal(Visualizer.Lod.Poster, Visualizer.Catalog.LodFor(bloom + 2, bloom, -1, weak: true));       // weak: posters
-        Assert.Equal(Visualizer.Lod.Poster, Visualizer.Catalog.LodFor(bloom + 3, bloom, -1, weak: false));      // out of reach
-        Assert.Equal(Visualizer.Lod.Poster, Visualizer.Catalog.LodFor(warp, warp - 1, -1, weak: false));        // a physics preview
-        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(warp, warp, -1, weak: false));           // … unless selected
+        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(bloom, bloom, -1));
+        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(flow, bloom, flow));         // hovered: always live
+        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(bloom + 2, bloom, -1));     // a neighbour
+        Assert.Equal(Visualizer.Lod.Poster, Visualizer.Catalog.LodFor(bloom + 3, bloom, -1));      // out of reach
+        Assert.Equal(Visualizer.Lod.Poster, Visualizer.Catalog.LodFor(warp, warp - 1, -1));        // a physics preview
+        Assert.Equal(Visualizer.Lod.Preview, Visualizer.Catalog.LodFor(warp, warp, -1));           // … unless selected
 
         // whatever is selected and focused, never more than the budget is live
         int n = Visualizer.Catalog.ShownCount;
@@ -180,7 +178,7 @@ public class VisualizerCatalogTests
             for (int focus = -1; focus < n; focus++)
             {
                 int live = 0;
-                for (int i = 0; i < n; i++) if (Visualizer.Catalog.LodFor(i, sel, focus, weak: false) == Visualizer.Lod.Preview) live++;
+                for (int i = 0; i < n; i++) if (Visualizer.Catalog.LodFor(i, sel, focus) == Visualizer.Lod.Preview) live++;
                 Assert.True(live <= Visualizer.Catalog.MaxLivePreviews, $"sel={sel} focus={focus}: {live} live");
             }
     }

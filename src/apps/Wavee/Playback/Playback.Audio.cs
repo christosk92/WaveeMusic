@@ -370,6 +370,9 @@ public static partial class Playback
         // `--fake` drives its own session and the `MediaPlayer` facade never opened one, so the facade's Idle state
         // and zero position must NOT be read: everything comes off the session itself.
         static bool s_silent;
+        // F151: the live session is PARKED — paused (faded by the engine's own pause ramp) and kept, byte source and all, while a
+        // video plays in its place; `Unpark` resumes it, a load or a stop disposes it. The tick posts nothing for it. s_gate.
+        static volatile bool s_parked;
         static int s_pendingSeekMs = -1;
         // V-PA2: the reducer's seek generation the parked/last seek belongs to. Seeded by every `Load` (the reducer is already
         // on `seekGen` when it emits the load) and stamped by `Seek`; every Position/Seeked the pump posts carries it. Written
@@ -591,7 +594,7 @@ public static partial class Playback
             s_clockStale = true;
             // Play intent is the CALLER's, decided here and synchronously: a `Load` followed by `Pause` in the same Execute
             // pass (a paused restore, a paused reload) must open silently paused, so the load itself only reads it.
-            lock (s_gate) s_playIntent = true;
+            lock (s_gate) { s_playIntent = true; s_parked = false; }
             long chain = BumpChain();
             // G-117: the load this one supersedes stops being worth its round trips NOW — its token is cancelled (its open
             // returns at the next request boundary instead of running four 20 s deadlines to completion), and so is any
@@ -1142,6 +1145,7 @@ public static partial class Playback
                 prepared = s_prepItem;
                 s_session = null;
                 s_silent = false;
+                s_parked = false;
                 s_bytes = null;
                 s_activeDecoder = null;
                 s_retiringBytes = null;
@@ -3658,6 +3662,7 @@ public static partial class Playback
             lock (s_gate) { sess = s_session; epoch = s_loadEpoch; silent = s_silent; gen = s_pendingSeekGen; }
             // A session torn down between ticks would otherwise fire a zombie `pos=0, playing` tick off stale state.
             if (sess is null) { StopTicker(); return; }
+            if (s_parked) { StopTicker(); return; }             // F151: a parked song reports nothing — the video owns the deck
 
             PlaybackState state = silent || p is null ? sess.CurrentState : p.State.Peek();
             long rawPos = s_clockStale ? 0
@@ -3759,7 +3764,7 @@ public static partial class Playback
                     break;
 
                 case PlaybackState.Paused:
-                    if (s_lastState != PlaybackState.Paused) PostSignal(AudioSignal.Paused, epoch, pos);
+                    if (s_lastState != PlaybackState.Paused && !s_parked) PostSignal(AudioSignal.Paused, epoch, pos);
                     break;
 
                 case PlaybackState.Opening:
@@ -4020,16 +4025,83 @@ public static partial class Playback
         /// belongs to <paramref name="toEpoch"/> now — IF the pump is still on <paramref name="fromEpoch"/> (a load that
         /// replaced the voice in between wins). The joined row's duration and badge are posted again under the new epoch,
         /// because the reducer put a fresh row on the deck and cleared both. UI thread.</summary>
-        public static void AdoptHandOff(uint fromEpoch, uint toEpoch)
+        public static void AdoptHandOff(uint fromEpoch, uint toEpoch) => TryAdoptHandOff(fromEpoch, toEpoch);
+
+        /// <summary><see cref="AdoptHandOff"/> that says whether it took: false when the pump is no longer on
+        /// <paramref name="fromEpoch"/> or holds no session (F151: a hand-off window that cannot keep the song falls back to
+        /// the ordinary load).</summary>
+        public static bool TryAdoptHandOff(uint fromEpoch, uint toEpoch)
         {
             Opened opened;
             lock (s_gate)
             {
-                if (s_loadEpoch != fromEpoch || s_session is null) return;
+                if (s_loadEpoch != fromEpoch || s_session is null) return false;
                 s_loadEpoch = toEpoch;
                 opened = s_opened;
             }
             PostOpenedFacts(in opened, toEpoch);
+            return true;
+        }
+
+        // ── 14b. park and cut (F151, plan §3.1.4) ────────────────────────────────────────────────────────────────────
+        //
+        // The audio half of the audio/video hand-off. `Playback.ParkAndCut` decides WHEN; these are the verbs. The song is never
+        // disposed to make room for a video: it keeps playing under an adopted epoch while the video attaches, is PARKED on the
+        // video's first frame, and is resumed in place when the listener goes back.
+
+        /// <summary>The load epoch the live session belongs to — what a hand-off adoption names as its source.</summary>
+        public static uint LiveEpoch { get { lock (s_gate) return s_loadEpoch; } }
+
+        /// <summary>Is a song audible right now: a live session with play intent that is not parked or faulted? The hand-off
+        /// keeps it only when it is; a paused or not-yet-open song has nothing to keep.</summary>
+        public static bool IsAudible { get { lock (s_gate) return s_session is not null && s_playIntent && !s_parked && !s_errorReported && !s_clockStale; } }
+
+        /// <summary>Does a session still exist that a hand-off can keep: open, not parked, not faulted? Paused counts (a
+        /// listener who paused while the video attached still owns the song).</summary>
+        public static bool IsLive { get { lock (s_gate) return s_session is not null && !s_parked && !s_errorReported; } }
+
+        /// <summary>The live session's sample rate, 0 when none (the cut snaps to a whole sample of it).</summary>
+        public static int LiveSampleRate { get { lock (s_gate) return s_session?.Format.SampleRate ?? 0; } }
+
+        /// <summary>The song's playhead on the pump's own clock, the number the video is cut in at.</summary>
+        public static long ClockPositionMs() => ActivePositionMs();
+
+        /// <summary>The adopted song must announce itself again under its new epoch: the reducer put a fresh row on the deck
+        /// at `Loading`, and the tick posts <c>Started</c> only on a state EDGE.</summary>
+        public static void ReannounceStarted()
+        {
+            lock (s_gate) s_lastState = PlaybackState.Idle;
+        }
+
+        /// <summary>Park the live song: paused (the engine's own pause ramp is the de-click) and KEPT — no dispose, the byte
+        /// source and the session stay. The tick stops and posts nothing for it. A following <see cref="Load"/> or
+        /// <see cref="Stop"/> disposes it as always. False when there was no session to park.</summary>
+        public static bool Park()
+        {
+            lock (s_gate) { if (s_session is null) return false; s_parked = true; }
+            Pause();
+            return true;
+        }
+
+        /// <summary>Resume the parked song for <paramref name="toEpoch"/> at <paramref name="atMs"/> (the video's position),
+        /// playing unless <paramref name="play"/> is false. False when nothing is parked under <paramref name="fromEpoch"/>
+        /// — the caller then loads the row cold. UI thread.</summary>
+        public static bool Unpark(uint fromEpoch, uint toEpoch, int atMs, uint gen, bool play)
+        {
+            Opened opened;
+            lock (s_gate)
+            {
+                if (!s_parked || s_session is null || s_loadEpoch != fromEpoch) return false;
+                s_loadEpoch = toEpoch;
+                s_parked = false;
+                s_playIntent = play;
+                s_lastState = PlaybackState.Idle;          // the resumed song re-announces itself (Started) under the new epoch
+                opened = s_opened;
+            }
+            PostOpenedFacts(in opened, toEpoch);
+            Seek(atMs, toEpoch, gen);
+            if (play) Resume();
+            return true;
         }
 
         // ── the five sources, as one switch ──────────────────────────────────────────────────────────────────────────

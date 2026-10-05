@@ -922,7 +922,7 @@ if ($script:State.commit) { $commit = "$($script:State.commit)" }
 
 # ===============================================================================================================
 # PlayReady native DLL export check (video plan Q8 / G-152): a release must never ship a PlayReady CDM DLL that
-# fails to export FgPrRuntimeCreate for the architecture it was built for - that export is the only thing
+# fails to export FgPrRuntimeCreateOnAdapter for the architecture it was built for - that export is the only thing
 # DesktopProtectedVideoPlayer P/Invokes into, and a stale/missing one silently degrades DRM video for every
 # install of that arch until the NEXT release. The PE export-directory reader (Get-PeExportedNames) and the
 # predicate over it (Test-PeExport) live in Wavee.Build.psm1 - not here - so Pester can exercise the parser
@@ -943,8 +943,8 @@ function Assert-PlayReadyNativeExport {
         $ms = New-Object System.IO.MemoryStream
         $es = $entry.Open()
         try { $es.CopyTo($ms) } finally { $es.Dispose() }
-        if (-not (Test-PeExport $ms.ToArray() 'FgPrRuntimeCreate')) {
-            throw "$entryName in $(Split-Path -Leaf $MsixPath) ($Arch) does not export FgPrRuntimeCreate - stale or mismatched native build; rebuild ops/tools/playready-native for $Arch"
+        if (-not (Test-PeExport $ms.ToArray() 'FgPrRuntimeCreateOnAdapter')) {
+            throw "$entryName in $(Split-Path -Leaf $MsixPath) ($Arch) does not export FgPrRuntimeCreateOnAdapter - stale or mismatched native build; rebuild ops/tools/playready-native for $Arch"
         }
     }
     finally { $zip.Dispose() }

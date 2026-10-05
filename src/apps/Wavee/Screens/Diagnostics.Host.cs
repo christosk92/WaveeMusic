@@ -20,6 +20,7 @@
 // (Diagnostics ▸ Scroll, persisted) is Summary or Trace.
 
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using FluentGpu;
 using FluentGpu.Hosting;
@@ -487,12 +488,50 @@ public static partial class Diagnostics
     /// <summary>Always-on memory attribution: one <c>mem.sample</c> every 5 s while frames render, plus one at the end of
     /// every navigation window and scroll burst — the process, the managed heap, the engine census and GPU residency. UI
     /// thread (the census is a UI-thread read).</summary>
-    public static class MemorySampler
+    public static partial class MemorySampler
     {
         const double IntervalMs = 5000;
         static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
         static double s_lastAt = double.NegativeInfinity;
         static long s_lastAllocBytes, s_lastAllocTicks, s_peakWorkingSet;
+        static long s_lastPageFaults, s_lastFaultTicks;
+
+        /// <summary>kernel32's PROCESS_MEMORY_COUNTERS (natural packing; <c>cb</c> is its own size).</summary>
+        [StructLayout(LayoutKind.Sequential)]
+        struct PROCESS_MEMORY_COUNTERS
+        {
+            public uint cb;
+            public uint PageFaultCount;
+            public nuint PeakWorkingSetSize, WorkingSetSize, QuotaPeakPagedPoolUsage, QuotaPagedPoolUsage,
+                         QuotaPeakNonPagedPoolUsage, QuotaNonPagedPoolUsage, PagefileUsage, PeakPagefileUsage;
+        }
+
+        [LibraryImport("kernel32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool K32GetProcessMemoryInfo(nint hProcess, ref PROCESS_MEMORY_COUNTERS counters, uint cb);
+
+        /// <summary>The process's cumulative page-fault count (soft + hard: the OS does not split them in this counter), through the
+        /// current-process pseudo handle. False when the call is unavailable. The F244 correlate: a render-thread present that blocks
+        /// 100-320 ms off-CPU under 86-97% machine memory load is either DWM / the present queue or this process paging, and the
+        /// delta between two <c>mem.sample</c> lines says which.</summary>
+        static bool TryReadPageFaults(out long total)
+        {
+            total = 0;
+            // Every field is assigned (the OS fills the gauges we do not read) so the never-assigned-field warning stays quiet.
+            var counters = new PROCESS_MEMORY_COUNTERS
+            {
+                cb = (uint)System.Runtime.CompilerServices.Unsafe.SizeOf<PROCESS_MEMORY_COUNTERS>(), PageFaultCount = 0,
+                PeakWorkingSetSize = 0, WorkingSetSize = 0, QuotaPeakPagedPoolUsage = 0, QuotaPagedPoolUsage = 0,
+                QuotaPeakNonPagedPoolUsage = 0, QuotaNonPagedPoolUsage = 0, PagefileUsage = 0, PeakPagefileUsage = 0,
+            };
+            try
+            {
+                if (!K32GetProcessMemoryInfo(new nint(-1), ref counters, counters.cb)) return false;
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException) { return false; }
+            total = counters.PageFaultCount;
+            return true;
+        }
 
         internal static void OnFrame()
         {
@@ -506,6 +545,17 @@ public static partial class Diagnostics
             double rate = s_lastAllocTicks != 0 && nowTicks > s_lastAllocTicks
                 ? (allocNow - s_lastAllocBytes) / ((nowTicks - s_lastAllocTicks) / (double)System.Diagnostics.Stopwatch.Frequency) / 1048576.0 : 0;
             s_lastAllocBytes = allocNow; s_lastAllocTicks = nowTicks;
+            long pageFaults = 0, pageFaultsDelta = 0;
+            double pageFaultsPerSec = 0;
+            if (TryReadPageFaults(out pageFaults))
+            {
+                if (s_lastFaultTicks != 0 && nowTicks > s_lastFaultTicks)
+                {
+                    pageFaultsDelta = unchecked((uint)pageFaults - (uint)s_lastPageFaults);   // PageFaultCount is a wrapping DWORD
+                    pageFaultsPerSec = pageFaultsDelta / ((nowTicks - s_lastFaultTicks) / (double)System.Diagnostics.Stopwatch.Frequency);
+                }
+                s_lastPageFaults = pageFaults; s_lastFaultTicks = nowTicks;
+            }
             long ws = Environment.WorkingSet, privateBytes = 0, processPeak = 0;
             long previousPeak = s_peakWorkingSet;   // the level is judged against the peak BEFORE this sample raises it
             if (ws > s_peakWorkingSet) s_peakWorkingSet = ws;
@@ -522,7 +572,9 @@ public static partial class Diagnostics
                 .Append(" fragmented=").Append(Mb(gc.FragmentedBytes)).Append(" gen0=").Append(Mb(gen0)).Append(" gen1=").Append(Mb(gen1))
                 .Append(" gen2=").Append(Mb(gen2)).Append(" loh=").Append(Mb(loh)).Append(" poh=").Append(Mb(poh))
                 .Append(" gcs=").Append(GC.CollectionCount(0)).Append('/').Append(GC.CollectionCount(1)).Append('/').Append(GC.CollectionCount(2))
-                .Append(" allocMBs=").Append(rate.ToString("0.0", CultureInfo.InvariantCulture)).Append(" totalAlloc=").Append(Mb(allocNow));
+                .Append(" allocMBs=").Append(rate.ToString("0.0", CultureInfo.InvariantCulture)).Append(" totalAlloc=").Append(Mb(allocNow))
+                .Append(" pageFaults=").Append(pageFaults).Append(" pageFaultsDelta=").Append(pageFaultsDelta)
+                .Append(" pageFaultsPerSec=").Append(pageFaultsPerSec.ToString("0.0", CultureInfo.InvariantCulture));
             if (FluentApp.EngineCensus() is { } e)
                 sb.Append(" | engine scene=").Append(e.SceneLive).Append('/').Append(e.SceneCapacity).Append(" orphans=").Append(e.SceneOrphans)
                   .Append(" strings=").Append(e.StringMap).Append(" images=").Append(e.ImageCount).Append(" imagesReady=").Append(e.ImageReady)
@@ -539,9 +591,16 @@ public static partial class Diagnostics
                 sb.Append(" | gpu bytes=").Append(Mb(g.Bytes)).Append(" resources=").Append(g.Count);
                 if (FluentApp.GpuCensusLine() is { Length: > 0 } detail) sb.Append(detail);
             }
+            // The media stack's named owners (F197) and the cross-window dual-handle count (F235): engines with natural sizes, protected
+            // sessions with segment-store bytes, prepared sessions, runtime up/down. PMP decode inside mfpmp.exe is NOT counted.
+            sb.Append(MediaSegment(global::FluentGpu.Media.MediaCensus.Capture()));
             // Warning only on a new working-set peak above 400 MB (MemorySamplePolicy): a steady 800 MB used to warn every 5 s.
             Log.Event(MemorySamplePolicy.LevelFor(ws, previousPeak, MemorySamplePolicy.WarnBytes), "mem", "mem.sample", sb.ToString());
         }
+
+        /// <summary>The <c>mem.sample</c> media segment: the separator and the engine's one-line census (<c>videoEngines=..
+        /// protectedSessions=.. storeBytes=.. prepared=.. protectedRuntime=up|down dualHandleSlots=.. pmpDecode=not-counted</c>). Pure.</summary>
+        public static string MediaSegment(global::FluentGpu.Media.MediaCensusSnapshot media) => " | media " + media.Format();
 
         /// <summary>The process-lifetime peak, after the UI loop (no engine read after host disposal).</summary>
         internal static void SampleProcessEnd()

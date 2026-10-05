@@ -18,9 +18,10 @@
 // THE FIVE THINGS THIS FILE IS SHAPED BY (ch 22 §0, §9):
 //   1. Zero re-render per frame. The per-frame lane (`OnFrame`) writes SCENE COLUMNS (σ, transform, glyph wipe) and a
 //      handful of value-gated signals; a row re-renders only when ITS OWN packed emphasis changes.
-//   2. Lyrics wake only for the words (2026-09-12). The frame stepper is a frame-clock SUBSCRIBER, and its subscription
-//      IS the request for panel-rate frames — so it is mounted only while `MotionDemand` says a lane is moving, and a
-//      quiescent surface re-arms from a one-shot timeout at the next media instant instead.
+//   2. Lyrics wake only for the words (2026-09-12). The frame stepper is a frame-clock subscriber (one step per produced
+//      frame, at the display rate: there is no rail / tier / focus cadence) — so it is mounted only while `MotionDemand`
+//      says a lane is moving, and a quiescent surface (no media-clock lane live, a line-synced line on its glow plateau)
+//      re-arms from a one-shot timeout at the next media instant instead.
 //   3. Motion samples the frame clock. The media position is the playback host's (position, stamp) sample mapped onto
 //      `Design.FrameTime.NowQpc` through `MediaClock` + `SampleClock`; `Environment.TickCount64` appears nowhere.
 //   4. Two indices. `_activeLine` (lead-shifted: emphasis + follow) and `_voiceLine` (true time: wipe + glow); neither
@@ -291,7 +292,7 @@ public static partial class Lyrics
         // ── preferences, republished for the rows ────────────────────────────────────────────────────────────────────
         /// <summary>The secondary-line mode. A SIGNAL the rows read: a ctor int would never reach a mounted row.</summary>
         internal readonly Signal<int> Secondary = new(Prefs.None);
-        int _strength = BlurPolicy.StrongGpuDefault;   // the RESOLVED 0..100 blur strength
+        int _strength = BlurPolicy.AutoDefault;   // the RESOLVED 0..100 blur strength
         float _dofScale = 1f;
         /// <summary>The ACTIVE line's halo / held-note bloom multiplier. Equal to the DoF scale everywhere except the stage,
         /// whose DoF is forced off (every non-active row a blur layer was its largest cost) while the one or two halo
@@ -326,7 +327,6 @@ public static partial class Lyrics
         // ── motion demand ────────────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<bool> _motionLive = new(true);   // starts live: the first step decides for itself
         readonly Signal<MotionWake> _motionWake = new(new MotionWake(0, -1f));
-        readonly Signal<bool> _motionRecheck = new(false);
         int _motionWakeSeq;
         double _motionWakeRate = 1;
         long _motionWakeAtMs = long.MinValue;
@@ -344,7 +344,6 @@ public static partial class Lyrics
         internal bool CascadeRunningValue => _cascadeRunning.Value;
         internal bool MotionLiveValue => _motionLive.Value;
         internal MotionWake MotionWakeValue => _motionWake.Value;
-        internal bool MotionRecheckValue => _motionRecheck.Value;
         internal string TrackId => _trackId;
 
         void WakeTick() { if (!ProbeSyncMode) OnFrame(); }
@@ -368,7 +367,7 @@ public static partial class Lyrics
             // the rows that do must re-render IN THIS flush so the re-arranged extents are what the next step latches on.
             int secondary = Prefs.SecondaryLine();
             Secondary.Value = secondary;
-            int strength = Prefs.BlurStrength(GpuProfile.IsWeak, OnStage);
+            int strength = Prefs.BlurStrength(OnStage);
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
             if (newScale != _dofScale)
@@ -379,7 +378,7 @@ public static partial class Lyrics
                 // decrease never stops part-way on a paused, tickerless surface.
                 Array.Fill(_dofCurrent, float.NaN);
             }
-            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(GpuProfile.IsWeak, onStage: false)) : newScale;
+            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : newScale;
             HaloScale.Value = _haloScale;
             // Re-arm the ramp IMMEDIATELY on a strength change — it does not ride the ticker, so it lands paused too.
             UseEffect(() => { if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs); }, DepKey.From(strength));
@@ -1299,13 +1298,14 @@ public static partial class Lyrics
             _motionWake.Value = new MotionWake(++_motionWakeSeq, -1f);
         }
 
-        /// <summary>No document, an untimed one, or sync suppressed by a video: no media deadline to re-arm from, so the
-        /// ticker re-checks on a slow TIMER (which asks the host for no frames) while playback runs.</summary>
+        /// <summary>No document, an untimed one, or sync suppressed by a video: no media deadline to re-arm from. Nothing
+        /// polls for the end of those states (a 4 Hz timer used to, for nothing but the video flag): a document landing,
+        /// a clear or an ownership flip already <see cref="WakeMotion"/>, and the Ticker's edge effect re-steps on a
+        /// transport, position or <see cref="Playback.VideoActive"/> edge.</summary>
         void QuiesceUnresolved()
         {
             _motionLive.Value = false;
             ClearMotionWake();
-            _motionRecheck.Value = OwnsPlayback && Playback.IsPlaying.Peek();
         }
 
         // ── 2.10 the follow ─────────────────────────────────────────────────────────────────────────────────────────
@@ -1678,11 +1678,19 @@ public static partial class Lyrics
             bool renderWipe = playing && !ProbeSyncMode && anim is { RenderOwnsCompositor: true }
                 && voice is { IsWordByWord: true, Syllables.Count: > 0 };
             long voiceEnd = voice is null ? 0 : SungOutMs(doc, voiceLine);
-            bool voiceMoving = voiceLine >= 0 && (!renderWipe || Wipe.GlowMoving(voice!, nowMs, voiceEnd));
-            long nextEvent = MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs);
-            if (renderWipe) nextEvent = Math.Min(nextEvent, Wipe.NextGlowEdgeMs(voice!, nowMs, voiceEnd));
 
             // ── motion demand: this step's OUTCOME, published after every lane ran ──
+            // Does the voice line have per-frame OUTPUT right now? Under the render-thread wipe only its HALO can (a held
+            // syllable's ramp or melt: Wipe.GlowMoving). Otherwise MotionDemand.VoiceMoves (F237): a word-synced line always
+            // does, a line-synced line only during its glow fade-in and melt-out — on its flat plateau it is the voice but
+            // moves nothing, so the surface arms a wake at the melt-out instead of holding the stepper. While a user scroll
+            // defers the glow (`!runGlow`) the alpha was NOT written this step, so the voice counts as moving until a step
+            // writes it.
+            bool voiceMoving = voiceLine >= 0 && (!runGlow
+                || (renderWipe ? Wipe.GlowMoving(voice!, nowMs, voiceEnd) : MotionDemand.VoiceMoves(voice!, voiceEnd, nowMs)));
+            long nextEvent = MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs);
+            if (renderWipe) nextEvent = Math.Min(nextEvent, Wipe.NextGlowEdgeMs(voice!, nowMs, voiceEnd));
+            if (voiceLine >= 0) nextEvent = Math.Min(nextEvent, MotionDemand.VoicePlateauEndMs(voice!, voiceEnd));
             var demand = MotionDemand.Evaluate(new MotionLanes(
                 Playing: playing,
                 VoiceActive: voiceMoving,
@@ -1695,7 +1703,6 @@ public static partial class Lyrics
                 Following: Follow_.Peek() == FollowMode.Following,
                 NowMs: nowMs,
                 NextEventMs: nextEvent));
-            _motionRecheck.Value = false;
             _motionLive.Value = demand.NeedsTicks;
             if (demand.NeedsTicks) ClearMotionWake();
             else ArmMotionWake(demand.WakeAtMs, nowMs);
@@ -2195,7 +2202,7 @@ public static partial class Lyrics
     /// otherwise re-arms from a one-shot timeout at the next media instant — "lyrics wake only for the words".
     /// <para>NO STEP RUNS INSIDE THIS RENDER (the G-259 lost wakeup, found here by R4-0). A signal effect's body runs
     /// EAGERLY when its hook is created, i.e. inside this render, which has already read <c>_motionLive</c>,
-    /// <c>_cascadeRunning</c>, <c>Follow_</c>, the wake and the re-check and is still running; a step writes those, and the
+    /// <c>_cascadeRunning</c>, <c>Follow_</c> and the wake and is still running; a step writes those, and the
     /// engine drops a write into a running computation (<c>Computation.MarkDirty</c> returns early while Dirty, D42). The
     /// Ticker then kept a stale gate: a Stepper polling every frame after the step had quiesced, or none mounted when it
     /// asked for motion. So the edge effect's mount run only SUBSCRIBES — the mount's first step is owed by
@@ -2224,13 +2231,14 @@ public static partial class Lyrics
                 _ = Playback.PositionMs.Value;
                 _ = Playback.EpisodeSpeed.Value;
                 _ = Playback.CurrentId.Value;
+                _ = Playback.VideoActive.Value;   // a video starting or ending flips the sync suppression: step on the edge, no polling
                 if (!_edgeSubscribed) { _edgeSubscribed = true; return; }
                 if (ViewCore.ProbeSyncMode && playing) return;
                 owner.OnFrame(forceVisual: !playing);
             });
 
-            // Mounting CONDITIONALLY (not gating inside) is what lets the loop idle: an unmounted stepper is not a
-            // frame-clock subscriber, so it contributes no wake reason at all. The two edges beside `motionLive` arm work
+            // Mounting CONDITIONALLY (not gating inside) is what lets the loop idle: an unmounted stepper has no interval
+            // armed, so it contributes no wake reason at all. The two edges beside `motionLive` arm work
             // from OUTSIDE a step: a cascade that must finish across a pause, and the detached/resync countdown.
             bool needsTicks = motionLive || cascading || follow != FollowMode.Following;
             Element? stepper = needsTicks && !ViewCore.ProbeSyncMode ? Embed.Comp(() => new Stepper(owner)) : null;
@@ -2240,15 +2248,14 @@ public static partial class Lyrics
             var timer = UseTimeout(owner._wakeTick, MathF.Max(wake.DelayMs, 1f), DepKey.From(wake.Seq));
             if (needsTicks || wake.DelayMs < 0f) timer.Cancel();
 
-            // …and the slow re-check for the states with no media deadline (no document, untimed, video-suppressed).
-            UseInterval(owner._wakeTick, MotionDemand.UnresolvedRecheckMs, enabled: owner.MotionRecheckValue && !needsTicks);
-
             return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f, Children = stepper is null ? [] : [stepper] };
         }
     }
 
     /// <summary>The per-frame step: a frame-clock subscriber running ONE step per produced frame. Its subscription is the
-    /// request for those frames; unmounting it lets the loop idle. It never re-renders its owner. It mounts INSIDE the
+    /// request for those frames; unmounting it lets the loop idle (MotionDemand decides WHEN it is mounted — a quiescent
+    /// surface arms a one-shot wake instead, F237 — so the words, not a fixed cadence, decide how often it steps; a
+    /// word-synced line's wipe itself is posed by the render thread). It never re-renders its owner. It mounts INSIDE the
     /// <see cref="Ticker"/>'s render, so its eager mount run only subscribes and every step comes from a later tick's flush,
     /// where the Ticker is Clean and hears the gate writes in that same flush (the lost wakeup, see Ticker).</summary>
     sealed class Stepper(ViewCore owner) : Component

@@ -131,7 +131,10 @@ public static partial class Video
     /// <param name="Preferred">The last non-off, non-fullscreen placement the user chose. Where an unlit primary click
     /// opens, and the only placement worth persisting.</param>
     /// <param name="ReturnTo">Where <see cref="SurfacePlacement.Fullscreen"/> exits back to.</param>
-    /// <param name="Live">What the owner actually has mounted right now. Written ONLY by the owner/host.</param>
+    /// <param name="Live">What the owner actually has mounted right now. Written ONLY by the owner/host. The pure model
+    /// folds it (<see cref="PlacementCore.WithLive"/>, the <see cref="PlacementCommandKind.LiveChanged"/> reducer), but the
+    /// APP keeps its reality field OUTSIDE the subscribed <c>State.Surface</c> signal (<c>State.LiveSurface</c>): nothing
+    /// resolves from it, and a report written into the shared signal re-rendered the bar, rail and surfaces for nothing.</param>
     /// <param name="Available">Allowed ∧ host-capable ∧ content-capable, right now.</param>
     public readonly record struct PlacementState(
         SurfacePlacement Requested,
@@ -739,14 +742,21 @@ public static partial class Video
         public static bool HidesCursorWindowed(TransportOwner identity) => identity == TransportOwner.PopOut;
     }
 
-    /// <summary>Pure mount rule for the now-playing video stage (PiP / pop-out). The MF session only advances while a
-    /// mounted element pumps it — unmounting the stage because the resolved source is briefly null (override
-    /// re-resolve, track-edge handoff) leaves a Loading poster with no pump and a black/stuck surface over audio.</summary>
+    /// <summary>Pure mount rule for the now-playing video stage (PiP / pop-out). The player pumps its own state, so a
+    /// missing stage no longer freezes the session (F132); but unmounting the stage because the resolved source is briefly
+    /// null (override re-resolve, track-edge handoff) still leaves a Loading poster with no surface bound and a
+    /// black/stuck picture over audio, and tears the one slot down for nothing.</summary>
     public static class SurfaceMount
     {
         /// <summary>Mount the player stage whenever a player exists. Source may be null — overlay Loading/poster on
         /// top; do not tear down the only pump.</summary>
         public static bool ShouldMountPlayerStage(bool playerPresent) => playerPresent;
+
+        /// <summary>Whether the poster layer over the stage is shown. The poster is ALWAYS a child of the stage wrapper (keyed,
+        /// so the wrapper's shape never changes at first frame) and is merely collapsed once the live picture is the one
+        /// thing on screen: with no stage there is nothing under it, and any join state other than
+        /// <see cref="JoinVisual.Video"/> still has something to say over the stage.</summary>
+        public static bool PosterShown(bool stageMounted, JoinVisual join) => !stageMounted || join != JoinVisual.Video;
     }
 
     /// <summary>The main-window hole (docked / PiP / fullscreen) is ONE stay-mounted presenter. Pop-out is another HWND.</summary>
@@ -754,6 +764,29 @@ public static partial class Video
     {
         public static bool Owns(SurfacePlacement resolved)
             => resolved is SurfacePlacement.Docked or SurfacePlacement.Floating or SurfacePlacement.Fullscreen;
+
+        /// <summary>Whether the main window's ONE presenter is mounted. It is whenever the main window owns the hole, and it
+        /// also stays mounted (hidden, see <see cref="Hidden"/>) while a pop-out is resolved but has not yet presented a
+        /// frame: make-before-break, so moving to <see cref="SurfacePlacement.Detached"/> never leaves a window with no
+        /// video composited anywhere while the new window builds its swapchain. It is released the moment the pop-out
+        /// reports its first presented frame (or the hand-off grace expires), so two elements never keep placing one
+        /// session's video. Covering the docked video with the immersive stage is NOT a reason to unmount: the same slot
+        /// must show again on uncover with no new presenter, so <see cref="Hidden"/> hides it instead.</summary>
+        public static bool Mounted(SurfacePlacement resolved, bool popOutPresented)
+            => Owns(resolved) || (resolved == SurfacePlacement.Detached && !popOutPresented);
+
+        /// <summary>Whether the mounted presenter must be invisible: the immersive stage covers a docked video, or the
+        /// video lives in the pop-out and this presenter is only the outgoing half of the hand-off. A hidden presenter
+        /// stays mounted, pumps with an inert binding (nothing placed or shown from its slot) and publishes nothing the
+        /// player does not already publish itself.</summary>
+        public static bool Hidden(SurfacePlacement resolved, bool immersive)
+            => resolved == SurfacePlacement.Detached || (resolved == SurfacePlacement.Docked && immersive);
+
+        /// <summary>Whether the stay-mounted presenter takes its rect from the docked reservation (the engine's
+        /// <c>FollowRect</c>, resolved in the same frame after layout and the animation tick) instead of from its own bound
+        /// Width/Height/Transform. Only Docked has a reservation in the layout tree; the mini player and fullscreen are
+        /// positioned by the presenter's own geometry.</summary>
+        public static bool FollowsReservation(SurfacePlacement resolved) => resolved == SurfacePlacement.Docked;
 
         public static bool EngineTransportEnabled => false;
 

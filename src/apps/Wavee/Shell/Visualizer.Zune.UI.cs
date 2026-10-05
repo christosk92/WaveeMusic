@@ -256,22 +256,21 @@ public static partial class Visualizer
 
     // ══ 3. MOSAIC — the wall ═════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>A Metro wall of the queue's and recently played covers (12 columns, ~14 % 2×2; 6×4 and 1×1 on a weak
-    /// GPU): on every beat two tiles flip (bound ScaleX, the source swapped edge-on), each column dims and brightens with
+    /// <summary>A Metro wall of the queue's and recently played covers (12 columns, ~14 % 2×2): on every beat two tiles flip (bound ScaleX, the source swapped edge-on), each column dims and brightens with
     /// its band, and the title sits big over a bottom fade. Preview: a 6 × 3 static wall.</summary>
     public static Element MosaicFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool preview = spec.Preview, weak = GpuProfile.IsWeak && !preview;
-        int cols = preview ? Covers.Tiles.PreviewCols : weak ? Covers.Tiles.WeakCols : Covers.Tiles.Cols;
-        int maxRows = preview ? Covers.Tiles.PreviewMaxRows : weak ? Covers.Tiles.WeakMaxRows : Covers.Tiles.MaxRows;
+        bool preview = spec.Preview;
+        int cols = preview ? Covers.Tiles.PreviewCols : Covers.Tiles.Cols;
+        int maxRows = preview ? Covers.Tiles.PreviewMaxRows : Covers.Tiles.MaxRows;
         float w = spec.W, h = spec.H, cell = w / cols;
         int rows = Covers.Tiles.RowsFor(w, h, cols, maxRows);
         float y0 = (h - rows * cell) * 0.5f;
-        bool big = !preview && !weak;
-        int decode = Covers.Tiles.DecodeFor(cell, big ? 2 : 1, weak, preview);
+        bool big = !preview;
+        int decode = Covers.Tiles.DecodeFor(cell, big ? 2 : 1, preview);
         var kids = new List<CanvasChild>(cols + 4)
         {
-            new CanvasChild(0f, y0, Embed.Comp(() => new MosaicBody { Slab = slab, Cols = cols, Rows = rows, Cell = cell, Decode = decode, Big = big, Preview = preview, Weak = weak })
+            new CanvasChild(0f, y0, Embed.Comp(() => new MosaicBody { Slab = slab, Cols = cols, Rows = rows, Cell = cell, Decode = decode, Big = big, Preview = preview })
                 with { Key = "mosaic:" + cols + "x" + rows + ":" + (int)cell }),
         };
         if (!preview)
@@ -332,7 +331,7 @@ public static partial class Visualizer
         public Slab Slab = null!;
         public int Cols, Rows, Decode;
         public float Cell;
-        public bool Big, Preview, Weak;
+        public bool Big, Preview;
         readonly CoverPool _pool = new();
         readonly int[] _ids = new int[Covers.Cap], _upNext = new int[Covers.Cap], _recent = new int[Covers.Cap];
         static readonly Action s_ensure = EnsureSources;
@@ -353,7 +352,7 @@ public static partial class Visualizer
             UseEffect(s_ensure, DepKey.From(((long)Entities.Current.Epoch << 32) | Queue.Version));
             int song = track.IsValid ? track.Slot : 0;
             var pool = _pool; var slab = Slab;
-            int cols = Cols, rows = Rows, decode = Decode; float cell = Cell; bool big = Big, preview = Preview, weak = Weak;
+            int cols = Cols, rows = Rows, decode = Decode; float cell = Cell; bool big = Big, preview = Preview;
             return new BoxEl
             {
                 Width = cols * cell, Height = rows * cell, ZStack = true, HitTestVisible = false,
@@ -364,7 +363,7 @@ public static partial class Visualizer
                         Key = "wall:" + song, Width = cols * cell, Height = rows * cell, HitTestVisible = false,
                         Enter = preview ? null : new EnterExit(Opacity: 0f, Active: true), Exit = preview ? null : new EnterExit(Opacity: 0f, Active: true),
                         Transition = MotionTokenDef.Eased(550f, Easing.FluentDecelerate, ReducedMotionPolicy.KeepFade),
-                        Children = [Embed.Comp(() => new MosaicWall { Slab = slab, Pool = pool, Cols = cols, Rows = rows, Cell = cell, Decode = decode, Big = big, Preview = preview, Weak = weak, Seed = (uint)song })],
+                        Children = [Embed.Comp(() => new MosaicWall { Slab = slab, Pool = pool, Cols = cols, Rows = rows, Cell = cell, Decode = decode, Big = big, Preview = preview, Seed = (uint)song })],
                     },
                 ],
             };
@@ -431,7 +430,7 @@ public static partial class Visualizer
         public CoverPool Pool = null!;
         public int Cols, Rows, Decode;
         public float Cell;
-        public bool Big, Preview, Weak;
+        public bool Big, Preview;
         public uint Seed;
         Covers.Tile[] _plan = [];
         Signal<string>[] _url = [];
@@ -529,7 +528,7 @@ public static partial class Visualizer
             bool first = _lastBeat == int.MinValue;
             _lastBeat = beat;
             if (first || Pool.Count < 2) return;
-            int got = Covers.Flips.Pick(beat, _plan.Length, _lastA, _lastB, Weak ? 1 : 2, out int a, out int b);
+            int got = Covers.Flips.Pick(beat, _plan.Length, _lastA, _lastB, 2, out int a, out int b);
             _lastA = a; _lastB = b;
             if (got > 0) Arm(a, beat, instant: true);
             if (got > 1) Arm(b, beat, instant: true);
@@ -551,7 +550,7 @@ public static partial class Visualizer
                 _lastBeat = beat;
                 if (!first && Pool.Count >= 2)
                 {
-                    int got = Covers.Flips.Pick(beat, _plan.Length, _lastA, _lastB, Weak ? 1 : 2, out int a, out int b);
+                    int got = Covers.Flips.Pick(beat, _plan.Length, _lastA, _lastB, 2, out int a, out int b);
                     _lastA = a; _lastB = b;
                     if (got > 0) Arm(a, beat, instant: false);
                     if (got > 1) Arm(b, beat, instant: false);
@@ -713,7 +712,7 @@ public static partial class Visualizer
             int n = Photos(artist, track, out bool blur);
             int tempo = track.IsValid && track.Knows(TrackFields.Audio) ? track.Tempo : 0;
             float span = Covers.Spot.SpanMs(tempo), fade = Covers.Spot.FadeMs(span);
-            int decode = Covers.Spot.DecodeFor(W, preview, GpuProfile.IsWeak);
+            int decode = Covers.Spot.DecodeFor(W, preview);
             var kids = new List<Element>(3);
             if (n == 0)
                 kids.Add(new BoxEl { Width = W, Height = H, Fill = Ink.ArtStandIn(""), HitTestVisible = false });
@@ -759,7 +758,7 @@ public static partial class Visualizer
             _staleDownbeat = _staleBar = int.MinValue;
             int cycle = Covers.Spot.CycleOf(Math.Min(downbeat, bar));
             int tempo = track.IsValid && track.Knows(TrackFields.Audio) ? track.Tempo : 0;
-            return new SpotClock(slot, cycle, Covers.Spot.Preload(bar, cycle, Covers.Spot.SpanMs(tempo), GpuProfile.IsWeak));
+            return new SpotClock(slot, cycle, Covers.Spot.Preload(bar, cycle, Covers.Spot.SpanMs(tempo)));
         }
 
         Element Layer(SpotLayer l, bool fadeIn, float span, float fade, int decode)

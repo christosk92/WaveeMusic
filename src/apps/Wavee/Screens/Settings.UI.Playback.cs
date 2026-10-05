@@ -456,8 +456,7 @@ public static partial class Settings
             {
                 if ((uint)i >= (uint)Quality.VideoHeights.Length) return;
                 int height = Quality.VideoHeights[i];   // stored as a height; 0 = Auto
-                Platform.Settings.Set(Platform.Keys.VideoQuality, height);
-                Playback.Video.SetPreferredHeight(height);   // the live pin: the ABR ceiling + the engine's selection
+                Playback.Video.PinQuality(height);   // persist, then the live pin: the ABR ceiling + the engine's selection
                 Bump();
             });
 
@@ -473,7 +472,7 @@ public static partial class Settings
             });
 
     /// <summary>D15's off switch, DEFAULT ON. On, the video host fetches the licence for the playing video-capable track
-    /// and the next queued one before the user asks — the licence is ~80 % of a cold switch. Off, nothing is fetched
+    /// and the next queued one before the user asks (about 140 ms of a switch, and it keeps the native runtime warm). Off, nothing is fetched
     /// ahead and the native component's preload is the only warm left, which is why the sentence promises data and not
     /// speed. The write persists and then re-decides the keeper's beat immediately, rather than at the next track.</summary>
     static Element VideoPrepareAheadRow()

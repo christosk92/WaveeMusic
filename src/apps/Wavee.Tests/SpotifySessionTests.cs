@@ -1310,3 +1310,104 @@ public class ApChannelRulesTests
         Assert.True(Spotify.ApReadTimeoutMs > Spotify.ApKeepAlive.FirstPingTimeoutMs, "timeout=" + Spotify.ApReadTimeoutMs);
     }
 }
+
+/// <summary>F220's bearer clock, as arguments: minted ahead of expiry, the still-valid old token served until then, and a
+/// forced re-mint single-flight by the token a 401 named. The mint itself is a login5 round trip and is not exercised.</summary>
+public class BearerClockTests
+{
+    const long Minted = 1_000_000;
+    const long Life = 3_600_000;                       // one hour
+    const long Expires = Minted + Life;
+    const long Lead = Spotify.AccessProactiveLeadMs;   // 5 minutes
+
+    [Fact]
+    public void The_lead_is_five_minutes_or_half_of_a_short_life()
+    {
+        Assert.Equal(300_000, Spotify.AccessLeadMs(Minted, Expires));
+        Assert.Equal(100_000, Spotify.AccessLeadMs(Minted, Minted + 200_000));
+        Assert.Equal(0, Spotify.AccessLeadMs(Minted, Minted));
+    }
+
+    [Fact]
+    public void A_fresh_bearer_is_served_as_it_is()
+    {
+        Assert.Equal(Spotify.AccessServe.Serve, Spotify.AccessServeFor(Minted, Minted, Expires));
+        Assert.Equal(Spotify.AccessServe.Serve, Spotify.AccessServeFor(Expires - Lead - 1, Minted, Expires));
+    }
+
+    [Fact]
+    public void Inside_the_lead_window_the_old_bearer_is_served_while_the_next_is_minted()
+    {
+        Assert.Equal(Spotify.AccessServe.ServeAndRefresh, Spotify.AccessServeFor(Expires - Lead, Minted, Expires));
+        Assert.Equal(Spotify.AccessServe.ServeAndRefresh,
+            Spotify.AccessServeFor(Expires - Spotify.AccessSafetyMs - 1, Minted, Expires));      // last moment it is still sent
+    }
+
+    [Fact]
+    public void A_bearer_about_to_die_in_flight_or_never_held_makes_the_request_wait_for_a_mint()
+    {
+        Assert.Equal(Spotify.AccessServe.Mint, Spotify.AccessServeFor(Expires - Spotify.AccessSafetyMs, Minted, Expires));
+        Assert.Equal(Spotify.AccessServe.Mint, Spotify.AccessServeFor(Expires + 1, Minted, Expires));
+        Assert.Equal(Spotify.AccessServe.Mint, Spotify.AccessServeFor(Minted, 0, 0));
+    }
+
+    [Fact]
+    public void The_ahead_of_need_mint_fires_one_lead_before_expiry_and_never_spins()
+    {
+        Assert.Equal(Life - Lead, Spotify.AccessRearmDelayMs(Minted, Minted, Expires));
+        Assert.Equal(Spotify.AccessMinRearmMs, Spotify.AccessRearmDelayMs(Expires - 1_000, Minted, Expires));   // already late: the floor
+        Assert.Equal(Spotify.AccessMinRearmMs, Spotify.AccessRearmDelayMs(Minted, Minted, Minted + 10_000));    // a very short life
+    }
+
+    [Fact]
+    public void A_gated_ask_with_no_bearer_held_always_mints()
+    {
+        Assert.True(Spotify.AccessMintNeeded(Minted, null, 0, 0, force: false, rejected: null));
+        Assert.True(Spotify.AccessMintNeeded(Minted, "", Minted, Expires, force: true, rejected: "x"));
+    }
+
+    [Fact]
+    public void A_gated_lazy_ask_mints_only_inside_the_lead_window()
+    {
+        Assert.False(Spotify.AccessMintNeeded(Expires - Lead - 1, "t1", Minted, Expires, force: false, rejected: null));
+        Assert.True(Spotify.AccessMintNeeded(Expires - Lead, "t1", Minted, Expires, force: false, rejected: null));
+        Assert.True(Spotify.AccessMintNeeded(Expires + 1, "t1", Minted, Expires, force: false, rejected: null));
+    }
+
+    /// <summary>N workers that each got a 401 for the same bearer queue on the gate: the first mints, the rest find a
+    /// different bearer held and return it - ONE login5 round trip, not N in series.</summary>
+    [Fact]
+    public void A_forced_remint_is_single_flight_by_the_rejected_token()
+    {
+        long now = Minted + 60_000;
+        Assert.True(Spotify.AccessMintNeeded(now, "t1", Minted, Expires, force: true, rejected: "t1"));    // still the rejected one: mint
+        Assert.False(Spotify.AccessMintNeeded(now, "t2", Minted, Expires, force: true, rejected: "t1"));   // someone already did: reuse
+    }
+
+    [Fact]
+    public void A_replacement_that_has_itself_expired_is_not_reused()
+    {
+        Assert.True(Spotify.AccessMintNeeded(Expires, "t2", Minted, Expires, force: true, rejected: "t1"));
+    }
+
+    /// <summary>The AP re-login forces a mint with no witness: skipped only when one landed a few seconds ago (the log's
+    /// two back-to-back mints), still done for a bearer of any real age.</summary>
+    [Fact]
+    public void A_forced_mint_naming_no_token_is_satisfied_only_by_a_bearer_minted_seconds_ago()
+    {
+        Assert.False(Spotify.AccessMintNeeded(Minted + Spotify.AccessFreshMintMs - 1, "t1", Minted, Expires, force: true, rejected: null));
+        Assert.True(Spotify.AccessMintNeeded(Minted + Spotify.AccessFreshMintMs, "t1", Minted, Expires, force: true, rejected: null));
+    }
+
+    /// <summary>A login over a running session (an account switch) must never be answered by the previous account's bearer,
+    /// however fresh it is and whichever way the ask is shaped.</summary>
+    [Fact]
+    public void A_bearer_minted_for_another_login_always_needs_a_mint()
+    {
+        long now = Minted + 1_000;
+        Assert.True(Spotify.AccessMintNeeded(now, "t1", Minted, Expires, force: true, rejected: null, sameLogin: false));
+        Assert.True(Spotify.AccessMintNeeded(now, "t2", Minted, Expires, force: true, rejected: "t1", sameLogin: false));
+        Assert.True(Spotify.AccessMintNeeded(now, "t1", Minted, Expires, force: false, rejected: null, sameLogin: false));
+        Assert.False(Spotify.AccessMintNeeded(now, "t1", Minted, Expires, force: true, rejected: null, sameLogin: true));
+    }
+}

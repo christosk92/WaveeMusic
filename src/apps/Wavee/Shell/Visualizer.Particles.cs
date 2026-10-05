@@ -92,7 +92,7 @@ public static partial class Visualizer
 
         public sealed class Warp
         {
-            public const int Count = 220, WeakCount = 120, PreviewCount = 70;
+            public const int Count = 220, PreviewCount = 70;
             /// <summary>Speed target in depth per ms: <c>0.00018 + 0.0011·Low + 0.0009·Kick</c>, eased 0.12 per 60 Hz frame.</summary>
             public const float BaseSpeed = 0.00018f, LowGain = 0.0011f, KickGain = 0.0009f, Ease60 = 0.12f;
             public const float NearZ = 0.02f, MaxLen = 140f, LenGain = 9000f, Width = 2.6f;
@@ -162,7 +162,7 @@ public static partial class Visualizer
 
         public sealed class Magneto
         {
-            public const int Count = 72, WeakCount = 48, PreviewCount = 12, BandSpan = 46;
+            public const int Count = 72, PreviewCount = 12, BandSpan = 46;
             public const float Repel = 0.00006f, Pull = 0.0009f, Swirl = 0.0004f, Damping = 0.94f, Soft2 = 0.002f, Threshold = 0.35f;
             public const float BoundX = 0.6f, BoundY = 0.45f, Spread = 1.6f, RayReach = 0.45f;
             const int MaxSteps = 8;
@@ -289,7 +289,7 @@ public static partial class Visualizer
 
         public sealed class Ambience
         {
-            public const int Count = 34, WeakCount = 20, PreviewCount = 12, BandSpan = 44;
+            public const int Count = 34, PreviewCount = 12, BandSpan = 44;
 
             readonly float[] _angle, _radius, _speed, _wobble;
             readonly int[] _band;

@@ -624,11 +624,16 @@ public static partial class Controls
     /// NON-UNIFORM shape instead, so a reduced-motion user can still tell "is this the one playing" from a mid-list
     /// glance without anything ever looping).</para>
     ///
-    /// <para>Window-inactive/minimized is deliberately NOT an input: the engine's interval hook already folds the
-    /// activation signal and auto-pauses every interval — this one included — while the window is minimized or power
-    /// suspended. There is nothing for app code to decide for that half.</para></summary>
-    public static bool ShouldTick(bool playing, bool hoverPaused, bool reducedMotion)
-        => playing && !hoverPaused && !reducedMotion;
+    /// <para>Minimized / power-suspended is not an input: the engine's interval hook already folds the activation signal
+    /// and auto-pauses every interval — this one included — while the window is minimized or power suspended. A window
+    /// that is merely COVERED or cloaked (<c>InputHooks.WindowOccluded</c>) is not parked, so that half IS an input
+    /// (<paramref name="windowHidden"/>): nobody can see the bars, and each tick is a full-window present.</para>
+    ///
+    /// <para>A live video, the GPU tier and focus are deliberately NOT inputs (motion policy, 2026-10-03): a visible meter
+    /// keeps its rate whatever is playing beside it and whoever has focus; the engine's measured GPU governor and the OS
+    /// power cap are the only ceilings.</para></summary>
+    public static bool ShouldTick(bool playing, bool hoverPaused, bool reducedMotion, bool windowHidden = false)
+        => playing && !hoverPaused && !reducedMotion && !windowHidden;
 
     /// <inheritdoc cref="ShouldTick"/>
     public static bool ShouldShowStillShape(bool playing, bool reducedMotion) => playing && reducedMotion;
@@ -677,11 +682,13 @@ public static partial class Controls
     sealed class EqHost : Component
     {
         const float LoopMs = 850f;
-        // ~30 Hz. Be honest about the trade: there is no partial repaint, so every visible change costs a FULL-WINDOW
-        // present — motion IS presents, and the tick rate IS the present rate for this widget. 15 Hz with 2-device-px
-        // steps read as a visibly choppy meter; 30 Hz with 1-px steps is the smoothness floor that still costs a
-        // quarter of a continuous per-frame track.
-        const float TickMs = 1000f / 30f;
+        // Per FRAME, not per timer (motion policy, 2026-10-03): the bars are sampled on every produced frame by an EqTicker
+        // (Controls.FrameTicker, the deck / visualizer / caption clocks' pattern) that is MOUNTED only while they animate, so an
+        // unmounted meter is no wake reason at all. The sample is a function of FrameTime (not of the tick count), so the loop
+        // looks the same at 60, 120 or 144 Hz, and each bar height is snapped to whole device pixels: a frame on which no bar
+        // crossed a pixel writes nothing and is byte-identical, which the host elides. The fixed 30 Hz UseInterval this replaced
+        // drove continuous visible motion at a rate below the panel's; a weak GPU is the measured governor's business
+        // (the ticker is paceable), never a rate of its own.
 
         static readonly float[][] Patterns =
         [
@@ -693,6 +700,10 @@ public static partial class Controls
         // Stable for the host's lifetime — the bars BIND these, so nothing the host does disturbs the signals they read.
         readonly FloatSignal[] _scaleY = [new(0.4f), new(0.4f), new(0.4f)];
         long _startMs;
+        // The bar height (DIP) and device scale the ticker samples with, rewritten by EVERY render: a DPI change or a new
+        // Height re-renders this host, and the mounted ticker reads the fields on its next tick instead of the values it was
+        // created with (Embed.Comp's factory runs once; a captured local would freeze them until a remount).
+        float _heightDip = 13f, _scale = 1f;
 
         public override Element Render()
         {
@@ -701,36 +712,49 @@ public static partial class Controls
             bool animate = p.Playing.Value;           // subscribe — a bound row's play↔pause flip re-renders THIS host in place
             bool paused = p.Paused?.Value ?? false;   // subscribe — pause without a remount
             bool reduced = Design.Reduced;            // a VALUE, never a hook branch
+            bool hidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;   // subscribe — covered/cloaked: no ticks (F240)
             float scale = UseContext(Viewport.Scale);
             if (scale <= 0f) scale = 1f;
+            _heightDip = p.Height;
+            _scale = scale;
 
+            bool still = ShouldShowStillShape(animate, reduced);
             UseEffect(() =>
             {
                 if (!animate) { WriteAll(0.4f); return; }
                 // A settled, NON-UNIFORM snapshot states "this is playing" without ever looping — flat 0.4 bars would
                 // read identically to the paused branch above, and looping is exactly the continuous motion reduced
                 // motion asks the app not to run.
-                if (ShouldShowStillShape(animate, reduced)) { WriteStill(); return; }
+                if (still) { WriteStill(); return; }
                 _startMs = Design.FrameTime.NowMs;
                 Tick(p.Height, scale);
-            }, animate);
+            }, DepKey.From(!animate ? 0 : still ? 1 : 2));
 
-            UseInterval(() => Tick(p.Height, scale), TickMs, enabled: ShouldTick(animate, paused, reduced));
+            // The per-frame ticker is mounted ONLY while the meter should move (playing, not hover-paused, motion not reduced,
+            // window not covered): an unmounted ticker holds no frame subscription, so a paused or hidden meter costs nothing.
+            bool ticking = ShouldTick(animate, paused, reduced, hidden);
+            Element bar0 = Embed.Comp(new EqBarProps(_scaleY[0], p.Color, p.Height), static () => new EqBar());
+            Element bar1 = Embed.Comp(new EqBarProps(_scaleY[1], p.Color, p.Height), static () => new EqBar());
+            Element bar2 = Embed.Comp(new EqBarProps(_scaleY[2], p.Color, p.Height), static () => new EqBar());
+            // The ticker reads the CURRENT height and scale each tick (the fields above), so it follows a DPI or height change
+            // while it stays mounted.
+            Element[] kids = ticking
+                ? [bar0, bar1, bar2, Embed.Comp(() => new EqTicker(() => Tick(_heightDip, _scale)))]
+                : [bar0, bar1, bar2];
 
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Center, Gap = 2f, Height = p.Height,
-                Children =
-                [
-                    Embed.Comp(new EqBarProps(_scaleY[0], p.Color, p.Height), static () => new EqBar()),
-                    Embed.Comp(new EqBarProps(_scaleY[1], p.Color, p.Height), static () => new EqBar()),
-                    Embed.Comp(new EqBarProps(_scaleY[2], p.Color, p.Height), static () => new EqBar()),
-                ],
+                Children = kids,
             };
         }
 
+        /// <summary>The meter's own per-frame clock (a <see cref="FrameTicker"/> subclass so the <c>[wake]</c> census names it);
+        /// paceable: decorative motion the adaptive GPU governor may pace on a saturated GPU.</summary>
+        sealed class EqTicker(Action tick) : FrameTicker(tick, paceable: true);
+
         // One clock sample drives all three bars. FrameTime, never TickCount64 (ch 00 non-negotiable 14): TickCount64
-        // advances in ~15.6 ms quanta, so a 30 Hz sampler reading it lands twice on the same instant and then jumps.
+        // advances in ~15.6 ms quanta, so a per-frame sampler reading it would land twice on the same instant and then jump.
         void Tick(float heightDip, float scale)
         {
             float u = (Design.FrameTime.NowMs - _startMs) / LoopMs;

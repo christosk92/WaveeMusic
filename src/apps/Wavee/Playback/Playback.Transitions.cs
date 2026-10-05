@@ -1421,9 +1421,112 @@ public static partial class Playback
         /// else <c>"audio"</c> (a local file plays through the audio host and therefore also reports audio).</summary>
         public static string TrackPlayer(PlayableKind kind) => kind == PlayableKind.Video ? "video" : "audio";
 
-        /// <summary>Whether the outgoing host must be stopped BEFORE the new one starts. True on any kind change so
-        /// two decoders never both output audio at once.</summary>
-        public static bool ShouldStopOutgoingHost(PlayableKind current, PlayableKind next) => current != next;
+        /// <summary>How the OUTGOING host leaves when a load crosses (or does not cross) the video line (F151, §3.1.4).
+        /// Two decoders never both OUTPUT audio at once, but that no longer means the outgoing one stops first.</summary>
+        public enum HostHandoff : byte
+        {
+            /// <summary>Audio and LocalFile share the host: a plain reload, nothing to hand over.</summary>
+            SameHost,
+            /// <summary>Stop the outgoing host, then load the successor: silence from the click until the new host sounds.</summary>
+            StopFirst,
+            /// <summary>The song keeps PLAYING while the video attaches muted and paused at the carried position; the audio
+            /// is parked on the video's first frame and the video starts at the audio clock (<c>ParkAndCut</c>).</summary>
+            StopAfterSuccessor,
+            /// <summary>Video to audio, the parked song still fresh: it resumes in place at the video position and the
+            /// video only detaches — no cold audio load.</summary>
+            ResumeParked,
+        }
+
+        /// <summary>The boundary decision, pure. <see cref="HostHandoff.StopAfterSuccessor"/> only for an Audio to Video
+        /// switch the listener made while the song is PLAYING (<see cref="LoadOrigin.MediaKindRefresh"/>: the placement
+        /// toggled; a natural end or a Next has nothing playing to keep). <see cref="HostHandoff.ResumeParked"/> only for
+        /// Video to Audio where the same row's audio session is parked inside its TTL (<paramref name="parkedAgeMs"/> is
+        /// negative when nothing is parked for the row). Everything else that changes host stops the outgoing one first.</summary>
+        public static HostHandoff Handoff(PlayableKind current, PlayableKind next, LoadOrigin origin, bool outgoingPlaying, long parkedAgeMs)
+        {
+            if (!HostChanges(current, next)) return HostHandoff.SameHost;
+            if (current == PlayableKind.Audio && next == PlayableKind.Video
+                && origin == LoadOrigin.MediaKindRefresh && outgoingPlaying)
+                return HostHandoff.StopAfterSuccessor;
+            if (current == PlayableKind.Video && next == PlayableKind.Audio
+                && (origin == LoadOrigin.MediaKindRefresh || origin == LoadOrigin.VideoRecovery)
+                && Video.AudioHandoff.CanResumeParked(parkedAgeMs))
+                return HostHandoff.ResumeParked;
+            return HostHandoff.StopFirst;
+        }
+
+        /// <summary>What the executor does with one load, the hand-off window included (F151). While a video is ATTACHING
+        /// (<paramref name="attaching"/>: the song still plays under the adopted epoch) a load for the SAME row is either the
+        /// video's own recovery (a retry, or the demotion to audio) or the toggle undone before the cut; each keeps the song
+        /// going. Any other load, or a song that is no longer alive, ends the window.</summary>
+        public enum LoadPlan : byte
+        {
+            /// <summary>The ordinary path: stop the outgoing host when the host changes, then load.</summary>
+            Plain,
+            /// <summary>Audio to Video with the song kept: adopt its epoch, attach the video muted and paused.</summary>
+            BeginAttach,
+            /// <summary>Video to Audio: resume the parked song at the carried position, detach the video.</summary>
+            ResumeParked,
+            /// <summary>The attach faulted and retries: the song keeps playing, the video re-opens muted and paused.</summary>
+            RetryAttach,
+            /// <summary>The attach was demoted to audio (or the toggle undone before the cut): the video is torn down and
+            /// the song, never stopped, carries on.</summary>
+            KeepAudio,
+            /// <summary>Another load while attaching: the window ends, both hosts stop, the load takes the ordinary path.</summary>
+            AbortAttach,
+        }
+
+        /// <summary>Pure: <see cref="LoadPlan"/> from the executor's facts. <paramref name="outgoingPlaying"/> is the song
+        /// audible when nothing is attaching, and the song's session still ALIVE (not faulted, not disposed) while one is.</summary>
+        public static LoadPlan PlanLoad(bool attaching, bool sameRowAsAttach, PlayableKind current, PlayableKind next,
+            LoadOrigin origin, bool outgoingPlaying, long parkedAgeMs)
+        {
+            if (attaching)
+            {
+                if (!outgoingPlaying || !sameRowAsAttach) return LoadPlan.AbortAttach;
+                if (origin == LoadOrigin.VideoRecovery) return next == PlayableKind.Video ? LoadPlan.RetryAttach : LoadPlan.KeepAudio;
+                if (origin == LoadOrigin.MediaKindRefresh && next != PlayableKind.Video) return LoadPlan.KeepAudio;
+                return LoadPlan.AbortAttach;
+            }
+            return Handoff(current, next, origin, outgoingPlaying, parkedAgeMs) switch
+            {
+                HostHandoff.StopAfterSuccessor => LoadPlan.BeginAttach,
+                HostHandoff.ResumeParked => LoadPlan.ResumeParked,
+                _ => LoadPlan.Plain,
+            };
+        }
+
+        /// <summary>Does transport (pause, resume, seek, scrub) go to the VIDEO host? The host that holds the row is the
+        /// video, but while the video is still attaching the song is the audible one and takes the transport.</summary>
+        public static bool VideoIsAudible(PlayableKind host, bool attaching) => host == PlayableKind.Video && !attaching;
+
+        /// <summary>What the attach window's tick decides about the video that is attaching.</summary>
+        public enum AttachVerdict : byte
+        {
+            /// <summary>Nothing yet: the song keeps playing.</summary>
+            Wait,
+            /// <summary>The paused open presented no frame: play it muted so it does (the cut still waits for the frame).</summary>
+            Preroll,
+            /// <summary>The video has a presented frame: park the song and start the video at the audio clock.</summary>
+            Cut,
+            /// <summary>Nothing presented inside the budget: a video fault, the song keeps playing.</summary>
+            TimedOut,
+        }
+
+        /// <summary>How long a paused, open video may sit without a frame before it is played muted to get one.</summary>
+        public const long AttachPrerollAfterMs = 2_500;
+
+        /// <summary>How long the window waits for a frame before it gives up on the video.</summary>
+        public const long AttachBudgetMs = 12_000;
+
+        /// <summary>Pure: the attach window's verdict at <paramref name="sinceBeginMs"/> after it opened.</summary>
+        public static AttachVerdict JudgeAttach(long sinceBeginMs, bool sessionOpen, bool framePresented, bool prerolled)
+        {
+            if (framePresented) return AttachVerdict.Cut;
+            if (sinceBeginMs >= AttachBudgetMs) return AttachVerdict.TimedOut;
+            if (sessionOpen && !prerolled && sinceBeginMs >= AttachPrerollAfterMs) return AttachVerdict.Preroll;
+            return AttachVerdict.Wait;
+        }
 
         /// <summary>Whether the ONE current-media HOST INSTANCE actually changes. <see cref="PlayableKind.Audio"/> and
         /// <see cref="PlayableKind.LocalFile"/> share the SAME host — only a <see cref="PlayableKind.Video"/> boundary

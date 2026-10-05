@@ -169,26 +169,26 @@ public static partial class Lyrics
     /// (<see cref="Fx"/>) and the active-line / held-note glow halo σ.
     ///
     /// <para>The setting stores −1 (AUTO) by default: a fresh install lets the device decide rather than shipping one
-    /// fixed number that is too heavy for a weak iGPU or too light for a desktop card. <see cref="Resolve"/> is the
+    /// fixed number the user never chose. <see cref="Resolve"/> is the
     /// ONLY place −1 is interpreted — everywhere else deals in the resolved 0..100 int, so a caller that forgets the
     /// auto case cannot silently treat −1 as "1 % blur".</para></summary>
     public static class BlurPolicy
     {
         public const int Auto = -1;
-        public const int WeakGpuDefault = 40;
-        public const int StrongGpuDefault = 100;
+        /// <summary>What Auto paints at, on every GPU tier (the weak-tier 40 was withdrawn on 2026-10-05: the GPU tier is not a
+        /// quality input; a saturated GPU is the engine's measured governor's business).</summary>
+        public const int AutoDefault = 100;
 
-        /// <summary>The stored setting (−1 = auto, else 0..100) resolved against the device's GPU tier into the
-        /// strength this frame actually paints at. Clamps a stored value from an older/newer build's ladder into range
-        /// rather than trusting the registry.</summary>
-        public static int Resolve(int setting, bool weakGpu)
-            => setting == Auto ? (weakGpu ? WeakGpuDefault : StrongGpuDefault) : Math.Clamp(setting, 0, 100);
+        /// <summary>The stored setting (−1 = auto, else 0..100) resolved into the strength this frame actually paints at.
+        /// Clamps a stored value from an older/newer build's ladder into range rather than trusting the registry.</summary>
+        public static int Resolve(int setting)
+            => setting == Auto ? AutoDefault : Math.Clamp(setting, 0, 100);
 
         /// <summary>The STAGE never depth-blurs: the fullscreen surface's depth cue is the scrim and the accent pill, and
         /// every non-active line being its own blur layer was the stage's largest per-frame cost (§1.1). 0 ⇒ Enabled(0) is
         /// false and DriveDofRamp snaps every σ to 0 in one pass. The active line's halo is NOT this strength — the view
         /// keeps it on the user's setting (<c>ViewCore._haloScale</c>).</summary>
-        public static int ResolveFor(int setting, bool weakGpu, bool onStage) => onStage ? 0 : Resolve(setting, weakGpu);
+        public static int ResolveFor(int setting, bool onStage) => onStage ? 0 : Resolve(setting);
 
         /// <summary>The resolved strength (0..100, NOT −1 — call <see cref="Resolve"/> first) as the 0..1 multiplier
         /// the view scales its DoF ladder and halo σ by.</summary>
@@ -1043,8 +1043,10 @@ public static partial class Lyrics
     /// <param name="Playing">Whether the MEDIA clock is advancing. Every media-clock lane (the wipe, the glow
     /// envelope, the interlude dots' fill/breath) is frozen while paused, so a paused surface demands nothing from
     /// them.</param>
-    /// <param name="VoiceActive">A line is being sung right now: its wipe split and glow envelope both move every
-    /// frame.</param>
+    /// <param name="VoiceActive">The voice line has PER-FRAME OUTPUT right now (<see cref="MotionDemand.VoiceMoves"/>): a
+    /// word-synced line's wipe and held-note glow move every frame, a line-synced one only while its glow fades in or
+    /// out. A line-synced line on its flat glow plateau is being sung but writes the same value every frame, so it is
+    /// NOT active — the surface wakes at the plateau's end instead (<see cref="MotionDemand.VoicePlateauEndMs"/>).</param>
     /// <param name="DotsActive">The interlude dots are up — fill and breath are both media-clock driven.</param>
     /// <param name="GlowFadeActive">An OUTGOING halo cross-fade is still in flight (wall-clock, ~240 ms).</param>
     /// <param name="DofRampPending">The σ ramp has not reached its target (the pass self-quiesces).</param>
@@ -1103,11 +1105,21 @@ public static partial class Lyrics
         /// the lead and goes live instead of arming again.</summary>
         public const long ArmLeadMs = 32L;
 
-        /// <summary>The re-check period for the states that have NO media-clock deadline at all: no document yet, an
-        /// untimed one, or sync suppressed by a video. The condition that ends them is not a clock instant, so the
-        /// ticker polls it on a slow TIMER (which wakes nothing that produces frames) instead of subscribing the frame
-        /// clock.</summary>
-        public const float UnresolvedRecheckMs = 250f;
+        /// <summary>Does the voice line have per-frame OUTPUT at <paramref name="nowMs"/>? A word-synced line always does
+        /// (the karaoke wipe and the held-note glow are functions of the clock). A line-synced line has no wipe: its only
+        /// per-frame output is the halo alpha, <c>min(fade-in, melt-out)</c> (<see cref="Glow.VoiceAlpha"/>), which moves
+        /// during the first <see cref="Wipe.GlowFadeMs"/> and the last <see cref="Wipe.GlowOutMs"/> and sits flat at 1 in
+        /// between. Mounting the frame stepper across that plateau only rewrote an equal value at display rate (F237).</summary>
+        public static bool VoiceMoves(Line line, long sungOutMs, long nowMs)
+            => (line.IsWordByWord && line.Syllables.Count > 0)
+            || nowMs < line.StartMs + (long)Wipe.GlowFadeMs
+            || nowMs >= VoicePlateauEndMs(line, sungOutMs);
+
+        /// <summary>The media instant a line-synced voice line's glow plateau ends and its melt-out begins — the event a
+        /// quiescent surface arms its wake for. <see cref="None"/> for a word-synced line (never quiescent while it is
+        /// the voice) and for a line with no known end.</summary>
+        public static long VoicePlateauEndMs(Line line, long sungOutMs)
+            => (line.IsWordByWord && line.Syllables.Count > 0) || sungOutMs >= None ? None : sungOutMs - (long)Wipe.GlowOutMs;
 
         /// <summary>The lane test on its own: is something moving RIGHT NOW (deadline not consulted)?</summary>
         public static bool LanesMoving(in MotionLanes l)
@@ -1278,7 +1290,7 @@ public static partial class Lyrics
 
         /// <summary>Reactive read of the blur strength RESOLVED (0..100) for a surface — the stored −1 means AUTO and is
         /// interpreted here, once, through <see cref="BlurPolicy.ResolveFor"/>; the stage is always 0.</summary>
-        public static int BlurStrength(bool weakGpu, bool onStage) => BlurPolicy.ResolveFor(global::Wavee.Prefs.Lyrics.BlurStrength(), weakGpu, onStage);
+        public static int BlurStrength(bool onStage) => BlurPolicy.ResolveFor(global::Wavee.Prefs.Lyrics.BlurStrength(), onStage);
 
         /// <summary>The ONE writer both globe toggles go through: set the session mode, then bump.</summary>
         public static void SetSecondaryLine(int mode) => global::Wavee.Prefs.Lyrics.SetSecondaryLine(mode);

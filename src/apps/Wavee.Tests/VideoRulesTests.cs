@@ -99,6 +99,40 @@ public class VideoPrefetchScheduleTests
         Assert.Equal(3, V.PrefetchSchedule.SegmentsFor(3_000));    // the tail rounds UP
         Assert.Equal(1, V.PrefetchSchedule.SegmentsFor(0));        // an unknown stride is one segment, not a divide by zero
     }
+
+    [Fact]
+    public void F007_a_prepare_covers_the_segment_at_its_position_and_eight_seconds_after_it_and_nothing_else()
+    {
+        Assert.True(V.PrefetchSchedule.CoversPosition(83_000, 83_000));
+        Assert.True(V.PrefetchSchedule.CoversPosition(83_000, 90_999));
+        Assert.False(V.PrefetchSchedule.CoversPosition(83_000, 91_000));   // one tick past the window: the fetch is cold again
+        Assert.False(V.PrefetchSchedule.CoversPosition(83_000, 82_999));   // a seek back finds none of it
+    }
+
+    [Fact]
+    public void F007_a_full_level_is_only_as_good_as_the_session_behind_it()
+    {
+        // The session is parked, in range: Full stands, so the schedule does not re-prepare for nothing.
+        Assert.Equal(V.PrefetchLevel.Full,
+            V.PrefetchSchedule.EffectiveLevel(V.PrefetchLevel.Full, preparedAlive: true, preparedAtMs: 10_000, atMs: 12_000));
+
+        // The backend no longer hands it over (expired / disposed / shed): back to the licence, so Decide asks for Full.
+        var lapsed = V.PrefetchSchedule.EffectiveLevel(V.PrefetchLevel.Full, preparedAlive: false, preparedAtMs: 10_000, atMs: 12_000);
+        Assert.Equal(V.PrefetchLevel.ManifestAndLicense, lapsed);
+        Assert.Equal(V.PrefetchLevel.Full, V.PrefetchSchedule.Decide(In(videoOn: true, isCurrent: true, already: lapsed, manifestFresh: true)));
+
+        // Alive but the playhead left its window (a seek, or a long listen): re-prepare AT the new position.
+        var moved = V.PrefetchSchedule.EffectiveLevel(V.PrefetchLevel.Full, preparedAlive: true, preparedAtMs: 10_000, atMs: 70_000);
+        Assert.Equal(V.PrefetchLevel.ManifestAndLicense, moved);
+        Assert.Equal(V.PrefetchLevel.Full, V.PrefetchSchedule.Decide(In(videoOn: true, isCurrent: true, already: moved, manifestFresh: true)));
+    }
+
+    [Theory]
+    [InlineData(V.PrefetchLevel.None)]
+    [InlineData(V.PrefetchLevel.Manifest)]
+    [InlineData(V.PrefetchLevel.ManifestAndLicense)]
+    public void F007_a_level_below_full_has_no_session_to_judge_and_is_left_alone(V.PrefetchLevel recorded)
+        => Assert.Equal(recorded, V.PrefetchSchedule.EffectiveLevel(recorded, preparedAlive: false, preparedAtMs: 0, atMs: 500_000));
 }
 
 // ── the seek planner (§3.2.2) ──────────────────────────────────────────────────────────────────────────────────────
@@ -438,16 +472,6 @@ public class VideoAudioHandoffTests
     }
 
     [Fact]
-    public void A_requested_fade_always_costs_at_least_one_frame()
-    {
-        Assert.Equal(3_840, V.AudioHandoff.FadeFrames(80, 48_000));
-        Assert.Equal(3_528, V.AudioHandoff.FadeFrames(80, 44_100));
-        Assert.Equal(1, V.AudioHandoff.FadeFrames(1, 100));       // rounds to zero frames ⇒ forced to one: no step, no click
-        Assert.Equal(0, V.AudioHandoff.FadeFrames(0, 48_000));    // no fade asked for, no frames spent
-        Assert.Equal(0, V.AudioHandoff.FadeFrames(80, 0));
-    }
-
-    [Fact]
     public void It_is_a_cut_not_a_gap()
     {
         // §3.5's acceptance line: the soundtrack's first audible sample within 100 ms of the fade's end is a CUT. The
@@ -458,6 +482,19 @@ public class VideoAudioHandoffTests
         Assert.True(V.AudioHandoff.IsCut(V.AudioHandoff.GapMs(pc, pc + 60)));    // one GOP of decode: inaudible as a gap
         Assert.True(V.AudioHandoff.IsCut(V.AudioHandoff.GapMs(pc, pc - 20)));    // a slight overlap is still a cut
         Assert.False(V.AudioHandoff.IsCut(V.AudioHandoff.GapMs(pc, pc + 101)));  // silence the user can hear
+    }
+
+    [Fact]
+    public void The_measured_gap_is_the_wall_time_not_covered_by_the_fade_or_by_video_progress()
+    {
+        // 400 ms after the cut the video has played 300 ms past its start: 400 - 300 - 80 fade = 20 ms of silence.
+        Assert.Equal(20, V.AudioHandoff.CutGapMs(400, 300));
+        Assert.True(V.AudioHandoff.IsCut(V.AudioHandoff.CutGapMs(400, 300)));
+        // 1 s after the cut it has played only 200 ms: 720 ms of silence, which the gate must see.
+        Assert.Equal(720, V.AudioHandoff.CutGapMs(1_000, 200));
+        Assert.False(V.AudioHandoff.IsCut(V.AudioHandoff.CutGapMs(1_000, 200)));
+        Assert.Equal(-80, V.AudioHandoff.CutGapMs(0, 0));                         // a negative progress never inflates it
+        Assert.Equal(V.AudioHandoff.CutGapMs(500, 0), V.AudioHandoff.CutGapMs(500, -50));
     }
 
     [Fact]
@@ -503,20 +540,35 @@ public class VideoRetentionWindowTests
     [Fact]
     public void The_window_is_byte_capped_and_a_480p_rung_fits_it_whole()
     {
-        Assert.Equal(32L * 1024 * 1024, V.RetentionWindow.StoreBudgetBytes);
+        Assert.Equal(32L * 1024 * 1024, V.RetentionWindow.DefaultStoreBudgetBytes);
+        Assert.Equal(16L * 1024 * 1024, V.RetentionWindow.MinStoreBudgetBytes);
+        Assert.Equal(128L * 1024 * 1024, V.RetentionWindow.MaxStoreBudgetBytes);
 
-        const int p480 = 200_000;    // ≈ 1.6 Mbps video + audio: 90 s ≈ 18 MB, inside the 32 MiB budget
+        const int p480 = 200_000;    // ≈ 1.6 Mbps video + audio: 90 s ≈ 18 MB, so the derived budget is 28.8 MB
+        Assert.Equal(28_800_000, V.RetentionWindow.StoreBudgetFor(p480));
         Assert.True(V.RetentionWindow.FitsBudget(p480));
         Assert.Equal(30_000, V.RetentionWindow.BehindAffordableMs(p480));
         Assert.Equal(60_000, V.RetentionWindow.AheadAffordableMs(p480));
 
-        // A fat rung cannot buy the whole window: the BEHIND half is honoured first, because it is what makes a
-        // backward seek free, and the ahead half takes what is left.
-        const int fat = 4_000_000;   // 32 MiB ≈ 8.3 s at this rate
-        Assert.False(V.RetentionWindow.FitsBudget(fat));
-        Assert.Equal(8_388, V.RetentionWindow.BehindAffordableMs(fat));
-        Assert.Equal(0, V.RetentionWindow.AheadAffordableMs(fat));
+        // A 5 Mbps 1080p rung used to collapse the window inside a fixed 32 MiB; its budget now holds all of it.
+        const int p1080 = 625_000;
+        Assert.Equal(90_000_000, V.RetentionWindow.StoreBudgetFor(p1080));
+        Assert.True(V.RetentionWindow.FitsBudget(p1080));
+        Assert.Equal(30_000, V.RetentionWindow.BehindAffordableMs(p1080));
+        Assert.Equal(60_000, V.RetentionWindow.AheadAffordableMs(p1080));
 
+        // The budget is clamped: a tiny rung gets the floor, an enormous one the ceiling.
+        Assert.Equal(V.RetentionWindow.MinStoreBudgetBytes, V.RetentionWindow.StoreBudgetFor(50_000));
+        Assert.Equal(V.RetentionWindow.MaxStoreBudgetBytes, V.RetentionWindow.StoreBudgetFor(4_000_000));
+
+        // A rung past the ceiling cannot buy the whole window: the BEHIND half is honoured first, because it is what
+        // makes a backward seek free, and the ahead half takes what is left.
+        const int fat = 4_000_000;   // 128 MiB ≈ 33.5 s at this rate
+        Assert.False(V.RetentionWindow.FitsBudget(fat));
+        Assert.Equal(30_000, V.RetentionWindow.BehindAffordableMs(fat));
+        Assert.Equal(3_554, V.RetentionWindow.AheadAffordableMs(fat));
+
+        Assert.Equal(V.RetentionWindow.DefaultStoreBudgetBytes, V.RetentionWindow.StoreBudgetFor(0));
         Assert.True(V.RetentionWindow.FitsBudget(0));    // an unknown bitrate is not a reason to trim
     }
 
@@ -745,6 +797,64 @@ public class VideoLogFormatTests
 
         n = V.VideoLog.Format(new V.VideoLog.AudioCut(80, 83_000, 83_080, 0), buf);
         Assert.Equal("[video] audio.cut fadeMs=80 songPos=83000ms videoPos=83080ms gapMs=0", new string(buf, 0, n));
+    }
+
+    // E5: the clear path writes the same `switch.budget` marker the protected session does, and the frame counters reach the log; the
+    // e2e driver greps `switch\.budget` and `video.*(rendered|dropped)`, so both shapes are pinned.
+    [Fact]
+    public void The_clear_budget_and_frame_counter_lines_carry_what_the_driver_greps()
+    {
+        char[] buf = new char[V.VideoLog.MaxLineChars];
+
+        int n = V.VideoLog.Format(new V.VideoLog.ClearBudget("2e\\testpattern-1080p.mp4", 9, 289, 268), buf);
+        Assert.Equal("[video] switch.budget key=2e\\testpattern-1080p.mp4 path=clear openCallMs=9 firstFrameMs=289 sinceOpenMs=268", new string(buf, 0, n));
+
+        n = V.VideoLog.Format(new V.VideoLog.FrameStats("2e\\testpattern-1080p.mp4", 1_500, 3, 300, 1), buf);
+        Assert.Equal("[video] frames key=2e\\testpattern-1080p.mp4 rendered=1500 dropped=3 deltaRendered=300 deltaDropped=1", new string(buf, 0, n));
+
+        n = V.VideoLog.Format(new V.VideoLog.FrameStats("k", 1_500, 3, 0, 0, Final: true), buf);
+        Assert.Equal("[video] frames key=k rendered=1500 dropped=3 deltaRendered=0 deltaDropped=0 final=1", new string(buf, 0, n));
+    }
+
+    [Fact]
+    public void A_frame_counter_line_is_due_only_for_moved_counters_after_the_interval_with_a_baseline()
+    {
+        long every = V.HostRules.FrameStatsEveryMs;
+        Assert.False(V.HostRules.FrameStatsDue(10_000, lastAtMs: 0, 100, 0, 0, 0));                         // no baseline yet: the caller stamps one
+        Assert.False(V.HostRules.FrameStatsDue(1_000 + every - 1, lastAtMs: 1_000, 100, 0, 0, 0));          // too soon
+        Assert.False(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 100, 2, 100, 2));            // nothing moved
+        Assert.False(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 0, 0, 0, 0));                // no counters at all
+        Assert.True(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 100, 2, 0, 0));
+        Assert.True(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 40, 0, 100, 2));             // a new session restarted the counts
+
+        Assert.Equal(60, V.HostRules.FrameStatsDelta(160, 100));
+        Assert.Equal(40, V.HostRules.FrameStatsDelta(40, 100));                                            // went down: restarted, the new value is the change
+    }
+
+    // F215: first.frame's time comes from the player's own first-frame stamp when it has one, so a pump that was unmounted for seconds
+    // (a fullscreen stage) cannot make the frame look late: the observation lag is printed on its own.
+    [Fact]
+    public void First_frame_counts_from_the_native_stamp_and_prints_how_late_it_was_observed()
+    {
+        char[] buf = new char[V.VideoLog.MaxLineChars];
+        int n = V.VideoLog.Format(new V.VideoLog.FirstFrame("spotify:video:abc", 7, 2_134, -1, 83_000, 854, 480, ObservedLateMs: 2_441), buf);
+        Assert.Equal("[video] first.frame key=spotify:video:abc epoch=7 sinceSwitchMs=2134 sinceAttachMs=-1 pos=83000ms natural=854x480 observedLateMs=2441",
+            new string(buf, 0, n));
+
+        long qpc = System.Diagnostics.Stopwatch.Frequency;   // one second of ticks
+        // switch at tick 10 s, first frame at 12.1 s on the native clock, observed 4.575 s after the switch on the tick clock
+        // (a tick frequency that is not 10 MHz truncates the double conversion by up to a millisecond)
+        Assert.InRange(V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 10 * qpc, firstFrameQpc: 10 * qpc + qpc * 21 / 10, nowMs: 5_575), 2_099, 2_100);
+        // no native stamp (a clear session, a fake): the tick-clock difference, as before
+        Assert.Equal(4_575, V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 10 * qpc, firstFrameQpc: 0, nowMs: 5_575));
+        // a stamp from BEFORE this switch began (a stale one) is never trusted
+        Assert.Equal(4_575, V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 10 * qpc, firstFrameQpc: 9 * qpc, nowMs: 5_575));
+        // no switch stamp yet: the tick clock
+        Assert.Equal(4_575, V.HostRules.FirstFrameSinceSwitchMs(switchAtMs: 1_000, switchAtQpc: 0, firstFrameQpc: 12 * qpc, nowMs: 5_575));
+
+        Assert.InRange(V.HostRules.ObservedLateMs(firstFrameQpc: 10 * qpc, nowQpc: 12 * qpc), 1_999, 2_000);
+        Assert.Equal(-1, V.HostRules.ObservedLateMs(firstFrameQpc: 0, nowQpc: 12 * qpc));
+        Assert.Equal(-1, V.HostRules.ObservedLateMs(firstFrameQpc: 12 * qpc, nowQpc: 10 * qpc));
     }
 
     [Fact]

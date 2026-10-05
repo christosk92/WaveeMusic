@@ -527,8 +527,9 @@ public static partial class Controls
                 else loading = state is ImageState.None or ImageState.Pending;
             }
             // Deliberately NOT gated on reduced motion: this is a LOADING INDICATOR, not a flourish, and it stops on
-            // settle anyway.
-            bool shimmer = loading && !GpuProfile.IsWeak;
+            // settle anyway. Nor on the GPU tier (owner decision, 2026-10-05): every tier gets the same shimmer; a saturated GPU
+            // is the engine's measured governor's business, not a reason to show a different placeholder.
+            bool shimmer = loading;
             UseKeyframes(AnimChannel.Opacity, shimmer ? Breathe : Flat, shimmer ? 1000f : 1f, shimmer,
                          DepKey.From(shimmer));
             if (_placeholderFor != p.Url) { _placeholderFor = p.Url; _placeholder = Design.WatchedPlaceholder(p.Url); }

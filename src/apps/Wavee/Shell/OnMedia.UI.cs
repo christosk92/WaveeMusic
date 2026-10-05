@@ -123,7 +123,7 @@ public static class OnMedia
             () => Video.Prefs.SetAspect(Platform.Settings, Video.AspectPreference.Custom, r));
 
     /// <summary>Auto plus the rungs THIS manifest actually offers. A fixed 720/1080/1440/2160 ladder lied twice: a rung
-    /// no variant matches does not pin (<c>Playback.Video.SetPreferredHeight</c> finds nothing to select) yet still
+    /// no variant matches does not pin (<c>Playback.Video.PinQuality</c> persists it but <c>SetPreferredHeight</c> finds nothing to select) yet still
     /// moves the ABR ceiling, so the row read as selected while the player was really on Auto — and the rungs the
     /// manifest DID offer were missing from the menu.</summary>
     static IReadOnlyList<MenuFlyoutItem> QualityRows()
@@ -133,13 +133,13 @@ public static class OnMedia
         var rows = new List<MenuFlyoutItem>(rungs.Length + 1)
         {
             MenuFlyoutItem.RadioItem(Loc.Get(Strings.Player.QualityAuto), pin == 0,
-                static () => Playback.Video.SetPreferredHeight(0)),
+                static () => Playback.Video.PinQuality(0)),
         };
         for (int i = 0; i < rungs.Length; i++)
         {
             int h = rungs[i];
             rows.Add(MenuFlyoutItem.RadioItem(h.ToString(System.Globalization.CultureInfo.InvariantCulture) + "p", pin == h,
-                () => Playback.Video.SetPreferredHeight(h)));
+                () => Playback.Video.PinQuality(h)));
         }
         return rows;
     }
@@ -276,13 +276,13 @@ public static class OnMedia
                                     ToolTip.Wrap(Glyph(Icons.Next, s_next, tf.NextEnabled), Loc.Get(Strings.Player.Next)),
                                 ],
                             },
-                            Shell.SeekBar(Feed),
+                            Shell.SeekBar(Feed, reveal: Visible),
                             new BoxEl
                             {
                                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
                                 Children =
                                 [
-                                    Shell.TimeText(remaining: false, ink: Tok.OnMediaSecondary),
+                                    Shell.TimeText(remaining: false, ink: Tok.OnMediaSecondary, reveal: Visible),
                                     new BoxEl { Grow = 1f, Shrink = 1f, MinWidth = 0f, HitTestVisible = false },
                                     // The glyph MUTES, like every other mute glyph; the slider keeps its own affordance beside it.
                                     ToolTip.Wrap(Glyph(muted ? Icons.Mute : Icons.Volume, static () => Playback.ToggleMute(), true),
@@ -291,7 +291,7 @@ public static class OnMedia
                                         Loc.Get(Strings.Player.Volume)),
                                     ToolTip.Wrap(Glyph(Icons.More, ToggleMore, true, h => moreAnchor.Value = h),
                                         Loc.Get(Strings.Common.More)),
-                                    Shell.TimeText(remaining: true, ink: Tok.OnMediaSecondary),
+                                    Shell.TimeText(remaining: true, ink: Tok.OnMediaSecondary, reveal: Visible),
                                 ],
                             },
                         ],

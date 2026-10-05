@@ -1053,3 +1053,168 @@ public class SpotifyApiSubjectTests
     public void A_bearer_goes_only_to_https_spotify_hosts(string url, bool allowed)
         => Assert.Equal(allowed, Spotify.Api.IsSpotifyUrl(url));
 }
+
+/// <summary>F162: the api pool's priority lane. A video switch's resolve and licence POST must not queue behind catalogue
+/// batches, and the lane must not take the catalogue's threads either. These build their OWN <see cref="Spotify.Api.Lanes"/>
+/// — booting the process-wide pool registers the real fetch provider, which other facts own.</summary>
+public class SpotifyApiLaneTests
+{
+    static readonly TimeSpan Patience = TimeSpan.FromSeconds(10);
+
+    /// <summary>Occupy a worker of the lane until <paramref name="release"/> is set; <paramref name="started"/> says it is in.</summary>
+    static Action Park(CountdownEvent started, ManualResetEventSlim release) => () => { started.Signal(); release.Wait(Patience); };
+
+    [Fact]
+    public void A_priority_item_runs_while_every_shared_worker_is_busy()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 2, sharedDepth: 16, priorityWorkers: 1, priorityDepth: 4, "fact-lanes-a");
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(2);
+        using var ran = new ManualResetEventSlim();
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: false));
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: false));
+            Assert.True(busy.Wait(Patience));                    // both catalogue workers are parked on "network"
+
+            Assert.True(lanes.TryRun(ran.Set, 0, priority: true));
+            Assert.True(ran.Wait(Patience), "the priority lane waited behind the catalogue");
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+
+    [Fact]
+    public void A_busy_priority_lane_never_starves_the_catalogue()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 16, priorityWorkers: 1, priorityDepth: 4, "fact-lanes-b");
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(1);
+        using var ran = new ManualResetEventSlim();
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
+            Assert.True(busy.Wait(Patience));                    // the lane's only worker is parked
+
+            Assert.True(lanes.TryRun(ran.Set, 0, priority: false));
+            Assert.True(ran.Wait(Patience), "the catalogue waited behind the priority lane");
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+
+    [Fact]
+    public void Priority_items_run_in_the_order_they_were_queued()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 4, priorityWorkers: 1, priorityDepth: 8, "fact-lanes-c");
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(1);
+        using var done = new CountdownEvent(3);
+        var order = new List<int>();
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
+            Assert.True(busy.Wait(Patience));
+            for (int i = 1; i <= 3; i++)
+            {
+                int n = i;
+                Assert.True(lanes.TryRun(() => { lock (order) order.Add(n); done.Signal(); }, 0, priority: true));
+            }
+            release.Set();
+            Assert.True(done.Wait(Patience));
+            lock (order) Assert.Equal(new[] { 1, 2, 3 }, order);
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+
+    [Fact]
+    public void A_full_priority_lane_spills_into_the_shared_queue()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 4, priorityWorkers: 1, priorityDepth: 1, "fact-lanes-d");
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(1);
+        using var ran = new ManualResetEventSlim();
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
+            Assert.True(busy.Wait(Patience));                    // the lane's worker is parked...
+            Assert.True(lanes.TryRun(static () => { }, 0, priority: true));   // ...and its one slot is taken
+
+            Assert.True(lanes.TryRun(ran.Set, 0, priority: true));            // spills: slower, never lost
+            Assert.True(ran.Wait(Patience));
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+
+    // F226: every item is stamped when it is queued, and the observer is told how long it waited and how deep the queue it joined was,
+    // so "was it the api queue" is read off a line instead of reconstructed from thread-crossing timestamps.
+    [Fact]
+    public void The_observer_reports_how_long_each_item_waited_and_the_depth_it_found()
+    {
+        var waits = new List<Spotify.Api.QueueWait>();
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 4, priorityWorkers: 1, priorityDepth: 8, "fact-lanes-f",
+            observe: w => { lock (waits) waits.Add(w); });
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(1);
+        using var done = new CountdownEvent(2);
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
+            Assert.True(busy.Wait(Patience));                    // the lane's worker is parked: what follows has to wait
+            Assert.True(lanes.TryRun(() => done.Signal(), 0, priority: true));   // joins an empty queue
+            Assert.True(lanes.TryRun(() => done.Signal(), 0, priority: true));   // joins behind one
+            Thread.Sleep(120);
+            release.Set();
+            Assert.True(done.Wait(Patience));
+
+            Spotify.Api.QueueWait[] seen;
+            lock (waits) seen = waits.ToArray();
+            Assert.Equal(3, seen.Length);                        // the parked item, then the two that waited behind it
+            Assert.All(seen, w => Assert.True(w.Priority));
+            Assert.Equal(0, seen[1].DepthAtEnqueue);
+            Assert.Equal(1, seen[2].DepthAtEnqueue);
+            Assert.True(seen[1].QueuedMs >= 100.0 && seen[2].QueuedMs >= 100.0, $"waits {seen[1].QueuedMs} / {seen[2].QueuedMs}");
+            Assert.StartsWith("p", seen[1].Worker);              // the priority lane's own worker took them
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+
+    [Fact]
+    public void A_throwing_observer_never_costs_the_work()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 4, priorityWorkers: 1, priorityDepth: 4, "fact-lanes-g",
+            observe: _ => throw new InvalidOperationException("telemetry"));
+        using var ran = new ManualResetEventSlim();
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(ran.Set, 0, priority: true));
+            Assert.True(ran.Wait(Patience), "an observer that threw swallowed the item");
+        }
+        finally { lanes.Complete(); }
+    }
+
+    [Fact]
+    public void Both_lanes_full_refuses_the_item()
+    {
+        var lanes = new Spotify.Api.Lanes(sharedWorkers: 1, sharedDepth: 1, priorityWorkers: 1, priorityDepth: 1, "fact-lanes-e");
+        using var release = new ManualResetEventSlim();
+        using var busy = new CountdownEvent(2);
+        try
+        {
+            lanes.Start();
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: false));
+            Assert.True(lanes.TryRun(Park(busy, release), 0, priority: true));
+            Assert.True(busy.Wait(Patience));                    // one parked worker per lane
+            Assert.True(lanes.TryRun(static () => { }, 0, priority: false));  // the shared slot
+            Assert.True(lanes.TryRun(static () => { }, 0, priority: true));   // the lane's slot
+
+            Assert.False(lanes.TryRun(static () => { }, 0, priority: true));  // nowhere left: a refusal the caller answers for
+            Assert.False(lanes.TryRun(static () => { }, 0, priority: false));
+        }
+        finally { release.Set(); lanes.Complete(); }
+    }
+}

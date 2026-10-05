@@ -74,11 +74,8 @@ public class LyricsFxTests
 public class LyricsBlurPolicyTests
 {
     [Fact]
-    public void Auto_resolves_off_the_gpu_tier()
-    {
-        Assert.Equal(Lyrics.BlurPolicy.WeakGpuDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto, weakGpu: true));
-        Assert.Equal(Lyrics.BlurPolicy.StrongGpuDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto, weakGpu: false));
-    }
+    public void Auto_resolves_to_the_one_default_on_every_gpu_tier()
+        => Assert.Equal(Lyrics.BlurPolicy.AutoDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto));
 
     [Theory]
     [InlineData(0, 0)]
@@ -87,7 +84,7 @@ public class LyricsBlurPolicyTests
     [InlineData(140, 100)]      // a value from a newer build's ladder clamps rather than trusting the store
     [InlineData(-9, 0)]         // …and any other negative is NOT the auto sentinel
     public void A_stored_value_is_clamped_into_range(int stored, int expected)
-        => Assert.Equal(expected, Lyrics.BlurPolicy.Resolve(stored, weakGpu: false));
+        => Assert.Equal(expected, Lyrics.BlurPolicy.Resolve(stored));
 
     [Fact]
     public void Scale_is_the_zero_to_one_multiplier()
@@ -871,6 +868,53 @@ public class LyricsMotionDemandTests
         Assert.Equal(5000, Lyrics.MotionDemand.NextEventMs(lines, 0, 4900, 140));
         Assert.Equal(Lyrics.MotionDemand.None, Lyrics.MotionDemand.NextEventMs(lines, 0, 99_999, 140));
         Assert.Equal(Lyrics.MotionDemand.None, Lyrics.MotionDemand.NextEventMs(null, 0, 0, 140));
+    }
+
+    // F237: a line-synced line on its flat glow plateau is the voice, but it writes the same alpha every frame.
+
+    [Fact]
+    public void A_line_synced_voice_line_moves_only_while_its_glow_fades_in_or_out()
+    {
+        var line = Lyr.Timed(10_000, 20_000, "a");
+        long fadeIn = (long)Lyrics.Wipe.GlowFadeMs;
+        long plateauEnd = Lyrics.MotionDemand.VoicePlateauEndMs(line, 20_000);
+        Assert.Equal(20_000 - (long)Lyrics.Wipe.GlowOutMs, plateauEnd);
+
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 10_000));                  // the fade-in
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 10_000 + fadeIn - 1));
+        Assert.False(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 10_000 + fadeIn));        // the plateau: nothing to step
+        Assert.False(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 15_000));
+        Assert.False(Lyrics.MotionDemand.VoiceMoves(line, 20_000, plateauEnd - 1));
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, plateauEnd));              // the melt-out
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 20_000, 19_999));
+    }
+
+    [Fact]
+    public void A_word_synced_voice_line_always_moves_and_arms_no_plateau_wake()
+    {
+        var line = Lyr.Line(1000, "ab", Lyr.S(1000, 1500, "a"), Lyr.S(1500, 2000, "b"));
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 2000, 1000));
+        Assert.True(Lyrics.MotionDemand.VoiceMoves(line, 2000, 1750));
+        Assert.Equal(Lyrics.MotionDemand.None, Lyrics.MotionDemand.VoicePlateauEndMs(line, 2000));
+    }
+
+    [Fact]
+    public void A_line_with_no_known_end_has_no_plateau_wake()
+        => Assert.Equal(Lyrics.MotionDemand.None,
+            Lyrics.MotionDemand.VoicePlateauEndMs(Lyr.Timed(1000, 2000, "a"), long.MaxValue));
+
+    [Fact]
+    public void A_quiescent_plateau_arms_the_wake_at_the_melt_out_instead_of_mounting_the_stepper()
+    {
+        Lyrics.Line[] lines = [Lyr.Timed(10_000, 20_000, "a"), Lyr.Timed(20_000, 30_000, "b")];
+        long now = 15_000;
+        long plateauEnd = Lyrics.MotionDemand.VoicePlateauEndMs(lines[0], 20_000);
+        long next = Math.Min(Lyrics.MotionDemand.NextEventMs(lines, 0, now, 140), plateauEnd);
+        Assert.Equal(plateauEnd, next);   // the melt-out comes before the next hand-off
+
+        var d = Lyrics.MotionDemand.Evaluate(Quiet(now, next) with { VoiceActive = Lyrics.MotionDemand.VoiceMoves(lines[0], 20_000, now) });
+        Assert.False(d.NeedsTicks);
+        Assert.Equal(plateauEnd - Lyrics.MotionDemand.ArmLeadMs, d.WakeAtMs);
     }
 }
 

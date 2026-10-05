@@ -12,8 +12,8 @@
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 // THE FULLSCREEN STAGE. `Stage.View()` is what the shell mounts while `Shell.Ui.ImmersiveLyrics` is up (Shell.UI.cs:500).
-// Mount = enter: the window goes borderless-fullscreen (the Video.UI.cs:1213-1218 shape), the shell unmounts its chrome
-// (FrameRules.ChromeMounted) and collapses its body (ContentRegion.Visible), a focus scope takes the keys. Unmount = exit.
+// Mount = enter: the window goes borderless-fullscreen (the Video.UI.cs:1213-1218 shape), the shell collapses its chrome and
+// body (FrameRules.ChromeMounted → bound Visible on the chrome row, the content region and the dock), a focus scope takes the keys. Unmount = exit.
 //
 //   • ONE context instance of SIGNALS (`StageCtx`) for the stage's life; every layer is a component on the signals it reads,
 //     so SurfaceCore's tree is static and a track / preference / layout change re-renders only what reads it.
