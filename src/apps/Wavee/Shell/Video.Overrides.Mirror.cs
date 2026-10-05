@@ -93,6 +93,24 @@ public static partial class Video
             Overrides.Changed -= OnChanged;
             Overrides.Changed += OnChanged;
             Reindex();
+            ApplyFakeClip();
+        }
+
+        /// <summary>`--fake --fake-video`: rows the fake seed committed BEFORE the roster loaded get the clip mirrored on now (rows committed
+        /// later are lit by <see cref="TryPath"/>). In memory only: nothing is written to the roster or the settings store.</summary>
+        static void ApplyFakeClip()
+        {
+            if (Overrides.FakeClip is not { } clip || Entities.Current is not { } scope) return;
+            var t = scope.Tracks;
+            var interned = Entities.Strings.Intern(clip);
+            for (int slot = 1; slot < t.Count; slot++)
+            {
+                if (t.Id[slot].IsEmpty || t.Id[slot].Provider != EntityProvider.Spotify) continue;
+                t.Flags[slot] |= (uint)TrackFlags.VideoOverride;
+                t.SetText(ref t.LocalVideo, slot, interned);
+                t.Bump(slot);
+            }
+            Entities.Publish();
         }
 
         /// <summary>Drop the subscription (the pair to <see cref="Install"/>; a test's teardown, exactly as
@@ -114,6 +132,7 @@ public static partial class Video
         {
             path = "";
             if (id.IsEmpty) return false;
+            if (Overrides.FakeClip is { } clip && id.Provider == EntityProvider.Spotify) { path = clip; return true; }
             lock (Gate)
             {
                 Fresh();

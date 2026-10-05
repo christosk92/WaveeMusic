@@ -46,6 +46,7 @@ public static partial class Video
     public static void Install()
     {
         Overrides.Attach(Platform.Settings);
+        Overrides.FakeClip = Platform.Args.FakeVideo;   // --fake --fake-video: in memory only (never in the roster, so never persisted)
         Overrides.BrokenLink -= OnBrokenLink;
         Overrides.BrokenLink += OnBrokenLink;
         Playback.Video.InstallLog();

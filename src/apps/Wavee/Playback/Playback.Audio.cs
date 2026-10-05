@@ -892,8 +892,9 @@ public static partial class Playback
                 s_endedHold = 0;
             }
 
-            // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration.
-            if (id.Provider == EntityProvider.Fake)
+            // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration. Under
+            // `--fake --fake-video` the seeded spotify: rows take it too (no session to open bytes from; the clip carries the sound).
+            if (id.Provider == EntityProvider.Fake || (Platform.Args.FakeVideo is not null && id.Provider == EntityProvider.Spotify))
             {
                 await OpenSilentAsync(row, epoch, fromMs, chain).ConfigureAwait(false);
                 return;
