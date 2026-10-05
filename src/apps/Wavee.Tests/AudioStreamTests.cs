@@ -1574,7 +1574,9 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         body.Start();
 
         WaitUntil(() => fetcher.Faults >= 1, "the disk fill's fault to be settled");
-        Assert.Equal(0, fetcher.InFlight);                                // it never reached the wire, so it was never counted on it
+        // It never reached the wire: no request covers the faulted disk range. (Not `fetcher.InFlight == 0`: the ring may
+        // already have the NEXT range on the wire when the fault settles, which a loaded test host makes likely.)
+        Assert.DoesNotContain(cdn.Ranges, r => r.Start < Slot);
         WaitUntil(() => body.Ring.RetryAfter > 0, "the range to settle Refused: the ring arms its backoff");
         Audio.Stream.Stats delta = Audio.Stream.Stats.Read(fetcher).Since(in mark);
         Assert.Equal(1, delta.Faults);                                    // R-6: in the stats, as a delta
