@@ -264,7 +264,12 @@ public static partial class Diagnostics
                 {
                     Base(playing: play is not null);
                     string big = t.Big ?? (t.Playlists.Length > 0 ? t.Playlists[0] : "liked");
+                    // Wait for the route to actually change before looking for its list: right after the call, the page just left is
+                    // still the one on screen.
+                    long nav0 = NavigationFrameWatch.NavigationId;
                     Nav(big == "liked" ? new Shell.Route(Shell.RouteKind.Liked) : Shell.For(EntityUri.Parse(big), "Bench list"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Settle(1.0);
                     var s = new ScrollState(depthViewports: 30);
                     if (!s.WaitReady(host, w, 30)) return Skip("list " + big + " never became scrollable in 30 s (" + s.Describe(host) + ")");
                     return Measure(s.Driver(host), "list=" + big + " viewport=" + s.Key, s);
@@ -376,14 +381,14 @@ public static partial class Diagnostics
         }
 
         /// <summary>The page scroller a scroll scenario drives: among the vertical viewports at least 30 % the area of the largest, the one
-        /// with the longest content that is at least three viewports long and has a handle (on a list page that is the list, never the
-        /// sidebar). Glide steps of 85 % of a viewport every 0.55 s, down to <c>depthViewports</c> viewports deep (or the end) and back;
-        /// the distance it actually covered is measured off the viewport's own offset.</summary>
+        /// with the longest content that is at least three viewports long, is SHOWN (not a parked tab's page) and has a handle (on a list
+        /// page that is the list, never the sidebar). Once found it is held by its <see cref="ScrollHandle"/> (a re-created viewport node does not lose it). Glide steps
+        /// of 85 % of a viewport every 0.55 s, down to <c>depthViewports</c> viewports deep (or the end) and back; the distance it
+        /// actually covered is read off the handle's own offset (the app-facing content offset).</summary>
         sealed class ScrollState(int depthViewports)
         {
             readonly List<ViewportInfo> _vps = new();
-            int _node = -1;
-            uint _gen;
+            ScrollHandle? _handle;
             double _lastOffset, _viewport = 1;
             int _dir = 1;
             public string Key = "";
@@ -391,24 +396,35 @@ public static partial class Diagnostics
             public int Steps;
             public double DistanceViewports => _viewport > 0 ? Distance / _viewport : 0;
 
-            ViewportInfo? Find(AppHost host, double minRatio)
+            bool Adopt(AppHost host, double minRatio)
             {
                 _vps.Clear();
                 host.CopyViewports(_vps);
                 double maxArea = 0;
-                foreach (var v in _vps) if (!v.Horizontal) maxArea = Math.Max(maxArea, v.W * v.H);
-                ViewportInfo? best = null;
+                foreach (var v in _vps) if (!v.Horizontal && host.Scene.IsShown(host.Scene.HandleAt(v.NodeIndex))) maxArea = Math.Max(maxArea, v.W * v.H);
+                ViewportInfo best = default;
+                ScrollHandle? bestHandle = null;
                 foreach (var v in _vps)
                 {
                     if (v.Horizontal || v.Viewport <= 0 || v.W * v.H < 0.3 * maxArea || v.Extent < v.Viewport * minRatio) continue;
-                    if (host.TryGetScrollHandle(host.Scene.HandleAt(v.NodeIndex)) is null) continue;
-                    if (best is null || v.Extent > best.Value.Extent) best = v;
+                    var node = host.Scene.HandleAt(v.NodeIndex);
+                    if (!host.Scene.IsShown(node)) continue;   // a parked tab's page (the one just left) is live but not on screen
+                    if (host.TryGetScrollHandle(node) is not { } h) continue;
+                    if (bestHandle is null || v.Extent > best.Extent) { best = v; bestHandle = h; }
                 }
-                return best;
+                if (bestHandle is null) return false;
+                if (!ReferenceEquals(bestHandle, _handle))
+                {
+                    _handle = bestHandle;
+                    Key = best.ScrollKey ?? "(no key)";
+                    _lastOffset = bestHandle.Offset.Peek();
+                }
+                _viewport = best.Viewport;
+                return true;
             }
 
             public bool WaitReady(AppHost host, Win32Window w, double maxSec)
-                => PumpUntil(host, w, () => Find(host, 3.0) is not null, maxSec);
+                => PumpUntil(host, w, () => Adopt(host, 3.0), maxSec);
 
             public string Describe(AppHost host)
             {
@@ -421,46 +437,36 @@ public static partial class Diagnostics
                 return sb.Length > 0 ? sb.ToString() : "no vertical viewport";
             }
 
-            ViewportInfo? Current(AppHost host)
-            {
-                _vps.Clear();
-                host.CopyViewports(_vps);
-                foreach (var v in _vps) if (v.NodeIndex == _node && v.Gen == _gen) return v;
-                return null;
-            }
-
             /// <summary>The measured window starts: distance from here.</summary>
             public void Restart(AppHost host)
             {
                 Distance = 0;
                 Steps = 0;
-                if (Current(host) is { } v) _lastOffset = v.Offset;
+                if (_handle is { } h) _lastOffset = h.Offset.Peek();
             }
 
-            /// <summary>Fold the viewport's movement since the last look into the distance.</summary>
+            /// <summary>Fold the handle's movement since the last look into the distance.</summary>
             public void Observe(AppHost host)
             {
-                if (Current(host) is not { } v) return;
-                Distance += Math.Abs(v.Offset - _lastOffset);
-                _lastOffset = v.Offset;
+                if (_handle is not { } h) return;
+                double off = h.Offset.Peek();
+                Distance += Math.Abs(off - _lastOffset);
+                _lastOffset = off;
             }
 
             public Driver Driver(AppHost host) => new(now =>
             {
-                ViewportInfo v;
-                if (Current(host) is { } cur) { v = cur; Observe(host); }
-                else if (Find(host, 1.5) is { } found)
-                {
-                    v = found;
-                    _node = v.NodeIndex; _gen = v.Gen; Key = v.ScrollKey ?? "?"; _viewport = v.Viewport; _lastOffset = v.Offset;
-                }
-                else return now + 0.25;
-                if (host.TryGetScrollHandle(host.Scene.HandleAt(v.NodeIndex)) is not { } handle) return now + 0.25;
-                double max = Math.Min(v.Extent - v.Viewport, v.Viewport * depthViewports);
-                double to = v.Offset + _dir * v.Viewport * 0.85;
+                // Re-adopt every step: a page that re-created its scroller, or a route change, hands over to what is on screen now.
+                if (!Adopt(host, 1.5) && _handle is null) return now + 0.25;
+                var h = _handle!;
+                Observe(host);
+                double vp = h.Viewport > 0 ? h.Viewport : _viewport;
+                if (vp > 0) _viewport = vp;
+                double max = Math.Min(h.MaxOffset, vp * depthViewports);
+                double to = h.Offset.Peek() + _dir * vp * 0.85;
                 if (to >= max) { to = max; _dir = -1; }
                 else if (to <= 0) { to = 0; _dir = 1; }
-                handle.ScrollTo(to, ScrollMove.Glide);
+                h.ScrollTo(to, ScrollMove.Glide);
                 Steps++;
                 return now + 0.55;
             });
@@ -473,7 +479,9 @@ public static partial class Diagnostics
         {
             Shell.Ui.RailOpen.Value = false;
             Nav(new Shell.Route(Shell.RouteKind.Home));
-            if (!Playback.Snap().IsPlaying) { Playback.PlayContext(play); PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20); }
+            // The steady state the A/B needs: the bench track itself playing (a previous scenario may have left an album mid-change).
+            var now = Playback.Snap();
+            if (!now.IsPlaying || now.CurrentId.Text != play) { Playback.PlayContext(play); PumpUntil(host, w, () => Playback.Snap().IsPlaying && Playback.Snap().CurrentId.Text == play, 20); }
             Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
             Stage.Open(null, "bench");
             Pump(host, w, 2.0, null);
