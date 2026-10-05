@@ -25,6 +25,10 @@ versions separately under `v*` and is not tracked in this file.)
 - **A new Artist pane in full screen.** The artist's photo fills the band, with monthly listeners and world rank, Follow
   and Go to artist. Below it: the full biography, a photo strip, this song's credits grouped by person, the five most
   popular songs, where people listen and related artists.
+- **Word-by-word lyrics with on-device AI.** On a Copilot+ PC with a Snapdragon NPU, Settings › Appearance ›
+  Lyrics can download the AI models once (about 700 MB, English; Spanish optional). Wavee then times every word
+  of a song's line-synced lyrics on the NPU while the song plays, so the lyrics wipe word by word. The song and
+  its lyrics never leave the PC, and a ✦ in the lyrics header shows when the word timing is AI-generated. (#175)
 
 ### Changed
 
@@ -39,6 +43,21 @@ versions separately under `v*` and is not tracked in this file.)
   column, the lyrics grow with the stage, and Up next rows get larger art and type. The Up next list stops at a
   readable width, opens with the next song set apart, splits into sections with their counts, numbers each row and
   marks explicit tracks.
+- **The fullscreen visualizer redraws only what moves.** The drifting background and the visualizer bars no longer
+  redraw the whole screen on every frame, the frosted panels stop re-blurring when nothing under them changed, and the
+  background is drawn at a quarter of the screen resolution (it is a soft gradient, so it looks the same). Before, every
+  frame of the visualizer redrew all of a 3440 x 1440 screen, which took about half of the GPU at 120 Hz on a
+  Snapdragon X laptop.
+- **The fullscreen stage no longer draws the app hidden behind it.** While the stage is open, the pages under it are
+  left out of every frame, and the stage's background (the blurred cover, the drifting colours and the dark tint) is
+  drawn as one layer instead of three. In the offline demo on a Snapdragon X laptop at 120 Hz, the stage takes 1.69 ms
+  of GPU time per frame instead of 2.35 ms (Task Manager: about 22-25% GPU instead of 32%).
+- **Opening pages leaves less memory behind.** Spotify's answers (the Home feed, artist and album pages, track
+  metadata, playlists, Connect updates) are now read into reused buffers and decoded in place instead of being copied
+  into fresh memory several times over. A large answer used to leave two to five times its own size of garbage in the
+  part of memory that is the slowest to clean up and the easiest to fragment: about 2.7 MB for the Home feed and up to
+  10 MB for a large metadata batch. The play history is also written to disk without building the whole file in
+  memory first.
 
 ### Fixed
 

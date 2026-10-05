@@ -701,7 +701,7 @@ public static partial class Visualizer
     /// the whole stage: a RepaintBoundary keeps that drift in this slice instead of re-rastering every stage tile (art,
     /// scrim, bars, caption) above and below it. They are pure radial gradients, so the slice rasters at a quarter of the
     /// window scale and is upsampled — the same look for 1/16 of the raster work, and no window-sized tiles held.</summary>
-    public static Element BackdropField(Slab slab, float w, float h, Prop<float> opacity)
+    public static Element BackdropField(Slab slab, float w, float h, Prop<float> opacity, bool boundary = true)
     {
         float m = MathF.Max(w, h), d = 1.1f * m;
         var kids = new List<CanvasChild>(Field.Blobs);
@@ -710,7 +710,9 @@ public static partial class Visualizer
             kids.Add(new CanvasChild(corners[i].X * m, corners[i].Y * m, Embed.Comp(new BackdropBlob.Props(i, d, w, h, slab), static () => new BackdropBlob()) with { Key = "blob:" + i }));
         return new BoxEl
         {
-            Width = w, Height = h, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = true, RasterScale = 0.25f,
+            // boundary: false when the caller already draws it inside a quarter-scale boundary of its own (the stage's
+            // Backdrop rasters floor, art, Field and scrim together): a nested boundary would only add a layer.
+            Width = w, Height = h, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = boundary, RasterScale = boundary ? 0.25f : 1f,
             Opacity = opacity,
             Children = [Canvas.Create(w, h, kids)],
         };

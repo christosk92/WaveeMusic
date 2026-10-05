@@ -1,0 +1,551 @@
+<title>Wavee On-Device Lyrics Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a technical manual — numbered chapters (the order is the reading order), one text column (~68ch), wide figures may scroll. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --fg:#141922; --muted:#55606f; --line:#d9dee6;
+  --accent:#2453c7; --accent-soft:#e6ecfb; --npu:#0e7c6b; --npu-soft:#e1f2ef; --warn:#a4560b; --warn-soft:#fbefe1;
+  --code-bg:#eef1f5;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f131a; --surface:#161b24; --fg:#e6eaf0; --muted:#9aa5b4; --line:#2a323f;
+  --accent:#7ea2ff; --accent-soft:#1c2846; --npu:#4cc7b2; --npu-soft:#13302b; --warn:#f0a85a; --warn-soft:#3a2915;
+  --code-bg:#1d2430; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0f131a; --surface:#161b24; --fg:#e6eaf0; --muted:#9aa5b4; --line:#2a323f;
+  --accent:#7ea2ff; --accent-soft:#1c2846; --npu:#4cc7b2; --npu-soft:#13302b; --warn:#f0a85a; --warn-soft:#3a2915;
+  --code-bg:#1d2430; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:16px/1.6 var(--f-body);padding-inline:16px;padding-block:0 64px}
+.wrap{max-width:1060px;margin:0 auto}
+.col{max-width:70ch}
+header.doc{padding-block:48px 28px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font:600 clamp(32px,5vw,48px)/1.08 var(--f-display);letter-spacing:-.01em;margin:14px 0 14px;text-wrap:balance}
+h2{font:600 26px/1.2 var(--f-display);margin:56px 0 12px;text-wrap:balance;display:flex;gap:14px;align-items:baseline}
+h2 .n{font:500 14px/1 var(--f-mono);color:var(--accent);min-width:2.2em}
+h3{font:600 18px/1.3 var(--f-body);margin:28px 0 8px}
+p{margin:0 0 12px}
+.lede{font-size:18px;color:var(--muted);max-width:68ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:20px;font:13px/1.4 var(--f-mono);color:var(--muted)}
+.meta b{color:var(--fg);font-weight:500}
+.spark{display:inline-block;width:18px;height:18px;vertical-align:-3px;color:var(--accent)}
+nav.toc{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 18px;margin:24px 0 8px;font-size:14px}
+nav.toc a{color:var(--fg);text-decoration:none;border-bottom:1px solid transparent}
+nav.toc a:hover,nav.toc a:focus-visible{border-color:var(--accent);outline:none}
+nav.toc span{font:500 12px var(--f-mono);color:var(--accent);margin-right:8px}
+code,.mono{font-family:var(--f-mono);font-size:.88em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px}
+figure{margin:20px 0 24px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 18px 12px;overflow-x:auto}
+figcaption{font-size:13px;color:var(--muted);margin-top:10px}
+figcaption b{color:var(--fg);font-weight:600}
+pre.mermaid{margin:0;background:transparent;text-align:center}
+.tbl{overflow-x:auto;margin:16px 0 22px}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 12px/1.3 var(--f-mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--surface)}
+td.num,th.num{text-align:right}
+.pill{display:inline-block;font:500 11px/1.6 var(--f-mono);padding:0 8px;border-radius:99px;white-space:nowrap}
+.pill.done{background:var(--npu-soft);color:var(--npu)}
+.pill.prog{background:var(--accent-soft);color:var(--accent)}
+.pill.plan{background:var(--warn-soft);color:var(--warn)}
+.note{border-left:3px solid var(--accent);background:var(--surface);padding:10px 14px;margin:16px 0;border-radius:0 8px 8px 0;font-size:15px}
+.note.warn{border-color:var(--warn)}
+ol.steps,ul.list{padding-left:22px;margin:0 0 14px}
+ol.steps li,ul.list li{margin:4px 0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.grid2>*{min-width:0}
+svg text{font-family:var(--f-mono)}
+.chart-axis{stroke:var(--line)}
+.chart-label{fill:var(--muted);font-size:11px}
+.chart-strong{fill:var(--fg);font-size:12px}
+footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){*{scroll-behavior:auto}}
+</style>
+
+<div class="wrap">
+<header class="doc">
+  <div class="eyebrow">System design · Wavee · feat/local-lyrics-align</div>
+  <h1><svg class="spark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.67 15.73a1.43 1.43 0 0 0 .83.27 1.5 1.5 0 0 0 1.33-.88l.61-1.86a3 3 0 0 1 1.82-1.81l1.78-.58a1.43 1.43 0 0 0-.05-2.74l-1.76-.57a3 3 0 0 1-1.82-1.82l-.58-1.78a1.43 1.43 0 0 0-2.73.02l-.58 1.79a3 3 0 0 1-1.77 1.79l-1.78.57a1.43 1.43 0 0 0 .02 2.73l1.75.57a3 3 0 0 1 1.83 1.84l.58 1.77c.1.28.28.53.52.7Zm7.66 5.05a.92.92 0 0 1-.41-.55l-.33-1a1.4 1.4 0 0 0-.89-.9l-.99-.32a.86.86 0 0 1-.42-1.32.88.88 0 0 1 .43-.32l1-.33a1.4 1.4 0 0 0 .87-.88l.33-.99a.87.87 0 0 1 1.65 0l.33 1a1.4 1.4 0 0 0 .89.88l.99.33a.87.87 0 0 1 .04 1.64l-1.01.33a1.4 1.4 0 0 0-.89.88l-.32.99a.88.88 0 0 1-1.29.48Z"/></svg> Wavee On-Device Lyrics Engine</h1>
+  <p class="lede">This document tells how Wavee changes line-synced lyrics into word-by-word lyrics on the user's PC. The engine runs two AI models on the NPU of a Copilot+ PC while the song plays. The audio and the lyric text do not leave the PC.</p>
+  <div class="meta"><span><b>Language</b> ASD-STE100 Simplified Technical English</span><span><b>Target</b> Snapdragon X Elite · Hexagon NPU</span><span><b>Runtime</b> ONNX Runtime 1.30 + QNN EP 2.6</span><span><b>Date</b> 2026-10-04</span></div>
+  <nav class="toc" aria-label="Contents">
+    <a href="#overview"><span>1</span>Overview</a>
+    <a href="#components"><span>2</span>Components and ownership</a>
+    <a href="#threads"><span>3</span>Threads</a>
+    <a href="#pipeline"><span>4</span>The track pipeline</a>
+    <a href="#models"><span>5</span>Models on the NPU</a>
+    <a href="#align"><span>6</span>Alignment</a>
+    <a href="#store"><span>7</span>Lyrics store integration</a>
+    <a href="#setup"><span>8</span>Setup and download</a>
+    <a href="#capability"><span>9</span>Device check</a>
+    <a href="#errors"><span>10</span>Errors</a>
+    <a href="#results"><span>11</span>Measured results</a>
+    <a href="#status"><span>12</span>Status and limits</a>
+  </nav>
+</header>
+
+<section id="overview">
+<h2><span class="n">1</span>Overview</h2>
+<div class="col">
+<p>The engine has one task. It finds the time at which the singer says each word of a lyric line.</p>
+<p>The engine gets two inputs. The first input is the lyric text from a lyrics provider, usually Spotify. Spotify gives one start time for each line. The second input is the audio of the song. Wavee decodes this audio from the Spotify file.</p>
+<p>The engine makes one output. The output is a lyrics document in which each word has a start time and an end time. The lyrics view then shows a word-by-word wipe.</p>
+<p>The engine does the work in three phases:</p>
+<ol class="steps">
+<li>A separator model removes the instruments. Only the voice stays.</li>
+<li>An aligner model listens to the voice. It gives a probability for each letter every 20 ms.</li>
+<li>An alignment algorithm finds the one best path of the lyric letters through these probabilities.</li>
+</ol>
+<p>The engine does not wait for the full song. It processes the audio in blocks, a little before the playhead. It gives each word its final time a short period before the user hears the word.</p>
+</div>
+<figure>
+<pre class="mermaid">
+flowchart LR
+  subgraph IN[Inputs]
+    T[Lyric text<br/>line-synced, from Spotify]
+    A[Spotify audio<br/>Ogg Vorbis 320]
+  end
+  subgraph NPU[On the NPU]
+    S[Separator<br/>MDX-Net]
+    W[Aligner<br/>wav2vec2-large, 5 graphs]
+  end
+  subgraph CPU[On the CPU]
+    D[Decode + STFT/iSTFT<br/>resample 44.1 to 16 kHz]
+    V[Online Viterbi<br/>CTC forced alignment]
+    R[Snap + fill<br/>document assembly]
+  end
+  A --> D --> S --> D
+  D --> W --> V
+  T --> V --> R --> O[Word-synced Lyrics.Doc<br/>Provider wavee-ai]
+  O --> UI[Lyrics view<br/>word-by-word wipe]
+</pre>
+<figcaption><b>Figure 1.</b> Data flow from the inputs to the lyrics view. The two models run on the NPU. All other steps run on the CPU of the worker thread.</figcaption>
+</figure>
+</section>
+
+<section id="components">
+<h2><span class="n">2</span>Components and ownership</h2>
+<div class="col">
+<p>The code is in two repositories. The engine repository (FluentGpu) owns the Windows API calls. The app repository (Wavee) owns the AI pipeline, the user interface and the settings.</p>
+<p>The ONNX Runtime binding stays in the app. ONNX Runtime is not a Windows service. Wavee downloads it at run time, and its API version is part of the model pack.</p>
+</div>
+<div class="tbl"><table>
+<thead><tr><th>Component</th><th>Repository and file</th><th>Function</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Device check (DXCore)</td><td class="mono">fluent-gpu · WindowsApi/Devices/ComputeAdapters.cs</td><td>Lists the NPU adapters, with vendor id and driver version.</td><td><span class="pill prog">in progress</span></td></tr>
+<tr><td>Battery saver signal</td><td class="mono">Wavee · Platform.Host.cs (Platform.Power)</td><td>Reads the existing engine power poll every 2 s.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Signal processing</td><td class="mono">AiLyrics.Dsp.cs</td><td>FFT, STFT and iSTFT (torch rules), resampler (scipy rules), level envelope.</td><td><span class="pill prog">speed rewrite</span></td></tr>
+<tr><td>ONNX Runtime binding</td><td class="mono">AiLyrics.Ort.cs</td><td>Calls the C API through function pointers. Registers the QNN plugin. Makes NPU sessions.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Model runners</td><td class="mono">AiLyrics.Models.cs</td><td>Separator, 5-graph aligner, model loader with compile progress.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Track job</td><td class="mono">AiLyrics.Engine.cs</td><td>Streams one song through the models and the Viterbi.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Audio source</td><td class="mono">AiLyrics.Audio.cs</td><td>Opens and decodes the Spotify file at 44.1 kHz stereo.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Alignment</td><td class="mono">AiLyrics.Align.cs</td><td>Graph, online Viterbi, snap, fill, line assembly.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Pack and download</td><td class="mono">AiLyrics.Pack.cs · PackManifest.cs</td><td>Embedded manifest, resumable download, hash check, install.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Rules</td><td class="mono">AiLyrics.Rules.cs</td><td>All pure decisions: availability, eligibility, progress, error keys.</td><td><span class="pill prog">in progress</span></td></tr>
+<tr><td>Results cache</td><td class="mono">AiLyrics.Results.cs</td><td>Keeps the word times of a song for the next play.</td><td><span class="pill prog">in progress</span></td></tr>
+<tr><td>Host</td><td class="mono">AiLyrics.Host.cs</td><td>Worker thread, driver component, download task, shutdown.</td><td><span class="pill plan">planned</span></td></tr>
+<tr><td>Store seam</td><td class="mono">Shell/Lyrics.Host.cs · Store.Upgrade</td><td>Puts a generated document into the lyrics store.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Ranking rules</td><td class="mono">Shell/Lyrics.cs · Authority.IsRicher</td><td>Decides which document the view shows.</td><td><span class="pill done">done</span></td></tr>
+<tr><td>Settings card, header button, disclosure</td><td class="mono">AiLyrics.UI.Settings.cs · AiLyrics.UI.Lyrics.cs</td><td>Toggles, setup states, sparkle button, AI label.</td><td><span class="pill plan">planned</span></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="threads">
+<h2><span class="n">3</span>Threads</h2>
+<div class="col">
+<p>The UI thread does not wait for the engine. It does not read files and it does not call the NPU. It only writes signals and sends commands.</p>
+<p>One worker thread owns the NPU sessions. It runs one track job at a time. A download task runs separately. It sends progress to the UI thread not more than 10 times each second.</p>
+</div>
+<figure>
+<pre class="mermaid">
+flowchart TB
+  subgraph UI["UI thread"]
+    DRV[AiLyrics.Driver<br/>signal effects]
+    SIG[(Status and TrackStatus<br/>signals)]
+    VIEW[Settings card · header button · lyrics view]
+  end
+  subgraph WK["Worker thread 'wavee-ai-lyrics' (BelowNormal)"]
+    Q[Command queue<br/>Load · Unload · Start · Cancel · Shutdown]
+    JOB[TrackJob<br/>NPU sessions, DSP plans]
+  end
+  subgraph DL["Download task"]
+    PK[Pack.InstallAsync<br/>HttpClient, Range, SHA-256]
+  end
+  BOOT["Boot task<br/>DXCore scan, installed scan"]
+  DRV -- commands --> Q --> JOB
+  JOB -- Store.Upgrade via ToUi --> VIEW
+  JOB -- post progress --> SIG
+  PK -- post progress, max 10 Hz --> SIG
+  BOOT -- post seed --> SIG
+  SIG --> VIEW
+  DRV -. reads .-> SIG
+</pre>
+<figcaption><b>Figure 2.</b> Thread model. Arrows show the direction of data. All writes to signals go through the UI post.</figcaption>
+</figure>
+<div class="col">
+<p>The driver reacts to these events:</p>
+<ul class="list">
+<li><b>Track change.</b> The driver cancels the current job. It waits for the lyrics of the new track.</li>
+<li><b>Lyrics arrive.</b> The driver checks the results cache first. If the cache has the song, the driver shows it at once. If not, the driver starts a job.</li>
+<li><b>Seek and pause.</b> The driver does nothing. The job follows the playhead.</li>
+<li><b>Battery saver on.</b> The job stops, unless the user set "Keep running on battery saver".</li>
+<li><b>Master switch off.</b> The job stops and the models unload.</li>
+<li><b>App exit.</b> The download stops (the partial files stay), the job stops, and the worker ends within 2 s.</li>
+</ul>
+</div>
+</section>
+
+<section id="pipeline">
+<h2><span class="n">4</span>The track pipeline</h2>
+<div class="col">
+<p>A track job has one loop. Each pass of the loop adds 8 s of letter probabilities. Then the Viterbi commits the words that the playhead will reach soon.</p>
+</div>
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant P as Playback
+  participant J as TrackJob (worker)
+  participant S as Separator (NPU)
+  participant W as Aligner (NPU)
+  participant V as Online Viterbi
+  participant L as Lyrics.Store
+  P->>J: start, playhead 0 s
+  loop until end of song
+    J->>J: decode audio blocks (44.1 kHz stereo)
+    J->>S: 261,120-sample window
+    S-->>J: 253,440 samples of vocals (5.75 s)
+    J->>J: resample to 16 kHz, normalize
+    J->>W: 10 s chunk (1 s context each side)
+    W-->>J: 400 frames x letter log-probabilities
+    J->>V: feed frames
+    J->>V: commit words before playhead + 8 s
+    V-->>J: newly committed words
+    J->>L: Store.Upgrade (completed lines word-by-word)
+  end
+  J->>V: final commit
+  J->>L: final document (after snap and fill)
+</pre>
+<figcaption><b>Figure 3.</b> One track job. The job stays ahead of playback because it runs faster than real time.</figcaption>
+</figure>
+<h3>Memory</h3>
+<div class="col">
+<p>The job does not keep the full song in memory. The mix and the vocals are sliding windows. The parts that grow with the song are small: the 10 ms level envelope, the letter probabilities (32 values every 20 ms) and the Viterbi backpointers (2 bits for each state in each frame).</p>
+</div>
+<h3>Frontier and playhead</h3>
+<div class="col">
+<p>The processing frontier moves about 10 times faster than playback (measured in the prototype). The engine commits a word only when the playhead is 8 s from it. At that time the Viterbi has already heard much more of the song. This makes the decision almost as good as an alignment of the full song.</p>
+</div>
+<figure>
+<svg viewBox="0 0 640 260" width="100%" style="max-width:720px;display:block;margin:0 auto" role="img" aria-label="Frontier versus playhead over the first 30 seconds of wall time">
+  <!-- axes: x = wall-clock seconds 0..30 (px 60..600), y = song seconds 0..240 (px 220..20) -->
+  <line class="chart-axis" x1="60" y1="220" x2="600" y2="220"/>
+  <line class="chart-axis" x1="60" y1="20" x2="60" y2="220"/>
+  <g class="chart-label">
+    <text x="60" y="238" text-anchor="middle">0</text><text x="240" y="238" text-anchor="middle">10</text><text x="420" y="238" text-anchor="middle">20</text><text x="600" y="238" text-anchor="middle">30 s wall time</text>
+    <text x="52" y="224" text-anchor="end">0</text><text x="52" y="124" text-anchor="end">120</text><text x="52" y="24" text-anchor="end">240 s</text>
+  </g>
+  <line class="chart-axis" x1="60" y1="120" x2="600" y2="120" stroke-dasharray="2 4"/>
+  <!-- frontier: 2 s start-up, then 10x real time; reaches 240 s at 26 s wall -->
+  <polyline fill="none" stroke="var(--npu)" stroke-width="2.5" points="60,220 96,220 528,20"/>
+  <!-- commit horizon: playhead + 8 s -->
+  <polyline fill="none" stroke="var(--accent)" stroke-width="2" stroke-dasharray="6 4" points="60,213.3 600,183.3"/>
+  <!-- playhead: real time -->
+  <polyline fill="none" stroke="var(--fg)" stroke-width="2" points="60,220 600,190"/>
+  <g font-size="12">
+    <text x="380" y="70" fill="var(--npu)">processing frontier (~10x)</text>
+    <text x="430" y="172" fill="var(--accent)">commit horizon = playhead + 8 s</text>
+    <text x="470" y="206" fill="var(--fg)">playhead</text>
+  </g>
+</svg>
+<figcaption><b>Figure 4.</b> Frontier and playhead for a 240 s song (prototype speed: 2 s start-up, then 10x real time). Words between the playhead and the commit horizon get their final time. The gap between the horizon and the frontier is the extra context that improves each decision.</figcaption>
+</figure>
+</section>
+
+<section id="models">
+<h2><span class="n">5</span>Models on the NPU</h2>
+<div class="col">
+<p>Both models are ONNX files in 16-bit floating point. The QNN execution provider compiles each graph for the Hexagon NPU. The first compile takes 20 to 60 s for a large graph. Wavee keeps the compiled graph on disk (<code>*.ctx.onnx</code>). The next load takes about 1.5 s.</p>
+</div>
+<div class="grid2">
+<div class="tbl"><table>
+<thead><tr><th>Separator</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>Model</td><td>MDX-Net Kim_Vocal_2, fp16, 33.4 MB</td></tr>
+<tr><td>Input</td><td class="mono">[1, 4, 3072, 256]</td></tr>
+<tr><td>STFT</td><td>n_fft 7680, hop 1024, periodic Hann</td></tr>
+<tr><td>Window</td><td>261,120 samples (5.92 s)</td></tr>
+<tr><td>Output block</td><td>253,440 samples (5.75 s)</td></tr>
+<tr><td>NPU time</td><td class="num">≈ 245 ms per window</td></tr>
+</tbody></table></div>
+<div class="tbl"><table>
+<thead><tr><th>Aligner</th><th>Value</th></tr></thead>
+<tbody>
+<tr><td>English</td><td>wav2vec2-large-960h-lv60-self, Apache-2.0</td></tr>
+<tr><td>Spanish</td><td>wav2vec2-large-xlsr-53-spanish, Apache-2.0</td></tr>
+<tr><td>Chunk</td><td>10 s at 16 kHz (160,000 samples)</td></tr>
+<tr><td>Step</td><td>8 s; 1 s context on each side</td></tr>
+<tr><td>Output</td><td>499 frames x 32 classes (20 ms)</td></tr>
+<tr><td>Size</td><td class="num">601 MiB per language</td></tr>
+</tbody></table></div>
+</div>
+<h3>Why the aligner has five graphs</h3>
+<div class="col">
+<p>The full wav2vec2 graph does not run on the NPU. We found two problems and we changed the graph for each problem:</p>
+<ol class="steps">
+<li>The NPU calculates a convolution with one input channel and stride 5 incorrectly (96% relative error). We replaced this first convolution with framing plus a matrix multiplication. The result is the same calculation, and the error is 0.1%.</li>
+<li>One large graph fails with <code>QNN_COMMON_ERROR_MEM_ALLOC</code>. We cut the model into five graphs. Each graph compiles and runs.</li>
+</ol>
+</div>
+<figure>
+<pre class="mermaid">
+flowchart LR
+  X["16 kHz samples<br/>[1, 160000]"] --> C0["conv0<br/>framing + MatMul<br/>~105 ms"]
+  C0 --> C1["conv1<br/>[1,512,31999]<br/>~145 ms"]
+  C1 --> CS["convs 2-6 + projection<br/>~53 ms"]
+  CS --> LA["layers_a<br/>transformer 1-12<br/>~56 ms"]
+  LA --> LB["layers_b<br/>transformer 13-24 + log-softmax<br/>~41 ms"]
+  LB --> Y["log-probabilities<br/>[1, 499, 32]"]
+</pre>
+<figcaption><b>Figure 5.</b> The five aligner graphs, each one NPU session. Times are for one 10 s chunk. After the fix, the chain output agrees with an exact reference within 0.4%, and 99.6% of frames have the same most probable letter.</figcaption>
+</figure>
+</section>
+
+<section id="align">
+<h2><span class="n">6</span>Alignment</h2>
+<div class="col">
+<p>The alignment is CTC forced alignment. The lyric becomes a chain of tokens: one token for each letter and one separator between words. The chain has 2L + 1 states for L tokens, because a blank state is between each pair of tokens.</p>
+</div>
+<figure>
+<pre class="mermaid">
+flowchart LR
+  B0((blank)) --> H((H)) --> B1((blank)) --> E((E)) --> B2((blank)) --> Y((Y)) --> B3((blank)) --> S1(("|")) --> B4((blank)) --> O((o)) --> B5((blank)) --> H2((h)) --> B6((blank))
+  B3 -. skip edge: optional word .-> B6
+</pre>
+<figcaption><b>Figure 6.</b> States for the text "Hey (oh)". Each state can stay, go to the next state, or jump over a blank between two different letters. The word "oh" is in parentheses, so a skip edge lets the path go around it.</figcaption>
+</figure>
+<h3>Rules that make the path correct</h3>
+<div class="tbl"><table>
+<thead><tr><th>Rule</th><th>Value</th><th>Why the engine uses it</th></tr></thead>
+<tbody>
+<tr><td>Optional words</td><td>skip cost 2 nats</td><td>Backing vocals in parentheses are often quiet or absent in the separated voice. The path can go around them.</td></tr>
+<tr><td>Line-time prior</td><td>window = line start − 2 s to next line start + 2 s; 0.5 nats per second outside</td><td>Choruses with the same words can slide one bar late. The prior keeps each line near its Spotify time. It still corrects drift of about 2 s.</td></tr>
+<tr><td>Just-in-time commit</td><td>playhead + 8 s</td><td>An early commit locks in errors on repeated lines. A late commit has more context.</td></tr>
+<tr><td>Pruning</td><td>states before the committed token</td><td>After a commit, the path cannot go back. This keeps committed words in order.</td></tr>
+<tr><td>Backpointers</td><td>2 bits per state per frame</td><td>Codes: stay, from s−1, from s−2, from a skip edge. A 6-minute song uses about 30 MB at most.</td></tr>
+<tr><td>Silence snap</td><td>max 400 ms back</td><td>CTC marks a letter after its sound starts. A word that starts after silence moves back to the rise of the voice level.</td></tr>
+<tr><td>Fill</td><td>gap between neighbours; 300 to 400 ms per word</td><td>Every word of the line text gets a time. Skipped optional words share the gap. A line with no timed word uses its line time.</td></tr>
+</tbody></table></div>
+<h3>From word times to the document</h3>
+<div class="col">
+<p>Each completed line becomes a <code>Lyrics.Line</code> with <code>IsWordByWord = true</code>. The syllable texts are the line text cut at each word start. Thus the syllable texts join back to the exact line text. The karaoke wipe measures against this text. Lines that are not complete keep the provider's line time.</p>
+</div>
+</section>
+
+<section id="store">
+<h2><span class="n">7</span>Lyrics store integration</h2>
+<div class="col">
+<p>The engine does not get lyrics itself. It waits until a lyrics surface asks the store for the lyrics of the current track. Thus the feature makes no extra requests to lyrics providers.</p>
+<p>The engine sends each new version of the document through <code>Lyrics.Store.Upgrade(Doc)</code>. The store accepts the document only if these conditions are true:</p>
+<ol class="steps">
+<li>The document has <code>Generated = true</code> and at least one line.</li>
+<li>The store already answered this track.</li>
+<li><code>Authority.IsRicher</code> ranks the new document above the current document.</li>
+</ol>
+</div>
+<figure>
+<pre class="mermaid">
+flowchart TD
+  N[New document] --> R{Same rank?}
+  R -- no --> H[Higher rank wins<br/>word-by-word 3 · line 2 · unsynced 1]
+  R -- yes --> K{Rank 3?}
+  K -- no --> X[Refuse]
+  K -- yes --> G1{Current generated,<br/>new human?}
+  G1 -- yes --> A1[Accept: human timing wins]
+  G1 -- no --> G2{Current human,<br/>new generated?}
+  G2 -- yes --> X2[Refuse: generated never<br/>replaces human timing]
+  G2 -- no --> G3{Both generated,<br/>same provider?}
+  G3 -- yes --> A2[Accept if syllable count is equal or higher]
+  G3 -- no --> A3[Accept only if more syllables]
+</pre>
+<figcaption><b>Figure 7.</b> The ranking rules in <code>Lyrics.Authority.IsRicher</code>. The view applies an accepted document at the next line change, never in the middle of the line that the user reads.</figcaption>
+</figure>
+<div class="col">
+<p>Each progressive document changes only the lines that got word times. The view changes the key of only those rows. The other rows do not mount again. Thus there is no flicker and no scroll jump.</p>
+<p>The store writes nothing to the provider disk cache. A results cache in <code>ai\lyrics\results\</code> keeps the final word times of each song, with a hash of the provider text. On the next play, the engine shows the cached result at once and does not use the NPU.</p>
+</div>
+</section>
+
+<section id="setup">
+<h2><span class="n">8</span>Setup and download</h2>
+<div class="col">
+<p>The feature is off by default. The user turns it on in <b>Settings › Appearance › Lyrics</b>. Wavee then shows the download size. Nothing downloads before the user confirms.</p>
+</div>
+<figure>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> Unavailable: device check fails
+  [*] --> Off: device check passes
+  Off --> NeedsSetup: user turns switch on, files missing
+  Off --> Ready: user turns switch on, files present
+  NeedsSetup --> Downloading: user confirms size
+  Downloading --> Paused: Pause
+  Paused --> Downloading: Resume
+  Downloading --> NeedsSetup: Cancel (partial files stay)
+  Downloading --> Error: network, hash, disk
+  Error --> Downloading: Try again
+  Downloading --> Preparing: all files verified
+  Preparing --> Ready: all graphs compiled
+  Preparing --> Error: compile fails
+  Ready --> Off: user turns switch off
+</pre>
+<figcaption><b>Figure 8.</b> Setup states that the Settings card shows. The UI thread writes the state. One state shows at a time, so the card does not jump.</figcaption>
+</figure>
+<h3>The model pack</h3>
+<div class="col">
+<p>An embedded manifest gives the URL, the size and the SHA-256 of each file. The manifest is compiled into the signed app. Thus a changed file on a server cannot install.</p>
+</div>
+<div class="tbl"><table>
+<thead><tr><th>Part</th><th>Source</th><th class="num">Size</th></tr></thead>
+<tbody>
+<tr><td>ONNX Runtime 1.30.0</td><td>PyPI wheel (zip), 2 DLLs extracted</td><td class="num">13.5 MiB</td></tr>
+<tr><td>QNN execution provider 2.6.0</td><td>PyPI wheel (zip), provider folder extracted</td><td class="num">≈ 56 MiB</td></tr>
+<tr><td>Separator</td><td class="mono">models.cproducts.dev/lyrics/v1/separator.onnx</td><td class="num">31.9 MiB</td></tr>
+<tr><td>English aligner (5 graphs + vocabulary)</td><td class="mono">models.cproducts.dev/lyrics/v1/align-en.*</td><td class="num">601 MiB</td></tr>
+<tr><td>Spanish aligner (optional)</td><td class="mono">models.cproducts.dev/lyrics/v1/align-es.*</td><td class="num">601 MiB</td></tr>
+</tbody></table></div>
+<div class="col">
+<p>The model host is the Cloudflare R2 bucket <code>wavee-ai-models</code>. The objects are immutable. A file larger than 64 MiB is in parts (<code>.part00</code>, <code>.part01</code>, …). The host sends <code>Cache-Control: public, max-age=31536000, immutable</code> and supports HTTP Range requests.</p>
+</div>
+<figure>
+<pre class="mermaid">
+flowchart LR
+  M[Embedded manifest] --> C{Free space ≥ need + 10%?}
+  C -- no --> DF[Error: disk full]
+  C -- yes --> F[For each missing file]
+  F --> P[".partial/&lt;sha&gt;.part<br/>exists?"]
+  P -- yes --> H[Hash the bytes on disk]
+  P -- no --> G
+  H --> G[GET each part<br/>Range from the resume point]
+  G --> V{SHA-256 matches?}
+  V -- no --> HM[Delete partial<br/>Error: damaged file]
+  V -- yes --> I[Move into place<br/>or extract the wheel]
+  I --> J[Write installed.json]
+</pre>
+<figcaption><b>Figure 9.</b> Download and install of one file. A pause, a crash or a lost connection continues from the bytes already on disk.</figcaption>
+</figure>
+<h3>Optimizing for the NPU</h3>
+<div class="col">
+<p>After the download, Wavee compiles each graph for this NPU. This happens one time. The card shows "Optimizing for your NPU" with progress for each graph. For English, the compile of 6 graphs takes about 60 s. If a driver update makes the compiled files old, Wavee compiles them again and tells the user why.</p>
+</div>
+</section>
+
+<section id="capability">
+<h2><span class="n">9</span>Device check</h2>
+<div class="col">
+<p>Wavee does the device check in this sequence. The first step that fails gives the text that the Settings card shows.</p>
+</div>
+<div class="tbl"><table>
+<thead><tr><th>Step</th><th>Check</th><th>API</th><th>Text if the check fails</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Process is ARM64</td><td class="mono">RuntimeInformation.ProcessArchitecture</td><td>Needs a Copilot+ PC with a Snapdragon processor.</td></tr>
+<tr><td>2</td><td>Windows build 26100 or later</td><td class="mono">Environment.OSVersion</td><td>Needs Windows 11, version 24H2 or later.</td></tr>
+<tr><td>3</td><td>An NPU adapter exists, vendor Qualcomm</td><td class="mono">DXCore (FluentGpu.WindowsApi.Devices)</td><td>This PC has no NPU. / Your NPU isn't supported yet.</td></tr>
+<tr><td>4</td><td>ONNX Runtime sees an NPU device for QNN</td><td class="mono">OrtApi.GetEpDevices</td><td>The NPU driver didn't respond. Update your NPU driver and try again.</td></tr>
+</tbody></table></div>
+<div class="note">The QNN plugin must register with the name <code>QNNExecutionProvider</code>. A plugin device reports its registration name as its provider name. A registration with the name "QNN" does not match.</div>
+</section>
+
+<section id="errors">
+<h2><span class="n">10</span>Errors</h2>
+<div class="col">
+<p>Each error has a type, a text for the user and a recovery. The log records the type, the HTTP status or HRESULT, the file and the byte counts. The log never records lyric text or audio.</p>
+</div>
+<div class="tbl"><table>
+<thead><tr><th>Error</th><th>When</th><th>Text for the user</th><th>Recovery</th></tr></thead>
+<tbody>
+<tr><td>Offline</td><td>No network at download start</td><td>You're offline. Connect and try again.</td><td>Try again</td></tr>
+<tr><td>Network</td><td>Connection drops, HTTP 5xx</td><td>The connection dropped. Wavee kept what it already downloaded.</td><td>Try again (resumes)</td></tr>
+<tr><td>NotFound</td><td>HTTP 404</td><td>The AI models aren't available for download right now.</td><td>Try again later</td></tr>
+<tr><td>HashMismatch</td><td>SHA-256 is different</td><td>A downloaded file was damaged and was removed. Try again.</td><td>Try again</td></tr>
+<tr><td>DiskFull</td><td>Free space too low</td><td>Not enough space: needs {size} free on {drive}.</td><td>Free space, try again</td></tr>
+<tr><td>RuntimeLoad</td><td>onnxruntime.dll does not load</td><td>The AI runtime couldn't start.</td><td>Remove and download again</td></tr>
+<tr><td>NoNpuDevice</td><td>No QNN NPU device</td><td>The NPU driver didn't respond. Update your NPU driver and try again.</td><td>Try again</td></tr>
+<tr><td>Compile</td><td>Session creation fails</td><td>Couldn't prepare the models for your NPU.</td><td>Try again, or remove</td></tr>
+</tbody></table></div>
+<div class="col"><p>A problem with one song does not show a toast. The song keeps its provider timing. The tooltip of the sparkle button gives the reason, for example "The song's audio isn't available for timing right now".</p></div>
+</section>
+
+<section id="results">
+<h2><span class="n">11</span>Measured results</h2>
+<div class="col">
+<p>We measured the engine on 8 songs (7 English, 1 Spanish) on a Snapdragon X Elite. The reference for line starts is Spotify's line timing. The reference for word starts is human word-synced lyrics from other providers.</p>
+</div>
+<figure>
+<svg viewBox="0 0 640 250" width="100%" style="max-width:720px;display:block;margin:0 auto" role="img" aria-label="Word start agreement within 100 milliseconds">
+  <!-- x scale: 0..100 % mapped to px 230..600 (3.7 px per %) -->
+  <line class="chart-axis" x1="230" y1="20" x2="230" y2="200"/>
+  <g class="chart-axis"><line x1="415" y1="20" x2="415" y2="200" stroke-dasharray="2 4"/><line x1="600" y1="20" x2="600" y2="200" stroke-dasharray="2 4"/></g>
+  <g class="chart-label"><text x="230" y="218" text-anchor="middle">0%</text><text x="415" y="218" text-anchor="middle">50%</text><text x="600" y="218" text-anchor="middle">100%</text></g>
+  <g class="chart-strong" text-anchor="end">
+    <text x="220" y="49">Engine vs NetEase</text>
+    <text x="220" y="99">Engine vs Kugou</text>
+    <text x="220" y="149">NetEase vs Kugou (human)</text>
+    <text x="220" y="189">AMLL vs NetEase (human)</text>
+  </g>
+  <rect x="230" y="34" width="281.2" height="22" fill="var(--npu)"/><text x="517" y="49" class="chart-strong">76%</text>
+  <rect x="230" y="84" width="236.8" height="22" fill="var(--npu)"/><text x="473" y="99" class="chart-strong">64%</text>
+  <rect x="230" y="134" width="210.9" height="22" fill="var(--muted)"/><text x="447" y="149" class="chart-strong">57%</text>
+  <rect x="230" y="174" width="144.3" height="22" fill="var(--muted)"/><text x="380" y="189" class="chart-strong">39%</text>
+</svg>
+<figcaption><b>Figure 10.</b> Word starts within 100 ms, after one constant offset per song is removed. The engine agrees with each human source more than the human sources agree with each other.</figcaption>
+</figure>
+<div class="tbl"><table>
+<thead><tr><th>Measurement</th><th class="num">Prototype (Python)</th><th class="num">C# engine</th></tr></thead>
+<tbody>
+<tr><td>Line starts within 300 ms of Spotify (8 songs)</td><td class="num">77%</td><td class="num">—</td></tr>
+<tr><td>Line starts within 1 s of Spotify (8 songs)</td><td class="num">95%</td><td class="num">—</td></tr>
+<tr><td>HUMBLE. within 300 ms</td><td class="num">98%</td><td class="num">96%</td></tr>
+<tr><td>Despacito within 300 ms</td><td class="num">81%</td><td class="num">82%</td></tr>
+<tr><td>Smells Like Teen Spirit within 300 ms</td><td class="num">69%</td><td class="num">69%</td></tr>
+<tr><td>Words with a final time before they are sung</td><td class="num">3,105 / 3,109</td><td class="num">—</td></tr>
+<tr><td>Speed (song seconds per wall second)</td><td class="num">≈ 10x</td><td class="num">≈ 3.2x</td></tr>
+<tr><td>First lines ready after play</td><td class="num">1.7–4 s</td><td class="num">3.5 s</td></tr>
+</tbody></table></div>
+<div class="note warn">The C# engine is slower than the prototype. The cause is the CPU STFT and iSTFT around the separator: 45.2 s of the 54.8 s for a 177 s song. The NPU call itself is about 7.5 s for that song. A float SIMD FFT and the overlap of CPU work with the NPU call must make the separation not more than 1.5 times the NPU time.</div>
+</section>
+
+<section id="status">
+<h2><span class="n">12</span>Status and limits</h2>
+<div class="grid2">
+<div>
+<h3>Limits</h3>
+<ul class="list">
+<li>The engine runs only on a Qualcomm Hexagon NPU. It does not run on the CPU or the GPU.</li>
+<li>The engine aligns English and Spanish lyrics.</li>
+<li>The engine needs lyric text. It does not write lyrics from the audio.</li>
+<li>Words in the first 1 to 2 s of a song can be late. The provider line timing shows until the word times arrive.</li>
+<li>Podcasts and videos are not in scope.</li>
+</ul>
+</div>
+<div>
+<h3>Next steps</h3>
+<ol class="steps">
+<li>Complete the engine DXCore pillar, the rules and the results cache.</li>
+<li>Make the separation faster (SIMD FFT, overlap with the NPU).</li>
+<li>Add the host: worker thread, driver, download task.</li>
+<li>Add the Settings card, the sparkle button and the AI disclosure.</li>
+<li>Update CHANGELOG, PRIVACY and the third-party notices.</li>
+</ol>
+</div>
+</div>
+</section>
+
+<footer>Source of the numbers: the lab prototype (<span class="mono">lab/results.md</span>, <span class="mono">lab/words.md</span>) and the C# run through <span class="mono">Wavee.LyricsLab --ai</span>. Plan: <span class="mono">docs/plans/wavee/ai-lyrics-sync-implementation.md</span>.</footer>
+</div>

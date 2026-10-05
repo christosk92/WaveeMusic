@@ -358,6 +358,13 @@ public static partial class Platform
         s_powerHost = null;
     }
 
+    /// <summary>Windows battery saver (energy saver), as the 2 s ambient-power tick reads it on the UI thread. The AI lyrics
+    /// host pauses on it unless the user opted to keep running.</summary>
+    public static class Power
+    {
+        public static readonly FluentGpu.Signals.Signal<bool> EnergySaver = new(false);
+    }
+
     static bool ReadPlugged()
     {
         if (!OperatingSystem.IsWindowsVersionAtLeast(8)) return true;
@@ -368,6 +375,7 @@ public static partial class Platform
             // energy saver, and this 2 s poll is the only edge that sees the user toggle it MID-session (App.cs reads
             // it at startup and on suspend/resume, which cannot). Fails open, exactly like the cadence below.
             FluentGpu.Dsl.Materials.EnergySaver = status.EnergySaverOn;
+            if (Power.EnergySaver.Peek() != status.EnergySaverOn) Power.EnergySaver.Value = status.EnergySaverOn;
             return AmbientPower.Plugged(true, status);
         }
         catch

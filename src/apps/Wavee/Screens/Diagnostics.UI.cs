@@ -877,6 +877,7 @@ public static partial class Diagnostics
         readonly Signal<bool> _refetching = new(false);
         readonly Signal<bool> _saving = new(false);
         readonly Signal<string> _status = new("");    // the amber status line; "" = absent
+        readonly Signal<long> _aiBytes = new(LyricsReport.AiResultUnchecked);   // the AI card's off-thread stat of the saved result
 
         public override Element Render()
         {
@@ -916,7 +917,7 @@ public static partial class Diagnostics
                 Row(8f,
                     Standard(Loc.Get(Strings.Diagnostics.Inspector.CopyReport), () =>
                     {
-                        hooks.Clipboard?.SetText(LyricsReport.BuildReport(_trackId, report, insp));
+                        hooks.Clipboard?.SetText(LyricsReport.BuildReport(_trackId, report, insp, AiFactsNow()));
                         Notify.Say(Loc.Get(Strings.Lyrics.Inspector.ReportCopied), InfoBarSeverity.Success);
                     }),
                     // The report is what fits in a clipboard; the BUNDLE is what an investigation needs — every payload
@@ -948,9 +949,10 @@ public static partial class Diagnostics
             _saving.Value = true;
             string trackId = _trackId;
             int payloads = insp?.Raw.Count ?? 0;
+            var ai = AiFactsNow();
             _ = Task.Run(() =>
             {
-                string? folder = SaveLyricsBundle(trackId, report, insp, out string error);
+                string? folder = SaveLyricsBundle(trackId, report, insp, out string error, ai);
                 post(() => BundleLanded(folder, error, payloads));
             });
         }
@@ -1013,7 +1015,8 @@ public static partial class Diagnostics
 
         Element ProvidersTab(Lyrics.SearchReport? report, Lyrics.Inspection? insp)
         {
-            var kids = new List<Element>(8);
+            // The AI card subscribes the AI signals itself, so a job's progress re-renders only it.
+            var kids = new List<Element>(9) { Embed.Comp(() => new AiCard(_trackId, _aiBytes)) };
             if (report is null)
             {
                 kids.Add(Note(Loc.Get(Strings.Diagnostics.Inspector.NoReport)));
@@ -1093,6 +1096,121 @@ public static partial class Diagnostics
                 Fill = Tok.FillSubtleSecondary, BorderWidth = 1f, BorderColor = t.Winner ? Tok.AccentDefault : Tok.StrokeCardDefault,
                 Children = rows.ToArray(),
             };
+        }
+
+        /// <summary>The AI facts for this track at click time (Peeks: the copy and the bundle, never a render).</summary>
+        LyricsReport.AiFacts AiFactsNow()
+        {
+            var job = AiLyrics.Job.Peek();
+            return LyricsReport.AiFactsFor(_trackId, AiLyrics.Current.Peek(), AiLyrics.Track.Peek(), job,
+                Lyrics.Store.Doc(_trackId), AiResultPath(_trackId, job), _aiBytes.Peek());
+        }
+
+        static string AiResultPath(string trackId, AiLyrics.JobInfo? job)
+            => job is not null && job.TrackId == trackId ? job.ResultPath : AiLyrics.ResultPathOf(trackId);
+
+        /// <summary>The Providers tab's first card: what the on-device AI did with this track's timing. Its own component
+        /// so ONLY it subscribes the AI signals and the lyrics store (a running job republishes per line). The track id
+        /// is the dialog's identity and the size signal is the body's (the copy reads it), so both are mount seeds.</summary>
+        sealed class AiCard(string trackId, Signal<long> resultBytes) : Component
+        {
+            readonly string _trackId = trackId;
+            readonly Signal<long> _bytes = resultBytes;
+
+            public override Element Render()
+            {
+                var post = UsePost();
+                var status = AiLyrics.Current.Value;
+                var track = AiLyrics.Track.Value;
+                var job = AiLyrics.Job.Value;
+                uint changed = Lyrics.Store.Changed.Value;
+                string path = AiResultPath(_trackId, job);
+
+                // The saved result's size: stat OFF the UI thread whenever the job's outcome, the track phase or the
+                // store moves (a finished job writes it, "Time again" deletes it and refetches).
+                UseEffect(() =>
+                {
+                    string p = path;
+                    var bytes = _bytes;
+                    _ = Task.Run(() =>
+                    {
+                        long n;
+                        try { var fi = new FileInfo(p); n = fi.Exists ? fi.Length : LyricsReport.AiResultMissing; }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+                        { n = LyricsReport.AiResultMissing; }
+                        post(() => bytes.Value = n);
+                    });
+                }, DepKey.Combine(DepKey.FromRef(job?.Outcome, job?.TrackId), DepKey.From((int)track.Phase, unchecked((int)changed))));
+
+                var f = LyricsReport.AiFactsFor(_trackId, status, track, job, Lyrics.Store.Doc(_trackId), path, _bytes.Value);
+                if (!LyricsReport.ShowsAi(f)) return new BoxEl { Visible = false };
+
+                var line = LyricsReport.AiLineOf(f);
+                ColorF dot = LyricsReport.AiInkOf(line) switch
+                {
+                    LyricsReport.AiInk.Accent => Tok.AccentDefault,
+                    LyricsReport.AiInk.Good => Good,
+                    LyricsReport.AiInk.Bad => Bad,
+                    _ => Grey,
+                };
+                var progress = LyricsReport.AiProgressOf(f);
+                string sentence = line switch
+                {
+                    LyricsReport.AiLine.Working => Strings.Diagnostics.Inspector.Ai.Working(progress.Ready, progress.Total, progress.Processed, progress.Duration),
+                    LyricsReport.AiLine.OnScreen => Loc.Get(Strings.Diagnostics.Inspector.Ai.OnScreen),
+                    LyricsReport.AiLine.Cached => Loc.Get(Strings.Diagnostics.Inspector.Ai.Cached),
+                    LyricsReport.AiLine.Outranked => Strings.Diagnostics.Inspector.Ai.Outranked(LyricsReport.AiProvider(f)),
+                    LyricsReport.AiLine.Replaced => Strings.Diagnostics.Inspector.Ai.Replaced(LyricsReport.AiProvider(f)),
+                    LyricsReport.AiLine.Skipped => Strings.Diagnostics.Inspector.Ai.Skipped(LyricsReport.AiSkipReason(f)),
+                    LyricsReport.AiLine.Failed => Strings.Diagnostics.Inspector.Ai.Failed(LyricsReport.AiFailure(f)),
+                    LyricsReport.AiLine.Cancelled => Loc.Get(Strings.Diagnostics.Inspector.Ai.Cancelled),
+                    LyricsReport.AiLine.Waiting => Loc.Get(Strings.Diagnostics.Inspector.Ai.Waiting),
+                    LyricsReport.AiLine.Off => Loc.Get(Strings.Diagnostics.Inspector.Ai.Off),
+                    LyricsReport.AiLine.NotReady => Loc.Get(Strings.Diagnostics.Inspector.Ai.NotReady),
+                    _ => Loc.Get(Strings.Diagnostics.Inspector.Ai.Idle),
+                };
+                var times = LyricsReport.AiTimesOf(f);
+                string pack = AiLyrics.PackVersion.ToString(CultureInfo.InvariantCulture);
+                string result = f.ResultBytes switch
+                {
+                    >= 0 => Strings.Diagnostics.Inspector.Ai.Result(path, LyricsReport.AiResultSize(f.ResultBytes)),
+                    LyricsReport.AiResultMissing => Strings.Diagnostics.Inspector.Ai.ResultNone(path),
+                    _ => Strings.Diagnostics.Inspector.Ai.ResultChecking(path),
+                };
+                string id = _trackId;
+
+                return new BoxEl
+                {
+                    Direction = 1, Gap = 5f, Padding = Edges4.All(10f), Corners = CornerRadius4.All(6f),
+                    Fill = Tok.FillSubtleSecondary, BorderWidth = 1f,
+                    BorderColor = line is LyricsReport.AiLine.OnScreen or LyricsReport.AiLine.Cached ? Tok.AccentDefault : Tok.StrokeCardDefault,
+                    Children =
+                    [
+                        Row(8f,
+                            new BoxEl { Width = 8f, Height = 8f, Corners = Radii.Circle(8f), Fill = dot, AlignSelf = FlexAlign.Center, Shrink = 0f },
+                            Design.Type.DenseTitle(Loc.Get(Strings.Diagnostics.Inspector.Ai.Title)) with { Weight = 700, Color = Tok.TextPrimary },
+                            Design.Type.MicroMeta(Strings.Diagnostics.Inspector.Ai.Setup(status.Phase.ToString()))
+                                with { Weight = 600, Color = Tok.TextTertiary, Grow = 1f, MinWidth = 0f }),
+                        new TextEl(sentence)
+                        {
+                            Size = 12f, LineHeight = 16f, Wrap = TextWrap.Wrap,
+                            Color = line switch
+                            {
+                                LyricsReport.AiLine.OnScreen or LyricsReport.AiLine.Cached => Good,
+                                LyricsReport.AiLine.Failed => Bad,
+                                _ => Tok.TextSecondary,
+                            },
+                        },
+                        Design.Type.MicroMeta(Strings.Diagnostics.Inspector.Ai.Meta(times.Separate, times.Align, times.Total, times.Language, pack))
+                            with { FontFamily = Mono, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap },
+                        Caption(Strings.Diagnostics.Inspector.Ai.Npu(OrDash(status.NpuName), OrDash(status.NpuDriver))),
+                        Caption(result),
+                        Row(6f,
+                            Standard(Loc.Get(Strings.Diagnostics.Inspector.Ai.TimeAgain), () => AiLyrics.Retime(id)),
+                            Standard(Loc.Get(Strings.Diagnostics.Inspector.Ai.OpenFolder), static () => AiLyrics.OpenFolder())),
+                    ],
+                };
+            }
         }
 
         // ── 2. raw (W18) ─────────────────────────────────────────────────────────────────────────────────────────────

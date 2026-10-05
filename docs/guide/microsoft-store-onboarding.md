@@ -122,6 +122,9 @@ support `https://cproducts.dev/contact`. Declare "This app accesses the internet
 - "Packaged desktop application (runFullTrust). Third-party Spotify client; streams the signed-in user's own
   Premium content; no purchases; privacy policy at cproducts.dev/privacy."
 - Restricted capabilities: none besides runFullTrust once `packageManagement` is dropped.
+- On-device AI lyrics (optional, off by default): after the user turns it on and confirms, the app downloads
+  about 700 MB of model files (models.cproducts.dev) and the ONNX Runtime + Qualcomm QNN runtime (PyPI) and runs
+  them in-process on the NPU. No new capability (no `systemAIModels`, no Windows AI APIs); nothing is uploaded.
 
 Certification usually takes 1–3 business days; failures come back as a report citing the policy number. Appeals
 and questions: reportapp@microsoft.com.

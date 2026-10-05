@@ -193,14 +193,16 @@ public static partial class Playback
             load.Speed = 1.0;
             try
             {
+                // Every answer here is decoded into the cluster buffer and dropped: lent, never a heap array (Platform/Bodies.cs).
+                using Bodies.LendScope lent = Bodies.Lend();
                 Spotify.Api.Result seedResult = Spotify.Api.RadioSeed(seedUri, CancellationToken.None);
-                if (seedResult.Ok && seedResult.Body.Length > 0) playlist = Spotify.Decode.RadioPlaylistUri(seedResult.Bytes) ?? "";
+                if (seedResult.Ok && seedResult.Length > 0) playlist = Spotify.Decode.RadioPlaylistUri(seedResult.Bytes) ?? "";
                 else Log.Warn("playback", "radio: seed refused (" + seedResult.Status + ") " + seedUri);
                 if (playlist.Length > 0)
                 {
                     load.ContextUri = buffer.AddText(System.Text.Encoding.UTF8.GetBytes(playlist));
                     Spotify.Api.Result result = Spotify.Api.ContextResolve(playlist, CancellationToken.None);
-                    if (result.Ok && result.Body.Length > 0)
+                    if (result.Ok && result.Length > 0)
                     {
                         Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(result.Bytes, buffer);
                         start = page.TrackStart;
@@ -423,8 +425,9 @@ public static partial class Playback
             string pageUrl = "";
             try
             {
+                using Bodies.LendScope lent = Bodies.Lend();   // decoded into the cluster buffer, then dropped (Platform/Bodies.cs)
                 Spotify.Api.Result result = Spotify.Api.ContextResolve(uri, CancellationToken.None);
-                if (result.Ok && result.Body.Length > 0)
+                if (result.Ok && result.Length > 0)
                 {
                     Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(result.Bytes, buffer);
                     start = page.TrackStart;
@@ -909,9 +912,10 @@ public static partial class Playback
             int start = 0, count = 0, status = 0;
             try
             {
+                using Bodies.LendScope lent = Bodies.Lend();   // decoded into the cluster buffer, then dropped (Platform/Bodies.cs)
                 Spotify.Api.Result result = Spotify.Api.ContextResolve(uri, CancellationToken.None);
                 status = result.Status;
-                if (result.Ok && result.Body.Length > 0)
+                if (result.Ok && result.Length > 0)
                 {
                     Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(result.Bytes, buffer);
                     start = page.TrackStart;
