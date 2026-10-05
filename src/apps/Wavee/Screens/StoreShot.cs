@@ -14,6 +14,8 @@
 //   seek     a position (and optionally pause): a paused word-synced line holds the wipe on one word.
 //   stage    the full-screen stage: open/close, mode, face, gallery.
 //   rail     the right-hand rail: lyrics / queue / closed.
+//   reveal   scroll a viewport so a keyed element sits at its top (also a shot option, after the zoom's reflow).
+//   video    the video surface's placement: docked / floating (mini player) / detached (own window) / fullscreen / off.
 //
 // Files land in logs\evidence\shots\<yyyyMMdd-HHmmss>-<tag>\; every verb answers on logs\evidence\replies.tsv (the
 // evidence harness's reply channel). Threading: verbs arrive on the UI thread; the settle wait is a timer that posts back
@@ -25,6 +27,7 @@ using FluentGpu;
 using FluentGpu.Foundation;
 using FluentGpu.Hosting;
 using FluentGpu.Scene;
+using FluentGpu.Scroll.Runtime;
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -57,7 +60,7 @@ public static partial class Diagnostics
         static int s_busy;
         static Pending? s_pending;
         static bool s_attached;
-        static System.Threading.Timer? s_settle;
+        static System.Threading.Timer? s_settle, s_reveal;
         static readonly Action<FrameStats> s_onFrame = OnFrame;
 
         sealed record Pending(DiagVerb Verb, bool WasPresenting, float PriorZoom, long Deadline);
@@ -87,6 +90,18 @@ public static partial class Diagnostics
                     }
                     Evidence.Reply("rail", "ok", v.Mode);
                     break;
+                case DiagCommand.Video:
+                    if (v.Mode == "off") Video.State.TurnOff();
+                    else Video.State.OpenAt(v.Mode switch
+                    {
+                        "floating" => Video.SurfacePlacement.Floating,
+                        "detached" => Video.SurfacePlacement.Detached,
+                        "fullscreen" => Video.SurfacePlacement.Fullscreen,
+                        _ => Video.SurfacePlacement.Docked,
+                    });
+                    Evidence.Reply("video", "ok", Video.State.Resolved.ToString());
+                    break;
+                case DiagCommand.Reveal: Reveal(v.Viewport, v.Keys is [var key, ..] ? key : ""); break;
                 case DiagCommand.Shot: Request(v); break;
             }
         }
@@ -113,6 +128,35 @@ public static partial class Diagnostics
             Evidence.Reply("stage", "ok", Shell.Ui.ImmersiveLyrics.Peek() ? "open" : "closed");
         }
 
+        /// <summary>UI THREAD. Scroll the viewport named by <paramref name="prefix"/> so the element keyed
+        /// <paramref name="key"/> sits 16 DIP below its top — the scene's element in view at ANY zoom, where a fixed
+        /// offset would land somewhere else once the page reflows.</summary>
+        static void Reveal(string prefix, string key)
+        {
+            var host = Probe.Host;
+            if (host is null) { Evidence.Reply("reveal", "no-host", ""); return; }
+            var scene = host.Scene;
+            var keyed = new List<(NodeHandle Node, string Key)>();
+            scene.CopyDebugKeys(keyed);
+            NodeHandle target = default;
+            foreach (var (n, k) in keyed) if (k == key && scene.IsShown(n)) { target = n; break; }
+            if (target.IsNull) { Evidence.Reply("reveal", "no-key", key); return; }
+            var vps = new List<ViewportInfo>();
+            host.CopyViewports(vps);
+            foreach (var v in vps)
+            {
+                if (!EvidenceReport.ViewportMatches(v.ScrollKey, prefix)) continue;
+                var handle = host.TryGetScrollHandle(scene.HandleAt(v.NodeIndex));
+                if (handle is null) continue;
+                RectF r = scene.AbsoluteRect(target);
+                double to = Math.Max(0.0, v.Offset + (v.Horizontal ? r.X - v.X : r.Y - v.Y) - 16.0);
+                handle.ScrollTo(to, ScrollMove.Immediate);
+                Evidence.Reply("reveal", "ok", to.ToString("0.###", CultureInfo.InvariantCulture));
+                return;
+            }
+            Evidence.Reply("reveal", "no-viewport", prefix);
+        }
+
         // ── shot ───────────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>UI THREAD. Presentation mode on, the zoom applied, then the capture is armed after the settle wait.</summary>
@@ -125,6 +169,13 @@ public static partial class Diagnostics
             Presenting.Value = true;
             if (v.Zoom > 0) FluentApp.SetZoom(p.PriorZoom * v.Zoom / 100f);
             s_settle?.Dispose();
+            // A reveal runs half-way through the settle: after the zoom's reflow, before the frame is taken.
+            if (v.Reveal.Length > 0)
+            {
+                string vp = v.Viewport, key = v.Reveal;
+                s_reveal?.Dispose();
+                s_reveal = new System.Threading.Timer(_ => ToUi(() => Reveal(vp, key)), null, Math.Max(0, v.SettleMs / 2), System.Threading.Timeout.Infinite);
+            }
             s_settle = new System.Threading.Timer(static _ => ToUi(Arm), null, Math.Max(0, v.SettleMs), System.Threading.Timeout.Infinite);
         }
 

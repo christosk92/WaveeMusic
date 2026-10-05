@@ -294,9 +294,14 @@ public static partial class Shell
             // (that part is real: the row genuinely narrowed), but it can never take the field below its floor, so the
             // worst case across a mode flip is a field briefly wider than its lane, never a clipped stub.
             float width = Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, avail.Value);
+            // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
+            // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
+            // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
+            // a "Search" stub overflowing a tiny box that no resize undid. Justify centres it vertically instead.
             return new BoxEl
             {
-                Key = "chrome-search-field", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Width = width,
+                Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
+                Width = width,
                 Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup, allowNarrow: false))],
             };
         }
@@ -452,11 +457,21 @@ public static partial class Shell
                 SubmitSelection: () => InvokeSelection(highlight.Peek()),
                 ResetSelection: () => highlight.Value = -1);
 
-            // Stock metrics: a 32-DIP field at the control corner radius with the control-default chrome.
-            return AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchPlaceholder),
-                grow: 1f, maxFillWidth: maxWidth, text: SearchText, onQuerySubmitted: Submit,
-                minHeight: 32f, cornerRadius: 0f, presenter: presenter, parts: parts,
-                chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion);
+            // Stock metrics: a 32-DIP field at the control corner radius with the control-default chrome. Wrapped in a
+            // growing COLUMN so the box is STRETCHED to this component's width: a fill-mode box contributes only its query
+            // button to its measured width, so laid out as a row's content it stayed ~37 DIP once one narrow frame
+            // (leaving the search page or full screen re-mounts the title bar's field) set its self-measured width there.
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, MinWidth = 0f,
+                Children =
+                [
+                    AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchPlaceholder),
+                        grow: 1f, maxFillWidth: maxWidth, text: SearchText, onQuerySubmitted: Submit,
+                        minHeight: 32f, cornerRadius: 0f, presenter: presenter, parts: parts,
+                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion),
+                ],
+            };
         }
 
         void Fetch(Action<Action> post, int generation, string text)

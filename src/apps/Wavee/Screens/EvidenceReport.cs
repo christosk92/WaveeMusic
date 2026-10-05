@@ -17,7 +17,7 @@ namespace Wavee;
 
 /// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
 /// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail }
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail, Reveal, Video }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
 /// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
@@ -26,11 +26,14 @@ public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, 
 /// (shot: keep the window's translucency), <see cref="Keys"/> (shot: the key prefixes to export, empty = every shown
 /// keyed node), <see cref="On"/> (present: 1/0; seek: 1 pause after, 0 resume, −1 leave; stage: 1 open, 0 close, −1
 /// leave), <see cref="Ms"/> (seek: the position), <see cref="Mode"/> (stage: lyrics/visualizer/queue/artist; rail:
-/// lyrics/queue/off), <see cref="Face"/> (stage: a visualizer face name), <see cref="Gallery"/> (stage: 1/0, −1 leave).</para></summary>
+/// lyrics/queue/off), <see cref="Face"/> (stage: a visualizer face name), <see cref="Gallery"/> (stage: 1/0, −1 leave).
+/// <c>reveal</c>: <see cref="Viewport"/> (a scroll key prefix) scrolled so the keyed element <see cref="Keys"/>[0] sits
+/// at its top; <c>video</c>: <see cref="Mode"/> the video surface's placement (docked/floating/detached/fullscreen/off);
+/// on <c>shot</c>, <see cref="Viewport"/> + <see cref="Reveal"/> do the same after the zoom reflowed the page.</para></summary>
 public readonly record struct DiagVerb(DiagCommand Command, string Tag = "", int X = 0, int Y = 0, bool Dip = false,
     string Viewport = "", double To = 0.0, bool Glide = false, int Level = -1, string[]? Uris = null, int[]? Kinds = null,
     int Zoom = 0, int SettleMs = 0, bool Alpha = false, string[]? Keys = null, int On = -1, int Ms = -1, string Mode = "",
-    string Face = "", int Gallery = -1);
+    string Face = "", int Gallery = -1, string Reveal = "");
 
 /// <summary>One nodes.tsv row: a node referenced by any exported record, with its readable name, element kind and
 /// window rect (DIP; empty when gone).</summary>
@@ -68,7 +71,7 @@ public static class EvidenceReport
         verb = default;
         if (string.IsNullOrEmpty(query)) return false;
         string cmd = "", tag = "", vp = "", move = "", level = "", uris = "", kinds = "";
-        string zoom = "", settle = "", alpha = "", keys = "", on = "", ms = "", pause = "", open = "", mode = "", face = "", gallery = "";
+        string zoom = "", settle = "", reveal = "", alpha = "", keys = "", on = "", ms = "", pause = "", open = "", mode = "", face = "", gallery = "";
         string? x = null, y = null, to = null;
         bool dip = false;
         ReadOnlySpan<char> q = query;
@@ -97,6 +100,7 @@ public static class EvidenceReport
                 case "kinds": kinds = val; break;
                 case "zoom": zoom = val; break;
                 case "settle": settle = val; break;
+                case "reveal": reveal = val; break;
                 case "alpha": alpha = val; break;
                 case "keys": keys = val; break;
                 case "on": on = val; break;
@@ -152,7 +156,7 @@ public static class EvidenceReport
                 if (settle.Length > 0 && (!TryInt(settle, out st) || st < 0 || st > 10_000)) return false;
                 string[] prefixes = keys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                 verb = new DiagVerb(DiagCommand.Shot, Tag: SanitizeTag(tag.Length == 0 ? "shot" : tag), Zoom: z == 100 ? 0 : z,
-                    SettleMs: st, Alpha: alpha is not ("0" or "false"), Keys: prefixes);
+                    SettleMs: st, Alpha: alpha is not ("0" or "false"), Keys: prefixes, Viewport: reveal.Length > 0 ? vp : "", Reveal: vp.Length > 0 ? reveal : "");
                 return true;
             }
             case "present":
@@ -175,6 +179,19 @@ public static class EvidenceReport
                 int o = Flag(open), g = Flag(gallery);
                 if (o < 0 && m.Length == 0 && face.Length == 0 && g < 0) return false;   // a stage verb that changes nothing
                 verb = new DiagVerb(DiagCommand.Stage, On: o, Mode: m, Face: face, Gallery: g);
+                return true;
+            }
+            case "video":
+            {
+                string m = mode.ToLowerInvariant();
+                if (m is not ("docked" or "floating" or "detached" or "fullscreen" or "off")) return false;
+                verb = new DiagVerb(DiagCommand.Video, Mode: m);
+                return true;
+            }
+            case "reveal":
+            {
+                if (vp.Length == 0 || keys.Trim().Length == 0) return false;
+                verb = new DiagVerb(DiagCommand.Reveal, Viewport: vp, Keys: [keys.Trim()]);
                 return true;
             }
             case "rail":

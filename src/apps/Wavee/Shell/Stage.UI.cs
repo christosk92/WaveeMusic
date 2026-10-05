@@ -86,7 +86,9 @@ public static partial class Stage
         public readonly Signal<Visualizer.Kind> Kind = new(Visualizer.Catalog.Default);
         public readonly Signal<bool> GalleryOpen = new(true), LyricsOverlay = new(true), Calm = new(false), Moments = new(true);
         /// <summary>The gallery is open AND the layout has room for it (<c>Layout.ShowGallery</c>) — the pane's mount gate
-        /// minus the mode and the idle chrome; the visualizer clock's lease and ribbon gate read it (SurfaceCore writes it).</summary>
+        /// minus the mode; the visualizer clock's lease and ribbon gate read it (SurfaceCore writes it). The idle chrome is
+        /// NOT part of it: an open gallery stays until it is closed, because the face is laid out beside it
+        /// (<c>Layout.FaceRight</c>) and hiding the pane with the chrome left the face clipped beside an empty column.</summary>
         public readonly Signal<bool> GalleryShown = new(true);
         public readonly FloatSignal Sensitivity = new(1f), SyncOffsetMs = new(0f);
         /// <summary>The chrome is mounted (the idle machine's output) · the playing track has timed lyrics (LyricFacts writes it).</summary>
@@ -1097,7 +1099,8 @@ public static partial class Stage
                         ],
                     }),
                     // GALLERY pane: a right-docked column (top-aligned, JustifySelf End) or Portrait's bottom sheet (AlignSelf End, full width)
-                    Flow.Show(() => ctx.Chrome.Value && ctx.Mode.Value == Mode.Visualizer && ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery, Layer with
+                    // NOT gated on the idle chrome: the face beside it is inset for it while it is open (GalleryShown)
+                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.GalleryShown.Value, Layer with
                     {
                         Key = "chrome:gallery",
                         Enter = new EnterExit(Dx: sheet ? 0f : 32f, Dy: sheet ? 32f : 0f, Opacity: 0f, Active: true), Exit = new EnterExit(Dx: sheet ? 0f : 32f, Dy: sheet ? 32f : 0f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,

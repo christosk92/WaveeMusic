@@ -29,6 +29,11 @@ public class StoreShotReportTests
         Assert.False(z.Alpha);
         Assert.Equal(new[] { "badge", "ai.status" }, z.Keys);
 
+        Assert.True(EvidenceReport.TryParseDiag("?cmd=shot&zoom=200&vp=settings:appearance&reveal=appearance.ai-lyrics", out var rv));
+        Assert.Equal(("settings:appearance", "appearance.ai-lyrics"), (rv.Viewport, rv.Reveal));
+        Assert.True(EvidenceReport.TryParseDiag("?cmd=shot&reveal=x", out var half));
+        Assert.Equal(("", ""), (half.Viewport, half.Reveal));   // a reveal needs both
+
         Assert.True(EvidenceReport.TryParseDiag("?cmd=shot&zoom=100", out var same));
         Assert.Equal(0, same.Zoom);         // 100 % is "as is": no zoom round trip
 
@@ -60,6 +65,15 @@ public class StoreShotReportTests
         Assert.Equal((0, -1), (close.On, close.Gallery));
         Assert.False(EvidenceReport.TryParseDiag("?cmd=stage", out _));                 // changes nothing
         Assert.False(EvidenceReport.TryParseDiag("?cmd=stage&mode=karaoke", out _));
+
+        Assert.True(EvidenceReport.TryParseDiag("?cmd=reveal&vp=settings:appearance&keys=appearance.ai-lyrics", out var rv));
+        Assert.Equal((DiagCommand.Reveal, "settings:appearance", "appearance.ai-lyrics"), (rv.Command, rv.Viewport, rv.Keys![0]));
+        Assert.False(EvidenceReport.TryParseDiag("?cmd=reveal&vp=settings:appearance", out _));
+        Assert.False(EvidenceReport.TryParseDiag("?cmd=reveal&keys=x", out _));
+
+        Assert.True(EvidenceReport.TryParseDiag("?cmd=video&mode=Floating", out var vd));
+        Assert.Equal((DiagCommand.Video, "floating"), (vd.Command, vd.Mode));
+        Assert.False(EvidenceReport.TryParseDiag("?cmd=video&mode=pip", out _));
 
         Assert.True(EvidenceReport.TryParseDiag("?cmd=rail&mode=queue", out var r));
         Assert.Equal((DiagCommand.Rail, "queue"), (r.Command, r.Mode));

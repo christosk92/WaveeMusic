@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.2] - unreleased
+
+### Fixed
+
+- **The title bar's search box no longer shrinks to a "Search" stub.** After a visit to the search page, the box in
+  the title bar could stay collapsed to a sliver with its placeholder spilling out of it, on every page, until Wavee
+  restarted. It now always fills its slot.
+- **The full-screen visualizer no longer leaves an empty column.** With the visualizer gallery open, the picture made
+  room for the gallery, but the gallery hid whenever the controls faded out, leaving the visualizer cut off beside an
+  empty third of the screen. An open gallery now stays until you close it.
+
 ## [0.3.1] - 2026-10-05
 
 ### Added

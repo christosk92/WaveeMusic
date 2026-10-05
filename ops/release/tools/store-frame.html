@@ -1,0 +1,163 @@
+<meta charset="utf-8">
+<title>Wavee Store screenshot frame</title>
+<!--
+  ops/release/tools/store-frame.html - the Microsoft Store listing sibling of frame.html.
+
+  Same field as the What's new images (stacked radial mesh over a dark base, vignette, grain) and the same window
+  treatment (14px radius, 1px translucent stroke, contact + mid + ambient shadow), composed for a 16:9 Store
+  screenshot with ONE optional headline block. Rendered head-less by New-StoreImage.py at 1280x720 CSS px and
+  device scale 2 -> a 2560x1440 PNG (the Store accepts 1366x768 up to 3840x2160).
+
+  Layouts (data-layout):
+    hero    headline left, the window right, bleeding off the right and bottom edges
+    stack   two windows overlapping (the What's new two-up), headline top-left
+    center  headline centred on top, the window below, bleeding off the bottom edge
+    clean   the What's new card: one window centred, no text
+
+  Tokens (plain string replace by the renderer; every one is a bare value):
+    __LAYOUT__ __SHOT__ __SHOT2__ __BASE__ __TINT_A__ __TINT_B__ __TINT_C__
+    __EYEBROW__ __HEADLINE__ __SUB__ __CHIP__        (HTML-escaped text; empty hides the element)
+    __MARKS__ __LENSES__                             (lens callouts, built from --lens)
+    __EXTRA_CSS__                                    (raw CSS appended last, to nudge one image's windows)
+-->
+<style>
+  @font-face { font-family: Inter; src: url("__FONTS__/InterVariable.ttf") format("truetype"); font-weight: 100 900; }
+  :root{
+    --w: 1280px; --h: 720px;
+    --base: __BASE__; --tint-a: __TINT_A__; --tint-b: __TINT_B__; --tint-c: __TINT_C__;
+    --radius: 14px;
+  }
+  html, body{ margin:0; padding:0; background:#000; }
+  body{ width:var(--w); height:var(--h); overflow:hidden; font-family: Inter, "Segoe UI Variable Display", "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased; color:#fff; }
+
+  /* ---------------------------------------------------------------- the field */
+  .canvas{ position:relative; width:var(--w); height:var(--h); overflow:hidden; background:var(--base); }
+  .canvas::before{
+    content:""; position:absolute; inset:-12%;
+    background:
+      radial-gradient(46% 58% at 12% 14%,  color-mix(in oklab, var(--tint-a) 92%, transparent) 0%, transparent 62%),
+      radial-gradient(44% 54% at 88% 18%,  color-mix(in oklab, var(--tint-b) 86%, transparent) 0%, transparent 64%),
+      radial-gradient(60% 62% at 70% 104%, color-mix(in oklab, var(--tint-c) 70%, transparent) 0%, transparent 70%),
+      radial-gradient(40% 40% at 30% 92%,  color-mix(in oklab, var(--tint-a) 40%, transparent) 0%, transparent 70%),
+      var(--base);
+    filter: saturate(1.08);
+  }
+  .canvas::after{ content:""; position:absolute; inset:0; z-index:1;
+    background: radial-gradient(125% 105% at 50% 40%, transparent 46%, rgba(0,0,0,.46) 100%); }
+  .grain{ position:absolute; inset:0; z-index:6; opacity:.05; mix-blend-mode:overlay; pointer-events:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size:180px 180px; }
+
+  /* ---------------------------------------------------------------- windows */
+  .shot{ position:absolute; z-index:3; border-radius:var(--radius); overflow:hidden; line-height:0; background:var(--base);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.14),
+      inset 0 1px 0 rgba(255,255,255,.07),
+      0 2px 4px rgba(0,0,0,.28),
+      0 14px 28px rgba(0,0,0,.36),
+      0 40px 80px rgba(0,0,0,.50); }
+  .shot img{ display:block; width:100%; height:auto; }
+  .shot.back{ filter: saturate(.95) brightness(.9); z-index:2; }
+
+  /* ---------------------------------------------------------------- copy */
+  .copy{ position:absolute; z-index:5; }
+  .eyebrow{ display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; letter-spacing:.14em;
+    text-transform:uppercase; color:color-mix(in oklab, var(--tint-b) 30%, #fff); opacity:.92; margin-bottom:16px; }
+  .eyebrow:empty{ display:none; }
+  .headline{ font-size:46px; line-height:1.06; font-weight:640; letter-spacing:-.022em; margin:0;
+    text-wrap:balance; text-shadow: 0 2px 24px rgba(0,0,0,.35); }
+  .sub{ margin-top:16px; font-size:18px; line-height:1.45; font-weight:420; color:rgba(255,255,255,.74); text-wrap:pretty; }
+  .sub:empty{ display:none; }
+  .chip{ display:inline-flex; align-items:center; gap:9px; margin-top:24px; padding:9px 16px 9px 13px; border-radius:999px;
+    font-size:15px; font-weight:560; letter-spacing:.005em; color:#fff;
+    background: linear-gradient(135deg, color-mix(in oklab, var(--tint-a) 55%, rgba(255,255,255,.10)), color-mix(in oklab, var(--tint-b) 55%, rgba(255,255,255,.08)));
+    box-shadow: 0 0 0 1px rgba(255,255,255,.22), inset 0 1px 0 rgba(255,255,255,.18), 0 8px 24px rgba(0,0,0,.30); }
+  .chip:empty{ display:none; }
+  .chip .spark{ font-size:16px; line-height:1; filter: drop-shadow(0 0 6px rgba(255,255,255,.65)); }
+
+  /* ---------------------------------------------------------------- layouts */
+  /* hero: copy left, window right, bleeding off right + bottom */
+  /* the copy sits in the top band: the Store may lay its own text over an image's bottom third */
+  body[data-layout="hero"] .copy{ left:68px; top:92px; width:372px; }
+  body[data-layout="hero"] .s1{ left:476px; top:50%; transform:translateY(-50%); width:744px; }
+  body[data-layout="hero"] .s2{ display:none; }
+
+  /* stack: copy top-left, a large back window and a smaller front window overlapping it */
+  body[data-layout="stack"] .copy{ left:68px; top:64px; width:420px; }
+  body[data-layout="stack"] .headline{ font-size:42px; }
+  body[data-layout="stack"] .s2{ left:520px; top:56px; width:700px; }
+  body[data-layout="stack"] .s1{ left:68px; top:330px; width:540px; z-index:4; }
+  body[data-layout="stack"] .s1{ box-shadow:
+      0 0 0 1px rgba(255,255,255,.20), inset 0 1px 0 rgba(255,255,255,.08),
+      0 2px 4px rgba(0,0,0,.30), 0 18px 36px rgba(0,0,0,.42), 0 48px 96px rgba(0,0,0,.58); }
+
+  /* center: copy on top, centred; the window below, bleeding off the bottom */
+  body[data-layout="center"] .copy{ left:0; right:0; top:58px; text-align:center; }
+  body[data-layout="center"] .copy .headline, body[data-layout="center"] .copy .sub{ max-width:860px; margin-left:auto; margin-right:auto; }
+  body[data-layout="center"] .s1{ left:50%; transform:translateX(-50%); top:252px; width:1000px; }
+  body[data-layout="center"] .s2{ display:none; }
+
+  /* clean: the What's new card */
+  body[data-layout="clean"] .copy{ display:none; }
+  body[data-layout="clean"] .s1{ left:50%; top:50%; transform:translate(-50%,-50%); width:1126px; }
+  body[data-layout="clean"] .s2{ display:none; }
+
+  /* ---------------------------------------------------------------- spotlight + lens callouts
+     Both are built by New-StoreImage.py from the shot's keys (the real element's rect), never from redrawn UI.
+     mark        a ring on the window around the element a lens magnifies
+     mark.spot   the same ring, and everything else in the window dimmed (one focal point per image)
+     lens        a glass card on the field holding a magnified crop of the element (a zoom-pass capture: the app's own
+                 pixels at 2-3x, not an upscale), its label above it. No backdrop-filter: headless Edge without a GPU
+                 paints it as a black tile. */
+  .shot .mark{ position:absolute; z-index:2; border-radius:8px; pointer-events:none;
+    box-shadow: 0 0 0 2px rgba(255,255,255,.92), 0 0 0 7px color-mix(in oklab, var(--tint-a) 50%, transparent),
+                0 0 34px color-mix(in oklab, var(--tint-a) 80%, transparent); }
+  .shot .mark.spot{
+    box-shadow: 0 0 0 2px rgba(255,255,255,.92), 0 0 0 7px color-mix(in oklab, var(--tint-a) 50%, transparent),
+                0 0 34px color-mix(in oklab, var(--tint-a) 80%, transparent), 0 0 0 9999px rgba(6,6,10,.40); }
+  .lens{ position:absolute; z-index:7; border-radius:18px; padding:10px; box-sizing:border-box;
+    background: linear-gradient(160deg, rgba(255,255,255,.17), rgba(255,255,255,.06)),
+                color-mix(in oklab, var(--base) 82%, var(--tint-a));
+    box-shadow: 0 0 0 1px rgba(255,255,255,.26), inset 0 1px 0 rgba(255,255,255,.22),
+                0 22px 50px rgba(0,0,0,.55), 0 0 70px color-mix(in oklab, var(--tint-a) 45%, transparent); }
+  .lens .px{ display:block; border-radius:10px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+  .lens .tag{ position:absolute; left:6px; bottom:calc(100% + 12px); white-space:nowrap; font-size:14px; font-weight:640;
+    letter-spacing:.12em; text-transform:uppercase; color:#fff; display:flex; align-items:center; gap:9px;
+    text-shadow:0 1px 12px rgba(0,0,0,.55); }
+  .lens .tag::before{ content:""; width:8px; height:8px; border-radius:50%; background:#fff;
+    box-shadow:0 0 0 3px color-mix(in oklab, var(--tint-a) 60%, transparent), 0 0 14px #fff; }
+
+  /* grid: copy left, up to four labelled panels in a 2x2 grid on the right (the video placements) */
+  body[data-layout="grid"] .copy{ left:68px; top:92px; width:372px; }
+  body[data-layout="grid"] .s1, body[data-layout="grid"] .s2{ display:none; }
+  .panels{ display:none; }
+  body[data-layout="grid"] .panels{ display:grid; position:absolute; z-index:3; left:476px; top:110px; width:744px;
+    grid-template-columns: 1fr 1fr; gap:22px; }
+  .panel{ position:relative; border-radius:var(--radius); overflow:hidden; line-height:0; aspect-ratio:1.6;
+    background:var(--base);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.28), 0 14px 28px rgba(0,0,0,.36), 0 34px 70px rgba(0,0,0,.48); }
+  .panel img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .panel .ptag{ position:absolute; left:10px; bottom:10px; line-height:1; padding:6px 10px; border-radius:999px;
+    font-size:11px; font-weight:620; letter-spacing:.02em; color:#fff;
+    background: color-mix(in oklab, var(--base) 70%, transparent);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.22), 0 6px 18px rgba(0,0,0,.35); }
+
+  /* per-image placement tweaks from --css (empty by default) */
+  __EXTRA_CSS__
+</style>
+<body data-layout="__LAYOUT__">
+  <div class="canvas">
+    <div class="grain"></div>
+    <div class="copy">
+      <div class="eyebrow">__EYEBROW__</div>
+      <h1 class="headline">__HEADLINE__</h1>
+      <div class="sub">__SUB__</div>
+      <div><span class="chip">__CHIP__</span></div>
+    </div>
+    <div class="shot s2 back"><img src="__SHOT2__" alt=""></div>
+    <div class="shot s1"><img src="__SHOT__" alt="">__MARKS__</div>
+    __LENSES__
+    <div class="panels">__PANELS__</div>
+  </div>
+</body>
