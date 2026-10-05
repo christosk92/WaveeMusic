@@ -499,7 +499,8 @@ public static partial class Diagnostics
         {
             host.RequestFrameCapture();
             FrameCaptureResult? capture = null;
-            for (int i = 0; i < 240 && !w.IsClosed && !host.TryTakeFrameCapture(out capture); i++) FrameFast(host, w, gpu);
+            long until = Environment.TickCount64 + 5_000;   // the render thread presents on its own timeline: wait on the clock
+            while (!w.IsClosed && Environment.TickCount64 < until && !host.TryTakeFrameCapture(out capture)) FrameFast(host, w, gpu);
             if (capture?.Bgra is not { } bgra) { Say("[play-demo] shot: no frame landed"); return; }
             PngWriter.WriteBgra(path, bgra, capture.WidthPx, capture.HeightPx, keepAlpha: false);
             Say("[play-demo] shot " + capture.WidthPx + "x" + capture.HeightPx + " -> " + path);
