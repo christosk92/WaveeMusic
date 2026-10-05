@@ -926,6 +926,11 @@ public static partial class Lyrics
         /// any lyrics surface up to ~1800 DIP tall. Past that the bottom-most rows SNAP with the latch instead of
         /// easing — a bound on the effect, not a correctness cliff.</summary>
         public const int WriteBand = 24;
+        /// <summary>The slack the "could this row show?" test adds around a row's sweep (beyond its blur reach) before it
+        /// defers the row's in-flight writes: an interlude reserve band (≤ <c>Interlude.ReserveDip(large)</c> = 32 DIP)
+        /// that lands on the next arrange and shifts the rows below it, and rounding. A row inside it moves every step
+        /// exactly as before.</summary>
+        public const float HiddenMarginDip = 32f;
 
         /// <summary>What the caller must do with one line after an <see cref="Arm"/> or a <see cref="Step"/>.</summary>
         public const byte WriteNone = 0;
