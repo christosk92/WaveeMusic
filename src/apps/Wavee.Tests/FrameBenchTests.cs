@@ -1,9 +1,10 @@
 // ── Wavee.Tests/FrameBenchTests.cs — the `--frame-bench` arm's pure half (Screens/Diagnostics.FrameBench.cs) ─────────────
 //
-// The argv (scenario filter, window knobs, the explicit real-data switch, explicit uris), the real-data target pick from a
-// profile's play-recency/history documents, and the summary maths over a synthetic frame-ledger window: presents per second,
-// the UI / render / other CPU split, the percentiles, GPU busy, allocations, GC and memory, and the JSON the compare tool
-// reads. Nothing here starts the engine or touches a file.
+// The argv (scenario filter, window knobs, the explicit real-data switch and its --profile guard, explicit uris, the opt-in pass
+// timing), the real-data target pick from a profile's play-recency/history documents, and the summary maths over synthetic
+// frame-ledger windows: presents per second, the UI / render / other CPU split (overlap attribution, unclamped), painted-frame
+// CPU, the exit / wake / turn census, the percentiles, GPU busy, allocations, per-second GC and memory, the off/on A/B, and the
+// JSON the compare tool reads. Nothing here starts the engine or touches a file.
 
 using System.Text.Json;
 using FluentGpu.Hosting;
@@ -19,6 +20,7 @@ public class FrameBenchOptionsTests
         var o = Diagnostics.FrameBenchOptions.Parse(["--fake", "--perf-bench"]);
         Assert.False(o.Enabled);
         Assert.False(o.Real);
+        Assert.False(o.GpuPasses);
     }
 
     [Fact]
@@ -31,7 +33,12 @@ public class FrameBenchOptionsTests
         Assert.Equal(2, o.WarmupSec);
         Assert.Equal("", o.Label);
         Assert.Empty(o.Uris);
+        Assert.False(o.GpuPasses);                                     // pass timing is opt-in
     }
+
+    [Fact]
+    public void Gpu_pass_timing_is_opt_in()
+        => Assert.True(Diagnostics.FrameBenchOptions.Parse(["--frame-bench", "--bench-gpu-passes"]).GpuPasses);
 
     [Theory]
     [InlineData(new[] { "--frame-bench=lyrics,idle-playing" }, 2)]
@@ -69,6 +76,19 @@ public class FrameBenchOptionsTests
         Assert.Equal(2, o.Uris.Count);
         Assert.Equal("spotify:track:a", o.Uris["lyrics"]);
         Assert.Equal("liked", o.Uris["big"]);
+    }
+
+    [Theory]
+    [InlineData(true, false, "", false)]                  // --fake: always fine
+    [InlineData(true, true, "", false)]
+    [InlineData(false, false, @"C:\bench", true)]         // no --fake and no --bench-real: refuse
+    [InlineData(false, true, "", true)]                   // --bench-real without --profile: refuse (the owner's profile)
+    [InlineData(false, true, @"C:\bench", false)]         // --bench-real with --profile: go
+    public void Real_data_needs_the_switch_and_a_profile(bool fake, bool real, string profileRoot, bool refused)
+    {
+        string? why = Diagnostics.FrameBenchOptions.RealRefusal(fake, real, profileRoot);
+        Assert.Equal(refused, why is not null);
+        if (fake == false && real && profileRoot.Length == 0) Assert.Contains("--profile", why);
     }
 }
 
@@ -110,10 +130,11 @@ public class FrameBenchTargetsTests
 public class FrameBenchMathTests
 {
     const long F = 10_000_000;        // QPC ticks per second
+    const long Ms = F / 1000;         // QPC ticks per ms
     const double Cpm = 1_000_000;     // cycles per ms
 
-    /// <summary>One second of 100 frames at 10 ms: each UI frame 2 ms of CPU, each render turn 1 ms, the process 5 ms per
-    /// interval (so other = 5 - 2 - 1 = 2 ms), a 1.5 ms GPU frame each.</summary>
+    /// <summary>One second of 100 painted frames at 10 ms: each UI frame 2 ms of CPU, each render turn 1 ms inside its interval, the
+    /// process 5 ms per interval (so other = 5 - 2 - 1 = 2 ms), a 1.5 ms GPU frame each; GetThreadTimes agrees with the cycles.</summary>
     static LedgerSnapshot Window(int n = 100)
     {
         var ui = new LedgerUiFrame[n];
@@ -124,15 +145,16 @@ public class FrameBenchMathTests
             long t = F + i * F / 100;
             ui[i] = new LedgerUiFrame
             {
-                Seq = (ulong)i, StartQpc = t, EndQpc = t + F / 1000 * 3, PaintQpc = t + 1, Flags = (ushort)LedgerUiFlags.Painted,
+                Seq = (ulong)i, StartQpc = t, EndQpc = t + Ms * 3, PaintQpc = t + 1, Flags = (ushort)LedgerUiFlags.Painted,
                 UiCycles = 2_000_000, UiCyclesTotal = (ulong)(i + 1) * 2_000_000, ProcessCyclesTotal = (ulong)(i + 1) * 5_000_000,
+                UiCpuTimeTotal = (i + 1) * 20_000L, WakeMask = (uint)WakeReasons.FrameNeeded,
                 AllocBytes = i == 50 ? 1000 : 0, Gc0Total = i >= 50 ? 1 : 0, GcPauseTicksTotal = i >= 50 ? 20_000 : 0,
                 MissedVsyncsTotal = i >= 90 ? 2 : 0,
             };
             rt[i] = new LedgerRenderTurn
             {
-                Seq = (ulong)i, StartQpc = t + F / 1000 * 4, SlotOpenQpc = t + F / 1000 * 4, DoneQpc = t + F / 1000 * 5, EndQpc = t + F / 1000 * 5,
-                Cycles = 1_000_000, Kind = (byte)LedgerTurnKind.Fresh, Flags = (byte)LedgerTurnFlags.Presented,
+                Seq = (ulong)i, StartQpc = t + Ms * 4, SlotOpenQpc = t + Ms * 4, DoneQpc = t + Ms * 5, EndQpc = t + Ms * 5,
+                Cycles = 1_000_000, CpuTimeTotal = (i + 1) * 10_000L, Kind = (byte)LedgerTurnKind.Fresh, Flags = (byte)LedgerTurnFlags.Presented,
             };
             gpu[i] = new LedgerGpuFrame { Seq = (ulong)i, GpuMs = 1.5f, PassCount = 2, TileRasterMs = 0.5f, CompositeMs = 1f };
         }
@@ -140,10 +162,10 @@ public class FrameBenchMathTests
         {
             QpcFrequency = F, CyclesPerMs = Cpm, Processors = 10, OriginQpc = F, EndQpc = 2 * F,
             Ui = ui, Render = rt, Gpu = gpu,
-            Memory = [new LedgerMemorySample { Qpc = F, WorkingSetBytes = 100 << 20, ProcessCpuTicksTotal = 0, TotalAllocatedBytes = 0 },
-                      new LedgerMemorySample { Qpc = 2 * F, WorkingSetBytes = 300 << 20, ProcessCpuTicksTotal = 5_000_000, TotalAllocatedBytes = 4096 }],
-            Audio = [new LedgerAudioSample { Qpc = F, DeviceDryEdgesTotal = 3, XrunsTotal = 1, PaddingMinFrames = 4800, Rate = 48000 },
-                     new LedgerAudioSample { Qpc = 2 * F, DeviceDryEdgesTotal = 5, XrunsTotal = 1, PaddingMinFrames = 480, Rate = 48000 }],
+            Memory = [new LedgerMemorySample { Qpc = F, WorkingSetBytes = 100 << 20, ProcessCpuTicksTotal = 1, ProcessCyclesTotal = 1, TotalAllocatedBytes = 0 },
+                      new LedgerMemorySample { Qpc = 2 * F, WorkingSetBytes = 300 << 20, ProcessCpuTicksTotal = 5_000_001, ProcessCyclesTotal = 500_000_001, TotalAllocatedBytes = 4096 }],
+            Audio = [new LedgerAudioSample { Qpc = F, DeviceUnderrunsTotal = 3, XrunsTotal = 1, PaddingMinFrames = 4800, Rate = 48000 },
+                     new LedgerAudioSample { Qpc = 2 * F, DeviceUnderrunsTotal = 5, XrunsTotal = 1, PaddingMinFrames = 480, Rate = 48000 }],
         };
     }
 
@@ -169,13 +191,18 @@ public class FrameBenchMathTests
         Assert.Equal(100, s["presentsPerSec"], 6);
         Assert.Equal(10, s["presentIntervalMs.p50"], 6);
         Assert.Equal(3, s["uiFrameMs.p99"], 6);
+        Assert.Equal(100, s["exitPerSec.Painted"], 6);
+        Assert.Equal(0, s["exitPerSec.Idle"], 6);
+        Assert.Equal(100, s["wakePerSec.FrameNeeded"], 6);
+        Assert.Equal(100, s["turnPerSec.Fresh"], 6);
     }
 
     [Fact]
-    public void The_cpu_split_adds_up_to_the_process()
+    public void The_cpu_split_adds_up_to_the_process_and_the_thread_times_agree()
     {
         var s = Diagnostics.FrameBenchMath.Summarize("x", Window());
         Assert.Equal(2, s["uiCpuMs.p50"], 6);
+        Assert.Equal(2, s["paintedCpuMs.p50"], 6);
         Assert.Equal(1, s["renderCpuMs.p95"], 6);
         Assert.Equal(2, s["otherCpuMs.p50"], 6);
         // 99 intervals of 10 ms: ui 2 / render 1 / process 5 ms each.
@@ -183,13 +210,54 @@ public class FrameBenchMathTests
         Assert.Equal(0.1, s["renderCores"], 6);
         Assert.Equal(0.2, s["otherCores"], 6);
         Assert.Equal(0.5, s["processCores"], 6);
-        Assert.Equal(5.0, s["processCpuPct"], 6);                          // 0.5 cores of 10
-        Assert.Equal(5.0, s["processCpuPctTimes"], 6);                     // 500 ms of CPU over 1 s × 10
         Assert.Equal(s["processCores"], s["uiCores"] + s["renderCores"] + s["otherCores"], 6);
+        Assert.Equal(0.2, s["uiCoresTimes"], 6);                           // GetThreadTimes, no rate
+        Assert.Equal(0.1, s["renderCoresTimes"], 6);
+        Assert.Equal(5.0, s["processCpuPct"], 6);                          // GetProcessTimes: 500 ms of CPU over 1 s × 10 (headline)
+        Assert.Equal(5.0, s["processCpuPctCycles"], 6);                    // 0.5 cores of 10
+        Assert.Equal(1_000_000, s["cyclesPerMs.window"], 3);               // 5e8 cycles / 500 ms of CPU
     }
 
     [Fact]
-    public void Gpu_allocations_gc_memory_and_audio()
+    public void Mixed_exits_and_straddling_turns_split_by_overlap_without_a_clamp()
+    {
+        // Three frames ending at 10 / 20 / 30 ms: painted, idle, painted. One 2 ms render turn straddles the 20 ms boundary
+        // evenly. The process spends 5 ms in the first interval and only 1.5 ms in the second (counter skew), the UI 1 ms in each.
+        long b = F;
+        var ui = new LedgerUiFrame[]
+        {
+            new() { StartQpc = b + 9 * Ms, EndQpc = b + 10 * Ms, Flags = (ushort)LedgerUiFlags.Painted, PaintQpc = 1, UiCycles = 1_000_000,
+                    UiCyclesTotal = 10_000_000, ProcessCyclesTotal = 50_000_000, Exit = (byte)LedgerFrameExit.Painted, AllocBytes = 300 },
+            new() { StartQpc = b + 19 * Ms, EndQpc = b + 20 * Ms, UiCycles = 100_000, Exit = (byte)LedgerFrameExit.Idle,
+                    UiCyclesTotal = 11_000_000, ProcessCyclesTotal = 55_000_000, WakeMask = (uint)WakeReasons.ImageCrossfades },
+            new() { StartQpc = b + 29 * Ms, EndQpc = b + 30 * Ms, Flags = (ushort)LedgerUiFlags.Painted, PaintQpc = 1, UiCycles = 1_000_000,
+                    UiCyclesTotal = 12_000_000, ProcessCyclesTotal = 56_500_000, Exit = (byte)LedgerFrameExit.Painted, AllocBytes = 100 },
+        };
+        var rt = new LedgerRenderTurn[]
+        {
+            new() { StartQpc = b + 19 * Ms, SlotOpenQpc = b + 19 * Ms, DoneQpc = b + 21 * Ms, EndQpc = b + 21 * Ms, Cycles = 2_000_000,
+                    Kind = (byte)LedgerTurnKind.Motion, Flags = (byte)LedgerTurnFlags.Presented },
+        };
+        var snap = new LedgerSnapshot { QpcFrequency = F, CyclesPerMs = Cpm, Processors = 10, OriginQpc = b, EndQpc = 2 * F, Ui = ui, Render = rt };
+        var s = Diagnostics.FrameBenchMath.Summarize("mixed", snap);
+        Assert.Equal(2, s["paintedFrames"]);
+        Assert.Equal(1, s["exitPerSec.Idle"], 6);
+        Assert.Equal(2, s["exitPerSec.Painted"], 6);
+        Assert.Equal(1, s["wakePerSec.ImageCrossfades"], 6);
+        Assert.Equal(1, s["turnPerSec.Motion"], 6);
+        Assert.Equal(1, s["paintedCpuMs.p50"], 6);                           // the idle frame's 0.1 ms is not a painted frame's cost
+        Assert.Equal(1, s["paintedCpuMs.max"], 6);
+        Assert.Equal(200, s["paintedAllocBytesPerFrame"], 6);
+        // Interval 1: 5 - 1 - 1 (half the turn) = 3; interval 2: 1.5 - 1 - 1 = -0.5 (kept: the mean stays unbiased).
+        Assert.Equal(1.25, s["otherCpuMs.avg"], 6);
+        Assert.Equal(-0.5, Diagnostics.FrameBenchMath.Percentile([3, -0.5], 0.01));
+        Assert.Equal(0.1, s["renderCores"], 6);                              // the whole turn, 2 ms over 20 ms
+        Assert.Equal(0.1, s["uiCores"], 6);
+        Assert.Equal(0.325, s["processCores"], 6);                           // 6.5 ms over 20 ms
+    }
+
+    [Fact]
+    public void Gpu_allocations_gc_memory_and_audio_per_second()
     {
         var s = Diagnostics.FrameBenchMath.Summarize("x", Window());
         Assert.Equal(1.5, s["gpuMs.p50"], 5);
@@ -198,14 +266,25 @@ public class FrameBenchMathTests
         Assert.Equal(1.0, s["gpuPass.compositeMs"], 5);
         Assert.Equal(10, s["uiAllocBytesPerFrame"], 6);
         Assert.Equal(4096, s["processAllocBytesPerSec"], 6);
-        Assert.Equal(1, s["gc0"]);
-        Assert.Equal(2, s["gcPauseMs"], 6);
-        Assert.Equal(2, s["missedVsyncs"]);
+        Assert.Equal(1, s["gc0PerSec"], 6);
+        Assert.Equal(2, s["gcPauseMsPerSec"], 6);
+        Assert.Equal(2, s["missedVsyncsPerSec"], 6);
         Assert.Equal(200, s["workingSetMB.avg"], 6);
         Assert.Equal(300, s["workingSetMB.peak"], 6);
-        Assert.Equal(2, s["audioDeviceDryEdges"]);
-        Assert.Equal(0, s["audioXruns"]);
+        Assert.Equal(2, s["audioDeviceUnderrunsPerSec"], 6);
+        Assert.Equal(0, s["audioXrunsPerSec"], 6);
         Assert.Equal(10, s["audioPaddingMinMs"], 6);
+    }
+
+    [Fact]
+    public void A_window_read_at_another_rate_scales_its_cycle_figures_only()
+    {
+        var w = Window();
+        var a = Diagnostics.FrameBenchMath.Summarize("x", w);
+        var b = Diagnostics.FrameBenchMath.Summarize("x", w.WithRate(2 * Cpm));
+        Assert.Equal(a["uiCpuMs.p50"] / 2, b["uiCpuMs.p50"], 6);
+        Assert.Equal(a["processCpuPct"], b["processCpuPct"], 6);           // GetProcessTimes: no rate
+        Assert.Equal(a["uiCoresTimes"], b["uiCoresTimes"], 6);
     }
 
     [Fact]
@@ -215,40 +294,66 @@ public class FrameBenchMathTests
         Assert.Equal(0, s["frames"]);
         Assert.True(double.IsNaN(s["uiCpuMs.p50"]));
         Assert.True(double.IsNaN(s["uiCores"]));
+        Assert.True(double.IsNaN(s["gc0PerSec"]));
     }
 
     [Fact]
-    public void Json_carries_every_metric_and_nulls_NaN()
+    public void Overhead_ab_reads_both_arms_at_one_rate()
     {
-        var a = Diagnostics.FrameBenchMath.Summarize("home-scroll", Window());
+        var off = new Diagnostics.OverheadArm(100, 50_000_000, 60, 1000, 400);
+        var on = new Diagnostics.OverheadArm(100, 52_000_000, 62, 1000, 420, 3.0);
+        var s = Diagnostics.FrameBenchMath.Overhead("ledger-overhead", off, on, Cpm, 10, "n");
+        Assert.Equal(500, s["uiCpuUsPerFrame.off"], 6);
+        Assert.Equal(20, s["overheadUiCpuUsPerFrame"], 6);
+        Assert.Equal(20, s["overheadRunFrameWallUs"], 6);
+        Assert.Equal(0.2, s["overheadProcessCpuPct"], 6);
+        Assert.True(double.IsNaN(s["overheadGpuMs"]));                     // the off arm had no ledger to read GPU from
+        Assert.Contains("(+20.0)", Diagnostics.FrameBenchMath.Table([s]));
+        var sum = off.Add(off);
+        Assert.Equal(200, sum.Frames);
+        Assert.Equal(2000, sum.WallMs, 6);
+    }
+
+    [Fact]
+    public void Json_carries_every_metric_the_run_rate_and_nulls_NaN()
+    {
+        var a = Diagnostics.FrameBenchMath.Summarize("home-scroll", Window(), extra: [new("scrollViewports", 12.5)]);
         var b = new Diagnostics.FrameBenchScenarioSummary("lyrics-line", "no line-synced lyrics", []);
         var c = Diagnostics.FrameBenchMath.Summarize("idle", new LedgerSnapshot { QpcFrequency = F, CyclesPerMs = Cpm, OriginQpc = F, EndQpc = 2 * F });
-        string json = Diagnostics.FrameBenchMath.Json("0.3.3", "warm", real: true, 12, 120, "1770x1140", 10, 2, Cpm, new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc), [a, b, c]);
+        string json = Diagnostics.FrameBenchMath.Json("0.3.3", "warm", real: true, 12, 120, "1770x1140", 10, 2, 2_900_000,
+            new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc), [a, b, c], gpuPasses: true);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal("wavee-frame-bench/1", root.GetProperty("schema").GetString());
+        Assert.Equal("wavee-frame-bench/2", root.GetProperty("schema").GetString());
         Assert.Equal("real", root.GetProperty("data").GetString());
         Assert.Equal("warm", root.GetProperty("label").GetString());
+        Assert.True(root.GetProperty("gpuPasses").GetBoolean());
+        Assert.Equal(2_900_000, root.GetProperty("cyclesPerMs").GetDouble());
         var sc = root.GetProperty("scenarios");
         Assert.Equal(3, sc.GetArrayLength());
         Assert.Equal(JsonValueKind.Null, sc[2].GetProperty("metrics").GetProperty("uiCpuMs.p50").ValueKind);
         var metrics = sc[0].GetProperty("metrics");
         Assert.Equal(a.Metrics.Count, metrics.EnumerateObject().Count());
         Assert.Equal(100, metrics.GetProperty("presentsPerSec").GetDouble(), 6);
+        Assert.Equal(12.5, metrics.GetProperty("scrollViewports").GetDouble(), 6);
         Assert.Equal(0, metrics.GetProperty("gpuPass.offscreenMs").GetDouble());
         Assert.Equal("no line-synced lyrics", sc[1].GetProperty("skipped").GetString());
         string table = Diagnostics.FrameBenchMath.Table([a, b]);
         Assert.Contains("home-scroll", table);
         Assert.Contains("lyrics-line       skipped: no line-synced lyrics", table);
-        var o = new Diagnostics.FrameBenchScenarioSummary("ledger-overhead", null,
-            [new("framesPerSec.off", 120), new("framesPerSec.on", 120), new("overheadUiCpuUsPerFrame", 12.5)]);
-        Assert.Contains("(+12.5)", Diagnostics.FrameBenchMath.Table([o]));
     }
 
     [Theory]
     [InlineData("presentsPerSec", 1)]
+    [InlineData("audioPaddingMinMs", 1)]
     [InlineData("frames", 0)]
-    [InlineData("uiCpuMs.p99", -1)]
+    [InlineData("framesPerSec", 0)]
+    [InlineData("exitPerSec.Idle", 0)]
+    [InlineData("wakePerSec.Anim", 0)]
+    [InlineData("uiCpuUsPerFrame.on", 0)]
+    [InlineData("scrollViewports", 0)]
+    [InlineData("paintedCpuMs.p99", -1)]
+    [InlineData("gc0PerSec", -1)]
     [InlineData("gpuBusyPct", -1)]
     public void Metric_direction(string key, int better) => Assert.Equal(better, Diagnostics.FrameBenchMath.Better(key));
 }

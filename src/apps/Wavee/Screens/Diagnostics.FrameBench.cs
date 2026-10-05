@@ -10,14 +10,18 @@
 // and every number in frame-bench-summary.json — the file ops/tools/frame-bench-compare.ps1 diffs before/after.
 // Nothing here starts the engine or touches a file except the profile reads in `Targets.FromProfile` (READ-ONLY).
 //
-// THE SUMMARY'S CPU SPLIT. Every CPU figure is a cycle count from the ledger (QueryThreadCycleTime per thread,
-// QueryProcessCycleTime for the process), converted at the ledger's calibrated cycles-per-ms. Over a window:
+// THE SUMMARY'S CPU. The HEADLINE process figure is `processCpuPct`, from GetProcessTimes (scheduler-tick accounted, exact over
+// a window of seconds, no rate). The split comes from the ledger's cycle counts (QueryThreadCycleTime per thread,
+// QueryProcessCycleTime for the process), every window of a run converted at ONE rate: the run's effective cycles per CPU-ms
+// (Δ process cycles / Δ GetProcessTimes over the whole run). Over a window:
 //   ui     = the UI thread's cumulative cycles across the window (frames AND everything between them),
-//   render = the render thread's cumulative cycles across its turns in the window,
+//   render = the render thread's turn cycles, each turn attributed to the window (and to a frame interval) by its overlap,
 //   other  = process - ui - render (decode, audio, network, the GC, the ledger's own sampler),
-// each as average cores (ms of CPU per ms of wall). Per-frame distributions are per RunFrame (ui), per presented render turn
-// (render) and per UI frame interval (other: the process's cycles between two frame ends minus the UI's and the turns'
-// in the same interval).
+// each as average cores. `uiCoresTimes` / `renderCoresTimes` are the same two threads from GetThreadTimes (no rate) — the
+// cross-check. Per-frame distributions are per RunFrame (ui), per painted RunFrame (painted), per presented render turn
+// (render) and per UI frame interval (other: process − UI − the turns' overlapping share, UNCLAMPED, so its mean stays unbiased;
+// a single interval can read slightly negative where the two counters' read instants skew).
+// Totals (GC, missed vsyncs, underruns) are normalised per second so windows of different lengths compare.
 
 using System.Globalization;
 using System.Text;
@@ -34,20 +38,23 @@ public static partial class Diagnostics
         public const string Idle = "idle", IdlePlaying = "idle-playing", HomeScroll = "home-scroll", NavBurst = "nav-burst",
             PlaylistOpen = "playlist-open", PlaylistScroll = "playlist-scroll", Lyrics = "lyrics", LyricsLine = "lyrics-line",
             StageLyrics = "stage-lyrics", StageVisualizer = "stage-visualizer", TrackChange = "track-change", Video = "video",
-            LedgerOverhead = "ledger-overhead";
+            LedgerOverhead = "ledger-overhead", GpuPassOverhead = "gpu-pass-overhead";
 
-        /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`.</summary>
+        /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`, <see cref="GpuPassOverhead"/> only
+        /// with `--bench-gpu-passes`.</summary>
         public static readonly string[] All =
         [
             Idle, IdlePlaying, HomeScroll, NavBurst, PlaylistOpen, PlaylistScroll, Lyrics, LyricsLine, StageLyrics,
-            StageVisualizer, TrackChange, Video, LedgerOverhead,
+            StageVisualizer, TrackChange, Video, LedgerOverhead, GpuPassOverhead,
         ];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the
-    /// `ProbeOptions` rule). <see cref="Real"/> is EXPLICIT: real data (the profile's account, real playback) is never implied.</summary>
+    /// `ProbeOptions` rule). <see cref="Real"/> is EXPLICIT: real data (the profile's account, real playback) is never implied.
+    /// <see cref="GpuPasses"/> (`--bench-gpu-passes`) turns the pass-granular GPU timeline on for the run (it adds timestamp queries
+    /// at every pass boundary, so it is opt-in, and the run then measures its cost).</summary>
     public readonly record struct FrameBenchOptions(bool Enabled, string[] Scenarios, int MeasureSec, int WarmupSec, bool Real,
-        string Label, IReadOnlyDictionary<string, string> Uris)
+        string Label, IReadOnlyDictionary<string, string> Uris, bool GpuPasses = false)
     {
         public static FrameBenchOptions Parse(string[] args)
         {
@@ -68,7 +75,8 @@ public static partial class Diagnostics
                 if (filter.Length == 0 || Array.IndexOf(filter, s) >= 0) scenarios.Add(s);
             // A filter that named nothing known runs nothing, and says so (the arm reports the unknown names).
             return new FrameBenchOptions(on, scenarios.ToArray(), Int(args, "--bench-sec", 10, 3, 120), Int(args, "--bench-warmup-sec", 2, 0, 30),
-                Array.IndexOf(args, "--bench-real") >= 0, Value(args, "--bench-label") ?? "", ParseUris(Value(args, "--bench-uris")));
+                Array.IndexOf(args, "--bench-real") >= 0, Value(args, "--bench-label") ?? "", ParseUris(Value(args, "--bench-uris")),
+                Array.IndexOf(args, "--bench-gpu-passes") >= 0);
         }
 
         /// <summary>The filter's names that are not scenarios (reported, never silently dropped).</summary>
@@ -83,6 +91,14 @@ public static partial class Diagnostics
             }
             return bad.ToArray();
         }
+
+        /// <summary>Why a real-data run must not start, or null to go: `--bench-real` drives the account of the profile it runs in and
+        /// writes its settings, so it needs `--profile` (an explicit profile root) — never the owner's default profile and registry.</summary>
+        public static string? RealRefusal(bool fake, bool real, string profileRoot)
+            => fake ? null
+             : !real ? "without --fake this would drive the profile's real account. Add --bench-real to mean it, or run with --fake."
+             : profileRoot.Length == 0 ? "--bench-real needs --profile <bench profile>: it plays on that profile's account and sets its settings, never the default profile's."
+             : null;
 
         /// <summary>`--bench-uris key=uri,key=uri`: <c>track</c>, <c>lyrics</c> (word-synced), <c>lyrics-line</c>, <c>album</c>,
         /// <c>playlist</c>, <c>big</c> (the long list to scroll; <c>liked</c> = Liked Songs), <c>artist</c>.</summary>
@@ -192,6 +208,16 @@ public static partial class Diagnostics
         }
     }
 
+    /// <summary>One arm of an off/on overhead A/B (ledger-overhead, gpu-pass-overhead), RAW: the arm's frames, the UI thread's cycles
+    /// and its RunFrame wall time across them, the window's wall time and the process's CPU time (GetProcessTimes) in it, and the
+    /// GPU milliseconds the ledger saw (NaN when the ledger was off).</summary>
+    public readonly record struct OverheadArm(int Frames, ulong UiCycles, double RunFrameWallMs, double WallMs, double ProcessCpuMs, double GpuMsAvg = double.NaN)
+    {
+        public OverheadArm Add(in OverheadArm o) => new(Frames + o.Frames, UiCycles + o.UiCycles, RunFrameWallMs + o.RunFrameWallMs,
+            WallMs + o.WallMs, ProcessCpuMs + o.ProcessCpuMs,
+            double.IsNaN(GpuMsAvg) ? o.GpuMsAvg : double.IsNaN(o.GpuMsAvg) ? GpuMsAvg : (GpuMsAvg + o.GpuMsAvg) / 2);
+    }
+
     /// <summary>The summary maths over one ledger window (pure; FrameBenchTests).</summary>
     public static class FrameBenchMath
     {
@@ -217,11 +243,37 @@ public static partial class Diagnostics
             m.Add(new(name + ".max", max));
         }
 
-        /// <summary>Summarize one window. <paramref name="snap"/> is <c>FrameLedger.Snapshot(mark)</c> taken at the window's end.</summary>
-        public static FrameBenchScenarioSummary Summarize(string name, LedgerSnapshot snap, string? note = null)
+        /// <summary>The share of <paramref name="t"/>'s cycles that falls inside (<paramref name="from"/>, <paramref name="to"/>], by
+        /// time overlap (a zero-length turn counts whole where its end lands).</summary>
+        static double Overlap(in LedgerRenderTurn t, long from, long to)
         {
-            var m = new List<KeyValuePair<string, double>>(96);
+            long s = t.StartQpc, e = t.EndQpc;
+            if (e <= s) return e > from && e <= to ? t.Cycles : 0;
+            long lo = Math.Max(s, from), hi = Math.Min(e, to);
+            return hi > lo ? t.Cycles * (double)(hi - lo) / (e - s) : 0;
+        }
+
+        static readonly string[] s_wakeNames = BuildWakeNames();
+        static string[] BuildWakeNames()
+        {
+            var n = new string[32];
+            foreach (WakeReasons r in Enum.GetValues<WakeReasons>())
+            {
+                uint v = (uint)r;
+                if (v != 0 && (v & (v - 1)) == 0) n[System.Numerics.BitOperations.TrailingZeroCount(v)] = r.ToString();
+            }
+            return n;
+        }
+
+        /// <summary>Summarize one window. <paramref name="snap"/> is <c>FrameLedger.Snapshot(mark)</c> taken at the window's end, read
+        /// at the run's one rate (<c>LedgerSnapshot.WithRate</c>); <paramref name="extra"/> metrics (a scroll distance, a settle
+        /// time) are appended as given.</summary>
+        public static FrameBenchScenarioSummary Summarize(string name, LedgerSnapshot snap, string? note = null,
+            IReadOnlyList<KeyValuePair<string, double>>? extra = null)
+        {
+            var m = new List<KeyValuePair<string, double>>(160);
             double wallMs = snap.WallMs, wallSec = wallMs / 1000.0;
+            double PerSec(double v) => wallSec > 0 ? v / wallSec : double.NaN;
             var ui = snap.Ui;
             var rt = snap.Render;
             m.Add(new("wallSec", wallSec));
@@ -243,23 +295,44 @@ public static partial class Diagnostics
             }
             if (rt.Length == 0 && ui.Length > 1) presents = (int)Math.Max(0, ui[^1].PresentedTotal - ui[0].PresentedTotal);
             m.Add(new("presents", presents));
-            m.Add(new("presentsPerSec", wallSec > 0 ? presents / wallSec : double.NaN));
-            m.Add(new("framesPerSec", wallSec > 0 ? ui.Length / wallSec : double.NaN));
+            m.Add(new("presentsPerSec", PerSec(presents)));
+            m.Add(new("framesPerSec", PerSec(ui.Length)));
+            m.Add(new("paintedFramesPerSec", PerSec(painted)));
             Dist(m, "presentIntervalMs", presentGaps);
+
+            // The census: which gate each RunFrame left by, what woke the frames, what the render turns did.
+            var exits = new int[8];
+            var wakes = new int[32];
+            foreach (var f in ui)
+            {
+                if (f.Exit < exits.Length) exits[f.Exit]++;
+                for (uint w = f.WakeMask; w != 0; w &= w - 1) wakes[System.Numerics.BitOperations.TrailingZeroCount(w)]++;
+            }
+            foreach (LedgerFrameExit e in Enum.GetValues<LedgerFrameExit>()) m.Add(new("exitPerSec." + e, PerSec(exits[(int)e])));
+            for (int b = 0; b < 32; b++) if (wakes[b] > 0 && s_wakeNames[b] is { } wn) m.Add(new("wakePerSec." + wn, PerSec(wakes[b])));
+            var kinds = new int[8];
+            foreach (var t in rt) if (t.Kind < kinds.Length) kinds[t.Kind]++;
+            foreach (LedgerTurnKind k in Enum.GetValues<LedgerTurnKind>()) m.Add(new("turnPerSec." + k, PerSec(kinds[(int)k])));
 
             // Per-frame distributions.
             var uiCpu = new List<double>(ui.Length);
             var uiWall = new List<double>(ui.Length);
-            var uiAlloc = new List<double>(ui.Length);
+            var paintedCpu = new List<double>(painted);
+            var paintedWall = new List<double>(painted);
+            double uiAllocSum = 0, paintedAllocSum = 0;
             foreach (var f in ui)
             {
-                uiCpu.Add(snap.CyclesMs(f.UiCycles));
-                uiWall.Add(snap.SpanMs(f.StartQpc, f.EndQpc));
-                uiAlloc.Add(f.AllocBytes);
+                double cpu = snap.CyclesMs(f.UiCycles), wall = snap.SpanMs(f.StartQpc, f.EndQpc);
+                uiCpu.Add(cpu);
+                uiWall.Add(wall);
+                uiAllocSum += f.AllocBytes;
+                if ((f.Flags & (ushort)LedgerUiFlags.Painted) == 0) continue;
+                paintedCpu.Add(cpu);
+                paintedWall.Add(wall);
+                paintedAllocSum += f.AllocBytes;
             }
-            var paintedWall = new List<double>();
-            foreach (var f in ui) if ((f.Flags & (ushort)LedgerUiFlags.Painted) != 0) paintedWall.Add(snap.SpanMs(f.StartQpc, f.EndQpc));
             Dist(m, "uiCpuMs", uiCpu);
+            Dist(m, "paintedCpuMs", paintedCpu);
             Dist(m, "uiFrameMs", uiWall);
             Dist(m, "paintedFrameMs", paintedWall);
             var rCpu = new List<double>();
@@ -275,8 +348,8 @@ public static partial class Diagnostics
             Dist(m, "renderCpuMs", rCpu);
             Dist(m, "renderTurnMs", rWork);
 
-            // Window CPU split (cumulative counters; see the file header).
-            double uiMs = double.NaN, procMs = double.NaN, renderMs = double.NaN, spanMs = double.NaN;
+            // Window CPU split (cumulative counters; see the file header). Render turns are attributed by overlap.
+            double uiMs = double.NaN, procMs = double.NaN, renderMs = double.NaN, spanMs = double.NaN, uiTimesMs = double.NaN;
             var otherPerFrame = new List<double>();
             if (ui.Length >= 2)
             {
@@ -284,23 +357,22 @@ public static partial class Diagnostics
                 spanMs = snap.SpanMs(s0, s1);
                 if (ui[^1].UiCyclesTotal >= ui[0].UiCyclesTotal && ui[0].UiCyclesTotal != 0) uiMs = snap.CyclesMs(ui[^1].UiCyclesTotal - ui[0].UiCyclesTotal);
                 if (ui[^1].ProcessCyclesTotal >= ui[0].ProcessCyclesTotal && ui[0].ProcessCyclesTotal != 0) procMs = snap.CyclesMs(ui[^1].ProcessCyclesTotal - ui[0].ProcessCyclesTotal);
-                ulong rc = 0;
+                if (ui[0].UiCpuTimeTotal != 0 && ui[^1].UiCpuTimeTotal >= ui[0].UiCpuTimeTotal) uiTimesMs = (ui[^1].UiCpuTimeTotal - ui[0].UiCpuTimeTotal) / 10_000.0;
+                double rc = 0;
                 int j = 0;
-                while (j < rt.Length && rt[j].EndQpc <= s0) j++;
                 for (int i = 1; i < ui.Length; i++)
                 {
-                    ulong inInterval = 0;
-                    while (j < rt.Length && rt[j].EndQpc <= ui[i].EndQpc) { inInterval += rt[j].Cycles; j++; }
+                    long a0 = ui[i - 1].EndQpc, a1 = ui[i].EndQpc;
+                    while (j < rt.Length && rt[j].EndQpc <= a0) j++;
+                    double inInterval = 0;
+                    for (int k = j; k < rt.Length && rt[k].StartQpc < a1; k++) inInterval += Overlap(in rt[k], a0, a1);
                     rc += inInterval;
                     ref readonly var a = ref ui[i - 1];
                     ref readonly var b = ref ui[i];
-                    if (a.ProcessCyclesTotal != 0 && b.ProcessCyclesTotal >= a.ProcessCyclesTotal && b.UiCyclesTotal >= a.UiCyclesTotal)
-                    {
-                        double other = snap.CyclesMs(b.ProcessCyclesTotal - a.ProcessCyclesTotal) - snap.CyclesMs(b.UiCyclesTotal - a.UiCyclesTotal) - snap.CyclesMs(inInterval);
-                        otherPerFrame.Add(Math.Max(0, other));
-                    }
+                    if (a.ProcessCyclesTotal != 0 && b.ProcessCyclesTotal >= a.ProcessCyclesTotal && b.UiCyclesTotal >= a.UiCyclesTotal && snap.CyclesPerMs > 0)
+                        otherPerFrame.Add((b.ProcessCyclesTotal - a.ProcessCyclesTotal - (double)(b.UiCyclesTotal - a.UiCyclesTotal) - inInterval) / snap.CyclesPerMs);
                 }
-                renderMs = snap.CyclesMs(rc);
+                renderMs = snap.CyclesPerMs > 0 ? rc / snap.CyclesPerMs : double.NaN;
             }
             Dist(m, "otherCpuMs", otherPerFrame);
             double Cores(double cpuMs) => spanMs > 0 ? cpuMs / spanMs : double.NaN;
@@ -308,8 +380,15 @@ public static partial class Diagnostics
             m.Add(new("renderCores", Cores(renderMs)));
             m.Add(new("otherCores", Cores(procMs - (double.IsNaN(uiMs) ? 0 : uiMs) - (double.IsNaN(renderMs) ? 0 : renderMs))));
             m.Add(new("processCores", Cores(procMs)));
-            m.Add(new("processCpuPct", spanMs > 0 && snap.Processors > 0 ? procMs / spanMs / snap.Processors * 100.0 : double.NaN));
-            // Cross-check from GetProcessTimes (scheduler-tick sampled; exact over a long window) through the memory stream.
+            m.Add(new("uiCoresTimes", Cores(uiTimesMs)));
+            double renderTimesCores = double.NaN;
+            if (rt.Length >= 2 && rt[0].CpuTimeTotal != 0 && rt[^1].CpuTimeTotal >= rt[0].CpuTimeTotal)
+            {
+                double ms = snap.SpanMs(rt[0].EndQpc, rt[^1].EndQpc);
+                if (ms > 0) renderTimesCores = (rt[^1].CpuTimeTotal - rt[0].CpuTimeTotal) / 10_000.0 / ms;
+            }
+            m.Add(new("renderCoresTimes", renderTimesCores));
+            // The headline process figure, from GetProcessTimes through the memory stream; the cycle figure beside it.
             var mem = snap.Memory;
             double timesPct = double.NaN;
             if (mem.Length >= 2 && mem[^1].ProcessCpuTicksTotal > mem[0].ProcessCpuTicksTotal)
@@ -317,7 +396,9 @@ public static partial class Diagnostics
                 double ms = snap.SpanMs(mem[0].Qpc, mem[^1].Qpc);
                 if (ms > 0) timesPct = (mem[^1].ProcessCpuTicksTotal - mem[0].ProcessCpuTicksTotal) / 10_000.0 / ms / Math.Max(1, snap.Processors) * 100.0;
             }
-            m.Add(new("processCpuPctTimes", timesPct));
+            m.Add(new("processCpuPct", timesPct));
+            m.Add(new("processCpuPctCycles", spanMs > 0 && snap.Processors > 0 ? procMs / spanMs / snap.Processors * 100.0 : double.NaN));
+            m.Add(new("cyclesPerMs.window", snap.EffectiveCyclesPerMs(250)));
 
             // GPU.
             var gpuMs = new List<double>(snap.Gpu.Length);
@@ -336,7 +417,7 @@ public static partial class Diagnostics
             }
             Dist(m, "gpuMs", gpuMs);
             m.Add(new("gpuFrames", snap.Gpu.Length));
-            m.Add(new("gpuMissedSamples", missedSamples));
+            m.Add(new("gpuMissedSamplesPerSec", PerSec(missedSamples)));
             m.Add(new("gpuBusyPct", wallMs > 0 ? gpuSum / wallMs * 100.0 : double.NaN));
             double P(double v) => passFrames > 0 ? v / passFrames : double.NaN;
             m.Add(new("gpuPass.uploadsMs", P(up)));
@@ -348,29 +429,21 @@ public static partial class Diagnostics
             m.Add(new("gpuPass.offscreenMs", P(off)));
             m.Add(new("gpuPass.compositeMs", P(comp)));
 
-            // Allocations and the GC.
-            double uiAllocSum = 0;
-            foreach (double a in uiAlloc) uiAllocSum += a;
+            // Allocations and the GC (per second).
             m.Add(new("uiAllocBytesPerFrame", ui.Length > 0 ? uiAllocSum / ui.Length : double.NaN));
+            m.Add(new("paintedAllocBytesPerFrame", painted > 0 ? paintedAllocSum / painted : double.NaN));
             m.Add(new("renderAllocBytesPerTurn", rt.Length > 0 ? rAlloc / rt.Length : double.NaN));
             m.Add(new("processAllocBytesPerSec", mem.Length >= 2 && snap.SpanMs(mem[0].Qpc, mem[^1].Qpc) > 0
                 ? (mem[^1].TotalAllocatedBytes - mem[0].TotalAllocatedBytes) / (snap.SpanMs(mem[0].Qpc, mem[^1].Qpc) / 1000.0) : double.NaN));
-            if (ui.Length >= 2)
-            {
-                m.Add(new("gc0", ui[^1].Gc0Total - ui[0].Gc0Total));
-                m.Add(new("gc1", ui[^1].Gc1Total - ui[0].Gc1Total));
-                m.Add(new("gc2", ui[^1].Gc2Total - ui[0].Gc2Total));
-                m.Add(new("gcPauseMs", (ui[^1].GcPauseTicksTotal - ui[0].GcPauseTicksTotal) / 10_000.0));
-                m.Add(new("missedVsyncs", ui[^1].MissedVsyncsTotal - ui[0].MissedVsyncsTotal));
-            }
-            else
-            {
-                m.Add(new("gc0", double.NaN)); m.Add(new("gc1", double.NaN)); m.Add(new("gc2", double.NaN));
-                m.Add(new("gcPauseMs", double.NaN)); m.Add(new("missedVsyncs", double.NaN));
-            }
+            bool two = ui.Length >= 2;
+            m.Add(new("gc0PerSec", two ? PerSec(ui[^1].Gc0Total - ui[0].Gc0Total) : double.NaN));
+            m.Add(new("gc1PerSec", two ? PerSec(ui[^1].Gc1Total - ui[0].Gc1Total) : double.NaN));
+            m.Add(new("gc2PerSec", two ? PerSec(ui[^1].Gc2Total - ui[0].Gc2Total) : double.NaN));
+            m.Add(new("gcPauseMsPerSec", two ? PerSec((ui[^1].GcPauseTicksTotal - ui[0].GcPauseTicksTotal) / 10_000.0) : double.NaN));
+            m.Add(new("missedVsyncsPerSec", two ? PerSec(ui[^1].MissedVsyncsTotal - ui[0].MissedVsyncsTotal) : double.NaN));
             long missedTicks = 0;
             foreach (var t in rt) missedTicks += t.MissedTicks;
-            m.Add(new("missedTicks", missedTicks));
+            m.Add(new("missedTicksPerSec", PerSec(missedTicks)));
 
             // Memory (avg + peak, MB).
             void Mem(string key, Func<LedgerMemorySample, long> f)
@@ -389,7 +462,7 @@ public static partial class Diagnostics
             Mem("imageCache", static s => s.ImageCacheBytes);
             Mem("glyphAtlas", static s => s.GlyphAtlasBytes);
 
-            // Audio health (device-side dry edges vs app-side xruns).
+            // Audio health (device underruns vs app-side xruns), per second.
             var au = snap.Audio;
             double padMin = double.NaN;
             foreach (var a in au)
@@ -398,27 +471,57 @@ public static partial class Diagnostics
                     double ms = a.PaddingMinFrames * 1000.0 / a.Rate;
                     padMin = double.IsNaN(padMin) ? ms : Math.Min(padMin, ms);
                 }
-            m.Add(new("audioDeviceDryEdges", au.Length >= 2 ? au[^1].DeviceDryEdgesTotal - au[0].DeviceDryEdgesTotal : double.NaN));
-            m.Add(new("audioXruns", au.Length >= 2 ? au[^1].XrunsTotal - au[0].XrunsTotal : double.NaN));
+            double auSec = au.Length >= 2 ? snap.SpanMs(au[0].Qpc, au[^1].Qpc) / 1000.0 : 0;
+            m.Add(new("audioDeviceUnderrunsPerSec", auSec > 0 ? (au[^1].DeviceUnderrunsTotal - au[0].DeviceUnderrunsTotal) / auSec : double.NaN));
+            m.Add(new("audioXrunsPerSec", auSec > 0 ? (au[^1].XrunsTotal - au[0].XrunsTotal) / auSec : double.NaN));
             m.Add(new("audioPaddingMinMs", padMin));
+            if (extra is not null) m.AddRange(extra);
             return new FrameBenchScenarioSummary(name, null, m, note);
         }
 
-        /// <summary>Metric direction for the compare tool: +1 higher is better, 0 neutral (a count that describes the run, not its
-        /// cost), -1 (the default) lower is better.</summary>
-        public static int Better(string key)
-            => key is "presentsPerSec" or "framesPerSec" or "audioPaddingMinMs" ? +1
-             : key is "wallSec" or "frames" or "paintedFrames" or "presents" or "gpuFrames" ? 0 : -1;
+        /// <summary>An off/on overhead A/B (ledger-overhead, gpu-pass-overhead) from its raw arms, at the run's rate.</summary>
+        public static FrameBenchScenarioSummary Overhead(string name, in OverheadArm off, in OverheadArm on, double cyclesPerMs, int processors, string? note)
+        {
+            double Fps(in OverheadArm a) => a.WallMs > 0 ? a.Frames * 1000.0 / a.WallMs : double.NaN;
+            double UiUs(in OverheadArm a) => a.Frames > 0 && cyclesPerMs > 0 ? a.UiCycles / cyclesPerMs * 1000.0 / a.Frames : double.NaN;
+            double WallUs(in OverheadArm a) => a.Frames > 0 ? a.RunFrameWallMs * 1000.0 / a.Frames : double.NaN;
+            double Pct(in OverheadArm a) => a.WallMs > 0 ? a.ProcessCpuMs / a.WallMs / Math.Max(1, processors) * 100.0 : double.NaN;
+            var m = new List<KeyValuePair<string, double>>
+            {
+                new("framesPerSec.off", Fps(off)), new("framesPerSec.on", Fps(on)),
+                new("uiCpuUsPerFrame.off", UiUs(off)), new("uiCpuUsPerFrame.on", UiUs(on)),
+                new("runFrameWallUs.off", WallUs(off)), new("runFrameWallUs.on", WallUs(on)),
+                new("processCpuPct.off", Pct(off)), new("processCpuPct.on", Pct(on)),
+                new("gpuMs.off", off.GpuMsAvg), new("gpuMs.on", on.GpuMsAvg),
+                new("overheadUiCpuUsPerFrame", UiUs(on) - UiUs(off)),
+                new("overheadRunFrameWallUs", WallUs(on) - WallUs(off)),
+                new("overheadProcessCpuPct", Pct(on) - Pct(off)),
+                new("overheadGpuMs", on.GpuMsAvg - off.GpuMsAvg),
+            };
+            return new FrameBenchScenarioSummary(name, null, m, note);
+        }
 
-        /// <summary>frame-bench-summary.json: schema, run identity, then one object per scenario with its flat metrics (NaN → null).</summary>
+        /// <summary>Metric direction for the compare tool: +1 higher is better, 0 neutral (it describes the run — counts, rates of
+        /// frames, the census, the rate itself, an A/B arm), -1 (the default) lower is better.</summary>
+        public static int Better(string key)
+            => key is "presentsPerSec" or "audioPaddingMinMs" ? +1
+             : key is "wallSec" or "frames" or "paintedFrames" or "presents" or "gpuFrames" or "framesPerSec" or "paintedFramesPerSec"
+                 or "cyclesPerMs.window" or "settleSec" or "scrollViewports" or "scrollSteps"
+               || key.StartsWith("exitPerSec.", StringComparison.Ordinal) || key.StartsWith("wakePerSec.", StringComparison.Ordinal)
+               || key.StartsWith("turnPerSec.", StringComparison.Ordinal)
+               || key.EndsWith(".off", StringComparison.Ordinal) || key.EndsWith(".on", StringComparison.Ordinal) ? 0
+             : -1;
+
+        /// <summary>frame-bench-summary.json: schema, run identity (incl. the ONE cycles-per-ms every window was read at), then one
+        /// object per scenario with its flat metrics (NaN → null).</summary>
         public static string Json(string version, string label, bool real, int processors, int refreshHz, string windowPx, int measureSec,
-            int warmupSec, double cyclesPerMs, DateTime utc, IReadOnlyList<FrameBenchScenarioSummary> scenarios)
+            int warmupSec, double cyclesPerMs, DateTime utc, IReadOnlyList<FrameBenchScenarioSummary> scenarios, bool gpuPasses = false)
         {
             using var ms = new MemoryStream();
             using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
             {
                 w.WriteStartObject();
-                w.WriteString("schema", "wavee-frame-bench/1");
+                w.WriteString("schema", "wavee-frame-bench/2");
                 w.WriteString("version", version);
                 w.WriteString("label", label);
                 w.WriteString("data", real ? "real" : "fake");
@@ -428,6 +531,7 @@ public static partial class Diagnostics
                 w.WriteString("windowPx", windowPx);
                 w.WriteNumber("measureSec", measureSec);
                 w.WriteNumber("warmupSec", warmupSec);
+                w.WriteBoolean("gpuPasses", gpuPasses);
                 Num(w, "cyclesPerMs", cyclesPerMs);
                 w.WriteStartArray("scenarios");
                 foreach (var s in scenarios)
@@ -457,9 +561,9 @@ public static partial class Diagnostics
         public static string Table(IReadOnlyList<FrameBenchScenarioSummary> scenarios)
         {
             var sb = new StringBuilder(256 + scenarios.Count * 200);
-            string H = string.Format(CultureInfo.InvariantCulture,
-                "{0,-17} {1,6} {2,6} {3,6} {4,6} {5,6} {6,6} {7,6} {8,6} {9,6} {10,6} {11,6} {12,6} {13,5} {14,7} {15,6} {16,6} {17,5}",
-                "scenario", "pres/s", "uiP50", "uiP99", "rdP50", "rdP99", "uiC", "rdC", "othC", "proc%", "gpP50", "gpP99", "gpBsy%", "miss", "alloc/f", "wsMB", "vramMB", "gc0");
+            const string Fmt = "{0,-17} {1,6} {2,6} {3,6} {4,6} {5,6} {6,6} {7,6} {8,6} {9,6} {10,6} {11,6} {12,6} {13,6} {14,7} {15,6} {16,6} {17,6}";
+            string H = string.Format(CultureInfo.InvariantCulture, Fmt,
+                "scenario", "pres/s", "pdP50", "pdP99", "rdP50", "rdP99", "uiC", "rdC", "othC", "proc%", "gpP50", "gpP99", "gpBsy%", "miss/s", "alloc/f", "wsMB", "vramMB", "gc0/s");
             sb.AppendLine(H);
             sb.AppendLine(new string('-', H.Length));
             foreach (var s in scenarios)
@@ -468,21 +572,22 @@ public static partial class Diagnostics
                 if (!double.IsNaN(s["overheadUiCpuUsPerFrame"]))
                 {
                     sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                        "{0,-17} ledger off/on: frames/s {1}/{2}  UI CPU per frame {3}/{4} us (+{5})  RunFrame wall {6}/{7} us  process CPU {8}/{9} %",
+                        "{0,-17} off/on: frames/s {1}/{2}  UI CPU per frame {3}/{4} us (+{5})  RunFrame wall {6}/{7} us  process CPU {8}/{9} %  GPU {10}/{11} ms",
                         s.Name, F(s["framesPerSec.off"], "0.0"), F(s["framesPerSec.on"], "0.0"), F(s["uiCpuUsPerFrame.off"], "0"), F(s["uiCpuUsPerFrame.on"], "0"),
                         F(s["overheadUiCpuUsPerFrame"], "0.0"), F(s["runFrameWallUs.off"], "0"), F(s["runFrameWallUs.on"], "0"),
-                        F(s["processCpuPct.off"], "0.00"), F(s["processCpuPct.on"], "0.00")));
+                        F(s["processCpuPct.off"], "0.00"), F(s["processCpuPct.on"], "0.00"), F(s["gpuMs.off"]), F(s["gpuMs.on"])));
+                    if (s.Note is { } on) sb.Append("  ").AppendLine(on);
                     continue;
                 }
-                sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0,-17} {1,6} {2,6} {3,6} {4,6} {5,6} {6,6} {7,6} {8,6} {9,6} {10,6} {11,6} {12,6} {13,5} {14,7} {15,6} {16,6} {17,5}",
-                    s.Name, F(s["presentsPerSec"], "0.0"), F(s["uiCpuMs.p50"]), F(s["uiCpuMs.p99"]), F(s["renderCpuMs.p50"]), F(s["renderCpuMs.p99"]),
+                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, Fmt,
+                    s.Name, F(s["presentsPerSec"], "0.0"), F(s["paintedCpuMs.p50"]), F(s["paintedCpuMs.p99"]), F(s["renderCpuMs.p50"]), F(s["renderCpuMs.p99"]),
                     F(s["uiCores"]), F(s["renderCores"]), F(s["otherCores"]), F(s["processCpuPct"], "0.0"), F(s["gpuMs.p50"]), F(s["gpuMs.p99"]),
-                    F(s["gpuBusyPct"], "0.0"), F(s["missedVsyncs"], "0"), F(s["uiAllocBytesPerFrame"], "0"), F(s["workingSetMB.avg"], "0"),
-                    F(s["vramLocalMB.avg"], "0"), F(s["gc0"], "0")));
+                    F(s["gpuBusyPct"], "0.0"), F(s["missedVsyncsPerSec"], "0.0"), F(s["uiAllocBytesPerFrame"], "0"), F(s["workingSetMB.avg"], "0"),
+                    F(s["vramLocalMB.avg"], "0"), F(s["gc0PerSec"], "0.0")));
                 if (s.Note is { } note) sb.Append("  ").AppendLine(note);
             }
-            sb.AppendLine("(ui/rd = UI-thread / render-thread CPU ms per frame / presented turn; C = average cores; gp = GPU ms per frame; miss = missed vsyncs)");
+            sb.AppendLine("(pd/rd = UI CPU ms per painted frame / render CPU ms per presented turn; C = average cores; proc% = GetProcessTimes;");
+            sb.AppendLine(" gp = GPU ms per frame; miss/s = missed vsyncs per second)");
             return sb.ToString();
         }
 

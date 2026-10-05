@@ -8,15 +8,18 @@
 //   Wavee.exe --fake --profile <scratch dir> --frame-bench[=a,b] [--bench-sec 10] [--bench-warmup-sec 2] --probe-out <dir>
 // Real data (the profile's own account, CDN images and audio, real lyrics; takes over that account's playback):
 //   Wavee.exe --profile <bench profile> --frame-bench --bench-real [--bench-uris k=uri,...] [--bench-label cold|warm] --probe-out <dir>
-// Real data is never implied: without `--fake` the arm refuses to run unless `--bench-real` is on the line.
+// Real data is never implied: without `--fake` the arm refuses unless `--bench-real` is on the line, and `--bench-real` refuses
+// unless `--profile` is too (it plays on that profile's account and sets that profile's settings, restored at the end).
 //
 // The loop is FluentApp's own (RunFrame, TickDetachedHosts, WaitRequestWithDetached → WaitForWork → NoteLoopWait), with the
 // wait's timeout capped only so a scenario's next action and its window end land on time — vsync, the latency waitable and
 // the compositor tick pace every frame exactly as in a normal run. Each scenario: set up, a warm-up window, then a measured
-// window (FrameLedger.Mark → Snapshot) whose four streams land as `<scenario>-{ui,render,gpu,memory,audio}.csv` + a binary
-// `<scenario>.fgl`, and whose summary (Diagnostics.FrameBench.cs, pure) joins `frame-bench-summary.json` and the stdout
-// table. Pass-granular GPU timing is on for the run (it adds a few timestamp queries per frame). The window is made topmost:
-// a covered window stands its presents down, and a bench launched from a terminal opens behind it.
+// window (FrameLedger.Mark → Snapshot). The snapshots are kept until the run ends, then every window is read at ONE cycle rate
+// (the run's effective rate, Δ process cycles / Δ GetProcessTimes over the whole run) — so windows and runs compare on one
+// scale — and written as `<scenario>-{ui,render,gpu,memory,audio}.csv` + a binary `<scenario>.fgl`, with the summary
+// (Diagnostics.FrameBench.cs, pure) in `frame-bench-summary.json` and the stdout table. Pass-granular GPU timing is opt-in
+// (`--bench-gpu-passes`: it adds timestamp queries at every pass boundary) and then measures its own cost (gpu-pass-overhead).
+// The window is made topmost: a covered window stands its presents down, and a bench launched from a terminal opens behind it.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -38,8 +41,8 @@ public static partial class Diagnostics
     {
         static FrameBenchOptions s_frameBench;
 
-        /// <summary>A scenario's action clock: <see cref="Step"/> runs when the loop reaches <see cref="Next"/> (seconds since the
-        /// scenario began, warm-up included) and returns when it wants to run again.</summary>
+        /// <summary>A scenario's action clock: the step runs when the loop reaches <see cref="Next"/> (seconds since the scenario
+        /// began, warm-up included) and returns when it wants to run again.</summary>
         sealed class Driver(Func<double, double> step)
         {
             public double Next;
@@ -48,17 +51,17 @@ public static partial class Diagnostics
             public void Run() { if (Now >= Next) Next = step(Now); }
         }
 
+        /// <summary>A scenario's outcome before the run's rate is known: a skip, a measured window (its snapshot), or an off/on A/B.</summary>
+        sealed record Pending(string Name, string? Skipped = null, LedgerSnapshot? Snap = null, string? Note = null,
+            List<KeyValuePair<string, double>>? Extra = null, OverheadArm Off = default, OverheadArm On = default, bool AB = false);
+
         static bool TryFrameBench(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
             var o = s_frameBench;
             if (!o.Enabled) return false;
             if (window is not Win32Window w || device is not D3D12Device) { Say("[frame-bench] unavailable: requires Win32Window + D3D12Device"); return true; }
             bool fake = Platform.Args.Fake;
-            if (!fake && !o.Real)
-            {
-                Say("[frame-bench] refusing: without --fake this would drive the profile's real account. Add --bench-real to mean it, or run with --fake.");
-                return true;
-            }
+            if (FrameBenchOptions.RealRefusal(fake, o.Real, Platform.ProfileRoot) is { } refusal) { Say("[frame-bench] refusing: " + refusal); return true; }
             foreach (string bad in FrameBenchOptions.UnknownNames(Environment.GetCommandLineArgs()))
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
@@ -66,11 +69,13 @@ public static partial class Diagnostics
             SetWindowPos(w.Handle.Value, -1 /*HWND_TOPMOST*/, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /*NOSIZE|NOMOVE|NOACTIVATE*/);
             if (!PumpUntil(host, w, static () => NavigationFrameWatch.NavigationId > 0, 20)) { Say("[frame-bench] the shell never activated a route"); return true; }
             bool real = !fake;
+            int quality = Platform.Settings.Get(Platform.Keys.PlaybackQuality);
+            bool aiLyrics = Platform.Settings.Get(Platform.Keys.AiLyricsEnabled);
             if (real)
             {
-                Say("[frame-bench] REAL data: waiting for the profile's session to come online");
+                Say("[frame-bench] REAL data (profile " + Platform.ProfileRoot + "): waiting for its session to come online");
                 if (!PumpUntil(host, w, static () => Spotify.Current.IsOnline, 60)) { Say("[frame-bench] the session never came online (is the profile signed in?)"); return true; }
-                // A --profile run's settings live in the profile, not the owner's: set what the owner actually runs with.
+                // A --profile run's settings live in the profile, not the owner's: set what the owner actually runs with (restored below).
                 Platform.Settings.Set(Platform.Keys.PlaybackQuality, Platform.Network.QualityMax);   // lossless (FLAC)
                 Prefs.AiLyrics.Set(Platform.Keys.AiLyricsEnabled, true);
             }
@@ -79,11 +84,12 @@ public static partial class Diagnostics
                 + " playlists=" + targets.Playlists.Length + " artists=" + targets.Artists.Length + " big=" + (targets.Big ?? "-"));
 
             bool passTiming = host.GpuPassTimingEnabled;
-            host.GpuPassTimingEnabled = true;
+            host.GpuPassTimingEnabled = o.GpuPasses;
             FrameLedger.Enable();
             FrameLedger.Attach(host);
+            var runMark = FrameLedger.Mark();
             int stageMode = Prefs.Stage.Mode();
-            var results = new List<FrameBenchScenarioSummary>(o.Scenarios.Length);
+            var pending = new List<Pending>(o.Scenarios.Length);
             string dir = OutDir();
             try
             {
@@ -95,33 +101,60 @@ public static partial class Diagnostics
                 {
                     if (w.IsClosed) break;
                     Say("[frame-bench] " + name + " ...");
-                    var r = RunScenario(name, host, w, o, targets, play, word, line, dir);
-                    results.Add(r);
-                    Say("[frame-bench] " + name + (r.Skipped is { } why ? " skipped: " + why
-                        : string.Format(CultureInfo.InvariantCulture, " presents/s={0:0.0} uiP50={1:0.00}ms gpuP50={2:0.00}ms", r["presentsPerSec"], r["uiCpuMs.p50"], r["gpuMs.p50"])));
+                    var p = RunScenario(name, host, w, o, targets, play, word, line);
+                    pending.Add(p);
+                    Say("[frame-bench] " + name + (p.Skipped is { } why ? " skipped: " + why : " done") + (p.Note is { } n ? " (" + n + ")" : ""));
                 }
             }
             finally
             {
-                // Leave the account and the app as the run found them: nothing playing, no stage, no rail.
+                // Leave the account and the app as the run found them: nothing playing, no stage, no rail, the profile's settings back.
                 Playback.Stop();
                 if (Shell.Ui.ImmersiveLyrics.Peek()) Stage.Close(null, "bench");
                 Shell.Ui.RailOpen.Value = false;
                 Prefs.Stage.SetMode(stageMode);
+                if (real)
+                {
+                    Platform.Settings.Set(Platform.Keys.PlaybackQuality, quality);
+                    Prefs.AiLyrics.Set(Platform.Keys.AiLyricsEnabled, aiLyrics);
+                }
                 Pump(host, w, 1.0, null);
                 host.GpuPassTimingEnabled = passTiming;
-                FrameLedger.Disable();
+            }
+
+            // ONE rate for the whole run (see the file header), then every window is read, written and summarized at it.
+            var whole = FrameLedger.Snapshot(runMark);
+            FrameLedger.Disable();
+            double rate = FrameLedger.RateBetween(whole.Memory, 1000);
+            if (!double.IsFinite(rate)) rate = whole.CyclesPerMs;
+            var results = new List<FrameBenchScenarioSummary>(pending.Count);
+            foreach (var p in pending)
+            {
+                if (p.Skipped is { } why) { results.Add(new FrameBenchScenarioSummary(p.Name, why, [])); continue; }
+                if (p.AB) { results.Add(FrameBenchMath.Overhead(p.Name, p.Off, p.On, rate, Environment.ProcessorCount, p.Note)); continue; }
+                var snap = p.Snap!.WithRate(rate);
+                try
+                {
+                    snap.WriteCsv(dir, p.Name);
+                    snap.WriteFile(Path.Combine(dir, p.Name + ".fgl"));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn("probe", "[frame-bench] could not write " + p.Name + "'s ledger", ex);
+                }
+                results.Add(FrameBenchMath.Summarize(p.Name, snap, p.Note, p.Extra));
             }
 
             var size = w.ClientSizePx;
             string json = FrameBenchMath.Json(VersionLabel(), o.Label, real, Environment.ProcessorCount, w.CurrentRefreshHz(),
                 ((int)size.Width).ToString(CultureInfo.InvariantCulture) + "x" + ((int)size.Height).ToString(CultureInfo.InvariantCulture),
-                o.MeasureSec, o.WarmupSec, FrameLedger.CyclesPerMs, DateTime.UtcNow, results);
+                o.MeasureSec, o.WarmupSec, rate, DateTime.UtcNow, results, o.GpuPasses);
             WriteArtifact(dir, "frame-bench-summary.json", json);
             var report = new StringBuilder(4096).AppendLine()
                 .AppendLine("=== WAVEE FRAME BENCH (" + (real ? "real data" : "--fake") + (o.Label.Length > 0 ? ", " + o.Label : "") + ") ===")
                 .AppendLine("version=" + VersionLabel() + "  processors=" + Environment.ProcessorCount + "  panel=" + w.CurrentRefreshHz() + "Hz  window="
-                    + (int)size.Width + "x" + (int)size.Height + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s")
+                    + (int)size.Width + "x" + (int)size.Height + "  measure=" + o.MeasureSec + "s warmup=" + o.WarmupSec + "s  gpuPasses=" + (o.GpuPasses ? "on" : "off")
+                    + "  cyclesPerMs=" + rate.ToString("0", CultureInfo.InvariantCulture))
                 .AppendLine("output=" + Path.GetFullPath(dir)).AppendLine()
                 .Append(FrameBenchMath.Table(results)).ToString();
             WriteArtifact(dir, "frame-bench-summary.txt", report);
@@ -163,8 +196,8 @@ public static partial class Diagnostics
             return (word, line);
         }
 
-        static FrameBenchScenarioSummary RunScenario(string name, AppHost host, Win32Window w, FrameBenchOptions o, FrameBenchTargets t,
-            string? play, string? word, string? line, string dir)
+        static Pending RunScenario(string name, AppHost host, Win32Window w, FrameBenchOptions o, FrameBenchTargets t,
+            string? play, string? word, string? line)
         {
             var home = new Shell.Route(Shell.RouteKind.Home);
             void Settle(double s) => Pump(host, w, s, null);
@@ -181,21 +214,30 @@ public static partial class Diagnostics
                 PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20);
                 Settle(0.5);
             }
-            FrameBenchScenarioSummary Skip(string why) => new(name, why, []);
-            FrameBenchScenarioSummary Measure(Driver? d, string? note = null) => MeasureWindow(name, host, w, o, d, dir, note);
+            Pending Skip(string why) => new(name, why);
+            Pending Measure(Driver? d, string? note = null, ScrollState? scroll = null, List<KeyValuePair<string, double>>? extra = null)
+                => MeasureWindow(name, host, w, o, d, note, scroll, extra);
 
             switch (name)
             {
                 case FrameBenchScenarios.Idle:
+                {
                     Base(playing: false);
-                    return Measure(null);
+                    // Idle means quiet: let image loads, model loads and the post-navigation settle finish (≤ 20 s) before the window.
+                    double settled = SettleQuiet(host, w, 20);
+                    return Measure(null, "settled after " + settled.ToString("0.0", CultureInfo.InvariantCulture) + " s", extra: [new("settleSec", settled)]);
+                }
                 case FrameBenchScenarios.IdlePlaying:
                     if (play is null) return Skip("no track to play");
                     Base(playing: true);
                     return Measure(null, "track=" + play);
                 case FrameBenchScenarios.HomeScroll:
+                {
                     Base(playing: play is not null);
-                    return Measure(ScrollSweeps(host, depthViewports: 8));
+                    var s = new ScrollState(depthViewports: 8);
+                    if (!s.WaitReady(host, w, 20)) return Skip("no scrollable page on Home after 20 s (" + s.Describe(host) + ")");
+                    return Measure(s.Driver(host), "viewport=" + s.Key, s);
+                }
                 case FrameBenchScenarios.NavBurst:
                 {
                     Base(playing: play is not null);
@@ -223,8 +265,9 @@ public static partial class Diagnostics
                     Base(playing: play is not null);
                     string big = t.Big ?? (t.Playlists.Length > 0 ? t.Playlists[0] : "liked");
                     Nav(big == "liked" ? new Shell.Route(Shell.RouteKind.Liked) : Shell.For(EntityUri.Parse(big), "Bench list"));
-                    Settle(2.0);
-                    return Measure(ScrollSweeps(host, depthViewports: 30), "list=" + big);
+                    var s = new ScrollState(depthViewports: 30);
+                    if (!s.WaitReady(host, w, 30)) return Skip("list " + big + " never became scrollable in 30 s (" + s.Describe(host) + ")");
+                    return Measure(s.Driver(host), "list=" + big + " viewport=" + s.Key, s);
                 }
                 case FrameBenchScenarios.Lyrics:
                 case FrameBenchScenarios.LyricsLine:
@@ -285,76 +328,164 @@ public static partial class Diagnostics
                     }
                 case FrameBenchScenarios.LedgerOverhead:
                     if (play is null) return Skip("no track to play");
-                    return LedgerOverhead(host, w, o, play);
+                    return OffOn(name, host, w, o, play, "ledger off vs on, stage-visualizer", restore: true,
+                        set: on => { if (on) { FrameLedger.Enable(); FrameLedger.Attach(host); } else FrameLedger.Disable(); });
+                case FrameBenchScenarios.GpuPassOverhead:
+                    if (!o.GpuPasses) return Skip("needs --bench-gpu-passes");
+                    if (play is null) return Skip("no track to play");
+                    return OffOn(name, host, w, o, play, "GPU pass timing off vs on, stage-visualizer", restore: true,
+                        set: on => host.GpuPassTimingEnabled = on);
                 default:
                     return Skip("unknown scenario");
             }
         }
 
-        /// <summary>Warm-up, then the measured window: its ledger snapshot becomes the scenario's CSVs, binary dump and summary.</summary>
-        static FrameBenchScenarioSummary MeasureWindow(string name, AppHost host, Win32Window w, FrameBenchOptions o, Driver? d, string dir, string? note)
+        /// <summary>Warm-up, then the measured window: its ledger snapshot (read at the run's rate when the run ends).</summary>
+        static Pending MeasureWindow(string name, AppHost host, Win32Window w, FrameBenchOptions o, Driver? d, string? note, ScrollState? scroll,
+            List<KeyValuePair<string, double>>? extra)
         {
             Pump(host, w, o.WarmupSec, d);
+            scroll?.Restart(host);
             var mark = FrameLedger.Mark();
             Pump(host, w, o.MeasureSec, d);
             var snap = FrameLedger.Snapshot(mark);
-            try
+            if (scroll is not null)
             {
-                snap.WriteCsv(dir, name);
-                snap.WriteFile(Path.Combine(dir, name + ".fgl"));
+                scroll.Observe(host);
+                extra ??= [];
+                extra.Add(new("scrollViewports", scroll.DistanceViewports));
+                extra.Add(new("scrollSteps", scroll.Steps));
+                note = (note is null ? "" : note + " ") + "scrolled " + scroll.DistanceViewports.ToString("0.0", CultureInfo.InvariantCulture) + " viewports in " + scroll.Steps + " steps";
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Log.Warn("probe", "[frame-bench] could not write " + name + "'s ledger", ex);
-            }
-            return FrameBenchMath.Summarize(name, snap, note);
+            return new Pending(name, Snap: snap, Note: note, Extra: extra);
         }
 
-        /// <summary>Programmatic glide sweeps over the largest vertical viewport on screen (the page): down in steps of 85 % of a
-        /// viewport to <paramref name="depthViewports"/> viewports deep (or the end), then back up, a step every 0.55 s.</summary>
-        static Driver ScrollSweeps(AppHost host, int depthViewports)
+        /// <summary>Pump until the loop has gone quiet — two consecutive seconds with at most 2 presents each — or <paramref name="maxSec"/>.
+        /// Returns the seconds it took.</summary>
+        static double SettleQuiet(AppHost host, Win32Window w, double maxSec)
         {
-            int dir = 1;
-            var vps = new List<ViewportInfo>();
-            return new Driver(now =>
+            var sw = Stopwatch.StartNew();
+            int quiet = 0;
+            while (!w.IsClosed && sw.Elapsed.TotalSeconds < maxSec && quiet < 2)
             {
-                vps.Clear();
-                host.CopyViewports(vps);
-                ViewportInfo best = default;
-                double area = 0;
-                foreach (var v in vps)
-                    if (!v.Horizontal && v.Extent > v.Viewport + 1 && v.W * v.H > area) { area = v.W * v.H; best = v; }
-                if (area <= 0 || host.TryGetScrollHandle(host.Scene.HandleAt(best.NodeIndex)) is not { } handle) return now + 0.5;
-                double max = Math.Min(best.Extent - best.Viewport, best.Viewport * depthViewports);
-                double to = best.Offset + dir * best.Viewport * 0.85;
-                if (to >= max) { to = max; dir = -1; }
-                else if (to <= 0) { to = 0; dir = 1; }
+                ulong p0 = host.PresentedSequence;
+                Pump(host, w, 1.0, null);
+                quiet = host.PresentedSequence - p0 <= 2 ? quiet + 1 : 0;
+            }
+            return sw.Elapsed.TotalSeconds;
+        }
+
+        /// <summary>The page scroller a scroll scenario drives: among the vertical viewports at least 30 % the area of the largest, the one
+        /// with the longest content that is at least three viewports long and has a handle (on a list page that is the list, never the
+        /// sidebar). Glide steps of 85 % of a viewport every 0.55 s, down to <c>depthViewports</c> viewports deep (or the end) and back;
+        /// the distance it actually covered is measured off the viewport's own offset.</summary>
+        sealed class ScrollState(int depthViewports)
+        {
+            readonly List<ViewportInfo> _vps = new();
+            int _node = -1;
+            uint _gen;
+            double _lastOffset, _viewport = 1;
+            int _dir = 1;
+            public string Key = "";
+            public double Distance;
+            public int Steps;
+            public double DistanceViewports => _viewport > 0 ? Distance / _viewport : 0;
+
+            ViewportInfo? Find(AppHost host, double minRatio)
+            {
+                _vps.Clear();
+                host.CopyViewports(_vps);
+                double maxArea = 0;
+                foreach (var v in _vps) if (!v.Horizontal) maxArea = Math.Max(maxArea, v.W * v.H);
+                ViewportInfo? best = null;
+                foreach (var v in _vps)
+                {
+                    if (v.Horizontal || v.Viewport <= 0 || v.W * v.H < 0.3 * maxArea || v.Extent < v.Viewport * minRatio) continue;
+                    if (host.TryGetScrollHandle(host.Scene.HandleAt(v.NodeIndex)) is null) continue;
+                    if (best is null || v.Extent > best.Value.Extent) best = v;
+                }
+                return best;
+            }
+
+            public bool WaitReady(AppHost host, Win32Window w, double maxSec)
+                => PumpUntil(host, w, () => Find(host, 3.0) is not null, maxSec);
+
+            public string Describe(AppHost host)
+            {
+                _vps.Clear();
+                host.CopyViewports(_vps);
+                var sb = new StringBuilder();
+                foreach (var v in _vps)
+                    if (!v.Horizontal) sb.Append(v.ScrollKey ?? "?").Append(' ').Append(v.Extent.ToString("0", CultureInfo.InvariantCulture)).Append('/')
+                        .Append(v.Viewport.ToString("0", CultureInfo.InvariantCulture)).Append("; ");
+                return sb.Length > 0 ? sb.ToString() : "no vertical viewport";
+            }
+
+            ViewportInfo? Current(AppHost host)
+            {
+                _vps.Clear();
+                host.CopyViewports(_vps);
+                foreach (var v in _vps) if (v.NodeIndex == _node && v.Gen == _gen) return v;
+                return null;
+            }
+
+            /// <summary>The measured window starts: distance from here.</summary>
+            public void Restart(AppHost host)
+            {
+                Distance = 0;
+                Steps = 0;
+                if (Current(host) is { } v) _lastOffset = v.Offset;
+            }
+
+            /// <summary>Fold the viewport's movement since the last look into the distance.</summary>
+            public void Observe(AppHost host)
+            {
+                if (Current(host) is not { } v) return;
+                Distance += Math.Abs(v.Offset - _lastOffset);
+                _lastOffset = v.Offset;
+            }
+
+            public Driver Driver(AppHost host) => new(now =>
+            {
+                ViewportInfo v;
+                if (Current(host) is { } cur) { v = cur; Observe(host); }
+                else if (Find(host, 1.5) is { } found)
+                {
+                    v = found;
+                    _node = v.NodeIndex; _gen = v.Gen; Key = v.ScrollKey ?? "?"; _viewport = v.Viewport; _lastOffset = v.Offset;
+                }
+                else return now + 0.25;
+                if (host.TryGetScrollHandle(host.Scene.HandleAt(v.NodeIndex)) is not { } handle) return now + 0.25;
+                double max = Math.Min(v.Extent - v.Viewport, v.Viewport * depthViewports);
+                double to = v.Offset + _dir * v.Viewport * 0.85;
+                if (to >= max) { to = max; _dir = -1; }
+                else if (to <= 0) { to = 0; _dir = 1; }
                 handle.ScrollTo(to, ScrollMove.Glide);
+                Steps++;
                 return now + 0.55;
             });
         }
 
-        /// <summary>The ledger's own cost: the steady fullscreen visualizer (a frame every vblank, the same work every frame) in
-        /// alternating windows with the ledger OFF and ON, measured around the loop itself — the UI thread's cycles per frame
-        /// and the process's CPU (GetProcessTimes) — so the ON figure includes everything the ledger does.</summary>
-        static FrameBenchScenarioSummary LedgerOverhead(AppHost host, Win32Window w, FrameBenchOptions o, string play)
+        /// <summary>An off/on A/B over the steady fullscreen visualizer (a frame every vblank, the same work every frame): four
+        /// alternating windows, measured around the loop itself — the UI thread's cycles and RunFrame wall per frame, the process's
+        /// CPU (GetProcessTimes) and, while the ledger records, the GPU ms per frame. The switch ends at <paramref name="restore"/>, the ledger on.</summary>
+        static Pending OffOn(string name, AppHost host, Win32Window w, FrameBenchOptions o, string play, string note, bool restore, Action<bool> set)
         {
-            var home = new Shell.Route(Shell.RouteKind.Home);
             Shell.Ui.RailOpen.Value = false;
-            Nav(home);
-            var snap0 = Playback.Snap();
-            if (!snap0.IsPlaying) { Playback.PlayContext(play); PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20); }
+            Nav(new Shell.Route(Shell.RouteKind.Home));
+            if (!Playback.Snap().IsPlaying) { Playback.PlayContext(play); PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20); }
             Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
             Stage.Open(null, "bench");
             Pump(host, w, 2.0, null);
             double sec = Math.Max(3, o.MeasureSec / 2.0);
-            double[] uiUs = new double[2], frames = new double[2], procPct = new double[2], uiFrameUs = new double[2];
+            OverheadArm off = default, on = default;
             using var proc = Process.GetCurrentProcess();
             for (int round = 0; round < 4; round++)
             {
-                int on = round & 1;
-                if (on == 1) { FrameLedger.Enable(); FrameLedger.Attach(host); } else FrameLedger.Disable();
+                bool arm = (round & 1) == 1;
+                set(arm);
                 Pump(host, w, 0.5, null);
+                var mark = FrameLedger.Enabled ? FrameLedger.Mark() : default;
                 proc.Refresh();
                 TimeSpan cpu0 = proc.TotalProcessorTime;
                 ulong c0 = ThreadCycles.Read();
@@ -363,27 +494,21 @@ public static partial class Diagnostics
                 ulong c1 = ThreadCycles.Read();
                 double wallMs = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
                 proc.Refresh();
-                double cpuMs = (proc.TotalProcessorTime - cpu0).TotalMilliseconds;
-                double rate = FrameLedger.CyclesPerMs;
-                uiUs[on] += rate > 0 && c1 > c0 ? (c1 - c0) / rate * 1000.0 : double.NaN;
-                frames[on] += n;
-                uiFrameUs[on] += frameWallUs;
-                procPct[on] += cpuMs / wallMs / Environment.ProcessorCount * 100.0 / 2.0;   // two windows per arm: the mean
+                double gpu = double.NaN;
+                if (FrameLedger.Enabled)
+                {
+                    var g = FrameLedger.Snapshot(mark).Gpu;
+                    double s = 0;
+                    foreach (var x in g) s += x.GpuMs;
+                    if (g.Length > 0) gpu = s / g.Length;
+                }
+                var a = new OverheadArm(n, c1 > c0 ? c1 - c0 : 0, frameWallUs / 1000.0, wallMs, (proc.TotalProcessorTime - cpu0).TotalMilliseconds, gpu);
+                if (arm) on = on.Frames == 0 ? a : on.Add(a); else off = off.Frames == 0 ? a : off.Add(a);
             }
-            FrameLedger.Enable();
-            FrameLedger.Attach(host);
+            set(restore);
+            if (!FrameLedger.Enabled) { FrameLedger.Enable(); FrameLedger.Attach(host); }
             Stage.Close(null, "bench");
-            var m = new List<KeyValuePair<string, double>>
-            {
-                new("framesPerSec.off", frames[0] / (2 * sec)), new("framesPerSec.on", frames[1] / (2 * sec)),
-                new("uiCpuUsPerFrame.off", uiUs[0] / Math.Max(1, frames[0])), new("uiCpuUsPerFrame.on", uiUs[1] / Math.Max(1, frames[1])),
-                new("runFrameWallUs.off", uiFrameUs[0] / Math.Max(1, frames[0])), new("runFrameWallUs.on", uiFrameUs[1] / Math.Max(1, frames[1])),
-                new("processCpuPct.off", procPct[0]), new("processCpuPct.on", procPct[1]),
-            };
-            m.Add(new("overheadUiCpuUsPerFrame", m[3].Value - m[2].Value));
-            m.Add(new("overheadRunFrameWallUs", m[5].Value - m[4].Value));
-            m.Add(new("overheadProcessCpuPct", procPct[1] - procPct[0]));
-            return new FrameBenchScenarioSummary(FrameBenchScenarios.LedgerOverhead, null, m, "stage-visualizer, " + 2 * sec + " s off vs on");
+            return new Pending(name, Note: note + ", 2 x " + sec.ToString("0.#", CultureInfo.InvariantCulture) + " s per arm", Off: off, On: on, AB: true);
         }
 
         /// <summary>FluentApp's loop for <paramref name="seconds"/> of wall time (the wait capped to the window's end and the driver's
@@ -405,13 +530,14 @@ public static partial class Diagnostics
                 host.TickDetachedHosts();
                 n++;
                 var wait = host.WaitRequestWithDetached();
+                int asked = wait.TimeoutMs;
                 double untilSec = seconds - Elapsed();
                 if (d is not null) untilSec = Math.Min(untilSec, d.Next - d.Now);
                 int cap = Math.Max(0, (int)Math.Ceiling(untilSec * 1000.0));
-                wait = wait with { TimeoutMs = wait.TimeoutMs < 0 ? cap : Math.Min(cap, wait.TimeoutMs) };
+                wait = wait with { TimeoutMs = asked < 0 ? cap : Math.Min(cap, asked) };
                 long ws = Stopwatch.GetTimestamp();
                 w.WaitForWork(in wait);
-                host.NoteLoopWait(ws, Stopwatch.GetTimestamp(), wait.TimeoutMs);
+                host.NoteLoopWait(ws, Stopwatch.GetTimestamp(), asked);   // the loop's own request, not the bench's cap
             }
             runFrameWallUs = frameTicks * 1_000_000.0 / Stopwatch.Frequency;
             return n;
