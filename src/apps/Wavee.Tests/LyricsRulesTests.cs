@@ -921,26 +921,6 @@ public class LyricsMotionDemandTests
     }
 }
 
-public class LyricsStepCadenceTests
-{
-    [Theory]
-    [InlineData(false, false, true, false)]   // the immersive stage on a strong GPU in the foreground: full cadence
-    [InlineData(true, false, true, true)]     // weak GPU
-    [InlineData(false, true, true, true)]     // the side rail
-    [InlineData(false, false, false, true)]   // a window that is not the foreground one (the pop-out has focus)
-    public void The_stepper_drops_to_the_reduced_cadence_where_a_present_costs_most_or_is_seen_least(
-        bool weakGpu, bool sideRail, bool focused, bool reduced)
-        => Assert.Equal(reduced ? Lyrics.StepCadence.ReducedMs : Lyrics.StepCadence.FullMs,
-            Lyrics.StepCadence.PeriodMs(weakGpu, sideRail, focused));
-
-    [Fact]
-    public void The_full_cadence_is_below_a_120_Hz_panels_rate_and_above_the_reduced_one()
-    {
-        Assert.True(Lyrics.StepCadence.FullMs > 1000f / 120f);
-        Assert.True(Lyrics.StepCadence.ReducedMs > Lyrics.StepCadence.FullMs);
-    }
-}
-
 public class LyricsAuthorityTests
 {
     [Fact]

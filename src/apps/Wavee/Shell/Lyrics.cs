@@ -1158,22 +1158,6 @@ public static partial class Lyrics
         }
     }
 
-    /// <summary>The cadence the frame stepper steps at (F237). The stepper used to subscribe the frame clock, i.e. ask the
-    /// host for EVERY vblank — ~115 steps and presents a second on a 120 Hz panel. A wipe moves ~1.7 px per frame at that
-    /// rate, so 60 Hz loses nothing visible; the side rail, a weak GPU and a window that is not the foreground one get
-    /// 30 Hz, where each present costs the most or is seen the least.</summary>
-    public static class StepCadence
-    {
-        public const float FullMs = 1000f / 60f;
-        public const float ReducedMs = 1000f / 30f;
-
-        /// <param name="weakGpu"><c>GpuProfile.IsWeak</c>.</param>
-        /// <param name="sideRail">The surface is the narrow side rail (or a transcript pane), not the immersive stage.</param>
-        /// <param name="windowFocused">The window is the foreground one (alt-tab / the pop-out having focus clears it).</param>
-        public static float PeriodMs(bool weakGpu, bool sideRail, bool windowFocused)
-            => weakGpu || sideRail || !windowFocused ? ReducedMs : FullMs;
-    }
-
     // ── 11. the upgrade authority ───────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Whether a document that arrived LATER is worth taking. The aggregator publishes a fast line-synced

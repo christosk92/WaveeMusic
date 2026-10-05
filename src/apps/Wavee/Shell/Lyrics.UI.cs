@@ -18,8 +18,8 @@
 // THE FIVE THINGS THIS FILE IS SHAPED BY (ch 22 §0, §9):
 //   1. Zero re-render per frame. The per-frame lane (`OnFrame`) writes SCENE COLUMNS (σ, transform, glyph wipe) and a
 //      handful of value-gated signals; a row re-renders only when ITS OWN packed emphasis changes.
-//   2. Lyrics wake only for the words (2026-09-12). The frame stepper asks the host for a frame at its cadence (60 Hz,
-//      30 Hz on the rail / a weak GPU / a background window: `StepCadence`) — so it is mounted only while `MotionDemand`
+//   2. Lyrics wake only for the words (2026-09-12). The frame stepper is a frame-clock subscriber (one step per produced
+//      frame, at the display rate: there is no rail / tier / focus cadence) — so it is mounted only while `MotionDemand`
 //      says a lane is moving, and a quiescent surface (no media-clock lane live, a line-synced line on its glow plateau)
 //      re-arms from a one-shot timeout at the next media instant instead.
 //   3. Motion samples the frame clock. The media position is the playback host's (position, stamp) sample mapped onto
@@ -2252,22 +2252,25 @@ public static partial class Lyrics
         }
     }
 
-    /// <summary>The per-frame step: ONE step per <see cref="StepCadence"/> period, on a host timer. It used to subscribe the
-    /// frame clock, which is the request for EVERY vblank (~115 presents a second on a 120 Hz panel, F237); a timer asks
-    /// for a frame only when a step is due, and its period is the surface's cadence — 60 Hz on the immersive stage, 30 Hz
-    /// on the rail, on a weak GPU, or while the window is not the foreground one. Unmounting it lets the loop idle. It
-    /// never re-renders its owner (a focus edge re-renders THIS component, which only re-times the interval). It mounts
-    /// INSIDE the <see cref="Ticker"/>'s render and its first step is one period later, never inside that render, so the
-    /// Ticker is Clean and hears the gate writes of the step (the lost wakeup, see Ticker). The interval auto-pauses
-    /// under a parked or minimized window.</summary>
+    /// <summary>The per-frame step: a frame-clock subscriber running ONE step per produced frame. Its subscription is the
+    /// request for those frames; unmounting it lets the loop idle (MotionDemand decides WHEN it is mounted — a quiescent
+    /// surface arms a one-shot wake instead, F237 — so the words, not a fixed cadence, decide how often it steps; a
+    /// word-synced line's wipe itself is posed by the render thread). It never re-renders its owner. It mounts INSIDE the
+    /// <see cref="Ticker"/>'s render, so its eager mount run only subscribes and every step comes from a later tick's flush,
+    /// where the Ticker is Clean and hears the gate writes in that same flush (the lost wakeup, see Ticker).</summary>
     sealed class Stepper(ViewCore owner) : Component
     {
+        bool _subscribed;
+
         public override Element Render()
         {
-            var hooks = UseContext(InputHooks.Current);
-            _ = hooks.WindowChromeEpoch?.Value;                   // subscribe: a focus / blur re-times the cadence
-            bool focused = hooks.IsWindowActive?.Invoke() ?? true;
-            UseInterval(owner._wakeTick, StepCadence.PeriodMs(GpuProfile.IsWeak, !owner.Large, focused));
+            var tick = UseContextSignal(FrameClock.Tick);
+            UseSignalEffect(() =>
+            {
+                _ = tick.Value;                                              // the subscription is the request for frames
+                if (!_subscribed) { _subscribed = true; return; }            // the eager mount run: subscribe, never step
+                owner.OnFrame();
+            });
             return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
         }
     }

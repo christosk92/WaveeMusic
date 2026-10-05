@@ -220,16 +220,14 @@ public static partial class Shell
             bool isEpisode = Playback.CurrentId.Value.Kind == EntityKind.Episode;
             var L = isEpisode ? PodcastBarLayout(_layout.Value) : _layout.Value;
             bool marquee = Prefs.Appearance.Marquee();
-            // F239: an unattended title is a perpetual compositor loop - a render wake and a present every 17-33 ms for the whole
-            // song. On a weak GPU, and while a video surface is live (the bar then sits beside a playing video, whose frames
-            // are the thing worth the GPU), both lines scroll only while HOVERED. The trigger is fixed at mount, so a change of
-            // policy remounts the two lines through their key (like BarVolumeButton). Reads the signal: the bar re-renders on
-            // the edge only. The engine itself also parks both lines while the window is inactive or covered
-            // (Marquee.Style.ParkInBackground, default on).
-            bool barHoverOnly = GpuProfile.IsWeak || Playback.VideoActive.Value;
-            var barTrigger = barHoverOnly ? Marquee.TriggerMode.Hover : Marquee.TriggerMode.Always;
-            string titleKey = marquee && barHoverOnly ? "np-title-hover" : "np-title";
-            string artistsKey = marquee && barHoverOnly ? "np-artists-hover" : "np-artists";
+            // F239: an unattended title is a perpetual compositor loop. It stays ALWAYS on every GPU tier and beside a playing
+            // video (motion policy, 2026-10-03: a visible title is not throttled for the hardware it runs on or for what
+            // plays next to it); what the engine does instead is pose it in whole device pixels at the display rate, so a
+            // frame in which the text has not crossed a pixel edge is byte-identical and elided, and park it only while the
+            // window is covered or cloaked (Marquee.Style.ParkWhenOccluded, default on).
+            const Marquee.TriggerMode barTrigger = Marquee.TriggerMode.Always;
+            const string titleKey = "np-title";
+            const string artistsKey = "np-artists";
 
             // ── the low-frequency facts ──
             _ = rowStamp.Value;
@@ -348,7 +346,7 @@ public static partial class Shell
                     // hover gate left a long title permanently cut off for anyone who never hovered. The 0.2.9 worry
                     // (a 27-second idle scroll parked mid-word, S2 #12) is gone — the engine now glides the text home
                     // on deactivation instead of freezing it wherever it was. `titleLinkHover` still drives the link ink.
-                    // (HOVER on a weak GPU or beside a live video: `barTrigger`.) SyncCycle: the title and the artist line
+                    // SyncCycle: the title and the artist line
                     // share one cycle length, so they start, travel and rest together and the window changes pixels in one
                     // span (and, rows sharing the render thread's per-period sampling clock, on the same ticks).
                     Mode = Marquee.ScrollMode.PingPong, Trigger = barTrigger, SyncCycle = true,
