@@ -1,6 +1,6 @@
 // ── Platform/Crash.Host.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // The out-of-process crash handler's PARENT arm (§B.1, §B.7, §I): spawns the child (`Wavee.exe --crash-handler`,
-// §B.0/B.1), wires the managed and native fault hooks to it, posts a 2 s heartbeat through the UI marshaller so the
+// §B.0/B.1), wires the managed and native fault hooks to it, posts a 5 s heartbeat through the UI marshaller so the
 // child's watchdog can tell a live pump from a hung one, and is the ONE door every other package (WP-C's uploader,
 // WP-D's recovery dialog, WP-E's chrome) reads bundles and this launch's `ThisLaunch` through.
 //
@@ -41,6 +41,9 @@ public static partial class Crash
         static StreamWriter? s_stdin;
         static readonly object s_writeLock = new();
         static System.Threading.Timer? s_beatTimer;
+        // The child declares a hang after HangRules.NoBeatMs (20 s) without a beat, so 5 s still leaves four beats of margin
+        // while cutting the idle thread-pool + UI-post wakeups from 0.5 Hz x2 to 0.2 Hz x2.
+        const int BeatMs = 5000;
         static string? s_logBasePath;
 
         static int s_managedHandled, s_nativeHandled;
@@ -86,7 +89,7 @@ public static partial class Crash
             }
             catch (Exception ex) { Log.Warn("crash", "crash.power.subscribe.failed", ex); }
 
-            s_beatTimer = new System.Threading.Timer(OnBeatTick, null, 2000, 2000);
+            s_beatTimer = new System.Threading.Timer(OnBeatTick, null, BeatMs, BeatMs);
         }
 
         static void SpawnChild(string logFolder, string? logBasePath)
@@ -155,7 +158,7 @@ public static partial class Crash
         {
             Playback.ToUi(static () => SendLine("B"));
             long now = Environment.TickCount64;
-            if (now - s_lastHangPollTickMs >= 5000)
+            if (now - s_lastHangPollTickMs >= BeatMs - 500)
             {
                 s_lastHangPollTickMs = now;
                 PollHandlerLogForHang();
