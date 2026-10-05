@@ -148,7 +148,7 @@ public static partial class Diagnostics
                 s_host = host;
                 return TryStartupBench(host, window, device) || TryPerfBench(host, window, device) || TryFrameBench(host, window, device)
                     || TryMenuBench(host, window, device) || TryMemSoak(host, window, device)
-                    || TryLyricsAdvanceProbe(host, window, device) || TryLyricsDemo(host, window, device);
+                    || TryLyricsAdvanceProbe(host, window, device) || TryLyricsDemo(host, window, device) || TryPlayDemo(host, window, device);
             };
 
             if (s_options.CrashProbe.Length > 0)
@@ -466,6 +466,49 @@ public static partial class Diagnostics
             return false;
         }
 
+        // ── 2.5 --play-demo (--fake only): a seeded playlist playing on Home with the rail CLOSED, then the normal loop ──────
+
+        /// <summary>The playing state WITHOUT the lyrics surface: a seeded sidebar playlist plays on Home with the rail closed, so an
+        /// outside measurement (the [wake] census, render pace, GPU timing) sees only what playback itself keeps moving on an
+        /// ordinary page (the equalizer meters, the player bar's marquee and seek fill). Hands the loop back, like
+        /// <c>--lyrics-demo</c>.</summary>
+        static bool TryPlayDemo(AppHost host, IPlatformWindow window, IGpuDevice device)
+        {
+            if (!s_options.PlayDemo) return false;
+            // A probe run that cannot set up exits (true: the arm owns the run) instead of falling through to the normal app.
+            if (!Platform.Args.Fake) { Say("[play-demo] needs --fake (the seeded playlist)"); return true; }
+            if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[play-demo] unavailable: requires Win32Window + D3D12Device"); return true; }
+            if (!WarmUntilShell(host, w, gpu, 600)) { Say("[play-demo] the shell never activated a route"); return false; }
+            // The seeded track under a SIDEBAR playlist's context (its row, and the playing track's, wear the meter). PlayRows, not
+            // PlayContext: --fake has no network to resolve a playlist context against.
+            EntityRef row = Entities.Ref(EntityId.Parse("spotify:track:tr0"));
+            if (row.IsNone) { Say("[play-demo] the seeded track is missing"); return false; }
+            Span<EntityRef> one = [row];
+            Playback.PlayRows(one, 0, EntityId.Parse("spotify:playlist:pl0"));
+            Shell.Ui.RailOpen.Value = false;
+            // The silent voice opens asynchronously: frame until it plays (bounded), so the census starts on a playing meter.
+            long until = Environment.TickCount64 + 8_000;
+            while (!w.IsClosed && Environment.TickCount64 < until && !Playback.Snap().IsPlaying) FrameFast(host, w, gpu);
+            for (int i = 0; i < 120 && !w.IsClosed; i++) FrameFast(host, w, gpu);   // the meters mount on the playing edge
+            var snap = Playback.Snap();
+            Say("[play-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text);
+            if (s_options.PlayDemoShot.Length > 0) PlayDemoShot(host, w, gpu, s_options.PlayDemoShot);
+            return false;
+        }
+
+        /// <summary>`--play-demo-shot &lt;file.png&gt;`: the composited back buffer of the playing page (the engine's frame capture,
+        /// the same readback the evidence bundle takes), written opaque — a before/after picture of the page the census measured.</summary>
+        static void PlayDemoShot(AppHost host, Win32Window w, D3D12Device gpu, string path)
+        {
+            host.RequestFrameCapture();
+            FrameCaptureResult? capture = null;
+            long until = Environment.TickCount64 + 5_000;   // the render thread presents on its own timeline: wait on the clock
+            while (!w.IsClosed && Environment.TickCount64 < until && !host.TryTakeFrameCapture(out capture)) FrameFast(host, w, gpu);
+            if (capture?.Bgra is not { } bgra) { Say("[play-demo] shot: no frame landed"); return; }
+            PngWriter.WriteBgra(path, bgra, capture.WidthPx, capture.HeightPx, keepAlpha: false);
+            Say("[play-demo] shot " + capture.WidthPx + "x" + capture.HeightPx + " -> " + path);
+        }
+
         // ── 2.3 --lyrics-advance-probe (ch 22 §9 (a): the env door became a flag; P1's five assertions) ────────────────
 
         /// <summary>Drives the lyrics media clock SYNCHRONOUSLY (<c>Lyrics.ViewCore.ProbeStep</c>, the stepper silenced by
@@ -779,7 +822,8 @@ public static partial class Diagnostics
     public readonly record struct ProbeOptions(bool PerfBench, bool StartupBench, string CrashProbe, bool LyricsAdvance,
         string ProbeOut, int PlaybackFrames, int LyricsFrames, int IdleSec, int NavHops, int OpenHops,
         bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false,
-        bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0)
+        bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0,
+        bool PlayDemo = false, string PlayDemoShot = "")
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
@@ -797,6 +841,8 @@ public static partial class Diagnostics
             string mode = crash < 0 ? "" : CrashMode(args, crash);
             int outAt = Array.IndexOf(args, "--probe-out");
             string outDir = outAt >= 0 && outAt + 1 < args.Length && !args[outAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[outAt + 1] : "";
+            int shotAt = Array.IndexOf(args, "--play-demo-shot");
+            string shot = shotAt >= 0 && shotAt + 1 < args.Length && !args[shotAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[shotAt + 1] : "";
             return new ProbeOptions(Array.IndexOf(args, "--perf-bench") >= 0, Array.IndexOf(args, "--startup-bench") >= 0, mode,
                 Array.IndexOf(args, "--lyrics-advance-probe") >= 0, outDir,
                 Int(args, "--probe-playback-frames", 5400, 120, 36000), Int(args, "--probe-lyrics-frames", 3600, 60, 36000),
@@ -804,7 +850,8 @@ public static partial class Diagnostics
                 Array.IndexOf(args, "--menu-bench") >= 0, Int(args, "--bench-menu-rounds", 5, 1, 40),
                 Array.IndexOf(args, "--lyrics-demo") >= 0,
                 Array.IndexOf(args, "--mem-soak") >= 0, Int(args, "--mem-soak-rounds", 6, 1, 200), Int(args, "--mem-soak-idle-sec", 40, 5, 600),
-                Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048));
+                Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048),
+                Array.IndexOf(args, "--play-demo") >= 0, shot);
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)
