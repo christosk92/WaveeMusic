@@ -1897,6 +1897,10 @@ public static partial class Lyrics
         /// exactly what a backend with no lyrics provider can honestly say.</summary>
         public static Aggregator? Provider { get; private set; }
 
+        /// <summary>The `--fake` backend's document source (<see cref="Fixtures.For"/>), installed by App.cs under
+        /// `--fake` only. Consulted before the provider: a hit answers synchronously, as a warm cache would.</summary>
+        public static Func<string, Doc?>? Fixture { get; set; }
+
         static readonly Dictionary<string, Doc?> Docs = new(StringComparer.Ordinal);
         static readonly HashSet<string> Asked = new(StringComparer.Ordinal);
 
@@ -1954,7 +1958,17 @@ public static partial class Lyrics
         /// <inheritdoc cref="Ensure(Track)"/>
         public static void Ensure(string trackId)
         {
-            if (string.IsNullOrEmpty(trackId) || Provider is not { } provider) return;
+            if (string.IsNullOrEmpty(trackId)) return;
+            if (Fixture is { } fixture)
+            {
+                lock (Docs)
+                {
+                    if (Docs.ContainsKey(trackId) || !Asked.Add(trackId)) return;
+                }
+                Commit(trackId, fixture(trackId), upgrade: false);
+                return;
+            }
+            if (Provider is not { } provider) return;
             lock (Docs)
             {
                 if (Docs.ContainsKey(trackId) || !Asked.Add(trackId)) return;

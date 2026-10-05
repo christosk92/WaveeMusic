@@ -400,7 +400,7 @@ public class PlayRecencyStreamTests : IDisposable
     public void Dispose()
     {
         Shell.PlayLog.Clear();
-        try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+        try { Directory.Delete(_dir, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // a background sidecar save may still hold the file
         GC.SuppressFinalize(this);
     }
 

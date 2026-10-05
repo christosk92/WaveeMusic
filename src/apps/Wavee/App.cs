@@ -224,8 +224,9 @@ public static class App
         Log.Event(WaveeLogLevel.Info, "app", "boot.pages", "", null, Log.SinceStartMs);
         Shell.StartUpdater();            // AFTER Diagnostics.Install: the updater reads Update.Host.IsMetered at start (WP-6.R)
         Crash.Uploader.Install(Playback.ToUi);   // the outbox drains on connectivity edges; after the updater, same UI poster as Platform.Network (crash-diagnostics plan B.5)
-        if (!Platform.Args.Fake)         // --fake stays providerless (ch 31 GAP 7 is a fixture owner Q's, not this seam's)
+        if (!Platform.Args.Fake)         // --fake stays providerless; its tracks answer from the word-synced fixture instead
             Lyrics.Boot(Lyrics.ResolveRequest, Spotify.Api.GetTextAsync, Spotify.SpclientBaseUrl);   // G-008: compose the lyrics stack once
+        else Lyrics.Store.Fixture = Lyrics.Fixtures.For;
         if (Platform.Args.Fake) Spotify.BootFake();                        // --fake: the session presents Online over the seeded account, no network (G-065)
         else if (Platform.HasStoredCredential()) Spotify.Login();         // resume the stored credential at launch (G-002); its posts wait for the root's poster
         Shell.Run();                     // window + engine loop; never returns until exit

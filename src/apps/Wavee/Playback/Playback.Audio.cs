@@ -889,8 +889,10 @@ public static partial class Playback
                 s_endedHold = 0;
             }
 
-            // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration.
-            if (id.Provider == EntityProvider.Fake)
+            // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration. That holds
+            // for EVERY load under --fake, including the seed's spotify-shaped track uris (`spotify:track:trN`, whose short id
+            // is not a 22-char gid, so they classify as Spotify): there is no network to open them against.
+            if (id.Provider == EntityProvider.Fake || Platform.Args.Fake)
             {
                 await OpenSilentAsync(row, epoch, fromMs, chain).ConfigureAwait(false);
                 return;

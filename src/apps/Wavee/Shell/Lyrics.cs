@@ -737,6 +737,89 @@ public static partial class Lyrics
 
         public static float EaseOutSine(float t) => MathF.Sin(t * MathF.PI * 0.5f);
 
+        /// <summary>The voice line's wipe from <paramref name="nowMs"/> to its end as LINEAR keyframes — the exact function
+        /// <see cref="ComputeSplit"/> (+ <see cref="LeadFrac"/> while 0 &lt; split &lt; 1 when <paramref name="lead"/>) is
+        /// piecewise linear in time between syllable edges, so sampling it at every edge (plus the lead's step at the first
+        /// syllable and the instant the lead reaches 1) reproduces it everywhere. The render thread poses it
+        /// (<c>AnimChannel.GlyphWipeSplit</c>) instead of the UI writing it every frame. <paramref name="endMs"/> = where
+        /// the wipe settles at 1; null when it already has (nothing left to animate).</summary>
+        public static FluentGpu.Animation.Keyframe[]? SplitKeyframes(Line line, long nowMs, bool lead, out long endMs)
+        {
+            var syl = line.Syllables;
+            endMs = syl.Count == 0 ? nowMs : syl[^1].EndMs;
+            if (syl.Count == 0 || endMs <= nowMs) return null;
+            var times = new List<long>(syl.Count * 2 + 4) { nowMs, endMs };
+            for (int i = 0; i < syl.Count; i++)
+            {
+                if (syl[i].StartMs > nowMs && syl[i].StartMs < endMs) times.Add(syl[i].StartMs);
+                if (syl[i].EndMs > nowMs && syl[i].EndMs < endMs) times.Add(syl[i].EndMs);
+            }
+            if (lead)
+            {
+                long first = syl[0].StartMs;
+                if (first + 1 > nowMs && first + 1 < endMs) times.Add(first + 1);   // the lead's step out of 0
+                // the instant split + lead reaches 1: inside the syllable whose sweep crosses 1 - LeadFrac
+                for (int i = 0; i < syl.Count; i++)
+                {
+                    float a0 = ComputeSplit(line, syl[i].StartMs), a1 = ComputeSplit(line, syl[i].EndMs);
+                    if (a0 < 1f - LeadFrac && a1 >= 1f - LeadFrac && a1 > a0)
+                    {
+                        // both whole-ms neighbours of the crossing: the segment up to the floor is exact, the ms after it clamps
+                        double at = syl[i].StartMs + (1.0 - LeadFrac - a0) / (a1 - a0) * (syl[i].EndMs - syl[i].StartMs);
+                        long lo = (long)Math.Floor(at), hi = (long)Math.Ceiling(at);
+                        if (lo > nowMs && lo < endMs) times.Add(lo);
+                        if (hi > nowMs && hi < endMs) times.Add(hi);
+                        break;
+                    }
+                }
+            }
+            times.Sort();
+            float span = endMs - nowMs;
+            var keys = new List<FluentGpu.Animation.Keyframe>(times.Count);
+            long last = long.MinValue;
+            foreach (long t in times)
+            {
+                if (t == last) continue;
+                last = t;
+                float v = ComputeSplit(line, t);
+                if (lead && v > 0f && v < 1f) v = Math.Clamp(v + LeadFrac, 0f, 1f);
+                keys.Add(new FluentGpu.Animation.Keyframe((t - nowMs) / span, v, FluentGpu.Foundation.Easing.Linear));
+            }
+            return keys.ToArray();
+        }
+
+        /// <summary>Is the voice line's halo envelope (<see cref="Glow.VoiceAlpha"/> on a word-synced line) changing at
+        /// <paramref name="nowMs"/>? Only while a HELD syllable ramps in, or melts out (its own last <see cref="GlowOutMs"/>
+        /// or the line's); between, it holds its plateau, and outside held syllables it is 0.</summary>
+        public static bool GlowMoving(Line line, long nowMs, long lineEndMs)
+        {
+            foreach (var s in line.Syllables)
+            {
+                if (nowMs < s.StartMs) break;
+                if (nowMs >= s.EndMs) continue;
+                long dur = s.EndMs - s.StartMs;
+                if (dur < HeldGlowMinMs) return false;
+                float rampIn = MathF.Min(HeldGlowRampMaxMs, dur * 0.5f);
+                return nowMs < s.StartMs + rampIn || nowMs >= s.EndMs - GlowOutMs || nowMs >= lineEndMs - GlowOutMs;
+            }
+            return false;
+        }
+
+        /// <summary>The next media instant after <paramref name="nowMs"/> at which <see cref="GlowMoving"/> turns true on
+        /// this line, or <see cref="MotionDemand.None"/>.</summary>
+        public static long NextGlowEdgeMs(Line line, long nowMs, long lineEndMs)
+        {
+            long next = MotionDemand.None;
+            foreach (var s in line.Syllables)
+            {
+                if (s.EndMs - s.StartMs < HeldGlowMinMs || s.EndMs <= nowMs) continue;
+                if (s.StartMs > nowMs) next = Math.Min(next, s.StartMs);
+                long melt = Math.Min(s.EndMs - (long)GlowOutMs, lineEndMs - (long)GlowOutMs);
+                if (melt > nowMs) next = Math.Min(next, melt);
+            }
+            return next;
+        }
+
         /// <summary>THE GLOW RULE, as a value: a halo σ may NEVER nest inside a depth-of-field σ — a nested blur layer
         /// is exactly what the compositor's pin key refuses, so the voice row went pin-INELIGIBLE through the whole
         /// lead window and the out-fade after it, i.e. at every line handoff. Fixed by RULE, not by trimming

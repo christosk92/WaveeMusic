@@ -219,6 +219,12 @@ public static partial class Lyrics
         // ── emphasis, voice, now ─────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<int> _activeLine = new(-1);   // emphasis + follow target (lead-shifted)
         readonly Signal<int> _voiceLine = new(-1);    // the line being sung on TRUE time (wipe + glow)
+        // The render-thread wipe (AnimChannel.GlyphWipeSplit): the line whose rows are seeded, the nodes they ride, the
+        // content rate they were timed at, and a re-seed owed by a clock jump. -1 = the UI writes the split itself.
+        int _wipeRowLine = -1;
+        NodeHandle _wipeRowMain, _wipeRowGlow;
+        double _wipeRowRate;
+        bool _wipeReseed;
         internal readonly FloatSignal NowMs = new(0f);
         /// <summary>One VALUE-GATED signal per line: a row re-renders solely on ITS OWN bucket/past/reserve change. A
         /// shared memo would fan every boundary out to the whole realized document.</summary>
@@ -1588,10 +1594,22 @@ public static partial class Lyrics
                 }
             }
 
+            // ── the render-thread wipe: while playing, a word-synced voice line's split is posed by the render thread from
+            //    keyframes seeded once (below), so the voice lane needs UI frames only while its HALO moves (a held
+            //    syllable's ramp or melt). Sync-probe mode and a paused clock keep the UI-written split.
+            var anim = Context.Anim;
+            Line? voice = (uint)voiceLine < (uint)doc.Lines.Count ? doc.Lines[voiceLine] : null;
+            bool renderWipe = playing && !ProbeSyncMode && anim is { RenderOwnsCompositor: true }
+                && voice is { IsWordByWord: true, Syllables.Count: > 0 };
+            long voiceEnd = voice is null ? 0 : SungOutMs(doc, voiceLine);
+            bool voiceMoving = voiceLine >= 0 && (!renderWipe || Wipe.GlowMoving(voice!, nowMs, voiceEnd));
+            long nextEvent = MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs);
+            if (renderWipe) nextEvent = Math.Min(nextEvent, Wipe.NextGlowEdgeMs(voice!, nowMs, voiceEnd));
+
             // ── motion demand: this step's OUTCOME, published after every lane ran ──
             var demand = MotionDemand.Evaluate(new MotionLanes(
                 Playing: playing,
-                VoiceActive: voiceLine >= 0,
+                VoiceActive: voiceMoving,
                 DotsActive: dotsUp,
                 GlowFadeActive: _glowOutLine >= 0,
                 DofRampPending: _dofRampPending,
@@ -1600,7 +1618,7 @@ public static partial class Lyrics
                 FollowUnsettled: (!_scrollSnapped && active >= 0) || _reserveRelatchFrames > 0,
                 Following: Follow_.Peek() == FollowMode.Following,
                 NowMs: nowMs,
-                NextEventMs: MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs)));
+                NextEventMs: nextEvent));
             _motionRecheck.Value = false;
             _motionLive.Value = demand.NeedsTicks;
             if (demand.NeedsTicks) ClearMotionWake();
@@ -1611,6 +1629,16 @@ public static partial class Lyrics
             var mainNode = _lineNodes[voiceLine];
             var glowNode = (uint)voiceLine < (uint)_glowNodes.Length ? _glowNodes[voiceLine] : NodeHandle.Null;
             if (mainNode.IsNull || !scene.IsLive(mainNode) || !scene.TryGetGlyphWipe(mainNode, out var mw)) return;
+
+            if (renderWipe)
+            {
+                double rate = _clock.ContentRate > 0 ? _clock.ContentRate : 1.0;
+                if (voiceLine != _wipeRowLine || _wipeReseed || rate != _wipeRowRate || mainNode != _wipeRowMain)
+                    SeedWipeRows(anim!, scene, voice!, voiceLine, nowMs, rate, mainNode, glowNode);
+                MaintainGlowSigma(scene, voiceLine, glowNode, runGlow);
+                return;
+            }
+            if (_wipeRowLine >= 0) CancelWipeRows(anim);   // the UI owns the split again (paused, probe)
 
             float split = Wipe.ComputeSplit(doc.Lines[voiceLine], nowMs);
             if (!IsPodcast && split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
@@ -1641,10 +1669,80 @@ public static partial class Lyrics
             }
         }
 
+        /// <summary>Seed the render-thread wipe for the voice line: the exact split function from now to where it settles
+        /// (Wipe.SplitKeyframes), timed at the content rate, on the main glyphs and their halo. Seeded once per line and
+        /// again after a clock jump or a rate change; between, the UI writes nothing. A line already settled gets its final
+        /// split written instead.</summary>
+        void SeedWipeRows(AnimEngine anim, SceneStore scene, Line line, int voiceLine, long nowMs, double rate, NodeHandle main, NodeHandle glow)
+        {
+            if (_wipeRowLine >= 0 && (_wipeRowMain != main || _wipeRowLine != voiceLine)) CancelWipeRows(anim);
+            _wipeReseed = false;
+            var keys = Wipe.SplitKeyframes(line, nowMs, lead: !IsPodcast, out long endMs);
+            float softness = SoftnessOfLine(voiceLine);
+            if (keys is null)
+            {
+                // settled: the split is 1 (or the line has no syllables) — write it once, as the UI path would
+                if (scene.TryGetGlyphWipe(main, out var mw) && (mw.Split != 1f || MathF.Abs(softness - mw.Softness) > Wipe.SoftnessEps))
+                {
+                    scene.SetGlyphWipe(main, mw with { Split = 1f, Softness = softness });
+                    scene.Mark(main, NodeFlags.PaintDirty);
+                }
+                return;
+            }
+            float durationMs = (float)((endMs - nowMs) / rate);
+            // The rows start from the value at `now`: write it as the authored split too, so a row the render thread has
+            // not posed yet (its first frame) shows the same pixels.
+            if (scene.TryGetGlyphWipe(main, out var m0))
+            {
+                scene.SetGlyphWipe(main, m0 with { Split = keys[0].Value, Softness = softness });
+                scene.Mark(main, NodeFlags.PaintDirty);
+            }
+            anim.Keyframes(main, AnimChannel.GlyphWipeSplit, keys, durationMs);
+            bool halo = !glow.IsNull && scene.IsLive(glow) && scene.TryGetGlyphWipe(glow, out _);
+            if (halo)
+            {
+                scene.TryGetGlyphWipe(glow, out var g0);
+                scene.SetGlyphWipe(glow, g0 with { Split = keys[0].Value, Softness = softness });
+                scene.Mark(glow, NodeFlags.PaintDirty);
+                anim.Keyframes(glow, AnimChannel.GlyphWipeSplit, keys, durationMs);
+            }
+            _wipeRowLine = voiceLine;
+            _wipeRowMain = main;
+            _wipeRowGlow = halo ? glow : NodeHandle.Null;
+            _wipeRowRate = rate;
+        }
+
+        /// <summary>Hand the split back to the UI (paused, sync-probe, a re-seed onto other nodes). The UI path rewrites it
+        /// from the clock on this same step, so the cancelled row's last posed value is never what stays on screen.</summary>
+        void CancelWipeRows(AnimEngine? anim)
+        {
+            if (anim is not null)
+            {
+                if (!_wipeRowMain.IsNull) anim.Cancel(_wipeRowMain, AnimChannel.GlyphWipeSplit);
+                if (!_wipeRowGlow.IsNull) anim.Cancel(_wipeRowGlow, AnimChannel.GlyphWipeSplit);
+            }
+            _wipeRowLine = -1;
+            _wipeRowMain = _wipeRowGlow = NodeHandle.Null;
+        }
+
+        /// <summary>The halo's σ under the never-nest rule — the part of the UI wipe write the render-thread wipe keeps.</summary>
+        void MaintainGlowSigma(SceneStore scene, int voiceLine, NodeHandle glow, bool runGlow)
+        {
+            if (!runGlow || glow.IsNull || !scene.IsLive(glow)) return;
+            float sigma = Wipe.GlowSigma(DofDeclaredFor(voiceLine), GlowAlphaOf(voiceLine), Large, _haloScale);
+            ref var gp = ref scene.Paint(glow);
+            if (MathF.Abs(gp.BlurSigma - sigma) > 0.01f)
+            {
+                gp.BlurSigma = sigma;
+                scene.Mark(glow, NodeFlags.PaintDirty);
+            }
+        }
+
         /// <summary>A snap (first sample, a real seek / transfer / track change): the next follow is an instant latch,
         /// and any in-flight cascade was measured against geometry the jump invalidates.</summary>
         void OnClockJump()
         {
+            _wipeReseed = true;   // the render-thread wipe was timed on the old clock
             _scrollSnapped = false;
             ZeroCascade(Context.Scene);
         }
