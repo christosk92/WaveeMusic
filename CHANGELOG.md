@@ -18,6 +18,20 @@ versions separately under `v*` and is not tracked in this file.)
 - **The full-screen visualizer no longer leaves an empty column.** With the visualizer gallery open, the picture made
   room for the gallery, but the gallery hid whenever the controls faded out, leaving the visualizer cut off beside an
   empty third of the screen. An open gallery now stays until you close it.
+- **Settings' expandable cards keep their full width after a zoom change.** After zooming in or out, the headers of
+  Settings' expandable cards could stay squeezed into a narrow sliver, with their icon gone and the switch spilling
+  below the card. They now always span the card.
+- **Switching songs no longer plays a bit of the old one, or clicks.** On next, previous or a click on another song,
+  the old song kept playing while the new one opened and was then cut off mid-sound. It now fades out at once.
+- **Word-by-word AI lyrics no longer leave Wavee holding hundreds of megabytes.** Every song the NPU timed left large
+  buffers behind that were never handed back, so memory stayed several hundred MB higher for the rest of the session.
+  Timing a song now reuses its buffers, and the memory is returned when the AI models unload after 10 idle minutes.
+
+### Known limitations
+
+- **The title bar's search box can still come back as a stub after full screen.** If a zoom change while full screen
+  is open leaves the title bar showing only the search icon, the search box is a narrow stub when you leave full
+  screen.
 
 ## [0.3.1] - 2026-10-05
 
