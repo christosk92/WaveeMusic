@@ -32,6 +32,12 @@ namespace Wavee;
 /// <summary>The pure half: what a request is called in the log, and when a run of them is a storm.</summary>
 public static class WireRules
 {
+    /// <summary>A call this slow (ms) is not routine and keeps its own wire.call line.</summary>
+    public const double SlowCallMs = 1500;
+
+    /// <summary>Routine = a 2xx/3xx answer with no transport error and not slow: it only counts toward the minute's wire.summary.</summary>
+    public static bool IsRoutine(int status, bool hadError, double ms) => !hadError && status is >= 200 and < 400 && ms < SlowCallMs;
+
     /// <summary>More than this many calls to ONE endpoint inside <see cref="StormWindowMs"/> is a storm.</summary>
     public const int StormCalls = 40;
     public const int StormWindowMs = 60_000;
@@ -280,8 +286,6 @@ public static class Wire
             Log.Warn("wire", $"wire.storm {endpoint} — {storm}+ calls inside {WireRules.StormWindowMs / 1000}s ({total} this session): something is asking in a loop");
     }
 
-    /// <summary>A routine call is at least this slow before it gets its own log line.</summary>
-    const double SlowCallMs = 1500;
     static readonly RoutineSummary Routine = RoutineSummary.Create("wire", "wire.summary");
 
     static void Note(string client, bool storms, HttpRequestMessage request, int status, long? responseBytes, long start, Exception? error)
@@ -292,12 +296,14 @@ public static class Wire
         string path = uri?.AbsolutePath ?? "-";                 // NEVER the query: signed cdn tokens, ids, search text
         double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         long sent = request.Content?.Headers.ContentLength ?? 0;
-        string range = request.Headers.Range is { } r ? " range=" + r.ToString() : "";
-        string tail = error is null ? "" : " error=" + error.GetType().Name;
 
         // Steady state is one summary line a minute; a call that failed, errored or ran long keeps its own full line.
-        if (error is not null || status is < 200 or >= 400 || ms >= SlowCallMs)
+        if (!WireRules.IsRoutine(status, error is not null, ms))
+        {
+            string range = request.Headers.Range is { } r ? " range=" + r.ToString() : "";
+            string tail = error is null ? "" : " error=" + error.GetType().Name;
             Log.Info("wire", $"wire.call client={client} {method} {host}{path} status={status} ms={ms:F0} sent={sent} recv={responseBytes?.ToString() ?? "?"}{range}{tail}");
+        }
         else
             Routine.Note(sent + (responseBytes ?? 0), (long)ms);
 

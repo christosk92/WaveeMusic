@@ -215,6 +215,7 @@ public static partial class Crash
                 // without both the tail ended before the crash and missed the last <= 512-line batch. (The native path
                 // flushes in NativeHook.) Type and message only: Shell logs the full exception right after.
                 try { Log.Event(WaveeLogLevel.Critical, "crash", "crash.managed", ex.GetType().FullName + ": " + ex.Message); } catch { }
+                try { RoutineSummary.FlushAll(force: true); } catch { }   // the open window's partial summary belongs in the crash tail
                 Log.Flush();
                 string dir = Crash.Bundles.Create(LogFolder, Kind.Managed, DateTimeOffset.Now);
                 var summary = Report.BuildSummary(Kind.Managed, ex, 0);

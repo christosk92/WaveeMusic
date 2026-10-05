@@ -21,19 +21,28 @@ public sealed class RoutineSummary
 
     readonly string _category, _line;
     readonly long _windowMs;
+    readonly Action<string, string> _write;
+    readonly Func<long> _now;
     readonly object _gate = new();
-    long _windowStart = Environment.TickCount64;
+    long _windowStart;
     long _count, _bytes, _maxMs, _sumMs;
 
-    RoutineSummary(string category, string line, long windowMs)
+    RoutineSummary(string category, string line, long windowMs, Action<string, string>? write, Func<long>? now)
     {
         _category = category; _line = line; _windowMs = windowMs;
+        _write = write ?? ((c, t) => Log.Info(c, t));
+        _now = now ?? (() => Environment.TickCount64);
+        _windowStart = _now();
     }
+
+    /// <summary>An unregistered summary with an injected writer and clock (tests).</summary>
+    public static RoutineSummary Standalone(string category, string line, long windowMs, Action<string, string> write, Func<long> now)
+        => new(category, line, windowMs, write, now);
 
     /// <summary>One summary per window; registered so <see cref="FlushAll"/> reaches it.</summary>
     public static RoutineSummary Create(string category, string line, long windowMs = DefaultWindowMs)
     {
-        var s = new RoutineSummary(category, line, windowMs);
+        var s = new RoutineSummary(category, line, windowMs, null, null);
         lock (s_all) s_all.Add(s);
         return s;
     }
@@ -46,10 +55,10 @@ public sealed class RoutineSummary
         {
             _count++; _bytes += Math.Max(0, bytes); _sumMs += ms;
             if (ms > _maxMs) _maxMs = ms;
-            long now = Environment.TickCount64;
+            long now = _now();
             if (now - _windowStart >= _windowMs) text = TakeLocked(now);
         }
-        if (text is not null) Log.Info(_category, text);
+        if (text is not null) _write(_category, text);
     }
 
     /// <summary>Write the pending window if it holds anything and has run its full length (or <paramref name="force"/>).</summary>
@@ -58,10 +67,10 @@ public sealed class RoutineSummary
         string? text = null;
         lock (_gate)
         {
-            long now = Environment.TickCount64;
+            long now = _now();
             if (_count > 0 && (force || now - _windowStart >= _windowMs)) text = TakeLocked(now);
         }
-        if (text is not null) Log.Info(_category, text);
+        if (text is not null) _write(_category, text);
     }
 
     public static void FlushAll(bool force = false)

@@ -3861,8 +3861,7 @@ public static partial class Playback
         /// never a cumulative count — a count says "something has been wrong for a while", an incident says when. Each incident
         /// also goes into the session's <see cref="GlitchLedger"/> (D1), whose verdict rides on the line: the log and the
         /// health card tell the same story.</summary>
-        static PcmAudioSession? s_deviceUnderrunSession;
-        static long s_deviceUnderrunSeen;
+        static readonly DeviceUnderrunBaseline s_deviceUnderruns = new();
 
         /// <summary>The device-side counterpart of the xrun incidents: the output device's own queue ran empty while streaming
         /// (WASAPI <c>GetCurrentPadding</c> == 0 at a write). The xrun ledger only sees the app's ring running dry, so a stall
@@ -3871,10 +3870,9 @@ public static partial class Playback
         static void NoteDeviceUnderruns(PcmAudioSession sess, long posMs, PlaybackState state, EntityId track)
         {
             long total = sess.DeviceUnderrunCount;
-            if (!ReferenceEquals(s_deviceUnderrunSession, sess)) { s_deviceUnderrunSession = sess; s_deviceUnderrunSeen = total; return; }
-            if (total <= s_deviceUnderrunSeen) return;
-            long fresh = total - s_deviceUnderrunSeen;
-            s_deviceUnderrunSeen = total;
+            long fresh = s_deviceUnderruns.Take(sess, total);
+            if (fresh <= 0) return;
+            s_ledger.RecordDeviceUnderruns((int)Math.Min(fresh, int.MaxValue), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             Log.Event(WaveeLogLevel.Warning, "audio", "audio.glitch.device", "device queue ran dry", null, -1, null,
                 WaveeLogField.Of("new", fresh), WaveeLogField.Of("total", total), WaveeLogField.Of("posMs", posMs),
                 WaveeLogField.Of("state", state.ToString()), WaveeLogField.Of("track", track.Text));

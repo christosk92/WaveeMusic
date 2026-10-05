@@ -539,10 +539,10 @@ public static partial class Diagnostics
         internal static void OnFrame()
         {
             double since = Clock.Elapsed.TotalMilliseconds - s_lastAt;
-            if (since < IntervalMs) return;
+            if (since < IntervalMs) return;   // the cheap early-out; the rule itself is MemorySamplePolicy.PeriodicDue
             // Steady state is one sample per 30 s; a working set that moved by 64 MB (either way) since the last sample is the thing
             // this line exists to attribute, so it still gets its sample within the 5 s check.
-            if (since >= SteadyIntervalMs || Math.Abs(Environment.WorkingSet - s_lastSampledWs) >= GrowthBytes) Sample("periodic");
+            if (MemorySamplePolicy.PeriodicDue(since, Environment.WorkingSet - s_lastSampledWs, IntervalMs, SteadyIntervalMs, GrowthBytes)) Sample("periodic");
         }
 
         public static void Sample(string reason)
@@ -616,6 +616,7 @@ public static partial class Diagnostics
         {
             try
             {
+                RoutineSummary.FlushAll(force: true);
                 using var p = System.Diagnostics.Process.GetCurrentProcess();
                 long ws = p.WorkingSet64;
                 s_peakWorkingSet = Math.Max(s_peakWorkingSet, ws);

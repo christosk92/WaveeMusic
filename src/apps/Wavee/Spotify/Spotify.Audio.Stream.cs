@@ -2079,7 +2079,8 @@ public static partial class Spotify
 
                     Volatile.Write(ref _mirror, index);
                     if (total > landed) Publish(in req, start + landed, dst.Span[landed..total]);
-                    LogRange(start, total, "cdn", $"pingMs={_fetcher.PingMs} kbps={_fetcher.BytesPerSecond * 8 / 1000} ");
+                    LogRange(start, total, "cdn", $"pingMs={_fetcher.PingMs} kbps={_fetcher.BytesPerSecond * 8 / 1000} ",
+                        (long)Stopwatch.GetElapsedTime(headersAt).TotalMilliseconds);
                     return new FetchResult(total, headersAt, attemptAt);
                 }
                 if (ct.IsCancellationRequested) return new FetchResult(bestLanded > 0 ? bestLanded : -1, headersAt);
@@ -2339,7 +2340,7 @@ public static partial class Spotify
             internal void Settle(in RangeRequest req, Source source)
             {
                 if (source == Source.Local)
-                    LogRange(req.Start, req.End - req.Start, "local", "");
+                    LogRange(req.Start, req.End - req.Start, "local", "", 0);
                 if (req.ViewOnly) { _ring.ViewSettled(req, source == Source.Refused); return; }   // the second reader's: the fill's identity is not touched
                 if (req.Tail) return;
                 _ring.Settled(req, source == Source.Refused);
@@ -2409,15 +2410,17 @@ public static partial class Spotify
             // A stream's first ranges say how it opened (which store, how fast); after that a landed range is routine and only
             // counts toward the minute's audio.range.summary. Refusals, partials and faults keep their own Warn lines.
             const int DetailedRanges = 4;
+            const long SlowRangeMs = 2000, SlowRangeKbps = 320;   // a range this slow, or under the top rung's bitrate, keeps its own line
             static readonly RoutineSummary s_rangeSummary = RoutineSummary.Create("audio", "audio.range.summary");
             int _rangesLogged;
 
-            void LogRange(long at, long len, string src, string detail)
+            void LogRange(long at, long len, string src, string detail, long rangeMs)
             {
-                if (Interlocked.Increment(ref _rangesLogged) <= DetailedRanges)
-                    Log.Info("audio", $"audio.range file={FileIdHex} at={at} len={len} src={src} {detail}ms={ElapsedMs()}");
+                bool slow = rangeMs >= SlowRangeMs || (rangeMs > 0 && len * 8 / rangeMs < SlowRangeKbps);
+                if (slow || Interlocked.Increment(ref _rangesLogged) <= DetailedRanges)
+                    Log.Info("audio", $"audio.range file={FileIdHex} at={at} len={len} src={src} {detail}ms={ElapsedMs()} rangeMs={rangeMs}");
                 else
-                    s_rangeSummary.Note(len, 0);
+                    s_rangeSummary.Note(len, rangeMs);
             }
 
             /// <summary>Cancel this file's work, release a blocked read, hand the ring's slots back to the shared budget and
