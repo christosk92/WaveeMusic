@@ -250,7 +250,7 @@ public static partial class Rail
         ]);
     }
 
-    /// <summary>Title · (secondary-line toggle) · expand · close. Its own component so the capability and the prefs epoch
+    /// <summary>Title · (secondary-line toggle) · (AI sparkle) · expand · close. Its own component so the capability and the prefs epoch
     /// subscribe the HEADER, not the whole rail. The toggle is composed only when the document on screen carries a
     /// second layer; the expand button is returned in BOTH arms — a track with no lyrics still opens a full stage.</summary>
     sealed class LyricsHeader : Component
@@ -260,11 +260,13 @@ public static partial class Rail
             var begin = UseContext(SharedTransition.Begin);   // the stage's art flight is captured before the mount (null headless)
             int available = Prefs.Lyrics.Available.Value;
             int secondary = Prefs.Lyrics.SecondaryLine();
-            var kids = new List<Element>(4) { TitleText(Shell.RailMode.Lyrics) };
+            var kids = new List<Element>(6) { TitleText(Shell.RailMode.Lyrics) };
             if (available != 0)
                 kids.Add(HeaderButton(Icons.Globe, Prefs.Lyrics.Tooltip(secondary),
                     () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
                     active: (available & Prefs.Lyrics.BitFor(secondary)) != 0));
+            // The on-device AI sparkle: its own component (only it subscribes the AI status), hidden while the feature is off.
+            kids.Add(AiLyrics.HeaderButton());
             kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), () => Stage.Open(begin, "rail-header")));
             kids.Add(Diagnostics.LyricsInspector.Button());
             kids.Add(CloseButton());

@@ -156,6 +156,13 @@ public static partial class Platform
         // is a fixed constant and the secondary line is session state the two lyrics globe toggles own. Neither carries a
         // key any more, so a value persisted by an older build can never resurrect either.
         public static readonly SettingKey<int> LyricsBlurStrength = new("appearance.lyrics.blurStrength", -1);   // -1 = Auto
+        // On-device AI lyrics (AiLyrics, plan docs/plans/wavee/ai-lyrics-sync-implementation.md §4.1). Off by default:
+        // nothing downloads until the user turns the master switch on and confirms the size.
+        public static readonly SettingKey<bool> AiLyricsEnabled = new("lyrics.ai.enabled", false);
+        public static readonly SettingKey<bool> AiLyricsWordSync = new("lyrics.ai.wordSync", true);
+        public static readonly SettingKey<bool> AiLyricsPlainText = new("lyrics.ai.plainText", true);
+        public static readonly SettingKey<bool> AiLyricsOnBatterySaver = new("lyrics.ai.onBatterySaver", false);
+        public static readonly SettingKey<string> AiLyricsLanguages = new("lyrics.ai.languages", "en");   // comma-separated
 
         // ── detail rails + shell rail. The four widths default to Design.cs tokens (RailAlbum 280 / RailPlaylist 240 /
         //    ShellResponsiveLayout.RailDefaultW 340); Wave 4 owes the convergence test that pins these literals to them.

@@ -8,7 +8,7 @@ trademarks of Spotify AB.
 This build incorporates the third-party components listed below. Each remains under its own license;
 the summary here names the license, not its full text -- follow the URL for the authoritative terms.
 
-Generated 2026-09-13 by ops/build/generate-third-party-notices.ps1.
+Generated 2026-10-04 by ops/build/generate-third-party-notices.ps1.
 
 -------------------------------------------------------------------------------
 
@@ -28,6 +28,11 @@ libFLAC  algorithms followed, not vendored
   url:     https://github.com/xiph/flac
   note:    Wavee's FLAC decoder kernels (src/apps/Wavee/Playback/Playback.Audio.Flac.Kernels.cs) follow libFLAC's bit reader, Rice residual, LPC restoration and CRC routines. Copyright (C) 2000-2009 Josh Coalson, Copyright (C) 2011- Xiph.Org Foundation.
 
+MDX-Net Kim_Vocal_2 (Ultimate Vocal Remover model)  Kim_Vocal_2
+  license: MIT (via Ultimate Vocal Remover; VERIFY the model's own terms)
+  url:     https://github.com/TRvlvr/model_repo
+  note:    Vocal separator used before word timing, converted to fp16 ONNX. Downloaded from models.cproducts.dev at the user's request.
+
 Microsoft.Data.Sqlite  10.0.8
   license: MIT
   authors: Microsoft
@@ -42,6 +47,16 @@ NLayer  1.15.0
   license: MIT
   authors: Mark Heath, Andrew Ward
   url:     https://github.com/naudio/NLayer
+
+ONNX Runtime  1.30.0
+  license: MIT
+  url:     https://github.com/microsoft/onnxruntime
+  note:    Runs the on-device AI lyrics models. Not bundled: downloaded from PyPI (onnxruntime win_arm64 wheel) only when the user turns the feature on. Copyright (c) Microsoft Corporation.
+
+ONNX Runtime QNN execution provider / Qualcomm AI Engine Direct (QAIRT)  2.6.0 (QAIRT 2.42)
+  license: MIT (provider) and the Qualcomm license shipped in the package
+  url:     https://github.com/onnxruntime/onnxruntime-qnn
+  note:    Runs the models on the Qualcomm Hexagon NPU. Not bundled: downloaded from PyPI (onnxruntime-qnn win_arm64 wheel) at the user's request; the Qualcomm libraries keep their own license (Qualcomm_LICENSE.pdf in the wheel). VERIFY: QAIRT redistribution terms before bundling ever.
 
 Segoe Fluent Icons  1.54 (bundled: assets/fonts/SegoeFluentIcons.ttf)
   license: Microsoft font license -- Segoe Fluent Icons is provided by Microsoft for use in Windows applications
@@ -77,6 +92,26 @@ TerraFX.Interop.Windows  10.0.26100.6
   license: MIT
   authors: Tanner Gooding and Contributors
   url:     https://github.com/terrafx/terrafx.interop.windows
+
+wav2vec2-large-960h-lv60-self  facebook/wav2vec2-large-960h-lv60-self
+  license: Apache-2.0
+  url:     https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self
+  note:    English letter recognizer for word timing, converted to five fp16 ONNX graphs (the first convolution rewritten as framing + MatMul). Downloaded from models.cproducts.dev at the user's request.
+
+wav2vec2-large-xlsr-53-dutch  jonatasgrosman/wav2vec2-large-xlsr-53-dutch (revision 46f22138)
+  license: Apache-2.0
+  url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-dutch
+  note:    Dutch letter recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on Common Voice 6.1 and CSS10, converted like the English one. Optional download from models.cproducts.dev.
+
+wav2vec2-large-xlsr-53-spanish  jonatasgrosman/wav2vec2-large-xlsr-53-spanish
+  license: Apache-2.0
+  url:     https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish
+  note:    Spanish letter recognizer for word timing, converted like the English one. Optional download.
+
+wav2vec2-large-xlsr-korean  kresnik/wav2vec2-large-xlsr-korean (revision 629c9a35)
+  license: Apache-2.0
+  url:     https://huggingface.co/kresnik/wav2vec2-large-xlsr-korean
+  note:    Korean syllable recognizer for word timing, fine-tuned from facebook/wav2vec2-large-xlsr-53 on the Zeroth-Korean corpus (OpenSLR 40, CC BY 4.0, by Lucas Jo and Wonkyum Lee, Atlas Guide Inc.; https://www.openslr.org/40/), converted like the English one. Optional download from models.cproducts.dev.
 
 Windows 11 OOBE onboarding animations (eula / connect / patch Lottie)  Bodymovin 5.6.5 exports, as redistributed by Rise Media Player
   license: UNVERIFIED -- Microsoft-owned artwork; no licence located

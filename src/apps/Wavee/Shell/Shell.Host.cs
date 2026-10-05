@@ -304,6 +304,7 @@ public static partial class Shell
             PlayLog.Flush();
             Notify.HostShutdown();
             Playback.Os.Shutdown();
+            AiLyrics.Shutdown();      // stops the model download (partials stay) and the NPU worker within 2 s
             s_fetchWake?.Dispose();
             s_audioWarm?.Dispose();
             s_memoryPoll?.Dispose();   // RECURRING (unlike the one-shots above): must stop, not just have already fired
@@ -371,6 +372,7 @@ public static partial class Shell
         Store.Post = post;
         Wavee.Palette.Post = post;
         Lyrics.Store.ToUi = post;         // the lyrics document store's UI-thread hop (G-008)
+        AiLyrics.Install(post);           // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
         s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
         Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
@@ -1022,6 +1024,12 @@ public static partial class Shell
             // The ambient power poll (G-086): component-hosted rather than a raw Timer, so it auto-pauses while the
             // window is parked/minimized/suspended instead of waking on a thread-pool clock nobody is watching.
             UseInterval(Platform.TickAmbientPower, Platform.AmbientPower.PollMs);
+            // On-device AI lyrics: the playhead for just-in-time commits, the decision effect (track, lyrics, battery
+            // saver, preferences, setup phase), and the idle unload of the NPU sessions. Signal effects, so they run on
+            // the UI thread and only post work; nothing here waits.
+            UseSignalEffect(AiLyrics.DriverPlayhead);
+            UseSignalEffect(AiLyrics.DriverEvaluate);
+            UseInterval(AiLyrics.DriverIdleTick, 60_000f);
             return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }

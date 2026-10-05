@@ -10,6 +10,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.1] - unreleased
 
+### Added
+
+- **Word-by-word lyrics with on-device AI.** On a Copilot+ PC with a Snapdragon NPU, Settings › Appearance ›
+  Lyrics can download the AI models once (about 700 MB, English; Spanish optional). Wavee then times every word
+  of a song's line-synced lyrics on the NPU while the song plays, so the lyrics wipe word by word. The song and
+  its lyrics never leave the PC, and a ✦ in the lyrics header shows when the word timing is AI-generated. (#175)
+
 ### Changed
 
 - **The fullscreen visualizer redraws only what moves.** The drifting background and the visualizer bars no longer
