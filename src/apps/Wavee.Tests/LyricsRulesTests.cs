@@ -170,6 +170,55 @@ public class LyricsRowShapeTests
         var b = a with { Lines = [a.Lines[0], a.Lines[0]] };
         Assert.False(Lyrics.RowShape.SameRows(a, b));
     }
+
+    static Lyrics.Doc ThreeLines(bool middleTimed)
+        => Lyr.Doc(Lyrics.SyncKind.Syllable,
+            Lyr.Line(0, "one", Lyr.S(0, 300, "one")),
+            middleTimed ? Lyr.Line(1000, "two", Lyr.S(1000, 1300, "two")) : new Lyrics.Line(1000, "two", []),
+            new Lyrics.Line(2000, "three", []));
+
+    [Fact]
+    public void ChangedRows_of_identical_documents_is_all_false()
+    {
+        Span<bool> changed = stackalloc bool[3];
+        changed.Fill(true);
+        Lyrics.RowShape.ChangedRows(ThreeLines(false), ThreeLines(false), changed);
+        Assert.False(changed[0]);
+        Assert.False(changed[1]);
+        Assert.False(changed[2]);
+    }
+
+    [Fact]
+    public void ChangedRows_flags_only_the_line_that_gained_word_timing()
+    {
+        Span<bool> changed = stackalloc bool[3];
+        Lyrics.RowShape.ChangedRows(ThreeLines(false), ThreeLines(true), changed);
+        Assert.False(changed[0]);
+        Assert.True(changed[1]);
+        Assert.False(changed[2]);
+    }
+
+    [Fact]
+    public void ChangedRows_refuses_a_line_count_change()
+    {
+        var a = ThreeLines(false);
+        var b = a with { Lines = [a.Lines[0], a.Lines[1]] };
+        var changed = new bool[3];
+        Assert.Throws<ArgumentException>(() => Lyrics.RowShape.ChangedRows(a, b, changed));
+    }
+
+    [Fact]
+    public void Only_an_AI_publish_keeps_its_unchanged_rows()
+    {
+        var line = ThreeLines(false);
+        var word = ThreeLines(true);
+        Assert.False(Lyrics.RowShape.PerRowSwap(line, word));                                   // a provider promotion
+        Assert.True(Lyrics.RowShape.PerRowSwap(line, word with { Generated = true }));          // the aligner's first publish
+        Assert.True(Lyrics.RowShape.PerRowSwap(line with { Generated = true }, word));          // human timing replacing ours
+        Assert.False(Lyrics.RowShape.PerRowSwap(line, word with { Generated = true, TrackId = "other" }));
+        Assert.False(Lyrics.RowShape.PerRowSwap(line, word with { Generated = true, Lines = [word.Lines[0], word.Lines[1]] }));
+        Assert.False(Lyrics.RowShape.PerRowSwap(line with { Lines = [] }, word with { Generated = true, Lines = [] }));
+    }
 }
 
 public class LyricsMediaClockTests
@@ -929,6 +978,100 @@ public class LyricsAuthorityTests
         var lineA = Lyr.Doc(Lyrics.SyncKind.Line, new Lyrics.Line(0, "a", []));
         var lineB = Lyr.Doc(Lyrics.SyncKind.Line, new Lyrics.Line(0, "b", []));
         Assert.False(Lyrics.Authority.IsRicher(lineB, lineA));   // below the syllable tier a tie is never a win
+    }
+
+    static Lyrics.Doc Words(int count, bool generated = false, string provider = "human")
+    {
+        var syl = new Lyrics.Syllable[count];
+        for (int i = 0; i < count; i++) syl[i] = Lyr.S(i * 100, i * 100 + 100, "w" + i);
+        return Lyr.Doc(Lyrics.SyncKind.Syllable, Lyr.Line(0, "words", syl)) with { Generated = generated, Provider = provider };
+    }
+
+    [Fact]
+    public void A_generated_word_document_beats_a_line_document()
+    {
+        var line = Lyr.Doc(Lyrics.SyncKind.Line, new Lyrics.Line(0, "words", []));
+        Assert.True(Lyrics.Authority.IsRicher(Words(1, generated: true, provider: "wavee-ai"), line));
+        Assert.False(Lyrics.Authority.IsRicher(line, Words(1, generated: true, provider: "wavee-ai")));
+    }
+
+    [Fact]
+    public void Human_word_timing_replaces_generated_whatever_the_counts()
+    {
+        var generated = Words(5, generated: true, provider: "wavee-ai");
+        Assert.True(Lyrics.Authority.IsRicher(Words(2), generated));
+        Assert.True(Lyrics.Authority.IsRicher(Words(5), generated));
+        Assert.True(Lyrics.Authority.IsRicher(Words(9), generated));
+    }
+
+    [Fact]
+    public void Generated_word_timing_never_displaces_human()
+    {
+        var human = Words(2);
+        Assert.False(Lyrics.Authority.IsRicher(Words(2, generated: true, provider: "wavee-ai"), human));
+        Assert.False(Lyrics.Authority.IsRicher(Words(9, generated: true, provider: "wavee-ai"), human));
+    }
+
+    [Fact]
+    public void A_same_provider_generated_revision_replaces_at_an_equal_or_higher_count()
+    {
+        var earlier = Words(4, generated: true, provider: "wavee-ai");
+        Assert.True(Lyrics.Authority.IsRicher(Words(4, generated: true, provider: "wavee-ai"), earlier));
+        Assert.True(Lyrics.Authority.IsRicher(Words(6, generated: true, provider: "wavee-ai"), earlier));
+        Assert.False(Lyrics.Authority.IsRicher(Words(3, generated: true, provider: "wavee-ai"), earlier));
+    }
+
+    [Fact]
+    public void A_different_provider_generated_document_needs_strictly_more_syllables()
+    {
+        var current = Words(4, generated: true, provider: "wavee-ai");
+        Assert.False(Lyrics.Authority.IsRicher(Words(4, generated: true, provider: "other-ai"), current));
+        Assert.True(Lyrics.Authority.IsRicher(Words(5, generated: true, provider: "other-ai"), current));
+    }
+
+    [Fact]
+    public void Two_human_documents_still_tie_break_on_strictly_more_syllables()
+    {
+        Assert.False(Lyrics.Authority.IsRicher(Words(4, provider: "a"), Words(4, provider: "a")));
+        Assert.False(Lyrics.Authority.IsRicher(Words(4, provider: "b"), Words(4, provider: "a")));
+        Assert.True(Lyrics.Authority.IsRicher(Words(5, provider: "b"), Words(4, provider: "a")));
+        Assert.False(Lyrics.Authority.IsRicher(Words(3, provider: "b"), Words(4, provider: "a")));
+    }
+
+    static Lyrics.Doc Overridden(int count) => Words(count, generated: true, provider: "wavee-ai") with { Override = true };
+
+    [Fact]
+    public void A_user_chosen_generated_document_beats_human_word_timing()
+    {
+        Assert.True(Lyrics.Authority.IsRicher(Overridden(2), Words(9)));
+        Assert.True(Lyrics.Authority.IsRicher(Overridden(1), Lyr.Doc(Lyrics.SyncKind.Line, new Lyrics.Line(0, "words", []))));
+        Assert.True(Lyrics.Authority.IsRicher(Overridden(3), Overridden(4)));   // a later revision of the choice, whatever the count
+    }
+
+    [Fact]
+    public void Without_the_choice_generated_timing_still_loses_to_human()
+    {
+        Assert.False(Lyrics.Authority.IsRicher(Words(9, generated: true, provider: "wavee-ai"), Words(2)));
+        Assert.False(Lyrics.Authority.IsRicher(Words(2) with { Override = true }, Words(9)));   // the flag means nothing on a human doc
+    }
+
+    [Fact]
+    public void Nothing_but_another_choice_displaces_a_user_chosen_generated_document()
+    {
+        var chosen = Overridden(3);
+        Assert.False(Lyrics.Authority.IsRicher(Words(9), chosen));
+        Assert.False(Lyrics.Authority.IsRicher(Words(9, generated: true, provider: "wavee-ai"), chosen));
+    }
+
+    [Fact]
+    public void A_provider_promotion_replaces_anything_but_the_users_AI_choice()
+    {
+        var line = Lyr.Doc(Lyrics.SyncKind.Line, new Lyrics.Line(0, "words", []));
+        Assert.True(Lyrics.Authority.PromotionReplaces(Words(9), line));
+        Assert.True(Lyrics.Authority.PromotionReplaces(Words(9), Words(3, generated: true, provider: "wavee-ai")));
+        Assert.True(Lyrics.Authority.PromotionReplaces(Words(9), null));
+        Assert.False(Lyrics.Authority.PromotionReplaces(Words(9), Overridden(3)));
+        Assert.False(Lyrics.Authority.PromotionReplaces(null, Overridden(3)));
     }
 
     [Fact]

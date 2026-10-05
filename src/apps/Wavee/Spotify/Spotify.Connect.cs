@@ -785,10 +785,13 @@ public static partial class Spotify
                     n0: messageId, payload: rented.AsMemory(0, written));
 
                 var args = new RequestArgs { Id = OurDeviceId, Body = rented.AsSpan(0, written), Flag = reason == PutReason.PickerOpened };
+                // The answer is a Cluster (logged p50 61 KB, p90 97 KB, max 109 KB) decoded into a ClusterBuffer below and
+                // dropped: LENT (Platform/Bodies.cs), so the larger ones stop landing on the large-object heap per PUT.
+                using Bodies.LendScope lent = Bodies.Lend();
                 Api.Result result = Api.Send(RequestKind.ConnectStatePut, args, CancellationToken.None);
                 // Closed here, unconditionally, the moment the response is in hand — a non-2xx is an ORDINARY End
                 // whose n0 sits outside 200-299 (§3.3's error row), not a special capture path.
-                Capture.End(putCaptureId, n0: result.Status, payload: result.Body);
+                Capture.End(putCaptureId, n0: result.Status, payload: Capture.Enabled ? result.Body : default);
                 if (!result.Ok)
                 {
                     // 422 after a BecameInactive is the service saying "you already were" — a soft acknowledgement,
@@ -812,7 +815,7 @@ public static partial class Spotify
                 Log.Info("spotify", "put-state " + reason + " active=" + isActive
                     + " track=" + snapshot.Track.Text + " pos=" + snapshot.PositionAsOfMs
                     + " playing=" + snapshot.IsPlaying + " paused=" + snapshot.IsPaused
-                    + " ctx=" + snapshot.Context.Text + " msgId=" + messageId + " cluster=" + result.Body.Length + "B"
+                    + " ctx=" + snapshot.Context.Text + " msgId=" + messageId + " cluster=" + result.Length + "B"
                     + " owner=" + (isActive ? "us" : "-") + " claim=" + (isActive ? messageId.ToString() : "-")
                     + " startedAt=" + snapshot.StartedPlayingAtMs + " hasBeenMs=" + snapshot.HasBeenPlayingForMs
                     + " origin=" + snapshot.Reason);
@@ -823,7 +826,7 @@ public static partial class Spotify
                 // The RESPONSE is a Cluster, and it is the judge: it says whether the service adopted our claim. It
                 // goes into the same mailbox as a push, marked `PutResponse` below, so the ownership fold has
                 // exactly one input shape to read (C5).
-                if (result.Body.Length == 0) return;
+                if (result.Length == 0) return;
                 Decode.ClusterBuffer buffer = Decode.ClusterBuffer.Rent();
                 try
                 {

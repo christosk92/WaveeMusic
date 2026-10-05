@@ -1,9 +1,10 @@
 // ── Wavee.Tests/VisualizerModelTests.cs — the visualizer's pure core (Shell/Visualizer.cs) ─────────────────────────────
 //
-// Pure: `Visualizer.Catalog / Demand / Bands`, the eight faces' arithmetic and the ONE `Model.Tick` take the caller's
-// spans and touch no engine, no signal and no table, so nothing here needs a scope. The 30 Hz clock, the slab and the faces
-// that bind them are Visualizer.UI.cs (covered by the `--fake` and real-account walks, not a unit test). Plan:
-// docs/plans/wavee/fullscreen-flagship-implementation.md §4.8, §5.2 (V-U2, V-U32, V-U35, V-U55).
+// Pure: `Visualizer.Bands / Beat / Sections / Aurora / Timeline / Oscilloscope` and the ONE `Model.Tick` take the caller's
+// spans and touch no engine, no signal and no table, so nothing here needs a scope. The catalog, the demand and the
+// migration are VisualizerCatalogTests; the palette VisualizerPaletteTests; the moments VisualizerMomentsTests. The clock,
+// the slab and the faces that bind them are Visualizer.UI.cs (covered by the `--fake` and real-account walks, not a unit
+// test). Plan: docs/plans/wavee/fullscreen-flagship-implementation.md §4.8, §5.2 (V-U2, V-U32, V-U55); viz-app-plan §3.3-§3.4.
 
 using Wavee;
 using Xunit;
@@ -19,8 +20,9 @@ public class VisualizerModelTests
     static ReadOnlySpan<uint> NoBeats => default;
 
     static Visualizer.Input Inp(bool playing = true, bool calm = false, float sensitivity = 1f, bool live = false, bool muted = false,
-        float rms = 0f, long pos = 0, long dur = 180_000, bool bands = false, bool beats = false, ushort tempo = 0, bool viz = true)
-        => new(playing, calm, sensitivity, live, muted, rms, pos, dur, bands, beats, tempo, viz);
+        float rms = 0f, long pos = 0, long dur = 180_000, bool bands = false, bool beats = false, ushort tempo = 0, bool viz = true,
+        bool level = false, float flux = 0f, bool onset = false, float strength = 0f)
+        => new(playing, calm, sensitivity, live, muted, rms, pos, dur, bands, beats, tempo, viz, level, flux, onset, strength);
 
     static float[] Flat(float db)
     {
@@ -45,107 +47,27 @@ public class VisualizerModelTests
         return m.Level;
     }
 
-    static int ArgMax(float[] v)
+    static int ArgMax(ReadOnlySpan<float> v)
     {
         int best = 0;
         for (int i = 1; i < v.Length; i++) if (v[i] > v[best]) best = i;
         return best;
     }
 
-    static WaveSample[] Spiked(int n, int spikeAt)
+    /// <summary>A 120 BPM grid from 0 ms (500 ms a beat); with <paramref name="barsFrom"/> ≥ 0 every 4th beat from it is a downbeat.</summary>
+    static uint[] Grid(int beats, int barsFrom = -1)
     {
-        var s = new WaveSample[n];
-        s[spikeAt] = new WaveSample(255, 255, 255);
-        return s;
+        var g = new uint[beats];
+        for (int i = 0; i < beats; i++)
+            g[i] = (uint)(i * 500) | (barsFrom >= 0 && i >= barsFrom && (i - barsFrom) % 4 == 0 ? BeatGrid.DownbeatBit : 0u);
+        return g;
     }
 
-    // ── catalog ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(Visualizer.Kind.Field, Visualizer.Need.Breath, false)]
-    [InlineData(Visualizer.Kind.Halo, Visualizer.Need.Spectrum, false)]
-    [InlineData(Visualizer.Kind.Horizon, Visualizer.Need.Precomputed, true)]
-    [InlineData(Visualizer.Kind.Matrix, Visualizer.Need.Spectrum, false)]
-    [InlineData(Visualizer.Kind.Aurora, Visualizer.Need.Spectrum, true)]
-    [InlineData(Visualizer.Kind.Spectrum, Visualizer.Need.Spectrum, false)]
-    [InlineData(Visualizer.Kind.Pulse, Visualizer.Need.Beats, false)]
-    [InlineData(Visualizer.Kind.Tape, Visualizer.Need.Breath, false)]
-    public void Catalog_needs_and_series(Visualizer.Kind kind, Visualizer.Need need, bool series)
+    static int LiveRipples(Visualizer.Model m)
     {
-        Assert.Equal(need, Visualizer.Catalog.NeedsOf(kind));
-        Assert.Equal(series, Visualizer.Catalog.UsesSeries(kind));      // Horizon and Aurora only
-    }
-
-    [Fact]
-    public void Catalog_coerces_stored_ints_and_pins_the_persisted_values()
-    {
-        Assert.Equal(Visualizer.Catalog.Count, Enum.GetValues<Visualizer.Kind>().Length);
-
-        // the persisted ints (Platform.Keys.StageVisualizer) are append-only
-        Visualizer.Kind[] order = [Visualizer.Kind.Field, Visualizer.Kind.Halo, Visualizer.Kind.Horizon, Visualizer.Kind.Matrix,
-            Visualizer.Kind.Aurora, Visualizer.Kind.Spectrum, Visualizer.Kind.Pulse, Visualizer.Kind.Tape];
-        Assert.Equal(Visualizer.Catalog.Count, order.Length);
-        for (int i = 0; i < order.Length; i++)
-        {
-            Assert.Equal(i, (int)order[i]);
-            Assert.Equal(i, Visualizer.Catalog.Coerce(i));
-        }
-
-        // anything else is the board's default
-        int horizon = (int)Visualizer.Kind.Horizon;
-        Assert.Equal(horizon, Visualizer.Catalog.Coerce(99));
-        Assert.Equal(horizon, Visualizer.Catalog.Coerce(Visualizer.Catalog.Count));
-        Assert.Equal(horizon, Visualizer.Catalog.Coerce(-1));
-        Assert.Equal(horizon, Visualizer.Catalog.Coerce(int.MinValue));
-        Assert.Equal(horizon, Visualizer.Catalog.Coerce(int.MaxValue));
-    }
-
-    // ── demand ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    static Visualizer.Tier TierFor(Visualizer.Kind k, bool viz = true, bool stageUp = true, bool playing = true, bool owner = true,
-        bool supported = true, bool occluded = false, bool reduced = false)
-        => Visualizer.Demand.For(k, viz, stageUp, playing, owner, supported, occluded, reduced);
-
-    [Fact]
-    public void Demand_every_closed_gate_holds_no_lease()
-    {
-        foreach (var k in Enum.GetValues<Visualizer.Kind>())
-            foreach (bool viz in new[] { true, false })
-            {
-                Assert.Equal(Visualizer.Tier.None, TierFor(k, viz, stageUp: false));
-                Assert.Equal(Visualizer.Tier.None, TierFor(k, viz, playing: false));
-                Assert.Equal(Visualizer.Tier.None, TierFor(k, viz, owner: false));
-                Assert.Equal(Visualizer.Tier.None, TierFor(k, viz, supported: false));
-                Assert.Equal(Visualizer.Tier.None, TierFor(k, viz, occluded: true));
-                Assert.Equal(Visualizer.Tier.None, TierFor(k, viz, reduced: true));
-            }
-    }
-
-    [Theory]
-    [InlineData(Visualizer.Kind.Field, Visualizer.Tier.Level)]
-    [InlineData(Visualizer.Kind.Halo, Visualizer.Tier.Spectrum)]
-    [InlineData(Visualizer.Kind.Horizon, Visualizer.Tier.None)]
-    [InlineData(Visualizer.Kind.Matrix, Visualizer.Tier.Spectrum)]
-    [InlineData(Visualizer.Kind.Aurora, Visualizer.Tier.Spectrum)]
-    [InlineData(Visualizer.Kind.Spectrum, Visualizer.Tier.Spectrum)]
-    [InlineData(Visualizer.Kind.Pulse, Visualizer.Tier.None)]
-    [InlineData(Visualizer.Kind.Tape, Visualizer.Tier.Level)]
-    public void Demand_tiers_follow_the_face_in_visualizer_mode_and_are_level_outside_it(Visualizer.Kind kind, Visualizer.Tier expected)
-    {
-        Assert.Equal(expected, TierFor(kind));
-        // outside Visualizer mode only the base Field's breath is visible, whatever face is selected (V-U55)
-        Assert.Equal(Visualizer.Tier.Level, TierFor(kind, viz: false));
-    }
-
-    [Fact]
-    public void Ticks_run_while_settling_even_when_paused_and_stop_when_occluded_or_reduced()
-    {
-        Assert.True(Visualizer.Demand.Ticks(stageUp: true, playing: true, settled: true, occluded: false, reduced: false));
-        Assert.True(Visualizer.Demand.Ticks(stageUp: true, playing: false, settled: false, occluded: false, reduced: false));   // a release tail
-        Assert.False(Visualizer.Demand.Ticks(stageUp: true, playing: false, settled: true, occluded: false, reduced: false));
-        Assert.False(Visualizer.Demand.Ticks(stageUp: false, playing: true, settled: false, occluded: false, reduced: false));
-        Assert.False(Visualizer.Demand.Ticks(stageUp: true, playing: true, settled: false, occluded: true, reduced: false));
-        Assert.False(Visualizer.Demand.Ticks(stageUp: true, playing: true, settled: false, occluded: false, reduced: true));
+        int n = 0;
+        foreach (float a in m.RippleAge) if (a < 1f) n++;
+        return n;
     }
 
     // ── bands ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -238,12 +160,10 @@ public class VisualizerModelTests
         Assert.Equal(Visualizer.Bands.AgcMaxGain, Visualizer.Bands.Agc(ref agc, 0.1f));    // a quiet master: the cap
         Assert.Equal(1f, Visualizer.Bands.Agc(ref agc, 1f));                               // a full-scale frame needs no gain
 
-        // the running maximum decays 0.995 per step: after a long silence the gain is back at its cap
         float g = 0f;
         for (int i = 0; i < 400; i++) g = Visualizer.Bands.Agc(ref agc, 0f);
         Assert.Equal(Visualizer.Bands.AgcMaxGain, g);
 
-        // for any frame in [0, 1] the gain stays within [1, 2]
         for (float frameMax = 0f; frameMax <= 1f; frameMax += 0.1f)
         {
             g = Visualizer.Bands.Agc(ref agc, frameMax);
@@ -266,13 +186,73 @@ public class VisualizerModelTests
         Assert.False(Visualizer.Bands.Settled(quiet));
     }
 
+    // ── the precomputed spread and the tempo pulse ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Spread_is_zero_without_data_deterministic_and_lands_each_energy_on_its_envelope()
+    {
+        var a = new float[Visualizer.Bands.Count];
+        Visualizer.Bands.Spread(0f, 0f, 0f, 17, a);
+        Assert.All(a, v => Assert.Equal(0f, v));                         // silence stays silent (the ripple scales with energy)
+
+        var b = new float[Visualizer.Bands.Count];
+        var c = new float[Visualizer.Bands.Count];
+        Visualizer.Bands.Spread(0.5f, 0.4f, 0.3f, 17, b);
+        Visualizer.Bands.Spread(0.5f, 0.4f, 0.3f, 17, c);
+        Assert.Equal(b, c);                                              // nothing random, nothing timed
+        Visualizer.Bands.Spread(0.5f, 0.4f, 0.3f, 18, c);
+        Assert.NotEqual(b, c);                                           // the ripple moves with the beat (the seed)
+        Assert.All(b, v => Assert.InRange(v, 0f, 1f));
+
+        Visualizer.Bands.Spread(0.8f, 0f, 0f, 0, a);
+        Assert.InRange(ArgMax(a), 2, 6);                                 // the low envelope is centred on band 4
+        Visualizer.Bands.Spread(0f, 0.8f, 0f, 0, a);
+        Assert.InRange(ArgMax(a), 15, 21);                               // the mid on 18
+        Visualizer.Bands.Spread(0f, 0f, 0.8f, 0, a);
+        Assert.InRange(ArgMax(a), 35, 41);                               // the high on 38
+
+        // the ripple is at most SpreadRipple × the loudest energy
+        for (int seed = 0; seed < 32; seed++)
+        {
+            Visualizer.Bands.Spread(0.5f, 0f, 0f, seed, a);
+            Assert.InRange(a[47], 0f, Visualizer.Bands.SpreadRipple * 0.5f + 1e-4f);
+        }
+        for (int i = 0; i < 48; i++) Assert.InRange(Visualizer.Bands.Hash(i, 3), 0f, 0.99999f);
+    }
+
+    [Fact]
+    public void Pulse_is_a_bass_weighted_hump_on_the_beat()
+    {
+        var on = new float[Visualizer.Bands.Count];
+        var late = new float[Visualizer.Bands.Count];
+        Visualizer.Bands.Pulse(0f, on);
+        Visualizer.Bands.Pulse(0.8f, late);
+        Assert.True(on[4] > on[38]);                                     // bass-weighted
+        Assert.True(on[4] > late[4]);                                    // high on the beat, gone by its end
+        Assert.All(on, v => Assert.InRange(v, 0f, 1f));
+    }
+
+    [Fact]
+    public void Sample_interpolates_between_neighbouring_waveform_samples()
+    {
+        WaveSample[] two = [new(0, 0, 0), new(255, 255, 255)];
+        Assert.True(Visualizer.Bands.Sample(two, 500, 1_000, out float l, out float m, out float h));
+        Assert.Equal(0.5f, l, 3);                                        // half way between the two centres (250 and 750 ms)
+        Assert.Equal(0.5f, m, 3);
+        Assert.Equal(0.5f, h, 3);
+        Visualizer.Bands.Sample(two, 100, 1_000, out l, out _, out _);
+        Assert.Equal(0f, l);                                             // before the first centre: clamped to it
+        Visualizer.Bands.Sample(two, 990, 1_000, out l, out _, out _);
+        Assert.Equal(1f, l);                                             // after the last centre: clamped to it
+        Assert.False(Visualizer.Bands.Sample(ReadOnlySpan<WaveSample>.Empty, 0, 1_000, out _, out _, out _));
+        Assert.False(Visualizer.Bands.Sample(two, 0, 0, out _, out _, out _));
+    }
+
     // ── the fold: bands ─────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Model_applies_sensitivity_after_the_agc()
     {
-        // 1) a quiet frame (every band -50 dB, unit 0.185): the AGC is at its 2x cap, so the user's gain scales the
-        //    normalised frame by exactly 1.5 — nothing is clamped yet
         float[] one = Converged(-50f, 1f), more = Converged(-50f, 1.5f);
         for (int i = 0; i < one.Length; i++)
         {
@@ -280,8 +260,6 @@ public class VisualizerModelTests
             Assert.Equal(1.5f, more[i] / one[i], 3);
         }
 
-        // 2) a loud frame (-20 dB, unit 0.741): the AGC normalises it to the ceiling, and a user gain of 0.5 then takes
-        //    EXACTLY half. Were the gain applied BEFORE the AGC, the AGC would cancel it (V-U32).
         float[] full = Converged(-20f, 1f), half = Converged(-20f, 0.5f);
         for (int i = 0; i < full.Length; i++)
         {
@@ -289,7 +267,6 @@ public class VisualizerModelTests
             Assert.Equal(0.5f, half[i] / full[i], 3);
         }
 
-        // 3) the user's gain never pushes a band past the ceiling
         float[] clamped = Converged(-40f, 1.5f);
         for (int i = 0; i < clamped.Length; i++) Assert.InRange(clamped[i], 0.999f, 1f);
     }
@@ -311,7 +288,6 @@ public class VisualizerModelTests
         Assert.True(m.Level[47] > 0.95f);
         Assert.True(m.Peak[47] >= m.Level[47]);                          // the cap rides at or above the band
 
-        // paused with no frame: every band releases to the floor, then the whole model settles (the reels coast to a stop last)
         Run(m, Inp(playing: false), NoDb, NoBands, NoBeats, 60);
         Assert.True(Visualizer.Bands.Settled(m.Level));
         Run(m, Inp(playing: false), NoDb, NoBands, NoBeats, 200);
@@ -326,12 +302,10 @@ public class VisualizerModelTests
         Run(m, Inp(live: true, rms: 0.1f), live, NoBands, NoBeats, 30);
         Assert.True(m.Level[10] > 0.5f);
 
-        // muted: the engine still publishes, but the UI releases the bands through the normal follower
-        var f = Run(m, Inp(live: true, muted: true, rms: 0.1f), live, NoBands, NoBeats, 80);
-        Assert.True(Visualizer.Bands.Settled(m.Level));
+        var f = Run(m, Inp(live: true, muted: true, rms: 0.1f, level: true), live, NoBands, NoBeats, 80);
+        Assert.True(Visualizer.Bands.Settled(m.Level));                  // muted: no live frame AND no level tap
         Assert.Equal(Visualizer.Source.Breath, f.Source);
 
-        // a frame shorter than the band count is not a live frame
         var short47 = new float[Visualizer.Bands.Count - 1];
         Array.Fill(short47, -10f);
         var m2 = new Visualizer.Model();
@@ -341,19 +315,42 @@ public class VisualizerModelTests
     }
 
     [Fact]
-    public void Model_never_invents_bands_without_a_live_frame()
+    public void Model_level_lease_reads_the_rms_and_spreads_it_over_the_bands()
+    {
+        // a level lease (no spectrum): the level is the tap's RMS ×3.5, and the bands are its spread — not a dead floor
+        var m = new Visualizer.Model();
+        var f = Run(m, Inp(level: true, rms: 0.1f), NoDb, NoBands, NoBeats, 30);
+        Assert.Equal(Visualizer.Source.Live, f.Source);
+        Assert.Equal(0.35f, f.Level, 4);
+        Assert.Equal(0.35f, f.Low, 4);                                   // without a waveform the three energies are the level
+        Assert.True(m.Level[4] > 0.2f && m.Level[38] > 0.2f);
+
+        // with the song's waveform the level is SHAPED by it (bass-heavy here) and still scaled to the live level
+        var wave = new WaveSample[100];
+        Array.Fill(wave, new WaveSample(200, 60, 20));
+        var shaped = Run(new Visualizer.Model(), Inp(level: true, rms: 0.1f, bands: true, pos: 50_000, dur: 100_000), NoDb, wave, NoBeats, 30);
+        Assert.True(shaped.Low > shaped.Mid && shaped.Mid > shaped.High);
+        Assert.Equal(0.35f, shaped.Level, 4);
+
+        // the tap is ignored while a live spectrum is there (the window RMS is), and silent when paused
+        Assert.Equal(Visualizer.Source.Breath, Run(new Visualizer.Model(), Inp(playing: false, level: true, rms: 0.1f), NoDb, NoBands, NoBeats, 1).Source);
+    }
+
+    [Fact]
+    public void Model_spreads_the_precomputed_waveform_when_there_is_no_live_frame()
     {
         var samples = new WaveSample[100];
         Array.Fill(samples, new WaveSample(200, 100, 50));
         var m = new Visualizer.Model();
         var f = Run(m, Inp(bands: true, pos: 90_000), NoDb, samples, NoBeats, 30);
 
-        Assert.All(m.Level, v => Assert.True(v <= 0.005f));              // the per-band arrays stay at the floor (Halo/Matrix/Spectrum rest)
         Assert.Equal(Visualizer.Source.Precomputed, f.Source);
-        Assert.Equal(200f / 255f, f.Low, 4);                             // while the three energies come from the precomputed bands
+        Assert.Equal(200f / 255f, f.Low, 4);                             // the three energies are the song's own bytes
         Assert.Equal(100f / 255f, f.Mid, 4);
         Assert.Equal(50f / 255f, f.High, 4);
         Assert.Equal((200f + 100f + 50f) / 3f / 255f, f.Level, 4);
+        Assert.True(m.Level[4] > m.Level[44]);                           // and the 48 bands are their spread: bass-heavy here
+        Assert.True(m.Level[44] > 0f);                                   // never a dead floor on Connect
     }
 
     [Fact]
@@ -364,6 +361,7 @@ public class VisualizerModelTests
         Array.Fill(wave, new WaveSample(100, 100, 100));
 
         Assert.Equal(Visualizer.Source.Live, Run(new Visualizer.Model(), Inp(live: true, rms: 0.1f), live, NoBands, NoBeats, 1).Source);
+        Assert.Equal(Visualizer.Source.Live, Run(new Visualizer.Model(), Inp(level: true, rms: 0.1f), NoDb, NoBands, NoBeats, 1).Source);
         Assert.Equal(Visualizer.Source.Precomputed, Run(new Visualizer.Model(), Inp(bands: true), NoDb, wave, NoBeats, 1).Source);
         Assert.Equal(Visualizer.Source.TempoGrid, Run(new Visualizer.Model(), Inp(tempo: 1200), NoDb, NoBands, NoBeats, 1).Source);
         Assert.Equal(Visualizer.Source.Breath, Run(new Visualizer.Model(), Inp(), NoDb, NoBands, NoBeats, 1).Source);
@@ -376,34 +374,39 @@ public class VisualizerModelTests
         Assert.Equal(Visualizer.Source.Breath, Run(new Visualizer.Model(), Inp(playing: false, live: true, bands: true), live, wave, NoBeats, 1).Source);
     }
 
-    // ── the fold: beats ─────────────────────────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void Model_tempo_pulse_moves_the_bands_without_any_data()
+    {
+        var m = new Visualizer.Model();
+        Run(m, Inp(tempo: 1200, pos: 0), NoDb, NoBands, NoBeats, 1);
+        Assert.True(m.Level[4] > 0.2f);                                  // a hump on the beat
+        Assert.True(m.Level[4] > m.Level[40]);                           // bass-weighted
+    }
+
+    // ── the fold: beats and bars ────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Model_beats_from_the_grid_then_the_tempo()
     {
-        uint[] grid = new uint[40];
-        for (int i = 0; i < grid.Length; i++) grid[i] = (uint)(i * 500);          // 120 BPM from 0 ms
+        uint[] grid = Grid(40);                                          // 120 BPM from 0 ms, no bar marks
 
         var f = Run(new Visualizer.Model(), Inp(pos: 250, beats: true), NoDb, NoBands, grid, 1);
         Assert.Equal(0, f.BeatIndex);
         Assert.Equal(0.5f, f.BeatPhase, 5);
         Assert.Equal(MathF.Exp(-3f), f.Kick, 5);                         // Kick(phase) = e^(-6 phase)
-        Assert.Equal(Visualizer.Pulse.CoverScale(f.Kick), f.BeatScale);
 
         f = Run(new Visualizer.Model(), Inp(pos: 1_750, beats: true), NoDb, NoBands, grid, 1);
         Assert.Equal(3, f.BeatIndex);
         Assert.Equal(0.5f, f.BeatPhase, 5);
         Assert.Equal(Visualizer.Source.Precomputed, f.Source);           // a grid with no bands is still Spotify's data, not idle
 
-        // before the grid's first beat the kick is spent, not full
         uint[] late = new uint[40];
         for (int i = 0; i < late.Length; i++) late[i] = (uint)(400 + i * 500);
         f = Run(new Visualizer.Model(), Inp(pos: 100, beats: true), NoDb, NoBands, late, 1);
         Assert.Equal(0, f.BeatIndex);
         Assert.Equal(1f, f.BeatPhase);
-        Assert.True(f.Kick < 0.01f);
+        Assert.True(f.Kick < 0.01f);                                     // before the first beat: a spent kick, not a full one
 
-        // a tempo of 120 BPM (x10 = 1200) with no grid lands on the same phase, and says where it came from
         f = Run(new Visualizer.Model(), Inp(pos: 250, tempo: 1200), NoDb, NoBands, NoBeats, 1);
         Assert.Equal(0, f.BeatIndex);
         Assert.Equal(0.5f, f.BeatPhase, 5);
@@ -413,25 +416,21 @@ public class VisualizerModelTests
         f = Run(new Visualizer.Model(), Inp(pos: 1_750, tempo: 1200), NoDb, NoBands, NoBeats, 1);
         Assert.Equal(3, f.BeatIndex);
 
-        // the grid beats the tempo: a 60 BPM tempo would read phase 0.75 here
         f = Run(new Visualizer.Model(), Inp(pos: 750, beats: true, tempo: 600), NoDb, NoBands, grid, 1);
-        Assert.Equal(1, f.BeatIndex);
+        Assert.Equal(1, f.BeatIndex);                                    // the grid beats the tempo
         Assert.Equal(0.5f, f.BeatPhase, 5);
 
-        // an empty grid falls through to the tempo
         f = Run(new Visualizer.Model(), Inp(pos: 250, beats: true, tempo: 1200), NoDb, NoBands, NoBeats, 1);
-        Assert.Equal(0.5f, f.BeatPhase, 5);
+        Assert.Equal(0.5f, f.BeatPhase, 5);                              // an empty grid falls through to the tempo
 
-        // neither: no beat, no kick, and never a negative index
         f = Run(new Visualizer.Model(), Inp(pos: 250, beats: true), NoDb, NoBands, NoBeats, 1);
-        Assert.Equal(0, f.BeatIndex);
+        Assert.Equal(0, f.BeatIndex);                                    // neither: no beat, no kick, never a negative index
         Assert.Equal(0f, f.BeatPhase);
         Assert.Equal(0f, f.Kick);
-        Assert.Equal(1f, f.BeatScale);
+        Assert.False(f.HasBars);
 
-        // paused: the phase is still reported (the rings hold their pose) but nothing kicks
         f = Run(new Visualizer.Model(), Inp(playing: false, pos: 250, tempo: 1200), NoDb, NoBands, NoBeats, 1);
-        Assert.Equal(0.5f, f.BeatPhase, 5);
+        Assert.Equal(0.5f, f.BeatPhase, 5);                              // paused: the phase still reads, nothing kicks
         Assert.Equal(0f, f.Kick);
     }
 
@@ -439,137 +438,268 @@ public class VisualizerModelTests
     public void Model_kick_attacks_instantly_and_releases_smoothly()
     {
         var m = new Visualizer.Model();
-        var f = Run(m, Inp(pos: 0, tempo: 1200), NoDb, NoBands, NoBeats, 1);   // phase 0: the kick is at its peak
+        var f = Run(m, Inp(pos: 0, tempo: 1200), NoDb, NoBands, NoBeats, 1);
         Assert.Equal(1f, f.Kick, 5);
 
-        f = Run(m, Inp(pos: 250, tempo: 1200), NoDb, NoBands, NoBeats, 1);     // the target fell to e^-3: the follower eases down
+        f = Run(m, Inp(pos: 250, tempo: 1200), NoDb, NoBands, NoBeats, 1);
         Assert.True(f.Kick < 1f);
         Assert.True(f.Kick > MathF.Exp(-3f));
     }
 
     [Fact]
-    public void Pulse_rings_are_a_beat_apart_and_each_four_beats_long()
+    public void Model_bars_come_from_the_grids_downbeats()
     {
-        foreach (float phase in new[] { 0f, 0.25f, 0.5f, 0.99f })
-            for (int beat = 0; beat < 8; beat++)
-            {
-                float sum = 0f;
-                for (int r = 0; r < Visualizer.Pulse.Rings; r++)
-                {
-                    float p = Visualizer.Pulse.RingProgress(beat, phase, r);
-                    Assert.InRange(p, 0f, 0.9999f);
-                    sum += p;
-                    // a beat apart: ring r now is where ring r+1 was one beat ago
-                    if (r < Visualizer.Pulse.Rings - 1)
-                        Assert.Equal(p, Visualizer.Pulse.RingProgress(beat - 1, phase, r + 1), 5);
-                }
-                Assert.Equal((0f + 1f + 2f + 3f + Visualizer.Pulse.Rings * phase) / Visualizer.Pulse.Rings, sum, 4);
-            }
+        uint[] grid = Grid(64, barsFrom: 0);                             // a downbeat every 4th beat from beat 0
+        var f = Run(new Visualizer.Model(), Inp(pos: 2_250, beats: true), NoDb, NoBands, grid, 1);
+        Assert.True(f.HasBars);
+        Assert.Equal(1, f.Bar);                                          // beat 4 opens bar 1
+        Assert.Equal(0.125f, f.BarPhase, 4);                             // half a beat into a 4-beat bar
 
-        Assert.Equal(0.6f, Visualizer.Pulse.RingOpacity(0f));
-        Assert.Equal(0f, Visualizer.Pulse.RingOpacity(1f));
-        Assert.Equal(1f, Visualizer.Pulse.RingScale(0f));
-        Assert.Equal(2.3f, Visualizer.Pulse.RingScale(1f), 5);
-        Assert.Equal(1f, Visualizer.Pulse.Kick(0f));
-        Assert.True(Visualizer.Pulse.Kick(0.5f) < Visualizer.Pulse.Kick(0.25f));
-        Assert.Equal(1.025f, Visualizer.Pulse.CoverScale(1f), 5);
-        Assert.Equal(1f, Visualizer.Pulse.CoverScale(0f));
-        Assert.Equal(0.14f, Visualizer.Pulse.GlowOpacity(0f), 5);
+        f = Run(new Visualizer.Model(), Inp(pos: 7_900, beats: true), NoDb, NoBands, grid, 1);
+        Assert.Equal(3, f.Bar);                                          // beat 15 (7.5 s) is the last beat of bar 3
+
+        // a pickup: the first bar starts at beat 1 — before it, bar 0
+        uint[] pickup = Grid(64, barsFrom: 1);
+        f = Run(new Visualizer.Model(), Inp(pos: 250, beats: true), NoDb, NoBands, pickup, 1);
+        Assert.Equal(0, f.Bar);
+        f = Run(new Visualizer.Model(), Inp(pos: 2_750, beats: true), NoDb, NoBands, pickup, 1);
+        Assert.Equal(1, f.Bar);                                          // beat 5 opens the second marked bar
+
+        // a backward seek recounts (an incremental counter must never keep counting past a rewind)
+        var m = new Visualizer.Model();
+        Run(m, Inp(pos: 20_000, beats: true), NoDb, NoBands, grid, 1);
+        f = Run(m, Inp(pos: 2_250, beats: true), NoDb, NoBands, grid, 1);
+        Assert.Equal(1, f.Bar);
     }
 
-    // ── the fold: series ────────────────────────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void Model_bars_fall_back_to_every_fourth_beat()
+    {
+        var f = Run(new Visualizer.Model(), Inp(pos: 2_250, tempo: 1200), NoDb, NoBands, NoBeats, 1);
+        Assert.True(f.HasBars);
+        Assert.Equal(1, f.Bar);
+        Assert.Equal(0.125f, f.BarPhase, 4);
+
+        f = Run(new Visualizer.Model(), Inp(pos: 2_250, beats: true), NoDb, NoBands, Grid(64), 1);
+        Assert.Equal(1, f.Bar);                                          // a grid without bar marks counts 4 beats a bar too
+        Assert.Equal((1, 0.375f), Visualizer.Beat.BarOfTempo(5, 0.5f));
+        Assert.Equal((0, 0f), Visualizer.Beat.BarOfTempo(-3, 0f));        // never a negative bar
+    }
 
     [Fact]
-    public void Model_horizon_window_is_12_seconds_about_the_playhead()
+    public void Model_downbeat_edges_fire_once_when_crossed_and_never_on_a_seek()
     {
-        // a 3-minute track; one spike at 10 s. The window is indexed by DURATION, so the 9,000-hop answer (spike at index 500)
-        // and the same answer max-pooled onto 4,096 (spike at index 227) draw the same picture (V-D17).
-        foreach (var (n, spike) in new[] { (9_000, 500), (WaveformBands.MaxSamples, 227) })
+        var m = new Visualizer.Model();
+        int edges = 0;
+        Visualizer.Frame f = default;
+        for (long pos = 1_800; pos <= 2_400; pos += 33)
         {
-            var samples = Spiked(n, spike);
-            var m = new Visualizer.Model();
-
-            Run(m, Inp(pos: 10_000, dur: 180_000, bands: true), NoDb, samples, NoBeats, 1);
-            Assert.Equal(90, ArgMax(m.HorizonLow));                      // the playhead is the window's centre
-            Assert.Equal(1f, m.HorizonLow[90]);
-            Assert.Equal(0f, m.HorizonLow[89]);
-            Assert.Equal(0f, m.HorizonLow[91]);
-            Assert.Equal(1f, m.HorizonMid[90]);
-            Assert.Equal(0.75f, m.HorizonHigh[90]);                      // high·0.75
-
-            Run(m, Inp(pos: 4_000, dur: 180_000, bands: true), NoDb, samples, NoBeats, 1);
-            Assert.Equal(180, ArgMax(m.HorizonLow));                     // 6 s ahead of the playhead: the right edge
-
-            Run(m, Inp(pos: 16_000, dur: 180_000, bands: true), NoDb, samples, NoBeats, 1);
-            Assert.Equal(0, ArgMax(m.HorizonLow));                       // 6 s behind: the left edge
-            Assert.Equal(1f, m.HorizonLow[0]);
+            f = m.Tick(Inp(pos: pos, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+            if (f.DownbeatEdge) { edges++; Assert.Equal(1, f.Bar); }
         }
+        Assert.Equal(1, edges);                                          // bar 0 → 1 at 2 000 ms, once
+        Assert.Equal(1, f.Downbeat);
+
+        f = m.Tick(Inp(pos: 20_000, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.False(f.DownbeatEdge);                                    // a seek moves the bar …
+        Assert.Equal(10, f.Bar);
+        Assert.Equal(1, f.Downbeat);                                     // … never the downbeat
+
+        m.Tick(Inp(pos: 21_900, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        f = m.Tick(Inp(pos: 22_010, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.True(f.DownbeatEdge);                                     // playing on from there crosses bar 11
+        Assert.Equal(11, f.Downbeat);
+
+        // paused: no edges
+        var p = new Visualizer.Model();
+        p.Tick(Inp(playing: false, pos: 1_990, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.False(p.Tick(Inp(playing: false, pos: 2_010, tempo: 1200), NoDb, NoBands, NoBeats, Dt).DownbeatEdge);
     }
 
     [Fact]
-    public void Horizon_is_zero_outside_the_track_and_flat_without_a_payload()
+    public void Model_a_forward_seek_of_exactly_one_bar_is_not_a_downbeat()
     {
-        var samples = new WaveSample[1_000];
-        Array.Fill(samples, new WaveSample(100, 100, 100));
+        // 120 BPM tempo, 2 s bars: mid bar 0 → mid bar 1 in one tick lands on the NEXT bar, but it was a seek
         var m = new Visualizer.Model();
+        m.Tick(Inp(pos: 1_000, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        var f = m.Tick(Inp(pos: 3_000, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.Equal(1, f.Bar);
+        Assert.False(f.DownbeatEdge);
+        Assert.Equal(0, f.Downbeat);
 
-        Run(m, Inp(pos: 0, dur: 180_000, bands: true), NoDb, samples, NoBeats, 1);          // before the start: the left half is 0
-        Assert.Equal(0f, m.HorizonLow[89]);
-        Assert.True(m.HorizonLow[90] > 0f);
-        Assert.True(m.HorizonLow[180] > 0f);
-
-        Run(m, Inp(pos: 180_000, dur: 180_000, bands: true), NoDb, samples, NoBeats, 1);    // at the end: the right half is 0
-        Assert.True(m.HorizonLow[89] > 0f);
-        Assert.Equal(0f, m.HorizonLow[90]);
-        Assert.Equal(0f, m.HorizonLow[180]);
-
-        // no payload (an empty edge) or an unknown duration ⇒ a flat hairline, and a stale buffer is cleared
-        var low = new float[Visualizer.Horizon.Points]; var mid = new float[Visualizer.Horizon.Points]; var high = new float[Visualizer.Horizon.Points];
-        Array.Fill(low, 5f); Array.Fill(mid, 5f); Array.Fill(high, 5f);
-        Visualizer.Horizon.Fill(ReadOnlySpan<WaveSample>.Empty, 1_000, 180_000, low, mid, high);
-        Assert.All(low, v => Assert.Equal(0f, v));
-        Assert.All(mid, v => Assert.Equal(0f, v));
-        Assert.All(high, v => Assert.Equal(0f, v));
-
-        Array.Fill(low, 5f);
-        Visualizer.Horizon.Fill(samples, 1_000, 0, low, mid, high);
-        Assert.All(low, v => Assert.Equal(0f, v));
+        // the same over a grid's bar marks; playing on from there still crosses the next downbeat
+        uint[] grid = Grid(64, barsFrom: 0);
+        var g = new Visualizer.Model();
+        g.Tick(Inp(pos: 1_900, beats: true), NoDb, NoBands, grid, Dt);
+        f = g.Tick(Inp(pos: 3_900, beats: true), NoDb, NoBands, grid, Dt);
+        Assert.Equal(1, f.Bar);
+        Assert.False(f.DownbeatEdge);
+        g.Tick(Inp(pos: 3_990, beats: true), NoDb, NoBands, grid, Dt);
+        f = g.Tick(Inp(pos: 4_020, beats: true), NoDb, NoBands, grid, Dt);
+        Assert.True(f.DownbeatEdge);                                     // one frame's step across beat 8: bar 2
+        Assert.Equal(2, f.Downbeat);
     }
 
+    // ── the fold: progress, ripples, flux, onsets, energy ───────────────────────────────────────────────────────────
+
     [Fact]
-    public void Horizon_series_weights_are_the_prototypes()
+    public void Model_progress_is_position_over_duration_clamped()
     {
-        // (0.2, 0.4, 0.6): Σ·0.55 = 0.66, (mid+high)·0.6 = 0.6, high·0.75 = 0.45; a single sample covers the whole track
-        WaveSample[] one = [new(51, 102, 153)];
-        var low = new float[Visualizer.Horizon.Points]; var mid = new float[Visualizer.Horizon.Points]; var high = new float[Visualizer.Horizon.Points];
-        Visualizer.Horizon.Fill(one, 90_000, 180_000, low, mid, high);
-        Assert.Equal(0.66f, low[90], 4);
-        Assert.Equal(0.6f, mid[90], 4);
-        Assert.Equal(0.45f, high[90], 4);
-
-        Assert.Equal(181, Visualizer.Horizon.Points);
-        Assert.Equal(12_000f, Visualizer.Horizon.SpanMs);
-        Assert.Equal(0.92f, Visualizer.Horizon.Amplitude);
-
-        // a full-scale sample saturates the sums
-        WaveSample[] loud = [new(255, 255, 255)];
-        Visualizer.Horizon.Fill(loud, 90_000, 180_000, low, mid, high);
-        Assert.Equal(1f, low[90]);
-        Assert.Equal(1f, mid[90]);
-        Assert.Equal(0.75f, high[90]);
+        Assert.Equal(0.25f, Run(new Visualizer.Model(), Inp(pos: 45_000, dur: 180_000), NoDb, NoBands, NoBeats, 1).Progress, 5);
+        Assert.Equal(0f, Run(new Visualizer.Model(), Inp(pos: 45_000, dur: 0), NoDb, NoBands, NoBeats, 1).Progress);
+        Assert.Equal(1f, Run(new Visualizer.Model(), Inp(pos: 200_000, dur: 180_000), NoDb, NoBands, NoBeats, 1).Progress);
     }
 
     [Fact]
-    public void Model_aurora_drifts_even_at_rest()
+    public void Model_ripples_spawn_once_per_beat_and_age_out()
     {
         var m = new Visualizer.Model();
-        Run(m, Inp(playing: false), NoDb, NoBands, NoBeats, 1);
+        m.Tick(Inp(pos: 400, tempo: 1200), NoDb, NoBands, NoBeats, Dt);   // the first beat seen only seeds
+        Assert.Equal(0, LiveRipples(m));
+        m.Tick(Inp(pos: 510, tempo: 1200), NoDb, NoBands, NoBeats, Dt);   // a new beat: one ripple
+        Assert.Equal(1, LiveRipples(m));
+        for (long pos = 540; pos < 1_000; pos += 90) m.Tick(Inp(pos: pos, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.Equal(1, LiveRipples(m));                                 // the same beat: still one
+        m.Tick(Inp(pos: 1_010, tempo: 1200), NoDb, NoBands, NoBeats, Dt); // the next beat: two
+        Assert.Equal(2, LiveRipples(m));
+
+        // a ripple lives 1.1 s; with nothing playing they all age out and only then does the model settle
+        for (int i = 0; i < 20; i++) m.Tick(Inp(playing: false), NoDb, NoBands, NoBeats, Dt);
+        Assert.True(LiveRipples(m) > 0);
+        Assert.False(m.IsSettled);
+        for (int i = 0; i < 40; i++) m.Tick(Inp(playing: false), NoDb, NoBands, NoBeats, Dt);
+        Assert.Equal(0, LiveRipples(m));
+        Assert.Equal(Visualizer.Beat.Ripples, m.RippleAge.Length);
+    }
+
+    [Fact]
+    public void Model_ripples_follow_onsets_under_a_live_spectrum_and_halve_under_calm()
+    {
+        var live = Flat(-30f);
+        var m = new Visualizer.Model();
+        m.Tick(Inp(live: true, rms: 0.1f, tempo: 1200, pos: 400), live, NoBands, NoBeats, Dt);
+        m.Tick(Inp(live: true, rms: 0.1f, tempo: 1200, pos: 510), live, NoBands, NoBeats, Dt);
+        Assert.Equal(0, LiveRipples(m));                                 // live: the beat does not spawn, an onset does
+        m.Tick(Inp(live: true, rms: 0.1f, onset: true, strength: 0.7f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(1, LiveRipples(m));
+        m.Tick(Inp(live: true, rms: 0.1f, onset: true, strength: 0.7f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(1, LiveRipples(m));                                 // 33 ms later: inside the 0.15 s gap
+
+        // calm: every other beat
+        var c = new Visualizer.Model();
+        c.Tick(Inp(calm: true, pos: 400, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        for (long pos = 510; pos < 1_000; pos += 90) c.Tick(Inp(calm: true, pos: pos, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.Equal(0, LiveRipples(c));
+        c.Tick(Inp(calm: true, pos: 1_010, tempo: 1200), NoDb, NoBands, NoBeats, Dt);
+        Assert.Equal(1, LiveRipples(c));
+    }
+
+    [Fact]
+    public void Model_flux_is_followed_and_the_onset_flash_decays()
+    {
+        var live = Flat(-30f);
+        var m = new Visualizer.Model();
+        var f = m.Tick(Inp(live: true, rms: 0.1f, flux: 6f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(Visualizer.Beat.FluxAttack, f.Flux, 4);             // 6 dB reads as a full flux; one tick of attack
+        f = m.Tick(Inp(live: true, rms: 0.1f, flux: 0f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(0.6f * (1f - Visualizer.Beat.FluxRelease), f.Flux, 4);
+        f = Run(new Visualizer.Model(), Inp(flux: 6f), NoDb, NoBands, NoBeats, 3);
+        Assert.Equal(0f, f.Flux);                                        // no live spectrum: no flux
+
+        f = m.Tick(Inp(live: true, rms: 0.1f, onset: true, strength: 0.8f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(0.8f, f.Onset, 4);                                  // jumps to the onset's strength
+        f = m.Tick(Inp(live: true, rms: 0.1f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(0.8f * Visualizer.Beat.OnsetDecay, f.Onset, 4);     // decays 0.85 per reference tick
+
+        var calm = new Visualizer.Model();
+        f = calm.Tick(Inp(calm: true, live: true, rms: 0.1f, onset: true, strength: 0.8f), live, NoBands, NoBeats, Dt);
+        Assert.Equal(0f, f.Onset);                                       // calm: no onset flashes
+    }
+
+    [Fact]
+    public void Model_energy_looks_ahead_and_the_section_follows_it()
+    {
+        // 100 s: the first half quiet, the second loud — the track's mean sits between
+        var wave = new WaveSample[100];
+        for (int i = 0; i < wave.Length; i++) wave[i] = i < 50 ? new WaveSample(40, 40, 40) : new WaveSample(220, 220, 220);
+        var m = new Visualizer.Model();
+        var f = Run(m, Inp(bands: true, pos: 10_000, dur: 100_000), NoDb, wave, NoBeats, 1);
+        Assert.Equal(40f / 255f, f.Energy, 3);
+        Assert.Equal(Visualizer.Sections.Quiet, f.Section);
+        f = Run(m, Inp(bands: true, pos: 45_000, dur: 100_000), NoDb, wave, NoBeats, 1);
+        Assert.True(f.Energy > 40f / 255f + 0.05f);                      // the 8 s window already reaches the loud half
+        f = Run(m, Inp(bands: true, pos: 70_000, dur: 100_000), NoDb, wave, NoBeats, 1);
+        Assert.Equal(Visualizer.Sections.Loud, f.Section);
+
+        // no waveform: the section stays normal
+        Assert.Equal(Visualizer.Sections.Normal, Run(new Visualizer.Model(), Inp(tempo: 1200), NoDb, NoBands, NoBeats, 5).Section);
+    }
+
+    [Fact]
+    public void Sections_are_hysteretic()
+    {
+        byte s = Visualizer.Sections.Normal;
+        s = Visualizer.Sections.Next(s, 1.10f);
+        Assert.Equal(Visualizer.Sections.Normal, s);                     // under LoudEnter: still normal
+        s = Visualizer.Sections.Next(s, 1.20f);
+        Assert.Equal(Visualizer.Sections.Loud, s);
+        s = Visualizer.Sections.Next(s, 1.08f);
+        Assert.Equal(Visualizer.Sections.Loud, s);                       // above LoudLeave: held
+        s = Visualizer.Sections.Next(s, 1.00f);
+        Assert.Equal(Visualizer.Sections.Normal, s);
+        s = Visualizer.Sections.Next(s, 0.70f);
+        Assert.Equal(Visualizer.Sections.Quiet, s);
+        s = Visualizer.Sections.Next(s, 0.80f);
+        Assert.Equal(Visualizer.Sections.Quiet, s);                      // under QuietLeave: held
+        s = Visualizer.Sections.Next(s, 2.0f);
+        Assert.Equal(Visualizer.Sections.Loud, s);                       // a jump crosses straight through
+        Assert.Equal(Visualizer.Sections.Normal, Visualizer.Sections.Next(Visualizer.Sections.Loud, float.NaN));
+    }
+
+    [Fact]
+    public void Model_calm_cuts_the_gain_and_the_kick()
+    {
+        float[] normal = Converged(-50f, 1f), calm = Converged(-50f, 1f, calm: true);
+        for (int i = 0; i < normal.Length; i++) Assert.Equal(Visualizer.Bands.CalmGain, calm[i] / normal[i], 3);
+
+        var n = Run(new Visualizer.Model(), Inp(pos: 0, tempo: 1200), NoDb, NoBands, NoBeats, 1);
+        var c = Run(new Visualizer.Model(), Inp(pos: 0, tempo: 1200, calm: true), NoDb, NoBands, NoBeats, 1);
+        Assert.Equal(1f, n.Kick, 5);
+        Assert.Equal(Visualizer.Beat.CalmKick, c.Kick, 5);
+    }
+
+    [Fact]
+    public void Model_frame_carries_the_faces_scalars()
+    {
+        var m = new Visualizer.Model();
+        var f = Run(m, Inp(live: true, rms: 0.1f, viz: true), Flat(-6f), NoBands, NoBeats, 40);
+        Assert.Equal(1f, f.Low, 3);
+        Assert.Equal(1f, f.Mid, 3);
+        Assert.Equal(1f, f.High, 3);
+        Assert.Equal(Visualizer.Field.BaseOpacity(f.Low, true), f.BaseFieldOp);
+
+        var plain = Run(new Visualizer.Model(), Inp(live: true, rms: 0.1f, viz: false), Flat(-6f), NoBands, NoBeats, 40);
+        Assert.Equal(Visualizer.Field.BaseOpacity(plain.Low, false), plain.BaseFieldOp);
+        Assert.True(plain.BaseFieldOp < f.BaseFieldOp);                  // the base Field is near-full under a face, breathing under a pane
+    }
+
+    // ── series: Aurora, Timeline, the scope ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Model_aurora_drifts_while_playing_and_freezes_when_paused()
+    {
+        var m = new Visualizer.Model();
+        Run(m, Inp(), NoDb, NoBands, NoBeats, 1);
         float[] first = (float[])m.AuroraLow.Clone();
+        Run(m, Inp(), NoDb, NoBands, NoBeats, 1);
+        Assert.NotEqual(first, m.AuroraLow);                             // near-still in silence, never stopped while playing
+
         Run(m, Inp(playing: false), NoDb, NoBands, NoBeats, 1);
-        Assert.NotEqual(first, m.AuroraLow);                             // the t terms keep moving with nothing playing
+        float[] paused = (float[])m.AuroraLow.Clone();
+        Run(m, Inp(playing: false), NoDb, NoBands, NoBeats, 3);
+        Assert.Equal(paused, m.AuroraLow);                               // paused: the rest pose holds
         Assert.All(m.AuroraLow, v => Assert.InRange(v, 0f, 1f));
-        Assert.All(m.AuroraMid, v => Assert.InRange(v, 0f, 1f));
-        Assert.All(m.AuroraHigh, v => Assert.InRange(v, 0f, 1f));
+        Assert.Equal(256, Visualizer.Aurora.Points);
     }
 
     [Fact]
@@ -577,10 +707,12 @@ public class VisualizerModelTests
     {
         var quiet = new float[Visualizer.Aurora.Points]; var loud = new float[Visualizer.Aurora.Points];
         var mid = new float[Visualizer.Aurora.Points]; var high = new float[Visualizer.Aurora.Points];
-        Visualizer.Aurora.Fill(quiet, mid, high, 0f, 0f, 0f, 1f);
-        Visualizer.Aurora.Fill(loud, mid, high, 1f, 1f, 1f, 1f);
+        Visualizer.Aurora.Fill(quiet, mid, high, 0f, 0f, 0f, 1f, 1f, 1f);
+        Visualizer.Aurora.Fill(loud, mid, high, 1f, 1f, 1f, 1f, 1f, 1f);
         Assert.True(Swing(loud) > Swing(quiet));
         Assert.All(loud, v => Assert.InRange(v, 0f, 1f));
+        Assert.Equal(0.05f, Visualizer.Aurora.Amplitude(0f), 5);
+        Assert.Equal(0.27f, Visualizer.Aurora.Amplitude(1f), 5);
 
         static float Swing(float[] v)
         {
@@ -590,117 +722,64 @@ public class VisualizerModelTests
         }
     }
 
-    // ── the fold: tape, field, calm ─────────────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public void Tape_reels_conserve_area()
+    public void Timeline_resamples_the_whole_song_and_keeps_its_transients()
     {
-        var (l0, r0) = Visualizer.Tape.Radii(0f);
-        Assert.Equal(Visualizer.Tape.R1, l0, 3);                         // a full left pack, an empty right one
-        Assert.Equal(Visualizer.Tape.R0, r0, 3);
-        var (l1, r1) = Visualizer.Tape.Radii(1f);
-        Assert.Equal(Visualizer.Tape.R0, l1, 3);
-        Assert.Equal(Visualizer.Tape.R1, r1, 3);
+        var low = new float[Visualizer.Timeline.Points]; var mid = new float[Visualizer.Timeline.Points]; var high = new float[Visualizer.Timeline.Points];
 
-        float area = l0 * l0 + r0 * r0;                                  // r² trades linearly: the SUM of areas is constant
-        for (float p = 0f; p <= 1f; p += 0.1f)
-        {
-            var (l, r) = Visualizer.Tape.Radii(p);
-            Assert.Equal(area, l * l + r * r, 1);
-        }
+        // a 4 096-sample song with ONE loud sample: max-pooling keeps it (nearest or mean sampling would lose it)
+        var song = new WaveSample[WaveformBands.MaxSamples];
+        song[2_048] = new WaveSample(255, 255, 255);
+        Assert.True(Visualizer.Timeline.Resample(song, low, mid, high));
+        Assert.Equal(1f, low[ArgMax(low)]);
+        Assert.InRange(ArgMax(low), 178, 182);                           // half way through the song
+        Assert.Equal(0.75f, high[ArgMax(high)], 4);                      // the Horizon weights: high·0.75
 
-        Assert.Equal(Visualizer.Tape.Radii(0f), Visualizer.Tape.Radii(-3f));      // progress is clamped
-        Assert.Equal(Visualizer.Tape.Radii(1f), Visualizer.Tape.Radii(7f));
+        // a short payload is interpolated: monotone between its samples, exact at its ends
+        WaveSample[] ramp = [new(0, 0, 0), new(255, 255, 255)];
+        Visualizer.Timeline.Resample(ramp, low, mid, high);
+        for (int i = 1; i < low.Length; i++) Assert.True(low[i] >= low[i - 1]);
+        Assert.Equal(0f, low[0]);
+        Assert.Equal(1f, low[^1]);
 
-        // the hub turns Speed/radius rad/s: the small reel is faster
-        Assert.Equal(70f / 35f * 57.29578f / 30f, Visualizer.Tape.AngleStepDeg(70f, 35f, Dt), 3);
-        Assert.True(Visualizer.Tape.AngleStepDeg(70f, 34f, Dt) > Visualizer.Tape.AngleStepDeg(70f, 128f, Dt));
-        Assert.Equal(0f, Visualizer.Tape.AngleStepDeg(0f, 34f, Dt));
+        // empty ⇒ false and a flat rule, and a stale buffer is cleared
+        Array.Fill(low, 5f);
+        Assert.False(Visualizer.Timeline.Resample(ReadOnlySpan<WaveSample>.Empty, low, mid, high));
+        Assert.All(low, v => Assert.Equal(0f, v));
+        Assert.Equal(360, Visualizer.Timeline.Points);
     }
 
     [Fact]
-    public void Tape_meter_and_zones()
+    public void Oscilloscope_locks_to_a_rising_zero_crossing_and_closes_the_polar_loop()
     {
-        Assert.Equal(0, Visualizer.Tape.Lit(0f));
-        Assert.Equal(16, Visualizer.Tape.Lit(0.5f));
-        Assert.Equal(Visualizer.Tape.MeterCells, Visualizer.Tape.Lit(1f));
-        Assert.Equal(Visualizer.Tape.MeterCells, Visualizer.Tape.Lit(5f));      // clamped
-        Assert.Equal(0, Visualizer.Tape.Lit(-1f));
+        var wave = new float[1024];
+        for (int i = 0; i < wave.Length; i++) wave[i] = 0.4f * MathF.Sin((i - 37) * MathF.Tau / 128f);   // a rising crossing at 37
+        var line = new float[Visualizer.Oscilloscope.Points];
+        var radial = new float[Visualizer.Oscilloscope.RadialPoints];
+        float agc = 0f;
+        Visualizer.Oscilloscope.Fill(wave, line, radial, ref agc, 1f, 1f);
+        Assert.Equal(0.5f, line[0], 2);                                  // the window starts on the crossing …
+        Assert.True(line[3] > 0.5f);                                     // … going up
+        Assert.All(line, v => Assert.InRange(v, 0f, 1f));
+        Assert.True(MaxOf(line) > 0.85f);                                // a quiet master is normalised up (AGC)
+        Assert.Equal(radial[0], radial[^1], 1);                          // the polar ring meets itself
+        Assert.All(radial, v => Assert.InRange(v, Visualizer.Oscilloscope.RadialBase - Visualizer.Oscilloscope.RadialSwing - 1e-4f,
+                                                  Visualizer.Oscilloscope.RadialBase + Visualizer.Oscilloscope.RadialSwing + 1e-4f));
 
-        for (int c = 0; c < Visualizer.Tape.MeterCells; c++)
-        {
-            int zone = Visualizer.Tape.Zone(c);
-            Assert.InRange(zone, 0, 2);
-            if (c > 0) Assert.True(zone >= Visualizer.Tape.Zone(c - 1));        // blue, then green, then orange
-        }
-        Assert.Equal(0, Visualizer.Tape.Zone(11));
-        Assert.Equal(1, Visualizer.Tape.Zone(12));
-        Assert.Equal(1, Visualizer.Tape.Zone(16));
-        Assert.Equal(2, Visualizer.Tape.Zone(17));
-        Assert.Equal(2, Visualizer.Tape.Zone(19));
-    }
+        // the spectral stand-in: silent bands draw the rest line, and it is deterministic in time
+        var bands = new float[Visualizer.Bands.Count];
+        Visualizer.Oscilloscope.Synthesize(bands, 3f, line, radial);
+        Assert.All(line, v => Assert.Equal(0.5f, v, 5));
+        Assert.All(radial, v => Assert.Equal(Visualizer.Oscilloscope.RadialBase, v, 5));
+        Array.Fill(bands, 0.6f);
+        var again = new float[line.Length];
+        Visualizer.Oscilloscope.Synthesize(bands, 3f, line, radial);
+        Visualizer.Oscilloscope.Synthesize(bands, 3f, again, radial);
+        Assert.Equal(line, again);
+        Assert.Equal(0.5f, line[0], 4);                                  // windowed: the Cartesian line rests at both ends
+        Assert.Equal(0.5f, line[^1], 4);
 
-    [Fact]
-    public void Model_tape_reels_turn_and_coast_to_exactly_zero()
-    {
-        var m = new Visualizer.Model();
-        var playing = Run(m, Inp(pos: 0, dur: 180_000), NoDb, NoBands, NoBeats, 30);
-        Assert.Equal(Visualizer.Tape.R1, playing.ReelL, 3);              // progress 0: a full left pack
-        Assert.Equal(Visualizer.Tape.R0, playing.ReelR, 3);
-        Assert.True(playing.AngleL > 0f);
-        Assert.True(playing.AngleR > playing.AngleL);                    // the small reel turns faster
-        Assert.False(m.IsSettled);
-
-        // paused: the speed eases to exactly 0, and only then is the model settled
-        Visualizer.Frame f = default;
-        for (int i = 0; i < 400 && !m.IsSettled; i++) f = m.Tick(Inp(playing: false, pos: 0), NoDb, NoBands, NoBeats, Dt);
-        Assert.True(m.IsSettled);
-
-        var next = m.Tick(Inp(playing: false, pos: 0), NoDb, NoBands, NoBeats, Dt);
-        Assert.Equal(f.AngleL, next.AngleL);                             // the hubs have stopped
-        Assert.Equal(f.AngleR, next.AngleR);
-
-        // mid-track the packs have traded evenly
-        var mid = Run(new Visualizer.Model(), Inp(pos: 90_000, dur: 180_000), NoDb, NoBands, NoBeats, 1);
-        Assert.Equal(mid.ReelL, mid.ReelR, 3);
-
-        // a live frame lights the meter from the pre-gain RMS: 0.1 → level 0.35 → 11 of 20 cells
-        var lit = Run(new Visualizer.Model(), Inp(live: true, rms: 0.1f), Flat(-30f), NoBands, NoBeats, 1);
-        Assert.Equal(0.35f, lit.Level, 4);
-        Assert.Equal(11, lit.MeterLit);
-    }
-
-    [Fact]
-    public void Model_calm_cuts_the_gain_and_the_kick()
-    {
-        // the gain: the calm user gain is 0.55 of the normal one (the AGC is at its cap on a quiet frame, so nothing clamps)
-        float[] normal = Converged(-50f, 1f), calm = Converged(-50f, 1f, calm: true);
-        for (int i = 0; i < normal.Length; i++) Assert.Equal(Visualizer.Bands.CalmGain, calm[i] / normal[i], 3);
-
-        // the kick: x0.3, and the cover pulses less
-        var n = Run(new Visualizer.Model(), Inp(pos: 0, tempo: 1200), NoDb, NoBands, NoBeats, 1);
-        var c = Run(new Visualizer.Model(), Inp(pos: 0, tempo: 1200, calm: true), NoDb, NoBands, NoBeats, 1);
-        Assert.Equal(1f, n.Kick, 5);
-        Assert.Equal(0.3f, c.Kick, 5);
-        Assert.True(c.BeatScale < n.BeatScale);
-    }
-
-    [Fact]
-    public void Model_frame_carries_the_faces_scalars()
-    {
-        // live: low / mid / high are the band averages over 0-8, 8-28 and 28-48; the glow and face opacity follow `low`
-        var m = new Visualizer.Model();
-        var f = Run(m, Inp(live: true, rms: 0.1f, viz: true), Flat(-6f), NoBands, NoBeats, 40);
-        Assert.Equal(1f, f.Low, 3);
-        Assert.Equal(1f, f.Mid, 3);
-        Assert.Equal(1f, f.High, 3);
-        Assert.Equal(Visualizer.Field.FaceOpacity(f.Low), f.FaceFieldOp);
-        Assert.Equal(Visualizer.Halo.GlowOpacity(f.Low), f.GlowOp);
-        Assert.Equal(Visualizer.Field.BaseOpacity(f.Low, true), f.BaseFieldOp);
-
-        var plain = Run(new Visualizer.Model(), Inp(live: true, rms: 0.1f, viz: false), Flat(-6f), NoBands, NoBeats, 40);
-        Assert.Equal(Visualizer.Field.BaseOpacity(plain.Low, false), plain.BaseFieldOp);
-        Assert.True(plain.BaseFieldOp < f.BaseFieldOp);                  // the base Field is near-full under a face, breathing under a pane
+        static float MaxOf(float[] v) { float m = 0f; foreach (float x in v) if (x > m) m = x; return m; }
     }
 
     // ── allocation and cadence ──────────────────────────────────────────────────────────────────────────────────────
@@ -713,23 +792,22 @@ public class VisualizerModelTests
         for (int i = 0; i < db.Length; i++) db[i] = -50f + i * 0.5f;
         var wave = new WaveSample[WaveformBands.MaxSamples];
         for (int i = 0; i < wave.Length; i++) wave[i] = new WaveSample((byte)(i & 255), (byte)((i * 3) & 255), (byte)((i * 7) & 255));
-        var grid = new uint[400];
-        for (int i = 0; i < grid.Length; i++) grid[i] = (uint)(i * 500);
+        var grid = Grid(400, barsFrom: 0);
 
-        var input = Inp(live: true, rms: 0.1f, pos: 1_000, bands: true, beats: true, tempo: 1200);
         Visualizer.Frame sink = default;
-        for (int i = 0; i < 200; i++)                                    // warm
+        void Pass(int count, bool live)
         {
-            input = input with { PositionMs = 1_000 + i * 33 };
-            sink = m.Tick(in input, db, wave, grid, Dt);
+            for (int i = 0; i < count; i++)
+            {
+                var input = Inp(live: live, level: !live, rms: 0.1f, pos: 1_000 + i * 33, bands: true, beats: true, tempo: 1200, flux: 2f, onset: (i & 15) == 0, strength: 0.5f);
+                sink = m.Tick(in input, db, wave, grid, Dt);
+            }
         }
+        Pass(200, live: true); Pass(200, live: false);                   // warm both ladders
 
         long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1_000; i++)
-        {
-            input = input with { PositionMs = 1_000 + i * 33 };
-            sink = m.Tick(in input, db, wave, grid, Dt);
-        }
+        Pass(1_000, live: true);
+        Pass(1_000, live: false);
         long after = GC.GetAllocatedBytesForCurrentThread();
 
         Assert.Equal(0L, after - before);
@@ -739,78 +817,50 @@ public class VisualizerModelTests
     [Fact]
     public void TickHz_matches_Design_Cadence()
     {
-        Assert.Equal(Design.Cadence.PluggedLoopHz, Visualizer.TickHz);
-        Assert.Equal(1000f / 30f, Visualizer.TickMs, 4);
+        Assert.Equal(Design.Cadence.ClockHz, Visualizer.TickHz);
+        Assert.Equal(1000f / 60f, Visualizer.TickMs, 4);
+    }
+
+    [Fact]
+    public void Model_is_rate_independent_two_60Hz_ticks_land_where_one_30Hz_tick_does()
+    {
+        var at30 = new Visualizer.Model();
+        var at60 = new Visualizer.Model();
+        var on = Inp(live: true, rms: 0.1f);
+        float[] loud = Flat(-20f);
+        Run(at30, on, loud, NoBands, NoBeats, 6);
+        for (int i = 0; i < 12; i++) at60.Tick(in on, loud, NoBands, NoBeats, 1f / 60f);
+        var off = Inp(playing: false);
+        Run(at30, off, NoDb, NoBands, NoBeats, 15);                      // 10 held ticks, then 5 of fall
+        for (int i = 0; i < 30; i++) at60.Tick(in off, NoDb, NoBands, NoBeats, 1f / 60f);
+
+        for (int i = 0; i < Visualizer.Bands.Count; i++)
+        {
+            Assert.Equal(at30.Level[i], at60.Level[i], 4);
+            Assert.Equal(at30.Peak[i], at60.Peak[i], 4);
+        }
+        Assert.True(at30.Peak[0] < at30.Level[0] + 0.8f && at30.Peak[0] > at30.Level[0], "the scenario must end mid-fall, above the band");
+    }
+
+    [Fact]
+    public void PerTicks_is_exact_at_one_reference_tick()
+    {
+        Assert.Equal(Visualizer.Bands.Attack, Visualizer.Bands.PerTicks(Visualizer.Bands.Attack, 1f));
+        float dt = Dt, ticks = dt * Visualizer.Bands.RefHz;
+        Assert.Equal(1f, ticks);
+        float k = Visualizer.Bands.PerTicks(Visualizer.Bands.Release, 0.5f), v = 1f;
+        v -= v * k; v -= v * k;
+        Assert.Equal(1f - Visualizer.Bands.Release, v, 5);
     }
 
     [Fact]
     public void DeltaSec_is_nominal_on_the_first_tick_and_clamped_after()
     {
-        Assert.Equal(Visualizer.TickMs / 1000f, Visualizer.DeltaSec(0L, 5_000L), 6);        // no previous tick: the nominal step
+        Assert.Equal(Visualizer.TickMs / 1000f, Visualizer.DeltaSec(0L, 5_000L), 6);
         Assert.Equal(0.033f, Visualizer.DeltaSec(10_000L, 10_033L), 5);
-        Assert.Equal(Visualizer.DtMinSec, Visualizer.DeltaSec(10_000L, 10_000L));           // a zero or negative step is floored
+        Assert.Equal(Visualizer.DtMinSec, Visualizer.DeltaSec(10_000L, 10_000L));
         Assert.Equal(Visualizer.DtMinSec, Visualizer.DeltaSec(10_000L, 9_000L));
-        Assert.Equal(Visualizer.DtMaxSec, Visualizer.DeltaSec(10_000L, 20_000L));           // a hitch is capped, not integrated
-    }
-
-    // ── the index maps ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Halo_bars_mirror_about_the_top_and_stay_in_range()
-    {
-        for (int j = 0; j < Visualizer.Halo.Bars; j++)
-        {
-            Assert.InRange(Visualizer.Halo.BandOf(j), 0, Visualizer.Bands.Count - 1);
-            Assert.Equal(Visualizer.Halo.BandOf(j), Visualizer.Halo.BandOf(Visualizer.Halo.Bars - 1 - j));   // mirrored about the top
-            Assert.InRange(Visualizer.Halo.MixOf(j), 0f, 1f);
-            Assert.InRange(Visualizer.Halo.AngleDeg(j), 0f, 360f);
-        }
-        Assert.Equal(0, Visualizer.Halo.BandOf(0));
-        Assert.Equal(40, Visualizer.Halo.BandOf(35));                    // round(35/35 · 47 · 0.85)
-        Assert.Equal(0f, Visualizer.Halo.AngleDeg(0));
-        Assert.Equal(180f, Visualizer.Halo.AngleDeg(36));
-        Assert.Equal(0.1f, Visualizer.Halo.Scale(0f), 5);                // ring bars rest at 0.1 scale
-        Assert.Equal(1f, Visualizer.Halo.Scale(1f), 5);
-        Assert.Equal(0.16f, Visualizer.Halo.GlowOpacity(0f), 5);
-    }
-
-    [Fact]
-    public void Matrix_columns_rows_and_peak_dots()
-    {
-        Assert.Equal(32, Visualizer.Matrix.Columns);
-        Assert.Equal(12, Visualizer.Matrix.Rows);
-        int prev = -1;
-        for (int c = 0; c < Visualizer.Matrix.Columns; c++)
-        {
-            int band = Visualizer.Matrix.BandOf(c);
-            Assert.InRange(band, 0, Visualizer.Bands.Count - 1);
-            Assert.True(band >= prev);                                   // monotone across the columns
-            prev = band;
-        }
-        Assert.Equal(0, Visualizer.Matrix.BandOf(0));
-        Assert.Equal(Visualizer.Bands.Count - 1, Visualizer.Matrix.BandOf(Visualizer.Matrix.Columns - 1));
-
-        Assert.Equal(0, Visualizer.Matrix.LitRows(0f));
-        Assert.Equal(6, Visualizer.Matrix.LitRows(0.5f));
-        Assert.Equal(Visualizer.Matrix.Rows, Visualizer.Matrix.LitRows(1f));
-        Assert.Equal(Visualizer.Matrix.Rows, Visualizer.Matrix.LitRows(3f));     // clamped
-        Assert.Equal(0, Visualizer.Matrix.LitRows(-1f));
-
-        Assert.Equal(1, Visualizer.Matrix.PeakRow(0f));                  // a dim peak dot still sits at row 0 (never off the grid)
-        Assert.Equal(6, Visualizer.Matrix.PeakRow(0.5f));
-        Assert.Equal(7, Visualizer.Matrix.PeakRow(0.51f));
-        Assert.Equal(Visualizer.Matrix.Rows, Visualizer.Matrix.PeakRow(1f));
-        Assert.Equal(Visualizer.Matrix.Rows, Visualizer.Matrix.PeakRow(4f));
-    }
-
-    [Fact]
-    public void Spectrum_bars_have_a_floor()
-    {
-        Assert.Equal(Visualizer.Bands.Count, Visualizer.Spectrum.Bars);
-        Assert.Equal(0.02f, Visualizer.Spectrum.Scale(0f));
-        Assert.Equal(0.02f, Visualizer.Spectrum.Scale(-1f));
-        Assert.Equal(0.5f, Visualizer.Spectrum.Scale(0.5f));
-        Assert.Equal(1f, Visualizer.Spectrum.Scale(1f));
+        Assert.Equal(Visualizer.DtMaxSec, Visualizer.DeltaSec(10_000L, 20_000L));
     }
 
     [Fact]
@@ -820,8 +870,6 @@ public class VisualizerModelTests
         Assert.Equal(Visualizer.Field.Blobs, Visualizer.Field.Drift.Length);
         Assert.All(Visualizer.Field.PeriodSec, p => Assert.InRange(p, 28f, 36f));   // 28-36 s loops (§2.1)
 
-        Assert.Equal(0.75f, Visualizer.Field.FaceOpacity(0f));
-        Assert.Equal(1f, Visualizer.Field.FaceOpacity(1f));
         Assert.Equal(Stage.Tone.BaseFieldVisualizerA, Visualizer.Field.BaseOpacity(0.7f, true));        // under a face: near-full whatever the breath
         Assert.Equal(Stage.Tone.BaseFieldA, Visualizer.Field.BaseOpacity(0f, false));
         Assert.Equal(Stage.Tone.BaseFieldA + 0.5f * Stage.Tone.BaseFieldBreathA, Visualizer.Field.BaseOpacity(0.5f, false), 5);

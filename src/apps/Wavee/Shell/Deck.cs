@@ -15,10 +15,10 @@
 //
 // THE THREE-LAYER SEAM, whole:
 //   1. `Deck.cs` (here)      physics. `System`-only. Twelve presets → six models (`Deck.Models.Create`).
-//   2. `Deck.UI.cs`          the host, the 30 Hz clock, the signal slab, art, gesture, the record family's face.
+//   2. `Deck.UI.cs`          the host, the per-frame clock, the signal slab, art, gesture, the record family's face.
 //   3. `Deck.Faces.cs`       the other eight faces.
 // The clock diff-writes one `Frame` into a FIXED slab of signals per tick inside ONE batch, value-gated at a
-// perceptual quantum; the faces bind that slab ONCE at mount and are never re-rendered by the 30 Hz path. Adding a
+// perceptual quantum; the faces bind that slab ONCE at mount and are never re-rendered by the tick path. Adding a
 // deck therefore adds no signal, no bind and no wake.
 //
 // WHAT `Fold` IS FOR (ch 23 §8). 0.2.9's `DeckClock.Fold` read `PlaybackBridge` and `FrameTime` directly, so the one
@@ -28,7 +28,7 @@
 // is then testable.
 //
 // CLOCK DISCIPLINE (Christos's rule, `animations-sample-frame-time`). `Input.NowMs` is the FRAME's present time
-// (`FrameTime.NowQpc` → ms), never `Environment.TickCount64`, whose 15.6 ms granularity steps a 30 Hz integrator. No
+// (`FrameTime.NowQpc` → ms), never `Environment.TickCount64`, whose 15.6 ms granularity steps a per-frame integrator. No
 // clock is read in this file at all: every timer is relative to the `NowMs` the caller stamps.
 //
 // Rules: allocation-free ticks (P8) — the only arrays a model owns are allocated once in its constructor; no LINQ, no
@@ -56,7 +56,7 @@ public static partial class Deck
 
     /// <summary>What a deck model hands back for ONE tick. Deliberately a flat POD of scalars rather than a per-deck
     /// shape: the faces bind a FIXED slab of float signals and the clock diff-writes this into them, so adding a deck
-    /// never adds a signal, a bind or a write to the 30 Hz path.</summary>
+    /// never adds a signal, a bind or a write to the tick path.</summary>
     /// <param name="Frac">Progress 0..1 — every deck carries it somewhere (bar, sled, thumb, pack radius).</param>
     /// <param name="Angle0">Record: platter degrees · Tape: LEFT reel · CD: disc · VU: LEFT needle.</param>
     /// <param name="Angle1">Record: ARM degrees · Tape: RIGHT reel · VU: RIGHT needle.</param>
@@ -88,7 +88,7 @@ public static partial class Deck
         ReadOnlySpan<float> Peaks { get; }
 
         /// <summary>Nothing is moving and nothing is scheduled — the ticker may stop. A model that lies here either
-        /// burns a 30 Hz timer forever (false when settled) or freezes mid-animation (true when not).</summary>
+        /// burns a per-frame ticker forever (false when settled) or freezes mid-animation (true when not).</summary>
         bool IsSettled { get; }
     }
 
@@ -1496,11 +1496,11 @@ public static partial class Deck
     // were untestable. The shell now calls these and nothing else.
 
     /// <summary>The deck clock's gates and quanta. <see cref="ShouldTick"/> is the idle-GPU rule for this surface: a
-    /// paused, settled, ended, reduced-motion or rail-closed deck runs NO timer, so it requests no frame.</summary>
+    /// paused, settled, ended, reduced-motion or rail-closed deck mounts NO ticker, so it requests no frame.</summary>
     public static class ClockRules
     {
-        /// <summary>The self-paced tick — mirrors <c>Design.Cadence.PluggedLoopHz</c>.</summary>
-        public const float TickMs = 1000f / Design.Cadence.PluggedLoopHz;
+        /// <summary>The nominal step of the FIRST tick (the clock then ticks once per produced frame) — <c>Design.Cadence.ClockHz</c>.</summary>
+        public const float TickMs = 1000f / Design.Cadence.ClockHz;
 
         /// <summary>A reported position further than this from the interpolation's expectation, with no seek of our
         /// own pending, IS a seek somebody else made (a Connect device, a media key, a lock-screen scrub).</summary>

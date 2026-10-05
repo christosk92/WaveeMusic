@@ -228,6 +228,40 @@ public static partial class Prefs
         }
     }
 
+    /// <summary>The on-device AI lyrics preferences (AiLyrics): one epoch for the Settings card, the lyrics header button
+    /// and the host's driver, so a toggle reaches all three on the same frame. Writes go through <see cref="Set"/>.</summary>
+    public static class AiLyrics
+    {
+        /// <inheritdoc cref="AiLyrics"/>
+        public static readonly Signal<int> Epoch = new(0);
+        /// <inheritdoc cref="Appearance.Bump"/>
+        public static void Bump() => Epoch.Value = Epoch.Peek() + 1;
+
+        public static bool Enabled() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsEnabled); }
+        public static bool WordSync() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsWordSync); }
+        public static bool PlainText() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsPlainText); }
+        public static bool OnBatterySaver() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.AiLyricsOnBatterySaver); }
+
+        /// <summary>The installed aligner languages, in order, never empty ("en" when nothing valid is stored).</summary>
+        public static IReadOnlyList<string> Languages()
+        {
+            _ = Epoch.Value;
+            var list = new List<string>();
+            foreach (var part in (Platform.Settings.Get(Platform.Keys.AiLyricsLanguages) ?? "").Split(',', System.StringSplitOptions.RemoveEmptyEntries | System.StringSplitOptions.TrimEntries))
+                if (part.Length is >= 2 and <= 3 && !list.Contains(part)) list.Add(part.ToLowerInvariant());
+            if (list.Count == 0) list.Add("en");
+            return list;
+        }
+
+        public static void Set(SettingKey<bool> key, bool value) { Platform.Settings.Set(key, value); Bump(); }
+
+        public static void SetLanguages(IEnumerable<string> languages)
+        {
+            Platform.Settings.Set(Platform.Keys.AiLyricsLanguages, string.Join(",", languages));
+            Bump();
+        }
+    }
+
     // ══ 3. THE DETAIL PAGE'S LAYOUT ══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The cross-surface DETAIL-LAYOUT epoch: bumped when Settings ▸ Lists ▸ "Track page layout" (or the rail

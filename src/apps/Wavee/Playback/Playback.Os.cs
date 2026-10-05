@@ -40,7 +40,7 @@
 //
 // POWER HAD NO 0.2.9 CODE IN THIS CHAPTER either. §6 is the PLAYBACK half only, over the engine's
 // `FluentGpu.WindowsApi.Power.PowerSession`: keep-awake while we are the ones making sound, and the suspend/resume
-// pair. The AMBIENT cadence policy (battery/AC → render Hz) is a different concern and stays owner S's
+// pair. The AMBIENT power verdict (battery/AC, energy saver) is a different concern and stays owner S's
 // `Platform.cs`, where its own §9 note already books it.
 //
 // Rules: UI thread only (C1) — the two inbound callbacks (an SMTC button, a power broadcast) hop through

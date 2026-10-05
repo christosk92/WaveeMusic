@@ -85,6 +85,17 @@ public class DeckClockRulesTests
     }
 
     [Fact]
+    public void The_spectrum_fold_steps_by_reference_ticks_not_by_pulls()
+    {
+        // The follower's constants are per 30 Hz tick: a 1/30 s gap is exactly one, a per-frame pull at 120 Hz a quarter,
+        // the first step one, and a resume after a long gap at most three.
+        Assert.Equal(1f, Deck.SpectrumFold.TicksSince(0L, 5_000L));
+        Assert.InRange(Deck.SpectrumFold.TicksSince(1_000L, 1_034L), 0.99f, 1.03f);              // 34 ms ≈ one 30 Hz tick
+        Assert.InRange(Deck.SpectrumFold.TicksSince(1_000L, 1_008L), 0.23f, 0.25f);              // one 120 Hz frame
+        Assert.Equal(3f, Deck.SpectrumFold.TicksSince(1_000L, 60_000L));
+    }
+
+    [Fact]
     public void A_foreign_jump_is_a_seek_but_the_first_report_and_our_own_seek_are_not()
     {
         Assert.True(Deck.ClockRules.IsRemoteJump(90_000, 30_000, lastDurationMs: 200_000, seekPending: false));

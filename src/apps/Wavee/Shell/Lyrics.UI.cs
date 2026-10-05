@@ -71,7 +71,8 @@ public static partial class Lyrics
 
     // MOUNT POINT (stage B contract)
     /// <summary>The rail's lyrics body (`RailMode.Lyrics`): the reading surface at rail metrics on theme ink. The header
-    /// (title · 🌐 · &lt;/&gt; · ⛶ · ✕) is the rail frame's.</summary>
+    /// (title · 🌐 · ✦ · ⛶ · &lt;/&gt; · ✕) is the rail frame's; the AI disclosure under the reading layers is
+    /// <see cref="AiLyrics.Footer"/>.</summary>
     public static Element View()
         => Embed.Comp(static () => new ViewCore(large: false, onMedia: false, visible: s_railVisible)) with { Key = "lyrics:rail" };
 
@@ -81,22 +82,36 @@ public static partial class Lyrics
     /// <paramref name="accent"/> is a mount-time signal INSTANCE (the slab's <c>Accent</c>, stable for the stage's life —
     /// the contract the Slider/ToggleSwitch signal instances follow): props freeze at mount, so only the signal's
     /// VALUE ever changes.</summary>
-    public static Element StagePane(IReadSignal<ColorF> accent) => new BoxEl
+    public static Element StagePane(IReadSignal<ColorF> accent) => Embed.Comp(() => new StageColumn(accent));
+
+    /// <summary>The stage's reading column. It reads the stage layout ITSELF (the pane KeepAlive may cache its builder)
+    /// for <see cref="Stage.Layout.LyricsTypeScale"/>: the type grows with a big stage, and the column's cap with it.
+    /// The view is KEYED by the type size, so a size step remounts it with fresh measured extents and run lengths (the
+    /// view freezes its metrics per mount) instead of re-flowing rows whose measurements were taken at the old size.</summary>
+    sealed class StageColumn(IReadSignal<ColorF> accent) : Component
     {
-        Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f,
-        // LEFT-ANCHORED, never centred: centring converted an over-wide pane into text pushed off-screen.
-        Justify = FlexJustify.Start, AlignItems = FlexAlign.Stretch,
-        Padding = new Edges4(0f, 0f, StageColumnGutter, 0f),
-        Children =
-        [
-            new BoxEl
+        public override Element Render()
+        {
+            float scale = UseContext(Stage.StageContext)?.Layout.Value.LyricsTypeScale ?? 1f;
+            return new BoxEl
             {
-                // MEASURED, never predicted: the column grows into whatever the pane gives it, capped by MaxWidth.
-                Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, MaxWidth = StageColumnMaxW,
-                Children = [Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true)) with { Key = "lyrics:stage" }],
-            },
-        ],
-    };
+                Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f,
+                // LEFT-ANCHORED, never centred: centring converted an over-wide pane into text pushed off-screen.
+                Justify = FlexJustify.Start, AlignItems = FlexAlign.Stretch,
+                Padding = new Edges4(0f, 0f, StageColumnGutter, 0f),
+                Children =
+                [
+                    new BoxEl
+                    {
+                        // MEASURED, never predicted: the column grows into whatever the pane gives it, capped by MaxWidth.
+                        Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, MinWidth = 0f, MaxWidth = StageColumnMaxW * scale,
+                        Children = [Embed.Comp(() => new ViewCore(large: true, onMedia: true, visible: s_stageVisible, accent: accent, onStage: true, typeScale: scale))
+                            with { Key = "lyrics:stage:" + ((int)MathF.Round(scale * Stage.Layout.LyricsTypeMin)).ToString(System.Globalization.CultureInfo.InvariantCulture) }],
+                    },
+                ],
+            };
+        }
+    }
 
     // MOUNT POINT (stage B contract)
     /// <summary>The now-playing panel's two-row lyrics reel. Absent — a bare zero-size box, no spine, no gap — unless
@@ -182,7 +197,10 @@ public static partial class Lyrics
         readonly Func<bool> _visible;
         // The rail/stage survives song-to-episode switches. Resolve type from the current subject rather than
         // freezing music metrics in the constructor; ClearDocument resets measured extents/run lengths on switch.
-        internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast);
+        internal RowMetrics Metrics => Surface.Timed(Large, IsPodcast).Scaled(TypeScale);
+        /// <summary>The stage's type scale over the authored stage metrics (<see cref="Stage.Layout.LyricsTypeScale"/>,
+        /// frozen at mount — the stage re-keys the view on a step); 1 on the rail and the reader.</summary>
+        internal readonly float TypeScale;
         readonly float _band;
 
         readonly EntityId _readerEpisode;
@@ -196,10 +214,11 @@ public static partial class Lyrics
         // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
         internal ViewCore(bool large, bool onMedia, Func<bool> visible, EntityId readerEpisode = default,
-            IReadSignal<ColorF>? accent = null, bool onStage = false)
+            IReadSignal<ColorF>? accent = null, bool onStage = false, float typeScale = 1f)
         {
             _readerEpisode = readerEpisode;
             Large = large;
+            TypeScale = typeScale > 0f && float.IsFinite(typeScale) ? typeScale : 1f;
             InkMode = new Ink(onMedia);
             Accent = accent;
             OnStage = onStage;
@@ -220,6 +239,12 @@ public static partial class Lyrics
         // ── emphasis, voice, now ─────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<int> _activeLine = new(-1);   // emphasis + follow target (lead-shifted)
         readonly Signal<int> _voiceLine = new(-1);    // the line being sung on TRUE time (wipe + glow)
+        // The render-thread wipe (AnimChannel.GlyphWipeSplit): the line whose rows are seeded, the nodes they ride, the
+        // content rate they were timed at, and a re-seed owed by a clock jump. -1 = the UI writes the split itself.
+        int _wipeRowLine = -1;
+        NodeHandle _wipeRowMain, _wipeRowGlow;
+        double _wipeRowRate;
+        bool _wipeReseed;
         internal readonly FloatSignal NowMs = new(0f);
         /// <summary>One VALUE-GATED signal per line: a row re-renders solely on ITS OWN bucket/past/reserve change. A
         /// shared memo would fan every boundary out to the whole realized document.</summary>
@@ -282,9 +307,14 @@ public static partial class Lyrics
         Doc? _pendingUpgrade;
         Loadable<Doc?>? _docLoadable;
         string _trackId = "";
-        /// <summary>Bumped on every NON-same-shape swap and folded into each row's key, so a genuine document change
-        /// remounts the rows (they froze the old line and signals at mount).</summary>
+        /// <summary>Bumped on every whole-document swap (another track, another line count, or no row surviving) and
+        /// folded into each row's key, so a genuine document change remounts the rows (they froze the old line and
+        /// signals at mount).</summary>
         int _docEpoch;
+        /// <summary>Per line, bumped when a same-track, same-count swap changes THAT row only (plan §3.4: a progressive
+        /// AI publish times a few upcoming lines), so only those rows re-key and remount; every other row keeps its
+        /// mount, its handles and its measured extent. Reset to zeros with every <see cref="_docEpoch"/> bump.</summary>
+        int[] _rowEpoch = [];
         MeasuredLayout? _layout;
 
         // ── the interlude ────────────────────────────────────────────────────────────────────────────────────────────
@@ -307,7 +337,8 @@ public static partial class Lyrics
         // ── the developer surface (gated by `diag.developerMode`, never by an env var — plan §9.6 Q1) ─────────────────
         internal readonly Signal<bool> DebugOpen = new(false);
 
-        string RowKey(int index) => "ll" + _docEpoch + ":" + index;
+        string RowKey(int index)
+            => "ll" + _docEpoch + ":" + ((uint)index < (uint)_rowEpoch.Length ? _rowEpoch[index] : 0) + ":" + index;
 
         internal FollowMode FollowModeValue => Follow_.Value;
         internal bool CascadeRunningValue => _cascadeRunning.Value;
@@ -408,12 +439,24 @@ public static partial class Lyrics
             // SHRINK (G-254): the rail places this view in a ROW slot, a ZStack measures its widest layer (the loading
             // shimmer's bars are ~263 DIP; the rail can be 200), and flex items do not shrink by default — a narrow rail,
             // or a drag back to narrow, would keep the wider width and clip the reading column.
-            return new BoxEl
+            var layers = new BoxEl
             {
                 Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true, ZStack = true,
                 Children = ticker is null
                     ? [body, dots, resync, banner, debug]
                     : [body, ticker, dots, resync, banner, debug],
+            };
+            // The podcast reader never carries the on-device AI disclosure (episodes are never timed): it keeps the bare
+            // layer stack — mount config, so the root's shape never flips for a mounted instance.
+            if (_readerEpisode.IsValid) return layers;
+            // THE AI DISCLOSURE (plan §4.5) sits BELOW the reading layers in a column — never a virtual-list item, the
+            // follow geometry assumes ItemCount == Lines.Count. It is zero-extent until the AI times this track; its clip
+            // box then grows through real layout (Reflow), so the lyrics viewport shrinks smoothly instead of jumping,
+            // and the resync pill (bottom-anchored inside the layers) rides above it.
+            return new BoxEl
+            {
+                Grow = 1f, Shrink = 1f, MinHeight = 0f, Direction = 1,
+                Children = [layers, AiLyrics.Footer(InkMode, Surface.Timed(Large).SidePad)],
             };
         }
 
@@ -728,13 +771,18 @@ public static partial class Lyrics
 
             var previous = _doc;
             // THE upgrade question, asked once: everything a row FREEZES must be identical for the rows to survive.
+            // Every row identical ⇒ all survive (sameShape). Same track and line count with SOME rows changed (a
+            // progressive AI publish) ⇒ the survivors keep everything and only the changed rows re-key (RekeyChangedRows).
+            // Anything else ⇒ a whole-document swap: new epoch, new per-line state, every row remounts.
             bool sameShape = previous is not null && RowShape.SameRows(previous, doc);
-            if (!sameShape) { _layout = null; _docEpoch++; }
+            bool keepRows = sameShape || (previous is not null && RekeyChangedRows(previous, doc));
+            if (!keepRows) { _layout = null; _docEpoch++; }
             _doc = doc;
             PublishSecondaryAvailability(doc);
             int n = doc.Lines.Count;
-            if (!sameShape)
+            if (!keepRows)
             {
+                _rowEpoch = new int[n];
                 _lineNodes = new NodeHandle[n];
                 _glowNodes = new NodeHandle[n];
                 _dofNodes = new NodeHandle[n];
@@ -764,7 +812,7 @@ public static partial class Lyrics
             // the PushEmphasis below is a silent no-op instead of fanning the whole document out on every load.
             bool timed = IsTimed(doc);
             int seedActive = timed && (!IsPodcast || OwnsPlayback) ? AdvancePastInterlude(doc, ResolveLine(doc.Lines, posMs), posMs, out _, out _) : -1;
-            if (!sameShape)
+            if (!keepRows)
             {
                 _interludeReserveLine = -1;
                 _lineEmphasis = new Signal<int>[n];
@@ -778,6 +826,39 @@ public static partial class Lyrics
             _scrollSnapped = false;
             RebaseClock(posMs);
             WakeMotion();
+        }
+
+        /// <summary>The per-row half of the upgrade question (plan §3.4). For an AI publish (<see cref="RowShape.PerRowSwap"/>:
+        /// the SAME track with the SAME line count, either side generated) where at least one row survives, re-key exactly the rows <see cref="RowShape.ChangedRows"/> reports and
+        /// return true: the virtual list then remounts only those rows (fresh line, fresh handles reported through
+        /// <see cref="ReportLineNode"/>/<see cref="ReportGlowNode"/>/<see cref="ReportDofNode"/>), while every survivor
+        /// keeps its mount, its handles, its run length and σ continuity, and the extent table keeps every measured row
+        /// (no scroll jump). Returns false — touching nothing — for anything else, which the caller treats as a
+        /// whole-document swap exactly as before. Runs once per document swap (never per frame); the scratch span is
+        /// stack memory for any realistic document.</summary>
+        bool RekeyChangedRows(Doc previous, Doc next)
+        {
+            if (!RowShape.PerRowSwap(previous, next)) return false;
+            int n = next.Lines.Count;
+            // The per-line state must be the previous document's (it always is while a document is held — defensive).
+            if (_rowEpoch.Length != n || _lineNodes.Length != n || _glowNodes.Length != n || _dofNodes.Length != n
+                || _lineRunLen.Length != n || _lineEmphasis.Length != n || _glowAlpha.Length != n)
+                return false;
+            Span<bool> changed = n <= 512 ? stackalloc bool[n] : new bool[n];
+            RowShape.ChangedRows(previous, next, changed);
+            bool anySurvivor = false;
+            for (int i = 0; i < n && !anySurvivor; i++) anySurvivor = !changed[i];
+            if (!anySurvivor) return false;   // nothing to keep: the whole-document path, as before
+            for (int i = 0; i < n; i++)
+            {
+                if (!changed[i]) continue;
+                _rowEpoch[i]++;
+                _lineRunLen[i] = float.NaN;   // the remounted row's text may wrap differently: re-measure lazily
+                _lineNodes[i] = NodeHandle.Null;
+                _glowNodes[i] = NodeHandle.Null;
+                _dofNodes[i] = NodeHandle.Null;
+            }
+            return true;
         }
 
         /// <summary>Playback identity moved onto — or off — the episode this reader is open on (the peek's gate
@@ -833,6 +914,7 @@ public static partial class Lyrics
             if (_doc is null && _lineNodes.Length == 0) return;
             _doc = null;
             _lineNodes = []; _glowNodes = []; _dofNodes = [];
+            _rowEpoch = [];
             _glowAlpha = [];
             _lineEmphasis = [];
             _lineRunLen = [];
@@ -921,7 +1003,7 @@ public static partial class Lyrics
         /// ellipsised — no highlight, no follow, no wipe, no blur ladder.</summary>
         Element UnsyncedContent(Doc doc)
         {
-            var m = Surface.Unsynced(Large, IsPodcast);
+            var m = Surface.Unsynced(Large, IsPodcast).Scaled(TypeScale);
             var ink = InkMode.Primary with { A = Surface.UnsyncedAlpha };   // an ABSOLUTE alpha, as 0.2.9 set it
             var rows = new Element[doc.Lines.Count];
             for (int i = 0; i < rows.Length; i++)
@@ -1588,14 +1670,27 @@ public static partial class Lyrics
                 }
             }
 
+            // ── the render-thread wipe: while playing, a word-synced voice line's split is posed by the render thread from
+            //    keyframes seeded once (below), so the voice lane needs UI frames only while its HALO moves (a held
+            //    syllable's ramp or melt). Sync-probe mode and a paused clock keep the UI-written split.
+            var anim = Context.Anim;
+            Line? voice = (uint)voiceLine < (uint)doc.Lines.Count ? doc.Lines[voiceLine] : null;
+            bool renderWipe = playing && !ProbeSyncMode && anim is { RenderOwnsCompositor: true }
+                && voice is { IsWordByWord: true, Syllables.Count: > 0 };
+            long voiceEnd = voice is null ? 0 : SungOutMs(doc, voiceLine);
+
             // ── motion demand: this step's OUTCOME, published after every lane ran ──
-            // A line-synced line on its flat glow plateau is the voice but has no per-frame output: it arms a wake at the
-            // melt-out instead of holding the stepper (F237). While a user scroll defers the glow (`!runGlow`) the alpha was
-            // NOT written this step, so the voice counts as moving until a step writes it.
-            bool voiceMoving = voiceLine >= 0 && (!runGlow || MotionDemand.VoiceMoves(doc.Lines[voiceLine], SungOutMs(doc, voiceLine), nowMs));
-            long nextEventMs = MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs);
-            if (voiceLine >= 0)
-                nextEventMs = Math.Min(nextEventMs, MotionDemand.VoicePlateauEndMs(doc.Lines[voiceLine], SungOutMs(doc, voiceLine)));
+            // Does the voice line have per-frame OUTPUT right now? Under the render-thread wipe only its HALO can (a held
+            // syllable's ramp or melt: Wipe.GlowMoving). Otherwise MotionDemand.VoiceMoves (F237): a word-synced line always
+            // does, a line-synced line only during its glow fade-in and melt-out — on its flat plateau it is the voice but
+            // moves nothing, so the surface arms a wake at the melt-out instead of holding the stepper. While a user scroll
+            // defers the glow (`!runGlow`) the alpha was NOT written this step, so the voice counts as moving until a step
+            // writes it.
+            bool voiceMoving = voiceLine >= 0 && (!runGlow
+                || (renderWipe ? Wipe.GlowMoving(voice!, nowMs, voiceEnd) : MotionDemand.VoiceMoves(voice!, voiceEnd, nowMs)));
+            long nextEvent = MotionDemand.NextEventMs(doc.Lines, active, nowMs, LeadMs);
+            if (renderWipe) nextEvent = Math.Min(nextEvent, Wipe.NextGlowEdgeMs(voice!, nowMs, voiceEnd));
+            if (voiceLine >= 0) nextEvent = Math.Min(nextEvent, MotionDemand.VoicePlateauEndMs(voice!, voiceEnd));
             var demand = MotionDemand.Evaluate(new MotionLanes(
                 Playing: playing,
                 VoiceActive: voiceMoving,
@@ -1607,7 +1702,7 @@ public static partial class Lyrics
                 FollowUnsettled: (!_scrollSnapped && active >= 0) || _reserveRelatchFrames > 0,
                 Following: Follow_.Peek() == FollowMode.Following,
                 NowMs: nowMs,
-                NextEventMs: nextEventMs));
+                NextEventMs: nextEvent));
             _motionLive.Value = demand.NeedsTicks;
             if (demand.NeedsTicks) ClearMotionWake();
             else ArmMotionWake(demand.WakeAtMs, nowMs);
@@ -1617,6 +1712,16 @@ public static partial class Lyrics
             var mainNode = _lineNodes[voiceLine];
             var glowNode = (uint)voiceLine < (uint)_glowNodes.Length ? _glowNodes[voiceLine] : NodeHandle.Null;
             if (mainNode.IsNull || !scene.IsLive(mainNode) || !scene.TryGetGlyphWipe(mainNode, out var mw)) return;
+
+            if (renderWipe)
+            {
+                double rate = _clock.ContentRate > 0 ? _clock.ContentRate : 1.0;
+                if (voiceLine != _wipeRowLine || _wipeReseed || rate != _wipeRowRate || mainNode != _wipeRowMain)
+                    SeedWipeRows(anim!, scene, voice!, voiceLine, nowMs, rate, mainNode, glowNode);
+                MaintainGlowSigma(scene, voiceLine, glowNode, runGlow);
+                return;
+            }
+            if (_wipeRowLine >= 0) CancelWipeRows(anim);   // the UI owns the split again (paused, probe)
 
             float split = Wipe.ComputeSplit(doc.Lines[voiceLine], nowMs);
             if (!IsPodcast && split > 0f && split < 1f) split = Math.Clamp(split + Wipe.LeadFrac, 0f, 1f);
@@ -1647,10 +1752,80 @@ public static partial class Lyrics
             }
         }
 
+        /// <summary>Seed the render-thread wipe for the voice line: the exact split function from now to where it settles
+        /// (Wipe.SplitKeyframes), timed at the content rate, on the main glyphs and their halo. Seeded once per line and
+        /// again after a clock jump or a rate change; between, the UI writes nothing. A line already settled gets its final
+        /// split written instead.</summary>
+        void SeedWipeRows(AnimEngine anim, SceneStore scene, Line line, int voiceLine, long nowMs, double rate, NodeHandle main, NodeHandle glow)
+        {
+            if (_wipeRowLine >= 0 && (_wipeRowMain != main || _wipeRowLine != voiceLine)) CancelWipeRows(anim);
+            _wipeReseed = false;
+            var keys = Wipe.SplitKeyframes(line, nowMs, lead: !IsPodcast, out long endMs);
+            float softness = SoftnessOfLine(voiceLine);
+            if (keys is null)
+            {
+                // settled: the split is 1 (or the line has no syllables) — write it once, as the UI path would
+                if (scene.TryGetGlyphWipe(main, out var mw) && (mw.Split != 1f || MathF.Abs(softness - mw.Softness) > Wipe.SoftnessEps))
+                {
+                    scene.SetGlyphWipe(main, mw with { Split = 1f, Softness = softness });
+                    scene.Mark(main, NodeFlags.PaintDirty);
+                }
+                return;
+            }
+            float durationMs = (float)((endMs - nowMs) / rate);
+            // The rows start from the value at `now`: write it as the authored split too, so a row the render thread has
+            // not posed yet (its first frame) shows the same pixels.
+            if (scene.TryGetGlyphWipe(main, out var m0))
+            {
+                scene.SetGlyphWipe(main, m0 with { Split = keys[0].Value, Softness = softness });
+                scene.Mark(main, NodeFlags.PaintDirty);
+            }
+            anim.Keyframes(main, AnimChannel.GlyphWipeSplit, keys, durationMs);
+            bool halo = !glow.IsNull && scene.IsLive(glow) && scene.TryGetGlyphWipe(glow, out _);
+            if (halo)
+            {
+                scene.TryGetGlyphWipe(glow, out var g0);
+                scene.SetGlyphWipe(glow, g0 with { Split = keys[0].Value, Softness = softness });
+                scene.Mark(glow, NodeFlags.PaintDirty);
+                anim.Keyframes(glow, AnimChannel.GlyphWipeSplit, keys, durationMs);
+            }
+            _wipeRowLine = voiceLine;
+            _wipeRowMain = main;
+            _wipeRowGlow = halo ? glow : NodeHandle.Null;
+            _wipeRowRate = rate;
+        }
+
+        /// <summary>Hand the split back to the UI (paused, sync-probe, a re-seed onto other nodes). The UI path rewrites it
+        /// from the clock on this same step, so the cancelled row's last posed value is never what stays on screen.</summary>
+        void CancelWipeRows(AnimEngine? anim)
+        {
+            if (anim is not null)
+            {
+                if (!_wipeRowMain.IsNull) anim.Cancel(_wipeRowMain, AnimChannel.GlyphWipeSplit);
+                if (!_wipeRowGlow.IsNull) anim.Cancel(_wipeRowGlow, AnimChannel.GlyphWipeSplit);
+            }
+            _wipeRowLine = -1;
+            _wipeRowMain = _wipeRowGlow = NodeHandle.Null;
+        }
+
+        /// <summary>The halo's σ under the never-nest rule — the part of the UI wipe write the render-thread wipe keeps.</summary>
+        void MaintainGlowSigma(SceneStore scene, int voiceLine, NodeHandle glow, bool runGlow)
+        {
+            if (!runGlow || glow.IsNull || !scene.IsLive(glow)) return;
+            float sigma = Wipe.GlowSigma(DofDeclaredFor(voiceLine), GlowAlphaOf(voiceLine), Large, _haloScale);
+            ref var gp = ref scene.Paint(glow);
+            if (MathF.Abs(gp.BlurSigma - sigma) > 0.01f)
+            {
+                gp.BlurSigma = sigma;
+                scene.Mark(glow, NodeFlags.PaintDirty);
+            }
+        }
+
         /// <summary>A snap (first sample, a real seek / transfer / track change): the next follow is an instant latch,
         /// and any in-flight cascade was measured against geometry the jump invalidates.</summary>
         void OnClockJump()
         {
+            _wipeReseed = true;   // the render-thread wipe was timed on the old clock
             _scrollSnapped = false;
             ZeroCascade(Context.Scene);
         }

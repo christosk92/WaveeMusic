@@ -863,8 +863,142 @@ public static partial class Diagnostics
             return sb.ToString();
         }
 
-        /// <summary>The full report ("Copy full report", and <c>report.txt</c> in a bundle).</summary>
-        public static string BuildReport(string trackId, Lyrics.SearchReport? r, Lyrics.Inspection? insp)
+        // ── on-device AI timing (the Providers tab's first card, and the report's "## on-device ai" section) ──
+
+        /// <summary><see cref="AiFacts.ResultBytes"/> before the off-thread stat answered.</summary>
+        public const long AiResultUnchecked = -2;
+        /// <summary><see cref="AiFacts.ResultBytes"/> when there is no saved result on disk.</summary>
+        public const long AiResultMissing = -1;
+
+        /// <summary>The AI card's state dot.</summary>
+        public enum AiInk : byte { Grey, Accent, Good, Bad }
+
+        /// <summary>Which sentence the AI card's first line says (the dialog maps each to one loc key).</summary>
+        public enum AiLine : byte { Off, NotReady, Idle, Waiting, Working, OnScreen, Cached, Outranked, Replaced, Skipped, Failed, Cancelled }
+
+        /// <summary>One track's on-device AI facts, snapshotted on the UI thread. <see cref="Track"/> and <see cref="Job"/>
+        /// are null unless they are about THIS track (the AI signals follow the playing track, the dialog does not).</summary>
+        /// <param name="Doc">What the lyrics store holds for the track (the document on screen).</param>
+        /// <param name="ResultBytes">The saved result's size; <see cref="AiResultMissing"/> or <see cref="AiResultUnchecked"/>.</param>
+        public sealed record AiFacts(AiLyrics.Status Status, AiLyrics.TrackStatus? Track, AiLyrics.JobInfo? Job, Lyrics.Doc? Doc,
+            string ResultPath, long ResultBytes);
+
+        /// <summary>The facts about <paramref name="trackId"/>: the track state and the job are dropped when they belong to
+        /// another track.</summary>
+        public static AiFacts AiFactsFor(string trackId, AiLyrics.Status status, AiLyrics.TrackStatus track, AiLyrics.JobInfo? job,
+            Lyrics.Doc? doc, string resultPath, long resultBytes)
+            => new(status,
+                track.TrackId is { Length: > 0 } t && t == trackId ? track : null,
+                job is not null && job.TrackId == trackId ? job : null,
+                doc, resultPath, resultBytes);
+
+        /// <summary>The card shows while the feature is on, or when anything about this track came from it.</summary>
+        public static bool ShowsAi(AiFacts f)
+            => f.Status.Enabled || f.Job is not null || f.Doc is { Generated: true } || f.ResultBytes >= 0
+            || f.Track is { Phase: not AiLyrics.TrackPhase.Idle };
+
+        /// <summary>The first line, in this order: a running job → people-made word timing that outranks ours → a failure
+        /// → our timing on screen (replayed or generated) → a finished job whose document was replaced → a skip → a
+        /// cancel → the track state → the feature's own state.</summary>
+        public static AiLine AiLineOf(AiFacts f)
+        {
+            string outcome = f.Job?.Outcome ?? "";
+            if (outcome == "working") return AiLine.Working;
+            if (outcome == "stopped" || f.Track is { Reason: AiLyrics.SkipReason.AlreadyWordByWord }) return AiLine.Outranked;
+            if (outcome == "failed" || f.Track is { Reason: AiLyrics.SkipReason.Failed }) return AiLine.Failed;
+            if (f.Doc is { Generated: true }) return outcome == "cached" ? AiLine.Cached : AiLine.OnScreen;
+            if (outcome is "done" or "cached") return AiLine.Replaced;
+            if (outcome == "skipped" || f.Track is { Phase: AiLyrics.TrackPhase.Skipped }) return AiLine.Skipped;
+            if (outcome == "cancelled") return AiLine.Cancelled;
+            if (f.Track is { Phase: AiLyrics.TrackPhase.Working }) return AiLine.Working;
+            if (f.Track is { Phase: AiLyrics.TrackPhase.Waiting }) return AiLine.Waiting;
+            if (!f.Status.Enabled) return AiLine.Off;
+            if (f.Status.Phase != AiLyrics.SetupPhase.Ready) return AiLine.NotReady;
+            return AiLine.Idle;
+        }
+
+        public static AiInk AiInkOf(AiLine line) => line switch
+        {
+            AiLine.Working => AiInk.Accent,
+            AiLine.OnScreen or AiLine.Cached => AiInk.Good,
+            AiLine.Failed => AiInk.Bad,
+            _ => AiInk.Grey,
+        };
+
+        /// <summary>The provider whose lyrics are on screen instead of ours (the stopped job names it; else the document).</summary>
+        public static string AiProvider(AiFacts f)
+            => f.Job is { Outcome: "stopped", Detail.Length: > 0 } j ? j.Detail : Or(f.Doc?.Provider, "—");
+
+        /// <summary>Why the track was skipped: the track state's reason, else the job's detail.</summary>
+        public static string AiSkipReason(AiFacts f)
+            => f.Track is { Reason: not AiLyrics.SkipReason.None } t ? t.Reason.ToString() : Or(f.Job?.Detail, "—");
+
+        public static string AiFailure(AiFacts f) => Or(f.Job?.Detail, "—");
+
+        /// <summary>The working line's numbers: lines ready / total, and seconds timed / the song's length.</summary>
+        public readonly record struct AiProgress(string Ready, string Total, string Processed, string Duration);
+
+        public static AiProgress AiProgressOf(AiFacts f)
+        {
+            int ready = f.Job?.LinesReady ?? f.Track?.LinesReady ?? 0, total = f.Job?.LineCount ?? f.Track?.LineCount ?? 0;
+            double processed = f.Job?.ProcessedSeconds ?? f.Track?.ProcessedSeconds ?? 0;
+            return new(ready.ToString(Inv), total.ToString(Inv), S1(processed), f.Job is { } j ? S1(j.DurationSeconds) : "—");
+        }
+
+        /// <summary>The meta line's numbers (stage times in seconds, "—" without a job) and the aligner language.</summary>
+        public readonly record struct AiTimes(string Separate, string Align, string Total, string Language);
+
+        public static AiTimes AiTimesOf(AiFacts f)
+        {
+            string language = Or(f.Job?.Language, Or(f.Track?.Language, Or(f.Doc is { Generated: true } d ? d.Language : null, "—")));
+            return f.Job is { } j
+                ? new(S1(j.SeparateSeconds), S1(j.AlignSeconds), S1(j.ElapsedMs / 1000d), language)
+                : new("—", "—", "—", language);
+        }
+
+        /// <summary>The saved result's size ("1.2 KB"), "" when it is missing or not checked yet.</summary>
+        public static string AiResultSize(long bytes) => bytes >= 0 ? AiLyrics.Rules.FormatBytes(bytes) : "";
+
+        static string S1(double v) => v.ToString("0.0", Inv);
+
+        /// <summary>The report's "## on-device ai" section: the same facts as the card, in English data like the rest.</summary>
+        public static void AppendAi(StringBuilder sb, AiFacts f)
+        {
+            var line = AiLineOf(f);
+            sb.Append("\n## on-device ai\n");
+            sb.Append("state:   ").Append(line).Append("   setup=").Append(f.Status.Phase).Append("   enabled=")
+              .Append(f.Status.Enabled ? "True" : "False").Append("   pack=v").Append(AiLyrics.PackVersion.ToString(Inv)).Append('\n');
+            if (line == AiLine.Outranked || line == AiLine.Replaced) sb.Append("shown:   ").Append(AiProvider(f)).Append('\n');
+            if (f.Track is { } t)
+                sb.Append("track:   ").Append(t.Phase).Append("   reason=").Append(t.Reason).Append("   lines=")
+                  .Append(t.LinesReady.ToString(Inv)).Append('/').Append(t.LineCount.ToString(Inv)).Append("   fromCache=")
+                  .Append(t.FromCache ? "True" : "False").Append('\n');
+            if (f.Job is { } j)
+            {
+                var times = AiTimesOf(f);
+                sb.Append("job:     ").Append(j.Outcome).Append("   lines=").Append(j.LinesReady.ToString(Inv)).Append('/')
+                  .Append(j.LineCount.ToString(Inv)).Append("   timed=").Append(S1(j.ProcessedSeconds)).Append("s of ")
+                  .Append(S1(j.DurationSeconds)).Append("s   language=").Append(times.Language).Append('\n');
+                sb.Append("times:   separate ").Append(times.Separate).Append("s · align ").Append(times.Align)
+                  .Append("s · total ").Append(times.Total).Append("s   fromCache=").Append(j.FromCache ? "True" : "False").Append('\n');
+                if (j.Detail.Length > 0) sb.Append("detail:  ").Append(j.Detail).Append('\n');
+            }
+            else sb.Append("job:     (none for this track)\n");
+            sb.Append("npu:     ").Append(Or(f.Status.NpuName, "—")).Append("   driver=").Append(Or(f.Status.NpuDriver, "—")).Append('\n');
+            sb.Append("result:  ").Append(Or(f.ResultPath, "—")).Append("   ").Append(f.ResultBytes switch
+            {
+                >= 0 => AiResultSize(f.ResultBytes),
+                AiResultMissing => "(not saved)",
+                _ => "(not checked)",
+            }).Append('\n');
+            if (f.Doc is { } d)
+                sb.Append("doc:     provider ").Append(Or(d.Provider, "—")).Append("   sync=").Append(d.Sync).Append("   generated=")
+                  .Append(d.Generated ? "True" : "False").Append('\n');
+        }
+
+        /// <summary>The full report ("Copy full report", and <c>report.txt</c> in a bundle). <paramref name="ai"/> adds the
+        /// on-device AI section when the caller has its facts.</summary>
+        public static string BuildReport(string trackId, Lyrics.SearchReport? r, Lyrics.Inspection? insp, AiFacts? ai = null)
         {
             var sb = new StringBuilder(4096);
             sb.Append("# Wavee lyrics source report\n").Append("track:   ").Append(trackId).Append('\n');
@@ -878,6 +1012,7 @@ public static partial class Diagnostics
             }
             else sb.Append("summary: (no search recorded)\n");
             if (insp is not null) sb.Append("note:    ").Append(insp.Note).Append('\n');
+            if (ai is not null) AppendAi(sb, ai);
 
             double winnerScore = WinnerScore(r);
             sb.Append("\n## providers\n");

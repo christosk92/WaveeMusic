@@ -28,7 +28,7 @@
 // the model's own `IsSettled`, in `Deck.cs`.
 //
 // THE ANALYSER DECKS READ THE REAL FFT (docs/plans/wavee/fullscreen-flagship-implementation.md §4.13). Winamp and WMP hold
-// a SPECTRUM lease and read `SpectrumFold` — the rail's own 30 Hz fold of the engine's 48 bands — so nothing synthesises a
+// a SPECTRUM lease and read `SpectrumFold` — the rail's own fold of the engine's 48 bands — so nothing synthesises a
 // band any more; the VU holds the level lease and rests without a tap.
 //
 // Rules: faces are FUNCTIONS, built once per host render; everything that moves is a bound Transform/Opacity/Text over
@@ -130,7 +130,7 @@ public static partial class Deck
             return (f.Rms, f.Peak);
         };
 
-        /// <summary>The analyser decks read the rail's OWN 30 Hz fold of the engine bands (<see cref="SpectrumFold.Pull"/>,
+        /// <summary>The analyser decks read the rail's OWN fold of the engine bands (<see cref="SpectrumFold.Pull"/>,
         /// called from the deck clock's tick) — the real FFT, independent of whether the stage is open; nothing synthesises
         /// bands any more.</summary>
         static readonly SpectrumPull SpectrumTap = static () => SpectrumFold.Levels;
@@ -236,9 +236,9 @@ public static partial class Deck
             ReducedMotion: Design.Reduced);
     }
 
-    /// <summary>The ONE timer in the hero slot, rendering a 0×0 box. It is its own component because
-    /// <c>UseInterval</c> belongs to the component that owns it, and hanging it off the host would make every
-    /// enable/disable edge rebuild the face.</summary>
+    /// <summary>The ONE clock in the hero slot, rendering a 0×0 box (plus its per-frame ticker while it runs). It is its
+    /// own component because the ticker's mount belongs to the component that owns it, and hanging it off the host would
+    /// make every enable/disable edge rebuild the face.</summary>
     sealed class Clock : Component
     {
         public required Host Host;
@@ -282,14 +282,18 @@ public static partial class Deck
             bool settled = _settled.Value;
             bool railOpen = Shell.Ui.RailOpen.Value;
             bool run = ClockRules.ShouldTick(Design.Reduced, railOpen, playing, playing || loading, buffering, settled);
-            UseInterval(_tick, ClockRules.TickMs, run);
             _active = UseIsActive();
             UseEffect(_transport);
             UseEffect(_loops);
             UseEffect(_lease);
             UseSignalEffect(_readGain);                    // re-runs on a Prefs.Stage epoch bump — never on a tick
-            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            // PER FRAME while it runs: the ticker is mounted only then (and pauses itself while parked), so a paused,
+            // settled, ended, reduced-motion or rail-closed deck requests no frame.
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = run ? [Embed.Comp(() => new DeckFrames(_tick))] : [] };
         }
+
+        /// <summary>The clock's per-frame tick (<see cref="Controls.FrameTicker"/>), named for the <c>[wake]</c> census.</summary>
+        sealed class DeckFrames(Action tick) : Controls.FrameTicker(tick);
 
         /// <summary>The ONE prefs read of the analyser path: sensitivity folded into the gain, cached per epoch (O8). Only an
         /// analyser deck reads it, so the others subscribe to nothing.</summary>
@@ -440,29 +444,41 @@ public static partial class Deck
     public static class SpectrumFold
     {
         static readonly float[] s_db = new float[Visualizer.Bands.Count], s_target = new float[Visualizer.Bands.Count], s_levels = new float[Visualizer.Bands.Count];
-        static long s_seq, s_decayedAtMs;
+        static long s_seq, s_decayedAtMs, s_foldedAtMs;
         static float s_agc = Visualizer.Bands.AgcFloor;
 
         /// <summary>The 0..1 band levels the last <see cref="Pull"/> produced (all zeros until a live spectrum arrives).</summary>
         public static ReadOnlySpan<float> Levels => s_levels;
 
+        /// <summary>The follower's constants were authored per 30 Hz tick (<see cref="Visualizer.Bands.RefHz"/>); the fold
+        /// steps by the REFERENCE ticks since its previous step instead, so the deck reads the same whether it is pulled at
+        /// 30 Hz, 60 Hz or every frame. One tick on the first step; clamped so a resume never integrates a long gap.</summary>
+        public static float TicksSince(long lastMs, long nowMs)
+            => lastMs == 0L ? 1f : Math.Clamp((nowMs - lastMs) * (Visualizer.Bands.RefHz / 1000f), 0.03f, 3f);
+
         /// <param name="gain">The deck clock's cached <c>Visualizer.Bands.Gain(sensitivity, calm: false)</c>.</param>
         public static void Pull(float gain)
         {
             int n = Playback.Audio.CopySpectrum(s_db, out var info);
+            long now = Design.FrameTime.NowMs;
             if (n < Visualizer.Bands.Count || !info.Live || info.Muted)
             {
-                long now = Design.FrameTime.NowMs;
-                if (now != s_decayedAtMs) { s_decayedAtMs = now; Visualizer.Bands.Decay(s_levels); }   // once per frame, however many decks pull
+                if (now != s_decayedAtMs)                                                              // once per frame, however many decks pull
+                {
+                    Visualizer.Bands.Decay(s_levels, TicksSince(s_decayedAtMs, now));
+                    s_decayedAtMs = now;
+                }
                 return;
             }
             if (info.Sequence == s_seq) return;                                                        // this publish was already folded by another deck
             s_seq = info.Sequence;
+            float ticks = TicksSince(s_foldedAtMs, now);
+            s_foldedAtMs = now;
             float frameMax = 0f;
             for (int i = 0; i < n; i++) { float u = Visualizer.Bands.Unit(s_db[i]); s_target[i] = u; if (u > frameMax) frameMax = u; }
-            float g = Visualizer.Bands.Agc(ref s_agc, frameMax) * gain;
+            float g = Visualizer.Bands.Agc(ref s_agc, frameMax, ticks) * gain;
             for (int i = 0; i < n; i++) s_target[i] = MathF.Min(1f, s_target[i] * g);
-            Visualizer.Bands.Follow(s_target, s_levels, false);
+            Visualizer.Bands.Follow(s_target, s_levels, false, ticks);
         }
     }
 

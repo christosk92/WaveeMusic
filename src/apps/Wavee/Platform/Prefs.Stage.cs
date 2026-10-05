@@ -1,6 +1,6 @@
 // ── Platform/Prefs.Stage.cs ────────────────────────────────────────────────────────────────────────────────────────
 // Prefs.Stage — the fullscreen stage's preference family (mode, visualizer, sensitivity, lyrics overlay, sync offset,
-// calm, gallery, tip) behind ONE epoch
+// calm, moments, gallery, tip) behind ONE epoch
 //
 // Role: CORE
 // Plan: docs/plans/wavee/fullscreen-flagship-implementation.md §2.11, §4.6
@@ -15,8 +15,8 @@ namespace Wavee;
 
 public static partial class Prefs
 {
-    /// <summary>The fullscreen stage's epoch: mode, visualizer, sensitivity, lyrics overlay, sync offset, calm, gallery,
-    /// tip. One bump per write. Read ONLY from render/effect code (never a tick, a bind thunk or a band loop — O8).</summary>
+    /// <summary>The fullscreen stage's epoch: mode, visualizer, sensitivity, lyrics overlay, sync offset, calm, moments,
+    /// gallery, tip. One bump per write. Read ONLY from render/effect code (never a tick, a bind thunk or a band loop — O8).</summary>
     public static class Stage
     {
         /// <inheritdoc cref="Stage"/>
@@ -36,6 +36,8 @@ public static partial class Prefs
         public static void SetSyncOffsetMs(int ms) { Platform.Settings.Set(Platform.Keys.StageSyncOffsetMs, System.Math.Clamp(ms, -500, 500)); Bump(); }
         public static bool Calm() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageCalm); }
         public static void SetCalm(bool on) { Platform.Settings.Set(Platform.Keys.StageCalm, on); Bump(); }
+        public static bool Moments() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageMoments); }
+        public static void SetMoments(bool on) { Platform.Settings.Set(Platform.Keys.StageMoments, on); Bump(); }
         public static bool GalleryOpen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageGalleryOpen); }
         public static void SetGalleryOpen(bool on) { Platform.Settings.Set(Platform.Keys.StageGalleryOpen, on); Bump(); }
         public static bool TipSeen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageTipSeen); }

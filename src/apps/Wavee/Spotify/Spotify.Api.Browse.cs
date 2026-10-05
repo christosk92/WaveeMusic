@@ -90,6 +90,7 @@ public static partial class Spotify
             StagedId lone = default;
             while (true)
             {
+                using Bodies.LendScope lent = Bodies.Lend();   // this page's answers go back to the pool before the next page
                 long sent = Stopwatch.GetTimestamp();
                 Result result = fetchPage(pageUri, offset);
                 outcome.Note(in result, groups);
@@ -213,6 +214,7 @@ public static partial class Spotify
             int offset = 0;
             while (true)
             {
+                using Bodies.LendScope lent = Bodies.Lend();   // this page's answers go back to the pool before the next page
                 long sent = Stopwatch.GetTimestamp();
                 Result result = fetch(sectionUri, offset);
                 outcome.Note(in result, groups);
@@ -271,7 +273,7 @@ public static partial class Spotify
                 Log.Event(WaveeLogLevel.Info, "fetch", "browse.empty", "", null, -1, null,
                     WaveeLogField.Of("op", op), WaveeLogField.Of("uri", uri), WaveeLogField.Of("offset", offset),
                     WaveeLogField.Of("status", result.Status), WaveeLogField.Of("ms", ms),
-                    WaveeLogField.Of("bytes", result.Body.Length), WaveeLogField.Of("root", root),
+                    WaveeLogField.Of("bytes", result.Length), WaveeLogField.Of("root", root),
                     WaveeLogField.Of("verdict", answer.Definite ? "unavailable" : "missing"),
                     WaveeLogField.Of("error", answer.Error ?? ""));
                 return;

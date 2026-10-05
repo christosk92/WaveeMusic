@@ -94,8 +94,9 @@ public static partial class Playback
             {
                 byte[] body = new byte[64 + 64 * recent.Length];
                 int written = podcast ? Spotify.Decode.AutopodcastRequest(recent, body) : Spotify.Decode.AutoplayRequest(contextUtf8, recent, body);
+                using Bodies.LendScope lent = Bodies.Lend();   // decoded into the cluster buffer, then dropped (Platform/Bodies.cs)
                 Spotify.Api.Result result = Spotify.Api.Autoplay(body.AsSpan(0, written).ToArray(), podcast, CancellationToken.None);
-                if (result.Ok && result.Body.Length > 0)
+                if (result.Ok && result.Length > 0)
                 {
                     Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(result.Bytes, buffer);
                     start = page.TrackStart;
@@ -110,7 +111,7 @@ public static partial class Playback
                     if (result.Status is >= 400 and < 500 && station.Length > 0)
                     {
                         Spotify.Api.Result fallback = Spotify.Api.ContextResolve(station, CancellationToken.None);
-                        if (fallback.Ok && fallback.Body.Length > 0)
+                        if (fallback.Ok && fallback.Length > 0)
                         {
                             Spotify.Decode.ContextPage page = Spotify.Decode.ContextResolve(fallback.Bytes, buffer);
                             start = page.TrackStart;

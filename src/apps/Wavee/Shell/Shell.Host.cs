@@ -304,6 +304,7 @@ public static partial class Shell
             PlayLog.Flush();
             Notify.HostShutdown();
             Playback.Os.Shutdown();
+            AiLyrics.Shutdown();      // stops the model download (partials stay) and the NPU worker within 2 s
             s_fetchWake?.Dispose();
             s_audioWarm?.Dispose();
             s_memoryPoll?.Dispose();   // RECURRING (unlike the one-shots above): must stop, not just have already fired
@@ -371,6 +372,7 @@ public static partial class Shell
         Store.Post = post;
         Wavee.Palette.Post = post;
         Lyrics.Store.ToUi = post;         // the lyrics document store's UI-thread hop (G-008)
+        AiLyrics.Install(post);           // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
         s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
         Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
@@ -1022,6 +1024,12 @@ public static partial class Shell
             // The ambient power poll (G-086): component-hosted rather than a raw Timer, so it auto-pauses while the
             // window is parked/minimized/suspended instead of waking on a thread-pool clock nobody is watching.
             UseInterval(Platform.TickAmbientPower, Platform.AmbientPower.PollMs);
+            // On-device AI lyrics: the playhead for just-in-time commits, the decision effect (track, lyrics, battery
+            // saver, preferences, setup phase), and the idle unload of the NPU sessions. Signal effects, so they run on
+            // the UI thread and only post work; nothing here waits.
+            UseSignalEffect(AiLyrics.DriverPlayhead);
+            UseSignalEffect(AiLyrics.DriverEvaluate);
+            UseInterval(AiLyrics.DriverIdleTick, 60_000f);
             return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }
@@ -1062,8 +1070,8 @@ public static partial class Shell
                 if (!File.Exists(s_path)) return;
                 try
                 {
-                    var bytes = File.ReadAllBytes(s_path);
-                    var dtos = JsonSerializer.Deserialize(bytes, HistoryJson.Default.HistoryEntryDtoArray);
+                    using var file = File.OpenRead(s_path);   // streamed: no whole-file array (Platform/Bodies.cs)
+                    var dtos = JsonSerializer.Deserialize(file, HistoryJson.Default.HistoryEntryDtoArray);
                     if (dtos is null) return;
                     for (int i = 0; i < dtos.Length; i++)
                     {
@@ -1153,8 +1161,8 @@ public static partial class Shell
                     var e = s_entries[start + i];
                     snapshot[i] = new HistoryEntryDto(NameOf(e.Route), ArgOf(e.Route), e.VisitedAt.ToUniversalTime().Ticks);
                 }
-                _ = Task.Run(() => WriteThenRename(path, JsonSerializer.SerializeToUtf8Bytes(
-                    snapshot, HistoryJson.Default.HistoryEntryDtoArray), "history"));
+                _ = Task.Run(() => WriteThenRename(path,
+                    file => JsonSerializer.Serialize(file, snapshot, HistoryJson.Default.HistoryEntryDtoArray), "history"));
             }
         }
     }
@@ -1481,8 +1489,8 @@ public static partial class Shell
             {
                 try
                 {
-                    var bytes = File.ReadAllBytes(path);
-                    var dtos = JsonSerializer.Deserialize(bytes, PlayLogJson.Default.PlayEntryDtoArray);
+                    using var file = File.OpenRead(path);   // streamed: no whole-file array (Platform/Bodies.cs)
+                    var dtos = JsonSerializer.Deserialize(file, PlayLogJson.Default.PlayEntryDtoArray);
                     if (dtos is not null)
                         for (int i = 0; i < dtos.Length; i++)
                         {
@@ -1618,8 +1626,8 @@ public static partial class Shell
             if (s_recencyPath is not { } path || !File.Exists(path)) return;
             try
             {
-                var bytes = File.ReadAllBytes(path);
-                var map = JsonSerializer.Deserialize(bytes, PlayLogJson.Default.DictionaryStringInt64);
+                using var file = File.OpenRead(path);   // streamed: no whole-file array (Platform/Bodies.cs)
+                var map = JsonSerializer.Deserialize(file, PlayLogJson.Default.DictionaryStringInt64);
                 if (map is null) return;
                 foreach (var kv in map) Stamp(kv.Key, kv.Value);
             }
@@ -1630,6 +1638,22 @@ public static partial class Shell
                 try { File.Move(path, path + ".corrupt", overwrite: true); } catch (Exception) { }
                 Log.Warn("nav", "play-recency.json could not be read; it will be rebuilt from the play log", ex);
             }
+        }
+
+        /// <summary>play-recency.json, written pair by pair: the same <c>{"uri":ms,…}</c> object the
+        /// <see cref="PlayLogJson"/> dictionary reads back, flushed to <paramref name="file"/> every 16 KB so no part of
+        /// the document is ever one large buffer (Utf8JsonWriter over a stream otherwise holds it all until the end).</summary>
+        public static void WriteRecency(Stream file, ReadOnlySpan<KeyValuePair<string, long>> recency)
+        {
+            using var writer = new Utf8JsonWriter(file);
+            writer.WriteStartObject();
+            foreach (KeyValuePair<string, long> pair in recency)
+            {
+                writer.WriteNumber(pair.Key, pair.Value);
+                if (writer.BytesPending >= 16 * 1024) writer.Flush();
+            }
+            writer.WriteEndObject();
+            writer.Flush();
         }
 
         static void PreserveCorrupt(string path, Exception ex)
@@ -1666,14 +1690,16 @@ public static partial class Shell
                 var e = s_entries[start + i];
                 ring[i] = new PlayEntryDto(e.Track.Text, e.Context.IsValid ? e.Context.Text : null, e.PlayedAtMs, e.ContextTitle);
             }
-            var recency = new Dictionary<string, long>(s_recency, StringComparer.Ordinal);
+            // The recency snapshot is the pairs, not a Dictionary copy: at the 4096-uri cap a copied Dictionary's entry
+            // array is ~98 KB — a large-object-heap allocation on EVERY save, which is every play — and the pairs are 64 KB.
+            KeyValuePair<string, long>[] recency = [.. s_recency];
             string? recencyPath = s_recencyPath;
             _ = Task.Run(() =>
             {
-                WriteThenRename(path, JsonSerializer.SerializeToUtf8Bytes(ring, PlayLogJson.Default.PlayEntryDtoArray), "play-log");
-                if (recencyPath is not null)
-                    WriteThenRename(recencyPath,
-                        JsonSerializer.SerializeToUtf8Bytes(recency, PlayLogJson.Default.DictionaryStringInt64), "play-recency");
+                // Both STREAMED into the file (Platform/Bodies.cs): play-recency.json is ~200 KB at the cap, and
+                // `SerializeToUtf8Bytes` made it one fresh large-object-heap array per play.
+                WriteThenRename(path, file => JsonSerializer.Serialize(file, ring, PlayLogJson.Default.PlayEntryDtoArray), "play-log");
+                if (recencyPath is not null) WriteThenRename(recencyPath, file => WriteRecency(file, recency), "play-recency");
             });
         }
     }
@@ -1731,7 +1757,11 @@ public static partial class Shell
 
     /// <summary>WRITE-THEN-RENAME, so a crash cannot leave a half-written document. Shared by all three stores; a
     /// failure is logged ONCE per document rather than per attempt, and the temp file is always cleaned up.</summary>
-    static void WriteThenRename(string path, byte[] bytes, string what)
+    static void WriteThenRename(string path, byte[] bytes, string what) => WriteThenRename(path, file => file.Write(bytes), what);
+
+    /// <summary>The same write-then-rename with the document STREAMED into the temp file by <paramref name="write"/> —
+    /// no whole-document array, so a large one never lands on the large-object heap (Platform/Bodies.cs).</summary>
+    static void WriteThenRename(string path, Action<Stream> write, string what)
     {
         string tmp = path + ".tmp";
         try
@@ -1740,7 +1770,7 @@ public static partial class Shell
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                fs.Write(bytes);
+                write(fs);
                 fs.Flush(flushToDisk: true);
             }
             File.Move(tmp, path, overwrite: true);

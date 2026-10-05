@@ -236,6 +236,11 @@ public static partial class Playback
         /// or the window is not yet latency-aligned).</summary>
         public static int CopySpectrum(Span<float> into, out SpectrumInfo info) => s_effects.CopySpectrum(into, out info);
 
+        /// <summary>Copy the latest time-domain window (mono, −1..1, the centre <c>AudioEffects.WaveformSamples</c> of the same
+        /// latency-aligned window the bands came from) tear-free — the stage's scope line. Same spectrum lease, same
+        /// sequence; 0 ⇒ nothing published.</summary>
+        public static int CopyWaveform(Span<float> into, out WaveformInfo info) => s_effects.CopyWaveform(into, out info);
+
         /// <summary>Mirror of <c>Prefs.Stage.SyncOffsetMs</c> onto the analysis window (positive = read earlier).</summary>
         public static void SetSpectrumOffsetMs(float ms) => s_effects.SpectrumOffsetMs = ms;
 
@@ -892,9 +897,10 @@ public static partial class Playback
                 s_endedHold = 0;
             }
 
-            // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration. Under
-            // `--fake --fake-video` the seeded spotify: rows take it too (no session to open bytes from; the clip carries the sound).
-            if (id.Provider == EntityProvider.Fake || (Platform.Args.FakeVideo is not null && id.Provider == EntityProvider.Spotify))
+            // A `--fake` load has no bytes at all: the silent voice runs the real graph for the declared duration. That holds
+            // for EVERY load under --fake, including the seed's spotify-shaped track uris (`spotify:track:trN`, whose short id
+            // is not a 22-char gid, so they classify as Spotify): there is no network to open them against.
+            if (id.Provider == EntityProvider.Fake || Platform.Args.Fake)
             {
                 await OpenSilentAsync(row, epoch, fromMs, chain).ConfigureAwait(false);
                 return;

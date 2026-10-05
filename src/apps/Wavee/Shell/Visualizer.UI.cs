@@ -1,33 +1,41 @@
 // ── Shell/Visualizer.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// Slab, SeriesSource, Palette, Clock (30 Hz, leases, demands), the eight faces (stage + preview scale), Gallery
+// Slab (+ the poster slab), SeriesSource, InstanceSource, Clock (per frame: leases, demands, the palette fade, moments, the
+// scope pull, the whole-song Timeline series), FaceSpec, the Face switch, FaceFrame, the drifting blobs and the stage's
+// backdrop Field
 //
 // Role: UI
 // Owner: K
 // Wave: 7
-// Budget: 1100 lines
-// Spec: docs/plans/wavee/fullscreen-flagship-implementation.md §2.10, §3.1, §4.9
+// Budget: 760 lines
+// Spec: docs/plans/wavee/fullscreen-flagship-implementation.md §2.10, §3.1, §4.9; viz-app-plan §3.2-§3.7, §6
 //
 // ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// THE DECK PATTERN, ON THE STAGE. ONE `Clock` component ticks at 30 Hz (`UseInterval`, auto-paused when parked), pulls
-// the engine's bands (`Playback.Audio.CopySpectrum`), folds them through the CORE `Visualizer.Model` and writes the
-// `Slab` inside ONE `Runtime.Batch` — FloatSignals for scalars, `SeriesSource.Version` bumps for the six series. Every
-// face is built ONCE and binds `Transform`/`Opacity`/`Fill` props over the slab (compositor-only writes, zero
-// re-render); Horizon and Aurora bind `SeriesEl.Samples` over a `SeriesSource`. A preview is the SAME face at a smaller
-// size with fewer parts, bound to the SAME slab — eight previews cost nodes, never analysis. Nothing here decides: the
-// tick's inputs and every constant come from `Visualizer` (CORE) and `Stage` (CORE).
+// THE DECK PATTERN, ON THE STAGE. ONE `Clock` component ticks once per FRAME while it runs (`Controls.FrameTicker`, the
+// PACEABLE twin — the GPU governor may pace a visualizer), pulls the engine's bands (`Playback.Audio.CopySpectrum`) and,
+// when a mounted face reads it, the time-domain window (`CopyWaveform`), folds them through the CORE `Visualizer.Model`
+// and writes the `Slab` inside ONE `Runtime.Batch` — FloatSignals for scalars, `SeriesSource.Version` bumps for the
+// series. Every face is built ONCE and binds `Transform`/`Opacity`/`Fill` props over the slab (compositor-only writes,
+// zero re-render). A preview is the SAME face at a smaller size bound to the SAME slab — or, as a frozen POSTER, to the
+// stage's poster slab, which never ticks: a poster costs nodes, never writes.
+//
+// THE PALETTE. SurfaceCore derives the cover's palette (`StageCtx.BasePalette`); the clock owns what faces see: the
+// slab's `A/B/C/Deep` cross-fade from the colours CAPTURED at a change (600 ms on a track change, 900 ms / 1.4 s calm on
+// a moment), `FadeFrom/FadeTo/FadeMix` carry the same fade to gradient nodes that bind `GradientTo/GradientMix`, and on
+// landing `PaletteEpoch` bumps and `StageCtx.Palette` (the value a face builds with) is republished. A face gradient on
+// `MomentMix` follows MOMENTS only: a track fade rests it at 0 at its start (solid fills cross-fade on a track, the
+// gradient lands with the republished palette). Nothing here decides: the tick's inputs and every constant come from
+// `Visualizer` (CORE) and `Stage` (CORE).
 
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using FluentGpu.Animation;
 using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
-using FluentGpu.Localization;
 using FluentGpu.Media;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
-
-using Ink = Wavee.Design.StageInk;
 
 namespace Wavee;
 
@@ -47,61 +55,156 @@ public static partial class Visualizer
         public void Publish() => Version.Value = Version.Peek() + 1u;
     }
 
-    /// <summary>Every signal a face can bind. One per stage; the gallery previews share it.</summary>
+    /// <summary>A reusable sprite buffer + a version the bound <c>SpriteFieldEl.Instances</c> thunk reads (equal by array
+    /// identity, count and version — the SeriesSource contract for instanced sprites). A face sim writes
+    /// <see cref="Buffer"/>[0..<see cref="Count"/>) and calls <see cref="Publish"/> once per tick.</summary>
+    public sealed class InstanceSource(int capacity)
+    {
+        public readonly Sprite[] Buffer = new Sprite[capacity];
+        public int Count;
+        public readonly Signal<uint> Version = new(0u);
+        /// <summary>The bound view — reading <see cref="Version"/>.Value is what subscribes the bind.</summary>
+        public SpriteInstances Current => new(Buffer, Count, Version.Value);
+        public void Publish() => Version.Value = Version.Peek() + 1u;
+    }
+
+    /// <summary>Every signal a face can bind. One per stage (the gallery's live previews share it) plus one POSTER slab that
+    /// never ticks (<see cref="CreatePoster"/>). Inside this class <c>Bands</c> / <c>Source</c> / <c>Scope</c> are the
+    /// MEMBERS; the CORE classes are spelled <c>Visualizer.Bands</c> etc.</summary>
     public sealed class Slab
     {
-        public readonly FloatSignal[] Bands = Make(Visualizer.Bands.Count), Peaks = Make(Visualizer.Bands.Count);
+        static readonly Palette s_seed = Palette.From(ColorF.FromRgba(255, 158, 196), null, dark: true);
+
+        public readonly FloatSignal[] Bands = Make(Visualizer.Bands.Count, 0f), Peaks = Make(Visualizer.Bands.Count, 0f);
         public readonly FloatSignal Low = new(0f), Mid = new(0f), High = new(0f), Level = new(0f), Kick = new(0f), BeatPhase = new(0f);
-        public readonly FloatSignal FaceFieldOp = new(0.75f), BaseFieldOp = new(Stage.Tone.BaseFieldA), GlowOp = new(0.16f), BeatScale = new(1f);
-        public readonly FloatSignal ReelL = new(Visualizer.Tape.R1), ReelR = new(Visualizer.Tape.R0), AngleL = new(0f), AngleR = new(0f);
-        public readonly FloatSignal[] Rings = Make(Pulse.Rings);
-        public readonly Signal<int> BeatIndex = new(0), MeterLit = new(0);
+        /// <summary>The stage backdrop Field's opacity (Stage.UI.cs Backdrop).</summary>
+        public readonly FloatSignal BaseFieldOp = new(Stage.Tone.BaseFieldA);
+        public readonly Signal<int> BeatIndex = new(0);
         public readonly Signal<Source> Source = new(Visualizer.Source.Breath);
-        public readonly SeriesSource HorizonLow = new(Horizon.Points), HorizonMid = new(Horizon.Points), HorizonHigh = new(Horizon.Points);
-        public readonly SeriesSource AuroraLow = new(Aurora.Points), AuroraMid = new(Aurora.Points), AuroraHigh = new(Aurora.Points);
         /// <summary>The accent cross-fade's live value (Stage.Tone.CrossFadeMs) — the hairline, the ring strokes, the glow tint.</summary>
         public readonly Signal<ColorF> Accent = new(ColorF.FromRgba(255, 158, 196));
+
+        // ── the palette (cross-faded by the clock) ──
+        /// <summary>The live A/B/C/Deep — every solid fill binds these (<c>Fill = Prop.Bind(slab.A)</c>).</summary>
+        public readonly Signal<ColorF> A = new(s_seed.A), B = new(s_seed.B), C = new(s_seed.C), Deep = new(s_seed.Deep);
+        /// <summary>Bumps when a palette fade LANDS (gradient nodes keyed by it remount on the new colours, never per tick).</summary>
+        public readonly Signal<int> PaletteEpoch = new(0);
+        /// <summary>0 → 1 across a MOMENT's fade, 0 at rest — and back to 0 when a track fade starts, so it never freezes
+        /// part-way (a gradient node: Gradient = the palette it was built with, GradientTo = its <c>Rotated()</c>,
+        /// GradientMix = this; the epoch remount lands it).</summary>
+        public readonly FloatSignal MomentMix = new(0f);
+        /// <summary>Any fade (a track change or a moment): Gradient = <see cref="FadeFrom"/>, GradientTo = <see cref="FadeTo"/>,
+        /// GradientMix = <see cref="FadeMix"/> (0 → 1; 1 at rest, so <see cref="FadeTo"/> shows). From/To change once per
+        /// fade START, in the same batch that resets the mix.</summary>
+        public readonly FloatSignal FadeMix = new(1f);
+        public readonly Signal<Palette> FadeFrom = new(s_seed), FadeTo = new(s_seed);
+
+        // ── musical time ──
+        /// <summary>The bar under the playhead · the bar index of the last downbeat CROSSED while playing (a seek never
+        /// counts — the trigger for on-the-downbeat changes) · 0..1 through the bar.</summary>
+        public readonly Signal<int> Bar = new(0), Downbeat = new(0);
+        public readonly FloatSignal BarPhase = new(0f);
+        /// <summary>Position / duration (the interpolated playhead), 1/4096 steps.</summary>
+        public readonly FloatSignal Progress = new(0f);
+        /// <summary>The spectral flux, followed (0 without a live spectrum) · the onset flash (jumps to an onset's strength,
+        /// decays 0.85 per 30 Hz tick; 0 under Calm) · the 4-bar energy ahead of the playhead.</summary>
+        public readonly FloatSignal Flux = new(0f), Onset = new(0f), Energy = new(0f);
+        /// <summary>0 quiet · 1 normal · 2 loud (Visualizer.Sections).</summary>
+        public readonly Signal<byte> Section = new(Sections.Normal);
+        /// <summary>Ring's ripple ring buffer: each slot's 0..1 age, 1 = none.</summary>
+        public readonly FloatSignal[] Ripples = Make(Beat.Ripples, 1f);
+
+        // ── series ──
+        /// <summary>The scope line: 512 samples 0..1 (0.5 = silence) for a Cartesian SeriesEl; the polar ring: 256 radius
+        /// fractions (SeriesShape.Polar). Filled only while a mounted face reads them (<see cref="ScopeReaders"/>);
+        /// <see cref="ScopeLive"/> says the engine's tap (true) or the spectral synthesis (false) drew them.</summary>
+        public readonly SeriesSource Scope = new(Oscilloscope.Points), ScopeRadial = new(Oscilloscope.RadialPoints);
+        public readonly Signal<bool> ScopeLive = new(false);
+        int _scopeReaders;
+        /// <summary>How many MOUNTED faces read <see cref="Scope"/> / <see cref="ScopeRadial"/> off this slab
+        /// (<see cref="UseScopeReader"/>). A plain count, never a signal: the clock Peeks it per tick (no re-lease, no render).</summary>
+        public int ScopeReaders => _scopeReaders;
+        internal void AddScopeReader() => _scopeReaders++;
+        internal void RemoveScopeReader() => _scopeReaders = Math.Max(0, _scopeReaders - 1);
+        public readonly SeriesSource AuroraLow = new(Aurora.Points), AuroraMid = new(Aurora.Points), AuroraHigh = new(Aurora.Points);
+        /// <summary>The WHOLE song's kind-237 waveform as 360 buckets — static per track (empty ⇒ all zeros).</summary>
+        public readonly SeriesSource TimelineLow = new(Timeline.Points), TimelineMid = new(Timeline.Points), TimelineHigh = new(Timeline.Points);
+
         /// <summary>Diagnostics (read by Screens/Diagnostics.UI.cs's card).</summary>
         public float LastFftMs; public long LastAlignFrames, LastSequence; public Tier LastTier;
 
-        static FloatSignal[] Make(int n)
+        public Slab()
+        {
+            Oscilloscope.Flat(Scope.Buffer, ScopeRadial.Buffer);
+            Aurora.Fill(AuroraLow.Buffer, AuroraMid.Buffer, AuroraHigh.Buffer, 0f, 0f, 0f, 0f, 0f, 0f);
+        }
+
+        /// <summary>The gallery's frozen slab: a pleasant, palette-coloured REST pose (a real spread shape, a ripple, a
+        /// still scope line) that nothing ever ticks — a poster tile binds it and costs zero writes. The clock recolours it
+        /// when a palette fade lands (<see cref="SetPalette"/>) and copies the track's Timeline series into it.</summary>
+        public static Slab CreatePoster()
+        {
+            var s = new Slab();
+            Span<float> shape = stackalloc float[Visualizer.Bands.Count];
+            Visualizer.Bands.Spread(0.62f, 0.46f, 0.34f, 7, shape);
+            for (int i = 0; i < shape.Length; i++) { s.Bands[i].Value = shape[i]; s.Peaks[i].Value = MathF.Min(1f, shape[i] + 0.06f); }
+            s.Low.Value = 0.55f; s.Mid.Value = 0.42f; s.High.Value = 0.30f; s.Level.Value = 0.45f; s.Kick.Value = 0.2f; s.BeatPhase.Value = 0.3f;
+            s.BarPhase.Value = 0.3f; s.Progress.Value = 0.38f; s.Energy.Value = 0.45f; s.Flux.Value = 0.2f;
+            s.Ripples[0].Value = 0.35f; s.Ripples[1].Value = 0.7f;
+            s.Source.Value = Visualizer.Source.Live;
+            Oscilloscope.Synthesize(shape, 1.3f, s.Scope.Buffer, s.ScopeRadial.Buffer);
+            Aurora.Fill(s.AuroraLow.Buffer, s.AuroraMid.Buffer, s.AuroraHigh.Buffer, 0.55f, 0.42f, 0.30f, 0.8f, 1.9f, 3.2f);
+            return s;
+        }
+
+        /// <summary>Snap every palette channel to <paramref name="p"/> and bump the epoch (the poster slab's recolour).</summary>
+        public void SetPalette(in Palette p)
+        {
+            SetSlabColour(A, p.A); SetSlabColour(B, p.B); SetSlabColour(C, p.C); SetSlabColour(Deep, p.Deep); SetSlabColour(Accent, p.Accent);
+            if (!FadeFrom.Peek().Equals(p)) FadeFrom.Value = p;
+            if (!FadeTo.Peek().Equals(p)) FadeTo.Value = p;
+            if (FadeMix.Peek() != 1f) FadeMix.Value = 1f;
+            PaletteEpoch.Value = PaletteEpoch.Peek() + 1;
+        }
+
+        static FloatSignal[] Make(int n, float seed)
         {
             var a = new FloatSignal[n];
-            for (int i = 0; i < n; i++) a[i] = new FloatSignal(0f);
+            for (int i = 0; i < n; i++) a[i] = new FloatSignal(seed);
             return a;
         }
     }
 
-    /// <summary>The colours a face paints with, derived once per (cover, Tok.Epoch) in Stage.UI.cs and published on
-    /// <see cref="Stage.StageCtx.Palette"/>: the accent, a complementary partner, and the four blob tints from the cover's
-    /// scheme (<c>Wavee.Scheme</c>, Entities/Palette.cs:67-72 — ARGB uints, converted by <c>Design.Palette.ToColor</c>, Design.cs:677).
-    /// The third blob is the ACCENT, not the scheme's <c>TextBrightAccent</c>: that role is pure white on every dark grading
-    /// (Entities/Palette.cs:55-63, User.Cover.cs:879) and a white blob would wash the whole Field.</summary>
-    public readonly record struct Palette(ColorF Accent, ColorF C1, ColorF C2, ColorF F1, ColorF F2, ColorF F3, ColorF F4)
-    {
-        public static Palette From(ColorF accent, Scheme? scheme)
+    static void SetSlabColour(Signal<ColorF> s, ColorF v) { if (!v.Equals(s.Peek())) s.Value = v; }
+
+    /// <summary>Count the calling component as a reader of <paramref name="slab"/>'s scope series while
+    /// <paramref name="reads"/> holds (and it stays mounted): the clock fills them only while one exists
+    /// (<see cref="Demand.PullsScope"/>). The MOUNT SITES call it (the stage's FaceHost for a Scope/Flow face, a LIVE
+    /// gallery tile of those kinds); a face builder never does, it is not a component and would count twice. Call it
+    /// unconditionally, in stable hook order (<c>reads</c> is the effect's dependency).</summary>
+    public static void UseScopeReader(RenderContext rc, Slab slab, bool reads, [CallerFilePath] string? __hf = null, [CallerLineNumber] int __hl = 0)
+        => rc.UseEffect(() =>
         {
-            var (h, s, v) = accent.ToHsv();
-            ColorF c2 = ColorF.FromHsv((h + 150f) % 360f, MathF.Min(1f, s * 0.9f + 0.1f), MathF.Min(1f, v * 0.95f + 0.05f));
-            if (scheme is { IsEmpty: false } sc)
-                return new Palette(accent, accent, c2, Design.Palette.ToColor(sc.BackgroundBase), Design.Palette.ToColor(sc.BackgroundTintedBase),
-                                   accent, Design.Palette.ToColor(sc.TextSubdued));
-            ColorF dim = ColorF.FromHsv(h, s * 0.6f, v * 0.35f), deep = ColorF.FromHsv((h + 40f) % 360f, s * 0.7f, v * 0.25f);
-            return new Palette(accent, accent, c2, dim, accent, c2, deep);
-        }
-    }
+            if (!reads) return null;
+            slab.AddScopeReader();
+            return slab.RemoveScopeReader;
+        }, DepKey.From(reads), __hf, __hl);
 
     // ══ 2. THE CLOCK ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Mounted ONCE by Stage.UI.cs's SurfaceCore (zero-size), inside its <c>Ctx.Provide(Stage.StageContext, …)</c>.
-    /// Holds the lease the VISIBLE consumer needs, demands the precomputed edges for the current track, and folds one
-    /// <see cref="Model.Tick"/> per 30 Hz tick into the slab. Every preference it needs arrives as a SIGNAL on the context
-    /// (SurfaceCore's one epoch effect writes them — O8): the tick Peeks, never reads the registry.</summary>
+    /// Holds the lease the VISIBLE consumers need, demands the precomputed edges for the current track, owns the palette
+    /// fade and the moments, and folds one <see cref="Model.Tick"/> per tick into the slab. Every preference it needs
+    /// arrives as a SIGNAL on the context (SurfaceCore's one epoch effect writes them — O8): the tick Peeks, never reads
+    /// the registry.</summary>
     public sealed class Clock : Component
     {
         readonly Model _model = new();
-        readonly float[] _db = new float[Bands.Count];
-        readonly Action _tick, _tickCore, _write, _onPosition, _demandEdges;
+        readonly float[] _db = new float[Visualizer.Bands.Count];
+        readonly float[] _wave = new float[AudioEffects.WaveformSamples];
+        readonly float[] _scopeLine = new float[Oscilloscope.Points], _scopeRadial = new float[Oscilloscope.RadialPoints];
+        readonly float[] _tlLow = new float[Timeline.Points], _tlMid = new float[Timeline.Points], _tlHigh = new float[Timeline.Points];
+        readonly Action _tick, _tickCore, _write, _onPosition, _demandEdges, _onTimeline, _onBasePalette;
         readonly Func<Action?> _lease;
         readonly Signal<bool> _settled = new(true);   // the deck's mirror (Deck.UI.cs:233, :378-379): the gate reads a SIGNAL, never _model.IsSettled
         Stage.StageCtx? _ctx;
@@ -112,8 +215,20 @@ public static partial class Visualizer
         int _lastReportMs = int.MinValue;
         Frame _pending;
         bool _haveLive;
+        // the accent cross-fade (the hairline, the brand chip, the strokes)
         ColorF _accentTarget, _fadeFrom;
         long _fadeStartMs = -1;                       // −1 = seeded, nothing to fade
+        // the palette: the cover's base, the live (rotated) target, the one fade, the moments schedule
+        Palette _base, _live;
+        Palette.Fade _fade;
+        bool _paletteSeeded, _fadeSignalsPending;
+        Moments.Schedule _moments;
+        // the scope: filled only while a mounted face reads it (Slab.ScopeReaders, peeked per tick), the synthesis at most
+        // at the spectrum's publish rate; the Aurora ribbons only while something can show them
+        bool _scopeFresh, _scopeLive, _onsetPrimed, _ribbons;
+        long _lastSequence, _lastOnsetSequence, _timelineKey = -1, _lastSynthMs;
+        uint _timelineScope;
+        float _scopeAgc, _scopeT;
 
         public Clock()
         {
@@ -122,6 +237,8 @@ public static partial class Visualizer
             _write = WriteCore;
             _onPosition = OnPosition;
             _demandEdges = DemandEdges;
+            _onTimeline = OnTimeline;
+            _onBasePalette = OnBasePalette;
             _lease = Lease;
         }
 
@@ -134,10 +251,10 @@ public static partial class Visualizer
             bool occluded = _hooks.WindowOccluded?.Value ?? false;
             bool run = Demand.Ticks(Shell.Ui.ImmersiveLyrics.Value, playing, _settled.Value, occluded, Design.Reduced);
             _run = run;
-            UseInterval(_tick, TickMs, run);
             UseEffect(_lease);
             UseEffect(_onPosition);
             UseEffect(_demandEdges);
+            UseEffect(_onTimeline);
             // the accent TARGET: seed the slab on the first run; afterwards capture the fade's start colour and time (V-U17)
             UseSignalEffect(() =>
             {
@@ -148,30 +265,48 @@ public static partial class Visualizer
                 _fadeFrom = ctx.Slab.Accent.Peek();
                 _fadeStartMs = Design.FrameTime.NowMs;
             });
-            // the clock stopped mid-fade (settled / occluded / reduced): land on the target
-            UseEffect(() => { if (!run && !ctx.Slab.Accent.Peek().Equals(_accentTarget)) ctx.Slab.Accent.Value = _accentTarget; }, DepKey.From(run));
-            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            // the palette TARGET (the cover's base palette): snap on mount / while stopped, else a CrossFadeMs fade
+            UseSignalEffect(_onBasePalette);
+            // the clock stopped mid-fade (settled / occluded / reduced): land both fades on their targets
+            UseEffect(() =>
+            {
+                if (run) return;
+                if (!ctx.Slab.Accent.Peek().Equals(_accentTarget)) ctx.Slab.Accent.Value = _accentTarget;
+                _fadeStartMs = 0;
+                if (_fade.Active || _fadeSignalsPending) LandPalette();
+            }, DepKey.From(run));
+            // PER FRAME while it runs: the ticker is mounted only then, so a settled / occluded / paused stage idles.
+            return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false, Children = run ? [Embed.Comp(() => new VisualizerFrames(_tick))] : [] };
         }
 
-        /// <summary>The ONE lease: the tier the VISIBLE consumer needs — the selected face in Visualizer mode, the base Field's
-        /// breath otherwise (V-U55) — under the stage/playing/owner/supported/occluded/reduced gates (Visualizer.Demand.For).
-        /// Spectrum implies level (the engine's AcquireSpectrum does that).</summary>
+        /// <summary>The clock's per-frame tick (<see cref="Controls.FrameTicker"/>, the paceable twin), named for the
+        /// <c>[wake]</c> census.</summary>
+        sealed class VisualizerFrames(Action tick) : Controls.FrameTicker(tick, paceable: true);
+
+        /// <summary>The ONE lease: the tier the VISIBLE consumers need — the selected face in Visualizer mode raised to the
+        /// shown gallery's preview tier, the base Field's breath otherwise (V-U55) — under the stage/playing/owner/supported/
+        /// occluded/reduced gates (Visualizer.Demand.For). "Shown" is <c>StageCtx.GalleryShown</c>: open AND the layout has
+        /// room (the gallery's own mount gate minus the idle chrome, which would re-lease on every idle flip). Spectrum
+        /// implies level (the engine's AcquireSpectrum does that); Scope is the spectrum lease plus the per-tick waveform
+        /// pull, which the tick gates on a mounted reader (Demand.PullsScope).</summary>
         Action? Lease()
         {
             var ctx = _ctx!;
-            var tier = Demand.For(ctx.Kind.Value, ctx.Mode.Value == Stage.Mode.Visualizer, Shell.Ui.ImmersiveLyrics.Value, Playback.IsPlaying.Value,
+            bool viz = ctx.Mode.Value == Stage.Mode.Visualizer, gallery = ctx.GalleryShown.Value;
+            var kind = ctx.Kind.Value;
+            var tier = Demand.For(kind, viz, gallery, Shell.Ui.ImmersiveLyrics.Value, Playback.IsPlaying.Value,
                                   Playback.OwnerSignal.Value == Playback.Owner.Us, Playback.Audio.Supported.Value,
                                   _hooks?.WindowOccluded?.Value ?? false, Design.Reduced);
             ctx.Slab.LastTier = tier;
             Stage.Diagnostics.NoteLease(tier);
             if (tier == Tier.None) return null;
-            IDisposable lease = tier == Tier.Spectrum ? Playback.Audio.AcquireSpectrum() : Playback.Audio.AcquireLevels();
+            IDisposable lease = tier >= Tier.Spectrum ? Playback.Audio.AcquireSpectrum() : Playback.Audio.AcquireLevels();
             return lease.Dispose;
         }
 
         /// <summary>Re-anchor the playhead on every host report AND on every advancing edge (the deck's PositionInterpolator
         /// discipline, Deck.cs:269-276: without the edge a resume would extrapolate across the whole paused gap until the
-        /// next ~1 Hz report).</summary>
+        /// next ~1 Hz report). While the clock is stopped the report also lands the progress (a paused seek moves it).</summary>
         void OnPosition()
         {
             int pos = Playback.PositionMs.Value;
@@ -187,6 +322,11 @@ public static partial class Visualizer
                 _lastReportMs = pos;
             }
             _advancing = advancing;
+            if (!_run && _ctx is { } ctx)
+            {
+                int dur = Playback.DurationMs.Peek();
+                Set(ctx.Slab.Progress, dur > 0 ? Q(Math.Clamp(pos / (float)dur, 0f, 1f), 1f / 4096f) : 0f);
+            }
         }
 
         /// <summary>The precomputed sources for the playing track: the banded waveform, the beat grid, the audio group.</summary>
@@ -202,6 +342,86 @@ public static partial class Visualizer
             if (!t.Knows(TrackFields.Audio)) Entities.Ensure(t, TrackFields.Audio);
         }
 
+        /// <summary>The whole-song Timeline series, ONCE per (scope, track, payload write): resampled when the waveform edge
+        /// lands, into the live slab and the poster slab — an effect, not the tick, so a paused stage shows the song too. The
+        /// key carries the parent's edge VERSION (bumped by every write), so a same-length replacement re-reads too.</summary>
+        void OnTimeline()
+        {
+            uint scope = Entities.ScopeEpoch.Value;           // FIRST: a scope switch re-points the table read below
+            var cur = Playback.Current.Value;
+            var edges = Entities.Current.Edges;
+            _ = edges.TrackWaveform.Changed.Value;
+            ReadOnlySpan<WaveSample> bands = default;
+            long key = 0L;
+            if (cur.Kind == EntityKind.Track && !cur.IsNone && edges.TrackWaveform.State(cur.Slot) == EdgeState.Complete)
+            {
+                bands = edges.TrackWaveform.Payload(cur.Slot);
+                key = ((long)cur.Slot << 32) | edges.TrackWaveform.Version(cur.Slot);
+            }
+            if ((key == _timelineKey && scope == _timelineScope) || _ctx is not { } ctx) return;
+            _timelineKey = key; _timelineScope = scope;
+            Timeline.Resample(bands, _tlLow, _tlMid, _tlHigh);
+            foreach (var slab in new[] { ctx.Slab, ctx.PosterSlab })
+            {
+                Copy(_tlLow, slab.TimelineLow); Copy(_tlMid, slab.TimelineMid); Copy(_tlHigh, slab.TimelineHigh);
+            }
+        }
+
+        /// <summary>The cover's palette moved (a track, a late grading, a theme flip): snap on mount or while stopped,
+        /// else fade from the CAPTURED colours over <see cref="Stage.Tone.CrossFadeMs"/>; the rotation resets.</summary>
+        void OnBasePalette()
+        {
+            var ctx = _ctx!;
+            var b = ctx.BasePalette.Value;
+            if (_paletteSeeded && b.Equals(_base)) return;
+            _base = b;
+            _moments.Reset();
+            if (!_paletteSeeded || !_run) { _paletteSeeded = true; SnapPalette(b); return; }
+            BeginFade(b, Stage.Tone.CrossFadeMs, moment: false);
+        }
+
+        void SnapPalette(in Palette p)
+        {
+            var ctx = _ctx!;
+            _fade.Land();
+            _fadeSignalsPending = false;
+            _live = p;
+            var s = ctx.Slab;
+            SetSlabColour(s.A, p.A); SetSlabColour(s.B, p.B); SetSlabColour(s.C, p.C); SetSlabColour(s.Deep, p.Deep);
+            if (!s.FadeFrom.Peek().Equals(p)) s.FadeFrom.Value = p;
+            if (!s.FadeTo.Peek().Equals(p)) s.FadeTo.Value = p;
+            Set(s.FadeMix, 1f); Set(s.MomentMix, 0f);
+            s.PaletteEpoch.Value = s.PaletteEpoch.Peek() + 1;
+            ctx.Palette.SetIfChanged(p);
+            ctx.PosterSlab.SetPalette(p);
+        }
+
+        /// <summary>Start a fade toward <paramref name="target"/> from what is ON SCREEN now (mid-fade included). The
+        /// gradient channels' From/To are written by the next tick's batch, together with the mix reset.</summary>
+        void BeginFade(in Palette target, float durationMs, bool moment)
+        {
+            var s = _ctx!.Slab;
+            var from = new Palette(_live.Accent, s.A.Peek(), s.B.Peek(), s.C.Peek(), s.Deep.Peek(), _live.Dark);
+            _fade.Begin(from, target, Design.FrameTime.NowMs, durationMs, moment);
+            _live = target;
+            _fadeSignalsPending = true;
+        }
+
+        /// <summary>The fade landed (or the clock stopped mid-fade): exact target colours, the mixes at rest, the epoch,
+        /// the live palette republished (gradient faces remount on it) and the poster recoloured.</summary>
+        void LandPalette()
+        {
+            var ctx = _ctx!;
+            var s = ctx.Slab;
+            _fade.Land();
+            SetSlabColour(s.A, _live.A); SetSlabColour(s.B, _live.B); SetSlabColour(s.C, _live.C); SetSlabColour(s.Deep, _live.Deep);
+            if (_fadeSignalsPending || !s.FadeTo.Peek().Equals(_live)) { s.FadeTo.Value = _live; _fadeSignalsPending = false; }
+            Set(s.FadeMix, 1f); Set(s.MomentMix, 0f);
+            s.PaletteEpoch.Value = s.PaletteEpoch.Peek() + 1;
+            ctx.Palette.SetIfChanged(_live);
+            ctx.PosterSlab.SetPalette(_live);
+        }
+
         void TickCore()
         {
             var ctx = _ctx!;
@@ -212,9 +432,17 @@ public static partial class Visualizer
             _lastTickMs = now;
 
             int n = Playback.Audio.CopySpectrum(_db, out SpectrumInfo info);
-            _haveLive = n == Bands.Count && info.Live && info.Sequence != 0;
+            _haveLive = n == Visualizer.Bands.Count && info.Live && info.Sequence != 0;
+            bool fresh = info.Sequence != _lastSequence;                 // a new publish since the last tick (dedupe: one frame, one read)
+            _lastSequence = info.Sequence;
             slab.LastFftMs = info.FftMs; slab.LastAlignFrames = info.AlignFrames; slab.LastSequence = info.Sequence;
-            // the level: the analysed window's PRE-gain RMS under a spectrum lease, the (post-gain) level tap otherwise
+            // an onset is a NEW OnsetSequence; the first one seen after a (re)lease is history, not an onset
+            bool onset = false;
+            if (!_haveLive) _onsetPrimed = false;
+            else if (!_onsetPrimed) { _onsetPrimed = true; _lastOnsetSequence = info.OnsetSequence; }
+            else if (info.OnsetSequence != _lastOnsetSequence) { onset = true; _lastOnsetSequence = info.OnsetSequence; }
+            // the level: the analysed window's PRE-gain RMS under a spectrum lease, the (post-gain) level tap under a level lease
+            bool haveLevel = !_haveLive && slab.LastTier >= Tier.Level;
             float rms = _haveLive ? info.WindowRms : Playback.Audio.Levels.Peek().Rms;
 
             var cur = Playback.Current.Peek();
@@ -231,28 +459,70 @@ public static partial class Visualizer
                 if (t.IsValid && t.Knows(TrackFields.Audio)) tempo = t.Tempo;
             }
             // every preference is a PEEK of a context signal (O8) — never Prefs.* on the tick
-            var input = new Input(Playback.IsPlaying.Peek(), ctx.Calm.Peek(), ctx.Sensitivity.Peek(), _haveLive, info.Muted, rms,
-                                  pos, dur, haveBands, haveBeats, tempo, ctx.Mode.Peek() == Stage.Mode.Visualizer);
+            bool playing = Playback.IsPlaying.Peek(), calm = ctx.Calm.Peek(), viz = ctx.Mode.Peek() == Stage.Mode.Visualizer;
+            float sensitivity = ctx.Sensitivity.Peek();
+            // the Aurora ribbon arrays: only while an Aurora stage face or the shown gallery could put them on screen
+            _ribbons = viz && (Catalog.Successor(ctx.Kind.Peek()) == Kind.Aurora || ctx.GalleryShown.Peek());
+            var input = new Input(playing, calm, sensitivity, _haveLive, info.Muted, rms, pos, dur, haveBands, haveBeats, tempo,
+                                  viz, HaveLevel: haveLevel, Flux: info.Flux, Onset: onset, OnsetStrength: info.OnsetStrength, Ribbons: _ribbons);
             _pending = _model.Tick(in input, _db, bands, beats, dt);
+
+            // a moment: on the 8th bar's downbeat (or a face's force), rotate the live palette and fade to it
+            if (_paletteSeeded && _moments.Step(_pending.Bar, _pending.DownbeatEdge, ctx.Moments.Peek(), Moments.ForcedSequence))
+                BeginFade(_live.Rotated(), Moments.FadeMsFor(calm), moment: true);
+
+            // the scope, while a mounted face reads it: the engine's window on a fresh publish, else (no tap: Connect,
+            // --fake) the spectral synthesis — on a fresh publish too, else at most once per Oscilloscope.SynthesizeMs
+            _scopeFresh = false;
+            if (Demand.PullsScope(slab.LastTier, viz, slab.ScopeReaders))
+            {
+                if (_haveLive)
+                {
+                    WaveformInfo wi = default;
+                    int w = fresh ? Playback.Audio.CopyWaveform(_wave, out wi) : 0;
+                    if (w > 0 && wi.Live)
+                    {
+                        float gain = Visualizer.Bands.Gain(Visualizer.Bands.ClampSensitivity(sensitivity), calm);
+                        Oscilloscope.Fill(_wave.AsSpan(0, w), _scopeLine, _scopeRadial, ref _scopeAgc, gain, dt * Visualizer.Bands.RefHz);
+                        _scopeFresh = true; _scopeLive = true;
+                    }
+                }
+                else
+                {
+                    if (playing) _scopeT += dt;
+                    if (fresh || now - _lastSynthMs >= Oscilloscope.SynthesizeMs)
+                    {
+                        _lastSynthMs = now;
+                        Oscilloscope.Synthesize(_model.Level, _scopeT, _scopeLine, _scopeRadial);
+                        _scopeFresh = true; _scopeLive = false;
+                    }
+                }
+            }
             if (Context.Runtime is { } rt) rt.Batch(_write); else WriteCore();
         }
 
         /// <summary>ONE batch → ONE frame request, however many signals moved. Peek-compare before every write.</summary>
         void WriteCore()
         {
-            var s = _ctx!.Slab; var f = _pending; var m = _model;
-            for (int i = 0; i < Bands.Count; i++) { Set(s.Bands[i], Q(m.Level[i], 1f / 128f)); Set(s.Peaks[i], Q(m.Peak[i], 1f / 128f)); }
+            var ctx = _ctx!;
+            var s = ctx.Slab; var f = _pending; var m = _model;
+            for (int i = 0; i < Visualizer.Bands.Count; i++) { Set(s.Bands[i], Q(m.Level[i], 1f / 128f)); Set(s.Peaks[i], Q(m.Peak[i], 1f / 128f)); }
             Set(s.Low, Q(f.Low, 1f / 256f)); Set(s.Mid, Q(f.Mid, 1f / 256f)); Set(s.High, Q(f.High, 1f / 256f)); Set(s.Level, Q(f.Level, 1f / 256f));
-            Set(s.Kick, Q(f.Kick, 1f / 256f)); Set(s.BeatPhase, Q(f.BeatPhase, 1f / 256f));
-            Set(s.FaceFieldOp, Q(f.FaceFieldOp, 1f / 256f)); Set(s.BaseFieldOp, Q(f.BaseFieldOp, 1f / 256f));
-            Set(s.GlowOp, Q(f.GlowOp, 1f / 256f)); Set(s.BeatScale, Q(f.BeatScale, 1f / 4096f));
-            Set(s.ReelL, Q(f.ReelL, 0.25f)); Set(s.ReelR, Q(f.ReelR, 0.25f)); Set(s.AngleL, Q(f.AngleL, 0.5f)); Set(s.AngleR, Q(f.AngleR, 0.5f));
-            for (int r = 0; r < Pulse.Rings; r++) Set(s.Rings[r], Q(Pulse.RingProgress(f.BeatIndex, f.BeatPhase, r), 1f / 256f));
+            Set(s.Kick, Q(f.Kick, 1f / 256f)); Set(s.BeatPhase, Q(f.BeatPhase, 1f / 256f)); Set(s.BaseFieldOp, Q(f.BaseFieldOp, 1f / 256f));
+            Set(s.BarPhase, Q(f.BarPhase, 1f / 256f)); Set(s.Progress, Q(f.Progress, 1f / 4096f));
+            Set(s.Flux, Q(f.Flux, 1f / 256f)); Set(s.Onset, Q(f.Onset, 1f / 256f)); Set(s.Energy, Q(f.Energy, 1f / 256f));
+            for (int r = 0; r < Beat.Ripples; r++) Set(s.Ripples[r], Q(m.RippleAge[r], 1f / 256f));
             if (s.BeatIndex.Peek() != f.BeatIndex) s.BeatIndex.Value = f.BeatIndex;
-            if (s.MeterLit.Peek() != f.MeterLit) s.MeterLit.Value = f.MeterLit;
+            if (s.Bar.Peek() != f.Bar) s.Bar.Value = f.Bar;
+            if (s.Downbeat.Peek() != f.Downbeat) s.Downbeat.Value = f.Downbeat;
+            if (s.Section.Peek() != f.Section) s.Section.Value = f.Section;
             if (s.Source.Peek() != f.Source) { s.Source.Value = f.Source; Stage.Diagnostics.NoteSource(f.Source); }
-            Copy(m.HorizonLow, s.HorizonLow); Copy(m.HorizonMid, s.HorizonMid); Copy(m.HorizonHigh, s.HorizonHigh);
-            Copy(m.AuroraLow, s.AuroraLow); Copy(m.AuroraMid, s.AuroraMid); Copy(m.AuroraHigh, s.AuroraHigh);
+            if (_ribbons) { Copy(m.AuroraLow, s.AuroraLow); Copy(m.AuroraMid, s.AuroraMid); Copy(m.AuroraHigh, s.AuroraHigh); }
+            if (_scopeFresh)
+            {
+                Copy(_scopeLine, s.Scope); Copy(_scopeRadial, s.ScopeRadial);
+                if (s.ScopeLive.Peek() != _scopeLive) s.ScopeLive.Value = _scopeLive;
+            }
             // the accent cross-fade rides the same tick (a bound Fill snaps, §1.8): LINEAR from the captured start over
             // elapsed / Stage.Tone.CrossFadeMs, landing exactly on the target (V-U17)
             if (_fadeStartMs > 0)
@@ -262,501 +532,189 @@ public static partial class Visualizer
                 if (!next.Equals(s.Accent.Peek())) s.Accent.Value = next;
                 if (p >= 1f) _fadeStartMs = 0;
             }
-            bool settled = m.IsSettled;
+            // the palette fade: the gradient channels' endpoints once at the start (with the mix reset), then the lerp. A
+            // TRACK fade also rests MomentMix at 0 in this batch: the tick drives it only through a moment's fade, so a
+            // track change landing mid-moment would freeze it part-way (gradients follow moments only; solid fills carry
+            // the track's cross-fade and the gradient lands with the republished palette)
+            if (_fadeSignalsPending)
+            {
+                s.FadeFrom.Value = _fade.From; s.FadeTo.Value = _fade.To; Set(s.FadeMix, 0f);
+                if (!_fade.Moment) Set(s.MomentMix, 0f);
+                _fadeSignalsPending = false;
+            }
+            if (_fade.Active)
+            {
+                float p = _fade.Progress(_lastTickMs);
+                if (p >= 1f) LandPalette();
+                else
+                {
+                    var at = Palette.Lerp(_fade.From, _fade.To, p);
+                    SetSlabColour(s.A, at.A); SetSlabColour(s.B, at.B); SetSlabColour(s.C, at.C); SetSlabColour(s.Deep, at.Deep);
+                    Set(s.FadeMix, Q(p, 1f / 256f));
+                    if (_fade.Moment) Set(s.MomentMix, Q(p, 1f / 256f));
+                }
+            }
+            bool settled = m.IsSettled && !_fade.Active && _fadeStartMs <= 0;
             if (_settled.Peek() != settled) _settled.Value = settled;   // the gate's mirror (Deck.UI.cs:378-379)
         }
 
         static void Set(FloatSignal s, float v) { if (v != s.Peek()) s.Value = v; }
         static float Q(float v, float q) => MathF.Round(v / q) * q;
-        static void Copy(float[] src, SeriesSource dst) { src.AsSpan().CopyTo(dst.Buffer); dst.Count = src.Length; dst.Publish(); }
+        /// <summary>Bit-identical samples publish NOTHING: most ticks refill the same values (a paused Aurora, a scope over
+        /// silence), and a version bump re-records every bound SeriesEl for no pixel.</summary>
+        static void Copy(float[] src, SeriesSource dst)
+        {
+            if (dst.Count == src.Length && src.AsSpan().SequenceEqual(dst.Buffer.AsSpan(0, src.Length))) return;
+            src.AsSpan().CopyTo(dst.Buffer); dst.Count = src.Length; dst.Publish();
+        }
     }
 
     // ══ 3. THE FACES ═════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The box a face fills and whether it is a gallery preview (fewer parts, no cover).</summary>
-    public readonly record struct FaceSpec(float W, float H, bool Preview, string? CoverUrl);
-
-    /// <summary>Build a face ONCE for a slab; everything that moves is a bound prop over it. The stage remounts per kind
-    /// (a keyed CHILD box, <c>Key = "viz:" + kind</c>), the gallery mounts eight at preview scale.</summary>
-    public static Element Face(Kind kind, Slab slab, in Palette pal, in FaceSpec spec) => kind switch
+    /// <summary>The box a face fills and how it is shown. <see cref="Preview"/>: a gallery tile (fewer parts, no blur, no
+    /// per-frame sim if avoidable); <see cref="Poster"/>: a FROZEN tile bound to the poster slab — mount no sim, no ticker.
+    /// The SAFE rect (stage coordinates, <c>Stage.Layout.FaceSafe</c>) is where a stage face centres its subject: clear of
+    /// the now-playing card, the caption and the transport; 0/0/0/0 (a preview) means the whole box.</summary>
+    public readonly record struct FaceSpec(float W, float H, bool Preview, string? CoverUrl,
+        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f)
     {
-        Kind.Field => FieldFace(slab, pal, spec),
-        Kind.Halo => HaloFace(slab, pal, spec),
-        Kind.Horizon => HorizonFace(slab, pal, spec),
-        Kind.Matrix => MatrixFace(slab, pal, spec),
-        Kind.Aurora => AuroraFace(slab, pal, spec),
-        Kind.Spectrum => SpectrumFace(slab, pal, spec),
-        Kind.Pulse => PulseFace(slab, pal, spec),
-        _ => TapeFace(slab, pal, spec),
+        public float SafeX1 => SafeRight > SafeLeft ? MathF.Min(SafeRight, W) : W;
+        public float SafeY1 => SafeBottom > SafeTop ? MathF.Min(SafeBottom, H) : H;
+        public float SafeW => MathF.Max(1f, SafeX1 - SafeLeft);
+        public float SafeH => MathF.Max(1f, SafeY1 - SafeTop);
+        public float SafeCx => SafeLeft + SafeW * 0.5f;
+        public float SafeCy => SafeTop + SafeH * 0.5f;
+    }
+
+    /// <summary>Build a face ONCE for a slab; everything that moves is a bound prop over it. The stage remounts per (kind,
+    /// width) on a keyed CHILD box; the gallery mounts the shown faces at preview scale. A legacy kind draws its successor
+    /// (the stored int was already coerced; this is the belt to that brace).</summary>
+    public static Element Face(Kind kind, Slab slab, in Palette pal, in FaceSpec spec) => Catalog.Successor(kind) switch
+    {
+        Kind.Verse => global::Wavee.Verse.Face(slab, in pal, in spec),
+        Kind.Bars => BarsFace(slab, in pal, in spec),
+        Kind.Ring => RingFace(slab, in pal, in spec),
+        Kind.Orbit => OrbitFace(slab, in pal, in spec),
+        Kind.Aurora => AuroraFace(slab, in pal, in spec),
+        Kind.Timeline => TimelineFace(slab, in pal, in spec),
+        Kind.Classic => ClassicFace(slab, in pal, in spec),
+        Kind.Warp => WarpFace(slab, in pal, in spec),
+        Kind.Tunnel => TunnelFace(slab, in pal, in spec),
+        Kind.Ambience => AmbienceFace(slab, in pal, in spec),
+        Kind.Kaleido => KaleidoFace(slab, in pal, in spec),
+        Kind.Scope => ScopeFace(slab, in pal, in spec),
+        Kind.Drift => DriftFace(slab, in pal, in spec),
+        Kind.Type => TypeFace(slab, in pal, in spec),
+        Kind.Mosaic => MosaicFace(slab, in pal, in spec),
+        Kind.Spotlight => SpotlightFace(slab, in pal, in spec),
+        Kind.Magneto => MagnetoFace(slab, in pal, in spec),
+        Kind.Flow => FlowFace(slab, in pal, in spec),
+        _ => BloomFace(slab, in pal, in spec),
     };
 
     static float Min(in FaceSpec s) => MathF.Min(s.W, s.H);
     static float Max(in FaceSpec s) => MathF.Max(s.W, s.H);
 
-    // ── Field: four blobs on 28–36 s keyframes, breathing opacity, ONE bound channel ──────────────────────────────────
-
-    /// <summary>Also the stage's always-on backdrop layer (Stage.UI.cs Backdrop): <paramref name="opacity"/> is the slab's
-    /// Face/BaseFieldOp as a Prop.</summary>
-    public static Element FieldFace(Slab slab, in Palette pal, in FaceSpec spec, Prop<float>? opacity = null)
-    {
-        float d = 1.1f * Max(in spec);
-        var kids = new List<CanvasChild>(Field.Blobs);
-        ColorF[] tints = [pal.F1, pal.F2, pal.F3, pal.F4];
-        (float X, float Y)[] corners = [(-0.55f, -0.62f), (1f - 0.55f, -0.62f), (-0.55f, 1f - 0.66f), (1f - 0.58f, 1f - 0.64f)];
-        for (int i = 0; i < Field.Blobs; i++)
-        {
-            float x = corners[i].X * Max(in spec), y = corners[i].Y * Max(in spec);
-            // RE-PUSHED props (component-props contract): a new palette recolours the mounted blob; the keyframes keep running.
-            kids.Add(new CanvasChild(x, y, Embed.Comp(new Blob.Props(i, d, tints[i], spec.W, spec.H), static () => new Blob()) with { Key = "blob:" + i }));
-        }
-        return new BoxEl
-        {
-            Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false,
-            Opacity = opacity ?? (Prop<float>)slab.FaceFieldOp,
-            Children = [Canvas.Create(spec.W, spec.H, kids)],
-        };
-    }
-
-    /// <summary>One blob: a radial-gradient disc on looping ping-pong keyframes (translate + scale) — zero ticks. The
-    /// keyframes target this component's own root (the hooks' HostNode contract), which is why each blob is a component.
-    /// Under reduced motion the loop is replaced by REST keys (the engine does not snap looping keyframes — §1.8, V-E10).</summary>
-    sealed class Blob : Component
-    {
-        public sealed record Props(int Index, float Diameter, ColorF Tint, float W, float H);
-        static readonly Keyframe[] s_restTranslate = [new Keyframe(0f, 0f), new Keyframe(1f, 0f)];
-        static readonly Keyframe[] s_restScale = [new Keyframe(0f, 1f), new Keyframe(1f, 1f)];
-        public override Element Render()
-        {
-            var p = UseProps<Props>();
-            var (dx, dy, sc) = Field.Drift[p.Index];
-            float ms = Field.PeriodSec[p.Index] * 1000f;
-            bool reduced = Design.Reduced;
-            var key = DepKey.From(p.Index, (int)p.W, (int)p.H, reduced ? 1 : 0);   // the 4-int form — there is no 3-int DepKey (V-U3)
-            UseKeyframes(AnimChannel.TranslateX, reduced ? s_restTranslate : [new Keyframe(0f, 0f), new Keyframe(0.5f, dx * p.W, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms, loop: !reduced, key);
-            UseKeyframes(AnimChannel.TranslateY, reduced ? s_restTranslate : [new Keyframe(0f, 0f), new Keyframe(0.5f, dy * p.H, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms, loop: !reduced, key);
-            UseKeyframes(AnimChannel.ScaleX, reduced ? s_restScale : [new Keyframe(0f, 1f), new Keyframe(0.5f, sc, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)], ms, loop: !reduced, key);
-            UseKeyframes(AnimChannel.ScaleY, reduced ? s_restScale : [new Keyframe(0f, 1f), new Keyframe(0.5f, sc, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)], ms, loop: !reduced, key);
-            return new BoxEl
-            {
-                Width = p.Diameter, Height = p.Diameter, Corners = Radii.Circle(p.Diameter), HitTestVisible = false,
-                Gradient = new GradientSpec(GradientShape.Radial, 0f, [new GradientStop(0f, p.Tint), new GradientStop(0.55f, p.Tint with { A = 0.45f }), new GradientStop(1f, p.Tint with { A = 0f })]),
-            };
-        }
-    }
-
-    // ── Halo: 72 (36 preview) bars around the cover, the glow on the bass, the cover on the kick ───────────────────────
-
-    static Element HaloFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        float m = Min(in spec);
-        float cx = spec.W * 0.5f, cy = spec.H * 0.46f;
-        float r = 0.17f * m, barW = MathF.Max(1f, 0.0076f * m), barH = 0.11f * m, cover = 0.22f * m;
-        int bars = spec.Preview ? Halo.Bars / 2 : Halo.Bars;
-        var kids = new List<CanvasChild>(bars + 2)
-        {
-            new CanvasChild(cx - 0.45f * m, cy - 0.45f * m, new BoxEl
-            {
-                Width = 0.9f * m, Height = 0.9f * m, Corners = Radii.Circle(0.9f * m), HitTestVisible = false,
-                Opacity = slab.GlowOp,
-                Gradient = new GradientSpec(GradientShape.Radial, 0f, [new GradientStop(0f, pal.C1), new GradientStop(1f, pal.C1 with { A = 0f })]),
-            }),
-        };
-        for (int j = 0; j < bars; j++)
-        {
-            int src = spec.Preview ? j * 2 : j;
-            var band = slab.Bands[Halo.BandOf(src)];
-            ColorF c = ColorF.Lerp(pal.C2, pal.C1, Halo.MixOf(src));
-            // wrapper: bottom at the centre, rotated about it; inner bar: the top barH of the wrapper, scaled about its own bottom
-            kids.Add(new CanvasChild(cx - barW * 0.5f, cy - (r + barH), new BoxEl
-            {
-                Width = barW, Height = r + barH, Direction = 1, HitTestVisible = false,
-                Rotation = Halo.AngleDeg(src), TransformOriginX = 0.5f, TransformOriginY = 1f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = barW, Height = barH, Shrink = 0f, Corners = Radii.Circle(barW), Fill = c,
-                        TransformOriginX = 0.5f, TransformOriginY = 1f,
-                        Transform = Prop.Of(() => Affine2D.Scale(1f, Halo.Scale(band.Value))),
-                    },
-                ],
-            }));
-        }
-        if (!spec.Preview)
-            kids.Add(new CanvasChild(cx - cover * 0.5f, cy - cover * 0.5f, new BoxEl
-            {
-                Width = cover, Height = cover, Corners = CornerRadius4.All(0.064f * m), ClipToBounds = true, Shadow = Elevation.Dialog,
-                TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                Transform = Prop.Of(() => Affine2D.Scale(slab.BeatScale.Value, slab.BeatScale.Value)),
-                Children = [Controls.Artwork(spec.CoverUrl, cover, cover, 0.064f * m, decodePx: 512)],
-            }));
-        return FaceFrame(spec, kids);
-    }
-
-    // ── Horizon: three mirrored SeriesEls over the precomputed bands, a past veil, the playhead ───────────────────────
-
-    static Element HorizonFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        float top = 0.28f * spec.H, h = 0.44f * spec.H;
-        var lo = slab.HorizonLow; var mi = slab.HorizonMid; var hi = slab.HorizonHigh;
-        return FaceFrame(spec,
-        [
-            new CanvasChild(0f, top, new BoxEl
-            {
-                Width = spec.W, Height = h, ZStack = true, HitTestVisible = false,
-                Children =
-                [
-                    // Mirrored amplitude is measured against HALF the height (§4.3.6): 0.92 ⇒ a sample of 1.0 reaches 92 % of the way to the edge
-                    new SeriesEl { Width = spec.W, Height = h, Shape = SeriesShape.Mirrored, Amplitude = Horizon.Amplitude, Color = pal.C2, Samples = Prop.Of(() => lo.Current) },
-                    new SeriesEl { Width = spec.W, Height = h, Shape = SeriesShape.Mirrored, Amplitude = Horizon.Amplitude, Color = pal.C1, Samples = Prop.Of(() => mi.Current) },
-                    new SeriesEl { Width = spec.W, Height = h, Shape = SeriesShape.Mirrored, Amplitude = Horizon.Amplitude, Color = ColorF.Lerp(pal.C1, ColorF.FromRgba(255, 255, 255), 0.75f), Samples = Prop.Of(() => hi.Current) },
-                    // the past veil: the LEFT half (horizontal = JustifySelf), full height (vertical = AlignSelf) — V-U9
-                    new BoxEl { Width = spec.W * 0.5f, JustifySelf = FlexAlign.Start, AlignSelf = FlexAlign.Stretch, Gradient = GradientRight(new GradientStop(0f, ColorF.FromRgba(14, 12, 14, 204)), new GradientStop(1f, ColorF.FromRgba(14, 12, 14, 77))) },
-                ],
-            }),
-            new CanvasChild(spec.W * 0.5f - 1f, top - 0.03f * spec.H, new BoxEl { Width = 2f, Height = h + 0.06f * spec.H, Corners = Radii.Circle(2f), Fill = ColorF.FromRgba(255, 255, 255), HitTestVisible = false }),
-        ]);
-    }
-
-    // ── Matrix: 32 (16 preview) columns × 12 rows — THREE nodes per column (dim track, lit bar, peak dot) + the static row
-    //    carvers that cut every bar into "dots" (V-U35: a dot per cell was ~1,700 nodes; this is 107: 96 + 11 carvers) ───
-
-    static Element MatrixFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        int cols = spec.Preview ? Matrix.Columns / 2 : Matrix.Columns;
-        float left = 0.14f * spec.W, top = 0.20f * spec.H, w = spec.W - 2f * left, h = spec.H - top - 0.28f * spec.H;
-        float cw = w / cols, rh = h / Matrix.Rows, bar = MathF.Max(2f, cw * 0.44f), carve = MathF.Max(1f, rh * 0.42f);
-        var kids = new List<CanvasChild>(cols * 3 + Matrix.Rows);
-        for (int c = 0; c < cols; c++)
-        {
-            int src = spec.Preview ? c * 2 : c;
-            var band = slab.Bands[Matrix.BandOf(src)]; var peak = slab.Peaks[Matrix.BandOf(src)];
-            float x = left + c * cw + (cw - bar) * 0.5f;
-            // the dim track: the whole column at 16 %
-            kids.Add(new CanvasChild(x, top, new BoxEl { Width = bar, Height = h, Corners = Radii.Circle(bar), Fill = ColorF.FromRgba(255, 255, 255, 41), HitTestVisible = false }));
-            // the lit bar: scaled from the BOTTOM to LitRows/Rows — quantised to whole rows so it steps like a dot column
-            kids.Add(new CanvasChild(x, top, new BoxEl
-            {
-                Width = bar, Height = h, Corners = Radii.Circle(bar), Fill = ColorF.FromRgba(255, 255, 255), HitTestVisible = false,
-                TransformOriginX = 0.5f, TransformOriginY = 1f,
-                Transform = Prop.Of(() => Affine2D.Scale(1f, Matrix.LitRows(band.Value) / (float)Matrix.Rows)),
-            }));
-            // the peak dot: one accent cell, translated to its row. The visible cell of row k sits carve/2 below the row's top
-            // (the carvers straddle the row boundaries), so the dot is offset by carve/2 to land exactly on the lit cells.
-            kids.Add(new CanvasChild(x, top, new BoxEl
-            {
-                Width = bar, Height = rh - carve, Corners = Radii.Circle(bar), Fill = Prop.Bind(slab.Accent), HitTestVisible = false,
-                Transform = Prop.Of(() => Affine2D.Translation(0f, (Matrix.Rows - Matrix.PeakRow(peak.Value)) * rh + carve * 0.5f)),
-            }));
-        }
-        // the row carvers: static strips of the stage floor between rows, ABOVE the columns — one per interior row boundary
-        for (int rr = 1; rr < Matrix.Rows; rr++)
-            kids.Add(new CanvasChild(left - bar, top + rr * rh - carve * 0.5f, new BoxEl { Width = w + 2f * bar, Height = carve, Fill = Ink.Floor, HitTestVisible = false }));
-        return FaceFrame(spec, kids);
-    }
-
-    // ── Aurora: three baseline SeriesEls, screen-ish by alpha ──────────────────────────────────────────────────────────
-
-    static Element AuroraFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        float h = 0.62f * spec.H;
-        var lo = slab.AuroraLow; var mi = slab.AuroraMid; var hi = slab.AuroraHigh;
-        return FaceFrame(spec,
-        [
-            new CanvasChild(0f, spec.H - h, new BoxEl
-            {
-                Width = spec.W, Height = h, ZStack = true, HitTestVisible = false,
-                Children =
-                [
-                    new SeriesEl { Width = spec.W, Height = h, Shape = SeriesShape.Baseline, Color = pal.C2 with { A = 0.80f }, Samples = Prop.Of(() => lo.Current) },
-                    new SeriesEl { Width = spec.W, Height = h, Shape = SeriesShape.Baseline, Color = pal.C1 with { A = 0.60f }, Samples = Prop.Of(() => mi.Current) },
-                    new SeriesEl { Width = spec.W, Height = h, Shape = SeriesShape.Baseline, Color = pal.Accent with { A = 0.50f }, Samples = Prop.Of(() => hi.Current) },
-                ],
-            }),
-        ]);
-    }
-
-    // ── Spectrum: 48 (24 preview) bars + caps + a dimmer reflection ───────────────────────────────────────────────────
-
-    static Element SpectrumFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        int bars = spec.Preview ? Spectrum.Bars / 2 : Spectrum.Bars;
-        float left = 0.09f * spec.W, w = spec.W - 2f * left, gap = 0.0045f * spec.W, bw = (w - gap * (bars - 1)) / bars;
-        float h = 0.42f * spec.H, bottom = 0.30f * spec.H, top = spec.H - bottom - h;
-        var grad = new GradientSpec(GradientShape.Linear, 90f, [new GradientStop(0f, ColorF.FromRgba(255, 255, 255)), new GradientStop(0.3f, pal.C1), new GradientStop(1f, pal.C2)]);
-        var kids = new List<CanvasChild>(bars * 3);
-        for (int i = 0; i < bars; i++)
-        {
-            int src = spec.Preview ? i * 2 : i;
-            var band = slab.Bands[src]; var peak = slab.Peaks[src];
-            float x = left + i * (bw + gap);
-            kids.Add(new CanvasChild(x, top, new BoxEl { Width = bw, Height = h, Gradient = grad, Corners = new CornerRadius4(bw * 0.35f, bw * 0.35f, bw * 0.1f, bw * 0.1f), TransformOriginX = 0.5f, TransformOriginY = 1f, HitTestVisible = false,
-                                                        Transform = Prop.Of(() => Affine2D.Scale(1f, Spectrum.Scale(band.Value))) }));
-            kids.Add(new CanvasChild(x, top, new BoxEl { Width = bw, Height = MathF.Max(2f, 0.005f * spec.H), Corners = Radii.Circle(2f), Fill = ColorF.FromRgba(255, 255, 255), HitTestVisible = false,
-                                                        Transform = Prop.Of(() => Affine2D.Translation(0f, h * (1f - peak.Value) - 2f)) }));
-            if (!spec.Preview)
-                kids.Add(new CanvasChild(x, top + h + 0.006f * spec.H, new BoxEl { Width = bw, Height = h, Gradient = grad, Opacity = 0.22f, TransformOriginX = 0.5f, TransformOriginY = 0f, HitTestVisible = false,
-                                                                                 Transform = Prop.Of(() => Affine2D.Scale(1f, 0.45f * Spectrum.Scale(band.Value))) }));
-        }
-        return FaceFrame(spec, kids);
-    }
-
-    // ── Pulse: four accent rings a beat apart, the glow, the cover on the kick ────────────────────────────────────────
-
-    static Element PulseFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        float m = Min(in spec), cx = spec.W * 0.5f, cy = spec.H * 0.46f, cover = 0.26f * m, ring = MathF.Max(1f, 0.003f * m);
-        var kids = new List<CanvasChild>(Pulse.Rings + 2)
-        {
-            new CanvasChild(cx - 0.45f * m, cy - 0.45f * m, new BoxEl
-            {
-                Width = 0.9f * m, Height = 0.9f * m, Corners = Radii.Circle(0.9f * m), HitTestVisible = false, Opacity = Prop.Of(() => Pulse.GlowOpacity(slab.Low.Value)),
-                Gradient = new GradientSpec(GradientShape.Radial, 0f, [new GradientStop(0f, pal.C1), new GradientStop(1f, pal.C1 with { A = 0f })]),
-            }),
-        };
-        for (int r = 0; r < Pulse.Rings; r++)
-        {
-            var p = slab.Rings[r];
-            kids.Add(new CanvasChild(cx - cover * 0.5f, cy - cover * 0.5f, new BoxEl
-            {
-                Width = cover, Height = cover, Corners = CornerRadius4.All(0.077f * m), BorderWidth = ring, BorderColor = Prop.Bind(slab.Accent), HitTestVisible = false,
-                TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                Opacity = Prop.Of(() => Pulse.RingOpacity(p.Value)),
-                Transform = Prop.Of(() => Affine2D.Scale(Pulse.RingScale(p.Value), Pulse.RingScale(p.Value))),
-            }));
-        }
-        if (!spec.Preview)
-            kids.Add(new CanvasChild(cx - cover * 0.5f, cy - cover * 0.5f, new BoxEl
-            {
-                Width = cover, Height = cover, Corners = CornerRadius4.All(0.077f * m), ClipToBounds = true, Shadow = Elevation.Dialog,
-                TransformOriginX = 0.5f, TransformOriginY = 0.5f, Transform = Prop.Of(() => Affine2D.Scale(slab.BeatScale.Value, slab.BeatScale.Value)),
-                Children = [Controls.Artwork(spec.CoverUrl, cover, cover, 0.077f * m, decodePx: 512)],
-            }));
-        return FaceFrame(spec, kids);
-    }
-
-    // ── Tape: two area-conserving packs, two hubs, the tape, a 20-cell level meter ───────────────────────────────────────
-
-    static Element TapeFace(Slab slab, in Palette pal, in FaceSpec spec)
-    {
-        // the prototype's 960×540 board, scaled to fit (xMidYMid meet)
-        float k = MathF.Min(spec.W / 960f, spec.H / 540f), ox = (spec.W - 960f * k) * 0.5f, oy = (spec.H - 540f * k) * 0.5f;
-        float flange = Tape.Flange * k, hub = Tape.HubR * k, pack = Tape.R1 * k;
-        var kids = new List<CanvasChild>(8 + Tape.MeterCells)
-        {
-            Reel(ox + 300f * k, oy + 250f * k, flange, pack, hub, slab.ReelL, slab.AngleL, pal.Accent),
-            Reel(ox + 660f * k, oy + 250f * k, flange, pack, hub, slab.ReelR, slab.AngleR, pal.C2),
-            new CanvasChild(ox + 268f * k, oy + 250f * k, new PolylineStrokeEl
-            {
-                Width = 424f * k, Height = 184f * k, P0 = new Point2(0f, 95f * k), P1 = new Point2(202f * k, 180f * k), P2 = new Point2(222f * k, 180f * k), P3 = new Point2(424f * k, 95f * k),
-                PointCount = 4, Color = ColorF.FromRgba(0x7a, 0x66, 0x56), Thickness = 3f * k, RoundCaps = false,
-            }),
-            new CanvasChild(ox + 468f * k, oy + 424f * k, new BoxEl { Width = 24f * k, Height = 12f * k, Corners = CornerRadius4.All(2f * k), Fill = ColorF.FromRgba(255, 255, 255), HitTestVisible = false }),
-        };
-        if (!spec.Preview)
-        {
-            float mLeft = 0.14f * spec.W, mW = spec.W - 2f * mLeft, mGap = 0.005f * spec.W, cell = (mW - mGap * (Tape.MeterCells - 1)) / Tape.MeterCells, mH = MathF.Max(3f, 0.022f * spec.H);
-            ColorF[] zone = [pal.C2, pal.Accent, pal.C1];
-            for (int i = 0; i < Tape.MeterCells; i++)
-            {
-                int cellIndex = i; ColorF on = zone[Tape.Zone(i)];
-                kids.Add(new CanvasChild(mLeft + i * (cell + mGap), spec.H - 0.25f * spec.H, new BoxEl
-                {
-                    Width = cell, Height = mH, Corners = Radii.Circle(2f), HitTestVisible = false,
-                    Fill = Prop.Of(() => slab.MeterLit.Value > cellIndex ? on : ColorF.FromRgba(255, 255, 255, 26)),
-                }));
-            }
-        }
-        return FaceFrame(spec, kids);
-    }
-
-    /// <summary>One reel: flange ring, the pack (radius bound as a scale of its max), the hub with three spokes (bound rotation).</summary>
-    static CanvasChild Reel(float cx, float cy, float flange, float pack, float hub, FloatSignal radius, FloatSignal angleDeg, ColorF accent)
-    {
-        float scaleK = 1f / Tape.R1;
-        return new CanvasChild(cx - flange, cy - flange, new BoxEl
-        {
-            Width = 2f * flange, Height = 2f * flange, ZStack = true, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-            Children =
-            [
-                new BoxEl { Width = 2f * flange, Height = 2f * flange, Corners = Radii.Circle(2f * flange), BorderWidth = 2f, BorderColor = ColorF.FromRgba(255, 255, 255, 217) },
-                new BoxEl
-                {
-                    Width = 2f * pack, Height = 2f * pack, Corners = Radii.Circle(2f * pack), Fill = ColorF.FromRgba(0x2b, 0x26, 0x21), BorderWidth = 1f, BorderColor = ColorF.FromRgba(255, 255, 255, 31),
-                    AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                    Transform = Prop.Of(() => Affine2D.Scale(radius.Value * scaleK, radius.Value * scaleK)),
-                },
-                new BoxEl
-                {
-                    Width = 2f * hub, Height = 2f * hub, ZStack = true, AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Center, TransformOriginX = 0.5f, TransformOriginY = 0.5f,
-                    Transform = Prop.Of(() => Affine2D.Rotation(angleDeg.Value * (MathF.PI / 180f))),
-                    Children =
-                    [
-                        new BoxEl { Width = 2f * hub, Height = 2f * hub, Corners = Radii.Circle(2f * hub), Fill = ColorF.FromRgba(0x11, 0x11, 0x11), BorderWidth = 3f, BorderColor = accent },
-                        Spoke(hub, accent, 0f), Spoke(hub, accent, 120f), Spoke(hub, accent, 240f),
-                    ],
-                },
-            ],
-        });
-    }
-
-    /// <summary>A spoke: horizontally centred (JustifySelf) at the TOP of the hub box (AlignSelf), rotated about the hub centre — V-U9.
-    /// The spoke is 0.7·hub tall with a 0.3·hub top margin, so its BOTTOM edge is the hub centre; the transform origin is
-    /// the box's own bottom (Y = 1) — margins are not part of the box the origin is normalised against.</summary>
-    static BoxEl Spoke(float hub, ColorF c, float deg) => new()
-    {
-        Width = 5f, Height = hub * 0.7f, Corners = Radii.Circle(5f), Fill = c, JustifySelf = FlexAlign.Center, AlignSelf = FlexAlign.Start,
-        Rotation = deg, TransformOriginX = 0.5f, TransformOriginY = 1f,   // rotate about the hub centre
-        Margin = new Edges4(0f, hub * 0.3f, 0f, 0f),
-    };
-
     // ── the frame every face shares ───────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The clipped box a face fills; <c>Canvas.Create</c> takes the children list directly (IReadOnlyList&lt;CanvasChild&gt;,
-    /// Canvas.cs:16) — no wrapper record (V-U2). Named FaceFrame: <see cref="Frame"/> is the model's output record.</summary>
+    /// Canvas.cs:16) — no wrapper record (V-U2). Named FaceFrame: <see cref="Frame"/> is the model's output record.
+    /// A face animates every frame while the content under and over it (backdrop art, scrim, caption, panels) stays still,
+    /// so it is a RepaintBoundary: its motion re-rasters only its own slice, never the tiles of the stage around it.</summary>
     static Element FaceFrame(in FaceSpec spec, List<CanvasChild> kids) => new BoxEl
     {
-        Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false,
+        Width = spec.W, Height = spec.H, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = true,
         Children = [Canvas.Create(spec.W, spec.H, kids)],
     };
 
-    // ══ 4. THE GALLERY ═══════════════════════════════════════════════════════════════════════════════════════════════
+    // ── drifting blobs: a radial disc on 28–36 s ping-pong keyframe loops, zero ticks ─────────────────────────────────
 
-    /// <summary>The acrylic pane: title row, then a SCROLLER holding the 2-column gallery of live previews and the four
-    /// settings rows (the grid + settings run to ≈ 856 DIP at 1080p against a 856-DIP pane and overflow at 900p — V-U21).
-    /// Mounted by Stage.UI.cs's GalleryHost. Every preference is a SIGNAL on the context (O8): the tiles' selection border
-    /// and check disc bind <c>ctx.Kind</c>; the slider and toggle controls take the context's own signals (seeded ONCE by
-    /// SurfaceCore's epoch effect and written by the controls while dragging — a write round-trips through Prefs.Stage →
-    /// Epoch → the same effect, which <c>SetIfChanged</c>s the clamped value back). <c>ItemsView.Create</c> freezes its
-    /// template at mount (ItemsView.cs:611-617), so the grid is KEYED by the palette + accent so a cover change remounts
-    /// the eight tiles with the new colours (V-U20).</summary>
-    public static Element Gallery(Stage.StageCtx ctx, Stage.Layout layout, Action close)
+    /// <summary>The keyframe drift a blob rides (translate + scale on its own root — the hooks' HostNode contract, which is
+    /// why each blob is a component). Under reduced motion the loop is replaced by REST keys (the engine does not snap
+    /// looping keyframes — §1.8, V-E10).</summary>
+    abstract class DriftingDisc : Component
     {
-        var slab = ctx.Slab;
-        var p = ctx.Palette.Value;
-        var accent = ctx.Accent.Value;
-        var kindSig = ctx.Kind;
-        // the tile's own height: padding 6 + preview + gap 6 + the two caption lines (20 + 16) + padding 8 (the grid cell is fixed)
-        float tileW = (layout.GalleryW - 40f - 10f) * 0.5f, previewH = 78f, tileH = previewH + 56f;
-        // frozen at mount BY DESIGN (the grid is keyed by palette + accent, so a new accent remounts the tiles): plain colour
-        // locals, so the border thunk reads only the kind signal inside it
-        ColorF pickBorder = accent.Fill, restBorder = ColorF.FromRgba(255, 255, 255, 15);
-        Element tile(int i)
+        static readonly Keyframe[] s_restTranslate = [new Keyframe(0f, 0f), new Keyframe(1f, 0f)];
+        static readonly Keyframe[] s_restScale = [new Keyframe(0f, 1f), new Keyframe(1f, 1f)];
+
+        protected void Drift(int index, float w, float h)
         {
-            var kind = (Kind)i;
-            return new BoxEl
-            {
-                Direction = 1, Gap = 6f, Padding = new Edges4(6f, 6f, 6f, 8f), Corners = CornerRadius4.All(6f), Fill = ColorF.FromRgba(255, 255, 255, 10),
-                HoverFill = ColorF.FromRgba(255, 255, 255, 19), BrushTransitionMs = Design.Motion.Fast, Cursor = CursorId.Hand,
-                BorderWidth = 2f, BorderColor = Prop.Of(() => kindSig.Value == kind ? pickBorder : restBorder),
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Width = tileW - 12f, Height = previewH, Corners = Radii.ControlAll, ClipToBounds = true, ZStack = true,
-                        Gradient = new GradientSpec(GradientShape.Linear, 135f, [new GradientStop(0f, p.F1), new GradientStop(1f, p.F4)]),
-                        Children =
-                        [
-                            new BoxEl { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Fill = ColorF.FromRgba(14, 12, 14, 115) },
-                            Face(kind, slab, in p, new FaceSpec(tileW - 12f, previewH, Preview: true, CoverUrl: null)),
-                            // the check disc: TOP (AlignSelf) RIGHT (JustifySelf) — V-U9
-                            new BoxEl
-                            {
-                                Width = 20f, Height = 20f, Corners = Radii.Circle(20f), Fill = accent.Fill, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, Margin = new Edges4(0f, 8f, 8f, 0f),
-                                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                                Visible = Prop.Of(() => kindSig.Value == kind),
-                                Children = [new TextEl(Icons.Check) { Size = 12f, FontFamily = Theme.IconFont, Color = accent.Ink }],
-                            },
-                        ],
-                    },
-                    new BoxEl
-                    {
-                        Direction = 1, Padding = new Edges4(4f, 0f, 4f, 0f),
-                        Children =
-                        [
-                            new TextEl(Loc.Get(NameKey(kind))) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink },
-                            new TextEl(Prop.Of(() => SubtitleOf(kind, kindSig.Value, slab.Source.Value))) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                        ],
-                    },
-                ],
-            };
+            var (dx, dy, sc) = Field.Drift[index % Field.Blobs];
+            float ms = Field.PeriodSec[index % Field.Blobs] * 1000f;
+            bool reduced = Design.Reduced;
+            var key = DepKey.From(index, (int)w, (int)h, reduced ? 1 : 0);   // the 4-int form — there is no 3-int DepKey (V-U3)
+            UseKeyframes(AnimChannel.TranslateX, reduced ? s_restTranslate : [new Keyframe(0f, 0f), new Keyframe(0.5f, dx * w, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms, loop: !reduced, key);
+            UseKeyframes(AnimChannel.TranslateY, reduced ? s_restTranslate : [new Keyframe(0f, 0f), new Keyframe(0.5f, dy * h, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms, loop: !reduced, key);
+            UseKeyframes(AnimChannel.ScaleX, reduced ? s_restScale : [new Keyframe(0f, 1f), new Keyframe(0.5f, sc, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)], ms, loop: !reduced, key);
+            UseKeyframes(AnimChannel.ScaleY, reduced ? s_restScale : [new Keyframe(0f, 1f), new Keyframe(0.5f, sc, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)], ms, loop: !reduced, key);
         }
-        var sliderStyle = Slider.DefaultStyle with { ValueFill = accent.Fill, ValueFillPointerOver = accent.FillSecondary, ValueFillPressed = accent.FillTertiary, ThumbFill = accent.Fill, ThumbFillPointerOver = accent.FillSecondary, ThumbFillPressed = accent.FillTertiary };   // rail + thumb ring stay the theme's (the stage follows the app theme)
-        var toggleStyle = ToggleSwitch.DefaultStyle with { OnFill = accent.Fill, OnHover = accent.FillSecondary, OnPressed = accent.FillTertiary, OnKnob = accent.Ink, MinWidth = 40f, OffBorder = ColorF.FromRgba(255, 255, 255, 153), OffKnob = ColorF.FromRgba(255, 255, 255, 204) };
-        return new BoxEl
-        {
-            Width = layout.GalleryW, Height = layout.GalleryH, Direction = 1, Gap = 10f, Padding = new Edges4(20f, 14f, 20f, 20f), Corners = Radii.CardAll,
-            Acrylic = AcrylicSpec.InAppBase, Shadow = Elevation.Flyout, ClipToBounds = true,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Shrink = 0f,
-                    Children =
-                    [
-                        new TextEl(Loc.Get(Strings.Stage.GalleryTitle)) { Size = 20f, LineHeight = 28f, Weight = 600, FontFamily = "Segoe UI Variable Display", Color = Ink.Ink },
-                        ToolTip.Wrap(IconButton.Create(Icons.Cancel, close, size: ControlSize.Small), Loc.Get(Strings.Stage.ClosePanel)),
-                    ],
-                },
-                new ScrollEl
-                {
-                    Grow = 1f, MinHeight = 0f, AutoEdgeFade = true, ScrollKey = "stagegallery",
-                    Content = new BoxEl
-                    {
-                        Direction = 1, Gap = 10f,
-                        Children =
-                        [
-                            ItemsView.Create(Catalog.Count, tile, RepeatLayout.Grid(2, tileH, 10f), new ListOptions
-                            {
-                                SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None, IsItemInvokedEnabled = true,
-                                OnInvoked = static i => { Prefs.Stage.SetVisualizer(i); Stage.Diagnostics.NotePick((Kind)i); },
-                                KeyOf = static i => "viz:" + i, Grow = 0f,
-                            }) with { Key = "gallery:grid:" + HashCode.Combine(p, accent.Fill) },   // a new palette REMOUNTS the frozen template
-                            new TextEl(Loc.Get(Strings.Stage.SettingsHeader)) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink, Margin = new Edges4(0f, 6f, 0f, 0f) },
-                            SettingRow(Icons.Audio, Loc.Get(Strings.Stage.Sensitivity),
-                                Slider.Create(ctx.Sensitivity, static v => Prefs.Stage.SetSensitivity(v), SensitivityOptions, length: 150f, thickness: 24f, style: sliderStyle)),
-                            SettingRow(Icons.Document, Loc.Get(Strings.Stage.LyricsOverlay),
-                                ToggleSwitch.Create(ctx.LyricsOverlay, static on => Prefs.Stage.SetLyricsOverlay(on), style: toggleStyle)),
-                            SettingRow(Icons.RefineSparkle, Loc.Get(Strings.Stage.ReduceMotion),
-                                ToggleSwitch.Create(ctx.Calm, static on => Prefs.Stage.SetCalm(on), style: toggleStyle)),
-                            SettingRow(Icons.Clock, Loc.Get(Strings.Stage.SyncOffset),
-                                Slider.Create(ctx.SyncOffsetMs, static v => { int ms = (int)MathF.Round(v / 10f) * 10; Prefs.Stage.SetSyncOffsetMs(ms); Playback.Audio.SetSpectrumOffsetMs(ms); }, OffsetOptions, length: 150f, thickness: 24f, style: sliderStyle)),
-                        ],
-                    },
-                },
-            ],
-        };
+
+        /// <summary>The disc's radial gradient: the tint, its 45 % shoulder, transparent at the rim.</summary>
+        protected static GradientSpec Disc(ColorF tint, float alpha)
+            => new(GradientShape.Radial, 0f, [new GradientStop(0f, tint with { A = alpha }), new GradientStop(0.55f, tint with { A = alpha * 0.45f }), new GradientStop(1f, tint with { A = 0f })]);
     }
 
-    static readonly Slider.SliderOptions SensitivityOptions = new() { Min = Bands.MinSensitivity, Max = Bands.MaxSensitivity, Step = 0.05f, IsThumbToolTipEnabled = true, ThumbToolTipValueConverter = static v => ((int)MathF.Round(v * 100f)).ToString(System.Globalization.CultureInfo.InvariantCulture) + "%" };
-    static readonly Slider.SliderOptions OffsetOptions = new() { Min = -500f, Max = 500f, Step = 10f, IsThumbToolTipEnabled = true, ThumbToolTipValueConverter = static v => ((int)MathF.Round(v)).ToString(System.Globalization.CultureInfo.InvariantCulture) + " ms" };
+    /// <summary>One blob of a fixed tint (a face's own blob; RE-PUSHED props recolour the mounted disc, the loop keeps running).</summary>
+    sealed class Blob : DriftingDisc
+    {
+        public sealed record Props(int Index, float Diameter, ColorF Tint, float W, float H);
+        public override Element Render()
+        {
+            var p = UseProps<Props>();
+            Drift(p.Index, p.W, p.H);
+            return new BoxEl
+            {
+                Width = p.Diameter, Height = p.Diameter, Corners = Radii.Circle(p.Diameter), HitTestVisible = false,
+                Gradient = Disc(p.Tint, p.Tint.A),
+            };
+        }
+    }
 
-    static Element SettingRow(string glyph, string label, Element control) => new BoxEl
+    /// <summary>One blob of the stage's backdrop Field, tinted by palette ROLE and cross-faded with the palette: its
+    /// gradient runs from the fade's start colours to its target (<c>GradientTo</c>), mixed by the slab's bound
+    /// <c>FadeMix</c> — the component re-renders once per fade START, never per tick.</summary>
+    sealed class BackdropBlob : DriftingDisc
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.SpaceBetween, Gap = Spacing.M, MinHeight = 48f,
-        Padding = new Edges4(16f, 0f, 12f, 0f), Corners = Radii.ControlAll, Fill = ColorF.FromRgba(255, 255, 255, 13), BorderWidth = 1f, BorderColor = ColorF.FromRgba(255, 255, 255, 15),
-        Children =
-        [
-            new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Children = [new TextEl(glyph) { Size = 16f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary }, new TextEl(label) { Size = 14f, LineHeight = 20f, Color = Ink.Ink }] },
-            control,
-        ],
-    };
+        public sealed record Props(int Index, float Diameter, float W, float H, Slab Slab);
+        public override Element Render()
+        {
+            var p = UseProps<Props>();
+            var start = p.Slab.FadeFrom.Value;
+            var end = p.Slab.FadeTo.Value;
+            Drift(p.Index, p.W, p.H);
+            return new BoxEl
+            {
+                Width = p.Diameter, Height = p.Diameter, Corners = Radii.Circle(p.Diameter), HitTestVisible = false,
+                Gradient = Disc(TintOf(in start, p.Index), AlphaOf(p.Index)), GradientTo = Disc(TintOf(in end, p.Index), AlphaOf(p.Index)),
+                GradientMix = (Prop<float>)p.Slab.FadeMix,
+            };
+        }
 
-    public static string NameKey(Kind k) => k switch
+        /// <summary>The four blobs' roles: the deep tone top-left, then B, A and C — the cover's own colours, no invented hue.</summary>
+        static ColorF TintOf(in Palette pal, int i) => (i & 3) switch { 0 => pal.Deep, 1 => pal.B, 2 => pal.A, _ => pal.C };
+        /// <summary>The paint colours are brighter than the deep tone: a backdrop, not a face, so they sit a step back.</summary>
+        static float AlphaOf(int i) => (i & 3) == 0 ? 1f : 0.82f;
+    }
+
+    /// <summary>The stage's always-on backdrop layer (Stage.UI.cs Backdrop): four drifting blobs in the palette's roles,
+    /// cross-fading with it, at <paramref name="opacity"/> (the slab's BaseFieldOp). The four blobs drift every frame under
+    /// the whole stage: a RepaintBoundary keeps that drift in this slice instead of re-rastering every stage tile (art,
+    /// scrim, bars, caption) above and below it. They are pure radial gradients, so the slice rasters at a quarter of the
+    /// window scale and is upsampled — the same look for 1/16 of the raster work, and no window-sized tiles held.</summary>
+    public static Element BackdropField(Slab slab, float w, float h, Prop<float> opacity, bool boundary = true)
     {
-        Kind.Field => Strings.Stage.Viz.Field, Kind.Halo => Strings.Stage.Viz.Halo, Kind.Horizon => Strings.Stage.Viz.Horizon, Kind.Matrix => Strings.Stage.Viz.Matrix,
-        Kind.Aurora => Strings.Stage.Viz.Aurora, Kind.Spectrum => Strings.Stage.Viz.Spectrum, Kind.Pulse => Strings.Stage.Viz.Pulse, _ => Strings.Stage.Viz.Tape,
-    };
-    static string SubKey(Kind k) => k switch
-    {
-        Kind.Field => Strings.Stage.VizSub.Field, Kind.Halo => Strings.Stage.VizSub.Halo, Kind.Horizon => Strings.Stage.VizSub.Horizon, Kind.Matrix => Strings.Stage.VizSub.Matrix,
-        Kind.Aurora => Strings.Stage.VizSub.Aurora, Kind.Spectrum => Strings.Stage.VizSub.Spectrum, Kind.Pulse => Strings.Stage.VizSub.Pulse, _ => Strings.Stage.VizSub.Tape,
-    };
-    /// <summary>The tile's second line: the face's blurb, or — while it is the active kind falling back — where its motion comes from.
-    /// <paramref name="current"/> is the context's kind SIGNAL value (never a registry read — O8).</summary>
-    static string SubtitleOf(Kind k, Kind current, Source live)
-    {
-        if (current != k || live == Source.Live) return Loc.Get(SubKey(k));
-        return Loc.Get(live switch { Source.Precomputed => Strings.Stage.Source.Precomputed, Source.TempoGrid => Strings.Stage.Source.Tempo, _ => Strings.Stage.Source.Breath });
+        float m = MathF.Max(w, h), d = 1.1f * m;
+        var kids = new List<CanvasChild>(Field.Blobs);
+        (float X, float Y)[] corners = [(-0.55f, -0.62f), (1f - 0.55f, -0.62f), (-0.55f, 1f - 0.66f), (1f - 0.58f, 1f - 0.64f)];
+        for (int i = 0; i < Field.Blobs; i++)
+            kids.Add(new CanvasChild(corners[i].X * m, corners[i].Y * m, Embed.Comp(new BackdropBlob.Props(i, d, w, h, slab), static () => new BackdropBlob()) with { Key = "blob:" + i }));
+        return new BoxEl
+        {
+            // boundary: false when the caller already draws it inside a quarter-scale boundary of its own (the stage's
+            // Backdrop rasters floor, art, Field and scrim together): a nested boundary would only add a layer.
+            Width = w, Height = h, ClipToBounds = true, HitTestVisible = false, RepaintBoundary = boundary, RasterScale = boundary ? 0.25f : 1f,
+            Opacity = opacity,
+            Children = [Canvas.Create(w, h, kids)],
+        };
     }
 }

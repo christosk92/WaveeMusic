@@ -1,0 +1,538 @@
+<title>Visualizer Engine Design</title>
+<style>
+/* Layout: one reading column (max 860px) with full-width figures; a contents rail on wide screens. Accent = new engine parts. */
+:root {
+  --bg: #f5f6f7; --fg: #15181b; --muted: #59606a; --line: #d6dbe0; --card: #ffffff; --code: #eceff2;
+  --new: #0a7f8f; --new-soft: rgba(10,127,143,.10); --warn: #a15c00;
+  --f-text: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-display: "Segoe UI Variable Display", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #101316; --fg: #e7eaed; --muted: #9aa2ab; --line: #2a3036; --card: #171b1f; --code: #1e2328;
+  --new: #4fc6d6; --new-soft: rgba(79,198,214,.12); --warn: #e0a24a; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #101316; --fg: #e7eaed; --muted: #9aa2ab; --line: #2a3036; --card: #171b1f; --code: #1e2328;
+  --new: #4fc6d6; --new-soft: rgba(79,198,214,.12); --warn: #e0a24a; color-scheme: dark }
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--f-text); font-size: 15px; line-height: 1.6; margin: 0; padding-inline: 16px; padding-block: 28px 72px; }
+.shell { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 36px; }
+@media (min-width: 1100px) { .shell { grid-template-columns: 220px minmax(0, 1fr); } }
+nav { display: none; position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; font-size: 13px; padding-top: 6px; }
+@media (min-width: 1100px) { nav { display: block; } }
+nav a { display: block; color: var(--muted); text-decoration: none; padding: 3px 0; }
+nav a:hover, nav a:focus-visible { color: var(--fg); }
+main { min-width: 0; max-width: 880px; }
+.eyebrow { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--new); font-weight: 700; }
+h1 { font-family: var(--f-display); font-size: 34px; line-height: 1.15; font-weight: 600; margin: 6px 0 10px; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-size: 23px; font-weight: 600; margin: 44px 0 10px; padding-top: 18px; border-top: 1px solid var(--line); text-wrap: balance; }
+h3 { font-family: var(--f-display); font-size: 17px; font-weight: 600; margin: 26px 0 6px; }
+p, li { max-width: 74ch; }
+.lede { color: var(--muted); margin: 0 0 8px; }
+code { font-family: var(--f-mono); font-size: .86em; background: var(--code); padding: 1px 5px; border-radius: 4px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; }
+.meta span { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--muted); background: var(--card); }
+.meta b { color: var(--fg); font-weight: 600; }
+.key { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.key i { width: 18px; height: 10px; border: 2px solid var(--new); border-radius: 3px; background: var(--new-soft); display: inline-block; }
+figure { margin: 18px 0 22px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 14px 10px; }
+figure svg { display: block; width: 100%; height: auto; color: var(--fg); }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; max-width: 80ch; }
+.tw { overflow-x: auto; margin: 12px 0 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--code); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+.pill { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .03em; padding: 1px 7px; border-radius: 999px; }
+.p-ok { background: var(--code); color: var(--muted); }
+.p-new { background: var(--new-soft); color: var(--new); }
+.p-warn { background: rgba(161,92,0,.12); color: var(--warn); }
+.feat { border: 1px solid var(--line); border-left: 3px solid var(--new); border-radius: 8px; background: var(--card); padding: 12px 16px; margin: 14px 0; }
+.feat h3 { margin-top: 2px; }
+.feat dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 4px 14px; margin: 8px 0 0; font-size: 14px; }
+.feat dt { color: var(--muted); }
+.feat dd { margin: 0; min-width: 0; }
+@media (max-width: 560px) { .feat dl { grid-template-columns: 1fr; } .feat dt { margin-top: 6px; } }
+.note { font-size: 13px; color: var(--muted); }
+</style>
+
+<div class="shell">
+<nav aria-label="Contents">
+  <a href="#scope">1. Scope</a><a href="#path">2. The frame path</a><a href="#retained">3. Retained tiles and skip-submit</a>
+  <a href="#features">4. New engine features</a><a href="#f1">F1 Waveform and onset</a><a href="#f2">F2 Gradient mix</a>
+  <a href="#f3">F3 Series lane v2</a><a href="#f4">F4 Additive and Screen</a><a href="#f5">F5 Sprite field</a><a href="#f6">F6 Feedback slice</a>
+  <a href="#f7">F7 Paceable frame clock</a><a href="#detached">5. Detached windows</a><a href="#faces">6. Face matrix</a>
+  <a href="#perf">7. Performance budget</a><a href="#tests">8. Tests and gates</a><a href="#phases">9. Phases</a>
+  <a href="#rejected">10. Rejected features</a><a href="#questions">11. Open questions</a>
+</nav>
+<main>
+<div class="eyebrow">FluentGpu engine · system design · ASD-STE100</div>
+<h1>Visualizer engine design</h1>
+<p class="lede">This document gives the engine design for the Wavee stage visualizers. It tells how a frame moves through the engine.
+It tells which new parts the engine must have, and how each part operates. It does not give the app design.</p>
+<div class="meta"><span><b>19</b> faces</span><span><b>11</b> need no engine change</span><span><b>7</b> new engine features</span>
+  <span><b>≈20</b> engineering days</span><span>Status: <b>plan, no code</b></span></div>
+<p class="key" style="margin-top:14px"><i></i> In the figures, this colour shows a new engine part. All other parts exist today.</p>
+
+<h2 id="scope">1. Scope</h2>
+<p>The Wavee stage shows a full-screen visualizer face. There are 19 faces. Each face reads audio data and draws shapes on each frame.</p>
+<p>Eleven faces use only the primitives that the engine has today. Three faces are possible today, but they look bad or use too much
+UI-thread time. Five faces cannot operate without new engine parts: Scope, Warp, Magneto, Drift and Flow.</p>
+<p>This design adds seven features. Each feature uses an engine shape that exists: an <code>Element</code> record, a bound
+<code>Prop.Of</code> channel, a scene side table, a POD draw operation or a composite item. The design does not add a custom shader hook.</p>
+<p class="note">All statements about existing code come from the engine plan. That plan gives a file and line reference for each statement.</p>
+
+<h2 id="path">2. The frame path</h2>
+<p>Audio data and drawing data use different threads. The figure shows the path from the audio output to the GPU.</p>
+<figure>
+<svg viewBox="0 0 1000 400" role="img" aria-label="The frame path: the audio thread writes a mono ring; the control thread analyses it and publishes bands, waveform and onset; the UI thread ticks per frame, writes slab signals and records a draw list; the render thread rasters tiles and composites; D3D12 presents.">
+  <defs><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor">
+    <text x="20" y="24" font-size="11" opacity=".7" letter-spacing=".06em">AUDIO RT THREAD</text>
+    <text x="250" y="24" font-size="11" opacity=".7" letter-spacing=".06em">CONTROL THREAD · ~15 ms HOP</text>
+    <text x="20" y="214" font-size="11" opacity=".7" letter-spacing=".06em">UI THREAD · ONE TICK PER FRAME</text>
+    <text x="700" y="214" font-size="11" opacity=".7" letter-spacing=".06em">RENDER THREAD · GPU</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="20" y="40" width="180" height="70" rx="8"/>
+    <rect x="250" y="40" width="200" height="70" rx="8"/>
+    <rect x="500" y="40" width="210" height="70" rx="8"/>
+    <rect x="760" y="40" width="220" height="70" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="20" y="230" width="180" height="76" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="240" y="230" width="190" height="76" rx="8"/>
+    <rect x="470" y="230" width="190" height="76" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="700" y="230" width="130" height="76" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="860" y="230" width="120" height="76" rx="8"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12.5" fill="currentColor" text-anchor="middle">
+    <text x="110" y="70" font-weight="600">Master chain tap</text><text x="110" y="88" opacity=".75">downmix to mono</text>
+    <text x="350" y="70" font-weight="600">Mono SPSC ring</text><text x="350" y="88" opacity=".75">latency-aligned window</text>
+    <text x="605" y="64" font-weight="600">SpectrumAnalyzer</text><text x="605" y="82" opacity=".75">2048 FFT, Hann</text><text x="605" y="98" opacity=".75">48 log bands, 40 Hz–16 kHz</text>
+    <text x="870" y="62" font-weight="600">Double-buffered publish</text><text x="870" y="80" opacity=".75">bands (today)</text><text x="870" y="96" fill="var(--new)">+ 1024 samples, flux, onset (F1)</text>
+    <text x="110" y="258" font-weight="600">FrameTicker tick</text><text x="110" y="276" fill="var(--new)">paceable flavour (F7)</text><text x="110" y="292" opacity=".75">PowerCapFps applies</text>
+    <text x="335" y="258" font-weight="600">Face model + Slab</text><text x="335" y="276" opacity=".75">FloatSignals, bound</text><text x="335" y="292" opacity=".75">Prop.Of thunks</text>
+    <text x="565" y="254" font-weight="600">SceneRecorder</text><text x="565" y="272" opacity=".75">POD draw list</text><text x="565" y="290" fill="var(--new)">SetBlend, DrawSprites (F4, F5)</text>
+    <text x="765" y="256" font-weight="600">Tiles + composite</text><text x="765" y="274" fill="var(--new)">Feedback item (F6)</text><text x="765" y="290" fill="var(--new)">Screen blend (F4)</text>
+    <text x="920" y="262" font-weight="600">D3D12</text><text x="920" y="280" opacity=".75">present</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5" fill="none">
+    <line x1="200" y1="75" x2="246" y2="75" marker-end="url(#a1)"/>
+    <line x1="450" y1="75" x2="496" y2="75" marker-end="url(#a1)"/>
+    <line x1="710" y1="75" x2="756" y2="75" marker-end="url(#a1)"/>
+    <path d="M870,110 V170 H110 V226" marker-end="url(#a1)"/>
+    <line x1="200" y1="268" x2="236" y2="268" marker-end="url(#a1)"/>
+    <line x1="430" y1="268" x2="466" y2="268" marker-end="url(#a1)"/>
+    <line x1="660" y1="268" x2="696" y2="268" marker-end="url(#a1)"/>
+    <line x1="830" y1="268" x2="856" y2="268" marker-end="url(#a1)"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="11.5" fill="currentColor" opacity=".8">
+    <text x="223" y="68" text-anchor="middle">writes</text><text x="473" y="68" text-anchor="middle">reads</text><text x="733" y="68" text-anchor="middle">stores</text>
+    <text x="490" y="164" text-anchor="middle">UI pulls CopySpectrum / CopyWaveform under one lease</text>
+    <text x="218" y="260" text-anchor="middle">fold</text><text x="448" y="260" text-anchor="middle">bind fire</text><text x="678" y="260" text-anchor="middle">snapshot</text>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor" opacity=".75">
+    <text x="20" y="346">The RT tap does not change. F1 adds a copy and two scalars on the control thread.</text>
+    <text x="20" y="366">The UI thread writes scene columns only. It does not re-render a face on each frame.</text>
+    <text x="20" y="386">The render thread owns all GPU surfaces, including the new feedback surfaces.</text>
+  </g>
+</svg>
+<figcaption>Figure 1. Audio goes from the RT thread to the control thread, then to the UI thread on each frame tick. The render thread owns the GPU. The coloured boxes show where the seven features attach.</figcaption>
+</figure>
+
+<h3>Thread rules</h3>
+<ul>
+  <li>The audio RT thread only writes the mono ring. The design does not add work on this thread.</li>
+  <li>The control thread analyses the latency-aligned 2048-sample window. It publishes results through a double buffer.</li>
+  <li>The UI thread folds the published data into the face model. It writes the values into <code>FloatSignal</code>s. Bound props write scene columns.</li>
+  <li>The UI thread records a POD draw list. The render thread submits the last complete draw list.</li>
+  <li>Phases 6 to 13 of a frame must not allocate managed memory. All new features obey this rule.</li>
+</ul>
+
+<h2 id="retained">3. Retained tiles and skip-submit</h2>
+<p>The primary window uses a retained tiled composite. The engine rasters slices into tiles of 1024 × 512 pixels. Then it composites all tiles in one pass.</p>
+<p>The engine does not submit a frame that is equal to the last frame. Three conditions must all be true for a skip. The figure shows these conditions.</p>
+<figure>
+<svg viewBox="0 0 1000 250" role="img" aria-label="Skip-submit decision: the engine skips a frame only when the draw-list hash is equal, the repaint region is empty and no clock is active. F6 adds feedbackLive to the clock term.">
+  <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="20" y="40" width="150" height="56" rx="8"/>
+    <rect x="220" y="40" width="190" height="56" rx="8"/>
+    <rect x="460" y="40" width="190" height="56" rx="8"/>
+    <rect x="700" y="40" width="260" height="56" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="780" y="170" width="180" height="50" rx="25"/>
+    <rect x="400" y="170" width="300" height="50" rx="25"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12.5" fill="currentColor" text-anchor="middle">
+    <text x="95" y="66" font-weight="600">New frame</text><text x="95" y="83" opacity=".75">recorded</text>
+    <text x="315" y="64" font-weight="600">Hash equal?</text><text x="315" y="81" opacity=".75">draw list vs last present</text>
+    <text x="555" y="64" font-weight="600">Repaint region empty?</text><text x="555" y="81" opacity=".75">no dirty rect</text>
+    <text x="830" y="62" font-weight="600">No clock active?</text><text x="830" y="80">crossfades <tspan fill="var(--new)" font-weight="600">OR feedbackLive</tspan></text>
+    <text x="870" y="200" font-weight="600">Skip submit</text>
+    <text x="550" y="200" font-weight="600">Submit: raster dirty tiles, composite</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5" fill="none">
+    <line x1="170" y1="68" x2="216" y2="68" marker-end="url(#a2)"/>
+    <line x1="410" y1="68" x2="456" y2="68" marker-end="url(#a2)"/>
+    <line x1="650" y1="68" x2="696" y2="68" marker-end="url(#a2)"/>
+    <line x1="870" y1="96" x2="870" y2="166" marker-end="url(#a2)"/>
+    <path d="M315,96 V140 H520 V166" marker-end="url(#a2)"/>
+    <path d="M555,96 V166" marker-end="url(#a2)"/>
+    <path d="M760,96 V140 H600 V166" marker-end="url(#a2)" stroke="var(--new)"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="11.5" fill="currentColor" opacity=".85">
+    <text x="433" y="62" text-anchor="middle">yes</text><text x="673" y="62" text-anchor="middle">yes</text><text x="884" y="136">yes</text>
+    <text x="330" y="134">no</text><text x="563" y="134">no</text><text x="690" y="134" fill="var(--new)">no: a trail still moves</text>
+  </g>
+</svg>
+<figcaption>Figure 2. A feedback buffer changes on each advance, but its draw-list bytes do not change. F6 adds <code>feedbackLive</code> to the clock term. Thus the engine does not skip a frame while a trail moves.</figcaption>
+</figure>
+<p>A full-screen face is one <code>RepaintBoundary</code> slice. When its bytes change, the engine rasters all tiles under it again.
+At 1920 × 1080 this is 6 tiles. At 3440 × 1440 this is 12 tiles. This cost is the floor for each animated face.</p>
+<p><b>Rule:</b> a face must not paint the top and bottom tile rows if it does not need them. Then the engine rasters fewer tiles.</p>
+
+<h2 id="features">4. New engine features</h2>
+<div class="tw"><table>
+<thead><tr><th>ID</th><th>Feature</th><th>Size</th><th>Faces that use it</th></tr></thead>
+<tbody>
+<tr><td>F1</td><td>Waveform tap + spectral flux and onset</td><td>S · 1.5 d</td><td>Scope, Flow; beat reaction when there is no Spotify beat grid; "change with the music" fallback</td></tr>
+<tr><td>F2</td><td><code>GradientMix</code>: a bound 0..1 channel that blends to a second gradient</td><td>S · 1.5 d</td><td>Palette rotation on all faces, without a re-render on each frame</td></tr>
+<tr><td>F3</td><td>Series lane v2: Polar shape, gradient along the axis, anti-aliased stroke</td><td>M · 2.5 d</td><td>Scope, Drift, Flow, Ring outline</td></tr>
+<tr><td>F4</td><td>Additive paint (draw operation) + Screen (composite blend)</td><td>M · 3 d</td><td>Magneto, Ambience, Bloom, Warp, feedback trails</td></tr>
+<tr><td>F5</td><td><code>SpriteFieldEl</code>: one node, up to 1024 instanced sprites</td><td>L · 5 d</td><td>Warp, Magneto, Classic, Kaleido, Ring, Bars, Timeline, Ambience</td></tr>
+<tr><td>F6</td><td>Feedback slice: a persistent ping-pong surface, warped and decayed on each advance</td><td>L · 6–7 d</td><td>Drift, Flow; optional trails</td></tr>
+<tr><td>F7</td><td>Governor-paceable frame clock</td><td>S · 0.5 d</td><td>All faces</td></tr>
+</tbody></table></div>
+<p>All new elements are <code>sealed record : Element</code> types. Each new draw operation is <code>[int op][POD]</code> and is not larger than 1024 bytes.
+No feature uses an environment-variable switch. No feature keeps an old path alive next to a new path.</p>
+
+<div class="feat" id="f1"><h3>F1 · Waveform tap, spectral flux and onset</h3>
+<p>Scope and Flow need the sound wave itself, not only the frequency bands. Faces also need a beat signal when a track has no Spotify beat grid.</p>
+<dl>
+<dt>Mechanism</dt><dd>After <code>analyzer.Analyze</code>, the control thread copies the centre 1024 samples of the 2048-sample window. It publishes them in a double buffer, next to the bands.</dd>
+<dt>Flux</dt><dd>Flux is the mean of the positive band changes between two frames: <code>Σ max(0, band[i] − prev[i]) / 48</code>. A ring of 96 values (≈1.5 s) gives the mean and the deviation.</dd>
+<dt>Onset</dt><dd>An onset occurs when flux is more than <code>mean + 1.5σ</code> and 100 ms or more have elapsed since the last onset.</dd>
+<dt>API</dt><dd><code>IAudioEffects.CopyWaveform(Span&lt;float&gt;, out WaveformInfo)</code>. <code>SpectrumInfo</code> gets <code>Flux</code>, <code>OnsetSequence</code> and <code>OnsetStrength</code>.</dd>
+<dt>Limits</dt><dd>Mono only. The RT tap downmixes, and no face needs stereo. The design does not add a UI presentation-latency term.</dd>
+<dt>Cost</dt><dd>One copy of 4 KB and a few additions per hop. No allocation. No new thread.</dd>
+</dl></div>
+
+<div class="feat" id="f2"><h3>F2 · GradientMix</h3>
+<p>Gradients are static today. A palette change on the beat must not rebuild each face.</p>
+<dl>
+<dt>Mechanism</dt><dd>A node has a static <code>GradientTo</code> and a bound <code>Prop&lt;float&gt; GradientMix</code>. The recorder blends the stops on stack memory at record time. It uses the <code>LerpStops</code> function that hover gradients use today.</dd>
+<dt>API</dt><dd><code>BoxEl.GradientTo</code>, <code>BoxEl.GradientMix</code>; the same two members on <code>SeriesEl</code>. <code>GradientTo</code> must have the same stop count as <code>Gradient</code>.</dd>
+<dt>Why not a bound GradientSpec</dt><dd>A thunk that returns a <code>GradientSpec</code> makes a new object and a new stop array on each fire. That breaks the zero-allocation rule.</dd>
+<dt>Cost</dt><dd>No new draw operation and no backend change. A palette rotation causes one reconcile of the face root at the end of the 900 ms blend.</dd>
+</dl></div>
+
+<div class="feat" id="f3"><h3>F3 · Series lane v2</h3>
+<dl>
+<dt>Polar</dt><dd><code>SeriesShape.Polar</code>: each sample is a radius fraction around the box centre. The angle is <code>2π·i/(N−1)</code>. Sample 0 repeats to close the loop. Each chunk gets <code>Prev</code> and <code>Next</code> samples for a correct tangent.</dd>
+<dt>Gradient axis</dt><dd><code>SeriesGradientAxis.Along</code> puts the gradient on the sample index. Today the gradient follows the amplitude only.</dd>
+<dt>Anti-aliasing</dt><dd>The pixel shader feathers coverage from the signed distance to the ribbon edge. The quad already extends by half the thickness, so the repaint halo covers the fringe.</dd>
+<dt>Cost</dt><dd>The draw count does not change. A Polar series uses the full box as its bounds.</dd>
+</dl></div>
+
+<div class="feat" id="f4"><h3>F4 · Additive paint and Screen composite</h3>
+<p>Glowing particles must add light. Today every pipeline uses premultiplied source-over. Overlaps then look muddy. The design adds two different blends, because they operate at different stages.</p>
+<figure>
+<svg viewBox="0 0 1000 300" role="img" aria-label="Comparison: additive paint operates per primitive inside a transparent tile and composites Over the page, which gives page plus glow. Screen needs the page colour, so it operates only when a slice item composites onto the back buffer.">
+  <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor">
+    <text x="20" y="24" font-weight="600" font-size="13">Additive · per primitive, inside the tile</text>
+    <text x="520" y="24" font-weight="600" font-size="13">Screen · at composite time, onto the back buffer</text>
+  </g>
+  <line x1="500" y1="10" x2="500" y2="290" stroke="currentColor" stroke-opacity=".2"/>
+  <g fill="none" stroke="currentColor" stroke-width="1.5">
+    <rect x="20" y="50" width="140" height="80" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="200" y="50" width="120" height="80" rx="8"/>
+    <rect x="360" y="50" width="120" height="80" rx="8"/>
+    <rect x="200" y="190" width="120" height="70" rx="8"/>
+    <rect x="520" y="50" width="140" height="80" rx="8"/>
+    <rect x="700" y="50" width="130" height="80" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="860" y="50" width="120" height="80" rx="8"/>
+    <rect x="700" y="190" width="130" height="70" rx="8"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor" text-anchor="middle">
+    <text x="90" y="78" font-weight="600">Sprites, rects</text><text x="90" y="96">blend ONE / ONE</text><text x="90" y="114" opacity=".75">alpha ZERO / ONE</text>
+    <text x="260" y="82" font-weight="600">Tile</text><text x="260" y="100" opacity=".75">cleared to 0</text>
+    <text x="420" y="82" font-weight="600">Result</text><text x="420" y="100">page + Σ glow</text>
+    <text x="260" y="220" font-weight="600">Page</text><text x="260" y="238" opacity=".75">other tiles</text>
+    <text x="590" y="82" font-weight="600">Slice item</text><text x="590" y="100" opacity=".75">own surface</text>
+    <text x="765" y="78" font-weight="600">Composite PSO</text><text x="765" y="96">ONE / INV_SRC_COLOR</text><text x="765" y="114" opacity=".75">1 − (1−s)(1−d)</text>
+    <text x="920" y="82" font-weight="600">Result</text><text x="920" y="100">screened page</text>
+    <text x="765" y="220" font-weight="600">Back buffer</text><text x="765" y="238" opacity=".75">destination d</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5" fill="none">
+    <line x1="160" y1="90" x2="196" y2="90" marker-end="url(#a3)"/>
+    <line x1="320" y1="90" x2="356" y2="90" marker-end="url(#a3)"/>
+    <path d="M320,225 H420 V134" marker-end="url(#a3)"/>
+    <line x1="660" y1="90" x2="696" y2="90" marker-end="url(#a3)"/>
+    <line x1="830" y1="90" x2="856" y2="90" marker-end="url(#a3)"/>
+    <line x1="765" y1="190" x2="765" y2="134" marker-end="url(#a3)"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="11.5" fill="currentColor" opacity=".85" text-anchor="middle">
+    <text x="178" y="82">draw</text><text x="338" y="82">Over</text><text x="370" y="218">Over</text>
+    <text x="678" y="82">sample</text><text x="843" y="82">write</text><text x="808" y="166">reads d</text>
+  </g>
+</svg>
+<figcaption>Figure 3. Additive needs no layer: the tile alpha stays unchanged, so the tile composites Over the page as page plus glow. Screen needs the page colour, so only the composite stage can do it.</figcaption>
+</figure>
+<dl style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 14px;font-size:14px">
+<dt style="color:var(--muted)">API</dt><dd style="margin:0"><code>PaintBlend { SrcOver, Additive }</code> on <code>BoxEl</code>, <code>SeriesEl</code>, <code>SpriteFieldEl</code>. <code>LayerBlend { SrcOver, Screen }</code> on a <code>BoxEl</code> that is a repaint boundary.</dd>
+<dt style="color:var(--muted)">Draw op</dt><dd style="margin:0"><code>SetBlend { byte Mode }</code>. The D3D12 decoder breaks the current run and selects the additive PSO clone. Glyphs and paths stay source-over in v1.</dd>
+<dt style="color:var(--muted)">Composite</dt><dd style="margin:0"><code>CompositeItem.BlendCopy</code> becomes an enum <code>{ Over, Copy, DestOut, Screen }</code>.</dd>
+</dl></div>
+
+<div class="feat" id="f5"><h3>F5 · SpriteFieldEl</h3>
+<p>Warp has 220 streaks. With one node for each streak, the UI thread fires 440 binds on each frame. F5 puts all sprites in one node.</p>
+<figure>
+<svg viewBox="0 0 1000 200" role="img" aria-label="Sprite path: the face writes a Sprite array; one bind copies it into a pooled scene array; the recorder writes chunks of 16 sprites with a bounds rectangle; the render thread unpacks instances into the upload arena and draws them with one instanced call; the pixel shader evaluates the kernel.">
+  <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke="var(--new)" stroke-width="1.5">
+    <rect x="10" y="40" width="170" height="96" rx="8" fill="var(--new-soft)"/>
+    <rect x="210" y="40" width="160" height="96" rx="8" fill="var(--new-soft)"/>
+    <rect x="400" y="40" width="190" height="96" rx="8" fill="var(--new-soft)"/>
+    <rect x="620" y="40" width="170" height="96" rx="8" fill="var(--new-soft)"/>
+    <rect x="820" y="40" width="170" height="96" rx="8" fill="var(--new-soft)"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor" text-anchor="middle">
+    <text x="95" y="64" font-weight="600">Face tick (UI)</text><text x="95" y="82">Sprite[] ≤ 1024</text><text x="95" y="98" opacity=".75">32 B each: X, Y, W, H,</text><text x="95" y="114" opacity=".75">Rot, Soft, Rgba</text>
+    <text x="290" y="64" font-weight="600">One BindEffect</text><text x="290" y="82">copy into pooled</text><text x="290" y="98">scene array</text><text x="290" y="114" opacity=".75">version-gated</text>
+    <text x="495" y="64" font-weight="600">SceneRecorder</text><text x="495" y="82">DrawSpritesCmd</text><text x="495" y="98">16 sprites / chunk, ≈580 B</text><text x="495" y="114" opacity=".75">Rect = union of AABBs</text>
+    <text x="705" y="64" font-weight="600">D3D12 decoder</text><text x="705" y="82">unpack to UploadArena</text><text x="705" y="98">SpriteInstance 48 B</text><text x="705" y="114" opacity=".75">≤ 4096 per frame</text>
+    <text x="905" y="64" font-weight="600">SpritePipeline</text><text x="905" y="82">DrawInstanced(4, N)</text><text x="905" y="98">SDF kernel + AA</text><text x="905" y="114" opacity=".75">SrcOver / Additive</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5"><line x1="180" y1="88" x2="206" y2="88" marker-end="url(#a4)"/><line x1="370" y1="88" x2="396" y2="88" marker-end="url(#a4)"/><line x1="590" y1="88" x2="616" y2="88" marker-end="url(#a4)"/><line x1="790" y1="88" x2="816" y2="88" marker-end="url(#a4)"/></g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor" opacity=".75"><text x="10" y="172">Kernels are a closed set: Disc, Capsule, Streak, Segment. A closed set keeps the repaint halos, the slice bounds and the headless model exact.</text></g>
+</svg>
+<figcaption>Figure 4. One node, one bind fire and one copy of at most 32 KB per tick. The GPU expands each sprite into a quad. Nothing is tessellated or cached.</figcaption>
+</figure>
+<dl style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 14px;font-size:14px">
+<dt style="color:var(--muted)">API</dt><dd style="margin:0"><code>SpriteFieldEl { Prop&lt;SpriteInstances&gt; Instances; SpriteKernel Kernel; PaintBlend Blend; float Opacity; }</code>, <code>ElementTypeId</code> 19, <code>VisualKind.Sprites</code> 11.</dd>
+<dt style="color:var(--muted)">Limits</dt><dd style="margin:0">More than 1024 sprites: the engine drops the extra sprites and counts them. More than 4096 instances in a frame: the engine drops and counts them in <code>Diag</code>.</dd>
+<dt style="color:var(--muted)">Bounds</dt><dd style="margin:0">The recorder computes the chunk rectangle on the UI thread. It includes rotation and the soft reach. <code>RepaintCull.SpriteHalo</code> adds the AA pad.</dd>
+</dl></div>
+
+<div class="feat" id="f6"><h3>F6 · Feedback slice</h3>
+<p>Drift and Flow draw the last frame again, a little zoomed, turned and faded. Then they draw new content on top. This needs a surface that persists from frame to frame.</p>
+<figure>
+<svg viewBox="0 0 1000 260" role="img" aria-label="One feedback advance: pass one draws ping into pong through the warp, decay, fade and dither shader; pass two replays the slice content into pong at the reduced scale; the pair swaps; the composite samples pong onto the back buffer.">
+  <defs><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke-width="1.5">
+    <rect x="20" y="40" width="130" height="70" rx="8" stroke="currentColor"/>
+    <rect x="200" y="30" width="220" height="90" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="470" y="40" width="130" height="70" rx="8" stroke="currentColor"/>
+    <rect x="200" y="160" width="220" height="70" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="20" y="160" width="130" height="70" rx="8" stroke="currentColor"/>
+    <rect x="650" y="40" width="130" height="70" rx="8" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="830" y="40" width="150" height="70" rx="8" stroke="currentColor"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12" fill="currentColor" text-anchor="middle">
+    <text x="85" y="70" font-weight="600">ping</text><text x="85" y="88" opacity=".75">last trail</text>
+    <text x="310" y="54" font-weight="600">Pass 1 · PSFeedback</text><text x="310" y="72">sample at Warp⁻¹</text><text x="310" y="88">× (1 − Decay), lerp to FadeTo</text><text x="310" y="104" opacity=".75">+ 4×4 dither at 1/255</text>
+    <text x="535" y="70" font-weight="600">pong</text><text x="535" y="88" opacity=".75">new trail</text>
+    <text x="310" y="186" font-weight="600">Pass 2 · fresh content</text><text x="310" y="204">replay slice stream at 1/down</text><text x="310" y="220" opacity=".75">blend = Fresh</text>
+    <text x="85" y="190" font-weight="600">Slice stream</text><text x="85" y="208" opacity=".75">this tick's shapes</text>
+    <text x="715" y="70" font-weight="600">Swap</text><text x="715" y="88" opacity=".75">pong becomes ping</text>
+    <text x="905" y="70" font-weight="600">Composite</text><text x="905" y="88" opacity=".75">bilinear upsample</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5" fill="none">
+    <line x1="150" y1="75" x2="196" y2="75" marker-end="url(#a5)"/>
+    <line x1="420" y1="75" x2="466" y2="75" marker-end="url(#a5)"/>
+    <line x1="150" y1="195" x2="196" y2="195" marker-end="url(#a5)"/>
+    <path d="M420,195 H535 V114" marker-end="url(#a5)"/>
+    <line x1="600" y1="75" x2="646" y2="75" marker-end="url(#a5)"/>
+    <line x1="780" y1="75" x2="826" y2="75" marker-end="url(#a5)"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="11.5" fill="currentColor" opacity=".85" text-anchor="middle">
+    <text x="173" y="67">read</text><text x="443" y="67">write</text><text x="173" y="187">decode</text><text x="480" y="188">draw over</text><text x="805" y="67">sample</text>
+  </g>
+</svg>
+<figcaption>Figure 5. One advance. The engine does passes 1 and 2 only when the UI recorded the slice again (a new advance serial). On a composite-only turn, the engine composites pong again and does not decay it twice.</figcaption>
+</figure>
+<figure>
+<svg viewBox="0 0 1000 230" role="img" aria-label="Feedback lifecycle: unleased, live while the UI records, settle for settleTurns after the UI stops, parked with pinned surfaces, and released through the fenced retire queue when the slice leaves.">
+  <defs><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g fill="none" stroke-width="1.5">
+    <rect x="20" y="80" width="130" height="50" rx="25" stroke="currentColor"/>
+    <rect x="230" y="80" width="130" height="50" rx="25" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="450" y="80" width="150" height="50" rx="25" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="690" y="80" width="130" height="50" rx="25" stroke="var(--new)" fill="var(--new-soft)"/>
+    <rect x="450" y="170" width="150" height="46" rx="23" stroke="currentColor"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="12.5" fill="currentColor" text-anchor="middle" font-weight="600">
+    <text x="85" y="110">Unleased</text><text x="295" y="110">Live</text><text x="525" y="110">Settle</text><text x="755" y="110">Parked</text><text x="525" y="198">Released</text>
+  </g>
+  <g stroke="currentColor" stroke-width="1.5" fill="none">
+    <line x1="150" y1="105" x2="226" y2="105" marker-end="url(#a6)"/>
+    <line x1="360" y1="98" x2="446" y2="98" marker-end="url(#a6)"/>
+    <line x1="600" y1="98" x2="686" y2="98" marker-end="url(#a6)"/>
+    <path d="M755,80 V44 H295 V76" marker-end="url(#a6)"/>
+    <path d="M820,118 V193 H604" marker-end="url(#a6)"/>
+    <path d="M295,130 V193 H446" marker-end="url(#a6)"/>
+    <path d="M85,130 V160" stroke-dasharray="4 4"/>
+  </g>
+  <g font-family="Segoe UI, system-ui, sans-serif" font-size="11.5" fill="currentColor" opacity=".85" text-anchor="middle">
+    <text x="188" y="98">slice appears</text><text x="403" y="90">UI stops recording</text><text x="643" y="90">settleTurns done</text>
+    <text x="525" y="38">UI records again (gap &gt; 2 s: clear first)</text>
+    <text x="870" y="160">slice gone one turn</text><text x="370" y="186">slice gone</text>
+    <text x="85" y="176">device lost → here</text>
+  </g>
+</svg>
+<figcaption>Figure 6. The feedback lifecycle. After the UI stops, the trail advances <code>settleTurns = ⌈ln(1/255) / ln(1 − Decay)⌉</code> more times (maximum 240). Then the engine parks. The surfaces stay pinned, so a resume continues the trail.</figcaption>
+</figure>
+<dl style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 14px;font-size:14px">
+<dt style="color:var(--muted)">API</dt><dd style="margin:0"><code>BoxEl.Feedback : FeedbackSpec(Decay, RasterScale = 0.5, FadeTo, Fresh)</code>, <code>Prop&lt;Affine2D&gt; FeedbackTransform</code>, <code>Prop&lt;float&gt; FeedbackDecay</code>. A feedback node is a repaint boundary with no tiles.</dd>
+<dt style="color:var(--muted)">Surfaces</dt><dd style="margin:0">The render thread leases two surfaces from <code>SurfacePool</code> and pins them. The idle trim does not touch pinned surfaces. The engine releases them through the fenced retire queue.</dd>
+<dt style="color:var(--muted)">Frame rate</dt><dd style="margin:0">The engine applies <code>Decay</code> per advance. The app must scale <code>Decay</code> by <code>dt / 16.7 ms</code>. Then the trail looks the same at 60 Hz and at 144 Hz.</dd>
+<dt style="color:var(--muted)">Format</dt><dd style="margin:0">BGRA8 only. The dither and <code>FadeTo</code> stop 8-bit residue. F16 is the fallback if dark trails show banding.</dd>
+<dt style="color:var(--muted)">Resize, DPI</dt><dd style="margin:0">The engine releases a pair with a changed size and leases a new empty pair. The trail restarts for one frame.</dd>
+<dt style="color:var(--muted)">Device lost</dt><dd style="margin:0">The engine drops the table with the other surfaces and rebuilds it empty.</dd>
+</dl>
+<div class="tw"><table>
+<thead><tr><th>Window</th><th>Full scale</th><th>0.5 (default)</th><th>0.25</th></tr></thead>
+<tbody>
+<tr><td>1920 × 1080</td><td>16.6 MB</td><td>4.1 MB</td><td>1.0 MB</td></tr>
+<tr><td>3440 × 1440</td><td>39.6 MB</td><td>9.9 MB</td><td>2.5 MB</td></tr>
+</tbody></table></div>
+<p class="note">VRAM for one ping-pong pair = 2 × W × H × 4 / down². A new budget term <code>TileBudget.FeedbackBytes</code> holds it. If a request is too large, the engine forces the next scale down and counts <code>feedback.forcedDown</code>.</p>
+</div>
+
+<div class="feat" id="f7"><h3>F7 · Governor-paceable frame clock</h3>
+<p>The adaptive GPU governor paces continuous motion to 30 fps when GPU time is too high. Today it never paces a <code>FrameClockPoller</code>. Thus a GPU-heavy visualizer always runs at the panel rate.</p>
+<dl>
+<dt>Mechanism</dt><dd><code>FrameClock.Subscribe(tick, paceable: true)</code> sets a new wake bit, <code>FrameClockPaceable</code>. This bit is not in <code>GpuGovernorWake.NeverPace</code>. It is in the PowerCap set.</dd>
+<dt>Users</dt><dd>The visualizer clock subscribes as paceable. Lyrics and scroll-linked pollers do not.</dd>
+<dt>Signal</dt><dd>A face reads <code>AppHost.GpuGovernorEngaged</code> to use fewer sprites. The design adds no new signal.</dd>
+</dl></div>
+
+<h2 id="detached">5. Detached windows</h2>
+<p>A pop-out window uses the <code>FullDirect</code> route. This route does not composite layers. Thus some effects fold flat there. The engine records each fold in the census.</p>
+<div class="tw"><table>
+<thead><tr><th>Effect</th><th>Primary window</th><th>Detached window</th></tr></thead>
+<tbody>
+<tr><td>Additive paint (F4)</td><td>Yes</td><td>Yes (it is a stream operation)</td></tr>
+<tr><td>Screen composite (F4)</td><td>Yes</td><td>Folds to source-over</td></tr>
+<tr><td>Feedback (F6)</td><td>Yes</td><td>Fresh content only, no trail. Drift looks like Tunnel.</td></tr>
+<tr><td>OpacityGroup, Blur, EdgeFade</td><td>Yes</td><td>Fold flat (today)</td></tr>
+<tr><td>Sprites (F5), Series v2 (F3), GradientMix (F2)</td><td>Yes</td><td>Yes</td></tr>
+</tbody></table></div>
+
+<h2 id="faces">6. Face matrix</h2>
+<div class="tw"><table>
+<thead><tr><th>Face</th><th>Today</th><th>Engine features</th></tr></thead>
+<tbody>
+<tr><td>Verse</td><td><span class="pill p-ok">OK</span></td><td>Blur via <code>AnimChannel.BlurSigma</code>; F2. Keep 12 or fewer blurred words (<code>EffectSliceCap</code> = 16).</td></tr>
+<tr><td>Bloom</td><td><span class="pill p-ok">OK</span></td><td>Radial gradients at <code>RasterScale</code> 0.25; F4 Screen; F2</td></tr>
+<tr><td>Bars</td><td><span class="pill p-warn">OK, compromise</span></td><td>F5 capsules (no corner distortion)</td></tr>
+<tr><td>Ring</td><td><span class="pill p-warn">OK, compromise</span></td><td>F5; ripples are bound Arc boxes</td></tr>
+<tr><td>Orbit</td><td><span class="pill p-ok">OK</span></td><td>Arc sweep by spring on <code>StrokeTrimEnd</code>; glow = blurred arc copy</td></tr>
+<tr><td>Aurora</td><td><span class="pill p-ok">OK</span></td><td>SeriesEl; F2</td></tr>
+<tr><td>Timeline</td><td><span class="pill p-warn">OK, compromise</span></td><td>F5: 360 capsules with a colour per instance</td></tr>
+<tr><td>Classic</td><td><span class="pill p-warn">OK, compromise</span></td><td>F5: 504 segments in one node</td></tr>
+<tr><td>Warp</td><td><span class="pill p-new">Blocked</span></td><td>F5 streaks; F4 additive; F6 optional</td></tr>
+<tr><td>Tunnel</td><td><span class="pill p-ok">OK</span></td><td>Bound Transform and Opacity</td></tr>
+<tr><td>Ambience</td><td><span class="pill p-warn">OK, compromise</span></td><td>F4 additive; F5 soft discs</td></tr>
+<tr><td>Kaleido</td><td><span class="pill p-warn">OK, compromise</span></td><td>F5</td></tr>
+<tr><td>Scope</td><td><span class="pill p-new">Blocked</span></td><td>F1 waveform; F3 AA stroke and axis gradient</td></tr>
+<tr><td>Drift</td><td><span class="pill p-new">Blocked</span></td><td>F6; F3 Polar</td></tr>
+<tr><td>Type</td><td><span class="pill p-ok">OK</span></td><td>Bound Transform under a clip</td></tr>
+<tr><td>Mosaic</td><td><span class="pill p-ok">OK</span></td><td>Bound Transform scaleX on wrappers; bound <code>Source</code> crossfade</td></tr>
+<tr><td>Spotlight</td><td><span class="pill p-ok">OK</span></td><td>Keyframed Transform on a wrapper (<code>ImageEl</code> has no transform of its own)</td></tr>
+<tr><td>Magneto</td><td><span class="pill p-new">Blocked</span></td><td>F5 discs and segments; F4 additive; nebula at <code>RasterScale</code></td></tr>
+<tr><td>Flow</td><td><span class="pill p-new">Blocked</span></td><td>F6; F3 Polar; F1 optional</td></tr>
+</tbody></table></div>
+
+<h2 id="perf">7. Performance budget</h2>
+<p>These values are estimates. The base is one measured value: an Adreno X1-85 iGPU rasters one tile, with the composite, in about 0.3 ms.
+A full-screen face re-rasters all its tiles on each tick. Thus the floor is about 2 ms at 1080p and 4 ms at 3440 × 1440 on an iGPU.</p>
+<p><b>Target:</b> each face uses 6 ms or less on an iGPU at 3440 × 1440, and 3 ms or less at 1080p. The governor engages at 10 ms.</p>
+<div class="tw"><table>
+<thead><tr><th>Face</th><th>Nodes</th><th>iGPU 1080p / 3440 (ms)</th><th>dGPU (ms)</th><th>Weak-GPU change</th></tr></thead>
+<tbody>
+<tr><td>Verse</td><td>~35</td><td>2.5 / 4.5</td><td>0.5 / 0.9</td><td>No landing blur</td></tr>
+<tr><td>Bloom</td><td>6</td><td>2.3 / 4.4</td><td>0.4 / 0.8</td><td>RasterScale 0.125</td></tr>
+<tr><td>Bars, Ring, Aurora, Timeline, Kaleido, Tunnel</td><td>1–14</td><td>2.1 / 4.1</td><td>0.35 / 0.7</td><td>None</td></tr>
+<tr><td>Orbit</td><td>~10</td><td>2.4 / 4.6</td><td>0.4 / 0.8</td><td>No glow copies</td></tr>
+<tr><td>Classic</td><td>1</td><td>2.2 / 4.2</td><td>0.35 / 0.7</td><td>No glow plate</td></tr>
+<tr><td>Warp</td><td>1</td><td>2.1 / 4.1</td><td>0.35 / 0.7</td><td>120 streaks</td></tr>
+<tr><td>Ambience</td><td>1</td><td>2.3 / 4.5</td><td>0.4 / 0.75</td><td>20 orbs</td></tr>
+<tr><td>Scope</td><td>2</td><td>2.4 / 4.6</td><td>0.4 / 0.8</td><td>Glow at RasterScale only</td></tr>
+<tr><td>Drift, Flow</td><td>2</td><td>3.0 / 5.6</td><td>0.5 / 1.0</td><td>RasterScale 0.25</td></tr>
+<tr><td>Type</td><td>~6</td><td>2.2 / 4.2</td><td>0.35 / 0.7</td><td>None</td></tr>
+<tr><td>Mosaic</td><td>~170</td><td>2.4 / 4.6</td><td>0.4 / 0.8</td><td>6 × 4 grid</td></tr>
+<tr><td>Spotlight</td><td>~8</td><td>2.6 / 5.0</td><td>0.4 / 0.85</td><td>None</td></tr>
+<tr><td>Magneto</td><td>3–4</td><td>2.4 / 4.6</td><td>0.4 / 0.8</td><td>48 particles, no rays</td></tr>
+</tbody></table></div>
+<ul>
+  <li>The tile floor is the largest cost. A face that does not paint the chrome rows saves one third of its tiles.</li>
+  <li>With F5, the UI thread does one copy of 32 KB or less and one slice record per tick.</li>
+  <li>The gallery must not show 19 live previews. Show 6 or fewer live previews. Freeze the other previews to a last frame.</li>
+  <li>VRAM at 3440 × 1440: 24 MiB of face tiles (budget 99 MiB) and 9.9 MB for one feedback pair.</li>
+</ul>
+
+<h2 id="tests">8. Tests and gates</h2>
+<h3>Engine.Tests (headless, no device)</h3>
+<ul>
+  <li><code>DrawSpritesCmdTests</code>, <code>SetBlendCmdTests</code>: no managed references, size 1024 B or less, correct body size, correct bounds.</li>
+  <li><code>SpriteFieldBindTests</code>: copy, cap at 1024 with a drop count, version gate, zero allocation after warm-up.</li>
+  <li><code>SeriesPolarTests</code>, <code>SeriesGradientAxisTests</code>, <code>GradientMixTests</code>.</li>
+  <li><code>SpectrumFluxTests</code>, <code>WaveformPublishTests</code>: no onset on a steady tone; one onset on a step; samples align with the band sequence.</li>
+  <li><code>FeedbackClockTests</code>: no skip while <code>feedbackLive</code>; correct settle count; the host parks after settle.</li>
+  <li><code>GovernorPaceableClockTests</code>: the governor paces a paceable poller only; PowerCap caps both.</li>
+</ul>
+<h3>VerticalSlice gates</h3>
+<div class="tw"><table>
+<thead><tr><th>Family</th><th>Gates</th></tr></thead>
+<tbody>
+<tr><td>sprites</td><td><code>record.chunks</code>, <code>record.bounds</code>, <code>record.kernels</code>, <code>bound.zero-alloc</code>, <code>bound.draws</code>, <code>cap-drops-counted</code>, <code>stream.size</code></td></tr>
+<tr><td>blend</td><td><code>op.run-break</code>, <code>inherits-subtree</code>, <code>screen.item</code>, <code>direct-route.screen-folds</code>, <code>alloc-zero</code></td></tr>
+<tr><td>series</td><td><code>polar.closed</code>, <code>gradient-axis</code>, <code>aa-halo</code></td></tr>
+<tr><td>gradient</td><td><code>mix.lerp</code>, <code>mix.no-relayout</code>, <code>mix.series</code></td></tr>
+<tr><td>audio</td><td><code>waveform.lease</code>, <code>waveform.aligned</code>, <code>flux.onset</code>, <code>flux.alloc-zero</code></td></tr>
+<tr><td>feedback</td><td><code>slice.no-tiles</code>, <code>item.kind</code>, <code>serial-advances-once-per-record</code>, <code>surface.pinned</code>, <code>surface.release-on-unmount</code>, <code>no-release-before-fence</code>, <code>skip-submit.live</code>, <code>settle-then-park</code>, <code>budget.forces-down</code>, <code>detached.folds-flat</code>, <code>alloc-zero</code>, <code>census-bytes</code></td></tr>
+<tr><td>pace</td><td><code>frameclock.paceable</code>, <code>frameclock.plain-never-paced</code></td></tr>
+<tr><td>lowres</td><td><code>blur-at-scale</code></td></tr>
+</tbody></table></div>
+<p>Each new draw operation touches eight dispatch sites. Run <code>gate.path.stream.sizes</code> first after each new operation. It is the only gate that finds a missed site.</p>
+<h3>Pixel checks (GPU)</h3>
+<ul>
+  <li>Additive sprites on a mid-grey plate equal plate + Σ, within 1/255.</li>
+  <li>A Screen item equals the CPU formula.</li>
+  <li>After N advances with no warp, one disc equals <code>(1 − decay)^N</code>, within the dither.</li>
+</ul>
+
+<h2 id="phases">9. Phases</h2>
+<div class="tw"><table>
+<thead><tr><th>Phase</th><th>Content</th><th>Size</th><th>Go / no-go gate</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>Land the in-flight <code>RasterScale</code> / <code>LowResDown</code> work (in this PR)</td><td>1 d</td><td>Debug and Release build clean; VerticalSlice passes; <code>gate.tiles.*</code>, <code>gate.layerpool.*</code> unchanged</td></tr>
+<tr><td>1</td><td>F1 waveform, flux, onset; F7 paceable clock</td><td>2 d</td><td><code>gate.audio.*</code>, <code>gate.pace.*</code>; Scope draws from <code>CopyWaveform</code> in <code>--fake</code> mode</td></tr>
+<tr><td>2</td><td>F2 GradientMix; F3 series lane v2</td><td>4 d</td><td><code>gate.gradient.*</code>, <code>gate.series.*</code>; palette blend with zero re-renders per frame</td></tr>
+<tr><td>3</td><td>F4 additive and Screen</td><td>3 d</td><td><code>gate.blend.*</code>; pixel identity; cold PSO compile +40 ms or less</td></tr>
+<tr><td>4</td><td>F5 SpriteFieldEl</td><td>5 d</td><td><code>gate.sprites.*</code>; Warp at 220 streaks with 1 UI write per tick and zero hot-phase allocation</td></tr>
+<tr><td>5</td><td>F6 feedback slice; blur at low resolution</td><td>7 d</td><td><code>gate.feedback.*</code>; Drift parks after pause; VRAM released on face change; pop-out shows Drift flat, never blank</td></tr>
+</tbody></table></div>
+
+<h2 id="rejected">10. Rejected features</h2>
+<div class="tw"><table>
+<thead><tr><th>Candidate</th><th>Decision</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Custom shader hook</td><td>Rejected</td><td>The headless device has no pixels, so a gate cannot test it. An opaque kernel cannot declare its raster halo, so retained tiles can show cut shapes. A PSO per app shader breaks the deduplicated pipeline set. Detached windows and a Metal port need each kernel twice.</td></tr>
+<tr><td>New glow primitive</td><td>Rejected</td><td>The in-flight <code>RasterScale</code> repaint boundary is the glow route. F6 adds blur at low resolution.</td></tr>
+<tr><td>Bound <code>GradientSpec</code></td><td>Rejected</td><td>It allocates on each fire. F2 replaces it.</td></tr>
+<tr><td>Stereo scope</td><td>Rejected</td><td>The RT tap downmixes. Stereo doubles the ring and changes the RT path for no face.</td></tr>
+<tr><td>Per-glyph text channels</td><td>Not in v1</td><td>Verse uses one <code>TextEl</code> for each word and <code>GlyphWipe</code> inside the word.</td></tr>
+<tr><td>F16 feedback</td><td>Not default</td><td>It doubles VRAM and needs a second pool format. Dither and <code>FadeTo</code> are the v1 answer.</td></tr>
+</tbody></table></div>
+
+<h2 id="questions">11. Open questions</h2>
+<ol>
+  <li>Feedback precision: use 8-bit with dither for v1, or add the F16 pool format now (+1.5 d)?</li>
+  <li>Must the visualizer clock be governor-paceable by default? Recommendation: yes. Then a weak GPU slows the face, not the full app.</li>
+  <li>Pop-out windows: accept the flat fold-downs, or add composite support for secondary targets later?</li>
+  <li>Palette moments: use the Spotify 8-bar downbeat with flux as fallback, or use flux for all tracks?</li>
+</ol>
+<p class="note">Source documents: the engine plan (<code>viz-engine-plan.md</code>), the app plan (<code>viz-app-plan.md</code>) and the Verse plan (<code>verse-plan.md</code>). Written in ASD-STE100 Simplified Technical English. Code names, units and file names are technical names.</p>
+</main>
+</div>

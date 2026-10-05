@@ -20,6 +20,7 @@
 //   THE RECENCY SIDECAR IS MAX-MERGE. A stamp never moves backwards, so a server history older than a local play
 //   cannot demote an artist you just listened to.
 
+using System.Text.Json;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -382,4 +383,42 @@ public class ShellUiStateTests
     [Fact]
     public void The_docked_cap_starts_at_the_sixteen_by_nine_floor_of_the_default_rail()
         => Assert.Equal(Shell.DockedVideoNaturalH(Shell.RailDefaultW), Shell.Ui.DockedVideoHeight.Peek(), 3);
+}
+
+[Collection(ShellHostCollection.Name)]
+public class PlayRecencyStreamTests : IDisposable
+{
+    readonly string _dir = Path.Combine(Path.GetTempPath(), "wavee-recency-" + Guid.NewGuid().ToString("N")[..8]);
+
+    public PlayRecencyStreamTests()
+    {
+        Directory.CreateDirectory(_dir);
+        Shell.PlayLog.UsePath(Path.Combine(_dir, "play-log.json"));
+        Shell.PlayLog.Clear();
+    }
+
+    public void Dispose()
+    {
+        Shell.PlayLog.Clear();
+        try { Directory.Delete(_dir, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }   // a background sidecar save may still hold the file
+        GC.SuppressFinalize(this);
+    }
+
+    [Fact]
+    public void The_streamed_sidecar_is_a_json_object_the_play_log_reads_back()
+    {
+        var pairs = new KeyValuePair<string, long>[4096];
+        for (int i = 0; i < pairs.Length; i++)
+            pairs[i] = new("spotify:track:" + i.ToString("D22", System.Globalization.CultureInfo.InvariantCulture), 1_000_000L + i);
+        pairs[7] = new("spotify:artist:\"quoted\"+<odd>", 42);   // escaping survives the round trip
+
+        using (var file = File.Create(Path.Combine(_dir, "play-recency.json"))) Shell.PlayLog.WriteRecency(file, pairs);
+
+        using (var doc = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(_dir, "play-recency.json"))))
+            Assert.Equal(pairs.Length, doc.RootElement.EnumerateObject().Count());
+
+        Shell.PlayLog.Load();
+        Assert.Equal(42L, Shell.PlayLog.Recency["spotify:artist:\"quoted\"+<odd>"]);
+        Assert.Equal(1_000_000L + 4095, Shell.PlayLog.Recency[pairs[4095].Key]);
+    }
 }

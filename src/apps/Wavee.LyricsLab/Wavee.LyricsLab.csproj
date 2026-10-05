@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Lyrics alignment lab: dumps a track's lyrics candidates (every source) and its decrypted audio stream, so an
+       offline aligner can be measured against them. A JIT console tool, never shipped and not in Wavee.slnx. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wavee\Wavee.csproj" />
+  </ItemGroup>
+
+</Project>

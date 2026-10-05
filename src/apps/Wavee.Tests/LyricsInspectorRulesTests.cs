@@ -431,6 +431,96 @@ public class LyricsInspectorRulesTests
         Assert.DoesNotContain("prior × .05", text);
     }
 
+    // ── the on-device AI card and its report section ────────────────────────────────────────────────────────────────
+
+    static AiLyrics.Status AiStatus(bool enabled = true, AiLyrics.SetupPhase phase = AiLyrics.SetupPhase.Ready)
+        => AiLyrics.Status.Unknown with { Phase = phase, Availability = AiLyrics.Availability.Available, Enabled = enabled, NpuName = "Hexagon", NpuDriver = "31.0" };
+
+    static AiLyrics.JobInfo AiJob(string outcome, string track = "t1", string detail = "")
+        => new(track, "en", 40, 12, 240, 61.5, 3.14, 2.06, 6200, outcome == "cached", "results/t1.v1.json", outcome, detail);
+
+    static Diagnostics.LyricsReport.AiFacts Ai(AiLyrics.JobInfo? job = null, Lyrics.Doc? doc = null, AiLyrics.TrackStatus track = default,
+        AiLyrics.Status? status = null, long bytes = Diagnostics.LyricsReport.AiResultMissing)
+        => Diagnostics.LyricsReport.AiFactsFor("t1", status ?? AiStatus(), track, job, doc, "results/t1.v1.json", bytes);
+
+    static Lyrics.Doc Shown(bool generated, string provider = "amll", Lyrics.SyncKind sync = Lyrics.SyncKind.Line)
+        => new("t1", true, [L(1_000, "a", 1_900)], sync, provider, Generated: generated);
+
+    [Fact]
+    public void AiFacts_DropTheJobAndTrackStateOfAnotherTrack()
+    {
+        var f = Diagnostics.LyricsReport.AiFactsFor("t1", AiStatus(), new AiLyrics.TrackStatus("t2", AiLyrics.TrackPhase.Working,
+            AiLyrics.SkipReason.None, "en", 1, 2, 0, false), AiJob("working", track: "t2"), null, "p", -1);
+        Assert.Null(f.Job);
+        Assert.Null(f.Track);
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Idle, Diagnostics.LyricsReport.AiLineOf(f));
+    }
+
+    [Fact]
+    public void AiCard_Shows_WhenEnabled_OrWhenTheTrackHasAiData()
+    {
+        Assert.True(Diagnostics.LyricsReport.ShowsAi(Ai()));
+        var off = AiStatus(enabled: false, phase: AiLyrics.SetupPhase.Off);
+        Assert.False(Diagnostics.LyricsReport.ShowsAi(Ai(status: off)));
+        Assert.True(Diagnostics.LyricsReport.ShowsAi(Ai(status: off, doc: Shown(generated: true))));
+        Assert.True(Diagnostics.LyricsReport.ShowsAi(Ai(status: off, bytes: 1200)));
+        Assert.True(Diagnostics.LyricsReport.ShowsAi(Ai(status: off, job: AiJob("done"))));
+    }
+
+    [Fact]
+    public void AiLine_FollowsTheJob_TheDocumentOnScreen_AndTheTrackState()
+    {
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Working, Diagnostics.LyricsReport.AiLineOf(Ai(AiJob("working"), Shown(true))));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.OnScreen, Diagnostics.LyricsReport.AiLineOf(Ai(AiJob("done"), Shown(true))));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Cached, Diagnostics.LyricsReport.AiLineOf(Ai(AiJob("cached"), Shown(true))));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Replaced, Diagnostics.LyricsReport.AiLineOf(Ai(AiJob("done"), Shown(false))));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Failed, Diagnostics.LyricsReport.AiLineOf(Ai(AiJob("failed", detail: "IOException: x"))));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Cancelled, Diagnostics.LyricsReport.AiLineOf(Ai(AiJob("cancelled"))));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.NotReady,
+            Diagnostics.LyricsReport.AiLineOf(Ai(status: AiStatus(phase: AiLyrics.SetupPhase.NeedsSetup))));
+        var skipped = new AiLyrics.TrackStatus("t1", AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.TooLong, "en", 0, 4, 0, false);
+        var f = Ai(track: skipped);
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Skipped, Diagnostics.LyricsReport.AiLineOf(f));
+        Assert.Equal("TooLong", Diagnostics.LyricsReport.AiSkipReason(f));
+        Assert.Equal(Diagnostics.LyricsReport.AiInk.Grey, Diagnostics.LyricsReport.AiInkOf(Diagnostics.LyricsReport.AiLine.Skipped));
+    }
+
+    [Fact]
+    public void AiLine_PeopleMadeWordTiming_OutranksOurs_AndNamesItsProvider()
+    {
+        var stopped = Ai(AiJob("stopped", detail: "amll"), Shown(false, "amll", Lyrics.SyncKind.Syllable));
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Outranked, Diagnostics.LyricsReport.AiLineOf(stopped));
+        Assert.Equal("amll", Diagnostics.LyricsReport.AiProvider(stopped));
+
+        var already = new AiLyrics.TrackStatus("t1", AiLyrics.TrackPhase.Skipped, AiLyrics.SkipReason.AlreadyWordByWord, "en", 0, 4, 0, false);
+        var f = Ai(doc: Shown(false, "spotify", Lyrics.SyncKind.Syllable), track: already);
+        Assert.Equal(Diagnostics.LyricsReport.AiLine.Outranked, Diagnostics.LyricsReport.AiLineOf(f));
+        Assert.Equal("spotify", Diagnostics.LyricsReport.AiProvider(f));
+    }
+
+    [Fact]
+    public void AiNumbers_OneDecimal_AndDashWithoutAJob()
+    {
+        var f = Ai(AiJob("working"));
+        Assert.Equal(new Diagnostics.LyricsReport.AiProgress("12", "40", "61.5", "240.0"), Diagnostics.LyricsReport.AiProgressOf(f));
+        Assert.Equal(new Diagnostics.LyricsReport.AiTimes("3.1", "2.1", "6.2", "en"), Diagnostics.LyricsReport.AiTimesOf(f));
+        Assert.Equal(new Diagnostics.LyricsReport.AiTimes("—", "—", "—", "—"), Diagnostics.LyricsReport.AiTimesOf(Ai()));
+    }
+
+    [Fact]
+    public void BuildReport_CarriesTheAiSection_OnlyWhenGivenItsFacts()
+    {
+        Assert.DoesNotContain("## on-device ai", Diagnostics.LyricsReport.BuildReport("t1", null, null));
+        string text = Diagnostics.LyricsReport.BuildReport("t1", null, null, Ai(AiJob("done"), Shown(true), bytes: 2048));
+        Assert.Contains("## on-device ai\nstate:   OnScreen   setup=Ready   enabled=True   pack=v1\n", text);
+        Assert.Contains("job:     done   lines=12/40   timed=61.5s of 240.0s   language=en\n", text);
+        Assert.Contains("times:   separate 3.1s · align 2.1s · total 6.2s   fromCache=False\n", text);
+        Assert.Contains("npu:     Hexagon   driver=31.0\n", text);
+        Assert.Contains("result:  results/t1.v1.json   2 KB\n", text);
+        Assert.Contains("doc:     provider amll   sync=Line   generated=True\n", text);
+        Assert.Contains("result:  results/t1.v1.json   (not saved)\n", Diagnostics.LyricsReport.BuildReport("t1", null, null, Ai()));
+    }
+
     // ── the bundle's names ──────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

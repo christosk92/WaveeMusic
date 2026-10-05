@@ -1061,8 +1061,11 @@ public sealed partial class YouTubeModule : WaveeModule
             throw new HttpRequestException($"the player endpoint answered {(int)response.StatusCode}");
         }
 
-        byte[] body = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-        YtPlayerResponse? parsed = JsonSerializer.Deserialize(body, YouTubeJsonContext.Default.YtPlayerResponse);
+        // Streamed into the deserializer: a player response runs to hundreds of KB, and a whole-body array of that size
+        // is a large-object-heap allocation per resolve.
+        await using Stream body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        YtPlayerResponse? parsed = await JsonSerializer.DeserializeAsync(body, YouTubeJsonContext.Default.YtPlayerResponse, ct)
+            .ConfigureAwait(false);
         AdoptVisitor(parsed?.ResponseContext?.VisitorData);
         return parsed;
     }
@@ -1170,8 +1173,10 @@ public sealed partial class YouTubeModule : WaveeModule
                 return null;
             }
 
-            byte[] body = await response.Content.ReadAsByteArrayAsync(ct).ConfigureAwait(false);
-            YtNextResponse? parsed = JsonSerializer.Deserialize(body, YouTubeJsonContext.Default.YtNextResponse);
+            // Streamed, like the player response: the watch-next document is the larger of the two.
+            await using Stream body = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+            YtNextResponse? parsed = await JsonSerializer.DeserializeAsync(body, YouTubeJsonContext.Default.YtNextResponse, ct)
+                .ConfigureAwait(false);
             AdoptVisitor(parsed?.ResponseContext?.VisitorData);
             WatchNextInfo? info = Digest(parsed);
             if (info is null) LogNextSkipped(videoId, "the next response carried no watch-next results");

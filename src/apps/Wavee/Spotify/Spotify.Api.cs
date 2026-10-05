@@ -41,7 +41,8 @@
 // drops the whole batch if the scope has moved. `Abandon` records the new epoch so a batch still walking its subjects
 // stops sending the moment its scope is gone.
 //
-// ALLOCATION, HONESTLY. A network call allocates: one path string, one `HttpRequestMessage`, one response `byte[]`,
+// ALLOCATION, HONESTLY. A network call allocates: one path string, one `HttpRequestMessage`, one response `byte[]`
+// (none at all when the caller only decodes it: the fetch provider LENDS its answers from a pool, Platform/Bodies.cs),
 // and for the metadata POST one uri string per row (`FetchBatch.Uri`, the door Wave 1 wrote for exactly this, free
 // for a text-form row). P8's "zero allocations after warm-up" is a CORE rule and a shell that opens a socket is not
 // on that path. What this file refuses is the 0.2.9 shape: three dictionaries and a `StringBuilder` per call, on
@@ -72,12 +73,20 @@ public static partial class Spotify
         ///
         /// <para><see cref="Status"/> 0 means the request never reached a server (DNS, socket, timeout, cancellation).
         /// <see cref="Fetch.Retryable"/> already treats 0 as retryable, which is why a transport failure is a status
-        /// here and not an exception.</para></summary>
+        /// here and not an exception.</para>
+        ///
+        /// <para>LENT BODIES (Platform/Bodies.cs). A request sent while its thread holds a <see cref="Bodies.Lend"/> scope
+        /// reads its answer into a pooled buffer instead of an array: <see cref="Bytes"/> and <see cref="Length"/> read it
+        /// in place, and the scope's end returns it. <see cref="Body"/> stays an array the caller may keep — for a lent
+        /// answer it is an exact COPY, made once — so a decoder that only reads takes <see cref="Bytes"/>.</para></summary>
         public readonly struct Result
         {
             public readonly int Status;
-            /// <summary>The response body. Never null; empty for a 204/304 or a transport failure.</summary>
-            public readonly byte[] Body;
+            readonly byte[]? _body;
+            readonly PooledBody? _lent;
+            /// <summary>The response body as an array the caller owns. Never null; empty for a 204/304 or a transport
+            /// failure. For a lent answer this is a copy — read <see cref="Bytes"/> to decode in place.</summary>
+            public byte[] Body => _lent is { } lent ? lent.ToOwned() : _body ?? [];
             /// <summary>The server's <c>Retry-After</c> in seconds, or 0. Handed to <see cref="Fetch.Failed"/>.</summary>
             public readonly int RetryAfterSeconds;
             /// <summary>The server's <c>ETag</c>, VERBATIM and never parsed (the content-filter one is
@@ -91,7 +100,7 @@ public static partial class Spotify
             public Result(int status, byte[] body, int retryAfterSeconds = 0, string? etag = null, int cacheMaxAgeSeconds = 0, bool cacheNoStore = false, bool cacheHasMaxAge = false)
             {
                 Status = status;
-                Body = body;
+                _body = body;
                 RetryAfterSeconds = retryAfterSeconds;
                 ETag = etag;
                 CacheMaxAgeSeconds = Math.Max(0, cacheMaxAgeSeconds);
@@ -99,13 +108,35 @@ public static partial class Spotify
                 CacheHasMaxAge = cacheHasMaxAge || cacheMaxAgeSeconds > 0;
             }
 
+            /// <summary>An answer whose body is LENT to the thread's open <see cref="Bodies.Lend"/> scope.</summary>
+            public Result(int status, PooledBody lent, int retryAfterSeconds = 0, string? etag = null, int cacheMaxAgeSeconds = 0, bool cacheNoStore = false, bool cacheHasMaxAge = false)
+                : this(status, [], retryAfterSeconds, etag, cacheMaxAgeSeconds, cacheNoStore, cacheHasMaxAge)
+                => _lent = lent;
+
             public bool Ok => Status is >= 200 and < 300;
             /// <summary>A conditional read the server answered "unchanged".</summary>
             public bool NotModified => Status == 304;
-            public ReadOnlySpan<byte> Bytes => Body;
+            /// <summary>The body, read in place — never a copy. A lent body is valid while its scope is open.</summary>
+            public ReadOnlySpan<byte> Bytes => _lent is { } lent ? lent.Span : _body;
+            /// <summary>The body's length, without the copy <see cref="Body"/> makes of a lent answer.</summary>
+            public int Length => _lent?.Length ?? _body?.Length ?? 0;
 
             /// <summary>The same answer with its body replaced — how a zstd frame becomes the message it wraps.</summary>
             public Result WithBody(byte[] body) => new(Status, body, RetryAfterSeconds, ETag, CacheMaxAgeSeconds, CacheNoStore, CacheHasMaxAge);
+
+            /// <summary>The same answer with a body the caller owns: itself when it already does, else the lent body's
+            /// copy — how an answer leaves the scope that lent it.</summary>
+            public Result Owned() => _lent is null ? this : WithBody(_lent.ToOwned());
+
+            /// <summary>An answer this thread built itself (<paramref name="message"/>, serialized), LENT to the open scope
+            /// rather than handed out as a fresh array — the metadata cache's rebuilt response.</summary>
+            internal static Result Lent(int status, IMessage message)
+            {
+                int size = message.CalculateSize();
+                PooledBody body = Bodies.RentLent(size, out Span<byte> into);
+                message.WriteTo(into);
+                return new Result(status, body);
+            }
 
             public static Result Transport => new(0, []);
         }
@@ -381,8 +412,8 @@ public static partial class Spotify
         {
             Result result = SendAuthed(route.Verb, BaseUrl(route.Host) + route.Path, route.Headers, route.Kind, body,
                 route.SyncReason, ct, ifNoneMatch: ifNoneMatch);
-            if (!route.Zstd || !IsZstd(result.Body)) return result;
-            return Unzstd(result.Body) is { } unwrapped ? result.WithBody(unwrapped) : new Result(0, [], 0, result.ETag);
+            if (!route.Zstd || !IsZstd(result.Bytes)) return result;
+            return Unzstd(result.Bytes) is { } unwrapped ? result.WithBody(unwrapped) : new Result(0, [], 0, result.ETag);
         }
 
         /// <summary>The ONE bearer-retry loop every send shares: a 401 re-mints once and goes again, and the second 401
@@ -435,7 +466,7 @@ public static partial class Spotify
                 // Stamp may mint credentials; re-check after that boundary before any authenticated bytes leave.
                 if (!AccountRequestIsCurrent()) return new Result(409, []);
                 using HttpResponseMessage response = Client.Send(message, HttpCompletionOption.ResponseHeadersRead, ct);
-                return new Result((int)response.StatusCode, ReadBody(response, ct), RetryAfter(response), ETagOf(response), (int)Math.Clamp(response.Headers.CacheControl?.MaxAge?.TotalSeconds ?? 0, 0, int.MaxValue), response.Headers.CacheControl?.NoStore == true, response.Headers.CacheControl?.MaxAge is not null);
+                return Answer(response, ct, headers: true);
             }
             catch (OperationCanceledException)
             {
@@ -472,13 +503,32 @@ public static partial class Spotify
                 HeaderSet.Bearer | HeaderSet.ClientToken | HeaderSet.AcceptLanguage, RequestKind.Custom, body, "", ct,
                 contentType, null, null, identity);
 
-        static byte[] ReadBody(HttpResponseMessage response, CancellationToken ct)
+        /// <summary>The response as a <see cref="Result"/>, its body read to the end (Platform/Bodies.cs): LENT when this
+        /// thread holds a <see cref="Bodies.Lend"/> scope — the decoder reads it in place and the scope returns it — else
+        /// ONE exact-size array. Never the old <c>MemoryStream</c> + <c>ToArray</c>, whose doubling left a dead 128K,
+        /// 256K, 512K … chain on the large-object heap for every answer past 64 KB, and then copied it once more.
+        /// <paramref name="headers"/> false keeps only the status, as <see cref="GetTextOnce"/> always has.</summary>
+        static Result Answer(HttpResponseMessage response, CancellationToken ct, bool headers)
         {
-            if (response.Content.Headers.ContentLength == 0) return [];
+            int status = (int)response.StatusCode;
+            int retryAfter = 0, maxAge = 0;
+            string? etag = null;
+            bool noStore = false, hasMaxAge = false;
+            if (headers)
+            {
+                retryAfter = RetryAfter(response);
+                etag = ETagOf(response);
+                CacheControlHeaderValue? cache = response.Headers.CacheControl;
+                maxAge = (int)Math.Clamp(cache?.MaxAge?.TotalSeconds ?? 0, 0, int.MaxValue);
+                noStore = cache?.NoStore == true;
+                hasMaxAge = cache?.MaxAge is not null;
+            }
+            long? length = response.Content.Headers.ContentLength;
+            if (length == 0) return new Result(status, [], retryAfter, etag, maxAge, noStore, hasMaxAge);
             using Stream stream = response.Content.ReadAsStream(ct);
-            using var buffer = new MemoryStream(4096);
-            stream.CopyTo(buffer);
-            return buffer.ToArray();
+            return Bodies.Lending
+                ? new Result(status, Bodies.ReadLent(stream, length), retryAfter, etag, maxAge, noStore, hasMaxAge)
+                : new Result(status, Bodies.ReadOwned(stream, length), retryAfter, etag, maxAge, noStore, hasMaxAge);
         }
 
         static int RetryAfter(HttpResponseMessage response)
@@ -722,7 +772,7 @@ public static partial class Spotify
         {
             if (body.Length == 0) return 0;
             Result result = MetadataPost(body, ct);
-            if (result.Ok && result.Body.Length > 0) Decode.ExtendedMetadata(result.Bytes, into);
+            if (result.Ok && result.Length > 0) Decode.ExtendedMetadata(result.Bytes, into);
             return result.Status;
         }
 
@@ -1001,6 +1051,11 @@ public static partial class Spotify
             Staging staging = Staging.Rent();
             staging.Epoch = batch.Epoch;
             var outcome = new FetchOutcome();
+            // Every answer below is decoded into the staging and dropped, so it is LENT (Platform/Bodies.cs): read into a
+            // pooled buffer, decoded in place, and returned when the batch is done — a page open no longer leaves its
+            // answers (the 806 KB home feed, multi-MB metadata batches) on the large-object heap. What a decoder keeps
+            // goes through `Result.Body`, which is a copy the staging may hold forever.
+            using Bodies.LendScope lent = Bodies.Lend();
             try
             {
                 if (batch.Subject == FetchSubject.Edge) AnswerEdge(batch, staging, ref outcome);
@@ -1051,6 +1106,7 @@ public static partial class Spotify
                 if (route.Transport == RouteTransport.Metadata) continue;
                 for (int i = 0; i < batch.Count; i++)
                 {
+                    using Bodies.LendScope lent = Bodies.Lend();   // this subject's answers go back to the pool before the next subject
                     if (Stale(batch)) return;
                     string uri = batch.Uri(i);
                     if (uri.Length == 0) continue;
@@ -1088,10 +1144,10 @@ public static partial class Spotify
             // "missed" three times and sealed) — the decoder, not the wire, dropped it; this line says so.
             if (batch.Kind == EntityKind.User && (s.StagedUsers?.Count ?? 0) == usersBefore && Log.IsEnabled(WaveeLogLevel.Info))
                 Log.Info("spotify", "kind15.staged-none ticket=" + batch.Ticket.ToString(System.Globalization.CultureInfo.InvariantCulture)
-                    + " bytes=" + result.Body.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    + " bytes=" + result.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             if (batch.Subject == FetchSubject.Entity && batch.Kind == EntityKind.User && kinds.IndexOf(FetchRoutes.UserProfile) >= 0)
-                ProfileFallback(uris, result.Body, s);
+                ProfileFallback(uris, result.Bytes, s);
         }
 
         /// <summary>The always-on <c>fetch.xm</c> line (2026-09-25): ONE line per extended-metadata POST the planner sent —
@@ -1112,7 +1168,7 @@ public static partial class Spotify
                 WaveeLogField.Of("attempt", batch.Attempt),
                 WaveeLogField.Of("status", result.Status),
                 WaveeLogField.Of("ms", (long)System.Diagnostics.Stopwatch.GetElapsedTime(sent).TotalMilliseconds),
-                WaveeLogField.Of("bytes", result.Body.Length),
+                WaveeLogField.Of("bytes", result.Length),
                 WaveeLogField.Of("uris", uris.Length),
             };
             var kindText = new StringBuilder();
@@ -1148,7 +1204,7 @@ public static partial class Spotify
             string url = BaseUrl(request.Host) + new string(request.Path);
             Result result = SendAuthed(Verb.Post, url, request.Headers | HeaderSet.GzipBody, RequestKind.ExtendedMetadata, body, "",
                 CancellationToken.None);
-            if (!result.Ok || result.Body.Length == 0) return (result.Status, null);
+            if (!result.Ok || result.Length == 0) return (result.Status, null);
             return (result.Status, XmAnswerSummary.Read(result.Bytes, uris, kinds, keepPayloads: true));
         }
 
@@ -1156,7 +1212,7 @@ public static partial class Spotify
         /// protobuf profile view (Spotify.Api.Profile.cs). Only 200 and 404 are answers, and neither decides the batch:
         /// kind 15 already did, and a REST outage must not re-POST the batch that succeeded — an unresolved user simply
         /// stays sealed for the scope.</summary>
-        static void ProfileFallback(string[] uris, byte[] response, Staging s)
+        static void ProfileFallback(string[] uris, ReadOnlySpan<byte> response, Staging s)
         {
             HashSet<string>? answered = null;
             foreach (string uri in uris)
@@ -1281,7 +1337,7 @@ public static partial class Spotify
             {
                 case SpclientRoute.PlaylistRead:
                     result = Playlist(IdOf(uri), ct);
-                    if (result.Ok && result.Body.Length > 0) PlaylistAnswer(result.Bytes, uri, s);
+                    if (result.Ok && result.Length > 0) PlaylistAnswer(result.Bytes, uri, s);
                     break;
                 case SpclientRoute.PermissionBase:
                     result = PlaylistPermissionBase(IdOf(uri), ct);
@@ -1297,7 +1353,7 @@ public static partial class Spotify
                     break;
                 case SpclientRoute.AudioAnalysis:
                     result = AudioAnalysis(IdOf(uri), ApiHost.Spclient, ct);
-                    if (result.Ok && result.Body.Length > 0) Decode.AudioAnalysis(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
+                    if (result.Ok && result.Length > 0) Decode.AudioAnalysis(result.Bytes, Encoding.UTF8.GetBytes(uri), s);
                     break;
                 case SpclientRoute.LikedContentFilters:
                     ContentFiltersAnswer(uri, s, ref outcome);
@@ -1786,7 +1842,7 @@ public static partial class Spotify
         {
             if (imageUris.Length == 0) return [];
             Result result = Pathfinder(Queries.DynamicColors, DynamicColorsBody(imageUris), ct);
-            if (!result.Ok || result.Body.Length == 0)
+            if (!result.Ok || result.Length == 0)
                 throw new HttpRequestException("getDynamicColorsByUris answered " + result.Status);
             using JsonDocument document = JsonDocument.Parse(result.Body);
             return Palette.ParseDynamicColors(document.RootElement, imageUris.Length);
@@ -2179,11 +2235,11 @@ public static partial class Spotify
                 Result r = AudioAnalysis(id, host, ct);
                 int beats = 0, bars = 0;
                 var keys = new System.Collections.Generic.List<string>(8);
-                bool json = r.Body.Length > 0 && ProbeWalk(r.Bytes, keys, ref beats, ref bars);
+                bool json = r.Length > 0 && ProbeWalk(r.Bytes, keys, ref beats, ref bars);
                 string verdict = r.Status == 200 && json && beats > 0 ? "A" : r.Status == 200 && json ? "B" : "C";
                 var sb = new System.Text.StringBuilder(256);
                 sb.Append("{\"ev\":\"analysis\",\"host\":\"").Append(host == ApiHost.Spclient ? "spclient" : "wg")
-                  .Append("\",\"status\":").Append(r.Status).Append(",\"bytes\":").Append(r.Body.Length)
+                  .Append("\",\"status\":").Append(r.Status).Append(",\"bytes\":").Append(r.Length)
                   .Append(",\"beats\":").Append(beats).Append(",\"bars\":").Append(bars).Append(",\"keys\":[");
                 for (int i = 0; i < keys.Count; i++)
                 {
@@ -2297,7 +2353,7 @@ public static partial class Spotify
             {
                 Result result = GetTextOnce(url, ct, out string? sentBearer);
                 if (result.Status == 401 && attempt == 0 && AccessToken(force: true, rejected: sentBearer) is not null) continue;
-                return result.Ok && result.Body.Length > 0 ? Encoding.UTF8.GetString(result.Body) : null;
+                return result.Ok && result.Length > 0 ? Encoding.UTF8.GetString(result.Bytes) : null;
             }
         }
 
@@ -2322,7 +2378,7 @@ public static partial class Spotify
                 h.TryAddWithoutValidation("Spotify-App-Version", Identity.AppVersion);
                 h.TryAddWithoutValidation("Accept", "application/json");
                 using HttpResponseMessage response = Client.Send(message, HttpCompletionOption.ResponseHeadersRead, ct);
-                return new Result((int)response.StatusCode, ReadBody(response, ct));
+                return Answer(response, ct, headers: false);
             }
             catch (OperationCanceledException)
             {

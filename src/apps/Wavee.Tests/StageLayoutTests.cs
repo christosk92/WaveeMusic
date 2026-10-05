@@ -1,4 +1,4 @@
-// ── Wavee.Tests/StageLayoutTests.cs — the fullscreen stage's allocator, mode rules, tone arithmetic and entry rule ─────
+// ── Wavee.Tests/StageLayoutTests.cs — the fullscreen stage's allocator, mode rules, face-safe rect, tone and entry ─────
 //
 // Replaces `StageTests.cs` (the wide⇄compact allocator, its height fold ladder, the scrim ladder and `Stage.Pane`, all
 // deleted with the old `Stage.cs`). `Stage.Layout` is now the four-ASPECT allocator of fullscreen-flagship-implementation.md
@@ -126,7 +126,8 @@ public class StageLayoutTests
     public void The_hero_is_the_prototypes_formula_quantised_and_clamped()
     {
         Assert.Equal(536f, L.Seed(1920f, 1080f).HeroArt);            // min(0.28·1920 = 537.6, 0.82·1080 − 340 = 545.6) → 536
-        Assert.Equal(640f, L.Seed(3440f, 1440f).HeroArt);            // Ultrawide 0.21·3440 = 722.4 → capped at HeroMax
+        Assert.Equal(892f, L.Seed(3440f, 1440f).HeroArt);            // Ultrawide min(0.26·3440 = 894.4, column 968) → 892
+        Assert.Equal(652f, L.Seed(2560f, 1080f).HeroArt);            // Ultrawide min(0.26·2560 = 665.6, column 652) — was 536
         Assert.Equal(248f, L.Seed(1280f, 720f).HeroArt);             // min(358.4, 0.82·720 − 340 = 250.4) = 250.4 → 248
         Assert.Equal(L.HeroMin, L.Seed(800f, 500f).HeroArt);         // a very short window → the floor (168)
         Assert.Equal(224f, L.Seed(900f, 1600f).HeroArt);             // Portrait: min(0.14·1600, 0.26·900) = 224
@@ -414,6 +415,66 @@ public class StageLayoutTests
             }
     }
 
+    [Fact]
+    public void Ultrawide_hero_takes_the_column_down_to_a_one_line_title_above_the_transport()
+    {
+        // The budget constant is the real block: TitleBlockH(Lyrics, 1) on a wide class.
+        Assert.Equal(L.HeroTitleBlock1H, L.Seed(2560f, 1080f).TitleBlockH(M.Lyrics, 1));
+
+        // 2560×1080 (a 5120×2160 panel at 200 %): the art grows from the board's 536 to 652 and the one-line block lands
+        // exactly on the transport gutter: 128 + 652 + 24 + 116 = 920 = 1080 − 24 − 112 − 24.
+        var uw = L.Seed(2560f, 1080f);
+        Assert.Equal(A.Ultrawide, uw.Aspect);
+        Assert.Equal(uw.TransportTop - L.Pad, uw.TitleY(M.Lyrics) + uw.TitleBlockH(M.Lyrics, 1));
+        Assert.Equal(1, uw.TitleMaxLines(M.Lyrics));                    // two would not clear the transport
+
+        // Everywhere the hero is above its floor, the one-line block clears the transport card.
+        for (float w = 1200f; w <= 6000f; w += 61f)
+            for (float h = 470f; h <= 2400f; h += 43f)
+            {
+                var l = L.Seed(w, h);
+                if (l.Aspect != A.Ultrawide || l.HeroArt <= L.HeroMin) continue;
+                Assert.True(l.TitleY(M.Lyrics) + l.TitleBlockH(M.Lyrics, 1) <= l.TransportTop - L.Pad, $"the one-line block reaches the transport at {w}×{h}");
+            }
+    }
+
+    [Fact]
+    public void Queue_rows_scale_with_a_big_stage_and_the_list_stops_short_of_the_pane()
+    {
+        Assert.Equal(1f, L.Seed(1920f, 1080f).QueueScale);               // the board: today's 56-DIP rows
+        Assert.Equal(1.25f, L.Seed(2560f, 1080f).QueueScale);            // min(PaneW / 1100 ≈ 1.4, 1080 / 864 = 1.25)
+        Assert.Equal(L.QueueScaleMax, L.Seed(3440f, 1440f).QueueScale);  // the ceiling
+        var uw = L.Seed(2560f, 1080f);
+        Assert.Equal(1100f * 1.25f, uw.QueueListMaxW);                   // the list stops at 1375 DIP of a ~1560-DIP pane
+
+        for (float w = 600f; w <= 6000f; w += 97f)
+            for (float h = 300f; h <= 2400f; h += 71f)
+            {
+                var l = L.Seed(w, h);
+                Assert.InRange(l.QueueScale, 1f, L.QueueScaleMax);
+                Assert.Equal(0f, l.QueueScale * 8f % 1f);                // eighths: a resize steps it rarely
+                Assert.True(l.QueueListMaxW <= l.PaneW + 0.01f);
+            }
+    }
+
+    [Fact]
+    public void Lyrics_type_grows_with_a_big_stage_and_keeps_the_board()
+    {
+        Assert.Equal(36f, L.Seed(1920f, 1080f).LyricsTypeSize);         // the board: a 1084 pane / 30 → 36, the authored size
+        Assert.Equal(1f, L.Seed(1920f, 1080f).LyricsTypeScale);
+        Assert.Equal(50f, L.Seed(2560f, 1080f).LyricsTypeSize);         // min(0.046·1080 = 49.7, 1568 / 30 = 52.3) → 50
+        Assert.Equal(64f, L.Seed(3440f, 1440f).LyricsTypeSize);         // min(0.046·1440 = 66.2, 2088 / 30 = 69.6) → the 64 ceiling
+        Assert.Equal(36f, L.Seed(1280f, 720f).LyricsTypeSize);          // small stages never shrink below the authored size
+
+        for (float w = 600f; w <= 6000f; w += 97f)
+            for (float h = 300f; h <= 2400f; h += 71f)
+            {
+                float s = L.Seed(w, h).LyricsTypeSize;
+                Assert.InRange(s, L.LyricsTypeMin, L.LyricsTypeMax);
+                Assert.Equal(0f, s % 2f);                                 // an even size, like the caption's
+            }
+    }
+
     // ── the top bar ─────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -640,13 +701,95 @@ public class StageLayoutTests
         Assert.Equal(M.Visualizer, m4);
         Assert.True(open4);
 
-        // ShowsCaption: over the face when asked for, in Lyrics mode when there is no pane — only with a timed line.
+        // ShowsCaption: over a face that leaves room for it when asked for, in Lyrics mode when there is no pane — only
+        // with a timed line. Never over Verse (its lyrics ARE the face), whatever the overlay says.
         foreach (var mode in new[] { M.Lyrics, M.Visualizer, M.Queue, M.Artist })
             foreach (bool overlay in new[] { false, true })
                 foreach (bool timed in new[] { false, true })
                     foreach (bool pane in new[] { false, true })
-                        Assert.Equal(timed && ((mode == M.Visualizer && overlay) || (mode == M.Lyrics && !pane)),
-                                     Stage.ModeRules.ShowsCaption(mode, overlay, timed, pane));
+                        foreach (var kind in new[] { Visualizer.Kind.Bloom, Visualizer.Kind.Verse, Visualizer.Kind.Timeline })
+                        {
+                            bool friendly = Visualizer.Catalog.CaptionFriendly(kind);
+                            Assert.Equal(timed && ((mode == M.Visualizer && overlay && friendly) || (mode == M.Lyrics && !pane)),
+                                         Stage.ModeRules.ShowsCaption(mode, overlay, timed, pane, kind));
+                        }
+        Assert.False(Stage.ModeRules.ShowsCaption(M.Visualizer, true, true, false, Visualizer.Kind.Verse));
+        Assert.True(Stage.ModeRules.ShowsCaption(M.Visualizer, true, true, false, Visualizer.Kind.Bloom));
+        Assert.True(Stage.ModeRules.ShowsCaption(M.Lyrics, false, true, false, Visualizer.Kind.Verse));   // the kind only gates the face's caption
+    }
+
+    [Fact]
+    public void ModeRules_face_keys_are_the_bracket_pair()
+    {
+        Assert.Equal(-1, Stage.ModeRules.FaceStep(Stage.ModeRules.PreviousFaceKey));
+        Assert.Equal(1, Stage.ModeRules.FaceStep(Stage.ModeRules.NextFaceKey));
+        Assert.Equal(0, Stage.ModeRules.FaceStep(FluentGpu.Foundation.Keys.G));
+        Assert.Equal(0, Stage.ModeRules.FaceStep(FluentGpu.Foundation.Keys.Left));   // ← stays the seek key
+        Assert.Equal(219, Stage.ModeRules.PreviousFaceKey);                         // VK_OEM_4 '['
+        Assert.Equal(221, Stage.ModeRules.NextFaceKey);                             // VK_OEM_6 ']'
+    }
+
+    // ── the face-safe rect ──────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void FaceSafe_clears_the_card_the_caption_and_the_transport_on_the_board()
+    {
+        var l = L.Seed(1920f, 1080f);
+        var open = l.FaceSafe(galleryOpen: true, captionShown: false);
+        Assert.Equal(0f, open.X);
+        Assert.Equal(1920f - (L.GalleryDesktopW + 2f * L.Pad), open.Right);              // left of the docked gallery (1428)
+        Assert.Equal(L.NowPlayingCardY + L.NowPlayingCardH + L.Pad, open.Y);              // 224: under the now-playing card
+        Assert.Equal(224f, open.Y);
+        Assert.Equal(l.TransportTop - L.Pad, open.Bottom);                                // above the transport's gutter
+
+        var closed = l.FaceSafe(galleryOpen: false, captionShown: false);
+        Assert.Equal(1920f, closed.Right);                                                // the whole width without the pane
+        Assert.Equal(open.Y, closed.Y);
+
+        var captioned = l.FaceSafe(galleryOpen: false, captionShown: true);
+        Assert.Equal(l.CaptionTopMin - L.Pad, captioned.Bottom);                           // the subject never sits under the words
+        Assert.True(captioned.Bottom < closed.Bottom);
+        Assert.Equal(captioned.Y + captioned.H * 0.5f, captioned.CentreY);
+    }
+
+    [Theory]
+    [InlineData(1920f, 1080f)]
+    [InlineData(2560f, 1080f)]
+    [InlineData(3440f, 1440f)]
+    [InlineData(1080f, 1920f)]
+    [InlineData(1100f, 440f)]
+    [InlineData(599f, 900f)]
+    public void FaceSafe_is_never_inverted_and_stays_on_the_stage(float w, float h)
+    {
+        var l = L.Seed(w, h);
+        foreach (bool gallery in new[] { false, true })
+            foreach (bool caption in new[] { false, true })
+            {
+                var r = l.FaceSafe(gallery, caption);
+                Assert.True(r.W >= 1f && r.H >= 1f, $"{l.Aspect} gallery={gallery} caption={caption}: {r}");
+                Assert.True(r.X >= 0f && r.Right <= w + 0.01f, $"{l.Aspect}: {r} leaves the width {w}");
+                Assert.True(r.Y >= L.TopBarH, $"{l.Aspect}: {r} reaches under the top bar");
+            }
+    }
+
+    [Fact]
+    public void FaceSafe_portrait_sheet_and_compact_strip()
+    {
+        // Portrait: the gallery is a bottom SHEET — the face keeps its width, the safe rect ends above the sheet
+        var p = L.Seed(1080f, 1920f);
+        Assert.Equal(A.Portrait, p.Aspect);
+        var sheet = p.FaceSafe(galleryOpen: true, captionShown: false);
+        Assert.Equal(1080f, sheet.Right);
+        Assert.Equal(p.SheetTop - L.Pad, sheet.Bottom);
+        Assert.True(sheet.Bottom < p.FaceSafe(galleryOpen: false, captionShown: false).Bottom);
+
+        // Compact: the strip right of the art (the transport's column), the top bar's gutter on top
+        var c = L.Seed(1100f, 440f);
+        Assert.Equal(A.Compact, c.Aspect);
+        var strip = c.FaceSafe(galleryOpen: true, captionShown: false);
+        Assert.Equal(c.TransportLeft, strip.X);
+        Assert.Equal(1100f - L.Pad, strip.Right);
+        Assert.Equal(L.TopBarH + L.Pad, strip.Y);
     }
 
     // ── entry ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -686,5 +829,21 @@ public class StageLayoutTests
         Assert.True(Stage.Tone.ScrimA > Stage.Tone.ScrimVisualizerA);
         Assert.True(Stage.Tone.BaseFieldVisualizerA > Stage.Tone.BaseFieldA);
         Assert.True(Stage.Tone.ScrimA < 1f && Stage.Tone.ScrimVisualizerA > 0f);
+
+        // Verse sits between the two (big words over a bright cover), and only in Visualizer mode
+        Assert.Equal(0.40f, Stage.Tone.ScrimVerseA);
+        Assert.True(Stage.Tone.ScrimVisualizerA < Stage.Tone.ScrimVerseA && Stage.Tone.ScrimVerseA < Stage.Tone.ScrimA);
+        Assert.Equal(Stage.Tone.ScrimVerseA, Stage.Tone.ScrimFor(M.Visualizer, Visualizer.Kind.Verse));
+        Assert.Equal(Stage.Tone.ScrimVisualizerA, Stage.Tone.ScrimFor(M.Visualizer, Visualizer.Kind.Bloom));
+        foreach (var mode in new[] { M.Lyrics, M.Queue, M.Artist })
+            Assert.Equal(Stage.Tone.ScrimA, Stage.Tone.ScrimFor(mode, Visualizer.Kind.Verse));
+    }
+
+    [Fact]
+    public void Tone_moment_fades_are_the_plans()
+    {
+        Assert.Equal(900f, Stage.Tone.MomentFadeMs);
+        Assert.Equal(1400f, Stage.Tone.MomentCalmFadeMs);
+        Assert.True(Stage.Tone.MomentFadeMs > Stage.Tone.CrossFadeMs);   // a moment is slower than a skip
     }
 }

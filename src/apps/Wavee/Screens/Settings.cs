@@ -131,6 +131,14 @@ public static partial class Settings
             // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither
             // is a setting any more. The blur dial is what is left of the section.
             new(Tab.Appearance, "Lyrics", "lyricsBlur", "Filter"),
+            // On-device AI lyrics (AiLyrics.UI.Settings.cs, plan ai-lyrics-sync-implementation.md §4.2): the card wears the
+            // Windows AI sparkle in every phase; the rest are the Ready expander's items.
+            new(Tab.Appearance, "Lyrics", "aiLyrics", "RefineSparkle"),
+            new(Tab.Appearance, "Lyrics", "aiWordSync", "Font"),
+            new(Tab.Appearance, "Lyrics", "aiPlainText", "Document"),
+            new(Tab.Appearance, "Lyrics", "aiBatterySaver", "Clock"),
+            new(Tab.Appearance, "Lyrics", "aiLanguages", "LocaleLanguage"),
+            new(Tab.Appearance, "Lyrics", "aiFiles", "Folder"),
             // The fullscreen stage's four settings (+ the visualizer pick), mirrored from its gallery. "TvMonitor" is the
             // section's own glyph, so none of the rows may reuse it.
             new(Tab.Appearance, "Fullscreen", "stageVisualizer", "Equalizer"),
@@ -138,6 +146,7 @@ public static partial class Settings
             new(Tab.Appearance, "Fullscreen", "stageLyricsOverlay", "Document"),
             new(Tab.Appearance, "Fullscreen", "stageSyncOffset", "Clock"),
             new(Tab.Appearance, "Fullscreen", "stageCalm", "RefineSparkle"),
+            new(Tab.Appearance, "Fullscreen", "stageMoments", "Brush"),
             new(Tab.Appearance, "Now playing", "npvPresentation", "Picture", DeveloperOnly: true),
             new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
 
@@ -182,6 +191,8 @@ public static partial class Settings
             // of the two deliberate gears (the other is Appearance/npvStyle). Cross-section repeats (Folder,
             // StatusWarning, Devices, Clock, Refresh) are allowed by N3.
             new(Tab.PrivacyDiagnostics, "Privacy", "whatLeaves", "Globe"),
+            // The "AI model download" fact inside What leaves this PC — the one fact item with a glyph (the feature's sparkle).
+            new(Tab.PrivacyDiagnostics, "Privacy", "whatLeavesAi", "RefineSparkle"),
             new(Tab.PrivacyDiagnostics, "Privacy", "crashReports", "StatusWarning"),
             new(Tab.PrivacyDiagnostics, "Privacy", "crashDump", "Camera"),
             new(Tab.PrivacyDiagnostics, "Privacy", "crashContents", "Info"),

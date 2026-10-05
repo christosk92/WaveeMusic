@@ -74,7 +74,7 @@ public static partial class Spotify
         public static Result ArtistPageAnswer(string artistUri, Staging s)
         {
             Result result = ArtistOverviewQuery(artistUri, CancellationToken.None);
-            if (result.Ok && result.Body.Length > 0) Decode.ArtistPage(result.Bytes, Encoding.UTF8.GetBytes(artistUri), s);
+            if (result.Ok && result.Length > 0) Decode.ArtistPage(result.Bytes, Encoding.UTF8.GetBytes(artistUri), s);
             return result;
         }
 
@@ -84,7 +84,7 @@ public static partial class Spotify
         public static Result DiscographyFacetAnswer(string artistUri, DiscoFacet facet, int offset, Staging s)
         {
             Result result = DiscographyFacetQuery(artistUri, facet, offset, DiscographyPageSize, CancellationToken.None);
-            if (result.Ok && result.Body.Length > 0)
+            if (result.Ok && result.Length > 0)
                 Decode.DiscographyFacet(result.Bytes, Encoding.UTF8.GetBytes(artistUri), facet, offset, s);
             return result;
         }
@@ -94,7 +94,7 @@ public static partial class Spotify
         public static Result NpvArtistAnswer(string artistUri, string trackUri, Staging s)
         {
             Result result = NpvArtist(artistUri, trackUri, CancellationToken.None);
-            if (result.Ok && result.Body.Length > 0) Decode.NpvArtist(result.Bytes, Encoding.UTF8.GetBytes(artistUri), s);
+            if (result.Ok && result.Length > 0) Decode.NpvArtist(result.Bytes, Encoding.UTF8.GetBytes(artistUri), s);
             return result;
         }
     }

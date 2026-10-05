@@ -85,13 +85,24 @@ public static partial class Lyrics
     /// per-scope side table `Lyrics.Host.cs` owns, keyed by track slot, behind `TrackFields.Lyrics`.</summary>
     /// <param name="Provider">The winning source's id — shown by the inspector, and part of the cache key.</param>
     /// <param name="OffsetMsApplied">What the reranker shifted every timestamp by to line up with the reference.</param>
+    /// <param name="Language">The lyric's language (ISO 639-1) when the source names it (Spotify's color-lyrics does);
+    /// the on-device aligner is chosen by it.</param>
+    /// <param name="Origin">For a derived document: the provider id it was built from.</param>
+    /// <param name="Generated">The timing (not the words) was generated on this PC by the on-device AI aligner.</param>
+    /// <param name="Override">A <paramref name="Generated"/> document the user chose for this song over the provider's
+    /// people-made word timing. Set only by `Lyrics.Store.Upgrade` (never by a source); <see cref="Authority.IsRicher"/>
+    /// then lets it displace human timing and keeps it until the user turns the choice off (the AI host re-fetches).</param>
     public sealed record Doc(
         string TrackId,
         bool IsSynced,
         IReadOnlyList<Line> Lines,
         SyncKind Sync = SyncKind.Line,
         string? Provider = null,
-        long OffsetMsApplied = 0)
+        long OffsetMsApplied = 0,
+        string? Language = null,
+        string? Origin = null,
+        bool Generated = false,
+        bool Override = false)
     {
         /// <summary>A document with no lines — what a miss publishes, and what an instrumental notice collapses to.</summary>
         public static Doc Empty(string trackId, string? provider = null)
@@ -249,6 +260,28 @@ public static partial class Lyrics
             if (!StringComparer.Ordinal.Equals(a.Translation ?? "", b.Translation ?? "")) return false;
             if (!StringComparer.Ordinal.Equals(a.Romanization ?? "", b.Romanization ?? "")) return false;
             return SameSyllables(a.Syllables, b.Syllables);
+        }
+
+        /// <summary>May a swap keep its unchanged rows (<see cref="ChangedRows"/>) instead of remounting the whole
+        /// document? Only for an on-device AI publish (either side <see cref="Doc.Generated"/>: the aligner times a few
+        /// lines per publish) on the same track with the same, non-zero line count. A provider promotion keeps the
+        /// whole-document swap.</summary>
+        public static bool PerRowSwap(Doc previous, Doc next)
+            => (previous.Generated || next.Generated) && next.Lines.Count > 0 && previous.Lines.Count == next.Lines.Count
+               && StringComparer.Ordinal.Equals(previous.TrackId, next.TrackId);
+
+        /// <summary>Per row: does the row mounted for <c>current.Lines[i]</c> survive <c>next.Lines[i]</c>? Writes
+        /// <c>changed[i] = !SameRow(current.Lines[i], next.Lines[i])</c> for every line, so a progressive upgrade that
+        /// times a few lines remounts only those rows. Equal line counts are required (the caller checks; a count change
+        /// is a whole-document change), and <paramref name="changed"/> must hold at least that many entries.</summary>
+        public static void ChangedRows(Doc current, Doc next, Span<bool> changed)
+        {
+            var a = current.Lines; var b = next.Lines;
+            if (a.Count != b.Count)
+                throw new ArgumentException("ChangedRows needs equal line counts (" + a.Count + " vs " + b.Count + ").", nameof(next));
+            if (changed.Length < a.Count)
+                throw new ArgumentException("The changed span is shorter than the line count.", nameof(changed));
+            for (int i = 0; i < a.Count; i++) changed[i] = !SameRow(a[i], b[i]);
         }
 
         static bool SameSyllables(IReadOnlyList<Syllable> a, IReadOnlyList<Syllable> b)
@@ -737,6 +770,89 @@ public static partial class Lyrics
 
         public static float EaseOutSine(float t) => MathF.Sin(t * MathF.PI * 0.5f);
 
+        /// <summary>The voice line's wipe from <paramref name="nowMs"/> to its end as LINEAR keyframes — the exact function
+        /// <see cref="ComputeSplit"/> (+ <see cref="LeadFrac"/> while 0 &lt; split &lt; 1 when <paramref name="lead"/>) is
+        /// piecewise linear in time between syllable edges, so sampling it at every edge (plus the lead's step at the first
+        /// syllable and the instant the lead reaches 1) reproduces it everywhere. The render thread poses it
+        /// (<c>AnimChannel.GlyphWipeSplit</c>) instead of the UI writing it every frame. <paramref name="endMs"/> = where
+        /// the wipe settles at 1; null when it already has (nothing left to animate).</summary>
+        public static FluentGpu.Animation.Keyframe[]? SplitKeyframes(Line line, long nowMs, bool lead, out long endMs)
+        {
+            var syl = line.Syllables;
+            endMs = syl.Count == 0 ? nowMs : syl[^1].EndMs;
+            if (syl.Count == 0 || endMs <= nowMs) return null;
+            var times = new List<long>(syl.Count * 2 + 4) { nowMs, endMs };
+            for (int i = 0; i < syl.Count; i++)
+            {
+                if (syl[i].StartMs > nowMs && syl[i].StartMs < endMs) times.Add(syl[i].StartMs);
+                if (syl[i].EndMs > nowMs && syl[i].EndMs < endMs) times.Add(syl[i].EndMs);
+            }
+            if (lead)
+            {
+                long first = syl[0].StartMs;
+                if (first + 1 > nowMs && first + 1 < endMs) times.Add(first + 1);   // the lead's step out of 0
+                // the instant split + lead reaches 1: inside the syllable whose sweep crosses 1 - LeadFrac
+                for (int i = 0; i < syl.Count; i++)
+                {
+                    float a0 = ComputeSplit(line, syl[i].StartMs), a1 = ComputeSplit(line, syl[i].EndMs);
+                    if (a0 < 1f - LeadFrac && a1 >= 1f - LeadFrac && a1 > a0)
+                    {
+                        // both whole-ms neighbours of the crossing: the segment up to the floor is exact, the ms after it clamps
+                        double at = syl[i].StartMs + (1.0 - LeadFrac - a0) / (a1 - a0) * (syl[i].EndMs - syl[i].StartMs);
+                        long lo = (long)Math.Floor(at), hi = (long)Math.Ceiling(at);
+                        if (lo > nowMs && lo < endMs) times.Add(lo);
+                        if (hi > nowMs && hi < endMs) times.Add(hi);
+                        break;
+                    }
+                }
+            }
+            times.Sort();
+            float span = endMs - nowMs;
+            var keys = new List<FluentGpu.Animation.Keyframe>(times.Count);
+            long last = long.MinValue;
+            foreach (long t in times)
+            {
+                if (t == last) continue;
+                last = t;
+                float v = ComputeSplit(line, t);
+                if (lead && v > 0f && v < 1f) v = Math.Clamp(v + LeadFrac, 0f, 1f);
+                keys.Add(new FluentGpu.Animation.Keyframe((t - nowMs) / span, v, FluentGpu.Foundation.Easing.Linear));
+            }
+            return keys.ToArray();
+        }
+
+        /// <summary>Is the voice line's halo envelope (<see cref="Glow.VoiceAlpha"/> on a word-synced line) changing at
+        /// <paramref name="nowMs"/>? Only while a HELD syllable ramps in, or melts out (its own last <see cref="GlowOutMs"/>
+        /// or the line's); between, it holds its plateau, and outside held syllables it is 0.</summary>
+        public static bool GlowMoving(Line line, long nowMs, long lineEndMs)
+        {
+            foreach (var s in line.Syllables)
+            {
+                if (nowMs < s.StartMs) break;
+                if (nowMs >= s.EndMs) continue;
+                long dur = s.EndMs - s.StartMs;
+                if (dur < HeldGlowMinMs) return false;
+                float rampIn = MathF.Min(HeldGlowRampMaxMs, dur * 0.5f);
+                return nowMs < s.StartMs + rampIn || nowMs >= s.EndMs - GlowOutMs || nowMs >= lineEndMs - GlowOutMs;
+            }
+            return false;
+        }
+
+        /// <summary>The next media instant after <paramref name="nowMs"/> at which <see cref="GlowMoving"/> turns true on
+        /// this line, or <see cref="MotionDemand.None"/>.</summary>
+        public static long NextGlowEdgeMs(Line line, long nowMs, long lineEndMs)
+        {
+            long next = MotionDemand.None;
+            foreach (var s in line.Syllables)
+            {
+                if (s.EndMs - s.StartMs < HeldGlowMinMs || s.EndMs <= nowMs) continue;
+                if (s.StartMs > nowMs) next = Math.Min(next, s.StartMs);
+                long melt = Math.Min(s.EndMs - (long)GlowOutMs, lineEndMs - (long)GlowOutMs);
+                if (melt > nowMs) next = Math.Min(next, melt);
+            }
+            return next;
+        }
+
         /// <summary>THE GLOW RULE, as a value: a halo σ may NEVER nest inside a depth-of-field σ — a nested blur layer
         /// is exactly what the compositor's pin key refuses, so the voice row went pin-INELIGIBLE through the whole
         /// lead window and the out-fade after it, i.e. at every line handoff. Fixed by RULE, not by trimming
@@ -1094,15 +1210,43 @@ public static partial class Lyrics
             return n;
         }
 
-        /// <summary>A higher rank wins outright; an EQUAL rank is broken by total syllable COUNT; a LOWER rank is
-        /// refused.</summary>
+        /// <summary>The user's choice comes first: a generated <see cref="Doc.Override"/> document replaces anything
+        /// (an earlier revision of itself included), and one in place is replaced by nothing else — not by people-made
+        /// timing from a background provider pass — until the choice is turned off. Otherwise a higher rank wins
+        /// outright; a LOWER rank is refused; an equal rank below the word tier is refused. Inside the word tier
+        /// (rank 3) the ties break in this order:
+        /// <list type="number">
+        /// <item>Human word timing (<see cref="Doc.Generated"/> false) outranks generated word timing whatever the
+        /// counts: a human document replaces a generated one, and a generated one never displaces a human one.</item>
+        /// <item>A later revision of the SAME generated document (both generated, ordinal-equal
+        /// <see cref="Doc.Provider"/>) replaces the earlier one at an equal or higher syllable count: the on-device
+        /// aligner publishes progressively, then once more after its final snap/fill pass, and that last publish may
+        /// time no new word.</item>
+        /// <item>Otherwise the strictly higher total syllable COUNT wins; a tie is refused.</item>
+        /// </list></summary>
         public static bool IsRicher(Doc next, Doc current)
         {
+            if (next is { Generated: true, Override: true }) return true;
+            if (current is { Generated: true, Override: true }) return false;
             int nr = Richness(next), cr = Richness(current);
             if (nr != cr) return nr > cr;
             if (nr < 3) return false;
-            return SyllableCount(next) > SyllableCount(current);
+            // Human word timing outranks generated word timing, whatever the counts; generated never displaces human.
+            if (current.Generated && !next.Generated) return true;
+            if (!current.Generated && next.Generated) return false;
+            int ns = SyllableCount(next), cs = SyllableCount(current);
+            // A later revision of the SAME generated document (the aligner publishes progressively, then once more after
+            // its final snap/fill pass) replaces the earlier one even when no new word was timed.
+            if (next.Generated && current.Generated && string.Equals(next.Provider, current.Provider, StringComparison.Ordinal))
+                return ns >= cs;
+            return ns > cs;
         }
+
+        /// <summary>Does an aggregator promotion (a background provider pass) take the store's slot? Always, except
+        /// over the user's AI choice (<see cref="Doc.Override"/>), which only a richer document by
+        /// <see cref="IsRicher"/> — i.e. another override — may replace.</summary>
+        public static bool PromotionReplaces(Doc? next, Doc? current)
+            => current is not { Generated: true, Override: true } || (next is not null && IsRicher(next, current));
 
         /// <summary>May the upgrade be applied RIGHT NOW, or must it be held until the next handoff? Held only while a
         /// timed document is playing and the reader is mid-line.</summary>
@@ -1183,6 +1327,12 @@ public static partial class Lyrics
     {
         /// <summary>A single-line row: line box + the two vertical pads (the inter-line gap is 2 × pad).</summary>
         public float Estimate => LineHeight + 2f * RowPad;
+
+        /// <summary>The type and its rhythm (size, line, pads) scaled by <paramref name="k"/> and rounded to whole DIPs —
+        /// the big-stage growth (<c>Stage.Layout.LyricsTypeScale</c>). The side gutter is a frame, not type: unchanged.
+        /// Exactly this row at <paramref name="k"/> = 1.</summary>
+        public RowMetrics Scaled(float k) => k == 1f ? this
+            : this with { FontSize = MathF.Round(FontSize * k), LineHeight = MathF.Round(LineHeight * k), RowPad = MathF.Round(RowPad * k) };
     }
 
     /// <summary>The fixed metrics of the two surfaces (the 340-DIP rail and the immersive stage) — one table, so the
