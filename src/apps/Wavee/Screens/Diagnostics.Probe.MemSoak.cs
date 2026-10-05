@@ -40,6 +40,9 @@ public static partial class Diagnostics
         static bool TryMemSoak(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
             if (!s_options.MemSoak) return false;
+            // The soak navigates the fake catalog's ids; against a real account it would fetch and cache whatever those
+            // ids resolve to under the user's own profile. Refused, not degraded.
+            if (!Platform.Args.Fake) { Say("[mem-soak] needs --fake (it visits the fake catalog's pages)"); return true; }
             if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[mem-soak] unavailable: requires Win32Window + D3D12Device"); return true; }
             if (!WarmUntilShell(host, w, gpu, 600)) { Say("[mem-soak] the shell never activated a route"); return true; }
 
@@ -81,6 +84,13 @@ public static partial class Diagnostics
             }
             Phase("after-soak");
 
+            // The governor's background request, under this process's real GC settings (ConserveMemory, SustainedLowLatency):
+            // does the runtime run it concurrently, or as a blocking collection? A blocking one must never run while audible.
+            bool ranBlocking = Residency.RequestBackgroundGen2(out double requestPauseMs);
+            PumpPaced(host, w, 3.0);   // let the background collection finish beside the frames
+            Phase("background-request blocking=" + ranBlocking + " pauseMs=" + requestPauseMs.ToString("0.0", CultureInfo.InvariantCulture)
+                + " lastBlockingGc=" + GC.GetGCMemoryInfo(GCKind.FullBlocking).Index + " lastBackgroundGc=" + GC.GetGCMemoryInfo(GCKind.Background).Index);
+
             // `--mem-soak-minimize`: idle the way an owner leaves the app — minimized — which is when the governor may
             // compact (Residency.Heap.cs). Restored before the dump so the dump window behaves like the plain run.
             if (s_options.MemSoakMinimize) ShowWindow(w.Handle.Value, 6 /*SW_MINIMIZE*/);
@@ -95,7 +105,7 @@ public static partial class Diagnostics
             Say("[mem-soak] dump window open: pid=" + Environment.ProcessId + " (waiting for " + done + ")");
             var sw = Stopwatch.StartNew();
             while (!w.IsClosed && !File.Exists(done) && sw.Elapsed.TotalSeconds < 120) PumpPaced(host, w, 0.5);
-            try { File.Delete(ready); } catch (IOException) { }
+            try { File.Delete(ready); File.Delete(done); } catch (IOException) { }
             Phase("after-dump");
 
             TimeSpan pause0 = GC.GetTotalPauseDuration();
@@ -158,7 +168,8 @@ public static partial class Diagnostics
 
         static string Mb(long bytes) => (bytes / 1048576.0).ToString("0.0", CultureInfo.InvariantCulture);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        static extern bool ShowWindow(nint hwnd, int cmd);
+        [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        private static partial bool ShowWindow(nint hwnd, int cmd);
     }
 }
