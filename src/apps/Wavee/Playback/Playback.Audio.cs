@@ -1131,13 +1131,14 @@ public static partial class Playback
             PcmAudioSession? session;
             IMediaByteSource? bytes, retiring, join, prep;
             IPreparedItem? prepared;
-            bool wasSilent;
+            bool wasSilent, audible;
             GlitchLedger.Snapshot summary = default;
             EntityId summaryTrack = default;
             lock (s_gate)
             {
                 session = s_session;
                 wasSilent = s_silent;
+                audible = s_lastState is PlaybackState.Playing or PlaybackState.Buffering;
                 bytes = s_bytes;
                 retiring = s_retiringBytes;
                 join = s_joinBytes;
@@ -1171,6 +1172,14 @@ public static partial class Playback
                 LogSessionSummary(in summary, summaryTrack);
                 session.DeviceFormatChanged -= OnDeviceFormatChanged;
                 session.DeviceRebuilt -= OnDeviceRebuilt;
+            }
+            if (audible && session is not null)
+            {
+                // A track change opens the next song while this session still plays: it holds ~500 ms of decoded PCM,
+                // so without this the old song ran on through the whole open and was then cut mid-waveform (a click).
+                // Fade it to silence and stop the endpoint now; bounded, because a wedged session must not stall the load.
+                try { await session.FadeOutAsync(TimeSpan.FromMilliseconds(15)).AsTask().WaitAsync(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); }
+                catch { }
             }
             if (prepared is not null) { try { await prepared.DisposeAsync().ConfigureAwait(false); } catch { } }
             if (wasSilent && session is not null)
