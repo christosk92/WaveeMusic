@@ -804,22 +804,24 @@ public static partial class Controls
             int index = p.Index;
             EqMode mode = p.Mode;
             float rest = p.Rest;
+            bool moving = mode != EqMode.Rest;
+            // The loop is seeded ONCE per entry into motion (the three bars in the same layout pass, so they share a phase);
+            // Rest settles the exact authored scale (a 1 ms constant track: it lands on its value and frees itself).
             UseLayoutEffect(() =>
             {
                 if (Context.Anim is not { } anim || Context.HostNode.IsNull) return;
                 NodeHandle node = Context.HostNode;
-                if (mode == EqMode.Loop)
-                {
-                    anim.Keyframes(node, AnimChannel.ScaleY, LoopKeys[index], LoopMs, loop: true, snapToDevicePixels: true);
-                    return;
-                }
-                // Freeze holds the pixel the bar stands on (its live track value, snapped as it was posed); Rest settles
-                // the exact authored scale. A 1 ms constant track: it lands on its value and frees itself.
-                bool freeze = mode == EqMode.Freeze;
-                float v = freeze && anim.TryGetTrackValue(node, AnimChannel.ScaleY, out float live) ? live : rest;
-                anim.Keyframes(node, AnimChannel.ScaleY, [new(0f, v, Easing.Linear), new(1f, v, Easing.Linear)], 1f,
-                    snapToDevicePixels: freeze);
-            }, DepKey.From((float)mode, rest));
+                if (moving) anim.Keyframes(node, AnimChannel.ScaleY, LoopKeys[index], LoopMs, loop: true, snapToDevicePixels: true);
+                else anim.Keyframes(node, AnimChannel.ScaleY, [new(0f, rest, Easing.Linear), new(1f, rest, Easing.Linear)], 1f);
+            }, DepKey.From(moving ? 1f : 0f, rest));
+            // Freeze HOLDS the running loop in place (AnimEngine.SetHeld): the render thread keeps the pixel it last posed —
+            // the one on screen — and a release resumes at the phase the loop's clock has reached, as the per-frame ticker
+            // did (its phase was the wall clock since play). No re-seed, so neither edge can step a bar back or restart it.
+            UseLayoutEffect(() =>
+            {
+                if (moving && Context.Anim is { } anim && !Context.HostNode.IsNull)
+                    anim.SetHeld(Context.HostNode, AnimChannel.ScaleY, mode == EqMode.Freeze);
+            }, DepKey.From((float)mode));
             return new BoxEl
             {
                 Width = 2.5f, Height = p.Height, Corners = CornerRadius4.All(1.25f), Fill = p.Color(),

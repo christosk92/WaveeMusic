@@ -273,6 +273,29 @@ public class ControlsMotionPolicyTests
         }
     }
 
+    [Theory]
+    [InlineData(13f, 1.25f)]
+    [InlineData(13f, 1.5f)]
+    [InlineData(13f, 1.75f)]
+    [InlineData(14f, 1.5f)]
+    public void The_render_thread_meter_poses_the_same_pixels_the_per_frame_ticker_wrote(float heightDip, float scale)
+    {
+        // The ticker wrote round(sample(u) · h_px) / h_px; the render thread samples the track and snaps through the engine.
+        float hPx = heightDip * scale;
+        for (int bar = 0; bar < 3; bar++)
+        {
+            var track = Controls.EqualizerTrack(bar);
+            for (int k = 0; k <= 2000; k++)
+            {
+                float u = k / 2000f;
+                float ticker = MathF.Round(Controls.EqualizerSample(bar, u) * hPx) / hPx;
+                float render = FluentGpu.Animation.AnimEngine.SnapToDevicePixels(FluentGpu.Animation.AnimChannel.ScaleY,
+                    FluentGpu.Animation.AnimEngine.SampleKeyframes(track, u), heightDip, scale);
+                Assert.True(ticker == render, $"bar {bar} u={u} ticker={ticker} render={render}");
+            }
+        }
+    }
+
     [Fact]
     public void A_covered_window_stops_the_loop_and_nothing_else_about_the_window_does()
     {
