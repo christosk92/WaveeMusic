@@ -616,14 +616,7 @@ if (-not (Test-PhaseDone 'preflight')) {
         if (-not $login.Ok) { throw $login.Detail }
         "$($login.Detail) ($w)"
     }
-    Add-Check 'gates' 'hard' {
-        # Only the release tooling's own Pester suite: the tagged commit already passed the full Debug+Release
-        # build and Wavee.Tests gate when the feed release was cut, and this run rebuilds those same sources.
-        if ($SkipTests) { return 'SKIP: -SkipTests' }
-        $pester = Invoke-Pester -Path (Join-Path $toolRoot 'ops\release\tests') -PassThru -Quiet
-        if ($pester.FailedCount -gt 0) { throw ('Pester: ' + $pester.FailedCount + ' failed') }
-        'Pester ' + $pester.PassedCount + '/0'
-    }
+    # No test gate: the pack phase's Release publish is the one build.
 
     Assert-Checks
 

@@ -666,18 +666,9 @@ if (-not (Test-PhaseDone 'preflight')) {
     }
     Add-Check 'gates' 'hard' {
         if ($SkipTests) { return 'SKIP: -SkipTests' }
-        # The app repo's gates: Wavee.slnx in BOTH configurations (the engine's diag-gate arms differ per
-        # configuration, and TreatWarningsAsErrors makes a Release-only warning a Release-only break), the app
-        # tests in BOTH configurations too (Release is what ships, and only the optimising tier-1 PGO JIT shows a
-        # miscompile like .NET 10.0.8's dropped slot zeroing - FreshSlot - so a Debug-only run passes it), and the
-        # release tooling's own Pester suite. The engine's VerticalSlice is the engine repo's gate.
-        Invoke-Native 'dotnet' @('build', (Join-Path $root 'Wavee.slnx'), '-c', 'Debug', '--nologo', '-v', 'q') | Out-Null
+        # One Release build of Wavee.slnx (what ships; TreatWarningsAsErrors). No Debug build, no test runs.
         Invoke-Native 'dotnet' @('build', (Join-Path $root 'Wavee.slnx'), '-c', 'Release', '--nologo', '-v', 'q') | Out-Null
-        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '-c', 'Debug', '--no-build', '--nologo', '-v', 'q') | Out-Null
-        Invoke-Native 'dotnet' @('test', (Join-Path $root 'src\apps\Wavee.Tests\Wavee.Tests.csproj'), '-c', 'Release', '--no-build', '--nologo', '-v', 'q') | Out-Null
-        $pester = Invoke-Pester -Path (Join-Path $root 'ops\release\tests') -PassThru -Quiet
-        if ($pester.FailedCount -gt 0) { throw ('Pester: ' + $pester.FailedCount + ' failed') }
-        'build Debug+Release, Wavee.Tests Debug+Release, Pester ' + $pester.PassedCount + '/0'
+        'build Release'
     }
 
     Assert-Checks

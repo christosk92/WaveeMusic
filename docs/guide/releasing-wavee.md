@@ -112,8 +112,8 @@ touches the working tree: instead of dating `CHANGELOG.md` in place it dates a *
 points the release tool at that, so `git status` stays clean and `<WaveeBuild>` is not bumped. It ends by printing the
 exact `git push` / `gh release` commands a real run would issue next.
 
-Drop `-SkipTests` when you want the full gate (Debug + Release build of `Wavee.slnx`, `Wavee.Tests` in both, Pester) inside the
-rehearsal; that is what a real run does by default.
+Drop `-SkipTests` when you want the gate (one Release build of `Wavee.slnx`) inside the rehearsal; that is what a
+real run does by default.
 
 Review `artifacts\release\<semver>-dryrun\`:
 
@@ -188,10 +188,7 @@ closes an issue (`Fixes #n` / `Closes #n` / …) must be cited by the CHANGELOG 
 group, and every `(#n)` the entry cites must be closed by a commit in range; disagreement fails with one line per
 mismatch (see `.claude/skills/github-triage/SKILL.md`) · **issue coverage** *(soft)* — warns when a CHANGELOG bullet
 cites no issue at all. Both SKIP on the first release of a `-TagPrefix` (there is no previous tag to range over) ·
-gates (`dotnet build Wavee.slnx` Debug **and** Release, `Wavee.Tests` in Debug **and** Release — the shipped build is
-Release, and a JIT miscompile such as .NET 10.0.8's dropped slot zeroing (`FreshSlot`) only shows under the optimising
-tier-1 PGO JIT, never in Debug — and the release tooling's Pester suite; the engine's VerticalSlice is the engine
-repo's gate).
+gates (one `dotnet build Wavee.slnx -c Release`; no Debug build, no test runs, no VerticalSlice).
 
 Useful switches: `-SkipTests` (skip that last gate) · `-PublicOnly` (build without PlayPlay) · `-SkipArch x64` /
 `-X64Msix <path>` · `-NoUpload` (real bump and tag, stop before pushing) · `-NoSign` (only with `-DryRun` / `-NoUpload`)

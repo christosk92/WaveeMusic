@@ -47,7 +47,7 @@ commit, tag or upload, leaving `git status` clean:
 powershell -NoProfile -ExecutionPolicy Bypass -File ops\release\wavee-release.ps1 -DryRun
 ```
 
-Useful switches: `-SkipTests` (skip the build/test/VerticalSlice gate), `-NoUpload` (do everything up to staging,
+Useful switches: `-SkipTests` (skip the one Release build gate), `-NoUpload` (do everything up to staging,
 including the real bump and tag), `-SkipArch x64` or `-X64Msix <path>` when the x64 cross toolchain is unavailable,
 `-PublicOnly` for a build without PlayPlay, `-Resume` to finish a run that died, `-Abort` to unwind an un-pushed one,
 and `-RepointFeed <older semver> -AllowDowngrade` to roll the feed back.
