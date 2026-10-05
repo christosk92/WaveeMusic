@@ -26,6 +26,40 @@ public static partial class AiLyrics
 
     public readonly record struct JobProgress(int LinesReady, int LineCount, double ProcessedSeconds, bool Final);
 
+    /// <summary>The fixed-size working buffers of <see cref="TrackJob.Run"/>, owned by the worker and reused from one
+    /// job to the next (one job runs at a time). Together ~28 MB, every one of them past the large-object threshold, so
+    /// a fresh set per song was LOH garbage nothing reclaims until a gen2 GC. Dropped with the models on the idle unload.
+    /// The buffers carry no state between jobs: each is written before it is read, exactly as the per-job arrays were.</summary>
+    public sealed class JobScratch
+    {
+        public float[] MixL = new float[Separator.Window * 4], MixR = new float[Separator.Window * 4];
+        public readonly float[] Pcm = new float[8192 * 2];
+        public float[] VocL = new float[Separator.Block * 6], VocR = new float[Separator.Block * 6];
+        public readonly float[] BlockL = new float[Separator.Block], BlockR = new float[Separator.Block];
+        public readonly float[] WinL = new float[Separator.Window], WinR = new float[Separator.Window];
+        public readonly float[] Chunk = new float[Aligner.Samples];
+        public readonly float[] MonoBlock = new float[Separator.Block];
+        public float[] Logp = [];
+        public float[] Mono44 = [], Resampled = [];
+
+        /// <summary>Size the language- and resampler-dependent buffers (a no-op once they are big enough).</summary>
+        internal void Prepare(int classes, Dsp.Resampler resampler)
+        {
+            int logp = Aligner.StepFrames * classes;
+            if (Logp.Length < logp) Logp = new float[logp];
+            int mono44 = (int)((long)Aligner.Samples * Separator.SampleRate / Aligner.SampleRate) + 2 * 2048 + 8;
+            if (Mono44.Length < mono44) Mono44 = new float[mono44];
+            int resampled = resampler.OutLength(Mono44.Length);
+            if (Resampled.Length < resampled) Resampled = new float[resampled];
+        }
+
+        /// <summary>Take back the buffers a job grew past their starting size.</summary>
+        internal void Keep(float[] mixL, float[] mixR, float[] vocL, float[] vocR, float[] mono44, float[] resampled)
+        {
+            MixL = mixL; MixR = mixR; VocL = vocL; VocR = vocR; Mono44 = mono44; Resampled = resampled;
+        }
+    }
+
     public sealed class TrackJob
     {
         const int Sr44 = Separator.SampleRate, Sr16 = Aligner.SampleRate, Fps = Aligner.FramesPerSecond;
@@ -82,30 +116,34 @@ public static partial class AiLyrics
 
         /// <summary>Runs the song to the end. <paramref name="publish"/> is called (on this thread) whenever more lines
         /// are complete, and once at the end with the final document.</summary>
-        public Lyrics.Doc Run(Action<Lyrics.Doc, JobProgress> publish, CancellationToken ct)
+        public Lyrics.Doc Run(Action<Lyrics.Doc, JobProgress> publish, CancellationToken ct, JobScratch? scratch = null)
         {
             Elapsed.Start();
+            // Every buffer below is past the large-object threshold (~28 MB together). They come from the worker's
+            // JobScratch, which outlives the job: a fresh set per song was LOH garbage that only a gen2 GC reclaims, and
+            // a session that skips through songs started one job per track change.
+            scratch ??= new JobScratch();
+            scratch.Prepare(_aln.Vocab.Classes, _rs);
+
             // mix: a sliding window over the decoded audio, in mix-sample coordinates [mixStart, mixStart + mixLen)
-            var mixL = new float[Separator.Window * 4]; var mixR = new float[Separator.Window * 4];
+            var mixL = scratch.MixL; var mixR = scratch.MixR;
             long mixStart = 0; int mixLen = 0;
             bool eof = false;
-            var pcm = new float[8192 * 2];
+            var pcm = scratch.Pcm;
 
             // vocals: a sliding window too, [vocStart, vocStart + vocLen)
-            var vocL = new float[Separator.Block * 6]; var vocR = new float[Separator.Block * 6];
+            var vocL = scratch.VocL; var vocR = scratch.VocR;
             long vocStart = 0; int vocLen = 0;
-            var blockL = new float[Separator.Block]; var blockR = new float[Separator.Block];
-            var winL = new float[Separator.Window]; var winR = new float[Separator.Window];
+            var blockL = scratch.BlockL; var blockR = scratch.BlockR;
+            var winL = scratch.WinL; var winR = scratch.WinR;
             long sepWindow = 0;                                                  // windows separated so far
             long totalMix = long.MaxValue;                                       // known at EOF
 
-            var chunk = new float[Aligner.Samples];
-            var logp = new float[Aligner.StepFrames * _aln.Vocab.Classes];   // Korean has 1,205 classes
-            // Per-step scratch, allocated once: every one of these is past the large-object threshold, and a fresh array
-            // per step left ~0.5 MB of LOH garbage per second of audio that the idle app never collected.
-            var monoBlock = new float[Separator.Block];
-            var mono44 = new float[(int)((long)Aligner.Samples * Sr44 / Sr16) + 2 * 2048 + 8];
-            var resampled = new float[_rs.OutLength(mono44.Length)];
+            var chunk = scratch.Chunk;
+            var logp = scratch.Logp;                                             // Korean has 1,205 classes
+            var monoBlock = scratch.MonoBlock;
+            var mono44 = scratch.Mono44;
+            var resampled = scratch.Resampled;
             long ctcPos = 0;                                                     // 16 kHz samples covered by emissions
             int linesReady = 0;
 
@@ -149,64 +187,72 @@ public static partial class AiLyrics
                 return true;
             }
 
-            while (true)
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                long a0 = ctcPos - Aligner.ContextSamples;                       // chunk start, 16 kHz
-                long need44 = (long)Math.Ceiling((a0 + Aligner.Samples) * (double)Sr44 / Sr16) + 4096;
-                while (vocStart + vocLen < need44 && SeparateNext()) ct.ThrowIfCancellationRequested();
-                long total16 = totalMix == long.MaxValue ? long.MaxValue : totalMix * Sr16 / Sr44;
-                if (ctcPos >= total16) break;
-
-                // resample the vocals this chunk covers (plus filter margin) and cut the chunk out
-                var t0 = Stopwatch.GetTimestamp();
-                long lo44 = Math.Max(vocStart, (long)Math.Floor(a0 * (double)Sr44 / Sr16) - 2048);
-                long hi44 = Math.Min(vocStart + vocLen, (long)Math.Ceiling((a0 + Aligner.Samples) * (double)Sr44 / Sr16) + 2048);
-                int span44 = (int)Math.Max(0, hi44 - lo44);
-                if (span44 > mono44.Length) { mono44 = new float[span44]; resampled = new float[_rs.OutLength(span44)]; }
-                for (int i = 0; i < span44; i++) { long v = lo44 + i - vocStart; mono44[i] = 0.5f * (vocL[v] + vocR[v]); }
-                var r = resampled.AsSpan(0, _rs.OutLength(span44));
-                _rs.Process(mono44.AsSpan(0, span44), r);
-                long off16 = (long)Math.Round(lo44 * (double)Sr16 / Sr44);
-                Array.Clear(chunk);
-                for (int i = 0; i < Aligner.Samples; i++)
+                while (true)
                 {
-                    long j = a0 + i - off16;
-                    if (j >= 0 && j < r.Length && a0 + i >= 0) chunk[i] = r[(int)j];
+                    ct.ThrowIfCancellationRequested();
+                    long a0 = ctcPos - Aligner.ContextSamples;                       // chunk start, 16 kHz
+                    long need44 = (long)Math.Ceiling((a0 + Aligner.Samples) * (double)Sr44 / Sr16) + 4096;
+                    while (vocStart + vocLen < need44 && SeparateNext()) ct.ThrowIfCancellationRequested();
+                    long total16 = totalMix == long.MaxValue ? long.MaxValue : totalMix * Sr16 / Sr44;
+                    if (ctcPos >= total16) break;
+
+                    // resample the vocals this chunk covers (plus filter margin) and cut the chunk out
+                    var t0 = Stopwatch.GetTimestamp();
+                    long lo44 = Math.Max(vocStart, (long)Math.Floor(a0 * (double)Sr44 / Sr16) - 2048);
+                    long hi44 = Math.Min(vocStart + vocLen, (long)Math.Ceiling((a0 + Aligner.Samples) * (double)Sr44 / Sr16) + 2048);
+                    int span44 = (int)Math.Max(0, hi44 - lo44);
+                    if (span44 > mono44.Length) { mono44 = new float[span44]; resampled = new float[_rs.OutLength(span44)]; }
+                    for (int i = 0; i < span44; i++) { long v = lo44 + i - vocStart; mono44[i] = 0.5f * (vocL[v] + vocR[v]); }
+                    var r = resampled.AsSpan(0, _rs.OutLength(span44));
+                    _rs.Process(mono44.AsSpan(0, span44), r);
+                    long off16 = (long)Math.Round(lo44 * (double)Sr16 / Sr44);
+                    Array.Clear(chunk);
+                    for (int i = 0; i < Aligner.Samples; i++)
+                    {
+                        long j = a0 + i - off16;
+                        if (j >= 0 && j < r.Length && a0 + i >= 0) chunk[i] = r[(int)j];
+                    }
+                    double mean = 0; foreach (float s in chunk) mean += s; mean /= chunk.Length;
+                    double var2 = 0; foreach (float s in chunk) var2 += (s - mean) * (s - mean);
+                    float inv = (float)(1.0 / (Math.Sqrt(var2 / chunk.Length) + 1e-7));
+                    for (int i = 0; i < chunk.Length; i++) chunk[i] = (float)((chunk[i] - mean) * inv);
+                    int classes = _aln.Run(chunk, logp);
+                    AlignSeconds += Stopwatch.GetElapsedTime(t0).TotalSeconds;
+
+                    int frames = Aligner.StepFrames;
+                    if (total16 != long.MaxValue) frames = (int)Math.Max(0, Math.Min(frames, total16 * Fps / Sr16 - _vit.Frames));
+                    _vit.Feed(logp.AsSpan(0, frames * classes), classes);
+                    ctcPos += Aligner.StepSamples;
+
+                    // drop vocals the next chunk no longer needs
+                    long keep44 = (long)Math.Floor((ctcPos - Aligner.ContextSamples) * (double)Sr44 / Sr16) - 4096;
+                    Compact(vocL, vocR, ref vocStart, ref vocLen, keep44);
+
+                    bool final = total16 != long.MaxValue && ctcPos >= total16;
+                    int deadline = (int)((_playhead() + LookaheadSeconds) * Fps);
+                    int added = _vit.Commit(int.MaxValue / 2, final, final ? null : deadline);
+                    int ready = ReadyLines(final);
+                    if (final) break;
+                    if (added > 0 && ready > linesReady)
+                    {
+                        linesReady = ready;
+                        publish(BuildDoc(ready, final: false), new JobProgress(ready, LineCount, ctcPos / (double)Sr16, false));
+                    }
                 }
-                double mean = 0; foreach (float s in chunk) mean += s; mean /= chunk.Length;
-                double var2 = 0; foreach (float s in chunk) var2 += (s - mean) * (s - mean);
-                float inv = (float)(1.0 / (Math.Sqrt(var2 / chunk.Length) + 1e-7));
-                for (int i = 0; i < chunk.Length; i++) chunk[i] = (float)((chunk[i] - mean) * inv);
-                int classes = _aln.Run(chunk, logp);
-                AlignSeconds += Stopwatch.GetElapsedTime(t0).TotalSeconds;
 
-                int frames = Aligner.StepFrames;
-                if (total16 != long.MaxValue) frames = (int)Math.Max(0, Math.Min(frames, total16 * Fps / Sr16 - _vit.Frames));
-                _vit.Feed(logp.AsSpan(0, frames * classes), classes);
-                ctcPos += Aligner.StepSamples;
-
-                // drop vocals the next chunk no longer needs
-                long keep44 = (long)Math.Floor((ctcPos - Aligner.ContextSamples) * (double)Sr44 / Sr16) - 4096;
-                Compact(vocL, vocR, ref vocStart, ref vocLen, keep44);
-
-                bool final = total16 != long.MaxValue && ctcPos >= total16;
-                int deadline = (int)((_playhead() + LookaheadSeconds) * Fps);
-                int added = _vit.Commit(int.MaxValue / 2, final, final ? null : deadline);
-                int ready = ReadyLines(final);
-                if (final) break;
-                if (added > 0 && ready > linesReady)
-                {
-                    linesReady = ready;
-                    publish(BuildDoc(ready, final: false), new JobProgress(ready, LineCount, ctcPos / (double)Sr16, false));
-                }
+                _vit.Commit(0, final: true);
+                var doc = BuildDoc(LineCount, final: true);
+                Elapsed.Stop();
+                publish(doc, new JobProgress(LineCount, LineCount, ctcPos / (double)Sr16, true));
+                return doc;
             }
-
-            _vit.Commit(0, final: true);
-            var doc = BuildDoc(LineCount, final: true);
-            Elapsed.Stop();
-            publish(doc, new JobProgress(LineCount, LineCount, ctcPos / (double)Sr16, true));
-            return doc;
+            finally
+            {
+                // A buffer the job outgrew was replaced locally; hand the grown one back so the next job reuses it too.
+                scratch.Keep(mixL, mixR, vocL, vocR, mono44, resampled);
+            }
         }
 
         /// <summary>How many leading lines have all their words committed.</summary>
