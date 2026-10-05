@@ -58,6 +58,21 @@ versions separately under `v*` and is not tracked in this file.)
   part of memory that is the slowest to clean up and the easiest to fragment: about 2.7 MB for the Home feed and up to
   10 MB for a large metadata batch. The play history is also written to disk without building the whole file in
   memory first.
+- **Pages with nothing moving stop drawing.** An animation that is hidden, covered or too small to change a pixel no
+  longer keeps the app drawing frames. Measured on a Snapdragon X laptop at 120 Hz, an idle Home went from
+  3,570 presented frames in 30 seconds to 15, and the app's CPU time from about 2.3 seconds to about 0.3 seconds in 20.
+- **The window redraws only what changed.** When one part of the window changes, such as a progress bar, a hover or a
+  lyric, Wavee now redraws and presents only that part instead of the whole window, and it skips whatever an opaque
+  layer covers.
+- **Lyrics take a fraction of the work.** The karaoke wipe across each line now runs beside the GPU work instead of on
+  the app's main thread, and the lyrics column no longer wakes the app for a scrollbar it never shows. With the same
+  wipe, the open lyrics view now runs the app's main thread about 28 times a second instead of 106 (offline demo,
+  Snapdragon X, 120 Hz).
+- **Scrollbars wait without drawing.** After a scroll, the two seconds a scrollbar waits before it fades no longer
+  redraw the window every frame; the app sleeps until the fade starts.
+- **Every graphics chip gets the same picture.** On integrated and lower-end GPUs, Wavee turned off the shimmer on
+  loading cover art and used a weaker lyrics blur by default. Both now look the same on every GPU; only memory limits
+  still scale with the hardware.
 
 ### Fixed
 
@@ -77,6 +92,13 @@ versions separately under `v*` and is not tracked in this file.)
 - **Steadier video playback.** Lyrics, the player-bar text and the equalizer no longer redraw the window when they are
   hidden or the window is covered, the player-bar title glides at the display rate as before and keeps scrolling beside
   a video, and the diagnostics log now records dropped frames and how long each switch takes. (#174)
+- **A clock that does not wait no longer burns a CPU core.** On some setups the compositor clock that paces frames
+  returned at once instead of waiting, and Wavee spun on it: a second window with the full-screen stage open held about
+  one core with nothing animating. Wavee now notices such a clock and paces itself on a timer instead (10-second
+  measurement: 11.7 s of CPU down to 0.8 s, still 120 frames a second).
+- **Mouse-wheel scrolling keeps working right after you leave a page.** Turning the wheel while going back or switching
+  pages sent the next notches to the page you had left, until the wheel paused for a moment. They now scroll the page
+  under the pointer.
 
 ## [0.3.0] - 2026-10-02
 
