@@ -189,7 +189,7 @@ public static partial class Visualizer
     public static Element WarpFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
-        int count = pv ? Particles.Warp.PreviewCount : GpuProfile.IsWeak ? Particles.Warp.WeakCount : Particles.Warp.Count;
+        int count = pv ? Particles.Warp.PreviewCount : Particles.Warp.Count;
         var sim = new WarpSim(slab, dark, count, spec.W, spec.H, spec.H * (pv ? 0.5f : 0.46f), pv ? 0.3f : 1f);
         var kids = new List<CanvasChild>(2)
         {
@@ -280,7 +280,7 @@ public static partial class Visualizer
     public static Element AmbienceFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
-        int count = pv ? Particles.Ambience.PreviewCount : GpuProfile.IsWeak ? Particles.Ambience.WeakCount : Particles.Ambience.Count;
+        int count = pv ? Particles.Ambience.PreviewCount : Particles.Ambience.Count;
         var sim = new AmbienceSim(slab, dark, count, spec.W * 0.5f, spec.H * (pv ? 0.5f : 0.46f), MathF.Min(spec.W, spec.H), pv ? 1.4f : 1f);
         var kids = new List<CanvasChild>(2)
         {
@@ -359,10 +359,10 @@ public static partial class Visualizer
 
     /// <summary>The time-domain wave (<c>slab.Scope</c>, 0.5 = silence) as an anti-aliased stroke with a C → A → B gradient
     /// ALONG the line, over a wide glow twin rastered at a quarter scale and blurred (Additive on dark; a faint ink
-    /// ribbon on light). Preview: the line alone. Weak: no glow (no blur layer).</summary>
+    /// ribbon on light). Preview: the line alone.</summary>
     public static Element ScopeFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark, glow = !pv && !GpuProfile.IsWeak;
+        bool pv = spec.Preview, dark = pal.Dark, glow = !pv;
         float k = SimScale(in spec), x0 = spec.W * 0.06f, w = spec.W * 0.88f, mid = spec.H * 0.48f, amp = spec.H * (pv ? 0.38f : 0.2f);
         var scope = slab.Scope;
         var kids = new List<CanvasChild>(2);
@@ -433,7 +433,7 @@ public static partial class Visualizer
         kids.Add(new CanvasChild(0f, 0f, new BoxEl
         {
             Width = spec.W, Height = spec.H, HitTestVisible = false, ClipToBounds = true,   // the trail covers the clip
-            Feedback = new FeedbackSpec(Particles.Feedback.DriftDecay, GpuProfile.IsWeak ? 0.25f : 0.5f, Ink.Veil with { A = 0f }),
+            Feedback = new FeedbackSpec(Particles.Feedback.DriftDecay, 0.5f, Ink.Veil with { A = 0f }),
             FeedbackTransform = Prop.Of(() => Particles.Feedback.Drift(slab.Mid.Value, slab.Kick.Value, dt.Value, 0f, pivotY)),
             FeedbackDecay = Prop.Of(() => Particles.Feedback.Decay(Particles.Feedback.DriftDecay, dt.Value)),
             Children =

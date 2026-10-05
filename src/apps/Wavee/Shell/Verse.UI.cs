@@ -237,7 +237,7 @@ public static partial class Verse
             UseEffect(_rearm, DepKey.From(epoch, _gen, playing ? 1 : 0, view));   // every built view re-decides the lanes
 
             var region = Geometry.For(in L, p.W, p.H, galleryOpen, chrome);
-            bool blurOn = region.LandBlur && !GpuProfile.IsWeak && Lyrics.Prefs.BlurStrength(GpuProfile.IsWeak, onStage: false) >= Land.BlurMinStrength;
+            bool blurOn = region.LandBlur && Lyrics.Prefs.BlurStrength(onStage: false) >= Land.BlurMinStrength;
             Element[] body;
             if (song is null)
             {

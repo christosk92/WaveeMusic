@@ -27,7 +27,7 @@
 //
 // SILENCE, CONNECT, CALM. Without a live FFT the slab already carries the precomputed spread (kind-237 bands spread
 // over 48), so no face branches on the source. Reduced motion is a VALUE (`FluentMotion` = 0): amplitudes go to their
-// rest pose, nothing is hidden. A weak GPU (`GpuProfile.IsWeak`) drops the blur and the glow twins; a preview drops
+// rest pose, nothing is hidden. Every GPU tier gets the same face (no weak-tier cuts: the measured governor is the only GPU throttle); a preview drops
 // the cover, the glow, the ticks and half the parts.
 
 using System.Collections.Generic;
@@ -59,7 +59,7 @@ public static partial class Visualizer
     public static Element BloomFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
-        bool pv = spec.Preview, weak = GpuProfile.IsWeak, dark = pal.Dark;
+        bool pv = spec.Preview, dark = pal.Dark;
         float motion = FluentMotion;
         var to = pal.Rotated();
         float a0 = dark ? 0.75f : 0.6f, a1 = dark ? 0.25f : 0.18f, k = pv ? 0.9f : 1f;
@@ -81,13 +81,13 @@ public static partial class Visualizer
 
         // The clouds are pure radial gradients that drift and breathe every tick: a RepaintBoundary keeps that motion in
         // this slice, rastered at a quarter scale (Field's trick, Visualizer.UI.cs FieldFace) and SCREENed onto the stage
-        // so the light adds instead of veiling. The one blur layer this face spends; none on a weak GPU.
+        // so the light adds instead of veiling. The one blur layer this face spends.
         var kids = new List<CanvasChild>(3)
         {
             new CanvasChild(0f, 0f, new BoxEl
             {
                 Width = w, Height = h, HitTestVisible = false, RepaintBoundary = true, RasterScale = 0.25f,
-                LayerBlend = dark ? LayerBlend.Screen : LayerBlend.SrcOver, Blur = weak ? 0f : 40f,
+                LayerBlend = dark ? LayerBlend.Screen : LayerBlend.SrcOver, Blur = 40f,
                 Children = [Canvas.Create(w, h, clouds)],
             }),
         };
@@ -95,8 +95,8 @@ public static partial class Visualizer
         // the cover: 0.42·min, corners 8, lifted 6 % above centre; its shadow is a TWIN box behind it (transparent fill,
         // shadow only) so the shadow's alpha and swell bind without touching the cover. Light arm: depth, not light.
         float s = 0.42f * m, x = 0.5f * (w - s), y = 0.5f * (h - s) - 0.06f * h, r = 8f;
-        var shadow = dark ? new ShadowSpec(weak ? 30f : 60f, 18f, 0f, pal.A with { A = 0.75f })
-                          : new ShadowSpec(weak ? 20f : 40f, 14f, 0f, Ink.Ink with { A = 0.25f });
+        var shadow = dark ? new ShadowSpec(60f, 18f, 0f, pal.A with { A = 0.75f })
+                          : new ShadowSpec(40f, 14f, 0f, Ink.Ink with { A = 0.25f });
         var kick = slab.Kick; var low = slab.Low;
         kids.Add(new CanvasChild(x, y, new BoxEl
         {
@@ -159,7 +159,7 @@ public static partial class Visualizer
     public static Element BarsFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
-        bool pv = spec.Preview, glow = !pv && pal.Dark && !GpuProfile.IsWeak;
+        bool pv = spec.Preview, glow = !pv && pal.Dark;
         float motion = FluentMotion;
         int n = pv ? 20 : 40;
         float gap = pv ? 3f : MathF.Max(4f, 0.0066f * w), x0 = 0.11f * w;
@@ -205,7 +205,7 @@ public static partial class Visualizer
     public static Element RingFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
-        bool pv = spec.Preview, weak = GpuProfile.IsWeak, dark = pal.Dark;
+        bool pv = spec.Preview, dark = pal.Dark;
         float motion = FluentMotion;
         float cx = 0.5f * w, cy = 0.5f * h - (pv ? 0f : 0.04f * h), r = (pv ? 0.26f : 0.19f) * m;
         int n = pv ? 36 : 96;
@@ -275,8 +275,8 @@ public static partial class Visualizer
             return FaceFrame(spec, kids);
         }
         float cover = 1.5f * r;
-        var shadow = dark ? new ShadowSpec(weak ? 25f : 50f, 0f, 0f, pal.A with { A = 0.5f })
-                          : new ShadowSpec(weak ? 18f : 36f, 10f, 0f, Ink.Ink with { A = 0.22f });
+        var shadow = dark ? new ShadowSpec(50f, 0f, 0f, pal.A with { A = 0.5f })
+                          : new ShadowSpec(36f, 10f, 0f, Ink.Ink with { A = 0.22f });
         var kick = slab.Kick;
         kids.Add(new CanvasChild(cx - 0.5f * cover, cy - 0.5f * cover, new BoxEl
         {
@@ -307,7 +307,7 @@ public static partial class Visualizer
     public static Element OrbitFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H, m = MathF.Min(w, h);
-        bool pv = spec.Preview, glow = !pv && !GpuProfile.IsWeak, dark = pal.Dark;
+        bool pv = spec.Preview, glow = !pv, dark = pal.Dark;
         float motion = FluentMotion;
         float cx = 0.5f * w, cy = 0.5f * h - (pv ? 0f : 0.04f * h);
         float t = pv ? MathF.Max(2f, 0.06f * m) : MathF.Max(6f, 0.024f * m), g = 1.55f * t, half = pv ? 0.2f : 0.07f;
@@ -403,12 +403,12 @@ public static partial class Visualizer
     /// <summary>Three curtains (A lows, B mids, C highs): a baseline series whose top edge is the wave, bright at the edge
     /// and fading to nothing toward its foot (a gradient BY AMPLITUDE), additive on the dark arm. The drift speed is
     /// energy-scaled — <c>base·(0.15 + e)</c> — so silence is nearly still and a paused stage is still. 256 points
-    /// (128 weak, 48 preview).</summary>
+    /// (48 preview).</summary>
     public static Element AuroraFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
         bool pv = spec.Preview, dark = pal.Dark;
-        int points = pv ? 48 : GpuProfile.IsWeak ? 128 : 256;
+        int points = pv ? 48 : 256;
         var to = pal.Rotated();
         float alpha = dark ? 0.6f : 0.55f, motion = FluentMotion;
         return FaceFrame(spec,
@@ -461,7 +461,7 @@ public static partial class Visualizer
     public static Element TimelineFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         float w = spec.W, h = spec.H;
-        bool pv = spec.Preview, dark = pal.Dark, glow = !pv && !GpuProfile.IsWeak;
+        bool pv = spec.Preview, dark = pal.Dark, glow = !pv;
         float motion = FluentMotion;
         int p = pv ? 90 : 360;
         float x0 = 0.06f * w, tw = 0.88f * w, mid = 0.5f * h, amp = (pv ? 0.36f : 0.2f) * h, bw = MathF.Max(1f, tw / p * 0.62f);

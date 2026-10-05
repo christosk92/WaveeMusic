@@ -292,7 +292,7 @@ public static partial class Lyrics
         // ── preferences, republished for the rows ────────────────────────────────────────────────────────────────────
         /// <summary>The secondary-line mode. A SIGNAL the rows read: a ctor int would never reach a mounted row.</summary>
         internal readonly Signal<int> Secondary = new(Prefs.None);
-        int _strength = BlurPolicy.StrongGpuDefault;   // the RESOLVED 0..100 blur strength
+        int _strength = BlurPolicy.AutoDefault;   // the RESOLVED 0..100 blur strength
         float _dofScale = 1f;
         /// <summary>The ACTIVE line's halo / held-note bloom multiplier. Equal to the DoF scale everywhere except the stage,
         /// whose DoF is forced off (every non-active row a blur layer was its largest cost) while the one or two halo
@@ -367,7 +367,7 @@ public static partial class Lyrics
             // the rows that do must re-render IN THIS flush so the re-arranged extents are what the next step latches on.
             int secondary = Prefs.SecondaryLine();
             Secondary.Value = secondary;
-            int strength = Prefs.BlurStrength(GpuProfile.IsWeak, OnStage);
+            int strength = Prefs.BlurStrength(OnStage);
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
             if (newScale != _dofScale)
@@ -378,7 +378,7 @@ public static partial class Lyrics
                 // decrease never stops part-way on a paused, tickerless surface.
                 Array.Fill(_dofCurrent, float.NaN);
             }
-            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(GpuProfile.IsWeak, onStage: false)) : newScale;
+            _haloScale = OnStage ? BlurPolicy.Scale(Prefs.BlurStrength(onStage: false)) : newScale;
             HaloScale.Value = _haloScale;
             // Re-arm the ramp IMMEDIATELY on a strength change — it does not ride the ticker, so it lands paused too.
             UseEffect(() => { if (Context.Scene is { } scene) DriveDofRamp(scene, FrameTime.NowMs); }, DepKey.From(strength));

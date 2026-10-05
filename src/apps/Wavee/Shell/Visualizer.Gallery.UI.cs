@@ -256,7 +256,7 @@ public static partial class Visualizer
             UseSignalEffect(() =>
             {
                 int selected = Catalog.IndexOf(ctx.Kind.Value);
-                _live.SetIfChanged(Catalog.LodFor(index, selected, state.FocusIndex(), GpuProfile.IsWeak) == Lod.Preview);
+                _live.SetIfChanged(Catalog.LodFor(index, selected, state.FocusIndex()) == Lod.Preview);
             });
             // the keyboard cursor ARRIVING here brings the tile into the gallery's scroller (minimal move, a 10-DIP gutter;
             // the scene seam resolves the nearest scrolling ancestor — the pane's ScrollEl)

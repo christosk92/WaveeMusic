@@ -74,11 +74,8 @@ public class LyricsFxTests
 public class LyricsBlurPolicyTests
 {
     [Fact]
-    public void Auto_resolves_off_the_gpu_tier()
-    {
-        Assert.Equal(Lyrics.BlurPolicy.WeakGpuDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto, weakGpu: true));
-        Assert.Equal(Lyrics.BlurPolicy.StrongGpuDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto, weakGpu: false));
-    }
+    public void Auto_resolves_to_the_one_default_on_every_gpu_tier()
+        => Assert.Equal(Lyrics.BlurPolicy.AutoDefault, Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto));
 
     [Theory]
     [InlineData(0, 0)]
@@ -87,7 +84,7 @@ public class LyricsBlurPolicyTests
     [InlineData(140, 100)]      // a value from a newer build's ladder clamps rather than trusting the store
     [InlineData(-9, 0)]         // …and any other negative is NOT the auto sentinel
     public void A_stored_value_is_clamped_into_range(int stored, int expected)
-        => Assert.Equal(expected, Lyrics.BlurPolicy.Resolve(stored, weakGpu: false));
+        => Assert.Equal(expected, Lyrics.BlurPolicy.Resolve(stored));
 
     [Fact]
     public void Scale_is_the_zero_to_one_multiplier()

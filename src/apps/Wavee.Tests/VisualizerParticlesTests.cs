@@ -102,8 +102,8 @@ public class VisualizerParticlesTests
         var w = new Visualizer.Particles.Warp(Visualizer.Particles.Warp.Count);
         var dst = new Sprite[Visualizer.Particles.Warp.Count];
         w.Step(0.5f, 0.8f, 1f);
-        int n = w.Write(dst, Visualizer.Particles.Warp.WeakCount, 1600f, 900f, 800f, 414f, in Dark, 1f);
-        Assert.InRange(n, 1, Visualizer.Particles.Warp.WeakCount);
+        int n = w.Write(dst, 120, 1600f, 900f, 800f, 414f, in Dark, 1f);
+        Assert.InRange(n, 1, 120);
         for (int i = 0; i < n; i++)
         {
             Assert.True(dst[i].W >= 2f && dst[i].H > 0f && dst[i].Soft == 1f);
@@ -223,7 +223,7 @@ public class VisualizerParticlesTests
         var m = new Visualizer.Particles.Magneto(Visualizer.Particles.Magneto.Count);
         var levels = Levels(0.5f);
         var discs = new Sprite[Visualizer.Particles.Magneto.Count * 2 + 4];
-        Assert.Equal(Visualizer.Particles.Magneto.WeakCount * 2 + 4, m.WriteBodies(discs, Visualizer.Particles.Magneto.WeakCount, 500f, 400f, 800f, levels, 1f, in Dark, 1f));
+        Assert.Equal(48 * 2 + 4, m.WriteBodies(discs, 48, 500f, 400f, 800f, levels, 1f, in Dark, 1f));
         var rays = new Sprite[Visualizer.Particles.Magneto.Count];
         int n = m.WriteRays(rays, 500f, 400f, 800f, levels, in Light, 1.5f);
         Assert.InRange(n, 0, Visualizer.Particles.Magneto.Count);
@@ -244,8 +244,8 @@ public class VisualizerParticlesTests
         var dst = new Sprite[Visualizer.Particles.Ambience.Count * 2];
         var levels = Levels(0.7f);
         for (int i = 0; i < 2_000; i++) a.Step(0.033f);
-        int n = a.Write(dst, Visualizer.Particles.Ambience.WeakCount, 960f, 500f, 1000f, levels, in Dark, 1f);
-        Assert.Equal(Visualizer.Particles.Ambience.WeakCount * 2, n);
+        int n = a.Write(dst, 20, 960f, 500f, 1000f, levels, in Dark, 1f);
+        Assert.Equal(20 * 2, n);
         for (int i = 0; i < n; i++)
         {
             // radius ≤ (0.46 + 0.04)·m, stretched 1.3 × 0.8

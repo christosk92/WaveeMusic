@@ -218,13 +218,13 @@ public static partial class Visualizer
         public const int LiveRadius = 2;
 
         /// <summary>A gallery tile's detail (viz-app-plan §4.1): the selected tile and the one under the pointer (or the
-        /// keyboard cursor) are live; the selected tile's neighbours are live on a strong GPU unless their preview is a
-        /// physics sim; everything else is a frozen poster. At most <see cref="LiveRadius"/>·2 + 1 + 1 =
+        /// keyboard cursor) are live; the selected tile's neighbours are live unless their preview is a physics sim;
+        /// everything else is a frozen poster. The GPU tier is not an input (every tier gets the same gallery). At most <see cref="LiveRadius"/>·2 + 1 + 1 =
         /// <see cref="MaxLivePreviews"/> tiles are live. Indices are into <see cref="Shown"/>; −1 = none.</summary>
-        public static Lod LodFor(int index, int selected, int focus, bool weak)
+        public static Lod LodFor(int index, int selected, int focus)
         {
             if (index == selected || index == focus) return Lod.Preview;
-            if (weak || (uint)index >= (uint)s_shown.Length || Physics(s_shown[index])) return Lod.Poster;
+            if ((uint)index >= (uint)s_shown.Length || Physics(s_shown[index])) return Lod.Poster;
             return selected >= 0 && Math.Abs(index - selected) <= LiveRadius ? Lod.Preview : Lod.Poster;
         }
     }

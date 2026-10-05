@@ -32,13 +32,13 @@ public static partial class Visualizer
     // ══ 1. MAGNETO — Magnetosphere ═══════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Each particle listens to one band and that band is its CHARGE: loud particles repel from the two orbiting
-    /// cores, quiet ones fall back; the mids swirl them. 72 particles (48 weak, 12 preview), rays on a strong GPU stage
+    /// cores, quiet ones fall back; the mids swirl them. 72 particles (12 preview), rays on the stage
     /// only. Preview and reduced: the bodies hold their seeded places, sized by their bands, the cores by the kick.</summary>
     public static Element MagnetoFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
-        bool pv = spec.Preview, dark = pal.Dark, weak = GpuProfile.IsWeak, live = !pv && !Design.Reduced;
-        int count = pv ? Particles.Magneto.PreviewCount : weak ? Particles.Magneto.WeakCount : Particles.Magneto.Count;
-        bool rays = !pv && !weak;
+        bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
+        int count = pv ? Particles.Magneto.PreviewCount : Particles.Magneto.Count;
+        bool rays = !pv;
         float m = MathF.Min(spec.W, spec.H), cx = spec.W * 0.5f, cy = spec.H * (pv ? 0.5f : 0.46f);
         var sim = new MagnetoSim(slab, dark, count, rays, cx, cy, m, pv ? 1.4f : 1f, MathF.Max(1f, 1.5f * SimScale(in spec)));
         var kids = new List<CanvasChild>(4)
@@ -162,7 +162,7 @@ public static partial class Visualizer
         kids.Add(new CanvasChild(0f, 0f, new BoxEl
         {
             Width = w, Height = h, HitTestVisible = false, ClipToBounds = true,   // the trail covers the clip
-            Feedback = new FeedbackSpec(Particles.Feedback.FlowDecay, GpuProfile.IsWeak ? 0.25f : 0.5f, Ink.Veil with { A = 0f }),
+            Feedback = new FeedbackSpec(Particles.Feedback.FlowDecay, 0.5f, Ink.Veil with { A = 0f }),
             FeedbackTransform = Prop.Of(() => Particles.Feedback.Flow(time.Value, slab.Mid.Value, slab.Low.Value, dt.Value, w, h)),
             FeedbackDecay = Prop.Of(() => Particles.Feedback.Decay(Particles.Feedback.FlowDecay, dt.Value)),
             Children =

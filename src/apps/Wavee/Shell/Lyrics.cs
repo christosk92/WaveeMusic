@@ -169,26 +169,26 @@ public static partial class Lyrics
     /// (<see cref="Fx"/>) and the active-line / held-note glow halo σ.
     ///
     /// <para>The setting stores −1 (AUTO) by default: a fresh install lets the device decide rather than shipping one
-    /// fixed number that is too heavy for a weak iGPU or too light for a desktop card. <see cref="Resolve"/> is the
+    /// fixed number the user never chose. <see cref="Resolve"/> is the
     /// ONLY place −1 is interpreted — everywhere else deals in the resolved 0..100 int, so a caller that forgets the
     /// auto case cannot silently treat −1 as "1 % blur".</para></summary>
     public static class BlurPolicy
     {
         public const int Auto = -1;
-        public const int WeakGpuDefault = 40;
-        public const int StrongGpuDefault = 100;
+        /// <summary>What Auto paints at, on every GPU tier (the weak-tier 40 was withdrawn on 2026-10-05: the GPU tier is not a
+        /// quality input; a saturated GPU is the engine's measured governor's business).</summary>
+        public const int AutoDefault = 100;
 
-        /// <summary>The stored setting (−1 = auto, else 0..100) resolved against the device's GPU tier into the
-        /// strength this frame actually paints at. Clamps a stored value from an older/newer build's ladder into range
-        /// rather than trusting the registry.</summary>
-        public static int Resolve(int setting, bool weakGpu)
-            => setting == Auto ? (weakGpu ? WeakGpuDefault : StrongGpuDefault) : Math.Clamp(setting, 0, 100);
+        /// <summary>The stored setting (−1 = auto, else 0..100) resolved into the strength this frame actually paints at.
+        /// Clamps a stored value from an older/newer build's ladder into range rather than trusting the registry.</summary>
+        public static int Resolve(int setting)
+            => setting == Auto ? AutoDefault : Math.Clamp(setting, 0, 100);
 
         /// <summary>The STAGE never depth-blurs: the fullscreen surface's depth cue is the scrim and the accent pill, and
         /// every non-active line being its own blur layer was the stage's largest per-frame cost (§1.1). 0 ⇒ Enabled(0) is
         /// false and DriveDofRamp snaps every σ to 0 in one pass. The active line's halo is NOT this strength — the view
         /// keeps it on the user's setting (<c>ViewCore._haloScale</c>).</summary>
-        public static int ResolveFor(int setting, bool weakGpu, bool onStage) => onStage ? 0 : Resolve(setting, weakGpu);
+        public static int ResolveFor(int setting, bool onStage) => onStage ? 0 : Resolve(setting);
 
         /// <summary>The resolved strength (0..100, NOT −1 — call <see cref="Resolve"/> first) as the 0..1 multiplier
         /// the view scales its DoF ladder and halo σ by.</summary>
@@ -1290,7 +1290,7 @@ public static partial class Lyrics
 
         /// <summary>Reactive read of the blur strength RESOLVED (0..100) for a surface — the stored −1 means AUTO and is
         /// interpreted here, once, through <see cref="BlurPolicy.ResolveFor"/>; the stage is always 0.</summary>
-        public static int BlurStrength(bool weakGpu, bool onStage) => BlurPolicy.ResolveFor(global::Wavee.Prefs.Lyrics.BlurStrength(), weakGpu, onStage);
+        public static int BlurStrength(bool onStage) => BlurPolicy.ResolveFor(global::Wavee.Prefs.Lyrics.BlurStrength(), onStage);
 
         /// <summary>The ONE writer both globe toggles go through: set the session mode, then bump.</summary>
         public static void SetSecondaryLine(int mode) => global::Wavee.Prefs.Lyrics.SetSecondaryLine(mode);

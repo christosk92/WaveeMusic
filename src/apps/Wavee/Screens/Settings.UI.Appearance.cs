@@ -44,7 +44,7 @@ public static partial class Settings
     // ══ 1. STABLE CONTROL STATE (0.2.9's `_lyricsBlurSlider` instance field + the two combo selections) ═════════════
 
     /// <summary>The lyrics-blur slider's value (the resolved 0..100). A slider binds ONE signal for its life.</summary>
-    static readonly FloatSignal s_lyricsBlurSlider = new(Lyrics.BlurPolicy.StrongGpuDefault);
+    static readonly FloatSignal s_lyricsBlurSlider = new(Lyrics.BlurPolicy.AutoDefault);
     /// <summary>The zoom combo's selection, kept in step with the LIVE zoom by <see cref="ZoomPicker"/>.</summary>
     static readonly Signal<int> s_zoomIndex = new(0);
     /// <summary>The collapsed-rail-size combo's selection (0 Compact · 1 Default · 2 Large), kept in step with
@@ -81,7 +81,7 @@ public static partial class Settings
 
     static partial void SeedAppearance()
     {
-        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength), GpuProfile.IsWeak);
+        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
         s_stageVisualizer.Value = VisualizerIndex();
         s_stageSensitivity.Value = Prefs.Stage.Sensitivity();
         s_stageSyncOffset.Value = Prefs.Stage.SyncOffsetMs();
@@ -715,7 +715,7 @@ public static partial class Settings
     /// <summary>Writes the EXPLICIT 0..100 value (dragging always overrides auto), resolved to the int the store holds.</summary>
     static void SetLyricsBlur(float v)
     {
-        int strength = Lyrics.BlurPolicy.Resolve(Math.Clamp((int)MathF.Round(v), 0, 100), GpuProfile.IsWeak);
+        int strength = Lyrics.BlurPolicy.Resolve(Math.Clamp((int)MathF.Round(v), 0, 100));
         if (Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) == strength) return;
         Prefs.Lyrics.SetBlurStrength(strength);
         s_lyricsBlurSlider.Value = strength;
@@ -726,7 +726,7 @@ public static partial class Settings
     static void ResetLyricsBlur()
     {
         Prefs.Lyrics.SetBlurStrength(Lyrics.BlurPolicy.Auto);
-        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto, GpuProfile.IsWeak);
+        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto);
         Bump();
     }
 

@@ -142,11 +142,10 @@ public class VisualizerCoversTests
     [Fact]
     public void DecodeFor_is_one_bounded_size_per_wall()
     {
-        Assert.Equal(48, C.Tiles.DecodeFor(33f, 1, weak: false, preview: true));
-        Assert.Equal(256, C.Tiles.DecodeFor(125f, 2, weak: false, preview: false));
-        Assert.Equal(320, C.Tiles.DecodeFor(400f, 2, weak: false, preview: false));
-        Assert.Equal(192, C.Tiles.DecodeFor(250f, 1, weak: true, preview: false));
-        Assert.Equal(0, C.Tiles.DecodeFor(125f, 2, false, false) % 32);
+        Assert.Equal(48, C.Tiles.DecodeFor(33f, 1, preview: true));
+        Assert.Equal(256, C.Tiles.DecodeFor(125f, 2, preview: false));
+        Assert.Equal(320, C.Tiles.DecodeFor(400f, 2, preview: false));
+        Assert.Equal(0, C.Tiles.DecodeFor(125f, 2, false) % 32);
     }
 
     [Fact]
@@ -334,20 +333,17 @@ public class VisualizerCoversTests
     [Fact]
     public void The_next_photo_preloads_for_the_last_bars_only_capped_in_time()
     {
-        Assert.Equal(2, C.Spot.PreloadBars(16_000f, weak: false));     // 2 s bars: the last two (4 s ahead)
-        Assert.Equal(1, C.Spot.PreloadBars(60_000f, weak: false));     // 7.5 s bars: two would be 15 s — one
-        Assert.Equal(1, C.Spot.PreloadBars(16_000f, weak: true));      // weak: 2 s ahead, one bar
-        Assert.Equal(1, C.Spot.PreloadBars(60_000f, weak: true));      // never less than the last bar
-        Assert.Equal(1, C.Spot.PreloadBars(0f, weak: false));
+        Assert.Equal(2, C.Spot.PreloadBars(16_000f));     // 2 s bars: the last two (4 s ahead)
+        Assert.Equal(1, C.Spot.PreloadBars(60_000f));     // 7.5 s bars: two would be 15 s — one
+        Assert.Equal(1, C.Spot.PreloadBars(0f));
         for (int cycle = 0; cycle < 4; cycle++)
             for (int k = 0; k < C.Spot.BarsPerPhoto; k++)
             {
                 int bar = cycle * C.Spot.BarsPerPhoto + k;
-                Assert.Equal(k >= C.Spot.BarsPerPhoto - 2, C.Spot.Preload(bar, cycle, 16_000f, weak: false));
-                Assert.Equal(k == C.Spot.BarsPerPhoto - 1, C.Spot.Preload(bar, cycle, 16_000f, weak: true));
+                Assert.Equal(k >= C.Spot.BarsPerPhoto - 2, C.Spot.Preload(bar, cycle, 16_000f));
             }
-        Assert.True(C.Spot.Preload(17, 1, 16_000f, false));             // past the cycle, before the switching downbeat
-        Assert.False(C.Spot.Preload(3, 1, 16_000f, false));             // a seek back under the cycle
+        Assert.True(C.Spot.Preload(17, 1, 16_000f));             // past the cycle, before the switching downbeat
+        Assert.False(C.Spot.Preload(3, 1, 16_000f));             // a seek back under the cycle
     }
 
     [Fact]
@@ -377,10 +373,9 @@ public class VisualizerCoversTests
     [Fact]
     public void DecodeFor_caps_the_photo()
     {
-        Assert.Equal(160, C.Spot.DecodeFor(200f, preview: true, weak: false));
-        Assert.Equal(1508, C.Spot.DecodeFor(1508f, false, false));
-        Assert.Equal(1920, C.Spot.DecodeFor(3840f, false, false));
-        Assert.Equal(1280, C.Spot.DecodeFor(3840f, false, weak: true));
+        Assert.Equal(160, C.Spot.DecodeFor(200f, preview: true));
+        Assert.Equal(1508, C.Spot.DecodeFor(1508f, false));
+        Assert.Equal(1920, C.Spot.DecodeFor(3840f, false));
     }
 
     // ── Drift ──────────────────────────────────────────────────────────────────────────────────────────────────────

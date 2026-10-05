@@ -83,8 +83,8 @@ public static partial class Visualizer
 
         public static class Tiles
         {
-            public const int Cols = 12, WeakCols = 6, PreviewCols = 6;
-            public const int MaxRows = 9, WeakMaxRows = 5, PreviewMaxRows = 3;
+            public const int Cols = 12, PreviewCols = 6;
+            public const int MaxRows = 9, PreviewMaxRows = 3;
             /// <summary>The chance a free 1×1 slot becomes a 2×2 (the prototype's 0.14).</summary>
             public const float BigChance = 0.14f;
             /// <summary>The spectrum span the columns map onto (the prototype's 44 of 48 bands — the top four are mostly air).</summary>
@@ -129,11 +129,11 @@ public static partial class Visualizer
 
             /// <summary>ONE decode size for the whole wall (the largest tile's edge, on a 32-px grid), so every pool cover is
             /// resident at the size any tile asks for and a flip never reveals a placeholder.</summary>
-            public static int DecodeFor(float cell, int maxSize, bool weak, bool preview)
+            public static int DecodeFor(float cell, int maxSize, bool preview)
             {
                 if (preview) return 48;
                 int px = (int)MathF.Ceiling(MathF.Max(1f, cell * maxSize) / 32f) * 32;
-                return Math.Clamp(px, 64, weak ? 192 : 320);
+                return Math.Clamp(px, 64, 320);
             }
 
             /// <summary>The thin-pool variation: with fewer than <see cref="MinPool"/> covers a third of the tiles show their
@@ -271,23 +271,23 @@ public static partial class Visualizer
             public static float FadeMs(float spanMs) => Math.Clamp(spanMs * 0.08f, 900f, 2_400f);
 
             /// <summary>The next photo is decoded under the current one for at most the last two bars of a cycle, and no
-            /// more than 10 s ahead (2 s on a weak GPU) — but never less than the last bar, so the switch never reveals a
+            /// more than 10 s ahead — but never less than the last bar, so the switch never reveals a
             /// placeholder. Outside that window only the shown photo (and, while it fades out, the previous) is resident.</summary>
             public const int PreloadBarsMax = 2;
-            public const float PreloadAheadMs = 10_000f, PreloadAheadWeakMs = 2_000f;
+            public const float PreloadAheadMs = 10_000f;
 
             /// <summary>How many bars before the switch the next photo mounts, for an 8-bar span of <paramref name="spanMs"/>.</summary>
-            public static int PreloadBars(float spanMs, bool weak)
+            public static int PreloadBars(float spanMs)
             {
                 float barMs = spanMs / BarsPerPhoto;
                 if (!(barMs > 0f)) return 1;
-                return Math.Clamp((int)MathF.Floor((weak ? PreloadAheadWeakMs : PreloadAheadMs) / barMs), 1, PreloadBarsMax);
+                return Math.Clamp((int)MathF.Floor(PreloadAheadMs / barMs), 1, PreloadBarsMax);
             }
 
             /// <summary>Is the next photo due: <paramref name="bar"/> (the bar under the playhead) is within the last
             /// <see cref="PreloadBars"/> bars of <paramref name="cycle"/>, or past its end before the switching downbeat.</summary>
-            public static bool Preload(int bar, int cycle, float spanMs, bool weak)
-                => (long)(cycle + 1) * BarsPerPhoto - bar <= PreloadBars(spanMs, weak);
+            public static bool Preload(int bar, int cycle, float spanMs)
+                => (long)(cycle + 1) * BarsPerPhoto - bar <= PreloadBars(spanMs);
 
             /// <summary>The pan for a cycle: 1.04 → 1.14, ±3 % across alternating by cycle, a hashed ±1.5 % drift down or up.</summary>
             public static KenBurns Pan(int cycle)
@@ -300,9 +300,9 @@ public static partial class Visualizer
             /// <summary>The scrim follows the level ±0.1 about 0.9, so a loud passage lifts the photo a little.</summary>
             public static float ScrimAlpha(float level) => Math.Clamp(0.9f - 0.2f * (Math.Clamp(level, 0f, 1f) - 0.5f), 0.8f, 1f);
 
-            /// <summary>The photo decode: min(W, 1920) on the stage (1280 weak), 160 in a gallery tile.</summary>
-            public static int DecodeFor(float w, bool preview, bool weak)
-                => preview ? 160 : Math.Clamp((int)MathF.Ceiling(w), 320, weak ? 1280 : 1920);
+            /// <summary>The photo decode: min(W, 1920) on the stage, 160 in a gallery tile.</summary>
+            public static int DecodeFor(float w, bool preview)
+                => preview ? 160 : Math.Clamp((int)MathF.Ceiling(w), 320, 1920);
         }
 
         // ── Type: the drift ────────────────────────────────────────────────────────────────────────────────────────
