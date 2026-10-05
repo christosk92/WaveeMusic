@@ -295,6 +295,7 @@ public sealed class DaylistCard : Component
     /// a late login re-describes the card.</summary>
     static string? GreetedName()
     {
+        if (Diagnostics.StoreShot.Presenting.Value) return null;   // presentation mode: no account name in a listing image
         _ = Entities.ScopeEpoch.Value;
         _ = Entities.Current.Users.Changed.Value;
         var me = User.Me;

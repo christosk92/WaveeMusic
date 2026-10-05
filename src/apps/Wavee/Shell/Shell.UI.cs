@@ -1436,7 +1436,8 @@ public static partial class Shell
             var overlay = UseContext(Overlay.Service);
             var anchor = UseRef<NodeHandle>(default);
             var handle = UseRef<OverlayHandle?>(null);
-            int unread = Notify.Unread.Value;
+            // presentation mode (the Store shot): the account's unread count is account data, so no badge
+            int unread = Diagnostics.StoreShot.Presenting.Value ? 0 : Notify.Unread.Value;
 
             void Toggle() => OpenNotificationPanel(overlay, () => anchor.Value, handle);
 

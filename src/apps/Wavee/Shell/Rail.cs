@@ -255,8 +255,8 @@ public static partial class Rail
         public static int ResolvedPresentation() => Prefs.NpvPlayer.ResolvedPresentation();
 
         /// <summary>Is the Cover/‹Player› switch offered at all? Reactive — a developer-mode flip composes or removes it
-        /// live.</summary>
-        public static bool PresentationSwitchVisible() => Platform.Developer.Enabled.Value;
+        /// live, and so does the Store shot's presentation mode, which hides it.</summary>
+        public static bool PresentationSwitchVisible() => Platform.Developer.Enabled.Value && !Diagnostics.StoreShot.Presenting.Value;
 
         /// <summary>Reactive read of the chosen preset id, clamped against the catalog.</summary>
         public static int Style() => ClampStyle(Prefs.NpvPlayer.Style(PlayerCatalog.Presets.Length));
