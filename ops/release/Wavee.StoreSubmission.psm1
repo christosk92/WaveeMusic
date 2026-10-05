@@ -111,4 +111,71 @@ function Assert-WaveeStoreArtifactHashes {
     }
 }
 
-Export-ModuleMember -Function Set-WaveeStorePackageSet, Assert-WaveeStorePackageSet, Assert-WaveeStoreArtifactHashes
+function Get-WaveeStoreShotSet {
+    # The listing screenshots in a folder: every NN-name.png with its NN-name.caption.txt beside it (the set
+    # ops/release/tools/New-StoreSet.py writes), in file-name order. A PNG without a caption is not part of the set.
+    [CmdletBinding()]
+    param([Parameter(Mandatory = $true)][string]$Dir)
+    if (-not (Test-Path -LiteralPath $Dir -PathType Container)) { throw "Screenshot folder not found: '$Dir'." }
+    $shots = @()
+    foreach ($png in @(Get-ChildItem -LiteralPath $Dir -Filter '*.png' -File | Sort-Object Name)) {
+        $captionPath = Join-Path $Dir ([IO.Path]::GetFileNameWithoutExtension($png.Name) + '.caption.txt')
+        if (-not (Test-Path -LiteralPath $captionPath)) { continue }
+        $caption = [IO.File]::ReadAllText($captionPath).TrimStart([char]0xFEFF).Trim()
+        if ($caption.Length -eq 0) { throw "Empty caption: '$captionPath'." }
+        if ($caption.Length -gt 200) { throw "Caption is $($caption.Length) characters; Partner Center caps it at 200: '$captionPath'." }
+        if ($png.Name -notmatch '^[A-Za-z0-9._-]+$') { throw "Screenshot names must be plain ASCII: '$($png.Name)'." }
+        $shots += [pscustomobject]@{ FileName = $png.Name; Path = $png.FullName; Caption = $caption }
+    }
+    if ($shots.Count -eq 0) { throw "No captioned screenshots in '$Dir'." }
+    if ($shots.Count -gt 10) { throw "$($shots.Count) screenshots; a listing shows at most 10 per device family." }
+    return $shots
+}
+
+function Set-WaveeStoreScreenshots {
+    # Replace a listing's screenshots: every existing Screenshot image is marked PendingDelete, the new ones are added
+    # as PendingUpload with their captions (the PNGs travel in the submission's upload zip). Other image types (logos,
+    # posters, trailers' thumbnails) are left untouched. Returns a deep copy; the caller's snapshot is never mutated.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Submission,
+        [Parameter(Mandatory = $true)][object[]]$Shots,
+        [string]$Language = 'en-us')
+    $copy = $Submission | ConvertTo-Json -Depth 100 | ConvertFrom-Json
+    $listingProp = @($copy.Listings.PSObject.Properties | Where-Object { $_.Name -ieq $Language })
+    if ($listingProp.Count -ne 1) { throw "Submission has no '$Language' listing." }
+    $base = $listingProp[0].Value.BaseListing
+    if ($null -eq $base) { throw "The '$Language' listing has no BaseListing." }
+    $images = @()
+    foreach ($image in @($base.Images)) {
+        if ($null -eq $image) { continue }
+        if ($image.ImageType -eq 'Screenshot') { $image.FileStatus = 'PendingDelete' }
+        $images += $image
+    }
+    foreach ($shot in $Shots) {
+        $images += [pscustomobject]@{ FileName = $shot.FileName; FileStatus = 'PendingUpload'; Description = $shot.Caption; ImageType = 'Screenshot' }
+    }
+    $base | Add-Member -NotePropertyName Images -NotePropertyValue $images -Force
+    return $copy
+}
+
+function Assert-WaveeStoreScreenshots {
+    # The round trip: the listing's active screenshots are exactly the new set, in order, with their captions.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$Submission,
+        [Parameter(Mandatory = $true)][object[]]$Shots,
+        [string]$Language = 'en-us')
+    $listingProp = @($Submission.Listings.PSObject.Properties | Where-Object { $_.Name -ieq $Language })
+    if ($listingProp.Count -ne 1) { throw "Submission has no '$Language' listing." }
+    $active = @($listingProp[0].Value.BaseListing.Images | Where-Object { $_.ImageType -eq 'Screenshot' -and $_.FileStatus -ne 'PendingDelete' })
+    if ($active.Count -ne $Shots.Count) { throw "The listing holds $($active.Count) active screenshots, expected $($Shots.Count)." }
+    for ($i = 0; $i -lt $Shots.Count; $i++) {
+        if ($active[$i].FileName -cne $Shots[$i].FileName -or $active[$i].Description -cne $Shots[$i].Caption) {
+            throw "Screenshot $($i + 1) is '$($active[$i].FileName)', expected '$($Shots[$i].FileName)' with its caption."
+        }
+    }
+}
+
+Export-ModuleMember -Function Set-WaveeStorePackageSet, Assert-WaveeStorePackageSet, Assert-WaveeStoreArtifactHashes,
+    Get-WaveeStoreShotSet, Set-WaveeStoreScreenshots, Assert-WaveeStoreScreenshots

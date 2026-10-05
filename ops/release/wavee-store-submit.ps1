@@ -93,7 +93,13 @@ param(
     # msstore-cli's own --uploadTimeout defaults to 0 (its CustomParser has no DefaultValueFactory - see
     # microsoft/msstore-cli#162), which cancels the blob upload before it starts. Always pass it explicitly;
     # 900s comfortably covers the ~60 MB .msixupload on a slow uplink.
-    [int]$UploadTimeoutSeconds = 900)
+    [int]$UploadTimeoutSeconds = 900,
+    # The en-US listing screenshots: a folder of NN-name.png + NN-name.caption.txt (New-StoreSet.py's output). They
+    # replace every current screenshot, uploaded in the same zip as the package. Empty: the listing is untouched.
+    [string]$ScreenshotDir = '',
+    # Stop after the metadata phase with the draft complete but uncommitted, to be finished in Partner Center (a
+    # declaration the API cannot set). The API never touches the draft after that.
+    [switch]$StopBeforeCommit)
 
 $ErrorActionPreference = 'Stop'
 $toolRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -906,6 +912,29 @@ else {
 }
 
 $releaseNotes = Get-StoreReleaseNotesText -Path $listingPath
+$shots = if ($ScreenshotDir) { @(Get-WaveeStoreShotSet -Dir $ScreenshotDir) } else { @() }
+if ($shots) { Note "$($shots.Count) screenshots from $ScreenshotDir" }
+
+function Send-StoreUploadZip {
+    # Zip the files flat (by FileName) and PUT the zip to the submission's Azure blob SAS URL. The URL is a credential:
+    # it is never logged.
+    param([Parameter(Mandatory = $true)][string]$Url, [Parameter(Mandatory = $true)][object[]]$Files)
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $zipPath = Join-Path $stage 'store-upload.zip'
+    if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+    $zip = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($f in $Files) {
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $f.Path, $f.FileName, [IO.Compression.CompressionLevel]::Fastest) | Out-Null
+        }
+    }
+    finally { $zip.Dispose() }
+    $bytes = (Get-Item -LiteralPath $zipPath).Length
+    Note "uploading $([math]::Round($bytes / 1MB, 1)) MB ($($Files.Count) files)"
+    $ProgressPreference = 'SilentlyContinue'
+    Invoke-WebRequest -Uri $Url -Method Put -InFile $zipPath -ContentType 'application/zip' -UseBasicParsing -TimeoutSec $UploadTimeoutSeconds `
+        -Headers @{ 'x-ms-blob-type' = 'BlockBlob'; 'x-ms-version' = '2021-08-06' } | Out-Null
+}
 
 Step 'Staged'
 Get-ChildItem $stage -File | Sort-Object Name |
@@ -996,6 +1025,15 @@ function Invoke-Metadata {
     if (-not $sub) { throw "'msstore submission get $ProductId' returned no JSON" }
 
     $sub = Set-WaveeStorePackageSet -Submission $sub -SubmissionId $script:State.submissionId -UploadName (Split-Path -Leaf $upload) -Quad $storeQuad
+    if ($shots) {
+        # The submission has ONE upload blob, and msstore filled it with the package alone: replace it with a zip that
+        # holds the package AND the screenshots, then name the screenshots in the listing.
+        $uploadUrl = [string](Get-JsonProperty $sub 'fileUploadUrl')
+        if (-not $uploadUrl.StartsWith('https://')) { throw 'the draft carries no https FileUploadUrl; cannot upload screenshots' }
+        Send-StoreUploadZip -Url $uploadUrl -Files (@([pscustomobject]@{ FileName = (Split-Path -Leaf $upload); Path = $upload }) + $shots)
+        $sub = Set-WaveeStoreScreenshots -Submission $sub -Shots $shots
+        Good "uploaded the package and $($shots.Count) screenshots in one zip"
+    }
     $updated = Set-StoreSubmissionReleaseNotes -Submission $sub -ReleaseNotes $releaseNotes
     Get-OwnedSubmission | Out-Null
     # The whole submission body travels as ONE argv element; Invoke-MsStore hands the array straight to the exe,
@@ -1011,6 +1049,10 @@ function Invoke-Metadata {
         throw "the release notes did not round-trip: the Store holds $([int]"$roundTrip".Length) chars, sent $($releaseNotes.Length). The submission is untouched otherwise; fix Wavee.Store.psm1's patching against $stage\submission-before.json and -Resume"
     }
     Good 'en-US ReleaseNotes round-tripped'
+    if ($shots) {
+        Assert-WaveeStoreScreenshots -Submission $verify -Shots $shots
+        Good "$($shots.Count) en-US screenshots round-tripped with their captions"
+    }
 }
 
 if (-not (Test-PhaseDone 'metadata')) {
@@ -1019,6 +1061,13 @@ if (-not (Test-PhaseDone 'metadata')) {
 }
 else {
     Note 'metadata already patched'
+}
+
+if ($StopBeforeCommit) {
+    Step 'Stopping before the commit'
+    Good "draft $($script:State.submissionId) is complete: package, release notes$(if ($shots) { ', screenshots' })"
+    Warn 'finish it in Partner Center and submit it there; never run this script against it again'
+    return
 }
 
 # ===============================================================================================================
