@@ -100,4 +100,82 @@ public class MetadataCacheTests
         Assert.Equal(2, sent);
     }
 
+    static byte[] RequestFor(params int[] ids)
+    {
+        var batch = new Xm.BatchedEntityRequest { Header = new Xm.BatchedEntityRequestHeader { Country = "NL", Catalogue = "premium" } };
+        foreach (int i in ids) batch.EntityRequest.Add(new Xm.EntityRequest
+        { EntityUri = "spotify:episode:test" + i, Query = { new Xm.ExtensionQuery { ExtensionKind = Xm.ExtensionKind.EpisodeV4 } } });
+        return batch.ToByteArray();
+    }
+
+    /// <summary>The uris a send carried — what the cache did NOT answer itself.</summary>
+    static List<string> Asked(byte[] body)
+        => Xm.BatchedEntityRequest.Parser.ParseFrom(body).EntityRequest.Select(e => e.EntityUri).ToList();
+
+    [Fact]
+    public void The_byte_budget_bounds_what_the_cache_holds()
+    {
+        // Room for roughly three entries: a 601-entity answer still comes back whole, the cache just keeps the newest few.
+        var probe = new Spotify.Api.MetadataCache();
+        probe.Execute(RequestFor(0), "account", 1000, body => Reply(body, ttl: 600));
+        long one = probe.Bytes;
+        Assert.True(one > 0);
+
+        long budget = one * 3 + 64;                          // the 601 uris run a few characters longer than "test0"
+        var cache = new Spotify.Api.MetadataCache(budgetBytes: budget);
+        var result = cache.Execute(Request(601), "account", 1000, body => Reply(body, ttl: 600));
+
+        Assert.Equal(601, Xm.BatchedExtensionResponse.Parser.ParseFrom(result.Body).ExtendedMetadata[0].ExtensionData.Count);
+        Assert.True(cache.Bytes <= budget, $"held {cache.Bytes} B against a {budget} B budget");
+        Assert.Equal(3, cache.Count);
+    }
+
+    [Fact]
+    public void Eviction_takes_the_least_recently_used_entry()
+    {
+        var probe = new Spotify.Api.MetadataCache();
+        probe.Execute(RequestFor(0), "account", 1000, body => Reply(body, ttl: 600));
+        var cache = new Spotify.Api.MetadataCache(budgetBytes: probe.Bytes * 2);
+        cache.Execute(RequestFor(0), "account", 1000, body => Reply(body, ttl: 600));
+        cache.Execute(RequestFor(1), "account", 1001, body => Reply(body, ttl: 600));
+        cache.Execute(RequestFor(0), "account", 1002, body => throw new InvalidOperationException("0 is fresh"));   // a hit: 0 is now the most recent
+
+        cache.Execute(RequestFor(2), "account", 1003, body => Reply(body, ttl: 600));                                // over budget: 1 goes, not 0
+
+        var asked = new List<string>();
+        cache.Execute(RequestFor(0, 1, 2), "account", 1004, body => { asked.AddRange(Asked(body)); return Reply(body, ttl: 600); });
+        Assert.Equal(new[] { "spotify:episode:test1" }, asked);
+    }
+
+    [Fact]
+    public void Trim_sheds_down_to_the_target_and_reports_what_it_freed()
+    {
+        var cache = new Spotify.Api.MetadataCache();
+        cache.Execute(Request(50), "account", 1000, body => Reply(body, ttl: 600));
+        long before = cache.Bytes;
+
+        long freed = cache.Trim(before / 2);
+
+        Assert.True(cache.Bytes <= before / 2);
+        Assert.Equal(before - cache.Bytes, freed);
+        Assert.Equal(0, cache.Trim(before));                 // already under the target: nothing to give back
+        Assert.True(cache.Trim(0) > 0);
+        Assert.Equal(0, cache.Count);
+        Assert.Equal(0, cache.Bytes);
+    }
+
+    [Fact]
+    public void An_evicted_entry_is_asked_again_without_an_etag()
+    {
+        var cache = new Spotify.Api.MetadataCache();
+        cache.Execute(Request(), "account", 1000, body => Reply(body, ttl: 1));
+        cache.Trim(0);
+        var answer = cache.Execute(Request(), "account", 2001, body =>
+        {
+            Assert.True(string.IsNullOrEmpty(Xm.BatchedEntityRequest.Parser.ParseFrom(body).EntityRequest[0].Query[0].Etag));   // no payload to 304 against
+            return Reply(body);
+        });
+        var data = Xm.BatchedExtensionResponse.Parser.ParseFrom(answer.Body).ExtendedMetadata[0].ExtensionData[0];
+        Assert.Equal("episode-payload", data.ExtensionData.Value.ToStringUtf8());
+    }
 }
