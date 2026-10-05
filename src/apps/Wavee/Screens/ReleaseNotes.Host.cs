@@ -290,14 +290,43 @@ public static partial class ReleaseNotes
             { Note("embedded"); return embedded; }
 
             string path = Path.Combine(_cacheRoot, semver, DocName);
-            if (TryReadDocument(path) is { } cached) { Note("cache"); return cached; }
+            if (TryReadDocument(path) is { } cached)
+            {
+                Note("cache");
+                await EnsureMediaAsync(cached, ct).ConfigureAwait(false);
+                return cached;
+            }
 
             byte[]? bytes = await GetBytesAsync(_releasesRoot + ReleaseNotesValidation.TagPrefix + semver + "/" + DocName, ct).ConfigureAwait(false);
             var doc = bytes is null ? null : Deserialize(bytes);
             if (doc is null) { Note("none"); return null; }
             TryWrite(path, bytes!);
             Note("remote");
+            await EnsureMediaAsync(doc, ct).ConfigureAwait(false);
             return doc;
+        }
+
+        /// <summary>A fetched release's highlight images: <see cref="MediaPath"/> resolves them inside the version's cache
+        /// folder, so they are downloaded there from the release's flat assets, each checked against the hash the release
+        /// tool stamped. Without this an older release (no longer the embedded one) showed empty image bands.</summary>
+        async Task EnsureMediaAsync(ReleaseNotesDocument doc, CancellationToken ct)
+        {
+            if (!IsSafeVersion(doc.Version)) return;
+            foreach (var m in doc.Media ?? [])
+            {
+                if (ct.IsCancellationRequested) return;
+                if (m is null || !ReleaseNotesValidation.IsPublishableMediaPath(m.Src)) continue;
+                string path = MediaPath(doc, m.Src);
+                if (path.Length == 0 || File.Exists(path)) continue;
+                byte[]? bytes = await GetBytesAsync(_releasesRoot + ReleaseNotesValidation.TagPrefix + doc.Version + "/" + Path.GetFileName(m.Src), ct).ConfigureAwait(false);
+                if (bytes is null) continue;
+                if (m.Sha256.Length > 0 && !string.Equals(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)), m.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    Log.Warn(LogCategory, $"media hash mismatch {doc.Version}/{m.Src}; not cached");
+                    continue;
+                }
+                TryWrite(path, bytes);
+            }
         }
 
         /// <summary>The index we already have (memory, else the disk cache). NO network — the update check's hot path.</summary>
