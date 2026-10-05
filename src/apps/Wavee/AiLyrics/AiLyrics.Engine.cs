@@ -43,7 +43,7 @@ public static partial class AiLyrics
         public float[] Mono44 = [], Resampled = [];
 
         /// <summary>Size the language- and resampler-dependent buffers (a no-op once they are big enough).</summary>
-        internal void Prepare(int classes, Dsp.Resampler resampler)
+        public void Prepare(int classes, Dsp.Resampler resampler)
         {
             int logp = Aligner.StepFrames * classes;
             if (Logp.Length < logp) Logp = new float[logp];
@@ -54,7 +54,7 @@ public static partial class AiLyrics
         }
 
         /// <summary>Take back the buffers a job grew past their starting size.</summary>
-        internal void Keep(float[] mixL, float[] mixR, float[] vocL, float[] vocR, float[] mono44, float[] resampled)
+        public void Keep(float[] mixL, float[] mixR, float[] vocL, float[] vocR, float[] mono44, float[] resampled)
         {
             MixL = mixL; MixR = mixR; VocL = vocL; VocR = vocR; Mono44 = mono44; Resampled = resampled;
         }
