@@ -473,8 +473,9 @@ public static partial class Diagnostics
         static bool TryPlayDemo(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
             if (!s_options.PlayDemo) return false;
-            if (!Platform.Args.Fake) { Say("[play-demo] needs --fake (the seeded playlist)"); return false; }
-            if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[play-demo] unavailable: requires Win32Window + D3D12Device"); return false; }
+            // A probe run that cannot set up exits (true: the arm owns the run) instead of falling through to the normal app.
+            if (!Platform.Args.Fake) { Say("[play-demo] needs --fake (the seeded playlist)"); return true; }
+            if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[play-demo] unavailable: requires Win32Window + D3D12Device"); return true; }
             if (!WarmUntilShell(host, w, gpu, 600)) { Say("[play-demo] the shell never activated a route"); return false; }
             // The seeded track under a SIDEBAR playlist's context (its row, and the playing track's, wear the meter). PlayRows, not
             // PlayContext: --fake has no network to resolve a playlist context against.
