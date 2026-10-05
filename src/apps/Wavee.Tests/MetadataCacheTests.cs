@@ -178,4 +178,127 @@ public class MetadataCacheTests
         var data = Xm.BatchedExtensionResponse.Parser.ParseFrom(answer.Body).ExtendedMetadata[0].ExtensionData[0];
         Assert.Equal("episode-payload", data.ExtensionData.Value.ToStringUtf8());
     }
+
+    [Fact]
+    public void Bytes_always_equal_the_sum_of_the_entries()
+    {
+        var cache = new Spotify.Api.MetadataCache();
+        cache.Execute(Request(20), "account", 1000, body => Reply(body, ttl: 1));
+        Assert.Equal(cache.RecountBytes(), cache.Bytes);
+
+        cache.Execute(Request(20), "account", 5000, body => Reply(body, status: 304));   // every entry replaced by its 304 rebuild
+        Assert.Equal(20, cache.Count);
+        Assert.Equal(cache.RecountBytes(), cache.Bytes);
+
+        cache.Invalidate("spotify:episode:test3");
+        Assert.Equal(19, cache.Count);
+        Assert.Equal(cache.RecountBytes(), cache.Bytes);
+
+        cache.Execute(Request(2), "another-account", 6000, body => Reply(body));            // a scope change clears the table
+        Assert.Equal(2, cache.Count);
+        Assert.Equal(cache.RecountBytes(), cache.Bytes);
+
+        cache.Trim(0);
+        Assert.Equal(0, cache.Bytes);
+        Assert.Equal(0, cache.RecountBytes());
+    }
+
+    [Fact]
+    public void A_304_refresh_makes_the_entry_the_most_recent()
+    {
+        var cache = new Spotify.Api.MetadataCache();
+        cache.Execute(RequestFor(0), "account", 1000, body => Reply(body, ttl: 1));
+        cache.Execute(RequestFor(1), "account", 1001, body => Reply(body, ttl: 600));
+        Assert.True(cache.Holds("spotify:episode:test1", Xm.ExtensionKind.EpisodeV4, out bool oneIsNewest) && oneIsNewest);
+
+        cache.Execute(RequestFor(0), "account", 5000, body => Reply(body, status: 304));    // 0 expired: an ETag ask, a 304
+
+        Assert.True(cache.Holds("spotify:episode:test0", Xm.ExtensionKind.EpisodeV4, out bool zeroIsNewest));
+        Assert.True(zeroIsNewest);
+    }
+
+    /// <summary>The governor trims on the UI thread. A request holds the cache for its whole round trip, so a trim that
+    /// waited for it would freeze the window for as long as the network takes.</summary>
+    [Fact]
+    public async Task Trim_returns_promptly_while_a_send_is_blocked()
+    {
+        var cache = new Spotify.Api.MetadataCache();
+        cache.Execute(Request(10), "account", 1000, body => Reply(body, ttl: 600));
+        using var inSend = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var request = Task.Run(() => cache.Execute(RequestFor(99), "account", 1001, body =>
+        {
+            inSend.Set();
+            release.Wait(TimeSpan.FromSeconds(30));
+            return Reply(body, ttl: 600);
+        }));
+        try
+        {
+            Assert.True(inSend.Wait(TimeSpan.FromSeconds(10)));
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            long freed = cache.Trim(0);
+            long count = cache.Count;
+            sw.Stop();
+            Assert.True(sw.ElapsedMilliseconds < 1000, $"trim waited {sw.ElapsedMilliseconds} ms on the network");
+            Assert.True(freed > 0);
+            Assert.Equal(0, count);
+        }
+        finally { release.Set(); }
+        await request.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(1, cache.Count);                                   // the answer that was in flight still lands
+    }
+
+    /// <summary>A trim between an ETag ask and its 304 must not drop the entity: the answer is rebuilt from the payload
+    /// the ask was made against.</summary>
+    [Fact]
+    public void A_304_still_answers_when_its_entry_was_evicted_in_flight()
+    {
+        var cache = new Spotify.Api.MetadataCache();
+        cache.Execute(Request(), "account", 1000, body => Reply(body, ttl: 1));
+        var answer = cache.Execute(Request(), "account", 5000, body =>
+        {
+            Assert.Equal("v1", Xm.BatchedEntityRequest.Parser.ParseFrom(body).EntityRequest[0].Query[0].Etag);
+            cache.Trim(0);                                              // the governor, mid-flight
+            return Reply(body, status: 304);
+        });
+        var data = Xm.BatchedExtensionResponse.Parser.ParseFrom(answer.Body).ExtendedMetadata[0].ExtensionData[0];
+        Assert.Equal("episode-payload", data.ExtensionData.Value.ToStringUtf8());
+        Assert.Equal(1, cache.Count);
+    }
+
+    /// <summary>The charge per entry against what a parsed entry really holds, measured as the bytes parsing allocates
+    /// (every object a cached entry keeps alive comes from the parse; the cache's clone shares its strings and bytes).
+    /// The wire size alone undercounted a small answer ~3x: a fixed ~400 B of objects and UTF-16 strings rides on every
+    /// entry whatever its payload.</summary>
+    [Theory]
+    [InlineData(100)]
+    [InlineData(800)]
+    [InlineData(20_000)]
+    public void The_estimate_covers_what_a_parsed_entry_really_holds(int payload)
+    {
+        const int n = 200;
+        var group = new Xm.EntityExtensionDataArray { ExtensionKind = Xm.ExtensionKind.TrackV4 };
+        var rng = new Random(payload);
+        for (int i = 0; i < n; i++)
+        {
+            var bytes = new byte[payload];
+            rng.NextBytes(bytes);
+            group.ExtensionData.Add(new Xm.EntityExtensionData
+            {
+                EntityUri = "spotify:track:" + i.ToString("D22"),
+                Header = new Xm.EntityExtensionDataHeader { StatusCode = 200, Etag = "\"" + Guid.NewGuid().ToString("N") + "\"", CacheTtlInSeconds = 86400 },
+                ExtensionData = new Any { TypeUrl = "type.googleapis.com/spotify.metadata.Track", Value = ByteString.CopyFrom(bytes) },
+            });
+        }
+        byte[] wire = new Xm.BatchedExtensionResponse { ExtendedMetadata = { group } }.ToByteArray();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var parsed = Xm.BatchedExtensionResponse.Parser.ParseFrom(wire);
+        long resident = (GC.GetAllocatedBytesForCurrentThread() - before) / n;
+        long estimate = Spotify.Api.MetadataCache.EstimateBytes(parsed.ExtendedMetadata[0].ExtensionData[0], null)
+                        - Spotify.Api.MetadataCache.TableEntryBytes;
+
+        Assert.True(estimate >= resident * 95 / 100, $"payload {payload}: estimated {estimate} B, a parsed entry holds {resident} B");
+        Assert.True(estimate <= resident + 256, $"payload {payload}: estimated {estimate} B, a parsed entry holds only {resident} B");
+    }
 }
