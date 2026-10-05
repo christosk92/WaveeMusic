@@ -682,11 +682,13 @@ public static partial class Controls
     sealed class EqHost : Component
     {
         const float LoopMs = 850f;
-        // ~30 Hz. Be honest about the trade: there is no partial repaint, so every visible change costs a FULL-WINDOW
-        // present — motion IS presents, and the tick rate IS the present rate for this widget. 15 Hz with 2-device-px
-        // steps read as a visibly choppy meter; 30 Hz with 1-px steps is the smoothness floor that still costs a
-        // quarter of a continuous per-frame track. One rate on every tier: a weak GPU is the governor's business.
-        const float TickMs = 1000f / 30f;
+        // Per FRAME, not per timer (motion policy, 2026-10-03): the bars are sampled on every produced frame by an EqTicker
+        // (Controls.FrameTicker, the deck / visualizer / caption clocks' pattern) that is MOUNTED only while they animate, so an
+        // unmounted meter is no wake reason at all. The sample is a function of FrameTime (not of the tick count), so the loop
+        // looks the same at 60, 120 or 144 Hz, and each bar height is snapped to whole device pixels: a frame on which no bar
+        // crossed a pixel writes nothing and is byte-identical, which the host elides. The fixed 30 Hz UseInterval this replaced
+        // drove continuous visible motion at a rate below the panel's; a weak GPU is the measured governor's business
+        // (the ticker is paceable), never a rate of its own.
 
         static readonly float[][] Patterns =
         [
@@ -722,22 +724,30 @@ public static partial class Controls
                 Tick(p.Height, scale);
             }, DepKey.From(!animate ? 0 : still ? 1 : 2));
 
-            UseInterval(() => Tick(p.Height, scale), TickMs, enabled: ShouldTick(animate, paused, reduced, hidden));
+            // The per-frame ticker is mounted ONLY while the meter should move (playing, not hover-paused, motion not reduced,
+            // window not covered): an unmounted ticker holds no frame subscription, so a paused or hidden meter costs nothing.
+            bool ticking = ShouldTick(animate, paused, reduced, hidden);
+            float height = p.Height;
+            Element bar0 = Embed.Comp(new EqBarProps(_scaleY[0], p.Color, p.Height), static () => new EqBar());
+            Element bar1 = Embed.Comp(new EqBarProps(_scaleY[1], p.Color, p.Height), static () => new EqBar());
+            Element bar2 = Embed.Comp(new EqBarProps(_scaleY[2], p.Color, p.Height), static () => new EqBar());
+            Element[] kids = ticking
+                ? [bar0, bar1, bar2, Embed.Comp(() => new EqTicker(() => Tick(height, scale)))]
+                : [bar0, bar1, bar2];
 
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Center, Gap = 2f, Height = p.Height,
-                Children =
-                [
-                    Embed.Comp(new EqBarProps(_scaleY[0], p.Color, p.Height), static () => new EqBar()),
-                    Embed.Comp(new EqBarProps(_scaleY[1], p.Color, p.Height), static () => new EqBar()),
-                    Embed.Comp(new EqBarProps(_scaleY[2], p.Color, p.Height), static () => new EqBar()),
-                ],
+                Children = kids,
             };
         }
 
+        /// <summary>The meter's own per-frame clock (a <see cref="FrameTicker"/> subclass so the <c>[wake]</c> census names it);
+        /// paceable: decorative motion the adaptive GPU governor may pace on a saturated GPU.</summary>
+        sealed class EqTicker(Action tick) : FrameTicker(tick, paceable: true);
+
         // One clock sample drives all three bars. FrameTime, never TickCount64 (ch 00 non-negotiable 14): TickCount64
-        // advances in ~15.6 ms quanta, so a 30 Hz sampler reading it lands twice on the same instant and then jumps.
+        // advances in ~15.6 ms quanta, so a per-frame sampler reading it would land twice on the same instant and then jump.
         void Tick(float heightDip, float scale)
         {
             float u = (Design.FrameTime.NowMs - _startMs) / LoopMs;
