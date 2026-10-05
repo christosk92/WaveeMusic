@@ -479,7 +479,9 @@ public static partial class Diagnostics
         {
             Shell.Ui.RailOpen.Value = false;
             Nav(new Shell.Route(Shell.RouteKind.Home));
-            if (!Playback.Snap().IsPlaying) { Playback.PlayContext(play); PumpUntil(host, w, static () => Playback.Snap().IsPlaying, 20); }
+            // The steady state the A/B needs: the bench track itself playing (a previous scenario may have left an album mid-change).
+            var now = Playback.Snap();
+            if (!now.IsPlaying || now.CurrentId.Text != play) { Playback.PlayContext(play); PumpUntil(host, w, () => Playback.Snap().IsPlaying && Playback.Snap().CurrentId.Text == play, 20); }
             Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
             Stage.Open(null, "bench");
             Pump(host, w, 2.0, null);
