@@ -248,6 +248,31 @@ public class ControlsMotionPolicyTests
         Assert.False(Controls.ShouldShowStillShape(playing: true, reducedMotion: false));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Each_bars_render_thread_track_is_its_pattern_as_an_even_linear_seamless_loop(int bar)
+    {
+        // The meter runs on the render thread as keyframe tracks; the loop must stay the exact function the bars always
+        // followed (linear between five evenly spaced keys) and wrap without a jump.
+        var keys = Controls.EqualizerTrack(bar);
+        Assert.Equal(5, keys.Length);
+        for (int i = 0; i < keys.Length; i++)
+        {
+            Assert.Equal(i / 4f, keys[i].Offset);
+            Assert.Equal(Controls.EqualizerSample(bar, i / 4f), keys[i].Value);
+            Assert.Equal((EasingSpec)Easing.Linear, keys[i].Easing);
+        }
+        Assert.Equal(keys[0].Value, keys[^1].Value);
+        for (float u = 0f; u <= 1f; u += 0.01f)
+        {
+            int k = Math.Min(3, (int)MathF.Floor(u * 4f));
+            float local = (u - keys[k].Offset) / (keys[k + 1].Offset - keys[k].Offset);
+            Assert.Equal(Controls.EqualizerSample(bar, u), keys[k].Value + (keys[k + 1].Value - keys[k].Value) * local, 5);
+        }
+    }
+
     [Fact]
     public void A_covered_window_stops_the_loop_and_nothing_else_about_the_window_does()
     {
