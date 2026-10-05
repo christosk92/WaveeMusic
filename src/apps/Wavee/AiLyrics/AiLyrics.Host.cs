@@ -16,6 +16,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
@@ -777,7 +778,13 @@ public static partial class AiLyrics
         {
             DisposeModels();
             _installedKey = "";
-            Log.Info("ai-lyrics", "ai.models.unloaded");
+            // The jobs' buffers are large-object garbage, and an idle app runs no full GC to reclaim it: the process
+            // used to keep ~300 MB of dead LOH committed for hours after the unload. One compacting, decommitting
+            // collection hands it back; the unload only happens after 10 idle minutes, so the pause is rare.
+            long before = Environment.WorkingSet;
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            Log.Info("ai-lyrics", $"ai.models.unloaded ws={before / (1 << 20)}->{Environment.WorkingSet / (1 << 20)}MB heap={GC.GetGCMemoryInfo().HeapSizeBytes / (1 << 20)}MB");
         });
 
         public void CancelJob()

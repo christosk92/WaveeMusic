@@ -101,6 +101,11 @@ public static partial class AiLyrics
 
             var chunk = new float[Aligner.Samples];
             var logp = new float[Aligner.StepFrames * _aln.Vocab.Classes];   // Korean has 1,205 classes
+            // Per-step scratch, allocated once: every one of these is past the large-object threshold, and a fresh array
+            // per step left ~0.5 MB of LOH garbage per second of audio that the idle app never collected.
+            var monoBlock = new float[Separator.Block];
+            var mono44 = new float[(int)((long)Aligner.Samples * Sr44 / Sr16) + 2 * 2048 + 8];
+            var resampled = new float[_rs.OutLength(mono44.Length)];
             long ctcPos = 0;                                                     // 16 kHz samples covered by emissions
             int linesReady = 0;
 
@@ -135,9 +140,8 @@ public static partial class AiLyrics
                 EnsureCap(ref vocL, ref vocR, vocLen + n);
                 Array.Copy(blockL, 0, vocL, vocLen, n); Array.Copy(blockR, 0, vocR, vocLen, n);
                 vocLen += n;
-                var monoArr = new float[n];
-                for (int i = 0; i < n; i++) monoArr[i] = 0.5f * (blockL[i] + blockR[i]);
-                _env.Append(monoArr);
+                for (int i = 0; i < n; i++) monoBlock[i] = 0.5f * (blockL[i] + blockR[i]);
+                _env.Append(monoBlock.AsSpan(0, n));
                 sepWindow++;
                 // drop mix the next window no longer needs
                 long keepFrom = sepWindow * Separator.Block - Separator.Trim;
@@ -159,16 +163,16 @@ public static partial class AiLyrics
                 long lo44 = Math.Max(vocStart, (long)Math.Floor(a0 * (double)Sr44 / Sr16) - 2048);
                 long hi44 = Math.Min(vocStart + vocLen, (long)Math.Ceiling((a0 + Aligner.Samples) * (double)Sr44 / Sr16) + 2048);
                 int span44 = (int)Math.Max(0, hi44 - lo44);
-                var mono44 = new float[span44];
+                if (span44 > mono44.Length) { mono44 = new float[span44]; resampled = new float[_rs.OutLength(span44)]; }
                 for (int i = 0; i < span44; i++) { long v = lo44 + i - vocStart; mono44[i] = 0.5f * (vocL[v] + vocR[v]); }
-                var r = new float[_rs.OutLength(span44)];
-                _rs.Process(mono44, r);
+                var r = resampled.AsSpan(0, _rs.OutLength(span44));
+                _rs.Process(mono44.AsSpan(0, span44), r);
                 long off16 = (long)Math.Round(lo44 * (double)Sr16 / Sr44);
                 Array.Clear(chunk);
                 for (int i = 0; i < Aligner.Samples; i++)
                 {
                     long j = a0 + i - off16;
-                    if (j >= 0 && j < r.Length && a0 + i >= 0) chunk[i] = r[j];
+                    if (j >= 0 && j < r.Length && a0 + i >= 0) chunk[i] = r[(int)j];
                 }
                 double mean = 0; foreach (float s in chunk) mean += s; mean /= chunk.Length;
                 double var2 = 0; foreach (float s in chunk) var2 += (s - mean) * (s - mean);
