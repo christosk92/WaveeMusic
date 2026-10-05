@@ -1044,6 +1044,23 @@ public sealed class VideoStateTests : IDisposable
         Assert.False(Video.State.PopOutPresented.Peek());
     }
 
+    // E3: a warm (parked) pop-out keeps its mounted element, so its first-surface report never fires again; the reveal of a
+    // REUSED window is therefore what releases the hand-off. A fresh window's reveal must not (its element reports it).
+    [Fact]
+    public void Pop_out_hand_off_is_released_by_the_reveal_of_a_reused_window_only()
+    {
+        Video.State.BeginPopOutHandoff();
+        Video.State.ReportPopOutRevealed(reusedWindow: false);
+        Assert.False(Video.State.PopOutPresented.Peek());             // fresh window: waits for its element's first presented surface
+
+        Video.State.ReportPopOutRevealed(reusedWindow: true);
+        Assert.True(Video.State.PopOutPresented.Peek());              // warm window: the reveal is the presentation (no 2 s grace)
+
+        Video.State.EndPopOutHandoff();
+        Video.State.ReportPopOutRevealed(reusedWindow: true);         // no hand-off in flight: inert
+        Assert.False(Video.State.PopOutPresented.Peek());
+    }
+
     [Fact]
     public void Main_window_fullscreen_takes_the_transport_and_exits_home()
     {

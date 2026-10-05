@@ -529,6 +529,10 @@ public static partial class Shell
             void OpenVideoMenu()
             {
                 if (videoMenu.Value is { IsOpen: true } open) { open.Close(); return; }
+                // The menu rises over the spot the anchor's tooltip bubble occupies (the bubble sits above the chevron, the menu
+                // opens above it too), and the pointer travelling to a row would sit inside the bubble's safe zone for the
+                // whole 5 s dwell. Opening the menu (a right-click or keyboard open sends no press to the wrapper) closes it.
+                ToolTip.CloseOpen();
                 var items = Video.PlacementMenu(includeFullscreen: true);
                 videoMenu.Value = overlay.Open(
                     () => videoAnchor.Value,

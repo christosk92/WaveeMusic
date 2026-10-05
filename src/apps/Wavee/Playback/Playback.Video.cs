@@ -249,6 +249,19 @@ public static partial class Playback
                 => firstFrameQpc == 0 || nowQpc < firstFrameQpc ? -1
                    : (long)System.Diagnostics.Stopwatch.GetElapsedTime(firstFrameQpc, nowQpc).TotalMilliseconds;
 
+            /// <summary>E5: the least time between two `[video] frames` lines of one session.</summary>
+            public const long FrameStatsEveryMs = 5_000;
+
+            /// <summary>E5: is a `[video] frames` line due? Only while counters exist (<paramref name="rendered"/> + <paramref name="dropped"/> &gt; 0),
+            /// they moved since the last line, and <see cref="FrameStatsEveryMs"/> passed since it (<paramref name="lastAtMs"/> 0 = no baseline yet:
+            /// never due, the caller stamps one). A counter that went DOWN is a new session's fresh count and is just a change.</summary>
+            public static bool FrameStatsDue(long nowMs, long lastAtMs, long rendered, long dropped, long lastRendered, long lastDropped)
+                => lastAtMs != 0 && rendered + dropped > 0 && (rendered != lastRendered || dropped != lastDropped)
+                   && nowMs - lastAtMs >= FrameStatsEveryMs;
+
+            /// <summary>E5: the change in a counter since the last line; a counter that went down restarted, so its new value is the change.</summary>
+            public static long FrameStatsDelta(long now, long last) => now >= last ? now - last : now;
+
             /// <summary>A carried position within this of the end is pulled back…</summary>
             public const long StartClampGuardMs = 250;
             /// <summary>…to this far before the end, so a restore never opens on the credits.</summary>
@@ -523,6 +536,12 @@ public static partial class Playback
         // read at the cut itself. Disarmed by every Load, Stop and Pause. Under s_gate.
         static bool s_cutProbeArmed;
         static long s_cutProbeAtMs, s_cutProbePcMs, s_cutProbeSongPosMs;
+        // E5: the `[video] frames` line's pacing, per load (under s_gate): when the last one was written (0 = no baseline yet) and the
+        // counters it carried, so the next one reports the change.
+        static long s_statsLoggedAtMs, s_statsLoggedRendered, s_statsLoggedDropped;
+        // E5: the clear path's `switch.budget` inputs, written by `OpenOkLine` (worker thread) and read by `Observe` (UI thread):
+        // how long the open call took and when it finished, counted from switch.begin. -1 = this switch has no open.ok yet.
+        static long s_openCallMs = -1, s_openDoneSinceSwitchMs = -1;
 
         // the pump
         readonly record struct LoadRequest(VideoSource Source, long StartAtMs, uint Epoch);
@@ -1457,6 +1476,8 @@ public static partial class Playback
             SwitchAction plan = PlanWithReason(new SwitchInput(live is not null, faulted, liveKey, req.Source.Key, req.StartAtMs, faultRetryable), out SwitchReason why);
             Interlocked.Exchange(ref s_switchAtMs, FrameNowMs());
             Interlocked.Exchange(ref s_switchAtQpc, System.Diagnostics.Stopwatch.GetTimestamp());
+            Interlocked.Exchange(ref s_openCallMs, -1);                      // E5: this switch has not opened yet
+            Interlocked.Exchange(ref s_openDoneSinceSwitchMs, -1);
             if (plan is SwitchAction.Switch or SwitchAction.Rebuild) Volatile.Write(ref s_firstFrameAtMs, 0);   // F225: a new session's first frame is still to come
             // F163: a faulted in-place re-open of the same key spends that key's one retry; every other load starts afresh.
             bool reopen = plan == SwitchAction.Switch && faulted && string.Equals(liveKey, req.Source.Key, StringComparison.Ordinal);
@@ -1613,8 +1634,11 @@ public static partial class Playback
         static string OpenOkLine(LoadRequest req, long startedAt, bool rebuild)
         {
             long now = FrameNowMs();
+            long sinceSwitch = now - Interlocked.Read(ref s_switchAtMs);
+            Interlocked.Exchange(ref s_openCallMs, now - startedAt);        // E5: the clear path's switch.budget counts from here
+            Interlocked.Exchange(ref s_openDoneSinceSwitchMs, sinceSwitch);
             return $"[video] open.ok key={Tail(req.Source.Key)} epoch={req.Epoch} openCallMs={now - startedAt} " +
-                   $"sinceSwitchMs={now - Interlocked.Read(ref s_switchAtMs)} rebuild={(rebuild ? "true" : "false")}";
+                   $"sinceSwitchMs={sinceSwitch} rebuild={(rebuild ? "true" : "false")}";
         }
 
         /// <summary>A different video on a HEALTHY player: re-open the same instance. No `PlayerChanged`, so the mounted
@@ -1840,12 +1864,33 @@ public static partial class Playback
         static MediaOpenOptions ResetPerLoad(LoadRequest req)
         {
             bool paused;
+            bool logFinalStats = false;
+            string finalKey = "";
+            long finalRendered = 0, finalDropped = 0, finalRenderedDelta = 0, finalDroppedDelta = 0;
             lock (s_gate)
             {
                 // F158: the player still holds the PREVIOUS load's session and error until the open replaces them.
                 MediaPlayer? current = s_player;
                 s_baseSession = current?.Session;
                 s_baseError = current?.Error.Peek();
+                // E5: the session this load replaces ends here: its last `[video] frames` line, totals since it began. Its counters are
+                // still on the player (the open resets them), and a session that never played has none, so it writes nothing.
+                if (current is not null && s_key.Length > 0 && s_statsLoggedAtMs != 0)
+                {
+                    PlaybackStatistics ended = current.Statistics.Peek();
+                    if (ended.FramesRendered + ended.FramesDropped > 0)
+                    {
+                        logFinalStats = true;
+                        finalKey = s_key;
+                        finalRendered = ended.FramesRendered;
+                        finalDropped = ended.FramesDropped;
+                        finalRenderedDelta = HostRules.FrameStatsDelta(finalRendered, s_statsLoggedRendered);
+                        finalDroppedDelta = HostRules.FrameStatsDelta(finalDropped, s_statsLoggedDropped);
+                    }
+                }
+                s_statsLoggedAtMs = 0;
+                s_statsLoggedRendered = 0;
+                s_statsLoggedDropped = 0;
                 s_faultRetryable = false;
                 s_key = req.Source.Key;
                 s_live = req.Source;
@@ -1862,6 +1907,7 @@ public static partial class Playback
                 s_lastState = PlaybackState.Idle;
                 s_watchdog.Arm(FrameNowMs());
             }
+            if (logFinalStats) LogLine(new VideoLog.FrameStats(Tail(finalKey), finalRendered, finalDropped, finalRenderedDelta, finalDroppedDelta, Final: true));
             ApplyQualityCaps();
             return new MediaOpenOptions
             {
@@ -2056,6 +2102,7 @@ public static partial class Playback
             bool owned = HostRules.OwnsTick(session, baseSession);
             PlaybackState state = PlaybackState.Idle;
             long pos = 0, durMs = 0;
+            long statRendered = 0, statDropped = 0;   // E5: the session's frame counters (PlaybackStatistics), for the `[video] frames` line
             LiveWindow window = default;
             if (owned)
             {
@@ -2063,6 +2110,9 @@ public static partial class Playback
                 pos = Math.Max(0, (long)p.Position.Peek().TotalMilliseconds);
                 durMs = (long)p.Duration.Peek().TotalMilliseconds;
                 NoteStatePump(p, state, pos, session is ProtectedMediaSession);
+                PlaybackStatistics stats = p.Statistics.Peek();
+                statRendered = stats.FramesRendered;
+                statDropped = stats.FramesDropped;
 
                 // (b) liveness, from the engine's timeline and NEVER from a finite duration.
                 TimelineInfo tl = p.Timeline.Peek();
@@ -2074,6 +2124,8 @@ public static partial class Playback
             // Every decision under the gate, every post after it: Post takes the reducer's own lock.
             bool relayLive = false, relayDur = false, fireWatchdog = false, logCut = false;
             long cutSongPos = 0, cutGap = 0;
+            bool logStats = false;
+            long statRenderedDelta = 0, statDroppedDelta = 0;
             TickFold fold = TickFold.None;
             MediaSwitch.AttachVerdict attach = MediaSwitch.AttachVerdict.Wait;
             string key;
@@ -2127,6 +2179,23 @@ public static partial class Playback
                     cutGap = AudioHandoff.CutGapMs(FrameNowMs() - s_cutProbeAtMs, pos - s_cutProbePcMs);
                 }
 
+                // (e3) E5: the rendered/dropped frame counters, one `[video] frames` line per FrameStatsEveryMs while the picture plays. The first
+                // playing tick of a load only stamps the baseline, so a line always reports a stretch of playback and never the open.
+                if (owned && state == PlaybackState.Playing && !s_holdReports)
+                {
+                    long statsNow = FrameNowMs();
+                    if (s_statsLoggedAtMs == 0) s_statsLoggedAtMs = statsNow;
+                    else if (HostRules.FrameStatsDue(statsNow, s_statsLoggedAtMs, statRendered, statDropped, s_statsLoggedRendered, s_statsLoggedDropped))
+                    {
+                        logStats = true;
+                        statRenderedDelta = HostRules.FrameStatsDelta(statRendered, s_statsLoggedRendered);
+                        statDroppedDelta = HostRules.FrameStatsDelta(statDropped, s_statsLoggedDropped);
+                        s_statsLoggedAtMs = statsNow;
+                        s_statsLoggedRendered = statRendered;
+                        s_statsLoggedDropped = statDropped;
+                    }
+                }
+
                 // (f) the attach window (F151): once per window, a presented frame asks for the cut, a stalled open is played muted
                 // for a frame, and a window that never gets one is a video fault (the song keeps playing).
                 if (s_holdReports && !s_attachReadyPosted && !fireWatchdog)
@@ -2141,6 +2210,7 @@ public static partial class Playback
             if (relayLive) ReportLiveWindow(in window);
             if (relayDur) Post(Input.Duration((int)Math.Min(durMs, int.MaxValue), epoch));
             if (logCut) LogAudioCut(cutSongPos, pos, cutGap);
+            if (logStats) LogLine(new VideoLog.FrameStats(Tail(key), statRendered, statDropped, statRenderedDelta, statDroppedDelta));
             if (fireWatchdog)
             {
                 ProtectedVideoPhase phase = session is ProtectedMediaSession protectedSession ? protectedSession.Player.Phase : ProtectedVideoPhase.Resolving;
@@ -2363,10 +2433,18 @@ public static partial class Playback
             // F215: sinceSwitchMs is the NATIVE first-frame instant when the player has one (a fullscreen stage that unmounted the
             // pump used to make it 2.4 s late: sinceSwitchMs=4575 against a native sinceAttachMs=2121); observedLateMs is how long
             // after the frame this observation ran.
-            LogLine(new VideoLog.FirstFrame(Tail(s_key), s_epoch,
-                HostRules.FirstFrameSinceSwitchMs(Interlocked.Read(ref s_switchAtMs), Interlocked.Read(ref s_switchAtQpc), firstFrameQpc, observedAtMs), -1,
+            long sinceSwitchMs = HostRules.FirstFrameSinceSwitchMs(Interlocked.Read(ref s_switchAtMs), Interlocked.Read(ref s_switchAtQpc), firstFrameQpc, observedAtMs);
+            LogLine(new VideoLog.FirstFrame(Tail(s_key), s_epoch, sinceSwitchMs, -1,
                 (long)p.Position.Peek().TotalMilliseconds, natural.Width, natural.Height,
                 HostRules.ObservedLateMs(firstFrameQpc, System.Diagnostics.Stopwatch.GetTimestamp())));
+            if (session is not ProtectedMediaSession)
+            {
+                // E5: a protected session writes its own `switch.budget` from the engine at its first frame; a clear one (a local file, a
+                // module) has none, so the host writes the one stage it can see: the open call and the time from the open to the frame.
+                long openDone = Interlocked.Read(ref s_openDoneSinceSwitchMs);
+                LogLine(new VideoLog.ClearBudget(Tail(s_key), Interlocked.Read(ref s_openCallMs), sinceSwitchMs,
+                    openDone < 0 ? -1 : Math.Max(0, sinceSwitchMs - openDone)));
+            }
         }
 
         /// <summary>UI THREAD. Pay the <c>Seeked</c> the reducer is owed for the last seek it emitted (V-PA2): once
@@ -2389,6 +2467,8 @@ public static partial class Playback
 
         static void LogLine(in VideoLog.SwitchBegin l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.FirstFrame l) => Emit(VideoLog.Format(in l, Line()));
+        static void LogLine(in VideoLog.ClearBudget l) => Emit(VideoLog.Format(in l, Line()));
+        static void LogLine(in VideoLog.FrameStats l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.SeekPlanned l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.SeekDone l) => Emit(VideoLog.Format(in l, Line()));
         static void LogLine(in VideoLog.PrefetchPlanned l) => Emit(VideoLog.Format(in l, Line()));

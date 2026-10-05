@@ -121,6 +121,18 @@ public static partial class Video
         /// <summary>The grace ran out before the pop-out presented: release the main presenter anyway.</summary>
         public static void ExpirePopOutHandoff() => FinishPopOutHandoff("grace-expired");
 
+        /// <summary>The pop-out window was revealed (shown) on the child's frame after an open. A FRESH window reports its
+        /// presentation through its element's first presented surface (<see cref="ReportPopOutPresented"/>), so its reveal
+        /// says nothing here. A REUSED (warm, F110) window keeps its mounted tree, and with it the element's one-shot
+        /// "surface presented" latch, so no new first presentation will ever be raised: the reveal IS its presentation
+        /// (the swapchain and the video child visual were already live when it parked). Without this the main presenter
+        /// waited out the whole <see cref="PopOutHandoffGraceMs"/> on every warm reopen ("grace-expired gapMs=2014").
+        /// Inert when no hand-off is in flight.</summary>
+        public static void ReportPopOutRevealed(bool reusedWindow)
+        {
+            if (reusedWindow) ReportPopOutPresented();
+        }
+
         /// <summary>The pop-out window is gone (closed, refused, or the owner unmounted): no hand-off remains.</summary>
         public static void EndPopOutHandoff()
         {
@@ -502,8 +514,13 @@ public static partial class Video
                 // The open line above is only the synchronous half. The reveal says the child presented ITS first frame (renderPresentMs
                 // is the render thread's own stamp of that present, firstPresentMs when the UI noticed it); the picture is behind the
                 // first successful video bind, which follows the native handle and can land after the reveal.
-                win.OnRevealed = t => Log.Info(State.LogCategory,
-                    $"pop-out revealed firstFrameMs={t.FirstFrameMs:0.#} firstPresentMs={t.FirstPresentMs:0.#} renderPresentMs={t.RenderPresentMs:0.#} timedOut={t.TimedOut}");
+                bool reusedWindow = reused;
+                win.OnRevealed = t =>
+                {
+                    Log.Info(State.LogCategory,
+                        $"pop-out revealed firstFrameMs={t.FirstFrameMs:0.#} firstPresentMs={t.FirstPresentMs:0.#} renderPresentMs={t.RenderPresentMs:0.#} timedOut={t.TimedOut}");
+                    State.ReportPopOutRevealed(reusedWindow);   // a warm window raises no new first-surface report: its reveal is the hand-off
+                };
                 win.OnFirstVideoBound = ms => Log.Info(State.LogCategory, $"pop-out first video bound ms={ms:0.#}");
             }
             handle.Value = win;

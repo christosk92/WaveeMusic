@@ -595,6 +595,12 @@ public static partial class Playback
             public readonly record struct FirstFrame(string Key, uint Epoch, long SinceSwitchMs, long SinceAttachMs, long PosMs, int Width, int Height,
                                                      long ObservedLateMs = -1);
             public readonly record struct AudioCut(int FadeMs, long SongPosMs, long VideoPosMs, long GapMs);
+            /// <summary>E5: the clear (Media Foundation) path's `switch.budget` line. The protected session writes its own, richer one from the
+            /// engine; a clear source has no licence, no init prefetch and no attach, so its budget is the open call and the first frame.</summary>
+            public readonly record struct ClearBudget(string Key, long OpenCallMs, long FirstFrameMs, long SinceOpenMs);
+            /// <summary>E5: the rendered/dropped frame counters of the playing session (<c>PlaybackStatistics</c>), as totals and as the change
+            /// since the previous line. <c>Final</c> marks the last line of a session (written as the next load replaces it).</summary>
+            public readonly record struct FrameStats(string Key, long Rendered, long Dropped, long RenderedDelta, long DroppedDelta, bool Final = false);
             public readonly record struct SeekPlanned(long TargetMs, SeekIntent Intent, SeekVerb Verb, long KeyframeMs, int SegmentIndex, long DecodeMs);
             public readonly record struct SeekDone(long TargetMs, long LandedMs, long ElapsedMs, bool Fetched);
             public readonly record struct PrefetchPlanned(string Key, PrefetchLevel Level, PrefetchReason Why, bool Metered);
@@ -623,6 +629,23 @@ public static partial class Playback
                 var b = new Writer(d);
                 b.Text("[video] audio.cut fadeMs="); b.Num(l.FadeMs); b.Text(" songPos="); b.Num(l.SongPosMs);
                 b.Text("ms videoPos="); b.Num(l.VideoPosMs); b.Text("ms gapMs="); b.Num(l.GapMs);
+                return b.Done;
+            }
+
+            public static int Format(in ClearBudget l, Span<char> d)
+            {
+                var b = new Writer(d);
+                b.Text("[video] switch.budget key="); b.Text(l.Key); b.Text(" path=clear openCallMs="); b.Num(l.OpenCallMs);
+                b.Text(" firstFrameMs="); b.Num(l.FirstFrameMs); b.Text(" sinceOpenMs="); b.Num(l.SinceOpenMs);
+                return b.Done;
+            }
+
+            public static int Format(in FrameStats l, Span<char> d)
+            {
+                var b = new Writer(d);
+                b.Text("[video] frames key="); b.Text(l.Key); b.Text(" rendered="); b.Num(l.Rendered); b.Text(" dropped="); b.Num(l.Dropped);
+                b.Text(" deltaRendered="); b.Num(l.RenderedDelta); b.Text(" deltaDropped="); b.Num(l.DroppedDelta);
+                if (l.Final) b.Text(" final=1");
                 return b.Done;
             }
 

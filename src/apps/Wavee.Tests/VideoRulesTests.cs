@@ -799,6 +799,38 @@ public class VideoLogFormatTests
         Assert.Equal("[video] audio.cut fadeMs=80 songPos=83000ms videoPos=83080ms gapMs=0", new string(buf, 0, n));
     }
 
+    // E5: the clear path writes the same `switch.budget` marker the protected session does, and the frame counters reach the log; the
+    // e2e driver greps `switch\.budget` and `video.*(rendered|dropped)`, so both shapes are pinned.
+    [Fact]
+    public void The_clear_budget_and_frame_counter_lines_carry_what_the_driver_greps()
+    {
+        char[] buf = new char[V.VideoLog.MaxLineChars];
+
+        int n = V.VideoLog.Format(new V.VideoLog.ClearBudget("2e\\testpattern-1080p.mp4", 9, 289, 268), buf);
+        Assert.Equal("[video] switch.budget key=2e\\testpattern-1080p.mp4 path=clear openCallMs=9 firstFrameMs=289 sinceOpenMs=268", new string(buf, 0, n));
+
+        n = V.VideoLog.Format(new V.VideoLog.FrameStats("2e\\testpattern-1080p.mp4", 1_500, 3, 300, 1), buf);
+        Assert.Equal("[video] frames key=2e\\testpattern-1080p.mp4 rendered=1500 dropped=3 deltaRendered=300 deltaDropped=1", new string(buf, 0, n));
+
+        n = V.VideoLog.Format(new V.VideoLog.FrameStats("k", 1_500, 3, 0, 0, Final: true), buf);
+        Assert.Equal("[video] frames key=k rendered=1500 dropped=3 deltaRendered=0 deltaDropped=0 final=1", new string(buf, 0, n));
+    }
+
+    [Fact]
+    public void A_frame_counter_line_is_due_only_for_moved_counters_after_the_interval_with_a_baseline()
+    {
+        long every = V.HostRules.FrameStatsEveryMs;
+        Assert.False(V.HostRules.FrameStatsDue(10_000, lastAtMs: 0, 100, 0, 0, 0));                         // no baseline yet: the caller stamps one
+        Assert.False(V.HostRules.FrameStatsDue(1_000 + every - 1, lastAtMs: 1_000, 100, 0, 0, 0));          // too soon
+        Assert.False(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 100, 2, 100, 2));            // nothing moved
+        Assert.False(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 0, 0, 0, 0));                // no counters at all
+        Assert.True(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 100, 2, 0, 0));
+        Assert.True(V.HostRules.FrameStatsDue(1_000 + every, lastAtMs: 1_000, 40, 0, 100, 2));             // a new session restarted the counts
+
+        Assert.Equal(60, V.HostRules.FrameStatsDelta(160, 100));
+        Assert.Equal(40, V.HostRules.FrameStatsDelta(40, 100));                                            // went down: restarted, the new value is the change
+    }
+
     // F215: first.frame's time comes from the player's own first-frame stamp when it has one, so a pump that was unmounted for seconds
     // (a fullscreen stage) cannot make the frame look late: the observation lag is printed on its own.
     [Fact]
