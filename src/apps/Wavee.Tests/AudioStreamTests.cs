@@ -1457,7 +1457,13 @@ public sealed class AudioStreamTests(ITestOutputHelper output)
         using var body = NewBody(cdn, fetcher, BigBytes, waitMs: 200);
         cdn.Step(Slot);                                                   // slot 0 only: the range is then on the wire and quiet
         body.Start();
-        WaitUntil(() => body.IsResident(0), "the first slot to land");
+        // LANDED, not `IsResident(0)`: that also answers for a slot that is only pending, so it held from `Start` on and the
+        // read below could begin its wait before the fetch task had even put the range on the wire. The range's own life
+        // (registration, slot 0's reads) then came AFTER the wait began, and the starve rule rightly kept a range that was
+        // sending — the idle deadline cancelled it 8 s later instead (a loaded host or a cold JIT). Every sign of life comes
+        // before the slot lands (`NoteProgress`, then `Publish`), so from here the range is silent for the whole wait.
+        WaitUntil(() => body.BodyBytes >= Slot, "the first slot to land");
+        Assert.Equal((long)Slot, cdn.SteppedServed);                       // and nothing more crossed the link: it is quiet
         Assert.Equal(0, fetcher.Cancelled);
 
         var dst = new byte[4_096];
