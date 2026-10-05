@@ -160,9 +160,9 @@ public static partial class Residency
 
     /// <summary>The governor's periodic tick — what <c>Shell.Host.cs</c>'s 30s poll timer posts to the UI thread.
     /// Reads THIS process's private bytes (what shedding actually reduces) plus the whole-machine load as a ceiling,
-    /// turns that into a <see cref="MemoryPressure"/> level, and <see cref="Trim"/>s. Always on (house rule: no
-    /// environment-variable switches) — its only externally visible effect at rest (nothing registered, or nothing
-    /// over budget) is one log line.</summary>
+    /// turns that into a <see cref="MemoryPressure"/> level, <see cref="Trim"/>s, and then lets the managed heap give
+    /// back what nobody holds (<c>Residency.Heap.cs</c>). Always on (house rule: no environment-variable switches) — its
+    /// only externally visible effect at rest is one log line.</summary>
     public static long Poll()
     {
         GCMemoryInfo info = GC.GetGCMemoryInfo();
@@ -173,7 +173,10 @@ public static partial class Residency
         using (var self = Process.GetCurrentProcess()) privateBytes = self.PrivateMemorySize64;
         var level = MemoryPressurePolicy.From(privateBytes, machineLoad);
         long freed = Trim(level);
-        Log.Info("memory", $"governor.trim level={level} private={privateBytes}B machineLoad={machineLoad:0.00} freed={freed}B");
-        return freed;
+        // The heap step runs AFTER the arenas: what they just let go of is exactly what a collection can now reclaim.
+        long heapFreed = HeapTick(level, out HeapAction heap);
+        Log.Info("memory", $"governor.trim level={level} private={privateBytes}B machineLoad={machineLoad:0.00} freed={freed}B "
+            + $"heap={heap} heapFreed={heapFreed}B managed={info.HeapSizeBytes}B fragmented={info.FragmentedBytes}B");
+        return freed + heapFreed;
     }
 }
