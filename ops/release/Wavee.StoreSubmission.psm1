@@ -160,7 +160,8 @@ function Set-WaveeStoreScreenshots {
 }
 
 function Assert-WaveeStoreScreenshots {
-    # The round trip: the listing's active screenshots are exactly the new set, in order, with their captions.
+    # The round trip: the listing's active screenshots are exactly the new set, in order. msstore-cli's image model has
+    # no Description, so captions never round-trip through it: they are sent, but only file names can be asserted.
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]$Submission,
@@ -171,8 +172,8 @@ function Assert-WaveeStoreScreenshots {
     $active = @($listingProp[0].Value.BaseListing.Images | Where-Object { $_.ImageType -eq 'Screenshot' -and $_.FileStatus -ne 'PendingDelete' })
     if ($active.Count -ne $Shots.Count) { throw "The listing holds $($active.Count) active screenshots, expected $($Shots.Count)." }
     for ($i = 0; $i -lt $Shots.Count; $i++) {
-        if ($active[$i].FileName -cne $Shots[$i].FileName -or $active[$i].Description -cne $Shots[$i].Caption) {
-            throw "Screenshot $($i + 1) is '$($active[$i].FileName)', expected '$($Shots[$i].FileName)' with its caption."
+        if ($active[$i].FileName -cne $Shots[$i].FileName) {
+            throw "Screenshot $($i + 1) is '$($active[$i].FileName)', expected '$($Shots[$i].FileName)'."
         }
     }
 }
