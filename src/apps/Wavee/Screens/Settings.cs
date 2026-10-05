@@ -146,6 +146,7 @@ public static partial class Settings
             new(Tab.Appearance, "Fullscreen", "stageLyricsOverlay", "Document"),
             new(Tab.Appearance, "Fullscreen", "stageSyncOffset", "Clock"),
             new(Tab.Appearance, "Fullscreen", "stageCalm", "RefineSparkle"),
+            new(Tab.Appearance, "Fullscreen", "stageMoments", "Brush"),
             new(Tab.Appearance, "Now playing", "npvPresentation", "Picture", DeveloperOnly: true),
             new(Tab.Appearance, "Now playing", "npvStyle", "Settings"),
 

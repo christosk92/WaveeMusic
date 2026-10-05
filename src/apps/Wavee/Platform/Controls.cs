@@ -790,6 +790,41 @@ public static partial class Controls
         }
     }
 
+    /// <summary>A self-paced clock's PER-FRAME tick: a <c>FrameClock.Tick</c> subscriber that runs <paramref name="tick"/>
+    /// once per produced frame, untracked, and never re-renders. Its subscription IS the request for frames, so the owner
+    /// mounts it ONLY while its clock runs — an unmounted ticker is no wake reason and the loop can idle (the lyrics
+    /// <c>Stepper</c>'s pattern, shared). The eager mount run only subscribes and every tick comes from a later frame's
+    /// flush — never inside the owner's render, which is the G-259 lost wakeup (see <c>Lyrics.Ticker</c>).
+    /// <para>Replaced the fixed-rate <c>UseInterval</c> clocks (the deck, the stage visualizer, the stage caption): a timer
+    /// samples continuous motion at its own rate whatever the panel does; this runs at the display rate, and the host's
+    /// one power ceiling (<c>AppHost.PowerCapFps</c>) still reaches it. Subclass it per clock so the <c>[wake]</c> census
+    /// names the owner (<c>pollersSeen=</c> prints the component type).</para>
+    /// <para><paramref name="paceable"/>: subscribe <c>FrameClock.PaceableTick</c> instead — the twin the adaptive GPU
+    /// governor may pace on a weak or hot GPU. For decorative per-frame motion (the stage visualizer and its faces' sims),
+    /// never for a clock the user reads (a karaoke wipe, a seek).</para></summary>
+    public class FrameTicker(Action tick, bool paceable = false) : Component
+    {
+        bool _subscribed;
+
+        public override Element Render()
+        {
+            var active = UseIsActive();
+            var frame = UseContextSignal(paceable ? FrameClock.PaceableTick : FrameClock.Tick);
+            UseSignalEffect(() =>
+            {
+                // Parked (a hidden KeepAlive pane, a minimized or suspended window): read ONLY the activation, so there is
+                // no frame subscription and no wake — the pause UseInterval used to give these clocks for free. The park
+                // drops the subscription, so the first run after a reactivation only re-subscribes: ticking there would
+                // run inline with the stale frame time from before the park.
+                if (!active.Value) { _subscribed = false; return; }
+                _ = frame.Value;                                            // the subscription is the request for frames
+                if (!_subscribed) { _subscribed = true; return; }           // the first subscribing run: subscribe, never tick
+                Reactive.Untrack(tick);
+            });
+            return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
+        }
+    }
+
     /// <summary>A pure consumer: it BINDS the signal the host ticks. No timer, no pattern, no phase of its own — and a
     /// bound transform is compositor-only, so a tick never re-renders anything.</summary>
     sealed class EqBar : Component

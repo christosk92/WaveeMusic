@@ -949,28 +949,43 @@ public static partial class Queue
 
     // ══ 4. THE STAGE QUEUE PANE (ch 21 W12) ═══════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The rows under K's stage skin: one continuous 56-DIP list on the on-media ladder — no captions, one shared
-    /// page counter, a grip revealed on hover while the list owns the drag, an end-aligned duration, a hover-revealed ✕,
-    /// glass instead of the row-hover plate, autoplay at 0.68.</summary>
+    /// <summary>The rows under K's stage skin, sized for the stage: every metric scales by <c>Stage.Layout.QueueScale</c> (1 on
+    /// the board, 1.25 on a 2560×1080 ultrawide). The first upcoming song is the NEXT row (larger art, an eyebrow, display
+    /// type); each section opens with a caption and its count; a row shows its position, which turns into the grip on hover
+    /// while the list owns the drag; an end-aligned duration, a hover-revealed ✕, glass instead of the row-hover plate,
+    /// autoplay at 0.68.</summary>
     sealed class StagePane : QueueSurface
     {
-        const float RowH = 56f, RowArt = 38f, TimeW = 44f, GripW = 24f;
-        const float MoreRowH = 40f, MoreExtent = MoreRowH + Spacing.XS + Spacing.XXS;
+        const float RowH = 56f, RowArt = 38f, TimeW = 44f, GripW = 28f;
+        const float NextH = 104f, NextArt = 80f, NextGap = Spacing.M;
+        const float HeaderH = 40f;
+        const float MoreRowH = 40f;
 
         readonly Signal<int> _pages = new(1);
+        float _s = 1f;
 
         public StagePane() : base(RowH) { }
 
-        protected override float ExtentOf(QueueSlot slot) => slot.Kind == QueueSlotKind.More ? MoreExtent : RowH;
+        /// <summary>The first row of the whole upcoming list is the Next row: its extent includes the gap under it.</summary>
+        bool IsNextSlot(QueueSlot slot) => slot.IsRow && View.FlatIndex(slot.Section, slot.Pos) == 0;
+
+        protected override float ExtentOf(QueueSlot slot) => slot.Kind switch
+        {
+            QueueSlotKind.More => Px(MoreRowH) + Px(Spacing.XS) + Px(Spacing.XXS),   // = ShowMore's rendered height + margins (each term rounded as rendered)
+            QueueSlotKind.Header => HeaderH * _s,
+            _ => IsNextSlot(slot) ? (NextH + NextGap) * _s : RowH * _s,
+        };
 
         public override Element Render()
         {
             var rows = Prologue();
+            _s = UseContext(Stage.StageContext)?.Layout.Value.QueueScale ?? 1f;
+            SetRowExtent(RowH * _s);
             UseEffect(() => { _pages.Value = 1; }, DepKey.From(ContextId.GetHashCode()));
             bool art = !Prefs.Appearance.TrackArtworkHidden();
             int pages = _pages.Value;
             View.Build(QueueSlots.Realized(View.User, pages, PageSize), QueueSlots.Realized(View.Next, pages, PageSize),
-                       QueueSlots.Realized(View.Auto, pages, PageSize), Autoplay, headers: false);
+                       QueueSlots.Realized(View.Auto, pages, PageSize), Autoplay, headers: true);
             ConfigureReorder();
 
             var kids = new List<Element>(2);
@@ -982,8 +997,10 @@ public static partial class Queue
                     int item = ItemAt(i);
                     var slot = View.Slots[item];
                     if (slot.Kind == QueueSlotKind.More) { slots[i] = ShowMore(slot.Section, pages); continue; }
+                    if (slot.Kind == QueueSlotKind.Header) { slots[i] = StageHeader(slot.Section); continue; }
                     int index = View.FlatIndex(slot.Section, slot.Pos);
-                    slots[i] = index < 0 ? new BoxEl() : Lane(item, Row(rows[index], index, slot.Section, art), RowKey("s", rows[index].ItemId, index));
+                    slots[i] = index < 0 ? new BoxEl() : Lane(item, index == 0 ? NextRow(rows[index], index, slot.Section, art) : Row(rows[index], index, slot.Section, art),
+                                                              RowKey("s", rows[index].ItemId, index));
                 }
                 kids.Add((BoxEl)Reorder.List(new BoxEl { Key = "stageupcoming", Direction = 1, Children = slots }) with { Grow = 0f, Key = "stagelane:upcoming" });
             }
@@ -997,6 +1014,8 @@ public static partial class Queue
             return View.SlotCount == 0 ? (BoxEl)Reorder.List(body) with { Grow = 0f, Key = "stagelane:empty" } : body;
         }
 
+        float Px(float v) => MathF.Round(v * _s);
+
         Element Row(QueueEdge edge, int index, QueueSection section, bool art)
         {
             EntityRef r = RefAt(index);
@@ -1005,42 +1024,44 @@ public static partial class Queue
             bool removable = QueueRowRules.Removable(Viewer, itemId);
             var kids = new List<Element>(5)
             {
-                // An affordance, not a control: the whole row is the drag source, and a viewer never sees it.
+                // The row's position; on hover it gives way to the grip (an affordance, not a control: the whole row is the
+                // drag source, and a viewer never sees the grip).
                 new BoxEl
                 {
-                    Width = GripW, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = 0f, HoverOpacity = Viewer ? 0f : 1f, HitTestVisible = false,
-                    Children = [new TextEl(Icons.GripperBar) { Size = 14f, FontFamily = Theme.IconFont, Color = Ink.InkTertiary }],
-                },
-            };
-            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => SkipToRow(itemId, index, r), RowArt, 26f, 96));
-            kids.Add(text.Thin
-                ? new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f }
-                : new BoxEl
-                {
-                    Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = 1f,
+                    Width = Px(GripW), Shrink = 0f, ZStack = true, HitTestVisible = false,
                     Children =
                     [
-                        new TextEl(text.Title) { Size = 14f, LineHeight = 20f, Weight = 600, Color = Ink.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-                        new TextEl(text.Artists) { Size = 12f, LineHeight = 16f, Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
+                        new BoxEl
+                        {
+                            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                            HoverOpacity = Viewer ? 1f : 0f, HitTestVisible = false,
+                            Children = [new TextEl(FormatCache.Int(index + 1)) { Size = Px(12f), LineHeight = Px(16f), Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap }],
+                        },
+                        new BoxEl
+                        {
+                            AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                            Opacity = 0f, HoverOpacity = Viewer ? 0f : 1f, HitTestVisible = false,
+                            Children = [new TextEl(Icons.GripperBar) { Size = Px(14f), FontFamily = Theme.IconFont, Color = Ink.InkTertiary }],
+                        },
                     ],
-                });
+                },
+            };
+            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => SkipToRow(itemId, index, r), Px(RowArt), Px(26f), (int)Px(96f)));
+            kids.Add(TitleBlock(text, Px(14f), Px(20f), 600, null, Px(12f), Px(16f)));
             // Tabular by geometry: a fixed end-aligned slot, so every colon lands on the same x.
             kids.Add(new BoxEl
             {
-                Width = TimeW, Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
-                Children = [new TextEl(text.DurationMs > 0 ? Playback.TimeFormat.Clock(text.DurationMs) : "") { Size = 12f, LineHeight = 16f, Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap }],
+                Width = Px(TimeW), Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                Children = [new TextEl(text.DurationMs > 0 ? Playback.TimeFormat.Clock(text.DurationMs) : "") { Size = Px(12f), LineHeight = Px(16f), Color = Ink.InkTertiary, Wrap = TextWrap.NoWrap }],
             });
-            kids.Add(removable
-                ? new BoxEl { Opacity = 0f, HoverOpacity = 1f, Shrink = 0f, BlocksDragArm = true, Children = [StageGlyph(Icons.ChromeClose, () => RemoveRow(itemId, index, r))] }
-                : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f });
+            kids.Add(RemoveSlot(removable, itemId, index, r));
 
             var row = new BoxEl
             {
-                Key = RowKey("s", itemId, index) + ":art=" + art,
+                Key = RowKey("s", itemId, index) + ":art=" + art + ":s=" + Px(100f),
                 Draggable = OwnDrag(Viewer, itemId, index, r),
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinHeight = RowH,
-                Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.ControlAll,
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.M), MinHeight = Px(RowH), Height = Px(RowH),
+                Padding = new Edges4(Px(Spacing.S), 0f, Px(Spacing.S), 0f), Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
                 PressScale = Design.Motion.ScaleSubtle.Press,
                 Opacity = section == QueueSection.Autoplay ? 0.68f : 1f,
@@ -1054,21 +1075,110 @@ public static partial class Queue
             return Attach(row, itemId, index, r);
         }
 
+        /// <summary>The first upcoming song, set apart: larger art, a "Next" eyebrow, the title in display type, on a quiet
+        /// plate. Same verbs as any row (click skips to it, drag reorders it, ✕ removes it).</summary>
+        Element NextRow(QueueEdge edge, int index, QueueSection section, bool art)
+        {
+            EntityRef r = RefAt(index);
+            RowText text = TextOf(r);
+            ulong itemId = edge.ItemId;
+            bool removable = QueueRowRules.Removable(Viewer, itemId);
+            var kids = new List<Element>(4);
+            if (art) kids.Add(ArtTile(text.Art, text.Uri, () => SkipToRow(itemId, index, r), Px(NextArt), Px(32f), (int)Px(192f)));
+            kids.Add(TitleBlock(text, Px(22f), Px(28f), 600, Loc.Get(Strings.Stage.NextTrack), Px(14f), Px(20f)));
+            kids.Add(new BoxEl
+            {
+                Shrink = 0f, Direction = 0, Justify = FlexJustify.End, AlignItems = FlexAlign.Center,
+                Children = [new TextEl(text.DurationMs > 0 ? Playback.TimeFormat.Clock(text.DurationMs) : "") { Size = Px(14f), LineHeight = Px(20f), Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap }],
+            });
+            kids.Add(RemoveSlot(removable, itemId, index, r));
+
+            var row = new BoxEl
+            {
+                Key = RowKey("s", itemId, index) + ":next:art=" + art + ":s=" + Px(100f),
+                Draggable = OwnDrag(Viewer, itemId, index, r),
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Px(Spacing.L), Height = Px(NextH),
+                Margin = new Edges4(0f, 0f, 0f, Px(NextGap)),
+                Padding = new Edges4(Px(Spacing.M), 0f, Px(Spacing.S), 0f), Corners = Radii.CardAll,
+                Fill = Ink.Plate, HoverFill = Ink.PlateHover, PressedFill = Ink.GlassPressed, BrushTransitionMs = Design.Motion.Faster,
+                BorderWidth = 1f, BorderColor = Ink.Stroke,
+                PressScale = Design.Motion.ScaleSubtle.Press,
+                Opacity = section == QueueSection.Autoplay ? 0.68f : 1f,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, AllowFocusOnInteraction = false,
+                OnClick = () => SkipToRow(itemId, index, r),
+                Enter = new EnterExit(Dy: 6f, Opacity: 0f, Active: true),
+                Exit = new EnterExit(Dy: -4f, Opacity: 0f, Active: true),
+                Layout = LayoutTransition.Slide,
+                Children = kids.ToArray(),
+            };
+            return Attach(row, itemId, index, r);
+        }
+
+        /// <summary>Title over artists (an explicit badge before the artists when the track is explicit), with an optional
+        /// eyebrow above. A THIN row (title unknown) keeps the slot empty.</summary>
+        static Element TitleBlock(RowText text, float titleSize, float titleLine, ushort titleWeight, string? eyebrow, float subSize, float subLine)
+        {
+            if (text.Thin) return new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f };
+            var lines = new List<Element>(3);
+            if (eyebrow is not null)
+                lines.Add(Design.Type.Eyebrow(eyebrow) with { Size = MathF.Round(subSize * 0.86f), Color = Ink.InkSecondary, MaxLines = 1 });
+            lines.Add(new TextEl(text.Title)
+            {
+                Size = titleSize, LineHeight = titleLine, Weight = titleWeight, FontFamily = eyebrow is null ? null : Design.Type.DisplayFace,
+                Color = Ink.Ink, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            });
+            Element artists = new TextEl(text.Artists) { Size = subSize, LineHeight = subLine, Color = Ink.InkSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+            lines.Add(text.Explicit
+                ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
+                              Children = [Controls.ExplicitBadge(MathF.Round(subLine * 0.8f), Ink.InkTertiary), artists] }
+                : artists);
+            return new BoxEl { Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = 1f, Children = lines.ToArray() };
+        }
+
+        Element RemoveSlot(bool removable, ulong itemId, int index, EntityRef r) => removable
+            ? new BoxEl { Opacity = 0f, HoverOpacity = 1f, Shrink = 0f, BlocksDragArm = true, Children = [StageGlyph(Icons.ChromeClose, () => RemoveRow(itemId, index, r))] }
+            : new BoxEl { Width = Controls.IconButtonSize, Shrink = 0f };
+
+        /// <summary>A section caption in the stage's ink: the section's name and its count (the rail's grammar, on media).</summary>
+        Element StageHeader(QueueSection section)
+        {
+            string title = Loc.Get(section switch
+            {
+                QueueSection.Queue => Strings.Player.NextInQueue,
+                QueueSection.NextUp => Strings.Player.NextUp,
+                _ => Strings.Player.Autoplay,
+            });
+            return new BoxEl
+            {
+                Key = "stagehdr:" + Tag(section),
+                Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, Height = Px(HeaderH),
+                Padding = new Edges4(Px(Spacing.S), 0f, Px(Spacing.S), Px(Spacing.XS)),
+                Layout = LayoutTransition.Slide,
+                BlocksDragArm = true,                                              // a slot, never a handle
+                Children =
+                [
+                    Design.Type.Eyebrow(title) with { Size = Px(12f), Color = Ink.InkTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                    new TextEl(FormatCache.Int(View.CountOf(section))) { Size = Px(12f), LineHeight = Px(16f), Weight = 600, Color = Ink.InkTertiary },
+                ],
+            };
+        }
+
         Element ShowMore(QueueSection section, int pages)
         {
             int total = View.CountOf(section), remaining = total - QueueSlots.Realized(total, pages, PageSize);
             return new BoxEl
             {
                 Key = "stagemore:" + Tag(section),
-                Direction = 0, Height = MoreRowH, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                BlocksDragArm = true, Margin = new Edges4(0f, Spacing.XS, 0f, Spacing.XXS), Corners = Radii.ControlAll,
+                // scaled like every other stage slot: height + margins sum to ExtentOf's More extent (the virtualizer's offsets)
+                Direction = 0, Height = Px(MoreRowH), Gap = Px(Spacing.S), AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                BlocksDragArm = true, Margin = new Edges4(0f, Px(Spacing.XS), 0f, Px(Spacing.XXS)), Corners = Radii.ControlAll,
                 Fill = Ink.GlassRest, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed,
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true, OnClick = () => _pages.Value = _pages.Peek() + 1,
                 Layout = LayoutTransition.Slide,
                 Children =
                 [
-                    new TextEl(Icons.ChevronDown) { Size = 12f, FontFamily = Theme.IconFont, Color = Ink.InkSecondary },
-                    new TextEl("·  " + remaining) { Size = 12f, LineHeight = 16f, Color = Ink.InkTertiary },
+                    new TextEl(Icons.ChevronDown) { Size = Px(12f), FontFamily = Theme.IconFont, Color = Ink.InkSecondary },
+                    new TextEl("·  " + remaining) { Size = Px(12f), LineHeight = Px(16f), Color = Ink.InkTertiary },
                 ],
             };
         }

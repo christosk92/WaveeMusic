@@ -38,6 +38,20 @@ public class LyricsSurfaceMetricsTests
     }
 
     [Fact]
+    public void A_big_stage_scales_the_type_and_its_rhythm_but_not_the_gutter()
+    {
+        var m = Lyrics.Surface.Timed(large: true);
+        Assert.Equal(m, m.Scaled(1f));                                   // the board: untouched
+        var big = m.Scaled(50f / 36f);                                   // Stage.Layout.LyricsTypeScale at 2560×1080
+        Assert.Equal(50f, big.FontSize);
+        Assert.Equal(64f, big.LineHeight);                               // 46 · 1.389 = 63.9
+        Assert.InRange(big.RowPad, 12f, 13f);                            // 9 · 1.389 = 12.5, a whole DIP either way
+        Assert.Equal(MathF.Round(big.RowPad), big.RowPad);
+        Assert.Equal(m.SidePad, big.SidePad);
+        Assert.Equal(m.Weight, big.Weight);
+    }
+
+    [Fact]
     public void The_unsynced_block_takes_reading_type_on_the_same_gutter()
     {
         Assert.Equal(new Lyrics.RowMetrics(19f, 26f, 5f, 22f), Lyrics.Surface.Unsynced(false));

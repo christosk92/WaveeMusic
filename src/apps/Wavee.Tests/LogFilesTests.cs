@@ -289,6 +289,7 @@ public class LogFilesTests
     [InlineData("[compositor-clock] latched to timer", Log.DiagRoute.Warn)]
     [InlineData("[video] pump area=1", Log.DiagRoute.Info)]
     [InlineData("[scroll.engaged] flip", Log.DiagRoute.Info)]
+    [InlineData("[overlay.popup] material=TransientAcrylic lease=9.1ms", Log.DiagRoute.Info)]   // one line per OS popup window, at close
     [InlineData("[layout] something chatty", Log.DiagRoute.Debug)]
     public void RouteFor_CensusLinesAreInfo_FaultsStayWarning(string line, Log.DiagRoute expected)
         => Assert.Equal(expected, Log.RouteFor(line));

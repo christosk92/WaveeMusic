@@ -600,6 +600,22 @@ public static partial class Design
         public ColorF SkeletonBar => Ink with { A = SkeletonA };
 
         const float SkeletonA = 0.12f;
+
+        // ── the stage's floating cards ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The acrylic under the stage's floating cards (the transport, the now-playing card, the visualizer
+        /// gallery). The dark arm is the in-app base recipe; the light arm is its light-theme twin (WinUI's light
+        /// AcrylicInAppFillColorBase). The dark recipe under the light arm's near-black ink was the unreadable transport.</summary>
+        public AcrylicSpec Card => Dark ? AcrylicSpec.InAppBase
+            : new(ColorF.FromRgba(0xF3, 0xF3, 0xF3), 0f, 30f, 0.02f, 0.90f, ColorF.FromRgba(0xEE, 0xEE, 0xEE));
+
+        /// <summary>A quiet plate INSIDE a card or on the stage (a settings row, a gallery tile, the artist card): ink at a
+        /// low alpha, so it reads as a step on either ground. It replaced white-alpha literals that vanished on light.</summary>
+        public ColorF Plate => Ink with { A = PlateA };
+        /// <inheritdoc cref="Plate"/>
+        public ColorF PlateHover => Ink with { A = PlateHoverA };
+
+        const float PlateA = 0.045f, PlateHoverA = 0.075f;
     }
 
     /// <summary>The LIVE facade over <see cref="StageArm"/>. <see cref="Arm"/> is the pure entry point; everything else
@@ -637,6 +653,9 @@ public static partial class Design
         public static ColorF ButtonFillPressed => Live.ButtonFillPressed;
         public static ColorF ButtonInk => Live.ButtonInk;
         public static ColorF SkeletonBar => Live.SkeletonBar;
+        public static AcrylicSpec Card => Live.Card;
+        public static ColorF Plate => Live.Plate;
+        public static ColorF PlateHover => Live.PlateHover;
 
         /// <summary>The stage's accent for a cover url. The cover LOOKUP lives here rather than on
         /// <see cref="StageArm"/> so the arm stays a pure value type over the token layer — which is what lets value
@@ -1645,32 +1664,27 @@ public static partial class Design
 
     // ── the ambient cadence block (ch 29 W25) ────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The three frame-cadence knobs the ambient power policy applies, and the RULE that says which animation
-    /// rows they reach. Named here so the surfaces that must NOT be capped can cite the reason rather than rediscover it.
+    /// <summary>The app's frame-cadence constants. There is no ambient loop-rate knob any more: the engine's DefaultLoopHz
+    /// (which the power policy set to 30 Hz plugged / 24 on battery for every cadence-less LOOPING row — the spinner, the
+    /// shimmer, the equalizer, the deck drift, the concert ground, the tile wobble, the cover wall and its marquees) was
+    /// deleted on 2026-10-03, so those loops run at the display rate. The power verdict itself (`Platform.cs`'s ambient
+    /// power section) still polls, logs and drives the Energy Saver material fallback.
     ///
-    /// <para>WHAT READS THE KNOB: every cadence-less LOOPING animation row — the buffering spinner, the skeleton
-    /// shimmer, the now-playing equalizer, the seek playhead, the karaoke lyrics wipe, the deck drift channels, the
-    /// concert ground and its two arcs, the browse tile wobble, the liked cover wall drift and its three marquee
-    /// bands.</para>
-    ///
-    /// <para>WHAT DOES NOT: a row with an explicit display cadence (springs, live drags), a row with an explicit
-    /// per-row Hz, and every interval-driven source — the deck tick, the lyrics clock, the analyser. Those are
-    /// SELF-PACED TIMERS, not animation rows, and the engine already pauses them under a parked/minimized window
-    /// through the activation fold.</para>
-    ///
-    /// <para>The POLICY itself (the 2 s poll, the two-read hold window, "energy saver counts as NOT plugged", "a desktop
-    /// with no battery — or a FAILED read — resolves PLUGGED, or every desktop would run permanently half-capped") is
-    /// `Platform.cs`'s ambient power section, owner S. These are the values it writes.</para></summary>
+    /// <para>The self-paced clocks (the deck, the stage visualizer, the stage caption) tick once per produced FRAME
+    /// (<see cref="Controls.FrameTicker"/>, mounted only while each clock runs, paused while parked) — they were fixed-rate
+    /// <c>UseInterval</c> timers (30 Hz, then 60), which sample continuous motion below a 120 Hz panel's rate. What remains
+    /// here: their nominal first step and the one power ceiling. There is no focus throttle.</para></summary>
     public static class Cadence
     {
-        /// <summary>The default loop rate while the machine is on mains power.</summary>
-        public const int PluggedLoopHz = 30;
-        /// <summary>…and on battery (or with energy saver on). A ~20% cut nobody can see on a shimmer and a real saving
-        /// over a five-minute listen.</summary>
-        public const int BatteryLoopHz = 24;
-        /// <summary>The floor the ENGINE puts between ANIMATION-ONLY frames whenever the window is not foreground — a
-        /// ~30 fps ceiling. This is the engine's throttle: the policy does not track focus.</summary>
-        public const int InactiveFrameIntervalMs = 33;
+        /// <summary>The per-frame clocks' NOMINAL rate: the dt their FIRST tick assumes (there is no previous tick to diff).
+        /// Every later tick integrates the real elapsed time, and their models are dt-based (the visualizer's per-tick
+        /// constants scale by <c>Visualizer.Bands.RefHz</c>), so this is not a look and not a cap.</summary>
+        public const int ClockHz = 60;
+        /// <summary>The host's frame-rate ceiling (<c>AppHost.PowerCapFps</c>) while Windows Energy Saver is on — the user
+        /// asking the OS for less work, the one case Wavee trades smoothness for power (Chromium's Energy Saver caps at
+        /// the same 30). Applied uniformly to motion, never to scroll/drag/touch; off otherwise, battery included. There
+        /// is no focus throttle: a visible window paces the same focused or not.</summary>
+        public const int EnergySaverMaxFps = 30;
     }
 
     // ══ 10. PAGE-NAV MOTION ══════════════════════════════════════════════════════════════════════════════════════════

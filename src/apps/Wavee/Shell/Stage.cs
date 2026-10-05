@@ -46,9 +46,17 @@ public static partial class Stage
         public static (Mode Mode, bool Open) ToggleGallery(Mode current, bool open)
             => current == Mode.Visualizer ? (current, !open) : (Mode.Visualizer, true);
         /// <summary>The caption line carries the active lyric where no lyrics pane does: over the face when the user wants
-        /// it, and in Lyrics mode when the aspect has no room for the pane (Compact) — never without a timed line.</summary>
-        public static bool ShowsCaption(Mode m, bool overlayOn, bool hasTimedLyrics, bool paneShown)
-            => hasTimedLyrics && ((m == Mode.Visualizer && overlayOn) || (m == Mode.Lyrics && !paneShown));
+        /// it and the face leaves room for it (<see cref="Visualizer.Catalog.CaptionFriendly"/> — never over Verse, whose
+        /// lyrics ARE the face), and in Lyrics mode when the aspect has no room for the pane (Compact) — never without a
+        /// timed line.</summary>
+        public static bool ShowsCaption(Mode m, bool overlayOn, bool hasTimedLyrics, bool paneShown, Visualizer.Kind kind)
+            => hasTimedLyrics && ((m == Mode.Visualizer && overlayOn && Visualizer.Catalog.CaptionFriendly(kind)) || (m == Mode.Lyrics && !paneShown));
+
+        /// <summary>The stage's face keys (Visualizer mode): <c>[</c> the previous shown face, <c>]</c> the next (Shift: the
+        /// previous / next GROUP), <c>G</c> the gallery. VK_OEM_4 / VK_OEM_6 — FluentGpu.Foundation.Keys names neither.</summary>
+        public const int PreviousFaceKey = 219, NextFaceKey = 221;
+        /// <summary>−1 for <c>[</c>, +1 for <c>]</c>, 0 for any other key.</summary>
+        public static int FaceStep(int keyCode) => keyCode == PreviousFaceKey ? -1 : keyCode == NextFaceKey ? 1 : 0;
     }
 
     // ── 2. the allocator ────────────────────────────────────────────────────────────────────────────────────────────
@@ -77,7 +85,12 @@ public static partial class Stage
         public const float HairlineH = 3f;
         public const float SelectorItemW = 128f, SelectorIconOnlyW = 44f;
         public const float ThumbDesktop = 96f, ThumbSmall = 64f;
-        public const float HeroMin = 168f, HeroMax = 640f, SmallHeroMin = 96f, SmallHeroMax = 320f;
+        /// <summary>The hero's clamp. The ceiling was 640 — the 1920×1080 board's art plus a little — which left a big
+        /// monitor's stage mostly empty; it is now only a sanity bound, the per-class fractions do the sizing.</summary>
+        public const float HeroMin = 168f, HeroMax = 960f, SmallHeroMin = 96f, SmallHeroMax = 320f;
+        /// <summary>Ultrawide's hero share of W (was 0.21 — the prototype's — which tied a 2560×1080 stage's art to the
+        /// board's 536 while 1000+ DIP of pane sat empty beside short lyric lines).</summary>
+        public const float UltrawideHeroFrac = 0.26f;
         /// <summary>The art is quantised to this grid so a resize pixel re-renders nothing (the previous stage's rule, kept).</summary>
         public const float ArtQuantum = 4f;
 
@@ -116,9 +129,15 @@ public static partial class Stage
             {
                 case Aspect.Ultrawide:
                 {
-                    float hero = Math.Clamp(Q4(MathF.Min(0.21f * w, 0.82f * h - 340f)), HeroMin, HeroMax);
+                    // The height term is the REAL column budget, not the prototype's 0.82·H − 340 (which reserves a
+                    // two-line title the art then never gets): from the identity top to the transport gutter, minus the
+                    // title gap and a ONE-line title block. TitleMaxLines already drops a long title to one line when
+                    // two do not clear the transport, so the art may take that room.
+                    float identityTop = Q4(0.12f * h);
+                    float column = h - Pad - TransportDesktopH - Pad - identityTop - Pad - HeroTitleBlock1H;
+                    float hero = Math.Clamp(Q4(MathF.Min(UltrawideHeroFrac * w, column)), HeroMin, HeroMax);
                     float padX = Q4(0.05f * w);
-                    return new Layout(a, w, h, hero, ThumbDesktop, padX, Q4(0.12f * h),
+                    return new Layout(a, w, h, hero, ThumbDesktop, padX, identityTop,
                         PaneX: padX + hero + Q4(0.045f * w), PaneRight: Q4(0.04f * w), PaneTop: 88f, PaneBottom: 168f,
                         GalleryW: Q4(0.19f * w), GalleryH: MathF.Max(0f, h - GalleryTop - GalleryBottom), TransportH: TransportDesktopH,
                         ShowPane: true, ShowChips: true, ShowGallery: true, ShowVolume: true, IconOnlySelector: false);
@@ -174,6 +193,10 @@ public static partial class Stage
         /// <summary>The titles column's rhythm (Hero: Gap XS between title · meta · chips; the chips row's top margin S and
         /// its 24-DIP chip) — what <see cref="TitleBlockH"/> adds up.</summary>
         public const float TitleGap = 4f, ChipsTop = 8f, ChipH = 24f;
+        /// <summary>The hero identity block with ONE title line on the wide classes (TitleLarge 52 · meta 24 · chips) —
+        /// <see cref="TitleBlockH"/>(Lyrics, 1) as a constant, so <see cref="Resolve"/> can budget the art before the
+        /// layout exists. A test pins the two.</summary>
+        public const float HeroTitleBlock1H = 52f + TitleGap + 24f + TitleGap + ChipsTop + ChipH;
         /// <summary>The identity block's height with <paramref name="lines"/> title lines: title · meta · (chips).</summary>
         public float TitleBlockH(Mode mode, int lines)
         {
@@ -281,8 +304,46 @@ public static partial class Stage
         /// <summary>The face's right inset while the gallery is open (the prototype's <c>.pane .stg { right: 492px }</c>) — THIS
         /// layout's gallery width plus the two gutters (Ultrawide's docked column is 19 % of W, not 444 — V-U45).</summary>
         public float FaceRight(bool galleryOpen) => galleryOpen && ShowGallery && Aspect != Aspect.Portrait ? GalleryW + 2f * Pad : 0f;
+
+        /// <summary>The top edge of Portrait's gallery SHEET (55 % of H, parked above the transport and its two gutters).</summary>
+        public float SheetTop => H - (TransportH + 2f * Pad) - GalleryH;
+
+        /// <summary>The FACE-SAFE rect (viz-app-plan §3.7, §5) in stage coordinates: where a face may centre its subject without
+        /// the chrome rows over it — left of the open gallery; below the now-playing card when it shows (64 + 136 + 24 = 224),
+        /// else below the top bar; above the caption block at its tallest when the caption shows, else above the transport
+        /// card's gutter; above Portrait's open sheet; on Compact the strip right of the art. Never inverted (at least one
+        /// DIP tall and wide). Chrome hidden (idle) does not grow it: a face keeps its geometry (only Verse uses the room).</summary>
+        public FaceSafeRect FaceSafe(bool galleryOpen, bool captionShown)
+        {
+            bool compact = Aspect == Aspect.Compact;
+            float left = compact ? TransportLeft : 0f;
+            float right = compact ? W - Pad : W - FaceRight(galleryOpen);
+            float top = ShowChips ? NowPlayingCardY + NowPlayingCardH + Pad : TopBarH + Pad;
+            float bottom = captionShown ? CaptionTopMin - Pad : TransportTop - Pad;
+            if (Aspect == Aspect.Portrait && galleryOpen && ShowGallery) bottom = MathF.Min(bottom, SheetTop - Pad);
+            right = MathF.Max(right, left + 1f);
+            bottom = MathF.Max(bottom, top + 1f);
+            return new FaceSafeRect(left, top, right - left, bottom - top);
+        }
         /// <summary>The pane's width from its two edges; never negative.</summary>
         public float PaneW => MathF.Max(0f, W - PaneX - PaneRight);
+
+        /// <summary>The lyrics pane's type: the authored 36 DIP (<c>Lyrics.Surface.Timed(large: true)</c>) grown on a big
+        /// stage to min(4.6 % of H, the pane's width / 30), an even size, clamped 36–64. The board (1920×1080, a 1084-DIP
+        /// pane) stays at 36; a 2560×1080 ultrawide reads 50; a 1400-DIP-tall stage with a wide pane reaches 64.</summary>
+        public const float LyricsTypeMin = 36f, LyricsTypeMax = 64f;
+        public float LyricsTypeSize => Math.Clamp(MathF.Round(MathF.Min(0.046f * H, PaneW / 30f) * 0.5f) * 2f, LyricsTypeMin, LyricsTypeMax);
+        /// <summary><see cref="LyricsTypeSize"/> over the authored size — what the lyrics view scales its row metrics by.</summary>
+        public float LyricsTypeScale => LyricsTypeSize / LyricsTypeMin;
+
+        /// <summary>The Up next rows' scale: min(the pane's width / 1100, H / 864), floored to an eighth so a resize steps it
+        /// rarely, clamped 1–1.5. The board (a 1084-DIP pane) stays at 1; a 2560×1080 ultrawide reads 1.25; 3440×1440 reaches
+        /// the 1.5 ceiling. Every row metric (height, art, type, gaps) scales by it; the pane's gutters do not.</summary>
+        public const float QueueScaleMax = 1.5f, QueueListBaseW = 1100f;
+        public float QueueScale => Math.Clamp(MathF.Floor(MathF.Min(PaneW / QueueListBaseW, H / 864f) * 8f) / 8f, 1f, QueueScaleMax);
+        /// <summary>Where the Up next list stops (left-aligned): 1100 DIP × <see cref="QueueScale"/>, so the duration sits beside
+        /// the song instead of across a 1500-DIP pane.</summary>
+        public float QueueListMaxW => MathF.Min(PaneW, QueueListBaseW * QueueScale);
         public float PaneH => MathF.Max(0f, H - PaneTop - PaneBottom);
 
         /// <summary>Title type per aspect and mode: the hero reads TitleLarge 40/52, the thumb Subtitle 20/28; small
@@ -300,6 +361,15 @@ public static partial class Stage
         /// legitimately shrinks when a wider window promotes to Ultrawide (V-U24).</summary>
         public int Richness => (ShowPane ? 1 : 0) + (ShowChips ? 1 : 0) + (ShowGallery ? 1 : 0) + (ShowVolume ? 1 : 0)
             + (IconOnlySelector ? 0 : 1) + (int)(TransportH * 0.01f);
+    }
+
+    /// <summary>A rectangle in stage DIPs (Stage.cs stays System-only, so not the engine's RectF).</summary>
+    public readonly record struct FaceSafeRect(float X, float Y, float W, float H)
+    {
+        public float Right => X + W;
+        public float Bottom => Y + H;
+        public float CentreX => X + W * 0.5f;
+        public float CentreY => Y + H * 0.5f;
     }
 
     // ── 3. what the transport may do (unchanged from the previous stage) ────────────────────────────────────────────
@@ -322,8 +392,14 @@ public static partial class Stage
         /// <summary>The accent cross-fade on a track change (the prototype's <c>transition: --acc 1s</c>, tightened to the
         /// Fluent "slow" neighbourhood so a skip-skip-skip never lags the art).</summary>
         public const float CrossFadeMs = 600f;
-        /// <summary>The scrim over the backdrop: deep under lyrics/queue/artist, light under a face.</summary>
-        public const float ScrimA = 0.56f, ScrimVisualizerA = 0.22f;
+        /// <summary>The scrim over the backdrop: deep under lyrics/queue/artist, light under a face, between the two under
+        /// Verse (big words over a bright cover need it — verse-plan D4).</summary>
+        public const float ScrimA = 0.56f, ScrimVisualizerA = 0.22f, ScrimVerseA = 0.40f;
+        /// <summary>The scrim for a mode and the selected face.</summary>
+        public static float ScrimFor(Mode mode, Visualizer.Kind kind)
+            => mode != Mode.Visualizer ? ScrimA : kind == Visualizer.Kind.Verse ? ScrimVerseA : ScrimVisualizerA;
+        /// <summary>A moment's palette fade ("change with the music", viz-app-plan §3.5), and its calm length.</summary>
+        public const float MomentFadeMs = 900f, MomentCalmFadeMs = 1400f;
         /// <summary>The caption's inks: unsung glyphs, the previous and next context lines (alphas over the stage ink), the
         /// active line's accent bloom (its layer opacity and blur σ), the soft veil's centre, and the rise every line hand-off
         /// travels (in from below, out above).</summary>

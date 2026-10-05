@@ -12,6 +12,19 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
+- **Nineteen visualizers in full screen.** The visualizer gallery now has five groups. Lyrics has Verse, where the
+  song's words land as they are sung, held notes grow and a returning chorus lights up. Fluent has Bloom, Bars, Ring,
+  Orbit, Aurora and Timeline. Classics, after Winamp and Windows Media Player, has Classic, Warp, Tunnel, Ambience,
+  Kaleido, Scope and Drift. Zune has Type, Mosaic and Spotlight, and iTunes has Magneto and Flow. Every face takes its
+  colours from the cover, works in light and dark mode, and keeps moving from the song's own waveform when Spotify
+  Connect plays elsewhere. Press `[` and `]` to step through the faces and `G` to open the gallery; the gallery
+  animates only the previews you can see, and a preview you rest the pointer on comes to life.
+- **Change with the music.** Every eight bars, on the downbeat, the visualizer rotates the cover's colours with a short
+  cross-fade, and a returning chorus does the same. A new song cross-fades to its own colours. Turn it off in the
+  gallery or in Settings > Appearance > "Change with the music".
+- **A new Artist pane in full screen.** The artist's photo fills the band, with monthly listeners and world rank, Follow
+  and Go to artist. Below it: the full biography, a photo strip, this song's credits grouped by person, the five most
+  popular songs, where people listen and related artists.
 - **Word-by-word lyrics with on-device AI.** On a Copilot+ PC with a Snapdragon NPU, Settings › Appearance ›
   Lyrics can download the AI models once (about 700 MB, English; Spanish optional). Wavee then times every word
   of a song's line-synced lyrics on the NPU while the song plays, so the lyrics wipe word by word. The song and
@@ -19,6 +32,17 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Motion runs at your display's refresh rate.** The buffering spinner, loading shimmers, the now-playing equalizer,
+  the decks, the full-screen visualizer and the full-screen lyrics caption were held to 30 frames a second (24 on
+  battery), which looked choppy on a 120 or 144 Hz screen. They now run at the panel rate, and Wavee no longer slows
+  its animations down when its window loses focus. With Windows Energy Saver on, all motion is capped at 30 frames a
+  second; scrolling and dragging never are.
+- **Context menus open faster.** A menu that fits inside the window is drawn in the window instead of in a separate
+  popup window, so a track's right-click menu reaches the screen in less than half the time.
+- **Full-screen Now Playing uses a big screen.** On an ultrawide or a large monitor the cover grows to fill its
+  column, the lyrics grow with the stage, and Up next rows get larger art and type. The Up next list stops at a
+  readable width, opens with the next song set apart, splits into sections with their counts, numbers each row and
+  marks explicit tracks.
 - **The fullscreen visualizer redraws only what moves.** The drifting background and the visualizer bars no longer
   redraw the whole screen on every frame, the frosted panels stop re-blurring when nothing under them changed, and the
   background is drawn at a quarter of the screen resolution (it is a soft gradient, so it looks the same). Before, every
@@ -34,6 +58,11 @@ versions separately under `v*` and is not tracked in this file.)
   part of memory that is the slowest to clean up and the easiest to fragment: about 2.7 MB for the Home feed and up to
   10 MB for a large metadata batch. The play history is also written to disk without building the whole file in
   memory first.
+
+### Fixed
+
+- **Light mode in full screen.** The player bar, the now-playing card and the visualizer gallery stayed dark with
+  dark text in light mode, and a few controls kept white outlines. They now follow the theme.
 
 ## [0.3.0] - 2026-10-02
 
