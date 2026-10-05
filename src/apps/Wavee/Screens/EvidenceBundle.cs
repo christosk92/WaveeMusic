@@ -64,6 +64,9 @@ public static partial class Diagnostics
                 case DiagCommand.Viewports: WriteViewports(); break;
                 case DiagCommand.Probe: SetProbe(v.Level); break;
                 case DiagCommand.Xm: QueryExtensions(v.Uris ?? [], v.Kinds ?? [], v.Tag); break;
+                case DiagCommand.Shot or DiagCommand.Present or DiagCommand.Seek or DiagCommand.Stage or DiagCommand.Rail:
+                    StoreShot.Apply(v);   // the Store screenshot capture (StoreShot.cs)
+                    break;
             }
         }
 
@@ -393,7 +396,7 @@ public static partial class Diagnostics
 
         /// <summary>Append one reply line (<c>seq \t cmd \t result \t path</c>) to logs\evidence\replies.tsv — the file the
         /// harness polls (WM_COPYDATA cannot answer).</summary>
-        static void Reply(string cmd, string result, string path)
+        internal static void Reply(string cmd, string result, string path)
         {
             try
             {

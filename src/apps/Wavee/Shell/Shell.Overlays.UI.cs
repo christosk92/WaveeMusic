@@ -409,6 +409,9 @@ public static partial class Shell
             _ = Entities.ScopeEpoch.Value;   // FIRST (G-179): a scope switch re-points the table read below
             _ = Entities.Current.Users.Changed.Value;             // subscribe: the account's identity lands
             var identity = ReadIdentity();
+            // Presentation mode (the Store shot): a generic picture and no name — a listing image carries no account data.
+            bool presenting = Diagnostics.StoreShot.Presenting.Value;
+            if (presenting) identity = new AccountIdentity(true, "", null);
             float nameCap = Actions.ProfileRules.NameCap(Layout.ChromeProfileNameW);
 
             // The skeleton chip until the account's identity is KNOWN (0.2.9 printed "—"; 0.3 must not).
@@ -441,7 +444,7 @@ public static partial class Shell
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
-            Element[] children = !layout.ShowName
+            Element[] children = !layout.ShowName || presenting
                 ? [picture]
                 : identity.Known
                     ? [picture, Caption(identity.Name).Primary() with { MaxWidth = nameCap, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }]

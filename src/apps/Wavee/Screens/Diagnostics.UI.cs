@@ -149,7 +149,8 @@ public static partial class Diagnostics
         Direction = 1, AlignItems = FlexAlign.End, Padding = new Edges4(0f, 104f, 14f, 0f),
         Children =
         [
-            Flow.Show(static () => Platform.Developer.ShowsFpsOverlay(Platform.Developer.Enabled.Value, Platform.Developer.FpsOverlay.Value),
+            Flow.Show(static () => Platform.Developer.ShowsFpsOverlay(Platform.Developer.Enabled.Value && !StoreShot.Presenting.Value,
+                    Platform.Developer.FpsOverlay.Value),
                 Embed.Comp(static () => new FpsPill())),
         ],
     };
@@ -843,8 +844,8 @@ public static partial class Diagnostics
         public override Element Render()
         {
             var overlay = UseContext(Overlay.Service);
-            _ = Platform.SettingsChanged.Value;   // subscribe → a Developer-mode flip composes the glyph in/out live
-            if (!Platform.Settings.Get(Platform.Keys.DeveloperMode)) return new BoxEl { Visible = false };
+            // subscribes to the setting and to presentation mode → a flip of either composes the glyph in/out live
+            if (!StoreShot.DeveloperSurfaces()) return new BoxEl { Visible = false };
             return Rail.HeaderButton(Icons.Code, Loc.Get(Strings.Player.InspectLyrics), () =>
             {
                 if (Controls.IsNullOverlay(overlay)) return;

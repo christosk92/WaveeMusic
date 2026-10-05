@@ -2284,8 +2284,8 @@ public static partial class Lyrics
     {
         public override Element Render()
         {
-            _ = Platform.SettingsChanged.Value;   // subscribe → a Developer-mode flip mounts/unmounts it live
-            bool dev = Platform.Settings.Get(Platform.Keys.DeveloperMode);
+            // subscribes to the setting and to presentation mode → a flip of either mounts/unmounts it live
+            bool dev = Diagnostics.StoreShot.DeveloperSurfaces();
             if (!dev) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
             if (owner.DebugOpen.Value) return Overlay(owner.TrackId);
             // ink-scan: off (the developer plate keeps theme ink)

@@ -373,6 +373,7 @@ public static partial class Shell
         Wavee.Palette.Post = post;
         Lyrics.Store.ToUi = post;         // the lyrics document store's UI-thread hop (G-008)
         AiLyrics.Install(post);           // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
+        Diagnostics.StoreShot.ToUi = post;   // the Store shot's settle timer lands back on the UI thread
         s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
         Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe

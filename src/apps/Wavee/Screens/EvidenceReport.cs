@@ -15,13 +15,22 @@ using FluentGpu.Rhi;
 
 namespace Wavee;
 
-/// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode).</summary>
-public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm }
+/// <summary>The <c>wavee://diag</c> commands (developer-only; refused unless developer mode). <see cref="Shot"/> ..
+/// <see cref="Rail"/> are the Store screenshot capture (Screens/StoreShot.cs).</summary>
+public enum DiagCommand : byte { None, Bundle, Pixel, Scroll, Viewports, Probe, Xm, Shot, Present, Seek, Stage, Rail }
 
 /// <summary>A parsed <c>wavee://diag?cmd=…</c> verb. <see cref="Level"/>: 0 Off, 1 Summary, 2 Trace (−1 = none).
-/// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.</summary>
+/// <see cref="Uris"/>/<see cref="Kinds"/> are the <c>xm</c> probe's comma-separated entity uris and extension kinds.
+/// <para>The capture verbs: <see cref="Zoom"/> (shot: render at this percent of the current zoom, 0 = as is),
+/// <see cref="SettleMs"/> (shot: wait this long after presentation mode / zoom before capturing), <see cref="Alpha"/>
+/// (shot: keep the window's translucency), <see cref="Keys"/> (shot: the key prefixes to export, empty = every shown
+/// keyed node), <see cref="On"/> (present: 1/0; seek: 1 pause after, 0 resume, −1 leave; stage: 1 open, 0 close, −1
+/// leave), <see cref="Ms"/> (seek: the position), <see cref="Mode"/> (stage: lyrics/visualizer/queue/artist; rail:
+/// lyrics/queue/off), <see cref="Face"/> (stage: a visualizer face name), <see cref="Gallery"/> (stage: 1/0, −1 leave).</para></summary>
 public readonly record struct DiagVerb(DiagCommand Command, string Tag = "", int X = 0, int Y = 0, bool Dip = false,
-    string Viewport = "", double To = 0.0, bool Glide = false, int Level = -1, string[]? Uris = null, int[]? Kinds = null);
+    string Viewport = "", double To = 0.0, bool Glide = false, int Level = -1, string[]? Uris = null, int[]? Kinds = null,
+    int Zoom = 0, int SettleMs = 0, bool Alpha = false, string[]? Keys = null, int On = -1, int Ms = -1, string Mode = "",
+    string Face = "", int Gallery = -1);
 
 /// <summary>One nodes.tsv row: a node referenced by any exported record, with its readable name, element kind and
 /// window rect (DIP; empty when gone).</summary>
@@ -31,6 +40,14 @@ public readonly record struct EvidenceNodeRow(int Index, uint Gen, string Path, 
 /// <summary>One row of the Evidence card's pixel table.</summary>
 public readonly record struct EvidencePixelRow(string Index, string Kind, string Node, string Alpha, string Feather1, string Feather2,
     string Tile, string Raster, bool Stale);
+
+/// <summary>One keyed node of a Store shot (shot.json): its key, element kind and window rect (DIP).</summary>
+public readonly record struct ShotKeyRow(string Key, string Type, float X, float Y, float W, float H);
+
+/// <summary>shot.json's facts. <see cref="Scale"/> = device px per DIP of the captured present (zoom included);
+/// <see cref="PositionMs"/> = the playback position when the frame was armed (−1 = nothing playing).</summary>
+public readonly record struct ShotMeta(string Tag, string Route, string Arg, float Scale, float Zoom, int WidthPx, int HeightPx,
+    bool Alpha, bool Presenting, int PositionMs, string CreatedLocal);
 
 /// <summary>meta.json's facts.</summary>
 public readonly record struct EvidenceMeta(string Build, int Pid, string Profile, string Route, string Arg, long NavId,
@@ -51,6 +68,7 @@ public static class EvidenceReport
         verb = default;
         if (string.IsNullOrEmpty(query)) return false;
         string cmd = "", tag = "", vp = "", move = "", level = "", uris = "", kinds = "";
+        string zoom = "", settle = "", alpha = "", keys = "", on = "", ms = "", pause = "", open = "", mode = "", face = "", gallery = "";
         string? x = null, y = null, to = null;
         bool dip = false;
         ReadOnlySpan<char> q = query;
@@ -77,6 +95,17 @@ public static class EvidenceReport
                 case "level": level = val; break;
                 case "uris": uris = val; break;
                 case "kinds": kinds = val; break;
+                case "zoom": zoom = val; break;
+                case "settle": settle = val; break;
+                case "alpha": alpha = val; break;
+                case "keys": keys = val; break;
+                case "on": on = val; break;
+                case "ms": ms = val; break;
+                case "pause": pause = val; break;
+                case "open": open = val; break;
+                case "mode": mode = val; break;
+                case "face": face = val; break;
+                case "gallery": gallery = val; break;
             }
         }
         switch (cmd.ToLowerInvariant())
@@ -113,9 +142,54 @@ public static class EvidenceReport
                 verb = new DiagVerb(DiagCommand.Probe, Level: l);
                 return true;
             }
+            case "shot":
+            {
+                // zoom: a percent of the CURRENT zoom (100 = as is), 50..400; settle: 0..10 s, default 700 ms; alpha
+                // defaults ON (the Store composer lays the window over its own field).
+                int z = 0;
+                if (zoom.Length > 0 && (!TryInt(zoom, out z) || z < 50 || z > 400)) return false;
+                int st = 700;
+                if (settle.Length > 0 && (!TryInt(settle, out st) || st < 0 || st > 10_000)) return false;
+                string[] prefixes = keys.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                verb = new DiagVerb(DiagCommand.Shot, Tag: SanitizeTag(tag.Length == 0 ? "shot" : tag), Zoom: z == 100 ? 0 : z,
+                    SettleMs: st, Alpha: alpha is not ("0" or "false"), Keys: prefixes);
+                return true;
+            }
+            case "present":
+            {
+                int o = Flag(on);
+                if (o < 0) return false;
+                verb = new DiagVerb(DiagCommand.Present, On: o);
+                return true;
+            }
+            case "seek":
+            {
+                if (!TryInt(ms, out int pos) || pos < 0) return false;
+                verb = new DiagVerb(DiagCommand.Seek, Ms: pos, On: Flag(pause));
+                return true;
+            }
+            case "stage":
+            {
+                string m = mode.ToLowerInvariant();
+                if (m.Length > 0 && m is not ("lyrics" or "visualizer" or "queue" or "artist")) return false;
+                int o = Flag(open), g = Flag(gallery);
+                if (o < 0 && m.Length == 0 && face.Length == 0 && g < 0) return false;   // a stage verb that changes nothing
+                verb = new DiagVerb(DiagCommand.Stage, On: o, Mode: m, Face: face, Gallery: g);
+                return true;
+            }
+            case "rail":
+            {
+                string m = mode.ToLowerInvariant();
+                if (m is not ("lyrics" or "queue" or "off")) return false;
+                verb = new DiagVerb(DiagCommand.Rail, Mode: m);
+                return true;
+            }
             default:
                 return false;
         }
+
+        // "1"/"true" = 1, "0"/"false" = 0, anything else (absent included) = −1
+        static int Flag(string v) => v is "1" or "true" ? 1 : v is "0" or "false" ? 0 : -1;
 
         static string[] SplitList(string s)
         {
@@ -406,6 +480,65 @@ public static class EvidenceReport
               .Append(", \"horizontal\": ").Append(v.Horizontal ? "true" : "false").Append(" }");
         }
         sb.Append(vps.Count > 0 ? "\n  ]\n" : "]\n");
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    // ── the Store shot (Screens/StoreShot.cs) ──────────────────────────────────────────────────────────────────────
+
+    /// <summary>A key is exported when no prefix is given or it starts with one of them (ordinal, case-insensitive).</summary>
+    public static bool ShotKeyWanted(string key, IReadOnlyList<string>? prefixes)
+    {
+        if (prefixes is null || prefixes.Count == 0) return true;
+        foreach (string p in prefixes) if (p.Length > 0 && key.StartsWith(p, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
+
+    /// <summary>The rows a shot exports: wanted by <paramref name="prefixes"/>, non-empty, and at least partly inside the
+    /// window (<paramref name="windowW"/> × <paramref name="windowH"/> DIP) — a row scrolled or parked off-window names no
+    /// pixel in the PNG. Clipped to the window, ordered by key then top-left, so two runs over the same page diff cleanly.</summary>
+    public static List<ShotKeyRow> ShotKeys(IEnumerable<ShotKeyRow> shown, float windowW, float windowH, IReadOnlyList<string>? prefixes)
+    {
+        var rows = new List<ShotKeyRow>();
+        foreach (var r in shown)
+        {
+            if (!ShotKeyWanted(r.Key, prefixes) || r.W <= 0f || r.H <= 0f) continue;
+            float x0 = MathF.Max(0f, r.X), y0 = MathF.Max(0f, r.Y);
+            float x1 = MathF.Min(windowW, r.X + r.W), y1 = MathF.Min(windowH, r.Y + r.H);
+            if (x1 <= x0 || y1 <= y0) continue;
+            rows.Add(r with { X = x0, Y = y0, W = x1 - x0, H = y1 - y0 });
+        }
+        rows.Sort(static (a, b) =>
+        {
+            int c = string.CompareOrdinal(a.Key, b.Key);
+            if (c != 0) return c;
+            c = a.Y.CompareTo(b.Y);
+            return c != 0 ? c : a.X.CompareTo(b.X);
+        });
+        return rows;
+    }
+
+    /// <summary>shot.json: the facts, then every exported key with its rect in DIP (multiply by <c>scale</c> for the
+    /// PNG's pixels).</summary>
+    public static string ShotJson(in ShotMeta m, IReadOnlyList<ShotKeyRow> keys)
+    {
+        var sb = new StringBuilder(512 + keys.Count * 96);
+        sb.Append("{\n");
+        Str(sb, "tag", m.Tag); Str(sb, "created", m.CreatedLocal); Str(sb, "route", m.Route); Str(sb, "arg", m.Arg);
+        sb.Append("  \"scale\": ").Append(F(m.Scale)).Append(",\n");
+        sb.Append("  \"zoom\": ").Append(F(m.Zoom)).Append(",\n");
+        Num(sb, "widthPx", m.WidthPx); Num(sb, "heightPx", m.HeightPx); Num(sb, "positionMs", m.PositionMs);
+        sb.Append("  \"alpha\": ").Append(m.Alpha ? "true" : "false").Append(",\n");
+        sb.Append("  \"presenting\": ").Append(m.Presenting ? "true" : "false").Append(",\n");
+        sb.Append("  \"keys\": [");
+        for (int i = 0; i < keys.Count; i++)
+        {
+            var k = keys[i];
+            sb.Append(i == 0 ? "\n" : ",\n").Append("    { \"key\": ").Append(Quote(k.Key)).Append(", \"type\": ").Append(Quote(k.Type))
+              .Append(", \"x\": ").Append(F(k.X)).Append(", \"y\": ").Append(F(k.Y))
+              .Append(", \"w\": ").Append(F(k.W)).Append(", \"h\": ").Append(F(k.H)).Append(" }");
+        }
+        sb.Append(keys.Count > 0 ? "\n  ]\n" : "]\n");
         sb.Append("}\n");
         return sb.ToString();
     }
