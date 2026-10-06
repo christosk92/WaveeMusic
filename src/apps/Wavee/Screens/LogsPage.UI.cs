@@ -34,7 +34,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using LogLevelBucket = Wavee.Diagnostics.LogLevelBucket;
 using LogView = Wavee.Diagnostics.LogView;
 using LogViewQuery = Wavee.Diagnostics.LogViewQuery;
@@ -455,21 +454,22 @@ public static partial class LogsPage
             bool live = _session.Peek() == 0;
             var past = live ? null : SelectedPastSession();
             if (!live && past is null) return;
-            string? path;
-            try
-            {
-                path = FilePicker.SaveFile(FluentApp.WindowHandle, Loc.Get(Strings.Logs.ExportSession),
+            // The Save As dialog runs on its own thread (Pickers, #155); the export happens when it answers, UI thread.
+            Pickers.Pick(
+                PickerRequest.Save(Loc.Get(Strings.Logs.ExportSession),
                     live ? "wavee-session-live.txt" : "wavee-session-" + WaveeLogSessions.KeyOf(past!) + ".txt",
-                    (Loc.Get(Strings.Logs.ExportLogText), "*.txt"), (Loc.Get(Strings.Logs.ExportAllFiles), "*.*"));
-            }
-            catch (InvalidOperationException ex) { Log.Warn("log", "the export dialog failed", ex); return; }
-            if (path is null) return;
-            try
-            {
-                if (live) File.WriteAllText(path, LogView.ExportText(Log.Snapshot()));
-                else WaveeLogSessions.ExportSessionToFile(past!, path);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("log", "the session export failed", ex); }
+                    (Loc.Get(Strings.Logs.ExportLogText), "*.txt"), (Loc.Get(Strings.Logs.ExportAllFiles), "*.*")),
+                done: path =>
+                {
+                    if (path is null) return;
+                    try
+                    {
+                        if (live) File.WriteAllText(path, LogView.ExportText(Log.Snapshot()));
+                        else WaveeLogSessions.ExportSessionToFile(past!, path);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Log.Warn("log", "the session export failed", ex); }
+                },
+                failed: ex => Log.Warn("log", "the export dialog failed", ex));
         }
 
         // ── the list card: column header · body · footer ────────────────────────────────────────────────────────────

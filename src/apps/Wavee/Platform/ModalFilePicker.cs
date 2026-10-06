@@ -1,5 +1,6 @@
 // ── Platform/ModalFilePicker.cs ──────────────────────────────────────────────────────────────────────────────────────
-// SHELL (Windows): the shell open-file dialog, modal to the Wavee window, WITHOUT the Wavee window's thread (#155).
+// SHELL (Windows): the shell open-file / pick-folder / save-file dialogs, modal to the Wavee window, WITHOUT the Wavee
+// window's thread (#155). EVERY system file dialog Wavee shows goes through here (Pickers.Pick on the UI thread).
 //
 // WHY NOT `FilePicker.OpenFile` ON THE UI THREAD. `IModalWindow.Show` is a blocking nested modal loop. Called from a click
 // handler it runs INSIDE the engine's frame on the thread that also renders: it disables the owner window, builds the
@@ -44,7 +45,9 @@ public static class StaThread
     }
 }
 
-/// <summary>The open-file dialog on its own STA thread, owned by (and modal to) the window handle it is given.</summary>
+/// <summary>The shell's open-file, pick-folder and save-file dialogs, each on its own STA thread, owned by (and modal
+/// to) the window handle it is given. Callers on the UI thread go through <see cref="Pickers.Pick"/>, which adds the
+/// UI-thread answer, the busy toast and the watchdog.</summary>
 public static unsafe class ModalFilePicker
 {
     static readonly PickerGate s_gate = new();
@@ -57,18 +60,24 @@ public static unsafe class ModalFilePicker
     /// <summary>Bumped by every picker that opens: a watchdog armed for one picker must not judge the next.</summary>
     public static int Generation => Volatile.Read(ref s_generation);
 
-    /// <summary>Open the dialog. Null when one is already open (the gate refused); otherwise a task that completes with
-    /// the chosen path, or null on cancel, and faults when the dialog itself failed. Never blocks the caller.</summary>
-    public static Task<string?>? OpenFileAsync(nint owner, string title, params (string Name, string Spec)[] filters)
+    /// <summary>THE SEAM: what runs on the dialog thread — the shell dialog by default (<see cref="ShowShellDialog"/>).
+    /// Tests replace it to pin the threading contract without a window.</summary>
+    public static Func<nint, PickerRequest, string?> Dialog { get; set; } = ShowShellDialog;
+
+    /// <summary>Show <paramref name="request"/>. Null when a picker is already open (the gate refused); otherwise a task
+    /// that completes with the chosen path, or null on cancel, and faults when the dialog itself failed. Never blocks
+    /// the caller.</summary>
+    public static Task<string?>? ShowAsync(nint owner, PickerRequest request)
     {
         if (!s_gate.TryEnter()) return null;
         Interlocked.Increment(ref s_generation);
+        var dialog = Dialog;
         try
         {
             return StaThread.Run(() =>
             {
                 Volatile.Write(ref s_dialogThread, (int)GetCurrentThreadId());
-                try { return FilePicker.OpenFile(owner, title, filters); }
+                try { return dialog(owner, request); }
                 finally
                 {
                     Volatile.Write(ref s_dialogThread, 0);
@@ -82,6 +91,25 @@ public static unsafe class ModalFilePicker
             throw;
         }
     }
+
+    /// <inheritdoc cref="ShowAsync"/>
+    public static Task<string?>? OpenFileAsync(nint owner, string title, params (string Name, string Spec)[] filters)
+        => ShowAsync(owner, PickerRequest.Open(title, filters));
+
+    /// <inheritdoc cref="ShowAsync"/>
+    public static Task<string?>? PickFolderAsync(nint owner, string title) => ShowAsync(owner, PickerRequest.Folder(title));
+
+    /// <inheritdoc cref="ShowAsync"/>
+    public static Task<string?>? SaveFileAsync(nint owner, string title, string defaultFileName, params (string Name, string Spec)[] filters)
+        => ShowAsync(owner, PickerRequest.Save(title, defaultFileName, filters));
+
+    /// <summary>The engine's blocking shell dialogs — called ONLY on the picker's own STA thread.</summary>
+    static string? ShowShellDialog(nint owner, PickerRequest r) => r.Kind switch
+    {
+        PickerKind.Folder => FilePicker.PickFolder(owner, r.Title),
+        PickerKind.SaveFile => FilePicker.SaveFile(owner, r.Title, r.DefaultFileName, r.Filters),
+        _ => FilePicker.OpenFile(owner, r.Title, r.Filters),
+    };
 
     /// <summary>Is a window of the dialog thread on screen? (The watchdog's question.)</summary>
     public static bool DialogVisible()

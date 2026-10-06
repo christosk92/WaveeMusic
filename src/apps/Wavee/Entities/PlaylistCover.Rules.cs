@@ -1,7 +1,7 @@
 // ── Entities/PlaylistCover.Rules.cs ──────────────────────────────────────────────────────────────────────────────────
 // CORE, PURE: the playlist cover's rules (#155) — which files are offered and accepted, the square crop, the EXIF turn,
-// the JPEG budget ladder, the register-image answer and the cover's CDN url, and the file picker's single-flight gate
-// and watchdog verdict. No engine, no WIC, no network, no clock: the WIC codec (Platform/CoverImage.cs), the STA picker
+// the JPEG budget ladder, the register-image answer and the cover's CDN url.
+// No engine, no WIC, no network, no clock: the WIC codec (Platform/CoverImage.cs), the STA picker
 // (Platform/ModalFilePicker.cs) and the flow (Entities/PlaylistCover.cs) are the impure halves, and
 // Wavee.Tests/PlaylistCoverTests.cs pins this file.
 
@@ -162,35 +162,4 @@ public static class PlaylistCoverRules
     /// playlist reads as nothing or as a server mosaic of its first albums.</summary>
     public static bool IsOwnCover(string? image)
         => image is { Length: > 0 } && !image.Contains("mosaic", StringComparison.OrdinalIgnoreCase);
-
-    // ── the picker's threading contract (Platform/ModalFilePicker.cs) ─────────────────────────────────────────────
-
-    /// <summary>How long a picker may stay invisible before the owner window is handed back (see <see cref="Watch"/>).</summary>
-    public const int PickerWatchdogMs = 8000;
-
-    public enum PickerVerdict : byte { Done = 0, Wait, ReleaseOwner }
-
-    /// <summary>THE WATCHDOG (the #155 symptom, made survivable). <c>IModalWindow.Show</c> disables the owner FIRST and
-    /// shows the dialog only once the shell view behind it has navigated; when that stalls, the window is dead to every
-    /// click (the "ding") with nothing on screen. The picker now runs on its own thread, so Wavee keeps drawing — and
-    /// once the dialog has stayed invisible for <see cref="PickerWatchdogMs"/>, the owner is enabled again.</summary>
-    public static PickerVerdict Watch(bool pickerOpen, bool dialogVisible, bool ownerEnabled, long elapsedMs)
-    {
-        if (!pickerOpen || dialogVisible) return PickerVerdict.Done;
-        if (elapsedMs < PickerWatchdogMs) return PickerVerdict.Wait;
-        return ownerEnabled ? PickerVerdict.Done : PickerVerdict.ReleaseOwner;
-    }
-}
-
-/// <summary>ONE picker at a time, process-wide: a second "Change cover" while a dialog is up (or still coming up)
-/// must not stack another modal on the first. Thread-safe; held from the click until the dialog thread returns.</summary>
-public sealed class PickerGate
-{
-    int _held;
-
-    public bool IsHeld => Volatile.Read(ref _held) != 0;
-
-    public bool TryEnter() => Interlocked.CompareExchange(ref _held, 1, 0) == 0;
-
-    public void Exit() => Volatile.Write(ref _held, 0);
 }

@@ -42,6 +42,11 @@
     "reorderHint": "Drag to reorder",
     "libraryUnavailable": "Can’t change your library right now"
   },
+  "filePicker": {
+    "$comment": "The system file dialogs (open a file, pick a folder, save a file), shared by every caller (Platform/Pickers.cs). `alreadyOpen` answers a second dialog while one is open; `slow` is the watchdog's toast when a dialog never appeared and Wavee handed its window back.",
+    "alreadyOpen": "A file picker is already open.",
+    "slow": "The file picker is taking a long time to open. You can keep using Wavee while it does."
+  },
   "detail": {
     "play": "Play",
     "shuffle": "Shuffle",
@@ -213,8 +218,6 @@
       "coverUnreadable": "Couldn’t read that image. Choose another file.",
       "coverFailed": "Couldn’t update the cover. Try again.",
       "coverPickerFailed": "Couldn’t open the file picker.",
-      "coverPickerOpen": "A file picker is already open.",
-      "coverPickerSlow": "The file picker is taking a long time to open. You can keep using Wavee while it does.",
       "collaborative": "Collaborative playlist",
       "publicPlaylist": "Public playlist",
       "inviteCollaborators": "Invite collaborators",

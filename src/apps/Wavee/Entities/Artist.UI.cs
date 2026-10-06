@@ -42,7 +42,6 @@ using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Scroll.Effects;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -1296,20 +1295,21 @@ public readonly partial struct Artist
 
         /// <summary>The native Save As picker, then the original bytes: a CDN url downloads, a local cover (the offline
         /// seed's bundled art) copies.</summary>
-        async void ExportImage(string url, int index, Action<Action> post)
+        void ExportImage(string url, int index, Action<Action> post)
         {
             if (_saving.Peek() || url.Length == 0) return;
-            string? path;
-            try
-            {
-                path = FilePicker.SaveFile(FluentApp.WindowHandle, Loc.Get(Strings.Artist.GalleryExportTitle),
+            Pickers.Pick(
+                PickerRequest.Save(Loc.Get(Strings.Artist.GalleryExportTitle),
                     "artist-gallery-" + (index + 1).ToString("D2", CultureInfo.InvariantCulture) + ExtensionOf(url),
                     (Loc.Get(Strings.Artist.GalleryImages), "*.jpg;*.jpeg;*.png;*.webp"),
-                    (Loc.Get(Strings.Artist.GalleryAllFiles), "*.*"));
-            }
-            catch (InvalidOperationException ex) { Log.Warn("artist", "the gallery export dialog failed", ex); return; }
-            if (path is null) return;
+                    (Loc.Get(Strings.Artist.GalleryAllFiles), "*.*")),
+                done: path => { if (path is not null) _ = SaveImage(url, path, post); },
+                failed: ex => Log.Warn("artist", "the gallery export dialog failed", ex));
+        }
 
+        /// <summary>The bytes half of <see cref="ExportImage"/>, once the Save As dialog answered (UI thread in).</summary>
+        async Task SaveImage(string url, string path, Action<Action> post)
+        {
             _saving.Value = true;
             try
             {

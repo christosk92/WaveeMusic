@@ -27,7 +27,6 @@
 using FluentGpu;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
-using FluentGpu.WindowsApi.Dialogs;
 
 namespace Wavee;
 
@@ -128,9 +127,8 @@ public readonly partial struct Track
     // ══ 3. THE SHARED PICK → VALIDATE → ATTACH → TOAST PATH ══════════════════════════════════════════════════════════
 
     /// <summary>Pick a file, validate it, attach it, toast it (with Undo). The ONE path Attach, Replace and the
-    /// "Locate…" repair share, so those three can never drift apart. `FilePicker` is modal and blocking and must run on
-    /// the thread that owns the window — which is exactly where a menu invoke lands (menus close on invoke, so there is
-    /// no open flyout to fight with).</summary>
+    /// "Locate…" repair share, so those three can never drift apart. The dialog is <see cref="Pickers.Pick"/>'s: modal
+    /// to the window but on its own thread, so the UI thread never blocks on it (#155); the rest runs when it answers.</summary>
     static void PickAndAttach(string? playableUri, string title, bool locate)
     {
         if (playableUri is not { Length: > 0 } uri) return;
@@ -139,51 +137,48 @@ public readonly partial struct Track
             ? Video.OverrideUx.NearestExistingAncestor(previous.Path, Video.Overrides.DirectoryExists)
             : null;
 
-        string? picked;
-        try
-        {
-            picked = FilePicker.OpenFile(FluentApp.WindowHandle, start is null ? title : title + " — " + start,
-                                         Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter)));
-        }
-        catch (Exception ex)
-        {
-            Notify.Say(ex.Message, InfoBarSeverity.Error);                                    // ch 19 item 29
-            return;
-        }
-        if (picked is null) return;                                                            // cancelled: nothing happened
+        Pickers.Pick(
+            PickerRequest.Open(start is null ? title : title + " — " + start,
+                               Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter))),
+            done: picked => { if (picked is not null) Attached(picked); },                      // null = cancelled: nothing happened
+            failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));                       // ch 19 item 29
 
-        var rejection = Video.OverrideUx.Validate(picked, Video.Overrides.FileExists);
-        if (rejection != Video.AttachRejection.None)
+        // The dialog answers later, on the UI thread (Pickers: its own thread, modal to the window).
+        void Attached(string picked)
         {
-            bool notMp4 = rejection == Video.AttachRejection.NotMp4;
-            Notify.Say(Loc.Get(notMp4 ? Strings.VideoOverride.RejectedNotMp4 : Strings.VideoOverride.RejectedNotFound),
-                       InfoBarSeverity.Error);                                                 // ch 19 item 30
-            Log.Event(WaveeLogLevel.Warning, VideoLogCategory, "override.attach.rejected", "the picked file was refused",
-                fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", notMp4 ? "not-mp4" : "not-found")]);
-            return;
+            var rejection = Video.OverrideUx.Validate(picked, Video.Overrides.FileExists);
+            if (rejection != Video.AttachRejection.None)
+            {
+                bool notMp4 = rejection == Video.AttachRejection.NotMp4;
+                Notify.Say(Loc.Get(notMp4 ? Strings.VideoOverride.RejectedNotMp4 : Strings.VideoOverride.RejectedNotFound),
+                           InfoBarSeverity.Error);                                                 // ch 19 item 30
+                Log.Event(WaveeLogLevel.Warning, VideoLogCategory, "override.attach.rejected", "the picked file was refused",
+                    fields: [WaveeLogField.Of("path", picked), WaveeLogField.Of("reason", notMp4 ? "not-mp4" : "not-found")]);
+                return;
+            }
+
+            if (Video.Overrides.Attach(uri, picked, SourceKeyFor(picked), NowUnix) is not { } kind)
+            {
+                // The roster refused what validation had just accepted — the file went away between the two probes. 0.2.10
+                // surfaced this as a thrown message (ch 19 item 31); the 0.3 roster returns null instead of throwing, so the
+                // honest sentence is the same "couldn't be found" the validator would have said.
+                Notify.Say(Loc.Get(Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 31
+                return;
+            }
+
+            bool replaced = kind == Video.OverrideMutationKind.Replace;
+            Log.Event(WaveeLogLevel.Info, VideoLogCategory, replaced ? "override.menu.replace" : "override.menu.attach",
+                replaced ? "replaced the attached video" : "attached a local video",
+                fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
+
+            // Undo restores the PREVIOUS state exactly: the prior attachment on a replace, no attachment on a first attach.
+            string previousPath = had ? previous.Path : "", previousKey = had ? previous.SourceKey : "";
+            Notify.Say(Loc.Get(replaced ? Strings.VideoOverride.Replaced : Strings.VideoOverride.Attached),
+                       InfoBarSeverity.Success, Loc.Get(Strings.VideoOverride.Undo),
+                       () => RestoreVideo(uri, previousPath, previousKey));                        // ch 19 item 32
+            // The REVEAL is the host's (`Video`'s `Changed` handler, after the has-video commit); showing the surface here
+            // would race that posted mutation.
         }
-
-        if (Video.Overrides.Attach(uri, picked, SourceKeyFor(picked), NowUnix) is not { } kind)
-        {
-            // The roster refused what validation had just accepted — the file went away between the two probes. 0.2.10
-            // surfaced this as a thrown message (ch 19 item 31); the 0.3 roster returns null instead of throwing, so the
-            // honest sentence is the same "couldn't be found" the validator would have said.
-            Notify.Say(Loc.Get(Strings.VideoOverride.RejectedNotFound), InfoBarSeverity.Error);  // ch 19 item 31
-            return;
-        }
-
-        bool replaced = kind == Video.OverrideMutationKind.Replace;
-        Log.Event(WaveeLogLevel.Info, VideoLogCategory, replaced ? "override.menu.replace" : "override.menu.attach",
-            replaced ? "replaced the attached video" : "attached a local video",
-            fields: [WaveeLogField.Of("uri", uri), WaveeLogField.Of("path", picked)]);
-
-        // Undo restores the PREVIOUS state exactly: the prior attachment on a replace, no attachment on a first attach.
-        string previousPath = had ? previous.Path : "", previousKey = had ? previous.SourceKey : "";
-        Notify.Say(Loc.Get(replaced ? Strings.VideoOverride.Replaced : Strings.VideoOverride.Attached),
-                   InfoBarSeverity.Success, Loc.Get(Strings.VideoOverride.Undo),
-                   () => RestoreVideo(uri, previousPath, previousKey));                        // ch 19 item 32
-        // The REVEAL is the host's (`Video`'s `Changed` handler, after the has-video commit); showing the surface here
-        // would race that posted mutation.
     }
 
     /// <summary>Undo: re-attach the previous file, or detach when there was none. Both directions go through the same

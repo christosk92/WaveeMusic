@@ -21,7 +21,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.WindowsApi.Activation;
-using FluentGpu.WindowsApi.Dialogs;
 using FluentGpu.WindowsApi.Packaging;
 using Wavee.Sdk.Streams;
 
@@ -272,10 +271,10 @@ public static partial class Settings
 
     static void PickCacheLocation()
     {
-        string? picked;
-        try { picked = FilePicker.PickFolder(FluentApp.WindowHandle, Loc.Get(Strings.Settings.Storage.ChooseCacheFolder)); }
-        catch (Exception ex) { Log.Warn("settings", "cache folder picker failed", ex); return; }
-        if (!string.IsNullOrWhiteSpace(picked)) OfferRelocation(picked);
+        // The folder dialog runs on its own thread (Pickers, #155); dialog 1 opens when it answers, UI thread.
+        Pickers.Pick(PickerRequest.Folder(Loc.Get(Strings.Settings.Storage.ChooseCacheFolder)),
+            done: picked => { if (!string.IsNullOrWhiteSpace(picked)) OfferRelocation(picked); },
+            failed: ex => Log.Warn("settings", "cache folder picker failed", ex));
     }
 
     /// <summary>Dialog 1. <paramref name="newBase"/> is the PARENT the cache owns a child under; "" = the default root.
