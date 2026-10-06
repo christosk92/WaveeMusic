@@ -622,7 +622,7 @@ public static partial class Shell
     static void ArmJumpList()
     {
         // The jump list is keyed by the app's AUMID — shared with the user's Wavee: a --profile instance leaves it alone.
-        if (s_jumpList is not null || !InstanceIdRules.OwnsOsIntegration(Platform.ProfileRoot)) return;
+        if (s_jumpList is not null || !Playback.Os.JumpList.OwnsList(Platform.ProfileRoot)) return;
         s_jumpList = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Os.JumpList.Attach(
                 recentContexts: static max => PlayLog.RecentContexts(max),
                 recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max))),

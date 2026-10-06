@@ -276,6 +276,17 @@ public class PlaybackJumpListTests
         Assert.Equal("wavee://open?route=search", tasks[1].Arguments);
     }
 
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("   ", true)]
+    [InlineData(@"C:\wavee\verify-profile", false)]
+    [InlineData(@"C:\Users\me\AppData\Local\Temp\scratch", false)]
+    public void Only_the_default_profile_owns_the_jump_list(string? profileRoot, bool owns)
+        // A `--profile` instance shares the user's exe and process-default AUMID, so publishing (or clearing on sign-out)
+        // from it would overwrite the user's own list. Same rule as the protocol handlers and the toast activator.
+        => Assert.Equal(owns, Playback.Os.JumpList.OwnsList(profileRoot));
+
     [Fact]
     public void The_rebuild_floor_is_a_minute_and_it_is_the_track_boundary_s_floor_only()
         // A skip storm must not hammer `ICustomDestinationList` with a Begin/Append/Commit transaction per skip; a

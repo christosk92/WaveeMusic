@@ -108,6 +108,9 @@ public static partial class Playback
         public static void SignedOut()
         {
             JumpList.Forget();
+            // A `--profile` instance never touched the list, so it has nothing of its own to clear — and clearing would
+            // delete the USER's list, which the shell keys by the same identity.
+            if (!JumpList.OwnsList(Platform.ProfileRoot)) return;
             // Through the worker like every other jump-list write, so it lands AFTER any publish already queued and a
             // pending one for the same AUMID is replaced by it (fail-soft there).
             s_jumpListWorker.Submit(JumpListWrite.Clear(JumpList.Aumid));
@@ -664,6 +667,10 @@ public static partial class Playback
 
             internal static void Activate(in State s)
             {
+                // The list is keyed by the app's identity, which a `--profile` instance shares with the user's Wavee
+                // (same exe, same process-default AUMID): a scratch or verify profile must never overwrite it. Left off,
+                // every other entry point (`OnStateChanged`, `Aumid`, `Attach`) is a no-op on `!s_on`.
+                if (!OwnsList(Platform.ProfileRoot)) return;
                 s_on = true;
                 // Seed the edge detector from the state being published, so the first rebuild already shows the right
                 // verb and the `Publish(in s)` that follows `Activate` is not a second edge (and a second transaction).
@@ -737,6 +744,11 @@ public static partial class Playback
                 // skips one that matches what it last committed, so a play/pause burst costs one transaction.
                 s_jumpListWorker.Submit(JumpListWrite.Publish(Loc.Get(Strings.Jumplist.JumpBackIn), items, tasks, Aumid));
             }
+
+            /// <summary>Does the instance whose profile folder is <paramref name="profileRoot"/> own the taskbar jump list?
+            /// Only the default profile does — the same rule as every other piece of process-global OS integration
+            /// (<see cref="InstanceIdRules.OwnsOsIntegration"/>).</summary>
+            public static bool OwnsList(string? profileRoot) => InstanceIdRules.OwnsOsIntegration(profileRoot);
 
             /// <summary>Does a published <paramref name="phase"/> offer the PAUSE verb? Only while playing; every other
             /// phase (paused, loading, idle) offers Resume.</summary>
