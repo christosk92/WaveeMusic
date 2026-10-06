@@ -62,7 +62,7 @@ public static class SectionRoles
     public static bool IsDj(string? format) => format is not null && format.Equals("dj", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>A card worth showing at all: not blank, not DJ, and not ruled unplayable/UnknownType by decode.</summary>
-    public static bool IsUsable(HomeCard c) => !c.IsBlank && c.IsPlayable && c.Uri.Length > 0 && !IsDj(c.Format);
+    public static bool IsUsable(HomeCard c) => !c.IsBlank && c.IsPlayable && !c.Id.IsEmpty && !IsDj(c.Format);   // Id, not Uri: Uri formats a string for a gid id
 
     static int Count(IReadOnlyList<HomeCard> cards, Func<HomeCard, bool> match)
     {
