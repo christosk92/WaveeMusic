@@ -12,8 +12,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Added
 
-- **New full-screen visualizer layouts.** The sliders button in the full-screen view now opens a Visualizer panel with three
-  new layouts next to the classic one: large album art beside the lyrics, a centered cover inside a ring of light, and an
+- **New full-screen visualizer layouts.** The sliders button in the full-screen view now opens a "Full screen" panel with two
+  tabs: Visualizer (pick any visualizer from a grid, filter by group, or open the gallery) and Layout. Next to the classic
+  layout (now "Visualizer first") are three new layouts: large album art beside the lyrics, a centered cover inside a ring of light, and an
   artist-image view that fills the screen with the artist's own header photo (slowly panning and zooming, with the lyrics
   over it if you like). Each shows a bar, ring or line spectrum, or none, and the image dimming and the slow pan are
   yours to set; artists without a header photo use the large-art layout. Press [ and ] to step through the layouts.

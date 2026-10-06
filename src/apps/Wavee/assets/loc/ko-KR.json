@@ -1251,29 +1251,37 @@
     "goToArtist": "아티스트로 이동",
     "credits": "크레딧 · {title}",
     "options": {
-      "title": "비주얼라이저",
-      "button": "비주얼라이저 옵션",
-      "layout": "레이아웃",
-      "spectrum": "스펙트럼",
-      "faces": "비주얼라이저 선택…",
-      "artistHero": "아티스트 히어로",
-      "heroLyrics": "이미지 위에 가사 표시",
+      "title": "전체 화면",
+      "button": "전체 화면 옵션",
+      "tabsLabel": "전체 화면 옵션",
+      "tabViz": "비주얼라이저",
+      "tabLayout": "레이아웃",
+      "nowShowing": "현재 표시 중",
+      "groupAll": "전체",
+      "groupsLabel": "비주얼라이저 그룹",
+      "gridLabel": "비주얼라이저",
+      "footer": "모든 비주얼라이저는 모든 레이아웃에서 작동합니다",
+      "openGallery": "갤러리 열기",
+      "layoutHelp": "비주얼라이저 위에 커버와 가사가 놓이는 위치입니다.",
+      "layoutLabel": "레이아웃",
+      "spectrumUnder": "커버 아래 스펙트럼",
+      "heroLyrics": "사진 위에 가사 표시",
       "heroMotion": "느린 이동 및 확대",
       "heroMotionReduced": "Windows에서 동작을 줄이면 꺼짐",
-      "heroDim": "이미지 어둡게",
-      "heroNote": "Spotify의 아티스트 헤더 이미지를 사용합니다. 헤더 이미지가 없는 아티스트는 큰 앨범 아트 레이아웃으로 표시됩니다."
+      "heroDim": "사진 어둡게",
+      "heroNote": "Spotify의 아티스트 헤더 이미지를 사용합니다. 헤더 이미지가 없는 아티스트는 큰 커버 레이아웃으로 표시됩니다."
     },
     "layout": {
-      "card": "카드",
-      "large": "큰 앨범 아트",
-      "centered": "가운데",
-      "artist": "아티스트"
+      "card": "비주얼라이저 우선",
+      "large": "큰 커버",
+      "centered": "가운데 커버",
+      "artist": "아티스트 사진"
     },
     "layoutSub": {
-      "card": "현재 방식, 작은 커버",
-      "large": "가사 옆에 커버",
-      "centered": "링 안의 커버",
-      "artist": "히어로 이미지 배경"
+      "card": "비주얼라이저가 화면을 채우고, 작은 카드에 재생 중인 곡이 표시됩니다.",
+      "large": "가사 옆에 큰 커버, 그 뒤에 비주얼라이저가 있습니다.",
+      "centered": "가운데에 커버, 그 주위에 비주얼라이저가 있습니다.",
+      "artist": "비주얼라이저 대신 아티스트 사진을 표시하며, 원하면 가사도 함께 표시합니다."
     },
     "spectrum": {
       "bars": "막대",
