@@ -23,7 +23,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -246,14 +245,15 @@ public static partial class Settings
         /// Locate spells the deepest surviving folder into the dialog caption.</summary>
         static void Pick(string uri, string sourceKey, string title, string? start)
         {
-            string? picked;
-            try
-            {
-                var filter = Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter));
-                picked = FilePicker.OpenFile(FluentApp.WindowHandle, start is null ? title : title + " — " + start, filter);
-            }
-            catch (Exception ex) { Notify.Say(ex.Message, InfoBarSeverity.Error); return; }
-            if (picked is null) return;
+            var filter = Video.OverrideUx.PickerFilter(Loc.Get(Strings.VideoOverride.Filter));
+            Pickers.Pick(PickerRequest.Open(start is null ? title : title + " — " + start, filter),
+                done: picked => { if (picked is not null) Picked(uri, sourceKey, picked); },
+                failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));
+        }
+
+        /// <summary><see cref="Pick"/>'s answer, on the UI thread once the dialog (its own thread) has closed.</summary>
+        static void Picked(string uri, string sourceKey, string picked)
+        {
             var rejection = Video.OverrideUx.Validate(picked, Video.Overrides.FileExists);
             if (rejection != Video.AttachRejection.None)
             {

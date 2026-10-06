@@ -27,7 +27,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using FluentGpu.WindowsApi.Packaging;
 using static FluentGpu.Dsl.Ui;
 
@@ -372,18 +371,24 @@ public static partial class Feedback
         {
             if (c is null) return;
             var now = DateTimeOffset.Now;
-            try
-            {
-                string? path = FilePicker.SaveFile(FluentApp.WindowHandle, Loc.Get(Strings.Report.SaveAs), ReportBundle.FileName(now),
-                    (Loc.Get(LocFilterText), "*.txt"), (Loc.Get(LocFilterAll), "*.*"));
-                if (path is null) return;
-                File.WriteAllText(path, BuildBundle(c, FormLabels(), draft, includeLogs, now));
-                Notify.Say(Strings.Report.Saved(path), InfoBarSeverity.Success);
-            }
-            catch (Exception ex)
-            {
-                Notify.Say(ex.Message, InfoBarSeverity.Error);
-            }
+            // The Save As dialog runs on its own thread (Pickers, #155); the write happens when it answers, UI thread.
+            Pickers.Pick(
+                PickerRequest.Save(Loc.Get(Strings.Report.SaveAs), ReportBundle.FileName(now),
+                    (Loc.Get(LocFilterText), "*.txt"), (Loc.Get(LocFilterAll), "*.*")),
+                done: path =>
+                {
+                    if (path is null) return;
+                    try
+                    {
+                        File.WriteAllText(path, BuildBundle(c, FormLabels(), draft, includeLogs, now));
+                        Notify.Say(Strings.Report.Saved(path), InfoBarSeverity.Success);
+                    }
+                    catch (Exception ex)
+                    {
+                        Notify.Say(ex.Message, InfoBarSeverity.Error);
+                    }
+                },
+                failed: ex => Notify.Say(ex.Message, InfoBarSeverity.Error));
         }
 
         /// <summary>Clipboard + a <c>wavee-report-&lt;stamp&gt;.txt</c> beside the logs + the prefilled form in the browser +

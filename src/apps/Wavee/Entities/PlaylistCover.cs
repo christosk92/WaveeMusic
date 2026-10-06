@@ -2,7 +2,7 @@
 // UI: "Change cover" / "Remove cover" for a playlist the user may edit (#155), from the cover's own hover affordance,
 // a file dropped on it, and the playlist page's More menu.
 //
-//     click / menu ─▶ ModalFilePicker (own STA thread; the UI thread never waits) ─▶ Spotify.Post ─┐
+//     click / menu ─▶ Pickers.Pick (own STA thread; the UI thread never waits) ─▶ Spotify.Post ─────┐
 //     drop ──────────────────────────────────────────────────────────────────────────────────────────┤
 //                                                                                                  ▼
 //     Apply: worker — CoverImage.Prepare (WIC: square, upright, ≤ 256 KB JPEG) + the preview file ─▶ UI thread:
@@ -12,7 +12,7 @@
 //            ok  → the row's image becomes the server's url (a NEW url: no cached pixel of the old cover can answer it)
 //            bad → the image the row had before, and the mapped toast
 //
-// One cover write at a time (BusySlot drives the editor's saving chip); one picker at a time (ModalFilePicker's gate).
+// One cover write at a time (BusySlot drives the editor's saving chip); one picker at a time (Pickers / ModalFilePicker).
 
 using System.Text;
 using FluentGpu;
@@ -42,64 +42,21 @@ public static class PlaylistCover
 
     // ── 1. the picker ────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>"Change cover": the image picker, modal to the window, on its own thread; the answer comes back to the
-    /// UI thread and goes through <see cref="Apply"/>.</summary>
+    /// <summary>"Change cover": the image picker (<see cref="Pickers.Pick"/> — its own thread, modal to the window, the
+    /// watchdog); the answer comes back to the UI thread and goes through <see cref="Apply"/>.</summary>
     public static void Pick(Playlist p)
     {
         if (!Gate(p)) return;
-        nint owner = FluentApp.WindowHandle;
-        Task<string?>? picking;
-        try
-        {
-            picking = ModalFilePicker.OpenFileAsync(owner, Loc.Get(Strings.Detail.Edit.PickCover),
-                (Loc.Get(Strings.Detail.Edit.CoverFilter), PlaylistCoverRules.PickerSpec));
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("playlist", "cover picker could not start", ex);
-            Notify.Say(Loc.Get(Strings.Detail.Edit.CoverPickerFailed), InfoBarSeverity.Error, dedupeKey: "playlist.cover.picker");
-            return;
-        }
-        if (picking is null)
-        {
-            Notify.Say(Loc.Get(Strings.Detail.Edit.CoverPickerOpen), InfoBarSeverity.Informational, dedupeKey: "playlist.cover.picker");
-            return;
-        }
         int slot = p.Slot;
         var scope = Entities.Current;
-        long started = Environment.TickCount64;
-        int generation = ModalFilePicker.Generation;
-        _ = Task.Delay(PlaylistCoverRules.PickerWatchdogMs).ContinueWith(_ => Spotify.Post(() => WatchPicker(owner, started, generation)),
-            TaskScheduler.Default);
-        picking.ContinueWith(t => Spotify.Post(() =>
-        {
-            if (t.IsFaulted)
+        Pickers.Pick(
+            PickerRequest.Open(Loc.Get(Strings.Detail.Edit.PickCover), (Loc.Get(Strings.Detail.Edit.CoverFilter), PlaylistCoverRules.PickerSpec)),
+            done: path => { if (path is { Length: > 0 } && ReferenceEquals(scope, Entities.Current)) Apply(new Playlist(slot), path); },
+            failed: ex =>
             {
-                Log.Warn("playlist", "cover picker failed", t.Exception);
+                Log.Warn("playlist", "cover picker failed", ex);
                 Notify.Say(Loc.Get(Strings.Detail.Edit.CoverPickerFailed), InfoBarSeverity.Error, dedupeKey: "playlist.cover.picker");
-                return;
-            }
-            if (t.Result is { Length: > 0 } path && ReferenceEquals(scope, Entities.Current)) Apply(new Playlist(slot), path);
-        }), TaskScheduler.Default);
-    }
-
-    /// <summary>The watchdog (<see cref="PlaylistCoverRules.Watch"/>): a dialog that never became visible must not
-    /// leave the window disabled.</summary>
-    static void WatchPicker(nint owner, long started, int generation)
-    {
-        // A later picker (this one closed, another opened) is not this watch's business.
-        bool open = ModalFilePicker.IsOpen && ModalFilePicker.Generation == generation;
-        var verdict = PlaylistCoverRules.Watch(open, ModalFilePicker.DialogVisible(),
-            ModalFilePicker.IsEnabled(owner), Environment.TickCount64 - started);
-        if (verdict == PlaylistCoverRules.PickerVerdict.Wait)
-        {
-            _ = Task.Delay(1000).ContinueWith(_ => Spotify.Post(() => WatchPicker(owner, started, generation)), TaskScheduler.Default);
-            return;
-        }
-        if (verdict != PlaylistCoverRules.PickerVerdict.ReleaseOwner) return;
-        Log.Warn("playlist", "cover picker still invisible after " + PlaylistCoverRules.PickerWatchdogMs + " ms; window re-enabled");
-        ModalFilePicker.Release(owner);
-        Notify.Say(Loc.Get(Strings.Detail.Edit.CoverPickerSlow), InfoBarSeverity.Warning, dedupeKey: "playlist.cover.picker");
+            });
     }
 
     // ── 2. a file → the cover ────────────────────────────────────────────────────────────────────────────────────

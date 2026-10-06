@@ -21,6 +21,12 @@ versions separately under `v*` and is not tracked in this file.)
   straight away, and put back with a message if Spotify refuses it. The new cover is now actually saved: Wavee used to
   upload and register the image but never set it on the playlist. "Change cover" and a new "Remove cover" are also in
   the playlist's More menu. (#155)
+- **Every file and folder dialog keeps Wavee drawing.** Choosing a cache location in Settings > Storage, exporting
+  logs, saving a problem report, saving an artist gallery image, playing a local file, attaching or locating a local
+  video, and choosing a Spotify.dll during setup all opened their Windows dialog on the thread that draws Wavee, the
+  same freeze as "Change cover": Wavee stopped drawing while the dialog was open, and could be left greyed out with no
+  dialog in sight. They now open on their own thread, still modal to Wavee, with the same hand-back after a few
+  seconds if a dialog never appears; only one can be open at a time.
 
 ## [0.3.3] - 2026-10-05
 

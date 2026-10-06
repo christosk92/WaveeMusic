@@ -35,7 +35,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -347,21 +346,31 @@ public static partial class Setup
             });
         }
 
-        /// <summary>"Choose a Spotify.dll…": a folder picker, falling back to a file picker filtered to the DLL.</summary>
+        /// <summary>"Choose a Spotify.dll…": a folder picker, falling back to a file picker filtered to the DLL.
+        /// Both dialogs run on their own thread (Pickers, #155) and answer on the UI thread, one after the other.</summary>
         public void PickFolder()
         {
-            nint owner = FluentApp.WindowHandle;
             string title = Loc.Get(Strings.Playback.Runtime.SelectDll);
-            string? dir = FilePicker.PickFolder(owner, title);
-            if (string.IsNullOrWhiteSpace(dir))
-            {
-                string? dll = FilePicker.OpenFile(owner, title, ("Spotify DLL", "Spotify.dll"), ("All files", "*.*"));
-                if (string.IsNullOrWhiteSpace(dll)) return;
-                dir = System.IO.Path.GetDirectoryName(dll);
-                if (string.IsNullOrEmpty(dir)) return;
-            }
-            RegisterDir(dir, allowUntrusted: false);
+            Pickers.Pick(PickerRequest.Folder(title),
+                done: dir =>
+                {
+                    if (!string.IsNullOrWhiteSpace(dir)) { RegisterDir(dir, allowUntrusted: false); return; }
+                    Pickers.Pick(PickerRequest.Open(title, ("Spotify DLL", "Spotify.dll"), ("All files", "*.*")),
+                        done: dll =>
+                        {
+                            if (string.IsNullOrWhiteSpace(dll)) return;
+                            string? folder = System.IO.Path.GetDirectoryName(dll);
+                            if (string.IsNullOrEmpty(folder)) return;
+                            RegisterDir(folder, allowUntrusted: false);
+                        },
+                        failed: PickerFailed);
+                },
+                failed: PickerFailed);
         }
+
+        void PickerFailed(Exception ex)
+            => Log(WaveeLogLevel.Warning, "runtime.setup.picker.failed", "The runtime folder/file picker failed",
+                WaveeLogField.Of("error", ex.GetType().Name), WaveeLogField.Of("detail", ex.Message));
 
         /// <summary>"Use installed Spotify": present and clickable on every build; a build with nothing to reuse answers
         /// with the Failed phase and says why (a row that silently does nothing is worse).</summary>

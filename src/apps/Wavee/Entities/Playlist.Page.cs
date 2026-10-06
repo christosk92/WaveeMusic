@@ -42,7 +42,6 @@ using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -1167,13 +1166,9 @@ public readonly partial struct Playlist
     /// system picker, then the drop path.</summary>
     static void PickAndPlay()
     {
-        string? picked;
-        try
-        {
-            picked = FilePicker.OpenFile(FluentApp.WindowHandle, Loc.Get(Strings.LocalFile.PickTitle),
-                Video.OverrideUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter)));
-        }
-        catch (Exception ex) { Log.Warn("localfile", "file picker failed", ex); return; }
-        if (picked is { Length: > 0 }) PlayFiles([picked]);
+        Pickers.Pick(
+            PickerRequest.Open(Loc.Get(Strings.LocalFile.PickTitle), Video.OverrideUx.PlayableFilter(Loc.Get(Strings.LocalFile.Filter))),
+            done: picked => { if (picked is { Length: > 0 }) PlayFiles([picked]); },
+            failed: ex => Log.Warn("localfile", "file picker failed", ex));
     }
 }

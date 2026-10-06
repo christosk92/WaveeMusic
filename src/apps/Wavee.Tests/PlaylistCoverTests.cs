@@ -1,8 +1,8 @@
-// ── Wavee.Tests/PlaylistCoverTests.cs — the playlist cover (#155): budget, crop, turn, wire, picker contract ─────────
+// ── Wavee.Tests/PlaylistCoverTests.cs — the playlist cover (#155): budget, crop, turn, wire ─────────────────────────
 //
 // Pure: no engine, no WIC, no network. The image codec (Platform/CoverImage.cs) and the real shell dialog
 // (Platform/ModalFilePicker.cs) are exercised end to end under `--fake` (see the PR); what is pinned here is every rule
-// they lean on, the three request bodies the live flow sends, and the picker's threading contract.
+// they lean on, and the three request bodies the live flow sends. The picker's threading contract is ModalFilePickerTests'.
 
 using System.Text;
 using Wavee;
@@ -223,54 +223,4 @@ public class PlaylistCoverTests
         Assert.Equal(Strings.Detail.Edit.Forbidden, PlaylistEditErrorKinds.KeyFor(PlaylistMutationFailure.Forbidden, PlaylistEditVerb.Cover));
         Assert.Equal(Strings.Detail.Edit.Failed, PlaylistEditErrorKinds.KeyFor(PlaylistMutationFailure.Unknown, PlaylistEditVerb.Rename));
     }
-
-    // ── 4. the picker's threading contract ──────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task StaThread_RunsTheWorkOnAnotherStaThread_WithoutBlockingTheCaller()
-    {
-        using var release = new ManualResetEventSlim(false);
-        int caller = Environment.CurrentManagedThreadId;
-        var task = StaThread.Run(() =>
-        {
-            // The work cannot finish until the caller has come back from Run: Run must not wait on it.
-            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
-            return (Thread.CurrentThread.GetApartmentState(), Environment.CurrentManagedThreadId, Thread.CurrentThread.IsBackground);
-        }, "test-sta");
-        Assert.False(task.IsCompleted);
-        release.Set();
-        var (apartment, thread, background) = await task.WaitAsync(TimeSpan.FromSeconds(10));
-        Assert.Equal(ApartmentState.STA, apartment);
-        Assert.NotEqual(caller, thread);
-        Assert.True(background);
-    }
-
-    [Fact]
-    public async Task StaThread_FaultsTheTask_WhenTheWorkThrows()
-    {
-        var task = StaThread.Run<string?>(() => throw new InvalidOperationException("dialog failed"), "test-sta");
-        await Assert.ThrowsAsync<InvalidOperationException>(() => task.WaitAsync(TimeSpan.FromSeconds(10)));
-    }
-
-    [Fact]
-    public void PickerGate_AdmitsOnePickerAtATime()
-    {
-        var gate = new PickerGate();
-        Assert.True(gate.TryEnter());
-        Assert.True(gate.IsHeld);
-        Assert.False(gate.TryEnter());
-        gate.Exit();
-        Assert.False(gate.IsHeld);
-        Assert.True(gate.TryEnter());
-    }
-
-    [Theory]
-    [InlineData(false, false, false, 99_999, PlaylistCoverRules.PickerVerdict.Done)]         // the picker returned
-    [InlineData(true, true, false, 99_999, PlaylistCoverRules.PickerVerdict.Done)]           // the dialog is up and modal
-    [InlineData(true, false, false, 1_000, PlaylistCoverRules.PickerVerdict.Wait)]           // still coming up
-    [InlineData(true, false, false, PlaylistCoverRules.PickerWatchdogMs, PlaylistCoverRules.PickerVerdict.ReleaseOwner)]
-    [InlineData(true, false, true, PlaylistCoverRules.PickerWatchdogMs, PlaylistCoverRules.PickerVerdict.Done)]   // nothing to hand back
-    public void Watchdog_HandsTheWindowBack_OnlyWhenTheDialogNeverShowed(bool open, bool visible, bool enabled, long elapsed,
-                                                                         PlaylistCoverRules.PickerVerdict expected)
-        => Assert.Equal(expected, PlaylistCoverRules.Watch(open, visible, enabled, elapsed));
 }
