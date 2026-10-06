@@ -219,6 +219,29 @@ public class FrameBenchMathTests
     }
 
     [Fact]
+    public void Raw_cycle_metrics_are_rate_free()
+    {
+        // Window(): 100 frames 10 ms apart; 99 intervals = 0.99 s. Process 5 Mcyc, UI 2 Mcyc, render 1 Mcyc per interval.
+        var snap = Window();
+        var s = Diagnostics.FrameBenchMath.Summarize("x", snap);
+        Assert.Equal(0.5, s["processGcyclesPerSec"], 6);        // 495e6 cycles / 0.99 s
+        Assert.Equal(200, s["uiMcyclesPerSec"], 6);
+        Assert.Equal(100, s["renderMcyclesPerSec"], 6);
+        Assert.Equal(200, s["otherMcyclesPerSec"], 6);
+        Assert.Equal(2000, s["uiKcyclesPerPaintedFrame"], 6);
+        Assert.Equal(1000, s["renderKcyclesPerTurn"], 6);
+        // The rate does not enter: reading the same window at another rate leaves every raw-cycle metric untouched.
+        var other = Diagnostics.FrameBenchMath.Summarize("x", snap.WithRate(3_000_000));
+        foreach (var k in new[] { "processGcyclesPerSec", "uiMcyclesPerSec", "renderMcyclesPerSec", "otherMcyclesPerSec", "uiKcyclesPerPaintedFrame", "renderKcyclesPerTurn" })
+            Assert.Equal(s[k], other[k], 9);
+        Assert.NotEqual(s["uiCores"], other["uiCores"]);
+        // An empty window is NaN, not a crash.
+        var e = Diagnostics.FrameBenchMath.Summarize("e", new LedgerSnapshot { QpcFrequency = F, CyclesPerMs = Cpm, OriginQpc = F, EndQpc = 2 * F });
+        Assert.True(double.IsNaN(e["processGcyclesPerSec"]));
+        Assert.True(double.IsNaN(e["uiKcyclesPerPaintedFrame"]));
+    }
+
+    [Fact]
     public void Mixed_exits_and_straddling_turns_split_by_overlap_without_a_clamp()
     {
         // Three frames ending at 10 / 20 / 30 ms: painted, idle, painted. One 2 ms render turn straddles the 20 ms boundary
@@ -324,7 +347,7 @@ public class FrameBenchMathTests
             new DateTime(2026, 10, 5, 0, 0, 0, DateTimeKind.Utc), [a, b, c], gpuPasses: true);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        Assert.Equal("wavee-frame-bench/2", root.GetProperty("schema").GetString());
+        Assert.Equal("wavee-frame-bench/2.1", root.GetProperty("schema").GetString());
         Assert.Equal("real", root.GetProperty("data").GetString());
         Assert.Equal("warm", root.GetProperty("label").GetString());
         Assert.True(root.GetProperty("gpuPasses").GetBoolean());
@@ -352,7 +375,17 @@ public class FrameBenchMathTests
     [InlineData("wakePerSec.Anim", 0)]
     [InlineData("uiCpuUsPerFrame.on", 0)]
     [InlineData("scrollViewports", 0)]
-    [InlineData("paintedCpuMs.p99", -1)]
+    [InlineData("paintedCpuMs.p99", 0)]
+    [InlineData("processCpuPct", 0)]
+    [InlineData("uiCoresTimes", 0)]
+    [InlineData("renderCoresTimes", 0)]
+    [InlineData("processGcyclesPerSec", -1)]
+    [InlineData("uiMcyclesPerSec", -1)]
+    [InlineData("renderMcyclesPerSec", -1)]
+    [InlineData("otherMcyclesPerSec", -1)]
+    [InlineData("uiKcyclesPerPaintedFrame", -1)]
+    [InlineData("renderKcyclesPerTurn", -1)]
+    [InlineData("renderCpuMs.p99", 0)]
     [InlineData("gc0PerSec", -1)]
     [InlineData("gpuBusyPct", -1)]
     public void Metric_direction(string key, int better) => Assert.Equal(better, Diagnostics.FrameBenchMath.Better(key));

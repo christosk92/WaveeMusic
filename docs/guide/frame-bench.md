@@ -151,6 +151,21 @@ window of the run, stored as `cyclesPerMs` in the summary. Two runs whose rates 
 warn: their cycle figures are then on different scales, while `processCpuPct` and the `*CoresTimes` figures (scheduler-tick
 accounting, exact over seconds) need no rate at all.
 
+### Measuring CPU: cycles, not time
+
+The CPU headline is **raw cycle counts**, not CPU time. `GetProcessTimes` / `GetThreadTimes` charge a thread in whole scheduler
+ticks (about 15.6 ms): a thread that runs 0.3 ms per frame is billed 0 or 15.6 ms depending on whether a tick happens to land
+inside it. At low load the totals therefore fall into two modes (one build read 0.45 % and 2.06 % for identical cycle counts;
+the implied clock ranged 0.7 to 16 GHz), and the per-run `cyclesPerMs`, derived from that time, inherits the noise. The cycle
+counters (`QueryProcessCycleTime`, `QueryThreadCycleTime`) are exact per instruction and repeat to about 3 %.
+
+Every scenario therefore carries rate-free metrics, computed from raw cycle deltas with no conversion:
+`processGcyclesPerSec`, `uiMcyclesPerSec`, `renderMcyclesPerSec`, `otherMcyclesPerSec` (process - UI - render),
+`uiKcyclesPerPaintedFrame` (all UI-thread cycles in the window / painted frames) and `renderKcyclesPerTurn`. The stdout table
+shows them (`procGc/s`, `uiMc/s`, `rdMc/s`, `othMc/s`). `processCpuPct`, `uiCoresTimes`, `renderCoresTimes` and `paintedCpuMs.*`
+stay in the JSON (schema `wavee-frame-bench/2.1`) as **info only**: the compare tool never flags them. Cycles are not
+frequency-normalised, so compare runs on the same machine and power plan.
+
 ## Comparing
 
 ```powershell
@@ -158,7 +173,7 @@ powershell -File ops\tools\frame-bench-compare.ps1 -Before C:\scratch\bench\base
 powershell -File ops\tools\frame-bench-compare.ps1 C:\scratch\bench\real-cold C:\scratch\bench\real-warm -All -Threshold 5
 ```
 
-Each row: before, after, delta, % change and `REGRESSED` / `improved` when the change passes `-Threshold` (default 10 %)
+Each row: before, after, delta, % change and `REGRESSED` / `improved` when the change passes `-Threshold` (default 10 %; the cycle metrics use `-CycleThreshold`, default 5 %, with floors 0.01 Gcycles/s, 2 Mcycles/s, 10 Kcycles)
 and the metric's absolute floor (0.05 ms/us/cores, 1 MB, 1 %, 64 B, 0.1 per second, 1 count). Direction: presents per second
 and the audio padding minimum are higher-is-better, run-describing figures (frame rates, the census, the A/B arms, scroll
 distance) are neutral, everything else is lower-is-better. `-FailOnRegression` exits 1 on a regression; `-Scenario` narrows;
