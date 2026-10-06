@@ -2330,14 +2330,22 @@ public static partial class Modules
     /// (doubled) output rate only on the first output, as a stream change, so the open decodes up to
     /// <see cref="MaxPrimeFrames"/> frames and discards anything produced before the change — publishing the core rate
     /// would bind the resampler at half the true rate. A change AFTER priming is a genuine mid-stream encoding switch:
-    /// the read answers an error and the retry re-opens (and re-primes). Not seekable: a live body has no timeline.</summary>
+    /// the read answers an error and the retry re-opens (and re-primes). A live body has no timeline and is not seekable;
+    /// a source that indexes its frames (<see cref="Playback.Audio.IAdtsFrameIndex"/> — a local MP4's AAC track) is, and
+    /// reports its duration.</summary>
     public sealed class AacAudioDecoder(float gainDb, float peak = 0f) : IAudioDecoder, IDisposable, Playback.Audio.IGainFolding
     {
         /// <summary>Enough to get past the implicit-SBR change (the first or second frame) without burning real audio.</summary>
         public const int MaxPrimeFrames = 8;
 
+        /// <summary>Samples per channel in one AAC frame at the CORE rate (HE-AAC's output frame is twice this).</summary>
+        const int CoreFrameSamples = 1024;
+
         readonly float _gain = Playback.Audio.GainLinear(gainDb, peak);
         readonly float[] _scratch = new float[16384];
+        Playback.Audio.ByteSourceStream? _stream;
+        Playback.Audio.IAdtsFrameIndex? _index;
+        int _coreRate;
         AdtsFrameReader? _reader;
         MfAacDecoder? _decoder;
         PolyphaseResampler? _resampler;
@@ -2365,7 +2373,9 @@ public static partial class Modules
             _target = target;
             try
             {
-                _reader = new AdtsFrameReader(new Playback.Audio.ByteSourceStream(src));
+                _stream = new Playback.Audio.ByteSourceStream(src);
+                _index = src.Caps.Seekable ? src as Playback.Audio.IAdtsFrameIndex : null;
+                _reader = new AdtsFrameReader(_stream);
                 if (!_reader.TryReadFrame(out ReadOnlySpan<byte> first, out AdtsHeader header))
                 {
                     Log.Warn("audio", "aac open: the stream carried no ADTS frame");
@@ -2373,13 +2383,15 @@ public static partial class Modules
                 }
                 Span<byte> asc = stackalloc byte[2];
                 Adts.WriteAudioSpecificConfig(in header, asc);
+                _coreRate = header.SampleRate;
                 _decoder = new MfAacDecoder(header.SampleRate, header.ChannelConfiguration, asc);
                 Prime(first);
                 _srcRate = _decoder.OutputSampleRate > 0 ? _decoder.OutputSampleRate : header.SampleRate;
                 _srcChannels = _decoder.OutputChannels > 0 ? _decoder.OutputChannels : Math.Max(1, header.ChannelConfiguration);
                 _resampler = _srcRate != target.SampleRate ? new PolyphaseResampler(_srcRate, target.SampleRate, target.Channels) : null;
-                info = new DecodedInfo(new MediaContentType(Container.Adts, CodecId.None, CodecId.Aac),
-                    new MixFormat(_srcRate, _srcChannels), TimeSpan.Zero, default);
+                TimeSpan duration = _index is { DurationMs: > 0 } indexed ? TimeSpan.FromMilliseconds(indexed.DurationMs) : TimeSpan.Zero;
+                info = new DecodedInfo(new MediaContentType(_index is null ? Container.Adts : Container.Mp4, CodecId.None, CodecId.Aac),
+                    new MixFormat(_srcRate, _srcChannels), duration, default);
                 Log.Info("audio", "aac.open core=" + header.SampleRate.ToString(CultureInfo.InvariantCulture) + " out="
                                   + _srcRate.ToString(CultureInfo.InvariantCulture) + "/" + _srcChannels.ToString(CultureInfo.InvariantCulture));
                 return true;
@@ -2412,7 +2424,18 @@ public static partial class Modules
             }
             DrainRaw();
             if (!_decoder.FormatChanged) return;
-            if (!primingPhase) { _faulted = true; return; }
+            if (!primingPhase)
+            {
+                // A renegotiation that lands on the format already published (the transform re-announcing itself after a
+                // seek's flush) changes nothing the mixer was told; only a real switch is a fault.
+                if (_srcRate > 0 && _decoder.OutputSampleRate == _srcRate && _decoder.OutputChannels == _srcChannels)
+                {
+                    _decoder.ClearFormatChanged();
+                    return;
+                }
+                _faulted = true;
+                return;
+            }
             // Everything decoded before the change was at the pre-SBR format — it must never reach the mixer.
             _decoder.ClearFormatChanged();
             _heldStart = _heldCount = 0;
@@ -2529,7 +2552,45 @@ public static partial class Modules
             }
         }
 
-        public long Seek(long frame) => frame == 0 && _decoder is not null ? 0 : -1;
+        /// <summary>A live body answers only "the start" (it has no timeline). An indexed source seeks to the AAC frame holding
+        /// <paramref name="frame"/> (mix-rate frames): the transform is flushed, the frame BEFORE it is decoded and discarded so
+        /// the MDCT overlap is primed (the first frame after a flush is half a window of nothing), and the answer is where the
+        /// audio actually resumes — a frame boundary, at most one AAC frame (~23 ms) before the ask.</summary>
+        public long Seek(long frame)
+        {
+            if (_decoder is null) return -1;
+            if (_index is not { FrameCount: > 0 } index || _stream is null) return frame == 0 ? 0 : -1;
+            try
+            {
+                int mixRate = Math.Max(1, _target.SampleRate);
+                int outPerFrame = (int)((long)CoreFrameSamples * Math.Max(1, _srcRate) / Math.Max(1, _coreRate));   // 2048 for HE-AAC
+                long srcFrame = (long)Math.Round((double)Math.Max(0, frame) * _srcRate / mixRate);
+                int target = (int)Math.Clamp(srcFrame / Math.Max(1, outPerFrame), 0, index.FrameCount - 1);
+                int start = Math.Max(0, target - 1);
+
+                _stream.Position = index.OffsetOfFrame(start);
+                _reader = new AdtsFrameReader(_stream);
+                _decoder.Flush();
+                _heldStart = _heldCount = 0;
+                _resampler?.Reset();
+                _eof = false;
+                _faulted = false;
+                for (int f = start; f < target; f++)
+                {
+                    if (!_reader.TryReadFrame(out ReadOnlySpan<byte> preroll, out _)) break;
+                    PushAndDrain(preroll, primingPhase: false);
+                    _heldStart = _heldCount = 0;                     // the pre-roll's output is never heard
+                }
+                if (_faulted) return -1;
+                long landedSrc = (long)target * outPerFrame;
+                return (long)Math.Round((double)landedSrc * mixRate / Math.Max(1, _srcRate));
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("audio", "aac seek failed", ex);
+                return -1;
+            }
+        }
 
         public void Dispose()
         {

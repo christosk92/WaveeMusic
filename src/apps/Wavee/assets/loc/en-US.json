@@ -2047,7 +2047,8 @@
       "drmRequired": "This track can’t play here",
       "decodeFailed": "This track couldn’t be played",
       "runtimeMissing": "Local playback needs a one-time setup",
-      "unknown": "Can’t play this track"
+      "unknown": "Can’t play this track",
+      "unsupported": "Wavee can’t play this file’s format"
     },
     "videoUnavailable": "Couldn’t play the video — playing the song instead"
   },

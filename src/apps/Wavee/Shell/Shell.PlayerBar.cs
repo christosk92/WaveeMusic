@@ -152,7 +152,8 @@ public static partial class Shell
         /// 0.3's <c>CanSkipNext</c>/<c>CanSkipPrev</c>, which 0.2.9 did not have).
         ///
         /// <para>THE PRIMARY IS THE USER'S INTENT, NOT THE PIPELINE'S STATE. It is a RETRY while errored and dead only
-        /// for <see cref="PlayerState.NoTrack"/> — there is nothing to toggle with no playable. <c>Loading</c> keeps
+        /// for <see cref="PlayerState.NoTrack"/> — there is nothing to toggle with no playable — and for
+        /// <see cref="Playback.Fault.Unsupported"/>, the one fault a retry cannot change. <c>Loading</c> keeps
         /// <see cref="PrimaryVerb.TogglePlay"/>: a skip while playing spends 100-250 ms in that state, and the old
         /// <c>None</c> made the glyph flip pause → play → pause and grey out in between, three discrete changes for a
         /// gap the user experiences as one continuous "still playing". The intent through that gap is PLAYING, so the
@@ -169,6 +170,9 @@ public static partial class Shell
             bool canSkip = canTransport || state == PlayerState.Error;
             var primary = state switch
             {
+                // A file in a format nothing here decodes fails the same way every time: no Retry to press again and
+                // again (2026-10-06, three opens of one .mp4). Previous/Next stay armed as the way out.
+                PlayerState.Error when error == Playback.Fault.Unsupported => PrimaryVerb.None,
                 PlayerState.Error => PrimaryVerb.Retry,
                 PlayerState.NoTrack => PrimaryVerb.None,
                 _ => PrimaryVerb.TogglePlay,
@@ -369,6 +373,7 @@ public static partial class Shell
             Playback.Fault.DrmRequired => Strings.Player.Fault.DrmRequired,
             Playback.Fault.DecodeFailed => Strings.Player.Fault.DecodeFailed,
             Playback.Fault.RuntimeMissing => Strings.Player.Fault.RuntimeMissing,
+            Playback.Fault.Unsupported => Strings.Player.Fault.Unsupported,
             _ => Strings.Player.Fault.Unknown,
         };
     }

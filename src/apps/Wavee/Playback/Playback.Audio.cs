@@ -983,8 +983,8 @@ public static partial class Playback
                 + " ms=" + (long)((System.Diagnostics.Stopwatch.GetTimestamp() - openStart) * 1000.0 / System.Diagnostics.Stopwatch.Frequency));
 
             if (IsStale(chain) || token.IsCancellationRequested) { bytes.Close(); return; }
-            if (openFault != Fault.None) { bytes.Close(); PostFault(openFault, epoch); return; }
-            if (player.Error.Peek() is { } err) { bytes.Close(); PostFault(MapError(err), epoch); return; }
+            if (openFault != Fault.None) { bytes.Close(); PostFault(LocalOpenFault(openFault, bytes), epoch); return; }
+            if (player.Error.Peek() is { } err) { bytes.Close(); PostFault(LocalOpenFault(MapError(err), bytes), epoch); return; }
 
             var pcm = player.Session as PcmAudioSession;
             lock (s_gate)
@@ -2656,6 +2656,14 @@ public static partial class Playback
                 try
                 {
                     var stream = new ByteSourceStream(src);
+                    // NLayer is not a validator: handed an MP4 it threw IndexOutOfRangeException from deep in its frame reader
+                    // (2026-10-06). On a stream that can be rewound, look for two MPEG audio frames in a row first and refuse
+                    // cleanly when there are none. A forward-only module body cannot be rewound, so it goes to NLayer as before.
+                    if (stream.CanSeek && !HasMpegFrames(stream))
+                    {
+                        Log.Warn("audio", "mp3 open: the stream carries no MPEG audio frames — refusing it");
+                        return false;
+                    }
                     Mp3Tag tag = default;
                     bool hasTag = stream.CanSeek && Mp3Tag.TryProbe(stream, out tag);
                     _file = new NLayer.MpegFile(stream);
@@ -2669,6 +2677,26 @@ public static partial class Playback
                     return true;
                 }
                 catch (Exception ex) { Log.Warn("audio", "mp3 open failed", ex); return false; }
+            }
+
+            /// <summary>Do the first bytes past any ID3v2 tag hold MPEG audio (<see cref="LooksLikeMpegAudio"/>)? Leaves the
+            /// stream at 0 for NLayer either way.</summary>
+            static bool HasMpegFrames(ByteSourceStream stream)
+            {
+                byte[] buf = new byte[LocalProbeBytes];
+                try
+                {
+                    stream.Position = 0;
+                    int n = ReadUpTo(stream, buf);
+                    long id3 = Id3v2Length(buf.AsSpan(0, n));
+                    if (id3 > 0)
+                    {
+                        stream.Position = id3;
+                        n = ReadUpTo(stream, buf);
+                    }
+                    return LooksLikeMpegAudio(buf.AsSpan(0, n));
+                }
+                finally { stream.Position = 0; }
             }
 
             public int Read(Span<float> dst) => PullConform(dst, _target, _srcChannels, _gain, ref _hold, _src, _resampler, _pullFn);
@@ -4010,6 +4038,13 @@ public static partial class Playback
             Post(Input.Audio(AudioSignal.Failed, epoch == 0 ? s_loadEpoch : epoch, FrameNowMs(), (long)fault));
         }
 
+        /// <summary>A LOCAL file's failed open is deterministic: the bytes are on disk and were just read, so a decoder that
+        /// refused them (the engine reports that as a <c>Source</c> error, "could not be decoded") will refuse them again —
+        /// <see cref="Fault.Unsupported"/>, which offers no Retry, instead of "This track isn't available" with one. Any other
+        /// source keeps its fault: a streamed body's open can fail for reasons a retry fixes.</summary>
+        static Fault LocalOpenFault(Fault fault, IMediaByteSource bytes)
+            => bytes is FileByteSource or Mp4AdtsSource && fault is Fault.Unavailable or Fault.DecodeFailed ? Fault.Unsupported : fault;
+
         static Fault MapError(MediaError err) => err.Category switch
         {
             MediaErrorCategory.Network => Fault.Network,
@@ -4293,39 +4328,125 @@ public static partial class Playback
             _ => Fault.Unavailable,
         };
 
-        /// <summary>A file the user dropped or imported. The FORMAT comes from the first bytes, never the extension —
-        /// the extension gate is the user-facing rule ("Wavee plays .mp3, .ogg, .flac and .mp4 files"), the magic is
-        /// what the decoder is chosen by.</summary>
+        /// <summary>A file the user dropped or imported. The FORMAT comes from the bytes, never the extension — the
+        /// extension gate is the user-facing rule ("Wavee plays .mp3, .ogg, .flac and .mp4 files"), the content is what the
+        /// decoder is chosen by, and a file whose content names no decoder this build has is REFUSED here
+        /// (<see cref="Fault.Unsupported"/>, one log line saying what it is) — never handed to a guessed one. The old
+        /// fallback was "anything else is MP3", which sent every .mp4 to NLayer (2026-10-06).</summary>
         static IMediaByteSource? LocalSource(EntityId id, out Opened opened, out Fault fault)
         {
             opened = default;
             string? path = LocalPath?.Invoke(id);
             if (path is not { Length: > 0 } || !File.Exists(path)) { fault = Fault.Unavailable; return null; }
 
-            Span<byte> head = stackalloc byte[64];
-            Span<byte> after = stackalloc byte[64];
-            int n = 0, m = 0;
-            long id3 = 0;
+            LocalProbe probe;
+            Mp4AacTrack? mp4 = null;
+            string mp4Why = "";
             try
             {
-                using FileStream probe = new(path, FileMode.Open, FileAccess.Read,
+                using FileStream file = new(path, FileMode.Open, FileAccess.Read,
                     FileShare.ReadWrite | FileShare.Delete, 32 * 1024);
-                n = probe.Read(head);
+                byte[] head = new byte[LocalProbeBytes];
+                int n = ReadUpTo(file, head);
                 // P-5: `ID3` names a TAG, not a codec — a tagged .flac (or an ADTS file) starts with one too. Re-read just past
                 // it (10 + the syncsafe size, +10 for a footer) and sniff THAT; the old rule called every ID3 file MP3.
-                id3 = Id3v2Length(head[..n]);
-                if (id3 > 0 && id3 < probe.Length)
+                long id3 = Id3v2Length(head.AsSpan(0, n));
+                int m = 0;
+                byte[] after = head;
+                if (id3 > 0 && id3 < file.Length)
                 {
-                    probe.Position = id3;
-                    m = probe.Read(after);
+                    after = new byte[LocalProbeBytes];
+                    file.Position = id3;
+                    m = ReadUpTo(file, after);
+                }
+                probe = ClassifyLocal(head.AsSpan(0, n), id3 > 0 ? after.AsSpan(0, m) : head.AsSpan(0, n));
+                if (probe.Kind == LocalKind.Mp4)
+                {
+                    file.Position = 0;
+                    if (!Mp4.TryReadAacTrack(file, out mp4, out mp4Why)) mp4 = null;
                 }
             }
             catch (Exception ex) { Log.Warn("audio", "local probe failed", ex); fault = Fault.Unavailable; return null; }
 
-            Spotify.Audio.Format format = (id3 > 0 ? SniffFormat(after[..m]) : SniffFormat(head[..n])) ?? Spotify.Audio.Format.Mp3;
+            Spotify.Audio.Format format;
+            IMediaByteSource bytes;
+            long durationMs = 0;
+            switch (probe.Kind)
+            {
+                case LocalKind.Decodable:
+                    format = probe.Format;
+                    bytes = new FileByteSource(path);
+                    break;
+                case LocalKind.Mp4 when mp4 is not null && Modules.AacAudioDecoder.IsAvailable():
+                    format = Spotify.Audio.Format.Aac;
+                    durationMs = mp4.DurationMs;
+                    bytes = new Mp4AdtsSource(path, mp4);
+                    Log.Info("audio", $"audio.local mp4 aac frames={mp4.Sizes.Length} rate={mp4.CoreSampleRate} ch={mp4.Channels} "
+                                      + $"profile={mp4.Profile} durMs={mp4.DurationMs}");
+                    break;
+                default:
+                    string why = probe.Kind != LocalKind.Mp4 ? probe.Why
+                        : mp4 is null ? "an MP4 with " + mp4Why
+                        : "an MP4 with AAC audio, and this Windows has no AAC decoder (an N edition without the Media Feature Pack)";
+                    Log.Warn("audio", "audio.local unsupported: " + why + " — " + Path.GetExtension(path));
+                    fault = Fault.Unsupported;
+                    return null;
+            }
             fault = Fault.None;
-            opened = new Opened(format, 0, 0f, LabelFor(format, 0, 0), 0, IsLive: false);
-            return new FileByteSource(path);
+            opened = new Opened(format, durationMs, 0f, LabelFor(format, 0, 0), 0, IsLive: false);
+            return bytes;
+        }
+
+        /// <summary>How much of a local file the probe reads: enough for MPEG audio's two-frame check at any bitrate.</summary>
+        const int LocalProbeBytes = 8 * 1024;
+
+        static int ReadUpTo(Stream s, byte[] buffer)
+        {
+            int total = 0;
+            while (total < buffer.Length)
+            {
+                int n = s.Read(buffer, total, buffer.Length - total);
+                if (n <= 0) break;
+                total += n;
+            }
+            return total;
+        }
+
+        /// <summary>What a local file's bytes are: a format a decoder here reads, an MP4-family container (its AAC track is
+        /// read out separately), or something this build cannot play.</summary>
+        public enum LocalKind : byte { Unsupported, Decodable, Mp4 }
+
+        /// <summary>The verdict, and for a refusal the reason the log prints.</summary>
+        public readonly record struct LocalProbe(LocalKind Kind, Spotify.Audio.Format Format, string Why);
+
+        /// <summary>A local file's content → its decoder. <paramref name="head"/> is the file's first bytes and
+        /// <paramref name="audio"/> the first bytes past any ID3v2 tag (the same span when there is none). Every answer is
+        /// positive evidence — a container's magic, Vorbis's identification header, two MPEG frames in a row, two ADTS frames in
+        /// a row — and anything else is <see cref="LocalKind.Unsupported"/>, never a guess. PURE.</summary>
+        public static LocalProbe ClassifyLocal(ReadOnlySpan<byte> head, ReadOnlySpan<byte> audio)
+        {
+            if (Mp4.LooksLikeMp4(head)) return new(LocalKind.Mp4, Spotify.Audio.Format.Unknown, "");
+            if (audio.Length >= 4 && audio[..4].SequenceEqual("fLaC"u8)) return Decodable(Spotify.Audio.Format.Flac);
+            if (audio.Length >= 4 && audio[..4].SequenceEqual("OggS"u8))
+            {
+                // The first page's first packet names the codec (27-byte header + 1 lacing value for a one-segment page).
+                ReadOnlySpan<byte> packet = audio.Length > 28 ? audio[28..] : default;
+                if (packet.Length >= 7 && packet[0] == 0x01 && packet[1..7].SequenceEqual("vorbis"u8))
+                    return Decodable(Spotify.Audio.Format.OggVorbis320);
+                string codec = packet.Length >= 8 && packet[..8].SequenceEqual("OpusHead"u8) ? "Opus"
+                    : packet.Length >= 5 && packet[0] == 0x7F && packet[1..5].SequenceEqual("FLAC"u8) ? "FLAC"
+                    : "an unknown codec";
+                return new(LocalKind.Unsupported, default, "an Ogg file carrying " + codec);
+            }
+            if (head.Length >= 12 && head[..4].SequenceEqual("RIFF"u8) && head[8..12].SequenceEqual("WAVE"u8))
+                return new(LocalKind.Unsupported, default, "a WAV file");
+            if (Modules.Adts.FindSync(audio) == 0 && Modules.Adts.TryParseHeader(audio, out Modules.AdtsHeader adts)
+                && adts.FrameLength + Modules.Adts.MinHeaderBytes <= audio.Length)
+                return Decodable(Spotify.Audio.Format.Aac);
+            if (LooksLikeMpegAudio(audio)) return Decodable(Spotify.Audio.Format.Mp3);
+            return new(LocalKind.Unsupported, default, "no audio format Wavee recognises");
+
+            static LocalProbe Decodable(Spotify.Audio.Format format) => new(LocalKind.Decodable, format, "");
         }
 
         static IMediaByteSource? ModuleSource(EntityId id, CancellationToken ct, out Opened opened, out Fault fault)
@@ -4650,6 +4771,57 @@ public static partial class Playback
                 return layer == 0 ? Spotify.Audio.Format.Aac : Spotify.Audio.Format.Mp3;   // layer 00 = ADTS/AAC
             }
             return null;
+        }
+
+        /// <summary>The length in bytes of the MPEG-1/2/2.5 audio frame whose header starts <paramref name="h"/>, or 0 when
+        /// those four bytes are not a valid header (no sync, a reserved version / layer / rate, a free-format or "bad" bitrate,
+        /// a reserved emphasis). Layer 00 is ADTS, not MPEG audio, and answers 0. PURE.</summary>
+        public static int MpegFrameLength(ReadOnlySpan<byte> h)
+        {
+            if (h.Length < 4 || h[0] != 0xFF || (h[1] & 0xE0) != 0xE0) return 0;
+            int version = (h[1] >> 3) & 0x03;                    // 00 = 2.5, 01 reserved, 10 = 2, 11 = 1
+            int layer = (h[1] >> 1) & 0x03;                      // 01 = III, 10 = II, 11 = I
+            int bitrateIndex = (h[2] >> 4) & 0x0F;
+            int rateIndex = (h[2] >> 2) & 0x03;
+            int padding = (h[2] >> 1) & 0x01;
+            if (version == 1 || layer == 0 || bitrateIndex is 0 or 15 || rateIndex == 3 || (h[3] & 0x03) == 2) return 0;
+            ReadOnlySpan<int> rates = version switch { 3 => [44100, 48000, 32000], 2 => [22050, 24000, 16000], _ => [11025, 12000, 8000] };
+            int sampleRate = rates[rateIndex];
+            bool mpeg1 = version == 3;
+            ReadOnlySpan<short> kbps = (mpeg1, layer) switch
+            {
+                (true, 3) => [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448],
+                (true, 2) => [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384],
+                (true, _) => [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
+                (false, 3) => [0, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256],
+                _ => [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+            };
+            int bitrate = kbps[bitrateIndex] * 1000;
+            return layer switch
+            {
+                3 => (12 * bitrate / sampleRate + padding) * 4,              // Layer I
+                2 => 144 * bitrate / sampleRate + padding,                   // Layer II
+                _ => (mpeg1 ? 144 : 72) * bitrate / sampleRate + padding,   // Layer III
+            };
+        }
+
+        /// <summary>Does <paramref name="data"/> (the first bytes past any ID3v2 tag) carry MPEG audio? A bare 11-bit sync
+        /// turns up constantly in other formats' bytes, so a candidate header stands only when the frame it declares is
+        /// followed by ANOTHER header of the same version, layer and rate — or runs past the end of what was read (a file
+        /// of a single frame, or a probe too short to check). PURE.</summary>
+        public static bool LooksLikeMpegAudio(ReadOnlySpan<byte> data)
+        {
+            for (int i = 0; i + 4 <= data.Length; i++)
+            {
+                int len = MpegFrameLength(data[i..]);
+                if (len <= 0) continue;
+                int next = i + len;
+                if (next + 4 > data.Length) return true;
+                if (MpegFrameLength(data[next..]) > 0 && (data[next + 1] & 0xFE) == (data[i + 1] & 0xFE)
+                    && (data[next + 2] & 0x0C) == (data[i + 2] & 0x0C))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>A Content-Type → format fold, for a module or a radio body that named its container. `mp4` returns
