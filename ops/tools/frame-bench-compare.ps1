@@ -89,7 +89,7 @@ function Get-Direction([string]$key) {
     if (Test-InfoCpu $key) { return 0 }
     if ($key -in @('presentsPerSec', 'audioPaddingMinMs')) { return 1 }
     if ($key -in @('wallSec', 'frames', 'paintedFrames', 'presents', 'gpuFrames', 'framesPerSec', 'paintedFramesPerSec',
-                   'cyclesPerMs.window', 'settleSec', 'scrollViewports', 'scrollSteps')) { return 0 }
+                   'cyclesPerMs.window', 'settleSec', 'scrollViewports', 'scrollSteps', 'cycles', 'presentChecked', 'damageValidated') -or $key -like '*.noPresent') { return 0 }
     if ($key -like 'exitPerSec.*' -or $key -like 'wakePerSec.*' -or $key -like 'turnPerSec.*' -or $key -like '*.off' -or $key -like '*.on') { return 0 }
     return -1
 }

@@ -45,6 +45,7 @@ second is **warm**. Label them (`--bench-label`) and compare the two summaries.
 | `--bench-warmup-sec N` | The warm-up before each window, seconds (0–30, default 2). |
 | `--bench-real` | Real data. Required without `--fake`, and itself requires `--profile`. |
 | `--bench-gpu-passes` | Turn the pass-granular GPU timeline on for the run (per-pass ms in the GPU stream). Off by default: it adds timestamp queries at every pass boundary; the run then also measures that cost (`gpu-pass-overhead`). |
+| `--bench-hide-cycles N` / `--bench-hidden-sec S` | `hide-restore` only: cycles per mode (1–100, default 3) and seconds hidden per minimize / hide cycle (3–900, default 30). |
 | `--bench-uris k=uri,...` | Explicit targets: `track`, `lyrics` (word-synced), `lyrics-line`, `album`, `playlist`, `artist`, `big` (`liked` = Liked Songs). |
 | `--bench-label NAME` | Stored in the summary (`cold`, `warm`, a branch name). |
 | `--probe-out DIR` | Where everything is written (default `<profile>\bench`). |
@@ -76,6 +77,7 @@ The full suite at the default windows takes about 3–4 minutes.
 | `video` | `--fake --fake-video` only: a track with its video, the rail in video mode. |
 | `ledger-overhead` | The steady fullscreen visualizer in four windows, ledger off/on/off/on (see below). |
 | `gpu-pass-overhead` | `--bench-gpu-passes` only: the same A/B with pass timing off/on (GPU ms per frame and CPU, ledger on throughout). |
+| `hide-restore` | Opt-in, by name only (it minimizes and hides the window): minimize, tray-hide and cover cycles, memory sampled visible / hidden / restored plus the restore latency. See `docs/guide/hidden-memory.md` and `ops/tools/hidden-mem.ps1`. |
 
 The scroll scenarios first wait (Home 20 s, the list 30 s) for a scroller whose content is at least three viewports long —
 among the vertical viewports at least 30 % the area of the largest, the one with the longest content (on a list page the list,

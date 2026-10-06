@@ -23,6 +23,10 @@ versions separately under `v*` and is not tracked in this file.)
   less memory per frame and runs half as many garbage collections; opening a playlist allocates about 53% less.
 - **Wavee gives memory back.** The metadata cache now has a size budget, and while Wavee is minimized and silent it
   compacts its memory and returns it to Windows. It never does so during playback.
+- **Memory is freed while Wavee is minimized or in the tray.** After two seconds hidden, Wavee releases the drawing
+  surfaces and the cover pictures nobody is looking at, and redraws them in full the moment the window comes back, so
+  nothing is blank or stale. A window that is only covered by another one waits 30 seconds, so switching back with
+  Alt+Tab stays instant.
 - **Fewer background wake-ups.** The audio threads wait for work instead of checking every few milliseconds, and
   routine network and memory log lines are summarised once a minute.
 

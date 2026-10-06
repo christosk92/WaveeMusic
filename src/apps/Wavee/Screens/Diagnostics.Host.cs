@@ -590,6 +590,7 @@ public static partial class Diagnostics
                   .Append(" imageBytes=").Append(Mb(e.ImageUsedBytes)).Append(" decodeInflight=").Append(e.DecodeInflight)
                   .Append(" imagesPending=").Append(e.ImagePending).Append(" decodeCanceled=").Append(e.DecodeCanceledPending)
                   .Append(" components=").Append(e.Components).Append(" bindings=").Append(e.NodeBindings).Append(" virtuals=").Append(e.VirtualBoundaries)
+                  .Append(" hidden=stage:").Append(e.HiddenStage == 0 ? "visible" : "shallow").Append(":parked:").Append(e.HostParked ? 1 : 0)
                   .Append(" animTracks=").Append(e.AnimTracks).Append(" pixelPool=").Append(Mb(e.PixelPoolRetainedBytes)).Append('/').Append(Mb(e.PixelPoolPeakBytes))
                   .Append(" | snapshots slots=").Append(e.SnapshotSlots).Append(" indexedBytes=").Append(e.SnapshotIndexedBytes)
                   .Append(" textStyleBytes=").Append(e.SnapshotTextStyleBytes).Append(" capacity=").Append(e.SnapshotCapacity)
