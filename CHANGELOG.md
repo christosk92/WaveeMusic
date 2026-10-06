@@ -56,6 +56,11 @@ versions separately under `v*` and is not tracked in this file.)
 - **The daylist countdown respects reduced motion.** With Windows' animation effects turned off, the daylist's flip
   digits still slid and faded every second. They now change in place. (#185)
 
+- **Word-by-word AI lyrics no longer hold on to about 100 MB.** Timing the first song of a session kept a copy of
+  every intermediate step of the aligner in memory (about 98 MB, two of them over 30 MB each) until the AI models
+  unloaded. The steps now hand their results straight to each other, and only the final timing is kept; the
+  timings are identical.
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed

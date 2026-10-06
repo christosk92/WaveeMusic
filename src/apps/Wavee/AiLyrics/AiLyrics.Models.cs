@@ -73,15 +73,16 @@ public static partial class AiLyrics
         public static readonly string[] StageNames = ["conv0", "conv1", "convs", "layers_a", "layers_b"];
 
         readonly OrtSession[] _stages;
-        readonly float[][] _buf;
+        // Only the last stage's output (the log-probabilities, [1, 499, classes]) is copied to the managed heap. The stages
+        // in between hand their tensors on inside ONNX Runtime (OrtSession.RunChain): conv0 and conv1 output 65.5 MB and
+        // 32.8 MB per chunk, and a managed copy of each stayed live on the LOH for as long as the aligner was loaded.
+        float[] _out = [];
         public readonly Align.Vocab Vocab;
 
         public Aligner(OrtSession[] stages, Align.Vocab vocab)
         {
             if (stages.Length != StageNames.Length) throw new ArgumentException("five stages expected", nameof(stages));
             _stages = stages; Vocab = vocab;
-            _buf = new float[stages.Length][];
-            for (int i = 0; i < _buf.Length; i++) _buf[i] = Array.Empty<float>();
         }
 
         /// <summary>Runs one 10 s chunk (already normalised to zero mean, unit variance) and copies the middle
@@ -90,13 +91,8 @@ public static partial class AiLyrics
         public int Run(float[] chunk, Span<float> logp)
         {
             if (chunk.Length != Samples) throw new ArgumentException("one chunk is exactly " + Samples + " samples", nameof(chunk));
-            float[] x = chunk;
-            long[] shape = [1, Samples];
-            for (int i = 0; i < _stages.Length; i++)
-            {
-                shape = _stages[i].Run(x, shape, ref _buf[i]);
-                x = _buf[i];
-            }
+            long[] shape = OrtSession.RunChain(_stages, chunk, [1, Samples], ref _out);
+            float[] x = _out;
             // x: [1, frames, classes]
             int frames = (int)shape[1], classes = (int)shape[2];
             int keep = Math.Min(StepFrames, frames - ContextFrames);
