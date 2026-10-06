@@ -112,9 +112,15 @@ public static partial class Crash
             readonly BlockingCollection<string> _replies = new();
             readonly TaskCompletionSource<bool> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            public ReplyPump(TextReader reader)
+            readonly Action? _onReady;
+
+            /// <param name="onReady">Runs ON THE PUMP THREAD the moment the ready line is read, before
+            /// <see cref="WaitReady"/> completes: the job-handle hand-over happens here, microseconds after R, with no
+            /// thread-pool dependency.</param>
+            public ReplyPump(TextReader reader, Action? onReady = null)
             {
-                new Thread(() => Pump(reader)) { IsBackground = true, Name = "crash-handler-stdout" }.Start();
+                _onReady = onReady;
+                new Thread(() => Pump(reader), 64 * 1024) { IsBackground = true, Name = "crash-handler-stdout" }.Start();
             }
 
             void Pump(TextReader reader)
@@ -124,7 +130,11 @@ public static partial class Crash
                     string? line;
                     while ((line = reader.ReadLine()) is not null)
                     {
-                        if (IsReadyLine(line)) _ready.TrySetResult(true);
+                        if (IsReadyLine(line))
+                        {
+                            try { _onReady?.Invoke(); } catch { }
+                            _ready.TrySetResult(true);
+                        }
                         else _replies.Add(line);
                     }
                 }
@@ -159,11 +169,25 @@ public static partial class Crash
         public sealed class HandlerChild
         {
             readonly KillOnCloseJob? _job;
-            int _jobShared;
+            string _jobState = "pending";
 
-            HandlerChild(Process process, StreamWriter stdin, ReplyPump replies, KillOnCloseJob? job)
+            HandlerChild(Process process, StreamWriter stdin, KillOnCloseJob? job)
             {
-                Process = process; Stdin = stdin; Replies = replies; _job = job;
+                Process = process; Stdin = stdin; _job = job; Replies = new ReplyPump(process.StandardOutput, OnReady);
+            }
+
+            /// <summary>Runs on the pump thread when R arrives: give the child its own job handle; if that fails, clear
+            /// kill-on-close so a ready handler can never be killed with this process (it would lose every exit bundle).</summary>
+            void OnReady()
+            {
+                string state = "unbound";
+                try
+                {
+                    if (_job is { Assigned: true })
+                        state = _job.DuplicateInto(Process.Handle) ? "shared" : _job.ClearKillOnClose() ? "released" : "unbound";
+                }
+                catch { try { if (_job?.ClearKillOnClose() == true) state = "released"; } catch { } }
+                Volatile.Write(ref _jobState, state);
             }
 
             public Process Process { get; }
@@ -171,7 +195,14 @@ public static partial class Crash
             public ReplyPump Replies { get; }
             public int Id { get { try { return Process.Id; } catch { return 0; } } }
             public bool JobAssigned => _job?.Assigned == true;
-            public bool JobShared => Volatile.Read(ref _jobShared) != 0;
+            /// <summary>What became of the job when the child said ready: <c>shared</c> (the child holds its own handle),
+            /// <c>released</c> (the duplicate failed, so kill-on-close was cleared: the child outlives this process anyway),
+            /// <c>unbound</c> (it was never in a job), or <c>pending</c> before R.</summary>
+            public string JobState => Volatile.Read(ref _jobState);
+            public bool JobShared => JobState == "shared";
+
+            /// <summary>Counts the replies still owed to timed-out requests (guarded by Crash.Host's dump gate).</summary>
+            public int StaleReplies { get; set; }
             public bool HasExited { get { try { return Process.HasExited; } catch { return true; } } }
 
             /// <summary>Starts <paramref name="psi"/> (stdin and stdout MUST be redirected) and binds it to a fresh
@@ -190,25 +221,13 @@ public static partial class Crash
                 catch { }
                 var stdin = p.StandardInput;
                 stdin.AutoFlush = true;
-                return new HandlerChild(p, stdin, new ReplyPump(p.StandardOutput), job);
+                return new HandlerChild(p, stdin, job);
             }
 
-            /// <summary>Waits up to <paramref name="timeoutMs"/> for the ready line; on it, duplicates the job handle INTO
-            /// the child (so the job survives this process while the child still runs). False when no ready line came —
-            /// the child then holds no job handle and dies with this process. A parent that dies in the instant between
-            /// the ready line and the duplicate also takes the child with it: a handler that never got to write a bundle
-            /// for a run that was already ending.</summary>
-            public bool AwaitReady(int timeoutMs)
-            {
-                if (!Replies.WaitReady(timeoutMs)) return false;
-                try
-                {
-                    if (_job is not null && _job.Assigned && _job.DuplicateInto(Process.Handle))
-                        Volatile.Write(ref _jobShared, 1);
-                }
-                catch { }
-                return true;
-            }
+            /// <summary>Waits up to <paramref name="timeoutMs"/> for the ready line (the job hand-over already happened on the
+            /// pump thread by then; see <see cref="JobState"/>). False when no ready line came: the child then holds no
+            /// job handle and dies with this process.</summary>
+            public bool AwaitReady(int timeoutMs) => Replies.WaitReady(timeoutMs);
 
             /// <summary>Kills the child and closes this side's job handle. Never throws.</summary>
             public void Kill()
@@ -238,7 +257,11 @@ public static partial class Crash
             HandlerChild? cur = first;
             for (int attempt = 0; attempt < 2 && cur is not null; attempt++)
             {
-                if (cur.AwaitReady(readyMs)) return cur;
+                if (cur.AwaitReady(readyMs))
+                {
+                    log("crash.handler.ready pid=" + cur.Id.ToString(CultureInfo.InvariantCulture) + " job=" + cur.JobState);
+                    return cur;
+                }
                 log("crash.handler.unresponsive pid=" + cur.Id.ToString(CultureInfo.InvariantCulture)
                     + " exited=" + (cur.HasExited ? "true" : "false") + " attempt=" + (attempt + 1).ToString(CultureInfo.InvariantCulture));
                 abandon(cur);
@@ -254,7 +277,9 @@ public static partial class Crash
         // ── 5. the job object (hand-declared kernel32; same shape as the engine's ChildProcessJob, which cannot hand out
         //      its handle for DuplicateHandle) ──────────────────────────────────────────────────────────────────────
 
-        /// <summary>A job with <c>KILL_ON_JOB_CLOSE</c>: every process assigned to it dies when the last handle closes.</summary>
+        /// <summary>A job with <c>KILL_ON_JOB_CLOSE</c>: every process assigned to it dies when the last handle closes.
+        /// App-local copy of the engine's <c>FluentGpu.WindowsApi.Shell.ChildProcessJob</c> (which cannot hand out its
+        /// handle); fold <c>DuplicateInto</c>/<c>ClearKillOnClose</c> into that class later and delete this one.</summary>
         public sealed partial class KillOnCloseJob : IDisposable
         {
             nint _handle;
@@ -287,11 +312,19 @@ public static partial class Crash
                 return Assigned;
             }
 
+            /// <summary>Clears KILL_ON_JOB_CLOSE: the processes in this job survive its last handle closing.</summary>
+            public unsafe bool ClearKillOnClose()
+            {
+                if (_handle == 0) return false;
+                var info = default(JOBOBJECT_EXTENDED_LIMIT_INFORMATION);
+                return SetInformationJobObject(_handle, JobObjectExtendedLimitInformation, &info, (uint)Unsafe.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>());
+            }
+
             /// <summary>Gives <paramref name="targetProcess"/> (needs PROCESS_DUP_HANDLE) its own handle to this job.</summary>
             public bool DuplicateInto(nint targetProcess)
             {
                 if (_handle == 0 || targetProcess == 0) return false;
-                return DuplicateHandle(GetCurrentProcess(), _handle, targetProcess, out _, 0, false, DuplicateSameAccess);
+                return DuplicateHandle(GetCurrentProcess(), _handle, targetProcess, out _, JobObjectQuery, false, 0);
             }
 
             public void Dispose()
@@ -302,7 +335,7 @@ public static partial class Crash
 
             const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
             const int JobObjectExtendedLimitInformation = 9;
-            const uint DuplicateSameAccess = 0x2;
+            const uint JobObjectQuery = 0x4;   // any access keeps the job alive; the child needs none
 
             [StructLayout(LayoutKind.Sequential)]
             struct IO_COUNTERS

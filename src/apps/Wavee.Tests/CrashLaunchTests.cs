@@ -105,6 +105,10 @@ public class CrashLaunchEnvTests
     }
 }
 
+/// <summary>Mutates this process's environment (the inherited-suspend-port facts): no other test class runs beside it.</summary>
+[CollectionDefinition("CrashLaunchProcesses", DisableParallelization = true)]
+public sealed class CrashLaunchProcessesCollection;
+
 /// <summary>Spawns real processes and mutates this process's environment: serialised, never parallel with itself.</summary>
 [Collection("CrashLaunchProcesses")]
 [Trait("Category", "Integration")]
@@ -137,9 +141,11 @@ public sealed class CrashLaunchProcessTests : IDisposable
         return p;
     }
 
-    Crash.Launch.HandlerChild StartHandler(Process parent, string exe)
+    Crash.Launch.HandlerChild StartHandler(Process parent, string exe, Action<ProcessStartInfo>? tweak = null)
     {
-        var child = Crash.Launch.HandlerChild.Start(Crash.Launch.CreateHandlerStartInfo(exe, null, parent.Id, _logFolder, null))!;
+        var psi = Crash.Launch.CreateHandlerStartInfo(exe, null, parent.Id, _logFolder, null);
+        tweak?.Invoke(psi);
+        var child = Crash.Launch.HandlerChild.Start(psi)!;
         Assert.NotNull(child);
         _children.Add(child);
         _procs.Add(child.Process);
@@ -179,13 +185,51 @@ public sealed class CrashLaunchProcessTests : IDisposable
 
         Assert.True(child.AwaitReady(30_000), "the handler never became ready; log: " + HandlerLogText());
         Assert.Contains("handler.ready", HandlerLogText());
-        Assert.True(child.JobShared);
+        Assert.Equal("shared", child.JobState);
 
         parent.Kill();
         Assert.True(ExitsWithin(child.Process, 15_000), "the handler outlived its parent");
     }
 
+    // CONTROL for (a): the SAME spawn with the scrub undone must hang before Main. If a runtime ever stops honouring the
+    // suspend port (a NativeAOT apphost never did), this fails and tells us (a) has gone vacuous instead of passing silently.
+    [Fact]
+    public void Control_without_the_scrub_the_suspend_port_parks_the_handler_before_main()
+    {
+        string? exe = HandlerExe();
+        if (exe is null) { Assert.Skip("Wavee.exe is not deployed next to the test binary"); return; }
+        Process parent = DummyParent();
+
+        var child = StartHandler(parent, exe, psi =>
+        {
+            psi.Environment["DOTNET_DiagnosticPorts"] = SuspendPort;
+            psi.Environment.Remove("DOTNET_EnableDiagnostics");
+        });
+
+        Assert.False(child.AwaitReady(3000), "an unscrubbed child started: the suspend regression test no longer proves anything");
+        Assert.False(child.HasExited);
+        Assert.Equal("", HandlerLogText());
+    }
+
+    // The deadline: with a 1 ms budget the handler terminates itself (exit code 3) before it finishes its exit bundle.
+    [Fact]
+    public void The_shutdown_deadline_terminates_a_handler_that_is_still_busy_after_the_parent_exits()
+    {
+        string? exe = HandlerExe();
+        if (exe is null) { Assert.Skip("Wavee.exe is not deployed next to the test binary"); return; }
+        Process parent = DummyParent();
+        var child = StartHandler(parent, exe, psi => psi.Environment[Crash.Handler.DeadlineEnvVar] = "1");
+        Assert.True(child.AwaitReady(30_000), "the handler never became ready; log: " + HandlerLogText());
+
+        parent.Kill();   // exit code 1: the handler starts writing an UncleanExit bundle, which takes far longer than 1 ms
+
+        Assert.True(ExitsWithin(child.Process, 20_000), "the handler outlived its deadline");
+        Assert.Equal(3, child.Process.ExitCode);
+        Assert.Contains("handler.shutdown.deadline", HandlerLogText());
+    }
+
     // (b) A child that never said ready holds no job handle: when the owner's handle goes, the kernel kills it.
+    // (ReleaseJob closes the last handle: the same kernel path as the owner process dying, without killing the test host.)
     [Fact]
     public void A_handler_that_never_became_ready_dies_with_the_owners_job_handle()
     {

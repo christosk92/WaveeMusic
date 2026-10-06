@@ -137,7 +137,7 @@ public static partial class Crash
                 Tick();
             }
 
-            ArmShutdownDeadline(ShutdownDeadlineMs);
+            ArmShutdownDeadline(ResolveDeadlineMs());
             int exit = OnParentExited();
             try { CloseHandle(s_parentHandle); } catch { }
             return exit;
@@ -145,6 +145,13 @@ public static partial class Crash
 
         /// <summary>Once the parent is gone this process has this long to finish its bundle; then it terminates itself.</summary>
         public const int ShutdownDeadlineMs = 30_000;
+
+        /// <summary>Test seam: an integer here (milliseconds) replaces <see cref="ShutdownDeadlineMs"/>.</summary>
+        public const string DeadlineEnvVar = "WAVEE_CRASH_HANDLER_DEADLINE_MS";
+
+        static int ResolveDeadlineMs()
+            => int.TryParse(Environment.GetEnvironmentVariable(DeadlineEnvVar), NumberStyles.None, CultureInfo.InvariantCulture, out int ms) && ms > 0
+                ? ms : ShutdownDeadlineMs;
 
         /// <summary>Starts a background thread that, after <paramref name="ms"/>, logs and TERMINATES this process
         /// (TerminateProcess — not Environment.Exit, which can itself wait on a wedged thread). A normal return from
@@ -154,7 +161,14 @@ public static partial class Crash
             new Thread(() =>
             {
                 Thread.Sleep(ms);
-                HandlerLog("handler.shutdown.deadline ms=" + ms.ToString(CultureInfo.InvariantCulture));
+                // NEVER block on the log lock here: a stalled disk can wedge the main thread inside it, which is exactly
+                // what this deadline exists to bound. Log only if the lock is free within a moment; terminate regardless.
+                if (Monitor.TryEnter(s_logLock, 500))
+                {
+                    try { File.AppendAllText(Path.Combine(Files.Root(s_logFolder), Files.HandlerLog), DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture) + " pid=" + s_parentPid.ToString(CultureInfo.InvariantCulture) + " handler.shutdown.deadline ms=" + ms.ToString(CultureInfo.InvariantCulture) + Environment.NewLine, new UTF8Encoding(false)); }
+                    catch { }
+                    finally { Monitor.Exit(s_logLock); }
+                }
                 TerminateProcess(GetCurrentProcess(), 3);
             }) { IsBackground = true, Name = "crash-handler-deadline" }.Start();
         }

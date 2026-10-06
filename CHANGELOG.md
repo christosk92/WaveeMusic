@@ -12,9 +12,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
-- **Wavee's crash-reporting helper can no longer stay running after Wavee closes.** When Wavee was started under a
-  diagnostics or tracing tool, its small crash-reporting helper could hang on startup and keep running for hours after
-  Wavee had quit. The helper now ignores such tools, and Windows itself ends it if it never came up.
+- **Wavee's crash-reporting helper can no longer keep running after Wavee closes if it fails to start.** The helper
+  that watches Wavee for crashes could get stuck while starting (seen when Wavee was launched under a diagnostics
+  tool) and then stay running for hours after Wavee quit. Windows now ends a helper that never came up when Wavee
+  exits, and Wavee restarts one that does not report in within ten seconds.
 
 ## [0.3.3] - 2026-10-05
 
