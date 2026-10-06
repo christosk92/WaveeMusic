@@ -72,7 +72,26 @@ public static partial class Stage
             return new Look(mode, effective, Spectrum(effective, storedSpectrum), effective == VizLayout.Artist && heroLyricsPref, caption);
         }
 
-        public static bool ShowsFace(VizLayout eff) => eff == VizLayout.Card;
+        /// <summary>The face is mounted in every layout but Artist (the only layout that REPLACES the visualizer): full-bleed in Card,
+        /// as the dimmed backdrop behind the cover and lyrics in Large art and Centered ("every visualizer works with every layout").</summary>
+        public static bool ShowsFace(VizLayout eff) => eff != VizLayout.Artist;
+        /// <summary>The face runs BEHIND a foreground (Large art, Centered) rather than being the picture.</summary>
+        public static bool FaceIsBackdrop(VizLayout eff) => eff == VizLayout.LargeArt || eff == VizLayout.Centered;
+
+        /// <summary>The CONFLICT RULE. Behind the layout's own lyrics and cover a face must not duplicate them: the faces whose
+        /// picture IS text (Verse = the lyrics, Type = words) fall back to Bloom, the ambient backdrop face (level only, no text);
+        /// Mosaic (a wall of covers) and Spotlight (a cover gallery) keep running but sit under the deeper scrim
+        /// (<see cref="BackdropScrim"/>). Every other face is mounted as chosen. Card (and Artist) never substitute.</summary>
+        public static Visualizer.Kind BackdropKind(VizLayout eff, Visualizer.Kind kind)
+            => FaceIsBackdrop(eff) && Visualizer.Catalog.Successor(kind) is Visualizer.Kind.Verse or Visualizer.Kind.Type ? Visualizer.Kind.Bloom : kind;
+
+        /// <summary>The legibility scrim ABOVE the backdrop face, under the cover / lyrics (Stage's StageInk veil, so it follows
+        /// light / dark): 0.42 for ordinary faces, 0.62 for the cover-carrying ones, 0 outside the backdrop layouts.</summary>
+        public static float BackdropScrim(VizLayout eff, Visualizer.Kind kind)
+            => !FaceIsBackdrop(eff) ? 0f : Visualizer.Catalog.Successor(kind) is Visualizer.Kind.Mosaic or Visualizer.Kind.Spotlight ? 0.62f : 0.42f;
+
+        /// <summary>[ / ] step the FACE in every layout that draws one (the backdrop changes); only Artist steps layouts.</summary>
+        public static bool KeysStepFaces(VizLayout eff) => eff != VizLayout.Artist;
         public static bool ShowsNowPlayingCard(VizLayout eff) => eff == VizLayout.Card;
         public static bool GalleryAllowed(VizLayout eff) => eff == VizLayout.Card;
 
@@ -81,10 +100,12 @@ public static partial class Stage
         public static SpectrumStyle Spectrum(VizLayout eff, SpectrumStyle stored)
             => eff == VizLayout.Card ? SpectrumStyle.Off : eff == VizLayout.Artist && stored == SpectrumStyle.Ring ? SpectrumStyle.Line : stored;
 
-        /// <summary>What the lease needs: Card → the face's needs; the layouts → the spectrum when one is drawn, else the LEVEL
-        /// the base Field breathes with (a layout with Spectrum Off still has its backdrop field, as Lyrics mode does).</summary>
+        /// <summary>What the lease needs: Card → the face's needs; Large art / Centered → the (substituted) backdrop face's needs
+        /// plus the spectrum when a strip / ring is drawn; Artist → the spectrum, else the LEVEL the base Field breathes with.
+        /// Lyrics / Covers needs add no tier (the layout's own pane and cover feed them).</summary>
         public static Visualizer.Need NeedsOf(VizLayout eff, SpectrumStyle stored, Visualizer.Kind kind)
             => eff == VizLayout.Card ? Visualizer.Catalog.NeedsOf(kind)
+             : FaceIsBackdrop(eff) ? Visualizer.Catalog.NeedsOf(BackdropKind(eff, kind)) | (Spectrum(eff, stored) == SpectrumStyle.Off ? Visualizer.Need.None : Visualizer.Need.Spectrum)
              : Spectrum(eff, stored) == SpectrumStyle.Off ? Visualizer.Need.Level : Visualizer.Need.Spectrum;
 
         /// <summary>The pane: the mode's pane outside Visualizer mode; in Visualizer mode the LYRICS pane for Large art and for
@@ -122,7 +143,7 @@ public static partial class Stage
 
         /// <summary>The base Field's opacity: near-full under a Card face, breathing (the Lyrics-mode look) under a layout.</summary>
         public static float BaseFieldFor(float low, Mode mode, VizLayout eff)
-            => Visualizer.Field.BaseOpacity(low, mode == Mode.Visualizer && eff == VizLayout.Card);
+            => Visualizer.Field.BaseOpacity(low, mode == Mode.Visualizer && ShowsFace(eff));
 
         /// <summary>The options popover's 2×2 layout grid: the cursor after an arrow key (Left 37, Up 38, Right 39, Down 40),
         /// wrapping within its row / column; any other key leaves it.</summary>
