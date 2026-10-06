@@ -276,6 +276,8 @@ public class LogFilesTests
     }
 
     [Theory]
+    [InlineData("[hidden] shallow park=Os unpinnedReleased=3 ready=2 ms=1.50", Log.DiagRoute.Info)]
+    [InlineData("[hidden] restore ready=2", Log.DiagRoute.Info)]
     [InlineData("[render.pace] tick=303134(+120) fresh=120 motion=0", Log.DiagRoute.Info)]
     [InlineData("[wake] 30.0s fps=151.6 run=4549 rendered=128", Log.DiagRoute.Info)]
     [InlineData("[d3d12.present] depth=2 mode=flip", Log.DiagRoute.Info)]

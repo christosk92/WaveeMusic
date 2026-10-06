@@ -59,7 +59,8 @@ public static partial class Diagnostics
         {
             var o = s_frameBench;
             if (!o.Enabled) return false;
-            if (window is not Win32Window w || device is not D3D12Device) { Say("[frame-bench] unavailable: requires Win32Window + D3D12Device"); return true; }
+            if (window is not Win32Window w || device is not D3D12Device d3d) { Say("[frame-bench] unavailable: requires Win32Window + D3D12Device"); return true; }
+            s_benchDevice = d3d;
             bool fake = Platform.Args.Fake;
             if (FrameBenchOptions.RealRefusal(fake, o.Real, Platform.ProfileRoot) is { } refusal) { Say("[frame-bench] refusing: " + refusal); return true; }
             foreach (string bad in FrameBenchOptions.UnknownNames(Environment.GetCommandLineArgs()))
@@ -331,6 +332,10 @@ public static partial class Diagnostics
                         Shell.Ui.RailOpen.Value = false;
                         return r;
                     }
+                case FrameBenchScenarios.HideRestore:
+                    Base(playing: false);
+                    SettleQuiet(host, w, 20);
+                    return HideRestore(name, host, w, o);
                 case FrameBenchScenarios.LedgerOverhead:
                     if (play is null) return Skip("no track to play");
                     return OffOn(name, host, w, o, play, "ledger off vs on, stage-visualizer", restore: true,

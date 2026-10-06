@@ -42,7 +42,7 @@ public static partial class Diagnostics
         public const string Idle = "idle", IdlePlaying = "idle-playing", HomeScroll = "home-scroll", NavBurst = "nav-burst",
             PlaylistOpen = "playlist-open", PlaylistScroll = "playlist-scroll", Lyrics = "lyrics", LyricsLine = "lyrics-line",
             StageLyrics = "stage-lyrics", StageVisualizer = "stage-visualizer", TrackChange = "track-change", Video = "video",
-            LedgerOverhead = "ledger-overhead", GpuPassOverhead = "gpu-pass-overhead";
+            LedgerOverhead = "ledger-overhead", GpuPassOverhead = "gpu-pass-overhead", HideRestore = "hide-restore";
 
         /// <summary>Every scenario, in run order. <see cref="Video"/> runs only with `--fake-video`, <see cref="GpuPassOverhead"/> only
         /// with `--bench-gpu-passes`.</summary>
@@ -51,6 +51,10 @@ public static partial class Diagnostics
             Idle, IdlePlaying, HomeScroll, NavBurst, PlaylistOpen, PlaylistScroll, Lyrics, LyricsLine, StageLyrics,
             StageVisualizer, TrackChange, Video, LedgerOverhead, GpuPassOverhead,
         ];
+
+        /// <summary>Scenarios that run ONLY when named (`--frame-bench=hide-restore`): <see cref="HideRestore"/> minimizes and hides the
+        /// window for tens of seconds per cycle, so a default run never does it.</summary>
+        public static readonly string[] OptIn = [HideRestore];
     }
 
     /// <summary>`--frame-bench[=a,b]` and its knobs. Out-of-range or garbage values fall back to the default (the
@@ -58,7 +62,7 @@ public static partial class Diagnostics
     /// <see cref="GpuPasses"/> (`--bench-gpu-passes`) turns the pass-granular GPU timeline on for the run (it adds timestamp queries
     /// at every pass boundary, so it is opt-in, and the run then measures its cost).</summary>
     public readonly record struct FrameBenchOptions(bool Enabled, string[] Scenarios, int MeasureSec, int WarmupSec, bool Real,
-        string Label, IReadOnlyDictionary<string, string> Uris, bool GpuPasses = false)
+        string Label, IReadOnlyDictionary<string, string> Uris, bool GpuPasses = false, int HideCycles = 3, int HiddenSec = 30, int CoverSec = 3)
     {
         public static FrameBenchOptions Parse(string[] args)
         {
@@ -77,10 +81,12 @@ public static partial class Diagnostics
             var scenarios = new List<string>();
             foreach (string s in FrameBenchScenarios.All)
                 if (filter.Length == 0 || Array.IndexOf(filter, s) >= 0) scenarios.Add(s);
+            foreach (string s in FrameBenchScenarios.OptIn)
+                if (Array.IndexOf(filter, s) >= 0) scenarios.Add(s);
             // A filter that named nothing known runs nothing, and says so (the arm reports the unknown names).
             return new FrameBenchOptions(on, scenarios.ToArray(), Int(args, "--bench-sec", 10, 3, 120), Int(args, "--bench-warmup-sec", 2, 0, 30),
                 Array.IndexOf(args, "--bench-real") >= 0, Value(args, "--bench-label") ?? "", ParseUris(Value(args, "--bench-uris")),
-                Array.IndexOf(args, "--bench-gpu-passes") >= 0);
+                Array.IndexOf(args, "--bench-gpu-passes") >= 0, Int(args, "--bench-hide-cycles", 3, 1, 100), Int(args, "--bench-hidden-sec", 30, 3, 900), Int(args, "--bench-cover-sec", 3, 3, 900));
         }
 
         /// <summary>The filter's names that are not scenarios (reported, never silently dropped).</summary>
@@ -91,7 +97,7 @@ public static partial class Diagnostics
             {
                 string[] names = args[i] == "--frame-bench" && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal) ? Split(args[i + 1])
                     : args[i].StartsWith("--frame-bench=", StringComparison.Ordinal) ? Split(args[i]["--frame-bench=".Length..]) : [];
-                foreach (string n in names) if (Array.IndexOf(FrameBenchScenarios.All, n) < 0) bad.Add(n);
+                foreach (string n in names) if (Array.IndexOf(FrameBenchScenarios.All, n) < 0 && Array.IndexOf(FrameBenchScenarios.OptIn, n) < 0) bad.Add(n);
             }
             return bad.ToArray();
         }
@@ -536,7 +542,8 @@ public static partial class Diagnostics
             => key is "presentsPerSec" or "audioPaddingMinMs" ? +1
              : IsInfoCpu(key) ? 0
              : key is "wallSec" or "frames" or "paintedFrames" or "presents" or "gpuFrames" or "framesPerSec" or "paintedFramesPerSec"
-                 or "cyclesPerMs.window" or "settleSec" or "scrollViewports" or "scrollSteps"
+                 or "cyclesPerMs.window" or "settleSec" or "scrollViewports" or "scrollSteps" or "cycles" or "presentChecked" or "damageValidated"
+               || key.EndsWith(".noPresent", StringComparison.Ordinal)
                || key.StartsWith("exitPerSec.", StringComparison.Ordinal) || key.StartsWith("wakePerSec.", StringComparison.Ordinal)
                || key.StartsWith("turnPerSec.", StringComparison.Ordinal)
                || key.EndsWith(".off", StringComparison.Ordinal) || key.EndsWith(".on", StringComparison.Ordinal) ? 0

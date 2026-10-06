@@ -37,6 +37,28 @@ public class FrameBenchOptionsTests
     }
 
     [Fact]
+    public void Hide_restore_runs_only_when_named_and_has_its_own_knobs()
+    {
+        Assert.DoesNotContain("hide-restore", Diagnostics.FrameBenchOptions.Parse(["--frame-bench"]).Scenarios);
+        var o = Diagnostics.FrameBenchOptions.Parse(["--frame-bench=idle,hide-restore", "--bench-hide-cycles", "10", "--bench-hidden-sec", "45"]);
+        Assert.Equal(["idle", "hide-restore"], o.Scenarios);
+        Assert.Equal(10, o.HideCycles);
+        Assert.Equal(45, o.HiddenSec);
+        Assert.Empty(Diagnostics.FrameBenchOptions.UnknownNames(["--frame-bench=hide-restore"]));
+        var d = Diagnostics.FrameBenchOptions.Parse(["--frame-bench=hide-restore", "--bench-hide-cycles", "0", "--bench-hidden-sec", "1"]);
+        Assert.Equal(3, d.HideCycles);   // out of range falls back to the default
+        Assert.Equal(30, d.HiddenSec);
+    }
+
+    [Theory]
+    [InlineData("cycles")]
+    [InlineData("presentChecked")]
+    [InlineData("damageValidated")]
+    [InlineData("minimize.noPresent")]
+    public void Hide_restore_counts_are_neutral_not_regressions(string key)
+        => Assert.Equal(0, Diagnostics.FrameBenchMath.Better(key));
+
+    [Fact]
     public void Gpu_pass_timing_is_opt_in()
         => Assert.True(Diagnostics.FrameBenchOptions.Parse(["--frame-bench", "--bench-gpu-passes"]).GpuPasses);
 
