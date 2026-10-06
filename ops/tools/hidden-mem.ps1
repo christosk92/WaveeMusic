@@ -20,7 +20,7 @@
 .PARAMETER Exe
   Wavee.exe to run (Release or a NativeAOT publish).
 
-.PARAMETER Profile
+.PARAMETER ProfileDir
   Scratch profile directory (created if missing). Never the owner's profile.
 
 .PARAMETER OutDir
@@ -31,6 +31,9 @@
 
 .PARAMETER HiddenSec
   Seconds hidden per minimize / hide cycle (default 30).
+
+.PARAMETER CoverSec
+  Seconds a topmost window covers the app per cover cycle (default 3: nothing is released). Run `-CoverSec 6 -Fg hidden=2000:5000` to exercise the cover release.
 
 .PARAMETER Validate
   Add `--fg present-validate,damage-validate` (a debug-grade arm: it slows frames, so do not read latency from that run).
@@ -45,17 +48,18 @@
   Do not run anything: read this artifacts directory.
 
 .EXAMPLE
-  powershell -File ops\tools\hidden-mem.ps1 -Exe C:\build\Wavee.exe -Profile C:\scratch\hm -OutDir C:\scratch\hm-out -Cycles 10
+  powershell -File ops\tools\hidden-mem.ps1 -Exe C:\build\Wavee.exe -ProfileDir C:\scratch\hm -OutDir C:\scratch\hm-out -Cycles 10
 .EXAMPLE
   powershell -File ops\tools\hidden-mem.ps1 -Summarize C:\scratch\hm-out -Baseline C:\scratch\hm-off
 #>
 [CmdletBinding()]
 param(
     [string]$Exe,
-    [string]$Profile,
+    [string]$ProfileDir,
     [string]$OutDir,
     [int]$Cycles = 3,
     [int]$HiddenSec = 30,
+    [int]$CoverSec = 3,
     [switch]$Validate,
     [string]$Fg = '',
     [string]$Baseline,
@@ -79,7 +83,9 @@ function ConvertTo-Number([string]$s) {
 function Read-Cycles([string]$dir) {
     $csv = Join-Path $dir 'hide-restore-cycles.csv'
     if (-not (Test-Path -LiteralPath $csv)) { throw "no hide-restore-cycles.csv in $dir (did the run reach the hide-restore scenario?)" }
-    $rows = Import-Csv -LiteralPath $csv
+    $rows = @(Import-Csv -LiteralPath $csv)
+    $notParked = @($rows | Where-Object { $_.phase -eq 'vis' -and $_.PSObject.Properties['parked'] -and $_.parked -eq '0' }).Count
+    $rows = @($rows | Where-Object { -not $_.PSObject.Properties['parked'] -or $_.parked -ne '0' })
     $out = New-Object System.Collections.Generic.List[object]
     $latency = @{}
     foreach ($mode in @($rows | ForEach-Object { $_.mode } | Select-Object -Unique)) {
@@ -102,10 +108,11 @@ function Read-Cycles([string]$dir) {
             P95 = if ($ms.Count) { $ms[[int][Math]::Min($ms.Count - 1, [Math]::Ceiling($ms.Count * 0.95) - 1)] } else { [double]::NaN }
             Max = if ($ms.Count) { $ms[$ms.Count - 1] } else { [double]::NaN }
             NoPresent = $res.Count - $ms.Count
+            HiddenMc = Get-Median (@($rows | Where-Object { $_.mode -eq $mode -and $_.phase -eq 'hidEnd' -and $_.PSObject.Properties['hiddenMcPerSec'] -and $_.hiddenMcPerSec }) | ForEach-Object { ConvertTo-Number $_.hiddenMcPerSec })
             Cycles = $res.Count
         }
     }
-    return [pscustomobject]@{ Rows = $out; Latency = $latency }
+    return [pscustomobject]@{ Rows = $out; Latency = $latency; NotParked = $notParked }
 }
 
 function Read-Validation([string]$dir) {
@@ -127,21 +134,22 @@ function Format-Num($v) { if ($null -eq $v -or ([double]::IsNaN([double]$v))) { 
 
 if (-not $Summarize) {
     if (-not $Exe -or -not (Test-Path -LiteralPath $Exe)) { throw '-Exe must name an existing Wavee.exe' }
-    if (-not $Profile) { throw '-Profile must name a scratch profile directory (never the default profile)' }
+    if (-not $ProfileDir) { throw '-ProfileDir must name a scratch profile directory (never the default profile)' }
     if (-not $OutDir) { $OutDir = Join-Path ([IO.Path]::GetTempPath()) ('hidden-mem-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
-    New-Item -ItemType Directory -Force -Path $Profile, $OutDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $ProfileDir, $OutDir | Out-Null
     $fgList = @()
     if ($Validate) { $fgList += 'present-validate'; $fgList += 'damage-validate' }
     if ($Fg) { $fgList += @($Fg -split ',' | Where-Object { $_ }) }
-    $argv = @('--fake', '--profile', $Profile, '--frame-bench=hide-restore', '--bench-hide-cycles', $Cycles, '--bench-hidden-sec', $HiddenSec,
+    $argv = @('--fake', '--profile', $ProfileDir, '--frame-bench=hide-restore', '--bench-hide-cycles', $Cycles, '--bench-hidden-sec', $HiddenSec, '--bench-cover-sec', $CoverSec,
               '--bench-warmup-sec', 2, '--probe-out', $OutDir)
     if ($fgList.Count) { $argv += @('--fg', ($fgList -join ',')) }
     Write-Output ("running: {0} {1}" -f $Exe, ($argv -join ' '))
     $p = Start-Process -FilePath $Exe -ArgumentList $argv -PassThru -Wait -NoNewWindow
-    if ($p.ExitCode -ne 0) { Write-Warning "Wavee exited with code $($p.ExitCode)" }
+    if ($p.ExitCode -ne 0) { Write-Error "Wavee exited with code $($p.ExitCode)"; exit $p.ExitCode }
     $Summarize = $OutDir
 }
 
+$exitCode = 0
 $cur = Read-Cycles $Summarize
 $base = if ($Baseline) { Read-Cycles $Baseline } else { $null }
 $val = Read-Validation $Summarize
@@ -162,14 +170,17 @@ foreach ($r in $cur.Rows) {
 Write-Output ''
 foreach ($mode in $cur.Latency.Keys | Sort-Object) {
     $l = $cur.Latency[$mode]
-    $line = '{0,-9} restore ms: p50 {1}  p95 {2}  max {3}   noPresent {4}/{5}' -f $mode, (Format-Num $l.P50), (Format-Num $l.P95), (Format-Num $l.Max), $l.NoPresent, $l.Cycles
+    $line = '{0,-9} restore ms: p50 {1}  p95 {2}  max {3}   noPresent {4}/{5}   hidden {6} Mc/s (process cycles)' -f $mode, (Format-Num $l.P50), (Format-Num $l.P95), (Format-Num $l.Max), $l.NoPresent, $l.Cycles, (Format-Num $l.HiddenMc)
     if ($base -and $base.Latency.ContainsKey($mode)) { $line += ('   (baseline p50 {0} max {1})' -f (Format-Num $base.Latency[$mode].P50), (Format-Num $base.Latency[$mode].Max)) }
     Write-Output $line
 }
+if ($cur.NotParked -gt 0) { Write-Warning "$($cur.NotParked) cycle(s) never parked and were left out of the table"; $exitCode = 3 }
 if ($val.Count) {
     Write-Output ''
+    if ($val.ContainsKey('presentChecked') -and [double]$val['presentChecked'] -eq 0) { Write-Output 'validation: NOT RUN (no --fg present-validate; add -Validate)' }
     Write-Output ('validation: ' + (($val.Keys | Sort-Object | ForEach-Object { '{0}={1}' -f $_, $val[$_] }) -join ' '))
     $bad = 0
     foreach ($k in @('presentBad', 'damageBad', 'tileBad')) { if ($val.ContainsKey($k) -and [double]$val[$k] -ne 0) { $bad++ } }
-    if ($bad) { Write-Warning 'a validation counter is not 0'; exit 2 }
+    if ($bad) { Write-Warning 'a validation counter is not 0'; $exitCode = 2 }
 }
+exit $exitCode

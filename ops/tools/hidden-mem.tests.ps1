@@ -8,21 +8,21 @@ New-Item -ItemType Directory -Path $dir | Out-Null
 
 function Assert-True([bool]$Condition, [string]$Because) { if (-not $Condition) { throw "FAILED: $Because" } }
 
-function Write-Run([string]$name, [double]$hidPriv, [double]$restoreMs, [int]$presentBad = 0) {
+function Write-Run([string]$name, [double]$hidPriv, [double]$restoreMs, [int]$presentBad = 0, [int]$checked = 120, [int]$parked = 1) {
     $d = Join-Path $dir $name
     New-Item -ItemType Directory -Path $d | Out-Null
-    $lines = @('mode,cycle,phase,privateMB,workingSetMB,vramLocalMB,trackedGpuMB,imageCacheMB,glyphAtlasMB,restoreMs')
+    $lines = @('mode,cycle,phase,privateMB,workingSetMB,vramLocalMB,trackedGpuMB,imageCacheMB,glyphAtlasMB,restoreMs,parked,hiddenMcPerSec')
     foreach ($c in 1..3) {
-        $lines += "minimize,$c,vis,400.0,450.0,300.0,200.0,60.0,16.0,"
-        $lines += "minimize,$c,hid5,$($hidPriv + 20),430.0,120.0,60.0,20.0,16.0,"
-        $lines += "minimize,$c,hidEnd,$hidPriv,420.0,100.0,40.0,20.0,16.0,"
-        $lines += "minimize,$c,res,400.0,450.0,300.0,200.0,60.0,16.0,$($restoreMs + $c)"
-        $lines += "cover,$c,vis,400.0,450.0,300.0,200.0,60.0,16.0,"
-        $lines += "cover,$c,res,400.0,450.0,300.0,200.0,60.0,16.0,no-present"
+        $lines += "minimize,$c,vis,400.0,450.0,300.0,200.0,60.0,16.0,,$parked,5.0"
+        $lines += "minimize,$c,hid5,$($hidPriv + 20),430.0,120.0,60.0,20.0,16.0,,$parked,5.0"
+        $lines += "minimize,$c,hidEnd,$hidPriv,420.0,100.0,40.0,20.0,16.0,,$parked,5.0"
+        $lines += "minimize,$c,res,400.0,450.0,300.0,200.0,60.0,16.0,$($restoreMs + $c),$parked,5.0"
+        $lines += "cover,$c,vis,400.0,450.0,300.0,200.0,60.0,16.0,,$parked,5.0"
+        $lines += "cover,$c,res,400.0,450.0,300.0,200.0,60.0,16.0,no-present,$parked,5.0"
     }
     Set-Content -LiteralPath (Join-Path $d 'hide-restore-cycles.csv') -Value $lines -Encoding ascii
     $doc = @{ schema = 'wavee-frame-bench/2'; scenarios = @(@{ name = 'hide-restore'; metrics = @{
-        presentChecked = 120; presentBad = $presentBad; damageValidated = 90; damageBad = 0; tileBad = 0; cycles = 6 } }) }
+        presentChecked = $checked; presentBad = $presentBad; damageValidated = 90; damageBad = 0; tileBad = 0; cycles = 6 } }) }
     $doc | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $d 'frame-bench-summary.json') -Encoding utf8
     return $d
 }
@@ -49,6 +49,13 @@ try {
     $bad = Write-Run 'bad' 150.0 40.0 3
     $r = Invoke-Hm @('-Summarize', $bad)
     Assert-True ($r.Code -eq 2) "a non-zero validation counter exits 2 (got $($r.Code))"
+    $np = Write-Run 'notparked' 150.0 40.0 0 120 0
+    $r = Invoke-Hm @('-Summarize', $np)
+    Assert-True ($r.Code -eq 3) "a run with cycles that never parked exits 3 (got $($r.Code))"
+    $nv = Write-Run 'notvalidated' 150.0 40.0 0 0
+    $r = Invoke-Hm @('-Summarize', $nv)
+    Assert-True ($r.Text -match 'validation: NOT RUN') 'an unvalidated run says so instead of printing a clean-looking zero'
+    Assert-True ($r.Text -match 'hidden 5\.0 Mc/s') 'the hidden process-cycle rate is printed'
     Write-Output 'hidden-mem: all tests passed'
 }
 finally { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }

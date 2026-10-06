@@ -62,7 +62,7 @@ public static partial class Diagnostics
     /// <see cref="GpuPasses"/> (`--bench-gpu-passes`) turns the pass-granular GPU timeline on for the run (it adds timestamp queries
     /// at every pass boundary, so it is opt-in, and the run then measures its cost).</summary>
     public readonly record struct FrameBenchOptions(bool Enabled, string[] Scenarios, int MeasureSec, int WarmupSec, bool Real,
-        string Label, IReadOnlyDictionary<string, string> Uris, bool GpuPasses = false, int HideCycles = 3, int HiddenSec = 30)
+        string Label, IReadOnlyDictionary<string, string> Uris, bool GpuPasses = false, int HideCycles = 3, int HiddenSec = 30, int CoverSec = 3)
     {
         public static FrameBenchOptions Parse(string[] args)
         {
@@ -86,7 +86,7 @@ public static partial class Diagnostics
             // A filter that named nothing known runs nothing, and says so (the arm reports the unknown names).
             return new FrameBenchOptions(on, scenarios.ToArray(), Int(args, "--bench-sec", 10, 3, 120), Int(args, "--bench-warmup-sec", 2, 0, 30),
                 Array.IndexOf(args, "--bench-real") >= 0, Value(args, "--bench-label") ?? "", ParseUris(Value(args, "--bench-uris")),
-                Array.IndexOf(args, "--bench-gpu-passes") >= 0, Int(args, "--bench-hide-cycles", 3, 1, 100), Int(args, "--bench-hidden-sec", 30, 3, 900));
+                Array.IndexOf(args, "--bench-gpu-passes") >= 0, Int(args, "--bench-hide-cycles", 3, 1, 100), Int(args, "--bench-hidden-sec", 30, 3, 900), Int(args, "--bench-cover-sec", 3, 3, 900));
         }
 
         /// <summary>The filter's names that are not scenarios (reported, never silently dropped).</summary>

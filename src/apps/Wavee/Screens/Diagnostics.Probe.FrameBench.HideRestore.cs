@@ -39,7 +39,7 @@ public static partial class Diagnostics
 
         /// <summary>One cycle's four phase samples, the restore latency and whether a present followed the restore.</summary>
         readonly record struct HideCycle(string Mode, int Index, LedgerMemorySample Vis, LedgerMemorySample Hid5, LedgerMemorySample HidEnd,
-            LedgerMemorySample Res, double RestoreMs, bool Presented, int TileBad);
+            LedgerMemorySample Res, double RestoreMs, bool Presented, int TileBad, bool Parked, double HiddenMcPerSec);
 
         static Pending HideRestore(string name, AppHost host, Win32Window w, FrameBenchOptions o)
         {
@@ -61,7 +61,8 @@ public static partial class Diagnostics
             var extra = new List<KeyValuePair<string, double>>();
             foreach (string mode in new[] { "minimize", "hide", "cover" })
             {
-                var rows = cycles.FindAll(c => c.Mode == mode);
+                var rows = cycles.FindAll(c => c.Mode == mode && c.Parked);   // a cycle whose window never parked measured nothing hidden
+                extra.Add(new(mode + ".notParked", cycles.Count(c => c.Mode == mode && !c.Parked)));
                 if (rows.Count == 0) continue;
                 void Add(string key, Func<HideCycle, double> f) => extra.Add(new(mode + "." + key, Median(rows, f)));
                 Add("visPrivMB", c => c.Vis.PrivateBytes / 1048576.0);
@@ -74,6 +75,7 @@ public static partial class Diagnostics
                 Add("hidEndVramMB", c => c.HidEnd.VramLocalBytes / 1048576.0);
                 Add("visTrackedMB", c => c.Vis.TrackedGpuBytes / 1048576.0);
                 Add("hidEndTrackedMB", c => c.HidEnd.TrackedGpuBytes / 1048576.0);
+                Add("hiddenMcPerSec", c => c.HiddenMcPerSec);
                 var lat = rows.FindAll(c => c.Presented).ConvertAll(c => c.RestoreMs);
                 lat.Sort();
                 extra.Add(new(mode + ".restoreMsP50", lat.Count > 0 ? lat[lat.Count / 2] : double.NaN));
@@ -91,7 +93,9 @@ public static partial class Diagnostics
                 extra.Add(new("damageBad", dc.Mismatches));
             }
             extra.Add(new("tileBad", cycles.Sum(c => c.TileBad)));   // exposed-missing + lost placements read off the turn that followed each restore
-            return new Pending(name, Snap: snap, Note: $"{o.HideCycles} cycles x minimize/hide/cover, hidden {o.HiddenSec} s", Extra: extra);
+            int notParked = cycles.Count(c => !c.Parked);
+            if (notParked > 0) Say($"[hide-restore] FAILED: {notParked} cycle(s) never parked and were left out of the medians");
+            return new Pending(name, Snap: snap, Note: $"{o.HideCycles} cycles x minimize/hide/cover, hidden {o.HiddenSec} s, cover {o.CoverSec} s" + (notParked > 0 ? $", {notParked} NOT PARKED" : ""), Extra: extra);
         }
 
         static HideCycle OneHideCycle(string mode, int index, AppHost host, Win32Window w, FrameBenchOptions o, LedgerMark mark)
@@ -99,7 +103,7 @@ public static partial class Diagnostics
             Pump(host, w, 3.0, null);
             var vis = MemoryNow(mark);
             nint cover = 0;
-            double hiddenSec = mode == "cover" ? 3.0 : o.HiddenSec;
+            double hiddenSec = mode == "cover" ? o.CoverSec : o.HiddenSec;
             switch (mode)
             {
                 case "minimize": ShowWindow(w.Handle.Value, 6 /*SW_MINIMIZE*/); break;
@@ -114,8 +118,14 @@ public static partial class Diagnostics
             double first = Math.Min(5.0, hiddenSec);
             Pump(host, w, first, null);
             var hid5 = MemoryNow(mark);
+            // The park must have happened (and, for a window that left the screen, the release with it) or the cycle measured nothing hidden.
+            bool parked = host.IsParked && (mode != "minimize" || StressNative.IsIconic(w.Handle.Value) != 0) && (mode != "hide" || !w.IsVisible);
+            if (parked && mode != "cover" && hiddenSec >= 5.0) parked = host.HiddenStageCensus != 0;
             if (hiddenSec > first) Pump(host, w, hiddenSec - first, null);
             var hidEnd = MemoryNow(mark);
+            double hidSec = (hidEnd.Qpc - hid5.Qpc) / (double)Stopwatch.Frequency;
+            double hiddenMc = hidSec > 1.0 && hidEnd.ProcessCyclesTotal >= hid5.ProcessCyclesTotal
+                ? (hidEnd.ProcessCyclesTotal - hid5.ProcessCyclesTotal) / hidSec / 1e6 : double.NaN;   // QueryProcessCycleTime, not CPU time
 
             ulong seq0 = host.PresentedSequence;
             long t0 = Stopwatch.GetTimestamp();
@@ -127,10 +137,16 @@ public static partial class Diagnostics
             }
             bool presented = false;
             double restoreMs = double.NaN;
-            while (!w.IsClosed && (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency < 1500)
+            // The restore frame is the first present AFTER the host un-parked: a present before that is not it, and one that arrives long
+            // after (300 ms) is unrelated - a restore whose frame was legitimately elided counts as no-present, never as a latency.
+            long unparkedAt = 0;
+            while (!w.IsClosed)
             {
+                double sinceMs = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                if (sinceMs > 2000 || (unparkedAt != 0 && (Stopwatch.GetTimestamp() - unparkedAt) * 1000.0 / Stopwatch.Frequency > 300)) break;
                 Pump(host, w, 0.004, null);
-                if (host.PresentedSequence > seq0)
+                if (unparkedAt == 0 && !host.IsParked) { unparkedAt = Stopwatch.GetTimestamp(); seq0 = host.PresentedSequence; }
+                if (unparkedAt != 0 && host.PresentedSequence > seq0)
                 {
                     restoreMs = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
                     presented = true;
@@ -143,12 +159,13 @@ public static partial class Diagnostics
             tc = host.LastTileCensus;
             tileBad += tc.ExposedMissing + tc.LostPlacements;
             var res = MemoryNow(mark);
-            return new HideCycle(mode, index, vis, hid5, hidEnd, res, restoreMs, presented, tileBad);
+            return new HideCycle(mode, index, vis, hid5, hidEnd, res, restoreMs, presented, tileBad, parked, hiddenMc);
         }
 
         /// <summary>One fresh memory sample from the ledger's sampler, read back.</summary>
         static LedgerMemorySample MemoryNow(LedgerMark mark)
         {
+            s_benchDevice?.RefreshVideoMemorySnapshot();   // a hidden window presents nothing, so the cadence-driven snapshot would be the release-time one
             FrameLedger.SampleMemory();
             var m = FrameLedger.Snapshot(mark).Memory;
             return m.Length > 0 ? m[^1] : default;
@@ -164,12 +181,13 @@ public static partial class Diagnostics
         static string CyclesCsv(List<HideCycle> cycles)
         {
             var sb = new StringBuilder(1024);
-            sb.AppendLine("mode,cycle,phase,privateMB,workingSetMB,vramLocalMB,trackedGpuMB,imageCacheMB,glyphAtlasMB,restoreMs");
+            sb.AppendLine("mode,cycle,phase,privateMB,workingSetMB,vramLocalMB,trackedGpuMB,imageCacheMB,glyphAtlasMB,restoreMs,parked,hiddenMcPerSec");
             foreach (var c in cycles)
             {
                 void Row(string phase, in LedgerMemorySample s, string restore) => sb.Append(c.Mode).Append(',').Append(c.Index).Append(',').Append(phase).Append(',')
                     .Append(Mb(s.PrivateBytes)).Append(',').Append(Mb(s.WorkingSetBytes)).Append(',').Append(Mb(s.VramLocalBytes)).Append(',').Append(Mb(s.TrackedGpuBytes)).Append(',')
-                    .Append(Mb(s.ImageCacheBytes)).Append(',').Append(Mb(s.GlyphAtlasBytes)).Append(',').AppendLine(restore);
+                    .Append(Mb(s.ImageCacheBytes)).Append(',').Append(Mb(s.GlyphAtlasBytes)).Append(',').Append(restore).Append(',').Append(c.Parked ? 1 : 0).Append(',')
+                    .AppendLine(double.IsNaN(c.HiddenMcPerSec) ? "" : c.HiddenMcPerSec.ToString("0.00", CultureInfo.InvariantCulture));
                 Row("vis", c.Vis, "");
                 Row("hid5", c.Hid5, "");
                 Row("hidEnd", c.HidEnd, "");

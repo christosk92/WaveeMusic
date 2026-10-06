@@ -37,15 +37,15 @@ it waits much longer. A park shorter than its delay releases nothing at all.
 ## Measuring it
 
 ```powershell
-powershell -File ops\tools\hidden-mem.ps1 -Exe <Wavee.exe> -Profile C:\scratch\hm -OutDir C:\scratch\hm-after -Cycles 10
-powershell -File ops\tools\hidden-mem.ps1 -Exe <Wavee.exe> -Profile C:\scratch\hm -OutDir C:\scratch\hm-before -Cycles 10 -Fg hidden=max:max
+powershell -File ops\tools\hidden-mem.ps1 -Exe <Wavee.exe> -ProfileDir C:\scratch\hm -OutDir C:\scratch\hm-after -Cycles 10
+powershell -File ops\tools\hidden-mem.ps1 -Exe <Wavee.exe> -ProfileDir C:\scratch\hm -OutDir C:\scratch\hm-before -Cycles 10 -Fg hidden=max:max
 powershell -File ops\tools\hidden-mem.ps1 -Summarize C:\scratch\hm-after -Baseline C:\scratch\hm-before
 ```
 
 The script runs the `hide-restore` frame-bench scenario (`docs/guide/frame-bench.md`) in a window it starts itself with a scratch
 `--fake` profile, never the owner's running Wavee. Per mode (minimize, hide, cover) and phase (vis, hid5, hidEnd, res) it
 prints process private MB, working set MB, DXGI LOCAL usage MB, the engine's tracked GPU MB and the image cache MB, the
-restore latency (restore call to the first present after it) and the validation counters. `-Validate` adds
+restore latency (restore call to the first present after the host un-parked; a frame that arrives more than 300 ms later is unrelated and the restore counts as `noPresent`) and the validation counters. `-Validate` adds
 `--fg present-validate,damage-validate`; `presentBad`, `damageBad` and `tileBad` must be 0 (the script exits 2 otherwise). A
 restore whose frame is legitimately elided as unchanged presents nothing and is counted as `noPresent`, not as a latency.
 
@@ -53,6 +53,8 @@ Reading it: private bytes and the working set fall by less than the tracked GPU 
 whole chunks and the OS trims a minimized process's working set on its own after `SW_MINIMIZE` (a tray hide does not, so
 read the hide rows for the engine's own effect). The app's heap policy also compacts the GC heap while the window is off
 screen; that is in every run, before and after alike.
+
+With 10 cycles a p95 is the second-worst sample: read the max, or run 20 or more. A cycle whose window never parked is left out (and fails the run). `-CoverSec 6 -Fg hidden=2000:5000` exercises the cover release; the default cover cycle (3 s) only proves nothing is released. `hiddenMcPerSec` is the process's CPU in mega-cycles per second (`QueryProcessCycleTime`) while hidden.
 
 The live log carries the stage too: the `mem.sample` line has `hidden=stage:visible|shallow:parked:0|1`, and
 each release and restore writes a `[hidden]` line.
