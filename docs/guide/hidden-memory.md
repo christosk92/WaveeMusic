@@ -35,7 +35,10 @@ names. What stays:
 
 The cache keeps each image's identity (size, "was ready") so nothing re-lays out. Each released image is restarted through the
 ordinary decode path on the restore edge, the ones that intersect the window first (on the Visible lane) and the rest after
-the first frame; an image that is only held (a row cell off screen) and not on screen stays released until its row asks for it.
+the first frame. That includes images that are only held (a list row's image cell in overscan, a cover on a page kept alive in
+the background): a row cell is requested but never pinned, and nothing asks for it again when its row scrolls into view, so it
+must come back with the rest. Images on a page kept alive in the background, or in a collapsed pane, restart too but the held
+frame does not wait for them.
 
 ### The restore hold
 
@@ -46,11 +49,13 @@ whole and every image the user had seen before the hide that the frame names has
 on the render thread against the frame it just recorded, so it also covers uploads still queued behind the 2 MiB-per-turn
 staging cap (which is lifted while holding) and a stale pre-hide frame that was adopted first.
 
-- The longest wait is **200 ms** (`--fg hidden=...:...:...:HOLD`, `0` turns the hold off). If images are still decoding at
-  the deadline the frame is presented anyway, they fade in with the ordinary warm reveal, and `RestoreHoldTimeouts` counts it.
-  A render-side guard releases an unfaithful frame after 500 ms if a gate can never open (a rejected upload).
-- Not armed when the window came back at a different size or DPI (the held frame would be stretched), when nothing on screen
-  was released, or when the window is re-parked mid-hold.
+- The UI holds for at most **200 ms** (`--fg hidden=...:...:...:HOLD`, `0` turns the hold off); `RestoreHoldTimeouts` counts a
+  restore whose images were still decoding then. The images stay tracked, so the render side's faithful-frame check keeps the
+  old frame on the glass until they are resident: the user sees the old frame, then the right one, never a placeholder in
+  between. A render-side guard presents anyway 500 ms after the first frame the UI released (a gate that can never open, such
+  as a rejected upload), so a restore never freezes; stragglers after that take the ordinary warm reveal.
+- Not armed when the window came back at a different size or DPI (the held frame would be stretched) or when nothing on
+  screen was released. A window re-parked mid-hold keeps the hold, and the deadline restarts when it is shown again.
 - A held frame is not a covered window: the app-wide occlusion signal (`InputHooks.WindowOccluded`) never flips for it,
   visualizers and meters keep running, video placement only applies releases, and compositor motion is neither paused nor
   re-anchored. The hold rides the published frame (a `PresentHeld` bit), so a release cannot race the frame it governs.
@@ -80,8 +85,8 @@ after 5 s hidden. This is how a before/after comparison is run.
 Unrelated to hiding but shipped with it: the image cache's cap is now `max(today's, window-derived)` (three window areas of
 pixels, clamped to 32 MiB .. 64 MiB weak / 96 MiB discrete; a cap set below 32 MiB is left alone), re-derived when the window
 changes size, and the cache charges what the device **measured** a 64/128/256/512 texture to commit (the Adreno commits 320 KiB
-for a 256 x 256, the formula said 256 KiB). Both caps scale by the measured/formula ratio of the 256 bucket in the same call, so
-the number of covers held does not shrink. Pinned images are never evicted by either.
+for a 256 x 256, the formula said 256 KiB). Both caps scale by the largest measured/formula ratio of any measured bucket (never
+below 1) in the same call, so the number of images held, of any size, does not shrink. Pinned images are never evicted by either.
 
 ## Measuring it
 

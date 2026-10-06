@@ -35,7 +35,7 @@ versions separately under `v*` and is not tracked in this file.)
   nothing is blank or stale; released covers load again when you scroll to them. A window that is only covered by
   another one waits 30 seconds, so switching back with Alt+Tab stays instant. After five minutes minimized or in
   the tray, the covers still on screen are released too, apart from the one on the player bar; when you bring Wavee
-  back its first frame waits a moment (up to 0.2 seconds, normally less) for them to load, so the window never
+  back its first frame waits a moment (normally under 0.2 seconds) for them to load, so the window never
   shows an empty cover. A window that was only covered never gets this far.
 - **A minimized Wavee wakes up far less often.** Its touchpad-scrolling support used to wake the app four times a
   second while the window was minimized or in the tray; it now sleeps until something it has to do needs it.
