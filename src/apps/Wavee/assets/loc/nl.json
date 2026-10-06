@@ -1251,29 +1251,37 @@
     "goToArtist": "Naar artiest",
     "credits": "Credits · {title}",
     "options": {
-      "title": "Visualisatie",
-      "button": "Visualisatie-opties",
-      "layout": "Indeling",
-      "spectrum": "Spectrum",
-      "faces": "Kies een visualisatie…",
-      "artistHero": "Artiestbeeld",
-      "heroLyrics": "Songtekst over de afbeelding tonen",
+      "title": "Volledig scherm",
+      "button": "Opties voor volledig scherm",
+      "tabsLabel": "Opties voor volledig scherm",
+      "tabViz": "Visualisatie",
+      "tabLayout": "Indeling",
+      "nowShowing": "Nu te zien",
+      "groupAll": "Alle",
+      "groupsLabel": "Visualisatiegroep",
+      "gridLabel": "Visualisaties",
+      "footer": "Elke visualisatie werkt met elke indeling",
+      "openGallery": "Galerij openen",
+      "layoutHelp": "Waar de hoes en de songtekst staan, bovenop je visualisatie.",
+      "layoutLabel": "Indeling",
+      "spectrumUnder": "Spectrum onder de hoes",
+      "heroLyrics": "Songtekst over de foto tonen",
       "heroMotion": "Langzaam pannen en zoomen",
       "heroMotionReduced": "Uit zolang Windows beweging beperkt",
-      "heroDim": "Afbeelding verduisteren",
+      "heroDim": "Foto verduisteren",
       "heroNote": "Gebruikt de headerafbeelding van de artiest van Spotify. Artiesten zonder headerafbeelding vallen terug op de indeling Grote hoes."
     },
     "layout": {
-      "card": "Kaart",
+      "card": "Visualisatie eerst",
       "large": "Grote hoes",
-      "centered": "Gecentreerd",
-      "artist": "Artiest"
+      "centered": "Gecentreerde hoes",
+      "artist": "Artiestfoto"
     },
     "layoutSub": {
-      "card": "Huidig, kleine hoes",
-      "large": "Hoes naast songtekst",
-      "centered": "Hoes in een ring",
-      "artist": "Artiestafbeelding als achtergrond"
+      "card": "De visualisatie vult het scherm; een kleine kaart toont wat er speelt.",
+      "large": "Een grote hoes naast de songtekst, de visualisatie erachter.",
+      "centered": "De hoes in het midden, de visualisatie eromheen.",
+      "artist": "Vervangt de visualisatie door de foto van de artiest, met songtekst als je wilt."
     },
     "spectrum": {
       "bars": "Balken",

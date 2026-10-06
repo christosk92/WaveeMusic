@@ -3770,29 +3770,37 @@
     "goToArtist": "Go to artist",
     "credits": "Credits · {title}",
     "options": {
-      "title": "Visualizer",
-      "button": "Visualizer options",
-      "layout": "Layout",
-      "spectrum": "Spectrum",
-      "faces": "Choose a visualizer…",
-      "artistHero": "Artist hero",
-      "heroLyrics": "Show lyrics over the image",
+      "title": "Full screen",
+      "button": "Full screen options",
+      "tabsLabel": "Full screen options",
+      "tabViz": "Visualizer",
+      "tabLayout": "Layout",
+      "nowShowing": "Now showing",
+      "groupAll": "All",
+      "groupsLabel": "Visualizer group",
+      "gridLabel": "Visualizers",
+      "footer": "Every visualizer works with every layout",
+      "openGallery": "Open gallery",
+      "layoutHelp": "Where the cover and lyrics sit on top of your visualizer.",
+      "layoutLabel": "Layout",
+      "spectrumUnder": "Spectrum under the cover",
+      "heroLyrics": "Show lyrics over the photo",
       "heroMotion": "Slow pan and zoom",
       "heroMotionReduced": "Off while Windows reduces motion",
-      "heroDim": "Image dimming",
-      "heroNote": "Uses the artist's header image from Spotify. Artists without one fall back to the Large art layout."
+      "heroDim": "Photo dimming",
+      "heroNote": "Uses the artist's header image from Spotify. Artists without one fall back to the Large cover layout."
     },
     "layout": {
-      "card": "Card",
-      "large": "Large art",
-      "centered": "Centered",
-      "artist": "Artist"
+      "card": "Visualizer first",
+      "large": "Large cover",
+      "centered": "Centered cover",
+      "artist": "Artist photo"
     },
     "layoutSub": {
-      "card": "Current, small cover",
-      "large": "Cover beside lyrics",
-      "centered": "Cover in a ring",
-      "artist": "Hero image backdrop"
+      "card": "The visualizer fills the screen; a small card shows what is playing.",
+      "large": "A big cover beside the lyrics, the visualizer behind them.",
+      "centered": "The cover in the middle, the visualizer around it.",
+      "artist": "Replaces the visualizer with the artist’s photo, with lyrics if you like."
     },
     "spectrum": {
       "bars": "Bars",
