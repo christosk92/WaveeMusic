@@ -304,6 +304,7 @@ public static partial class Shell
             PlayLog.Flush();
             Notify.HostShutdown();
             Playback.Os.Shutdown();
+            Diagnostics.Evidence.DrainForExit();   // a bundle mid-write finishes (bounded 1.5 s)
             AiLyrics.Shutdown();      // stops the model download (partials stay) and the NPU worker within 2 s
             s_fetchWake?.Dispose();
             s_audioWarm?.Dispose();
