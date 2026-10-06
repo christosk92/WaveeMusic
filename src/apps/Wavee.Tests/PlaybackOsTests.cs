@@ -19,6 +19,7 @@
 //   THE JUMP LIST'S TWO HALVES SHARE ONE KEY SPACE. A surface both played and visited must appear once; the whole
 //   dedupe rests on the play log and the history composing the SAME route string.
 
+using FluentGpu.Localization;
 using FluentGpu.WindowsApi.Media;
 using FluentGpu.WindowsApi.Shell;
 
@@ -256,6 +257,23 @@ public class PlaybackJumpListTests
         string artist = Playback.Os.JumpList.KindLabel((byte)EntityKind.Artist);
         Assert.NotEqual(album, playlist);
         Assert.NotEqual(playlist, artist);
+    }
+
+    [Theory]
+    [InlineData(Playback.Phase.Playing, "wavee://pause")]
+    [InlineData(Playback.Phase.Paused, "wavee://resume")]
+    [InlineData(Playback.Phase.Loading, "wavee://resume")]
+    [InlineData(Playback.Phase.Idle, "wavee://resume")]
+    public void The_transport_task_matches_the_published_phase(Playback.Phase published, string argument)
+    {
+        // The verb is decided from the state being PUBLISHED. It used to read `PhaseSignal`, which the drain writes only
+        // after the sinks ran, so the list said "Pause" while paused and "Resume" while playing.
+        bool playing = Playback.Os.JumpList.ShowsPauseTask(published);
+        JumpTask[] tasks = Playback.Os.JumpList.Tasks(playing, @"C:\w.exe", null, null);
+        Assert.Equal(2, tasks.Length);
+        Assert.Equal(argument, tasks[0].Arguments);
+        Assert.Equal(Loc.Get(playing ? Strings.Jumplist.Pause : Strings.Jumplist.Resume), tasks[0].Title);
+        Assert.Equal("wavee://open?route=search", tasks[1].Arguments);
     }
 
     [Fact]

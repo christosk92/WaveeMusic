@@ -78,7 +78,7 @@ public static partial class Playback
 
             Smtc.Activate(hwnd);
             Taskbar.Activate(hwnd);
-            JumpList.Activate();
+            JumpList.Activate(in s);
             PowerPolicy.Activate();
 
             // AFTER the flag, never before: every sink returns early on `!s_active`, so seeding first is a silent
@@ -662,9 +662,15 @@ public static partial class Playback
             /// played and visited appears once.</summary>
             public static Func<int, JumpRow[]>? RecentSurfaces { get; set; }
 
-            internal static void Activate()
+            internal static void Activate(in State s)
             {
                 s_on = true;
+                // Seed the edge detector from the state being published, so the first rebuild already shows the right
+                // verb and the `Publish(in s)` that follows `Activate` is not a second edge (and a second transaction).
+                s_havePlayState = true;
+                s_lastPlaying = ShowsPauseTask(s.Phase);
+                s_haveId = true;
+                s_lastId = s.CurrentId;
                 s_lastRebuildMs = long.MinValue;
                 Rebuild();
             }
@@ -691,7 +697,7 @@ public static partial class Playback
             internal static void OnStateChanged(in State s)
             {
                 if (!s_on) return;
-                bool playing = s.Phase == Phase.Playing;
+                bool playing = ShowsPauseTask(s.Phase);
                 // `_havePlayState` matters: without it the first tick's `false` matches the default `false` and the
                 // very first play/pause edge is missed.
                 bool playChanged = !s_havePlayState || playing != s_lastPlaying;
@@ -716,27 +722,37 @@ public static partial class Playback
                 if (Environment.ProcessPath is not { Length: > 0 } exe) return;
                 s_lastRebuildMs = FrameNowMs();
 
-                // Re-read the LIVE phase rather than trusting the cached one: the rebuild is posted, so the cached
-                // value can be a frame stale by the time the COM transaction runs.
-                bool playing = PhaseSignal.Peek() == Phase.Playing;
+                // The phase of the state being PUBLISHED, never `PhaseSignal.Peek()`: this runs inside the drain's
+                // effects, BEFORE the drain writes the signals (`Playback.Host` `Execute()` then `Publish()`), so the
+                // signal still holds the previous phase and the verb came out inverted — "Pause" while paused. The
+                // signal is only the fallback for a rebuild with no state seen yet (an attach after a sign-out), which
+                // never runs inside a drain.
+                bool playing = s_havePlayState ? s_lastPlaying : ShowsPauseTask(PhaseSignal.Peek());
                 string? appIcon = AppIcon.Path();
                 string? glyph = AppIcon.TaskbarGlyph(playing ? "pause" : "play");
-
-                var tasks = new[]
-                {
-                    new JumpTask(
-                        Loc.Get(playing ? Strings.Jumplist.Pause : Strings.Jumplist.Resume), exe,
-                        playing ? "wavee://pause" : "wavee://resume", glyph ?? appIcon,
-                        Loc.Get(playing ? Strings.Jumplist.PausePlayback : Strings.Jumplist.ResumePlayback)),
-                    new JumpTask(Loc.Get(Strings.Jumplist.Search), exe, "wavee://open?route=search", appIcon,
-                        Loc.Get(Strings.Jumplist.Search)),
-                };
+                JumpTask[] tasks = Tasks(playing, exe, appIcon, glyph);
 
                 JumpListItem[] items = BuildCategory(exe, appIcon);
                 // The COM transaction leaves the UI thread here (#115): the worker runs the newest write per AUMID and
                 // skips one that matches what it last committed, so a play/pause burst costs one transaction.
                 s_jumpListWorker.Submit(JumpListWrite.Publish(Loc.Get(Strings.Jumplist.JumpBackIn), items, tasks, Aumid));
             }
+
+            /// <summary>Does a published <paramref name="phase"/> offer the PAUSE verb? Only while playing; every other
+            /// phase (paused, loading, idle) offers Resume.</summary>
+            public static bool ShowsPauseTask(Phase phase) => phase == Phase.Playing;
+
+            /// <summary>The two standing tasks: the transport verb that matches <paramref name="playing"/> (Pause while
+            /// playing, Resume otherwise) and Search.</summary>
+            public static JumpTask[] Tasks(bool playing, string exe, string? appIcon, string? glyph) =>
+            [
+                new JumpTask(
+                    Loc.Get(playing ? Strings.Jumplist.Pause : Strings.Jumplist.Resume), exe,
+                    playing ? "wavee://pause" : "wavee://resume", glyph ?? appIcon,
+                    Loc.Get(playing ? Strings.Jumplist.PausePlayback : Strings.Jumplist.ResumePlayback)),
+                new JumpTask(Loc.Get(Strings.Jumplist.Search), exe, "wavee://open?route=search", appIcon,
+                    Loc.Get(Strings.Jumplist.Search)),
+            ];
 
             /// <summary>Up to six rows: the play log first, then the nav history, deduped on the composed route. An
             /// EMPTY array means the heading is not drawn at all — `AppendCategory` is skipped on a zero count — and

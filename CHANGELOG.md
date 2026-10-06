@@ -17,6 +17,12 @@ versions separately under `v*` and is not tracked in this file.)
   each time. The menu is now written in the background, and a quick run of play/pause presses writes it once, for the
   state you end on. (#115)
 
+### Fixed
+
+- **The taskbar jump list offers the right verb again.** Right-clicking Wavee in the taskbar offered "Pause" while the
+  music was paused and "Resume" while it played, because the menu was built from the state just before the change.
+  It now says "Pause" while playing and "Resume" while paused. (#115)
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
