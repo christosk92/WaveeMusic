@@ -67,6 +67,8 @@ public static partial class Settings
     // StageSyncSlider below) and a pick made in the stage's gallery shows here live. The combo's value is an INDEX into
     // Visualizer.Catalog.Shown (the gallery's order), never the persisted Kind int.
     static readonly Signal<int> s_stageVisualizer = new(Visualizer.Catalog.IndexOf(Visualizer.Catalog.Default));
+    /// <summary>The stage's visualizer layout (Card · Large art · Centered · Artist) as the combo's index — the persisted int itself.</summary>
+    static readonly Signal<int> s_stageLayout = new(0);
     static readonly FloatSignal s_stageSensitivity = new(1f), s_stageSyncOffset = new(0f);
     static readonly Slider.SliderOptions s_stageSensitivityOptions = new()
     {
@@ -86,6 +88,7 @@ public static partial class Settings
     {
         s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
         s_stageVisualizer.Value = VisualizerIndex();
+        s_stageLayout.Value = Prefs.Stage.Layout();
         s_stageSensitivity.Value = Prefs.Stage.Sensitivity();
         s_stageSyncOffset.Value = Prefs.Stage.SyncOffsetMs();
     }
@@ -152,6 +155,8 @@ public static partial class Settings
         kids.Add(SectionHeader(Loc.Get(Strings.Stage.Settings.Title), SectionGlyph(Tab.Appearance, "Fullscreen"), Loc.Get(Strings.Stage.Settings.Subtitle)));
         kids.Add(Row(Loc.Get(Strings.Stage.Settings.Visualizer), Loc.Get(Strings.Stage.Settings.VisualizerSub),
             Embed.Comp(static () => new StageVisualizerPicker()), RowGlyph(Tab.Appearance, "stageVisualizer")));
+        kids.Add(Row(Loc.Get(Strings.Stage.Settings.Layout), Loc.Get(Strings.Stage.Settings.LayoutSub),
+            Embed.Comp(static () => new StageLayoutPicker()), RowGlyph(Tab.Appearance, "stageLayout")));
         kids.Add(Row(Loc.Get(Strings.Stage.Settings.Sensitivity), Loc.Get(Strings.Stage.Settings.SensitivitySub),
             Embed.Comp(static () => new StageSensitivitySlider()), RowGlyph(Tab.Appearance, "stageSensitivity")));
         kids.Add(Row(Loc.Get(Strings.Stage.Settings.LyricsOverlay), Loc.Get(Strings.Stage.Settings.LyricsOverlaySub),
@@ -799,6 +804,19 @@ public static partial class Settings
             UseSignalEffect(static () => s_stageVisualizer.Value = VisualizerIndex());   // the gallery's pick lands here live
             return ComboBox.Create(VisualizerLabels(), s_stageVisualizer, width: 220f,
                 onChange: static i => { if ((uint)i < (uint)Visualizer.Catalog.ShownCount) Prefs.Stage.SetVisualizer((int)Visualizer.Catalog.Shown[i]); });
+        }
+    }
+    /// <summary>The layouts' names in the persisted order (the combo's items: the index IS the stored int).</summary>
+    static string[] LayoutLabels() =>
+    [
+        Loc.Get(Strings.Stage.Layout.Card), Loc.Get(Strings.Stage.Layout.Large), Loc.Get(Strings.Stage.Layout.Centered), Loc.Get(Strings.Stage.Layout.Artist),
+    ];
+    sealed class StageLayoutPicker : Component
+    {
+        public override Element Render()
+        {
+            UseSignalEffect(static () => s_stageLayout.SetIfChanged(Prefs.Stage.Layout()));   // the options popover's and the [ ] keys' picks land here live
+            return ComboBox.Create(LayoutLabels(), s_stageLayout, width: 220f, onChange: static i => Prefs.Stage.SetLayout(i));
         }
     }
     sealed class StageSensitivitySlider : Component

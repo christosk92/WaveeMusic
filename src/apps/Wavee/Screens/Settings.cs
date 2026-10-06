@@ -141,9 +141,10 @@ public static partial class Settings
             new(Tab.Appearance, "Lyrics", "aiBatterySaver", "Clock"),
             new(Tab.Appearance, "Lyrics", "aiLanguages", "LocaleLanguage"),
             new(Tab.Appearance, "Lyrics", "aiFiles", "Folder"),
-            // The fullscreen stage's four settings (+ the visualizer pick), mirrored from its gallery. "TvMonitor" is the
+            // The fullscreen stage's four settings (+ the visualizer and layout picks), mirrored from its gallery and options popover. "TvMonitor" is the
             // section's own glyph, so none of the rows may reuse it.
             new(Tab.Appearance, "Fullscreen", "stageVisualizer", "Equalizer"),
+            new(Tab.Appearance, "Fullscreen", "stageLayout", "SplitView"),
             new(Tab.Appearance, "Fullscreen", "stageSensitivity", "Audio"),
             new(Tab.Appearance, "Fullscreen", "stageLyricsOverlay", "Document"),
             new(Tab.Appearance, "Fullscreen", "stageSyncOffset", "Clock"),

@@ -294,7 +294,9 @@ public static partial class Visualizer
             var ctx = _ctx!;
             bool viz = ctx.Mode.Value == Stage.Mode.Visualizer, gallery = ctx.GalleryShown.Value;
             var kind = ctx.Kind.Value;
-            var tier = Demand.For(kind, viz, gallery, Shell.Ui.ImmersiveLyrics.Value, Playback.IsPlaying.Value,
+            // the face's needs inside Card; a layout's strip spectrum (or the level the backdrop field breathes with when it has none)
+            var needs = Stage.LayoutRules.NeedsOf(ctx.Look.Value.Eff, ctx.SpectrumPref.Value, kind);
+            var tier = Demand.For(needs, viz, gallery, Shell.Ui.ImmersiveLyrics.Value, Playback.IsPlaying.Value,
                                   Playback.OwnerSignal.Value == Playback.Owner.Us, Playback.Audio.Supported.Value,
                                   _hooks?.WindowOccluded?.Value ?? false, Design.Reduced);
             ctx.Slab.LastTier = tier;
@@ -462,9 +464,10 @@ public static partial class Visualizer
             bool playing = Playback.IsPlaying.Peek(), calm = ctx.Calm.Peek(), viz = ctx.Mode.Peek() == Stage.Mode.Visualizer;
             float sensitivity = ctx.Sensitivity.Peek();
             // the Aurora ribbon arrays: only while an Aurora stage face or the shown gallery could put them on screen
-            _ribbons = viz && (Catalog.Successor(ctx.Kind.Peek()) == Kind.Aurora || ctx.GalleryShown.Peek());
+            bool underFace = viz && Stage.LayoutRules.ShowsFace(ctx.Look.Peek().Eff);   // a layout has no face: its backdrop field breathes as it does in Lyrics mode
+            _ribbons = underFace && (Catalog.Successor(ctx.Kind.Peek()) == Kind.Aurora || ctx.GalleryShown.Peek());
             var input = new Input(playing, calm, sensitivity, _haveLive, info.Muted, rms, pos, dur, haveBands, haveBeats, tempo,
-                                  viz, HaveLevel: haveLevel, Flux: info.Flux, Onset: onset, OnsetStrength: info.OnsetStrength, Ribbons: _ribbons);
+                                  underFace, HaveLevel: haveLevel, Flux: info.Flux, Onset: onset, OnsetStrength: info.OnsetStrength, Ribbons: _ribbons);
             _pending = _model.Tick(in input, _db, bands, beats, dt);
 
             // a moment: on the 8th bar's downbeat (or a face's force), rotate the live palette and fade to it
