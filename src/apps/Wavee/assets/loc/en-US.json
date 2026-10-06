@@ -3768,9 +3768,42 @@
     "monthlyListeners": "{count} monthly listeners",
     "goToArtist": "Go to artist",
     "credits": "Credits · {title}",
+    "options": {
+      "title": "Visualizer",
+      "button": "Visualizer options",
+      "layout": "Layout",
+      "spectrum": "Spectrum",
+      "faces": "Choose a visualizer…",
+      "artistHero": "Artist hero",
+      "heroLyrics": "Show lyrics over the image",
+      "heroMotion": "Slow pan and zoom",
+      "heroMotionReduced": "Off while Windows reduces motion",
+      "heroDim": "Image dimming",
+      "heroNote": "Uses the artist's header image from Spotify. Artists without one fall back to the Large art layout."
+    },
+    "layout": {
+      "card": "Card",
+      "large": "Large art",
+      "centered": "Centered",
+      "artist": "Artist"
+    },
+    "layoutSub": {
+      "card": "Current, small cover",
+      "large": "Cover beside lyrics",
+      "centered": "Cover in a ring",
+      "artist": "Hero image backdrop"
+    },
+    "spectrum": {
+      "bars": "Bars",
+      "ring": "Ring",
+      "line": "Line",
+      "off": "Off"
+    },
+    "nowPlayingEyebrow": "Now playing",
+    "withArtists": "with {artists}",
     "tip": {
       "title": "Pick your visualizer",
-      "body": "Nineteen styles, all tinted from the album art. Choose one on the right, or press [ and ] to step through them. Wavee hides the controls after three seconds; move the mouse to bring them back.",
+      "body": "Nineteen styles, all tinted from the album art. Choose one on the right, or press [ and ] to step through them. The sliders button above has more layouts: large art, centered and an artist photo. Wavee hides the controls after three seconds; move the mouse to bring them back.",
       "gotIt": "Got it"
     },
     "viz": {
@@ -3866,7 +3899,9 @@
       "calm": "Calm motion",
       "calmSub": "Calmer visualizers: smaller swings, a softer beat, no flashes",
       "moments": "Change with the music",
-      "momentsSub": "Every eight bars, on the downbeat, the visualizer turns to the album art's next colour"
+      "momentsSub": "Every eight bars, on the downbeat, the visualizer turns to the album art's next colour",
+      "layout": "Layout",
+      "layoutSub": "How the full-screen Visualizer view is laid out"
     },
     "verse": {
       "noLyrics": "No lyrics for this track",
@@ -3891,6 +3926,7 @@
     "diag": {
       "title": "Fullscreen & visualizer",
       "mode": "Mode",
+      "layout": "Layout",
       "fft": "FFT per publish",
       "leases": "Lease tier",
       "delay": "Output delay",

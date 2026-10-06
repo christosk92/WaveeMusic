@@ -74,6 +74,11 @@ public static partial class Stage
     /// <summary>The accent TARGET for the playing cover. The clock eases <c>Slab.Accent</c> toward it (Stage.Tone.CrossFadeMs).</summary>
     public static readonly Signal<ColorF> AccentSignal = new(ColorF.FromRgba(0xff, 0x9e, 0xc4));
 
+    /// <summary>The stage's pane region currently shows the LYRICS pane (Lyrics mode, Large art, the Artist hero with lyrics): what
+    /// the lyrics view's visibility gate reads (<c>Lyrics.s_stageVisible</c>) instead of the stored mode, so one instance serves every
+    /// arrangement. SurfaceCore writes it and clears it when the stage closes.</summary>
+    public static readonly Signal<bool> LyricsPaneShown = new(false);
+
     /// <summary>What every stage child reads — ambient, many consumers ⇒ context (component-props-contract §3). ONE instance for
     /// the stage's life (SurfaceCore's field), holding SIGNALS: a consumer re-renders on the signals it reads, never on
     /// SurfaceCore's own renders (V-U50). Every preference is mirrored here by SurfaceCore's one epoch effect (O8); the
@@ -90,6 +95,22 @@ public static partial class Stage
         /// NOT part of it: an open gallery stays until it is closed, because the face is laid out beside it
         /// (<c>Layout.FaceRight</c>) and hiding the pane with the chrome left the face clipped beside an empty column.</summary>
         public readonly Signal<bool> GalleryShown = new(true);
+        // ── the visualizer LAYOUT axis (Stage.Layouts.cs): the stored preferences, mirrored by the one epoch effect ──
+        /// <summary>The STORED layout and spectrum choice, the Artist hero's "lyrics over the image" and "slow pan and zoom" switches
+        /// and its dimming (0–100) — never read from Prefs on a hot path (O8).</summary>
+        public readonly Signal<VizLayout> LayoutPref = new(Stage.VizLayout.Card);
+        public readonly Signal<SpectrumStyle> SpectrumPref = new(SpectrumStyle.Bars);
+        public readonly Signal<bool> HeroLyricsPref = new(true), HeroMotion = new(true);
+        public readonly Signal<int> HeroDim = new(HeroRules.DefaultDim);
+        /// <summary>What the playing artist's header looks like (HeroFacts writes it) and the artist SLOT whose header shows (0 = none).</summary>
+        public readonly Signal<HeroState> HeroFact = new(HeroState.Pending);
+        public readonly Signal<int> HeroArtist = new(0);
+        /// <summary>DERIVED by SurfaceCore: the effective layout (<see cref="LayoutRules.Effective"/>), whether the lyric caption line
+        /// shows, the one <see cref="Stage.Look"/> every layout geometry call takes, and the pane the pane region shows.</summary>
+        public readonly Signal<VizLayout> Effective = new(Stage.VizLayout.Card);
+        public readonly Signal<bool> CaptionOn = new(false);
+        public readonly Signal<Look> Look = new(Stage.Look.Plain(Stage.Mode.Lyrics));
+        public readonly Signal<PaneKind> Pane = new(PaneKind.Lyrics);
         public readonly FloatSignal Sensitivity = new(1f), SyncOffsetMs = new(0f);
         /// <summary>The chrome is mounted (the idle machine's output) · the playing track has timed lyrics (LyricFacts writes it).</summary>
         public readonly Signal<bool> Chrome = new(true), HasTimedLyrics = new(false);
@@ -200,8 +221,9 @@ public static partial class Stage
 
             // ── the ONE layout signal, equality-gated (Signal<T>.SetIfChanged) ──
             UseSignalEffect(() => { var size = vp.Value; ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek())); });
-            // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip) ──
-            UseSignalEffect(() => ctx.GalleryShown.SetIfChanged(ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery));
+            // ── the gallery's "shown" gate, narrowed to one bool (a resize re-runs this, the clock's lease only on a flip): open, room
+            //    for it, and a layout that has a gallery (only Card does) ──
+            UseSignalEffect(() => ctx.GalleryShown.SetIfChanged(ctx.GalleryOpen.Value && ctx.Layout.Value.ShowGallery && LayoutRules.GalleryAllowed(ctx.Look.Value.Eff)));
 
             // ── EVERY preference, once per Prefs.Stage epoch, into the context's signals (O8) — the only Prefs.Stage reads on the stage ──
             UseSignalEffect(() =>
@@ -216,7 +238,30 @@ public static partial class Stage
                 ctx.Moments.SetIfChanged(Prefs.Stage.Moments());
                 ctx.Sensitivity.SetIfChanged(Prefs.Stage.Sensitivity());
                 ctx.SyncOffsetMs.SetIfChanged(Prefs.Stage.SyncOffsetMs());
+                ctx.LayoutPref.SetIfChanged((VizLayout)Prefs.Stage.Layout());
+                ctx.SpectrumPref.SetIfChanged((SpectrumStyle)Prefs.Stage.Spectrum());
+                ctx.HeroLyricsPref.SetIfChanged(Prefs.Stage.HeroLyrics());
+                ctx.HeroMotion.SetIfChanged(Prefs.Stage.HeroMotion());
+                ctx.HeroDim.SetIfChanged(Prefs.Stage.HeroDim());
             });
+
+            // ── the layout axis, derived (each effect reads only what the previous wrote): the effective layout, whether the caption
+            //    line shows, the ONE Look the geometry takes, the pane region's pane, and the lyrics view's visibility gate ──
+            UseSignalEffect(() => ctx.Effective.SetIfChanged(LayoutRules.Effective(ctx.LayoutPref.Value, ctx.Layout.Value.Aspect, ctx.HeroFact.Value)));
+            UseSignalEffect(() => ctx.CaptionOn.SetIfChanged(LayoutRules.ShowsCaption(ctx.Mode.Value, ctx.Effective.Value, ctx.LyricsOverlay.Value,
+                ctx.HasTimedLyrics.Value, ctx.Layout.Value.ShowPane, ctx.Kind.Value)));
+            UseSignalEffect(() =>
+            {
+                var look = LayoutRules.LookOf(ctx.Mode.Value, ctx.Effective.Value, ctx.SpectrumPref.Value, ctx.HeroLyricsPref.Value, ctx.CaptionOn.Value);
+                ctx.Look.SetIfChanged(look);
+                Diagnostics.NoteLayout(look.Eff);
+            });
+            UseSignalEffect(() =>
+            {
+                var look = ctx.Look.Value;
+                ctx.Pane.SetIfChanged(LayoutRules.Pane(look.Mode, look.Eff, look.HeroLyrics));
+            });
+            UseSignalEffect(() => LyricsPaneShown.SetIfChanged(ctx.Pane.Value == PaneKind.Lyrics));
 
             // ── the playing ROW, narrowed (§2 perf fix): ONE subscription to Tracks.Changed, ONE write when the slot or its
             //    Version moved; every consumer reads ctx.TrackKey and re-renders only then (V-U12: no hook inside a factory) ──
@@ -276,6 +321,7 @@ public static partial class Stage
                 if (_cursorHidden) { hooks.SetCursorOverride?.Invoke(this, null); _cursorHidden = false; }
                 _tip?.Close();
                 _tip = null;
+                LyricsPaneShown.Value = false;                    // the lyrics view's gate must not outlive the stage (it ticks only while shown)
             }, DepKey.Empty);
 
             // ── idle: the engine machine on the HOST TIMER clock, one timer re-armed from NextWakeMs (MediaPlayerElement.cs:390-416, :726-730) ──

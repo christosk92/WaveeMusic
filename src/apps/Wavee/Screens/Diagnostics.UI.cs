@@ -342,6 +342,7 @@ public static partial class Diagnostics
                 : info.AlignFrames.ToString(CultureInfo.InvariantCulture) + " frames behind newest · " + queueFrames.ToString(CultureInfo.InvariantCulture) + " queued";
             return Card(Loc.Get(Strings.Stage.Diag.Title),
                 Row(Loc.Get(Strings.Stage.Diag.Mode), Stage.Diagnostics.IsOpen ? Stage.Diagnostics.LastMode + " · " + Stage.Diagnostics.LastKind : null),
+                Row(Loc.Get(Strings.Stage.Diag.Layout), Stage.Diagnostics.IsOpen ? Stage.Diagnostics.LastLayout.ToString() : null),
                 Row(Loc.Get(Strings.Stage.Diag.Leases), Stage.Diagnostics.LastTier.ToString()),
                 Row(Loc.Get(Strings.Stage.Diag.Fft), n == 0 ? null : info.FftMs.ToString("0.000", CultureInfo.InvariantCulture) + " ms"),
                 Row(Loc.Get(Strings.Stage.Diag.Delay), delay),

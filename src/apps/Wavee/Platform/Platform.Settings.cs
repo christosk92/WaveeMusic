@@ -58,6 +58,17 @@ public static partial class Platform
         public static readonly SettingKey<bool> StageGalleryOpen = new("stage.galleryOpen", true);
         /// <summary>The "Pick your visualizer" tip has been dismissed once.</summary>
         public static readonly SettingKey<bool> StageTipSeen = new("stage.tipSeen", false);
+        /// <summary>The visualizer LAYOUT as an int (0 Card · 1 Large art · 2 Centered · 3 Artist — append only; unknown ⇒ Card,
+        /// <c>Stage.LayoutRules.Coerce</c>).</summary>
+        public static readonly SettingKey<int> StageLayout = new("stage.layout", 0);
+        /// <summary>The spectrum the non-Card layouts draw as an int (0 Bars · 1 Ring · 2 Line · 3 Off — append only; unknown ⇒ Bars).</summary>
+        public static readonly SettingKey<int> StageSpectrum = new("stage.spectrum", 0);
+        /// <summary>The Artist layout shows the lyrics pane over the image (the HeroLyrics arrangement).</summary>
+        public static readonly SettingKey<bool> StageHeroLyrics = new("stage.heroLyrics", true);
+        /// <summary>The Artist layout's slow pan and zoom (always still while Windows reduces motion).</summary>
+        public static readonly SettingKey<bool> StageHeroMotion = new("stage.heroMotion", true);
+        /// <summary>The Artist layout's image dimming 0–100 (<c>Stage.HeroRules.FootAlpha</c>); the default 75 is the board's 0.85.</summary>
+        public static readonly SettingKey<int> StageHeroDim = new("stage.heroDim", 75);
 
         // ── playback normalization (docs/plans/wavee/playback-smoothness-implementation.md §4.15, D5; beside `NormalizationEnabled`) ──
         /// <summary><c>Playback.Audio.NormalizationMode</c> as an int (0 Quiet −23 LUFS · 1 Normal −14 · 2 Loud −11). PERSISTED — append
