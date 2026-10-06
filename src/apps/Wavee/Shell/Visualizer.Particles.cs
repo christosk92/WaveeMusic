@@ -139,11 +139,13 @@ public static partial class Visualizer
             /// <summary>The rest pose (preview, reduced motion): nothing flies, the streak length follows the level.</summary>
             public void Settle(float low, float kick) => Speed = Target(low, kick);
 
-            /// <summary>One Streak per visible star (head outward, the alpha ramp toward the centre); off-box stars are skipped.</summary>
-            public int Write(Sprite[] dst, int count, float w, float h, float cx, float cy, in Tints t, float lenK)
+            /// <summary>One Streak per visible star (head outward, the alpha ramp toward the centre); off-box stars are skipped.
+            /// <paramref name="sizeK"/> enlarges lengths and widths beyond the box's share of <see cref="RefSize"/> (a small gallery
+            /// tile would otherwise draw sub-pixel streaks — the blank poster).</summary>
+            public int Write(Sprite[] dst, int count, float w, float h, float cx, float cy, in Tints t, float lenK, float sizeK = 1f)
             {
                 int n = 0;
-                float sc = MathF.Max(w, h) * 0.3f, k = MathF.Max(w, h) / RefSize;
+                float sc = MathF.Max(w, h) * 0.3f, k = MathF.Max(w, h) / RefSize * sizeK;
                 for (int i = 0; i < Math.Min(count, N); i++)
                 {
                     float z = Z[i], px = cx + X[i] / z * sc, py = cy + Y[i] / z * sc;

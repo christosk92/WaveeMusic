@@ -69,13 +69,27 @@ public class StageLayoutAxisTests
     {
         Assert.True(Rules.ShowsFace(VL.Card)); Assert.True(Rules.ShowsFace(VL.LargeArt)); Assert.True(Rules.ShowsFace(VL.Centered));
         Assert.False(Rules.ShowsFace(VL.Artist));
-        // text faces fall back to Bloom behind a layout (no duplicate lyrics); Card and Artist never substitute
+        // behind a layout the face is atmosphere only: a face that draws now-playing content (cover, title, lyrics) and has no
+        // ambient variant falls back to Bloom; Bloom / Ring run ambient (cover dropped); abstract faces run as chosen
+        foreach (var k in Visualizer.Catalog.Shown)
+            foreach (var eff in new[] { VL.LargeArt, VL.Centered })
+            {
+                var mounted = Rules.BackdropKind(eff, k);
+                Assert.True(!Visualizer.Catalog.DrawsNowPlaying(mounted) || Visualizer.Catalog.HasAmbient(mounted));
+                Assert.Equal(Visualizer.Catalog.DrawsNowPlaying(k) && !Visualizer.Catalog.HasAmbient(k) ? Visualizer.Kind.Bloom : k, mounted);
+            }
         Assert.Equal(Visualizer.Kind.Bloom, Rules.BackdropKind(VL.LargeArt, Visualizer.Kind.Verse));
         Assert.Equal(Visualizer.Kind.Bloom, Rules.BackdropKind(VL.Centered, Visualizer.Kind.Type));
-        Assert.Equal(Visualizer.Kind.Verse, Rules.BackdropKind(VL.Card, Visualizer.Kind.Verse));
+        Assert.Equal(Visualizer.Kind.Bloom, Rules.BackdropKind(VL.Centered, Visualizer.Kind.Mosaic));
+        Assert.Equal(Visualizer.Kind.Bloom, Rules.BackdropKind(VL.LargeArt, Visualizer.Kind.Spotlight));
         Assert.Equal(Visualizer.Kind.Ring, Rules.BackdropKind(VL.Centered, Visualizer.Kind.Ring));
-        // cover-carrying faces sit under the deeper scrim; Card has none
-        Assert.True(Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Mosaic) > Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Ring));
+        Assert.Equal(Visualizer.Kind.Warp, Rules.BackdropKind(VL.Centered, Visualizer.Kind.Warp));
+        Assert.Equal(Visualizer.Kind.Verse, Rules.BackdropKind(VL.Card, Visualizer.Kind.Verse));
+        Assert.Equal(Visualizer.Kind.Mosaic, Rules.BackdropKind(VL.Card, Visualizer.Kind.Mosaic));
+        Assert.True(Rules.FaceAmbient(VL.LargeArt)); Assert.True(Rules.FaceAmbient(VL.Centered));
+        Assert.False(Rules.FaceAmbient(VL.Card)); Assert.False(Rules.FaceAmbient(VL.Artist));
+        // the scrim sits over the backdrop face only; Card has none
+        Assert.True(Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Ring) > 0f);
         Assert.Equal(0f, Rules.BackdropScrim(VL.Card, Visualizer.Kind.Mosaic));
         Assert.True(Rules.KeysStepFaces(VL.Centered)); Assert.False(Rules.KeysStepFaces(VL.Artist));
     }
@@ -105,7 +119,7 @@ public class StageLayoutAxisTests
     }
 
     [Fact]
-    public void The_caption_follows_the_Card_rule_and_shows_one_line_under_Centered_and_never_under_the_other_layouts()
+    public void The_caption_follows_the_Card_rule_and_never_shows_under_the_layouts()
     {
         var kind = Visualizer.Kind.Bars;   // caption-friendly
         // Card: exactly ModeRules.ShowsCaption
@@ -114,7 +128,7 @@ public class StageLayoutAxisTests
                 foreach (bool timed in new[] { false, true })
                     foreach (bool pane in new[] { false, true })
                         Assert.Equal(Stage.ModeRules.ShowsCaption(mode, overlay, timed, pane, kind), Rules.ShowsCaption(mode, VL.Card, overlay, timed, pane, kind));
-        Assert.True(Rules.ShowsCaption(M.Visualizer, VL.Centered, true, true, true, kind));
+        Assert.False(Rules.ShowsCaption(M.Visualizer, VL.Centered, true, true, false, kind));   // the layout owns the title and lyrics
         Assert.False(Rules.ShowsCaption(M.Visualizer, VL.Centered, false, true, true, kind));
         Assert.False(Rules.ShowsCaption(M.Visualizer, VL.Centered, true, false, true, kind));
         Assert.False(Rules.ShowsCaption(M.Visualizer, VL.LargeArt, true, true, true, kind));

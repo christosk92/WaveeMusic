@@ -577,9 +577,10 @@ public static partial class Visualizer
     /// <summary>The box a face fills and how it is shown. <see cref="Preview"/>: a gallery tile (fewer parts, no blur, no
     /// per-frame sim if avoidable); <see cref="Poster"/>: a FROZEN tile bound to the poster slab — mount no sim, no ticker.
     /// The SAFE rect (stage coordinates, <c>Stage.Layout.FaceSafe</c>) is where a stage face centres its subject: clear of
-    /// the now-playing card, the caption and the transport; 0/0/0/0 (a preview) means the whole box.</summary>
+    /// the now-playing card, the caption and the transport; 0/0/0/0 (a preview) means the whole box. <see cref="Ambient"/>: the
+    /// face runs BEHIND a layout that owns the cover and titles, so it drops its own now-playing parts (<see cref="Catalog.HasAmbient"/>).</summary>
     public readonly record struct FaceSpec(float W, float H, bool Preview, string? CoverUrl,
-        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f)
+        bool Poster = false, float SafeLeft = 0f, float SafeTop = 0f, float SafeRight = 0f, float SafeBottom = 0f, bool Ambient = false)
     {
         public float SafeX1 => SafeRight > SafeLeft ? MathF.Min(SafeRight, W) : W;
         public float SafeY1 => SafeBottom > SafeTop ? MathF.Min(SafeBottom, H) : H;
