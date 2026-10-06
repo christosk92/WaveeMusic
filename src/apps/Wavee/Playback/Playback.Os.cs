@@ -45,7 +45,9 @@
 //
 // Rules: UI thread only (C1) — the two inbound callbacks (an SMTC button, a power broadcast) hop through
 // `Playback.ToUi` first; no unbounded queue (C8); nothing here reads a wall clock for motion (the memory rule
-// `animations-sample-frame-time` — `Playback.FrameNowMs` is the frame clock).
+// `animations-sample-frame-time` — `Playback.FrameNowMs` is the frame clock). The ONE exception to "UI thread only" is
+// the jump list's COM transaction: the UI thread builds the write and `Playback.Os.JumpListWorker.cs` runs it on a
+// dedicated STA thread (#115), because a jump list is keyed by AUMID, not by window.
 
 using FluentGpu;
 using FluentGpu.Foundation;
@@ -54,14 +56,12 @@ using FluentGpu.WindowsApi.Media;
 using FluentGpu.WindowsApi.Power;
 using FluentGpu.WindowsApi.Shell;
 
-using EngineJumpList = FluentGpu.WindowsApi.Shell.JumpList;
-
 namespace Wavee;
 
 public static partial class Playback
 {
     /// <summary>The four OS surfaces playback is mirrored onto.</summary>
-    public static class Os
+    public static partial class Os
     {
         // ── 0. activation ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -92,6 +92,9 @@ public static partial class Playback
         /// surface meant to outlive the process.</summary>
         public static void Shutdown()
         {
+            // FIRST and unconditionally: the jump-list worker may hold the last play/pause edge's write, and the list is
+            // the one surface that outlives the process. Bounded, so a slow Explorer cannot hold the exit.
+            s_jumpListWorker.Shutdown();
             if (!s_active) return;
             s_active = false;
             PowerPolicy.Shutdown();
@@ -105,7 +108,9 @@ public static partial class Playback
         public static void SignedOut()
         {
             JumpList.Forget();
-            try { EngineJumpList.Clear(JumpList.Aumid); } catch { /* fail-soft */ }
+            // Through the worker like every other jump-list write, so it lands AFTER any publish already queued and a
+            // pending one for the same AUMID is replaced by it (fail-soft there).
+            s_jumpListWorker.Submit(JumpListWrite.Clear(JumpList.Aumid));
         }
 
         // ── 1. the push contract ────────────────────────────────────────────────────────────────────────────────────
@@ -613,7 +618,8 @@ public static partial class Playback
 
         /// <summary>The taskbar jump list: two standing tasks plus up to six recents, republished as one
         /// Begin/Append/Commit COM transaction — a jump list cannot be edited incrementally, every publish is a full
-        /// rebuild.</summary>
+        /// rebuild. This class decides WHEN and WHAT on the UI thread; the transaction runs on
+        /// <see cref="JumpListWorker"/>'s STA thread, coalesced and deduped there (#115).</summary>
         public static class JumpList
         {
             /// <summary>Six rows, the app's own cap — NOT the shell's. `BeginList` hands back the user's own
@@ -727,8 +733,9 @@ public static partial class Playback
                 };
 
                 JumpListItem[] items = BuildCategory(exe, appIcon);
-                try { EngineJumpList.SetCategory(Loc.Get(Strings.Jumplist.JumpBackIn), items, tasks, Aumid); }
-                catch (Exception ex) { Log.Warn("playback", "jump list publish failed", ex); }
+                // The COM transaction leaves the UI thread here (#115): the worker runs the newest write per AUMID and
+                // skips one that matches what it last committed, so a play/pause burst costs one transaction.
+                s_jumpListWorker.Submit(JumpListWrite.Publish(Loc.Get(Strings.Jumplist.JumpBackIn), items, tasks, Aumid));
             }
 
             /// <summary>Up to six rows: the play log first, then the nav history, deduped on the composed route. An

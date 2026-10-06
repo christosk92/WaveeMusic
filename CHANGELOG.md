@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Changed
+
+- **Play, pause and launch no longer stall the window while the taskbar jump list updates.** Every launch and every
+  play/pause rebuilt the taskbar's right-click menu on the window's own thread, which froze Wavee for 10 to 90 ms
+  each time. The menu is now written in the background, and a quick run of play/pause presses writes it once, for the
+  state you end on. (#115)
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed

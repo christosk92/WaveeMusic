@@ -20,6 +20,7 @@
 //   dedupe rests on the play log and the history composing the SAME route string.
 
 using FluentGpu.WindowsApi.Media;
+using FluentGpu.WindowsApi.Shell;
 
 using Wavee;
 
@@ -262,6 +263,177 @@ public class PlaybackJumpListTests
         // A skip storm must not hammer `ICustomDestinationList` with a Begin/Append/Commit transaction per skip; a
         // play/pause edge skips the floor, because that verb is the one the user compares against the app.
         => Assert.Equal(60_000L, Playback.Os.JumpList.RebuildMinIntervalMs);
+}
+
+/// <summary>#115: the jump list's COM transaction runs on a dedicated STA thread, through a mailbox that keeps at most one
+/// pending write per AUMID target (newest wins), skips a write equal to what the target last committed, and keeps the
+/// arrival order of different targets. These are the rules; the COM half is the engine's.</summary>
+public class PlaybackJumpListMailboxTests
+{
+    static Playback.Os.JumpListWrite Write(bool playing, string? aumid = null, params string[] routes)
+    {
+        var items = new JumpListItem[routes.Length];
+        for (int i = 0; i < routes.Length; i++)
+            items[i] = new JumpListItem(routes[i], @"C:\w.exe", "wavee://open?route=" + routes[i], null, routes[i]);
+        JumpTask[] tasks =
+        [
+            new(playing ? "Pause" : "Resume", @"C:\w.exe", playing ? "wavee://pause" : "wavee://resume"),
+            new("Search", @"C:\w.exe", "wavee://open?route=search"),
+        ];
+        return Playback.Os.JumpListWrite.Publish("Jump back in", items, tasks, aumid);
+    }
+
+    [Fact]
+    public void Writes_compare_by_content_not_by_reference()
+    {
+        Assert.Equal(Write(true, null, "album:a"), Write(true, null, "album:a"));
+        Assert.NotEqual(Write(true, null, "album:a"), Write(false, null, "album:a"));        // the Pause/Resume task
+        Assert.NotEqual(Write(true, null, "album:a"), Write(true, null, "album:b"));         // a category row
+        Assert.NotEqual(Write(true, null, "album:a"), Write(true, "{AUMID}", "album:a"));    // the target
+        Assert.NotEqual(Write(true), Playback.Os.JumpListWrite.Clear(null));
+    }
+
+    [Fact]
+    public void A_burst_for_one_target_keeps_only_the_newest_write()
+    {
+        var box = new Playback.Os.JumpListMailbox();
+        for (int i = 0; i < 50; i++) box.Offer(Write(i % 2 == 0));
+        box.Offer(Write(false));                 // the state the user ended on
+        Assert.Equal(1, box.Count);              // no queue growth, however long the burst
+        Assert.True(box.TryTake(out var w));
+        Assert.Equal(Write(false), w);
+        Assert.False(box.TryTake(out _));
+    }
+
+    [Fact]
+    public void A_write_equal_to_the_last_commit_for_its_target_is_skipped()
+    {
+        var box = new Playback.Os.JumpListMailbox();
+        box.Offer(Write(true));
+        Assert.True(box.TryTake(out var first));
+        box.Done(first, committed: true);
+
+        box.Offer(Write(false));                 // pause...
+        box.Offer(Write(true));                  // ...undone before the worker got to it
+        Assert.False(box.TryTake(out _));        // the shell already shows exactly this
+        Assert.Equal(1, box.Skipped);
+
+        box.Offer(Write(false));                 // a real change still goes out
+        Assert.True(box.TryTake(out var next));
+        Assert.Equal(Write(false), next);
+    }
+
+    [Fact]
+    public void A_failed_write_is_not_remembered_so_the_same_write_retries()
+    {
+        var box = new Playback.Os.JumpListMailbox();
+        box.Offer(Write(true));
+        Assert.True(box.TryTake(out var w));
+        box.Done(w, committed: false);
+        box.Offer(Write(true));
+        Assert.True(box.TryTake(out _));
+    }
+
+    [Fact]
+    public void Different_targets_keep_their_arrival_order_and_each_coalesces_in_place()
+    {
+        // The process-default publish goes out first and the toast AUMID's after it — both lists are written, as before.
+        var box = new Playback.Os.JumpListMailbox();
+        box.Offer(Write(false, null));
+        box.Offer(Write(false, "{AUMID}"));
+        box.Offer(Write(true, null));            // replaces the default target's write without jumping the line
+        Assert.Equal(2, box.Count);
+        Assert.True(box.TryTake(out var a));
+        Assert.True(box.TryTake(out var b));
+        Assert.Equal(Write(true, null), a);
+        Assert.Equal(Write(false, "{AUMID}"), b);
+    }
+
+    [Fact]
+    public void A_sign_out_clear_replaces_a_pending_publish_and_a_later_publish_replaces_the_clear()
+    {
+        var box = new Playback.Os.JumpListMailbox();
+        box.Offer(Write(true, "{AUMID}", "album:a"));
+        box.Offer(Playback.Os.JumpListWrite.Clear("{AUMID}"));
+        Assert.True(box.TryTake(out var w));
+        Assert.True(w.IsClear);                  // the previous account's rows never reach the shell
+
+        box.Offer(Playback.Os.JumpListWrite.Clear("{AUMID}"));
+        box.Offer(Write(true, "{AUMID}"));
+        Assert.True(box.TryTake(out var p));
+        Assert.False(p.IsClear);
+    }
+
+    [Fact]
+    public void The_pending_set_is_bounded_even_across_targets()
+    {
+        var box = new Playback.Os.JumpListMailbox();
+        for (int i = 0; i < 20; i++) box.Offer(Write(true, "{T" + i + "}"));
+        Assert.Equal(Playback.Os.JumpListMailbox.MaxTargets, box.Count);
+        Assert.True(box.TryTake(out var oldestKept));
+        Assert.Equal("{T16}", oldestKept.Aumid);  // the oldest waiting targets were the ones dropped
+    }
+
+    [Fact]
+    public void The_worker_runs_writes_on_an_sta_thread_off_the_caller_and_coalesces_while_busy()
+    {
+        using var firstEntered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var applied = new List<Playback.Os.JumpListWrite>();
+        int callerThread = Environment.CurrentManagedThreadId;
+        int applyThread = -1;
+        ApartmentState apartment = ApartmentState.Unknown;
+        var worker = new Playback.Os.JumpListWorker(w =>
+        {
+            lock (applied)
+            {
+                applied.Add(w);
+                applyThread = Environment.CurrentManagedThreadId;
+                apartment = Thread.CurrentThread.GetApartmentState();
+            }
+            firstEntered.Set();
+            release.Wait(TimeSpan.FromSeconds(10));    // a slow COM transaction
+            return true;
+        }, "Wavee.ShellSTA.Test");
+
+        worker.Submit(Write(true));
+        Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(10)));
+        // Six edges arrive while the first transaction is still running: one write is left waiting, not six.
+        for (int i = 0; i < 6; i++) worker.Submit(Write(i % 2 == 0 ? false : true, null, "album:" + i));
+        Assert.Equal(1, worker.Stats.Pending);
+        release.Set();
+
+        Assert.True(worker.Shutdown(5_000));           // drains what is pending, then the bounded join returns
+        lock (applied)
+        {
+            Assert.Equal(2, applied.Count);
+            Assert.Equal(Write(true, null, "album:5"), applied[1]);   // the newest state, never an intermediate one
+            Assert.NotEqual(callerThread, applyThread);
+            Assert.Equal(ApartmentState.STA, apartment);
+        }
+        worker.Submit(Write(false));                    // after shutdown: dropped, never a new thread
+        Assert.Equal(0, worker.Stats.Pending);
+    }
+
+    [Fact]
+    public void A_throwing_apply_is_fail_soft_and_the_worker_keeps_going()
+    {
+        int calls = 0;
+        var worker = new Playback.Os.JumpListWorker(w =>
+        {
+            if (Interlocked.Increment(ref calls) == 1) throw new InvalidOperationException("shell refused");
+            return true;
+        }, "Wavee.ShellSTA.Test");
+        worker.Submit(Write(true));
+        SpinWait.SpinUntil(() => Volatile.Read(ref calls) >= 1, TimeSpan.FromSeconds(10));
+        worker.Submit(Write(true));                    // identical, but the first FAILED, so it is not skipped
+        Assert.True(worker.Shutdown(5_000));
+        Assert.Equal(2, Volatile.Read(ref calls));
+    }
+
+    [Fact]
+    public void Shutdown_without_a_write_never_starts_a_thread()
+        => Assert.True(new Playback.Os.JumpListWorker(_ => true).Shutdown(0));
 }
 
 public class PlaybackAppIconTests
