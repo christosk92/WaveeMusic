@@ -584,16 +584,88 @@ public static partial class Spotify
             return entityStatus is 408 or 429 or >= 500 ? Fault.Network : Fault.Restricted;
         }
 
+        // TRACK_V4 reads coalesce. One track change asks for the current track's ladder, the next one's prefetch and the
+        // one after that's — each a one-uri POST ~50 ms apart on a different api thread, which is what tripped
+        // `wire.storm` (40+ extended-metadata POSTs in 60 s) while skipping through a playlist. The endpoint takes many
+        // uris per request, so the first caller opens a short window, every TrackMetadata inside it joins, and ONE POST
+        // answers them all (distinct uris only; a repeated uri shares its answer).
+        const int TrackBatchWindowMs = 10;
+        static readonly Lock s_trackBatchGate = new();
+        static List<(string Uri, TaskCompletionSource<(Md.Track? Track, Fault Fault)> Done)>? s_trackBatch;
+
         static Md.Track? TrackMetadata(string trackUri, CancellationToken ct, out Fault fault)
         {
-            Xm.ExtensionKind[] kinds = [Xm.ExtensionKind.TrackV4];
-            Api.Result result = Api.MetadataPost(Api.MetadataBody(trackUri, kinds, Api.Market, Api.Catalogue), ct);
-            int entity = 0;
-            ReadOnlySpan<byte> payload = result.Ok ? Payload(result.Bytes, Xm.ExtensionKind.TrackV4, out entity) : default;
-            fault = MetadataFault(result.Status, entity, !payload.IsEmpty);
-            if (payload.IsEmpty) return null;
-            try { return Md.Track.Parser.ParseFrom(payload); }
-            catch (InvalidProtocolBufferException) { fault = Fault.Restricted; return null; }
+            var done = new TaskCompletionSource<(Md.Track? Track, Fault Fault)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bool leader;
+            lock (s_trackBatchGate)
+            {
+                leader = s_trackBatch is null;
+                (s_trackBatch ??= []).Add((trackUri, done));
+            }
+            if (leader) _ = Task.Run(async () => { await Task.Delay(TrackBatchWindowMs).ConfigureAwait(false); FlushTrackBatch(); });
+            try { done.Task.Wait(ct); }
+            catch (OperationCanceledException) { fault = Fault.Network; return null; }
+            (Md.Track? track, fault) = done.Task.Result;
+            return track;
+        }
+
+        static void FlushTrackBatch()
+        {
+            List<(string Uri, TaskCompletionSource<(Md.Track? Track, Fault Fault)> Done)> batch;
+            lock (s_trackBatchGate) { batch = s_trackBatch ?? []; s_trackBatch = null; }
+            for (int at = 0; at < batch.Count; at += Api.MetadataCache.MaxEntitiesPerRequest)
+            {
+                int n = Math.Min(Api.MetadataCache.MaxEntitiesPerRequest, batch.Count - at);
+                try { PostTrackBatch(batch.GetRange(at, n)); }
+                catch (Exception ex)
+                {
+                    Log.Warn("audio", "track metadata batch failed", ex);
+                    for (int i = 0; i < n; i++) batch[at + i].Done.TrySetResult((null, Fault.Network));
+                }
+            }
+        }
+
+        static void PostTrackBatch(List<(string Uri, TaskCompletionSource<(Md.Track? Track, Fault Fault)> Done)> items)
+        {
+            var uris = new List<string>(items.Count);
+            foreach (var item in items) if (!uris.Contains(item.Uri)) uris.Add(item.Uri);
+            var kinds = new Xm.ExtensionKind[uris.Count];
+            Array.Fill(kinds, Xm.ExtensionKind.TrackV4);
+            Api.Result result = Api.MetadataPost(Api.MetadataBody(uris.ToArray(), kinds, Api.Market, Api.Catalogue), CancellationToken.None);
+
+            Xm.BatchedExtensionResponse? parsed = null;
+            if (result.Ok && result.Length > 0)
+            {
+                try { parsed = Xm.BatchedExtensionResponse.Parser.ParseFrom(result.Bytes); }
+                catch (InvalidProtocolBufferException) { }
+            }
+            var answers = new Dictionary<string, (Md.Track? Track, Fault Fault)>(uris.Count, StringComparer.Ordinal);
+            foreach (string uri in uris)
+            {
+                int entity = 0;
+                Google.Protobuf.ByteString? payload = null;
+                if (parsed is not null)
+                    foreach (Xm.EntityExtensionDataArray array in parsed.ExtendedMetadata)
+                    {
+                        if (array.ExtensionKind != Xm.ExtensionKind.TrackV4) continue;
+                        foreach (var data in array.ExtensionData)
+                        {
+                            if (!string.Equals(data.EntityUri, uri, StringComparison.Ordinal)) continue;
+                            int status = data.Header is { } header && header.HasStatusCode ? header.StatusCode : 200;
+                            entity = status;
+                            if (status is >= 200 and < 300 && data.ExtensionData is not null) payload = data.ExtensionData.Value;
+                        }
+                    }
+                Fault fault = MetadataFault(result.Status, entity, payload is { Length: > 0 });
+                Md.Track? track = null;
+                if (payload is { Length: > 0 })
+                {
+                    try { track = Md.Track.Parser.ParseFrom(payload); }
+                    catch (InvalidProtocolBufferException) { fault = Fault.Restricted; }
+                }
+                answers[uri] = (track, fault);
+            }
+            foreach (var item in items) item.Done.TrySetResult(answers[item.Uri]);
         }
 
         static Md.Episode? EpisodeMetadata(string episodeUri, CancellationToken ct, out Fault fault)
