@@ -365,6 +365,42 @@ public static partial class Crash
                && nowUnbiasedTicks - lastBeatUnbiasedTicks >= NoBeatMs * 10_000L && hungWindowMs10s;
     }
 
+    /// <summary>Which inherited runtime-diagnostics settings the crash-handler child must NOT inherit. `dotnet-trace
+    /// collect -- Wavee.exe` (and `dotnet-counters`/`dotnet-monitor`) launch the app with
+    /// <c>DOTNET_DiagnosticPorts=...,suspend</c>, which makes the runtime of EVERY process that inherits it park at
+    /// startup in <c>ds_server_pause_for_diagnostics_monitor</c> until that tool resumes it. The tool attaches to the
+    /// parent only, so the child froze before managed code ran, never logged <c>handler.start</c>, never watched the
+    /// parent, and outlived it for hours (the "orphaned crash handler"). The handler needs no diagnostics port at all.</summary>
+    public static class HandlerEnvRules
+    {
+        /// <summary>Suffixes of the <c>DOTNET_</c>/<c>COMPlus_</c> variables that suspend or expose the runtime.</summary>
+        static readonly string[] s_scrubbed = ["DiagnosticPorts", "DefaultDiagnosticPortSuspend"];
+
+        /// <summary>True for a variable the child must not inherit (case-insensitive, like Windows env names).</summary>
+        public static bool ShouldScrub(string name)
+        {
+            foreach (string prefix in (ReadOnlySpan<string>)["DOTNET_", "COMPlus_"])
+            {
+                if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) continue;
+                string rest = name[prefix.Length..];
+                foreach (string s in s_scrubbed)
+                    if (rest.Equals(s, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>Name/value the child's runtime is forced to: no diagnostics IPC at all.</summary>
+        public const string DisableName = "DOTNET_EnableDiagnostics", DisableValue = "0";
+
+        /// <summary>Rewrites a child's environment in place: scrubs <see cref="ShouldScrub"/> names, disables diagnostics.</summary>
+        public static void Apply(IDictionary<string, string?> env)
+        {
+            foreach (string key in env.Keys.ToArray())
+                if (ShouldScrub(key)) env.Remove(key);
+            env[DisableName] = DisableValue;
+        }
+    }
+
     // ── 5. consent (B.2) ─────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>What happens to ONE bundle at launch (or right after a live hang report), given the persisted mode.</summary>

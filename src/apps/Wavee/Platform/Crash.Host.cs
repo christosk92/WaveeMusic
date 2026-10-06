@@ -102,6 +102,7 @@ public static partial class Crash
                     RedirectStandardOutput = true,
                     CreateNoWindow = true,
                 };
+                HandlerEnvRules.Apply(psi.Environment);   // never inherit DOTNET_DiagnosticPorts=...,suspend (dotnet-trace): the child would freeze in runtime startup and orphan
                 psi.ArgumentList.Add("--crash-handler");
                 psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
                 psi.ArgumentList.Add(logFolder);

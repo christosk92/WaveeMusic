@@ -708,3 +708,39 @@ public class InstallIdTests
         Assert.Equal("deadbeefdeadbeefdeadbeefdeadbeef", Crash.InstallId.Ensure(s));
     }
 }
+
+// ── HandlerEnvRules ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+public class HandlerEnvRulesTests
+{
+    [Theory]
+    [InlineData("DOTNET_DiagnosticPorts")]
+    [InlineData("dotnet_diagnosticports")]
+    [InlineData("COMPlus_DiagnosticPorts")]
+    [InlineData("DOTNET_DefaultDiagnosticPortSuspend")]
+    [InlineData("COMPlus_DefaultDiagnosticPortSuspend")]
+    public void Suspending_diagnostic_settings_are_scrubbed(string name) => Assert.True(Crash.HandlerEnvRules.ShouldScrub(name));
+
+    [Theory]
+    [InlineData("PATH")]
+    [InlineData("DOTNET_gcServer")]
+    [InlineData("DOTNET_ROOT")]
+    [InlineData("DiagnosticPorts")]
+    public void Other_variables_are_kept(string name) => Assert.False(Crash.HandlerEnvRules.ShouldScrub(name));
+
+    [Fact]
+    public void Apply_removes_the_suspend_port_and_disables_diagnostics()
+    {
+        var env = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["DOTNET_DiagnosticPorts"] = "dotnet-trace-1.socket,suspend,connect",
+            ["PATH"] = "x",
+            ["DOTNET_gcServer"] = "1",
+        };
+        Crash.HandlerEnvRules.Apply(env);
+        Assert.False(env.ContainsKey("DOTNET_DiagnosticPorts"));
+        Assert.Equal("x", env["PATH"]);
+        Assert.Equal("1", env["DOTNET_gcServer"]);
+        Assert.Equal("0", env["DOTNET_EnableDiagnostics"]);
+    }
+}
