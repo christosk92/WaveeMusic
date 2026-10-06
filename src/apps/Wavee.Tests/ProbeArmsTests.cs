@@ -41,6 +41,23 @@ public class ProbeOptionsTests
         Assert.True(lyrics.WantsConsole);
     }
 
+    [Fact]
+    public void Mem_soak_reads_its_knobs_and_falls_back_on_garbage()
+    {
+        var soak = Diagnostics.ProbeOptions.Parse(["--fake", "--mem-soak", "--mem-soak-rounds", "12", "--mem-soak-idle-sec", "90", "--mem-soak-minimize"]);
+        Assert.True(soak.MemSoak);
+        Assert.True(soak.WantsConsole);
+        Assert.Equal(12, soak.MemSoakRounds);
+        Assert.Equal(90, soak.MemSoakIdleSec);
+        Assert.True(soak.MemSoakMinimize);
+
+        var fallback = Diagnostics.ProbeOptions.Parse(["--mem-soak", "--mem-soak-rounds", "0", "--mem-soak-idle-sec", "banana"]);
+        Assert.Equal(6, fallback.MemSoakRounds);
+        Assert.Equal(40, fallback.MemSoakIdleSec);
+        Assert.False(fallback.MemSoakMinimize);
+        Assert.False(Diagnostics.ProbeOptions.Parse([]).MemSoak);
+    }
+
     [Theory]
     [InlineData(new[] { "--crash-probe" }, "throw")]
     [InlineData(new[] { "--crash-probe", "throw" }, "throw")]

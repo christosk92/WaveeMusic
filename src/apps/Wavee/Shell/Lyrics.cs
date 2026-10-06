@@ -1036,6 +1036,94 @@ public static partial class Lyrics
             => flag == WriteLanded || (flag == WriteMoving && MathF.Abs(value - currentValue) > WriteEps);
     }
 
+    // ── 9b. rows no pixel of which can show ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The rules that keep rows nobody can see out of the blur and the hand-off.
+    ///
+    /// <para>A line whose rest rect, cascade sweep and blur reach all miss the viewport is DEAD WORK to blur or to move: a
+    /// blurred row is an offscreen pass or an effect slice spent from the window's budget (past it, an inline blur re-run
+    /// with every raster of its tile), and a moved row is a re-record and a re-raster. So such a row carries σ 0 in the
+    /// scene while its MODEL σ keeps ramping (<see cref="ShownSigma"/>), and its in-flight cascade translate is DEFERRED
+    /// (<see cref="Flush"/>). Neither is ever lost: a row is re-judged every cascade step, on every change of the viewport
+    /// geometry (<see cref="Geometry"/>), and at realization; a landing is always written exactly, and the step the cascade
+    /// comes to rest writes every row still deferred.</para>
+    ///
+    /// <para>Only while FOLLOWING with a still viewport (the caller's gate): a user scroll suppresses the depth of field
+    /// anyway, and a glide or a fling could bring a row into view between two steps.</para></summary>
+    public static class Offscreen
+    {
+        /// <summary>The slack around a row's sweep (beyond its blur reach): an interlude reserve band (≤
+        /// <c>Interlude.ReserveDip(large)</c> = 32 DIP) that lands on the next arrange and shifts the rows below it, and
+        /// rounding. A row inside it is treated as visible.</summary>
+        public const float MarginDip = 32f;
+
+        /// <summary>How far a row's pixels reach past its box: the wider of its depth-of-field σ and its halo σ, at 3σ (the
+        /// Gaussian's support), plus <see cref="MarginDip"/>.</summary>
+        public static float Reach(float dofSigma, float haloSigma) => MarginDip + 3f * MathF.Max(MathF.Max(dofSigma, haloSigma), 0f);
+
+        /// <summary>A row's REST top in viewport space: its offset inside the realized window (<paramref name="yInWindow"/>,
+        /// its layout offsets up to the content root without its own translate) + the window's content origin − the scroll
+        /// offset. A virtual list re-anchoring its window moves both terms by the same amount.</summary>
+        public static float RestTop(float yInWindow, double windowOrigin, double offset) => (float)(yInWindow + windowOrigin - offset);
+
+        /// <summary>Could any pixel of a row show while its cascade translate travels from <paramref name="comp"/> to rest?
+        /// The cascade decays monotonically to 0 (zero overshoot: <see cref="Cascade"/>'s j1 clamp), so the row sweeps
+        /// exactly [rest + min(comp, 0), rest + max(comp, 0)]; that sweep grown by <paramref name="reach"/> is tested
+        /// against [0, <paramref name="viewportH"/>).</summary>
+        public static bool RowMayShow(float restTop, float height, float comp, float reach, float viewportH)
+            => restTop + height + MathF.Max(comp, 0f) + reach > 0f && restTop + MathF.Min(comp, 0f) - reach < viewportH;
+
+        /// <summary>The σ the row's node carries: the model σ, or 0 while the gate is open and no pixel of it can show.</summary>
+        public static float ShownSigma(float modelSigma, bool gate, bool mayShow) => gate && modelSigma > 0f && !mayShow ? 0f : modelSigma;
+
+        /// <summary>Must the shown σ be written EXACTLY (not through the ramp's coarse write gate)? A landing, a row being
+        /// hidden, and a row coming back from hidden: the scene must carry the model σ the step it could show.</summary>
+        public static bool ExactSigmaWrite(bool landed, bool hide, bool wasHidden) => landed || hide || wasHidden;
+
+        /// <summary>The viewport geometry a hidden-row judgement was made under. Any change re-judges every row (a resize,
+        /// the rail-open growth, a re-wrap or a secondary line changing the content extent, a virtual-window re-anchor, a
+        /// scroll offset, the viewport starting or stopping to move).</summary>
+        public readonly record struct Geometry(float ViewportH, float ViewportW, double WindowOrigin, float ContentH, double Offset, bool Moving);
+
+        /// <summary>A row's visibility, as <see cref="Flush{T}"/> asks for it.</summary>
+        public interface IRowSweep
+        {
+            bool MayShow(int index, float comp);
+        }
+
+        /// <summary>What <see cref="Flush{T}"/> tells the caller to do with a row.</summary>
+        public const byte FlushNone = 0, FlushMoving = 1, FlushExact = 2;
+
+        /// <summary>One cascade step's writes (<paramref name="write"/>, <see cref="Cascade"/>'s flags) turned into scene
+        /// writes (<paramref name="outWrite"/>): an in-flight write to a row that cannot show is DEFERRED (marked
+        /// <paramref name="stale"/>); a stale row that can show again is written EXACTLY (the moving write gate measures against
+        /// the scene, which lags the model); a landing is always written exactly. <paramref name="mayDefer"/> = the gate is
+        /// open AND the cascade is still running after this step — the step it comes to rest writes every stale row.
+        /// Returns the number of rows to write.</summary>
+        public static int Flush<T>(ReadOnlySpan<byte> write, ReadOnlySpan<float> comp, Span<bool> stale, bool mayDefer, ref T rows,
+            Span<byte> outWrite) where T : struct, IRowSweep
+        {
+            int n = 0;
+            for (int i = 0; i < write.Length; i++)
+            {
+                outWrite[i] = FlushNone;
+                byte flag = write[i];
+                bool wasStale = i < stale.Length && stale[i];
+                if (flag == Cascade.WriteNone && !wasStale) continue;
+                bool landed = flag == Cascade.WriteLanded;
+                if (!landed && mayDefer && !rows.MayShow(i, comp[i]))
+                {
+                    if (flag != Cascade.WriteNone && i < stale.Length) stale[i] = true;
+                    continue;
+                }
+                outWrite[i] = landed || wasStale ? FlushExact : FlushMoving;
+                if (i < stale.Length) stale[i] = false;
+                n++;
+            }
+            return n;
+        }
+    }
+
     // ── 10. the motion-demand gate (the 2026-09-12 idle-GPU fix) ────────────────────────────────────────────────────
 
     /// <summary>One frame's worth of lyrics MOTION state, as the surface's own lanes report it at the end of a step.
@@ -1077,6 +1165,49 @@ public static partial class Lyrics
     /// means "nothing to wake for".</summary>
     public readonly record struct MotionWake(int Seq, float DelayMs);
 
+    /// <summary>The bookkeeping behind the view's <see cref="MotionWake"/>: which wake is PENDING, so a step that
+    /// re-derives the same wake instant does not re-publish it (a re-publish re-renders the ticker and restarts its timer).
+    /// <para><b>A fired wake is no longer pending</b> (<see cref="Fired"/>). The timeout is armed on the HOST timer clock
+    /// and its step reads the MEDIA clock, which runs a few ms apart (the frame's present target, a ±5 % slew): a wake
+    /// that fires a hair before its instant re-derives that SAME instant. While the fired wake still counted as pending
+    /// that re-arm was swallowed, no timer was left, and the karaoke froze until an unrelated edge stepped the surface
+    /// (up to a second later). Now the hair-early step re-arms the residual.</para>
+    /// Pure and allocation-free; the caller publishes the returned wake.</summary>
+    public sealed class WakeArm
+    {
+        int _seq;
+        double _rate = 1;
+        long _atMs = long.MinValue;   // the instant of the last PUBLISHED wake (MinValue = the "nothing" wake is out)
+        bool _fired;                  // ...and its timeout already ran
+
+        /// <summary>Is an armed wake still waiting to fire?</summary>
+        public bool Pending => _atMs != long.MinValue && !_fired;
+
+        /// <summary>Arm the wake at media instant <paramref name="wakeAtMs"/> (now <paramref name="nowMs"/>, content
+        /// <paramref name="rate"/>). Returns the wake to publish, or null when that exact wake is already pending.</summary>
+        public MotionWake? Arm(long wakeAtMs, long nowMs, double rate)
+        {
+            if (wakeAtMs == _atMs && rate == _rate && !_fired) return null;
+            _rate = rate;
+            _atMs = wakeAtMs;
+            _fired = false;
+            return new MotionWake(++_seq, MathF.Max(1f, (float)((wakeAtMs - nowMs) / rate)));
+        }
+
+        /// <summary>Disarm: returns the "nothing to wake for" wake to publish, or null when that is already the published
+        /// wake. A spent wake is still cleared, so the ticker never holds a stale positive delay.</summary>
+        public MotionWake? Clear()
+        {
+            if (_atMs == long.MinValue) return null;
+            _atMs = long.MinValue;
+            _fired = false;
+            return new MotionWake(++_seq, -1f);
+        }
+
+        /// <summary>The armed timeout fired: it is spent, so the step it runs may arm the same instant again.</summary>
+        public void Fired() => _fired = _atMs != long.MinValue;
+    }
+
     /// <summary>Does the lyrics surface have MOTION IN FLIGHT — i.e. is there anything for the next step to advance?
     ///
     /// <para><b>Why it exists (the 2026-09-12 fix, "lyrics wake only for the words").</b> The per-frame stepper is a
@@ -1101,8 +1232,9 @@ public static partial class Lyrics
         /// <summary>How far AHEAD of the next event the surface wakes — and how close an event has to be before the
         /// decision simply stays live rather than arming a timeout for it. Two 60 Hz frames: enough that the stepper is
         /// already mounted and stepping when the syllable lands, small enough that an instrumental gap is still spent
-        /// asleep. It also makes the re-arm self-terminating — a timeout that fires a hair early finds the event inside
-        /// the lead and goes live instead of arming again.</summary>
+        /// asleep. A timeout that fires on time or late finds the event inside the lead and goes live; one that fires a
+        /// hair EARLY on the media clock re-derives the same wake instant and re-arms the residual
+        /// (<see cref="WakeArm.Fired"/> is what lets it).</summary>
         public const long ArmLeadMs = 32L;
 
         /// <summary>Does the voice line have per-frame OUTPUT at <paramref name="nowMs"/>? A word-synced line always does

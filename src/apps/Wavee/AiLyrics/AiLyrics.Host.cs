@@ -628,6 +628,7 @@ public static partial class AiLyrics
         readonly BlockingCollection<Action> _queue = new();
         readonly Thread _thread;
         LoadedModels? _models;
+        JobScratch? _scratch;   // the jobs' ~28 MB of working buffers, reused job to job; dropped with the models
         string _installedKey = "";
         IReadOnlyList<string> _installed = [];
         CancellationTokenSource? _jobCts;
@@ -656,6 +657,7 @@ public static partial class AiLyrics
         {
             _models?.Dispose();
             _models = null;
+            _scratch = null;
             _loaded = false;
         }
 
@@ -862,7 +864,8 @@ public static partial class AiLyrics
             }
             Log.Info("ai-lyrics", $"ai.job.start track={req.TrackId} language={req.Language} lines={req.Source.Lines.Count}");
             var job = new TrackJob(req.Source, req.Language, _models.Separator, aligner, pcm, PlayheadSeconds);
-            var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct), ct);
+            var final = job.Run((doc, p) => Publish(req, doc, p, fromCache: false, job.SeparateSeconds, job.AlignSeconds, sw.ElapsedMilliseconds, ct), ct,
+                _scratch ??= new JobScratch());
             Directory.CreateDirectory(ResultsDir);
             string tmp = resultPath + ".tmp";
             File.WriteAllText(tmp, Results.Encode(final, hash, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));

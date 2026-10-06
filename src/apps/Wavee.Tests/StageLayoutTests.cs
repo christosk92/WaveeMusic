@@ -624,6 +624,49 @@ public class StageLayoutTests
             }
     }
 
+    /// <summary>The playing caption wakes only at <c>Caption.NextEdgeMs</c> (its wipe runs on the render thread): every
+    /// instant the view changes must be one it names, and every instant it names must change it (no wasted wake), so a
+    /// brute-force walk of the clock over a document with an intro, a word-synced line, a real break, a line-synced line
+    /// with an early authored end and back-to-back lines never finds the view changing before the edge it was given, nor
+    /// an edge that changes nothing.</summary>
+    [Fact]
+    public void The_caption_wakes_at_every_instant_its_view_can_change()
+    {
+        static Lyrics.Line Word(long start, long end, string text)
+            => new(start, text, [new Lyrics.Syllable(start, (start + end) / 2, text), new Lyrics.Syllable((start + end) / 2, end, text)], end, null, null, true);
+        var lines = new List<Lyrics.Line>
+        {
+            Word(8_000, 10_000, "one"),                                                   // after a long intro (dots)
+            Word(10_500, 12_000, "two"),                                                  // a short gap: no dots
+            Word(19_000, 21_000, "three"),                                                // a real break before it
+            new(21_000, "four", [], 23_000),                                              // line-synced, early authored end
+            new(30_000, "five", []),                                                      // a break after a line-synced line
+            Word(30_000, 31_000, "six"),                                                  // the same start as the line before
+            Word(31_000, 33_000, "seven"),
+        };
+        var doc = new Lyrics.Doc("t1", true, lines, Lyrics.SyncKind.Syllable, "test");
+        long t = 0;
+        int changes = 0;
+        while (t < 40_000)
+        {
+            int view = Stage.Caption.ViewAt(doc, t, out _, out _);
+            long edge = Stage.Caption.NextEdgeMs(doc, t);
+            Assert.True(edge > t, $"the edge at {t} is not ahead of it ({edge})");
+            long stop = Math.Min(edge, 40_000);
+            for (long u = t + 1; u < stop; u++)
+                Assert.True(Stage.Caption.ViewAt(doc, u, out _, out _) == view, $"the view changed at {u}, before the edge {edge} named at {t}");
+            if (stop < 40_000)
+            {
+                // and no wake is wasted: the view changes AT every edge it names
+                Assert.True(Stage.Caption.ViewAt(doc, stop, out _, out _) != view, $"the edge {stop} named at {t} changes nothing");
+                changes++;
+            }
+            t = stop;
+        }
+        Assert.True(changes >= 8, $"only {changes} view changes walked");
+        Assert.Equal(long.MaxValue, Stage.Caption.NextEdgeMs(doc, 40_000));   // past the last line: no wake owed
+    }
+
     [Fact]
     public void The_caption_clock_view_hands_off_from_the_dots_to_the_next_line_with_nothing_between()
     {

@@ -1174,6 +1174,7 @@ public static partial class Platform
     {
         Log.Info("app", "Wavee exiting");
         RealtimeCaptureHost.Shutdown();   // best-effort flush of whatever the capture writer still has queued
+        RoutineSummary.FlushAll(force: true);   // the open window's partial summary goes in before the final drain
         Log.Flush();
     }
 

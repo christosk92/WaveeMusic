@@ -638,6 +638,13 @@ public static partial class Controls
     /// <inheritdoc cref="ShouldTick"/>
     public static bool ShouldShowStillShape(bool playing, bool reducedMotion) => playing && reducedMotion;
 
+    /// <summary>Bar <paramref name="bar"/>'s loop as the keyframe track its node runs on the render thread (a copy).</summary>
+    public static Keyframe[] EqualizerTrack(int bar) => (Keyframe[])EqBar.LoopKeys[bar].Clone();
+
+    /// <summary>Bar <paramref name="bar"/>'s pattern at loop progress <paramref name="u"/> (0..1) — the function its track
+    /// evaluates, and the one reduced motion's still shape samples.</summary>
+    public static float EqualizerSample(int bar, float u) => EqBar.Sample(EqBar.Patterns[bar], u);
+
     /// <summary>Three bottom-anchored bars, looping and phase-staggered while PLAYING, settled at a low static height
     /// when paused. Shared by the track rows' number cell and the cards' now-playing overlay.
     ///
@@ -667,44 +674,27 @@ public static partial class Controls
     }
 
     sealed record EqHostProps(IReadSignal<bool> Playing, Func<ColorF> Color, float Height, IReadSignal<bool>? Paused);
-    sealed record EqBarProps(FloatSignal ScaleY, Func<ColorF> Color, float Height);
 
-    /// <summary>ONE ticker for all three bars, owned by the HOST.
+    /// <summary>What one bar's ScaleY track does: settle at <see cref="EqBarProps.Rest"/> (not playing, or reduced motion's
+    /// still shape), loop its pattern, or freeze where it stands (hover-paused under a reveal, or the window covered).</summary>
+    enum EqMode : byte { Rest, Loop, Freeze }
+
+    sealed record EqBarProps(int Index, EqMode Mode, float Rest, Func<ColorF> Color, float Height);
+
+    /// <summary>The meter: three bars whose motion runs ON THE RENDER THREAD.
     ///
-    /// <para>Per-bar intervals were three independent timers with arbitrary phase — up to 45 distinct wake instants a
-    /// second, each moving ONE bar, so every fire dirtied the scene and presented, and skip-submit could almost never
-    /// see a byte-identical frame because a DIFFERENT bar moved each time. Measured at ~80% of the whole playing-state
-    /// wake budget. Batching the three writes also collapses them into ONE frame request.</para>
+    /// <para>Each bar's height is one looping <c>ScaleY</c> keyframe track on its own node (the engine's compositor rows,
+    /// the marquee's pattern), so a playing meter wakes NO UI frame: the render thread samples the loop at the display
+    /// rate, against the present-time clock, and poses whole device pixels of the bar
+    /// (<c>snapToDevicePixels</c>, the snap the UI-side ticker used to do itself), so a frame on which no bar crosses a
+    /// pixel records and presents nothing. The three tracks are seeded in the same layout pass, so they share one phase.
+    /// It replaced a per-frame UI ticker that published a scene for every step (measured: the meter alone held the UI
+    /// loop at the display rate).</para>
     ///
-    /// <para>The host is PERSISTENT across play↔pause: it reads a SIGNAL and toggles its interval, rather than being
-    /// remounted by a Key. The old key flip tore the whole number-cell subtree down on every transition; the deps-gated
-    /// effect below re-runs the phase/settle reset on exactly the transition that remount used to cover.</para></summary>
+    /// <para>The host is PERSISTENT across play↔pause: it reads a SIGNAL and re-seeds the bars' tracks, rather than being
+    /// remounted by a Key (the old key flip tore the whole number-cell subtree down on every transition).</para></summary>
     sealed class EqHost : Component
     {
-        const float LoopMs = 850f;
-        // Per FRAME, not per timer (motion policy, 2026-10-03): the bars are sampled on every produced frame by an EqTicker
-        // (Controls.FrameTicker, the deck / visualizer / caption clocks' pattern) that is MOUNTED only while they animate, so an
-        // unmounted meter is no wake reason at all. The sample is a function of FrameTime (not of the tick count), so the loop
-        // looks the same at 60, 120 or 144 Hz, and each bar height is snapped to whole device pixels: a frame on which no bar
-        // crossed a pixel writes nothing and is byte-identical, which the host elides. The fixed 30 Hz UseInterval this replaced
-        // drove continuous visible motion at a rate below the panel's; a weak GPU is the measured governor's business
-        // (the ticker is paceable), never a rate of its own.
-
-        static readonly float[][] Patterns =
-        [
-            [0.35f, 0.95f, 0.45f, 1.00f, 0.35f],
-            [0.85f, 0.40f, 1.00f, 0.55f, 0.85f],
-            [0.50f, 1.00f, 0.35f, 0.80f, 0.50f],
-        ];
-
-        // Stable for the host's lifetime — the bars BIND these, so nothing the host does disturbs the signals they read.
-        readonly FloatSignal[] _scaleY = [new(0.4f), new(0.4f), new(0.4f)];
-        long _startMs;
-        // The bar height (DIP) and device scale the ticker samples with, rewritten by EVERY render: a DPI change or a new
-        // Height re-renders this host, and the mounted ticker reads the fields on its next tick instead of the values it was
-        // created with (Embed.Comp's factory runs once; a captured local would freeze them until a remount).
-        float _heightDip = 13f, _scale = 1f;
-
         public override Element Render()
         {
             var p = UsePropsOrDefault<EqHostProps>();
@@ -712,105 +702,29 @@ public static partial class Controls
             bool animate = p.Playing.Value;           // subscribe — a bound row's play↔pause flip re-renders THIS host in place
             bool paused = p.Paused?.Value ?? false;   // subscribe — pause without a remount
             bool reduced = Design.Reduced;            // a VALUE, never a hook branch
-            bool hidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;   // subscribe — covered/cloaked: no ticks (F240)
-            float scale = UseContext(Viewport.Scale);
-            if (scale <= 0f) scale = 1f;
-            _heightDip = p.Height;
-            _scale = scale;
+            bool hidden = UseContext(InputHooks.Current).WindowOccluded?.Value ?? false;   // subscribe — covered/cloaked: no motion (F240)
 
+            // A settled, NON-UNIFORM shape states "this is playing" under reduced motion without ever looping — flat 0.4
+            // bars would read identically to the not-playing rest, and looping is exactly the continuous motion reduced
+            // motion asks the app not to run. Hover-paused or covered, a looping meter FREEZES where it stands: nobody
+            // sees it move (a reveal fades it out / the window is covered), and it resumes the loop when that ends.
             bool still = ShouldShowStillShape(animate, reduced);
-            UseEffect(() =>
-            {
-                if (!animate) { WriteAll(0.4f); return; }
-                // A settled, NON-UNIFORM snapshot states "this is playing" without ever looping — flat 0.4 bars would
-                // read identically to the paused branch above, and looping is exactly the continuous motion reduced
-                // motion asks the app not to run.
-                if (still) { WriteStill(); return; }
-                _startMs = Design.FrameTime.NowMs;
-                Tick(p.Height, scale);
-            }, DepKey.From(!animate ? 0 : still ? 1 : 2));
+            bool moving = animate && !still;
+            EqMode mode = !moving ? EqMode.Rest : ShouldTick(animate, paused, reduced, hidden) ? EqMode.Loop : EqMode.Freeze;
+            Element Bar(int i) => Embed.Comp(new EqBarProps(i, mode, still ? EqBar.Sample(EqBar.Patterns[i], 0.3f) : EqBar.RestScale,
+                p.Color, p.Height), static () => new EqBar());
 
-            // The per-frame ticker is mounted ONLY while the meter should move (playing, not hover-paused, motion not reduced,
-            // window not covered): an unmounted ticker holds no frame subscription, so a paused or hidden meter costs nothing.
-            bool ticking = ShouldTick(animate, paused, reduced, hidden);
-            Element bar0 = Embed.Comp(new EqBarProps(_scaleY[0], p.Color, p.Height), static () => new EqBar());
-            Element bar1 = Embed.Comp(new EqBarProps(_scaleY[1], p.Color, p.Height), static () => new EqBar());
-            Element bar2 = Embed.Comp(new EqBarProps(_scaleY[2], p.Color, p.Height), static () => new EqBar());
-            // The ticker reads the CURRENT height and scale each tick (the fields above), so it follows a DPI or height change
-            // while it stays mounted.
-            Element[] kids = ticking
-                ? [bar0, bar1, bar2, Embed.Comp(() => new EqTicker(() => Tick(_heightDip, _scale)))]
-                : [bar0, bar1, bar2];
-
+            // A REPAINT BOUNDARY while the meter moves: its own small slice, so a bar step re-rasters a surface the size of
+            // the meter, never the 1024x512 tile of the row / list / card it sits in (measured: every step re-rastered the
+            // sidebar's and the track list's tiles, ~2 tiles per frame at the display rate). The same pixels: the slice is
+            // composited in the paint order the inline bars had. Off when the bars stand still (not playing, reduced
+            // motion), so a static meter spends nothing of the engine's effect-slice budget.
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.End, Justify = FlexJustify.Center, Gap = 2f, Height = p.Height,
-                Children = kids,
+                RepaintBoundary = moving,
+                Children = [Bar(0), Bar(1), Bar(2)],
             };
-        }
-
-        /// <summary>The meter's own per-frame clock (a <see cref="FrameTicker"/> subclass so the <c>[wake]</c> census names it);
-        /// paceable: decorative motion the adaptive GPU governor may pace on a saturated GPU.</summary>
-        sealed class EqTicker(Action tick) : FrameTicker(tick, paceable: true);
-
-        // One clock sample drives all three bars. FrameTime, never TickCount64 (ch 00 non-negotiable 14): TickCount64
-        // advances in ~15.6 ms quanta, so a per-frame sampler reading it would land twice on the same instant and then jump.
-        void Tick(float heightDip, float scale)
-        {
-            float u = (Design.FrameTime.NowMs - _startMs) / LoopMs;
-            u -= MathF.Floor(u);
-            // Snap to WHOLE device pixels of the laid-out bar: crisper edges than a fractional height, and a tick that
-            // lands on the same pixel for all three bars is a true no-op (below) so skip-submit can elide it.
-            float hPx = heightDip * scale;
-            Span<float> next = stackalloc float[3];
-            bool anyChanged = false;
-            for (int i = 0; i < 3; i++)
-            {
-                float sy = Sample(Patterns[i], u);
-                float q = hPx > 1f ? MathF.Round(sy * hPx) / hPx : sy;
-                next[i] = q;
-                if (q != _scaleY[i].Peek()) anyChanged = true;
-            }
-            if (!anyChanged) return;   // nothing crossed a step this tick — leave the scene clean
-            float n0 = next[0], n1 = next[1], n2 = next[2];
-            Batch(() =>
-            {
-                if (n0 != _scaleY[0].Peek()) _scaleY[0].Value = n0;
-                if (n1 != _scaleY[1].Peek()) _scaleY[1].Value = n1;
-                if (n2 != _scaleY[2].Peek()) _scaleY[2].Value = n2;
-            });
-        }
-
-        void WriteAll(float v) => Batch(() =>
-        {
-            for (int i = 0; i < 3; i++) if (v != _scaleY[i].Peek()) _scaleY[i].Value = v;
-        });
-
-        // Reduced motion's "playing" shape: each bar sampled from its own loop PATTERN at the same fixed instant, so
-        // the three settle at different heights — legible as "an equalizer" at a glance — and then never move again.
-        // A one-time write, not a frozen mid-loop frame: it never depends on the wall clock or on how long reduced
-        // motion has been on.
-        void WriteStill() => Batch(() =>
-        {
-            for (int i = 0; i < 3; i++)
-            {
-                float v = Sample(Patterns[i], 0.3f);
-                if (v != _scaleY[i].Peek()) _scaleY[i].Value = v;
-            }
-        });
-
-        void Batch(Action write)
-        {
-            if (Context.Runtime is { } rt) rt.Batch(write); else write();
-        }
-
-        static float Sample(float[] keys, float u)
-        {
-            float t = u * 4f;
-            int i = (int)MathF.Floor(t);
-            if (i >= 4) return keys[4];
-            float f = t - i;
-            return keys[i] + (keys[i + 1] - keys[i]) * f;
         }
     }
 
@@ -849,20 +763,71 @@ public static partial class Controls
         }
     }
 
-    /// <summary>A pure consumer: it BINDS the signal the host ticks. No timer, no pattern, no phase of its own — and a
-    /// bound transform is compositor-only, so a tick never re-renders anything.</summary>
+    /// <summary>One bar: a bottom-anchored rounded rect whose height is its node's <c>ScaleY</c> track (see
+    /// <see cref="EqHost"/>). The track is re-seeded only on a mode (or rest-shape) edge, never per frame.</summary>
     sealed class EqBar : Component
     {
+        const float LoopMs = 850f;
+        internal const float RestScale = 0.4f;
+
+        internal static readonly float[][] Patterns =
+        [
+            [0.35f, 0.95f, 0.45f, 1.00f, 0.35f],
+            [0.85f, 0.40f, 1.00f, 0.55f, 0.85f],
+            [0.50f, 1.00f, 0.35f, 0.80f, 0.50f],
+        ];
+
+        // Each pattern as an evenly spaced linear track (keys at 0, ¼, ½, ¾, 1): the same function Sample evaluates.
+        internal static readonly Keyframe[][] LoopKeys = [Track(Patterns[0]), Track(Patterns[1]), Track(Patterns[2])];
+
+        static Keyframe[] Track(float[] values)
+        {
+            var keys = new Keyframe[values.Length];
+            for (int i = 0; i < values.Length; i++) keys[i] = new Keyframe(i / (float)(values.Length - 1), values[i], Easing.Linear);
+            return keys;
+        }
+
+        /// <summary>A pattern sampled at loop progress <paramref name="u"/> (0..1): linear between its five evenly spaced keys.</summary>
+        internal static float Sample(float[] keys, float u)
+        {
+            float t = u * 4f;
+            int i = (int)MathF.Floor(t);
+            if (i >= 4) return keys[4];
+            float f = t - i;
+            return keys[i] + (keys[i + 1] - keys[i]) * f;
+        }
+
         public override Element Render()
         {
             var p = UsePropsOrDefault<EqBarProps>();
             if (p is null) return new BoxEl();
-            var sig = p.ScaleY;
+            int index = p.Index;
+            EqMode mode = p.Mode;
+            float rest = p.Rest;
+            bool moving = mode != EqMode.Rest;
+            // The loop is seeded ONCE per entry into motion (the three bars in the same layout pass, so they share a phase);
+            // Rest settles the exact authored scale (a 1 ms constant track: it lands on its value and frees itself).
+            UseLayoutEffect(() =>
+            {
+                if (Context.Anim is not { } anim || Context.HostNode.IsNull) return;
+                NodeHandle node = Context.HostNode;
+                if (moving) anim.Keyframes(node, AnimChannel.ScaleY, LoopKeys[index], LoopMs, loop: true, snapToDevicePixels: true);
+                else anim.Keyframes(node, AnimChannel.ScaleY, [new(0f, rest, Easing.Linear), new(1f, rest, Easing.Linear)], 1f);
+            }, DepKey.From(moving ? 1f : 0f, rest));
+            // Freeze HOLDS the running loop in place (AnimEngine.SetHeld): the render thread keeps the pixel it last posed —
+            // the one on screen — and a release resumes at the phase the loop's clock has reached, as the per-frame ticker
+            // did (its phase was the wall clock since play). No re-seed, so neither edge can step a bar back or restart it.
+            UseLayoutEffect(() =>
+            {
+                if (moving && Context.Anim is { } anim && !Context.HostNode.IsNull)
+                    anim.SetHeld(Context.HostNode, AnimChannel.ScaleY, mode == EqMode.Freeze);
+            }, DepKey.From((float)mode));
             return new BoxEl
             {
                 Width = 2.5f, Height = p.Height, Corners = CornerRadius4.All(1.25f), Fill = p.Color(),
                 AlignSelf = FlexAlign.End, TransformOriginY = 1f,
-                Transform = Prop.Of(() => Affine2D.Scale(1f, MathF.Max(sig.Value, 1e-3f))),
+                // The authored rest pose, so the mount frame already stands at it before the track is seeded.
+                Transform = Affine2D.Scale(1f, rest),
             };
         }
     }

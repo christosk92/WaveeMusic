@@ -248,6 +248,54 @@ public class ControlsMotionPolicyTests
         Assert.False(Controls.ShouldShowStillShape(playing: true, reducedMotion: false));
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Each_bars_render_thread_track_is_its_pattern_as_an_even_linear_seamless_loop(int bar)
+    {
+        // The meter runs on the render thread as keyframe tracks; the loop must stay the exact function the bars always
+        // followed (linear between five evenly spaced keys) and wrap without a jump.
+        var keys = Controls.EqualizerTrack(bar);
+        Assert.Equal(5, keys.Length);
+        for (int i = 0; i < keys.Length; i++)
+        {
+            Assert.Equal(i / 4f, keys[i].Offset);
+            Assert.Equal(Controls.EqualizerSample(bar, i / 4f), keys[i].Value);
+            Assert.Equal((EasingSpec)Easing.Linear, keys[i].Easing);
+        }
+        Assert.Equal(keys[0].Value, keys[^1].Value);
+        for (float u = 0f; u <= 1f; u += 0.01f)
+        {
+            int k = Math.Min(3, (int)MathF.Floor(u * 4f));
+            float local = (u - keys[k].Offset) / (keys[k + 1].Offset - keys[k].Offset);
+            Assert.Equal(Controls.EqualizerSample(bar, u), keys[k].Value + (keys[k + 1].Value - keys[k].Value) * local, 5);
+        }
+    }
+
+    [Theory]
+    [InlineData(13f, 1.25f)]
+    [InlineData(13f, 1.5f)]
+    [InlineData(13f, 1.75f)]
+    [InlineData(14f, 1.5f)]
+    public void The_render_thread_meter_poses_the_same_pixels_the_per_frame_ticker_wrote(float heightDip, float scale)
+    {
+        // The ticker wrote round(sample(u) · h_px) / h_px; the render thread samples the track and snaps through the engine.
+        float hPx = heightDip * scale;
+        for (int bar = 0; bar < 3; bar++)
+        {
+            var track = Controls.EqualizerTrack(bar);
+            for (int k = 0; k <= 2000; k++)
+            {
+                float u = k / 2000f;
+                float ticker = MathF.Round(Controls.EqualizerSample(bar, u) * hPx) / hPx;
+                float render = FluentGpu.Animation.AnimEngine.SnapToDevicePixels(FluentGpu.Animation.AnimChannel.ScaleY,
+                    FluentGpu.Animation.AnimEngine.SampleKeyframes(track, u), heightDip, scale);
+                Assert.True(ticker == render, $"bar {bar} u={u} ticker={ticker} render={render}");
+            }
+        }
+    }
+
     [Fact]
     public void A_covered_window_stops_the_loop_and_nothing_else_about_the_window_does()
     {

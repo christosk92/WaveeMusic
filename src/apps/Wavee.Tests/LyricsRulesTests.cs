@@ -861,6 +861,52 @@ public class LyricsMotionDemandTests
     }
 
     [Fact]
+    public void A_pending_wake_is_not_republished_by_a_step_that_rederives_it()
+    {
+        var arm = new Lyrics.WakeArm();
+        var first = arm.Arm(4968, nowMs: 1000, rate: 1.0);
+        Assert.Equal(3968f, first!.Value.DelayMs);
+        Assert.Null(arm.Arm(4968, nowMs: 1200, rate: 1.0));   // an edge step mid-gap: same instant, timer still armed
+        Assert.True(arm.Pending);
+    }
+
+    [Fact]
+    public void A_wake_that_fires_a_hair_early_on_the_media_clock_rearms_the_residual()
+    {
+        // The lyricswake bug, measured on --fake: armed for media 7078, the timeout's step read media 7074. The step
+        // re-derived the SAME wake instant and the arm swallowed it as "still pending" — but the timer was spent, so
+        // nothing was left to wake the surface and the karaoke froze until an unrelated edge (~1 s).
+        long next = 7078 + Lyrics.MotionDemand.ArmLeadMs;
+        var arm = new Lyrics.WakeArm();
+        var armed = arm.Arm(Lyrics.MotionDemand.Evaluate(Quiet(now: 5000, next: next)).WakeAtMs, 5000, 1.0)!.Value;
+
+        arm.Fired();
+        Assert.False(arm.Pending);
+        var d = Lyrics.MotionDemand.Evaluate(Quiet(now: 7074, next: next));
+        Assert.False(d.NeedsTicks);                     // 4 ms short of the lead: not live yet...
+        var residual = arm.Arm(d.WakeAtMs, 7074, 1.0);
+        Assert.NotNull(residual);                       // ...so the residual MUST be re-armed, with a fresh Seq
+        Assert.NotEqual(armed.Seq, residual!.Value.Seq);
+        Assert.Equal(4f, residual.Value.DelayMs);
+        Assert.True(arm.Pending);
+    }
+
+    [Fact]
+    public void A_spent_wake_is_still_cleared_when_the_surface_goes_live()
+    {
+        var arm = new Lyrics.WakeArm();
+        var armed = arm.Arm(5000, 1000, 1.0)!.Value;
+        arm.Fired();
+        var cleared = arm.Clear();
+        Assert.NotNull(cleared);
+        Assert.True(cleared!.Value.DelayMs < 0f);
+        Assert.NotEqual(armed.Seq, cleared.Value.Seq);
+        Assert.Null(arm.Clear());
+        arm.Fired();                                    // a stale fire with nothing armed changes nothing
+        Assert.Null(arm.Clear());
+    }
+
+    [Fact]
     public void NextEvent_prefers_the_lead_shifted_handoff_then_the_start()
     {
         Lyrics.Line[] lines = [Lyr.Timed(1000, 2000, "a"), Lyr.Timed(5000, 6000, "b")];

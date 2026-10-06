@@ -8,6 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Changed
+
+- **Lyrics, track changes and scrolling use far less of the GPU.** Wavee now redraws only the pixels that changed
+  instead of whole 1024 x 512 tiles, keeps the lyrics' blurred lines instead of re-blurring them every frame, and
+  skips frames that would look identical. Measured on a Snapdragon X Elite: the lyrics rail uses about 70% less GPU
+  time, a track change about 85% less, and scrolling a playlist about 40% less.
+- **Playing music in the background barely touches the GPU.** The now-playing meter, the player bar's scrolling
+  title and the full-screen karaoke line now animate on the render thread instead of waking the whole app for every
+  frame. With music playing on Home, the GPU is about 75% less busy, with the same motion on screen.
+- **Opening pages and playlists creates about half as much garbage.** Navigating between pages allocates 46-62%
+  less memory per frame and runs half as many garbage collections; opening a playlist allocates about 53% less.
+- **Wavee gives memory back.** The metadata cache now has a size budget, and while Wavee is minimized and silent it
+  compacts its memory and returns it to Windows. It never does so during playback.
+- **Fewer background wake-ups.** The audio threads wait for work instead of checking every few milliseconds, and
+  routine network and memory log lines are summarised once a minute.
+
+### Fixed
+
+- **Karaoke lyrics no longer stall for up to a second.** Lyrics could freeze between lines, and sometimes for a
+  whole stretch, when a timer fired a few milliseconds early; the wipe now always moves on time.
+- **Images are sharp on scaled displays.** Images with a fixed size were decoded at their unscaled size and stretched
+  at 125-200% display scaling; they now decode at the screen's real resolution, also after moving the window to
+  another monitor.
+- **No more stale pixels after redraws.** Text that runs past its box, and offscreen effects that were re-rendered
+  in the same frame, could leave old pixels on screen until something else repainted them.
+- **No more hitch when Wavee saves a diagnostics snapshot.** Building the automatic evidence bundle froze the window
+  for one frame (about 36 ms); it is now written in the background.
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
