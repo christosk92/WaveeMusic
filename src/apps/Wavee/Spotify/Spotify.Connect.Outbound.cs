@@ -188,6 +188,11 @@ public static partial class Spotify
         public static bool PlayContext(string targetDeviceId, string contextUri, string? trackUri, bool shuffle, CancellationToken ct,
             int fromMs = -1, string? skipUid = null, int skipIndex = -1)
         {
+            if (!Egress.Admits(contextUri.AsSpan()) || (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())))
+            {
+                Log.Info("spotify", "play not forwarded: a non-Spotify item cannot play on another device");
+                return false;
+            }
             var buffer = new ArrayBufferWriter<byte>(768);
             PlayBody(buffer, contextUri, trackUri, shuffle, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs(), fromMs, skipUid, skipIndex);
             return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);
@@ -260,6 +265,7 @@ public static partial class Spotify
         /// (7 of 7 captured; the gateway rewrites it to `skip_next` for dealer delivery). Blocks; api threads only.</summary>
         public static bool NextTrack(string targetDeviceId, string? trackUri, string? trackUid, CancellationToken ct)
         {
+            if (!string.IsNullOrEmpty(trackUri) && !Egress.Admits(trackUri.AsSpan())) return false;
             var buffer = new ArrayBufferWriter<byte>(512);
             NextTrackBody(buffer, trackUri, trackUid, OurDeviceId, NewId(), NewId(), Playback.UnixNowMs());
             return PostCommand(PlayerCommandRoute, OurDeviceId, targetDeviceId, buffer.WrittenSpan, CommandHeaders, ct);

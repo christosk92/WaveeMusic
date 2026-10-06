@@ -131,10 +131,11 @@ public static partial class Spotify
             }
 
             /// <summary>An <see cref="EntityId"/> as its canonical uri, formatted straight into the buffer — no
-            /// string, no interner for a catalog id, no allocation (the same call the staged uri uses).</summary>
+            /// string, no interner for a catalog id, no allocation (the same call the staged uri uses). Nothing for an id
+            /// that is not Spotify's (<see cref="Egress"/>): this writer only ever builds bodies FOR Spotify.</summary>
             public void Id(int field, EntityId id)
             {
-                if (id.IsEmpty) return;
+                if (id.IsEmpty || !Egress.Admits(id)) return;
                 Span<byte> uri = stackalloc byte[UriBytes];
                 int n = FormatId(id, uri);
                 if (n > 0) Utf8(field, uri[..n]);
@@ -171,10 +172,11 @@ public static partial class Spotify
                 Close(m);
             }
 
-            /// <summary>A literal key and an identity's uri; nothing is written for an empty identity.</summary>
+            /// <summary>A literal key and an identity's uri; nothing is written for an empty identity or one that is not
+            /// Spotify's (<see cref="Egress"/>).</summary>
             public void EntryId(int field, scoped ReadOnlySpan<byte> key, EntityId id)
             {
-                if (id.IsEmpty) return;
+                if (id.IsEmpty || !Egress.Admits(id)) return;
                 int m = Open(field);
                 Utf8(1, key);
                 Id(2, id);
@@ -231,10 +233,14 @@ public static partial class Spotify
         /// <c>disallow_signals</c>. <c>media.type = "video"</c> is written only while the VIDEO HOST plays the row (D37,
         /// the captures' rule); a video-capable row played as audio offers the switch through <c>associated_video_id</c>
         /// and the <c>switch-to-video</c> signal instead.</para></summary>
+        /// <para><b>Only Spotify's own names leave</b> (<see cref="Egress.ForConnect"/>): a local track is named
+        /// <c>spotify:local:…</c> from its tags, never by its <c>wavee:local:file:</c> path id, and a context, row, album,
+        /// artist or cover that is not Spotify's is left out.</para>
         /// <param name="frameToUnixMs">Unix ms minus frame-clock ms, both sampled at one instant by the caller; 0 when the
         /// snapshot's <c>StartedPlayingAtMs</c> is already a unix stamp (a test's).</param>
-        public static int PutState(in Playback.Snapshot snap, Span<byte> into, long frameToUnixMs = 0)
+        public static int PutState(in Playback.Snapshot state, Span<byte> into, long frameToUnixMs = 0)
         {
+            Playback.Snapshot snap = Egress.ForConnect(in state);
             Span<byte> scratch = stackalloc byte[48];
             Span<byte> contextUtf8 = stackalloc byte[UriBytes];
             int contextLength = snap.HasTrack ? FormatId(snap.Context, contextUtf8) : 0;
@@ -465,7 +471,9 @@ public static partial class Spotify
             QueueProvider provider = snap.Wire.Window is null ? QueueProvider.Context : row.Provider;
             bool video = snap.Kind == Playback.PlayableKind.Video;
             int track = w.Open(7);
-            w.Id(1, snap.Track);
+            Span<byte> uri = stackalloc byte[UriBytes];
+            int uriLength = Egress.TrackUri(in snap, uri);   // a Spotify id, or a local track's spotify:local: name
+            w.Utf8(1, uri[..uriLength]);
             w.Str(2, snap.Uid);
             Head(ref w, in row, provider, context, video, snap.Wire.Window);
             // The video offer: the current row carries its 32-hex video gid whether we host audio or video (0.2.9).
@@ -513,7 +521,7 @@ public static partial class Spotify
                 w.Entry(3, "context_uri"u8, context);
                 if (!isVideo) w.Entry(3, "entity_uri"u8, context);
             }
-            if (row.Image.Length > 0)
+            if (row.Image.Length > 0 && Egress.AdmitsImage(row.Image))
             {
                 Span<byte> image = stackalloc byte[UriBytes];
                 int n = ImageUri(row.Image, image);
@@ -617,7 +625,7 @@ public static partial class Spotify
         /// <summary>An identity's uri into <paramref name="into"/>, or 0 when there is none or it would not fit.</summary>
         static int FormatId(EntityId id, Span<byte> into)
         {
-            if (id.IsEmpty) return 0;
+            if (id.IsEmpty || !Egress.Admits(id)) return 0;
             if (id.Form != EntityForm.Gid && id.FormattedLength * 3 > into.Length) return 0;
             return id.Format(into);
         }

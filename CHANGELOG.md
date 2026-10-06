@@ -51,6 +51,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **Playing a local file no longer sends its file path to Spotify.** While a local file played, Wavee told
+  Spotify Connect about it by an id that contained the file's full path, including your Windows user name (Spotify
+  rejected it). Your other devices are now told only the track's title, artist, album and length, the way Spotify's
+  own app does it, and nothing that is not a Spotify item (local files, local playlists, module streams, covers on
+  your disk) is sent to Spotify anymore.
 - **Karaoke lyrics no longer stall for up to a second.** Lyrics could freeze between lines, and sometimes for a
   whole stretch, when a timer fired a few milliseconds early; the wipe now always moves on time.
 - **Images are sharp on scaled displays.** Images with a fixed size were decoded at their unscaled size and stretched

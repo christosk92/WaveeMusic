@@ -699,7 +699,7 @@ public static partial class Spotify
         static void Post(Playlist p, Scope scope, PlaylistOp op, bool retry409, Action? ok, Action<PlaylistMutationFailure> failed,
                          bool refreshRows = true)
         {
-            if (!CanWrite(out _, out string username)) { failed(PlaylistMutationFailure.NotSupported); return; }
+            if (!Egress.Admits(p.Uri.Id) || !CanWrite(out _, out string username)) { failed(PlaylistMutationFailure.NotSupported); return; }
             string id = IdOf(p);
             int slot = p.Slot;
             long now = NowMs();
