@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Fixed
+
+- **Notification sound and quiet hours can no longer be switched while Windows notifications are off.** Their cards
+  greyed out, but the switch inside each one stayed live and looked enabled. Both rows now stay visible and go inert
+  together until Windows notifications are turned back on. (#183)
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
