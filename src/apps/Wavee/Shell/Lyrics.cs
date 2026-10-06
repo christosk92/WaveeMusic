@@ -1165,6 +1165,49 @@ public static partial class Lyrics
     /// means "nothing to wake for".</summary>
     public readonly record struct MotionWake(int Seq, float DelayMs);
 
+    /// <summary>The bookkeeping behind the view's <see cref="MotionWake"/>: which wake is PENDING, so a step that
+    /// re-derives the same wake instant does not re-publish it (a re-publish re-renders the ticker and restarts its timer).
+    /// <para><b>A fired wake is no longer pending</b> (<see cref="Fired"/>). The timeout is armed on the HOST timer clock
+    /// and its step reads the MEDIA clock, which runs a few ms apart (the frame's present target, a ±5 % slew): a wake
+    /// that fires a hair before its instant re-derives that SAME instant. While the fired wake still counted as pending
+    /// that re-arm was swallowed, no timer was left, and the karaoke froze until an unrelated edge stepped the surface
+    /// (up to a second later). Now the hair-early step re-arms the residual.</para>
+    /// Pure and allocation-free; the caller publishes the returned wake.</summary>
+    public sealed class WakeArm
+    {
+        int _seq;
+        double _rate = 1;
+        long _atMs = long.MinValue;   // the instant of the last PUBLISHED wake (MinValue = the "nothing" wake is out)
+        bool _fired;                  // ...and its timeout already ran
+
+        /// <summary>Is an armed wake still waiting to fire?</summary>
+        public bool Pending => _atMs != long.MinValue && !_fired;
+
+        /// <summary>Arm the wake at media instant <paramref name="wakeAtMs"/> (now <paramref name="nowMs"/>, content
+        /// <paramref name="rate"/>). Returns the wake to publish, or null when that exact wake is already pending.</summary>
+        public MotionWake? Arm(long wakeAtMs, long nowMs, double rate)
+        {
+            if (wakeAtMs == _atMs && rate == _rate && !_fired) return null;
+            _rate = rate;
+            _atMs = wakeAtMs;
+            _fired = false;
+            return new MotionWake(++_seq, MathF.Max(1f, (float)((wakeAtMs - nowMs) / rate)));
+        }
+
+        /// <summary>Disarm: returns the "nothing to wake for" wake to publish, or null when that is already the published
+        /// wake. A spent wake is still cleared, so the ticker never holds a stale positive delay.</summary>
+        public MotionWake? Clear()
+        {
+            if (_atMs == long.MinValue) return null;
+            _atMs = long.MinValue;
+            _fired = false;
+            return new MotionWake(++_seq, -1f);
+        }
+
+        /// <summary>The armed timeout fired: it is spent, so the step it runs may arm the same instant again.</summary>
+        public void Fired() => _fired = _atMs != long.MinValue;
+    }
+
     /// <summary>Does the lyrics surface have MOTION IN FLIGHT — i.e. is there anything for the next step to advance?
     ///
     /// <para><b>Why it exists (the 2026-09-12 fix, "lyrics wake only for the words").</b> The per-frame stepper is a
@@ -1189,8 +1232,9 @@ public static partial class Lyrics
         /// <summary>How far AHEAD of the next event the surface wakes — and how close an event has to be before the
         /// decision simply stays live rather than arming a timeout for it. Two 60 Hz frames: enough that the stepper is
         /// already mounted and stepping when the syllable lands, small enough that an instrumental gap is still spent
-        /// asleep. It also makes the re-arm self-terminating — a timeout that fires a hair early finds the event inside
-        /// the lead and goes live instead of arming again.</summary>
+        /// asleep. A timeout that fires on time or late finds the event inside the lead and goes live; one that fires a
+        /// hair EARLY on the media clock re-derives the same wake instant and re-arms the residual
+        /// (<see cref="WakeArm.Fired"/> is what lets it).</summary>
         public const long ArmLeadMs = 32L;
 
         /// <summary>Does the voice line have per-frame OUTPUT at <paramref name="nowMs"/>? A word-synced line always does

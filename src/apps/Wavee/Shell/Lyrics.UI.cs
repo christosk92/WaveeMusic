@@ -348,9 +348,7 @@ public static partial class Lyrics
         // ── motion demand ────────────────────────────────────────────────────────────────────────────────────────────
         readonly Signal<bool> _motionLive = new(true);   // starts live: the first step decides for itself
         readonly Signal<MotionWake> _motionWake = new(new MotionWake(0, -1f));
-        int _motionWakeSeq;
-        double _motionWakeRate = 1;
-        long _motionWakeAtMs = long.MinValue;
+        readonly WakeArm _wakeArm = new();
         internal readonly Action _wakeTick;
         /// <summary>Hoisted so the per-render <c>UseEffect</c> hands the SAME delegate every time (no per-render alloc).</summary>
         readonly Action _reseedOwnership;
@@ -367,7 +365,13 @@ public static partial class Lyrics
         internal MotionWake MotionWakeValue => _motionWake.Value;
         internal string TrackId => _trackId;
 
-        void WakeTick() { if (!ProbeSyncMode) OnFrame(); }
+        /// <summary>The Ticker's timeout fired: that wake is SPENT before the step runs, so a fire a hair early on the
+        /// media clock re-arms the residual instead of finding "the same wake, still pending" and leaving no timer.</summary>
+        void WakeTick()
+        {
+            _wakeArm.Fired();
+            if (!ProbeSyncMode) OnFrame();
+        }
 
         public override Element Render()
         {
@@ -1424,18 +1428,12 @@ public static partial class Lyrics
         void ArmMotionWake(long wakeAtMs, long nowMs)
         {
             if (wakeAtMs >= MotionDemand.None) { ClearMotionWake(); return; }
-            double rate = _clock.ContentRate;
-            if (wakeAtMs == _motionWakeAtMs && rate == _motionWakeRate) return;
-            _motionWakeRate = rate;
-            _motionWakeAtMs = wakeAtMs;
-            _motionWake.Value = new MotionWake(++_motionWakeSeq, MathF.Max(1f, (float)((wakeAtMs - nowMs) / rate)));
+            if (_wakeArm.Arm(wakeAtMs, nowMs, _clock.ContentRate) is { } wake) _motionWake.Value = wake;
         }
 
         void ClearMotionWake()
         {
-            if (_motionWakeAtMs == long.MinValue) return;
-            _motionWakeAtMs = long.MinValue;
-            _motionWake.Value = new MotionWake(++_motionWakeSeq, -1f);
+            if (_wakeArm.Clear() is { } wake) _motionWake.Value = wake;
         }
 
         /// <summary>No document, an untimed one, or sync suppressed by a video: no media deadline to re-arm from. Nothing
@@ -2383,7 +2381,8 @@ public static partial class Lyrics
             bool needsTicks = motionLive || cascading || follow != FollowMode.Following;
             Element? stepper = needsTicks && !ViewCore.ProbeSyncMode ? Embed.Comp(() => new Stepper(owner)) : null;
 
-            // The RE-ARM: one shot at the next event minus MotionDemand.ArmLeadMs. The Seq restarts it.
+            // The RE-ARM: one shot at the next event minus MotionDemand.ArmLeadMs. The Seq restarts it; a fire spends the
+            // wake (WakeTick), so a fire a hair early on the media clock publishes a fresh Seq for the residual.
             var wake = owner.MotionWakeValue;
             var timer = UseTimeout(owner._wakeTick, MathF.Max(wake.DelayMs, 1f), DepKey.From(wake.Seq));
             if (needsTicks || wake.DelayMs < 0f) timer.Cancel();
