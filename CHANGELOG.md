@@ -37,6 +37,12 @@ versions separately under `v*` and is not tracked in this file.)
 - **A minimized Wavee wakes up far less often.** Its touchpad-scrolling support used to wake the app four times a
   second while the window was minimized or in the tray; it now sleeps until something it has to do needs it.
 
+
+- **Play, pause and launch no longer stall the window while the taskbar jump list updates.** Every launch and every
+  play/pause rebuilt the taskbar's right-click menu on the window's own thread, which froze Wavee for 10 to 90 ms
+  each time. The menu is now written in the background, and a quick run of play/pause presses writes it once, for the
+  state you end on. (#115)
+
 ### Fixed
 
 - **Karaoke lyrics no longer stall for up to a second.** Lyrics could freeze between lines, and sometimes for a
@@ -76,6 +82,10 @@ versions separately under `v*` and is not tracked in this file.)
   same freeze as "Change cover": Wavee stopped drawing while the dialog was open, and could be left greyed out with no
   dialog in sight. They now open on their own thread, still modal to Wavee, with the same hand-back after a few
   seconds if a dialog never appears; only one can be open at a time.
+
+- **The taskbar jump list offers the right verb again.** Right-clicking Wavee in the taskbar offered "Pause" while the
+  music was paused and "Resume" while it played, because the menu was built from the state just before the change.
+  It now says "Pause" while playing and "Resume" while paused. (#115)
 
 ## [0.3.3] - 2026-10-05
 

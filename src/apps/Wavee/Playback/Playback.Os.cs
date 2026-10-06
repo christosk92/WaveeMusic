@@ -45,7 +45,9 @@
 //
 // Rules: UI thread only (C1) — the two inbound callbacks (an SMTC button, a power broadcast) hop through
 // `Playback.ToUi` first; no unbounded queue (C8); nothing here reads a wall clock for motion (the memory rule
-// `animations-sample-frame-time` — `Playback.FrameNowMs` is the frame clock).
+// `animations-sample-frame-time` — `Playback.FrameNowMs` is the frame clock). The ONE exception to "UI thread only" is
+// the jump list's COM transaction: the UI thread builds the write and `Playback.Os.JumpListWorker.cs` runs it on a
+// dedicated STA thread (#115), because a jump list is keyed by AUMID, not by window.
 
 using FluentGpu;
 using FluentGpu.Foundation;
@@ -54,14 +56,12 @@ using FluentGpu.WindowsApi.Media;
 using FluentGpu.WindowsApi.Power;
 using FluentGpu.WindowsApi.Shell;
 
-using EngineJumpList = FluentGpu.WindowsApi.Shell.JumpList;
-
 namespace Wavee;
 
 public static partial class Playback
 {
     /// <summary>The four OS surfaces playback is mirrored onto.</summary>
-    public static class Os
+    public static partial class Os
     {
         // ── 0. activation ───────────────────────────────────────────────────────────────────────────────────────────
 
@@ -78,7 +78,7 @@ public static partial class Playback
 
             Smtc.Activate(hwnd);
             Taskbar.Activate(hwnd);
-            JumpList.Activate();
+            JumpList.Activate(in s);
             PowerPolicy.Activate();
 
             // AFTER the flag, never before: every sink returns early on `!s_active`, so seeding first is a silent
@@ -92,6 +92,9 @@ public static partial class Playback
         /// surface meant to outlive the process.</summary>
         public static void Shutdown()
         {
+            // FIRST and unconditionally: the jump-list worker may hold the last play/pause edge's write, and the list is
+            // the one surface that outlives the process. Bounded, so a slow Explorer cannot hold the exit.
+            s_jumpListWorker.Shutdown();
             if (!s_active) return;
             s_active = false;
             PowerPolicy.Shutdown();
@@ -105,7 +108,12 @@ public static partial class Playback
         public static void SignedOut()
         {
             JumpList.Forget();
-            try { EngineJumpList.Clear(JumpList.Aumid); } catch { /* fail-soft */ }
+            // A `--profile` instance never touched the list, so it has nothing of its own to clear — and clearing would
+            // delete the USER's list, which the shell keys by the same identity.
+            if (!JumpList.OwnsList(Platform.ProfileRoot)) return;
+            // Through the worker like every other jump-list write, so it lands AFTER any publish already queued and a
+            // pending one for the same AUMID is replaced by it (fail-soft there).
+            s_jumpListWorker.Submit(JumpListWrite.Clear(JumpList.Aumid));
         }
 
         // ── 1. the push contract ────────────────────────────────────────────────────────────────────────────────────
@@ -436,7 +444,7 @@ public static partial class Playback
             static bool s_on;
             static OverlayKind s_lastOverlay = (OverlayKind)255;
             static ProgressKind s_lastProgress = (ProgressKind)255;
-            static bool s_lastCanPrev, s_lastCanNext, s_lastPlaying, s_lastHasTrack, s_haveThumbState, s_thumbsAdded;
+            static bool s_lastCanPrev, s_lastCanNext, s_lastPlaying, s_lastHasTrack, s_haveThumbState;
             static SmtcTimelineCoalescer s_timeline;
             static long s_durationMs;
             static readonly Action s_flush = Flush;
@@ -452,7 +460,7 @@ public static partial class Playback
                 FluentApp.ThumbButtonClicked += OnThumbClick;
                 FluentApp.TaskbarButtonCreated += OnTaskbarButtonCreated;
                 s_on = true;
-                ApplyThumbs(forceAdd: true);
+                ApplyThumbs();
             }
 
             internal static void Shutdown()
@@ -463,6 +471,7 @@ public static partial class Playback
                 FluentApp.TaskbarButtonCreated -= OnTaskbarButtonCreated;
                 try { TaskbarManager.SetOverlayIcon(s_hwnd, null, ""); } catch { }
                 try { TaskbarManager.ClearProgress(s_hwnd); } catch { }
+                try { TaskbarManager.ReleaseIcons(); } catch { }   // after the last taskbar call: the cached HICONs
             }
 
             internal static void OnStateChanged(in State s)
@@ -510,7 +519,7 @@ public static partial class Playback
                     s_lastCanNext = canNext;
                     s_lastPlaying = playing;
                     s_lastHasTrack = hasTrack;
-                    ApplyThumbs(forceAdd: false);
+                    ApplyThumbs();
                 }
             }
 
@@ -532,11 +541,12 @@ public static partial class Playback
             }
 
             /// <summary>The three buttons, ids 1/2/3, of the shell's 7-button cap. Added ONCE per HWND and updated
-            /// forever after — the shell forbids a second add. A missing `.ico` is a DEGRADED state, not an error
-            /// one: the retry publishes the same three buttons with no glyph, so the tooltips and the clicks still
+            /// forever after — the shell forbids a second add, and the engine's per-HWND latch (dropped by
+            /// `NotifyTaskbarButtonCreated`) decides which one a call is. A missing `.ico` is a DEGRADED state, not an
+            /// error one: the retry publishes the same three buttons with no glyph, so the tooltips and the clicks still
             /// land (ch 14 W13). `DismissOnClick` stays false, which is what makes prev→prev→next work without
             /// re-hovering the thumbnail.</summary>
-            static void ApplyThumbs(bool forceAdd)
+            static void ApplyThumbs()
             {
                 if (!s_on) return;
                 ThumbState t = ThumbsFor(s_lastHasTrack, s_lastPlaying, s_lastCanPrev, s_lastCanNext);
@@ -549,15 +559,10 @@ public static partial class Playback
                 };
                 try
                 {
-                    if (forceAdd || !s_thumbsAdded)
-                    {
-                        TaskbarManager.SetThumbButtons(s_hwnd, buttons);
-                        s_thumbsAdded = true;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < buttons.Length; i++) TaskbarManager.UpdateThumbButton(s_hwnd, buttons[i]);
-                    }
+                    // ONE call either way: the first adds the toolbar, every later one is a single
+                    // `ThumbBarUpdateButtons` for all three buttons (a cross-process call to Explorer each — three
+                    // per-button updates cost three). The glyphs come from the engine's icon cache, not from disk.
+                    TaskbarManager.SetThumbButtons(s_hwnd, buttons);
                 }
                 catch (Exception ex)
                 {
@@ -568,7 +573,6 @@ public static partial class Playback
                             new ThumbButton(IdPrev, null, Loc.Get(Strings.Taskbar.Previous), t.PrevEnabled),
                             new ThumbButton(IdPlayPause, null, playPauseTip, t.PlayPauseEnabled),
                             new ThumbButton(IdNext, null, Loc.Get(Strings.Taskbar.Next), t.NextEnabled));
-                        s_thumbsAdded = true;
                     }
                     catch { /* fail-soft: no toolbar this session */ }
                 }
@@ -580,8 +584,7 @@ public static partial class Playback
             {
                 if (!s_on) return;
                 try { TaskbarManager.NotifyTaskbarButtonCreated(s_hwnd); } catch { }
-                s_thumbsAdded = false;
-                ApplyThumbs(forceAdd: true);
+                ApplyThumbs();
             }
 
             /// <summary>A thumb click. The middle button reads the LIVE phase, not the last PUSHED one: the cached
@@ -613,7 +616,8 @@ public static partial class Playback
 
         /// <summary>The taskbar jump list: two standing tasks plus up to six recents, republished as one
         /// Begin/Append/Commit COM transaction — a jump list cannot be edited incrementally, every publish is a full
-        /// rebuild.</summary>
+        /// rebuild. This class decides WHEN and WHAT on the UI thread; the transaction runs on
+        /// <see cref="JumpListWorker"/>'s STA thread, coalesced and deduped there (#115).</summary>
         public static class JumpList
         {
             /// <summary>Six rows, the app's own cap — NOT the shell's. `BeginList` hands back the user's own
@@ -656,9 +660,19 @@ public static partial class Playback
             /// played and visited appears once.</summary>
             public static Func<int, JumpRow[]>? RecentSurfaces { get; set; }
 
-            internal static void Activate()
+            internal static void Activate(in State s)
             {
+                // The list is keyed by the app's identity, which a `--profile` instance shares with the user's Wavee
+                // (same exe, same process-default AUMID): a scratch or verify profile must never overwrite it. Left off,
+                // every other entry point (`OnStateChanged`, `Aumid`, `Attach`) is a no-op on `!s_on`.
+                if (!OwnsList(Platform.ProfileRoot)) return;
                 s_on = true;
+                // Seed the edge detector from the state being published, so the first rebuild already shows the right
+                // verb and the `Publish(in s)` that follows `Activate` is not a second edge (and a second transaction).
+                s_havePlayState = true;
+                s_lastPlaying = ShowsPauseTask(s.Phase);
+                s_haveId = true;
+                s_lastId = s.CurrentId;
                 s_lastRebuildMs = long.MinValue;
                 Rebuild();
             }
@@ -685,7 +699,7 @@ public static partial class Playback
             internal static void OnStateChanged(in State s)
             {
                 if (!s_on) return;
-                bool playing = s.Phase == Phase.Playing;
+                bool playing = ShowsPauseTask(s.Phase);
                 // `_havePlayState` matters: without it the first tick's `false` matches the default `false` and the
                 // very first play/pause edge is missed.
                 bool playChanged = !s_havePlayState || playing != s_lastPlaying;
@@ -710,26 +724,42 @@ public static partial class Playback
                 if (Environment.ProcessPath is not { Length: > 0 } exe) return;
                 s_lastRebuildMs = FrameNowMs();
 
-                // Re-read the LIVE phase rather than trusting the cached one: the rebuild is posted, so the cached
-                // value can be a frame stale by the time the COM transaction runs.
-                bool playing = PhaseSignal.Peek() == Phase.Playing;
+                // The phase of the state being PUBLISHED, never `PhaseSignal.Peek()`: this runs inside the drain's
+                // effects, BEFORE the drain writes the signals (`Playback.Host` `Execute()` then `Publish()`), so the
+                // signal still holds the previous phase and the verb came out inverted — "Pause" while paused. The
+                // signal is only the fallback for a rebuild with no state seen yet (an attach after a sign-out), which
+                // never runs inside a drain.
+                bool playing = s_havePlayState ? s_lastPlaying : ShowsPauseTask(PhaseSignal.Peek());
                 string? appIcon = AppIcon.Path();
                 string? glyph = AppIcon.TaskbarGlyph(playing ? "pause" : "play");
-
-                var tasks = new[]
-                {
-                    new JumpTask(
-                        Loc.Get(playing ? Strings.Jumplist.Pause : Strings.Jumplist.Resume), exe,
-                        playing ? "wavee://pause" : "wavee://resume", glyph ?? appIcon,
-                        Loc.Get(playing ? Strings.Jumplist.PausePlayback : Strings.Jumplist.ResumePlayback)),
-                    new JumpTask(Loc.Get(Strings.Jumplist.Search), exe, "wavee://open?route=search", appIcon,
-                        Loc.Get(Strings.Jumplist.Search)),
-                };
+                JumpTask[] tasks = Tasks(playing, exe, appIcon, glyph);
 
                 JumpListItem[] items = BuildCategory(exe, appIcon);
-                try { EngineJumpList.SetCategory(Loc.Get(Strings.Jumplist.JumpBackIn), items, tasks, Aumid); }
-                catch (Exception ex) { Log.Warn("playback", "jump list publish failed", ex); }
+                // The COM transaction leaves the UI thread here (#115): the worker runs the newest write per AUMID and
+                // skips one that matches what it last committed, so a play/pause burst costs one transaction.
+                s_jumpListWorker.Submit(JumpListWrite.Publish(Loc.Get(Strings.Jumplist.JumpBackIn), items, tasks, Aumid));
             }
+
+            /// <summary>Does the instance whose profile folder is <paramref name="profileRoot"/> own the taskbar jump list?
+            /// Only the default profile does — the same rule as every other piece of process-global OS integration
+            /// (<see cref="InstanceIdRules.OwnsOsIntegration"/>).</summary>
+            public static bool OwnsList(string? profileRoot) => InstanceIdRules.OwnsOsIntegration(profileRoot);
+
+            /// <summary>Does a published <paramref name="phase"/> offer the PAUSE verb? Only while playing; every other
+            /// phase (paused, loading, idle) offers Resume.</summary>
+            public static bool ShowsPauseTask(Phase phase) => phase == Phase.Playing;
+
+            /// <summary>The two standing tasks: the transport verb that matches <paramref name="playing"/> (Pause while
+            /// playing, Resume otherwise) and Search.</summary>
+            public static JumpTask[] Tasks(bool playing, string exe, string? appIcon, string? glyph) =>
+            [
+                new JumpTask(
+                    Loc.Get(playing ? Strings.Jumplist.Pause : Strings.Jumplist.Resume), exe,
+                    playing ? "wavee://pause" : "wavee://resume", glyph ?? appIcon,
+                    Loc.Get(playing ? Strings.Jumplist.PausePlayback : Strings.Jumplist.ResumePlayback)),
+                new JumpTask(Loc.Get(Strings.Jumplist.Search), exe, "wavee://open?route=search", appIcon,
+                    Loc.Get(Strings.Jumplist.Search)),
+            ];
 
             /// <summary>Up to six rows: the play log first, then the nav history, deduped on the composed route. An
             /// EMPTY array means the heading is not drawn at all — `AppendCategory` is skipped on a zero count — and

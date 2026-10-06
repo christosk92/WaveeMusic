@@ -617,13 +617,13 @@ public static partial class Shell
 
     /// <summary>The taskbar jump list's one-shot attach, armed once from <c>RestoreNav</c>. Same shape as
     /// <see cref="ArmAudioWarm"/>: a timer that POSTS through the UI marshaller, so the work leaves the launch thread
-    /// (time-to-window is what the boot marks measure) but still lands on the UI/STA thread the shell COM transaction
-    /// and the two document stores both require. `Attach` earns exactly one rebuild, and `Rebuild` already catches and
-    /// logs its own COM failures.</summary>
+    /// (time-to-window is what the boot marks measure) but still lands on the UI thread the two document stores
+    /// require. `Attach` earns exactly one rebuild; the rebuild builds its write here and hands the shell COM
+    /// transaction to the jump list's own STA worker (#115), which catches and logs its own failures.</summary>
     static void ArmJumpList()
     {
         // The jump list is keyed by the app's AUMID — shared with the user's Wavee: a --profile instance leaves it alone.
-        if (s_jumpList is not null || !InstanceIdRules.OwnsOsIntegration(Platform.ProfileRoot)) return;
+        if (s_jumpList is not null || !Playback.Os.JumpList.OwnsList(Platform.ProfileRoot)) return;
         s_jumpList = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Os.JumpList.Attach(
                 recentContexts: static max => PlayLog.RecentContexts(max),
                 recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max))),
@@ -990,11 +990,10 @@ public static partial class Shell
 
         // The taskbar's jump list attaches LATE by design, and nothing on screen depends on it — so it must not sit on
         // the launch thread ahead of the window. It is deferred through the SAME one-shot-timer-then-UI-post shape as
-        // `ArmAudioWarm`, NOT onto a thread pool: `EngineJumpList`'s own contract says `SetCategory`/`Clear` run on the
-        // UI (STA) thread, and while its `EnsureSta` merely TOLERATES `RPC_E_CHANGED_MODE` rather than throwing, a
-        // pool thread is MTA — so the STA request is refused and the COM transaction fails quietly instead of loudly.
-        // The callbacks also read `History.Store.Entries` and the play log, which the UI thread owns, so a pool thread
-        // would race them as well. Off the boot path, still on the right thread.
+        // `ArmAudioWarm`, NOT onto a thread pool: the callbacks read `History.Store.Entries` and the play log, which the
+        // UI thread owns, so a pool thread would race them. The COM transaction itself does not run here either way: it
+        // needs an STA (a pool thread is MTA, and `EnsureSta` merely tolerates `RPC_E_CHANGED_MODE`), and it runs on the
+        // jump list's dedicated STA worker (`Playback.Os.JumpListWorker`, #115). Off the boot path, on the right threads.
         ArmJumpList();
     }
 
