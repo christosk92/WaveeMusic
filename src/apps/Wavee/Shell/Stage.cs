@@ -458,22 +458,65 @@ public static partial class Stage
             return Pack(anchor, dots);
         }
 
-        /// <summary>The first media instant after <paramref name="nowMs"/> at which <see cref="ViewAt"/> MAY change
+        /// <summary>The first media instant after <paramref name="nowMs"/> at which <see cref="ViewAt"/> changes
         /// (<see cref="long.MaxValue"/> = never): the next line's start coming within the lead (which also ends a break and an
-        /// intro), or the lead line's sung-out point (where a break's dots take the slot). The view is constant before it, so
-        /// a playing caption whose wipe the render thread poses needs ONE wake there, not a tick per frame.</summary>
+        /// intro), or the lead line's sung-out point when a real break follows it (where the break's dots take the slot). The
+        /// view is constant before it, so a playing caption whose wipe the render thread poses needs ONE wake there, not a
+        /// tick per frame.</summary>
         public static long NextEdgeMs(Lyrics.Doc d, long nowMs)
         {
             var lines = d.Lines;
             if (lines.Count == 0) return long.MaxValue;
             int lead = Lyrics.ResolveLine(lines, nowMs + Lyrics.LeadMs);
             long next = lead + 1 < lines.Count ? lines[lead + 1].StartMs - Lyrics.LeadMs : long.MaxValue;
-            if (lead >= 0)
+            // the sung-out point matters only where a real break follows (AdvancePastInterlude's own rule): the dots take the slot
+            if (lead >= 0 && lead + 1 < lines.Count)
             {
                 long sungOut = Lyrics.SungOutMs(d, lead);
-                if (sungOut > nowMs && sungOut < next) next = sungOut;
+                if (sungOut > nowMs && sungOut < next && lines[lead + 1].StartMs - sungOut >= Lyrics.InterludeGapMs) next = sungOut;
             }
             return next;
+        }
+
+        /// <summary>A re-arm whose due instant moved by no more than this (ms) keeps the armed wake: a position report that
+        /// re-anchors the clock by a frame's jitter must not restart the timer once a second.</summary>
+        public const long EdgeRearmSlackMs = 2L;
+
+        /// <summary>The caption's ONE one-shot wake at its next view edge, as a pure arming rule. <see cref="Arm"/> takes the
+        /// media instant (<see cref="NextEdgeMs"/>, or <see cref="long.MaxValue"/> for none), the media position now and the
+        /// caller's clock now (ONE clock: the due instant is computed and compared in it), and says whether a new one-shot
+        /// must be published (<c>delayMs</c> &lt; 0 = cancel). It re-arms whenever the edge moved, the due instant moved
+        /// (a seek within the line), or the armed wake has FIRED (<see cref="Fire"/>): a timer that fires on another clock a
+        /// little before the edge finds the view unchanged and arms again instead of losing the edge.</summary>
+        public struct EdgeWake
+        {
+            bool _armed, _fired;
+            long _atMs, _dueMs;
+
+            /// <summary>A one-shot is armed and has not fired.</summary>
+            public readonly bool Pending => _armed && !_fired;
+            /// <summary>The media instant armed (meaningful while <see cref="Pending"/>).</summary>
+            public readonly long AtMs => _atMs;
+
+            public bool Arm(long atMs, long mediaNowMs, long clockNowMs, out float delayMs)
+            {
+                if (atMs == long.MaxValue)
+                {
+                    delayMs = -1f;
+                    if (!_armed) return false;
+                    _armed = _fired = false;
+                    return true;
+                }
+                long delay = Math.Max(1L, atMs - mediaNowMs);
+                long due = clockNowMs + delay;
+                if (_armed && !_fired && atMs == _atMs && Math.Abs(due - _dueMs) <= EdgeRearmSlackMs) { delayMs = 0f; return false; }
+                _armed = true; _fired = false; _atMs = atMs; _dueMs = due;
+                delayMs = delay;
+                return true;
+            }
+
+            /// <summary>The armed one-shot fired (its callback runs next): the next <see cref="Arm"/> arms afresh.</summary>
+            public void Fire() => _fired = true;
         }
 
         /// <summary>One int for the view (the host's ONE signal — a re-render only when the line or the break edge moves).</summary>

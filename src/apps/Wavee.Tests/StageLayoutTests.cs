@@ -625,9 +625,10 @@ public class StageLayoutTests
     }
 
     /// <summary>The playing caption wakes only at <c>Caption.NextEdgeMs</c> (its wipe runs on the render thread): every
-    /// instant the view changes must be one it names, so a brute-force walk of the clock over a document with an intro, a
-    /// word-synced line, a real break, a line-synced line with an early authored end and back-to-back lines never finds
-    /// the view changing before the edge it was given.</summary>
+    /// instant the view changes must be one it names, and every instant it names must change it (no wasted wake), so a
+    /// brute-force walk of the clock over a document with an intro, a word-synced line, a real break, a line-synced line
+    /// with an early authored end and back-to-back lines never finds the view changing before the edge it was given, nor
+    /// an edge that changes nothing.</summary>
     [Fact]
     public void The_caption_wakes_at_every_instant_its_view_can_change()
     {
@@ -654,7 +655,12 @@ public class StageLayoutTests
             long stop = Math.Min(edge, 40_000);
             for (long u = t + 1; u < stop; u++)
                 Assert.True(Stage.Caption.ViewAt(doc, u, out _, out _) == view, $"the view changed at {u}, before the edge {edge} named at {t}");
-            if (stop < 40_000 && Stage.Caption.ViewAt(doc, stop, out _, out _) != view) changes++;
+            if (stop < 40_000)
+            {
+                // and no wake is wasted: the view changes AT every edge it names
+                Assert.True(Stage.Caption.ViewAt(doc, stop, out _, out _) != view, $"the edge {stop} named at {t} changes nothing");
+                changes++;
+            }
             t = stop;
         }
         Assert.True(changes >= 8, $"only {changes} view changes walked");
