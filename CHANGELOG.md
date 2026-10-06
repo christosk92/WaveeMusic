@@ -106,6 +106,14 @@ versions separately under `v*` and is not tracked in this file.)
   tool) and then stay running for hours after Wavee quit. Windows now ends a helper that never came up when Wavee
   exits, and Wavee restarts one that does not report in within ten seconds.
 
+- **Local music videos (.mp4) play their sound.** A dropped or imported .mp4 (or any other MP4-family file in Local
+  files, such as .m4a or .mov) was handed to the MP3 decoder, which could not read it, so it failed with "This track
+  isn't available" however many times Retry was pressed. Wavee now decides what a local file is from its contents,
+  not its name: the AAC sound of an MP4 plays and seeks like any other local track, and the attached video is still
+  one click on the video button away. A file in a format Wavee cannot play (an Opus or WAV file, encrypted or Apple Lossless audio in an
+  MP4) now stops at once with "Wavee can't play this file's format" instead of being opened with a guessed decoder,
+  and the bar no longer offers a Retry that can only fail again.
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed

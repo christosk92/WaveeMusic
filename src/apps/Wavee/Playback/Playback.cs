@@ -168,7 +168,10 @@ public static partial class Playback
 
     /// <summary>Why the current playable is not playing. <see cref="Fault.None"/> is the ONLY value that lets the
     /// transport arm (ch 20 §7: <c>canTransport = Current != none &amp;&amp; Error == None</c>).</summary>
-    public enum Fault : byte { None, Network, Unavailable, DrmRequired, DecodeFailed, RuntimeMissing, Unknown }
+    /// <remarks><see cref="Unsupported"/> is the one DETERMINISTIC verdict: the bytes are a format no decoder in this build reads
+    /// (a local file whose content names no decoder, or one its decoder refused). Opening the same file again can only fail the
+    /// same way, so the bar offers no Retry for it.</remarks>
+    public enum Fault : byte { None, Network, Unavailable, DrmRequired, DecodeFailed, RuntimeMissing, Unknown, Unsupported }
 
     /// <summary>THE auto-skip decision, pure: does a failed load step the deck onto the next playable row instead of
     /// parking it? Three things must all hold. The fault must be TERMINAL FOR THE ROW — the catalog has no playable
@@ -186,7 +189,7 @@ public static partial class Playback
         public const int MaxConsecutive = 3;
 
         /// <summary>Is this fault about THE ROW, so the next row is worth trying?</summary>
-        public static bool IsTerminal(Fault fault) => fault is Fault.Unavailable or Fault.DrmRequired or Fault.DecodeFailed;
+        public static bool IsTerminal(Fault fault) => fault is Fault.Unavailable or Fault.DrmRequired or Fault.DecodeFailed or Fault.Unsupported;
 
         /// <inheritdoc cref="AutoSkip"/>
         public static bool Skips(Fault fault, LoadOrigin origin, bool repeatTrack, int consecutive)
@@ -2250,7 +2253,7 @@ public static partial class Playback
 
             case AudioSignal.Failed:
             {
-                var fault = (Fault)Math.Clamp(i.LongArg, 0, (long)Fault.Unknown);
+                var fault = (Fault)Math.Clamp(i.LongArg, 0, (long)Fault.Unsupported);
                 // A video load gets its retry and then falls back to audio at the carried position (G-142).
                 if (s.Kind == PlayableKind.Video && s.RoutesLocal) { DoVideoFault(ref s, in i, ref fx, retry: true, fault); break; }
                 // A row the deck ADVANCED onto on its own — a natural end, a Next — whose fault is terminal for the row
