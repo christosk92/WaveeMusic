@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "product": "wavee",
+  "version": "0.3.4",
+  "packageVersion": "",
+  "name": "Crest",
+  "tagline": "New full-screen layouts with a large cover or the artist's photo, and a lighter Wavee: far less GPU and memory, especially when paused or minimized.",
+  "date": "",
+  "channel": "stable",
+  "lang": "en",
+  "minOs": "10.0.19041.0",
+  "arch": [
+    "x64",
+    "arm64"
+  ],
+  "links": {
+    "release": "",
+    "changelog": "",
+    "compare": ""
+  },
+  "highlights": [
+    {
+      "id": "fullscreen-layouts",
+      "title": "Full screen, your way",
+      "body": "The full-screen options now have two tabs. Visualizer shows every visualizer at a glance. Layout decides where the cover and lyrics sit on top of it: a large cover beside the lyrics, the cover centered in a ring, or the artist's photo filling the screen with a slow pan, with the lyrics over it if you like. Your visualizer keeps running behind the cover layouts.",
+      "kind": "new",
+      "issues": []
+    },
+    {
+      "id": "lighter",
+      "title": "Lighter on your PC",
+      "body": "Wavee redraws only what changed, so lyrics, song changes and scrolling use far less of the GPU. Paused, the full screen stops animating instead of drawing over a hundred frames a second. Minimized or in the tray, Wavee gives its drawing memory back, and the AI lyrics models load only when a song needs them.",
+      "kind": "improved",
+      "issues": []
+    },
+    {
+      "id": "fixes",
+      "title": "Headphones, local files and dialogs",
+      "body": "Connecting Bluetooth headphones no longer leaves playback silent, and pressing Play retries an output that refused to start. Local music videos play their sound, and a local file's path is never sent to Spotify. File and folder dialogs, Change cover and the taskbar jump list no longer freeze the window.",
+      "kind": "fixed",
+      "issues": []
+    }
+  ],
+  "sections": [],
+  "notices": [],
+  "media": [],
+  "generatedAt": ""
+}
