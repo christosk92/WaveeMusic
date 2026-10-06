@@ -118,7 +118,7 @@ public static partial class Spotify
             {
                 if (r.ValueTextEquals("profile"u8)) ArtistProfile(ref r, s, in artist, ref st, overview);
                 else if (r.ValueTextEquals("visuals"u8)) ArtistVisuals(ref r, s, in artist, ref st);
-                else if (r.ValueTextEquals("headerImage"u8)) st.LegacyHeader = ImageNode(ref r, s, ref st.HeaderHex);
+                else if (r.ValueTextEquals("headerImage"u8)) st.LegacyHeader = ImageNode(ref r, s, ref st.HeaderHex, BrowseImagePick.HeaderMinWidth);
                 else if (r.ValueTextEquals("stats"u8)) { st.SawStats = true; ArtistStats(ref r, s, in artist, ref st); }
                 else if (r.ValueTextEquals("onPlatformReputationTrait"u8)) st.Verified |= ArtistVerified(ref r);
                 else if (overview && r.ValueTextEquals("discography"u8)) ArtistDiscography(ref r, s, in artist, ref st);
@@ -204,7 +204,7 @@ public static partial class Spotify
             for (int d = Fields(ref r); Next(ref r, d);)
             {
                 if (r.ValueTextEquals("avatarImage"u8)) st.Row.Image = ImageNode(ref r, s, ref st.AvatarHex);
-                else if (r.ValueTextEquals("headerImage"u8)) st.VisualsHeader = ImageNode(ref r, s, ref st.HeaderHex);
+                else if (r.ValueTextEquals("headerImage"u8)) st.VisualsHeader = ImageNode(ref r, s, ref st.HeaderHex, BrowseImagePick.HeaderMinWidth);
                 else if (r.ValueTextEquals("gallery"u8)) { ArtistGallery(ref r, s, in artist); st.Spoke |= ArtistSpoke.Gallery; }
                 else SkipValue(ref r);
             }

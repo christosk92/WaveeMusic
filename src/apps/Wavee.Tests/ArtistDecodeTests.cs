@@ -54,7 +54,7 @@ public class ArtistDecodeTests
     public void The_header_is_the_wide_image_and_the_accent_is_the_providers_extracted_colour()
     {
         var a = LoadOverview();
-        Assert.Equal("https://image-cdn-fa.spotifycdn.com/image/ab67618600000194af60e9aa0d75133e55c126cd", Text(a.HeaderId));
+        Assert.Equal("https://i2o.scdn.co/image/ab67618600001667af60e9aa0d75133e55c126cd", Text(a.HeaderId));
         Assert.Equal("https://i.scdn.co/image/ab6761610000e5ebf8349dfb619a7f842242de77", Text(a.ImageId));
         Assert.Equal(a.HeaderId, a.PaletteImageId);
         Assert.Equal(0xFF8898A8u, a.HeaderAccent);

@@ -2197,11 +2197,15 @@ public static partial class Spotify
         /// lists 64 then 300 then 640, smallest first; taking the first one stored a 64px JPEG that
         /// <c>ArtworkDecodePx</c> cannot sharpen. <paramref name="hex"/> receives the first
         /// <c>extractedColors.*.hex</c> under the node when it carries one; it is left as it was otherwise.</summary>
-        static TextRef ImageNode(ref Utf8JsonReader r, Staging s, ref TextRef hex)
+        static TextRef ImageNode(ref Utf8JsonReader r, Staging s, ref TextRef hex) => ImageNode(ref r, s, ref hex, BrowseImagePick.HeroMinWidth);
+
+        /// <summary><see cref="ImageNode(ref Utf8JsonReader, Staging, ref TextRef)"/> with an explicit smallest acceptable width: the artist HEADER asks for
+        /// <see cref="BrowseImagePick.HeaderMinWidth"/> so the full-bleed hero gets the 1920 source, the avatar keeps 640.</summary>
+        static TextRef ImageNode(ref Utf8JsonReader r, Staging s, ref TextRef hex, int minWidth)
         {
             if (r.TokenType == JsonTokenType.PropertyName && !r.Read()) return default;
             if (r.TokenType == JsonTokenType.String) return s.AddJson(ref r);
-            if (r.TokenType == JsonTokenType.StartArray) return SourcesBest(ref r, s);
+            if (r.TokenType == JsonTokenType.StartArray) return SourcesBest(ref r, s, minWidth);
             if (r.TokenType is not JsonTokenType.StartObject) { r.Skip(); return default; }
             int depth = r.CurrentDepth;
             TextRef url = default;
@@ -2214,7 +2218,7 @@ public static partial class Spotify
                 if (r.ValueTextEquals("sources"u8) || r.ValueTextEquals("items"u8))
                 {
                     r.Read();
-                    var picked = SourcesBest(ref r, s);
+                    var picked = SourcesBest(ref r, s, minWidth);
                     if (url.IsEmpty) url = picked;
                     continue;
                 }
@@ -2225,7 +2229,7 @@ public static partial class Spotify
 
         /// <summary>A <c>sources</c> / <c>items</c> array (or a single source object / bare URL) → the
         /// <see cref="BrowseImagePick.HeroMinWidth"/> pick. Chip/avatar walks stay on <c>FirstUrl</c>.</summary>
-        static TextRef SourcesBest(ref Utf8JsonReader r, Staging s)
+        static TextRef SourcesBest(ref Utf8JsonReader r, Staging s, int minWidth = BrowseImagePick.HeroMinWidth)
         {
             if (r.TokenType == JsonTokenType.String) return s.AddJson(ref r);
             Span<TextRef> urls = stackalloc TextRef[16];
@@ -2253,7 +2257,7 @@ public static partial class Spotify
             }
             else { r.Skip(); return default; }
             if (n == 0) return default;
-            int idx = BrowseImagePick.ChooseIndex(widths[..n], BrowseImagePick.HeroMinWidth);
+            int idx = BrowseImagePick.ChooseIndex(widths[..n], minWidth);
             return idx < 0 ? default : urls[idx];
         }
 

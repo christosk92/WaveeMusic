@@ -1159,6 +1159,9 @@ public static partial class Spotify
             /// <summary>The hero / masthead / stored-cover ask: smallest source whose width is at least 640,
             /// else the widest. One URL is stored per row; decodePx cannot invent pixels from a 64px JPEG.</summary>
             public const int HeroMinWidth = 640;
+            /// <summary>The artist HEADER (full-bleed on the stage's Artist layout): the smallest source at least this wide — Spotify lists 1494, 1920 (and a
+            /// few 2660); a header with only smaller sources keeps its widest.</summary>
+            public const int HeaderMinWidth = 1600;
 
             public static string? Choose(ReadOnlySpan<(string Url, int Width)> sources, int minWidth)
             {

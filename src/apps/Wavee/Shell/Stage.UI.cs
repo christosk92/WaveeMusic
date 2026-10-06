@@ -105,6 +105,8 @@ public static partial class Stage
         /// <summary>What the playing artist's header looks like (HeroFacts writes it) and the artist SLOT whose header shows (0 = none).</summary>
         public readonly Signal<HeroState> HeroFact = new(HeroState.Pending);
         public readonly Signal<int> HeroArtist = new(0);
+        /// <summary>The NEXT queued track's first artist's header url once known (HeroFacts writes it; "" = none) — decoded hidden under the hero near the end.</summary>
+        public readonly Signal<string> NextHeroUrl = new("");
         /// <summary>DERIVED by SurfaceCore: the effective layout (<see cref="LayoutRules.Effective"/>), whether the lyric caption line
         /// shows, the one <see cref="Stage.Look"/> every layout geometry call takes, and the pane the pane region shows.</summary>
         public readonly Signal<VizLayout> Effective = new(Stage.VizLayout.Card);
@@ -396,6 +398,13 @@ public static partial class Stage
                 Children =
                 [
                     Embed.Comp(static () => new Backdrop()) with { Key = "stage:backdrop" },
+                    // the Artist layout's photo + scrims (the backdrop is hidden under an opaque header, see Backdrop)
+                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist, Layer with
+                    {
+                        Key = "stage:hero", HitTestVisible = false, HitTestPassThrough = false,
+                        Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
+                        Children = [Embed.Comp(static () => new HeroLayer())],
+                    }),
                     // the face: the Show's child carries its own Enter/Exit (the bare-ComponentEl rule, §1.8 — V-U31); FaceHost keys a CHILD per kind
                     Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && LayoutRules.ShowsFace(ctx.Look.Value.Eff), new BoxEl
                     {
@@ -414,6 +423,12 @@ public static partial class Stage
                     Embed.Comp(static () => new SpectrumLayer()) with { Key = "stage:spectrum" },
                     Embed.Comp(static () => new NowPlayingCard()) with { Key = "stage:npc" },
                     Embed.Comp(static () => new Hero()) with { Key = "stage:identity" },
+                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist && !ctx.Look.Value.HeroLyrics, Layer with
+                    {
+                        Key = "stage:artistname", HitTestVisible = false, HitTestPassThrough = false,
+                        Enter = fade, Exit = fade, Transition = MotionTok.StandardEnter,
+                        Children = [Embed.Comp(static () => new ArtistNameLayer())],
+                    }),
                     Embed.Comp(static () => new PaneHost()) with { Key = "stage:pane" },
                     // the lyric caption: a full-bleed LAYER (the Show's child carries the fade); CaptionHost places its block from the
                     // allocator's caption geometry (Layout.CaptionX/W/Bottom) — centred in the face's region, above the transport
@@ -444,6 +459,8 @@ public static partial class Stage
                         ],
                     }),
                     Embed.Comp(static () => new LyricFacts()) with { Key = "stage:facts" },
+                    // artist-header lookups only while the Artist layout is the stored choice in Visualizer mode (Card never pays for them)
+                    Flow.Show(() => ctx.Mode.Value == Mode.Visualizer && ctx.LayoutPref.Value == VizLayout.Artist, Embed.Comp(static () => new HeroFacts()) with { Key = "stage:herofacts" }),
                     Embed.Comp(static () => new Visualizer.Clock()) with { Key = "stage:clock" },
                 ],
             });
@@ -569,6 +586,8 @@ public static partial class Stage
                 // (the Field drifts under all of them), and the bars' acrylic re-blurred all three.
                 ClipToBounds = true, HitTestVisible = false, HitTestPassThrough = false, Fill = Ink.Floor,
                 RepaintBoundary = true, RasterScale = 0.25f,
+                // under an opaque header photo the quarter-scale blobs would raster for nothing: hide the whole backdrop (Artist layout, Visualizer mode, photo known)
+                Visible = Prop.Of(() => !(ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Artist && ctx.HeroFact.Value == HeroState.Header)),
                 Children =
                 [
                     Embed.Comp(new BackdropArt.Props(url), static () => new BackdropArt()),
