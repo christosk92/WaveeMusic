@@ -336,6 +336,47 @@ public class PlatformSettingsTests
             Assert.True(Prefs.Stage.TipSeen());
         });
 
+    /// <summary>The visualizer layout family: defaults (Card, Bars, lyrics over the hero on, pan on, dim 75 = the board's 0.85),
+    /// every writer coerces what it persists (an int from a future build reads as Card / Bars, the dimming clamps to 0..100),
+    /// and each write bumps the stage epoch once.</summary>
+    [Fact]
+    public void Prefs_Stage_layout_family_defaults_coerces_and_bumps_once()
+        => WithStore(new MemoryAppSettings(), static () =>
+        {
+            Assert.Equal(0, Prefs.Stage.Layout());
+            Assert.Equal(0, Prefs.Stage.Spectrum());
+            Assert.True(Prefs.Stage.HeroLyrics());
+            Assert.True(Prefs.Stage.HeroMotion());
+            Assert.Equal(75, Prefs.Stage.HeroDim());
+
+            int before = Prefs.Stage.Epoch.Peek();
+            Prefs.Stage.SetLayout(3);
+            Assert.Equal(before + 1, Prefs.Stage.Epoch.Peek());
+            Prefs.Stage.SetSpectrum(2);
+            Assert.Equal(before + 2, Prefs.Stage.Epoch.Peek());
+            Prefs.Stage.SetHeroLyrics(false);
+            Prefs.Stage.SetHeroMotion(false);
+            Assert.Equal(before + 4, Prefs.Stage.Epoch.Peek());
+            Prefs.Stage.SetHeroDim(140);
+            Assert.Equal(100, Platform.Settings.Get(Platform.Keys.StageHeroDim));
+            Assert.Equal(before + 5, Prefs.Stage.Epoch.Peek());
+            Prefs.Stage.SetHeroDim(-3);
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.StageHeroDim));
+
+            Assert.Equal(3, Prefs.Stage.Layout());
+            Assert.Equal(2, Prefs.Stage.Spectrum());
+            Assert.False(Prefs.Stage.HeroLyrics());
+            Assert.False(Prefs.Stage.HeroMotion());
+
+            // an int a future build wrote reads as this build's default, and a rejected write persists the default
+            Platform.Settings.Set(Platform.Keys.StageLayout, 9);
+            Platform.Settings.Set(Platform.Keys.StageSpectrum, -1);
+            Assert.Equal(0, Prefs.Stage.Layout());
+            Assert.Equal(0, Prefs.Stage.Spectrum());
+            Prefs.Stage.SetLayout(7);
+            Assert.Equal(0, Platform.Settings.Get(Platform.Keys.StageLayout));
+        });
+
     /// <summary>G-077's DEBUG assert is gated on <see cref="Platform.UiThreadId"/>, which nothing in this app has
     /// ever captured (no host anywhere records the OS thread the engine's UI loop runs on) — so it defaults to
     /// <c>null</c> and a write from ANY thread, including this test's, must be a no-op that never trips. A write

@@ -1250,9 +1250,42 @@
     "monthlyListeners": "{count} maandelijkse luisteraars",
     "goToArtist": "Naar artiest",
     "credits": "Credits · {title}",
+    "options": {
+      "title": "Visualisatie",
+      "button": "Visualisatie-opties",
+      "layout": "Indeling",
+      "spectrum": "Spectrum",
+      "faces": "Kies een visualisatie…",
+      "artistHero": "Artiestbeeld",
+      "heroLyrics": "Songtekst over de afbeelding tonen",
+      "heroMotion": "Langzaam pannen en zoomen",
+      "heroMotionReduced": "Uit zolang Windows beweging beperkt",
+      "heroDim": "Afbeelding verduisteren",
+      "heroNote": "Gebruikt de headerafbeelding van de artiest van Spotify. Artiesten zonder headerafbeelding vallen terug op de indeling Grote hoes."
+    },
+    "layout": {
+      "card": "Kaart",
+      "large": "Grote hoes",
+      "centered": "Gecentreerd",
+      "artist": "Artiest"
+    },
+    "layoutSub": {
+      "card": "Huidig, kleine hoes",
+      "large": "Hoes naast songtekst",
+      "centered": "Hoes in een ring",
+      "artist": "Artiestafbeelding als achtergrond"
+    },
+    "spectrum": {
+      "bars": "Balken",
+      "ring": "Ring",
+      "line": "Lijn",
+      "off": "Uit"
+    },
+    "nowPlayingEyebrow": "Nu aan het afspelen",
+    "withArtists": "met {artists}",
     "tip": {
       "title": "Kies je visualisatie",
-      "body": "Negentien stijlen, allemaal gekleurd naar de albumhoes. Kies er rechts een, of druk op [ en ] om erdoorheen te stappen. Wavee verbergt de bediening na drie seconden; beweeg de muis om die terug te halen.",
+      "body": "Negentien stijlen, allemaal gekleurd naar de albumhoes. Kies er rechts een, of druk op [ en ] om erdoorheen te stappen. Met de knop met schuifjes bovenaan kies je ook een andere indeling: grote hoes, gecentreerd of een artiestafbeelding. Wavee verbergt de bediening na drie seconden; beweeg de muis om die terug te halen.",
       "gotIt": "Begrepen"
     },
     "viz": {
@@ -1348,7 +1381,9 @@
       "calm": "Rustige beweging",
       "calmSub": "Rustigere visualisaties: kleinere uitslagen, een zachtere beat, geen flitsen",
       "moments": "Veranderen met de muziek",
-      "momentsSub": "Elke acht maten, op de eerste tel, schakelt de visualisatie naar de volgende kleur van de albumhoes"
+      "momentsSub": "Elke acht maten, op de eerste tel, schakelt de visualisatie naar de volgende kleur van de albumhoes",
+      "layout": "Indeling",
+      "layoutSub": "Hoe de visualisatieweergave op volledig scherm is ingedeeld"
     },
     "verse": {
       "noLyrics": "Geen songtekst voor dit nummer",
@@ -1373,6 +1408,7 @@
     "diag": {
       "title": "Volledig scherm en visualisatie",
       "mode": "Modus",
+      "layout": "Indeling",
       "fft": "FFT per publicatie",
       "leases": "Lease-niveau",
       "delay": "Uitvoervertraging",

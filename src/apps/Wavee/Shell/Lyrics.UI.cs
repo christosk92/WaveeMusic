@@ -63,11 +63,10 @@ public static partial class Lyrics
     static readonly Func<bool> s_railVisible = static () =>
         Shell.Ui.RailOpen.Value && Shell.Ui.Mode.Value == Shell.RailMode.Lyrics && !Shell.Ui.ImmersiveLyrics.Value;
 
-    /// <summary>The stage column ticks only while the stage is up AND its mode is Lyrics (any other mode parks it — the
-    /// pane host keeps it mounted). <c>Prefs</c> inside <c>Lyrics</c> is <c>Lyrics.Prefs</c>, so the stage's preference
-    /// family is spelled <c>global::Wavee.Prefs.Stage</c>; the read is a render-time one (O8).</summary>
-    static readonly Func<bool> s_stageVisible = static () =>
-        Shell.Ui.ImmersiveLyrics.Value && global::Wavee.Prefs.Stage.Mode() == (int)Stage.Mode.Lyrics;
+    /// <summary>The stage column ticks only while the stage is up AND the pane region shows the lyrics (Lyrics mode, Large art, the
+    /// Artist hero with lyrics — <see cref="Stage.LyricsPaneShown"/>; any other pane parks it, the pane host keeps it mounted).
+    /// A render-time signal read (O8): nothing here touches the preference registry.</summary>
+    static readonly Func<bool> s_stageVisible = static () => Shell.Ui.ImmersiveLyrics.Value && Stage.LyricsPaneShown.Value;
 
     // MOUNT POINT (stage B contract)
     /// <summary>The rail's lyrics body (`RailMode.Lyrics`): the reading surface at rail metrics on theme ink. The header

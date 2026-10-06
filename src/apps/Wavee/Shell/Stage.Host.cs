@@ -24,6 +24,7 @@ public static partial class Stage
         public static Visualizer.Tier LastTier { get; private set; }
         public static Visualizer.Source LastSource { get; private set; }
         public static Visualizer.Kind LastKind { get; private set; }
+        public static VizLayout LastLayout { get; private set; }
         public static long EnteredAtMs { get; private set; }
 
         static void Bump() => Version.Value = Version.Peek() + 1;
@@ -50,6 +51,15 @@ public static partial class Stage
             if (LastMode == mode) return;
             LastMode = mode;
             Log.Event(WaveeLogLevel.Debug, Category, "stage.mode", "stage mode " + mode, fields: [WaveeLogField.Of("mode", mode.ToString())]);
+            Bump();
+        }
+
+        /// <summary>The EFFECTIVE layout changed (a pick, a [ / ] step, an artist without a header, Compact): gated like the mode.</summary>
+        public static void NoteLayout(VizLayout layout)
+        {
+            if (LastLayout == layout) return;
+            LastLayout = layout;
+            Log.Event(WaveeLogLevel.Debug, Category, "stage.layout", "stage layout " + layout, fields: [WaveeLogField.Of("layout", layout.ToString())]);
             Bump();
         }
 

@@ -1,6 +1,6 @@
 // ── Platform/Prefs.Stage.cs ────────────────────────────────────────────────────────────────────────────────────────
 // Prefs.Stage — the fullscreen stage's preference family (mode, visualizer, sensitivity, lyrics overlay, sync offset,
-// calm, moments, gallery, tip) behind ONE epoch
+// calm, moments, gallery, tip, layout, spectrum, the Artist hero's lyrics / motion / dimming) behind ONE epoch
 //
 // Role: CORE
 // Plan: docs/plans/wavee/fullscreen-flagship-implementation.md §2.11, §4.6
@@ -40,6 +40,16 @@ public static partial class Prefs
         public static void SetMoments(bool on) { Platform.Settings.Set(Platform.Keys.StageMoments, on); Bump(); }
         public static bool GalleryOpen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageGalleryOpen); }
         public static void SetGalleryOpen(bool on) { Platform.Settings.Set(Platform.Keys.StageGalleryOpen, on); Bump(); }
+        public static int Layout() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.Coerce(Platform.Settings.Get(Platform.Keys.StageLayout)); }
+        public static void SetLayout(int layout) { Platform.Settings.Set(Platform.Keys.StageLayout, global::Wavee.Stage.LayoutRules.Coerce(layout)); Bump(); }
+        public static int Spectrum() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.CoerceSpectrum(Platform.Settings.Get(Platform.Keys.StageSpectrum)); }
+        public static void SetSpectrum(int style) { Platform.Settings.Set(Platform.Keys.StageSpectrum, global::Wavee.Stage.LayoutRules.CoerceSpectrum(style)); Bump(); }
+        public static bool HeroLyrics() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageHeroLyrics); }
+        public static void SetHeroLyrics(bool on) { Platform.Settings.Set(Platform.Keys.StageHeroLyrics, on); Bump(); }
+        public static bool HeroMotion() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageHeroMotion); }
+        public static void SetHeroMotion(bool on) { Platform.Settings.Set(Platform.Keys.StageHeroMotion, on); Bump(); }
+        public static int HeroDim() { _ = Epoch.Value; return global::Wavee.Stage.LayoutRules.ClampDim(Platform.Settings.Get(Platform.Keys.StageHeroDim)); }
+        public static void SetHeroDim(int dim) { Platform.Settings.Set(Platform.Keys.StageHeroDim, global::Wavee.Stage.LayoutRules.ClampDim(dim)); Bump(); }
         public static bool TipSeen() { _ = Epoch.Value; return Platform.Settings.Get(Platform.Keys.StageTipSeen); }
         public static void SetTipSeen() { Platform.Settings.Set(Platform.Keys.StageTipSeen, true); Bump(); }
     }
