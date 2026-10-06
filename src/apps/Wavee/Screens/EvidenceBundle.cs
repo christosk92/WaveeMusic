@@ -127,43 +127,32 @@ public static partial class Diagnostics
             if (capture is null) host.CompositeLedger?.CopyLatest(frame);
             var view = frame.View;
 
+            // UI THREAD keeps only what needs the live scene: raw ledger copies, the node names the rows will cite
+            // (resolved once per distinct node) and the scene-bound rows. Every string build, the scroll CSV and the file
+            // writes run on the worker (Write) — the 12.5 MB / 36 ms frame of 2026-10-05 was this method formatting.
             var names = new Dictionary<(int, uint), string>();
-            string Name(int index, uint gen)
+            void Resolve(int index, uint gen)
             {
-                if (names.TryGetValue((index, gen), out var s)) return s;
-                s = host.DescribeNode(index, gen);
-                names[(index, gen)] = s;
-                return s;
+                if (index > 0 && !names.ContainsKey((index, gen))) names[(index, gen)] = host.DescribeNode(index, gen);
             }
 
             var rasters = new RasterEntry[RasterLedger.RasterLedgerCapacity];
             int nRasters = host.RasterLedger?.ReadTail(rasters) ?? 0;
             var walks = new WalkEntry[WalkLedger.WalkLedgerCapacity];
             int nWalks = host.WalkLedger?.ReadTail(walks) ?? 0;
+            foreach (ref readonly var it in view.Items) Resolve(it.NodeIndex, it.Gen);
+            for (int i = 0; i < nRasters; i++) Resolve(rasters[i].NodeIndex, rasters[i].Gen);
+            for (int i = 0; i < nWalks; i++) Resolve(walks[i].NodeIndex, walks[i].Gen);
             var vps = new List<ViewportInfo>();
             host.CopyViewports(vps);
             TileCensus census = host.LastTileCensus;
             host.TryGetDeviceCounters(out GpuFrameCounters device);
 
-            var files = new List<(string Name, string Text)>
-            {
-                ("items.tsv", EvidenceReport.ItemsTsv(view.Items, Name)),
-                ("placements.tsv", EvidenceReport.PlacementsTsv(view.Placements)),
-                ("stale.tsv", EvidenceReport.StaleTsv(view.Placements, view.Items, Name)),
-                ("ledger.tsv", EvidenceReport.LedgerTsv(rasters.AsSpan(0, nRasters), Name)),
-                ("walks.tsv", EvidenceReport.WalksTsv(walks.AsSpan(0, nWalks), Name)),
-                ("vps.tsv", EvidenceReport.ViewportsTsv(vps)),
-                ("census.json", EvidenceReport.CensusJson(census, device, TileInvariants.StaleTurns)),
-            };
             float scale = frame.Header.Scale > 0f ? frame.Header.Scale : 1f;
-            using (var sw = new StringWriter(CultureInfo.InvariantCulture))
-            {
-                ScrollProbe.ExportCsv(sw, Stopwatch.Frequency, ScrollDiagRules.RefreshHz(NavigationFrameWatch.RefreshIntervalMs), scale);
-                files.Add(("scroll.csv", sw.ToString()));
-            }
+            List<(string Name, string Tsv)> pixels;
             lock (s_pendingPixels)
             {
-                foreach (var (name, tsv) in s_pendingPixels) files.Add((name, tsv));
+                pixels = new List<(string Name, string Tsv)>(s_pendingPixels);
                 s_pendingPixels.Clear();
             }
 
@@ -179,7 +168,6 @@ public static partial class Diagnostics
                     r.X, r.Y, r.W, r.H));
             }
             nodes.Sort(static (a, b) => a.Index.CompareTo(b.Index));
-            files.Add(("nodes.tsv", EvidenceReport.NodesTsv(nodes)));
 
             // keyed.tsv: EVERY live keyed node with its window rect — the scenario scripts find the page's parts by key
             // (the artist band's collapse distance = the magazine's content y − 56) without guessing layout constants.
@@ -195,7 +183,6 @@ public static partial class Diagnostics
                     r.X, r.Y, r.W, r.H, lx, ly, t.Dx, t.Dy));
             }
             keyedRows.Sort(static (a, b) => a.Index.CompareTo(b.Index));
-            files.Add(("keyed.tsv", EvidenceReport.NodesTsv(keyedRows)));
 
             DateTime now = DateTime.Now;
             var meta = new EvidenceMeta(Build: typeof(Evidence).Assembly.GetName().Version?.ToString() ?? "?", Pid: Environment.ProcessId,
@@ -204,22 +191,44 @@ public static partial class Diagnostics
                 TableFrame: frame.Header.Frame, Qpc: capture?.Qpc ?? frame.Header.Qpc, Scale: scale,
                 WidthPx: frame.Header.WidthPx, HeightPx: frame.Header.HeightPx, Captured: capture?.Bgra is not null, Tag: tag,
                 CreatedLocal: now.ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture));
-            files.Add(("meta.json", EvidenceReport.MetaJson(in meta, vps)));
 
             string folder = Path.Combine(Root, EvidenceReport.BundleFolderName(now, tag));
             byte[]? png = capture?.Bgra;
             int pw = capture?.WidthPx ?? 0, ph = capture?.HeightPx ?? 0;
             string? logPath = Log.FilePath;
-            _ = Task.Run(() => Write(folder, files, png, pw, ph, logPath));
+            double refreshHz = ScrollDiagRules.RefreshHz(NavigationFrameWatch.RefreshIntervalMs);
+            _ = Task.Run(() => Write(folder, frame, rasters, nRasters, walks, nWalks, vps, census, device, names, nodes, keyedRows,
+                pixels, meta, scale, refreshHz, png, pw, ph, logPath));
         }
 
         /// <summary>WORKER. Write the bundle's files, frame.png, the log tail; append index.txt and the reply.</summary>
-        static void Write(string folder, List<(string Name, string Text)> files, byte[]? bgra, int w, int h, string? logPath)
+        static void Write(string folder, CompositeFrameCopy frame, RasterEntry[] rasters, int nRasters, WalkEntry[] walks, int nWalks,
+            List<ViewportInfo> vps, TileCensus census, GpuFrameCounters device, Dictionary<(int, uint), string> names,
+            List<EvidenceNodeRow> nodes, List<EvidenceNodeRow> keyedRows, List<(string Name, string Tsv)> pixels, EvidenceMeta meta,
+            float scale, double refreshHz, byte[]? bgra, int w, int h, string? logPath)
         {
             try
             {
+                string Name(int index, uint gen) => names.TryGetValue((index, gen), out var s) ? s : "?";
+                var view = frame.View;
                 Directory.CreateDirectory(folder);
-                foreach (var (name, text) in files) File.WriteAllText(Path.Combine(folder, name), text, Utf8);
+                void Put(string name, string text) => File.WriteAllText(Path.Combine(folder, name), text, Utf8);
+                Put("items.tsv", EvidenceReport.ItemsTsv(view.Items, Name));
+                Put("placements.tsv", EvidenceReport.PlacementsTsv(view.Placements));
+                Put("stale.tsv", EvidenceReport.StaleTsv(view.Placements, view.Items, Name));
+                Put("ledger.tsv", EvidenceReport.LedgerTsv(rasters.AsSpan(0, nRasters), Name));
+                Put("walks.tsv", EvidenceReport.WalksTsv(walks.AsSpan(0, nWalks), Name));
+                Put("vps.tsv", EvidenceReport.ViewportsTsv(vps));
+                Put("census.json", EvidenceReport.CensusJson(census, device, TileInvariants.StaleTurns));
+                using (var sw = new StringWriter(CultureInfo.InvariantCulture))
+                {
+                    ScrollProbe.ExportCsv(sw, Stopwatch.Frequency, refreshHz, scale);
+                    Put("scroll.csv", sw.ToString());
+                }
+                foreach (var (pn, tsv) in pixels) Put(pn, tsv);
+                Put("nodes.tsv", EvidenceReport.NodesTsv(nodes));
+                Put("keyed.tsv", EvidenceReport.NodesTsv(keyedRows));
+                Put("meta.json", EvidenceReport.MetaJson(in meta, vps));
                 if (bgra is not null && w > 0 && h > 0) PngWriter.WriteBgra(Path.Combine(folder, "frame.png"), bgra, w, h);
                 File.WriteAllText(Path.Combine(folder, "log-tail.txt"), EvidenceReport.Tail(ReadLines(logPath), LogTailLines), Utf8);
                 lock (s_replyLock) File.AppendAllText(Path.Combine(Root, "index.txt"), folder + "\n", Utf8);

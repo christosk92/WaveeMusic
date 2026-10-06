@@ -22,17 +22,22 @@ namespace Wavee;
 public static class ClampCaptureRules
 {
     /// <summary>Never two auto bundles closer than this (a bundle costs a frame capture and a disk write).</summary>
-    public const double MinIntervalMs = 5000;
+    public const double MinIntervalMs = 60_000;
 
     /// <summary>At most this many auto bundles per session: each clamp is a defect worth one capture, not a disk fill.</summary>
-    public const int MaxPerSession = 12;
+    public const int MaxPerSession = 6;
+
+    /// <summary>Never two auto bundles of ANY cause closer than this (2026-10-06: a bundle is a frame capture plus a
+    /// 10-file export; 5-6 of them per run at ~14 s spacing were measurable hitches).</summary>
+    public const double AnyMinIntervalMs = 30_000;
 
     /// <summary>One frame's step: capture when ARMED, the turn clamped, and the last capture is old enough; a capture
     /// disarms, and the end of the burst (no user-driven scroll this frame) re-arms.</summary>
-    public static bool Step(ref bool armed, int clampsThisTurn, bool scrollActive, double msSinceLastCapture)
+    public static bool Step(ref bool armed, int clampsThisTurn, bool scrollActive, double msSinceLastCapture,
+        double msSinceAnyAutoCapture = double.MaxValue)
     {
         if (!scrollActive && clampsThisTurn == 0) { armed = true; return false; }
-        if (!armed || clampsThisTurn <= 0 || msSinceLastCapture < MinIntervalMs) return false;
+        if (!armed || clampsThisTurn <= 0 || msSinceLastCapture < MinIntervalMs || msSinceAnyAutoCapture < AnyMinIntervalMs) return false;
         armed = false;
         return true;
     }
@@ -51,18 +56,25 @@ public static class ClampCaptureRules
 /// two within <see cref="MinIntervalMs"/>, at most <see cref="MaxPerSession"/> a session.</summary>
 public static class JumpCaptureRules
 {
-    public const double MinIntervalMs = 5000;
-    public const int MaxPerSession = 12;
+    public const double MinIntervalMs = 120_000;
+    public const int MaxPerSession = 4;
+
+    /// <summary>A jump that is the expected result of async content arriving, not an anomaly worth a bundle: an
+    /// <c>Extent</c> jump of a viewport sitting at the TOP (shown offset 0 before and after — the offset never moved, the
+    /// content just grew, e.g. the lyrics document arriving into the rail). The detector still counts and logs it.</summary>
+    public static bool IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause cause, double from, double to)
+        => cause == FluentGpu.Scroll.Diag.ScrollJumpCause.Extent && Math.Abs(from) <= 0.5 && Math.Abs(to) <= 0.5;
 
     /// <summary>One frame's step over the monotonic jump counter: capture when it moved since the last frame, the
     /// session cap is not reached and the last capture is old enough. <paramref name="seen"/> starts at −1 (the first
     /// frame only takes the baseline — jumps from before the watch started are not this session's evidence).</summary>
-    public static bool Step(ref long seen, long jumps, double msSinceLastCapture, int captures)
+    public static bool Step(ref long seen, long jumps, double msSinceLastCapture, int captures,
+        double msSinceAnyAutoCapture = double.MaxValue)
     {
         long before = seen;
         seen = jumps;
         if (before < 0 || jumps <= before) return false;
-        return captures < MaxPerSession && msSinceLastCapture >= MinIntervalMs;
+        return captures < MaxPerSession && msSinceLastCapture >= MinIntervalMs && msSinceAnyAutoCapture >= ClampCaptureRules.AnyMinIntervalMs;
     }
 }
 
@@ -76,6 +88,10 @@ public static partial class Diagnostics
         static int s_captures;
         static long s_seenClampedPoses = -1;
         static readonly List<ViewportInfo> s_vps = new(16);
+
+        static long s_lastAnyTicks;
+        static double SinceAny() => s_lastAnyTicks == 0 ? double.MaxValue
+            : System.Diagnostics.Stopwatch.GetElapsedTime(s_lastAnyTicks).TotalMilliseconds;
 
         static long s_seenJumps = -1;
         static long s_lastJumpCaptureTicks;
@@ -96,8 +112,8 @@ public static partial class Diagnostics
             int clamps = host.LastTileCensus.CoverageClamps + poseClamps;
             double since = s_lastCaptureTicks == 0 ? double.MaxValue
                 : System.Diagnostics.Stopwatch.GetElapsedTime(s_lastCaptureTicks).TotalMilliseconds;
-            if (!ClampCaptureRules.Step(ref s_armed, clamps, stats.ScrollActive, since)) return;
-            s_lastCaptureTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!ClampCaptureRules.Step(ref s_armed, clamps, stats.ScrollActive, since, SinceAny())) return;
+            s_lastCaptureTicks = s_lastAnyTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             s_captures++;
             Capture(host, clamps);
         }
@@ -108,11 +124,22 @@ public static partial class Diagnostics
         {
             double since = s_lastJumpCaptureTicks == 0 ? double.MaxValue
                 : System.Diagnostics.Stopwatch.GetElapsedTime(s_lastJumpCaptureTicks).TotalMilliseconds;
-            if (!JumpCaptureRules.Step(ref s_seenJumps, FluentGpu.Scroll.Diag.ScrollProbe.Jumps, since, s_jumpCaptures)) return;
-            s_lastJumpCaptureTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+            // The detector's last jump is read BEFORE the step: a benign one (async content growing a viewport at the top)
+            // is logged below but never takes a capture slot.
+            var j = FluentGpu.Scroll.Diag.ScrollProbe.LastJump;
+            long jumps = FluentGpu.Scroll.Diag.ScrollProbe.Jumps;
+            bool benign = JumpCaptureRules.IsBenign(j.Cause, j.From, j.To);
+            if (benign)
+            {
+                if (s_seenJumps >= 0 && jumps > s_seenJumps)
+                    Log.Info("evidence", "[evidence] auto jump skipped (benign: extent growth at top) node=" + j.Vp.ToString(CultureInfo.InvariantCulture));
+                s_seenJumps = jumps;
+                return;
+            }
+            if (!JumpCaptureRules.Step(ref s_seenJumps, jumps, since, s_jumpCaptures, SinceAny())) return;
+            s_lastJumpCaptureTicks = s_lastAnyTicks = System.Diagnostics.Stopwatch.GetTimestamp();
             s_jumpCaptures++;
             var inv = CultureInfo.InvariantCulture;
-            var j = FluentGpu.Scroll.Diag.ScrollProbe.LastJump;
             s_vps.Clear();
             host.CopyViewports(s_vps);
             string key = "-";

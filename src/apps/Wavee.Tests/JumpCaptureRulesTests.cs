@@ -29,4 +29,26 @@ public class JumpCaptureRulesTests
         Assert.True(JumpCaptureRules.Step(ref seen, 6, JumpCaptureRules.MinIntervalMs, 1));
         Assert.False(JumpCaptureRules.Step(ref seen, 7, double.MaxValue, JumpCaptureRules.MaxPerSession));
     }
+
+    [Fact]
+    public void Extent_growth_at_the_top_is_benign_anything_else_is_not()
+    {
+        var extent = FluentGpu.Scroll.Diag.ScrollJumpCause.Extent;
+        Assert.True(JumpCaptureRules.IsBenign(extent, 0, 0));
+        Assert.False(JumpCaptureRules.IsBenign(extent, 340, 340));   // mid-list: content above the reader moved
+        Assert.False(JumpCaptureRules.IsBenign(extent, 0, 120));
+        Assert.False(JumpCaptureRules.IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause.Plan, 0, 0));
+        Assert.False(JumpCaptureRules.IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause.Coverage, 0, 0));
+    }
+
+    [Fact]
+    public void Any_auto_bundle_holds_back_the_next_one_of_any_cause()
+    {
+        long seen = 4;
+        Assert.False(JumpCaptureRules.Step(ref seen, 5, double.MaxValue, 0, ClampCaptureRules.AnyMinIntervalMs - 1));
+        Assert.True(JumpCaptureRules.Step(ref seen, 6, double.MaxValue, 0, ClampCaptureRules.AnyMinIntervalMs));
+        bool armed = true;
+        Assert.False(ClampCaptureRules.Step(ref armed, 3, true, double.MaxValue, 1000));
+        Assert.True(ClampCaptureRules.Step(ref armed, 3, true, double.MaxValue, double.MaxValue));
+    }
 }
