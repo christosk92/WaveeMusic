@@ -901,6 +901,10 @@ public static partial class Platform
         /// is on AND the file exists; in memory only, never written to the roster's persisted line store.</summary>
         public static string? FakeVideo { get; private set; }
 
+        /// <summary>`--fake --fake-cover-fail`: the offline playlist-cover backend (<c>PlaylistCover</c>) refuses every
+        /// change, so the rollback and its toast can be exercised without a network. Off unless `--fake` is on.</summary>
+        public static bool FakeCoverFail { get; private set; }
+
         /// <summary>`--headless` or `--stress-audio`: a no-window host (<c>Diagnostics.Probe.TryRun</c>). Boot reads it
         /// for one decision — a headless run never applies a pending factory reset, because its `--profile` scratch
         /// folder is not the profile the reset was armed for (headless plan §2.8).</summary>
@@ -921,6 +925,7 @@ public static partial class Platform
             int fv = Fake ? Array.IndexOf(argv, "--fake-video") : -1;
             FakeVideo = fv >= 0 && fv + 1 < argv.Length && File.Exists(argv[fv + 1]) ? Path.GetFullPath(argv[fv + 1]) : null;
             FakeLiveClock = Fake && Array.IndexOf(argv, "--live-clock") >= 0;
+            FakeCoverFail = Fake && Array.IndexOf(argv, "--fake-cover-fail") >= 0;
             Headless = Array.IndexOf(argv, "--headless") >= 0 || Array.IndexOf(argv, "--stress-audio") >= 0;
             RelaunchBroker = Array.IndexOf(argv, "--relaunch-after") >= 0;
             Recovery = Array.IndexOf(argv, "--recovery") >= 0;

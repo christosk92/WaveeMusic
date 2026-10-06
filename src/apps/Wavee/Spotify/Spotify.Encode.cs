@@ -57,9 +57,11 @@ public enum PlaylistMoveAnchor : byte { None = 0, First, Last, AfterItem }
 public readonly record struct PlaylistMember(string Uri, string ItemId = "", long AddedAtMs = 0);
 
 /// <summary>The list-attribute half of an UPDATE_LIST op. A null member says nothing; a Clear flag travels as
-/// <c>no_value</c>.</summary>
+/// <c>no_value</c>. <paramref name="Picture"/> is the 20-byte picture id <c>register-image</c> answered (the cover's
+/// third hop, research 09-CAPTURES-playlist.md notable 1).</summary>
 public sealed record PlaylistListPatch(string? Name = null, string? Description = null, bool? Collaborative = null,
-    bool? DeletedByOwner = null, bool ClearName = false, bool ClearDescription = false, bool ClearPicture = false);
+    bool? DeletedByOwner = null, bool ClearName = false, bool ClearDescription = false, bool ClearPicture = false,
+    byte[]? Picture = null);
 
 /// <summary>ONE playlist4 op, as a value. Positional fields (<see cref="FromIndex"/>/<see cref="Length"/>/
 /// <see cref="ToIndex"/>) for the rootlist shapes; <see cref="ItemsAsKey"/> + <see cref="Anchor"/> for the keyed playlist
@@ -234,11 +236,12 @@ public static partial class Spotify
         {
             var partial = new Pl.ListAttributesPartialState();
             if (patch.Name is not null || patch.Description is not null || patch.Collaborative is not null
-                || patch.DeletedByOwner is not null)
+                || patch.DeletedByOwner is not null || patch.Picture is not null)
             {
                 var values = new Pl.ListAttributes();
                 if (patch.Name is not null) values.Name = patch.Name;
                 if (patch.Description is not null) values.Description = patch.Description;
+                if (patch.Picture is not null) values.Picture = ByteString.CopyFrom(patch.Picture);
                 if (patch.Collaborative is { } collaborative) values.Collaborative = collaborative;
                 if (patch.DeletedByOwner is { } deleted) values.DeletedByOwner = deleted;
                 partial.Values = values;
@@ -246,6 +249,9 @@ public static partial class Spotify
             if (patch.ClearPicture) partial.NoValue.Add(Pl.ListAttributeKind.ListPicture);
             if (patch.ClearName) partial.NoValue.Add(Pl.ListAttributeKind.ListName);
             if (patch.ClearDescription) partial.NoValue.Add(Pl.ListAttributeKind.ListDescription);
+            // `values` is REQUIRED (playlist4_external.proto): a clear-only patch still carries it, EMPTY — the desktop's
+            // remove-cover body is exactly `0a 00 10 03` (research 09-CAPTURES-playlist.md, notable 1).
+            if (partial.NoValue.Count > 0) partial.Values ??= new Pl.ListAttributes();
             return partial;
         }
 

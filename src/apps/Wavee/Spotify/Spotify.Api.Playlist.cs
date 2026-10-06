@@ -502,48 +502,58 @@ public static partial class Spotify
                 settled?.Invoke(false);
         }
 
-        // ── cover (W16): two hops, then the header re-read (the cover changes only once the server agrees) ────────
+        // ── cover (W16, #155): THREE hops — the desktop's captured sequence (research 09-CAPTURES-playlist.md, notable 1)
+        //
+        //     POST image-upload.spotify.com/v4/playlist   (the JPEG)              → {"uploadToken": …}
+        //     POST spclient.wg/…/playlist/{id}/register-image {"uploadToken"}      → {"picture": base64(20 bytes)}
+        //     POST /playlist/v2/playlist/{id}/changes  UPDATE_LIST_ATTRIBUTES values.picture = those 20 bytes
+        //
+        // 0.2.x sent all three; the 0.3 port (0.3.0-0.3.3) stopped after hop two and re-read the header, so a successful
+        // "upload" never changed the cover. The optimistic preview, its rollback and the toasts are the caller's
+        // (PlaylistCover); this is the wire only.
 
-        public static void UploadCover(Playlist p, string jpegPath, Action<bool>? settled)
+        /// <summary>Set <paramref name="p"/>'s cover to <paramref name="jpeg"/>. UI thread in, UI thread out:
+        /// <paramref name="ok"/> gets the new cover's CDN url, <paramref name="failed"/> the mapped failure kind.</summary>
+        public static void SetCover(Playlist p, byte[] jpeg, Action<string> ok, Action<PlaylistMutationFailure> failed)
         {
-            if (!Gate(p, PlaylistEditVerb.Generic, settled)) return;
-            var scope = Entities.Current;
-            string id = IdOf(p), uri = p.Uri.Text;
-            if (!Net.Run(() =>
+            if (!p.IsValid || !p.EditableMetadata || !CanWrite(out var scope, out _)) { failed(PlaylistMutationFailure.NotSupported); return; }
+            string id = IdOf(p);
+            int slot = p.Slot;
+            var net = Net;
+            if (net.Run(() =>
                 {
-                    int status = 0;
-                    Staging? staging = null;
-                    try
-                    {
-                        byte[] jpeg = File.ReadAllBytes(jpegPath);
-                        Api.Result up = Api.CoverUpload(jpeg, CancellationToken.None);
-                        string? token = up.Ok ? JsonString(up.Body, "uploadToken") : null;
-                        Api.Result reg = token is { Length: > 0 } ? Api.CoverRegister(id, token, CancellationToken.None) : up;
-                        status = reg.Status;
-                        Api.Result read = reg.Ok && token is not null ? Api.Playlist(id, CancellationToken.None) : default;
-                        if (reg.Ok && token is not null && read.Ok)
-                        {
-                            staging = Staging.Rent();
-                            staging.Epoch = scope.Epoch;
-                            Api.PlaylistAnswer(read.Bytes, uri, staging);
-                        }
-                        else if (reg.Ok && token is not null) status = 200;
-                    }
-                    catch (IOException) { status = -1; }
-                    catch (UnauthorizedAccessException) { status = -1; }
+                    Api.Result up = net.CoverUpload(jpeg);
+                    string? token = up.Ok ? JsonString(up.Body, "uploadToken") : null;
+                    Api.Result reg = token is { Length: > 0 } ? net.CoverRegister(id, token) : up;
+                    byte[]? picture = reg.Ok ? PlaylistCoverRules.RegisteredPicture(reg.Body) : null;
+                    // Which hop failed, for the log: the image service and register-image are not playlist writes, so a
+                    // 401/403 there says nothing about the user's rights on the playlist — the toast stays the cover's own.
+                    string hop = token is not { Length: > 0 } ? "upload" : "register";
+                    int status = token is not { Length: > 0 } ? up.Status : reg.Status;
                     Post(() =>
                     {
-                        if (staging is not null)
+                        if (picture is null || !ReferenceEquals(scope, Entities.Current))
                         {
-                            if (ReferenceEquals(scope, Entities.Current)) { Entities.Commit(staging); Entities.Publish(); }
-                            Staging.Return(staging);
+                            if (picture is null) Log.Warn("playlist", "cover " + hop + " failed status=" + status + " bytes=" + jpeg.Length);
+                            failed(PlaylistMutationFailure.Unknown);
+                            return;
                         }
-                        bool ok = status is >= 200 and < 300;
-                        settled?.Invoke(ok);
-                        if (!ok) Fail(PlaylistEditErrorKinds.KindOfStatus(status), PlaylistEditVerb.Generic);
+                        var playlist = new Playlist(slot);
+                        Post(playlist, scope, new PlaylistOp(PlaylistOpKind.UpdateList, Patch: new PlaylistListPatch(Picture: picture)),
+                             retry409: true, ok: () => ok(PlaylistCoverRules.CdnUrlOf(picture)), failed: failed, refreshRows: false);
                     });
                 }))
-                settled?.Invoke(false);
+                return;
+            failed(PlaylistMutationFailure.Unknown);
+        }
+
+        /// <summary>Remove <paramref name="p"/>'s own cover (the mosaic of its first albums comes back): the same op with
+        /// an empty <c>values</c> and <c>no_value = [LIST_PICTURE]</c>, as captured.</summary>
+        public static void ClearCover(Playlist p, Action ok, Action<PlaylistMutationFailure> failed)
+        {
+            if (!p.IsValid || !p.EditableMetadata || !CanWrite(out var scope, out _)) { failed(PlaylistMutationFailure.NotSupported); return; }
+            Post(p, scope, new PlaylistOp(PlaylistOpKind.UpdateList, Patch: new PlaylistListPatch(ClearPicture: true)), retry409: true,
+                 ok: ok, failed: failed, refreshRows: false);
         }
 
         // ── recommendations (W10): extend, add ────────────────────────────────────────────────────────────────────

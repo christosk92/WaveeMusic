@@ -27,7 +27,6 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
-using FluentGpu.WindowsApi.Dialogs;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -180,10 +179,12 @@ public readonly partial struct Playlist
     sealed record CoverProps(int Slot, float Size);
 
     /// <summary>The editable cover: an always-mounted scrim whose OPACITY binds (hover · a live OS file drag anywhere ·
-    /// saving), the file-drop target and the click-to-pick. The frame's framing box keeps the playlist drag source.</summary>
+    /// saving), the file-drop target and the click-to-pick. The frame's framing box keeps the playlist drag source.
+    /// Picking, encoding, the optimistic swap and the write are <see cref="PlaylistCover"/>'s (#155): the click only
+    /// starts the picker on its own thread and returns.</summary>
     sealed class CoverEditor : Component
     {
-        readonly Signal<bool> _hovered = new(false), _dropOver = new(false), _saving = new(false);
+        readonly Signal<bool> _hovered = new(false), _dropOver = new(false);
         int _slot;
         readonly Action _pick;
         readonly Func<CoverStamp> _stamp;
@@ -216,7 +217,8 @@ public readonly partial struct Playlist
             _ = UseComputed(_stamp).Value;
             var drag = UseDragState();
             bool fileDrag = drag.Active && drag.Payload is FileDropData;
-            bool saving = _saving.Value, over = _dropOver.Value;
+            int slot = props.Slot;
+            bool saving = PlaylistCover.BusySlot.Value == slot, over = _dropOver.Value;
             float size = props.Size;
             float scale = UseContext(Viewport.Scale);
             int decodePx = HeaderCoverDecodePx(size, scale);
@@ -238,7 +240,7 @@ public readonly partial struct Playlist
                 };
             var hovered = _hovered;
             var dropOver = _dropOver;
-            var savingSig = _saving;
+            var busy = PlaylistCover.BusySlot;
             return new BoxEl
             {
                 ZStack = true, Width = size, Height = size, ClipToBounds = true, Corners = CornerRadius4.All(Radii.Card),
@@ -251,7 +253,7 @@ public readonly partial struct Playlist
                     OnDrop: session =>
                     {
                         dropOver.Value = false;
-                        if (session.Payload is FileDropData files && files.Count > 0) Upload(files.Paths[0]);
+                        if (session.Payload is FileDropData files && files.Count > 0) PlaylistCover.Apply(new Playlist(slot), files.Paths[0]);
                     }),
                 Children =
                 [
@@ -260,7 +262,7 @@ public readonly partial struct Playlist
                     {
                         Width = size, Height = size, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         Fill = over ? ScrimDrop : ScrimHover, HitTestVisible = false,
-                        Opacity = (Func<float>)(() => savingSig.Value || hovered.Value || dropOver.Value || fileDrag ? 1f : 0f),
+                        Opacity = (Func<float>)(() => busy.Value == slot || hovered.Value || dropOver.Value || fileDrag ? 1f : 0f),
                         Transition = MotionTok.ControlNormal,
                         Children = [overlayBody],
                     },
@@ -268,25 +270,7 @@ public readonly partial struct Playlist
             };
         }
 
-        void Pick()
-        {
-            string? path;
-            try { path = FilePicker.OpenFile(FluentApp.WindowHandle, Loc.Get(Strings.Detail.Edit.PickCover), ("JPEG", "*.jpg;*.jpeg")); }
-            catch (Exception ex) { Log.Warn("playlist", "cover picker failed", ex); return; }
-            if (path is { Length: > 0 }) Upload(path);
-        }
-
-        void Upload(string path)
-        {
-            if (!path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase))
-            {
-                Notify.Say(Loc.Get(Strings.Detail.Edit.PickCover), InfoBarSeverity.Warning);   // item 20: a Warning, not an error
-                return;
-            }
-            var saving = _saving;
-            saving.Value = true;
-            Spotify.PlaylistEdits.UploadCover(new Playlist(_slot), path, _ => saving.Value = false);
-        }
+        void Pick() => PlaylistCover.Pick(new Playlist(_slot));
     }
 
     // ══ 2. THE STATUS CHIP AND THE EDIT BUTTONS (W14) ════════════════════════════════════════════════════════════════

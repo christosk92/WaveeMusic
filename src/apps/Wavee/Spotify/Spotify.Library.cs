@@ -152,6 +152,11 @@ public static partial class Spotify
             /// <summary>One user follow / unfollow (<c>Library.FollowUser</c>): the bare, unescaped username and the direction.</summary>
             public Func<string, bool, Api.Result> FollowUsers =
                 static (bareId, follow) => Api.ProfileQueries.Follow(bareId, follow, CancellationToken.None);
+            /// <summary>A playlist cover's first two hops: the JPEG to the image service, then the token it answered to
+            /// <c>register-image</c> (<c>Spotify.PlaylistEdits.SetCover</c>).</summary>
+            public Func<byte[], Api.Result> CoverUpload = static jpeg => Api.CoverUpload(jpeg, CancellationToken.None);
+            public Func<string, string, Api.Result> CoverRegister =
+                static (id, token) => Api.CoverRegister(id, token, CancellationToken.None);
         }
 
         /// <summary>The live transport.</summary>
