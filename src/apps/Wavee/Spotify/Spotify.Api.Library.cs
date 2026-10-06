@@ -638,8 +638,8 @@ public static partial class Spotify
                 contentType: "image/jpeg");
         }
 
-        /// <summary>Hop two: register the upload token against the playlist.</summary>
-        public static Result CoverRegister(string playlistId, string uploadToken, CancellationToken ct)
+        /// <summary>Hop two's body: <c>{"uploadToken":"…"}</c>, the captured shape.</summary>
+        public static byte[] CoverRegisterBody(string uploadToken)
         {
             var buffer = new System.Buffers.ArrayBufferWriter<byte>(96);
             using (var w = new System.Text.Json.Utf8JsonWriter(buffer))
@@ -648,6 +648,15 @@ public static partial class Spotify
                 w.WriteString("uploadToken", uploadToken);
                 w.WriteEndObject();
             }
+            return buffer.WrittenSpan.ToArray();
+        }
+
+        /// <summary>Hop two: register the upload token against the playlist. The answer is <c>{"picture":"&lt;base64 of
+        /// the 20-byte picture id&gt;"}</c> — registering does NOT set the cover; hop three (an UPDATE_LIST_ATTRIBUTES
+        /// carrying those bytes) does.</summary>
+        public static Result CoverRegister(string playlistId, string uploadToken, CancellationToken ct)
+        {
+            byte[] body = CoverRegisterBody(uploadToken);
             Span<char> path = stackalloc char[128];
             var p = new PathWriter(path);
             p.Append("/playlist/v2/playlist/");
@@ -659,7 +668,7 @@ public static partial class Spotify
                 Host = ApiHost.SpclientWg,
                 Verb = Verb.Post,
                 Headers = CommonJson | HeaderSet.ContentJson,
-                Body = buffer.WrittenSpan,
+                Body = body,
             };
             return Send(RequestKind.Custom, args, ct);
         }

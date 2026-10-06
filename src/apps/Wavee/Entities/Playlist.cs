@@ -1120,7 +1120,7 @@ public readonly partial struct Playlist
 // ── 8. the ported rule sets (ch 06 §8, verbatim; inputs are values, never engine types) ──────────────────────────────
 
 /// <summary>Which EDIT failed. The kind says what went wrong; the verb says what the user was doing.</summary>
-public enum PlaylistEditVerb : byte { Generic = 0, Add, Remove, Reorder, Rename }
+public enum PlaylistEditVerb : byte { Generic = 0, Add, Remove, Reorder, Rename, Cover }
 /// <summary>The one failure vocabulary a playlist write surfaces (0.2.9 <c>SeamPorts.PlaylistMutationFailure</c>).</summary>
 public enum PlaylistMutationFailure : byte { Unknown = 0, Conflict, Forbidden, Deleted, Offline, Pending, NotSupported, NoOp, Invalid }
 /// <summary>The ONLY failure type a playlist mutation surfaces to the UI.</summary>
@@ -1169,7 +1169,7 @@ public static class PlaylistEditErrorKinds
         PlaylistMutationFailure.NotSupported => Strings.Detail.Edit.OfflineSpotifyEdits,
         PlaylistMutationFailure.NoOp => verb == PlaylistEditVerb.Reorder ? Strings.Drag.AlreadyThere : Strings.Detail.Edit.Failed,
         PlaylistMutationFailure.Invalid => verb == PlaylistEditVerb.Reorder ? Strings.Drag.CantMoveHere : Strings.Detail.Edit.Failed,
-        _ => Strings.Detail.Edit.Failed,
+        _ => verb == PlaylistEditVerb.Cover ? Strings.Detail.Edit.CoverFailed : Strings.Detail.Edit.Failed,
     };
 
     /// <summary>Kept / not-a-failure outcomes are Informational; everything else is an Error.</summary>

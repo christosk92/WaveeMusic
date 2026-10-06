@@ -876,6 +876,7 @@ public readonly partial struct Playlist
     /// notice (item 58: absent under <c>--fake</c>).</summary>
     static void AppendOwnerItems(List<MenuFlyoutItem> rows, Playlist p, IOverlayService? overlay)
     {
+        AppendCoverItems(rows, p);
         if (!p.IsOwner || !p.Live || !EditsLiveNow()) return;
         if (p.CanAdministratePermissions && !Controls.IsNullOverlay(overlay))
         {
@@ -886,6 +887,18 @@ public readonly partial struct Playlist
         }
         Actions.Menu.OpenGroup(rows);
         rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Edit.DeletePlaylist), Icons.Delete, true, () => ConfirmDelete(p, overlay)));
+    }
+
+    /// <summary>The cover pair (#155): "Change cover" (the same picker the cover's hover affordance opens) and, when
+    /// the playlist has a cover of its own, "Remove cover". Gated by <see cref="PlaylistCover.CanEdit"/> — which,
+    /// unlike the owner pair, holds under <c>--fake</c>: the offline cover backend is how the flow is exercised.</summary>
+    static void AppendCoverItems(List<MenuFlyoutItem> rows, Playlist p)
+    {
+        if (!p.Live || !PlaylistCover.CanEdit(p)) return;
+        Actions.Menu.OpenGroup(rows);
+        rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Edit.ChangeCover), Icons.Camera, true, () => PlaylistCover.Pick(p)));
+        if (PlaylistCover.HasOwnCover(p))
+            rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Edit.RemoveCover), Icons.Delete, true, () => PlaylistCover.Remove(p)));
     }
 
     /// <summary>"Delete this playlist? …" then the rootlist remove and home (item 31).</summary>

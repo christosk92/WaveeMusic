@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Fixed
+
+- **Changing a playlist's cover works, and no longer freezes Wavee.** Clicking "Change cover" opened the Windows file
+  picker on the same thread that draws Wavee, so the window stopped drawing for as long as the picker was open, and
+  when the picker was slow to appear the window was left greyed out, answering every click with the error sound and
+  no picker anywhere. The picker now opens on its own thread, still in front of and modal to Wavee, while Wavee keeps
+  drawing and playing; if it never appears, Wavee hands the window back after a few seconds. A chosen or dropped
+  JPEG, PNG, BMP, GIF or WebP is cropped to a square, turned upright and made small enough for Spotify, shown
+  straight away, and put back with a message if Spotify refuses it. The new cover is now actually saved: Wavee used to
+  upload and register the image but never set it on the playlist. "Change cover" and a new "Remove cover" are also in
+  the playlist's More menu. (#155)
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
