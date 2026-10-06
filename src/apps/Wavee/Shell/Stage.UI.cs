@@ -127,6 +127,9 @@ public static partial class Stage
         public readonly Visualizer.Slab Slab = new();
         /// <summary>The gallery's frozen slab: poster tiles bind it, nothing ticks it (the clock recolours it on a landing).</summary>
         public readonly Visualizer.Slab PosterSlab = Visualizer.Slab.CreatePoster();
+        /// <summary>The options popover is open (the top bar's sliders button lights while it is) and the action that toggles it.</summary>
+        public readonly Signal<bool> OptionsOpen = new(false);
+        public Action OpenOptions = static () => { };
         public Action<Mode> SetMode = static _ => { };
         public Action ToggleGallery = static () => { }, Exit = static () => { }, Activity = static () => { };
         /// <summary>The idle machine's holds: pointer over a control · a menu/tip/flyout open (counted) · a seek scrub.</summary>
@@ -191,7 +194,7 @@ public static partial class Stage
         Action<string>? _begin;
         NodeHandle _root;
         bool _cursorHidden, _paletteSeeded;
-        OverlayHandle? _tip;
+        OverlayHandle? _tip, _options;
 
         public SurfaceCore()
         {
@@ -228,6 +231,17 @@ public static partial class Stage
             _begin = UseContext(SharedTransition.Begin);
             var vp = UseContextSignal(Viewport.Size);
             var ctx = _ctx;
+            // the options popover: anchored under the sliders button (the TeachingTip's anchor too), light-dismiss, holding the chrome while open
+            ctx.OpenOptions = () =>
+            {
+                if (_options is { IsOpen: true } open) { open.Close(); return; }
+                var opened = overlay.Open(() => ctx.GalleryButton.Peek(), () => OptionsContent(ctx, () => _options?.Close()),
+                    FlyoutPlacement.BottomEdgeAlignedRight, new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = true });
+                ctx.MenuOpen(true);
+                ctx.OptionsOpen.Value = true;
+                opened.ClosedAction = () => { _options = null; ctx.OptionsOpen.Value = false; ctx.MenuOpen(false); };
+                _options = opened;
+            };
 
             // ── the ONE layout signal, equality-gated (Signal<T>.SetIfChanged) ──
             UseSignalEffect(() => { var size = vp.Value; ctx.Layout.SetIfChanged(Layout.Resolve(size.Width, size.Height, ctx.Layout.Peek())); });
@@ -331,6 +345,8 @@ public static partial class Stage
                 if (_cursorHidden) { hooks.SetCursorOverride?.Invoke(this, null); _cursorHidden = false; }
                 _tip?.Close();
                 _tip = null;
+                _options?.Close();
+                _options = null;
                 LyricsPaneShown.Value = false;                    // the lyrics view's gate must not outlive the stage (it ticks only while shown)
             }, DepKey.Empty);
 
@@ -1372,7 +1388,7 @@ public static partial class Stage
             string[] items = L.IconOnlySelector ? ["", "", "", ""] : [Loc.Get(Strings.Stage.Mode.Lyrics), Loc.Get(Strings.Stage.Mode.Visualizer), Loc.Get(Strings.Stage.Mode.Queue), Loc.Get(Strings.Stage.Mode.Artist)];
             string?[] icons = [Icons.Document, Icons.Equalizer, Icons.Queue, Icons.Contact];
             var style = new SelectorBarStyle { RestColor = Ink.InkSecondary, SelectedColor = Ink.Ink, HoverColor = Ink.Ink, HoverFill = Ink.GlassHover, PressedFill = Ink.GlassPressed, SelectedWeight = 600, ItemHeight = 36f, ItemGap = 4f };
-            bool galleryOn = ctx.Mode.Value == Mode.Visualizer && ctx.GalleryOpen.Value;
+            bool optionsOn = ctx.OptionsOpen.Value;
             return new BoxEl
             {
                 Grow = 1f, Height = Layout.TopBarH, Direction = 0, AlignItems = FlexAlign.Center,
@@ -1398,7 +1414,7 @@ public static partial class Stage
                         Grow = 1f, Basis = 0f, MinWidth = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Layout.BarButtonGap,
                         Children =
                         [
-                            ToolTip.Wrap(BarGlyph(Icons.Equalizer, ctx.ToggleGallery, lit: galleryOn, onRealized: h => ctx.GalleryButton.SetIfChanged(h)), Loc.Get(Strings.Stage.Gallery)),   // the TeachingTip's anchor SIGNAL (V-U16)
+                            ToolTip.Wrap(BarGlyph(Icons.Equalizer, ctx.OpenOptions, lit: optionsOn, onRealized: h => ctx.GalleryButton.SetIfChanged(h)), Loc.Get(Strings.Stage.Options.Button)),   // the TeachingTip's anchor SIGNAL (V-U16)
                             // Labelled only where the allocator says the column holds it (never "Ex…"); else the glyph with the label as its tooltip.
                             L.ExitLabelShown
                                 ? Button.Create(Loc.Get(Strings.Stage.Exit), ctx.Exit, ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.BackToWindow) with { Shrink = 0f }
