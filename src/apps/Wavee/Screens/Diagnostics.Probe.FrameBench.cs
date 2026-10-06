@@ -396,27 +396,44 @@ public static partial class Diagnostics
             public int Steps;
             public double DistanceViewports => _viewport > 0 ? Distance / _viewport : 0;
 
+            /// <summary>A page scroller's key starts with its tab scope (<c>Shell.ScrollScopeOf</c>: "tab" + n + "/").</summary>
+            internal static bool IsPageScrollKey(string? key)
+                => key is { Length: > 4 } && key.StartsWith("tab", StringComparison.Ordinal) && char.IsAsciiDigit(key[3]) && key.Contains('/');
+
             bool Adopt(AppHost host, double minRatio)
             {
                 _vps.Clear();
                 host.CopyViewports(_vps);
+                // The window's client area (DIP): a viewport parked OFF it (the closed lyrics rail sits at x = window width and still
+                // passes IsShown) is not a candidate — 2026-10-06, the real-data home-scroll scrolled that list, not Home.
+                RectF client = host.Scene.AbsoluteRect(host.Scene.Root);
+                bool OnScreen(in ViewportInfo v)
+                {
+                    float iw = Math.Min(v.X + v.W, client.X + client.W) - Math.Max(v.X, client.X);
+                    float ih = Math.Min(v.Y + v.H, client.Y + client.H) - Math.Max(v.Y, client.Y);
+                    return iw > 1f && ih > 1f && iw * ih >= 0.5f * v.W * v.H;
+                }
                 double maxArea = 0;
-                foreach (var v in _vps) if (!v.Horizontal && host.Scene.IsShown(host.Scene.HandleAt(v.NodeIndex))) maxArea = Math.Max(maxArea, v.W * v.H);
+                foreach (var v in _vps) if (!v.Horizontal && OnScreen(v) && host.Scene.IsShown(host.Scene.HandleAt(v.NodeIndex))) maxArea = Math.Max(maxArea, v.W * v.H);
                 ViewportInfo best = default;
                 ScrollHandle? bestHandle = null;
+                bool bestPage = false;
                 foreach (var v in _vps)
                 {
-                    if (v.Horizontal || v.Viewport <= 0 || v.W * v.H < 0.3 * maxArea || v.Extent < v.Viewport * minRatio) continue;
+                    if (v.Horizontal || v.Viewport <= 0 || v.W * v.H < 0.3 * maxArea || v.Extent < v.Viewport * minRatio || !OnScreen(v)) continue;
                     var node = host.Scene.HandleAt(v.NodeIndex);
                     if (!host.Scene.IsShown(node)) continue;   // a parked tab's page (the one just left) is live but not on screen
                     if (host.TryGetScrollHandle(node) is not { } h) continue;
-                    if (bestHandle is null || v.Extent > best.Extent) { best = v; bestHandle = h; }
+                    // The route's main page scroller (its key carries the tab scope, "tab2/home:…") outranks any other viewport.
+                    bool page = IsPageScrollKey(v.ScrollKey);
+                    if (bestHandle is null || (page && !bestPage) || (page == bestPage && v.Extent > best.Extent)) { best = v; bestHandle = h; bestPage = page; }
                 }
                 if (bestHandle is null) return false;
                 if (!ReferenceEquals(bestHandle, _handle))
                 {
                     _handle = bestHandle;
-                    Key = best.ScrollKey ?? "(no key)";
+                    Key = (best.ScrollKey ?? "(no key)") + " rect=" + best.X.ToString("0", CultureInfo.InvariantCulture) + "," + best.Y.ToString("0", CultureInfo.InvariantCulture)
+                        + " " + best.W.ToString("0", CultureInfo.InvariantCulture) + "x" + best.H.ToString("0", CultureInfo.InvariantCulture);
                     _lastOffset = bestHandle.Offset.Peek();
                 }
                 _viewport = best.Viewport;
