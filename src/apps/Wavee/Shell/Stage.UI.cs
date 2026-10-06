@@ -417,8 +417,11 @@ public static partial class Stage
                     {
                         Key = "stage:smoke", Height = Tone.SmokeH, AlignSelf = FlexAlign.End, JustifySelf = FlexAlign.Stretch, HitTestVisible = false,
                         Gradient = GradientDown(new GradientStop(0f, Shade(0f)), new GradientStop(1f, Shade(Tone.SmokeA))),
-                        Visible = Prop.Of(() => ctx.Mode.Value == Mode.Visualizer && LayoutRules.ShowsFace(ctx.Look.Value.Eff)),
+                        Visible = Prop.Of(() => ctx.Mode.Value == Mode.Visualizer && ctx.Look.Value.Eff == VizLayout.Card),
                     },
+                    // the legibility scrim between a BACKDROP face (Large art, Centered) and the cover / lyrics: the stage veil, deeper over
+                    // the cover-carrying faces (LayoutRules.BackdropScrim); a static fill, so a face change cross-fades it
+                    Embed.Comp(static () => new FaceScrim()) with { Key = "stage:facescrim" },
                     // the layouts' spectrum: a strip / ring in its own small RepaintBoundary (Card draws none — the face is the picture)
                     Embed.Comp(static () => new SpectrumLayer()) with { Key = "stage:spectrum" },
                     Embed.Comp(static () => new NowPlayingCard()) with { Key = "stage:npc" },
@@ -507,9 +510,9 @@ public static partial class Stage
             if (step != 0)
             {
                 e.Handled = true;
-                if (_ctx.Look.Peek().IsLayout)
+                if (_ctx.Look.Peek().IsLayout && !LayoutRules.KeysStepFaces(_ctx.Look.Peek().Eff))
                 {
-                    // inside a layout the keys walk the three layouts (the STORED one — an Artist without a header draws Large art but
+                    // inside a layout the keys walk the layouts (Artist only: Large art / Centered step the FACE behind the cover; the STORED one — an Artist without a header draws Large art but
                     // steps on from Artist); Card is entered and left through the options popover or G
                     Prefs.Stage.SetLayout((int)LayoutRules.Step(_ctx.LayoutPref.Peek(), step));
                     return;
@@ -831,12 +834,14 @@ public static partial class Stage
         {
             var ctx = UseContext(StageContext)!;
             var L = ctx.Layout.Value;
-            var kind = ctx.Kind.Value;
+            var look = ctx.Look.Value;
+            bool backdrop = LayoutRules.FaceIsBackdrop(look.Eff);       // Large art / Centered: the face runs behind the cover and lyrics
+            var kind = LayoutRules.BackdropKind(look.Eff, ctx.Kind.Value);   // Verse / Type fall back to Bloom there (no duplicate lyrics)
             var pal = ctx.Palette.Value;
             bool galleryOpen = ctx.GalleryShown.Value;                  // open AND room AND the Card layout: the inset follows what is on screen
             float w = L.W - L.FaceRight(galleryOpen);
             bool caption = ctx.CaptionOn.Value;                         // in Card + Visualizer mode exactly ModeRules.ShowsCaption(...)
-            var safe = L.FaceSafe(galleryOpen, caption);
+            var safe = backdrop ? new FaceSafeRect(0f, 0f, w, L.H) : L.FaceSafe(galleryOpen, caption);   // a backdrop subject centres on the whole stage
             var track = ctx.RowValue();
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
             // the stage face is a scope reader while its kind draws the slab's scope series (Scope, Flow)
@@ -858,6 +863,19 @@ public static partial class Stage
                     },
                 ],
             };
+        }
+    }
+
+    /// <summary>The scrim above the backdrop face (Large art, Centered): the stage veil at <see cref="LayoutRules.BackdropScrim"/>.
+    /// Reads the look and the face kind only — it re-renders on a layout or face change, never per tick.</summary>
+    sealed class FaceScrim : Component
+    {
+        public override Element Render()
+        {
+            var ctx = UseContext(StageContext)!;
+            var eff = ctx.Look.Value.Eff;
+            float a = ctx.Mode.Value == Mode.Visualizer ? LayoutRules.BackdropScrim(eff, ctx.Kind.Value) : 0f;
+            return Layer with { HitTestVisible = false, HitTestPassThrough = false, Fill = Shade(a), BrushTransitionMs = Tone.CrossFadeMs };
         }
     }
 

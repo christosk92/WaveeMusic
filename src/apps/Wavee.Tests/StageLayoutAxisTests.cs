@@ -65,11 +65,27 @@ public class StageLayoutAxisTests
     }
 
     [Fact]
+    public void Large_art_and_centered_run_the_face_behind_the_cover_and_artist_alone_replaces_it()
+    {
+        Assert.True(Rules.ShowsFace(VL.Card)); Assert.True(Rules.ShowsFace(VL.LargeArt)); Assert.True(Rules.ShowsFace(VL.Centered));
+        Assert.False(Rules.ShowsFace(VL.Artist));
+        // text faces fall back to Bloom behind a layout (no duplicate lyrics); Card and Artist never substitute
+        Assert.Equal(Visualizer.Kind.Bloom, Rules.BackdropKind(VL.LargeArt, Visualizer.Kind.Verse));
+        Assert.Equal(Visualizer.Kind.Bloom, Rules.BackdropKind(VL.Centered, Visualizer.Kind.Type));
+        Assert.Equal(Visualizer.Kind.Verse, Rules.BackdropKind(VL.Card, Visualizer.Kind.Verse));
+        Assert.Equal(Visualizer.Kind.Ring, Rules.BackdropKind(VL.Centered, Visualizer.Kind.Ring));
+        // cover-carrying faces sit under the deeper scrim; Card has none
+        Assert.True(Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Mosaic) > Rules.BackdropScrim(VL.LargeArt, Visualizer.Kind.Ring));
+        Assert.Equal(0f, Rules.BackdropScrim(VL.Card, Visualizer.Kind.Mosaic));
+        Assert.True(Rules.KeysStepFaces(VL.Centered)); Assert.False(Rules.KeysStepFaces(VL.Artist));
+    }
+
+    [Fact]
     public void A_layout_with_no_spectrum_still_holds_the_level_the_backdrop_field_breathes_with()
     {
         var kind = Visualizer.Kind.Bloom;
         Assert.Equal(Visualizer.Catalog.NeedsOf(kind), Rules.NeedsOf(VL.Card, Spec.Bars, kind));
-        Assert.Equal(Visualizer.Need.Spectrum, Rules.NeedsOf(VL.LargeArt, Spec.Bars, kind));
+        Assert.Equal(Visualizer.Need.Level | Visualizer.Need.Spectrum, Rules.NeedsOf(VL.LargeArt, Spec.Bars, kind));   // the backdrop face's level + the strip
         Assert.Equal(Visualizer.Need.Spectrum, Rules.NeedsOf(VL.Artist, Spec.Ring, kind));   // Ring draws as Line under the hero
         Assert.Equal(Visualizer.Need.Level, Rules.NeedsOf(VL.Centered, Spec.Off, kind));
         Assert.Equal(Visualizer.Tier.Level, Visualizer.Catalog.TierOf(Rules.NeedsOf(VL.LargeArt, Spec.Off, kind)));
