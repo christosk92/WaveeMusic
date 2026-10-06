@@ -845,6 +845,9 @@ public static partial class Modules
             psi.ArgumentList.Add("--protocol");
             psi.ArgumentList.Add(ModuleCatalog.MaxProtocol.ToString(CultureInfo.InvariantCulture));
             // The module protocol's own environment (docs/guide/playback-modules.md §2) — not an app switch.
+            // Never inherit OUR tracing tool's suspend port or a profiler (a module's runtime would wait for a client that is
+            // not coming); diagnostics themselves stay on, so a module author can still attach a tracer of their own.
+            global::Wavee.Crash.Launch.ScrubEnvironment(psi.Environment, global::Wavee.Crash.Launch.EnvScrub.Strip);
             psi.Environment["WAVEE_MODULE_ID"] = module.Id;
             psi.Environment["WAVEE_HOST_PID"] = Environment.ProcessId.ToString(CultureInfo.InvariantCulture);
             psi.Environment["WAVEE_HOST_VERSION"] = Platform.Version.SemVer;

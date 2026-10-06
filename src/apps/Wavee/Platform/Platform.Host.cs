@@ -229,6 +229,9 @@ public static partial class Platform
         try
         {
             var psi = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
+            // Strip only (not EnableDiagnostics=0): the broker hands its environment to the relaunched Wavee, which must not
+            // inherit a dead tool's suspend port (the broker's runtime would hang before Main) nor a diagnostics switch-off.
+            Crash.Launch.ScrubEnvironment(psi.Environment, Crash.Launch.EnvScrub.Strip);
             psi.ArgumentList.Add("--relaunch-after");
             psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
             System.Diagnostics.Process.Start(psi);
