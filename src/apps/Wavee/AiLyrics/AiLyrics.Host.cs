@@ -193,7 +193,10 @@ public static partial class AiLyrics
             NpuName = npu?.Description ?? "", NpuDriver = npu?.DriverVersion ?? "",
             InstalledBytes = used, Languages = languages, PendingDownloadBytes = Pack.DownloadBytes(missing),
         };
-        if (phase == SetupPhase.Ready) LoadModels();
+        // Boot only checks that the installed graphs are compiled: the NPU sessions (~0.9 GB of mapped context binaries and
+        // ~230 MB of shared NPU buffers) load when the first job that needs them starts — and overlap that job's audio
+        // fetch — not for a session that never times a song. Setup, a retry and a download still load at once.
+        if (phase == SetupPhase.Ready) LoadModels(deferIfCompiled: true);
     }
 
     /// <summary>App exit: stop the download (partial files stay, the next start resumes them), a running compile (between
@@ -409,14 +412,17 @@ public static partial class AiLyrics
                 dedupeKey: "ai-lyrics-error");
     }
 
-    static void LoadModels(bool reload = false)
+    /// <param name="deferIfCompiled">Boot: when every installed graph is already compiled, only record what is installed
+    /// and leave the sessions unloaded until a job needs them (<see cref="Worker"/>'s EnsureLanguage loads them). A graph
+    /// that still needs compiling is loaded (compiled) now, with the Preparing progress, exactly as before.</param>
+    static void LoadModels(bool reload = false, bool deferIfCompiled = false)
     {
         CancelLoads();
         var cts = new CancellationTokenSource();
         s_loadCts = cts;
         int ticket = s_ledger.BeginLoad();
         s_worker ??= new Worker();
-        s_worker.Load(LanguagesSetting(), reload, ticket, cts.Token);
+        s_worker.Load(LanguagesSetting(), reload, ticket, cts.Token, deferIfCompiled);
     }
 
     /// <summary>A load in flight stops at its next graph, and whatever it posts afterwards is stale.</summary>
@@ -666,13 +672,13 @@ public static partial class AiLyrics
             catch (InvalidOperationException) { }                                  // CompleteAdding: the app is closing
         }
 
-        public void Load(IReadOnlyList<string> languages, bool reload, int ticket, CancellationToken ct)
-            => Queue(() => DoLoad(languages, string.Join(",", languages), reload, ticket, ct));
+        public void Load(IReadOnlyList<string> languages, bool reload, int ticket, CancellationToken ct, bool deferIfCompiled = false)
+            => Queue(() => DoLoad(languages, string.Join(",", languages), reload, ticket, ct, deferIfCompiled));
 
         /// <summary>Every installed language is compiled once (setup), but only the first stays loaded; a song in another
         /// language swaps the aligner (<see cref="EnsureLanguage"/>). Each loaded language holds its own NPU buffers.
         /// Every post carries <paramref name="ticket"/>: a load the UI no longer wants changes nothing on screen.</summary>
-        void DoLoad(IReadOnlyList<string> languages, string key, bool reload, int ticket, CancellationToken ct)
+        void DoLoad(IReadOnlyList<string> languages, string key, bool reload, int ticket, CancellationToken ct, bool deferIfCompiled = false)
         {
             if (ct.IsCancellationRequested) return;
             if (_models is not null && !reload && key == _installedKey) { PostLoad(ticket, () => { s_ledger.Touch(Environment.TickCount64); SetReady(); }); return; }
@@ -695,6 +701,12 @@ public static partial class AiLyrics
             var weights = Rules.PrepareWeights(graphs, static p => File.Exists(p) ? new FileInfo(p).Length : 0);
             long weightTotal = 0; foreach (var w in weights) weightTotal += w;
             bool anyUncached = graphs.Exists(g => !File.Exists(LoadedModels.CtxPath(g)));
+            if (deferIfCompiled && !anyUncached)
+            {
+                Log.Info("ai-lyrics", $"ai.models.deferred active={active} installed={key} (compiled; the first job that needs the NPU loads them)");
+                PostLoad(ticket, SetReady);
+                return;
+            }
             if (anyUncached) PostLoad(ticket, () => Current.Value = Current.Peek() with { Phase = SetupPhase.Preparing, Prepare = new PrepareProgress(0, graphs.Count, 0, weightTotal, false, false) });
             var sw = Stopwatch.StartNew();
             try
@@ -768,6 +780,7 @@ public static partial class AiLyrics
             {
                 _models = LoadedModels.Load(RuntimeDir, ModelsDir, [language], null, ct);
                 _loaded = true;
+                Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={language} installed={_installedKey} lazy=true ort={_models.Ort.Version}");
             }
             else _models.SwapAligner(ModelsDir, language, null, ct);
             Log.Info("ai-lyrics", $"ai.models.switch active={language} ms={sw.ElapsedMilliseconds} recompiled={recompile}");
@@ -846,14 +859,27 @@ public static partial class AiLyrics
                 s_post(() => Skip(req, SkipReason.Metered, "metered connection"));
                 return;
             }
-            if (!EnsureLanguage(req.Language, ct) || _models is null || !_models.Aligners.TryGetValue(req.Language, out var aligner))
+            // Cold sessions (the first job since boot, or since the idle unload): open the audio on the pool while the worker
+            // loads the NPU sessions, so the ~1.3 s load overlaps the fetch the job waits on anyway.
+            Task<(SpotifyPcm? Pcm, Spotify.Audio.Fault Fault)>? early = null;
+            if ((_models is null || !_models.Aligners.ContainsKey(req.Language)) && _installed.Contains(req.Language))
+                early = Task.Run(() => (SpotifyPcm.Open(req.Uri, req.DurationMs, ct, out var f), f));
+            bool ready;
+            try { ready = EnsureLanguage(req.Language, ct); }
+            catch { DisposeWhenDone(early); throw; }
+            if (!ready || _models is null || !_models.Aligners.TryGetValue(req.Language, out var aligner))
             {
+                DisposeWhenDone(early);
                 Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=LanguageNotInstalled language={req.Language} installed={string.Join(",", _installed)} loaded={_models is not null}");
                 s_post(() => Skip(req, SkipReason.LanguageNotInstalled, "language " + req.Language + " not installed"));
                 return;
             }
             var sw = Stopwatch.StartNew();
-            using var pcm = SpotifyPcm.Open(req.Uri, req.DurationMs, ct, out var fault);
+            Spotify.Audio.Fault fault;
+            SpotifyPcm? opened;
+            if (early is not null) (opened, fault) = early.GetAwaiter().GetResult();
+            else opened = SpotifyPcm.Open(req.Uri, req.DurationMs, ct, out fault);
+            using var pcm = opened;
             if (pcm is null)
             {
                 Log.Info("ai-lyrics", $"ai.job.skip track={req.TrackId} reason=audio fault={fault}");
@@ -869,6 +895,10 @@ public static partial class AiLyrics
             File.Move(tmp, resultPath, overwrite: true);
             Log.Info("ai-lyrics", $"ai.job.done track={req.TrackId} ms={sw.ElapsedMilliseconds} separate={job.SeparateSeconds:0.0}s align={job.AlignSeconds:0.0}s");
         }
+
+        /// <summary>An audio open the job will not use: close it whenever it lands (it may still be fetching).</summary>
+        static void DisposeWhenDone(Task<(SpotifyPcm? Pcm, Spotify.Audio.Fault Fault)>? open)
+            => open?.ContinueWith(static t => { if (t.IsCompletedSuccessfully) t.Result.Pcm?.Dispose(); }, TaskScheduler.Default);
 
         static void Publish(JobRequest req, Lyrics.Doc doc, JobProgress p, bool fromCache, double separate, double align, long elapsedMs,
             CancellationToken ct)
