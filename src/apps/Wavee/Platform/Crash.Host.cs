@@ -42,8 +42,8 @@ public static partial class Crash
 
         static int s_installed;
         static Launch.HandlerChild? s_child;
-        static StreamWriter? s_stdin;
-        static readonly object s_writeLock = new();
+        static StdinSink? s_stdin;
+        static readonly object s_writeLock = new();   // guards the s_child / s_stdin swap only; the pipe is written by the sink's own thread
         static System.Threading.Timer? s_beatTimer;
         // The child declares a hang after HangRules.NoBeatMs (20 s) without a beat, so 5 s still leaves four beats of margin
         // while cutting the idle thread-pool + UI-post wakeups from 0.5 Hz x2 to 0.2 Hz x2.
@@ -57,6 +57,87 @@ public static partial class Crash
         static int s_suspendEpoch;
         static int s_modalDepth;
         static string? s_installLine;   // "I <id>", cached by the first (main-thread) Adopt
+
+        /// <summary>The child's stdin, written off the caller's thread. A pipe write BLOCKS once the pipe buffer is full, and
+        /// a handler that is ready but stopped reading (hung, suspended under a debugger) would otherwise freeze the UI
+        /// thread inside <c>SendLine</c> (beat, first frame, modal and suspend lines all come from it). Lines go into a
+        /// bounded queue drained by one writer thread, in order; on overflow the NEW line is dropped with one log line (a
+        /// lost beat is exactly what the child's watchdog is for). The dump request is queued with <c>force</c> (never
+        /// dropped) and its reply is awaited with its own timeout.</summary>
+        sealed class StdinSink
+        {
+            const int Max = 256;
+            readonly StreamWriter _writer;
+            readonly Queue<string> _queue = new();
+            readonly object _gate = new();
+            bool _dead, _busy, _overflowLogged;
+
+            public StdinSink(StreamWriter writer)
+            {
+                _writer = writer;
+                new Thread(Run) { IsBackground = true, Name = "crash-handler-stdin" }.Start();
+            }
+
+            public void Post(string line, bool force = false)
+            {
+                bool logOverflow = false;
+                lock (_gate)
+                {
+                    if (_dead) return;
+                    if (!force && _queue.Count >= Max)
+                    {
+                        logOverflow = !_overflowLogged;
+                        _overflowLogged = true;
+                    }
+                    else
+                    {
+                        _queue.Enqueue(line);
+                        Monitor.PulseAll(_gate);
+                    }
+                }
+                if (logOverflow) Log.Warn("crash", "crash.handler.stdin.overflow: the handler stopped reading its pipe; dropping lines");
+            }
+
+            /// <summary>Wait (bounded) until everything queued has been written: the exit line only.</summary>
+            public void WaitIdle(int ms)
+            {
+                long deadline = Environment.TickCount64 + ms;
+                lock (_gate)
+                    while (!_dead && (_queue.Count > 0 || _busy))
+                    {
+                        int left = MsLeft(deadline);
+                        if (left <= 0 || !Monitor.Wait(_gate, left)) return;
+                    }
+            }
+
+            public void Stop()
+            {
+                lock (_gate) { _dead = true; _queue.Clear(); Monitor.PulseAll(_gate); }
+            }
+
+            void Run()
+            {
+                while (true)
+                {
+                    string line;
+                    lock (_gate)
+                    {
+                        while (_queue.Count == 0 && !_dead) Monitor.Wait(_gate);
+                        if (_dead) return;
+                        line = _queue.Dequeue();
+                        _busy = true;
+                    }
+                    try { _writer.WriteLine(line); }
+                    catch (Exception ex)
+                    {
+                        Log.Warn("crash", "crash.handler.write.failed", ex);
+                        Stop();
+                        return;
+                    }
+                    lock (_gate) { _busy = false; Monitor.PulseAll(_gate); }
+                }
+            }
+        }
 
         /// <summary>Set by <see cref="NoteFirstFrame"/>; read by <see cref="Report.BuildSummary"/> for
         /// <c>Summary.BeforeFirstFrame</c>. Internal: only this file and <see cref="Report"/> need it.</summary>
@@ -149,17 +230,18 @@ public static partial class Crash
             lock (s_writeLock)
             {
                 s_child = child;
-                s_stdin = child.Stdin;
+                s_stdin?.Stop();   // a respawn: the old child's writer (possibly stuck in a full pipe) is abandoned
+                var sink = s_stdin = new StdinSink(child.Stdin);
                 // First call is on the main thread (Install), which may write the id; a respawn runs on a pool thread and
                 // replays the cached string (settings writes are UI-thread-only). Then the state a fresh handler missed.
-                try { s_installLine ??= "I " + InstallId.Ensure(Platform.Settings); s_stdin.WriteLine(s_installLine); } catch { }
+                try { s_installLine ??= "I " + InstallId.Ensure(Platform.Settings); sink.Post(s_installLine); } catch { }
                 try
                 {
-                    if (FirstFrameSeen) s_stdin.WriteLine("F");
+                    if (FirstFrameSeen) sink.Post("F");
                     int modal = Volatile.Read(ref s_modalDepth);
-                    for (int i = 0; i < modal; i++) s_stdin.WriteLine("M1");
+                    for (int i = 0; i < modal; i++) sink.Post("M1");
                     int epoch = Volatile.Read(ref s_suspendEpoch);
-                    if (epoch > 0) s_stdin.WriteLine("S " + epoch.ToString(CultureInfo.InvariantCulture));
+                    if (epoch > 0) sink.Post("S " + epoch.ToString(CultureInfo.InvariantCulture));
                 }
                 catch { }
             }
@@ -171,6 +253,7 @@ public static partial class Crash
             {
                 if (!ReferenceEquals(s_child, child)) return;
                 s_child = null;
+                s_stdin?.Stop();
                 s_stdin = null;
             }
         }
@@ -188,11 +271,9 @@ public static partial class Crash
 
         static void SendLine(string line)
         {
-            lock (s_writeLock)
-            {
-                try { s_stdin?.WriteLine(line); }
-                catch (Exception ex) { Log.Warn("crash", "crash.handler.write.failed", ex); }
-            }
+            StdinSink? sink;
+            lock (s_writeLock) sink = s_stdin;
+            sink?.Post(line);   // never blocks: queued for the writer thread (StdinSink)
         }
 
         // ── 2. the heartbeat + the hang-report poll ─────────────────────────────────────────────────────────────────
@@ -369,11 +450,7 @@ public static partial class Crash
                 + " " + unchecked((ulong)ptrs).ToString("x", CultureInfo.InvariantCulture) + " " + dir;
             lock (s_dumpGate)
             {
-                lock (s_writeLock)
-                {
-                    try { stdin.WriteLine(line); }
-                    catch (Exception ex) { error = ex.Message; return false; }
-                }
+                stdin.Post(line, force: true);   // queued behind earlier lines, never dropped; a stuck pipe shows as the reply timeout
 
                 try
                 {
@@ -446,7 +523,13 @@ public static partial class Crash
             SendLine("F");
         }
 
-        public static void NoteExiting() => SendLine("X");
+        public static void NoteExiting()
+        {
+            SendLine("X");
+            StdinSink? sink;
+            lock (s_writeLock) sink = s_stdin;
+            sink?.WaitIdle(250);   // the process is about to end: give the writer thread a bounded moment so the line lands
+        }
 
         public static IDisposable ModalScope() => new ModalScopeToken();
 
