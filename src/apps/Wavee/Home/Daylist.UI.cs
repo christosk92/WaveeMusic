@@ -30,6 +30,10 @@
 //             ring, "Updating your daylist…", "{Next daypart} is on its way", the next segment an indeterminate bar)
 //             and, when the rollover ladder gives up, Late ("Your next daylist is running late" + "Check again") —
 //             `DaylistClockFace` over `Home.Feeds.RolloverState`.
+//             The Counting face follows Settings ▸ Appearance ▸ Daylist clock (`DaylistClockShows`, #185): Countdown only
+//             swaps the caption for "{weekday} {next daypart} is up next" (no time); Update time only is a STATIC face —
+//             "Next update at HH:mm" over that same line, the ring and bars at the elapsed fraction of its render, no
+//             1-Hz tick at all (a one-shot at the window's end still swaps in Updating on time).
 //
 // The "…" button re-enters the engine's context funnel (`ClickRequestsContext`) and finds the card's ATTACHED playlist
 // menu (`HomeCardNav.MenuOf`, the grammar every other card wears) — attaching it needs the overlay service, which the
@@ -351,7 +355,12 @@ public sealed class DaylistCard : Component
 /// offline), a static ring beside "Your next daylist is running late" and a "Check again" link that restarts the ladder
 /// (<see cref="Home.Feeds.CheckDaylistAgain"/>). This host reads the window's phase (a 1-Hz watch that only writes on the
 /// flip, so a tick never re-renders it) and the ladder's signal, and keys the face by (window, face) so a face change
-/// remounts only the clock's leaf. Props freeze at mount; the card keys this host on its window and daypart.</summary>
+/// remounts only the clock's leaf. Props freeze at mount; the card keys this host on its window and daypart.
+/// <para>It also reads the clock MODE (<see cref="Prefs.Appearance.DaylistClock"/>, #185) and keys the Counting face on
+/// it, so a pick in Settings swaps the face live. Update time only mounts <see cref="UpdateTimeFace"/>, which has nothing
+/// that changes per second: the 1-Hz watch stays off and a ONE-SHOT at the window's end
+/// (<see cref="DaylistClockShows.ExpiryDelayMs"/>) flips the face instead; it re-checks the wall clock when it fires and
+/// re-arms if it landed early.</para></summary>
 public sealed class DaylistClock : Component
 {
     public required long ExpiresAtMs { get; init; }
@@ -359,9 +368,14 @@ public sealed class DaylistClock : Component
     public required Daypart Current { get; init; }
 
     readonly Signal<int> _flip = new(0);
-    readonly Action _watch;
+    readonly Action _watch, _onExpiry;
+    TimerHandle _expiry;
 
-    public DaylistClock() => _watch = Watch;
+    public DaylistClock()
+    {
+        _watch = Watch;
+        _onExpiry = OnExpiry;
+    }
 
     /// <summary>The 1-Hz watch while counting: the first tick past the window re-renders this host once.</summary>
     void Watch()
@@ -370,26 +384,61 @@ public sealed class DaylistClock : Component
             _flip.Value++;
     }
 
+    /// <summary>The one-shot at the window's end: flip once, or re-arm for the rest if the timer landed early.</summary>
+    void OnExpiry()
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (DaylistCountdown.PhaseOf(ExpiresAtMs, now) == DaylistCountdown.Phase.Counting)
+            _expiry.RestartIn(DaylistClockShows.ExpiryDelayMs(ExpiresAtMs, now));
+        else _flip.Value++;
+    }
+
     public override Element Render()
     {
         _ = _flip.Value;                                           // the window ended: swap the face once
         var ladder = Home.Feeds.RolloverState.Value;               // the ladder moved: Updating ↔ Late
+        var mode = Prefs.Appearance.DaylistClock();                // Settings picked another clock: swap the Counting face
         long expiresAtMs = ExpiresAtMs, createdAtMs = CreatedAtMs;
-        var phase = DaylistCountdown.PhaseOf(expiresAtMs, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        UseInterval(_watch, 1000f, enabled: phase == DaylistCountdown.Phase.Counting);
+        long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var phase = DaylistCountdown.PhaseOf(expiresAtMs, nowMs);
+        UseInterval(_watch, 1000f, enabled: DaylistClockShows.SecondTick(mode, phase));
+        _expiry = UseTimeout(_onExpiry, DaylistClockShows.ExpiryDelayMs(expiresAtMs, nowMs), DepKey.From(expiresAtMs, (long)mode));
         if (expiresAtMs <= 0) return new BoxEl();
 
         var face = DaylistClockFace.Of(phase, ladder);
         var current = Current;
-        string key = "face:" + expiresAtMs.ToString(CultureInfo.InvariantCulture) + ":" + ((int)face).ToString(CultureInfo.InvariantCulture);
+        bool showUpdateTime = DaylistClockShows.UpdateTime(mode);
+        string key = "face:" + expiresAtMs.ToString(CultureInfo.InvariantCulture) + ":" + ((int)face).ToString(CultureInfo.InvariantCulture)
+                   + (face == DaylistClockFace.Face.Counting ? ":" + ((int)mode).ToString(CultureInfo.InvariantCulture) : "");
         Element leaf = face switch
         {
             DaylistClockFace.Face.Updating => Updating(current),
             DaylistClockFace.Face.Late => Late(current),
-            _ => Embed.Comp(() => new DaylistCountingClock { ExpiresAtMs = expiresAtMs, CreatedAtMs = createdAtMs, Current = current }),
+            _ when !DaylistClockShows.Countdown(mode) => UpdateTimeFace(expiresAtMs, createdAtMs, current, nowMs),
+            _ => Embed.Comp(() => new DaylistCountingClock
+            {
+                ExpiresAtMs = expiresAtMs, CreatedAtMs = createdAtMs, Current = current, ShowUpdateTime = showUpdateTime,
+            }),
         };
         // The face is the keyed CHILD of a stretch column (a root's own Key is inert in a component's single-child slot).
         return new BoxEl { Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Children = [leaf with { Key = key }] };
+    }
+
+    /// <summary>The update-time-only Counting face (#185): the SAME block as the countdown — so the card keeps its height
+    /// when the setting changes — with nothing on it that moves. "Next update at HH:mm" stands in for the ticking line, the
+    /// second line names the next daypart without repeating the time, and the ring and the five bars are drawn once at the
+    /// window's elapsed fraction as of this render (no signal is ever written to them).</summary>
+    static Element UpdateTimeFace(long expiresAtMs, long createdAtMs, Daypart current, long nowMs)
+    {
+        float elapsed = (float)DaypartRules.Elapsed(createdAtMs, expiresAtMs, nowMs);
+        var segs = new FloatSignal[DaypartTimeline.Segments];
+        for (int i = 0; i < segs.Length; i++) segs[i] = new FloatSignal(DaypartTimeline.Fill(i, (int)current, elapsed));
+        var tz = TimeZoneInfo.Local;
+        var culture = CultureInfo.CurrentCulture;
+        return DaylistClockBlock.Shape(
+            ProgressRing.Determinate(elapsed, Daylist.RingSize, track: Tok.StrokeControlStrongDefault),
+            StaticLine(DaylistNext.UpdateAt(expiresAtMs, tz, culture)),
+            DaylistNext.UpNext(expiresAtMs, current, tz, culture), segs, (int)current);
     }
 
     /// <summary>The next edition is on its way: the stock indeterminate ring at the countdown ring's size, the
@@ -429,6 +478,8 @@ public sealed class DaylistCountingClock : Component
     public required long ExpiresAtMs { get; init; }
     public required long CreatedAtMs { get; init; }
     public required Daypart Current { get; init; }
+    /// <summary>FALSE for the countdown-only clock (#185): the caption names the next daypart without its time.</summary>
+    public bool ShowUpdateTime { get; init; } = true;
 
     public override Element Render()
     {
@@ -456,8 +507,11 @@ public sealed class DaylistCountingClock : Component
 
         // The sentence stays the translator's; only the count is cut out of it to be its own semibold span.
         var (before, after) = DaylistCountdownLine.Split(Strings.Home.NextDaylistIn(DaylistCountdownLine.Slot));
-        // The second line names the timeline segment AFTER the card's current one; static per mount.
-        string caption = DaylistNext.Caption(expiresAtMs, Current, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
+        // The second line names the timeline segment AFTER the card's current one; static per mount. The countdown-only
+        // clock drops its time ("… is up next"), keeping the line so the card's height never changes with the setting.
+        string caption = ShowUpdateTime
+            ? DaylistNext.Caption(expiresAtMs, Current, TimeZoneInfo.Local, CultureInfo.CurrentCulture)
+            : DaylistNext.UpNext(expiresAtMs, Current, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
 
         // The bound line: one fill of the reused buffer per tick (the scene copies it), a relayout of this one run.
         var line = DaylistClockBlock.Line(Prop.Of(() =>

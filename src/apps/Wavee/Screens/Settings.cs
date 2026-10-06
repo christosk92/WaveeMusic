@@ -126,6 +126,8 @@ public static partial class Settings
             new(Tab.Appearance, "Lists", "pageLayout", "DockLeft"),
             new(Tab.Appearance, "Lists", "railUniform", "Pin"),
             new(Tab.Appearance, "Lists", "railReset", "Delete"),
+            // #185: what the daylist clock shows (countdown / update time / both) on the playlist hero and the Home card.
+            new(Tab.Appearance, "Lists", "daylistClock", "Clock"),
             new(Tab.Appearance, "Sidebar", "sidebarDesign", "SplitView"),
             new(Tab.Appearance, "Sidebar", "sidebarCustomize", "Edit"),
             // "Lyrics second line" (Globe) and "Animated lyrics backdrop" (RefineSparkle) are GONE, not gated: neither

@@ -689,12 +689,22 @@ public static partial class Controls
     /// per second.</summary>
     static readonly string[] Numerals = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
+    /// <summary>A flip cell's numeral swap: the old numeral slides up and fades out while the new one rises and fades in.
+    /// <paramref name="reduced"/> (the caller passes <c>Design.Reduced</c>) ⇒ NO transition at all, so the numeral swaps
+    /// in place: a LayoutTransition carries no reduced-motion policy, and the engine's default for one (KeepFade) would
+    /// still cross-fade every digit every second — the ticking motion reduced motion asks to be rid of.</summary>
+    public static LayoutTransition? FlipTransition(float rowHeight, bool reduced) => reduced ? null : new LayoutTransition(
+        TransitionChannels.Position | TransitionChannels.Opacity,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut),
+        Enter: new EnterExit(Dy: rowHeight * 0.6f, Opacity: 0f, Active: true),
+        Exit: new EnterExit(Dy: -rowHeight * 0.6f, Opacity: 0f, Active: true));
+
     /// <summary>ONE digit cell of the flip countdown: the old numeral slides up and out while the new one rises in (a
     /// keyed remount per cell — the reconciler keeps the exiting orphan painted UNDER the entering digit inside the
     /// clipped cell).
     /// <para>Every numeral sits CENTRED in a FIXED-WIDTH cell, because the text seam has no tabular figures: nothing
-    /// reflows as the digits spin. Reduced motion degrades the slide to a cross-fade through the motion token's own
-    /// policy — never a hook branch.</para></summary>
+    /// reflows as the digits spin. Reduced motion swaps the numeral INSTANTLY (<see cref="FlipTransition"/>): a VALUE on
+    /// the element, never a hook branch.</para></summary>
     public static Element FlipDigit(int digit, float rowHeight, ColorF ink)
     {
         string n = Numerals[Math.Clamp(digit, 0, 9)];
@@ -707,11 +717,7 @@ public static partial class Controls
                 new BoxEl
                 {
                     Key = n,
-                    Animate = new LayoutTransition(
-                        TransitionChannels.Position | TransitionChannels.Opacity,
-                        TransitionDynamics.Tween(Design.Motion.Standard, Easing.SmoothOut),
-                        Enter: new EnterExit(Dy: rowHeight * 0.6f, Opacity: 0f, Active: true),
-                        Exit: new EnterExit(Dy: -rowHeight * 0.6f, Opacity: 0f, Active: true)),
+                    Animate = FlipTransition(rowHeight, Design.Reduced),
                     Children = [new TextEl(n)
                         { Size = rowHeight, LineHeight = rowHeight, Weight = 350, Color = ink,
                           FontFamily = "Segoe UI Variable Display" }],

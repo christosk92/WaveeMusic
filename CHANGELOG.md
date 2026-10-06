@@ -10,6 +10,13 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.4] - unreleased
 
+### Added
+
+- **Choose what the daylist clock shows.** Settings › Appearance › Lists › Daylist clock offers "Countdown and update
+  time" (as before), "Update time only" or "Countdown only", on the daylist's playlist page and its Home card. Update
+  time only shows just "Next update at {time}", with no ticking digits moving at the edge of your view, and still
+  switches to "Updating your daylist…" the moment the daylist rolls over. (#185)
+
 ### Changed
 
 - **Lyrics, track changes and scrolling use far less of the GPU.** Wavee now redraws only the pixels that changed
@@ -45,6 +52,9 @@ versions separately under `v*` and is not tracked in this file.)
 - **Notification sound and quiet hours can no longer be switched while Windows notifications are off.** Their cards
   greyed out, but the switch inside each one stayed live and looked enabled. Both rows now stay visible and go inert
   together until Windows notifications are turned back on. (#183)
+
+- **The daylist countdown respects reduced motion.** With Windows' animation effects turned off, the daylist's flip
+  digits still slid and faded every second. They now change in place. (#185)
 
 ## [0.3.3] - 2026-10-05
 

@@ -49,7 +49,7 @@ public static partial class Prefs
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
     /// <para>WHAT BUMPS IT: marquee text, colour washes, row density, hide-track-artwork, track list style, the animated
-    /// lyrics backdrop, and the liked-cover treatment. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
+    /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
     public static class Appearance
@@ -120,6 +120,15 @@ public static partial class Prefs
         {
             _ = Epoch.Value;
             return Clamp(Platform.Settings.Get(Platform.Keys.PageMotionStyle), styleCount);
+        }
+
+        /// <summary>Reactive read of what the daylist clock shows (Settings ▸ Appearance ▸ Lists ▸ Daylist clock, #185),
+        /// clamped: a hand-edited or downgraded value reads as <see cref="DaylistClockMode.Both"/>, never as an empty
+        /// clock. The playlist hero strip and the Home card both read it, so a pick re-renders them on the same frame.</summary>
+        public static DaylistClockMode DaylistClock()
+        {
+            _ = Epoch.Value;
+            return DaylistClockShows.FromSetting(Platform.Settings.Get(Platform.Keys.DaylistClock));
         }
 
         /// <summary>The ONE writer every appearance row goes through: persist, then bump so every mounted surface

@@ -121,6 +121,23 @@ public sealed class PrefsTests : IDisposable
         Assert.Equal(0, Prefs.Appearance.PageMotionStyle(Design.PageMotionStyleCount));
     }
 
+    /// <summary>#185: a fresh profile shows the countdown AND the update time (what earlier builds showed); a pick is
+    /// read back through the appearance epoch the daylist surfaces subscribe to; a value this build cannot show reads as
+    /// the default, never as an empty clock.</summary>
+    [Fact]
+    public void The_daylist_clock_defaults_to_both_follows_a_pick_and_clamps_a_stray_value()
+    {
+        Assert.Equal(DaylistClockMode.Both, Prefs.Appearance.DaylistClock());
+
+        int before = Prefs.Appearance.Epoch.Peek();
+        Prefs.Appearance.Set(Platform.Keys.DaylistClock, (int)DaylistClockMode.UpdateTime);
+        Assert.Equal(before + 1, Prefs.Appearance.Epoch.Peek());
+        Assert.Equal(DaylistClockMode.UpdateTime, Prefs.Appearance.DaylistClock());
+
+        _store.Set(Platform.Keys.DaylistClock, 9);
+        Assert.Equal(DaylistClockMode.Both, Prefs.Appearance.DaylistClock());
+    }
+
     // ── lyrics ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
     [Theory]

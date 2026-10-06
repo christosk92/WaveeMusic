@@ -131,6 +131,59 @@ public static class DaylistClockFace
     }
 }
 
+/// <summary>What the daylist clock is set to show (Settings ▸ Appearance ▸ Lists ▸ Daylist clock, #185). PERSISTED as
+/// an int (<c>Platform.Keys.DaylistClock</c>): the declaration order IS the stored value and the combo's index.</summary>
+public enum DaylistClockMode : byte
+{
+    /// <summary>The running countdown AND the next-update time (the default: what every build before #185 showed).</summary>
+    Both = 0,
+    /// <summary>Only the next-update time: no ticking digits, no per-second motion in the peripheral view.</summary>
+    UpdateTime = 1,
+    /// <summary>Only the running countdown, without the next-update time.</summary>
+    Countdown = 2,
+}
+
+/// <summary>What each <see cref="DaylistClockMode"/> puts on screen, and what it costs. Both daylist surfaces — the
+/// playlist hero strip (<c>Playlist.DaylistStrip</c>) and the Home card's clock (<c>HomeUi.DaylistClock</c>) — ask these
+/// rather than switching on the mode themselves, so the two can never disagree about a mode.
+/// <para>The ended-window faces (Updating / Late, <see cref="DaylistClockFace"/>) are NOT governed here: they are a
+/// status, not a clock, and every mode shows them on time — which is why a mode without the countdown still arms a
+/// one-shot at the window's end (<see cref="ExpiryDelayMs"/>) instead of a per-second tick.</para></summary>
+public static class DaylistClockShows
+{
+    /// <summary>How many modes exist — the count <c>Prefs.Appearance.DaylistClock</c> clamps against.</summary>
+    public const int ModeCount = 3;
+
+    /// <summary>The one-shot's margin past the window's end, so it lands on the Rolling side of
+    /// <see cref="DaylistCountdown.PhaseOf"/>'s boundary rather than a hair before it.</summary>
+    public const long ExpirySlackMs = 250;
+
+    /// <summary>A persisted / hand-edited int as a real mode: anything out of range reads as <see cref="DaylistClockMode.Both"/>
+    /// (the default), never as an empty clock.</summary>
+    public static DaylistClockMode FromSetting(int value)
+        => (uint)value < ModeCount ? (DaylistClockMode)value : DaylistClockMode.Both;
+
+    /// <summary>Does the mode show the running countdown (the flip cells / "Next daylist in hh:mm:ss" + the live ring
+    /// and timeline)?</summary>
+    public static bool Countdown(DaylistClockMode mode) => mode != DaylistClockMode.UpdateTime;
+
+    /// <summary>Does the mode show the next-update TIME ("Next update at {time}" / "… arrives at HH:mm")?</summary>
+    public static bool UpdateTime(DaylistClockMode mode) => mode != DaylistClockMode.Countdown;
+
+    /// <summary>Does the clock need its 1-Hz tick right now? Only while a countdown is on screen and the window is still
+    /// open: an update-time-only clock has nothing that changes per second.</summary>
+    public static bool SecondTick(DaylistClockMode mode, DaylistCountdown.Phase phase)
+        => Countdown(mode) && phase == DaylistCountdown.Phase.Counting;
+
+    /// <summary>The one-shot's delay from <paramref name="nowUnixMs"/>: to the window's end plus
+    /// <see cref="ExpirySlackMs"/> (already past ⇒ just the slack), capped at a real timer's <c>int.MaxValue − 1</c>.</summary>
+    public static float ExpiryDelayMs(long expiresAtMs, long nowUnixMs)
+    {
+        long delay = Math.Max(0L, expiresAtMs - nowUnixMs) + ExpirySlackMs;
+        return delay > int.MaxValue - 1 ? int.MaxValue - 1 : delay;
+    }
+}
+
 /// <summary>Which of two daylist windows should win when both are in hand. A held window of 0 means the app just
 /// relaunched and hasn't decoded the daylist's own edition yet — it is unknown, not "no edition", so it must yield
 /// to ANY real window rather than compete on the numbers. Once both are known, a strictly later window is a newer
