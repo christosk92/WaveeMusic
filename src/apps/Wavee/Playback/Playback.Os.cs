@@ -444,7 +444,7 @@ public static partial class Playback
             static bool s_on;
             static OverlayKind s_lastOverlay = (OverlayKind)255;
             static ProgressKind s_lastProgress = (ProgressKind)255;
-            static bool s_lastCanPrev, s_lastCanNext, s_lastPlaying, s_lastHasTrack, s_haveThumbState, s_thumbsAdded;
+            static bool s_lastCanPrev, s_lastCanNext, s_lastPlaying, s_lastHasTrack, s_haveThumbState;
             static SmtcTimelineCoalescer s_timeline;
             static long s_durationMs;
             static readonly Action s_flush = Flush;
@@ -460,7 +460,7 @@ public static partial class Playback
                 FluentApp.ThumbButtonClicked += OnThumbClick;
                 FluentApp.TaskbarButtonCreated += OnTaskbarButtonCreated;
                 s_on = true;
-                ApplyThumbs(forceAdd: true);
+                ApplyThumbs();
             }
 
             internal static void Shutdown()
@@ -471,6 +471,7 @@ public static partial class Playback
                 FluentApp.TaskbarButtonCreated -= OnTaskbarButtonCreated;
                 try { TaskbarManager.SetOverlayIcon(s_hwnd, null, ""); } catch { }
                 try { TaskbarManager.ClearProgress(s_hwnd); } catch { }
+                try { TaskbarManager.ReleaseIcons(); } catch { }   // after the last taskbar call: the cached HICONs
             }
 
             internal static void OnStateChanged(in State s)
@@ -518,7 +519,7 @@ public static partial class Playback
                     s_lastCanNext = canNext;
                     s_lastPlaying = playing;
                     s_lastHasTrack = hasTrack;
-                    ApplyThumbs(forceAdd: false);
+                    ApplyThumbs();
                 }
             }
 
@@ -540,11 +541,12 @@ public static partial class Playback
             }
 
             /// <summary>The three buttons, ids 1/2/3, of the shell's 7-button cap. Added ONCE per HWND and updated
-            /// forever after — the shell forbids a second add. A missing `.ico` is a DEGRADED state, not an error
-            /// one: the retry publishes the same three buttons with no glyph, so the tooltips and the clicks still
+            /// forever after — the shell forbids a second add, and the engine's per-HWND latch (dropped by
+            /// `NotifyTaskbarButtonCreated`) decides which one a call is. A missing `.ico` is a DEGRADED state, not an
+            /// error one: the retry publishes the same three buttons with no glyph, so the tooltips and the clicks still
             /// land (ch 14 W13). `DismissOnClick` stays false, which is what makes prev→prev→next work without
             /// re-hovering the thumbnail.</summary>
-            static void ApplyThumbs(bool forceAdd)
+            static void ApplyThumbs()
             {
                 if (!s_on) return;
                 ThumbState t = ThumbsFor(s_lastHasTrack, s_lastPlaying, s_lastCanPrev, s_lastCanNext);
@@ -557,15 +559,10 @@ public static partial class Playback
                 };
                 try
                 {
-                    if (forceAdd || !s_thumbsAdded)
-                    {
-                        TaskbarManager.SetThumbButtons(s_hwnd, buttons);
-                        s_thumbsAdded = true;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < buttons.Length; i++) TaskbarManager.UpdateThumbButton(s_hwnd, buttons[i]);
-                    }
+                    // ONE call either way: the first adds the toolbar, every later one is a single
+                    // `ThumbBarUpdateButtons` for all three buttons (a cross-process call to Explorer each — three
+                    // per-button updates cost three). The glyphs come from the engine's icon cache, not from disk.
+                    TaskbarManager.SetThumbButtons(s_hwnd, buttons);
                 }
                 catch (Exception ex)
                 {
@@ -576,7 +573,6 @@ public static partial class Playback
                             new ThumbButton(IdPrev, null, Loc.Get(Strings.Taskbar.Previous), t.PrevEnabled),
                             new ThumbButton(IdPlayPause, null, playPauseTip, t.PlayPauseEnabled),
                             new ThumbButton(IdNext, null, Loc.Get(Strings.Taskbar.Next), t.NextEnabled));
-                        s_thumbsAdded = true;
                     }
                     catch { /* fail-soft: no toolbar this session */ }
                 }
@@ -588,8 +584,7 @@ public static partial class Playback
             {
                 if (!s_on) return;
                 try { TaskbarManager.NotifyTaskbarButtonCreated(s_hwnd); } catch { }
-                s_thumbsAdded = false;
-                ApplyThumbs(forceAdd: true);
+                ApplyThumbs();
             }
 
             /// <summary>A thumb click. The middle button reads the LIVE phase, not the last PUSHED one: the cached
