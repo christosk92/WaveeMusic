@@ -385,7 +385,7 @@ public class FrameBenchMathTests
     [InlineData("otherMcyclesPerSec", -1)]
     [InlineData("uiKcyclesPerPaintedFrame", -1)]
     [InlineData("renderKcyclesPerTurn", -1)]
-    [InlineData("renderCpuMs.p99", -1)]
+    [InlineData("renderCpuMs.p99", 0)]
     [InlineData("gc0PerSec", -1)]
     [InlineData("gpuBusyPct", -1)]
     public void Metric_direction(string key, int better) => Assert.Equal(better, Diagnostics.FrameBenchMath.Better(key));

@@ -527,7 +527,10 @@ public static partial class Diagnostics
         /// frames, the census, the rate itself, an A/B arm, and the tick-charged TIME-based CPU figures: processCpuPct / *CoresTimes are
         /// info only, see <see cref="IsInfoCpu"/>), -1 (the default) lower is better.</summary>
         public static bool IsInfoCpu(string key) => key is "processCpuPct" or "uiCoresTimes" or "renderCoresTimes" or "overheadProcessCpuPct"
-            || key.StartsWith("processCpuPct.", StringComparison.Ordinal) || key.StartsWith("paintedCpuMs", StringComparison.Ordinal);
+            || key.StartsWith("processCpuPct.", StringComparison.Ordinal) || key.StartsWith("paintedCpuMs", StringComparison.Ordinal)
+            // the per-frame ms figures are cycles converted at the run's GetProcessTimes-derived rate, so they inherit its noise
+            || key.StartsWith("uiCpuMs", StringComparison.Ordinal) || key.StartsWith("renderCpuMs", StringComparison.Ordinal)
+            || key.StartsWith("otherCpuMs", StringComparison.Ordinal);
 
         public static int Better(string key)
             => key is "presentsPerSec" or "audioPaddingMinMs" ? +1

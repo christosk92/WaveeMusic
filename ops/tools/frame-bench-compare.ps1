@@ -82,7 +82,7 @@ function Get-Prop($obj, [string]$name) {
 
 # Mirrors FrameBenchMath.Better: +1 higher is better, 0 neutral, -1 lower is better.
 function Test-InfoCpu([string]$key) {
-    return ($key -in @('processCpuPct', 'uiCoresTimes', 'renderCoresTimes', 'overheadProcessCpuPct') -or $key -like 'processCpuPct.*' -or $key -like 'paintedCpuMs*')
+    return ($key -in @('processCpuPct', 'uiCoresTimes', 'renderCoresTimes', 'overheadProcessCpuPct') -or $key -like 'processCpuPct.*' -or $key -like 'paintedCpuMs*' -or $key -like 'uiCpuMs*' -or $key -like 'renderCpuMs*' -or $key -like 'otherCpuMs*')
 }
 
 function Get-Direction([string]$key) {
@@ -175,7 +175,7 @@ foreach ($sb in $b.scenarios) {
 }
 
 $rows | Format-Table scenario, metric, before, after, delta, pct, flag -AutoSize | Out-String -Width 200 | Write-Output
-Write-Output "note: CPU headline = raw cycle counts (*cycles*); processCpuPct / *CoresTimes / paintedCpuMs are time-based (15.6 ms tick-charged, two-mode at low load) and shown as info only, never flagged."
+Write-Output "note: CPU headline = raw cycle counts (*cycles*); processCpuPct / *CoresTimes are time-based and paintedCpuMs / uiCpuMs / renderCpuMs / otherCpuMs are converted at a time-derived rate (time is 15.6 ms tick-charged, two-mode at low load): all shown as info only, never flagged."
 Write-Output ("{0} regressed, {1} improved, {2} warning(s) (threshold {3}%, cycles {4}%)" -f $regressions, $improvements, $script:warnings, $Threshold, $CycleThreshold)
 if ($FailOnRegression -and $regressions -gt 0) { exit 1 }
 exit 0
