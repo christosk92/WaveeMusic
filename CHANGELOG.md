@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Changed
+
+- **The AI lyrics models load only when a song needs them.** Wavee loaded them at every start, even when nothing
+  would be timed, which kept about 900 MB of model files and NPU buffers in its memory for the first ten minutes.
+  They now load when a song first needs word-by-word timing, while the song's audio is being fetched, so the
+  lyrics are not later; they still unload after ten idle minutes.
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
