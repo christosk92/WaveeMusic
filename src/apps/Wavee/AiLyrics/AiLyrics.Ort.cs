@@ -168,26 +168,38 @@ public static partial class AiLyrics
                 Check(((delegate* unmanaged<nint, byte*, byte*, nint>)_api[I_AddSessionConfigEntry])(so, k, v));
         }
 
-        /// <summary>One float input -> one float output. <paramref name="output"/> is resized to the output's element
-        /// count; its shape is returned.</summary>
-        internal long[] Run(nint session, byte[] inName, byte[] outName, float[] input, ReadOnlySpan<long> shape, ref float[] output)
+        /// <summary>One float input -> one float output through a chain of sessions: session i's output tensor is session
+        /// i + 1's input as it is, in ONNX Runtime's memory, never copied to the managed heap. Only the last output is
+        /// copied out: <paramref name="output"/> is resized to its element count, and its shape is returned.</summary>
+        /// <remarks>The aligner is why: its first two stages output 65.5 MB and 32.8 MB per 10 s chunk ([1, 512, 31999] and
+        /// [1, 512, 15999] floats). Copied out stage by stage, they lived on as ~98 MB of live LOH for as long as the aligner
+        /// stayed loaded. Here each intermediate is released as soon as the next stage has consumed it.</remarks>
+        internal long[] Run(ReadOnlySpan<nint> sessions, ReadOnlySpan<byte[]> inNames, ReadOnlySpan<byte[]> outNames,
+            float[] input, ReadOnlySpan<long> shape, ref float[] output)
         {
-            nint inVal = 0, outVal = 0;
+            nint cur = 0;                                   // the current stage's input; after the loop, the last output
             try
             {
-                fixed (float* data = input)
+                fixed (float* data = input)                 // pinned until every stage ran: the first value wraps it
                 fixed (long* sh = shape)
                 {
                     Check(((delegate* unmanaged<nint, void*, nuint, long*, nuint, int, nint*, nint>)_api[I_CreateTensorWithData])(
-                        _memInfo, data, (nuint)(input.Length * sizeof(float)), sh, (nuint)shape.Length, TensorFloat, &inVal));
-                    fixed (byte* inN = inName) fixed (byte* outN = outName)
+                        _memInfo, data, (nuint)(input.Length * sizeof(float)), sh, (nuint)shape.Length, TensorFloat, &cur));
+                    for (int i = 0; i < sessions.Length; i++)
                     {
-                        byte* inNames = inN, outNames = outN;
-                        nint inV = inVal;
-                        Check(((delegate* unmanaged<nint, nint, byte**, nint*, nuint, byte**, nuint, nint*, nint>)_api[I_Run])(
-                            session, 0, &inNames, &inV, 1, &outNames, 1, &outVal));
+                        nint next = 0;
+                        fixed (byte* inN = inNames[i]) fixed (byte* outN = outNames[i])
+                        {
+                            byte* inName = inN, outName = outN;
+                            nint inV = cur;
+                            Check(((delegate* unmanaged<nint, nint, byte**, nint*, nuint, byte**, nuint, nint*, nint>)_api[I_Run])(
+                                sessions[i], 0, &inName, &inV, 1, &outName, 1, &next));
+                        }
+                        ((delegate* unmanaged<nint, void>)_api[I_ReleaseValue])(cur);
+                        cur = next;
                     }
                 }
+                nint outVal = cur;
                 nint info;
                 Check(((delegate* unmanaged<nint, nint*, nint>)_api[I_GetTensorTypeAndShape])(outVal, &info));
                 long[] dims;
@@ -208,8 +220,7 @@ public static partial class AiLyrics
             }
             finally
             {
-                if (inVal != 0) ((delegate* unmanaged<nint, void>)_api[I_ReleaseValue])(inVal);
-                if (outVal != 0) ((delegate* unmanaged<nint, void>)_api[I_ReleaseValue])(outVal);
+                if (cur != 0) ((delegate* unmanaged<nint, void>)_api[I_ReleaseValue])(cur);
             }
         }
 
@@ -252,7 +263,25 @@ public static partial class AiLyrics
         public long[] Run(float[] input, ReadOnlySpan<long> shape, ref float[] output)
         {
             if (_s == 0) throw new ObjectDisposedException(nameof(OrtSession));
-            return _ort.Run(_s, _in, _out, input, shape, ref output);
+            return _ort.Run([_s], [_in], [_out], input, shape, ref output);
+        }
+
+        /// <summary>Runs <paramref name="stages"/> as one chain (each output is the next stage's input and stays in ONNX
+        /// Runtime's memory) and copies only the last output into <paramref name="output"/>; its shape is returned.</summary>
+        public static long[] RunChain(OrtSession[] stages, float[] input, ReadOnlySpan<long> shape, ref float[] output)
+        {
+            if (stages.Length == 0) throw new ArgumentException("at least one stage", nameof(stages));
+            var handles = new nint[stages.Length];
+            var ins = new byte[stages.Length][];
+            var outs = new byte[stages.Length][];
+            for (int i = 0; i < stages.Length; i++)
+            {
+                var s = stages[i];
+                if (s._s == 0) throw new ObjectDisposedException(nameof(OrtSession));
+                if (s._ort != stages[0]._ort) throw new ArgumentException("every stage must belong to one runtime", nameof(stages));
+                handles[i] = s._s; ins[i] = s._in; outs[i] = s._out;
+            }
+            return stages[0]._ort.Run(handles, ins, outs, input, shape, ref output);
         }
 
         public void Dispose() { if (_s != 0) { _ort.ReleaseSession(_s); _s = 0; } }
