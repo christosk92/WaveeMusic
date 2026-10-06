@@ -130,12 +130,12 @@ if (-not $Summarize) {
     if (-not $Profile) { throw '-Profile must name a scratch profile directory (never the default profile)' }
     if (-not $OutDir) { $OutDir = Join-Path ([IO.Path]::GetTempPath()) ('hidden-mem-' + (Get-Date -Format 'yyyyMMdd-HHmmss')) }
     New-Item -ItemType Directory -Force -Path $Profile, $OutDir | Out-Null
-    $fg = @()
-    if ($Validate) { $fg += 'present-validate'; $fg += 'damage-validate' }
-    if ($Fg) { $fg += ($Fg -split ',' | Where-Object { $_ }) }
+    $fgList = @()
+    if ($Validate) { $fgList += 'present-validate'; $fgList += 'damage-validate' }
+    if ($Fg) { $fgList += @($Fg -split ',' | Where-Object { $_ }) }
     $argv = @('--fake', '--profile', $Profile, '--frame-bench=hide-restore', '--bench-hide-cycles', $Cycles, '--bench-hidden-sec', $HiddenSec,
               '--bench-warmup-sec', 2, '--probe-out', $OutDir)
-    if ($fg.Count) { $argv += @('--fg', ($fg -join ',')) }
+    if ($fgList.Count) { $argv += @('--fg', ($fgList -join ',')) }
     Write-Output ("running: {0} {1}" -f $Exe, ($argv -join ' '))
     $p = Start-Process -FilePath $Exe -ArgumentList $argv -PassThru -Wait -NoNewWindow
     if ($p.ExitCode -ne 0) { Write-Warning "Wavee exited with code $($p.ExitCode)" }
