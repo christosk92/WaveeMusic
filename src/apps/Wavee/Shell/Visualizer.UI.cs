@@ -650,6 +650,7 @@ public static partial class Visualizer
             UseKeyframes(AnimChannel.TranslateY, reduced ? s_restTranslate : [new Keyframe(0f, 0f), new Keyframe(0.5f, dy * h, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms, loop: !reduced, key);
             UseKeyframes(AnimChannel.ScaleX, reduced ? s_restScale : [new Keyframe(0f, 1f), new Keyframe(0.5f, sc, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)], ms, loop: !reduced, key);
             UseKeyframes(AnimChannel.ScaleY, reduced ? s_restScale : [new Keyframe(0f, 1f), new Keyframe(0.5f, sc, Easing.EaseInOut), new Keyframe(1f, 1f, Easing.EaseInOut)], ms, loop: !reduced, key);
+            Context.UseAmbientPause(AmbientMotion.Pose, key, loops: !reduced);
         }
 
         /// <summary>The disc's radial gradient: the tint, its 45 % shoulder, transparent at the rim.</summary>
@@ -719,5 +720,33 @@ public static partial class Visualizer
             Opacity = opacity,
             Children = [Canvas.Create(w, h, kids)],
         };
+    }
+}
+
+/// <summary>THE AMBIENT GATE. A looping drift (the stage Field's blobs, a face's blobs and clouds, the hero photo's Ken Burns
+/// pan, Verse's cloud words, Spotlight's name) is decoration that follows the music: it moves only while something PLAYS.
+/// Paused, its rows are PAUSED in place (<see cref="AnimEngine.SetPaused"/>: the pixel on screen and the loop's phase both
+/// stand still, and the render thread asks for no frames, so a paused stage presents nothing); Play resumes each row from
+/// exactly where it stood. Minimized / occluded is the engine's own compositor pause; reduced motion is each caller's REST keys.</summary>
+internal static class AmbientMotion
+{
+    /// <summary>The four pose channels a drift rides (translate + scale).</summary>
+    public static readonly AnimChannel[] Pose = [AnimChannel.TranslateX, AnimChannel.TranslateY, AnimChannel.ScaleX, AnimChannel.ScaleY];
+    /// <summary>The two translate channels a pan-only drift rides.</summary>
+    public static readonly AnimChannel[] Translate = [AnimChannel.TranslateX, AnimChannel.TranslateY];
+
+    /// <summary>Pause this component's host-node rows on <paramref name="channels"/> while playback is paused. Call it AFTER
+    /// the component's <c>UseKeyframes</c> (layout effects run in declaration order) with the SAME seed key: a re-seed clears
+    /// a pause, so the gate re-applies whenever the seed moves. <paramref name="loops"/> false (rest keys): nothing to pause,
+    /// and no subscription. Reads <c>Playback.IsPlaying</c>, so the caller re-renders on a play/pause edge.</summary>
+    public static void UseAmbientPause(this RenderContext ctx, AnimChannel[] channels, DepKey seed, bool loops,
+        [CallerFilePath] string? __hf = null, [CallerLineNumber] int __hl = 0)
+    {
+        bool paused = loops && !Playback.IsPlaying.Value;
+        ctx.UseLayoutEffect(() =>
+        {
+            if (ctx.Anim is not { } anim || ctx.HostNode.IsNull) return;
+            foreach (var channel in channels) anim.SetPaused(ctx.HostNode, channel, paused);
+        }, DepKey.From(seed.GetHashCode(), paused ? 1 : 0), __hf, __hl);
     }
 }

@@ -889,6 +889,7 @@ public static partial class Visualizer
                 ? [new Keyframe(0f, 0f), new Keyframe(1f, 0f)]
                 : [new Keyframe(0f, 0f), new Keyframe(0.5f, -Travel, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)];
             UseKeyframes(AnimChannel.TranslateX, keys, LoopMs, loop: !still, DepKey.From(still));
+            Context.UseAmbientPause(AmbientMotion.Translate, DepKey.From(still), loops: !still);   // paused playback: the name stands still
             return new BoxEl
             {
                 HitTestVisible = false,

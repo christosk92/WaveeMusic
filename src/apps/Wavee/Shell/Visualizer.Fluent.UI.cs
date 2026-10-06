@@ -147,6 +147,7 @@ public static partial class Visualizer
             var key = DepKey.From(p.Index, (int)p.Diameter, (int)p.Dx, reduced ? 1 : 0);
             UseKeyframes(AnimChannel.TranslateX, reduced ? s_rest : [new Keyframe(0f, 0f), new Keyframe(0.5f, p.Dx, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], p.PeriodMs, loop: !reduced, key);
             UseKeyframes(AnimChannel.TranslateY, reduced ? s_rest : [new Keyframe(0f, 0f), new Keyframe(0.5f, p.Dy, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], p.PeriodMs, loop: !reduced, key);
+            Context.UseAmbientPause(AmbientMotion.Translate, key, loops: !reduced);   // paused playback: the cloud stands still
             return new BoxEl { Width = p.Diameter, Height = p.Diameter, HitTestVisible = false, Children = [p.Disc] };
         }
     }

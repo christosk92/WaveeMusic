@@ -1129,6 +1129,7 @@ public static partial class Verse
             var key = DepKey.From(p.Index, (int)p.DriftX, (int)p.DriftY, reduced ? 1 : 0);
             UseKeyframes(AnimChannel.TranslateX, reduced ? s_rest : [new Keyframe(0f, 0f), new Keyframe(0.5f, p.DriftX, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms, loop: !reduced, key);
             UseKeyframes(AnimChannel.TranslateY, reduced ? s_rest : [new Keyframe(0f, 0f), new Keyframe(0.5f, p.DriftY, Easing.EaseInOut), new Keyframe(1f, 0f, Easing.EaseInOut)], ms * 1.3f, loop: !reduced, key);
+            Context.UseAmbientPause(AmbientMotion.Translate, key, loops: !reduced);   // paused playback: the word stands still
             var slab = p.Slab;
             var band = slab.Bands[(p.Index * 7 + 3) % slab.Bands.Length];
             var tint = (p.Index % 3) switch { 0 => slab.A, 1 => slab.B, _ => slab.C };
