@@ -879,8 +879,9 @@ public static partial class Stage
     /// <item>While playing, the RENDER THREAD poses the active line's wipe (<c>AnimChannel.GlyphWipeSplit</c> keyframes,
     /// <c>Lyrics.Wipe.SplitKeyframes</c> — the exact split function, seeded once per line and again when a position report
     /// moves the clock), the lyrics view's channel; the UI wakes once per view EDGE (<c>Caption.NextEdgeMs</c>) and per
-    /// report, not per frame. A break's dots still tick per frame (scene columns only); paused, a 4 Hz interval writes the
-    /// split itself. A render happens only when the packed view (line + break edge) changes.</item>
+    /// report, not per frame. A break's dots still tick per frame (scene columns only). Paused, NOTHING ticks: the media
+    /// clock stands still, so the view and the split change only on a position report (a seek) or a play/pause edge, and
+    /// the report effect ticks exactly then. A render happens only when the packed view (line + break edge) changes.</item>
     /// </list></summary>
     sealed class CaptionHost : Component
     {
@@ -948,11 +949,12 @@ public static partial class Stage
                 if (!_reportSubscribed) { _reportSubscribed = true; return; }
                 _tick();
             });
-            // A 4 Hz interval paused (a seek still lands). Playing, the render thread poses the wipe and the UI wakes at the next
-            // view edge (CaptionWake); only a break's breathing dots - or a host whose render thread does not own the
-            // compositor - tick per frame (the ticker child below is mounted only then).
+            // Paused, no timer at all: the clock is frozen, so the report effect above (a seek, a play/pause edge) and the
+            // post-commit effect below are the only instants the view or the split can change. (A 4 Hz interval used to tick
+            // here and re-present the stage ~3x a second for a picture that never moved.) Playing, the render thread poses
+            // the wipe and the UI wakes at the next view edge (CaptionWake); only a break's breathing dots - or a host whose
+            // render thread does not own the compositor - tick per frame (the ticker child below is mounted only then).
             bool renderOwned = Context.Anim is { RenderOwnsCompositor: true };
-            UseInterval(_tick, 250f, enabled: _doc is not null && !playing);
 
             // The render resolves the view itself (so a new document never shows the old one's indices for a tick) and
             // SUBSCRIBES to the tick's signal for the next change.
