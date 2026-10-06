@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Added
+
+- **Choose what the daylist clock shows.** Settings › Appearance › Lists › Daylist clock offers "Countdown and update
+  time" (as before), "Update time only" or "Countdown only", on the daylist's playlist page and its Home card. Update
+  time only shows just "Next update at {time}", with no ticking digits moving at the edge of your view, and still
+  switches to "Updating your daylist…" the moment the daylist rolls over. (#185)
+
+### Fixed
+
+- **The daylist countdown respects reduced motion.** With Windows' animation effects turned off, the daylist's flip
+  digits still slid and faded every second. They now change in place. (#185)
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed

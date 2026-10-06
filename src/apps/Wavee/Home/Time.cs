@@ -279,12 +279,36 @@ public static class DaylistNext
                                  Func<string, string>? localize = null)
     {
         if (expiresAtMs <= 0) return "";
-        Func<string, string> resolve = localize ?? Loc.Get;
+        DateTime local = Local(expiresAtMs, tz);
+        return Strings.Home.Daylist.ArrivesAt(When(local, current, culture, localize), local.ToString("HH:mm", culture));
+    }
 
-        DateTime local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeMilliseconds(expiresAtMs).UtcDateTime, tz);
+    /// <summary>The same caption WITHOUT the time — "{weekday} {next daypart} is up next" — for the countdown-only clock
+    /// (<see cref="DaylistClockMode.Countdown"/>, #185): the second line keeps its place (the card's height never jumps)
+    /// but names no update time. Same weekday / daypart rule as <see cref="Caption"/>; no window ⇒ "".</summary>
+    public static string UpNext(long expiresAtMs, Daypart current, TimeZoneInfo tz, CultureInfo culture,
+                                Func<string, string>? localize = null)
+    {
+        if (expiresAtMs <= 0) return "";
+        return Strings.Home.Daylist.UpNext(When(Local(expiresAtMs, tz), current, culture, localize));
+    }
+
+    /// <summary>"Next update at {HH:mm}" — the update-time-only clock's first line (<see cref="DaylistClockMode.UpdateTime"/>,
+    /// #185), static in place of the ticking "Next daylist in hh:mm:ss"; the time is the window's end, local to
+    /// <paramref name="tz"/>, in the card's own HH:mm. No window ⇒ "".</summary>
+    public static string UpdateAt(long expiresAtMs, TimeZoneInfo tz, CultureInfo culture)
+        => expiresAtMs <= 0 ? "" : Strings.Home.NextUpdateAt(Local(expiresAtMs, tz).ToString("HH:mm", culture));
+
+    static DateTime Local(long expiresAtMs, TimeZoneInfo tz)
+        => TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeMilliseconds(expiresAtMs).UtcDateTime, tz);
+
+    /// <summary>"{weekday} {next daypart}", both lowercase: the expiry's local weekday and the segment after
+    /// <paramref name="current"/>.</summary>
+    static string When(DateTime local, Daypart current, CultureInfo culture, Func<string, string>? localize)
+    {
+        Func<string, string> resolve = localize ?? Loc.Get;
         string day = culture.DateTimeFormat.GetDayName(local.DayOfWeek).ToLower(culture);
         string part = resolve(DaypartTimeline.LabelKey((int)DaypartRules.Next(current))).ToLower(culture);
-        string time = local.ToString("HH:mm", culture);
-        return Strings.Home.Daylist.ArrivesAt(day + " " + part, time);
+        return day + " " + part;
     }
 }

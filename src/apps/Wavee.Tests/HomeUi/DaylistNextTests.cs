@@ -176,4 +176,36 @@ public class DaylistNextTests
         string caption = DaylistNext.Caption(expiresAtMs, Daypart.Morning, Utc, En);
         Assert.False(string.IsNullOrEmpty(caption));
     }
+
+    // ══ DaylistNext.UpNext / UpdateAt (#185: the clock modes' lines) ═════════════════════════════════════════════════
+
+    [Fact]
+    public void UpNext_NamesTheSameDayAndDaypartAsTheCaption_WithoutTheTime()
+    {
+        // Countdown only: the second line keeps the caption's weekday and next daypart but names no update time.
+        var local = new DateTime(2026, 9, 30, 16, 35, 0, DateTimeKind.Utc);
+        long expiresAtMs = AtUtc(2026, 9, 30, 16, 35);
+
+        string upNext = DaylistNext.UpNext(expiresAtMs, Daypart.Afternoon, Utc, En, Localize);
+
+        string weekday = En.DateTimeFormat.GetDayName(local.DayOfWeek).ToLower(En);
+        Assert.Equal(Strings.Home.Daylist.UpNext(weekday + " evening"), upNext);
+        Assert.DoesNotContain("16:35", upNext);
+    }
+
+    [Fact]
+    public void UpNext_NoWindow_IsEmpty() => Assert.Equal("", DaylistNext.UpNext(0, Daypart.Afternoon, Utc, En, Localize));
+
+    [Fact]
+    public void UpdateAt_IsTheWindowsEnd_InTheGivenTimeZone()
+    {
+        // Update time only: "Next update at HH:mm", the window's end as local time — the caption's own HH:mm.
+        var plus2 = TimeZoneInfo.CreateCustomTimeZone("daylist-next-tests+2b", TimeSpan.FromHours(2), "+2", "+2");
+        long expiresAtMs = AtUtc(2026, 9, 25, 23, 30);
+        Assert.Equal(Strings.Home.NextUpdateAt("01:30"), DaylistNext.UpdateAt(expiresAtMs, plus2, En));
+        Assert.Equal(Strings.Home.NextUpdateAt("23:30"), DaylistNext.UpdateAt(expiresAtMs, Utc, En));
+    }
+
+    [Fact]
+    public void UpdateAt_NoWindow_IsEmpty() => Assert.Equal("", DaylistNext.UpdateAt(0, Utc, En));
 }

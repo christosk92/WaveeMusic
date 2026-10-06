@@ -950,8 +950,9 @@ public readonly partial struct Playlist
 
     // ══ 6. THE DAYLIST STRIP (W26) ═══════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The frame's Pulse slot: HH:MM:SS flip cells (10×20 compact / 13×28 hero) + "Next update at {time}". Keyed on
-    /// the window — a rollover is a new strip.</summary>
+    /// <summary>The frame's Pulse slot: HH:MM:SS flip cells (10×20 compact / 13×28 hero) + "Next update at {time}", or
+    /// either one alone (Settings ▸ Appearance ▸ Daylist clock, <see cref="DaylistClockShows"/>, #185). Keyed on the window
+    /// — a rollover is a new strip.</summary>
     public static Element DaylistStrip(Playlist p, bool compact, Func<ColorF> accent)
         => Embed.Comp(new DaylistProps(p.DaylistExpiresAt, compact, accent), static () => new DaylistHost())
             with { Key = "daylist:" + p.Slot + ":" + p.DaylistExpiresAt + ":" + (compact ? 1 : 0) };
@@ -965,7 +966,12 @@ public readonly partial struct Playlist
     /// <summary>ch 06 §0.15: a wall-clock sample anchored against the frame clock, re-anchored on
     /// <see cref="DaylistCountdown"/>'s cadence (a stalled frame clock across sleep must not leave the digits behind).
     /// Past the window the strip is Rolling: the 1 s interval stops and an indeterminate ring replaces the digits
-    /// (<see cref="Rolled"/>) until the new window remounts the strip. Hours clamp at 99 (two fixed cells).</summary>
+    /// (<see cref="Rolled"/>) until the new window remounts the strip. Hours clamp at 99 (two fixed cells).
+    /// <para>The clock MODE (<see cref="Prefs.Appearance.DaylistClock"/>, read here so a pick re-renders the strip) picks
+    /// the cells, the caption or both. Without the cells nothing changes per second, so the 1 s interval never runs: a
+    /// ONE-SHOT at the window's end (<see cref="DaylistClockShows.ExpiryDelayMs"/>) is what still swaps in the Rolling face
+    /// on time. It re-arms when the mode changes, and re-checks the wall clock when it fires, so a timer that landed early
+    /// re-arms rather than leaving the caption up past the window.</para></summary>
     sealed class DaylistHost : Component
     {
         readonly Signal<int> _tick = new(0);
@@ -974,13 +980,30 @@ public readonly partial struct Playlist
         bool _anchored;
         int _labelFor;
         string? _nextLabel;
-        readonly Action _onTick;
+        long _expiresMs;
+        TimerHandle _expiry;
+        readonly Action _onTick, _onExpiry;
 
-        public DaylistHost() => _onTick = () => _tick.Value++;
+        public DaylistHost()
+        {
+            _onTick = () => _tick.Value++;
+            _onExpiry = OnExpiry;
+        }
+
+        /// <summary>The window's end, per the WALL clock: re-render once (the tick bump re-anchors and flips the face), or
+        /// re-arm for the rest if the timer landed early.</summary>
+        void OnExpiry()
+        {
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (DaylistCountdown.PhaseOf(_expiresMs, now) == DaylistCountdown.Phase.Counting)
+                _expiry.RestartIn(DaylistClockShows.ExpiryDelayMs(_expiresMs, now));
+            else _tick.Value++;
+        }
 
         public override Element Render()
         {
             var props = UseProps<DaylistProps>();
+            var mode = Prefs.Appearance.DaylistClock();
             int tick = _tick.Value;
             long frameNow = Design.FrameTime.NowMs;
             long sinceTick = frameNow - _lastTickFrameMs;
@@ -992,18 +1015,31 @@ public readonly partial struct Playlist
                 _anchorFrameMs = frameNow;
                 if (_lastTickFrameMs == 0) _lastTickFrameMs = frameNow;
             }
-            long expiresMs = props.ExpiresAt * 1000L;
+            long expiresMs = _expiresMs = props.ExpiresAt * 1000L;
             long nowMs = DaylistCountdown.Now(_anchorUnixMs, _anchorFrameMs, frameNow);
             var phase = DaylistCountdown.PhaseOf(expiresMs, nowMs);
             // Past the window nothing counts: the tick stops, and the ladder's signal (read here, so it re-renders this
             // strip) decides what stands in for the digits.
             var face = DaylistClockFace.Of(phase, Home.Feeds.RolloverState.Value);
-            UseInterval(_onTick, 1000f, enabled: phase == DaylistCountdown.Phase.Counting);
+            UseInterval(_onTick, 1000f, enabled: DaylistClockShows.SecondTick(mode, phase));
+            _expiry = UseTimeout(_onExpiry, DaylistClockShows.ExpiryDelayMs(expiresMs, nowMs), DepKey.From(props.ExpiresAt, (int)mode));
             if (phase == DaylistCountdown.Phase.Idle) return new BoxEl();
-            if (phase == DaylistCountdown.Phase.Rolling) return Rolled(props.Compact, face);
-            long left = DaylistCountdown.RemainingMs(expiresMs, nowMs) / 1000L;
-
             float rowH = props.Compact ? Controls.FlipCompactRowHeight : Controls.FlipHeroRowHeight;
+            if (phase == DaylistCountdown.Phase.Rolling) return Rolled(face, rowH);
+
+            string? caption = null;
+            if (DaylistClockShows.UpdateTime(mode))
+            {
+                if (_nextLabel is null || _labelFor != props.ExpiresAt)
+                {
+                    _labelFor = props.ExpiresAt;
+                    _nextLabel = Strings.Home.NextUpdateAt(DateTimeOffset.FromUnixTimeSeconds(props.ExpiresAt).ToLocalTime().ToString("t", CultureInfo.CurrentCulture));
+                }
+                caption = _nextLabel;
+            }
+            if (!DaylistClockShows.Countdown(mode)) return Strip(null, caption, rowH);
+
+            long left = DaylistCountdown.RemainingMs(expiresMs, nowMs) / 1000L;
             ColorF ink = Design.Palette.TextInk(props.Accent());
             int hours = (int)Math.Min(99L, left / 3600), minutes = (int)(left / 60 % 60), seconds = (int)(left % 60);
             Element[] cells =
@@ -1017,39 +1053,38 @@ public readonly partial struct Playlist
                 Controls.FlipDigit(seconds / 10, rowH, ink) with { Key = "s1" },
                 Controls.FlipDigit(seconds % 10, rowH, ink) with { Key = "s0" },
             ];
-            if (_nextLabel is null || _labelFor != props.ExpiresAt)
-            {
-                _labelFor = props.ExpiresAt;
-                _nextLabel = Strings.Home.NextUpdateAt(DateTimeOffset.FromUnixTimeSeconds(props.ExpiresAt).ToLocalTime().ToString("t", CultureInfo.CurrentCulture));
-            }
-            return Strip(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = cells }, _nextLabel);
+            return Strip(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = cells }, caption, rowH);
         }
 
         /// <summary>The window has ended, so there are no digits to flip. While the next edition is on its way the stock
         /// indeterminate ring (the row's height) stands in for them beside "Updating your daylist…"; once the rollover
         /// ladder has given up (or never ran — offline) it is a full, static ring beside "Your next daylist is running
-        /// late". The Home clock's "Check again" is not repeated here.</summary>
-        static Element Rolled(bool compact, DaylistClockFace.Face face)
+        /// late". The Home clock's "Check again" is not repeated here. Every clock mode shows it: it is a status, not a
+        /// clock.</summary>
+        static Element Rolled(DaylistClockFace.Face face, float rowH)
         {
-            float size = compact ? Controls.FlipCompactRowHeight : Controls.FlipHeroRowHeight;
             bool late = face == DaylistClockFace.Face.Late;
             Element ring = late
-                ? ProgressRing.Determinate(1f, size, foreground: Tok.TextTertiary, track: Tok.StrokeControlStrongDefault)
-                : ProgressRing.Indeterminate(size);
+                ? ProgressRing.Determinate(1f, rowH, foreground: Tok.TextTertiary, track: Tok.StrokeControlStrongDefault)
+                : ProgressRing.Indeterminate(rowH);
             string caption = Loc.Get(late ? Strings.Home.Daylist.Late : Strings.Home.DaylistUpdating);
-            return Strip(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [ring] }, caption);
+            return Strip(new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [ring] }, caption, rowH);
         }
 
-        /// <summary>The strip: the leading cluster (the flip cells, or the ring) and its tertiary caption.</summary>
-        static Element Strip(BoxEl lead, string caption) => new BoxEl
+        /// <summary>The strip: the leading cluster (the flip cells, or the ring) and its tertiary caption; a clock mode
+        /// that shows only one passes null for the other. At least the cells' row height, so the update-time-only caption
+        /// holds the strip's height and the Rolling ring that replaces it never jumps the hero.</summary>
+        static Element Strip(BoxEl? lead, string? caption, float rowH)
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true,
-            Children =
-            [
-                lead,
-                Caption(caption) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f },
-            ],
-        };
+            Element? text = caption is null
+                ? null
+                : Caption(caption) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
+            return new BoxEl
+            {
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true, MinHeight = rowH,
+                Children = lead is null ? [text!] : text is null ? [lead] : [lead, text],
+            };
+        }
 
         static Element Colon(float rowH, ColorF ink, bool compact, string key) => new BoxEl
         {

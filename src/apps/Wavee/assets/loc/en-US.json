@@ -649,7 +649,8 @@
       "arrivesAt": "{when} arrives at {time}",
       "onItsWay": "{daypart} is on its way",
       "late": "Your next daylist is running late",
-      "checkAgain": "Check again"
+      "checkAgain": "Check again",
+      "upNext": "{when} is up next"
     },
     "zone": {
       "becauseYouLike": "Because you like",
@@ -1301,6 +1302,11 @@
       "hideTrackArtworkSub": "Remove cover thumbnails from track rows and return the space to titles. Other artwork stays visible.",
       "pageLayout": "Track page layout",
       "pageLayoutSub": "Use the side rail automatically, or the artwork Hero at every size",
+      "daylistClock": "Daylist clock",
+      "daylistClockSub": "What your daylist shows until its next update",
+      "daylistClockBoth": "Countdown and update time",
+      "daylistClockUpdateTime": "Update time only",
+      "daylistClockCountdown": "Countdown only",
       "railUniform": "Keep left-rail same size",
       "railUniformSub": "Ignore each page's own remembered width. Every page shares one rail size, and resizing it once applies everywhere.",
       "railReset": "Clear all remembered sizes",

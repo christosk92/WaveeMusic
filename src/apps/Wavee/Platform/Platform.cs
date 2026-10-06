@@ -137,6 +137,10 @@ public static partial class Platform
         public static readonly SettingKey<bool> PlaysColumn = new("detail.playsColumn", false);
         /// <summary>0 Automatic (rail on wide windows, hero on narrow) · 1 Hero (the hero composition at every width).</summary>
         public static readonly SettingKey<int> DetailPageLayout = new("detail.page.layout", 0);
+        /// <summary>What the daylist's clock shows on the playlist hero strip and the Home card (<see cref="DaylistClockMode"/>):
+        /// 0 Countdown and update time (the default — what every build before #185 showed) · 1 Update time only (no ticking
+        /// digits, no per-second motion) · 2 Countdown only. Read through <c>Prefs.Appearance.DaylistClock</c>, which clamps.</summary>
+        public static readonly SettingKey<int> DaylistClock = new("appearance.daylistClock", (int)DaylistClockMode.Both);
         /// <summary>TRUE (the default) scrolls overflowing text; FALSE truncates. Renamed from the negative DisableMarquee
         /// (no migration — pre-1.0, cosmetic).</summary>
         public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);

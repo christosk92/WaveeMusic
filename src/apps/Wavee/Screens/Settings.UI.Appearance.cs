@@ -1,9 +1,9 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
 // the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
-// row density + hide artwork, track list style, track page layout + the two rail rows) · Sidebar (the design picker's three
-// compact cards + "Customize sidebar") · Lyrics (blur, the on-device AI lyrics card) · Fullscreen (visualizer, sensitivity,
-// lyrics overlay, sync offset, calm motion, change with the music — the fullscreen stage's gallery settings, mirrored through
-// `Prefs.Stage`) · Now playing (hero*, player style)
+// row density + hide artwork, track list style, track page layout + the two rail rows; then the daylist clock combo) ·
+// Sidebar (the design picker's three compact cards + "Customize sidebar") · Lyrics (blur, the on-device AI lyrics card) ·
+// Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen
+// stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
 //
 // * DEVELOPER-ONLY rows (`Catalog.RowVisible`): page motion and the Cover/‹Player› hero switch are composed away while the
 // developer switch is off. "Lyrics second line" and "Animated lyrics backdrop" are not gated but GONE — neither is a
@@ -18,7 +18,7 @@
 // (the design cards — no 0.3 `SidebarDesignPicker` exists, so the compact cards are built here on owner L's picker)
 //
 // EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
-// row density / track list style → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
+// row density / track list style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
 // the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
 // tab reads that epoch); the six Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
 // gallery writes show here live). The tab body reads the store directly (never a foreign epoch it does not need), so a write
@@ -50,6 +50,9 @@ public static partial class Settings
     /// <summary>The collapsed-rail-size combo's selection (0 Compact · 1 Default · 2 Large), kept in step with
     /// <see cref="Sidebar.RailDetent"/> by <see cref="RailDetentPicker"/> so a pick made from the sidebar's own menu shows here.</summary>
     static readonly Signal<int> s_railDetent = new(1);
+    /// <summary>The daylist-clock combo's selection (the <see cref="DaylistClockMode"/> int), kept in step with the store by
+    /// <see cref="DaylistClockPicker"/>.</summary>
+    static readonly Signal<int> s_daylistClock = new((int)DaylistClockMode.Both);
     /// <summary>The player-style combo's selection, kept in step with every other style writer by <see cref="NpvStylePicker"/>.</summary>
     static readonly Signal<int> s_npvStyle = new(Rail.PlayerCatalog.DefaultPresetId);
 
@@ -129,6 +132,9 @@ public static partial class Settings
         kids.Add(DensityGroup());
         kids.Add(TrackListStyleGroup());
         kids.Add(PageLayoutGroup());
+        // A ComboBox in its own component, the zoom/player-style shape: the items, signal and onChange freeze at mount.
+        kids.Add(Row(Loc.Get(Strings.Settings.Appearance.DaylistClock), Loc.Get(Strings.Settings.Appearance.DaylistClockSub),
+            Embed.Comp(static () => new DaylistClockPicker()), RowGlyph(Tab.Appearance, "daylistClock")));
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Sidebar.Title), SectionGlyph(Tab.Appearance, "Sidebar"),
             Loc.Get(Strings.Settings.Sidebar.Subtitle)));
@@ -425,6 +431,29 @@ public static partial class Settings
             })),
             Items = items,
         }) with { Key = "appearance.pagelayout" };
+    }
+
+    /// <summary>The "Daylist clock" combo (#185): Countdown and update time · Update time only · Countdown only, in
+    /// <see cref="DaylistClockMode"/>'s order — the index IS the store. Its own component so the frozen combo's signal
+    /// follows the appearance epoch; the write goes through the ONE appearance writer, so the playlist hero strip and the
+    /// Home card swap their clock live, with no page bump (nothing else on this tab reads it).</summary>
+    sealed class DaylistClockPicker : Component
+    {
+        public override Element Render()
+        {
+            UseSignalEffect(static () => s_daylistClock.Value = (int)Prefs.Appearance.DaylistClock());
+            return ComboBox.Create(
+                [
+                    Loc.Get(Strings.Settings.Appearance.DaylistClockBoth),
+                    Loc.Get(Strings.Settings.Appearance.DaylistClockUpdateTime),
+                    Loc.Get(Strings.Settings.Appearance.DaylistClockCountdown),
+                ],
+                s_daylistClock, width: 220f, onChange: static i =>
+                {
+                    if ((uint)i >= DaylistClockShows.ModeCount || Platform.Settings.Get(Platform.Keys.DaylistClock) == i) return;
+                    Prefs.Appearance.Set(Platform.Keys.DaylistClock, i);
+                });
+        }
     }
 
     /// <summary>The reset's enable gate — a destructive-looking no-op is never offered. The uniform pair is excluded.</summary>
