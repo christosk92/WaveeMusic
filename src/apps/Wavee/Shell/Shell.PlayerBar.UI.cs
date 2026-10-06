@@ -422,7 +422,7 @@ public static partial class Shell
                 // double-click's first click would still navigate, InputDispatcher.DoubleClickMs = 500). The Expand button
                 // is the bar's door; the flight captures this TAGGED art wherever the click lands. A morph-tagged slot
                 // mounts no shimmer and a frozen placeholder — accepted for a 48-DIP thumbnail.
-                Children = [Controls.Artwork(BarArtUrl(faceRef), L.ArtSize, L.ArtSize, 6f, morphKey: Stage.Entry.MorphKey, scale: artScale)],
+                Children = [Controls.Artwork(BarArtUrl(faceRef), L.ArtSize, L.ArtSize, 6f, morphKey: Stage.Entry.MorphKey, scale: artScale, keepWhileHidden: true)],
             };
             // The heart's SLOT is the tier's; an idle bar shows no face in it (and the face cannot be hit or focused).
             var saveIcon = faceIsEpisode ? ActionIcons.Resolve(ActionIcons.Save, liked) : ActionIcons.Resolve(ActionIcons.Heart, liked);

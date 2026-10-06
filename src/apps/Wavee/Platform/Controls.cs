@@ -195,12 +195,18 @@ public static partial class Controls
     /// An unscaled explicit <paramref name="decodePx"/> keeps its EXACT literal, never silently rounded to the 8-px
     /// grid.</para>
     ///
+    /// <para><paramref name="keepWhileHidden"/> keeps this image's texture resident while the window is minimized or in the tray:
+    /// after five minutes hidden every other cover's texture is released (and restored, inside a held first frame, when the window
+    /// returns), but the one or two a hidden window still shows or restores instantly - the player bar's now-playing artwork - are
+    /// pinned through <c>ImageEl.KeepWhileHidden</c> and never released.</para>
+    ///
     /// <para><paramref name="morphKey"/> tags the image as a shared-element participant. A morph-tagged slot mounts NO
     /// shimmer sibling (culling only the tagged image must not leave a separate tile painting the old slot behind the
     /// flying overlay) and therefore carries a FROZEN placeholder — the one art path in the app with no live tint. It is
     /// dormant today; if 0.3 ever re-arms the fly, this branch owes itself a watched placeholder.</para></summary>
     public static Element Artwork(string? url, float width, float height, float corners, string? morphKey = null,
-                                  int decodePx = 0, float saturation = 1f, float scale = 1f, string? blurHash = null)
+                                  int decodePx = 0, float saturation = 1f, float scale = 1f, string? blurHash = null,
+                                  bool keepWhileHidden = false)
     {
         if (url is { Length: 0 }) url = null;
 
@@ -239,7 +245,7 @@ public static partial class Controls
         Element img = url is null
             ? new BoxEl()
             : Ui.Image(url, ImageFit.Cover, aspect, dw, corners, placeholder, blurHash)
-                with { MorphId = morphKey, Saturation = saturation };
+                with { MorphId = morphKey, Saturation = saturation, KeepWhileHidden = keepWhileHidden };
 
         return new BoxEl
         {
