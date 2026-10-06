@@ -185,12 +185,14 @@ public static partial class Visualizer
     // ══ 3. WARP — AVS's starfield, calmed ════════════════════════════════════════════════════════════════════════════
 
     /// <summary>220 streaks (120 weak, 70 preview) in one Streak field: the speed is the bass + the kick, the length is the
-    /// speed, colours A/B/C by star. Additive on dark. Preview and reduced: the stars hold still, length by the level.</summary>
+    /// speed, colours A/B/C by star. Additive on dark. Preview and reduced: the stars hold still, length by the level. A
+    /// preview draws its streaks 4× the box's share of the reference size and never slower than a mid level: on a never-ticking
+    /// poster slab (level 0) the rest-speed streaks of a ~200-DIP tile were sub-pixel and the poster came out blank.</summary>
     public static Element WarpFace(Slab slab, in Palette pal, in FaceSpec spec)
     {
         bool pv = spec.Preview, dark = pal.Dark, live = !pv && !Design.Reduced;
         int count = pv ? Particles.Warp.PreviewCount : Particles.Warp.Count;
-        var sim = new WarpSim(slab, dark, count, spec.W, spec.H, spec.H * (pv ? 0.5f : 0.46f), pv ? 0.3f : 1f);
+        var sim = new WarpSim(slab, dark, count, spec.W, spec.H, spec.H * (pv ? 0.5f : 0.46f), 1f, pv ? 4f : 1f, pv ? 0.35f : 0f);
         var kids = new List<CanvasChild>(2)
         {
             new CanvasChild(0f, 0f, SimField(in spec, SpriteKernel.Streak, GlowBlend(dark), live ? Prop.Of(() => sim.Src.Current) : Prop.Of(() => sim.Bound()))),
@@ -199,7 +201,9 @@ public static partial class Visualizer
         return FaceFrame(spec, kids);
     }
 
-    sealed class WarpSim(Slab slab, bool dark, int count, float w, float h, float cy, float lenK) : FaceSim(slab, dark)
+    /// <summary><paramref name="sizeK"/>: the streak scale (<see cref="Particles.Warp.Write"/>); <paramref name="restLow"/>: the
+    /// floor of the level the rest pose settles at (a preview's frozen frame still reads as motion).</summary>
+    sealed class WarpSim(Slab slab, bool dark, int count, float w, float h, float cy, float lenK, float sizeK, float restLow) : FaceSim(slab, dark)
     {
         readonly Particles.Warp _body = new(count);
         public readonly InstanceSource Src = new(count);
@@ -209,15 +213,15 @@ public static partial class Visualizer
         {
             _body.Step(dtSec, Slab.Low.Peek(), Slab.Kick.Peek());
             var t = PeekTints();
-            Src.Count = _body.Write(Src.Buffer, count, w, h, w * 0.5f, cy, in t, lenK);
+            Src.Count = _body.Write(Src.Buffer, count, w, h, w * 0.5f, cy, in t, lenK, sizeK);
             Src.Publish();
         }
 
         public SpriteInstances Bound()
         {
-            _body.Settle(Slab.Low.Value, Slab.Kick.Value);
+            _body.Settle(MathF.Max(restLow, Slab.Low.Value), Slab.Kick.Value);
             var t = ReadTints();
-            int n = _body.Write(Src.Buffer, count, w, h, w * 0.5f, cy, in t, lenK);
+            int n = _body.Write(Src.Buffer, count, w, h, w * 0.5f, cy, in t, lenK, sizeK);
             return new SpriteInstances(Src.Buffer, n, ++_version);
         }
     }

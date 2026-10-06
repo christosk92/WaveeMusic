@@ -78,17 +78,20 @@ public static partial class Stage
         /// <summary>The face runs BEHIND a foreground (Large art, Centered) rather than being the picture.</summary>
         public static bool FaceIsBackdrop(VizLayout eff) => eff == VizLayout.LargeArt || eff == VizLayout.Centered;
 
-        /// <summary>The CONFLICT RULE. Behind the layout's own lyrics and cover a face must not duplicate them: the faces whose
-        /// picture IS text (Verse = the lyrics, Type = words) fall back to Bloom, the ambient backdrop face (level only, no text);
-        /// Mosaic (a wall of covers) and Spotlight (a cover gallery) keep running but sit under the deeper scrim
-        /// (<see cref="BackdropScrim"/>). Every other face is mounted as chosen. Card (and Artist) never substitute.</summary>
+        /// <summary>The CONFLICT RULE: behind a layout the visualizer is ATMOSPHERE only — the layout owns the cover, the title and
+        /// the lyrics. A face that draws none of them (<see cref="Visualizer.Catalog.NowPlayingOf"/>) runs as chosen; one whose
+        /// now-playing part is optional (<see cref="Visualizer.Catalog.HasAmbient"/>: Bloom, Ring) runs as its ambient variant
+        /// (<see cref="FaceAmbient"/>, the cover dropped); every other (Verse, Type, Mosaic, Spotlight) falls back to Bloom's ambient
+        /// clouds. Card (and Artist) never substitute.</summary>
         public static Visualizer.Kind BackdropKind(VizLayout eff, Visualizer.Kind kind)
-            => FaceIsBackdrop(eff) && Visualizer.Catalog.Successor(kind) is Visualizer.Kind.Verse or Visualizer.Kind.Type ? Visualizer.Kind.Bloom : kind;
+            => FaceIsBackdrop(eff) && Visualizer.Catalog.DrawsNowPlaying(kind) && !Visualizer.Catalog.HasAmbient(kind) ? Visualizer.Kind.Bloom : kind;
+
+        /// <summary>The mounted face drops its own now-playing parts (cover) — exactly when it runs behind a layout.</summary>
+        public static bool FaceAmbient(VizLayout eff) => FaceIsBackdrop(eff);
 
         /// <summary>The legibility scrim ABOVE the backdrop face, under the cover / lyrics (Stage's StageInk veil, so it follows
-        /// light / dark): 0.42 for ordinary faces, 0.62 for the cover-carrying ones, 0 outside the backdrop layouts.</summary>
-        public static float BackdropScrim(VizLayout eff, Visualizer.Kind kind)
-            => !FaceIsBackdrop(eff) ? 0f : Visualizer.Catalog.Successor(kind) is Visualizer.Kind.Mosaic or Visualizer.Kind.Spotlight ? 0.62f : 0.42f;
+        /// light / dark): 0.42 behind Large art and Centered (no cover-carrying face runs there any more), 0 elsewhere.</summary>
+        public static float BackdropScrim(VizLayout eff, Visualizer.Kind kind) => FaceIsBackdrop(eff) ? 0.42f : 0f;
 
         /// <summary>[ / ] step the FACE in every layout that draws one (the backdrop changes); only Artist steps layouts.</summary>
         public static bool KeysStepFaces(VizLayout eff) => eff != VizLayout.Artist;
@@ -118,11 +121,11 @@ public static partial class Stage
             _ => eff == VizLayout.LargeArt || (eff == VizLayout.Artist && heroLyrics) ? PaneKind.Lyrics : PaneKind.None,
         };
 
-        /// <summary>The lyric caption: Card keeps <see cref="ModeRules.ShowsCaption"/>; Centered shows ONE line when the user wants
-        /// lyrics over the visualizer; Large art and Artist never (their pane, or nothing).</summary>
+        /// <summary>The lyric caption is the Card scaffold's: Card keeps <see cref="ModeRules.ShowsCaption"/>; in Visualizer mode the
+        /// layouts never draw it (Large art / Centered own the title and lyrics — the stage's big caption line ran through the
+        /// Centered title; Artist has its pane, or nothing).</summary>
         public static bool ShowsCaption(Mode mode, VizLayout eff, bool overlayOn, bool hasTimed, bool paneShown, Visualizer.Kind kind)
-            => mode != Mode.Visualizer || eff == VizLayout.Card ? ModeRules.ShowsCaption(mode, overlayOn, hasTimed, paneShown, kind)
-             : eff == VizLayout.Centered && overlayOn && hasTimed;
+            => (mode != Mode.Visualizer || eff == VizLayout.Card) && ModeRules.ShowsCaption(mode, overlayOn, hasTimed, paneShown, kind);
 
         /// <summary>The previous / next context lines: Centered shows the active line alone.</summary>
         public static bool CaptionContext(VizLayout eff, bool layoutContext) => eff == VizLayout.Centered ? false : layoutContext;

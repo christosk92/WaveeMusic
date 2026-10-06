@@ -92,6 +92,9 @@ public static partial class Visualizer
             }),
         };
 
+        // behind a layout (Ambient) the layout owns the cover: the clouds alone, atmosphere only
+        if (spec.Ambient) return FaceFrame(spec, kids);
+
         // the cover: 0.42·min, corners 8, lifted 6 % above centre; its shadow is a TWIN box behind it (transparent fill,
         // shadow only) so the shadow's alpha and swell bind without touching the cover. Light arm: depth, not light.
         float s = 0.42f * m, x = 0.5f * (w - s), y = 0.5f * (h - s) - 0.06f * h, r = 8f;
@@ -275,6 +278,7 @@ public static partial class Visualizer
             kids.Add(new CanvasChild(cx - 0.5f * dd, cy - 0.5f * dd, new BoxEl { Width = dd, Height = dd, Corners = Radii.Circle(dd), Fill = Prop.Bind(slab.A), Opacity = 0.9f, HitTestVisible = false }));
             return FaceFrame(spec, kids);
         }
+        if (spec.Ambient) return FaceFrame(spec, kids);   // behind a layout the layout owns the cover: the ring alone
         float cover = 1.5f * r;
         var shadow = dark ? new ShadowSpec(50f, 0f, 0f, pal.A with { A = 0.5f })
                           : new ShadowSpec(36f, 10f, 0f, Ink.Ink with { A = 0.22f });

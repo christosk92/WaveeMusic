@@ -55,6 +55,11 @@ public static partial class Visualizer
         None = 0, Level = 1, Spectrum = 2, Beats = 4, Precomputed = 8, Scope = 16, Lyrics = 32, Covers = 64, Gallery = 128,
     }
 
+    /// <summary>The now-playing content a face draws ITSELF (flags): the playing cover, the title / artist, the lyrics. Behind a
+    /// layout that already shows them (Large art, Centered) a face must not repeat them (<c>Stage.LayoutRules.BackdropKind</c>).</summary>
+    [Flags]
+    public enum NowPlaying : byte { None = 0, Cover = 1, Title = 2, Lyrics = 4 }
+
     /// <summary>The engine lease a face holds while live (§2.5). Scope implies spectrum as spectrum implies level: the
     /// engine's time-domain tap rides the spectrum lease (<c>CopyWaveform</c>), so <see cref="Scope"/> is a spectrum lease
     /// plus the per-tick waveform pull.</summary>
@@ -145,6 +150,25 @@ public static partial class Visualizer
         };
 
         public static bool Has(Need needs, Need flag) => (needs & flag) != 0;
+
+        /// <summary>What now-playing content each face draws (a legacy kind answers for its successor): Verse IS the lyrics;
+        /// Bloom and Ring hold the cover at their centre; Type sets the title / artist / album as words; Mosaic is a wall led
+        /// by the playing cover under the big title; Spotlight is the artist's photos (or the cover, blurred) under the name.
+        /// Every other face is abstract: bands, particles, the timeline, the BPM readout.</summary>
+        public static NowPlaying NowPlayingOf(Kind k) => Successor(k) switch
+        {
+            Kind.Verse => NowPlaying.Lyrics,
+            Kind.Bloom or Kind.Ring => NowPlaying.Cover,
+            Kind.Type => NowPlaying.Title,
+            Kind.Mosaic or Kind.Spotlight => NowPlaying.Cover | NowPlaying.Title,
+            _ => NowPlaying.None,
+        };
+
+        public static bool DrawsNowPlaying(Kind k) => NowPlayingOf(k) != NowPlaying.None;
+
+        /// <summary>The faces whose now-playing content is one optional part they drop under <see cref="FaceSpec.Ambient"/>
+        /// (Bloom's and Ring's centre cover) — the ambient variant is the same face, atmosphere only.</summary>
+        public static bool HasAmbient(Kind k) => Successor(k) is Kind.Bloom or Kind.Ring;
 
         /// <summary>The lease a set of needs holds: scope ⊃ spectrum ⊃ level; beats/precomputed/covers/gallery need none.</summary>
         public static Tier TierOf(Need needs)

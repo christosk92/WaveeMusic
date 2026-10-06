@@ -836,7 +836,7 @@ public static partial class Stage
             var L = ctx.Layout.Value;
             var look = ctx.Look.Value;
             bool backdrop = LayoutRules.FaceIsBackdrop(look.Eff);       // Large art / Centered: the face runs behind the cover and lyrics
-            var kind = LayoutRules.BackdropKind(look.Eff, ctx.Kind.Value);   // Verse / Type fall back to Bloom there (no duplicate lyrics)
+            var kind = LayoutRules.BackdropKind(look.Eff, ctx.Kind.Value);   // atmosphere only there: a now-playing face falls back to Bloom
             var pal = ctx.Palette.Value;
             bool galleryOpen = ctx.GalleryShown.Value;                  // open AND room AND the Card layout: the inset follows what is on screen
             float w = L.W - L.FaceRight(galleryOpen);
@@ -859,7 +859,7 @@ public static partial class Stage
                         Animate = new LayoutTransition(TransitionChannels.Bounds, TransitionDynamics.Tween(550f, Easing.FluentDecelerate),
                             Enter: new EnterExit(Sx: 0.97f, Sy: 0.97f, Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true)),
                         Children = [Visualizer.Face(kind, ctx.Slab, in pal, new Visualizer.FaceSpec(w, L.H, Preview: false, CoverUrl: url.Length > 0 ? url : null,
-                            SafeLeft: safe.X, SafeTop: safe.Y, SafeRight: safe.Right, SafeBottom: safe.Bottom))],
+                            SafeLeft: safe.X, SafeTop: safe.Y, SafeRight: safe.Right, SafeBottom: safe.Bottom, Ambient: LayoutRules.FaceAmbient(look.Eff)))],
                     },
                 ],
             };
