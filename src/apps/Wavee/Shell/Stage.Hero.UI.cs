@@ -200,6 +200,7 @@ public static partial class Stage
             UseKeyframes(AnimChannel.ScaleY, scale, HeroRules.SpanMs, !still, key, hz);
             UseKeyframes(AnimChannel.TranslateX, tx, HeroRules.SpanMs, !still, key, hz);
             UseKeyframes(AnimChannel.TranslateY, ty, HeroRules.SpanMs, !still, key, hz);
+            Context.UseAmbientPause(AmbientMotion.Pose, key, loops: !still);   // paused playback: the pan stands still (AmbientMotion)
             return new BoxEl
             {
                 Width = p.W, Height = p.H, ZStack = true, HitTestVisible = false, CompositePose = true,
