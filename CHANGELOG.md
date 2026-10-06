@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.4] - unreleased
+
+### Fixed
+
+- **Word-by-word AI lyrics no longer hold on to about 100 MB.** Timing the first song of a session kept a copy of
+  every intermediate step of the aligner in memory (about 98 MB, two of them over 30 MB each) until the AI models
+  unloaded. The steps now hand their results straight to each other, and only the final timing is kept; the
+  timings are identical.
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
