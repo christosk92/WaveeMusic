@@ -175,6 +175,17 @@ public static partial class Lyrics
         internal void ProbeStep(long nowMs) => OnFrame(forceVisual: true, probeNowMs: nowMs);
         internal void ProbeForceSnapped() => _scrollSnapped = true;
         internal NodeHandle ProbeViewport => _viewportNode;
+
+        // The synced list's viewport has no ScrollKey; the auto evidence rules recognise it by (node, generation).
+        static readonly List<(int Index, uint Gen)> s_viewports = new(2);
+        void SetViewport(NodeHandle h)
+        {
+            if (!_viewportNode.IsNull) s_viewports.Remove(((int)_viewportNode.Raw.Index, _viewportNode.Raw.Gen));
+            _viewportNode = h;
+            if (!h.IsNull) s_viewports.Add(((int)h.Raw.Index, h.Raw.Gen));
+        }
+        /// <summary>UI THREAD. Is this scroll viewport node a lyrics list (rail or large view)?</summary>
+        internal static bool IsLyricsViewport(int nodeIndex, uint gen) => s_viewports.Contains((nodeIndex, gen));
         internal ScrollHandle ProbeScroll => _scroll;
         internal int ProbeActiveLine => _activeLine.Peek();
         internal int ProbeLineCount => _doc?.Lines.Count ?? 0;
@@ -933,7 +944,7 @@ public static partial class Lyrics
         {
             ResetFollowState(Context.Scene);
             _layout = null;
-            _viewportNode = NodeHandle.Null;
+            SetViewport(NodeHandle.Null);
             _pendingUpgrade = null;
             if (_doc is null && _lineNodes.Length == 0) return;
             _doc = null;
@@ -1020,7 +1031,7 @@ public static partial class Lyrics
                 AutoEdgeFade = true,
                 SuppressScrollBar = true,
                 Handle = _scroll,
-                OnRealized = h => _viewportNode = h,
+                OnRealized = SetViewport,
             };
         }
 

@@ -34,11 +34,12 @@ public class JumpCaptureRulesTests
     public void Extent_growth_at_the_top_is_benign_anything_else_is_not()
     {
         var extent = FluentGpu.Scroll.Diag.ScrollJumpCause.Extent;
-        Assert.True(JumpCaptureRules.IsBenign(extent, 0, 0));
-        Assert.False(JumpCaptureRules.IsBenign(extent, 340, 340));   // mid-list: content above the reader moved
-        Assert.False(JumpCaptureRules.IsBenign(extent, 0, 120));
-        Assert.False(JumpCaptureRules.IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause.Plan, 0, 0));
-        Assert.False(JumpCaptureRules.IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause.Coverage, 0, 0));
+        Assert.True(JumpCaptureRules.IsBenign(extent, 0, true, 1));
+        Assert.False(JumpCaptureRules.IsBenign(extent, 0, true, 2));     // another jump in the same frame
+        Assert.False(JumpCaptureRules.IsBenign(extent, 0, false, 1)); // any other list
+        Assert.False(JumpCaptureRules.IsBenign(extent, 0, false, 1));
+        Assert.False(JumpCaptureRules.IsBenign(extent, 340, true, 1));   // mid-list
+        Assert.False(JumpCaptureRules.IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause.Plan, 0, true, 1));
     }
 
     [Fact]

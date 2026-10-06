@@ -8,8 +8,8 @@
 // appends one line to logs\evidence\replies.tsv and a bundle also to logs\evidence\index.txt; the harness polls them.
 //
 // Threading: the capture is armed on the UI thread; the engine completes it on the turn it presents; the UI thread reads
-// every ledger / name / census (they are UI-side reads or lock-copies) and a worker writes the files — the
-// SaveLyricsBundle pattern. The formats are EvidenceReport (pure, tested).
+// raw ledger copy / node name / census / scene row (they are UI-side reads or lock-copies); the worker formats every
+// file (EvidenceReport), builds the scroll CSV and writes them — the SaveLyricsBundle pattern. The formats are EvidenceReport (pure, tested).
 
 using System.Diagnostics;
 using System.Globalization;
@@ -51,6 +51,13 @@ public static partial class Diagnostics
         public static string? LastFolder => Volatile.Read(ref s_lastFolder);
 
         /// <summary>A bundle is being captured or written.</summary>
+        /// <summary>Process exit: give a bundle being written up to <paramref name="maxMs"/> to finish (bounded).</summary>
+        public static void DrainForExit(int maxMs = 1500)
+        {
+            long end = Environment.TickCount64 + maxMs;
+            while (Busy && Environment.TickCount64 < end) Thread.Sleep(20);
+        }
+
         public static bool Busy => Volatile.Read(ref s_busy) != 0;
 
         /// <summary>UI THREAD. The deep-link door's <c>DeepLinkKind.Diag</c> arm.</summary>
@@ -74,15 +81,16 @@ public static partial class Diagnostics
 
         /// <summary>UI THREAD. Arm a capture of the next composited present and export the bundle when it lands (or, after
         /// 3 s without one, from the latest composite record with no frame.png).</summary>
-        public static void RequestBundle(string tag)
+        public static bool RequestBundle(string tag)
         {
             var host = Probe.Host;
-            if (host is null) { Reply("bundle", "no-host", ""); return; }
-            if (Interlocked.CompareExchange(ref s_busy, 1, 0) != 0) { Reply("bundle", "busy", ""); return; }
+            if (host is null) { Reply("bundle", "no-host", ""); return false; }
+            if (Interlocked.CompareExchange(ref s_busy, 1, 0) != 0) { Reply("bundle", "busy", ""); return false; }
             s_tag = EvidenceReport.SanitizeTag(tag);
             s_deadline = Environment.TickCount64 + CaptureTimeoutMs;
             host.RequestFrameCapture();
             if (!s_attached) { FluentApp.FrameCompleted += s_onFrame; s_attached = true; }
+            return true;
         }
 
         static void OnFrame(FrameStats _)
@@ -133,7 +141,7 @@ public static partial class Diagnostics
             var names = new Dictionary<(int, uint), string>();
             void Resolve(int index, uint gen)
             {
-                if (index > 0 && !names.ContainsKey((index, gen))) names[(index, gen)] = host.DescribeNode(index, gen);
+                if (!names.ContainsKey((index, gen))) names[(index, gen)] = host.DescribeNode(index, gen);
             }
 
             var rasters = new RasterEntry[RasterLedger.RasterLedgerCapacity];
@@ -236,7 +244,7 @@ public static partial class Diagnostics
                 Log.Info("evidence", "[evidence] bundle=" + folder + " frame=" + (bgra is not null ? "1" : "0"));
                 Reply("bundle", "ok", folder);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            catch (Exception ex)
             {
                 Log.Warn("evidence", "[evidence] bundle write failed folder=" + folder, ex);
                 Reply("bundle", "failed", folder);

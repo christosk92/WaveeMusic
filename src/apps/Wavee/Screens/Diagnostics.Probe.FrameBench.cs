@@ -411,6 +411,7 @@ public static partial class Diagnostics
                 {
                     float iw = Math.Min(v.X + v.W, client.X + client.W) - Math.Max(v.X, client.X);
                     float ih = Math.Min(v.Y + v.H, client.Y + client.H) - Math.Max(v.Y, client.Y);
+                    if (client.W <= 0f || client.H <= 0f) return true;   // no client rect yet: do not reject everything
                     return iw > 1f && ih > 1f && iw * ih >= 0.5f * v.W * v.H;
                 }
                 double maxArea = 0;

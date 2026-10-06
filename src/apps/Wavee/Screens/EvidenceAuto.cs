@@ -22,14 +22,14 @@ namespace Wavee;
 public static class ClampCaptureRules
 {
     /// <summary>Never two auto bundles closer than this (a bundle costs a frame capture and a disk write).</summary>
-    public const double MinIntervalMs = 60_000;
+    public const double MinIntervalMs = 30_000;
 
     /// <summary>At most this many auto bundles per session: each clamp is a defect worth one capture, not a disk fill.</summary>
-    public const int MaxPerSession = 6;
+    public const int MaxPerSession = 8;
 
     /// <summary>Never two auto bundles of ANY cause closer than this (2026-10-06: a bundle is a frame capture plus a
     /// 10-file export; 5-6 of them per run at ~14 s spacing were measurable hitches).</summary>
-    public const double AnyMinIntervalMs = 30_000;
+    public const double AnyMinIntervalMs = 15_000;
 
     /// <summary>One frame's step: capture when ARMED, the turn clamped, and the last capture is old enough; a capture
     /// disarms, and the end of the burst (no user-driven scroll this frame) re-arms.</summary>
@@ -56,14 +56,16 @@ public static class ClampCaptureRules
 /// two within <see cref="MinIntervalMs"/>, at most <see cref="MaxPerSession"/> a session.</summary>
 public static class JumpCaptureRules
 {
-    public const double MinIntervalMs = 120_000;
-    public const int MaxPerSession = 4;
+    public const double MinIntervalMs = 40_000;
+    public const int MaxPerSession = 6;
 
-    /// <summary>A jump that is the expected result of async content arriving, not an anomaly worth a bundle: an
-    /// <c>Extent</c> jump of a viewport sitting at the TOP (shown offset 0 before and after — the offset never moved, the
-    /// content just grew, e.g. the lyrics document arriving into the rail). The detector still counts and logs it.</summary>
-    public static bool IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause cause, double from, double to)
-        => cause == FluentGpu.Scroll.Diag.ScrollJumpCause.Extent && Math.Abs(from) <= 0.5 && Math.Abs(to) <= 0.5;
+    /// <summary>A jump that is the expected result of async content arriving, not an anomaly worth a bundle: the lyrics
+    /// rail's list viewport (it has no ScrollKey) at the top (offset 0) whose content extent changed with the same row count (its
+    /// top pad follows the rail's viewport height), and the ONLY new jump this frame — a real jump on another viewport in
+    /// the same frame is never swallowed. The detector still counts and logs it.</summary>
+    public static bool IsBenign(FluentGpu.Scroll.Diag.ScrollJumpCause cause, double from, bool isLyricsViewport, long newJumps)
+        => cause == FluentGpu.Scroll.Diag.ScrollJumpCause.Extent && Math.Abs(from) <= 0.5 && newJumps == 1
+        && isLyricsViewport;
 
     /// <summary>One frame's step over the monotonic jump counter: capture when it moved since the last frame, the
     /// session cap is not reached and the last capture is old enough. <paramref name="seen"/> starts at −1 (the first
@@ -113,9 +115,7 @@ public static partial class Diagnostics
             double since = s_lastCaptureTicks == 0 ? double.MaxValue
                 : System.Diagnostics.Stopwatch.GetElapsedTime(s_lastCaptureTicks).TotalMilliseconds;
             if (!ClampCaptureRules.Step(ref s_armed, clamps, stats.ScrollActive, since, SinceAny())) return;
-            s_lastCaptureTicks = s_lastAnyTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            s_captures++;
-            Capture(host, clamps);
+            if (Capture(host, clamps)) { s_lastCaptureTicks = s_lastAnyTicks = System.Diagnostics.Stopwatch.GetTimestamp(); s_captures++; }
         }
 
         /// <summary>Item J: one bundle on a new unrequested scroll jump (the engine's detector, <c>ScrollProbe.Jumps</c>).
@@ -124,21 +124,23 @@ public static partial class Diagnostics
         {
             double since = s_lastJumpCaptureTicks == 0 ? double.MaxValue
                 : System.Diagnostics.Stopwatch.GetElapsedTime(s_lastJumpCaptureTicks).TotalMilliseconds;
-            // The detector's last jump is read BEFORE the step: a benign one (async content growing a viewport at the top)
-            // is logged below but never takes a capture slot.
-            var j = FluentGpu.Scroll.Diag.ScrollProbe.LastJump;
             long jumps = FluentGpu.Scroll.Diag.ScrollProbe.Jumps;
-            bool benign = JumpCaptureRules.IsBenign(j.Cause, j.From, j.To);
-            if (benign)
+            long newJumps = s_seenJumps < 0 ? 0 : jumps - s_seenJumps;
+            var j = FluentGpu.Scroll.Diag.ScrollProbe.LastJump;
+            if (newJumps == 1 && j.Cause == FluentGpu.Scroll.Diag.ScrollJumpCause.Extent)
             {
-                if (s_seenJumps >= 0 && jumps > s_seenJumps)
-                    Log.Info("evidence", "[evidence] auto jump skipped (benign: extent growth at top) node=" + j.Vp.ToString(CultureInfo.InvariantCulture));
-                s_seenJumps = jumps;
-                return;
+                s_vps.Clear();
+                host.CopyViewports(s_vps);
+                bool k = false;
+                foreach (var v in s_vps) if (v.NodeIndex == j.Vp) { k = Lyrics.ViewCore.IsLyricsViewport(v.NodeIndex, v.Gen); break; }
+                if (JumpCaptureRules.IsBenign(j.Cause, j.From, k, newJumps))
+                {
+                    Log.Info("evidence", "[evidence] auto jump skipped (benign: lyrics extent change at top) node=" + j.Vp.ToString(CultureInfo.InvariantCulture));
+                    s_seenJumps = jumps;
+                    return;
+                }
             }
             if (!JumpCaptureRules.Step(ref s_seenJumps, jumps, since, s_jumpCaptures, SinceAny())) return;
-            s_lastJumpCaptureTicks = s_lastAnyTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-            s_jumpCaptures++;
             var inv = CultureInfo.InvariantCulture;
             s_vps.Clear();
             host.CopyViewports(s_vps);
@@ -148,10 +150,10 @@ public static partial class Diagnostics
                 + " from=" + j.From.ToString("0.#", inv) + " to=" + j.To.ToString("0.#", inv)
                 + " cause=" + FluentGpu.Scroll.Diag.ScrollJumpRules.CauseName(j.Cause)
                 + " atMs=" + (j.Qpc * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("0.0", inv));
-            Evidence.RequestBundle("jump-auto");
+            if (Evidence.RequestBundle("jump-auto")) { s_lastJumpCaptureTicks = s_lastAnyTicks = System.Diagnostics.Stopwatch.GetTimestamp(); s_jumpCaptures++; }
         }
 
-        static void Capture(AppHost host, int clamps)
+        static bool Capture(AppHost host, int clamps)
         {
             s_vps.Clear();
             host.CopyViewports(s_vps);
@@ -177,7 +179,7 @@ public static partial class Diagnostics
                 + " lastPose(vp=" + last.Vp.ToString(inv) + " shown=" + last.Shown.ToString("0.#", inv) + " plan=" + last.Plan.ToString("0.#", inv)
                 + " atMs=" + (last.PresentQpc * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("0.0", inv) + ")"
                 + (named.Length > 0 ? named.ToString() : " vp=(none past coverage now)"));
-            Evidence.RequestBundle("clamp-auto");
+            return Evidence.RequestBundle("clamp-auto");
         }
     }
 }
