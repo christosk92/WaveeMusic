@@ -137,7 +137,9 @@ public static partial class Spotify
                     {
                         string path = JournalPath(account, "gabo");
                         if (ReadJournal(path) is { } bytes)
-                            pending.AddRange(Ev.PublishEventsRequest.Parser.ParseFrom(bytes).Event.Take(GaboBacklogCap));
+                            pending.AddRange(Ev.PublishEventsRequest.Parser.ParseFrom(bytes).Event
+                                .Where(e => !e.EventFragment.Any(f => Egress.NamesWaveeUri(f.Data.Span)))   // journaled before 0.3.4
+                                .Take(GaboBacklogCap));
                     }
                     catch (Exception ex) { Log.Warn("spotify", "gabo journal could not be restored", ex); }
                 }

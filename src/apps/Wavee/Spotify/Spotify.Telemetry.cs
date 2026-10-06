@@ -266,6 +266,7 @@ public static partial class Spotify
         /// <see cref="Overflow"/> for why the two ends choose differently.</summary>
         public static void Enqueue(string eventName, byte[] payload)
         {
+            if (Egress.NamesWaveeUri(payload)) { Log.Warn("spotify", "gabo event " + eventName + " named a non-Spotify uri; not sent"); return; }
             if (Volatile.Read(ref s_booted) == 0) Boot();
             Interlocked.Increment(ref s_sequence);
             long sequence = NextEventSequence(eventName);
@@ -439,6 +440,7 @@ public static partial class Spotify
             string reasonStart, byte[]? mediaId, int bitrateKbps, string audioFormatName,
             long durationMs, long positionMs, string playerSessionId)
         {
+            contextUri = Egress.Filter(contextUri);            // a Spotify track played from a local context names no context
             long now = NowMs();
             var registration = new Registration
             {

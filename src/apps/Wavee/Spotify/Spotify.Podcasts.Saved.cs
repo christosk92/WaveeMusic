@@ -226,7 +226,7 @@ public static partial class Spotify
             if (Platform.Args.Fake) return Task.FromResult(new Mutation(false, 501));
             Scope scope = Entities.Current;
             BindSaved(scope);
-            string[] uris = episodes.Where(e => e.IsValid).Select(e => e.Id.Text).Distinct(StringComparer.Ordinal).ToArray();
+            string[] uris = episodes.Where(e => e.IsValid && Egress.Admits(e.Id)).Select(e => e.Id.Text).Distinct(StringComparer.Ordinal).ToArray();
             if (uris.Length == 0) return Task.FromResult(new Mutation(true, 200));
             uint epoch = scope.Epoch;
             string account = scope.Key.Account, knownUri = s_savedUri;

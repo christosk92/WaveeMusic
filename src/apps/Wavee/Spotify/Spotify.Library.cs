@@ -445,7 +445,7 @@ public static partial class Spotify
         internal static void Dispatch(LibraryEdgeKind kind, bool add, int userSlot, int targetSlot, EntityId targetId)
         {
             var scope = Entities.Current;
-            if (!IsAccountScope(scope) || userSlot != scope.MeSlot) return;
+            if (!IsAccountScope(scope) || userSlot != scope.MeSlot || !Egress.Admits(targetId)) return;   // a local like stays local
             string uri = targetId.Text;
             WriteCollection(scope, kind, uri, add, userSlot, targetSlot);
         }
@@ -460,7 +460,7 @@ public static partial class Spotify
 
         static void WriteCollection(Scope scope, LibraryEdgeKind kind, string uri, bool add, int userSlot, int targetSlot)
         {
-            if (uri.Length == 0 || !CanWrite(out _, out string username))
+            if (uri.Length == 0 || !Egress.Admits(uri.AsSpan()) || !CanWrite(out _, out string username))
             {
                 SettleCollection(scope, kind, uri, add, userSlot, targetSlot, ok: false, status: 0);
                 return;
@@ -878,7 +878,7 @@ public static partial class Spotify
         /// at the top, unfollow removes its row; a no-op state sends nothing.</summary>
         public static void FollowPlaylist(string playlistUri, bool follow)
         {
-            if (string.IsNullOrEmpty(playlistUri)) return;
+            if (string.IsNullOrEmpty(playlistUri) || !Egress.Admits(playlistUri.AsSpan())) return;
             WriteRootlist(follow ? "follow" : "unfollow",
                 (IReadOnlyList<RootlistEntry> entries, long now, out List<PlaylistOp> ops, out RootlistMoveCheck reason) =>
                 {
@@ -1144,7 +1144,7 @@ public static partial class Spotify
             var members = new List<PlaylistMember>(tracks.Length);
             for (int i = 0; i < tracks.Length; i++)
             {
-                if (!tracks[i].IsValid) continue;
+                if (!tracks[i].IsValid || !Egress.Admits(tracks[i].Id)) continue;   // a local file never enters a Spotify playlist
                 string uri = tracks[i].Id.Text;
                 if (uri.Length > 0) members.Add(new PlaylistMember(uri, Api.NewItemId(), now));
             }

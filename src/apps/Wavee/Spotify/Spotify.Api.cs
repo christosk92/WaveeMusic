@@ -2290,6 +2290,7 @@ public static partial class Spotify
 
         public static Result ContextResolve(string contextUri, CancellationToken ct)
         {
+            if (!Egress.Admits(contextUri.AsSpan())) return new Result(0, Array.Empty<byte>());   // never sent: not Spotify's
             var args = new RequestArgs { Id = contextUri };
             return Send(RequestKind.ContextResolve, args, ct);
         }
