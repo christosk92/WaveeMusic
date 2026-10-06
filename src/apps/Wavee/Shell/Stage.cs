@@ -67,7 +67,7 @@ public static partial class Stage
     /// <summary>Every DIP the renderer lays out, resolved from (W, H). One structure, one <see cref="Aspect"/> flag: a
     /// call site never re-derives a breakpoint. Demotion is immediate; promotion needs the hysteresis reserve, so a
     /// drag across an edge flips once per crossing.</summary>
-    public readonly record struct Layout(
+    public readonly partial record struct Layout(
         Aspect Aspect, float W, float H,
         float HeroArt, float ThumbArt, float PadX, float IdentityTop,
         float PaneX, float PaneRight, float PaneTop, float PaneBottom,

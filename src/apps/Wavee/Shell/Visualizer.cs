@@ -238,10 +238,15 @@ public static partial class Visualizer
         /// gallery's preview tier (<see cref="Catalog.PreviewTier"/>) so a Bars preview is not dead under a Bloom stage.
         /// Alt-tab is deliberately NOT an input; occlusion and reduced motion are.</summary>
         public static Tier For(Kind kind, bool visualizerMode, bool galleryShown, bool stageUp, bool playing, bool ownerUs, bool audioSupported, bool occluded, bool reduced)
+            => For(Catalog.NeedsOf(kind), visualizerMode, galleryShown, stageUp, playing, ownerUs, audioSupported, occluded, reduced);
+
+        /// <summary>The same decision for an explicit set of needs — what the visualizer LAYOUTS hold (<c>Stage.LayoutRules.NeedsOf</c>:
+        /// the strip's spectrum, or the level the backdrop field breathes with), where there is no face to name.</summary>
+        public static Tier For(Need needs, bool visualizerMode, bool galleryShown, bool stageUp, bool playing, bool ownerUs, bool audioSupported, bool occluded, bool reduced)
         {
             if (!stageUp || !playing || !ownerUs || !audioSupported || occluded || reduced) return Tier.None;
             if (!visualizerMode) return Tier.Level;
-            var face = Catalog.TierOf(Catalog.NeedsOf(kind));
+            var face = Catalog.TierOf(needs);
             return galleryShown && Catalog.PreviewTier > face ? Catalog.PreviewTier : face;
         }
 
