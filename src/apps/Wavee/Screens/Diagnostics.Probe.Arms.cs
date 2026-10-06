@@ -449,20 +449,38 @@ public static partial class Diagnostics
         /// <summary>Puts the `--fake` app into the state the owner spends most of a session in — a word-synced track playing
         /// with its lyrics showing — and hands the loop back (returns false), so an outside measurement (per-thread CPU,
         /// the [wake] census, render pace) sees the ordinary frame loop driving a live karaoke wipe. The document comes
-        /// from Lyrics.Fixtures; nothing here owns frames after the setup.</summary>
+        /// from Lyrics.Fixtures; nothing here owns frames after the setup.
+        /// <para>`--stage-demo`: the same track on the fullscreen STAGE instead of the rail, in the profile's stage mode (its
+        /// lyric caption shows in a compact window, e.g. `--height 440`); `--stage-viz` puts the stage in Visualizer mode,
+        /// the caption over the face. Either way the census sees the stage's karaoke wipe.</para></summary>
         static bool TryLyricsDemo(AppHost host, IPlatformWindow window, IGpuDevice device)
         {
-            if (!s_options.LyricsDemo) return false;
+            if (!s_options.LyricsDemo && !s_options.StageDemo) return false;
             if (!Platform.Args.Fake) { Say("[lyrics-demo] needs --fake (the seeded track and the fixture lyrics)"); return false; }
             if (window is not Win32Window w || device is not D3D12Device gpu) { Say("[lyrics-demo] unavailable: requires Win32Window + D3D12Device"); return false; }
             if (!WarmUntilShell(host, w, gpu, 600)) { Say("[lyrics-demo] the shell never activated a route"); return false; }
             Playback.PlayContext("spotify:track:tr0");
-            Shell.Ui.Mode.Value = Shell.RailMode.Lyrics;
-            Shell.Ui.RailOpen.Value = true;
+            if (s_options.StageDemo)
+            {
+                if (s_options.StageViz) Prefs.Stage.SetMode((int)Stage.Mode.Visualizer);
+                Stage.Open(null, "probe");
+            }
+            else
+            {
+                Shell.Ui.Mode.Value = Shell.RailMode.Lyrics;
+                Shell.Ui.RailOpen.Value = true;
+            }
             for (int i = 0; i < 120 && !w.IsClosed; i++) FrameFast(host, w, gpu);
             var snap = Playback.Snap();
             Say("[lyrics-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text
                 + " lyrics=" + (Lyrics.Store.Doc("tr0") is { } d ? d.Lines.Count + " lines" : "none"));
+            if (s_options.PlayDemoShot.Length > 0)
+            {
+                // a few seconds in, so the shot lands mid-line (the wipe part-way through its run)
+                long until = Environment.TickCount64 + 6_500;
+                while (!w.IsClosed && Environment.TickCount64 < until) FrameFast(host, w, gpu);
+                PlayDemoShot(host, w, gpu, s_options.PlayDemoShot);
+            }
             return false;
         }
 
@@ -483,6 +501,8 @@ public static partial class Diagnostics
             // PlayContext: --fake has no network to resolve a playlist context against.
             EntityRef row = Entities.Ref(EntityId.Parse("spotify:track:tr0"));
             if (row.IsNone) { Say("[play-demo] the seeded track is missing"); return false; }
+            // `--play-demo-title <text>`: a title long enough to overflow the player bar, so the census sees its marquee scroll.
+            if (s_options.PlayDemoTitle.Length > 0) Entities.FakeRetitle("spotify:track:tr0", s_options.PlayDemoTitle);
             Span<EntityRef> one = [row];
             Playback.PlayRows(one, 0, EntityId.Parse("spotify:playlist:pl0"));
             Shell.Ui.RailOpen.Value = false;
@@ -491,7 +511,8 @@ public static partial class Diagnostics
             while (!w.IsClosed && Environment.TickCount64 < until && !Playback.Snap().IsPlaying) FrameFast(host, w, gpu);
             for (int i = 0; i < 120 && !w.IsClosed; i++) FrameFast(host, w, gpu);   // the meters mount on the playing edge
             var snap = Playback.Snap();
-            Say("[play-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text);
+            Say("[play-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text
+                + " title=" + Entities.Track(EntityUri.Parse("spotify:track:tr0")).Title);
             if (s_options.PlayDemoShot.Length > 0) PlayDemoShot(host, w, gpu, s_options.PlayDemoShot);
             return false;
         }
@@ -823,7 +844,8 @@ public static partial class Diagnostics
         string ProbeOut, int PlaybackFrames, int LyricsFrames, int IdleSec, int NavHops, int OpenHops,
         bool MenuBench = false, int MenuRounds = 5, bool LyricsDemo = false,
         bool MemSoak = false, int MemSoakRounds = 6, int MemSoakIdleSec = 40, bool MemSoakMinimize = false, int MemSoakLohMb = 0,
-        bool PlayDemo = false, string PlayDemoShot = "")
+        bool PlayDemo = false, string PlayDemoShot = "",
+        string PlayDemoTitle = "", bool StageDemo = false, bool StageViz = false)
     {
         /// <summary>The only values <see cref="CrashProbe"/> ever holds once <see cref="Parse"/> has run.</summary>
         static readonly string[] KnownCrashModes = ["throw", "throw-ui", "failfast", "native", "hang", "boot"];
@@ -843,6 +865,8 @@ public static partial class Diagnostics
             string outDir = outAt >= 0 && outAt + 1 < args.Length && !args[outAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[outAt + 1] : "";
             int shotAt = Array.IndexOf(args, "--play-demo-shot");
             string shot = shotAt >= 0 && shotAt + 1 < args.Length && !args[shotAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[shotAt + 1] : "";
+            int titleAt = Array.IndexOf(args, "--play-demo-title");
+            string title = titleAt >= 0 && titleAt + 1 < args.Length && !args[titleAt + 1].StartsWith("--", StringComparison.Ordinal) ? args[titleAt + 1] : "";
             return new ProbeOptions(Array.IndexOf(args, "--perf-bench") >= 0, Array.IndexOf(args, "--startup-bench") >= 0, mode,
                 Array.IndexOf(args, "--lyrics-advance-probe") >= 0, outDir,
                 Int(args, "--probe-playback-frames", 5400, 120, 36000), Int(args, "--probe-lyrics-frames", 3600, 60, 36000),
@@ -851,7 +875,8 @@ public static partial class Diagnostics
                 Array.IndexOf(args, "--lyrics-demo") >= 0,
                 Array.IndexOf(args, "--mem-soak") >= 0, Int(args, "--mem-soak-rounds", 6, 1, 200), Int(args, "--mem-soak-idle-sec", 40, 5, 600),
                 Array.IndexOf(args, "--mem-soak-minimize") >= 0, Int(args, "--mem-soak-loh-mb", 0, 0, 2048),
-                Array.IndexOf(args, "--play-demo") >= 0, shot);
+                Array.IndexOf(args, "--play-demo") >= 0, shot, title,
+                Array.IndexOf(args, "--stage-demo") >= 0 || Array.IndexOf(args, "--stage-viz") >= 0, Array.IndexOf(args, "--stage-viz") >= 0);
         }
 
         static int Int(string[] args, string flag, int fallback, int lo, int hi)

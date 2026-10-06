@@ -754,9 +754,11 @@ public static partial class Stage
     /// <item>Every slot is KEYED by its role + line index (+ the document's generation), so a hand-off plays the Exit (up and
     /// out) on the outgoing line and the Enter (up from 16 DIP below) on the incoming one — StandardEnter, 300 ms; reduced
     /// motion keeps only the cross-fade.</item>
-    /// <item>The per-frame tick while playing (4 Hz paused) writes SCENE COLUMNS only — the wipe split on the two text nodes
-    /// (<c>scene.SetGlyphWipe</c>), the dots' alpha signals and their breath transform — zero allocation, no render. A render
-    /// happens only when the packed view (line + break edge) changes.</item>
+    /// <item>While playing, the RENDER THREAD poses the active line's wipe (<c>AnimChannel.GlyphWipeSplit</c> keyframes,
+    /// <c>Lyrics.Wipe.SplitKeyframes</c> — the exact split function, seeded once per line and again when a position report
+    /// moves the clock), the lyrics view's channel; the UI wakes once per view EDGE (<c>Caption.NextEdgeMs</c>) and per
+    /// report, not per frame. A break's dots still tick per frame (scene columns only); paused, a 4 Hz interval writes the
+    /// split itself. A render happens only when the packed view (line + break edge) changes.</item>
     /// </list></summary>
     sealed class CaptionHost : Component
     {
@@ -775,11 +777,21 @@ public static partial class Stage
         NodeHandle _mainNode, _glowNode, _dotsNode;
         int _wipeLine = -1;
         float _runLen = float.NaN, _wrapW = float.NaN;
+        // The render-thread wipe rows (CaptionWipeRows).
+        readonly CaptionWipeRows _rows = new();
+        // The one-shot wake at the next view edge (Caption.EdgeWake, published to CaptionWake), the timer's callback, and
+        // whether the report effect has had its mount run.
+        readonly Signal<Lyrics.MotionWake> _edgeWake = new(new Lyrics.MotionWake(0, -1f));
+        Caption.EdgeWake _edge;
+        int _edgeSeq;
+        readonly Action _onEdge;
+        bool _reportSubscribed;
 
         public CaptionHost()
         {
             for (int k = 0; k < _dotAlpha.Length; k++) _dotAlpha[k] = new FloatSignal(0f);
             _tick = () => Reactive.Untrack(Tick);
+            _onEdge = () => { _edge.Fire(); _tick(); };
             _onMain = h => _mainNode = h;
             _onGlow = h => _glowNode = h;
             _onDots = h => _dotsNode = h;
@@ -809,12 +821,16 @@ public static partial class Stage
                 // extrapolate across the paused gap for a tick
                 if (pos != _lastReport || advancing != _advancing || !_anchored) { _pos.Anchor(Design.FrameTime.NowMs, pos); _anchored = true; _lastReport = pos; }
                 _advancing = advancing;
+                // a report (or a play/pause edge) re-times the render-thread wipe and the edge wake; never on the mount run,
+                // which runs inside this render
+                if (!_reportSubscribed) { _reportSubscribed = true; return; }
+                _tick();
             });
-            // PER FRAME while playing (the wipe and the dots' breath — the ticker child below is mounted only then), a 4 Hz
-            // interval paused (a seek still lands)
-            bool perFrame = _doc is not null && playing;
+            // A 4 Hz interval paused (a seek still lands). Playing, the render thread poses the wipe and the UI wakes at the next
+            // view edge (CaptionWake); only a break's breathing dots - or a host whose render thread does not own the
+            // compositor - tick per frame (the ticker child below is mounted only then).
+            bool renderOwned = Context.Anim is { RenderOwnsCompositor: true };
             UseInterval(_tick, 250f, enabled: _doc is not null && !playing);
-            Element[] ticker = perFrame ? [Embed.Comp(() => new CaptionFrames(_tick))] : [];
 
             // The render resolves the view itself (so a new document never shows the old one's indices for a tick) and
             // SUBSCRIBES to the tick's signal for the next change.
@@ -824,6 +840,9 @@ public static partial class Stage
             int count = view == Unresolved ? 0 : lines.Count;
             int anchor = Caption.AnchorOf(view);
             bool dots = count > 0 && Caption.DotsOf(view);
+            bool perFrame = _doc is not null && playing && (dots || !renderOwned);
+            Element[] ticker = perFrame ? [Embed.Comp(() => new CaptionFrames(_tick))]
+                : _doc is not null && playing ? [Embed.Comp(() => new CaptionWake(this))] : [];
             var (prevI, centreI, nextI) = count > 0 ? Caption.Slots(anchor, dots, L.CaptionShowsContext, count) : (-1, -1, -1);
 
             float capW = L.CaptionW(mode, galleryOpen), capX = L.CaptionX(mode, galleryOpen), capBottom = L.CaptionBottom;
@@ -833,6 +852,8 @@ public static partial class Stage
             if (centreI != _wipeLine) { _wipeLine = centreI; _mainNode = default; _glowNode = default; _runLen = float.NaN; }
             if (capW != _wrapW) { _wrapW = capW; _runLen = float.NaN; }
             if (!dots) _dotsNode = default;
+            // after the commit that realized this view's nodes: seed (or hand back) the wipe and re-arm the edge wake
+            UseEffect(_tick, DepKey.From(HashCode.Combine(view, centreI, _docGen, playing, capW)));
 
             string gen = _docGen.ToString(System.Globalization.CultureInfo.InvariantCulture);
             var kids = new List<Element>(3);
@@ -893,8 +914,9 @@ public static partial class Stage
                 float split = SplitAt(line, now);
                 float soft = Lyrics.Wipe.SoftnessOfLine(float.IsNaN(_runLen) ? MathF.Max(1f, maxW) : _runLen, large: true);
                 float lift = Lyrics.Wipe.LiftFor(large: true, Design.Reduced);
-                main = main with { Wipe = new GlyphWipe(sung, unsung, split, soft, lift), OnRealized = _onMain };
-                glow = glow with { Wipe = new GlyphWipe(bloom, bloom with { A = 0f }, split, soft, lift), OnRealized = _onGlow };
+                float run = float.IsNaN(_runLen) ? 0f : _runLen;   // the run the render thread steps the split along
+                main = main with { Wipe = new GlyphWipe(sung, unsung, split, soft, lift) { Run = run }, OnRealized = _onMain };
+                glow = glow with { Wipe = new GlyphWipe(bloom, bloom with { A = 0f }, split, soft, lift) { Run = run }, OnRealized = _onGlow };
             }
             var stack = new BoxEl
             {
@@ -949,67 +971,54 @@ public static partial class Stage
 
         long Now() => _pos.Estimate(Design.FrameTime.NowMs, _advancing, null, null, Playback.DurationMs.Peek());
 
-        /// <summary>The packed view at <paramref name="now"/> from the lyrics view's OWN resolves (the lead-shifted line, the
-        /// break AdvancePastInterlude reports), decided by the pure <c>Stage.Caption.View</c>. The intro's "break" is
-        /// [0, first line).</summary>
-        static int ComputeView(Lyrics.Doc d, long now, out long gapStart, out long gapEnd)
-        {
-            var lines = d.Lines;
-            int lead = Lyrics.ResolveLine(lines, now + Lyrics.LeadMs);
-            _ = Lyrics.AdvancePastInterlude(d, lead, now, out gapStart, out gapEnd);
-            long first = lines.Count > 0 ? lines[0].StartMs : long.MaxValue;
-            if (lead < 0) { gapStart = 0L; gapEnd = first; }
-            var (anchor, dots) = Caption.View(lead, gapStart, gapEnd, first, now, Lyrics.LeadMs, Lyrics.InterludeGapMs);
-            return Caption.Pack(anchor, dots);
-        }
+        /// <summary>The packed view at <paramref name="now"/> (<see cref="Caption.ViewAt"/>).</summary>
+        static int ComputeView(Lyrics.Doc d, long now, out long gapStart, out long gapEnd) => Caption.ViewAt(d, now, out gapStart, out gapEnd);
 
-        /// <summary>LineRow's split: the char-weighted sung fraction on TRUE time, nudged by the wipe's own lead mid-line.</summary>
-        static float SplitAt(Lyrics.Line line, long now)
-        {
-            float split = Lyrics.Wipe.ComputeSplit(line, now);
-            return split > 0f && split < 1f ? Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f) : split;
-        }
+        static float SplitAt(Lyrics.Line line, long now) => CaptionWipeRows.SplitAt(line, now);
 
         void Tick()
         {
-            if (_doc is not { } d || !_anchored) return;
+            if (_doc is not { } d || !_anchored) { _rows.Hold(Context.Anim, Context.Scene); ArmEdge(long.MaxValue, 0L); return; }
             long now = Now();
             int view = ComputeView(d, now, out long gapStart, out long gapEnd);
             if (view != _view.Peek()) _view.Value = view;
+            // playing: the next instant the view can change is the one wake owed (the dots tick per frame and need none)
+            ArmEdge(_advancing && !Caption.DotsOf(view) ? Caption.NextEdgeMs(d, now) : long.MaxValue, now);
             if (Context.Scene is not { } scene) return;
-            if (Caption.DotsOf(view)) { DriveDots(scene, now, gapStart, gapEnd); return; }
+            if (Caption.DotsOf(view)) { _rows.Hold(Context.Anim, scene); DriveDots(scene, now, gapStart, gapEnd); return; }
             int anchor = Caption.AnchorOf(view);
             // the nodes belong to the line the last render built; a line-synced line has no wipe (it faded in whole)
-            if (anchor < 0 || anchor != _wipeLine || (uint)anchor >= (uint)d.Lines.Count) return;
+            if (anchor < 0 || anchor != _wipeLine || (uint)anchor >= (uint)d.Lines.Count) { _rows.Hold(Context.Anim, scene); return; }
             var line = d.Lines[anchor];
-            if (line.IsWordByWord && line.Syllables.Count > 0) DriveWipe(scene, line, now);
-        }
-
-        /// <summary>The karaoke wipe on the active line's two text nodes — the lyrics view's write path verbatim in shape: the
-        /// split quantised to the run's pixels, the per-line DIP feather, the settled/eps write-stops (a tick that moves
-        /// nothing writes nothing, so the frame is skipped).</summary>
-        void DriveWipe(SceneStore scene, Lyrics.Line line, long now)
-        {
+            if (!line.IsWordByWord || line.Syllables.Count == 0) { _rows.Hold(Context.Anim, scene); return; }
             var main = _mainNode;
-            if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out var mw)) return;
-            if (float.IsNaN(_runLen)) _runLen = MeasureRun(scene, main, line.Text);
-            float split = SplitAt(line, now);
-            if (_runLen > 1f && split > 0f && split < 1f) split = MathF.Round(split * _runLen) / _runLen;
-            float softness = Lyrics.Wipe.SoftnessOfLine(_runLen, large: true);
-            if (WipeMoved(split, softness, in mw))
-            {
-                scene.SetGlyphWipe(main, mw with { Split = split, Softness = softness });
-                scene.Mark(main, NodeFlags.PaintDirty);
-            }
-            var glow = _glowNode;
-            if (glow.IsNull || !scene.IsLive(glow) || !scene.TryGetGlyphWipe(glow, out var gw) || !WipeMoved(split, softness, in gw)) return;
-            scene.SetGlyphWipe(glow, gw with { Split = split, Softness = softness });   // the bloom tracks the main layer exactly
-            scene.Mark(glow, NodeFlags.PaintDirty);
+            if (!main.IsNull && scene.IsLive(main) && float.IsNaN(_runLen)) _runLen = MeasureRun(scene, main, line.Text);
+            if (_advancing && Context.Anim is { RenderOwnsCompositor: true } anim
+                && _rows.Seed(anim, scene, line, anchor, main, _glowNode, now, Design.FrameTime.NowMs, _runLen)) return;
+            _rows.Cancel(Context.Anim);   // the UI owns the split (paused, buffering, a host whose render thread does not own the compositor)
+            CaptionWipeRows.DriveUi(scene, main, _glowNode, line, now, _runLen);
         }
 
-        static bool WipeMoved(float split, float softness, in GlyphWipe w)
-            => !Lyrics.Wipe.SplitSettled(split, w.Split)
-               && (MathF.Abs(split - w.Split) > Lyrics.Wipe.SplitEps || MathF.Abs(softness - w.Softness) > Lyrics.Wipe.SoftnessEps);
+        /// <summary>Arm (or clear) the one-shot wake at media instant <paramref name="atMs"/> (<see cref="long.MaxValue"/> =
+        /// none) through <see cref="Caption.EdgeWake"/>, in the frame clock's one domain.</summary>
+        void ArmEdge(long atMs, long now)
+        {
+            if (_edge.Arm(atMs, now, Design.FrameTime.NowMs, out float delay))
+                _edgeWake.Value = new Lyrics.MotionWake(++_edgeSeq, delay);
+        }
+
+        /// <summary>The caption's one-shot wake at the next view edge while the render thread poses the wipe: a re-arm restarts
+        /// it, a cleared one cancels it. Named for the <c>[wake]</c> census.</summary>
+        sealed class CaptionWake(CaptionHost owner) : Component
+        {
+            public override Element Render()
+            {
+                var wake = owner._edgeWake.Value;
+                var timer = UseTimeout(owner._onEdge, MathF.Max(wake.DelayMs, 1f), DepKey.From(wake.Seq));
+                if (wake.DelayMs < 0f) timer.Cancel();
+                return new BoxEl { HitTestVisible = false, Width = 0f, Height = 0f };
+            }
+        }
 
         /// <summary>The active line's reading-order run length at the wrap width it was laid out at (one seam query per line,
         /// stack-allocated — the lyrics view's MeasureRunLength over the node's OWN text style).</summary>
@@ -1044,6 +1053,148 @@ public static partial class Stage
             if (MathF.Abs(paint.LocalTransform.M11 - scale) < Lyrics.Interlude.ScaleEps) return;
             paint.LocalTransform = scale >= 1f ? Affine2D.Identity : new Affine2D(scale, 0f, 0f, scale, 0f, 0f);
             scene.Mark(h, NodeFlags.TransformDirty | NodeFlags.PaintDirty);
+        }
+    }
+
+    /// <summary>The caption's karaoke wipe on its active line's two text nodes (the main glyphs and the bloom). Playing, the
+    /// RENDER THREAD poses it: <see cref="Seed"/> lays the exact split function from now to where it settles
+    /// (<see cref="Lyrics.Wipe.SplitKeyframes"/>) on <c>AnimChannel.GlyphWipeSplit</c>, once per line and again when a report
+    /// moves the clock. A line handing off is <see cref="Hold">held</see> where it stands, its on-screen split written back
+    /// as the authored one; paused, <see cref="Cancel"/> drops the rows and <see cref="DriveUi"/> writes the split on the same
+    /// tick. Every split, the UI's and the render thread's, steps in whole DIPs of the measured reading-order run
+    /// (<see cref="GlyphWipe.Run"/>), so a wrapped line moves exactly as the UI wrote it.</summary>
+    public sealed class CaptionWipeRows
+    {
+        int _line = -1;
+        NodeHandle _main, _glow;
+        long _clock;
+
+        /// <summary>The line the rows were seeded for; -1 = none (the UI writes the split, or nothing is wiping).</summary>
+        public int Line => _line;
+
+        /// <summary>LineRow's split: the char-weighted sung fraction on TRUE time, nudged by the wipe's own lead mid-line.</summary>
+        public static float SplitAt(Lyrics.Line line, long now)
+        {
+            float split = Lyrics.Wipe.ComputeSplit(line, now);
+            return split > 0f && split < 1f ? Math.Clamp(split + Lyrics.Wipe.LeadFrac, 0f, 1f) : split;
+        }
+
+        /// <summary>The split the UI writes at <paramref name="now"/>: stepped in whole DIPs of the run (as the render thread
+        /// steps a <see cref="GlyphWipe.Run"/> of the same length).</summary>
+        public static float UiSplit(Lyrics.Line line, long now, float runLen) => GlyphWipe.Quantize(SplitAt(line, now), Run(runLen));
+
+        static float Run(float runLen) => runLen > 1f ? runLen : 0f;
+
+        /// <summary>Seed the rows on <paramref name="main"/> (and <paramref name="glow"/> when it carries a wipe) for line
+        /// <paramref name="anchor"/>; <paramref name="clockNowMs"/> is the frame clock <paramref name="now"/> was estimated
+        /// on (a report that moves position - clock re-seeds). False = the line's nodes are not realized yet.</summary>
+        public bool Seed(AnimEngine anim, SceneStore scene, Lyrics.Line line, int anchor, NodeHandle main, NodeHandle glow,
+            long now, long clockNowMs, float runLen)
+        {
+            if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out _)) return false;
+            bool halo = !glow.IsNull && scene.IsLive(glow) && scene.TryGetGlyphWipe(glow, out _);
+            long clock = now - clockNowMs;
+            if (_line == anchor && _main == main && _glow == (halo ? glow : default) && Math.Abs(clock - _clock) <= 1L) return true;
+            if (_line >= 0 && (_line != anchor || _main != main)) Hold(anim, scene);
+            float softness = Lyrics.Wipe.SoftnessOfLine(runLen > 1f ? runLen : MathF.Max(1f, scene.Bounds(main).W), large: true);
+            var keys = Lyrics.Wipe.SplitKeyframes(line, now, lead: true, out long endMs);
+            _line = anchor; _main = main; _glow = halo ? glow : default; _clock = clock;
+            if (keys is null)
+            {
+                // settled: the split is 1 - written once, as the UI path would
+                anim.Cancel(main, AnimChannel.GlyphWipeSplit);
+                if (halo) anim.Cancel(glow, AnimChannel.GlyphWipeSplit);
+                WriteSplit(scene, main, 1f, softness, runLen);
+                if (halo) WriteSplit(scene, glow, 1f, softness, runLen);
+                return true;
+            }
+            float durationMs = endMs - now;
+            // the rows start from the value at `now`: written as the authored split too, so a row not posed yet shows the same
+            WriteSplit(scene, main, keys[0].Value, softness, runLen);
+            anim.Keyframes(main, AnimChannel.GlyphWipeSplit, keys, durationMs);
+            if (halo)
+            {
+                WriteSplit(scene, glow, keys[0].Value, softness, runLen);
+                anim.Keyframes(glow, AnimChannel.GlyphWipeSplit, keys, durationMs);   // the bloom tracks the main layer exactly
+            }
+            return true;
+        }
+
+        /// <summary>Stop the rows where they STAND (<see cref="AnimEngine.SetHeld"/>): an outgoing line (it exits keyed) or a
+        /// break keeps the split on screen, as the UI path simply stopped writing it. The on-screen split is written back as
+        /// the authored one too, so a row that is ever lost (an overlay-row overflow, a later cancel) leaves the line where it
+        /// stands instead of snapping it back to its seed.</summary>
+        public void Hold(AnimEngine? anim, SceneStore? scene)
+        {
+            if (_line < 0) return;
+            if (anim is not null)
+            {
+                HoldOne(anim, scene, _main);
+                HoldOne(anim, scene, _glow);
+            }
+            _line = -1;
+            _main = _glow = default;
+        }
+
+        static void HoldOne(AnimEngine anim, SceneStore? scene, NodeHandle node)
+        {
+            if (node.IsNull) return;
+            if (scene is not null && scene.IsLive(node) && scene.TryGetGlyphWipe(node, out var w)
+                && anim.TryGetTrackValue(node, AnimChannel.GlyphWipeSplit, out float value))
+            {
+                float shown = w.QuantizeSplit(value, scene.Bounds(node).W);
+                if (shown != w.Split)
+                {
+                    scene.SetGlyphWipe(node, w with { Split = shown });
+                    scene.Mark(node, NodeFlags.PaintDirty);
+                }
+            }
+            anim.SetHeld(node, AnimChannel.GlyphWipeSplit, true);
+        }
+
+        /// <summary>Hand the split back to the UI on the SAME line (paused, buffering): the rows go, and the caller writes the
+        /// split from the clock on this same tick (<see cref="DriveUi"/>), so a cancelled row's pose never stays on screen.</summary>
+        public void Cancel(AnimEngine? anim)
+        {
+            if (_line < 0) return;
+            if (anim is not null)
+            {
+                if (!_main.IsNull) anim.Cancel(_main, AnimChannel.GlyphWipeSplit);
+                if (!_glow.IsNull) anim.Cancel(_glow, AnimChannel.GlyphWipeSplit);
+            }
+            _line = -1;
+            _main = _glow = default;
+        }
+
+        /// <summary>The UI's own write of the wipe — the lyrics view's write path in shape: the split stepped along the run,
+        /// the per-line DIP feather, the settled/eps write-stops (a tick that moves nothing writes nothing).</summary>
+        public static void DriveUi(SceneStore scene, NodeHandle main, NodeHandle glow, Lyrics.Line line, long now, float runLen)
+        {
+            if (main.IsNull || !scene.IsLive(main) || !scene.TryGetGlyphWipe(main, out var mw)) return;
+            float split = UiSplit(line, now, runLen);
+            float softness = Lyrics.Wipe.SoftnessOfLine(runLen > 1f ? runLen : MathF.Max(1f, scene.Bounds(main).W), large: true);
+            if (WipeMoved(split, softness, in mw))
+            {
+                scene.SetGlyphWipe(main, mw with { Split = split, Softness = softness, Run = Run(runLen) });
+                scene.Mark(main, NodeFlags.PaintDirty);
+            }
+            if (glow.IsNull || !scene.IsLive(glow) || !scene.TryGetGlyphWipe(glow, out var gw) || !WipeMoved(split, softness, in gw)) return;
+            scene.SetGlyphWipe(glow, gw with { Split = split, Softness = softness, Run = Run(runLen) });   // the bloom tracks the main layer exactly
+            scene.Mark(glow, NodeFlags.PaintDirty);
+        }
+
+        static bool WipeMoved(float split, float softness, in GlyphWipe w)
+            => !Lyrics.Wipe.SplitSettled(split, w.Split)
+               && (MathF.Abs(split - w.Split) > Lyrics.Wipe.SplitEps || MathF.Abs(softness - w.Softness) > Lyrics.Wipe.SoftnessEps);
+
+        /// <summary>The authored split (and its feather and run), written only when it differs.</summary>
+        static void WriteSplit(SceneStore scene, NodeHandle node, float split, float softness, float runLen)
+        {
+            if (node.IsNull || !scene.IsLive(node) || !scene.TryGetGlyphWipe(node, out var w)) return;
+            float run = Run(runLen);
+            if (w.Split == split && w.Run == run && MathF.Abs(softness - w.Softness) <= Lyrics.Wipe.SoftnessEps) return;
+            scene.SetGlyphWipe(node, w with { Split = split, Softness = softness, Run = run });
+            scene.Mark(node, NodeFlags.PaintDirty);
         }
     }
 

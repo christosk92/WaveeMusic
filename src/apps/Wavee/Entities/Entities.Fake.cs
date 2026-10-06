@@ -150,6 +150,24 @@ public static partial class Entities
         Current.PublishAll();
     }
 
+    /// <summary>Re-commit one seeded track's TITLE through the seed's own Staging + Commit path (the probe's
+    /// <c>--play-demo-title</c>: a title long enough to overflow the player bar, so a measurement sees its marquee scroll).</summary>
+    public static void FakeRetitle(string trackUri, string title)
+    {
+        var staging = Staging.Rent();
+        try
+        {
+            ref var row = ref staging.Tracks.RowFor(staging.AddText(Utf8(trackUri)), Authority.Seed, (uint)TrackFields.Title);
+            row.Title = staging.AddText(Utf8(title));
+            Commit(staging);
+        }
+        finally
+        {
+            Staging.Return(staging);
+        }
+        Current.PublishAll();
+    }
+
     /// <summary>THE fake account's raw identifier — deliberately NOT a <c>spotify:user:</c> uri. <c>Entities.cs</c>'s
     /// own <c>ResolveMe</c> resolves <c>Scope.MeSlot</c> from <c>scope.Key.Account</c> treated as literal row TEXT
     /// (<c>scope.Users.Slot(scope.Key.Account.AsSpan())</c>), so the account's own row must be staged under exactly
