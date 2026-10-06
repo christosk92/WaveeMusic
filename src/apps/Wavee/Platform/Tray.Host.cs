@@ -216,7 +216,7 @@ public static partial class Tray
                 s_haveKey = true;
                 s_lastKey = key;   // recorded even on a failed load: a missing file is logged per edge, not per push
                 string path = System.IO.Path.Combine(AppContext.BaseDirectory, "assets", "tray", key.FileName);
-                try { if (!icon.SetIcon(path, key.FramePx)) Log.Warn("tray", "icon not loaded: " + key.FileName + " @" + key.FramePx + "px"); }
+                try { if (!SetIconWithFallback(icon, path, key.FramePx)) Log.Warn("tray", "icon not loaded: " + key.FileName + " @" + key.FramePx + "px (no frame loaded)"); }
                 catch (Exception ex) { Log.Warn("tray", "icon push failed", ex); }
             }
 
@@ -228,6 +228,20 @@ public static partial class Tray
                 try { icon.SetTip(s_lastTip); }
                 catch (Exception ex) { Log.Warn("tray", "tip push failed", ex); }
             }
+        }
+
+        /// <summary>LoadImageW with an explicit size can refuse one ICONDIR frame (the 24 px one at 125 %/150 % DPI was seen
+        /// refused on a file whose other frames load), and a refused load leaves the tray with NO icon. Try the wanted frame,
+        /// then the next ones UP (the shell only downsamples), then the ones below, then the shell's own default size.</summary>
+        static bool SetIconWithFallback(NotifyIcon icon, string path, int wanted)
+        {
+            if (icon.SetIcon(path, wanted)) return true;
+            ReadOnlySpan<int> frames = Tray.Frames;
+            for (int i = 0; i < frames.Length; i++)
+                if (frames[i] > wanted && icon.SetIcon(path, frames[i])) { Log.Info("tray", "icon frame " + wanted + "px refused; loaded " + frames[i] + "px"); return true; }
+            for (int i = frames.Length - 1; i >= 0; i--)
+                if (frames[i] < wanted && icon.SetIcon(path, frames[i])) { Log.Info("tray", "icon frame " + wanted + "px refused; loaded " + frames[i] + "px"); return true; }
+            return icon.SetIcon(path);   // the engine's own DPI pick
         }
 
         // ══ 3. PRESENCE, CLOSE, MINIMIZE ═══════════════════════════════════════════════════════════════════════════

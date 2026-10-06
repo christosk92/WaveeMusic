@@ -1072,7 +1072,10 @@ public abstract class Table : Publishable
     /// log, so the next one is found in minutes rather than by reading a cache by hand.</para></para></summary>
     public int Alloc(EntityId id)
     {
-        if (id.Kind != EntityKind.Unknown && Kind != EntityKind.Unknown && id.Kind != Kind)
+        // Liked Songs' COLLECTION uri is deliberately a Playlist-table row (Decode.Stage / Home.CardTable / the SectionCards
+        // edge all file it there, and Decode.Pathfinder fills it as a playlist), so it is not a mis-filing.
+        if (id.Kind != EntityKind.Unknown && Kind != EntityKind.Unknown && id.Kind != Kind
+            && !(Kind == EntityKind.Playlist && id.Kind == EntityKind.Collection))
             Log.Event(WaveeLogLevel.Warning, "entities", "entity.miskind",
                 "a row was allocated in a table that does not index its kind; nothing will ever fill it",
                 null, -1, null,

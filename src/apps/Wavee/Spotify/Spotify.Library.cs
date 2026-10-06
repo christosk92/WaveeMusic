@@ -538,8 +538,18 @@ public static partial class Spotify
             foreach (var item in items)
             {
                 if (!TryResolveDeltaTarget(scope, set, item.Uri, out int targetSlot, out byte flags)) continue;
-                if (item.Removed) { relation.Remove(me, targetSlot); removed++; }
-                else { relation.Insert(me, targetSlot, new LibraryEdge(item.AddedAt, flags), at: 0); added++; }
+                // Count only what CHANGED the list. A delta routinely names a remove for something we never held (liked and
+                // unliked between two syncs, or a row the other relation of this wire set owns) and an add for something we
+                // already hold (an optimistic like that landed first); `Remove` answers false and `Insert` updates in place
+                // for those, so counting them made `baseline + added - removed` drift off the real count by one and the
+                // whole, valid delta was thrown away for a full walk.
+                if (item.Removed) { if (relation.Remove(me, targetSlot)) removed++; }
+                else
+                {
+                    bool had = relation.Contains(me, targetSlot);
+                    relation.Insert(me, targetSlot, new LibraryEdge(item.AddedAt, flags), at: 0);
+                    if (!had) added++;
+                }
             }
 
             if (!LibrarySyncLedger.PostApplyMatches(baselineCount, relation.Count(me), added, removed))

@@ -51,6 +51,9 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **The tray icon shows on scaled displays.** At some display scales (125% / 150%) Windows asked for an icon size that failed to load and the tray icon could be missing; Wavee now falls back to the nearest size.
+- **Skipping through a playlist asks Spotify less.** Changing track used to send several separate metadata requests within milliseconds; they are now combined into one, which keeps rapid skipping well under the request-storm warning.
+- **Liked Songs sync more often stays incremental.** A delta that named a song you never held (or one you already had) threw off the count by one and forced a full re-download of your Liked Songs; only real changes are counted now.
 - **Karaoke lyrics no longer stall for up to a second.** Lyrics could freeze between lines, and sometimes for a
   whole stretch, when a timer fired a few milliseconds early; the wipe now always moves on time.
 - **Images are sharp on scaled displays.** Images with a fixed size were decoded at their unscaled size and stretched
