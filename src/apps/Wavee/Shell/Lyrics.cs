@@ -926,11 +926,6 @@ public static partial class Lyrics
         /// any lyrics surface up to ~1800 DIP tall. Past that the bottom-most rows SNAP with the latch instead of
         /// easing — a bound on the effect, not a correctness cliff.</summary>
         public const int WriteBand = 24;
-        /// <summary>The slack the "could this row show?" test adds around a row's sweep (beyond its blur reach) before it
-        /// defers the row's in-flight writes: an interlude reserve band (≤ <c>Interlude.ReserveDip(large)</c> = 32 DIP)
-        /// that lands on the next arrange and shifts the rows below it, and rounding. A row inside it moves every step
-        /// exactly as before.</summary>
-        public const float HiddenMarginDip = 32f;
 
         /// <summary>What the caller must do with one line after an <see cref="Arm"/> or a <see cref="Step"/>.</summary>
         public const byte WriteNone = 0;
@@ -1039,6 +1034,94 @@ public static partial class Lyrics
         /// because it must be exact.</summary>
         public static bool ShouldWrite(byte flag, float value, float currentValue)
             => flag == WriteLanded || (flag == WriteMoving && MathF.Abs(value - currentValue) > WriteEps);
+    }
+
+    // ── 9b. rows no pixel of which can show ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The rules that keep rows nobody can see out of the blur and the hand-off.
+    ///
+    /// <para>A line whose rest rect, cascade sweep and blur reach all miss the viewport is DEAD WORK to blur or to move: a
+    /// blurred row is an offscreen pass or an effect slice spent from the window's budget (past it, an inline blur re-run
+    /// with every raster of its tile), and a moved row is a re-record and a re-raster. So such a row carries σ 0 in the
+    /// scene while its MODEL σ keeps ramping (<see cref="ShownSigma"/>), and its in-flight cascade translate is DEFERRED
+    /// (<see cref="Flush"/>). Neither is ever lost: a row is re-judged every cascade step, on every change of the viewport
+    /// geometry (<see cref="Geometry"/>), and at realization; a landing is always written exactly, and the step the cascade
+    /// comes to rest writes every row still deferred.</para>
+    ///
+    /// <para>Only while FOLLOWING with a still viewport (the caller's gate): a user scroll suppresses the depth of field
+    /// anyway, and a glide or a fling could bring a row into view between two steps.</para></summary>
+    public static class Offscreen
+    {
+        /// <summary>The slack around a row's sweep (beyond its blur reach): an interlude reserve band (≤
+        /// <c>Interlude.ReserveDip(large)</c> = 32 DIP) that lands on the next arrange and shifts the rows below it, and
+        /// rounding. A row inside it is treated as visible.</summary>
+        public const float MarginDip = 32f;
+
+        /// <summary>How far a row's pixels reach past its box: the wider of its depth-of-field σ and its halo σ, at 3σ (the
+        /// Gaussian's support), plus <see cref="MarginDip"/>.</summary>
+        public static float Reach(float dofSigma, float haloSigma) => MarginDip + 3f * MathF.Max(MathF.Max(dofSigma, haloSigma), 0f);
+
+        /// <summary>A row's REST top in viewport space: its offset inside the realized window (<paramref name="yInWindow"/>,
+        /// its layout offsets up to the content root without its own translate) + the window's content origin − the scroll
+        /// offset. A virtual list re-anchoring its window moves both terms by the same amount.</summary>
+        public static float RestTop(float yInWindow, double windowOrigin, double offset) => (float)(yInWindow + windowOrigin - offset);
+
+        /// <summary>Could any pixel of a row show while its cascade translate travels from <paramref name="comp"/> to rest?
+        /// The cascade decays monotonically to 0 (zero overshoot: <see cref="Cascade"/>'s j1 clamp), so the row sweeps
+        /// exactly [rest + min(comp, 0), rest + max(comp, 0)]; that sweep grown by <paramref name="reach"/> is tested
+        /// against [0, <paramref name="viewportH"/>).</summary>
+        public static bool RowMayShow(float restTop, float height, float comp, float reach, float viewportH)
+            => restTop + height + MathF.Max(comp, 0f) + reach > 0f && restTop + MathF.Min(comp, 0f) - reach < viewportH;
+
+        /// <summary>The σ the row's node carries: the model σ, or 0 while the gate is open and no pixel of it can show.</summary>
+        public static float ShownSigma(float modelSigma, bool gate, bool mayShow) => gate && modelSigma > 0f && !mayShow ? 0f : modelSigma;
+
+        /// <summary>Must the shown σ be written EXACTLY (not through the ramp's coarse write gate)? A landing, a row being
+        /// hidden, and a row coming back from hidden: the scene must carry the model σ the step it could show.</summary>
+        public static bool ExactSigmaWrite(bool landed, bool hide, bool wasHidden) => landed || hide || wasHidden;
+
+        /// <summary>The viewport geometry a hidden-row judgement was made under. Any change re-judges every row (a resize,
+        /// the rail-open growth, a re-wrap or a secondary line changing the content extent, a virtual-window re-anchor, a
+        /// scroll offset, the viewport starting or stopping to move).</summary>
+        public readonly record struct Geometry(float ViewportH, float ViewportW, double WindowOrigin, float ContentH, double Offset, bool Moving);
+
+        /// <summary>A row's visibility, as <see cref="Flush{T}"/> asks for it.</summary>
+        public interface IRowSweep
+        {
+            bool MayShow(int index, float comp);
+        }
+
+        /// <summary>What <see cref="Flush{T}"/> tells the caller to do with a row.</summary>
+        public const byte FlushNone = 0, FlushMoving = 1, FlushExact = 2;
+
+        /// <summary>One cascade step's writes (<paramref name="write"/>, <see cref="Cascade"/>'s flags) turned into scene
+        /// writes (<paramref name="outWrite"/>): an in-flight write to a row that cannot show is DEFERRED (marked
+        /// <paramref name="stale"/>); a stale row that can show again is written EXACTLY (the moving write gate measures against
+        /// the scene, which lags the model); a landing is always written exactly. <paramref name="mayDefer"/> = the gate is
+        /// open AND the cascade is still running after this step — the step it comes to rest writes every stale row.
+        /// Returns the number of rows to write.</summary>
+        public static int Flush<T>(ReadOnlySpan<byte> write, ReadOnlySpan<float> comp, Span<bool> stale, bool mayDefer, ref T rows,
+            Span<byte> outWrite) where T : struct, IRowSweep
+        {
+            int n = 0;
+            for (int i = 0; i < write.Length; i++)
+            {
+                outWrite[i] = FlushNone;
+                byte flag = write[i];
+                bool wasStale = i < stale.Length && stale[i];
+                if (flag == Cascade.WriteNone && !wasStale) continue;
+                bool landed = flag == Cascade.WriteLanded;
+                if (!landed && mayDefer && !rows.MayShow(i, comp[i]))
+                {
+                    if (flag != Cascade.WriteNone && i < stale.Length) stale[i] = true;
+                    continue;
+                }
+                outWrite[i] = landed || wasStale ? FlushExact : FlushMoving;
+                if (i < stale.Length) stale[i] = false;
+                n++;
+            }
+            return n;
+        }
     }
 
     // ── 10. the motion-demand gate (the 2026-09-12 idle-GPU fix) ────────────────────────────────────────────────────

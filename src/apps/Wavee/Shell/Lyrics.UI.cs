@@ -280,6 +280,8 @@ public static partial class Lyrics
         // ── the directional σ model ──────────────────────────────────────────────────────────────────────────────────
         float[] _dofCurrent = [];        // the σ each line is being DRIVEN to (NaN = never driven ⇒ adopt)
         bool[] _dofHidden = [];          // the scene holds σ 0 for this line: no pixel of it can show (DofShownFor)
+        Offscreen.Geometry _dofJudged;   // the viewport geometry the last σ pass judged the hidden rows under
+        bool _geometrySubscribed;        // the geometry watcher's eager mount run only subscribes
         bool _dofRampPending = true;
         long _dofRampMs;                 // FrameTime.NowMs of the last ramp pass (0 = none)
 
@@ -289,6 +291,7 @@ public static partial class Lyrics
         /// <summary>Rows whose in-flight translate was DEFERRED because no pixel of them could show
         /// (<see cref="CascadeRowMayShow"/>): their scene transform lags the model until they could, or until they land.</summary>
         bool[] _casStale = [];
+        byte[] _casOut = [];   // Offscreen.Flush's per-row verdict, reused
         /// <summary>Set by the cascade drivers before a flush: false on the step the cascade comes to rest, which must leave
         /// no row stale.</summary>
         bool _cascadePendingAfterFlush = true;
@@ -367,6 +370,18 @@ public static partial class Lyrics
                 if (user == _userScrollSeen) return;
                 _userScrollSeen = user;
                 OnScrollActivity(user, FrameTime.NowMs);
+            });
+            // The GEOMETRY watcher: a row hidden from the blur (Offscreen) is re-judged whenever the viewport geometry moves
+            // with nothing else stepping — a window or rail resize, the rail-open height growth, a re-wrap or a secondary
+            // line changing the extent. Its eager mount run only subscribes (the Ticker's lost-wakeup rule).
+            UseSignalEffect(() =>
+            {
+                _ = _scroll.ViewportSignal.Value;
+                _ = _scroll.ExtentSignal.Value;
+                _ = _scroll.Offset.Value;
+                _ = _scroll.Motion.Value;
+                if (!_geometrySubscribed) { _geometrySubscribed = true; return; }
+                RejudgeHiddenRows();
             });
 
             // ── preferences: ONE read per view under the lyrics epoch, republished to the rows ──────────────────────
@@ -802,7 +817,7 @@ public static partial class Lyrics
                 Array.Fill(_dofCurrent, float.NaN);
                 _dofHidden = new bool[n];
                 _casComp = new float[n]; _casVel = new float[n]; _casDelay = new float[n]; _casRate = new float[n];
-                _casWrite = new byte[n]; _casStale = new bool[n];
+                _casWrite = new byte[n]; _casStale = new bool[n]; _casOut = new byte[n];
             }
             else
             {
@@ -932,7 +947,7 @@ public static partial class Lyrics
             _dofHidden = [];
             _dofRampPending = true;
             _dofRampMs = 0L;
-            _casComp = []; _casVel = []; _casDelay = []; _casRate = []; _casWrite = []; _casStale = [];
+            _casComp = []; _casVel = []; _casDelay = []; _casRate = []; _casWrite = []; _casStale = []; _casOut = [];
             _cascadePending = false;
             _cascadeRunning.Value = false;
             _casQpc = 0L;
@@ -1179,6 +1194,27 @@ public static partial class Lyrics
             return !CascadeRowMayShow(scene, index, (uint)index < (uint)_casComp.Length ? _casComp[index] : 0f, in sc, offset);
         }
 
+        /// <summary>The viewport geometry now (<see cref="Offscreen.Geometry"/>; default when there is no viewport).</summary>
+        Offscreen.Geometry CurrentGeometry(SceneStore scene)
+        {
+            var viewport = _viewportNode;
+            if (viewport.IsNull || !scene.IsLive(viewport) || !scene.HasScroll(viewport)) return default;
+            ref readonly ScrollState sc = ref scene.ScrollRef(viewport);
+            return new Offscreen.Geometry(sc.ViewportH, sc.ViewportW, sc.WindowOrigin, sc.ContentH, _scroll.Offset.Peek(), _scroll.Motion.Peek().IsMoving);
+        }
+
+        /// <summary>The viewport geometry moved since the last σ pass judged the hidden rows: run one pass NOW, so a row it
+        /// brings into view carries its σ the frame it shows. Never holds the ramp pending by itself (the pass ends pending
+        /// only while a σ still eases or a cascade runs).</summary>
+        void RejudgeHiddenRows()
+        {
+            if (Context.Scene is not { } scene || _dofCurrent.Length == 0 || SuppressesDof(Follow_.Peek())) return;
+            if (CurrentGeometry(scene) == _dofJudged) return;
+            _dofRampPending = true;
+            DriveDofRamp(scene, FrameTime.NowMs);
+            if (_dofRampPending) WakeMotion();   // a σ still easing needs frames
+        }
+
         void ApplyDofSuppression(SceneStore? scene)
         {
             _dofRampPending = true;
@@ -1191,7 +1227,12 @@ public static partial class Lyrics
             var cur = _dofCurrent;
             float dt = _dofRampMs == 0L ? DofRamp.SeedDtMs : Math.Clamp(nowMs - _dofRampMs, 0f, DofRamp.DtMaxMs);
             _dofRampMs = nowMs;
-            if (!_dofRampPending || cur.Length == 0) return;
+            if (cur.Length == 0) return;
+            var geometry = CurrentGeometry(scene);
+            // the hidden rows were judged under another geometry (only while following: otherwise nothing is hidden)
+            if (geometry != _dofJudged && !SuppressesDof(Follow_.Peek())) _dofRampPending = true;
+            if (!_dofRampPending) return;
+            _dofJudged = geometry;
 
             // Strength 0 ⇒ the effect is OFF: snap every σ to 0 in ONE pass and quiesce — not the 65 ms decrease.
             if (TranscriptPresentation.Neutral(IsPodcast, OwnsPlayback) || !BlurPolicy.Enabled(_strength))
@@ -1227,11 +1268,11 @@ public static partial class Lyrics
                 var h = (uint)i < (uint)_dofNodes.Length ? _dofNodes[i] : NodeHandle.Null;
                 if (h.IsNull || !scene.IsLive(h)) continue;
                 bool wasHidden = i < hidden.Length && hidden[i];
-                bool hide = gate && c > 0f && !CascadeRowMayShow(scene, i, i < _casComp.Length ? _casComp[i] : 0f, in sc, offset);
+                float shown = Offscreen.ShownSigma(c, gate, !gate || c <= 0f || CascadeRowMayShow(scene, i, i < _casComp.Length ? _casComp[i] : 0f, in sc, offset));
+                bool hide = shown != c;
                 if (i < hidden.Length) hidden[i] = hide;
-                float shown = hide ? 0f : c;
                 ref NodePaint p = ref scene.Paint(h);
-                if (!DofRamp.ShouldWrite(p.BlurSigma, shown, landed || hide || wasHidden)) continue;
+                if (!DofRamp.ShouldWrite(p.BlurSigma, shown, Offscreen.ExactSigmaWrite(landed, hide, wasHidden))) continue;
                 p.BlurSigma = shown;
                 scene.Mark(h, NodeFlags.PaintDirty);
             }
@@ -1273,25 +1314,19 @@ public static partial class Lyrics
         /// of the hand-off, for pixels nobody sees.</summary>
         void FlushCascadeWrites(SceneStore scene)
         {
-            var write = _casWrite;
             var comp = _casComp;
-            var stale = _casStale;
+            var outWrite = _casOut;
             bool mayDefer = CascadeDeferrable(scene, out ScrollState sc, out double offset) && _cascadePendingAfterFlush;
-            for (int i = 0; i < write.Length; i++)
-            {
-                byte flag = write[i];
-                bool wasStale = i < stale.Length && stale[i];
-                if (flag == Cascade.WriteNone && !wasStale) continue;
-                bool landed = flag == Cascade.WriteLanded;
-                if (!landed && mayDefer && !CascadeRowMayShow(scene, i, comp[i], in sc, offset))
-                {
-                    if (flag != Cascade.WriteNone && i < stale.Length) stale[i] = true;
-                    continue;
-                }
-                // a stale row catches up EXACTLY (the moving write gate measures against the scene, which lags the model)
-                WriteCascade(scene, i, comp[i], landed || wasStale);
-                if (i < stale.Length) stale[i] = false;
-            }
+            var rows = new RowSweep(this, scene, sc, offset);
+            if (Offscreen.Flush(_casWrite, comp, _casStale, mayDefer, ref rows, outWrite) == 0) return;
+            for (int i = 0; i < outWrite.Length; i++)
+                if (outWrite[i] != Offscreen.FlushNone) WriteCascade(scene, i, comp[i], outWrite[i] == Offscreen.FlushExact);
+        }
+
+        /// <summary><see cref="CascadeRowMayShow"/> as <see cref="Offscreen.Flush{T}"/> asks for it.</summary>
+        readonly struct RowSweep(ViewCore owner, SceneStore scene, ScrollState sc, double offset) : Offscreen.IRowSweep
+        {
+            public bool MayShow(int index, float comp) => owner.CascadeRowMayShow(scene, index, comp, in sc, offset);
         }
 
         /// <summary>May an in-flight write be deferred this step? Only while the viewport is still: the visibility test reads
@@ -1311,10 +1346,7 @@ public static partial class Lyrics
         }
 
         /// <summary>Could any pixel of row <paramref name="index"/> show while its translate travels from
-        /// <paramref name="comp"/> to rest? The cascade decays monotonically to 0 (zero overshoot: Cascade's j1 clamp), so the
-        /// row sweeps exactly [rest + min(comp, 0), rest + max(comp, 0)]; that sweep, grown by the row's blur reach and a
-        /// layout margin (<see cref="Cascade.HiddenMarginDip"/>), is tested against the viewport. Unknown geometry answers
-        /// true (write).</summary>
+        /// <paramref name="comp"/> to rest (<see cref="Offscreen.RowMayShow"/>)? Unknown geometry answers true (write).</summary>
         bool CascadeRowMayShow(SceneStore scene, int index, float comp, in ScrollState sc, double offset)
         {
             var h = (uint)index < (uint)_dofNodes.Length ? _dofNodes[index] : NodeHandle.Null;
@@ -1331,9 +1363,8 @@ public static partial class Lyrics
                 if (!parent.IsNull) y += scene.Paint(parent).ChildShiftY;
                 n = parent;
             }
-            float top = (float)(y + sc.WindowOrigin - offset), bottom = top + scene.Bounds(h).H;
-            float reach = Cascade.HiddenMarginDip + 3f * MathF.Max(DofDeclaredFor(index), Wipe.GlowSigma(0f, 1f, Large, _haloScale));
-            return bottom + MathF.Max(comp, 0f) + reach > 0f && top + MathF.Min(comp, 0f) - reach < sc.ViewportH;
+            float reach = Offscreen.Reach(DofDeclaredFor(index), Wipe.GlowSigma(0f, 1f, Large, _haloScale));
+            return Offscreen.RowMayShow(Offscreen.RestTop(y, sc.WindowOrigin, offset), scene.Bounds(h).H, comp, reach, sc.ViewportH);
         }
 
         /// <summary>The ONE place a line's compensating translate reaches the scene — on <c>dofContent</c>, which declares
