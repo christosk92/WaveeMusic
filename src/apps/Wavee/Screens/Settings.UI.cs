@@ -545,10 +545,11 @@ public static partial class Settings
         children.Add(SectionHeader(Loc.Get(Strings.Settings.Notify.DeliveryTitle), Icons.Bell));
         children.Add(Row(Loc.Get(Strings.Settings.Notify.Windows), Loc.Get(Strings.Settings.Notify.WindowsSub),
             NotifyToggle(Platform.Keys.NotifyWindows, reconcile: true), Icons.Bell));
-        children.Add(Row(Loc.Get(Strings.Settings.Notify.Sound), Loc.Get(Strings.Settings.Notify.SoundSub),
-            NotifyToggle(Platform.Keys.NotifySound, reconcile: false), Icons.Bell, isEnabled: policy.WindowsEnabled));
-        children.Add(Row(Loc.Get(Strings.Settings.Notify.Quiet), Loc.Get(Strings.Settings.Notify.QuietSub),
-            NotifyToggle(Platform.Keys.NotifyQuietEnabled, reconcile: true), Icons.Moon, isEnabled: policy.WindowsEnabled));
+        // Sound and quiet hours only mean something while Windows delivery is on: both rows stay visible but go inert.
+        children.Add(DependentNotifyRow(Loc.Get(Strings.Settings.Notify.Sound), Loc.Get(Strings.Settings.Notify.SoundSub),
+            Platform.Keys.NotifySound, reconcile: false, Icons.Bell, enabled: policy.WindowsEnabled));
+        children.Add(DependentNotifyRow(Loc.Get(Strings.Settings.Notify.Quiet), Loc.Get(Strings.Settings.Notify.QuietSub),
+            Platform.Keys.NotifyQuietEnabled, reconcile: true, Icons.Moon, enabled: policy.WindowsEnabled));
         if (policy.WindowsEnabled && policy.Quiet.Enabled)
             children.Add(QuietRange(policy));
 
@@ -661,12 +662,17 @@ public static partial class Settings
         _ => Icons.Clock,
     };
 
-    static Element NotifyToggle(SettingKey<bool> key, bool reconcile)
+    static Element NotifyToggle(SettingKey<bool> key, bool reconcile, bool isEnabled = true)
         => Toggle(key, afterWrite: _ =>
         {
             Notify.Prefs.Bump();
             if (reconcile) Notify.RequestReconcile();
-        });
+        }, isEnabled: isEnabled);
+
+    /// <summary>A notification row that depends on another setting. The engine does not cascade a card's IsEnabled into its
+    /// content (#183: a greyed card kept a live, enabled-looking switch), so ONE flag drives the card and its toggle.</summary>
+    static Element DependentNotifyRow(string label, string sub, SettingKey<bool> key, bool reconcile, string icon, bool enabled)
+        => Row(label, sub, NotifyToggle(key, reconcile, isEnabled: enabled), icon, isEnabled: enabled);
 
     static Element QuietRange(in NotificationPolicy policy)
     {

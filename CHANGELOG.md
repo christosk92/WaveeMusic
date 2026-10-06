@@ -42,6 +42,10 @@ versions separately under `v*` and is not tracked in this file.)
 - **No more hitch when Wavee saves a diagnostics snapshot.** Building the automatic evidence bundle froze the window
   for one frame (about 36 ms); it is now written in the background.
 
+- **Notification sound and quiet hours can no longer be switched while Windows notifications are off.** Their cards
+  greyed out, but the switch inside each one stayed live and looked enabled. Both rows now stay visible and go inert
+  together until Windows notifications are turned back on. (#183)
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed
