@@ -93,6 +93,11 @@ versions separately under `v*` and is not tracked in this file.)
   music was paused and "Resume" while it played, because the menu was built from the state just before the change.
   It now says "Pause" while playing and "Resume" while paused. (#115)
 
+- **Wavee's crash-reporting helper can no longer keep running after Wavee closes if it fails to start.** The helper
+  that watches Wavee for crashes could get stuck while starting (seen when Wavee was launched under a diagnostics
+  tool) and then stay running for hours after Wavee quit. Windows now ends a helper that never came up when Wavee
+  exits, and Wavee restarts one that does not report in within ten seconds.
+
 ## [0.3.3] - 2026-10-05
 
 ### Fixed

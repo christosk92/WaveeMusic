@@ -15,6 +15,10 @@
 // can arrive from the beat timer (already posted through the UI thread), `NoteFirstFrame`/`NoteExiting`/`ModalScope`
 // (also UI thread, by the call sites §I names) AND a `PowerSession` callback, which is NOT guaranteed to be the UI
 // thread, so the lock is load-bearing, not decorative.
+//
+// THE STDOUT SIDE: the child's first line is `R` (ready — see `Crash.Handler.cs`'s header). `Crash.Launch.ReplyPump`
+// reads the child's stdout on one background thread, turns `R` into the ready flag the watchdog waits on and queues
+// every other line (the D replies) in order for `RequestDumpFromChild`. Lifetime: `Crash.Launch`'s header.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -37,7 +41,7 @@ public static partial class Crash
         public static string LogFolder => s_logFolder ?? Platform.LogFolder;
 
         static int s_installed;
-        static Process? s_child;
+        static Launch.HandlerChild? s_child;
         static StreamWriter? s_stdin;
         static readonly object s_writeLock = new();
         static System.Threading.Timer? s_beatTimer;
@@ -51,6 +55,8 @@ public static partial class Crash
         static long s_handlerLogLastLen;
         static long s_lastHangPollTickMs;
         static int s_suspendEpoch;
+        static int s_modalDepth;
+        static string? s_installLine;   // "I <id>", cached by the first (main-thread) Adopt
 
         /// <summary>Set by <see cref="NoteFirstFrame"/>; read by <see cref="Report.BuildSummary"/> for
         /// <c>Summary.BeforeFirstFrame</c>. Internal: only this file and <see cref="Report"/> need it.</summary>
@@ -92,38 +98,81 @@ public static partial class Crash
             s_beatTimer = new System.Threading.Timer(OnBeatTick, null, BeatMs, BeatMs);
         }
 
+        /// <summary>Starts the first handler synchronously (the caller needs <c>s_stdin</c> for the lines that follow) and
+        /// hands it to a background watchdog (<see cref="Launch.Supervise"/>): no ready line within 10 s and the child is
+        /// killed and respawned once, then given up. Startup never waits on it. The child is bound to a kill-on-close
+        /// job held by THIS process for its whole life; it gets its own duplicate of the job handle only once it says
+        /// ready (header of <c>Crash.Launch.cs</c>), so a handler that never came up cannot outlive Wavee — while a
+        /// healthy one still outlives a parent that just faulted, long enough to finish a dump (§B.1).</summary>
         static void SpawnChild(string logFolder, string? logBasePath)
+        {
+            var first = StartHandler(logFolder, logBasePath);
+            if (first is null) return;
+            Adopt(first);
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    Launch.Supervise(first, () => StartHandler(logFolder, logBasePath), Adopt, Abandon,
+                        static msg =>
+                        {
+                            if (msg.StartsWith("crash.handler.ready", StringComparison.Ordinal))
+                                Log.Event(WaveeLogLevel.Info, "crash", "crash.handler.ready", msg, null, -1, null);
+                            else Log.Warn("crash", msg);
+                        });
+                }
+                catch (Exception ex) { Log.Warn("crash", "crash.handler.supervise.failed", ex); }
+            });
+        }
+
+        static Launch.HandlerChild? StartHandler(string logFolder, string? logBasePath)
         {
             try
             {
                 string? exe = Environment.ProcessPath;
-                if (string.IsNullOrEmpty(exe)) { Log.Warn("crash", "crash.handler.spawn.failed: ProcessPath is empty"); return; }
-                var psi = new ProcessStartInfo(exe)
-                {
-                    UseShellExecute = false,
-                    RedirectStandardInput = true,
-                    RedirectStandardOutput = true,
-                    CreateNoWindow = true,
-                };
-                psi.ArgumentList.Add("--crash-handler");
-                psi.ArgumentList.Add(Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
-                psi.ArgumentList.Add(logFolder);
-                // The BASE path (wavee.log), not today's dated file: the child outlives midnight and derives the day's file
-                // at bundle time (Crash.Bundles.ResolveTailPath). A dated path frozen here tailed yesterday after midnight.
-                psi.ArgumentList.Add(string.IsNullOrEmpty(logBasePath) ? "-" : logBasePath);
-                // Deliberately NOT added to the modules' kill-on-close job object (§B.1): the child must outlive a
-                // parent that just faulted, long enough to finish a dump.
-                var child = Process.Start(psi);
-                if (child is null) { Log.Warn("crash", "crash.handler.spawn.failed: Process.Start returned null"); return; }
-                s_child = child;
-                s_stdin = child.StandardInput;
-                s_stdin.AutoFlush = true;
-                // The install id rides over first (Install runs on the main thread before the loop, so Ensure may write):
-                // the child's own bundles (exit code, hang, forced close) must carry it for the Worker to accept them.
-                try { s_stdin.WriteLine("I " + InstallId.Ensure(Platform.Settings)); } catch { }
-                Log.Event(WaveeLogLevel.Info, "crash", "crash.handler.spawned", "", null, -1, null, WaveeLogField.Of("pid", child.Id));
+                if (string.IsNullOrEmpty(exe)) { Log.Warn("crash", "crash.handler.spawn.failed: ProcessPath is empty"); return null; }
+                var psi = Launch.CreateHandlerStartInfo(exe, null, Environment.ProcessId, logFolder, logBasePath);
+                var child = Launch.HandlerChild.Start(psi);
+                if (child is null) { Log.Warn("crash", "crash.handler.spawn.failed: Process.Start returned null"); return null; }
+                Log.Event(WaveeLogLevel.Info, "crash", "crash.handler.spawned", "", null, -1, null,
+                    WaveeLogField.Of("pid", child.Id), WaveeLogField.Of("job", child.JobAssigned));
+                return child;
             }
-            catch (Exception ex) { Log.Warn("crash", "crash.handler.spawn.failed", ex); }
+            catch (Exception ex) { Log.Warn("crash", "crash.handler.spawn.failed", ex); return null; }
+        }
+
+        /// <summary>Makes <paramref name="child"/> the live handler: every later line goes to it. The install id rides
+        /// over first (the child's own bundles — exit code, hang, forced close — must carry it for the Worker to accept
+        /// them), and a respawn after the first frame replays <c>F</c> so its hang watchdog arms.</summary>
+        static void Adopt(Launch.HandlerChild child)
+        {
+            lock (s_writeLock)
+            {
+                s_child = child;
+                s_stdin = child.Stdin;
+                // First call is on the main thread (Install), which may write the id; a respawn runs on a pool thread and
+                // replays the cached string (settings writes are UI-thread-only). Then the state a fresh handler missed.
+                try { s_installLine ??= "I " + InstallId.Ensure(Platform.Settings); s_stdin.WriteLine(s_installLine); } catch { }
+                try
+                {
+                    if (FirstFrameSeen) s_stdin.WriteLine("F");
+                    int modal = Volatile.Read(ref s_modalDepth);
+                    for (int i = 0; i < modal; i++) s_stdin.WriteLine("M1");
+                    int epoch = Volatile.Read(ref s_suspendEpoch);
+                    if (epoch > 0) s_stdin.WriteLine("S " + epoch.ToString(CultureInfo.InvariantCulture));
+                }
+                catch { }
+            }
+        }
+
+        static void Abandon(Launch.HandlerChild child)
+        {
+            lock (s_writeLock)
+            {
+                if (!ReferenceEquals(s_child, child)) return;
+                s_child = null;
+                s_stdin = null;
+            }
         }
 
         /// <summary>Not wired into the exit tail by this work package (nothing in §I calls it) — provided so a later
@@ -300,15 +349,13 @@ public static partial class Crash
         }
 
         static readonly object s_dumpGate = new();
-        static Task<string?>? s_pendingRead;   // a reply read a timed-out request left running
-        static int s_staleReplies;             // replies still owed to timed-out requests (the pending read's included)
 
         /// <summary>Writes <c>D &lt;kind&gt; &lt;tid&gt; &lt;ptrHex&gt; &lt;dir&gt;</c> and blocks for the child's
         /// <c>OK &lt;bytes&gt;</c>/<c>ERR &lt;message&gt;</c> reply, up to 10 s — a crash caller is terminating either
         /// way; <see cref="WriteTestReport"/> calls it off the UI thread. ONE request at a time (<c>s_dumpGate</c>): a
         /// test report runs while the app lives on, so a real crash on another thread must neither interleave its line
         /// with it nor race it for the one stdout reader. The child answers D lines in order, so the replies a timed-out
-        /// request left owed (<c>s_staleReplies</c>, starting with the read it left running) are drained before this
+        /// request left owed (<c>HandlerChild.StaleReplies</c>, starting with the read it left running) are drained before this
         /// request's own is read.</summary>
         static bool RequestDumpFromChild(Handler.DumpKind kind, uint tid, nint ptrs, string dir, out long bytes, out string? error)
         {
@@ -331,21 +378,18 @@ public static partial class Crash
                 try
                 {
                     long deadline = Environment.TickCount64 + 10_000;
-                    int stale = s_staleReplies;
-                    s_staleReplies = 0;
+                    int stale = child.StaleReplies;
+                    child.StaleReplies = 0;
                     while (true)
                     {
-                        var read = s_pendingRead ?? child.StandardOutput.ReadLineAsync();
-                        s_pendingRead = null;
-                        if (!read.Wait(MsLeft(deadline)))
+                        // The pump queues replies in arrival order (the `R` ready line never reaches it), so a reply a
+                        // timed-out request left owed is simply the next line(s) in the queue.
+                        if (!child.Replies.TryTakeReply(MsLeft(deadline), out string? reply))
                         {
-                            // Left running: the next request drains it and the rest owed (this one's own included).
-                            s_pendingRead = read;
-                            s_staleReplies = stale + 1;
+                            child.StaleReplies = stale + 1;   // the next request drains this one's answer first
                             error = "timeout waiting for the crash handler";
                             return false;
                         }
-                        string? reply = read.Result;
                         if (reply is null) { error = "the crash handler closed its output"; return false; }
                         if (stale > 0) { stale--; continue; }   // a timed-out earlier request's answer
                         if (reply.StartsWith("OK", StringComparison.Ordinal))
@@ -409,10 +453,11 @@ public static partial class Crash
         sealed class ModalScopeToken : IDisposable
         {
             int _disposed;
-            public ModalScopeToken() => SendLine("M1");
+            public ModalScopeToken() { Interlocked.Increment(ref s_modalDepth); SendLine("M1"); }
             public void Dispose()
             {
                 if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+                Interlocked.Decrement(ref s_modalDepth);
                 SendLine("M0");
             }
         }

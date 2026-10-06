@@ -27,9 +27,19 @@
 //                                          a test crash report" (`Crash.Host.WriteTestReport`, #165): a snapshot of a
 //                                          parent that keeps RUNNING, so unlike a crash's request it never latches the
 //                                          exit-code bundle (`DumpKinds.LatchesBundle`)
-//   stdout (child → parent), one line per D reply only:
+//   stdout (child → parent):
+//     R                                    READY, once, as soon as the parent handle is open. The parent answers it by
+//                                          duplicating its kill-on-close job handle into this process (`Crash.Launch`):
+//                                          before R this child holds no job handle and dies with the parent; after it, it
+//                                          lives until it exits. No R within 10 s and the parent kills and respawns it.
+//     (then, one line per D reply:)
 //     OK <bytes>                           the dump was written; bytes is minidump.dmp's final size
 //     ERR <message>                        it was not
+//   The parent's reply reader (`Crash.Launch.ReplyPump`) swallows R, so D replies still match in order.
+//
+// BOUNDED LIFE: once the parent has exited, this process force-exits after `ShutdownDeadlineMs` (30 s) even if a bundle
+// write stalls. While the parent lives it waits on the parent handle with a 1 s timeout, so nothing in the main loop
+// blocks forever; the stdin reader is a background thread and never holds the process open.
 //
 // THE CHILD FINALIZES THE BUNDLE (#165, crash-production-readiness-implementation.md "W3a"). Before it replies to a D
 // line — so while the parent is still parked inside its hook — the child (1) resolves the faulting module out of process
@@ -112,6 +122,10 @@ public static partial class Crash
                 return 0;
             }
 
+            // Ready: the parent handle is open. Written BEFORE the reader thread starts so nothing else can interleave on stdout.
+            HandlerLog("handler.ready");
+            WriteReply("R");
+
             var reader = new Thread(ReaderLoop) { IsBackground = true, Name = "crash-handler-stdin" };
             reader.Start();
 
@@ -123,9 +137,40 @@ public static partial class Crash
                 Tick();
             }
 
+            ArmShutdownDeadline(ResolveDeadlineMs());
             int exit = OnParentExited();
             try { CloseHandle(s_parentHandle); } catch { }
             return exit;
+        }
+
+        /// <summary>Once the parent is gone this process has this long to finish its bundle; then it terminates itself.</summary>
+        public const int ShutdownDeadlineMs = 30_000;
+
+        /// <summary>Test seam: an integer here (milliseconds) replaces <see cref="ShutdownDeadlineMs"/>.</summary>
+        public const string DeadlineEnvVar = "WAVEE_CRASH_HANDLER_DEADLINE_MS";
+
+        static int ResolveDeadlineMs()
+            => int.TryParse(Environment.GetEnvironmentVariable(DeadlineEnvVar), NumberStyles.None, CultureInfo.InvariantCulture, out int ms) && ms > 0
+                ? ms : ShutdownDeadlineMs;
+
+        /// <summary>Starts a background thread that, after <paramref name="ms"/>, logs and TERMINATES this process
+        /// (TerminateProcess — not Environment.Exit, which can itself wait on a wedged thread). A normal return from
+        /// <see cref="Run"/> ends the process first and the thread dies with it.</summary>
+        static void ArmShutdownDeadline(int ms)
+        {
+            new Thread(() =>
+            {
+                Thread.Sleep(ms);
+                // NEVER block on the log lock here: a stalled disk can wedge the main thread inside it, which is exactly
+                // what this deadline exists to bound. Log only if the lock is free within a moment; terminate regardless.
+                if (Monitor.TryEnter(s_logLock, 500))
+                {
+                    try { File.AppendAllText(Path.Combine(Files.Root(s_logFolder), Files.HandlerLog), DateTimeOffset.Now.ToString("O", CultureInfo.InvariantCulture) + " pid=" + s_parentPid.ToString(CultureInfo.InvariantCulture) + " handler.shutdown.deadline ms=" + ms.ToString(CultureInfo.InvariantCulture) + Environment.NewLine, new UTF8Encoding(false)); }
+                    catch { }
+                    finally { Monitor.Exit(s_logLock); }
+                }
+                TerminateProcess(GetCurrentProcess(), 3);
+            }) { IsBackground = true, Name = "crash-handler-deadline" }.Start();
         }
 
         static void ReaderLoop()
@@ -650,6 +695,13 @@ public static partial class Crash
         [LibraryImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static partial bool CloseHandle(nint hObject);
+
+        [LibraryImport("kernel32.dll")]
+        private static partial nint GetCurrentProcess();
+
+        [LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static partial bool TerminateProcess(nint hProcess, uint uExitCode);
 
         [LibraryImport("kernel32.dll", SetLastError = true)]
         private static partial uint WaitForSingleObject(nint hHandle, uint dwMilliseconds);
