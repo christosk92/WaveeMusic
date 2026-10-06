@@ -12,6 +12,10 @@
   gpuFrames, framesPerSec, paintedFramesPerSec, cyclesPerMs.window, settleSec, scrollViewports, scrollSteps, the census
   exitPerSec.* / wakePerSec.* / turnPerSec.*, and the arms *.off / *.on of an A/B); everything else (CPU, GPU, allocations, GC,
   memory, missed vsyncs, underruns) is lower-is-better. Every total in a summary is already per second.
+  CPU HEADLINE = raw cycles (processGcyclesPerSec, uiMcyclesPerSec, renderMcyclesPerSec, otherMcyclesPerSec, uiKcyclesPerPaintedFrame,
+  renderKcyclesPerTurn): rate-free, lower is better, flagged at -CycleThreshold. processCpuPct, uiCoresTimes, renderCoresTimes and
+  paintedCpuMs.* are INFO only (never flagged): GetProcessTimes/GetThreadTimes charge whole ~15.6 ms scheduler ticks, so at low
+  load a run lands in one of two modes (docs/guide/frame-bench.md, "Measuring CPU: cycles, not time").
   Absolute floors keep timer noise out of the flags: 0.05 for a metric in ms, us or cores, 1 MB for MB, 1 % for a percentage,
   64 bytes for an allocation rate, 0.1 for a per-second rate, 1 for a count.
 
@@ -30,6 +34,9 @@
 
 .PARAMETER Threshold
   Percent change that counts (default 10).
+
+.PARAMETER CycleThreshold
+  Percent change that counts for the raw-cycle CPU metrics (default 5; they are stable to about 3 %).
 
 .PARAMETER All
   Print every metric. Default: the headline set.
@@ -50,6 +57,7 @@ param(
     [Parameter(Mandatory = $true, Position = 0)][string]$Before,
     [Parameter(Mandatory = $true, Position = 1)][string]$After,
     [double]$Threshold = 10,
+    [double]$CycleThreshold = 5,
     [switch]$All,
     [string[]]$Scenario,
     [switch]$FailOnRegression
@@ -62,7 +70,7 @@ function Read-Summary([string]$path) {
     if (Test-Path -LiteralPath $path -PathType Container) { $path = Join-Path $path 'frame-bench-summary.json' }
     if (-not (Test-Path -LiteralPath $path)) { throw "no summary at $path" }
     $json = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-    if ($json.schema -notin @('wavee-frame-bench/1', 'wavee-frame-bench/2')) { throw "$path is not a wavee-frame-bench summary (schema '$($json.schema)')" }
+    if ($json.schema -notin @('wavee-frame-bench/1', 'wavee-frame-bench/2', 'wavee-frame-bench/2.1')) { throw "$path is not a wavee-frame-bench summary (schema '$($json.schema)')" }
     return $json
 }
 
@@ -73,7 +81,12 @@ function Get-Prop($obj, [string]$name) {
 }
 
 # Mirrors FrameBenchMath.Better: +1 higher is better, 0 neutral, -1 lower is better.
+function Test-InfoCpu([string]$key) {
+    return ($key -in @('processCpuPct', 'uiCoresTimes', 'renderCoresTimes', 'overheadProcessCpuPct') -or $key -like 'processCpuPct.*' -or $key -like 'paintedCpuMs*')
+}
+
 function Get-Direction([string]$key) {
+    if (Test-InfoCpu $key) { return 0 }
     if ($key -in @('presentsPerSec', 'audioPaddingMinMs')) { return 1 }
     if ($key -in @('wallSec', 'frames', 'paintedFrames', 'presents', 'gpuFrames', 'framesPerSec', 'paintedFramesPerSec',
                    'cyclesPerMs.window', 'settleSec', 'scrollViewports', 'scrollSteps')) { return 0 }
@@ -82,6 +95,9 @@ function Get-Direction([string]$key) {
 }
 
 function Get-Floor([string]$key) {
+    if ($key -match 'Gcycles') { return 0.01 }
+    if ($key -match 'KcyclesPer') { return 10.0 }
+    if ($key -match 'Mcycles') { return 2.0 }
     if ($key -match 'MB(\.|$)') { return 1.0 }
     if ($key -match 'Pct') { return 1.0 }
     if ($key -match 'Bytes') { return 64.0 }
@@ -93,6 +109,7 @@ function Get-Floor([string]$key) {
 $headline = @(
     'presentsPerSec', 'presentIntervalMs.p99',
     'paintedCpuMs.p50', 'paintedCpuMs.p99', 'renderCpuMs.p50', 'renderCpuMs.p99', 'otherCpuMs.avg',
+    'processGcyclesPerSec', 'uiMcyclesPerSec', 'renderMcyclesPerSec', 'otherMcyclesPerSec', 'uiKcyclesPerPaintedFrame', 'renderKcyclesPerTurn',
     'uiCores', 'renderCores', 'otherCores', 'uiCoresTimes', 'renderCoresTimes', 'processCpuPct',
     'gpuMs.p50', 'gpuMs.p99', 'gpuBusyPct',
     'uiAllocBytesPerFrame', 'paintedAllocBytesPerFrame', 'processAllocBytesPerSec', 'gc0PerSec', 'gc2PerSec', 'gcPauseMsPerSec',
@@ -144,7 +161,8 @@ foreach ($sa in $a.scenarios) {
         $pct = if ([math]::Abs([double]$vb) -gt 1e-9) { $delta / [math]::Abs([double]$vb) * 100.0 } elseif ([math]::Abs($delta) -gt 1e-9) { [double]::PositiveInfinity } else { 0.0 }
         $dir = Get-Direction $key
         $flag = ''
-        if ($dir -ne 0 -and [math]::Abs($pct) -gt $Threshold -and [math]::Abs($delta) -gt (Get-Floor $key)) {
+        $thr = if ($key -match 'cycles') { $CycleThreshold } else { $Threshold }
+        if ($dir -ne 0 -and [math]::Abs($pct) -gt $thr -and [math]::Abs($delta) -gt (Get-Floor $key)) {
             $worse = ($dir -lt 0 -and $delta -gt 0) -or ($dir -gt 0 -and $delta -lt 0)
             if ($worse) { $flag = 'REGRESSED'; $regressions++ } else { $flag = 'improved'; $improvements++ }
         }
@@ -157,6 +175,7 @@ foreach ($sb in $b.scenarios) {
 }
 
 $rows | Format-Table scenario, metric, before, after, delta, pct, flag -AutoSize | Out-String -Width 200 | Write-Output
-Write-Output ("{0} regressed, {1} improved, {2} warning(s) (threshold {3}%)" -f $regressions, $improvements, $script:warnings, $Threshold)
+Write-Output "note: CPU headline = raw cycle counts (*cycles*); processCpuPct / *CoresTimes / paintedCpuMs are time-based (15.6 ms tick-charged, two-mode at low load) and shown as info only, never flagged."
+Write-Output ("{0} regressed, {1} improved, {2} warning(s) (threshold {3}%, cycles {4}%)" -f $regressions, $improvements, $script:warnings, $Threshold, $CycleThreshold)
 if ($FailOnRegression -and $regressions -gt 0) { exit 1 }
 exit 0

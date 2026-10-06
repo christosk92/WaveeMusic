@@ -10,6 +10,10 @@
 // and every number in frame-bench-summary.json — the file ops/tools/frame-bench-compare.ps1 diffs before/after.
 // Nothing here starts the engine or touches a file except the profile reads in `Targets.FromProfile` (READ-ONLY).
 //
+// THE SUMMARY'S CPU (2.1): the HEADLINE is now the RAW-CYCLE metrics (processGcyclesPerSec, uiMcyclesPerSec, renderMcyclesPerSec,
+// otherMcyclesPerSec, uiKcyclesPerPaintedFrame, renderKcyclesPerTurn), computed from the ledger's raw cycle counters with no rate:
+// GetProcessTimes/GetThreadTimes are charged in whole ~15.6 ms scheduler ticks and read two modes at low load. The time-based
+// figures below remain in the JSON as info only. Original description (pre-2.1):
 // THE SUMMARY'S CPU. The HEADLINE process figure is `processCpuPct`, from GetProcessTimes (scheduler-tick accounted, exact over
 // a window of seconds, no rate). The split comes from the ledger's cycle counts (QueryThreadCycleTime per thread,
 // QueryProcessCycleTime for the process), every window of a run converted at ONE rate: the run's effective cycles per CPU-ms
@@ -351,12 +355,15 @@ public static partial class Diagnostics
             // Window CPU split (cumulative counters; see the file header). Render turns are attributed by overlap.
             double uiMs = double.NaN, procMs = double.NaN, renderMs = double.NaN, spanMs = double.NaN, uiTimesMs = double.NaN;
             var otherPerFrame = new List<double>();
+            double uiCycRaw = double.NaN, procCycRaw = double.NaN, renderCycRaw = double.NaN;   // RAW cycles (no rate): the rate-free CPU headline
             if (ui.Length >= 2)
             {
                 long s0 = ui[0].EndQpc, s1 = ui[^1].EndQpc;
                 spanMs = snap.SpanMs(s0, s1);
                 if (ui[^1].UiCyclesTotal >= ui[0].UiCyclesTotal && ui[0].UiCyclesTotal != 0) uiMs = snap.CyclesMs(ui[^1].UiCyclesTotal - ui[0].UiCyclesTotal);
                 if (ui[^1].ProcessCyclesTotal >= ui[0].ProcessCyclesTotal && ui[0].ProcessCyclesTotal != 0) procMs = snap.CyclesMs(ui[^1].ProcessCyclesTotal - ui[0].ProcessCyclesTotal);
+                if (ui[^1].UiCyclesTotal >= ui[0].UiCyclesTotal && ui[0].UiCyclesTotal != 0) uiCycRaw = ui[^1].UiCyclesTotal - ui[0].UiCyclesTotal;
+                if (ui[^1].ProcessCyclesTotal >= ui[0].ProcessCyclesTotal && ui[0].ProcessCyclesTotal != 0) procCycRaw = ui[^1].ProcessCyclesTotal - ui[0].ProcessCyclesTotal;
                 if (ui[0].UiCpuTimeTotal != 0 && ui[^1].UiCpuTimeTotal >= ui[0].UiCpuTimeTotal) uiTimesMs = (ui[^1].UiCpuTimeTotal - ui[0].UiCpuTimeTotal) / 10_000.0;
                 double rc = 0;
                 int j = 0;
@@ -373,6 +380,7 @@ public static partial class Diagnostics
                         otherPerFrame.Add((b.ProcessCyclesTotal - a.ProcessCyclesTotal - (double)(b.UiCyclesTotal - a.UiCyclesTotal) - inInterval) / snap.CyclesPerMs);
                 }
                 renderMs = snap.CyclesPerMs > 0 ? rc / snap.CyclesPerMs : double.NaN;
+                renderCycRaw = rc;
             }
             Dist(m, "otherCpuMs", otherPerFrame);
             double Cores(double cpuMs) => spanMs > 0 ? cpuMs / spanMs : double.NaN;
@@ -399,6 +407,20 @@ public static partial class Diagnostics
             m.Add(new("processCpuPct", timesPct));
             m.Add(new("processCpuPctCycles", spanMs > 0 && snap.Processors > 0 ? procMs / spanMs / snap.Processors * 100.0 : double.NaN));
             m.Add(new("cyclesPerMs.window", snap.EffectiveCyclesPerMs(250)));
+
+            // Rate-free CPU (raw QueryProcessCycleTime / QueryThreadCycleTime deltas; stable to a few %, unlike the tick-charged times).
+            double PerSecSpan(double cyc, double scale) => spanMs > 0 && double.IsFinite(cyc) ? cyc / (spanMs / 1000.0) / scale : double.NaN;
+            double otherCycRaw = double.IsFinite(procCycRaw) ? procCycRaw - (double.IsFinite(uiCycRaw) ? uiCycRaw : 0) - (double.IsFinite(renderCycRaw) ? renderCycRaw : 0) : double.NaN;
+            double uiWindowCyc = 0;
+            foreach (var f in ui) uiWindowCyc += f.UiCycles;
+            double renderTurnCyc = 0;
+            foreach (var t in rt) renderTurnCyc += t.Cycles;
+            m.Add(new("processGcyclesPerSec", PerSecSpan(procCycRaw, 1e9)));
+            m.Add(new("uiMcyclesPerSec", PerSecSpan(uiCycRaw, 1e6)));
+            m.Add(new("renderMcyclesPerSec", PerSecSpan(renderCycRaw, 1e6)));
+            m.Add(new("otherMcyclesPerSec", PerSecSpan(otherCycRaw, 1e6)));
+            m.Add(new("uiKcyclesPerPaintedFrame", painted > 0 ? uiWindowCyc / painted / 1e3 : double.NaN));
+            m.Add(new("renderKcyclesPerTurn", rt.Length > 0 ? renderTurnCyc / rt.Length / 1e3 : double.NaN));
 
             // GPU.
             var gpuMs = new List<double>(snap.Gpu.Length);
@@ -502,9 +524,14 @@ public static partial class Diagnostics
         }
 
         /// <summary>Metric direction for the compare tool: +1 higher is better, 0 neutral (it describes the run — counts, rates of
-        /// frames, the census, the rate itself, an A/B arm), -1 (the default) lower is better.</summary>
+        /// frames, the census, the rate itself, an A/B arm, and the tick-charged TIME-based CPU figures: processCpuPct / *CoresTimes are
+        /// info only, see <see cref="IsInfoCpu"/>), -1 (the default) lower is better.</summary>
+        public static bool IsInfoCpu(string key) => key is "processCpuPct" or "uiCoresTimes" or "renderCoresTimes" or "overheadProcessCpuPct"
+            || key.StartsWith("processCpuPct.", StringComparison.Ordinal) || key.StartsWith("paintedCpuMs", StringComparison.Ordinal);
+
         public static int Better(string key)
             => key is "presentsPerSec" or "audioPaddingMinMs" ? +1
+             : IsInfoCpu(key) ? 0
              : key is "wallSec" or "frames" or "paintedFrames" or "presents" or "gpuFrames" or "framesPerSec" or "paintedFramesPerSec"
                  or "cyclesPerMs.window" or "settleSec" or "scrollViewports" or "scrollSteps"
                || key.StartsWith("exitPerSec.", StringComparison.Ordinal) || key.StartsWith("wakePerSec.", StringComparison.Ordinal)
@@ -521,7 +548,7 @@ public static partial class Diagnostics
             using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Indented = true }))
             {
                 w.WriteStartObject();
-                w.WriteString("schema", "wavee-frame-bench/2");
+                w.WriteString("schema", "wavee-frame-bench/2.1");
                 w.WriteString("version", version);
                 w.WriteString("label", label);
                 w.WriteString("data", real ? "real" : "fake");
@@ -563,7 +590,7 @@ public static partial class Diagnostics
             var sb = new StringBuilder(256 + scenarios.Count * 200);
             const string Fmt = "{0,-17} {1,6} {2,6} {3,6} {4,6} {5,6} {6,6} {7,6} {8,6} {9,6} {10,6} {11,6} {12,6} {13,6} {14,7} {15,6} {16,6} {17,6}";
             string H = string.Format(CultureInfo.InvariantCulture, Fmt,
-                "scenario", "pres/s", "pdP50", "pdP99", "rdP50", "rdP99", "uiC", "rdC", "othC", "proc%", "gpP50", "gpP99", "gpBsy%", "miss/s", "alloc/f", "wsMB", "vramMB", "gc0/s");
+                "scenario", "pres/s", "pdP50", "pdP99", "rdP50", "rdP99", "uiMc/s", "rdMc/s", "othMc/s", "procGc/s", "gpP50", "gpP99", "gpBsy%", "miss/s", "alloc/f", "wsMB", "vramMB", "gc0/s");
             sb.AppendLine(H);
             sb.AppendLine(new string('-', H.Length));
             foreach (var s in scenarios)
@@ -581,12 +608,13 @@ public static partial class Diagnostics
                 }
                 sb.AppendLine(string.Format(CultureInfo.InvariantCulture, Fmt,
                     s.Name, F(s["presentsPerSec"], "0.0"), F(s["paintedCpuMs.p50"]), F(s["paintedCpuMs.p99"]), F(s["renderCpuMs.p50"]), F(s["renderCpuMs.p99"]),
-                    F(s["uiCores"]), F(s["renderCores"]), F(s["otherCores"]), F(s["processCpuPct"], "0.0"), F(s["gpuMs.p50"]), F(s["gpuMs.p99"]),
+                    F(s["uiMcyclesPerSec"], "0"), F(s["renderMcyclesPerSec"], "0"), F(s["otherMcyclesPerSec"], "0"), F(s["processGcyclesPerSec"], "0.00"), F(s["gpuMs.p50"]), F(s["gpuMs.p99"]),
                     F(s["gpuBusyPct"], "0.0"), F(s["missedVsyncsPerSec"], "0.0"), F(s["uiAllocBytesPerFrame"], "0"), F(s["workingSetMB.avg"], "0"),
                     F(s["vramLocalMB.avg"], "0"), F(s["gc0PerSec"], "0.0")));
                 if (s.Note is { } note) sb.Append("  ").AppendLine(note);
             }
-            sb.AppendLine("(pd/rd = UI CPU ms per painted frame / render CPU ms per presented turn; C = average cores; proc% = GetProcessTimes;");
+            sb.AppendLine("(pd/rd = UI CPU ms per painted frame / render CPU ms per presented turn; Mc/s = mega-cycles per second (UI thread / render thread / the rest);");
+            sb.AppendLine(" procGc/s = process giga-cycles per second (raw cycle counters; GetProcessTimes-based processCpuPct / *CoresTimes are info only, in the JSON);");
             sb.AppendLine(" gp = GPU ms per frame; miss/s = missed vsyncs per second)");
             return sb.ToString();
         }
