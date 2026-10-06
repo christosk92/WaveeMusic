@@ -472,6 +472,13 @@ public static partial class Diagnostics
             var snap = Playback.Snap();
             Say("[lyrics-demo] playback current=" + snap.HasCurrent + " playing=" + snap.IsPlaying + " id=" + snap.CurrentId.Text
                 + " lyrics=" + (Lyrics.Store.Doc("tr0") is { } d ? d.Lines.Count + " lines" : "none"));
+            if (s_options.PlayDemoShot.Length > 0)
+            {
+                // a few seconds in, so the shot lands mid-line (the wipe part-way through its run)
+                long until = Environment.TickCount64 + 6_500;
+                while (!w.IsClosed && Environment.TickCount64 < until) FrameFast(host, w, gpu);
+                PlayDemoShot(host, w, gpu, s_options.PlayDemoShot);
+            }
             return false;
         }
 

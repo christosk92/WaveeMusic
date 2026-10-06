@@ -444,6 +444,38 @@ public static partial class Stage
             return (leadLine, gapEnd > gapStart && nowMs >= gapStart && nowMs + leadMs < gapEnd);
         }
 
+        /// <summary>The packed view (<see cref="Pack"/>) of <paramref name="d"/> at <paramref name="nowMs"/> from the lyrics
+        /// view's OWN resolves (the lead-shifted line, the break <c>AdvancePastInterlude</c> reports), decided by
+        /// <see cref="View"/>. The intro's "break" is [0, first line).</summary>
+        public static int ViewAt(Lyrics.Doc d, long nowMs, out long gapStart, out long gapEnd)
+        {
+            var lines = d.Lines;
+            int lead = Lyrics.ResolveLine(lines, nowMs + Lyrics.LeadMs);
+            _ = Lyrics.AdvancePastInterlude(d, lead, nowMs, out gapStart, out gapEnd);
+            long first = lines.Count > 0 ? lines[0].StartMs : long.MaxValue;
+            if (lead < 0) { gapStart = 0L; gapEnd = first; }
+            var (anchor, dots) = View(lead, gapStart, gapEnd, first, nowMs, Lyrics.LeadMs, Lyrics.InterludeGapMs);
+            return Pack(anchor, dots);
+        }
+
+        /// <summary>The first media instant after <paramref name="nowMs"/> at which <see cref="ViewAt"/> MAY change
+        /// (<see cref="long.MaxValue"/> = never): the next line's start coming within the lead (which also ends a break and an
+        /// intro), or the lead line's sung-out point (where a break's dots take the slot). The view is constant before it, so
+        /// a playing caption whose wipe the render thread poses needs ONE wake there, not a tick per frame.</summary>
+        public static long NextEdgeMs(Lyrics.Doc d, long nowMs)
+        {
+            var lines = d.Lines;
+            if (lines.Count == 0) return long.MaxValue;
+            int lead = Lyrics.ResolveLine(lines, nowMs + Lyrics.LeadMs);
+            long next = lead + 1 < lines.Count ? lines[lead + 1].StartMs - Lyrics.LeadMs : long.MaxValue;
+            if (lead >= 0)
+            {
+                long sungOut = Lyrics.SungOutMs(d, lead);
+                if (sungOut > nowMs && sungOut < next) next = sungOut;
+            }
+            return next;
+        }
+
         /// <summary>One int for the view (the host's ONE signal — a re-render only when the line or the break edge moves).</summary>
         public static int Pack(int anchor, bool dots) => ((anchor + 1) << 1) | (dots ? 1 : 0);
         public static int AnchorOf(int packed) => (packed >> 1) - 1;
