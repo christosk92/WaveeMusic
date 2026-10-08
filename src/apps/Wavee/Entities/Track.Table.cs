@@ -814,6 +814,20 @@ public readonly partial struct Track
             return (uint)display < (uint)v.Length ? v[display] : -1;
         }
 
+        Action<int>? _benchToggle;
+
+        /// <summary>The frame bench's drawer handle (Diagnostics.BenchHooks): the last mounted table's, while it is mounted.</summary>
+        Action? InstallBenchHook()
+        {
+            var toggle = _benchToggle ??= display =>
+            {
+                var t = DisplayTrack(display);
+                if (t.IsValid) ToggleExpanded(MembershipDiff.RowKey(t, ItemIdAt(display), display), t);
+            };
+            Diagnostics.BenchHooks.ToggleTrackDrawer = toggle;
+            return () => { if (ReferenceEquals(Diagnostics.BenchHooks.ToggleTrackDrawer, toggle)) Diagnostics.BenchHooks.ToggleTrackDrawer = null; };
+        }
+
         Track DisplayTrack(int display)
         {
             int orig = OriginalOf(display);
@@ -1012,6 +1026,7 @@ public readonly partial struct Track
                 _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, hasFacts);
             }, DepKey.From(visible, listTotal, hasFacts ? 1 : 0, 0));
             UseEffect(PublishHeroHeight);
+            UseEffect(InstallBenchHook, DepKey.Empty);
 
             float rowH = shape.RowH;
             // An episode-capable source has rows of more than one height, so the fixed `MeasuredStackVirtualLayout`

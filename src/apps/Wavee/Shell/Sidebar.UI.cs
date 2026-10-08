@@ -485,6 +485,7 @@ public static partial class Sidebar
             // AFTER the publish: the travel direction needs the plan the rows are about to render from. This read also
             // subscribes the pane to the route, so a navigation re-renders it without re-planning.
             TrackSelection(SelectedRoute);
+            UseEffect(InstallBenchHook, DepKey.Empty);
             UseSignalEffect(RefreshPlayState);
             UseSignalEffect(RefreshSelection);
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
@@ -1960,6 +1961,16 @@ public static partial class Sidebar
 
         /// <summary>Collapse/expand through the disclosure channel, which choreographs it and then commits the layout's one
         /// command. A New releases section that opens is seen (its badge clears).</summary>
+        Action<string, bool>? _benchToggle;
+
+        /// <summary>The frame bench's section handle (Diagnostics.BenchHooks): this pane's, while it is mounted.</summary>
+        Action? InstallBenchHook()
+        {
+            var toggle = _benchToggle ??= ToggleSection;
+            Diagnostics.BenchHooks.ToggleSidebarSection = toggle;
+            return () => { if (ReferenceEquals(Diagnostics.BenchHooks.ToggleSidebarSection, toggle)) Diagnostics.BenchHooks.ToggleSidebarSection = null; };
+        }
+
         internal void ToggleSection(string sectionId, bool collapsed)
         {
             StartDisclosure("section:" + sectionId, sectionId, folder: false, open: !collapsed, () =>

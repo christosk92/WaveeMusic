@@ -336,6 +336,36 @@ public static partial class Diagnostics
                     Base(playing: false);
                     SettleQuiet(host, w, 20);
                     return HideRestore(name, host, w, o);
+                case FrameBenchScenarios.SidebarDisclosure:
+                {
+                    Base(playing: play is not null);
+                    if (BenchHooks.ToggleSidebarSection is not { } toggle) return Skip("no sidebar pane mounted");
+                    string section = SidebarBuiltInDocuments.PlaylistsId;
+                    bool collapsed = false;
+                    void Flip() { collapsed = !collapsed; toggle(section, collapsed); }
+                    if (o.Shots) Shots(name, host, w, Flip);
+                    var r = Measure(new Driver(now => { Flip(); return now + 0.6; }), "section=" + section);
+                    if (collapsed) Flip();
+                    Settle(1.0);
+                    return r;
+                }
+                case FrameBenchScenarios.DrawerToggle:
+                {
+                    if (t.Playlists.Length == 0) return Skip("no playlist");
+                    Base(playing: play is not null);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(t.Playlists[0]), "Bench playlist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Settle(2.0);
+                    if (BenchHooks.ToggleTrackDrawer is not { } toggle) return Skip("no track table mounted");
+                    bool open = false;
+                    void Flip() { open = !open; toggle(2); }
+                    if (o.Shots) Shots(name, host, w, Flip);
+                    var r = Measure(new Driver(now => { Flip(); return now + 0.6; }), "playlist=" + t.Playlists[0] + " row=3");
+                    if (open) Flip();
+                    Settle(1.0);
+                    return r;
+                }
                 case FrameBenchScenarios.LedgerOverhead:
                     if (play is null) return Skip("no track to play");
                     return OffOn(name, host, w, o, play, "ledger off vs on, stage-visualizer", restore: true,
@@ -348,6 +378,37 @@ public static partial class Diagnostics
                 default:
                     return Skip("unknown scenario");
             }
+        }
+
+        /// <summary>`--bench-shots`: two toggles (open and close, or the reverse) from rest, every presented frame of each captured
+        /// for 0.6 s as `shots\<scenario>-<toggle>-<frame>-<ms>.png` (ms from the toggle to the captured turn). A capture stalls the GPU for its turn,
+        /// so these frames are spaced wider than the display's; the motion is time-based, so each one is still the true pose at
+        /// its moment. Not part of the measured window.</summary>
+        static void Shots(string name, AppHost host, Win32Window w, Action toggle)
+        {
+            string dir = Path.Combine(OutDir(), "shots");
+            Directory.CreateDirectory(dir);
+            for (int k = 0; k < 2 && !w.IsClosed; k++)
+            {
+                Pump(host, w, 1.0, null);
+                toggle();
+                long t0 = Stopwatch.GetTimestamp();
+                double Ms() => (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                for (int i = 0; i < 60 && !w.IsClosed && Ms() < 600; i++)
+                {
+                    host.RequestFrameCapture();
+                    FrameCaptureResult? cap = null;
+                    long until = Environment.TickCount64 + 1000;
+                    while (!w.IsClosed && Environment.TickCount64 < until && !host.TryTakeFrameCapture(out cap)) Pump(host, w, 0.001, null);
+                    if (cap?.Bgra is not { } px) continue;
+                    double presentedMs = (cap.Qpc - t0) * 1000.0 / Stopwatch.Frequency;   // the turn's own stamp, not the readback's end
+                    string file = name + "-" + k + "-" + i.ToString("00", CultureInfo.InvariantCulture) + "-"
+                        + presentedMs.ToString("000", CultureInfo.InvariantCulture) + "ms.png";
+                    try { PngWriter.WriteBgra(Path.Combine(dir, file), px, cap.WidthPx, cap.HeightPx); }
+                    catch (IOException ex) { Log.Warn("probe", "[frame-bench] could not write " + file, ex); }
+                }
+            }
+            Pump(host, w, 1.0, null);
         }
 
         /// <summary>Warm-up, then the measured window: its ledger snapshot (read at the run's rate when the run ends).</summary>

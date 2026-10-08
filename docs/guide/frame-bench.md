@@ -50,6 +50,7 @@ second is **warm**. Label them (`--bench-label`) and compare the two summaries.
 | `--bench-label NAME` | Stored in the summary (`cold`, `warm`, a branch name). |
 | `--probe-out DIR` | Where everything is written (default `<profile>\bench`). |
 | `--fake-video PATH` | With `--fake`: enables the `video` scenario. |
+| `--bench-shots` | `sidebar-disclosure` / `drawer-toggle` only: before the measured window, two toggles from rest with every presented frame captured for 0.6 s into `shots\<scenario>-<toggle>-<frame>-<ms>.png`. A capture stalls the GPU for its turn, so the frames are spaced wider than the display's; the motion is time-based, so each is the true pose at its moment. |
 
 Real targets come from the profile itself: `WaveeMusic\play-recency.json` (what was played, newest first) and
 `WaveeMusic\history.json` (where the user navigated), unless `--bench-uris` names them. The lyrics scenarios ask the
@@ -77,6 +78,8 @@ The full suite at the default windows takes about 3–4 minutes.
 | `video` | `--fake --fake-video` only: a track with its video, the rail in video mode. |
 | `ledger-overhead` | The steady fullscreen visualizer in four windows, ledger off/on/off/on (see below). |
 | `gpu-pass-overhead` | `--bench-gpu-passes` only: the same A/B with pass timing off/on (GPU ms per frame and CPU, ledger on throughout). |
+| `sidebar-disclosure` | Opt-in, by name only: the Classic sidebar's Playlists section collapsing and expanding every 0.6 s (the reveal band in a virtual list). Skipped when no sidebar pane is mounted. |
+| `drawer-toggle` | Opt-in, by name only: the first bench playlist, its third row's drawer opening and closing every 0.6 s (a `FlowReveal` drawer in the track table). |
 | `hide-restore` | Opt-in, by name only (it minimizes and hides the window): minimize, tray-hide and cover cycles, memory sampled visible / hidden / restored plus the restore latency. See `docs/guide/hidden-memory.md` and `ops/tools/hidden-mem.ps1`. |
 
 The scroll scenarios first wait (Home 20 s, the list 30 s) for a scroller whose content is at least three viewports long —
