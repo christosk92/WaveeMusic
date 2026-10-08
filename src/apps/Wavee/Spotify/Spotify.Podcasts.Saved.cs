@@ -42,6 +42,40 @@ public static partial class Spotify
         public static bool SavedBusy { get { _ = SavedChanged.Value; return IsSavedScope && s_savedBusy; } }
         public static int SavedStatus { get { _ = SavedChanged.Value; return IsSavedScope ? s_savedStatus : 0; } }
         public static string SavedPlaylistUri { get { _ = SavedChanged.Value; return IsSavedScope ? s_savedUri : ""; } }
+
+        static Scope? s_knownScope;
+        static string s_knownUri = "";
+
+        /// <summary>The account's listen-later uri as far as anything knows it: this session's discovery, else the one
+        /// persisted the last time it was discovered (<see cref="Platform.Keys.YourEpisodesUri"/>) — so a pinned Your
+        /// Episodes is recognised on a cold start, before the Podcasts page ever reads it. "" when never discovered.</summary>
+        public static string KnownSavedUri
+        {
+            get
+            {
+                _ = SavedChanged.Value;
+                if (IsSavedScope && s_savedUri.Length > 0) return s_savedUri;
+                var scope = Entities.Current;
+                if (scope is null) return "";
+                if (!ReferenceEquals(s_knownScope, scope))
+                {
+                    s_knownScope = scope;
+                    s_knownUri = scope.Key.Account.Length > 0 ? Platform.Settings.Get(Platform.Keys.YourEpisodesUri(scope.Key.Account)) : "";
+                }
+                return s_knownUri;
+            }
+        }
+
+        /// <summary>Keep the persisted listen-later uri in step with a landing that settled it ("" = the account has none).</summary>
+        static void RememberSavedUri(Scope scope, string uri)
+        {
+            if (scope.Key.Account.Length == 0) return;
+            if (ReferenceEquals(s_knownScope, scope) && string.Equals(s_knownUri, uri, StringComparison.Ordinal)) return;
+            s_knownScope = scope;
+            s_knownUri = uri;
+            var key = Platform.Keys.YourEpisodesUri(scope.Key.Account);
+            if (!string.Equals(Platform.Settings.Get(key), uri, StringComparison.Ordinal)) Platform.Settings.Set(key, uri);
+        }
         public static EntityId[] SavedEpisodeIds { get { _ = SavedChanged.Value; return IsSavedScope ? (EntityId[])s_savedEpisodes.Clone() : []; } }
         static bool IsSavedScope => ReferenceEquals(s_savedScope, Entities.Current);
 
@@ -326,6 +360,7 @@ public static partial class Spotify
             if (snapshot is not null)
             {
                 s_savedUri = snapshot.Uri;
+                RememberSavedUri(scope, snapshot.Uri);
                 SavedIds.Clear();
                 var ids = new List<EntityId>();
                 foreach (var item in snapshot.Items)
@@ -341,6 +376,7 @@ public static partial class Spotify
             else if (confirmedEmpty)
             {
                 s_savedUri = "";
+                RememberSavedUri(scope, "");
                 SavedIds.Clear();
                 s_savedEpisodes = [];
             }

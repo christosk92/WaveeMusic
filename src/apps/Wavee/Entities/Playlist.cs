@@ -152,6 +152,18 @@ public enum PlaylistFlags : uint
 public enum PlaylistFormat : byte
 {
     None = 0, Daylist, DailyMix, DiscoverWeekly, ReleaseRadar, TopicMix, InspiredByMix, Editorial, Chart, Radio, Other,
+    /// <summary>"listen-later": the account's Your Episodes list (<see cref="Playlist.IsYourEpisodes"/>).</summary>
+    ListenLater,
+}
+
+/// <summary>The one rule for "is this playlist Your Episodes" (<see cref="Playlist.IsYourEpisodes"/>), engine-free so
+/// it is a plain unit test.</summary>
+public static class YourEpisodesRules
+{
+    /// <summary>The list's own format says so, or its uri is the account's known listen-later uri.</summary>
+    public static bool Is(PlaylistFormat format, string uri, string knownSavedUri)
+        => format == PlaylistFormat.ListenLater
+           || (uri.Length > 0 && string.Equals(uri, knownSavedUri, StringComparison.Ordinal));
 }
 
 /// <summary>The detail page's notice verdict — a MODEL fact written at commit, never a UI probe. Five values, shared
@@ -390,6 +402,10 @@ public readonly partial struct Playlist(int slot) : IEquatable<Playlist>
     public int Saves => T.Saves[Slot];
     public uint Accent => T.Accent[Slot];
     public PlaylistFormat Format => (PlaylistFormat)T.Format[Slot];
+    /// <summary>Spotify's listen-later list ("Your Episodes"): a playlist on the wire, but the app shows it as the
+    /// Podcasts library's Your Episodes view and counts it in episodes. Known from the list's own format, or — before
+    /// this session has read it — from the account's discovered listen-later uri (<see cref="Spotify.Podcasts.KnownSavedUri"/>).</summary>
+    public bool IsYourEpisodes => YourEpisodesRules.Is(Format, Uri.Text, Spotify.Podcasts.KnownSavedUri);
 
     // ── capabilities and visibility ─────────────────────────────────────────────────────────────────────────────────
 

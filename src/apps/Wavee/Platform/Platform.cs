@@ -365,6 +365,9 @@ public static partial class Platform
         public static SettingKey<string> LibrarySelected(string kind) => new("library." + kind + ".selected", "");
         public static SettingKey<string> LibraryAlbumKey(string kind) => new("library." + kind + ".albumkey", "");
         public static SettingKey<int> LibraryAlbumSort(string kind) => new("library." + kind + ".album.sort", 0);
+        /// <summary>The account's listen-later playlist uri ("Your Episodes") as last discovered (`podcasts.yourEpisodes:&lt;account&gt;`),
+        /// so a cold start recognises a pinned Your Episodes before this session has read it. "" = none known.</summary>
+        public static SettingKey<string> YourEpisodesUri(string account) => new("podcasts.yourEpisodes:" + account, "");
         public static SettingKey<bool> LibraryAlbumDesc(string kind) => new("library." + kind + ".album.desc", false);
         public static SettingKey<int> LibraryAlbumView(string kind) => new("library." + kind + ".album.view", 3);   // Grid
         public static SettingKey<int> LibraryAlbumSize(string kind) => new("library." + kind + ".album.size", 1);

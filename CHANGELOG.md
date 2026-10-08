@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.5] - unreleased
+
+### Fixed
+
+- **A pinned Your Episodes opens Your Episodes.** It used to open a playlist page with recommended songs, "2
+  collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts
+  episodes instead of songs. On the Podcasts page, the "Followed shows | Your Episodes" switch now has its own row, so
+  "Your Episodes" no longer slides off the edge of a narrow column. (#200)
+
 ## [0.3.4] - 2026-10-06
 
 ### Added

@@ -1480,7 +1480,8 @@ public static partial class Sidebar
             // landed, TrackCount == 0) is a real state and DOES say "0 songs". Gate on `CountKnown`, never on
             // `IdentityKnown` (a route can land Identity while carrying no length at all, ListMetadataV2) and never
             // on TrackCount itself, which cannot tell "not yet known" from "genuinely zero" apart.
-            SidebarEntryKind.Playlist => e.CountKnown ? Strings.Sidebar.SongCount(e.TrackCount) : null,
+            SidebarEntryKind.Playlist => !e.CountKnown ? null
+                : e.Episodes ? Strings.Podcast.EpisodeCount(e.TrackCount) : Strings.Sidebar.SongCount(e.TrackCount),
             // A LIBRARY album bills its first artist in FirstArtistName; a FEED album carries its one creator in Creator.
             SidebarEntryKind.Album => ArtistOf(in e) is { Length: > 0 } artist
                 ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + artist

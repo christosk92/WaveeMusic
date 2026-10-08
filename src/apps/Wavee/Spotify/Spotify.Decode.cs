@@ -1038,6 +1038,7 @@ public static partial class Spotify
             if (StartsWith(token, "editorial")) return (byte)PlaylistFormat.Editorial;
             if (StartsWith(token, "chart")) return (byte)PlaylistFormat.Chart;
             if (StartsWith(token, "radio")) return (byte)PlaylistFormat.Radio;
+            if (StartsWith(token, "listen-later")) return (byte)PlaylistFormat.ListenLater;
             return (byte)PlaylistFormat.Other;
         }
 
