@@ -585,8 +585,8 @@ public static partial class Sidebar
     /// Never a glyph swap — a swap teleports while the section beside it animates.
     ///
     /// <para>A Component because the rotation needs a node ref and an edge-triggered effect — hooks a recycling slot must
-    /// not grow conditionally. <c>open</c> is a Func invoked inside THIS render, so its signal reads subscribe this 10-DIP
-    /// component, never the slot.</para>
+    /// not grow conditionally. <c>open</c> and <c>identity</c> are read inside the effect, never in Render, so their signal
+    /// reads subscribe the effect alone: a recycle or an open flip re-runs the seeding and renders nothing.</para>
     ///
     /// <para>A first mount SEEDS the resting angle with no motion. <c>identity</c> (optional) extends that to a RECYCLE:
     /// when the probe's value changes (the slot's index, a section id hash) the new angle is seeded, never animated — a
@@ -614,16 +614,18 @@ public static partial class Sidebar
 
         public override Element Render()
         {
-            bool open = _open();
-            float target = open ? _openDeg : 0f;
-            int identity = _identity?.Invoke() ?? 0;
-
             var node = UseRef<NodeHandle>(default);
             var seeded = UseRef(false);
             var seededIdentity = UseRef(0);
+            var last = UseRef(0f);
 
+            // The item is read HERE, in an auto-tracked effect, never in Render: an open flip, a recycle onto another
+            // item or any other change behind `open` re-runs this body and renders nothing (a bound row's recycle stays
+            // a rebind).
             UseEffect(() =>
             {
+                float target = _open() ? _openDeg : 0f;
+                int identity = _identity?.Invoke() ?? 0;
                 var anim = Context.Anim;
                 var scene = Context.Scene;
                 if (anim is null || scene is null || node.Value.IsNull || !scene.IsLive(node.Value)) return;
@@ -631,12 +633,15 @@ public static partial class Sidebar
                 {
                     seeded.Value = true;
                     seededIdentity.Value = identity;
-                    anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.DisclosureChevron, from: target);
+                    last.Value = target;
+                    anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.Reveal, from: target);
                     return;
                 }
+                if (last.Value == target) return;   // a change that moved neither the angle nor the item
+                last.Value = target;
                 // A mid-flight toggle retargets from the LIVE angle instead of restarting.
-                anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.DisclosureChevron);
-            }, DepKey.From(target, identity));
+                anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.Reveal);
+            });
 
             return new BoxEl
             {

@@ -1098,7 +1098,7 @@ public readonly partial struct User
 
     /// <summary>"Your blend": the primary-descriptor partition as one stacked bar, the remainder drawn as WHAT IT IS (one
     /// thin proportional tick per descriptor, each a real lens), and a disclosure that opens the tail IN PLACE at full
-    /// width — the WinUI Expander motion on the host's LAYOUT height, so the cards below reflow.</summary>
+    /// width — the Card reveal (<c>Design.Reveal.Card</c>): the presented height springs and the cards below ride it.</summary>
     sealed class BlendCardHost : Component
     {
         const float BarHeight = 8f, BarRadius = 4f, SegGap = 2f, LegendDot = 8f, TickGap = 1f, TickMinWidth = 2f;
@@ -1107,16 +1107,13 @@ public readonly partial struct User
         static readonly float[] s_tickAlpha = [0.16f, 0.22f, 0.30f];
         static readonly float[] s_tailSegAlpha = [0.55f, 0.38f];
 
-        static readonly LayoutTransition s_bodyReveal = new(TransitionChannels.Size, MotionTok.DisclosureExpand.ToDynamics(),
-            Size: SizeMode.Reflow, ExitDynamics: MotionTok.DisclosureCollapse.ToDynamics(), Anchor: SizeAnchor.Leading);
-        static readonly LayoutTransition s_tailBarReveal = new(TransitionChannels.Opacity, MotionTok.DisclosureExpand.ToDynamics(),
+        static readonly LayoutTransition s_tailBarReveal = new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
             Enter: new EnterExit(Sx: 0.55f, Opacity: 0f, Active: true));
-        static readonly LayoutTransition s_tailRowReveal = new(TransitionChannels.Opacity, MotionTok.DisclosureExpand.ToDynamics(),
+        static readonly LayoutTransition s_tailRowReveal = new(TransitionChannels.Opacity, MotionTok.Reveal.ToDynamics(),
             Enter: new EnterExit(Dy: Spacing.XS, Opacity: 0f, Active: true));
 
         FactBlendProps? _latest;
-        Signal<bool>? _open, _shown;
-        Ref<NodeHandle>? _host;
+        Signal<bool>? _open;
         readonly Action _toggle;
         readonly Func<bool> _openRead;
         readonly Action<string> _toggleTag;
@@ -1183,13 +1180,8 @@ public readonly partial struct User
             var culture = CultureInfo.CurrentCulture;
             var filters = p.Filters.Value;
             _open = UseSignal(false);
-            // The body's MOUNT lags `open` on collapse: the clip shrinks OVER real content; the watcher flips this at settle.
-            _shown = UseSignal(false);
-            _host = UseRef<NodeHandle>(default);
             var tail = UseMemo(_tail, DepKey.FromRef(p.Rows, p.Shares));
             bool isOpen = _open.Value;
-            bool showBody = _shown.Value;
-            bool closing = showBody && !isOpen;
 
             var shares = p.Shares;
             float listed = 0f;
@@ -1244,14 +1236,14 @@ public readonly partial struct User
                 Children = segments.ToArray(),
             };
 
-            var hostRef = _host;
+            // The BODY is the Card reveal entrant: open = mount and reveal, close = an exit reveal of the same box.
             var host = new BoxEl
             {
-                Key = "blend-body-host", Direction = 1, ClipToBounds = true, MinWidth = 0f,
-                Height = isOpen ? float.NaN : 0f,
-                Animate = s_bodyReveal,
-                OnRealized = h => hostRef.Value = h,
-                Children = showBody && hasTail ? [Body(in tail, _tailLabels!, culture, in filters)] : [],
+                Key = "blend-body-host", Direction = 1, MinWidth = 0f,
+                Children = isOpen && hasTail
+                    ? [new BoxEl { Key = "blend-body", Direction = 1, MinWidth = 0f, Animate = Design.Reveal.Card,
+                                   Children = [Body(in tail, _tailLabels!, culture, in filters)] }]
+                    : [],
             };
 
             Element collapsed = new BoxEl
@@ -1265,13 +1257,7 @@ public readonly partial struct User
             };
             // The body host hangs off an UNGAPPED outer column: a zero-height host inside the gapped card column would
             // leave 8 DIP of dead air under the legend while the card is shut (ch 07 §9, parity 80).
-            var stack = new List<Element>(3) { collapsed, host };
-            if (closing)
-            {
-                var shown = _shown;
-                stack.Add(Embed.Comp(() => new BlendCollapseWatcher { Host = () => hostRef.Value, Shown = shown })
-                          with { Key = "blend-collapse-watch" });
-            }
+            var stack = new List<Element>(2) { collapsed, host };
 
             return FactCard("fact:blend",
                 // The header count is the TAGGED population, not the library.
@@ -1281,10 +1267,8 @@ public readonly partial struct User
 
         void Toggle()
         {
-            if (_open is null || _shown is null) return;
-            bool next = !_open.Peek();
-            _open.Value = next;
-            if (next) _shown.Value = true;      // mounting FIRST is what lets the reflow seed from a real content height
+            if (_open is null) return;
+            _open.Value = !_open.Peek();
         }
 
         /// <summary>The blend drives the CHIPS' facet: "Pop" in the bar and "Pop" in the chip bar are the same question.</summary>
@@ -1449,29 +1433,6 @@ public readonly partial struct User
                     new BoxEl { Key = "tail-legend", Direction = 0, Wrap = true, Gap = Spacing.XS, MinWidth = 0f, Children = legendRows.ToArray() },
                 ],
             };
-        }
-    }
-
-    /// <summary>Per-frame poller mounted ONLY while the body's collapse reflow runs: the moment the host's reflow track
-    /// settles, flip the mount signal off (the kit's own watcher is internal to FluentGpu.Controls).</summary>
-    sealed class BlendCollapseWatcher : Component
-    {
-        public required Func<NodeHandle> Host;
-        public required Signal<bool> Shown;
-
-        public override Element Render()
-        {
-            var tick = UseContext(FrameClock.Tick);   // re-render every frame while mounted (only during the ~167 ms reflow)
-            UseEffect(() =>
-            {
-                if (!Shown.Peek()) return;
-                var anim = Context.Anim;
-                var scene = Context.Scene;
-                var node = Host();
-                if (anim is null || scene is null || node.IsNull || !scene.IsLive(node) || !anim.HasTracks(node))
-                    Shown.Value = false;
-            }, tick);
-            return new BoxEl { HitTestVisible = false };
         }
     }
 

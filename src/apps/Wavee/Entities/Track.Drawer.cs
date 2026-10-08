@@ -10,7 +10,7 @@
 //       68 · ch 05 W14 · 0.2.9 `Components/{TrackVersionsPanel, TrackFactsStrip, FormatSplitButton}.cs`,
 //       `Actions/TrackCreditsDialog.cs`
 //
-// WHO MOUNTS WHAT. The TABLE owns the drawer's mount, keying ("drawer-body:" + rowKey), clip, zebra parity, reflow and
+// WHO MOUNTS WHAT. The TABLE owns the drawer's mount, keying ("drawer-body:" + rowKey), clip, zebra parity, reveal and
 // indent (`Track.Table.cs` DrawerBox). This file owns only the BODY a page hands the table through `TableProfile.Drawer`
 // (`DrawerSeam` for the album page): ONE component re-pushed a data-only props record, subscribed to exactly the tables it
 // paints (the track, its album, the adder, the tags/versions/waveform relations, the deck's current item).
@@ -19,7 +19,7 @@
 // TrackWaveform / TrackCredits edges, and — as versions land — Identity | Audio | Files over the version targets.
 //
 // THE RESERVED VIDEO ROW (ch 01 §9 trap 8): a track the catalogue says HAS a video reserves the 76×43 row under the key
-// "v:video" BEFORE the versions relation answers, so the reflow solves its final height on the first frame and the real
+// "v:video" BEFORE the versions relation answers, so the reveal targets its final height on the seed frame and the real
 // row PATCHES into the reserved node (`DrawerRules.VideoRowFor`; a failed relation reserves nothing, W26).
 //
 // THE FORMAT OVERRIDE (ch 01 DATA GAP 14): the radio ladder reads/writes `Playback.FormatOverrideFor` /
