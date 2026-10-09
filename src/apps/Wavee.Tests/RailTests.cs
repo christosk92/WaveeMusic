@@ -7,6 +7,7 @@
 // prefs facts drive the real store through `Platform.UseSettings` and live in the platform collection, which disables
 // parallelism for every test that swaps that process-wide backing store.
 
+using FluentGpu.Dsl;
 using Wavee;
 using Xunit;
 
@@ -348,5 +349,37 @@ public sealed class NpvPlayerPrefsTests : IDisposable
         Assert.Equal(0, Rail.PlayerPrefs.Choice(record, Rail.PlayerCatalog.Option(record, "rpm")));
         _store.Set(Platform.Keys.NpvPlayerStyle, 77);
         Assert.Equal(Rail.PlayerCatalog.Record, Rail.PlayerPrefs.Style());
+    }
+}
+
+// ── the now-playing header's geometry (A4) ─────────────────────────────────────────────────────────────────────────────
+
+public class RailHeaderGeometryTests
+{
+    [Fact]
+    public void The_caption_starts_on_the_pane_inset_from_the_rail_edge()
+        => Assert.Equal(PageGeometry.PaneInset, Rail.Hero.HeaderInsetL + Rail.Hero.Inset);
+
+    [Fact]
+    public void The_gear_sits_on_the_other_rail_arms_close_button_axis()
+    {
+        // HeaderBox: Padding.Right = Spacing.S, then a 32-DIP icon button whose centre is half of it further in.
+        Assert.Equal(Spacing.S + Controls.IconButtonSize / 2f, Rail.Hero.TrailingIconAxis);
+        Assert.Equal(24f, Rail.Hero.TrailingIconAxis);
+    }
+
+    [Fact]
+    public void The_tabs_item_box_plus_the_bars_padding_fills_the_header_strip_exactly()
+    {
+        var style = Design.RailViewsStyle;
+        Assert.Equal(Rail.Hero.HeaderRowH, style.ItemHeight + 2f * PageGeometry.ViewsBarPadY);
+        Assert.Equal(0f, style.LeadingInset);
+    }
+
+    [Fact]
+    public void The_header_line_is_the_shared_views_line_height()
+    {
+        Assert.Equal(Rail.Hero.HeaderLine, Design.PageViewsStyle.LineHeight);
+        Assert.Equal(Rail.Hero.HeaderLine, Design.RailViewsStyle.LineHeight);
     }
 }

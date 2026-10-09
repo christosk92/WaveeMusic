@@ -1873,6 +1873,11 @@ public static partial class Shell
         /// <summary>The rail's breathing gap while it is INLINE.</summary>
         public const float RailGapW = FrameGap;
 
+        /// <summary>The top of the stroke box's overhang margin (<c>Shell.StrokeOverhang</c>), shared by the content card's
+        /// stroke box and the rail coat's underlay. Zero: the overhang is right and bottom only, so both start at the
+        /// content row's top and the rail's top equals the card's top.</summary>
+        public const float StrokeOverhangTop = 0f;
+
         /// <summary>The sidebar column's bound width — THE W12 TRAP. A drag that starts on a COLLAPSED rail presents the
         /// pane expanded for the whole drag (drag peek); the column is <c>ClipToBounds</c>, so deriving its width from
         /// <paramref name="presented"/> alone clips a rail-wide strip of art and tree connectors with every label cut

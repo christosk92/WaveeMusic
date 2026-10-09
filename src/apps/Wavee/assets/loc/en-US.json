@@ -1052,7 +1052,14 @@
       "recentlyAdded": "Recently added",
       "alphabetical": "Alphabetical",
       "creator": "Artist",
-      "releaseDate": "Release date"
+      "releaseDate": "Release date",
+      "albums": "Albums"
+    },
+    "count": {
+      "albums": "{count, plural, one {# album} other {# albums}}",
+      "artists": "{count, plural, one {# artist} other {# artists}}",
+      "shows": "{count, plural, one {# show} other {# shows}}",
+      "audiobooks": "{count, plural, one {# audiobook} other {# audiobooks}}"
     },
     "rail": {
       "recents": "recents",

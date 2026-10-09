@@ -1049,6 +1049,7 @@ public static partial class Design
     //
     // THE RULE IN ONE LINE: if the app's own ink lands ON it, grade it FOR the theme; if it carries on-accent ink and
     // has to be seen, grade it AGAINST the theme.
+    // One page = one artwork entry: the tint and every accent role read the same url; the polarity split above decides only the grading.
     //
     // (These were `Surfaces.SchemeFor` / `.ChromeSchemeFor` in 0.2.9. They live in Design rather than in Controls
     // because they are colour resolution, not an element recipe, and because the four cover leaves below need them.)
@@ -1476,6 +1477,25 @@ public static partial class Design
         LabelSize = 14f,
         LineHeight = 20f,
         LeadingInset = PageGeometry.ViewsLeadingInset,
+    };
+
+    /// <summary>The now-playing rail header's Cover|Record tabs: <see cref="PageViewsStyle"/> with no leading pull (the tile's
+    /// own inset places the first word) and an item box that fits the 36-DIP header strip exactly — the strip is
+    /// <see cref="Rail.Hero.HeaderRowH"/> (a test pins the restated 36), the bar adds its 2 x
+    /// <see cref="PageGeometry.ViewsBarPadY"/>. The pill and the indicator are the stock ones, like every views control.</summary>
+    public static SelectorBarStyle RailViewsStyle => PageViewsStyle with
+    {
+        LeadingInset = 0f,
+        ItemHeight = 36f - 2f * PageGeometry.ViewsBarPadY,
+        ItemPadding = new Edges4(12f, 0f, 12f, 0f),
+    };
+
+    /// <summary>The Library master pane's own views (Podcasts' Followed shows | Your Episodes): a 32-DIP bar
+    /// (<see cref="Controls.ButtonHeight"/>, the same height as the sort button beside it) whose first WORD sits on
+    /// <see cref="PageGeometry.PaneInset"/> through the stock <see cref="PageGeometry.ViewsLeadingInset"/>.</summary>
+    public static SelectorBarStyle PaneViewsStyle => PageViewsStyle with
+    {
+        ItemHeight = Controls.ButtonHeight - 2f * PageGeometry.ViewsBarPadY,
     };
 
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -2077,6 +2097,27 @@ public static partial class Design
     {
         /// <inheritdoc cref="AccentCtx"/>
         public static readonly Context<IReadSignal<PageAccent>?> Slot = new(null);
+    }
+
+    /// <summary>The page accent's two roles, so a consumer never picks a token by hand. ONE page = ONE accent: the page
+    /// publishes a <see cref="PageAccent"/> (<see cref="AccentCtx"/>) graded from its artwork entry, and every consumer reads
+    /// the half its role needs; with a null page (none published) both fall to the system tokens.
+    /// <list type="bullet">
+    /// <item><b>Ink</b> (glyphs and text on the page surface): the playing-row equaliser, the playing title and number, the
+    /// now-playing meta and duration inks in the classic arms, the row heart, the identity heart, the band Play word, the
+    /// volume and star marks on the playing row.</item>
+    /// <item><b>Fill</b> (a solid plate with on-accent ink): the Play CTA plate and the row heart's filled glyph plate where
+    /// one exists.</item>
+    /// </list>
+    /// With "Accent from artwork" off <see cref="Detail.PageAccentOf"/> publishes the system pair, so every role turns system
+    /// together.</summary>
+    public static class AccentRoles
+    {
+        /// <inheritdoc cref="AccentRoles"/>
+        public static ColorF Ink(PageAccent? page) => page?.Ink ?? Tok.AccentTextPrimary;
+
+        /// <inheritdoc cref="AccentRoles"/>
+        public static ColorF Fill(PageAccent? page) => page?.Fill ?? Tok.AccentDefault;
     }
 
     // ══ 15. WASH GEOMETRY ════════════════════════════════════════════════════════════════════════════════════════════

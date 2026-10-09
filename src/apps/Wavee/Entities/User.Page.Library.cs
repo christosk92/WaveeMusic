@@ -20,7 +20,7 @@
 //  LibraryPage (keyed "library:"+route)            ─ seeds every persisted signal in its CONSTRUCTOR (frame one = saved)
 //  └─ root BoxEl (OnBoundsChanged → _collapsed, 640/24 hysteresis)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
-//     │        Toolbar = PaneTitle + the bound count as the meta line · User.WordRail (fill) + User.ViewToggle · the filter box
+//     │        Toolbar = PaneTitle + the bound count as the meta line · Controls.SortButton + User.ViewToggle · the filter box
 //     │        right   = DetailColumn → Album.Pane (albums) | LibraryShowPane (podcasts)
 //     │                  ReaderColumn → Artist.Reader (artists, 280 + the rest — no MidW, no third pane)
 //     │                  the two SEARCH column shapes (unchanged, still MidW + _midGrip)
@@ -284,7 +284,7 @@ public readonly partial struct User
         /// old per-key <c>_layout</c> cache existed — a fresh <c>RepeatLayout.Extents</c> per render throws every
         /// measured row away.</summary>
         readonly NavMountCache _mounts = new();
-        Element? _picker, _leftGrip, _midGrip, _sticky, _strip;
+        Element? _leftGrip, _midGrip, _sticky, _strip;
 
         readonly Func<NavShape> _computeShape;
         readonly Func<int> _resolveSelected;
@@ -312,6 +312,8 @@ public readonly partial struct User
         /// <summary>The toolbar's count, as ONE bound property allocated once: a row landing re-fires this thunk and
         /// rewrites one text node instead of re-rendering the toolbar.</summary>
         readonly Prop<string> _countText;
+        readonly FormatCache<int> _countCache = new();
+        readonly Func<int, string> _countFmt;
         readonly Func<BoundItemScope<LibraryNavItem>, Element> _slotT, _slotCompactT, _cardT, _cardCompactT;
 
         bool IsArtists => _entity == EntityKind.Artist;
@@ -383,7 +385,12 @@ public readonly partial struct User
             _watchLetters = WatchLetters;
             _navContent = _ => NavList();
             _navNoMatch = () => EmptyCompact(Loc.Get(Strings.Library.NoMatch));
-            _countText = Prop.Of(() => _shape is { } shape ? FormatCache.Int(shape.Value.Count) : "");
+            _countFmt = IsPodcasts ? static n => Strings.Library.Count.Shows(n)
+                      : IsAudiobooks ? static n => Strings.Library.Count.Audiobooks(n)
+                      : IsArtists ? static n => Strings.Library.Count.Artists(n)
+                      : static n => Strings.Library.Count.Albums(n);
+            // The count NOUN ("20 albums"): "" until the relation has answered, so a not-yet-known count is the reserved empty line.
+            _countText = Prop.Of(() => _shape is { } shape && shape.Value.Answered ? _countCache.Get(shape.Value.Count, _countFmt) : "");
             var entity = _entity;
             _slotT = scope => NavSlot(scope, entity, compact: false);
             _slotCompactT = scope => NavSlot(scope, entity, compact: true);
@@ -995,7 +1002,7 @@ public readonly partial struct User
         /// <summary>The master column's head (W1). Three arms inside ONE stable outer box:
         /// <list type="bullet">
         /// <item><c>lib:toolbar:wide</c>: <see cref="Design.Type.PaneTitle"/> over the live count (the pane head's META line),
-        /// the word rail + view toggle, the filter;</item>
+        /// the sort dropdown (Podcasts: the views switch too) + view toggle, the filter;</item>
         /// <item><c>lib:toolbar:hoisted</c>: the same without the title. Under the Zune nav style the band names the kind
         /// (<see cref="PageHead.HoistedFor"/> reads the PRESENTED style), so the column opens on the count;</item>
         /// <item><c>lib:toolbar:compact</c>: the collapsed layout, whose crumb root already names the kind (no title, no count).</item>
@@ -1008,21 +1015,59 @@ public readonly partial struct User
         /// and rides the card's FLIP like all card content today.</para></summary>
         Element Toolbar(bool title)
         {
-            // Podcasts' row-1 words ARE Followed shows / Your Episodes (A2 plan §3.5) — the shows sort rail only
-            // makes sense while browsing shows, and the mode switch belongs in the SAME row Albums uses for its own
-            // words, not a wrapper of its own.
-            _picker ??= new BoxEl
+            // ONE control row for every kind (LibraryPaneRules.ControlRowH): [views (Podcasts only)][sort][Grow][view toggle].
+            // Podcasts' views ARE Followed shows / Your Episodes (A2 plan §3.5) in the shared views control. The pane is 208-308
+            // DIP of content and the views bar alone needs ~204, so on Podcasts the views get the row: the view toggle stays
+            // right-anchored behind the Grow, and the shows' sort (icon-only, the menu names the words) moves to the filter
+            // row, in a FIXED slot that fades with the views, so the filter box never changes width between the two views.
+            bool podcasts = IsPodcasts;
+            Element sort = Controls.SortButton(
+                () => Loc.Get(LibraryWordRail.MenuKey(LibraryWordRail.Clamp(_entity, Sort.Value))), SortMenu, () => false,
+                descending: () => Desc.Value, showLabel: !podcasts, shrink: true);
+            Element picker = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = IsPodcasts
-                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], _savedEpisodes, fill: true),
+                Key = "lib:picker", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
+                Children = podcasts
+                    ? [new BoxEl
+                       {
+                           Key = "lib:views", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, ClipToBounds = true,
+                           Children = [SelectorBar.Create([Loc.Get(Strings.Podcast.Reader.FollowedShows), Loc.Get(Strings.Podcast.Reader.YourEpisodes)],
+                               _savedEpisodes, style: Design.PaneViewsStyle)],
+                       },
+                       new BoxEl { Grow = 1f, MinWidth = 0f },
                        ViewToggle(View, Size)]
-                    : [WordRail(_entity, Sort, Desc), ViewToggle(View, Size)],
+                    : [sort, new BoxEl { Grow = 1f, MinWidth = 0f }, ViewToggle(View, Size)],
             };
-            Element filter = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
+            Element filterBox = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
                 grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
+            Element filter = podcasts
+                ? new BoxEl
+                {
+                    Key = "lib:filterrow", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                    Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
+                    Children =
+                    [
+                        filterBox,
+                        new BoxEl
+                        {
+                            Key = "lib:sortslot", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                            Width = LibraryPaneRules.SortSlotW, Shrink = 0f,
+                            Opacity = Prop.Of(() => _savedEpisodes.Value == 0 ? 1f : 0f), Transition = s_armFade,
+                            // The child collapses (not just fades + hit-test off): a collapsed node leaves the focus walk and
+                            // automation, so Tab and Enter cannot open the SHOWS sort menu while the episodes list is showing.
+                            Children = [new BoxEl
+                            {
+                                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
+                                Visible = Prop.Of(() => _savedEpisodes.Value == 0),
+                                Children = [sort],
+                            }],
+                        },
+                    ],
+                }
+                : filterBox;
             // The arms differ in CHILD COUNT and in where the bound count sits, so each carries its own key: paired by
-            // ordinal they would have matched the title column against `_picker` and `_picker` against the filter — and
+            // ordinal they would have matched the title column against `picker` and `picker` against the filter — and
             // the count is a BOUND text (`_countText`) that only a mount wires. Distinct arm keys keep it from pairing across arms.
             Element arm;
             if (!title)
@@ -1032,7 +1077,7 @@ public readonly partial struct User
                     Direction = 1, Gap = Spacing.S, Shrink = 0f,
                     Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
                     Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
-                    Children = [_picker, filter],
+                    Children = [picker, filter],
                 };
             else if (PageHead.HoistedFor(Shell.NameOf(new Shell.Route(_route))))
                 arm = new BoxEl
@@ -1041,7 +1086,7 @@ public readonly partial struct User
                     Direction = 1, Gap = Spacing.S, Shrink = 0f,
                     Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
                     Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
-                    Children = [CountLine(), _picker, filter],
+                    Children = [CountLine(), picker, filter],
                 };
             else
                 arm = new BoxEl
@@ -1057,7 +1102,7 @@ public readonly partial struct User
                             Direction = 1, Gap = PageGeometry.TitleToMeta, MinWidth = 0f,
                             Children = [Design.Type.PaneTitle(Shell.Dest(new Shell.Route(_route)).Title), CountLine()],
                         },
-                        _picker, filter,
+                        picker, filter,
                     ],
                 };
             return new BoxEl
@@ -1066,6 +1111,29 @@ public readonly partial struct User
                 Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true, Animate = PageHead.Reflow,
                 Children = [arm],
             };
+        }
+
+        /// <summary>The sort dropdown's menu, built when it OPENS: one radio item per word of the kind
+        /// (<see cref="LibraryWordRail.MenuEntries"/>), the current one checked.</summary>
+        IReadOnlyList<MenuFlyoutItem> SortMenu()
+        {
+            var entries = LibraryWordRail.MenuEntries(_entity, Sort.Peek());
+            var items = new List<MenuFlyoutItem>(entries.Length);
+            foreach (var e in entries)
+            {
+                int code = (int)e.Sort;
+                items.Add(MenuFlyoutItem.RadioItem(Loc.Get(e.Key), e.Checked, () => PickSort(code)));
+            }
+            return items;
+        }
+
+        /// <summary>Choosing the current word flips the direction; another word sets it and resets to ascending
+        /// (<see cref="LibraryWordRail.Choose"/>). The signals are the persisted ones: nothing else changes.</summary>
+        void PickSort(int picked)
+        {
+            var (sort, desc) = LibraryWordRail.Choose((int)LibraryWordRail.Clamp(_entity, Sort.Peek()), Desc.Peek(), picked);
+            if (Desc.Peek() != desc) Desc.Value = desc;
+            if (Sort.Peek() != sort) Sort.Value = sort;
         }
 
         /// <summary>The bound count as the pane head's META line: <see cref="Design.Type.PageMeta"/>'s size and line height in

@@ -343,7 +343,8 @@ public readonly partial struct Artist
             _failed = !a.IsValid || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot));
 
             string routeKey = p.RouteKey;
-            string? paletteUrl = a.IsValid ? Controls.ArtUrl(a.PaletteImageId) : null;
+            var paletteSource = PaletteSourceOf(a);   // the tint and the page accent read this ONE pair
+            string? paletteUrl = paletteSource.Url;
             // Latch the hero only once the overview is known so a launching card's avatar cannot paint, then swap to
             // the header. Do not clear a latched url after the first reveal — that unmounted HeroArt and flashed the
             // flat placeholder over already-visible copy.
@@ -390,7 +391,7 @@ public readonly partial struct Artist
             // a genuinely ungraded cover falls through to TintOwnership's hold.
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
-                owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey);
+                owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl);
 
             // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
             // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
@@ -1122,12 +1123,17 @@ public readonly partial struct Artist
         static ColorF AccentFor(Artist a)
         {
             if (!a.IsValid) return AccentHold.Last ?? Tok.AccentDefault;
-            string? url = Controls.ArtUrl(a.PaletteImageId);
-            string? avatar = Controls.ArtUrl(a.ImageId);
+            var src = PaletteSourceOf(a);
+            string? url = src.Url, avatar = src.FallbackUrl;
             if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
             if (avatar is { Length: > 0 } && !string.Equals(avatar, url, StringComparison.Ordinal)) _ = Palette.Watch(avatar).Value;
             return Detail.AccentFor(url, a.HeaderAccent, fallbackUrl: avatar);
         }
+
+        /// <summary>The artist's ONE artwork entry pair: the header (palette) image, else the avatar. The shell tint and
+        /// <see cref="AccentFor"/> both read it, so the chrome tint and every accent role grade from the same entry.</summary>
+        static Detail.PaletteSource PaletteSourceOf(Artist a)
+            => a.IsValid ? Detail.PaletteSource.ForArtist(Controls.ArtUrl(a.PaletteImageId), Controls.ArtUrl(a.ImageId)) : default;
 
         void Play()
         {

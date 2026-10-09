@@ -347,6 +347,16 @@ public static partial class Rail
         public const float HeaderRowH = 36f;
         /// <summary>The tile's own inset on its left, top and right (the app's Spacing.S, restated engine-free).</summary>
         public const float Inset = 8f;
+        /// <summary>The header's ONE line box (20): the caption, the Cover|Record tabs (14 / 20, <see cref="Design.PageViewsStyle"/>)
+        /// and the gear's row all centre on it, so they share one baseline.</summary>
+        public const float HeaderLine = 20f;
+        /// <summary>The caption's extra left inset INSIDE the tile's own <see cref="Inset"/>, so it starts on
+        /// <see cref="PageGeometry.PaneInset"/> (16) from the rail edge, like every pane's content.</summary>
+        public const float HeaderInsetL = PageGeometry.PaneInset - Inset;
+        /// <summary>The gear's centre from the rail's right edge: the tile inset + half the 32-DIP icon button (24). It equals
+        /// the other rail arms' header axis (<c>HeaderBox</c>: <c>Spacing.S</c> + 16 to the close button), which
+        /// <c>RailTests</c> pins.</summary>
+        public const float TrailingIconAxis = Inset + Controls.IconButtonSize * 0.5f;
         /// <summary>Top of the ART inside the tile — DERIVED, never a literal, so the Art|Video toggle follows the strip.</summary>
         public const float ArtTop = Inset + HeaderRowH + Inset;
         /// <summary>The deck's side is part of its remount key, so it is quantised: one remount per 4 DIP of drag.</summary>

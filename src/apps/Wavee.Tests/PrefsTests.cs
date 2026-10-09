@@ -365,7 +365,7 @@ public sealed class PrefsTests : IDisposable
 
         _store.Set(Platform.Keys.WashAccent, 1);
         var on = Detail.PageAccentOf(red, "k");
-        Assert.Equal(red, on.Ink);
-        Assert.Equal(red, on.Fill);
+        Assert.Equal(red, on.Fill);   // the Ink is the same hue solved for text contrast (ArtworkAndAccentTests pins the floor)
+        Assert.NotEqual(Tok.AccentTextPrimary, on.Ink);
     }
 }

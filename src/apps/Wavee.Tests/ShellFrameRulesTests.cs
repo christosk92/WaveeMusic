@@ -87,6 +87,13 @@ public class ShellFrameGeometryTests
         => Assert.Equal(docked, Shell.FrameRules.PaneDocked(mode));
 
     [Fact]
+    public void The_rail_coat_top_equals_the_content_card_top()
+    {
+        // Both read Shell.StrokeOverhang, whose top is this constant: no offset, so the rail's top lines up with the card's.
+        Assert.Equal(0f, Shell.FrameRules.StrokeOverhangTop);
+    }
+
+    [Fact]
     public void With_no_pane_docked_the_card_is_flush_with_a_square_corner_and_no_left_stroke()
     {
         // Zune always presents Minimal; Classic and Library do in the Tiny band or with the pane hidden.

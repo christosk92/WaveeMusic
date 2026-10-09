@@ -1,6 +1,6 @@
 // ── Entities/User.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the library's row shapes and small controls: the WORD RAILS' library adapters (the navigator's sort rail, the reader's
-// scope and sort rails, over `Controls.Words.Rail`) + the view toggle and its trimmed panel, the letter header / sticky
+// the library's row shapes and small controls: the WORD RAILS' library adapters (the reader's scope and sort rails,
+// over `Controls.Words.Rail`; the navigator's sort is `Controls.SortButton`, see `LibraryWordRail`) + the view toggle and its trimmed panel, the letter header / sticky
 // letter overlay / A-Z jump strip, the crumb
 // bar, the column grip, the BOUND navigator rows and cards (and their grid selection chrome), the search-row shapes, and
 // the library mutation seam (`LibrarySeam`) the shared save/follow affordances read
@@ -62,8 +62,7 @@ public readonly partial struct User
     // ══ 1. THE PERSISTED CODES (shared with the sidebar's Library V3 — never renumber) ═══════════════════════════════
 
     /// <summary>Sort code → its Title-Case loc KEY. Codes 0..4 are persisted (<c>library.&lt;kind&gt;.sort</c>); unknown →
-    /// Recents. The library's own rail reads the lowercase <c>library.rail.*</c> keys through
-    /// <see cref="LibraryWordRail.WordKey"/> — these labels are the SIDEBAR's (Library V3's pills share the codes).</summary>
+    /// Recents. The library's dropdown reads <see cref="LibraryWordRail.MenuKey"/> — these labels are the SIDEBAR's (Library V3's pills share the codes).</summary>
     public static string SortLabelKey(int code) => code switch
     {
         1 => Strings.Library.Sort.RecentlyAdded,
@@ -82,10 +81,10 @@ public readonly partial struct User
     public static bool IsGridView(int view) => view >= 2;
     public static bool IsCompactView(int view) => view is 0 or 2;
 
-    // ══ 2. THE WORD RAILS (W8 — Zune's text pivot; it REPLACED the sort pill, which is deleted) ═══════════════════════
+    // ══ 2. THE WORD RAILS (W8 — Zune's text pivot; the navigator's sort has since moved to `Controls.SortButton`) ═══════════════════════
     //
     // The rail itself is `Controls.Words.Rail` (promoted for the podcast reader, podcast plan §5.5 — the metrics, the two
-    // stacked runs and the underline moved with it). These three are the library's ADAPTERS: which words, which codes,
+    // stacked runs and the underline moved with it). The adapters below are the library's: which words, which codes,
     // what a re-tap means. Their signatures are unchanged.
 
     /// <summary>The rail's height, kept under its old name for <c>Artist.Reader</c>'s sticky sub-rail arithmetic.</summary>
@@ -93,25 +92,6 @@ public readonly partial struct User
 
     /// <summary>The ink/underline fade the A–Z strip shares with the rail words: the 83-ms WinUI BrushTransition.</summary>
     static readonly FluentGpu.Animation.MotionTokenDef RailInkFade = FluentGpu.Animation.MotionTok.ControlFaster;
-
-    /// <summary>The navigator's sort rail: the kind's words (<see cref="LibraryWordRail.WordsFor"/>) in rail order, each
-    /// carrying its PERSISTED code (codes are not positions). Tapping the ACTIVE word flips the direction and a 10-px
-    /// chevron after it says which way; picking another word resets to ascending. The rail holds the two Signal
-    /// INSTANCES, so nothing here is frozen at mount — the words themselves are a per-kind constant and are built once.</summary>
-    public static Element WordRail(EntityKind kind, Signal<int> sort, Signal<bool> desc)
-    {
-        var codes = LibraryWordRail.WordsFor(kind);
-        var words = new Controls.Words.Word[codes.Length];
-        for (int i = 0; i < codes.Length; i++)
-        {
-            int c = (int)codes[i];
-            words[i] = new Controls.Words.Word(Loc.Bind(LibraryWordRail.WordKey(codes[i])), Code: c,
-                                               Chevron: () => sort.Value == c && desc.Value);
-        }
-        return Controls.Words.Rail(words, sort, fill: true,
-            onReselect: _ => desc.Value = !desc.Peek(),
-            onSelect: _ => desc.Value = false);
-    }
 
     /// <summary>The reader's scope rail (W3/W4): "in your library" · "all releases · N" — the same words with no
     /// direction flip. The total rides a <see cref="Prop{T}"/> so the facets answering re-fires ONE text bind instead of

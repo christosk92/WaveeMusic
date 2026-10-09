@@ -108,12 +108,17 @@ public readonly partial struct Track
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
     /// memo, the row hover signal, the page accent and the three handlers (each resolves the current item itself).</summary>
     sealed class BoundRow(IReadSignal<TableHost.RowPresentation> presentation, IReadSignal<bool> likePop,
-                          IReadSignal<bool> hovered, Func<ColorF> accent, Action play, Action like, Action toggleExpand)
+                          IReadSignal<bool> hovered, Func<ColorF> accent, Func<ColorF> ink, Action play, Action like, Action toggleExpand)
     {
         public readonly IReadSignal<TableHost.RowPresentation> Presentation = presentation;
         public readonly IReadSignal<bool> LikePop = likePop;
         public readonly IReadSignal<bool> Hovered = hovered;
         public readonly Func<ColorF> Accent = accent;
+        /// <summary>The page accent's INK half (<see cref="Design.AccentRoles.Ink"/>): the playing title and number, the
+        /// volume and star marks, the heart. A subscribing read, for bind thunks only.</summary>
+        public readonly Func<ColorF> Ink = ink;
+        /// <summary>The now-playing row's marquee: the shared style wearing THIS table's page ink.</summary>
+        public readonly Marquee.Style MarqueeStyle = s_rowMarqueeStyle with { Foreground = Prop.Of(ink) };
         public readonly Action Play = play, Like = like, ToggleExpand = toggleExpand;
 
         /// <summary>The current presentation — a subscribing read, for bind thunks only.</summary>
@@ -246,7 +251,7 @@ public readonly partial struct Track
                                     Children =
                                     [
                                         Glyph(Prop.Of(() => r.P.State is { IsNow: true, IsPlaying: true } ? Icons.Pause : Icons.Play), 12f,
-                                              Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary)),
+                                              Prop.Of(() => r.P.State.IsNow ? r.Ink() : Tok.TextPrimary)),
                                     ],
                                 },
                             ],
@@ -290,7 +295,7 @@ public readonly partial struct Track
         if (classic)
             kids =
             [
-                Glyph(Icons.Volume, 13f, Tok.AccentTextPrimary, Prop.Of(() => RestOf(r, true) == RowCellRules.Rest.Volume)),
+                Glyph(Icons.Volume, 13f, Prop.Of(r.Ink), Prop.Of(() => RestOf(r, true) == RowCellRules.Rest.Volume)),
                 Flow.Show(() => RestOf(r, true) == RowCellRules.Rest.Spinner, Spinner()),
             ];
         else
@@ -312,9 +317,9 @@ public readonly partial struct Track
                         },
                     ],
                 },
-                Glyph(Icons.FavoriteStarFill, 11f, Tok.AccentTextPrimary, Prop.Of(() => RestOf(r, false) == RowCellRules.Rest.Star)),
+                Glyph(Icons.FavoriteStarFill, 11f, Prop.Of(r.Ink), Prop.Of(() => RestOf(r, false) == RowCellRules.Rest.Star)),
                 Flow.Show(() => RestOf(r, false) == RowCellRules.Rest.Equalizer,
-                    Controls.Equalizer(Playback.IsPlaying, r.Accent, RowEqualizerHeight, r.Hovered)),
+                    Controls.Equalizer(Playback.IsPlaying, r.Ink, RowEqualizerHeight, r.Hovered)),
                 Flow.Show(() => RestOf(r, false) == RowCellRules.Rest.Spinner, Spinner()),
             ];
         return new BoxEl
@@ -339,7 +344,7 @@ public readonly partial struct Track
     /// heart (a real mount on the like EDGE, so the Enter spring replays exactly once) and the outline.</summary>
     static Element BoundHeart(BoundRow r, bool classic)
     {
-        ColorF onInk = classic ? Tok.TextPrimary : Tok.AccentTextPrimary;
+        Prop<ColorF> onInk = classic ? Tok.TextPrimary : Prop.Of(r.Ink);
         ColorF offInk = classic ? Tok.TextSecondary : Tok.TextTertiary;
         return new BoxEl
         {
@@ -353,10 +358,10 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Visible = Prop.Of(() => r.P.State.Saved && !r.LikePop.Value),
-                    Children = [Icon(Icons.HeartFill, 14f, onInk)],
+                    Children = [Icon(Icons.HeartFill, 14f) with { Color = onInk }],
                 },
                 Flow.Show(() => r.P.State.Saved && r.LikePop.Value,
-                    new BoxEl { Animate = s_heartPopIn, Children = [Icon(Icons.HeartFill, 14f, onInk)] }),
+                    new BoxEl { Animate = s_heartPopIn, Children = [Icon(Icons.HeartFill, 14f) with { Color = onInk }] }),
                 new BoxEl
                 {
                     Visible = Prop.Of(() => !r.P.State.Saved),
@@ -409,12 +414,12 @@ public readonly partial struct Track
         var plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
         {
             Size = 14f, LineHeight = 20f, Weight = 600,
-            Color = Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary),
+            Color = Prop.Of(() => r.P.State.IsNow ? r.Ink() : Tok.TextPrimary),
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Visible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee)),
         };
         var marquee = Flow.Show(() => r.P.State.IsNow && r.P.Marquee,
-            Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), s_rowMarqueeStyle));
+            Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), r.MarqueeStyle));
         return [plain, marquee];
     }
 
@@ -514,16 +519,17 @@ public readonly partial struct Track
     {
         var buffer = new SpanBuffer();
         bool ShowVideo(in TableHost.RowPresentation p) => TableRules.ShowClassicInlineVideo(true, p.Track.HasVideo, tier);
-        Prop<ColorF> Ink(Func<ColorF> plain) => Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : plain());
+        Prop<ColorF> Ink(Func<ColorF> plain) => Prop.Of(() => r.P.State.IsNow ? r.Ink() : plain());
 
         Element folded = new SpanTextEl(Prop.Of(() =>
         {
             buffer.Clear();
             var p = r.P;
             bool now = p.State.IsNow;
+            ColorF nowInk = now ? r.Ink() : default;
             FillClassicSpans(buffer, p.Track.ForDisplay, p.Track.ForDisplay.ArtistSlots.Length, ShowVideo(in p),
-                now ? Tok.AccentTextPrimary : Tok.TextPrimary, now ? Tok.AccentTextPrimary : Tok.TextSecondary,
-                now ? Tok.AccentTextPrimary : Tok.TextTertiary);
+                now ? nowInk : Tok.TextPrimary, now ? nowInk : Tok.TextSecondary,
+                now ? nowInk : Tok.TextTertiary);
             return buffer.Current;
         }))
         {
@@ -587,7 +593,7 @@ public readonly partial struct Track
 
     /// <summary>Classic's now-playing row tints every factual lane accent; otherwise the lane's own rung.</summary>
     static Prop<ColorF> LaneInk(BoundRow r, bool classic, Func<ColorF> plain)
-        => classic ? Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : plain()) : plain();
+        => classic ? Prop.Of(() => r.P.State.IsNow ? r.Ink() : plain()) : plain();
 
     static Element BoundArtistLinks(BoundRow r, bool classic)
     {
@@ -597,7 +603,7 @@ public readonly partial struct Track
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
+            ColorF ink = classic && p.State.IsNow ? r.Ink() : Tok.TextSecondary;
             FillLinkSpans(buffer, d, d.ArtistSlots.Length, default, ink);
             return buffer.Current;
         }))
@@ -625,7 +631,7 @@ public readonly partial struct Track
             buffer.Clear();
             var p = r.P;
             var c = ContainerOf(p.Track.ForDisplay);
-            ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
+            ColorF ink = classic && p.State.IsNow ? r.Ink() : Tok.TextSecondary;
             if (c.Name.Length == 0 && ink == Tok.TextSecondary) ink = Tok.TextTertiary;
             buffer.Add(new TextSpan(c.Name.Length > 0 ? c.Name : Format.Dash, Color: ink, IsLink: c.Uri.IsValid));
             return buffer.Current;
@@ -724,7 +730,7 @@ public readonly partial struct Track
             Prop.Of(() =>
             {
                 var p = r.P;
-                if (classic && p.State.IsNow) return Tok.AccentTextPrimary;
+                if (classic && p.State.IsNow) return r.Ink();
                 return Withheld(in p, NowUnix) ? Tok.TextTertiary : Tok.TextSecondary;
             }));
 

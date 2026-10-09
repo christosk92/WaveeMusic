@@ -435,6 +435,16 @@ public readonly partial struct Track
         bool Editable => _latest.Profile.Editable?.Invoke() ?? false;
         ColorF AccentNow() => _latest.Accent?.Invoke() ?? Tok.AccentDefault;
 
+        /// <summary>The page accent the hosting page PUBLISHES (<see cref="Design.AccentCtx"/>), read live in Render. Null off a
+        /// page that publishes none (the library pane, the queue).</summary>
+        IReadSignal<Design.PageAccent>? _pageAccent;
+
+        /// <summary>The INK half of the one page accent (<see cref="Design.AccentRoles.Ink"/>): the playing title and number, the
+        /// volume and star marks, the hearts. The published page accent first, else the table's own accent thunk, else the
+        /// system ink. A subscribing read, for bind thunks only.</summary>
+        ColorF InkNow() => _pageAccent is { } pa ? Design.AccentRoles.Ink(pa.Value)
+            : _latest.Accent is { } own ? own() : Design.AccentRoles.Ink(null);
+
         // ── the view state (sort persisted per context; query/filters/multi-select reset on a context change) ──────
         readonly Signal<SortSpec> _sort = new(SortSpec.Default);
         readonly Signal<string> _query = new("");
@@ -534,7 +544,7 @@ public readonly partial struct Track
         readonly Action _playAll, _shuffle;
         Detail.VerticalSpec? _heroSpecFrom, _heroSpec;
         readonly Func<bool> _checksRead, _rampActiveRead, _false = static () => false;
-        readonly Func<ColorF> _accent;
+        readonly Func<ColorF> _accent, _ink;
         readonly Func<int, (float dx, float dy)?> _flipFrom, _verticalFlipFrom;
         readonly Func<int, (float from, float delayMs)?> _fadeFrom, _verticalFadeFrom;
 
@@ -547,6 +557,7 @@ public readonly partial struct Track
             _checksRead = () => _checksVisible?.Value ?? false;
             _rampActiveRead = () => _rampActive.Value;
             _accent = AccentNow;
+            _ink = InkNow;
             _flipFrom = display => _flip.TryGetValue(display, out var f) ? f : null;
             _fadeFrom = display => _fade.TryGetValue(display, out var f) ? f : null;
             _verticalFlipFrom = item => IsVerticalRow(item) ? _flipFrom(item - Detail.VerticalLayout.PrefixCount) : null;
@@ -924,6 +935,7 @@ public readonly partial struct Track
             _overlay = UseContext(Overlay.Service);
             _hooks = UseContext(InputHooks.Current);
             _scrollScope = UseContext(Shell.PageScrollScope);
+            _pageAccent = UseContext(Design.AccentCtx.Slot);
             _post = UsePost();
 
             // THE FLOOR LATCH and the Zune row 2 (A3). Every hook runs unconditionally: a non-vertical arm just never moves them.
@@ -1544,6 +1556,7 @@ public readonly partial struct Track
         internal bool FactsValue => _verticalFacts.Value;
         internal Shape ShapeValue => _shape!.Value;
         internal Func<ColorF> AccentRead => _accent;
+        internal Func<ColorF> InkRead => _ink;
         internal Element? RecommendationsElement() => P.Recommendations?.Invoke();
         /// <summary>What an episode row (<see cref="EpisodeRowContent"/>) builds its <see cref="Episode.RowContext"/>
         /// from — the same overlay this host attaches a track row's own context menu through.</summary>
@@ -2486,7 +2499,7 @@ public readonly partial struct Track
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
             if (!real) return Track.ShimmerRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
-            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _host.AccentRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
+            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _host.AccentRead, _host.InkRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
             var row = _row;
             Element grid = Track.BoundGrid(row, in set, shape.Tracks, shape.RowH, shape.Art);
             // The tracklist EDGE answers with row ids first and the rows' own fields land in a later fetch, so a slot can be

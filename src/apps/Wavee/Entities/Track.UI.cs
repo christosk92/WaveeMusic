@@ -229,8 +229,9 @@ public readonly partial struct Track
         Track d = t.ForDisplay;
         bool classic = set.Classic;
         bool classicNow = classic && st.IsNow;
-        ColorF secondaryInk = classicNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
-        ColorF tertiaryInk = classicNow ? Tok.AccentTextPrimary : Tok.TextTertiary;
+        ColorF nowInk = classicNow ? InkOf(o.Accent) : default;   // the page accent's INK half (Design.AccentRoles.Ink)
+        ColorF secondaryInk = classicNow ? nowInk : Tok.TextSecondary;
+        ColorF tertiaryInk = classicNow ? nowInk : Tok.TextTertiary;
         float art = o.Art > 0f ? o.Art : RowMetrics.ThumbSize;
         // A dedicated Classic artist lane owns the artists; the title line never repeats them.
         bool artistInTitle = o.ShowTrackArtist && !set.Artist;
@@ -247,7 +248,7 @@ public readonly partial struct Track
                                 o.Accent, CellKey.Num);
 
         if (set.Heart)
-            cells[i++] = RowCenterCell(Heart(st.Saved, o.OnLike, o.LikePop, classic), CellKey.Heart);
+            cells[i++] = RowCenterCell(Heart(st.Saved, o.OnLike, o.LikePop, classic, o.Accent), CellKey.Heart);
 
         if (set.Thumb)
             cells[i++] = RowCenterCell(Controls.Artwork(RowArtUrl(d), art, art, Radii.Control,
@@ -256,7 +257,7 @@ public readonly partial struct Track
         bool showMeta = !classic && (artistInTitle || o.ShowAlbumInMeta || badge);
         Element titleLine = classic
             ? ClassicTitleLine(d, title, artistInTitle, TableRules.ShowClassicInlineVideo(classic, t.HasVideo, set.Tier),
-                               badge, classicNow)
+                               badge, classicNow, nowInk)
             : title;
         var titleCol = new BoxEl
         {
@@ -265,7 +266,7 @@ public readonly partial struct Track
             Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.XXS,
             Opacity = withheld ? RowNotYetOutOpacity : 1f,
             Children = showMeta
-                ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, classicNow ? Tok.AccentTextPrimary : null)]
+                ? [titleLine, MetadataLine(d, artistInTitle, o.ShowAlbumInMeta, badge, classicNow ? nowInk : null)]
                 : [titleLine],
         };
         cells[i++] = new BoxEl
@@ -289,7 +290,7 @@ public readonly partial struct Track
             cells[i++] = RowEndCell(RowFactualText(withheld || t.PlayCount == 0 ? Format.Dash : Format.PlaysLabel(t.PlayCount),
                                                    classic, tertiaryInk), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set))
-            cells[i++] = RowEndCell(TempoCell(t, classicNow ? Tok.AccentTextPrimary : null, classic), CellKey.Tempo);
+            cells[i++] = RowEndCell(TempoCell(t, classicNow ? nowInk : null, classic), CellKey.Tempo);
 
         // The TRAILING ♥ — the same heart, on the right, immediately before the duration (the library reader's
         // 28 | 1fr | 32 | 52). Mutually exclusive with the leading lane; the gate is shared with the width track.
@@ -303,7 +304,7 @@ public readonly partial struct Track
             : notYetOut ? (t.AvailableAt > now ? Format.ShortDate(t.AvailableAt, now) : Format.Dash)
             : Format.DurationCell(d.DurationMs);
         cells[i++] = RowEndCell(RowFactualText(durationText, classic,
-            classicNow ? Tok.AccentTextPrimary : withheld ? Tok.TextTertiary : Tok.TextSecondary), CellKey.Duration);
+            classicNow ? nowInk : withheld ? Tok.TextTertiary : Tok.TextSecondary), CellKey.Duration);
 
         // Trailing chrome AFTER Duration so the film / "…" never wedges between Album and Tempo. Video carries the "…"
         // on hover; Actions is its exact complement (the lane is reserved once — the ColumnSet decides that).
@@ -332,8 +333,12 @@ public readonly partial struct Track
     {
         // The engine defaults for Speed/Gap/delays/fade (ch 30 §3.4, "now-playing ROW marquee"); only size, weight and
         // ink are the row's. The ink is a THUNK so a live theme flip re-tints the frozen style.
-        FontSize = 14f, Weight = 600, Foreground = Prop.Of(static () => Tok.AccentTextPrimary),
+        FontSize = 14f, Weight = 600, Foreground = Prop.Of(static () => Design.AccentRoles.Ink(null)),
     };
+
+    /// <summary>The marquee style per accent thunk: a page hands the same thunk to every row, so the style is built once
+    /// per page rather than on every now-playing title build.</summary>
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Func<ColorF>, Marquee.Style> s_accentMarqueeStyles = new();
 
     /// <summary>The row's title element (ch 01 W3). The MARQUEE only on the now-playing row and only when the Appearance
     /// setting allows it (<paramref name="marquee"/> — the host reads <c>Prefs.Appearance.Marquee()</c>); every other row
@@ -341,7 +346,7 @@ public readonly partial struct Track
     /// the same 14/600 run; its artist fold is <see cref="Grid"/>'s.
     /// <para>NAMED <c>TitleCell</c>, not the contract's <c>Title</c>: the struct already has a <c>Title</c> property and
     /// C# forbids a method of the same name (owner M's correction).</para></summary>
-    public static Element TitleCell(Track t, bool isNow, bool classic, bool marquee)
+    public static Element TitleCell(Track t, bool isNow, bool classic, bool marquee, Func<ColorF>? accent = null)
     {
         _ = classic;   // one title rung for both skins; kept so a caller states the skin it is building for
         if (isNow && marquee)
@@ -354,11 +359,11 @@ public readonly partial struct Track
             {
                 _ = Entities.Current.Tracks.Changed.Value;
                 return track.ForDisplay.Title;
-            }), s_rowMarqueeStyle);
+            }), accent is null ? s_rowMarqueeStyle : s_accentMarqueeStyles.GetValue(accent, static a => s_rowMarqueeStyle with { Foreground = Prop.Of(a) }));
         }
         return Design.Type.TrackTitle(t.ForDisplay.Title) with
         {
-            Color = isNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
+            Color = isNow ? InkOf(accent) : Tok.TextPrimary,
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
     }
@@ -384,7 +389,12 @@ public readonly partial struct Track
 
     // ══ 3. THE CELLS ═════════════════════════════════════════════════════════════════════════════════════════════════
 
-    static readonly Func<ColorF> s_rowAccentInk = static () => Tok.AccentTextPrimary;
+    /// <summary>The system ink: what a row with no page accent wears (<see cref="Design.AccentRoles.Ink"/> of none).</summary>
+    static readonly Func<ColorF> s_rowAccentInk = static () => Design.AccentRoles.Ink(null);
+
+    /// <summary>The INK half of the one page accent for the eager row builders: the caller's accent thunk (a page's
+    /// ambient accent), else the system ink. The bound rows read the same half through <c>BoundRow.Ink</c>.</summary>
+    static ColorF InkOf(Func<ColorF>? accent) => (accent ?? s_rowAccentInk)();
 
     /// <summary>The # cell — a state machine over THIS track's playback (ch 01 §0.2, W3-W5):
     /// buffering → a 16-DIP ring (hovered or not); now-playing → the live equalizer (Classic: the Volume mark); the
@@ -393,13 +403,13 @@ public readonly partial struct Track
     /// <para>The equalizer is the persistent <c>Controls.Equalizer</c> host reading <c>Playback.IsPlaying</c> — a
     /// play↔pause flip patches it in place, never a Key flip (ch 01 §9 trap 2) — with <paramref name="hoverPaused"/> (the
     /// ROW's hover signal) as its pause gate, so invisible bars stop ticking. <paramref name="accent"/> tints the bars
-    /// (a page's ambient accent); null is <c>Tok.AccentTextPrimary</c>.</para>
+    /// (a page's ambient accent); null is the system ink (<see cref="Design.AccentRoles.Ink"/>).</para>
     /// <para>A null <paramref name="onPlay"/> (a not-yet-out row, a skeleton) reveals NOTHING on hover and keeps the
     /// rest layer visible — ch 01 W6: no hover play button.</para></summary>
     public static Element NumberCell(int displayIndex, in RowState st, Action? onPlay, IReadSignal<bool>? hoverPaused,
                                      byte chartStatus, bool classic, Func<ColorF>? accent = null, string? key = null)
     {
-        ColorF ink = Tok.AccentTextPrimary;
+        ColorF ink = InkOf(accent);
         Element rest;
         if (st.IsBuffering) rest = Spinner();
         // Classic states now-playing with the Volume mark and leaves the other rest states empty (TrackRow.cs:1074-1077).
@@ -499,7 +509,7 @@ public readonly partial struct Track
     /// outline tertiary when not (Classic: secondary). <paramref name="pop"/> is a caller-detected like EDGE
     /// (<see cref="LikeEdge"/>); every other render mounts the keyed glyph with no animation, so a recycle never replays
     /// it. A null <paramref name="onLike"/> is a static, non-interactive heart (no cursor, no click).</summary>
-    public static Element Heart(bool saved, Action? onLike, bool pop, bool classic)
+    public static Element Heart(bool saved, Action? onLike, bool pop, bool classic, Func<ColorF>? accent = null)
         => new BoxEl
         {
             Width = RowMetrics.HeartCol, Height = RowMetrics.HeartCol,
@@ -516,7 +526,7 @@ public readonly partial struct Track
                     Key = saved ? "hg:on" : "hg:off",   // keyed CHILD of the stable circle — keys live in child arrays
                     Animate = pop && saved ? s_heartPopIn : null,
                     Children = [Icon(saved ? Icons.HeartFill : Icons.Heart, 14f,
-                        saved ? (classic ? Tok.TextPrimary : Tok.AccentTextPrimary)
+                        saved ? (classic ? Tok.TextPrimary : InkOf(accent))
                               : (classic ? Tok.TextSecondary : Tok.TextTertiary))],
                 },
             ],
@@ -537,7 +547,7 @@ public readonly partial struct Track
     /// render and no dependence on whoever owns this row re-running.</para></summary>
     static Element TrailingHeart(Track t, in RowState st, in GridOptions o, bool classic)
     {
-        Element heart = Heart(st.Saved, o.OnLike, o.LikePop, classic);
+        Element heart = Heart(st.Saved, o.OnLike, o.LikePop, classic, o.Accent);
         if (!o.HeartRevealOnHover) return heart;
         var track = t;
         return new BoxEl
@@ -791,11 +801,11 @@ public readonly partial struct Track
     /// glyph] · "  ·  " · linked artists — ellipsized as a whole. With a dedicated Artist lane: the caller's title plus a
     /// 12-DIP film glyph. The EXPLICIT word-mark is pinned to the trailing edge behind a gap of 8 either way.</summary>
     static Element ClassicTitleLine(Track t, Element title, bool showArtists, bool showVideo, bool showExplicit,
-                                    bool nowPlaying)
+                                    bool nowPlaying, ColorF nowInk)
     {
-        ColorF primary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextPrimary;
-        ColorF secondary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextSecondary;
-        ColorF tertiary = nowPlaying ? Tok.AccentTextPrimary : Tok.TextTertiary;
+        ColorF primary = nowPlaying ? nowInk : Tok.TextPrimary;
+        ColorF secondary = nowPlaying ? nowInk : Tok.TextSecondary;
+        ColorF tertiary = nowPlaying ? nowInk : Tok.TextTertiary;
         Element leading;
 
         if (showArtists)
@@ -831,7 +841,7 @@ public readonly partial struct Track
         {
             Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.S,
             ClipToBounds = true,
-            Children = showExplicit ? [lead, ClassicExplicitBadge(nowPlaying ? Tok.AccentTextPrimary : null)] : [lead],
+            Children = showExplicit ? [lead, ClassicExplicitBadge(nowPlaying ? nowInk : null)] : [lead],
         };
     }
 
@@ -1046,6 +1056,8 @@ public readonly partial struct Track
         int _likeSlot;
         bool _likeSaved;
         Action? _play, _like;
+        IReadSignal<Design.PageAccent>? _pageAccent;
+        Func<ColorF>? _ink;
         Func<ContextMenuModel?>? _menu;
 
         public override Element Render()
@@ -1053,8 +1065,11 @@ public readonly partial struct Track
             var p = UsePropsOrDefault<EagerRowProps>();
             var hovered = UseSignal(false);
             var svc = UseContext(Overlay.Service);
+            _pageAccent = UseContext(Design.AccentCtx.Slot);
             if (p is null) return new BoxEl();
             _latest = p;
+            // The hosting page's accent, INK half (Design.AccentRoles.Ink): a live read, so a late grading re-tints the row.
+            Func<ColorF> ink = _ink ??= () => Design.AccentRoles.Ink(_pageAccent?.Value);
             Action play = _play ??= PlayLatest;
             Action like = _like ??= LikeLatest;
             Func<ContextMenuModel?> menu = _menu ??= MenuLatest;
@@ -1116,9 +1131,9 @@ public readonly partial struct Track
                 ShowTrackArtist: p.Options.ShowTrackArtist, Art: RowMetrics.ThumbSize,
                 OnPlay: play, OnLike: like, LikePop: pop,
                 ActionsCell: p.Options.ActionsCell ?? (set.Actions ? MoreCell(true, set.Classic) : null),
-                MoreEnabled: true, HoverPaused: hovered, HeartRevealOnHover: p.Options.HeartRevealOnHover);
+                MoreEnabled: true, HoverPaused: hovered, Accent: ink, HeartRevealOnHover: p.Options.HeartRevealOnHover);
             // The title carries the full-text tooltip while it is cut (the plain run only; the marquee scrolls instead).
-            Element title = TitleCell(t, st.IsNow, set.Classic, marquee: false);
+            Element title = TitleCell(t, st.IsNow, set.Classic, marquee: false, ink);
             if (title is TextEl titleRun) title = Controls.TrimmedTitle(titleRun, t.ForDisplay.Title);
             var grid = Grid(t, p.DisplayIndex, in st, in set, p.Tracks, p.RowH, title, in options);
 

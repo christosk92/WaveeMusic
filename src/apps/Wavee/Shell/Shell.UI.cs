@@ -175,7 +175,7 @@ public static partial class Shell
     /// <summary>A LEFT+TOP-only stroke: the engine's border is one uniform SDF ring, so the stroked box is one DIP larger on
     /// its right and bottom and parked in a clip of the real geometry — the right/bottom strokes land in the clipped DIP
     /// and the rounded top-left arc survives whole.</summary>
-    static readonly Edges4 StrokeOverhang = new(0f, 0f, -1f, -1f);
+    static readonly Edges4 StrokeOverhang = new(0f, FrameRules.StrokeOverhangTop, -1f, -1f);
     static readonly CornerRadius4 RailBandCorners = new(Radii.Card, 0f, 0f, 0f);
 
     // CLAMP-ONLY: no `collapsed` argument, so the engine detent is off and the raw cell reaches the rail floor. The mode,
@@ -748,7 +748,7 @@ public static partial class Shell
             {
                 // One DIP of extra right overhang so the box can shift left: undocked, the page bleeds to the window edge and the
                 // LEFT stroke leaves the clip (the top stroke stays).
-                Margin = new Edges4(0f, 0f, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
+                Margin = new Edges4(0f, FrameRules.StrokeOverhangTop, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
                 BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
                 Corners = Prop.Of(s_contentCorners),
                 Transform = Prop.Of(static () => Affine2D.Translation(

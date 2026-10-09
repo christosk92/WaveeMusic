@@ -700,7 +700,8 @@ public static partial class Detail
             UseEffect(_publishAccentTracked);                                   // grading / spec
             UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));              // a theme flip re-derives the accent
 
-            string? paletteUrl = id.PaletteUrl ?? id.CoverUrl;
+            var paletteSource = PaletteSource.Of(id);          // the tint and the page accent read this ONE pair
+            string? paletteUrl = paletteSource.Url;
             string routeKey = spec.RouteKey;
             RefreshCaches(id);
 
@@ -745,13 +746,14 @@ public static partial class Detail
             UseActivation(onActivated: _publishBandTitle);
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
-            Element tint = Palette.ShellTint(paletteUrl, ready: true, disabled: !washes, apply: cfg.TwoColumn,
-                owner: _tintOwner, slot: shellSlot, key: "detail-tint:" + routeKey, payloadAccent: id.CardAccent);
+            Element tint = Palette.ShellTint(paletteSource.Url, ready: true, disabled: !washes, apply: cfg.TwoColumn,
+                owner: _tintOwner, slot: shellSlot, key: "detail-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
+                payloadAccent: id.CardAccent);
             float pageH = _measuredH > 1f ? _measuredH : viewportSig.Peek().Height;
             // heroOnly is dead (the setting is gone): the band/height props feed only that arm, so they are PEEKED — a
             // hero measurement must not re-render the page for a value nothing paints.
             float heroBand = verticalTracks ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
-            Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, disabled: !washes, backdropBand: heroBand,
+            Element tone = Palette.PageTonePlane(paletteSource.Url, fallbackUrl: paletteSource.FallbackUrl, disabled: !washes, backdropBand: heroBand,
                 pageHeight: pageH, heroOnly: false,
                 key: "detail-tone:" + routeKey + (Tok.Theme == ThemeKind.Light ? ":light" : ":dark"),
                 payloadAccent: id.CardAccent);
@@ -1110,7 +1112,7 @@ public static partial class Detail
             var spec = _spec.Value;
             if (spec is null) return;
             _ = _theme.Value;
-            string? paletteUrl = spec.Identity.PaletteUrl ?? spec.Identity.CoverUrl;
+            string? paletteUrl = PaletteSource.Of(spec.Identity).Url;
             if (paletteUrl is { Length: > 0 } p) _ = Palette.Watch(p).Value;
             PublishAccent(spec);
         }
@@ -1188,6 +1190,19 @@ public static partial class Detail
             => p.SourceRows is { Length: > 0 } && string.Equals(p.SourcePlaylistUri, _subjectText, StringComparison.Ordinal);
     }
 
+    /// <summary>ONE page = ONE artwork entry: the url pair the shell tint (<see cref="Palette.ShellTint"/>) and the page
+    /// accent (<see cref="AccentFor"/>) both read, so the chrome tint and every accent role grade from the same Palette
+    /// entry. The polarity split (surfaces grade FOR the theme, plates with on-accent ink AGAINST it) decides only the
+    /// grading, never the source. Pure, so a test pins the identity per detail kind.</summary>
+    public readonly record struct PaletteSource(string? Url, string? FallbackUrl)
+    {
+        /// <summary>A detail identity's source: its palette image, else its cover; no fallback.</summary>
+        public static PaletteSource Of(Identity id) => new(id.PaletteUrl ?? id.CoverUrl, null);
+
+        /// <summary>The artist page's source: the header (palette) image, with the avatar as the fallback entry.</summary>
+        public static PaletteSource ForArtist(string? headerUrl, string? avatarUrl) => new(headerUrl, avatarUrl);
+    }
+
     static readonly Func<uint, ColorF> s_liftPayload = static a => Design.Palette.ChromeFromPayload(a);
 
     /// <summary>The one accent ladder (<see cref="AccentLadder"/>): the cover's chrome grading (else the fallback
@@ -1209,17 +1224,25 @@ public static partial class Detail
         return result.Color;
     }
 
-    /// <summary>The page-scoped accent pair for a resolved accent. Accent from artwork on ⇒ the art colour drives both
-    /// the ink and the fill; off ⇒ the system pair, the same one Recents' <c>PageView.Fallback</c> publishes.</summary>
+    /// <summary>The page-scoped accent pair for a resolved accent. Accent from artwork on ⇒ the Fill is the art colour
+    /// (a plate with on-accent ink) and the Ink is the SAME hue solved for text contrast on the content surface
+    /// (<see cref="Design.Palette.TextInk(ColorF,ThemeKind,ColorF)"/>, the app's role-3 answer), so the playing title,
+    /// the numbers and the hearts stay legible on a pale or a dark cover alike; off ⇒ the system pair, the same one
+    /// Recents' <c>PageView.Fallback</c> publishes. The theme re-publish re-derives the Ink.</summary>
     public static Design.PageAccent PageAccentOf(ColorF accent, string routeKey)
+        => PageAccentOf(accent, routeKey, Tok.Theme, Design.Colors.ContentSurface);
+
+    /// <summary>Pure overload: the theme and the ground the Ink is solved against are explicit, so a test pins both themes.</summary>
+    public static Design.PageAccent PageAccentOf(ColorF accent, string routeKey, ThemeKind theme, ColorF ground)
         => Prefs.Appearance.AccentFromArtwork()
-            ? new(accent, accent, routeKey)
+            ? new(Design.Palette.TextInk(accent, theme, ground), accent, routeKey)
             : new(Tok.AccentTextPrimary, Tok.AccentDefault, routeKey);
 
     static ColorF ComputeAccent(FrameSpec spec)
     {
         var id = spec.Identity;
-        return AccentFor(id.PaletteUrl ?? id.CoverUrl, id.CardAccent);
+        var src = PaletteSource.Of(id);
+        return AccentFor(src.Url, id.CardAccent, src.FallbackUrl);
     }
 
     // ══ 4. THE RAIL FAMILY ═══════════════════════════════════════════════════════════════════════════════════════════

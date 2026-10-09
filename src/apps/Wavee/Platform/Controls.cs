@@ -838,6 +838,113 @@ public static partial class Controls
         }
     }
 
+    // ══ 3b. THE SORT DROPDOWN ════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The toolbar's 32-DIP command button: glyph + label (+ trailing), ghost at rest, accent plate when
+    /// <paramref name="active"/>. The ONE recipe behind the track table's Sort / Row size / Select commands and
+    /// <see cref="SortButton"/>.</summary>
+    internal static BoxEl LabeledButton(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized,
+                                        Element? trailing = null, bool shrink = false, bool showLabel = true)
+    {
+        Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
+        // A shrinking button gives its WORD up first (one line, ellipsis) so the row it sits in never overflows.
+        Element word = shrink
+            ? Ui.Caption(label) with { Weight = 600, Color = ink, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
+            : Ui.Caption(label) with { Weight = 600, Color = ink };
+        var kids = new List<Element>(3) { Icon(glyph, 14f) with { Color = ink } };
+        if (showLabel) kids.Add(word);
+        if (trailing is not null) kids.Add(trailing);
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Height = ButtonHeight, Padding = new Edges4(9f, 0f, 10f, 0f),
+            MinWidth = shrink ? 0f : float.NaN, Shrink = shrink ? 1f : 0f,
+            Corners = Radii.ControlAll,
+            Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
+            HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
+            PressedFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
+            HoverDurationMs = Design.Motion.Faster, PressDurationMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true,
+            OnClick = onClick, OnRealized = onRealized,
+            Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>The shared sort dropdown: <see cref="Icons.Sort"/> · the current word · (a direction caret) · a chevron,
+    /// opening a radio-checked <see cref="MenuFlyout"/> under it. The track table's Sort button and the Library master
+    /// pane's both are this control, so a sort reads the same everywhere.
+    /// <para>An <c>Embed.Comp</c> factory runs ONCE (at mount), so every input that can change is a THUNK read inside the
+    /// button's own Render: <paramref name="label"/>, <paramref name="active"/>, <paramref name="descending"/> and
+    /// <paramref name="showCaret"/>. A sort change re-fires this button alone; the label changes text in place inside a
+    /// fixed-height button, never in a wrapping row. <paramref name="items"/> is built when the menu OPENS (the radio state
+    /// is the live one). A non-null <paramref name="descending"/> adds the caret (while <paramref name="showCaret"/> is
+    /// null or true), which pops in on activation and springs 0 to 180 degrees on every flip. With <paramref name="shrink"/> the
+    /// button gives its word up (ellipsis) before it can overflow a narrow row; <paramref name="showLabel"/> false drops the word for an icon-only
+    /// button where the row has no room for it.</para></summary>
+    public static Element SortButton(Func<string> label, Func<IReadOnlyList<MenuFlyoutItem>> items, Func<bool> active,
+                                     Func<bool>? descending = null, Func<bool>? showCaret = null, bool showLabel = true, bool shrink = false)
+        => Embed.Comp(() => new SortButtonHost(label, items, active, descending, showCaret, showLabel, shrink));
+
+    /// <summary>The menu popup every anchored dropdown shares: focus-trapped, light-dismiss, free to leave the root.</summary>
+    internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
+
+    /// <summary>One anchored overlay at a time per button: a second click closes it.</summary>
+    internal static void ToggleOverlay(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle,
+                                       Func<Element> content, PopupOptions options, Action? closed = null)
+    {
+        if (IsNullOverlay(overlay)) return;
+        if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+        var opened = overlay.Open(() => anchor.Value, content, FlyoutPlacement.BottomEdgeAlignedRight, options);
+        handle.Value = opened;
+        opened.ClosedAction = () => { handle.Value = null; closed?.Invoke(); };
+    }
+
+    sealed class SortButtonHost(Func<string> label, Func<IReadOnlyList<MenuFlyoutItem>> items, Func<bool> active,
+                                Func<bool>? descending, Func<bool>? showCaret, bool showLabel, bool shrink) : Component
+    {
+        public override Element Render()
+        {
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
+            string text = label();
+            bool isActive = active();
+            bool caret = descending is not null && (showCaret?.Invoke() ?? true);
+            void Toggle() => ToggleOverlay(overlay, anchor, handle,
+                () => MenuFlyout.Create(items(), () => handle.Value?.Close()), MenuPopup);
+            Element chevron = Icon(Icons.ChevronDown, 8f, Tok.TextTertiary);
+            Element trailing = caret
+                ? new BoxEl
+                {
+                    Direction = 0, Gap = 3f, AlignItems = FlexAlign.Center, Shrink = 0f,
+                    Children = [SortCaret(descending!), chevron],
+                }
+                : chevron;
+            return LabeledButton(Icons.Sort, text, isActive, Toggle, n => anchor.Value = n, trailing, shrink: shrink, showLabel: showLabel);
+        }
+    }
+
+    /// <summary>The direction caret: pops in once and SPRINGS its rotation 0 to 180 degrees on every flip, so
+    /// ascending, descending, ascending reads as one continuous rotation, never a glyph swap. Also the track table's
+    /// column-header caret.</summary>
+    internal static Element SortCaret(Func<bool> descending) => Embed.Comp(() => new SortCaretHost(descending));
+
+    sealed class SortCaretHost(Func<bool> descending) : Component
+    {
+        public override Element Render()
+        {
+            bool desc = descending();
+            UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.EaseInOut, "in");
+            UseTransition(AnimChannel.ScaleX, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
+            UseTransition(AnimChannel.ScaleY, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
+            UseSpring(AnimChannel.Rotation, desc ? 180f : 0f, SpringParams.FromResponse(0.30f, 0.7f), desc);
+            return new BoxEl
+            {
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [Icon(Icons.CaretSolidUp, 9f, Tok.TextSecondary)],
+            };
+        }
+    }
+
     // ══ 4. THE LIBRARY AFFORDANCES ═══════════════════════════════════════════════════════════════════════════════════
     //
     // All three read the live saved-set through the ONE seam, so they re-skin the instant the optimistic flip lands and

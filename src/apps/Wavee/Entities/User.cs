@@ -763,7 +763,41 @@ public static class LibraryWordRail
         return LibraryNavSort.Recents;
     }
 
-    /// <summary>The rail word's loc KEY per code. The rail has its OWN keys (<c>library.rail.*</c>, the lowercase words)
+    /// <summary>The sort dropdown's loc KEY per code: the sentence-case <c>library.sort.*</c> labels (the dropdown shows a
+    /// word, not a lowercase rail pill). The sidebar's Library V3 shares codes 0-3 of the same table.</summary>
+    public static string MenuKey(LibraryNavSort sort) => sort switch
+    {
+        LibraryNavSort.RecentlyAdded => Strings.Library.Sort.RecentlyAdded,
+        LibraryNavSort.Alphabetical => Strings.Library.Sort.Alphabetical,
+        LibraryNavSort.Creator => Strings.Library.Sort.Creator,
+        LibraryNavSort.ReleaseDate => Strings.Library.Sort.ReleaseDate,
+        LibraryNavSort.Albums => Strings.Library.Sort.Albums,
+        _ => Strings.Library.Sort.Recents,
+    };
+
+    /// <summary>One sort-dropdown entry: the persisted code, its loc key and whether it is the current word.</summary>
+    public readonly record struct MenuEntry(LibraryNavSort Sort, string Key, bool Checked);
+
+    /// <summary>The dropdown's entries for a kind: exactly <see cref="WordsFor"/>, in rail order, the (clamped) current word
+    /// checked. Pure, so the page maps it to radio items and the test pins the table.</summary>
+    public static MenuEntry[] MenuEntries(EntityKind kind, int current)
+    {
+        var words = WordsFor(kind);
+        var cur = Clamp(kind, current);
+        var entries = new MenuEntry[words.Length];
+        for (int i = 0; i < entries.Length; i++) entries[i] = new MenuEntry(words[i], MenuKey(words[i]), words[i] == cur);
+        return entries;
+    }
+
+    /// <summary>What choosing <paramref name="picked"/> does: re-choosing the CURRENT word flips the direction (the old rail's
+    /// <c>onReselect</c>), choosing another sets it and resets to ascending (its <c>onSelect</c>). <paramref name="current"/>
+    /// is the clamped code the dropdown shows.</summary>
+    public static (int Sort, bool Desc) Choose(int current, bool desc, int picked)
+        => picked == current ? (current, !desc) : (picked, false);
+
+    /// <summary>The lowercase rail word's loc KEY per code. No library surface reads it since the navigator's sort became a
+    /// dropdown (<see cref="MenuKey"/>); kept with its <c>library.rail.*</c> keys (the loc gates and the satellite locales pin them).
+    /// The rail had its OWN keys (<c>library.rail.*</c>, the lowercase words)
     /// rather than the pill's sentence-case <c>library.sort.*</c> labels, because the sidebar's Library V3 shares those for
     /// codes 0-3 and its pills would have gone lowercase with them (plan §5.9's decision).</summary>
     public static string WordKey(LibraryNavSort sort) => sort switch
@@ -775,6 +809,18 @@ public static class LibraryWordRail
         LibraryNavSort.Albums => Strings.Library.Rail.Albums,                 // "albums"
         _ => Strings.Library.Rail.Recents,                                    // "recents"
     };
+}
+
+/// <summary>The Library master pane's fixed geometry: ONE control row height for every kind (and both Podcasts views), so
+/// the pane's head never changes height with the kind or the view.</summary>
+public static class LibraryPaneRules
+{
+    /// <summary>The control row (views or nothing, the sort dropdown, the view toggle): the shared control height.</summary>
+    public const float ControlRowH = Controls.ButtonHeight;
+
+    /// <summary>Podcasts' icon-only shows sort slot on the filter row: reserved at this width on both views, so the filter
+    /// box never changes width when the views switch. Fits the icon, the direction caret and the chevron.</summary>
+    public const float SortSlotW = 64f;
 }
 
 /// <summary>What an order needs from a row, as a RECORD — the test fixture shape and 0.2.9's own.</summary>

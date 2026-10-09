@@ -103,7 +103,7 @@ public readonly partial struct Track
         static readonly LayoutTransition s_headerShift = new(TransitionChannels.Position,
             TransitionDynamics.Tween(MotionTok.DisclosureExpand.DurationMs, Easing.FluentDecelerate));
 
-        internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
+        internal static PopupOptions MenuPopup => Controls.MenuPopup;
         static PopupOptions RichPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
         { ConstrainToRootBounds = false };
 
@@ -286,24 +286,7 @@ public readonly partial struct Track
         /// never shrunk to a glyph (ch 04 §0.10).</summary>
         static BoxEl LabeledButton(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized,
                                    Element? trailing = null)
-        {
-            Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
-            Element[] kids = trailing is null
-                ? [Icon(glyph, 14f) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }]
-                : [Icon(glyph, 14f) with { Color = ink }, Ui.Caption(label) with { Weight = 600, Color = ink }, trailing];
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Height = 32f, Padding = new Edges4(9f, 0f, 10f, 0f),
-                Corners = Radii.ControlAll,
-                Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
-                HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
-                PressedFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
-                HoverDurationMs = Motion.ControlFaster, PressDurationMs = Motion.ControlFaster,
-                Role = AutomationRole.Button, Focusable = true,
-                OnClick = onClick, OnRealized = onRealized,
-                Children = kids,
-            };
-        }
+            => Controls.LabeledButton(glyph, label, active, onClick, onRealized, trailing);
 
         static Element Separator() => new BoxEl
         {
@@ -676,7 +659,7 @@ public readonly partial struct Track
                 Element Side(bool trailing) => new BoxEl
                 {
                     Width = Lane.NumCaretSlot, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = trailing && caret ? [Embed.Comp(() => new TableSortCaret(h))] : [],
+                    Children = trailing && caret ? [Controls.SortCaret(() => h._sort.Value.Descending)] : [],
                 };
                 return new BoxEl
                 {
@@ -704,8 +687,8 @@ public readonly partial struct Track
             {
                 bool caret = TableRules.HeaderActive(col, sort.Column, artistColumn) && (col != SortColumn.Index || sort.Descending);
                 Element[] kids = !caret ? [content]
-                    : justify == FlexJustify.End ? [Embed.Comp(() => new TableSortCaret(h)), content]
-                    : [content, Embed.Comp(() => new TableSortCaret(h))];
+                    : justify == FlexJustify.End ? [Controls.SortCaret(() => h._sort.Value.Descending), content]
+                    : [content, Controls.SortCaret(() => h._sort.Value.Descending)];
                 return new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = justify, Gap = Spacing.XS, MinWidth = 0f, ClipToBounds = true,
@@ -713,25 +696,6 @@ public readonly partial struct Track
                     Role = AutomationRole.Button,
                     OnClick = () => h.SetSort(TableRules.NextSort(h._sort.Peek(), col, artistColumn)),
                     Children = kids,
-                };
-            }
-        }
-
-        /// <summary>The caret pops in when its column becomes the sort and SPRINGS its rotation 0°↔180° on every flip, so
-        /// Title↑ → Title↓ → Artist↑ → Artist↓ reads as one continuous rotation, never a glyph swap.</summary>
-        sealed class TableSortCaret(TableHost host) : Component
-        {
-            public override Element Render()
-            {
-                bool desc = host._sort.Value.Descending;
-                UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.EaseInOut, "in");
-                UseTransition(AnimChannel.ScaleX, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
-                UseTransition(AnimChannel.ScaleY, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
-                UseSpring(AnimChannel.Rotation, desc ? 180f : 0f, SpringParams.FromResponse(0.30f, 0.7f), desc);
-                return new BoxEl
-                {
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Icon(Icons.CaretSolidUp, 9f, Tok.TextSecondary)],
                 };
             }
         }
@@ -760,35 +724,20 @@ public readonly partial struct Track
 
         // ══ 5. THE FLYOUT BUTTONS ═══════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>One anchored overlay at a time per button: a second click closes it.</summary>
         internal static void ToggleOverlay(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle,
                                   Func<Element> content, PopupOptions options, Action? closed = null)
-        {
-            if (Controls.IsNullOverlay(overlay)) return;
-            if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-            var opened = overlay.Open(() => anchor.Value, content, FlyoutPlacement.BottomEdgeAlignedRight, options);
-            handle.Value = opened;
-            opened.ClosedAction = () => { handle.Value = null; closed?.Invoke(); };
-        }
+            => Controls.ToggleOverlay(overlay, anchor, handle, content, options, closed);
 
+        /// <summary>The track table's Sort command: the shared <see cref="Controls.SortButton"/>, whose direction caret
+        /// appears while the sort is not the custom order.</summary>
         sealed class TableSortButton(TableHost host) : Component
         {
             public override Element Render()
             {
                 var h = host;
-                var overlay = UseContext(Overlay.Service);
-                var anchor = UseRef<NodeHandle>(default);
-                var handle = UseRef<OverlayHandle?>(null);
-                var current = h._sort.Value;
-                bool active = current.Column != SortColumn.Index;
-                void Toggle() => ToggleOverlay(overlay, anchor, handle,
-                    () => MenuFlyout.Create(h.SortItems(), () => handle.Value?.Close()), MenuPopup);
-                Element trailing = new BoxEl
-                {
-                    Direction = 0, Gap = 3f, AlignItems = FlexAlign.Center,
-                    Children = active ? [Embed.Comp(() => new TableSortCaret(h)), Chevron()] : [Chevron()],
-                };
-                return LabeledButton(Icons.Sort, SortLabelFor(current.Column), active, Toggle, n => anchor.Value = n, trailing);
+                return Controls.SortButton(() => SortLabelFor(h._sort.Value.Column), h.SortItems,
+                    () => h._sort.Value.Column != SortColumn.Index,
+                    () => h._sort.Value.Descending, () => h._sort.Value.Column != SortColumn.Index);
             }
         }
 
