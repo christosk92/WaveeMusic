@@ -598,7 +598,6 @@
     },
     "section": {
       "recentlyPlayed": "최근 재생한 항목",
-      "nowPlaying": "재생 중",
       "empty": "아직 아무것도 없습니다",
       "emptyRecents": "음악을 재생하면 여기에 표시됩니다"
     },

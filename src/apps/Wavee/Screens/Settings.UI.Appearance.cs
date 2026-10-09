@@ -567,7 +567,7 @@ public static partial class Settings
                     isClickEnabled: !editing,
                     // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
                     onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
-                    icon: Icons.Undo),
+                    icon: Icons.Delete),
             };
             if (Sidebar.LayoutFileFault)
                 items.Insert(0, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning));
