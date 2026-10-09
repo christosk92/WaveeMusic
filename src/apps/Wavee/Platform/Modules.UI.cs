@@ -197,7 +197,8 @@ public static partial class Modules
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinHeight = 0f,
-                Padding = new Edges4(0f, BrowseLayout.MastheadReserve, 0f, 0f),
+                // Clear of the masthead band, plus the 8 the old 84 reserve carried: the stage keeps its y.
+                Padding = new Edges4(0f, BrowseMastheadMetrics.Reserve + Spacing.S, 0f, 0f),
                 Children =
                 [
                     model is null

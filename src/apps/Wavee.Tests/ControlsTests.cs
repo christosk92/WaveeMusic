@@ -152,6 +152,26 @@ public class ControlsGeometryTests
         => Assert.Equal(Controls.ChipRailHeight + Spacing.S, Controls.ChipRailExtent);
 
     [Fact]
+    public void The_chip_capsule_geometry_is_shared_by_the_toggle_chip_and_the_link_chip()
+    {
+        Assert.Equal(Spacing.M, Controls.ChipPadX);
+        Assert.Equal(13f, Controls.ChipFontSize);
+        Assert.Equal(32f, Controls.ChipHeight);
+    }
+
+    [Fact]
+    public void A_link_chip_is_a_keyed_hyperlink_that_never_shrinks()
+    {
+        var chip = Assert.IsType<BoxEl>(Controls.LinkChip("Podcasts", static () => { }, "spotify:page:podcasts"));
+        Assert.Equal("spotify:page:podcasts", chip.Key);
+        Assert.Equal(AutomationRole.Hyperlink, chip.Role);
+        Assert.Equal(0f, chip.Shrink);                       // a wrapping row breaks to a new line instead of ellipsising
+        Assert.Equal(Controls.ChipHeight, chip.MinHeight);   // one fixed height per line
+        Assert.Equal(Controls.ChipPadX, chip.Padding.Left);
+        Assert.Equal(Controls.ChipPadX, chip.Padding.Right);
+    }
+
+    [Fact]
     public void The_dialog_width_ladder_is_three_rungs_inside_the_engine_clamp()
     {
         Assert.Equal(320f, Controls.DialogWidthCompact);

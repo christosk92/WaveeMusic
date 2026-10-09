@@ -1,5 +1,5 @@
 // ── Entities/Browse.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// the five Browse cell densities (Word / Name / Link / Bar / Peek), the link grid, and the directory body + bands
+// the Browse cell densities (LinkChip / Link / Bar / Peek), the link grid, and the directory body + bands
 //
 // Role: UI
 // Owner: P (stream P3)
@@ -9,8 +9,8 @@
 //
 // ── FIVE DENSITIES, ONE PER BAND, CHEAPEST TO MOST EXPRESSIVE ────────────────────────────────────────────────────────
 //
-// Density is what the directory spends to say "here is how much this destination is". Top's four entry points need
-// nothing but their own name on a tall pill (Word); For you is one step down, a pip beside a name (Name); Genres runs
+// Density is what the directory spends to say "here is how much this destination is". Top's four entry points and For
+// you's names need nothing but their own name on a pill (Controls.LinkChip, the shared chip capsule); Genres runs
 // ~25 deep, so it is a padded pip + secondary text link (Link); a mood IS its colour, so Mood & activity earns a card
 // plate with the colour as a corner wash + tick (Bar); the long tail earns the same card weight plus a hanging cover
 // (Peek). 0.2.9 `BrowseTiles.cs` verbatim, ported onto 0.3's tokens: `Design.Type` / `Design.Motion` / `Design.Palette`
@@ -59,36 +59,6 @@ public static partial class BrowseTiles
         if (route.IsNone) Log.Warn("nav", "browse.feature.unsupported: " + uri);
         else Shell.GoTo(route);
     };
-
-    /// <summary>The plate the two pill densities share (0.2.9 <c>ContentFilterChips.Chip</c>'s grammar, verbatim):
-    /// FillControlDefault → Secondary on hover, a stroke that goes accent on hover, the subtle scale tier. Shrink 0 on a
-    /// WRAPPING row: the row breaks to a new line rather than ellipsising every pill.</summary>
-    static Element Chip(in BrowseTileModel m, float height, Element? lead, TextEl label)
-    {
-        var text = label with { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f };
-        return new BoxEl
-        {
-            Key = m.Uri,
-            Role = AutomationRole.Hyperlink, Focusable = true, Cursor = CursorId.Hand,
-            FocusVisualMargin = Design.FocusInsetBordered,
-            OnClick = m.Open,
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Height = height, Shrink = 0f, MinWidth = 0f,
-            Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-            Corners = CornerRadius4.All(999f),
-            Fill = Tok.FillControlDefault, HoverFill = Tok.FillControlSecondary,
-            BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault, HoverBorderColor = Tok.AccentDefault,
-            HoverScale = Design.Motion.ScaleSubtle.Hover, PressScale = Design.Motion.ScaleSubtle.Press,
-            HoverDurationMs = Design.Motion.Fast, HoverEasing = Easing.FluentDecelerate,
-            Children = lead is null ? [text] : [lead, text],
-        };
-    }
-
-    /// <summary>Top: the tallest pill (36), the only one at BodyStrong — primary without being set larger than the band
-    /// heading that names it.</summary>
-    public static Element Word(BrowseTileModel m) => Chip(in m, BrowseLayout.WordChipH, null, BodyStrong(m.Title));
-
-    /// <summary>For you: the same plate one rung down (32), with the identity pip its detail page carries.</summary>
-    public static Element Name(BrowseTileModel m) => Chip(in m, BrowseLayout.NameChipH, Pip(in m), Body(m.Title));
 
     /// <summary>Genres — and Search's genre results (ch 13 §0.15): the pip beside Body secondary, one rung below Name
     /// because a genre column runs ~25 deep. The padded hit target and its hover fill are what make one row easy to click
@@ -330,8 +300,8 @@ public readonly partial struct Browse
         var state = new BandState(items, live);
         Element body = group switch
         {
-            BrowseGroup.Top => WrapRow(items, live, word: true),
-            BrowseGroup.ForYou => WrapRow(items, live, word: false),
+            BrowseGroup.Top => WrapRow(items, live),
+            BrowseGroup.ForYou => WrapRow(items, live),
             BrowseGroup.Genres => Responsive.Of(state, static (st, w) => LinkGridOf(st, w), fallback: BrowseLayout.DirectoryFallbackWidth),
             BrowseGroup.MoodActivity => Responsive.Of(state, static (st, w) => BarGrid(st, w), fallback: BrowseLayout.DirectoryFallbackWidth),
             _ => Responsive.Of(state, static (st, w) => MoreGrid(st, w), fallback: BrowseLayout.DirectoryFallbackWidth),
@@ -345,14 +315,15 @@ public readonly partial struct Browse
         };
     }
 
-    /// <summary>Top / For you: a wrapping row of pills at their own natural width — no grid, no column count.</summary>
-    static Element WrapRow(IReadOnlyList<BrowseCategory> items, bool live, bool word)
+    /// <summary>Top / For you: a wrapping row of <see cref="Controls.LinkChip"/> pills at their own natural width — no grid,
+    /// no column count. Every pill is <see cref="Controls.ChipHeight"/> (32), so a line of the row is a fixed height.</summary>
+    static Element WrapRow(IReadOnlyList<BrowseCategory> items, bool live)
     {
         var cells = new Element[items.Count];
         for (int i = 0; i < cells.Length; i++)
         {
             var m = BrowseTiles.ModelOf(items[i], live);
-            cells[i] = word ? BrowseTiles.Word(m) : BrowseTiles.Name(m);
+            cells[i] = Controls.LinkChip(m.Title, m.Open, m.Uri);
         }
         return new BoxEl { Direction = 0, Gap = BrowseLayout.ChipGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = cells };
     }

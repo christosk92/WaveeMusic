@@ -68,12 +68,13 @@ public class BrowseLayoutTests
     public void StarGrid_WithNoCells_IsABareBox()
         => Assert.IsType<BoxEl>(BrowseLayout.StarGrid(3, Spacing.S, Spacing.S, []));
 
+    // The browse family's frame is the shared page geometry (BrowseMastheadMetrics), not a private BrowseLayout copy; the
+    // Top and For-you pills are Controls.LinkChip, one fixed height.
     [Fact]
     public void TheFrameIsThePageGutterUnderTheSharedTitleY()
     {
-        var frame = BrowseLayout.Frame(Spacing.XXL);
-        Assert.Equal(new Edges4(Spacing.PageWide, Spacing.XXXL, Spacing.PageWide, Spacing.XXL), frame);
-        Assert.True(BrowseLayout.WordChipH > BrowseLayout.NameChipH);  // the Top pills outrank For-you's
+        var frame = BrowseMastheadMetrics.FamilyBodyPad(PageGeometry.GutterWide, Spacing.XXL);
+        Assert.Equal(new Edges4(PageGeometry.GutterWide, PageHeadRules.Extent(PageHeadKind.Title), PageGeometry.GutterWide, Spacing.XXL), frame);
     }
 
     // ── the tile model (0.2.9 BrowseTiles.ToModel) ──────────────────────────────────────────────────────────────────

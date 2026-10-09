@@ -336,39 +336,45 @@ public static class BrowsePageLayout
     };
 }
 
-/// <summary>The overlay masthead's layout reserve — <c>FrameTop</c> + the SurfaceDisplay line. A CONSTANT, never a live
-/// measure: parked family pages must not re-pad when the overlay fades out.</summary>
+/// <summary>The overlay masthead's layout reserve — <see cref="PageGeometry.HeadTop"/> + the title line. A CONSTANT, never a
+/// live measure: parked family pages must not re-pad when the overlay fades out.
+/// <para>The family's body starts where every Title-kind page head's body starts (<see cref="PageHeadRules.Extent"/> of
+/// <see cref="PageHeadKind.Title"/>, 120), so a masthead page and a <see cref="PageHead"/> title page land their first row
+/// at the same y. Under the Zune band the browse ROOT hoists to the fixed 72-DIP strip (<see cref="BodyTopFor"/>).</para></summary>
 public static class BrowseMastheadMetrics
 {
-    public const float TitleLine = 52f;
-    public const float Reserve = Spacing.XXXL + TitleLine;
-    /// <summary>The body's top inset: the overlay reserve plus the gap that used to sit under the in-flow band.</summary>
-    public const float BodyTop = Reserve + Spacing.L;
+    public const float TitleLine = PageGeometry.TitleLine;
+    public const float Reserve = PageGeometry.HeadTop + TitleLine;
+    /// <summary>The body's top inset: the Title head's extent — the same y as every title page.</summary>
+    public static float BodyTop => PageHeadRules.Extent(PageHeadKind.Title);
     /// <summary>The band paints NOTHING (a fill reads as a black slab on Mica), so a page scrolling under it cuts its
     /// content at the band's lower edge — exactly the reserve.</summary>
     public const float ClipInset = Reserve;
     /// <summary>The feather at that cut — the band every detail surface uses.</summary>
     public const float ClipFadeBand = Detail.VerticalLayout.StickyFadeBand;
 
-    public static Edges4 FamilyBodyPad(float bottom) => new(Spacing.PageWide, BodyTop, Spacing.PageWide, bottom);
+    /// <summary>The browse root's body top: the fixed hoisted strip once the PRESENTED style hoists it, else
+    /// <see cref="BodyTop"/>. <paramref name="hoisted"/> is <see cref="PageHead.HoistedFor"/>.</summary>
+    public static float BodyTopFor(bool hoisted) => hoisted ? PageHeadRules.Extent(PageHeadKind.Hoisted) : BodyTop;
+
+    /// <summary>The sticky clip's inset. Hoisted, the masthead paints nothing, so nothing is cut: 0. It follows
+    /// <see cref="BodyTopFor"/> in the same render, so the clip and the band never disagree.</summary>
+    public static float ClipInsetFor(bool hoisted) => hoisted ? 0f : ClipInset;
+
+    /// <summary>Padding of a family body that sits under the band: the page gutter on both sides, the reserve on top.</summary>
+    public static Edges4 FamilyBodyPad(float gutter, float bottom) => new(gutter, BodyTop, gutter, bottom);
 
     /// <summary>Padding for a page that clips under the band: the reserve is a SPACER above the clipped node (so the cut
     /// engages when content reaches the band, not at rest), leaving the gutters and the bottom on the node.</summary>
-    public static Edges4 FamilyUnderBandPad(float bottom) => new(Spacing.PageWide, 0f, Spacing.PageWide, bottom);
+    public static Edges4 FamilyUnderBandPad(float gutter, float bottom) => new(gutter, 0f, gutter, bottom);
 }
 
 /// <summary>Layout constants and the column math for the Browse cells (0.2.9 <c>BrowseTiles.cs:286-358</c>).</summary>
 public static class BrowseLayout
 {
-    public const float FrameTop = Spacing.XXXL;
-    public const float MastheadReserve = BrowseMastheadMetrics.Reserve;
-    public const float FrameX = Spacing.PageWide;
-    public static Edges4 Frame(float bottom) => new(FrameX, FrameTop, FrameX, bottom);
     /// <summary>First-frame width guess the directory's Responsive grids share before a real measure lands.</summary>
     public const float DirectoryFallbackWidth = 900f;
 
-    public const float WordChipH = 36f;
-    public const float NameChipH = 32f;
     public const float ChipGap = Spacing.S;
     public const float TickW = 3f;
     public const float TickH = 14f;

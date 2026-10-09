@@ -554,6 +554,9 @@ public static partial class Controls
     /// stacked detail chrome column, INCLUDING its bottom semantic gap — one number, so a page's layout arithmetic and
     /// the rail itself cannot disagree.</summary>
     public const float ChipHeight = 32f, ChipRailHeight = 40f;
+    /// <summary>The chip's horizontal padding and label size: the capsule geometry <see cref="Chip"/> and
+    /// <see cref="LinkChip"/> share. 13 is DenseTitle/DenseMeta's size (13/18), the chip rail's own rung.</summary>
+    public const float ChipPadX = Spacing.M, ChipFontSize = 13f;
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipRailExtent = ChipRailHeight + Spacing.S;
 
@@ -572,14 +575,28 @@ public static partial class Controls
                 // not this scrolling rail, which has always read as pills.
                 CornerRadius = Radii.Full,
                 MinHeight = ChipHeight,
-                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                FontSize = 13f,                              // DenseTitle/DenseMeta's size (13/18) — the chip rail's own rung
+                Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
+                FontSize = ChipFontSize,
                 FocusVisualMargin = Design.FocusInsetBordered,
             },
             isEnabled: available, parts: RootNoShrink);
             // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
             // flex compresses every pill to fit the viewport and the labels ellipsise instead of the rail
             // overflowing, which is the opposite of what the scroller is for.
+
+    /// <summary>A destination chip: a stock standard <see cref="Button"/> in the chip capsule (<see cref="Chip"/>'s geometry),
+    /// announced as a link. For a row of pills that NAVIGATE (Browse's Top and For-you bands), where
+    /// <see cref="Chip"/> is a toggle. Shrink 0: on a wrapping row the row breaks to a new line rather than ellipsising
+    /// every pill. Always <see cref="ChipHeight"/> tall, so a chip row is a fixed 32 per line.</summary>
+    public static Element LinkChip(string label, Action onClick, string? key = null)
+        => Button.Standard(label, onClick, style: Button.StandardStyle with
+        {
+            CornerRadius = Radii.Full,
+            MinHeight = ChipHeight,
+            Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
+            FontSize = ChipFontSize,
+            FocusVisualMargin = Design.FocusInsetBordered,
+        }) with { Key = key, Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Shrink = 0f, MinWidth = 0f };
 
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.

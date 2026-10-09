@@ -84,20 +84,24 @@ public readonly partial struct Concert
         => (node with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true } })
             .StickyClip(BrowseMastheadMetrics.ClipInset);
 
-    /// <summary>The schedule/detail page frame (§1.2, §1.3): the 84 + 40 reserve as a SPACER, then the 32-gutter body cut
-    /// under the band, one vertical viewport.</summary>
-    static ScrollEl SubPageScroll(string scrollKey, Element region) => ScrollView(new BoxEl
+    /// <summary>The schedule/detail page frame (§1.2, §1.3): the family's body top (<see cref="BrowseMastheadMetrics.BodyTop"/>,
+    /// the Title head's extent) as a SPACER, then the page-gutter body cut under the band, one vertical viewport.</summary>
+    static ScrollEl SubPageScroll(string scrollKey, Element region)
     {
-        Direction = 1,
-        Children =
-        [
-            new BoxEl { Height = BrowseMastheadMetrics.Reserve + 40f, HitTestVisible = false },
-            UnderBand(new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Padding = new Edges4(32f, 0f, 32f, Design.Dock.Reserve + 40f), Children = [region],
-            }),
-        ],
-    }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };
+        float g = Shell.Ui.PageGutter.Value;
+        return ScrollView(new BoxEl
+        {
+            Direction = 1,
+            Children =
+            [
+                new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false },
+                UnderBand(new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve), Children = [region],
+                }),
+            ],
+        }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };
+    }
 
     /// <summary>A region that is its shimmer seed while pending and the content once ready (§0 #11: SkelReveal.Soft).</summary>
     static Element Region(Func<bool> pending, Func<bool> failed, Func<Element> content, Func<Element> shimmer, Func<Element>? onFailed, string group)
@@ -366,13 +370,13 @@ public readonly partial struct Concert
                 Direction = 1,
                 Children =
                 [
-                    // The reserve + 24 as a SPACER: the clipped nodes start where the content does, so each cut engages
+                    // The family's body top as a SPACER: the clipped nodes start where the content does, so each cut engages
                     // only once it scrolls (BrowseMastheadMetrics.FamilyUnderBandPad).
-                    new BoxEl { Height = BrowseMastheadMetrics.Reserve + Spacing.XXL, HitTestVisible = false },
+                    new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false },
                     new BoxEl
                     {
                         Direction = 1, Gap = Spacing.L,
-                        Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.PageWide),
+                        Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Shell.Ui.PageGutter.Value, PageGeometry.BottomReserve),
                         Children =
                         [
                             UnderBand(HeaderCard()),

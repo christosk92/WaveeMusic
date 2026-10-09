@@ -35,9 +35,6 @@ public static partial class Shell
     // MOUNT POINT (stage B contract)
     public static Element Masthead() => Embed.Comp(static () => new MastheadBand());
 
-    /// <summary>The band's frame insets — the browse surfaces' own frame, so the band's title sits on the page's column.</summary>
-    const float MastheadFrameX = 36f, MastheadFrameTop = 32f;
-
     sealed class MastheadBand : Component
     {
         static readonly MotionTokenDef Hide = MotionTokenDef.Eased(FadeThroughExitMs, Easing.FluentAccelerate, ReducedMotionPolicy.KeepFade);
@@ -54,7 +51,13 @@ public static partial class Shell
             var route = Current.Value;
             var published = Mastheads.For(route);
             var origin = Origins.For(route);
-            bool live = TryMasthead(route, published?.Title, origin, out var title, out var trail);
+            // THE HOIST. The browse ROOT under the Zune band (PRESENTED style, so it lags the card's slide: Shell.UI.cs
+            // NavStylePresenter) hands its title to the band's pivots: it takes the HELD-title path below — faded out, not hit-
+            // testable, never collapsed — so the band's height never changes and the fade runs in the quiet commit.
+            bool hoisted = PageHeadRules.Hoisted(Ui.PresentedNavStyle.Value, NameOf(route));
+            string? title = null;
+            IReadOnlyList<Crumb> trail = [];
+            bool live = !hoisted && TryMasthead(route, published?.Title, origin, out title, out trail);
             if (live)
             {
                 _heldTitle = title;
@@ -66,6 +69,8 @@ public static partial class Shell
 
             if (_heldTitle is null) return new BoxEl { MinWidth = 0f, Opacity = 0f, HitTestVisible = false };
 
+            float g = Ui.PageGutter.Value;
+
             // "Show all" resolves the LATEST delegate at click time: a re-publish that changes only the delegate never
             // re-renders the band.
             Element tools = _heldToolsVisible
@@ -75,7 +80,9 @@ public static partial class Shell
             return new BoxEl
             {
                 Direction = 0, MinWidth = 0f, Gap = Spacing.M, AlignItems = FlexAlign.End,
-                Padding = new Edges4(MastheadFrameX, MastheadFrameTop, MastheadFrameX, 0f),
+                // The page's own column: the shared gutter and the page head's top air (PageGeometry), so the title sits on
+                // the same line as every PageHead title.
+                Padding = new Edges4(g, PageGeometry.HeadTop, g, 0f),
                 Opacity = live ? 1f : 0f,
                 HitTestVisible = live,
                 Transition = live ? Show : Hide,
@@ -111,10 +118,11 @@ public static partial class Shell
             });
             segs.Add(Design.Type.SurfaceDisplay("›") with { Color = Tok.TextTertiary, Shrink = 0f });
         }
-        var current = Design.Type.SurfaceDisplay(title) with
+        // The page head's title metrics (one line): the masthead reserve is PageGeometry.TitleLine, so a long title
+        // ellipsises rather than wrapping to a second line the reserve never made room for.
+        var current = Design.Type.PageTitle(title) with
         {
-            Key = "masthead-current", MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
-            Grow = 1f, Basis = 0f, Shrink = 1f,
+            Key = "masthead-current", Grow = 1f, Basis = 0f, Shrink = 1f,
         };
         if (segs.Count == 0)
             return new BoxEl { Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, AlignItems = FlexAlign.End, Children = [current] };

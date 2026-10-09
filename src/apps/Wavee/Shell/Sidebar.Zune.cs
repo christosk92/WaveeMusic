@@ -33,7 +33,7 @@ public static class ZuneNavRules
 
     public const float PivotSize = 28f, SubPivotSize = 14f, PinTile = 32f, PinGap = 8f, PivotGap = 24f, SubPivotGap = 20f;
 
-    /// <summary>The page frame's x (Shell's MastheadFrameX): the band's content starts where the page content does.</summary>
+    /// <summary>The page frame's x (<see cref="PageGeometry.GutterWide"/>, the page gutter): the band's content starts where the page content does.</summary>
     public const float InsetX = 36f;
 
     public const float PivotRowHeight = 52f, SubRowHeight = 32f;

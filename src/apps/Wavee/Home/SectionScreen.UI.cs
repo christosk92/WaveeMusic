@@ -124,7 +124,7 @@ public sealed class SectionScreen : Component
         return new BoxEl
         {
             Key = "home-section-body", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Gap = 4f,
-            Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.XXL),
+            Padding = BrowseMastheadMetrics.FamilyBodyPad(Shell.Ui.PageGutter.Value, Spacing.XXL),
             Children =
             [
                 total > 0
