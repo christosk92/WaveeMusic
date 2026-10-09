@@ -314,6 +314,19 @@ public class LibrarySortDropdownTests
     }
 
     [Fact]
+    public void A_views_item_holds_its_label_and_its_pill_row_inside_its_height()
+    {
+        // The item is a column: padding + one 20 line, then the 3-DIP pill row. Past the item height the pill slides below
+        // the bar and the control row's clip cuts it off, so the selection indicator would not show.
+        const float pill = 3f;
+        foreach (var style in new[] { Design.PaneViewsStyle, Design.RailViewsStyle })
+        {
+            var pad = style.ItemPadding ?? new FluentGpu.Foundation.Edges4(12f, 10f, 12f, 7f);
+            Assert.True(pad.Top + style.LineHeight + pad.Bottom + pill <= style.ItemHeight);
+        }
+    }
+
+    [Fact]
     public void The_count_has_one_noun_per_kind()
     {
         // The harness loads no culture, so the formatted text is the loc entries' business; what matters here is that each

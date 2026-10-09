@@ -1500,7 +1500,8 @@ public static partial class Design
     {
         LeadingInset = 0f,
         ItemHeight = 36f - 2f * PageGeometry.ViewsBarPadY,
-        ItemPadding = new Edges4(12f, 0f, 12f, 0f),
+        // 3 + 20 + 0 + the 3-DIP pill row = 26 in the 28 item: the label sits on the strip's centre line and the pill stays inside.
+        ItemPadding = new Edges4(12f, 3f, 12f, 0f),
     };
 
     /// <summary>The Library master pane's own views (Podcasts' Followed shows | Your Episodes): a 32-DIP bar
@@ -1509,6 +1510,9 @@ public static partial class Design
     public static SelectorBarStyle PaneViewsStyle => PageViewsStyle with
     {
         ItemHeight = Controls.ButtonHeight - 2f * PageGeometry.ViewsBarPadY,
+        // The stock (12,10,12,7) is 37 + the 3-DIP pill row = 40 in a 24 item, which pushed the pill below the row's clip.
+        // 1 + 20 + 0 + 3 = 24 fits the item exactly.
+        ItemPadding = new Edges4(12f, 1f, 12f, 0f),
     };
 
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
