@@ -18,8 +18,11 @@ namespace Wavee;
 
 public static class ArtistBleed
 {
-    /// <summary>The experiment's switch. Read in ONE place (<c>ArtistPage.Render</c>); false leaves no behavioural trace.</summary>
-    public const bool Enabled = true;
+    /// <summary>The experiment's switch. Read in ONE place (<c>ArtistPage.Render</c>); false leaves no behavioural trace.
+    /// OFF until the hero's horizontal veil is drawn by the shell over the photo too: with the photo bleeding, the card's own
+    /// veil starts at the card top and leaves a hard seam there across the left half of the page, and a docked pane's 8-DIP
+    /// card corner notches the photo.</summary>
+    public const bool Enabled = false;
 
     /// <summary>The scrim's strongest alpha, at the window top (over <c>Design.Colors.ShellGround</c>). Light needs the heavier
     /// veil: dark chrome ink on a dark photo is the failure, light ink on a bright photo the milder one.</summary>

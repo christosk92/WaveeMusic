@@ -22,8 +22,6 @@ versions separately under `v*` and is not tracked in this file.)
   with guide lines.
 - **Show covers for the Classic sidebar.** Off by default for Spotify's classic text-only list; on shows a small cover
   on each row.
-- **Experimental**: on artist pages the header photo now runs behind the title bar and the navigation band. This may
-  change or be removed.
 
 ### Changed
 
