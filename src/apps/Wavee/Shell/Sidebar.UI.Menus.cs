@@ -109,13 +109,33 @@ public static partial class Sidebar
                 var row = r;
                 Action invoke = () => Run(row, sectionId, pane);
                 var item = r.Radio ? MenuFlyoutItem.RadioItem(label, r.Checked, invoke)
-                    : r.Action is SidebarMenuAction.ToggleLiked or SidebarMenuAction.ToggleKind ? MenuFlyoutItem.Toggle(label, r.Checked, invoke)
+                    : r.Action is SidebarMenuAction.ToggleLiked or SidebarMenuAction.ToggleKind or SidebarMenuAction.ToggleDescending
+                        ? MenuFlyoutItem.Toggle(label, r.Checked, invoke)
                     : new MenuFlyoutItem(label, default, r.Enabled, invoke);
                 // A disabled verb says why on its trailing line (Q7: "Finish editing the sidebar first"); HideSection
                 // already carries its reason in the label.
                 if (!r.Enabled && r.ReasonKey is { } why && r.Action != SidebarMenuAction.HideSection)
                     item = item with { AcceleratorText = Loc.Get(why) };
                 items.Add(item with { Enabled = r.Enabled });
+            }
+            return items;
+        }
+
+        /// <summary>The page menu: each row is a radio (the current page checked) wearing its page's glyph, with the count in the
+        /// trailing accelerator column — none while the count is unknown (design D9), "0" for a genuine zero. Choosing a row
+        /// NAVIGATES through <paramref name="navigate"/> (the session's <c>Navigate</c>); it never touches the filter.</summary>
+        public static IReadOnlyList<MenuFlyoutItem> MapPages(IReadOnlyList<SidebarMenuRow> rows, IReadOnlyList<SidebarLibraryPage> pages,
+                                                            Action<string> navigate)
+        {
+            var items = new List<MenuFlyoutItem>(rows.Count);
+            for (int i = 0; i < rows.Count && i < pages.Count; i++)
+            {
+                var page = pages[i];
+                string route = page.Route;
+                items.Add(MenuFlyoutItem.RadioItem(Loc.Get(rows[i].LabelKey), rows[i].Checked, () => navigate(route), page.Glyph) with
+                {
+                    AcceleratorText = page.Count is { } n ? FormatCache.Int(n) : null,
+                });
             }
             return items;
         }
@@ -143,6 +163,7 @@ public static partial class Sidebar
                     SidebarStoreV3.TryParseSort(r.Arg, out var sort);
                     Dispatch(new SetLibrarySort(sort, Doc.Library.Descending));
                     break;
+                case SidebarMenuAction.ToggleDescending: Dispatch(new SetLibrarySort(Doc.Library.Sort, !Doc.Library.Descending)); break;
                 case SidebarMenuAction.SetView: Dispatch(new SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List)); break;
                 case SidebarMenuAction.ToggleLiked: Dispatch(new SetShowLiked(!Doc.Library.ShowLiked)); break;
                 case SidebarMenuAction.ToggleKind: ToggleKind(r.Arg); break;

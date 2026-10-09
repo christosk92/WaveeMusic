@@ -72,6 +72,17 @@ public static class SidebarPillRules
     }
 }
 
+/// <summary>Which container a selection pill lives in (design V.5): the list, the fixed head above it, the footer below.</summary>
+public enum SidebarPillLane : byte { List = 0, Head = 1, Footer = 2 }
+
+public static class SidebarPillMotionRules
+{
+    /// <summary>The pill SLIDES (WinUI's same-level worm) only within ONE container at one depth (same x). Across containers
+    /// — head ↔ list ↔ footer — it never slides: it scales out and in place (the non-same-level animation).</summary>
+    public static bool Slides(SidebarPillLane from, SidebarPillLane to, float dx)
+        => from == to && System.MathF.Abs(dx) < 0.5f;
+}
+
 /// <summary>What a row's second line says, as data (formatting is the UI's: it owns the loc table).</summary>
 public enum SidebarSubtitleKind : byte { None = 0, Songs = 1, Items = 2, Album = 3, Podcast = 4, Artist = 5, Text = 6 }
 
@@ -153,6 +164,13 @@ public static class SidebarPinRules
         if (kind == DragKind.Route && id == "liked") return "sidebar.pin.cantPin.liked";
         return null;
     }
+
+    /// <summary>Does a row draw the 12-px pin mark? In Your Library the pins have no header, so each depth-0 row of the
+    /// pinned section is marked; the children an expanded pinned folder lists under it (depth ≥ 1) are not pins and are
+    /// not marked. Everywhere else the existing rule holds: a pinned entity that is not a track (#85).</summary>
+    public static bool ShowsPinMark(SidebarLayoutId layout, SidebarSectionKind section, int rowDepth, bool isPinned, bool isTrack)
+        => (layout == SidebarLayoutId.Library && section == SidebarSectionKind.Pinned && rowDepth == 0)
+           || SidebarRowGeometry.ShowsPinGlyph(isPinned, isTrack);
 }
 
 /// <summary>Menu-row label hygiene — pure, engine-free, and therefore directly testable. A context-menu row label

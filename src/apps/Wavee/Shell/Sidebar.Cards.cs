@@ -84,6 +84,9 @@ public static class SidebarCardRules
     /// unresolved <c>EntityRow</c>, is not invokable.</summary>
     public static bool IsPending(in SidebarLibraryEntry entry) => TitleOf(in entry).Length == 0;
 
+    /// <summary>An artist and a circular entry are drawn as a circle (the grid tile's cover box follows the same answer).</summary>
+    public static bool Circular(in SidebarLibraryEntry entry) => entry.Circular || entry.Kind == SidebarEntryKind.Artist;
+
     /// <summary>A grid tile's cover: the cell less the shared grid card's plate padding on both sides. The cover is a fixed
     /// square (it is built from a <c>Cover</c> factory, not a fluid image), so it is sized from the cell the strip derived.</summary>
     public static float TileCover(float cell) => MathF.Max(0f, cell - 2f * SurfaceGeometry.ShelfPlatePad);
@@ -106,7 +109,7 @@ public static partial class Sidebar
                                              string sel)
         {
             var e = entry;
-            bool circular = e.Circular || e.Kind == SidebarEntryKind.Artist;
+            bool circular = SidebarCardRules.Circular(in e);
             Action? play = null;
             if (SidebarCardRules.HasPlay(in e))
             {
@@ -118,13 +121,49 @@ public static partial class Sidebar
                 section.Shape == SidebarRowShape.EntityTwoLine ? SubtitleOf(PaneText.SubtitleOf(in e)) : null, null,
                 ActivateOf(o, in e, e.Name), play, circular, DragOf(in e),
                 ShowMenu: false,
-                CoverOverride: Cover.ForEntry(in e, SidebarCardRules.TileCover(cell)))
+                CoverOverride: CoverOf(in e, SidebarCardRules.TileCover(cell)))
             {
                 Selected = SidebarCardRules.Selected(in e, sel),
                 Menu = o.GridCellMenu(in e),
                 Drop = DropOf(o, SidebarCardSurface.Tile, section.Id, in e),
             };
         }
+
+        /// <summary>The cover box of a grid tile: the entry's art, or for an entry with no art yet its kind glyph (24,
+        /// <c>TextSecondary</c>) on the subtle fill — never the grey skeleton bone the placeholder tile draws.</summary>
+        static Element CoverOf(in SidebarLibraryEntry e, float size)
+        {
+            if (HasArt(in e)) return Cover.ForEntry(in e, size);
+            return new BoxEl
+            {
+                Width = size, Height = size, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = CornerRadius4.All(Cover.Radius(size, SidebarCardRules.Circular(in e))),
+                Fill = Tok.FillSubtleSecondary,
+                Children = [Ui.Icon(KindGlyph(in e), 24f, Tok.TextSecondary)],
+            };
+        }
+
+        /// <summary>An entry paints art when it has a cover, a mosaic or is the Liked collection (its own mosaic / heart).
+        /// Folders and app routes wear their own glyph, so they never take the bone either.</summary>
+        static bool HasArt(in SidebarLibraryEntry e)
+        {
+            if (string.Equals(e.Id, SidebarCatalogue.LikedRoute, StringComparison.Ordinal) || EntityUri.IsLikedCollection(e.Uri))
+                return true;
+            if (e.Kind is SidebarEntryKind.Folder or SidebarEntryKind.AppRoute) return false;
+            return Controls.ArtUrl(e.Cover) is not null || e.MosaicTiles is { Count: > 0 };
+        }
+
+        /// <summary>The glyph a no-art tile carries: the entry kind's own mark (a folder's or a route's glyph included).</summary>
+        static string KindGlyph(in SidebarLibraryEntry e) => e.Kind switch
+        {
+            SidebarEntryKind.Folder => Icons.Folder,
+            SidebarEntryKind.AppRoute => Shell.Dest(Shell.Parse(e.Id)).Glyph,
+            SidebarEntryKind.Album => Icons.Album,
+            SidebarEntryKind.Artist => Icons.Contact,
+            SidebarEntryKind.Show => Icons.Microphone,
+            _ => Icons.MusicNote,
+        };
 
         // ── the shared pieces ────────────────────────────────────────────────────────────────────────────────────────
 

@@ -272,6 +272,52 @@ static class SidebarWiringStage
         }
         me.ReplaceRootlist(targets, payload);
     }
+
+    /// <summary>A saved album, artist or show, staged with its identity (and, for a show, its facts). Returns its slot.</summary>
+    public static int StageAlbum(string uri, string title)
+    {
+        var s = Staging.Rent();
+        ref var row = ref s.Albums.Add();
+        row.Id = s.Text(uri);
+        row.Title = s.Text(title);
+        row.Known = (uint)AlbumFields.Identity;
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        return Entities.Album(EntityUri.Parse(uri)).Slot;
+    }
+
+    public static int StageArtist(string uri, string name)
+    {
+        var s = Staging.Rent();
+        ref var row = ref s.Artists.Add();
+        row.Id = s.Text(uri);
+        row.Name = s.Text(name);
+        row.Known = (uint)ArtistFields.Identity;
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        return Entities.Artist(EntityUri.Parse(uri)).Slot;
+    }
+
+    public static int StageShow(string uri, string title, bool audiobook)
+    {
+        var s = Staging.Rent();
+        ref var row = ref s.Shows.Add();
+        row.Id = s.Text(uri);
+        row.Title = s.Text(title);
+        row.Flags = audiobook ? (uint)ShowFlags.Audiobook : 0;
+        row.Known = (uint)(ShowFields.Identity | ShowFields.Facts);
+        row.Authority = Authority.Full;
+        TestScope.CommitAndPublish(s);
+        return Entities.Show(EntityUri.Parse(uri)).Slot;
+    }
+
+    /// <summary>A saved-library payload of <paramref name="count"/> rows, added at distinct times.</summary>
+    public static LibraryEdge[] Saved(int count)
+    {
+        var payload = new LibraryEdge[count];
+        for (int i = 0; i < count; i++) payload[i] = new LibraryEdge(100 + i, 0);
+        return payload;
+    }
 }
 
 // ── G-180: the gate's content lane ──────────────────────────────────────────────────────────────────────────────────
@@ -342,6 +388,57 @@ public sealed class SidebarBinderWiringTests : IDisposable
         public IReadOnlyList<Shell.PlayEntry> Plays => PlayList;
         public readonly Dictionary<string, long> LastPlayedMap = new(StringComparer.Ordinal);
         public IReadOnlyDictionary<string, long> LastPlayed => LastPlayedMap;
+    }
+
+    [Fact]
+    public void Counts_UnknownBeforeTheLibraryLoads()
+    {
+        TestScope.Fresh();
+        SidebarWiringStage.Me();
+
+        var binder = new SidebarProjectionBinder(new FakeLogs(), peek: null);
+        binder.Start();
+        Assert.False(binder.Counts.Known);
+        Assert.Null(binder.Counts.Of("albums"));
+    }
+
+    [Fact]
+    public void Counts_AreOverTheFullProjection()
+    {
+        // Two albums, an artist, a podcast and an audiobook, all saved. With the Albums chip active the list shows the two
+        // albums, but the dropdown still counts every kind: the counts are read before the chip, search and hidden kinds.
+        TestScope.Fresh();
+        var me = SidebarWiringStage.Me();
+        int a1 = SidebarWiringStage.StageAlbum("spotify:album:c1", "One");
+        int a2 = SidebarWiringStage.StageAlbum("spotify:album:c2", "Two");
+        int artist = SidebarWiringStage.StageArtist("spotify:artist:c1", "Radiohead");
+        int podcast = SidebarWiringStage.StageShow("spotify:show:c1", "Slab Talk", audiobook: false);
+        int book = SidebarWiringStage.StageShow("spotify:show:c2", "Long Read", audiobook: true);
+        me.Replace(LibraryEdgeKind.SavedAlbums, new[] { a1, a2 }, SidebarWiringStage.Saved(2));
+        me.Replace(LibraryEdgeKind.FollowedArtists, new[] { artist }, SidebarWiringStage.Saved(1));
+        me.Replace(LibraryEdgeKind.SavedShows, new[] { podcast, book }, SidebarWiringStage.Saved(2));
+
+        var layout = Sidebar.Layout.Peek();
+        Sidebar.SwitchLayout(SidebarLayoutId.Library);    // only Library shapes the published list by the chip
+        Sidebar.SetLibraryFilter(SidebarLibraryFilter.Albums);
+        try
+        {
+            var binder = new SidebarProjectionBinder(new FakeLogs(), peek: null);
+            binder.Start();
+            Assert.Equal(2, binder.Entries.Current.Count);   // the shaped list: the chip keeps the two albums
+
+            var counts = binder.Counts;
+            Assert.True(counts.Known);
+            Assert.Equal(2, counts.Albums);
+            Assert.Equal(1, counts.Artists);
+            Assert.Equal(1, counts.Podcasts);
+            Assert.Equal(1, counts.Audiobooks);
+        }
+        finally
+        {
+            Sidebar.SetLibraryFilter(SidebarLibraryFilter.None);
+            Sidebar.SwitchLayout(layout);
+        }
     }
 
     [Fact]

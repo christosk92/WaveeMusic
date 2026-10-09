@@ -7,13 +7,13 @@
 // non-mouse organisation verbs (`RootlistTreeNav`, `RootlistSelection`, `RootlistBatchOrder`,
 // `SidebarTreeNavLayout`), the folder flyout's drill-in stack (`SidebarFolderTree`, `SidebarFolderFlyoutNav`), the
 // tree's multi-selection (`SidebarTreeSelection`), the mid-drag freeze (`SidebarStageHold<T>`), the reorder-clamp
-// displacement offset (`SidebarReorderClamp`), and the row's navbar-customization extras (`SidebarNavLayout`).
+// displacement offset (`SidebarReorderClamp`).
 // Pure, engine-free: no `TestScope.Fresh()`, no `[Collection(EntitiesCollection.Name)]`, no engine loop — matching
 // what every type tested here already promises ("Engine-free... so a test can drive the real ... directly").
 //
 // An earlier pass of this port DROPPED every fact above that touched a type Sidebar.cs declared WITHOUT `public`
 // (`SidebarTreeSelection`, `SidebarFolderFlyoutNav`, `SidebarFolderTree`, `SidebarReorderClamp`,
-// `SidebarStageHold<T>`, the queue-row `SidebarNavLayout`, `RootlistDropDecision`, `RootlistSlotMapper`,
+// `SidebarStageHold<T>`, `RootlistDropDecision`, `RootlistSlotMapper`,
 // `SidebarRowGeometry`) — this assembly reaches Sidebar.cs only via an ordinary `ProjectReference` and the solution
 // carries no `InternalsVisibleTo` anywhere, so none of them were reachable from `Wavee.Tests`, contradicting
 // Sidebar.cs's own file header ("source-visible to `Wavee.Tests`"). That was confirmed to be an artifact of how the
@@ -979,8 +979,7 @@ public class RootlistFolderPickerTests
 
 // ── SidebarNavExtrasTests: the tree row's Move up / Move down / Move to folder menu extras ─────────────────────────
 //
-// Full port of SidebarNavExtrasTests.cs — SidebarTreeNavLayout is public, distinct from the internal (queue-row)
-// SidebarNavLayout the 0.2.9 SidebarNavLayoutTests.cs targeted (see the header note; that file is DROPPED).
+// Full port of SidebarNavExtrasTests.cs — SidebarTreeNavLayout is public.
 public class SidebarNavExtrasTests
 {
     static SidebarTreeNavLayout Layout(string id)
@@ -1658,64 +1657,5 @@ public class SidebarDropFreezeTests
         bay.TryHold(sessionLive: true, "second-session");
         Assert.True(bay.TryFlush(out string? second));
         Assert.Equal("second-session", second);
-    }
-}
-
-// ── SidebarNavLayout: the row's navbar-customization extras, restored ──────────────────────────────────────────────
-//
-// Full port of SidebarNavLayoutTests.cs, restored now that SidebarNavLayout is public. Distinct from the (also
-// public) SidebarTreeNavLayout already exercised by SidebarNavExtrasTests above: this one decides Move up / Move
-// down / Remove for a navbar-customization row (a reorder band or the pin store), not the rootlist tree's Move up /
-// Move down / Move to folder.
-public class SidebarNavLayoutTests
-{
-    [Fact]
-    public void AMiddleItem_CanMoveBothWays()
-    {
-        var layout = SidebarNavLayout.Decide(orderIndex: 1, orderCount: 3, removable: false);
-        Assert.True(layout.MoveUp);
-        Assert.True(layout.MoveDown);
-        Assert.False(layout.Remove);
-        Assert.False(layout.IsEmpty);
-    }
-
-    [Fact]
-    public void TheFirstItem_CanOnlyMoveDown()
-    {
-        var layout = SidebarNavLayout.Decide(0, 3, removable: false);
-        Assert.False(layout.MoveUp);
-        Assert.True(layout.MoveDown);
-    }
-
-    [Fact]
-    public void TheLastItem_CanOnlyMoveUp()
-    {
-        var layout = SidebarNavLayout.Decide(2, 3, removable: false);
-        Assert.True(layout.MoveUp);
-        Assert.False(layout.MoveDown);
-    }
-
-    [Fact]
-    public void ALoneItem_CannotMove()
-    {
-        var layout = SidebarNavLayout.Decide(0, 1, removable: false);
-        Assert.True(layout.IsEmpty);
-    }
-
-    [Fact]
-    public void AProjectedLeaf_WithNoOrder_OffersNothing()
-    {
-        var layout = SidebarNavLayout.Decide(-1, 0, removable: false);
-        Assert.True(layout.IsEmpty);
-    }
-
-    [Fact]
-    public void AnAuthoredItem_CanBeRemovedEvenWhenItCannotMove()
-    {
-        var layout = SidebarNavLayout.Decide(0, 1, removable: true);
-        Assert.False(layout.MoveUp);
-        Assert.False(layout.MoveDown);
-        Assert.True(layout.Remove);
-        Assert.False(layout.IsEmpty);
     }
 }

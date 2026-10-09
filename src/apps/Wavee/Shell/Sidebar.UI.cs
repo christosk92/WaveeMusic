@@ -17,7 +17,7 @@
 // NAMED PARTIALS (the J1 split — each carries its own header): `Sidebar.UI.Drop.cs` (every drop spec + the rootlist
 // slot commit), `Sidebar.UI.Menus.cs` (row menus, the quick layout menu, "Move to folder…"), `Sidebar.UI.Slot.cs` (the
 // bound row slot), `Sidebar.UI.Rows.cs` (row primitives), `Sidebar.UI.Flyout.cs` (the compact section and folder
-// flyouts), `Sidebar.UI.Footer.cs` (the pane footer), `Sidebar.UI.LibraryV3.cs` (Library's mode, session and chrome).
+// flyouts), `Sidebar.UI.Footer.cs` (the pane footer), `Sidebar.UI.Library.cs` (Library's mode, session and head).
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -83,7 +83,7 @@ public static partial class Sidebar
             // The ONLY signal this body reads: a width, filter or collapse change never re-renders the host.
             var layout = Layout.Value;
             Element mode = layout == SidebarLayoutId.Library
-                ? Embed.Comp(() => new LibraryV3Mode(_inDrawer))
+                ? Embed.Comp(() => new LibraryMode(_inDrawer))
                 : Embed.Comp(() => new ClassicMode(_inDrawer));
             return new BoxEl
             {
@@ -163,7 +163,6 @@ public static partial class Sidebar
         _ = Layout.Value;
         _ = FolderVersion.Value;
         _ = LibraryFilter.Value;
-        _ = V3Qualifier.Value;
         _ = LibrarySearch.Value;
 
         bool first = binder.Revision == 0;
@@ -226,6 +225,15 @@ public static partial class Sidebar
         public Action? OnCreatePlaylist { get; init; }
         /// <summary>Whether the pane footer shows the Settings row (null ⇒ shown). The ⋯ is always there.</summary>
         public Func<bool>? ShowsSettings { get; init; }
+        /// <summary>Arrow navigation ran off an END of the list (−1 above the first row, +1 below the last). Return true when
+        /// the mode took focus (Library: Up from the first row lands on the page dropdown, design V.11).</summary>
+        public Func<int, bool>? OnEdgeNavigate { get; init; }
+        /// <summary>Whether a LIST row carries the pill now (the pane calls it on change only): the Library head's dropdown
+        /// carries the pill only when no row does (pill rule 1 beats rule 3).</summary>
+        public Action<bool>? PillOnRowChanged { get; init; }
+        /// <summary>Ctrl+F with the pane focused, when set (Library: open the toolbar's search box); otherwise Classic's
+        /// transient Playlists filter (P1.5).</summary>
+        public Action? OpenSearch { get; init; }
     }
 
     /// <summary>One committed same-list reorder in BAND-SLOT space: the renderer knows the geometry, only the mode knows
@@ -339,6 +347,9 @@ public static partial class Sidebar
         Action<ItemDisclosureDiagnostic>? _disclosureLog;
 
         readonly ItemsViewController _listController = new();
+        /// <summary>The list's edge adapter: one cached delegate, so the options record never allocates a closure per render.</summary>
+        Action<int>? _edgeNav;
+        bool _pillOnRow;
 
         /// <summary>THE ONE published drop slot — written once per hover, read by the row's line, its plate and the commit.</summary>
         readonly Signal<SidebarDropSlot> _dropSlot = new(SidebarDropSlot.None);
@@ -428,6 +439,7 @@ public static partial class Sidebar
         NodeHandle _selectionFlightFrom, _selectionFlightTo;
         readonly Dictionary<string, NodeHandle> _selectionPills = new(StringComparer.Ordinal);
         readonly Dictionary<int, string> _selectionRouteByNode = new();
+        readonly Dictionary<int, SidebarPillLane> _selectionLaneByNode = new();
         Shell.Route _routeCache = Shell.Route.None;
         string _routeKeyCache = "";
 
@@ -656,7 +668,12 @@ public static partial class Sidebar
                 IsItemInvokedEnabled = true,
                 OnInvoked = InvokeRow,
                 KeepAlive = KeepFilterRow,
+                OnEdgeNavigate = Config.OnEdgeNavigate is { } edge ? (_edgeNav ??= d => edge(d)) : null,
             }) with { Key = "plan" };
+
+        /// <summary>Give list row <paramref name="index"/> keyboard focus (current + into view) — the Library head's Down
+        /// from the dropdown, and the Edit-mode exit's focus return (§P4.5).</summary>
+        internal void FocusListItem(int index) => _listController.FocusItem(index);
 
         // ── the roving stops, typeahead and Enter (P1) ──
 
@@ -757,6 +774,7 @@ public static partial class Sidebar
                 return;
             }
             if (e.KeyCode != Keys.F || e.Mods != KeyModifiers.Ctrl) return;
+            if (Config.OpenSearch is { } open) { open(); e.Handled = true; return; }
             string? tree = FirstVisibleSectionId(SidebarSectionKind.Playlists);
             if (tree is null) return;
             if (!HasHeaderRow(tree)) return;   // a title-less section has nowhere to host the box
@@ -1403,6 +1421,12 @@ public static partial class Sidebar
             SidebarPillRules.AncestorFolders(Binder?.CurrentInput.PlaylistTree, route, _ancestorScratch);
             _pillTarget = SidebarPillRules.Resolve(Plan.Rows, Plan.Entries, _rowRouteOf ??= RowRouteOf, route, _ancestorScratch,
                 OwningSection(route));
+            bool onRow = _pillTarget.PlanIndex >= 0;
+            if (onRow != _pillOnRow)
+            {
+                _pillOnRow = onRow;
+                Config.PillOnRowChanged?.Invoke(onRow);
+            }
         }
 
         /// <summary>The route a pill drawn on row <paramref name="index"/> registers under: the live route when the row is
@@ -1510,7 +1534,7 @@ public static partial class Sidebar
 
         /// <summary>Bind a realized indicator node to the route it draws for; the reverse index makes it CHECKABLE after
         /// a recycle (a registration is removed only when the outgoing route still points back at THIS node).</summary>
-        internal void RegisterSelectionPill(string route, NodeHandle node)
+        internal void RegisterSelectionPill(string route, NodeHandle node, SidebarPillLane lane)
         {
             var scene = Context.Scene;
             if (route.Length == 0 || scene is null || node.IsNull || !scene.IsLive(node)) return;
@@ -1520,8 +1544,12 @@ public static partial class Sidebar
                 && _selectionPills.TryGetValue(previous, out var owned) && owned == node)
                 _selectionPills.Remove(previous);
             _selectionRouteByNode[index] = route;
+            _selectionLaneByNode[index] = lane;
             _selectionPills[route] = node;
         }
+
+        SidebarPillLane LaneOf(NodeHandle node)
+            => _selectionLaneByNode.TryGetValue((int)node.Raw.Index, out var lane) ? lane : SidebarPillLane.List;
 
         /// <summary>Would the pill's own bound read light this node? The transaction may only assert "visible" for a
         /// node this answers true for (#22/#23).</summary>
@@ -1557,8 +1585,9 @@ public static partial class Sidebar
                 NavigationSelectionMotion.SnapVertical(anim, incoming, visible: true);
                 return;
             }
-            // Same lane ⇒ the continuous worm; a real depth change scales (linear, no opacity leg).
-            bool sameLane = MathF.Abs(to.X - from.X) < 0.5f;
+            // Same container and depth ⇒ the continuous worm; anything else — a depth change, or the pill moving between the
+            // head, the list and the footer (design V.5) — scales out and in place, pivoting at the facing edges.
+            bool sameLane = SidebarPillMotionRules.Slides(LaneOf(outgoing), LaneOf(incoming), to.X - from.X);
             NavigationSelectionMotion.StartVertical(anim, outgoing, 0f, travel, SelectionPill.PillH, outgoing: true, sameDepth: sameLane);
             NavigationSelectionMotion.StartVertical(anim, incoming, -travel, 0f, SelectionPill.PillH, outgoing: false, sameDepth: sameLane);
             _selectionFlightFrom = outgoing;

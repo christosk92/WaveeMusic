@@ -370,18 +370,6 @@ public class SidebarEntryKindsFacts
         byte byYouAndUnknown = (byte)((1 << (int)SidebarPlaylistFlavor.ByYou) | (1 << (int)SidebarPlaylistFlavor.None));
         Assert.False(SidebarProjection.QualifiersAvailable(byYouAndUnknown));
     }
-
-    [Fact]
-    public void MatchesQualifier_TreatsAnyAsEverything()
-    {
-        var e = new SidebarLibraryEntry("pl:x", SidebarEntryKind.Playlist, "spotify:playlist:x", "X", "Me",
-            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 0, LastVisitedTicksUtc: 0,
-            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.ByYou);
-
-        Assert.True(e.MatchesQualifier(SidebarV3Qualifier.Any));
-        Assert.True(e.MatchesQualifier(SidebarV3Qualifier.ByYou));
-        Assert.False(e.MatchesQualifier(SidebarV3Qualifier.BySpotify));
-    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -2263,15 +2251,15 @@ public class SidebarBinderTriggersFacts
     public void AFilterSortOrDesignChange_TriggersARebuild()
     {
         int all = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.None,
-            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: true);
+            0, (int)SidebarLibrarySort.Recents, descending: true);
         int playlists = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.Playlists,
-            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: true);
+            0, (int)SidebarLibrarySort.Recents, descending: true);
         int alphabetical = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.None,
-            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Alphabetical, descending: true);
+            0, (int)SidebarLibrarySort.Alphabetical, descending: true);
         int ascending = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.None,
-            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: false);
+            0, (int)SidebarLibrarySort.Recents, descending: false);
         int curated = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Classic, (int)SidebarLibraryFilter.None,
-            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: true);
+            0, (int)SidebarLibrarySort.Recents, descending: true);
 
         Assert.Equal(5, new HashSet<int> { all, playlists, alphabetical, ascending, curated }.Count);
     }
@@ -2347,18 +2335,15 @@ public class SidebarBinderPipelineShapeFacts
 
     static (List<SidebarLibraryEntry> Rows, SidebarEntriesShape Shape) Project(
         SidebarLibraryFilter filter = SidebarLibraryFilter.None,
-        SidebarV3Qualifier qualifier = SidebarV3Qualifier.Any,
         SidebarLibrarySort sort = SidebarLibrarySort.Recents,
         bool desc = true,
         string? search = null,
-        bool qualifiersAvailable = false,
         IReadOnlyList<SidebarPin>? pins = null,
         IReadOnlyList<SidebarLibraryEntry>? library = null)
     {
         var into = new List<SidebarLibraryEntry>();
         var scratch = new List<SidebarLibraryEntry>();
-        var query = new SidebarLibraryQuery(filter, qualifier, Sort: sort, Descending: desc, Search: search,
-                                               QualifiersAvailable: qualifiersAvailable);
+        var query = new SidebarLibraryQuery(filter, Sort: sort, Descending: desc, Search: search);
         var shape = SidebarBinderPipeline.Project(library ?? Library, into, scratch, in query, pins);
         return (into, shape);
     }
@@ -2385,14 +2370,6 @@ public class SidebarBinderPipelineShapeFacts
     public void Search_IsCaseAndDiacriticsInsensitive_AndTrims()
     {
         Assert.Equal(1, Project(search: "  BETA ").Shape.Count);
-    }
-
-    [Fact]
-    public void AStaleQualifier_CannotHideTheList_WhenTheChipsAreUnavailable()
-    {
-        Assert.Equal(3, Project(SidebarLibraryFilter.Playlists, SidebarV3Qualifier.BySpotify).Shape.Count);
-        Assert.Equal(1, Project(SidebarLibraryFilter.Playlists, SidebarV3Qualifier.BySpotify,
-                                qualifiersAvailable: true).Shape.Count);
     }
 
     [Fact]

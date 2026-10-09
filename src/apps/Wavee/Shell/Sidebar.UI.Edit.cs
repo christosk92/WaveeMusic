@@ -4,7 +4,7 @@
 // lift, Esc, Ctrl+Z / Ctrl+Y)
 //
 // Role: UI
-// Spec: sidebar-rework-implementation.md §P4.5 · design C.3, Q3, Q5, Q7, Q8, Q16, Q17, V.11
+// Spec: sidebar-rework-implementation.md §P4.5, §P5.7 · design C.3, P.2a, Q3, Q5, Q7, Q8, Q16, Q17, V.11
 // NAMED PARTIAL of Sidebar.UI.cs: EditPane
 
 using System.Globalization;

@@ -230,6 +230,48 @@ public sealed class SidebarMenuModelTests
     }
 
     [Fact]
+    public void Sort_CustomDisabledOutsidePlaylists_WithReason()
+    {
+        var custom = SidebarStoreV3.SortName(SidebarLibrarySort.CustomOrder);
+        var off = SidebarMenuModel.Sort(SidebarLayoutState.Default, SidebarLibraryFilter.None).Single(r => r.Arg == custom);
+        Assert.False(off.Enabled);
+        Assert.Equal("sidebar.sort.customOnlyPlaylists", off.ReasonKey);
+    }
+
+    [Fact]
+    public void Sort_EffectiveChecked()
+    {
+        // Stored Custom order under Albums: the sort that applies is Recents, so Recents is the checked radio.
+        var state = Apply(SidebarLayoutState.Default, new SetLibrarySort(SidebarLibrarySort.CustomOrder, false));
+        var rows = SidebarMenuModel.Sort(state, SidebarLibraryFilter.Albums);
+        Assert.True(rows.Single(r => r.Arg == SidebarStoreV3.SortName(SidebarLibrarySort.Recents)).Checked);
+        Assert.False(rows.Single(r => r.Arg == SidebarStoreV3.SortName(SidebarLibrarySort.CustomOrder)).Checked);
+    }
+
+    [Fact]
+    public void Sort_ReverseDisabledUnderCustom()
+    {
+        var state = Apply(SidebarLayoutState.Default, new SetLibrarySort(SidebarLibrarySort.CustomOrder, false));
+        Assert.False(Find(SidebarMenuModel.Sort(state, SidebarLibraryFilter.Playlists), SidebarMenuAction.ToggleDescending)!.Enabled);
+        Assert.True(Find(SidebarMenuModel.Sort(state, SidebarLibraryFilter.Albums), SidebarMenuAction.ToggleDescending)!.Enabled);
+    }
+
+    [Fact]
+    public void Pages_CurrentChecked_NavigateRows()
+    {
+        var pages = new List<SidebarLibraryPage>
+        {
+            new SidebarLibraryPage("albums", "albums", "nav.albums", "g:albums", 2),
+            new SidebarLibraryPage("artists", "artists", "nav.artists", "g:artists", null),
+        };
+        var rows = SidebarMenuModel.Pages(pages, "artists");
+        Assert.Equal(new[] { SidebarMenuAction.NavigatePage, SidebarMenuAction.NavigatePage }, rows.Select(r => r.Action));
+        Assert.Equal(new[] { "nav.albums", "nav.artists" }, rows.Select(r => r.LabelKey));
+        Assert.Equal(new[] { false, true }, rows.Select(r => r.Checked));
+        Assert.Equal("albums", rows[0].Arg);
+    }
+
+    [Fact]
     public void Item_Pin_MoveAndUnpin()
     {
         var first = SidebarMenuModel.Item(SidebarSectionKind.Pinned, "pl:a", 0, 3, false);

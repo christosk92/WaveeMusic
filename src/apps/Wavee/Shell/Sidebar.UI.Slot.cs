@@ -271,7 +271,8 @@ public static partial class Sidebar
             Action<int>? move = treeRow && rootlistItem ? _o.TreeMoveAction(in snapshot) : null;
             // `resource` is THIS row's own identity (what a drop files relative to, the "Move into {name}" name, the self
             // check). The DRAG payload is the pane's: a row inside the multi-selection lifts the whole selection.
-            DragPayload? resource = treeRow ? PaneView.PayloadOf(in snapshot, rootlistItem: true) : null;
+            // The Liked row is a fixed home, never a rootlist slot (§P5.6): a filing dragged over it is a pin-path refusal.
+            DragPayload? resource = treeRow && entry.Id != SidebarCatalogue.LikedRoute ? PaneView.PayloadOf(in snapshot, rootlistItem: true) : null;
             DragPayload? drag = null;
             if (!reordering && !track)   // a track is never a pin source (enforced by the kind, not per surface)
                 drag = treeRow ? _o.TreeDragPayload(in snapshot) : PaneView.PayloadOf(in snapshot, rootlistItem);
@@ -305,7 +306,7 @@ public static partial class Sidebar
                 Glyph = routeGlyph ? Shell.Dest(Shell.Parse(entry.Id)).Glyph : null,
                 // The warning mark is the unavailable pin's trailing mark, so it shows in every row shape.
                 Trailing = unavailable ? Icon(Icons.Warning, 12f, Tok.TextTertiary) : TrailingBadge(section, in snapshot),
-                Pinned = SidebarRowGeometry.ShowsPinGlyph(snapshot.IsPinned, track),   // #85
+                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
                 Playing = playing,
                 PlayingAnimated = animated,
                 Track = track,
@@ -389,6 +390,9 @@ public static partial class Sidebar
                 Height = height,
                 ArtSize = art,
                 Leading = Cover.Folder(art, expanded),
+                // A pinned folder shows the mark LEFT of its chevron (Library's depth-0 pins; §P5.6). Its IsPinned is not a
+                // rootlist fact, so the folder's own state never enters the rule.
+                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
                 DisclosureChevron = Chevron.Disclosure(_folderOpen ??= FolderOpenLive, identity: _folderIdentity ??= FolderIdentity),
                 Trailing = FolderTrailing(section, in snapshot, folderId, rootlistItem),
                 Tile = compact,
@@ -430,6 +434,7 @@ public static partial class Sidebar
                 Height = height,
                 ArtSize = art,
                 Leading = Cover.Folder(art, expanded: false),
+                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
                 Overflow = menu is not null,
                 MenuOverlay = _o.MenuOverlay,
                 Menu = menu,

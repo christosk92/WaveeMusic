@@ -293,7 +293,9 @@ public static class SidebarRowPlanner
         var list = input.Library;
         if (input.LibraryState == SidebarSourceState.Pending && (list is null || list.Count == 0))
         {
-            if (!st.Compact) EmitSkeletons(lib, ref st);
+            // Nothing published yet: the list view shows its skeletons; the grid shows nothing (no grey placeholder
+            // tiles). Loaded rows never take this branch, so a pending edge never blanks them.
+            if (!st.Compact && options.View == SidebarLibraryView.List) EmitSkeletons(lib, ref st);
             return;
         }
         int start = st.Entries.Count;

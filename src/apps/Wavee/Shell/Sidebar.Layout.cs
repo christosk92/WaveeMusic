@@ -28,7 +28,7 @@ public enum SidebarDensity : byte { Default = 0, Compact = 1 }
 public enum SidebarLibraryView : byte { List = 0, Grid = 1 }
 
 /// <summary>Your Library's sort. <see cref="CustomOrder"/> IS the Spotify rootlist order and applies under the Playlists
-/// filter only (elsewhere it presents Alphabetical, <see cref="SidebarSort.Effective"/>). Same values as the deleted V3
+/// filter only (elsewhere it presents Recents, <see cref="SidebarLibraryHeadRules.Effective"/>; the stored sort is kept). Same values as the deleted V3
 /// sort, so a stored int keeps its meaning.</summary>
 public enum SidebarLibrarySort : byte { Recents = 0, RecentlyAdded = 1, Alphabetical = 2, Creator = 3, CustomOrder = 4 }
 

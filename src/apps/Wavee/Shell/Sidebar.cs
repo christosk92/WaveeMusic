@@ -845,31 +845,6 @@ public sealed class SidebarStageHold<TStage> where TStage : class
     public void Discard() => _held = null;
 }
 
-/// <summary>Which navbar-customization verbs a sidebar row's context menu offers — the queue-row extras, for the
-/// left pane. Engine-free so <c>Wavee.Tests</c> drives the real rule.
-///
-/// Drag is one of several ways to reorder, never the only one (P6). Explicit Move up / Move down stay available
-/// when the in-place reorder band is disarmed (an expanded folder in Pinned, a single remaining item). Remove is the
-/// authored-list verb (a StaticLinks / CustomGroup / Shortcuts item the user placed); a Pinned row's remove is
-/// Unpin, which already lives in the pin-state slot of the entity menu and is therefore not duplicated here.</summary>
-public readonly record struct SidebarNavLayout(bool MoveUp, bool MoveDown, bool Remove)
-{
-    public bool IsEmpty => !MoveUp && !MoveDown && !Remove;
-
-    /// <summary><paramref name="orderIndex"/> is this row's slot in the list that actually moves (a reorder band,
-    /// the pin store when that band is disarmed, or -1 when the row has no order of its own — a projected library
-    /// leaf). <paramref name="removable"/> is true only for a hand-placed item the document will actually
-    /// drop.</summary>
-    public static SidebarNavLayout Decide(int orderIndex, int orderCount, bool removable)
-    {
-        bool ordered = orderIndex >= 0 && orderCount > 1;
-        return new(
-            MoveUp: ordered && orderIndex > 0,
-            MoveDown: ordered && orderIndex < orderCount - 1,
-            Remove: removable);
-    }
-}
-
 /// <summary>A settled pane observation (the presentation as decided, plus the column's laid-out width).</summary>
 public readonly record struct SidebarPaneFrameSnapshot(
     SidebarLayoutId Layout,
@@ -1142,8 +1117,6 @@ public readonly record struct SidebarLibraryEntry(
     /// and Core qualifier vocabularies are byte-identical to <see cref="SidebarPlaylistFlavor"/>, so one byte
     /// comparison serves both.</summary>
     public bool MatchesQualifier(byte qualifier) => qualifier == 0 || (byte)Flavor == qualifier;
-
-    public bool MatchesQualifier(SidebarV3Qualifier qualifier) => MatchesQualifier((byte)qualifier);
 
     /// <summary>An APP-ROUTE row (Home / Search / Liked / ...). Authored by the surface, never produced by the
     /// projection: the label + glyph are engine-bound and resolved by the renderer. The route key IS the id.</summary>
@@ -3407,15 +3380,13 @@ public static class SidebarLibraryFingerprint
     }
 }
 
-/// <summary>Your Library's shaping state: the chip, the qualifier (deleted in P5), the hidden kinds, the sort and the search.</summary>
+/// <summary>Your Library's shaping state: the chip, the hidden kinds, the sort and the search.</summary>
 public readonly record struct SidebarLibraryQuery(
     SidebarLibraryFilter Filter = SidebarLibraryFilter.None,
-    SidebarV3Qualifier Qualifier = SidebarV3Qualifier.Any,
     SidebarLibraryKinds HiddenKinds = SidebarLibraryKinds.None,
     SidebarLibrarySort Sort = SidebarLibrarySort.Recents,
     bool Descending = false,
-    string? Search = null,
-    bool QualifiersAvailable = false);
+    string? Search = null);
 
 /// <summary>What one shaping pass produced: how many rows were published and how long the leading pin band is.</summary>
 public readonly record struct SidebarEntriesShape(int Count, int PinCount);
@@ -3423,13 +3394,12 @@ public readonly record struct SidebarEntriesShape(int Count, int PinCount);
 public static class SidebarBinderPipeline
 {
     /// <summary>Shape the unified projection into the list Your Library renders: FILTER (kinds, the chip's exact match,
-    /// qualifier, search), then SORT, then the pins-first partition — the order that makes pins lead in every sort mode.
+    /// search), then SORT, then the pins-first partition — the order that makes pins lead in every sort mode.
     /// <paramref name="all"/> is the full source-order projection (every kind); <paramref name="into"/> and
     /// <paramref name="scratch"/> are caller-owned and reused.
     ///
-    /// <para>A persisted qualifier other than Any is treated as Any whenever the data does not support the chips
-    /// (<c>QualifiersAvailable == false</c>). A persisted Custom sort outside the Playlists filter falls back to
-    /// Alphabetical FOR DISPLAY, leaving the preference untouched (<see cref="SidebarSort.Effective"/>).</para></summary>
+    /// <para>A persisted Custom sort outside the Playlists filter falls back to Alphabetical FOR DISPLAY, leaving the
+    /// preference untouched (<see cref="SidebarSort.Effective"/>).</para></summary>
     public static SidebarEntriesShape Project(
         IReadOnlyList<SidebarLibraryEntry>? all,
         List<SidebarLibraryEntry> into,
@@ -3450,8 +3420,8 @@ public static class SidebarBinderPipeline
     }
 
     /// <summary>The IN-PLACE half of <see cref="Project"/>, for a list that already holds the kinds the filter's MASK wants:
-    /// compact by hidden kinds + the chip's exact match (the Podcasts/Audiobooks split the mask cannot express) + qualifier
-    /// + search, then sort, then partition pins to the front.</summary>
+    /// compact by hidden kinds + the chip's exact match (the Podcasts/Audiobooks split the mask cannot express) + search,
+    /// then sort, then partition pins to the front.</summary>
     public static SidebarEntriesShape Shape(
         List<SidebarLibraryEntry> list,
         List<SidebarLibraryEntry> scratch,
@@ -3463,10 +3433,9 @@ public static class SidebarBinderPipeline
 
         string search = SidebarSearch.Normalize(query.Search);
         bool searching = search.Length > 0;
-        byte qualifier = query.QualifiersAvailable ? (byte)query.Qualifier : (byte)0;
         // Not only while searching: the kind mask cannot split Podcasts from Audiobooks (both are Show) and does not know the
         // kinds hidden through Filters, so the loop also runs for a hidden kind and for those two chips.
-        bool narrow = searching || qualifier != 0 || query.HiddenKinds != SidebarLibraryKinds.None
+        bool narrow = searching || query.HiddenKinds != SidebarLibraryKinds.None
                       || query.Filter is SidebarLibraryFilter.Podcasts or SidebarLibraryFilter.Audiobooks;
 
         if (narrow)
@@ -3477,7 +3446,6 @@ public static class SidebarBinderPipeline
                 var e = list[read];
                 if (SidebarLibraryFilters.IsHidden(query.HiddenKinds, in e)) continue;
                 if (query.Filter != SidebarLibraryFilter.None && !SidebarLibraryFilters.Matches(query.Filter, in e)) continue;
-                if (qualifier != 0 && (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier(qualifier))) continue;
                 if (searching)
                 {
                     // Searching FLATTENS: matching leaves only, no folder chrome.

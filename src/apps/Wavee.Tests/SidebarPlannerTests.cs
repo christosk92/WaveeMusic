@@ -396,6 +396,41 @@ public sealed class SidebarRowPlannerTests
         Assert.DoesNotContain(Plan(Library(), withPins).Rows, r => r.Kind == SidebarRowKind.Empty);
     }
 
+    static SidebarLayoutDoc GridDoc() => PlanFixture.Doc(SidebarLayoutId.Library,
+        s => PlanFixture.Op(s, new SetLibraryView(SidebarLibraryView.Grid)));
+
+    [Fact]
+    public void Library_GridPending_NoRows()
+    {
+        // Pending with an EMPTY published list: no placeholder strips, no skeletons (the list view would show three).
+        var input = new SidebarProjectionInput(Library: [], LibraryState: SidebarSourceState.Pending);
+        var plan = Plan(GridDoc(), input, new SidebarPlanOptions(GridColumns: 3));
+        Assert.DoesNotContain(plan.Rows, r => r.Kind is SidebarRowKind.GridStrip or SidebarRowKind.Skeleton);
+    }
+
+    [Fact]
+    public void Library_GridPending_WithRows_KeepsStrips()
+    {
+        // One edge still pending (LibraryState is the worst of three) but rows already published: they stay (§3.2.10).
+        var list = new[] { PlanFixture.Album("a"), PlanFixture.Album("b"), PlanFixture.Album("c"), PlanFixture.Album("d") };
+        var input = new SidebarProjectionInput(Library: list, LibraryState: SidebarSourceState.Pending);
+        var plan = Plan(GridDoc(), input, new SidebarPlanOptions(GridColumns: 3));
+        Assert.Equal(2, plan.Rows.Count(r => r.Kind == SidebarRowKind.GridStrip));   // 3 + 1
+    }
+
+    [Fact]
+    public void Library_PinMark_DepthZeroPinsOnly()
+    {
+        Assert.True(SidebarPinRules.ShowsPinMark(SidebarLayoutId.Library, SidebarSectionKind.Pinned, 0, false, false));
+        // A pinned folder's expanded child (planned in the pinned section at depth 1) is not a pin.
+        Assert.False(SidebarPinRules.ShowsPinMark(SidebarLayoutId.Library, SidebarSectionKind.Pinned, 1, false, false));
+        // …unless it is itself pinned (the existing #85 rule).
+        Assert.True(SidebarPinRules.ShowsPinMark(SidebarLayoutId.Library, SidebarSectionKind.Pinned, 1, true, false));
+        // Classic's pins sit under their header and keep today's rule; a track never shows the mark.
+        Assert.False(SidebarPinRules.ShowsPinMark(SidebarLayoutId.Classic, SidebarSectionKind.Pinned, 0, false, false));
+        Assert.False(SidebarPinRules.ShowsPinMark(SidebarLayoutId.Library, SidebarSectionKind.Library, 0, true, true));
+    }
+
     [Fact]
     public void Library_PinnedFolder_ExpandsInline()
     {

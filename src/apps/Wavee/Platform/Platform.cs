@@ -95,8 +95,6 @@ public static partial class Platform
         /// pre-existing local pin up, an empty/partial mirror must never look like "unpin everything". Read by the migration
         /// only; nothing writes it any more.</summary>
         public static readonly SettingKey<bool> PinsMigratedToServer = new("sidebar.pins.migratedToServer", false);
-        // The V3 chrome's qualifier, a session-mirrored bridge until P5 replaces that chrome (§P3.11).
-        public static readonly SettingKey<int> V3Qualifier = new("sidebar.v3.qualifier", 0);
 
         // ── first-run setup wizard ──
         /// <summary>Armed for a fresh install; EVERY wizard exit path clears it, so it can never reappear uninvited.</summary>

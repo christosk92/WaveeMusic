@@ -85,8 +85,6 @@ public static partial class Sidebar
         s_deviceFile = new SidebarFileStore(SidebarStoreV3.PathUnder(s_profileDir)) { WriteCompleted = OnWriteCompleted };
         LoadDeviceFile();
         LibraryFilter.Value = SidebarLibraryFilters.Effective(s.Get(Platform.Keys.SidebarLibraryFilter), Doc.Library.HiddenKinds);
-        V3Qualifier.Value = s.Get(Platform.Keys.V3Qualifier);   // the P3-P4 V3 chrome bridge (§P3.12); deleted in P5
-        SyncV3Mirrors();
 
         s_accountLoaded = false;                                          // a re-Boot reloads the account even for the same key
         s_accountFile = null;
@@ -217,7 +215,6 @@ public static partial class Sidebar
         }
         s_state = r.State;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
-        if (op is SetLibrarySort or SetLibraryView) SyncV3Mirrors();
         CommitLayout();
         return r;
     }
@@ -261,7 +258,7 @@ public static partial class Sidebar
         Log.Info("sidebar", "layout.changed to=" + next);
     }
 
-    /// <summary>Density (Settings, the pane menu, the V3 view bridge): recorded in the ring, never toasted.</summary>
+    /// <summary>Density (Settings, the pane menu): recorded in the ring, never toasted.</summary>
     public static void SetDensity(SidebarDensity density)
     {
         var before = Density.Peek();
@@ -277,14 +274,12 @@ public static partial class Sidebar
         Density.Value = density;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
         Platform.Settings.Set(Platform.Keys.SidebarPaneDensity, (int)density);
-        SyncV3Mirrors();
     }
 
     public static void SetLibraryFilter(SidebarLibraryFilter filter)
     {
         LibraryFilter.SetIfChanged(filter);
         Platform.Settings.Set(Platform.Keys.SidebarLibraryFilter, (int)filter);
-        SyncV3Mirrors();
     }
 
     /// <summary>"Reset everything" (design C.3): both layouts and the density back to their defaults (the width too, which
@@ -567,67 +562,12 @@ public static partial class Sidebar
         Platform.Settings.Set(Platform.Keys.SidebarPaneUserCollapsed, UserCollapsed.Peek());
     }
 
-    // ── P3-P4 BRIDGE: Library V3's chrome speaks its old int codes until P5 replaces it. The model is the truth; these
-    //    mirror it (SyncV3Mirrors) and their setters write the model. Never persisted. Delete in P5. ──────────────────────
+    /// <summary>The toolbar's sort button and the sort menu: a sort (and its direction) through the one op.</summary>
+    public static void SetLibrarySort(SidebarLibrarySort sort, bool descending)
+        => Dispatch(new SetLibrarySort(sort, descending));
 
-    public static readonly Signal<int> V3Filter = new(0);
-    public static readonly Signal<int> V3Qualifier = new(0);
-    public static readonly Signal<int> V3Sort = new(0);
-    public static readonly Signal<bool> V3Desc = new(false);
-    public static readonly Signal<int> V3View = new(1);
-    public static readonly Signal<int> V3GridSize = new(1);
-    public static Signal<string> V3Search => LibrarySearch;
-
-    static void SyncV3Mirrors()
-    {
-        var lib = Doc.Library;
-        V3Filter.SetIfChanged(LibraryFilter.Peek() switch
-        {
-            SidebarLibraryFilter.Playlists => (int)SidebarV3Filter.Playlists,
-            SidebarLibraryFilter.Podcasts or SidebarLibraryFilter.Audiobooks => (int)SidebarV3Filter.Podcasts,
-            SidebarLibraryFilter.Albums => (int)SidebarV3Filter.Albums,
-            SidebarLibraryFilter.Artists => (int)SidebarV3Filter.Artists,
-            _ => (int)SidebarV3Filter.All,
-        });
-        V3Sort.SetIfChanged((int)lib.Sort);
-        V3Desc.SetIfChanged(lib.Descending);
-        bool compact = Density.Peek() == SidebarDensity.Compact;
-        V3View.SetIfChanged(lib.View == SidebarLibraryView.Grid
-            ? (compact ? (int)SidebarV3View.CompactGrid : (int)SidebarV3View.Grid)
-            : (compact ? (int)SidebarV3View.CompactList : (int)SidebarV3View.List));
-    }
-
-    public static void SetV3Filter(int v) => SetLibraryFilter(v switch
-    {
-        (int)SidebarV3Filter.Playlists => SidebarLibraryFilter.Playlists,
-        (int)SidebarV3Filter.Podcasts => SidebarLibraryFilter.Podcasts,
-        (int)SidebarV3Filter.Albums => SidebarLibraryFilter.Albums,
-        (int)SidebarV3Filter.Artists => SidebarLibraryFilter.Artists,
-        _ => SidebarLibraryFilter.None,
-    });
-    public static void SetV3Qualifier(int v) { V3Qualifier.SetIfChanged(v); Platform.Settings.Set(Platform.Keys.V3Qualifier, v); }
-    public static void SetV3Sort(int sort, bool desc)
-        => Dispatch(new SetLibrarySort((uint)sort <= 4 ? (SidebarLibrarySort)sort : SidebarLibrarySort.Recents, desc));
-    /// <summary>One V3 view pick is a view AND a density change: ONE ring entry (a batch when both moved), so one Ctrl+Z
-    /// undoes the whole pick.</summary>
-    public static void SetV3View(int view)
-    {
-        var op = new SetLibraryView(view >= (int)SidebarV3View.CompactGrid ? SidebarLibraryView.Grid : SidebarLibraryView.List);
-        var density = view is (int)SidebarV3View.CompactList or (int)SidebarV3View.CompactGrid ? SidebarDensity.Compact : SidebarDensity.Default;
-        var layout = Layout.Peek();
-        var before = State.Of(SidebarLayoutId.Library);
-        var densityBefore = Density.Peek();
-        bool viewChanged = ApplyUnrecorded(op).Changed;
-        SetDensityUnrecorded(density);
-        bool densityChanged = densityBefore != density;
-        if (!viewChanged && !densityChanged) return;
-        string label = viewChanged ? LabelOf(op) : Loc.Get("sidebar.undo.label.density");
-        var viewPart = new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Library, label, Before: before, After: State.Of(SidebarLayoutId.Library));
-        var densityPart = new SidebarUndoEntry(0, SidebarUndoKind.Density, layout, label, DensityBefore: densityBefore, DensityAfter: density);
-        Record(viewChanged && densityChanged ? SidebarUndoEntry.Batch(layout, label, [viewPart, densityPart])
-            : viewChanged ? viewPart : densityPart, null);
-    }
-    public static void SetV3GridSize(int size) => V3GridSize.SetIfChanged(size);
+    /// <summary>List ↔ Grid from the toolbar toggles.</summary>
+    public static void SetLibraryView(SidebarLibraryView view) => Dispatch(new SetLibraryView(view));
 
     // ── folder expansion (an unbounded id set ⇒ the account file, not settings) ─────────────────────────────────────────
 
@@ -1387,6 +1327,7 @@ public sealed class SidebarProjectionBinder
     SidebarBinderTriggers _lastTriggers;
     SidebarSourceState _libraryState = SidebarSourceState.Pending;
     SidebarSourceState _treeState = SidebarSourceState.Pending;
+    SidebarLibraryCounts _counts;
     int _revision;
     bool _started;
     bool _rebuilding;
@@ -1433,6 +1374,10 @@ public sealed class SidebarProjectionBinder
     /// until the next rebuild. Key a memo on <see cref="Revision"/>; SUBSCRIBE through <see cref="Entries"/>'s version
     /// and <see cref="InputVersion"/>.</summary>
     public SidebarProjectionInput CurrentInput => _input;
+
+    /// <summary>The kind counts over the FULL projection (before chip, search and hidden kinds), for the page dropdown.
+    /// Moves through <see cref="InputVersion"/>.</summary>
+    public SidebarLibraryCounts Counts => _counts;
 
     /// <summary>Bumped once per rebuild — the planner's <c>DepKey</c> lane. A plain value, never a subscription.</summary>
     public int Revision => _revision;
@@ -1500,8 +1445,25 @@ public sealed class SidebarProjectionBinder
         _treeState = StateOf(u.RootlistState);
         _libraryState = Worst(StateOf(u.State(LibraryEdgeKind.SavedAlbums)),
                         Worst(StateOf(u.State(LibraryEdgeKind.FollowedArtists)), StateOf(u.State(LibraryEdgeKind.SavedShows))));
+        int albums = 0, artists = 0, podcasts = 0, audiobooks = 0;
+        var all = build.All;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var e = all[i];
+            switch (e.Kind)
+            {
+                case SidebarEntryKind.Album: albums++; break;
+                case SidebarEntryKind.Artist: artists++; break;
+                case SidebarEntryKind.Show when e.IsAudiobook: audiobooks++; break;
+                case SidebarEntryKind.Show: podcasts++; break;
+            }
+        }
+        var counts = new SidebarLibraryCounts(albums, artists, podcasts, audiobooks,
+                                              Known: _libraryState == SidebarSourceState.Ready);
+        bool countsMoved = counts != _counts;
+        _counts = counts;
 
-        // 3 — the PUBLISHED list Your Library renders: chip → hidden kinds → qualifier → search → sort → pins first.
+        // 3 — the PUBLISHED list Your Library renders: chip → hidden kinds → search → sort → pins first.
         // Classic reads none of it, so outside Library this pass is the plain everything-list (cheap, and it keeps the
         // Entries cell honest for the folder flyout).
         bool library = doc.Layout == SidebarLayoutId.Library;
@@ -1517,8 +1479,8 @@ public sealed class SidebarProjectionBinder
                                                 lastPlayed: lastPlayed, ensureIdentity: true);
         ResolvePins(build.Index, u.RootlistState);
         bool pinnedShown = doc.Find(SidebarSectionKind.Pinned) is { Hidden: false };
-        var query = new SidebarLibraryQuery(filter, library ? (SidebarV3Qualifier)Sidebar.V3Qualifier.Peek() : SidebarV3Qualifier.Any,
-            library ? options.HiddenKinds : SidebarLibraryKinds.None, options.Sort, options.Descending, search, qualifiers);
+        var query = new SidebarLibraryQuery(filter, library ? options.HiddenKinds : SidebarLibraryKinds.None,
+            SidebarLibraryHeadRules.Effective(options.Sort, filter), options.Descending, search);
         var shape = SidebarBinderPipeline.Shape(buffer, _scratch, in query, pinnedShown ? Sidebar.Pins.Items : null);
 
         // 4 — Recently played: synchronous (index → resident peek → logged title → skip), only while shown.
@@ -1543,7 +1505,7 @@ public sealed class SidebarProjectionBinder
         var (state, error) = PublishState(shape.Count, anyPending);
         _publishedStage = build;
         bool entriesChanged = Entries.Publish(state, error, anyPending, qualifiers, shape.PinCount, _publishedStage.All);
-        bool inputChanged = PublishInput();
+        bool inputChanged = PublishInput(countsMoved || !string.Equals(search, _input.Search ?? "", StringComparison.Ordinal));
         int newStamps = full.NewFirstSeenStamps + libResult.NewFirstSeenStamps;
         if (newStamps > 0) CommitFirstSeen(firstSeen, build.All);
         if (SidebarRevisionGate.ShouldBump(entriesChanged, inputChanged)) _revision++;
@@ -1579,13 +1541,14 @@ public sealed class SidebarProjectionBinder
         }
     }
 
-    /// <summary>Bump <see cref="InputVersion"/> iff a non-entries planner input differs from the last published pass.
+    /// <summary>Bump <see cref="InputVersion"/> iff a non-entries planner input differs from the last published pass, or
+    /// <paramref name="headMoved"/> says the Library head moved (its counts, or the search the list was shaped with).
     /// Every shadow is evaluated (no short-circuit), so each one always holds the pass it last saw. Returns whether it
     /// bumped — BUG E2's <see cref="SidebarRevisionGate"/> reads this alongside <see cref="SidebarEntries.Publish"/>'s
     /// own return to decide whether <see cref="Revision"/> moves this rebuild.</summary>
-    bool PublishInput()
+    bool PublishInput(bool headMoved)
     {
-        bool changed = _pinShadow.Publish(_pinRows, default);
+        bool changed = headMoved | _pinShadow.Publish(_pinRows, default);
         changed |= _playedShadow.Publish(_played, default);
         changed |= _newReleasesShadow.Publish(_newReleases, default);
         ulong h = SidebarLibraryFingerprint.Seed;
@@ -1844,7 +1807,7 @@ public sealed class SidebarProjectionBinder
             FolderVersion: Sidebar.FolderVersion.Peek(),
             OrderVersion: 0,
             CultureEpoch: 0,       // a locale-triggered resort is the engine's concern, out of scope for this SHELL file
-            V3State: SidebarBinderTriggers.PackV3((int)doc.Layout, (int)Sidebar.LibraryFilter.Peek(), Sidebar.V3Qualifier.Peek(),
+            V3State: SidebarBinderTriggers.PackV3((int)doc.Layout, (int)Sidebar.LibraryFilter.Peek(), 0,
                                                   (int)doc.Library.Sort, doc.Library.Descending),
             SearchHash: SidebarSearch.Normalize(Sidebar.LibrarySearch.Peek()).GetHashCode(StringComparison.Ordinal),
             SourceEpoch: 0,
@@ -1966,7 +1929,7 @@ public sealed class SidebarEntries
 /// something new on at least one of the two gates — <see cref="SidebarEntries.Publish"/>'s byte-change shadow, or
 /// <see cref="SidebarProjectionBinder.PublishInput"/>'s feed-moved shadow. A rebuild that reproduced identical
 /// content on BOTH must not bump it: <c>Revision</c> feeds <c>PaneView.PlanDep</c> (Sidebar.UI.cs) and
-/// <c>V3Session.ShapeInput</c>'s <c>ViewEpoch</c> (Sidebar.UI.LibraryV3.cs), and each folds it into a `DepKey`/hash
+/// <c>LibrarySession.ShapeInput</c>'s <c>ViewEpoch</c> (Sidebar.UI.Library.cs), and each folds it into a `DepKey`/hash
 /// that forces a full re-plan (`Sidebar.Plan`) or a full re-group (`View.Build`) on any change — an
 /// unconditional bump made every rebuild wake pay for both, twice, regardless of whether anything visible moved.
 /// Engine-free and pure so it is unit-testable without a live binder (<c>SidebarRevisionTests</c>).</summary>

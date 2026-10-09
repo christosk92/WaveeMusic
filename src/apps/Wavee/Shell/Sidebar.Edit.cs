@@ -167,6 +167,7 @@ public enum SidebarMenuAction : byte
     SwitchLayout, ResetLayout, ShowSection, SetDensity, EditSidebar, ResetEverything,
     SetSort, SetView, ToggleLiked, ToggleKind, SetLimit, ShowItem, Collapse, Expand, MoveUp, MoveDown, HideSection,
     UnpinAllShortcuts, Unpin, MovePinUp, MovePinDown, HideItem, MoveRootlistUp, MoveRootlistDown,
+    ToggleDescending, NavigatePage,
 }
 
 /// <summary>A rootlist row's one-step moves (from <c>PaneView.RootlistStepOf</c>: <c>TreeMoves</c>' sibling run and the marker
@@ -296,18 +297,7 @@ public static class SidebarMenuModel
     public static IReadOnlyList<SidebarMenuRow> LibraryOptions(SidebarLayoutState state, SidebarLibraryFilter filter)
     {
         var lib = state.Library.Find("library") ?? SidebarCatalogue.DefaultState(SidebarSectionKind.Library);
-        var sort = lib.Sort ?? SidebarLibrarySort.Recents;
         var view = lib.View ?? SidebarLibraryView.List;
-        bool customAvailable = filter == SidebarLibraryFilter.Playlists;
-        var sorts = new List<SidebarMenuRow>(5);
-        for (int i = 0; i <= (int)SidebarLibrarySort.CustomOrder; i++)
-        {
-            var sv = (SidebarLibrarySort)i;
-            bool custom = sv == SidebarLibrarySort.CustomOrder;
-            sorts.Add(new SidebarMenuRow(SidebarMenuAction.SetSort, "sidebar.sort." + SidebarStoreV3.SortName(sv), SidebarStoreV3.SortName(sv),
-                Enabled: !custom || customAvailable, Checked: sort == sv, Radio: true,
-                ReasonKey: custom && !customAvailable ? "sidebar.sort.customOnlyPlaylists" : null));
-        }
         var kinds = new List<SidebarMenuRow>(4);
         var items = SidebarCatalogue.ItemsOf(SidebarLayoutId.Library, SidebarSectionKind.Library);
         for (int i = 0; i < items.Count; i++)
@@ -315,7 +305,7 @@ public static class SidebarMenuModel
                 Checked: !Contains(lib.HiddenList, items[i])));
         return
         [
-            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.sort", Children: sorts),
+            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.sort", Children: Sort(state, filter)),
             new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.view", Children:
             [
                 new SidebarMenuRow(SidebarMenuAction.SetView, "sidebar.view.list", "list", Checked: view == SidebarLibraryView.List, Radio: true),
@@ -324,6 +314,38 @@ public static class SidebarMenuModel
             new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.filters", Children: kinds),
             new SidebarMenuRow(SidebarMenuAction.ToggleLiked, "sidebar.menu.showLiked", Checked: lib.ShowLiked ?? true),
         ];
+    }
+
+    /// <summary>The toolbar's sort button: the five sorts (Custom order only under Playlists, Q-P.2) · ─ · Reverse order.</summary>
+    public static IReadOnlyList<SidebarMenuRow> Sort(SidebarLayoutState state, SidebarLibraryFilter filter)
+    {
+        var lib = state.Library.Find("library") ?? SidebarCatalogue.DefaultState(SidebarSectionKind.Library);
+        var stored = lib.Sort ?? SidebarLibrarySort.Recents;
+        var sort = SidebarLibraryHeadRules.Effective(stored, filter);
+        bool custom = SidebarLibraryHeadRules.CustomOrderOffered(filter);
+        var rows = new List<SidebarMenuRow>(7);
+        for (int i = 0; i <= (int)SidebarLibrarySort.CustomOrder; i++)
+        {
+            var sv = (SidebarLibrarySort)i;
+            bool isCustom = sv == SidebarLibrarySort.CustomOrder;
+            rows.Add(new SidebarMenuRow(SidebarMenuAction.SetSort, SidebarLibraryHeadRules.SortKey(sv), SidebarStoreV3.SortName(sv),
+                Enabled: !isCustom || custom, Checked: sort == sv, Radio: true,
+                ReasonKey: isCustom && !custom ? "sidebar.sort.customOnlyPlaylists" : null));
+        }
+        rows.Add(SidebarMenuRow.Divider);
+        rows.Add(new SidebarMenuRow(SidebarMenuAction.ToggleDescending, "sidebar.sort.reverse",
+            Enabled: sort != SidebarLibrarySort.CustomOrder, Checked: lib.Descending ?? false));
+        return rows;
+    }
+
+    /// <summary>The "Your Library ▾" page menu: one row per page (glyph + count), the current page checked. Navigation only.</summary>
+    public static IReadOnlyList<SidebarMenuRow> Pages(IReadOnlyList<SidebarLibraryPage> pages, string? currentPage)
+    {
+        var rows = new List<SidebarMenuRow>(pages.Count);
+        for (int i = 0; i < pages.Count; i++)
+            rows.Add(new SidebarMenuRow(SidebarMenuAction.NavigatePage, pages[i].TitleKey, pages[i].Route,
+                Checked: string.Equals(pages[i].Route, currentPage, System.StringComparison.Ordinal)));
+        return rows;
     }
 
     /// <summary>The sidebar-specific rows a row's context menu adds (the entity verbs stay the action registry's): a pin

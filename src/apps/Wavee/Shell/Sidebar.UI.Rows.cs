@@ -664,13 +664,15 @@ public static partial class Sidebar
         readonly PaneView _owner;
         readonly Func<SidebarPillState> _state;
         readonly Prop<float> _opacity;
+        readonly SidebarPillLane _lane;
         NodeHandle _self;
         string? _route;
 
-        public SelectionPill(PaneView owner, Func<SidebarPillState> state)
+        public SelectionPill(PaneView owner, Func<SidebarPillState> state, SidebarPillLane lane = SidebarPillLane.List)
         {
             _owner = owner;
             _state = state;
+            _lane = lane;
             _opacity = Prop.Of(() => _state().Opacity);
         }
 
@@ -685,7 +687,7 @@ public static partial class Sidebar
                 _route = state.Route;
                 var anim = Context.Anim;
                 if (anim is null || _self.IsNull || state.Route is not { Length: > 0 } route) return;
-                _owner.RegisterSelectionPill(route, _self);
+                _owner.RegisterSelectionPill(route, _self, _lane);
                 // A recycled node may inherit an interrupted transform from the route previously bound to the slot; snap
                 // to the same visibility the bound channel reads, so the snap can never disagree with it.
                 if (recycled) NavigationSelectionMotion.SnapVertical(anim, _self, selected);

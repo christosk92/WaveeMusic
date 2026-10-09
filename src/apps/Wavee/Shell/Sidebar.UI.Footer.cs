@@ -74,13 +74,11 @@ public static partial class Sidebar
                 if (compact) settings = ToolTip.Wrap(settings, dest.Title);
             }
 
-            var pill = new BoxEl
-            {
-                Width = SidebarRowGeometry.PillW, Height = SidebarRowGeometry.PillH, HitTestVisible = false,
-                Margin = new Edges4(0f, SidebarRowGeometry.PillTop(SidebarRowGeometry.RowHeight), 0f, 0f),
-                Corners = CornerRadius4.All(SidebarRowGeometry.PillRadius), Fill = Tok.AccentDefault,
-                Opacity = selected && showSettings ? 1f : 0f,
-            };
+            // A registered pill (not a static box): leaving Settings for a list row scales the pill out instead of popping it
+            // (design V.5). It exists only beside the Settings row, so it is never drawn while Settings is hidden.
+            Element pill = Embed.Comp(() => new SelectionPill(owner, () => new SidebarPillState("settings",
+                SidebarPillState.Lit("settings", owner.SelectedRoute), 0f, SidebarRowGeometry.PillTop(SidebarRowGeometry.RowHeight)),
+                SidebarPillLane.Footer)) with { Key = "footer-pill" };
 
             Element body;
             if (compact)

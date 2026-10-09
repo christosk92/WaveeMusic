@@ -2201,11 +2201,26 @@
   "sidebar": {
     "sort": {
       "recents": "Recently played",
+      "short": {
+        "recents": "Recents"
+      },
       "recentlyAdded": "Recently added",
       "alphabetical": "Alphabetical",
       "creator": "Creator",
       "customOrder": "Custom order",
-      "customOnlyPlaylists": "Custom order works for playlists only"
+      "customOnlyPlaylists": "Custom order works for playlists only",
+      "reverse": "Reverse order"
+    },
+    "chip": {
+      "playlists": "Playlists"
+    },
+    "library": {
+      "title": "Your Library",
+      "titleOnPage": "Your Library · {page}",
+      "pageSuffix": "· {page}",
+      "search": "Search in Your Library",
+      "searchPlaceholder": "Search in Your Library",
+      "options": "More options"
     },
     "view": {
       "list": "List",
