@@ -1023,6 +1023,12 @@ public static partial class Shell
         // time the facet pivot is clicked).
         if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
             return null;
+        // Facet→facet of one artist's discography or one user's list, same tab: SlotKey and PageKey both ignore the facet, so
+        // this is the SAME mounted page re-binding in place (the views pill slides, the body re-skeletons). A page
+        // entrance here would replay the whole page for a pill click.
+        if (oldToken is Route prevFacet && FrameRules.IsFacetPage(next.Kind) && prevFacet.Kind == next.Kind && prevFacet.Tab == next.Tab
+            && string.Equals(FrameRules.PageKeyOf(prevFacet), FrameRules.PageKeyOf(next), StringComparison.Ordinal))
+            return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
         if (videoSafe) return RecipeForVideoSafe(motion);
@@ -1035,7 +1041,7 @@ public static partial class Shell
         switch (FrameRules.BodyFor(route, factory is not null, Platform.Settings.Get(Platform.Keys.DeveloperMode)))
         {
             case FrameRules.BodyKind.Page:
-                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + NameOf(route), factory!(route)));
+                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + FrameRules.PageKeyOf(route), factory!(route)));
             case FrameRules.BodyKind.Empty:
                 return PageBox("page-empty:" + NameOf(route), null);
             default:

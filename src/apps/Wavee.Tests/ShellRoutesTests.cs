@@ -375,6 +375,49 @@ public class ShellRouteCodecTests
         Assert.NotEqual(Shell.SlotKey(a), Shell.SlotKey(b));   // two versions are two slots
         Assert.NotEqual(Shell.SlotKey(b), Shell.SlotKey(c));   // the same page in two tabs is two slots
     }
+
+    [Fact]
+    public void A_facet_page_is_keyed_by_its_subject_and_never_by_its_facet()
+    {
+        const string ArtistA = "spotify:artist:4tZwfgrHOc3mvqYlEYSvVi";
+        const string ArtistB = "spotify:artist:1vCWHaC5f2uS3yhpwWbIA6";
+        var albums = Shell.Parse("disco:0:" + ArtistA);
+        var singles = Shell.Parse("disco:1:" + ArtistA);
+        var other = Shell.Parse("disco:0:" + ArtistB);
+        Assert.Equal(Shell.FrameRules.PageKeyOf(albums), Shell.FrameRules.PageKeyOf(singles));   // a facet click keeps the page
+        Assert.NotEqual(Shell.FrameRules.PageKeyOf(albums), Shell.FrameRules.PageKeyOf(other));  // another artist is another page
+        Assert.NotEqual(Shell.NameOf(albums), Shell.NameOf(singles));                            // the route itself still differs
+        Assert.False(Shell.SameSlot(albums, singles));                                           // and a facet is still a new place
+
+        const string User = "spotify:user:abc";
+        var following = Shell.Parse("people:0:" + User);
+        var followers = Shell.Parse("people:1:" + User);
+        var someoneElse = Shell.Parse("people:0:spotify:user:xyz");
+        Assert.Equal(Shell.FrameRules.PageKeyOf(following), Shell.FrameRules.PageKeyOf(followers));
+        Assert.NotEqual(Shell.FrameRules.PageKeyOf(following), Shell.FrameRules.PageKeyOf(someoneElse));
+        Assert.NotEqual(Shell.FrameRules.PageKeyOf(albums), Shell.FrameRules.PageKeyOf(following));
+
+        // The keep-alive slot follows the page key, still per tab.
+        Assert.Equal(Shell.SlotKey(albums), Shell.SlotKey(singles));
+        Assert.Equal(Shell.SlotKey(following), Shell.SlotKey(followers));
+        Assert.NotEqual(Shell.SlotKey(albums), Shell.SlotKey(albums with { Tab = 1 }));
+    }
+
+    [Fact]
+    public void Every_other_kind_is_keyed_by_its_route_name()
+    {
+        foreach (var r in new[]
+        {
+            Shell.Parse("album:spotify:album:1TSZDcvlPtAnekTaItI3qO"),
+            Shell.Parse("playlist:spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"),
+            Shell.Parse("artist:spotify:artist:4tZwfgrHOc3mvqYlEYSvVi"),
+            Shell.Parse("home"), Shell.Parse("home", "music-chip"), Shell.Parse("settings"), Shell.Parse("search", "pop"),
+        })
+            Assert.Equal(Shell.NameOf(r), Shell.FrameRules.PageKeyOf(r));
+
+        // A facet route that does not parse falls back to its name rather than throwing.
+        Assert.Equal(Shell.NameOf(Shell.Parse("disco:")), Shell.FrameRules.PageKeyOf(Shell.Parse("disco:")));
+    }
 }
 
 public class DeepLinkTests

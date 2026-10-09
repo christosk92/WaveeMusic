@@ -979,8 +979,8 @@ public static partial class Shell
     /// write on the already-active key look like an activation change, which re-seeded the entrance and re-faded the
     /// whole page with no content change at all.</summary>
     public static string SlotKey(in Route r)
-        => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + NameOf(r) + ""
-         + (Row(r.Kind).KeyedByArg ? Entities.Strings.Resolve(r.Arg) : "");
+        => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + FrameRules.PageKeyOf(r) + ""
+         + (Row(r.Kind).KeyedByArg && !FrameRules.IsFacetPage(r.Kind) ? Entities.Strings.Resolve(r.Arg) : "");
 
     /// <summary>How many pages the content host keeps alive. Back to a page shows it exactly as it was, including
     /// scroll and selection; the fourth oldest is evicted.</summary>
@@ -2003,6 +2003,28 @@ public static partial class Shell
 
         public static BodyKind BodyFor(in Route route, bool hasPage, bool developerMode)
             => !IsKnown(route, developerMode) ? BodyKind.NotFound : hasPage ? BodyKind.Page : BodyKind.Empty;
+
+        /// <summary>A kind whose route carries a FACET digit in its key (<c>disco:&lt;facet&gt;:&lt;artist&gt;</c>,
+        /// <c>people:&lt;facet&gt;:&lt;user&gt;</c>): the facet is a view of one page, not another page.</summary>
+        public static bool IsFacetPage(RouteKind kind) => kind is RouteKind.Discography or RouteKind.ProfileList;
+
+        /// <summary>The identity of the PAGE a route shows, which is what the content host keys the page (and its keep-alive
+        /// slot) by. For a facet page (Discography, a profile list) it is the row key + the subject WITHOUT the facet, so a
+        /// facet change keeps the page mounted: the views pill slides and only the body below re-skeletons in place. Every
+        /// other kind (and a facet route that does not parse) is <see cref="NameOf"/>. The route itself stays the truth
+        /// and the page-transition token, so another artist or user still swaps pages.</summary>
+        public static string PageKeyOf(in Route route)
+        {
+            if (!IsFacetPage(route.Kind) || route.Arg.IsEmpty) return NameOf(route);
+            ReadOnlySpan<char> arg = Entities.Strings.Resolve(route.Arg);
+            ReadOnlySpan<char> subject;
+            if (route.Kind == RouteKind.Discography)
+            {
+                if (!DiscoRoute.TryParseArg(arg, out _, out subject)) return NameOf(route);
+            }
+            else if (!ProfileListRoute.TryParseArg(arg, out _, out subject)) return NameOf(route);
+            return string.Concat(Row(route.Kind).Key, subject);
+        }
 
         /// <summary>The CLEARING half of <see cref="Ui.ActiveStagePlayable"/>: a navigation to a route no module watch page
         /// will mount for clears a stale claim — value-gated, so an idle navigation writes nothing. Module routes are the

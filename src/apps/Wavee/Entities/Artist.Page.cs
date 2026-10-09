@@ -549,12 +549,12 @@ public readonly partial struct Artist
         }
 
         /// <summary>The centred magazine column: Grow toward the row's free width, capped at 1600, the hero's gutter on
-        /// both sides, a 32 section gap, the player dock's reserve under the last section (ArtistPage.cs:271-285).</summary>
+        /// both sides, a 32 section gap, the page's bottom reserve (PageGeometry.BottomReserve) under the last section (ArtistPage.cs:271-285).</summary>
         static Element Magazine(Element[] sections, float gutter) => new BoxEl
         {
             Direction = 1, Gap = Design.Size.SectionGap,
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
-            Padding = new Edges4(gutter, Spacing.M, gutter, Design.Dock.Reserve + 40f),
+            Padding = new Edges4(gutter, Spacing.M, gutter, PageGeometry.BottomReserve),
             Children = sections,
         };
 

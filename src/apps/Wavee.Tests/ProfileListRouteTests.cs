@@ -99,12 +99,13 @@ public class ProfileListRouteTests
     }
 
     [Fact]
-    public void ProfileList_facets_are_distinct_places_and_slots()
+    public void ProfileList_facets_are_distinct_places_but_one_page()
     {
         var following = Shell.Parse("people:0:" + Abc);
         var followers = Shell.Parse("people:1:" + Abc);
-        Assert.False(Shell.SameSlot(following, followers));
-        Assert.NotEqual(Shell.SlotKey(following), Shell.SlotKey(followers));
+        Assert.False(Shell.SameSlot(following, followers));                       // a facet is still a new PLACE (history, tabs)
+        Assert.Equal(Shell.SlotKey(following), Shell.SlotKey(followers));         // but the same mounted PAGE: the pill slides
+        Assert.NotEqual(Shell.SlotKey(following), Shell.SlotKey(Shell.Parse("people:0:spotify:user:other")));
         Assert.True(Shell.SameSlot(following, Shell.Parse("people:0:" + Abc)));
         Assert.Equal(Shell.SlotKey(following), Shell.SlotKey(Shell.Parse("people:0:" + Abc)));
     }
