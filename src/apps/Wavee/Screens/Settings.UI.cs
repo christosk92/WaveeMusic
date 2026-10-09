@@ -1,6 +1,6 @@
 // ── Screens/Settings.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the page shell (masthead, the 7-tab SelectorBar — General, Appearance, Playback, Notifications, Storage, Privacy &
-// diagnostics, About — and the per-tab scroll lane), the shared row grammar every tab builds with, the glyph resolver,
+// the page shell (the shared PageHead: title + the 7 tab views — General, Appearance, Playback, Notifications, Storage,
+// Privacy & diagnostics, About — and the per-tab scroll lane), the shared row grammar every tab builds with, the glyph resolver,
 // General (incl. the tray's Notification-area group), Notifications, and the Screens-side install call
 //
 // Role: UI
@@ -158,25 +158,26 @@ public static partial class Settings
             // N7: the body swaps with no transition; only the scroller is keyed, per tab, so each tab keeps its own
             // offset. Every tab is an ordinary scrolling lane (N8's unscrolled Logs lane is retired: the viewer is the
             // route `logs`).
+            float g = Shell.Ui.PageGutter.Value;
             Element content = ScrollView(new BoxEl
             {
                 Direction = 1,
-                Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
+                Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
                 Children = [ContentColumn(body)],
             }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
 
-            // W28: the masthead and the strip are SIBLINGS of the scroller — nothing compacts, sticks or gains a shadow.
+            // W28: the head (title + the tab views) is a SIBLING of the scroller — nothing compacts, sticks or gains a
+            // shadow. The head is TitleViews (164) on every tab and the bar is one stable key on s_tab, so a tab switch
+            // moves only the pill; the body's top edge never moves.
             return new BoxEl
             {
                 Grow = 1f, Direction = 1,
                 Children =
                 [
-                    Header(),
-                    new BoxEl
+                    PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Settings.Title))
                     {
-                        Direction = 1, Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, 0f),
-                        Children = [SelectorBar.Create(TabLabels(), s_tab), Divider()],
-                    },
+                        Views = TabLabels(), ViewsSelected = s_tab, Gutter = g, Key = "settings:head",
+                    }),
                     content,
                 ],
             };
@@ -195,18 +196,6 @@ public static partial class Settings
     ];
 
     // ══ 3. THE SHARED ROW GRAMMAR (0.2.9 `SettingsPage.cs:192-290`, `SettingsShared.cs`) ══════════════════════════
-
-    /// <summary>W1's masthead: a 24-DIP gear + the 28/36/600 title, padded (36, 16, 36, 12).</summary>
-    static Element Header() => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-        Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
-        Children =
-        [
-            Icon(Icons.Settings, 24f, Tok.TextPrimary),
-            Design.Type.PageHero(Loc.Get(Strings.Settings.Title)) with { Grow = 1f },
-        ],
-    };
 
     /// <summary>N1: a LEFT-aligned 1000-DIP column — never centred, never full-bleed.</summary>
     static Element ContentColumn(Element body) => new BoxEl

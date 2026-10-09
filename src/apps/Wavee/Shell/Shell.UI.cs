@@ -1050,22 +1050,24 @@ public static partial class Shell
     };
 
     /// <summary>Nothing claims the route (a retired key, a stale restored tab, a developer route with developer mode off).
-    /// NOT "coming soon": say so, keep the destination's own glyph, give the one action that always works.</summary>
+    /// NOT "coming soon": say so under the shared page head (Title, 120) and give the one action that always works.</summary>
     static Element NotFoundPage(in Route route)
     {
-        var (_, glyph) = Dest(route);
         string key = NameOf(route) + "|" + (ArgOf(route) ?? "");
         if (s_warnedUnknown.Add(key)) Log.Warn("nav", "route.unknown: " + key);   // once per key per process
+        float g = Ui.PageGutter.Value;
         return new BoxEl
         {
             Key = "page-notfound:" + key,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Gap = Spacing.M,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
             Children =
             [
-                Icon(glyph, 40f, Tok.TextTertiary),
-                Design.Type.PageHero(Loc.Get(Strings.Nav.PageNotFound)),
-                Button.Standard(Loc.Get(Strings.Nav.GoHome), static () => GoTo(new Route(RouteKind.Home))),
+                PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Nav.PageNotFound)) { Gutter = g, Key = "notfound:head" }),
+                new BoxEl
+                {
+                    Direction = 1, Padding = new Edges4(g, 0f, g, 0f), AlignItems = FlexAlign.Start,
+                    Children = [Button.Standard(Loc.Get(Strings.Nav.GoHome), static () => GoTo(new Route(RouteKind.Home)))],
+                },
             ],
         };
     }

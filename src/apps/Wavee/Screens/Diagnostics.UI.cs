@@ -178,26 +178,24 @@ public static partial class Diagnostics
 
     const float PageMaxWidth = 1000f, RuntimeLabelWidth = 132f, ConnectLabelWidth = 160f;
 
-    static Element PageHeader(string glyph, string title) => new BoxEl
+    /// <summary>The shared page head over ONE scroll keyed on the route (ch 27 W28: nothing compacts, nothing is sticky).</summary>
+    static Element PageFrame(string title, string scrollKey, List<Element> body)
     {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.M),
-        Children = [FluentGpu.Dsl.Ui.Icon(glyph, 22f, Tok.TextPrimary), Design.Type.PageHero(title) with { Grow = 1f }],
-    };
-
-    /// <summary>The pinned header over ONE scroll keyed on the route (ch 27 W28: nothing compacts, nothing is sticky).</summary>
-    static Element PageFrame(string glyph, string title, string scrollKey, List<Element> body) => new BoxEl
-    {
-        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-        Children =
-        [
-            PageHeader(glyph, title),
-            FluentGpu.Dsl.Ui.ScrollView(new BoxEl
-            {
-                Direction = 1, Gap = 12f, MaxWidth = PageMaxWidth, AlignSelf = FlexAlign.Stretch,
-                Padding = new Edges4(Spacing.L, Spacing.L, Spacing.L, Spacing.XXL), Children = body.ToArray(),
-            }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = scrollKey },
-        ],
-    };
+        float g = Shell.Ui.PageGutter.Value;
+        return new BoxEl
+        {
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
+            Children =
+            [
+                PageHead.Create(new PageHeadSpec(title) { Gutter = g, Key = "diag:head" }),
+                FluentGpu.Dsl.Ui.ScrollView(new BoxEl
+                {
+                    Direction = 1, Gap = 12f, MaxWidth = PageMaxWidth, AlignSelf = FlexAlign.Stretch,
+                    Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve), Children = body.ToArray(),
+                }) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, ScrollKey = scrollKey },
+            ],
+        };
+    }
 
     static Element Card(string title, List<Element> rows)
     {
@@ -305,7 +303,7 @@ public static partial class Diagnostics
                 ],
             });
             body.Add(Caption(Loc.Get(Strings.Diagnostics.Runtime.Caption)));
-            return PageFrame(Icons.MusicNote, Loc.Get(Strings.Playback.Runtime.DiagnosticsTitle), "playback-diagnostics", body);
+            return PageFrame(Loc.Get(Strings.Playback.Runtime.DiagnosticsTitle), "playback-diagnostics", body);
         }
 
         /// <summary>THREE headline states: no report (Attention, "no playback session yet"), compiled in (Success), not
@@ -706,7 +704,7 @@ public static partial class Diagnostics
                 HostCard(in snap),
                 Caption(Loc.Get(Strings.Diagnostics.Connect.Caption)),
             };
-            return PageFrame(Icons.Devices, Loc.Get(Strings.Nav.ConnectDiagnostics), "connect-diagnostics", body);
+            return PageFrame(Loc.Get(Strings.Nav.ConnectDiagnostics), "connect-diagnostics", body);
         }
 
         static Element R(string label, string? value) => Row(label, value, ConnectLabelWidth);
