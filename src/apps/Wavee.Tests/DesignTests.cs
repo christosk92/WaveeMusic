@@ -26,6 +26,7 @@ public class DesignTypeRampTests
     {
         "TrackTitle", "CardTitle", "TrackMeta", "Eyebrow", "MicroMeta", "DenseMeta", "DenseTitle", "SheetTitle",
         "RailHeader", "ModuleHeader", "PageHero", "DetailHero", "SurfaceDisplay", "NowPlayingTitle", "PickQuote",
+        "PageTitle", "PageMeta", "PaneTitle",
     };
 
     static TextEl Alias(string name) => name switch
@@ -45,6 +46,9 @@ public class DesignTypeRampTests
         "SurfaceDisplay" => Design.Type.SurfaceDisplay("x"),
         "NowPlayingTitle" => Design.Type.NowPlayingTitle("x"),
         "PickQuote" => Design.Type.PickQuote("x"),
+        "PageTitle" => Design.Type.PageTitle("x"),
+        "PageMeta" => Design.Type.PageMeta("x"),
+        "PaneTitle" => Design.Type.PaneTitle("x"),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, null),
     };
 

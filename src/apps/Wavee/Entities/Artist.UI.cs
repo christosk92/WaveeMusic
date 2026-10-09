@@ -120,17 +120,16 @@ public static class ArtistHeroLayout
         var tier = TierFor(width, previous);
         return tier switch
         {
-            ArtistHeroTier.Wide => new(tier, WideHeight, Spacing.PageWide, ArtistHeroVeilAxis.Horizontal, WideCopyMaxWidth),
-            ArtistHeroTier.Medium => new(tier, MediumHeight, Spacing.XXXL, ArtistHeroVeilAxis.Horizontal, MediumCopyMaxWidth),
+            ArtistHeroTier.Wide => new(tier, WideHeight, PageGeometry.GutterWide, ArtistHeroVeilAxis.Horizontal, WideCopyMaxWidth),
+            ArtistHeroTier.Medium => new(tier, MediumHeight, PageGeometry.GutterMedium, ArtistHeroVeilAxis.Horizontal, MediumCopyMaxWidth),
             ArtistHeroTier.Compact => new(tier, CompactHeight, Spacing.L, ArtistHeroVeilAxis.Vertical, CompactCopyMaxWidth),
-            _ => new(tier, NarrowHeight, Spacing.PageNarrow, ArtistHeroVeilAxis.Vertical, NarrowCopyMaxWidth),
+            _ => new(tier, NarrowHeight, PageGeometry.GutterNarrow, ArtistHeroVeilAxis.Vertical, NarrowCopyMaxWidth),
         };
     }
 
-    public static float PageGutterFor(float width) => width >= WideWidth ? Spacing.PageWide
-        : width >= MediumWidth ? Spacing.XXXL
-        : width >= CompactWidth ? Spacing.L
-        : Spacing.PageNarrow;
+    /// <summary>The memoryless page gutter for a width: <see cref="PageGeometry.GutterFor(float)"/> (the hero's tier
+    /// thresholds), kept here as the hero's own name for it.</summary>
+    public static float PageGutterFor(float width) => PageGeometry.GutterFor(width);
 
     public static float PhotoFadeBandFor(float height) => Math.Clamp(height * 0.28f, 120f, 180f);
     public static float CollapseDistance(float height) => MathF.Max(1f, height - CompactIdentityHeight);

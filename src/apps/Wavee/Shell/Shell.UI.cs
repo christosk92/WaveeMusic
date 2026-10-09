@@ -139,7 +139,7 @@ public static partial class Shell
     // drag snaps both 1:1 through the suppression arbiter. WinUI SplitView's pane spline at 300 ms (200 ms read as a snap
     // behind the heavier media surface).
     static readonly EasingSpec PaneEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
-    const float PaneMs = 300f;
+    const float PaneMs = FrameRules.CardMotionMs;
     const string ContentRowMorphId = "shell.content-row";
 
     /// <summary>The pane opens in 200 ms and closes in 100 ms on WinUI's SplitView spline (MotionTok.PaneOpen/PaneClose).</summary>
@@ -246,6 +246,11 @@ public static partial class Shell
                     paneHidden: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune);
                 Sidebar.Mode.SetIfChanged(mode0);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode0, Sidebar.Width.Peek(), w0));
+                // The page gutter is right on frame one: a narrow launch must not mount at 36 and step a frame later.
+                Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(FrameRules.CardWidth(w0, Sidebar.PresentedWidth.Peek(),
+                    FrameRules.ContentLeadGap(Sidebar.NavStyle.Peek()),
+                    FrameRules.RailGapWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek()),
+                    FrameRules.RailReservedWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek(), Ui.RailWidth.Peek()))));
             }
 
             // THE WINDOW BAND (design V.1): hysteretic, derived — the ONLY way the window width reaches the sidebar.
@@ -280,6 +285,19 @@ public static partial class Shell
                 var mode = SidebarPaneModeRules.Resolve(band, state.UserCollapsed, editing, paneHidden: hidden);
                 Sidebar.Mode.SetIfChanged(mode);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode, state.ExpandedWidth, vpW));
+            });
+            // THE PAGE GUTTER: one effect, reading exactly what the content card's width reads (the same signals, the same
+            // FrameRules), so the gutter steps in the SAME flush as the card and its FLIP covers the step. Not
+            // OnBoundsChanged: that fires after layout and would re-lay the page a frame late. Hysteretic against its own
+            // last value (PageGeometry.GutterFor), so a resize near 600 / 880 cannot flicker.
+            UseSignalEffect(() =>
+            {
+                float cardW = FrameRules.CardWidth(vp.Value.Width,
+                    FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
+                    FrameRules.ContentLeadGap(Sidebar.NavStyle.Value),
+                    FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+                    FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value));
+                Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(cardW, Ui.PageGutter.Peek()));
             });
             UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
             // F243: a rail drag ends (the splitter clears `dragging` AFTER its commit). A COMMITTED drag already made the

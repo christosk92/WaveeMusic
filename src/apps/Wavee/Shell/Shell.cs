@@ -1066,6 +1066,11 @@ public static partial class Shell
 
     public static class Ui
     {
+        /// <summary>The page gutter in DIP (36 / 32 / 16 by the content card's width, hysteretic). Written ONLY by the
+        /// shell's gutter effect, in the same flush as the widths it depends on, and seeded before the column mounts so
+        /// the first frame is right; pages read it in Render.</summary>
+        public static readonly Signal<float> PageGutter = new(PageGeometry.GutterWide);
+
         /// <summary>The rail is open. When false the rail slot animates its width to 0.</summary>
         public static readonly Signal<bool> RailOpen = new(false);
 
@@ -1864,6 +1869,20 @@ public static partial class Shell
         /// off. The peek term must stay in the same expression.</summary>
         public static float SidebarPaneWidth(bool dragPeek, float expanded, float presented)
             => dragPeek ? expanded : presented;
+
+        /// <summary>The content card's one motion: the pane, the card's FLIP and the Zune band's reveal all tween over
+        /// this many milliseconds on the same spline, so they land together. <c>Shell.UI.cs</c>'s PaneMs reads it.</summary>
+        public const float CardMotionMs = 300f;
+
+        /// <summary>The content card's width: the viewport less the sidebar column, the content lead gap, the rail's
+        /// inline gap and the rail's inline reservation. The seam strips are translated overlays and take no width. The
+        /// page gutter is decided from THIS, so it steps in the same commit as the card does.</summary>
+        public static float CardWidth(float viewportW, float sidebarW, float leadGap, float railGap, float railReserved)
+            => MathF.Max(0f, viewportW - sidebarW - leadGap - railGap - railReserved);
+
+        /// <summary>The gap between the sidebar column and the content card for a nav style. Zero in every style until the
+        /// Zune frame gap lands.</summary>
+        public static float ContentLeadGap(ShellNavStyle style) => 0f;
 
         /// <summary>The seam strip exists only where the pane is docked beside the content (the Wide band). A forced band
         /// (Narrow, Tiny) has no seam: the overlay pane owns the width.</summary>

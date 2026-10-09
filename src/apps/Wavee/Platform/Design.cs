@@ -1318,6 +1318,43 @@ public static partial class Design
             CharSpacing = -12f,
         };
 
+        /// <summary>THE PAGE HEAD'S TITLE — the name of a place or a record at the head of a page. <see cref="SurfaceDisplay"/>
+        /// (40 / 52, display face, light 400) held to ONE line: a long name ellipsises instead of wrapping, so the head's
+        /// height (<see cref="PageGeometry.TitleLine"/>) never depends on the text. <c>MinWidth = 0</c> + <c>Shrink = 1</c>
+        /// let the line yield to a trailing action cluster before it clips. Not a new divergence: same ramp rung, same face.</summary>
+        public static TextEl PageTitle(string s) => SurfaceDisplay(s) with
+        {
+            MaxLines = 1,
+            Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f,
+            Shrink = 1f,
+        };
+
+        /// <summary>THE PAGE HEAD'S META LINE — "42 songs · 3 hr" under the title. <c>Ui.Caption</c> (12 / 16 / 400) held
+        /// to one line, so the reserved <see cref="PageGeometry.MetaLine"/> is exactly what it occupies.</summary>
+        public static TextEl PageMeta(string s) => Ui.Caption(s) with
+        {
+            MaxLines = 1,
+            Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f,
+        };
+
+        /// <summary>A PANE's title ("Settings", a rail panel) — <see cref="PageHero"/>'s engine rung (28 / 36) in the display
+        /// face at the LIGHT 400 weight with −12/1000 em tracking, i.e. <see cref="SurfaceDisplay"/> one rung down. One line,
+        /// ellipsised. On the ramp and inside the 400/600 policy.</summary>
+        public static TextEl PaneTitle(string s) => Ui.Title(s) with
+        {
+            FontFamily = DisplayFace,
+            Weight = 400,
+            CharSpacing = -12f,
+            MaxLines = 1,
+            Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f,
+        };
+
         /// <summary>The daylist card's TITLE — the Home page's one hero line ("cutesy korean r&amp;b sunday afternoon").
         /// <see cref="SurfaceDisplay"/>'s cut (the 40 / 52 engine rung, the display face, −12/1000 em) at SEMIBOLD
         /// 600: a record's name, not a place's, so it takes the heading weight where the place masthead stays light.
@@ -1452,6 +1489,17 @@ public static partial class Design
         ItemHeight = 40f,
         ItemGap = 24f,
         LeadingInset = -8f,
+    };
+
+    /// <summary>THE style for a page's own VIEWS (the <see cref="SelectorBar"/> under a page head: Songs · Albums ·
+    /// Playlists): the stock bar at 14 / 20 with the pill, plus <see cref="PageGeometry.ViewsLeadingInset"/> so the first
+    /// WORD — not its 12-DIP plate — lands on the page gutter. Everything else stays the stock look, so a page's views
+    /// match every other SelectorBar in the app.</summary>
+    public static SelectorBarStyle PageViewsStyle => new()
+    {
+        LabelSize = 14f,
+        LineHeight = 20f,
+        LeadingInset = PageGeometry.ViewsLeadingInset,
     };
 
     /// <summary><see cref="FacetTitleStyle"/> one rung down the ramp (20/28; items 8 apart, so with the plates' own 8-DIP

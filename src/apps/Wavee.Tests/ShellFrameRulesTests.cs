@@ -59,6 +59,28 @@ public class ShellFrameGeometryTests
         Assert.Equal(0f, Shell.FrameRules.RailSeamWidth(open: false));
     }
 
+    [Fact]
+    public void The_card_width_is_the_viewport_less_the_columns_beside_it_and_never_negative()
+    {
+        // 1400 window, 280 pane, an inline 360 rail with its 8 gap: the seam strips are overlays and take no width.
+        Assert.Equal(752f, Shell.FrameRules.CardWidth(1400f, 280f, 0f, 8f, 360f));
+        // A window narrower than its columns clamps at 0 rather than going negative.
+        Assert.Equal(0f, Shell.FrameRules.CardWidth(300f, 280f, 8f, 8f, 360f));
+        // The Zune frame: no pane, an 8 lead gap, no rail.
+        Assert.Equal(1192f, Shell.FrameRules.CardWidth(1200f, 0f, 8f, 0f, 0f));
+    }
+
+    [Fact]
+    public void The_card_motion_is_one_300_ms_tween_shared_by_the_pane_the_card_and_the_band()
+        => Assert.Equal(300f, Shell.FrameRules.CardMotionMs);
+
+    [Fact]
+    public void No_nav_style_has_a_content_lead_gap_yet()
+    {
+        foreach (var style in Enum.GetValues<ShellNavStyle>())
+            Assert.Equal(0f, Shell.FrameRules.ContentLeadGap(style));
+    }
+
     [Theory]
     [InlineData(Video.SurfacePlacement.None, false, true)]
     [InlineData(Video.SurfacePlacement.Docked, false, true)]
