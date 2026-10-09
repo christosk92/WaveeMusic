@@ -153,6 +153,19 @@ public readonly partial struct User
 
     sealed record PaneProps(int Slot);
 
+    /// <summary>Podcasts row-1 words (0 Followed shows · 1 Your Episodes, A2 plan §3.5): the standard toolbar's picker
+    /// row IS the mode switch for this kind. Shared rather than per page instance so a navigation can open Your
+    /// Episodes (<see cref="YourEpisodesRoute"/>).</summary>
+    internal static readonly Signal<int> PodcastsMode = new(0);
+
+    /// <summary>Where "Your Episodes" lives: the Podcasts library with its Your Episodes word selected. Selects the
+    /// word and returns the route — the target of <c>Shell.Redirect</c> for Spotify's listen-later playlist.</summary>
+    public static Shell.Route YourEpisodesRoute()
+    {
+        PodcastsMode.Value = 1;
+        return new Shell.Route(Shell.RouteKind.LibraryPodcasts);
+    }
+
     static string PrefixOf(EntityKind kind) => kind switch
     {
         EntityKind.Artist => SidebarPinId.ArtistPrefix,
@@ -211,9 +224,6 @@ public readonly partial struct User
         readonly ItemsViewController _navCtl = new();
         readonly ScrollOptions _navScroll;
         readonly Signal<int> _sArtist = new(0), _sAlbum = new(0);   // the search drill-down, by slot, apart from browse
-        /// <summary>Podcasts row-1 words (0 Followed shows · 1 Your Episodes, A2 plan §3.5): the standard toolbar's
-        /// picker row IS the mode switch for this kind — no separate wrapper above the page any more.</summary>
-        readonly Signal<int> _savedEpisodes = new(0);
         readonly object _skelGroup = new();
         readonly Signal<bool> _collapsed = new(false);
         readonly Signal<int> _depth = new(0);
@@ -465,7 +475,7 @@ public readonly partial struct User
             // no more wrapper above the page. Selecting the word swaps the WHOLE body for the flat episode table (real
             // Spotify shows no per-show pane beside it either), but the toolbar (and so the word that switches back)
             // stays put, which is the one thing the old top-level `tabs` swap did not keep visible.
-            else if (IsPodcasts && _savedEpisodes.Value == 1)
+            else if (IsPodcasts && PodcastsMode.Value == 1)
                 inner = new BoxEl
                 {
                     Key = "lib:wide:saved",
@@ -1000,16 +1010,24 @@ public readonly partial struct User
             // Podcasts' row-1 words ARE Followed shows / Your Episodes (A2 plan §3.5) — the shows sort rail only
             // makes sense while browsing shows, and the mode switch belongs in the SAME row Albums uses for its own
             // words, not a wrapper of its own.
+            // Podcasts' mode words own their row: sharing it with the view toggle scrolled "Your Episodes" out of a
+            // narrow column. The filter and the view toggle only browse SHOWS, so they share the next row and Your
+            // Episodes (which has neither) drops it.
             _picker ??= new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
                 Children = IsPodcasts
-                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], _savedEpisodes, fill: true),
-                       ViewToggle(View, Size)]
+                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], PodcastsMode, fill: true)]
                     : [WordRail(_entity, Sort, Desc), ViewToggle(View, Size)],
             };
-            Element filter = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
-                grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
+            Element? filter = IsPodcasts && PodcastsMode.Value == 1 ? null : AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter),
+                text: Filter, queryIcon: Icons.Search, grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
+            if (IsPodcasts && filter is not null)
+                filter = new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                    Children = [filter, ViewToggle(View, Size)],
+                };
             // The two arms differ in CHILD COUNT (the collapsed one drops the title row), so they carry different keys:
             // paired by ordinal they would have matched the title row against `_picker` and `_picker` against the filter
             // — and the count is a BOUND text (`_countText`) that only a mount wires. The two arms live under
@@ -1019,7 +1037,7 @@ public readonly partial struct User
                 {
                     Key = "lib:toolbar:compact",
                     Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.S),
-                    Children = [_picker, filter],
+                    Children = filter is null ? [_picker] : [_picker, filter],
                 };
             Element titleRow = new BoxEl
             {
@@ -1037,7 +1055,7 @@ public readonly partial struct User
             {
                 Key = "lib:toolbar",
                 Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.L, Spacing.M, Spacing.S),
-                Children = [titleRow, _picker, filter],
+                Children = filter is null ? [titleRow, _picker] : [titleRow, _picker, filter],
             };
         }
 
@@ -1271,7 +1289,7 @@ public readonly partial struct User
                 {
                     Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
                     Direction = 1, Grow = 1f,
-                    Children = [Toolbar(title: false), IsPodcasts && _savedEpisodes.Value == 1
+                    Children = [Toolbar(title: false), IsPodcasts && PodcastsMode.Value == 1
                         ? Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + Entities.ScopeEpoch.Value }
                         : (fullSearch ? LeftSearchBody(shimmer) : ListBody())],
                 };

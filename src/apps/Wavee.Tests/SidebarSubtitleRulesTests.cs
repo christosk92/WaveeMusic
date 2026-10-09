@@ -22,6 +22,15 @@ public sealed class SidebarSubtitleRulesTests
     }
 
     [Fact]
+    public void YourEpisodes_CountsEpisodes_EvenThoughItHoldsEpisodes()
+    {
+        var e = Entry(SidebarEntryKind.Playlist, childCount: 12, countKnown: true) with { HasEpisodes = true, Episodes = true };
+        var s = SidebarSubtitleRules.Of(in e);
+        Assert.Equal(SidebarSubtitleKind.Episodes, s.Kind);
+        Assert.Equal(e.TrackCount, s.Count);
+    }
+
+    [Fact]
     public void Playlist_WithEpisodes_IsItemsNotSongs()
     {
         var e = Entry(SidebarEntryKind.Playlist, childCount: 48, countKnown: true) with { HasEpisodes = true };

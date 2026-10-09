@@ -1019,7 +1019,7 @@ public static partial class Sidebar
             => SidebarCatalogue.TitleKeyOf(section.Kind) is { } key ? Loc.Get(key) : "";
 
         /// <summary>The subtitle text: the grammar is <see cref="SidebarSubtitleRules.Of"/> (data), the words are the loc table's.
-        /// Playlist → "N songs" (or "N items" with an episode) · album → "Album · first artist" · artist → "Artist" · show →
+        /// Playlist → "N songs" (or "N items" with an episode, "N episodes" for Your Episodes) · album → "Album · first artist" · artist → "Artist" · show →
         /// "Podcast · publisher" · folder → "N items" · track → its artist · route → a concert's venue (its Creator). An
         /// UNKNOWN count is null, never "0 songs" (bug A1).</summary>
         public static string? SubtitleOf(in SidebarLibraryEntry e)
@@ -1029,6 +1029,7 @@ public static partial class Sidebar
             {
                 SidebarSubtitleKind.Songs => Strings.Sidebar.SongCount(s.Count),
                 SidebarSubtitleKind.Items => Strings.Sidebar.V3.ItemCount(s.Count),
+                SidebarSubtitleKind.Episodes => Strings.Podcast.EpisodeCount(s.Count),
                 SidebarSubtitleKind.Album => s.Detail.Length > 0
                     ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + s.Detail
                     : Loc.Get(Strings.Sidebar.V3.Kind.Album),
