@@ -19,8 +19,8 @@ public sealed class SidebarMenuModelTests
     static readonly string[] Search = ["Search"];
 
     static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density = SidebarDensity.Default,
-        bool editing = false, IReadOnlyList<string>? locking = null, bool classicCovers = false)
-        => SidebarMenuModel.Pane(layout, state, density, editing, locking ?? None, classicCovers);
+        bool editing = false, IReadOnlyList<string>? locking = null, bool classicCovers = false, bool zune = false, bool zunePins = true)
+        => SidebarMenuModel.Pane(layout, state, density, editing, locking ?? None, classicCovers, zune, zunePins);
 
     static IReadOnlyList<SidebarMenuRow> Header(SidebarLayoutId layout, SidebarLayoutState state, string section, IReadOnlyList<string>? locking = null)
         => SidebarMenuModel.Header(layout, state, section, locking ?? None);
@@ -69,7 +69,7 @@ public sealed class SidebarMenuModelTests
     {
         var rows = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default, SidebarDensity.Compact, editing: true);
         var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
-        Assert.Equal(2, switches.Count);
+        Assert.Equal(3, switches.Count);
         Assert.All(switches, r =>
         {
             Assert.False(r.Enabled);
@@ -85,6 +85,35 @@ public sealed class SidebarMenuModelTests
         Assert.All(density, r => Assert.True(r.Enabled));
         Assert.True(density.Single(r => r.Arg == "compact").Checked);
         AssertEveryLabelKeyResolves(rows);
+    }
+
+    [Fact]
+    public void Pane_Zune_ChecksZuneRadio_OffersPinsToggle()
+    {
+        var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, zune: true, zunePins: false);
+        var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
+        Assert.Equal(3, switches.Count);
+        Assert.False(switches.Single(r => r.Arg == "classic").Checked);
+        Assert.False(switches.Single(r => r.Arg == "library").Checked);
+        Assert.True(switches.Single(r => r.Arg == "zune").Checked);
+        var pins = FindAll(rows, SidebarMenuAction.ToggleZunePins);
+        Assert.Single(pins);
+        Assert.False(pins[0].Checked);
+        Assert.Null(Find(rows, SidebarMenuAction.SetDensity));
+        Assert.Null(Find(rows, SidebarMenuAction.ToggleCovers));
+        Assert.Null(Find(rows, SidebarMenuAction.EditSidebar));
+        AssertEveryLabelKeyResolves(rows);
+    }
+
+    [Fact]
+    public void Pane_NotZune_HasZuneRadioUnchecked()
+    {
+        var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default);
+        var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
+        Assert.Equal(3, switches.Count);
+        Assert.Equal("classic", switches.Single(r => r.Checked).Arg);
+        Assert.False(switches.Single(r => r.Arg == "zune").Checked);
+        Assert.Null(Find(rows, SidebarMenuAction.ToggleZunePins));
     }
 
     [Fact]

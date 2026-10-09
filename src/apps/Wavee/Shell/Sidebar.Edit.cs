@@ -167,7 +167,7 @@ public enum SidebarMenuAction : byte
     SwitchLayout, ResetLayout, ShowSection, SetDensity, EditSidebar, ResetEverything,
     SetSort, SetView, ToggleLiked, ToggleKind, SetLimit, ShowItem, Collapse, Expand, MoveUp, MoveDown, HideSection,
     UnpinAllShortcuts, Unpin, MovePinUp, MovePinDown, HideItem, MoveRootlistUp, MoveRootlistDown,
-    ToggleDescending, NavigatePage, ToggleCovers,
+    ToggleDescending, NavigatePage, ToggleCovers, ToggleZunePins,
 }
 
 /// <summary>A rootlist row's one-step moves (from <c>PaneView.RootlistStepOf</c>: <c>TreeMoves</c>' sibling run and the marker
@@ -199,12 +199,36 @@ public static class SidebarMenuModel
     /// · Classic: Show covers / Library: Density ▸ · Edit sidebar… · ─ · Reset everything…. While editing, the layout radios and Reset everything are disabled
     /// with the reason (Q7); Density stays. Library has no Pinned header (P.2a), so its two Pinned verbs live HERE: "Hide
     /// pinned" (disabled with "Unpin {names} first" while route/module pins lock it) and "Unpin all shortcuts" (Q17, while
-    /// such pins exist). <paramref name="lockingPinNames"/> = <see cref="SidebarVisibilityRules.LockingPins"/>.</summary>
+    /// such pins exist). <paramref name="lockingPinNames"/> = <see cref="SidebarVisibilityRules.LockingPins"/>.
+    /// Under Zune (no pane, the pivot band's menu) only Layout ▸, the title-bar pins toggle and Reset everything remain.</summary>
     public static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density, bool editing,
-                                                     IReadOnlyList<string> lockingPinNames, bool classicCovers = false)
+                                                     IReadOnlyList<string> lockingPinNames, bool classicCovers = false,
+                                                     bool zune = false, bool zunePins = true)
     {
-        var hidden = new List<SidebarMenuRow>();
         var overlay = state.Of(layout);
+        var layoutRows = new List<SidebarMenuRow>(5)
+        {
+            new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.classic", "classic",
+                Enabled: !editing, Checked: !zune && layout == SidebarLayoutId.Classic, Radio: true, ReasonKey: editing ? FinishEditing : null),
+            new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.library", "library",
+                Enabled: !editing, Checked: !zune && layout == SidebarLayoutId.Library, Radio: true, ReasonKey: editing ? FinishEditing : null),
+            new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.zune", "zune",
+                Enabled: !editing, Checked: zune, Radio: true, ReasonKey: editing ? FinishEditing : null),
+            SidebarMenuRow.Divider,
+            new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout",
+                Enabled: !zune && SidebarLayoutRules.IsModified(overlay)),
+        };
+        var layoutMenu = new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.layout", Children: layoutRows);
+        if (zune)
+            return
+            [
+                layoutMenu,
+                new SidebarMenuRow(SidebarMenuAction.ToggleZunePins, "sidebar.menu.zunePins", Checked: zunePins),
+                SidebarMenuRow.Divider,
+                new SidebarMenuRow(SidebarMenuAction.ResetEverything, "sidebar.menu.resetEverything",
+                    Enabled: !editing, ReasonKey: editing ? FinishEditing : null),
+            ];
+        var hidden = new List<SidebarMenuRow>();
         for (int i = 0; i < overlay.Sections.Count; i++)
             if (overlay.Sections[i].Hidden)
                 hidden.Add(new SidebarMenuRow(SidebarMenuAction.ShowSection, "sidebar.section.title." + overlay.Sections[i].Id, overlay.Sections[i].Id));
@@ -220,16 +244,7 @@ public static class SidebarMenuModel
         }
         return
         [
-            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.layout", Children:
-            [
-                new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.classic", "classic",
-                    Enabled: !editing, Checked: layout == SidebarLayoutId.Classic, Radio: true, ReasonKey: editing ? FinishEditing : null),
-                new SidebarMenuRow(SidebarMenuAction.SwitchLayout, "sidebar.layoutName.library", "library",
-                    Enabled: !editing, Checked: layout == SidebarLayoutId.Library, Radio: true, ReasonKey: editing ? FinishEditing : null),
-                SidebarMenuRow.Divider,
-                new SidebarMenuRow(SidebarMenuAction.ResetLayout, "sidebar.menu.resetLayout",
-                    Enabled: SidebarLayoutRules.IsModified(overlay)),
-            ]),
+            layoutMenu,
             new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.showSection",
                 Enabled: hidden.Count > 0, ReasonKey: hidden.Count == 0 ? "sidebar.menu.nothingHidden" : null, Children: hidden),
             .. pinnedRows,

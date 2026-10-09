@@ -469,6 +469,7 @@ public static partial class Shell
                     // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                     // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                     ChromeRow() with { Visible = Prop.Of(s_chromeMounted) },
+                    Sidebar.ZuneBand() with { Visible = Prop.Of(s_chromeMounted) },
                     ContentRegion(vp),
                     PlayerBarDock() with { Visible = Prop.Of(s_chromeMounted) },
                 ],
@@ -734,7 +735,8 @@ public static partial class Shell
     {
         Sidebar.SidebarMenus.Overlay = overlay;
         return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek())));
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek(),
+            zune: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune, zunePins: Sidebar.ZunePins.Peek())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down

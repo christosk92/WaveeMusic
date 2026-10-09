@@ -55,6 +55,10 @@ public static partial class Sidebar
         return SidebarLayoutRules.IsModified(State.Of(layout)) ? Loc.Format("sidebar.layoutName.modified", ("layout", name)) : name;
     }
 
+    /// <summary>The name of any nav style, Zune included (Zune has no <see cref="SidebarLayoutId"/> of its own).</summary>
+    internal static string NavStyleName(ShellNavStyle style) => style == ShellNavStyle.Zune ? Loc.Get("sidebar.layoutName.zune")
+        : LayoutName(style == ShellNavStyle.Library ? SidebarLayoutId.Library : SidebarLayoutId.Classic);
+
     // ══ THE MENU MAPPER (§P4.6) ════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Data menu rows → engine menu items; actions → service calls. ONE mapper for every sidebar menu (the pane
@@ -110,7 +114,7 @@ public static partial class Sidebar
                 Action invoke = () => Run(row, sectionId, pane);
                 var item = r.Radio ? MenuFlyoutItem.RadioItem(label, r.Checked, invoke)
                     : r.Action is SidebarMenuAction.ToggleLiked or SidebarMenuAction.ToggleKind or SidebarMenuAction.ToggleDescending
-                        or SidebarMenuAction.ToggleCovers
+                        or SidebarMenuAction.ToggleCovers or SidebarMenuAction.ToggleZunePins
                         ? MenuFlyoutItem.Toggle(label, r.Checked, invoke)
                     : new MenuFlyoutItem(label, default, r.Enabled, invoke);
                 // A disabled verb says why on its trailing line (Q7: "Finish editing the sidebar first"); HideSection
@@ -143,10 +147,18 @@ public static partial class Sidebar
 
         static string LabelOf(SidebarMenuRow r) => r.Action switch
         {
-            SidebarMenuAction.SwitchLayout => LayoutName(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic),
+            SidebarMenuAction.SwitchLayout => NavStyleName(NavStyleOf(r.Arg)),
             SidebarMenuAction.SetLimit => Loc.Format(r.LabelKey, ("count", r.Arg)),
             SidebarMenuAction.HideSection when r.ReasonKey is { } reason => Loc.Format(reason, ("names", string.Join(", ", LockingNames()))),
             _ => Loc.Get(r.LabelKey),
+        };
+
+        /// <summary>A SwitchLayout row's Arg → the nav style it switches to.</summary>
+        static ShellNavStyle NavStyleOf(string arg) => arg switch
+        {
+            "zune" => ShellNavStyle.Zune,
+            "library" => ShellNavStyle.Library,
+            _ => ShellNavStyle.Classic,
         };
 
         static void Run(SidebarMenuRow r, string? sectionId, PaneView? pane)
@@ -154,7 +166,7 @@ public static partial class Sidebar
             var layout = Sidebar.Layout.Peek();
             switch (r.Action)
             {
-                case SidebarMenuAction.SwitchLayout: SwitchLayout(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic); break;
+                case SidebarMenuAction.SwitchLayout: SwitchNavStyle(NavStyleOf(r.Arg)); break;
                 case SidebarMenuAction.ResetLayout: Dispatch(new ResetLayout(layout), Loc.Format("sidebar.toast.reset", ("name", LayoutName(layout)))); break;
                 case SidebarMenuAction.ShowSection: Dispatch(new SetSectionShown(layout, r.Arg, true)); break;
                 case SidebarMenuAction.SetDensity: SetDensity(r.Arg == "compact" ? SidebarDensity.Compact : SidebarDensity.Default); break;
@@ -168,6 +180,7 @@ public static partial class Sidebar
                 case SidebarMenuAction.SetView: Dispatch(new SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List)); break;
                 case SidebarMenuAction.ToggleLiked: Dispatch(new SetShowLiked(!Doc.Library.ShowLiked)); break;
                 case SidebarMenuAction.ToggleCovers: Sidebar.SetClassicCovers(!Sidebar.ClassicCovers.Peek()); break;
+                case SidebarMenuAction.ToggleZunePins: SetZunePins(!ZunePins.Peek()); break;
                 case SidebarMenuAction.ToggleKind: ToggleKind(r.Arg); break;
                 case SidebarMenuAction.SetLimit when sectionId is not null:
                     Dispatch(new SetSectionLimit(layout, sectionId, int.Parse(r.Arg, CultureInfo.InvariantCulture)));
@@ -268,7 +281,7 @@ public static partial class Sidebar
         {
             SidebarMenus.Overlay = MenuOverlay;
             return new ContextMenuModel(SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-                Sidebar.Editing.Peek(), SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek())));
+                Sidebar.Editing.Peek(), SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek(), zune: false, zunePins: Sidebar.ZunePins.Peek())));
         }
 
         OverlayHandle? _paneMenu;

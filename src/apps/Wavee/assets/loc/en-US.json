@@ -2337,6 +2337,7 @@
       "nothingHidden": "Nothing is hidden",
       "density": "Density",
       "showCovers": "Show covers",
+      "zunePins": "Pins in the title bar",
       "edit": "Edit sidebar…",
       "resetEverything": "Reset everything…",
       "show": "Show",
@@ -2466,7 +2467,9 @@
       "library": "Library",
       "modified": "{layout} · modified",
       "classicSub": "Sections you can show, hide and reorder.",
-      "librarySub": "Spotify's one list with filters."
+      "librarySub": "Spotify's one list with filters.",
+      "zune": "Zune",
+      "zuneSub": "Big pivots across the top, no sidebar."
     },
     "density": {
       "default": "Default",

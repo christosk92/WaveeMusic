@@ -37,7 +37,7 @@ public static partial class Shell
 
     public enum PaletteKind : byte { Navigate, Playback, Settings, Registry, CatalogSearch, Library }
     public enum PalettePlaybackVerb : byte { PlayPause, Next, Previous, Shuffle, Repeat }
-    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, SidebarClassic, SidebarLibrary }
+    public enum PaletteSettingsVerb : byte { ToggleTheme, ToggleCrossfade, ZoomIn, ZoomOut, ZoomReset, NpvTogglePresentation, NpvNextStyle, HomeFollowingOn, HomeFollowingOff, EditSidebar, SidebarClassic, SidebarLibrary, SidebarZune }
 
     /// <summary>"New folder" lives here because the only other way to reach it is a right-click on a sidebar row — and
     /// a pane with no folders yet has no such row.</summary>
@@ -101,6 +101,7 @@ public static partial class Shell
             SetRow("sidebar.edit", Loc.Get("sidebar.menu.edit"), Icons.Edit, PaletteSettingsVerb.EditSidebar),
             SetRow("sidebar.classic", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.classic"))), Icons.List, PaletteSettingsVerb.SidebarClassic),
             SetRow("sidebar.library", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.library"))), Icons.Library, PaletteSettingsVerb.SidebarLibrary),
+            SetRow("sidebar.zune", Loc.Format("sidebar.palette.useLayout", ("layout", Loc.Get("sidebar.layoutName.zune"))), Icons.ViewGrid, PaletteSettingsVerb.SidebarZune),
             LibRow("library.newPlaylist", Loc.Get(Strings.Detail.NewPlaylist), Icons.Add, PaletteLibraryVerb.NewPlaylist),
             LibRow("library.newFolder", Loc.Get(Strings.Sidebar.CreateFolder), Icons.Folder, PaletteLibraryVerb.NewFolder),
             // Home C1 (facet history + deep link, plan "Palette commands"): the four facet chip ids are the ones the
@@ -326,13 +327,19 @@ public static partial class Shell
                         break;
                     case PaletteSettingsVerb.SidebarClassic:
                     case PaletteSettingsVerb.SidebarLibrary:
+                    case PaletteSettingsVerb.SidebarZune:
                         // Q7: a layout switch is refused while editing; the palette says why instead of doing nothing.
                         if (Sidebar.Editing.Peek())
                         {
                             Notify.Say(Loc.Get("sidebar.pane.finishEditing"), InfoBarSeverity.Informational, dedupeKey: "sidebar.pane.finish-editing");
                             break;
                         }
-                        Sidebar.SwitchLayout(e.SettingsVerb == PaletteSettingsVerb.SidebarLibrary ? SidebarLayoutId.Library : SidebarLayoutId.Classic);
+                        Sidebar.SwitchNavStyle(e.SettingsVerb switch
+                        {
+                            PaletteSettingsVerb.SidebarLibrary => ShellNavStyle.Library,
+                            PaletteSettingsVerb.SidebarZune => ShellNavStyle.Zune,
+                            _ => ShellNavStyle.Classic,
+                        });
                         break;
                 }
                 break;
