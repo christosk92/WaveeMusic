@@ -37,7 +37,7 @@ public static class ZuneNavRules
     public const int MaxPins = 6;
 
     /// <summary>The pivot words' sizes are the <c>Design.Type.ZunePivot</c> / <c>ZuneSubPivot</c> roles. The band's left inset is
-    /// DERIVED (<see cref="Shell.FrameRules.ZuneBandInset"/>: the frame gap plus the page gutter), never a literal here.</summary>
+    /// DERIVED (<see cref="Shell.FrameRules.ZuneBandInset"/>: the card's x plus the page gutter), never a literal here.</summary>
     public const float PinTile = 32f, PinGap = 8f, PivotGap = 24f, SubPivotGap = 20f;
 
     /// <summary>A pin's now-playing dot (size, gap under its tile): the dot is ALWAYS laid out (a 4-DIP box that is transparent

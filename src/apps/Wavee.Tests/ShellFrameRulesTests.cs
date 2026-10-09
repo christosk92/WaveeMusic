@@ -64,11 +64,11 @@ public class ShellFrameGeometryTests
     public void The_card_width_is_the_viewport_less_the_columns_beside_it_and_never_negative()
     {
         // 1400 window, 280 pane, an inline 360 rail with its 8 gap: the seam strips are overlays and take no width.
-        Assert.Equal(752f, Shell.FrameRules.CardWidth(1400f, 280f, 0f, 8f, 360f));
+        Assert.Equal(752f, Shell.FrameRules.CardWidth(1400f, 280f, 8f, 360f));
         // A window narrower than its columns clamps at 0 rather than going negative.
-        Assert.Equal(0f, Shell.FrameRules.CardWidth(300f, 280f, 8f, 8f, 360f));
-        // The Zune frame: no pane, an 8 lead gap, no rail.
-        Assert.Equal(1192f, Shell.FrameRules.CardWidth(1200f, 0f, 8f, 0f, 0f));
+        Assert.Equal(0f, Shell.FrameRules.CardWidth(300f, 280f, 8f, 360f));
+        // The Zune frame: no pane and no left gap (the page bleeds to the window edge), no rail.
+        Assert.Equal(1200f, Shell.FrameRules.CardWidth(1200f, 0f, 0f, 0f));
     }
 
     [Fact]
@@ -79,20 +79,44 @@ public class ShellFrameGeometryTests
     public void There_is_one_frame_gap_and_the_rail_gap_is_it()
         => Assert.Equal(Shell.FrameRules.FrameGap, Shell.FrameRules.RailGapW);
 
+    [Theory]
+    [InlineData(SidebarPaneMode.Expanded, true)]
+    [InlineData(SidebarPaneMode.Compact, true)]
+    [InlineData(SidebarPaneMode.Minimal, false)]
+    public void A_pane_is_docked_beside_the_card_in_the_Expanded_and_Compact_modes_only(SidebarPaneMode mode, bool docked)
+        => Assert.Equal(docked, Shell.FrameRules.PaneDocked(mode));
+
     [Fact]
-    public void Only_the_Zune_style_has_a_content_lead_gap_and_it_is_the_frame_gap()
+    public void With_no_pane_docked_the_card_is_flush_with_a_square_corner_and_no_left_stroke()
     {
-        Assert.Equal(Shell.FrameRules.FrameGap, Shell.FrameRules.ContentLeadGap(ShellNavStyle.Zune));
-        Assert.Equal(0f, Shell.FrameRules.ContentLeadGap(ShellNavStyle.Classic));
-        Assert.Equal(0f, Shell.FrameRules.ContentLeadGap(ShellNavStyle.Library));
+        // Zune always presents Minimal; Classic and Library do in the Tiny band or with the pane hidden.
+        bool docked = Shell.FrameRules.PaneDocked(SidebarPaneMode.Minimal);
+        Assert.Equal(0f, Shell.FrameRules.ContentCardX(0f));
+        Assert.Equal(default, Shell.FrameRules.ContentCorners(docked));
+        Assert.Equal(0f, Shell.FrameRules.ContentCorners(docked).TopLeft);
+        // The stroke box is shifted by its own width: the left stroke leaves the card's clip.
+        Assert.Equal(-Shell.FrameRules.StrokeW, Shell.FrameRules.StrokeLeftShift(docked));
+    }
+
+    [Theory]
+    [InlineData(SidebarPaneMode.Expanded)]
+    [InlineData(SidebarPaneMode.Compact)]
+    public void With_a_docked_pane_the_card_keeps_its_rounded_top_left_corner_and_stroke(SidebarPaneMode mode)
+    {
+        bool docked = Shell.FrameRules.PaneDocked(mode);
+        Assert.Equal(Design.Size.ContentPaneCorners, Shell.FrameRules.ContentCorners(docked));
+        Assert.Equal(FluentGpu.Dsl.Radii.Card, Shell.FrameRules.ContentCorners(docked).TopLeft);
+        Assert.Equal(0f, Shell.FrameRules.StrokeLeftShift(docked));
     }
 
     [Fact]
-    public void The_content_card_has_no_top_left_corner_under_zune()
+    public void The_Zune_style_presents_no_pane_so_it_is_always_undocked()
     {
-        Assert.Equal(default, Shell.FrameRules.ContentCorners(ShellNavStyle.Zune));
-        Assert.Equal(Design.Size.ContentPaneCorners, Shell.FrameRules.ContentCorners(ShellNavStyle.Classic));
-        Assert.Equal(Design.Size.ContentPaneCorners, Shell.FrameRules.ContentCorners(ShellNavStyle.Library));
+        foreach (var band in new[] { SidebarWindowBand.Wide, SidebarWindowBand.Narrow, SidebarWindowBand.Tiny })
+        {
+            var mode = SidebarPaneModeRules.Resolve(band, userCollapsed: false, editing: false, paneHidden: true);
+            Assert.False(Shell.FrameRules.PaneDocked(mode));
+        }
     }
 
     [Fact]
@@ -103,10 +127,12 @@ public class ShellFrameGeometryTests
     }
 
     [Fact]
-    public void The_Zune_band_inset_is_the_frame_gap_plus_the_gutter()
+    public void The_Zune_band_inset_is_the_card_x_plus_the_gutter()
     {
-        Assert.Equal(40f, Shell.FrameRules.ZuneBandInset(32f));
-        Assert.Equal(Shell.FrameRules.FrameGap + PageGeometry.GutterWide, Shell.FrameRules.ZuneBandInset(PageGeometry.GutterWide));
+        Assert.Equal(32f, Shell.FrameRules.ZuneBandInset(0f, 32f));
+        Assert.Equal(PageGeometry.GutterWide, Shell.FrameRules.ZuneBandInset(0f, PageGeometry.GutterWide));
+        // A docked pane moves the card's x, and the inset follows it.
+        Assert.Equal(48f + 32f, Shell.FrameRules.ZuneBandInset(48f, 32f));
     }
 
     [Theory]
@@ -118,7 +144,7 @@ public class ShellFrameGeometryTests
     [InlineData(1200f, true)]
     public void Under_Zune_the_first_pivot_word_and_the_page_title_share_an_x(float w, bool railOpen)
     {
-        // The pane is hidden under Zune, so the sidebar column is 0 wide whatever the band; the card starts at the lead gap.
+        // The pane is hidden under Zune, so the sidebar column is 0 wide whatever the band; the card starts at the window edge.
         var band = SidebarPaneModeRules.BandOf(w, SidebarWindowBand.Wide);
         var mode = SidebarPaneModeRules.Resolve(band, false, false, paneHidden: true);
         float column = SidebarPaneModeRules.PresentedWidth(mode, 280f, w);
@@ -126,12 +152,12 @@ public class ShellFrameGeometryTests
 
         float railGap = Shell.FrameRules.RailGapWidth(railOpen, fits: true);
         float railReserved = Shell.FrameRules.RailReservedWidth(railOpen, fits: true, 360f);
-        float lead = Shell.FrameRules.ContentLeadGap(ShellNavStyle.Zune);
-        float cardW = Shell.FrameRules.CardWidth(w, column, lead, railGap, railReserved);
+        float cardW = Shell.FrameRules.CardWidth(w, column, railGap, railReserved);
         float gutter = PageGeometry.GutterFor(cardW);
 
-        float pageTitleX = column + lead + gutter;
-        Assert.Equal(pageTitleX, Shell.FrameRules.ZuneBandInset(gutter));
+        float pageTitleX = Shell.FrameRules.ContentCardX(column) + gutter;
+        Assert.Equal(0f, Shell.FrameRules.ContentCardX(column));
+        Assert.Equal(pageTitleX, Shell.FrameRules.ZuneBandInset(Shell.FrameRules.ContentCardX(column), gutter));
     }
 
     [Theory]

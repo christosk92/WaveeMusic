@@ -275,7 +275,6 @@ public static partial class Shell
                 Ui.PresentedNavStyle.SetIfChanged(Sidebar.NavStyle.Peek());
                 // The page gutter is right on frame one: a narrow launch must not mount at 36 and step a frame later.
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(FrameRules.CardWidth(w0, Sidebar.PresentedWidth.Peek(),
-                    FrameRules.ContentLeadGap(Sidebar.NavStyle.Peek()),
                     FrameRules.RailGapWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek()),
                     FrameRules.RailReservedWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek(), Ui.RailWidth.Peek()))));
             }
@@ -321,7 +320,6 @@ public static partial class Shell
             {
                 float cardW = FrameRules.CardWidth(vp.Value.Width,
                     FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
-                    FrameRules.ContentLeadGap(Sidebar.NavStyle.Value),
                     FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
                     FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value));
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(cardW, Ui.PageGutter.Peek()));
@@ -601,18 +599,9 @@ public static partial class Shell
                             },
                         ],
                     },
-                    // The Zune frame gap: 8 DIP between the (hidden, 0-wide) pane column and the card, ZERO in Classic/Library.
-                    // It paints nothing and carries NO transition: the card's ContentCardAnim FLIP (RelativeTo this row) moves the
-                    // visible 8 DIP in the same tween as the pane. Not folded into the sidebar column, whose width the pane
-                    // invariant compares with PresentedWidth.
                     new BoxEl
                     {
-                        Key = "shell:lead-gap", Shrink = 0f, HitTestVisible = false,
-                        Width = Prop.Of(static () => FrameRules.ContentLeadGap(Sidebar.NavStyle.Value)),
-                    },
-                    new BoxEl
-                    {
-                        // The stock Win11 content region: flush (a left gap only under Zune), one corner (none under Zune), a left+top stroke, no shadow.
+                        // The stock Win11 content region: always flush (no left gap, ever); the one corner and the left+top stroke only while a pane is docked; no shadow.
                         Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                         Children =
                         [
@@ -726,10 +715,10 @@ public static partial class Shell
         };
     }
 
-    /// <summary>The content card's corners, bound to the nav style: one thunk for the ground, the clip, the stroke and the
+    /// <summary>The content card's corners, bound to the pane mode: one thunk for the ground, the clip, the stroke and the
     /// cover-tone plane, so they change in the same commit.</summary>
     internal static readonly Func<CornerRadius4> s_contentCorners =
-        static () => FrameRules.ContentCorners(Sidebar.NavStyle.Value);
+        static () => FrameRules.ContentCorners(FrameRules.PaneDocked(Sidebar.Mode.Value));
 
     static readonly Func<bool> s_chromeMounted = static () =>
         FrameRules.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), Ui.ImmersiveLyrics.Value);
@@ -757,8 +746,13 @@ public static partial class Shell
         [
             new BoxEl
             {
-                Margin = StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
+                // One DIP of extra right overhang so the box can shift left: undocked, the page bleeds to the window edge and the
+                // LEFT stroke leaves the clip (the top stroke stays).
+                Margin = new Edges4(0f, 0f, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
+                BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
                 Corners = Prop.Of(s_contentCorners),
+                Transform = Prop.Of(static () => Affine2D.Translation(
+                    FrameRules.StrokeLeftShift(FrameRules.PaneDocked(Sidebar.Mode.Value)), 0f)),
             },
         ],
     };
@@ -969,7 +963,7 @@ public static partial class Shell
     // ══ 2b. THE NAV-STYLE PRESENTER ═══════════════════════════════════════════════════════════════════════════════════
     //
     // A nav-style switch is TWO commits by construction. Commit 1 (Sidebar.NavStyle) moves only the frame: the pane, the
-    // Zune band, the lead gap and the gutter, and the content card FLIPs once. Commit 2, FrameRules.HoistSettleMs later
+    // Zune band and the gutter, and the content card FLIPs once. Commit 2, FrameRules.HoistSettleMs later
     // (Ui.PresentedNavStyle), changes only what is INSIDE the card: the page heads' heights (which Reflow) and the Zune
     // band's row-2 words. The card's rect does not change there, so the engine's descendant suppression (the card is a
     // suppression root whenever its rect changes) cannot snap the heads' Reflow.

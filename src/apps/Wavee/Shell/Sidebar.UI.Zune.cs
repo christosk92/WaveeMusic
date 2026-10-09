@@ -11,7 +11,7 @@
 // (Shell.ContentRegionAnim: a Position FLIP relative to the frame column plus a Height Relayout) eases down in the same
 // tween, so the card's top travels with the band's revealed bottom edge, its bottom edge stays on the dock, and a nav-style
 // switch moves the card one time. Row 2 is ALWAYS laid out (an empty route's row is just as tall), so a navigation never
-// moves the card. The inset is DERIVED (FrameRules.ZuneBandInset over the page gutter signal the pages read), so the first
+// moves the card. The inset is DERIVED (FrameRules.ZuneBandInset: the card's x, 0 under Zune where the page bleeds to the window edge, plus the page gutter the pages read), so the first
 // pivot word and the page title share an x. Band HEIGHT follows NavStyle (the frame commit); row 2's views WORDS follow
 // Shell.Ui.PresentedNavStyle (the later, quiet hoist commit): until then the page head still draws them, and they would
 // otherwise show twice.
@@ -54,6 +54,7 @@ public static partial class Sidebar
             var style = NavStyle.Value;
             bool zune = style == ShellNavStyle.Zune;
             float gutter = Shell.Ui.PageGutter.Value;
+            float cardX = Shell.FrameRules.ContentCardX(Sidebar.PresentedWidth.Value);
 
             Element[] rows = [];
             if (zune)
@@ -67,7 +68,7 @@ public static partial class Sidebar
             {
                 Key = "zune:band", Direction = 1, Shrink = 0f, ClipToBounds = true,
                 Height = ZuneNavRules.BandHeight(style), Animate = Shell.ZuneBandAnim,
-                Padding = new Edges4(Shell.FrameRules.ZuneBandInset(gutter), 0f, Spacing.L, 0f), Children = rows,
+                Padding = new Edges4(Shell.FrameRules.ZuneBandInset(cardX, gutter), 0f, Spacing.L, 0f), Children = rows,
             }.WithContextMenu(overlay, () => ZuneMenu(overlay));
         }
 
