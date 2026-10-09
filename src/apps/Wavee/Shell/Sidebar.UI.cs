@@ -1022,10 +1022,16 @@ public static partial class Sidebar
             // Captured BEFORE the swap — the A/B buffers keep the outgoing rows alive for the diff.
             var oldRows = Plan.Rows;
             var oldEntries = Plan.Entries;
+            var oldDoc = Doc;
             // A new document, a new effective query or a presentation flip (expanded ⇄ rail: the same rows, re-planned)
-            // changes what rows draw without necessarily changing the row record, so those bump wholesale.
+            // changes what rows draw without necessarily changing the row record, so those bump wholesale. A document that
+            // only COLLAPSED or EXPANDED a section is not one of them: every section/folder toggle mints such a document, and
+            // bumping wholesale re-rendered every realized row on each click (~15 KB a row, ~0.5 MB a toggle in the frame
+            // bench). Its rows still re-seed their extents, like any re-shaped plan; only the rows the diff finds changed,
+            // and the headers whose state flipped, re-render.
+            bool collapseOnly = _planPublished && !ReferenceEquals(stage.Document, oldDoc) && stage.Document.SameExceptCollapsed(oldDoc);
             bool wholesale = !_planPublished
-                             || !ReferenceEquals(stage.Document, Doc)
+                             || (!ReferenceEquals(stage.Document, oldDoc) && !collapseOnly)
                              || !string.Equals(stage.EffectiveSearch, _effectiveSearch, StringComparison.Ordinal)
                              || stage.Compact != CompactPlan;
 
@@ -1040,7 +1046,7 @@ public static partial class Sidebar
             ResolvePillTarget(SelectedRoutePeek);
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
-            if (wholesale) ReseedRowExtents();
+            if (wholesale || collapseOnly) ReseedRowExtents();
             if (!notify)
             {
                 // The FIRST publish runs synchronously inside the pane's render, before anything has read the count
@@ -1056,7 +1062,11 @@ public static partial class Sidebar
                 _rowCount.Value = Plan.Rows.Count;
                 _planVersion.Value = _planVersion.Peek() + 1;
                 if (wholesale) BumpAllRowEpochs();
-                else BumpChangedRowEpochs(oldRows, oldEntries);
+                else
+                {
+                    BumpChangedRowEpochs(oldRows, oldEntries);
+                    if (collapseOnly) BumpFlippedHeaders(oldDoc);
+                }
             }
             if (Context.Runtime is { } runtime) runtime.Batch(PublishSignals);
             else PublishSignals();
@@ -1341,6 +1351,20 @@ public static partial class Sidebar
         {
             var epochs = _rowEpochs;
             if ((uint)index < (uint)epochs.Length) epochs[index].Value = epochs[index].Peek() + 1;
+        }
+
+        /// <summary>The headers of the sections whose Collapsed flag differs from <paramref name="oldDoc"/>: their chevron
+        /// reads the flag, and a header row's record does not carry it (a collapse from Edit mode or a reset has no
+        /// disclosure to re-skin it).</summary>
+        void BumpFlippedHeaders(SidebarLayoutDoc oldDoc)
+        {
+            var sections = Doc.Sections;
+            for (int i = 0; i < sections.Count && i < oldDoc.Sections.Count; i++)
+            {
+                if (sections[i].Collapsed == oldDoc.Sections[i].Collapsed) continue;
+                int header = SectionHeaderIndexOf(Plan, sections[i].Id);
+                if (header >= 0) BumpRowEpoch(header);
+            }
         }
 
         void BumpAllRowEpochs()

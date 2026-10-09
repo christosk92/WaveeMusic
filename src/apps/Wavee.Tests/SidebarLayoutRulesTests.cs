@@ -377,4 +377,30 @@ public sealed class SidebarLayoutRulesTests
             .Find(SidebarSectionKind.Collections)!;
         Assert.Equal(new[] { "audiobooks", "liked", "artists", "podcasts" }, collections.Items.ToArray());
     }
+
+    static SidebarLayoutDoc Doc(SidebarLayoutState s, SidebarDensity density = SidebarDensity.Default)
+        => SidebarLayoutRules.Resolve(s, SidebarLayoutId.Classic, density);
+
+    [Fact]
+    public void A_collapse_is_the_same_document_for_the_rows_that_stay()
+    {
+        string playlists = SidebarCatalogue.IdOf(SidebarSectionKind.Playlists);
+        var before = Doc(S());
+        var after = Doc(Then(S(), new SetSectionCollapsed(SidebarLayoutId.Classic, playlists, true)));
+        Assert.NotSame(before, after);
+        Assert.True(after.SameExceptCollapsed(before));
+        Assert.True(before.SameExceptCollapsed(after));
+    }
+
+    [Fact]
+    public void Hiding_a_section_limiting_it_or_a_new_density_is_a_different_document()
+    {
+        string collections = SidebarCatalogue.IdOf(SidebarSectionKind.Collections);
+        var before = Doc(S());
+        Assert.False(Doc(Then(S(), new SetSectionShown(SidebarLayoutId.Classic, collections, false))).SameExceptCollapsed(before));
+        Assert.False(Doc(S(), SidebarDensity.Compact).SameExceptCollapsed(before));
+        string recent = SidebarCatalogue.IdOf(SidebarSectionKind.Recent);
+        var shown = Then(S(), new SetSectionShown(SidebarLayoutId.Classic, recent, true));
+        Assert.False(Doc(Then(shown, new SetSectionLimit(SidebarLayoutId.Classic, recent, SidebarCatalogue.DefaultLimit(SidebarSectionKind.Recent) == 20 ? 10 : 20))).SameExceptCollapsed(Doc(shown)));
+    }
 }

@@ -627,6 +627,28 @@ public sealed record SidebarLayoutDoc(
 
     /// <summary>The footer's Settings row is shown.</summary>
     public bool ShowsSettings => Find(SidebarSectionKind.Settings) is { Hidden: false };
+
+    /// <summary>True when <paramref name="other"/> is this document with only sections' <see cref="SidebarSection.Collapsed"/>
+    /// changed: a collapse adds or removes a section's rows, which the plan's row diff sees, but changes nothing a row that
+    /// is still there draws (its header's chevron aside, which the caller re-skins).</summary>
+    public bool SameExceptCollapsed(SidebarLayoutDoc other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (Layout != other.Layout || Density != other.Density || !Library.Equals(other.Library)
+            || Sections.Count != other.Sections.Count) return false;
+        for (int i = 0; i < Sections.Count; i++)
+        {
+            SidebarSection a = Sections[i], b = other.Sections[i];
+            if (a.Kind != b.Kind || a.Hidden != b.Hidden || a.Limit != b.Limit || a.Shape != b.Shape) return false;
+            if (!ReferenceEquals(a.Items, b.Items))
+            {
+                if (a.Items.Count != b.Items.Count) return false;
+                for (int k = 0; k < a.Items.Count; k++)
+                    if (!string.Equals(a.Items[k], b.Items[k], System.StringComparison.Ordinal)) return false;
+            }
+        }
+        return true;
+    }
 }
 
 /// <summary>What is drawn where (design A.2 SidebarVisibilityRules): the pin dedupe, Library's pin and Liked rules, the
