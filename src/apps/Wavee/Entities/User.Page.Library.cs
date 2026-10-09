@@ -20,7 +20,7 @@
 //  LibraryPage (keyed "library:"+route)            ─ seeds every persisted signal in its CONSTRUCTOR (frame one = saved)
 //  └─ root BoxEl (OnBoundsChanged → _collapsed, 640/24 hysteresis)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
-//     │        Toolbar = PageHero + the bound count · User.WordRail (fill) + User.ViewToggle · the filter box
+//     │        Toolbar = PaneTitle + the bound count as the meta line · User.WordRail (fill) + User.ViewToggle · the filter box
 //     │        right   = DetailColumn → Album.Pane (albums) | LibraryShowPane (podcasts)
 //     │                  ReaderColumn → Artist.Reader (artists, 280 + the rest — no MidW, no third pane)
 //     │                  the two SEARCH column shapes (unchanged, still MidW + _midGrip)
@@ -383,7 +383,7 @@ public readonly partial struct User
             _watchLetters = WatchLetters;
             _navContent = _ => NavList();
             _navNoMatch = () => EmptyCompact(Loc.Get(Strings.Library.NoMatch));
-            _countText = Prop.Of(() => FormatCache.Int(_shape is { } shape ? shape.Value.Count : 0));
+            _countText = Prop.Of(() => _shape is { } shape ? FormatCache.Int(shape.Value.Count) : "");
             var entity = _entity;
             _slotT = scope => NavSlot(scope, entity, compact: false);
             _slotCompactT = scope => NavSlot(scope, entity, compact: true);
@@ -992,9 +992,20 @@ public readonly partial struct User
         /// <inheritdoc cref="LeftGrip"/>
         Element MidGrip() => ColumnGrip(MidW, 300f, 620f, _commitMid) with { Key = "lib:midgrip" };
 
-        /// <summary>The master column's head (W1): the page title (PageHero, one line) with the live count beside it, the
-        /// word rail + the view toggle, then the filter. The collapsed layout drops the title row — the crumb root names
-        /// the kind. The count is a BOUND text, so a row landing re-fires one property instead of the toolbar.</summary>
+        /// <summary>The master column's head (W1). Three arms inside ONE stable outer box:
+        /// <list type="bullet">
+        /// <item><c>lib:toolbar:wide</c>: <see cref="Design.Type.PaneTitle"/> over the live count (the pane head's META line),
+        /// the word rail + view toggle, the filter;</item>
+        /// <item><c>lib:toolbar:hoisted</c>: the same without the title. Under the Zune nav style the band names the kind
+        /// (<see cref="PageHead.HoistedFor"/> reads the PRESENTED style), so the column opens on the count;</item>
+        /// <item><c>lib:toolbar:compact</c>: the collapsed layout, whose crumb root already names the kind (no title, no count).</item>
+        /// </list>
+        /// The count is a BOUND text, so a row landing re-fires one property instead of the toolbar, and its line is always
+        /// mounted (an unknown count is "") so the column's height never depends on data.
+        /// <para>THE OUTER BOX IS THE STABLE NODE (<c>Animate = PageHead.Reflow</c>): an arm swap is a height change the body
+        /// below follows, not a snap. A hoist swap happens in the quiet <c>PresentedNavStyle</c> commit, where the card is not
+        /// a suppression root, and Reflows. A compact/wide swap caused by a pane or rail toggle lands in a card-moving commit
+        /// and rides the card's FLIP like all card content today.</para></summary>
         Element Toolbar(bool title)
         {
             // Podcasts' row-1 words ARE Followed shows / Your Episodes (A2 plan §3.5) — the shows sort rail only
@@ -1010,36 +1021,75 @@ public readonly partial struct User
             };
             Element filter = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
                 grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
-            // The two arms differ in CHILD COUNT (the collapsed one drops the title row), so they carry different keys:
-            // paired by ordinal they would have matched the title row against `_picker` and `_picker` against the filter
-            // — and the count is a BOUND text (`_countText`) that only a mount wires. The two arms live under
-            // "lib:wide" and "lib:collapsed" respectively, which already keeps them apart; this is the second lock.
+            // The arms differ in CHILD COUNT and in where the bound count sits, so each carries its own key: paired by
+            // ordinal they would have matched the title column against `_picker` and `_picker` against the filter — and
+            // the count is a BOUND text (`_countText`) that only a mount wires. Distinct arm keys keep it from pairing across arms.
+            Element arm;
             if (!title)
-                return new BoxEl
+                arm = new BoxEl
                 {
                     Key = "lib:toolbar:compact",
-                    Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.S),
+                    Direction = 1, Gap = Spacing.S, Shrink = 0f,
+                    Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
                     Children = [_picker, filter],
                 };
-            Element titleRow = new BoxEl
-            {
-                // FlexAlign.End, not Baseline: the engine's FlexAlign has no baseline arm (Foundation/LayoutTypes.cs),
-                // and END puts the 20-line count's bottom on the 36-line hero's, which is the prototype's reading.
-                Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    Design.Type.PageHero(Shell.Dest(new Shell.Route(_route)).Title) with
-                        { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
-                    new TextEl(_countText) { Size = 14f, LineHeight = 20f, Color = Tok.TextTertiary, Shrink = 0f },
-                ],
-            };
+            else if (PageHead.HoistedFor(Shell.NameOf(new Shell.Route(_route))))
+                arm = new BoxEl
+                {
+                    Key = "lib:toolbar:hoisted",
+                    Direction = 1, Gap = Spacing.S, Shrink = 0f,
+                    Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
+                    Children = [CountLine(), _picker, filter],
+                };
+            else
+                arm = new BoxEl
+                {
+                    Key = "lib:toolbar:wide",
+                    Direction = 1, Gap = Spacing.S, Shrink = 0f,
+                    Padding = new Edges4(PageGeometry.PaneInset, Spacing.L, PageGeometry.PaneInset, Spacing.S),
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Gap = PageGeometry.TitleToMeta, MinWidth = 0f,
+                            Children = [Design.Type.PaneTitle(Shell.Dest(new Shell.Route(_route)).Title), CountLine()],
+                        },
+                        _picker, filter,
+                    ],
+                };
             return new BoxEl
             {
                 Key = "lib:toolbar",
-                Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.L, Spacing.M, Spacing.S),
-                Children = [titleRow, _picker, filter],
+                Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true, Animate = PageHead.Reflow,
+                Children = [arm],
             };
         }
+
+        /// <summary>The bound count as the pane head's META line: <see cref="Design.Type.PageMeta"/>'s size and line height in
+        /// secondary ink, in a box of exactly <see cref="PageGeometry.MetaLine"/>, so the count landing (or being "") never
+        /// moves the rail under it.</summary>
+        Element CountLine() => new BoxEl
+        {
+            Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                new TextEl(_countText)
+                {
+                    Size = s_metaFace.Size, LineHeight = s_metaFace.LineHeight, Color = Tok.TextSecondary,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+            ],
+        };
+
+        /// <summary>The arms' cross-fade (the page head's own fade).</summary>
+        static readonly MotionTokenDef s_armFade =
+            MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
+
+        /// <summary>The page-meta face, read once for its metrics (the count is a bound text, which <c>PageMeta(string)</c> cannot take).</summary>
+        static readonly TextEl s_metaFace = Design.Type.PageMeta("");
 
         /// <summary>The navigator, as ONE skeleton boundary: eight shimmer rows while the relation has not answered, the
         /// no-match vacancy for a filter that matched nothing (the engine's own Empty arm), otherwise the bound list —
@@ -1070,7 +1120,7 @@ public readonly partial struct User
                 rows[i] = Skeletons.ListItemRow(withThumbnail: true, 40f) with { Key = "navskel:" + i };
             return new BoxEl
             {
-                Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS),
+                Direction = 1, Gap = Spacing.S, Padding = new Edges4(PageGeometry.PaneInset, Spacing.XS, PageGeometry.PaneInset, Spacing.XS),
                 Children = rows,
             };
         };
@@ -1093,6 +1143,8 @@ public readonly partial struct User
             var mount = shape.Mount;
             PrepareMount(mount);
             var (layout, options) = _mounts.Resolve(mount, this);
+            // The list owns its scroller and ends above the player bar already (a SIBLING in the shell column), so it keeps
+            // no BottomReserve: the documented exception on PageGeometry.BottomReserve (Library master nav).
             Element list = new BoxEl
             {
                 Key = mount.Key, OnRealized = _onNavMounted,
@@ -1483,7 +1535,7 @@ public readonly partial struct User
 
         static Element SearchScroll(Element[] rows) => ScrollView(new BoxEl
         {
-            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Design.Dock.Reserve + Spacing.XL),
+            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, PageGeometry.BottomReserve),
             Children = rows,
         }) with { Grow = 1f };
 

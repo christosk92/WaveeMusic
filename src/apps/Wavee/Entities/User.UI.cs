@@ -370,7 +370,7 @@ public readonly partial struct User
         Direction = 1, Shrink = 0f, Fill = Tok.FillLayerDefault,
         Children =
         [
-            new BoxEl { Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S), Children = [BreadcrumbBar.Create(crumbs, onPick)] },
+            new BoxEl { Padding = new Edges4(PageGeometry.PaneInset, Spacing.S, PageGeometry.PaneInset, Spacing.S), Children = [BreadcrumbBar.Create(crumbs, onPick)] },
             new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
         ],
     };
@@ -412,6 +412,14 @@ public readonly partial struct User
     public const float NavRowExtent = NavRowPlate + 2f * NavRowMarginY,
                        NavRowCompactExtent = NavRowCompactPlate + 2f * NavRowMarginY;
 
+    /// <summary>The navigator row's art starts on <see cref="PageGeometry.PaneInset"/>, like the toolbar's rail and filter
+    /// above it: the bound chrome already puts <see cref="NavRowMarginX"/> between the pane edge and the plate, so the
+    /// plate's own left padding is the inset less that margin. The hover plate keeps the engine's margin.</summary>
+    public const float NavRowArtInset = PageGeometry.PaneInset - NavRowMarginX;
+
+    /// <summary>The horizontal half of the bound chrome's plate margin (<c>s_backplateMargin {4,2,4,2}</c>).</summary>
+    public const float NavRowMarginX = 4f;
+
     /// <summary>A navigator LIST row (plate 40 compact / 56, outer extent 44 / 60): 40×40 art (r 20 artist / 5 album,
     /// show) + title 14/20/600 + subtitle 12/16 — compact drops both the art and the subtitle. Wears the bound
     /// AccentPill chrome.</summary>
@@ -427,7 +435,7 @@ public readonly partial struct User
         };
         Element content = new BoxEl
         {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(NavRowArtInset, 0f, Spacing.S, 0f),
             Draggable = DragOf(scope),
             Children = compact ? [text] : [ArtBox(scope, 40f, circular ? 20f : 5f), text],
         };

@@ -110,6 +110,18 @@ public class DesignTypeRampTests
     }
 
     [Fact]
+    public void PaneTitle_is_the_light_28_36_display_cut()
+    {
+        var el = Design.Type.PaneTitle("x");
+        Assert.Equal(28f, el.Size);
+        Assert.Equal(36f, el.LineHeight);
+        Assert.Equal(400, el.ResolvedWeight);
+        // Design.Type.DisplayFace is internal (no InternalsVisibleTo): the literal pins the face, the page title shares it.
+        Assert.Equal("Segoe UI Variable Display", el.FontFamily);
+        Assert.Equal(Design.Type.PageTitle("x").FontFamily, el.FontFamily);
+    }
+
+    [Fact]
     public void ArtistCompactTitle_carries_its_masthead_metrics()
     {
         var el = Design.Type.ArtistCompactTitle("x");
