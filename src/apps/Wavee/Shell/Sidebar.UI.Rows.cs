@@ -831,7 +831,8 @@ public static partial class Sidebar
             float height = float.IsNaN(heightOverride) ? SidebarRowGeometry.HeightOf(shape) : heightOverride;
             float art = float.IsNaN(artOverride) ? SidebarRowGeometry.ArtOf(shape) : artOverride;
             if (shape == SidebarRowShape.Text)
-                // A Text row has no icon column: one bar at the header's x (pane 16), the row's own trailing pad.
+                // A glyph-less Text row has no icon column: one bar at the header's x (pane 16), the row's own trailing pad (a seed
+                // never stands for a folder, so it carries no mark).
                 return new BoxEl
                 {
                     Direction = 0, Height = height, AlignItems = FlexAlign.Center,

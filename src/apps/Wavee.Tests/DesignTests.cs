@@ -1357,3 +1357,11 @@ public class DesignMorphKeyTests
         Assert.Null(Design.MorphKeys.For(EntityKind.Album, ""));
     }
 }
+
+public class DesignStageStandInTests
+{
+    [Fact]
+    public void With_now_playing_colors_off_the_stand_in_is_the_neutral_alone()
+        => Assert.Equal(Design.PlaceholderFor(default, light: !Design.StageInk.IsDark),
+                        Design.StageInk.ArtStandIn("https://x/cover.jpg", false));
+}

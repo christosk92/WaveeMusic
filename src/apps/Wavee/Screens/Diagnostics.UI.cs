@@ -902,6 +902,7 @@ public static partial class Diagnostics
                 Loc.Get(Strings.Diagnostics.Inspector.TabRaw),
                 Loc.Get(Strings.Diagnostics.Inspector.TabParsed),
             ];
+            // The inspector's own body tabs (static labels, under the page head), not the page head's views bar.
             return Body(Toolbar(hooks, post, report, insp), SelectorBar.Create(s_tabs, _tab), tab);
         }
 

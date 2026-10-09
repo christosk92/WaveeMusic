@@ -179,6 +179,15 @@ public class ShellRouteTableTests
     }
 }
 
+/// <summary>The shell's process-wide statics (the route table's nav-dest cache, the action registry, the page-views store)
+/// are written by these classes, so they share one collection and never run concurrently.</summary>
+[CollectionDefinition(ShellStaticsCollection.Name, DisableParallelization = true)]
+public sealed class ShellStaticsCollection
+{
+    public const string Name = "shell-statics";
+}
+
+[Collection(ShellStaticsCollection.Name)]
 public class ShellNavDestTests
 {
     [Fact]

@@ -21,6 +21,20 @@ public class AccentLadderRuleTests
     static ColorF Lift(uint argb) => Lifted;
 
     [Fact]
+    public void Seed_is_null_when_accent_from_artwork_is_off_and_the_hold_when_on()
+    {
+        AccentHold.Reset();
+        try
+        {
+            AccentHold.Remember(new AccentLadder.Result(Graded, AccentLadder.Rung.Graded));
+            Assert.Null(AccentHold.Seed(false));
+            Assert.Equal(AccentHold.Last, AccentHold.Seed(true));
+            Assert.Equal(Graded, AccentHold.Seed(true));
+        }
+        finally { AccentHold.Reset(); }
+    }
+
+    [Fact]
     public void Graded_beats_payload()
     {
         var r = AccentLadder.Resolve(new(Graded, Payload, Definite: false), Held, Fallback, Lift);

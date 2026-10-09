@@ -88,6 +88,18 @@ public sealed class SidebarMenuModelTests
     }
 
     [Fact]
+    public void Pane_DensityIsLibraryOnly_ShowCoversIsClassicOnly()
+    {
+        var classic = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default);
+        Assert.Empty(FindAll(classic, SidebarMenuAction.SetDensity));
+        Assert.Single(FindAll(classic, SidebarMenuAction.ToggleCovers));
+
+        var library = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default);
+        Assert.Equal(2, FindAll(library, SidebarMenuAction.SetDensity).Count);
+        Assert.Empty(FindAll(library, SidebarMenuAction.ToggleCovers));
+    }
+
+    [Fact]
     public void Pane_Zune_ChecksZuneRadio_OffersPinsToggle()
     {
         var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, zune: true, zunePins: false);

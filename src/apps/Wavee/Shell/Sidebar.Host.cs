@@ -76,7 +76,7 @@ public static partial class Sidebar
 
         var s = Platform.Settings;
         NavStyle.Value = ShellNavStyleRules.FromStored(s.Get(Platform.Keys.SidebarLayoutId));
-        Layout.Value = ShellNavStyleRules.LayoutOf(NavStyle.Peek(), SidebarLayoutId.Classic);
+        Layout.Value = ShellNavStyleRules.LayoutOf(NavStyle.Peek(), ShellNavStyleRules.PaneLayoutFromStored(s.Get(Platform.Keys.SidebarLastPane)));
         ZunePins.Value = s.Get(Platform.Keys.SidebarZunePins);
         Density.Value = s.Get(Platform.Keys.SidebarPaneDensity) == 1 ? SidebarDensity.Compact : SidebarDensity.Default;
         ClassicCovers.Value = s.Get(Platform.Keys.SidebarClassicCovers);
@@ -289,6 +289,7 @@ public static partial class Sidebar
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
         ClearRing();                                                  // the ring is per layout switch (design C.5)
         Platform.Settings.Set(Platform.Keys.SidebarLayoutId, (int)next);
+        Platform.Settings.Set(Platform.Keys.SidebarLastPane, (int)Layout.Peek());   // always: under Zune LayoutOf keeps the pane layout, and a profile that predates the key is seeded by its first switch
         Log.Info("sidebar", "layout.changed to=" + next);
     }
 

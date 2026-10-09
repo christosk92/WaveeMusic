@@ -36,6 +36,9 @@ public static class ShellNavStyleRules
         _ => current,
     };
 
+    /// <summary>The pane layout a stored <c>sidebar.layout.lastPane</c> names: 1 is Library, every other value Classic.</summary>
+    public static SidebarLayoutId PaneLayoutFromStored(int stored) => stored == 1 ? SidebarLayoutId.Library : SidebarLayoutId.Classic;
+
     /// <summary>Zune presents no pane in any window band.</summary>
     public static bool HidesPane(ShellNavStyle s) => s == ShellNavStyle.Zune;
 }

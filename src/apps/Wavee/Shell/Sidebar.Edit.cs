@@ -197,7 +197,7 @@ public static class SidebarMenuModel
 
     /// <summary>The global pane menu (design C.4): Layout ▸ · Show section ▸ · [Library: Hide pinned · Unpin all shortcuts]
     /// · Classic: Show covers / Library: Density ▸ · Edit sidebar… · ─ · Reset everything…. While editing, the layout radios and Reset everything are disabled
-    /// with the reason (Q7); Density stays. Library has no Pinned header (P.2a), so its two Pinned verbs live HERE: "Hide
+    /// with the reason (Q7); Library's Density stays while editing. Library has no Pinned header (P.2a), so its two Pinned verbs live HERE: "Hide
     /// pinned" (disabled with "Unpin {names} first" while route/module pins lock it) and "Unpin all shortcuts" (Q17, while
     /// such pins exist). <paramref name="lockingPinNames"/> = <see cref="SidebarVisibilityRules.LockingPins"/>.
     /// Under Zune (no pane, the pivot band's menu) only Layout ▸, the title-bar pins toggle and Reset everything remain.</summary>

@@ -81,6 +81,9 @@ public static partial class Platform
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
         /// <summary>The active sidebar layout: 0 Classic · 1 Library · 2 Zune (ShellNavStyle). Written by the one-time v3 migration.</summary>
         public static readonly SettingKey<int> SidebarLayoutId = new("sidebar.layout.id", 0);
+        /// <summary>The pane layout (0 Classic · 1 Library) a Zune start returns to. Zune has no pane of its own, so
+        /// <see cref="SidebarLayoutId"/> alone loses it across a restart; written whenever a non-Zune style is chosen.</summary>
+        public static readonly SettingKey<int> SidebarLastPane = new("sidebar.layout.lastPane", 0);
         /// <summary>The expanded pane width, one value for both layouts (180-460).</summary>
         public static readonly SettingKey<float> SidebarPaneWidth = new("sidebar.pane.width", 320f);
         /// <summary>The user's collapse to the 48 rail — written only in the Wide band, never by a forced mode.</summary>
@@ -147,12 +150,12 @@ public static partial class Platform
         /// <summary>LEGACY. FALSE kept the neutral surface. Read only as the fallback for the three wash keys below while
         /// they are unset (-1), and never written again.</summary>
         public static readonly SettingKey<bool> ColorWashesEnabled = new("appearance.colorWashes.enabled", true);
-        /// <summary>-1 unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On · 2 Rich (surfaces only).</summary>
-        public static readonly SettingKey<int> WashSurfaces = new("appearance.wash.surfaces", -1);
-        /// <summary>-1 unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
-        public static readonly SettingKey<int> WashAccent = new("appearance.wash.accent", -1);
-        /// <summary>-1 unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
-        public static readonly SettingKey<int> WashNowPlaying = new("appearance.wash.nowPlaying", -1);
+        /// <summary><see cref="ColorWashRules.Unset"/> unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On · 2 Rich (surfaces only).</summary>
+        public static readonly SettingKey<int> WashSurfaces = new("appearance.wash.surfaces", ColorWashRules.Unset);
+        /// <summary><see cref="ColorWashRules.Unset"/> unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
+        public static readonly SettingKey<int> WashAccent = new("appearance.wash.accent", ColorWashRules.Unset);
+        /// <summary><see cref="ColorWashRules.Unset"/> unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
+        public static readonly SettingKey<int> WashNowPlaying = new("appearance.wash.nowPlaying", ColorWashRules.Unset);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>

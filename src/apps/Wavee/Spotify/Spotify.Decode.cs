@@ -2268,6 +2268,7 @@ public static partial class Spotify
             for (int d = Fields(ref r); Next(ref r, d);)
             {
                 if (r.ValueTextEquals("url"u8)) { r.Read(); url = s.AddJson(ref r); }
+                // browse/home image sources publish `maxWidth`, so every width read as 0 and BrowseImagePick.ChooseIndex picked the first (often smallest) image.
                 else if (r.ValueTextEquals("width"u8) || r.ValueTextEquals("maxWidth"u8)) { r.Read(); width = (int)Num(ref r); }
                 else SkipValue(ref r);
             }

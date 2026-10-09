@@ -172,6 +172,7 @@ public readonly partial struct User
                 PaletteUrl = LikedToneAnchorUrl(),
                 Eyebrow = Detail.Text.Eyebrow(DetailKind.Liked, BadgeStyle.None, AlbumKind.Album, 0,
                                               collaborative: false, isPublic: true, visibilityKnown: true),
+                // A DetailHero spec, not a PageHeadSpec: MetaLoading holds the line as a same-height shimmer bar until the total lands.
                 Meta = metaLoading ? null : Detail.Text.LikedMeta(liked.Total(slot), totalMs, durationsKnown),
                 MetaLoading = metaLoading,
                 ShareUrl = LikedShareUrl,

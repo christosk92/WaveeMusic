@@ -24,6 +24,20 @@ public sealed class ShellNavStyleTests
     [Fact] public void LayoutOf_ZuneKeepsTheCurrentLayout()
         => Assert.Equal(SidebarLayoutId.Library, ShellNavStyleRules.LayoutOf(ShellNavStyle.Zune, SidebarLayoutId.Library));
 
+    [Theory]
+    [InlineData(1, SidebarLayoutId.Library)]
+    [InlineData(0, SidebarLayoutId.Classic)]
+    [InlineData(2, SidebarLayoutId.Classic)]
+    [InlineData(-5, SidebarLayoutId.Classic)]
+    public void PaneLayoutFromStored_OnlyOneIsLibrary(int stored, SidebarLayoutId expected)
+        => Assert.Equal(expected, ShellNavStyleRules.PaneLayoutFromStored(stored));
+
+    [Fact] public void LayoutOf_ZuneKeepsTheStoredPaneLayout()
+        => Assert.Equal(SidebarLayoutId.Library, ShellNavStyleRules.LayoutOf(ShellNavStyle.Zune, ShellNavStyleRules.PaneLayoutFromStored(1)));
+
+    [Fact] public void LastPaneKey_DefaultsToClassic()
+        => Assert.Equal(0, Platform.Keys.SidebarLastPane.Default);
+
     [Fact] public void LayoutOf_ClassicAndLibraryAreTheirOwnLayouts()
     {
         Assert.Equal(SidebarLayoutId.Classic, ShellNavStyleRules.LayoutOf(ShellNavStyle.Classic, SidebarLayoutId.Library));

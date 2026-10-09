@@ -75,6 +75,14 @@ public sealed class PrefsTests : IDisposable
     }
 
     [Fact]
+    public void The_three_wash_keys_default_to_the_unset_sentinel()
+    {
+        Assert.Equal(ColorWashRules.Unset, Platform.Keys.WashSurfaces.Default);
+        Assert.Equal(ColorWashRules.Unset, Platform.Keys.WashAccent.Default);
+        Assert.Equal(ColorWashRules.Unset, Platform.Keys.WashNowPlaying.Default);
+    }
+
+    [Fact]
     public void ColorWashRules_out_of_range_falls_back()
     {
         Assert.Equal(WashLevel.Subtle, ColorWashRules.Level(7, true));

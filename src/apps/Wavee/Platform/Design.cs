@@ -668,7 +668,12 @@ public static partial class Design
         /// <summary>The backdrop's stand-in while the cover is missing or still decoding, in the STAGE's polarity rather
         /// than the page's. The cover TINT survives (it is what stops the slot reading as a hole); only the neutral it
         /// is blended toward follows the stage.</summary>
-        public static ColorF ArtStandIn(ReadOnlySpan<char> url) => PlaceholderFor(url, light: !IsDark);
+        public static ColorF ArtStandIn(ReadOnlySpan<char> url) => ArtStandIn(url, Prefs.Appearance.NowPlayingColors());
+
+        /// <summary>The stand-in with the setting passed in (pure, for the tests): with "now-playing colours" off the cover
+        /// tint is dropped and the stand-in is the neutral alone.</summary>
+        public static ColorF ArtStandIn(ReadOnlySpan<char> url, bool nowPlayingColors)
+            => PlaceholderFor(nowPlayingColors ? url : default, light: !IsDark);
     }
 
     // ══ 6. THE COVER PALETTE → RENDERER COLOUR ═══════════════════════════════════════════════════════════════════════

@@ -46,5 +46,9 @@ public static class AccentHold
         if (r.Remember) Last = r.Color;
     }
 
+    /// <summary>The remembered accent a page may seed its first frame with: none while "accent from artwork" is off, so the
+    /// held artwork colour can never reach a page the user asked to keep neutral.</summary>
+    public static ColorF? Seed(bool fromArtwork) => fromArtwork ? Last : null;
+
     public static void Reset() => Last = null;
 }

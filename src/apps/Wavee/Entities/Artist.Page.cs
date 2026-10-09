@@ -160,9 +160,12 @@ public readonly partial struct Artist
 
         // ── colour ──
         // Seeded from the last remembered page accent, so the first frame never paints the default over a held colour.
-        readonly Signal<ColorF> _accent = new(AccentHold.Last ?? Tok.AccentDefault);
+        readonly Signal<ColorF> _accent = new(HeldSeed() ?? Tok.AccentDefault);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(
-            AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, ""));
+            HeldSeed() ?? Tok.AccentTextPrimary,
+            HeldSeed() ?? Tok.AccentDefault, ""));
+        /// <summary>The held page accent, only while "Accent from artwork" is on (null otherwise).</summary>
+        static ColorF? HeldSeed() => AccentHold.Seed(Prefs.Appearance.AccentFromArtwork());
         readonly Signal<ThemeKind> _theme = new(ThemeKind.Dark);
         readonly Func<ColorF> _accentFn;
 
@@ -1143,7 +1146,7 @@ public readonly partial struct Artist
         /// effect, so either grading landing re-derives the accent.</summary>
         static ColorF AccentFor(Artist a)
         {
-            if (!a.IsValid) return AccentHold.Last ?? Tok.AccentDefault;
+            if (!a.IsValid) return HeldSeed() ?? Tok.AccentDefault;
             var src = PaletteSourceOf(a);
             string? url = src.Url, avatar = src.FallbackUrl;
             if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;

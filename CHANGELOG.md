@@ -15,6 +15,11 @@ versions separately under `v*` and is not tracked in this file.)
 - **A third navigation style, Zune.** No sidebar: big pivots across the top for Home, Browse, Your Library and Recently
   played, smaller ones under Your Library for Liked Songs, Albums, Artists, Podcasts and Audiobooks, and up to six of
   your pins beside them. Pick it in Settings › Appearance › Navigation style or the sidebar's ⋯ › Layout.
+- **Zune**: the pivots line up with the page and never move between pages, Home's and Recently played's views sit in
+  the second pivot row, pins show their cover, a "pinned" label and a dot under the one that is playing; the title bar
+  shows the Wavee wordmark and a compact search.
+- **Folders in the sidebar** show a folder icon in every layout, and their contents are indented under the folder name
+  with guide lines.
 - **Show covers for the Classic sidebar.** Off by default for Spotify's classic text-only list; on shows a small cover
   on each row.
 - **Experimental**: on artist pages the header photo now runs behind the title bar and the navigation band. This may
@@ -28,12 +33,25 @@ versions separately under `v*` and is not tracked in this file.)
   Settings › Appearance › Navigation style or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists,
   and optional Recently played and New releases sections) or Library (one list with filters, like Spotify's Your
   Library). In Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips
-  and the toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
-  in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
-  current sidebar carries over.
+  and the toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections
+  and pins in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's
+  pins. Your current sidebar carries over.
 - **Color washes are now three settings**: Tinted surfaces (Off, Subtle, Rich), Accent from artwork and Now playing
   colors. If Color washes was off, all three start off.
 - Sidebar rows, headers, chips and the Your Library toolbar now line up on one grid.
+- **One page head everywhere.** Every page (Home, Browse, Recents, Search, Settings, your Library pages, artist lists,
+  history, logs, …) now opens with the same title, the same view switcher and the same margins in all three
+  navigation styles; margins shrink on narrow windows (36 → 32 → 16).
+- Pages no longer jump while they load or when you switch navigation style: titles, counts and view switchers keep
+  their place, and layout changes slide.
+- Home shows a "Home" title above All / Music / Podcasts / Audiobooks.
+- Zune: the second row under the pivots is never empty and is filled the moment you navigate: views, categories, or
+  the page's title, sections and actions.
+- Artist, profile and episode bands: the title, sections and actions now sit on one line.
+- Insights for playlists and Liked Songs open from the Insights button in every layout.
+- Library: one sort menu instead of a row of sort words; counts read like "20 albums".
+- The title bar is simpler: the theme switch moved into the profile menu, and the search box is a compact pill.
+- Album and playlist pages: a tighter side column and less space before the songs.
 
 ### Removed
 
@@ -44,6 +62,12 @@ versions separately under `v*` and is not tracked in this file.)
 ### Fixed
 
 - **Home kept its color wash with color washes turned off.**
+- Some Browse and Home images loaded at the smallest size (image sources that only state a maximum width).
+- The sidebar layout you had before switching to Zune is restored after a restart.
+- Accent from artwork and Now playing colors off no longer leave artwork colours on the artist page and the
+  full-screen art placeholder.
+- Zune pins show their covers instead of the same library icon.
+- Album and playlist pages use one accent colour for the playing song, the heart and Play.
 
 ## [0.3.4] - 2026-10-06
 

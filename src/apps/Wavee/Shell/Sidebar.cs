@@ -339,8 +339,9 @@ public enum SidebarRowShape : byte
 /// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
 /// a 4,2 margin (TR:217, TR:228), a 40-px icon column whose centre sits at pane x 24 (TR:612), the label at pane x 48
 /// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 32-px
-/// folder indents (WinUI's 31, rounded to the 8-px grid) and the 3×16 r2 pill at slot x 32·depth (TR:220-222). Numbers are SLOT
-/// space (the list's one 4-px inset is <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
+/// folder indents (WinUI's 31, rounded to the 8-px grid), the 3×16 r2 pill at slot x 32·depth (TR:220-222) and the 1-px tree
+/// guides at the folder mark's centre column. Numbers are SLOT space (the list's one 4-px inset is
+/// <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
 public static class SidebarRowGeometry
 {
     // ── the pane ──

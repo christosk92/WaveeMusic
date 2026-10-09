@@ -94,8 +94,8 @@ public static partial class Prefs
                 Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
         }
 
-        /// <summary>Reactive read of "now-playing colours": may the lyrics pill and the Verse ghosts take the playing
-        /// track's colours?</summary>
+        /// <summary>Reactive read of "now-playing colours": may the lyrics pill, the Verse ghosts and the stage art stand-in
+        /// (<see cref="Design.StageInk.ArtStandIn(ReadOnlySpan{char})"/>) take the playing track's colours?</summary>
         public static bool NowPlayingColors()
         {
             _ = Epoch.Value;

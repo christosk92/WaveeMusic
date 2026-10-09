@@ -10,6 +10,7 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+[Collection(ShellStaticsCollection.Name)]
 public sealed class ShellPageViewsTests
 {
     public ShellPageViewsTests() => Shell.PageViews.Clear();
