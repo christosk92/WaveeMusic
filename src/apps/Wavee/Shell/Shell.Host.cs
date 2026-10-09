@@ -1030,7 +1030,6 @@ public static partial class Shell
             // the UI thread and only post work; nothing here waits.
             UseSignalEffect(AiLyrics.DriverPlayhead);
             UseSignalEffect(AiLyrics.DriverEvaluate);
-            UseInterval(AiLyrics.DriverIdleTick, 60_000f);
             return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }

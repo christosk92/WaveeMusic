@@ -498,11 +498,16 @@ public class AiLyricsRulesTests
         => Assert.Equal(expected, AiLyrics.Rules.Fraction(part, whole), 4);
 
     [Fact]
-    public void Models_unload_after_ten_idle_minutes()
+    public void The_worker_waits_forever_when_nothing_is_loaded()
+        => Assert.Equal(Timeout.Infinite, AiLyrics.Rules.IdleWaitMs(loaded: false, lastUseMs: 0, nowMs: 10_000_000));
+
+    [Fact]
+    public void Loaded_models_unload_ninety_seconds_after_their_last_use()
     {
-        Assert.False(AiLyrics.Rules.UnloadAfterIdle(0, 599_999));
-        Assert.True(AiLyrics.Rules.UnloadAfterIdle(0, 600_000));
-        Assert.False(AiLyrics.Rules.UnloadAfterIdle(1_000_000, 1_500_000));
-        Assert.True(AiLyrics.Rules.UnloadAfterIdle(1_000_000, 1_700_000));
+        long last = 5_000_000;                         // TickCount64 is already far past 0
+        Assert.Equal(90_000, AiLyrics.Rules.IdleWaitMs(true, last, last));
+        Assert.Equal(30_000, AiLyrics.Rules.IdleWaitMs(true, last, last + 60_000));
+        Assert.Equal(0, AiLyrics.Rules.IdleWaitMs(true, last, last + 90_000));
+        Assert.Equal(0, AiLyrics.Rules.IdleWaitMs(true, last, last + 3_600_000));   // overdue: unload now, never negative
     }
 }
