@@ -143,6 +143,9 @@ public readonly partial struct Artist
         readonly Signal<bool> _floorInRow2 = new(Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Peek()));
         bool _inRow2;                      // the value Compose latched this render; every other reader uses this
         float _flipHeroH = ArtistHeroLayout.WideHeight;
+        /// <summary>EXPERIMENTAL (artist bleed): non-null when this render publishes a backdrop; true while the shell slot actually
+        /// carries it, so the hero hides its own photo only while the shell draws one (never blank when the publish was dropped).</summary>
+        Func<bool>? _bleedDrawn;
         Memo<bool>? _belowLine;            // offset < FlipLine: a threshold, so the latch subscribes to the crossing only
         IReadSignal<bool>? _isActive;
         string[]? _bandLabels;
@@ -390,14 +393,32 @@ public readonly partial struct Artist
             // search/home card's avatar, warmed by an earlier batch) must land its colour on the first paint, and only
             // a genuinely ungraded cover falls through to TintOwnership's hold.
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
-            Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
-                owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl);
 
             // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
             // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
             bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a));
             _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
             if (_bodyReady) _heroGateOpened = true;
+
+            // EXPERIMENTAL (artist bleed; Artist.Bleed.cs): the photo runs from the window top behind the chrome. The ONE read of
+            // `ArtistBleed.Enabled`. Only once the body is up, so the skeleton never draws over a photo it does not show. The
+            // tint's publish carries the backdrop as data; the shell draws it. `floor` and the collapse distance are the hero's own
+            // (A2's latched floor), so the shell's ground and fade track the hero 1:1. For a stacked tier the bleed ends where the
+            // PHOTO ends (the identity column below it stays on the solid ground), so the hero height it rides is the photo's.
+            bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), _bodyReady ? heroUrl : null);
+            ShellBackdrop? backdrop = null;
+            if (bleed)
+            {
+                float bleedFloor = Detail.BandLayout.StuckHeight(_floorInRow2.Value);
+                float bleedPhotoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
+                backdrop = new ShellBackdrop(heroUrl!, bleedPhotoH, bleedPhotoH, bleedFloor, _scroll.Offset,
+                    ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text);
+            }
+            Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
+                owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
+                backdrop: backdrop);
+            string bleedKey = a.Uri.Text;
+            _bleedDrawn = bleed ? () => shellSlot?.Value.Backdrop?.Key == bleedKey : null;
             _body = _bodyReady ? Compose(a, paletteUrl, _heroUrl, washes, routeKey) : null;
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));   // a new section set → re-resolve the spy
             // Row 2's words: the deps-gated form (PublishBand reads no signal), keyed on everything the publication carries.
@@ -552,7 +573,7 @@ public readonly partial struct Artist
             }
             Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems, inRow2);
             Element hero = HeroBanner(HeroText.For(a), uri, heroUrl, paletteUrl, width, in m, accent,
-                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor);
+                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor, bleedDrawn: _bleedDrawn);
 
             // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`_compact`). The
             // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two

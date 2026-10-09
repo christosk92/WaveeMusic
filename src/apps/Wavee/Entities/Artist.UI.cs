@@ -100,6 +100,8 @@ public static class ArtistHeroLayout
     public const float CompactCopyMaxWidth = 640f;
     public const float NarrowCopyMaxWidth = 520f;
     public const float PhotoParallaxFraction = 0.15f;
+    /// <summary>The photo's horizontal focus point (0..1 across the image), shared by the hero's art and the artist bleed's shell photo.</summary>
+    public const float PhotoFocusX = 0.62f;
     public const float ContentBlendTail = Spacing.XXXL * 3f;
     public const float CompactIdentityHeight = Detail.VerticalLayout.CompactIdentityHeight;
 
@@ -380,7 +382,8 @@ public readonly partial struct Artist
     internal static Element HeroBanner(in HeroText text, string uri, string? photoUrl, string? paletteUrl, float width,
                                        in ArtistHeroMetrics m, ColorF accent, bool compactCanHit,
                                        Action? play, Action? shuffle, Action? radio, Element? band,
-                                       uint headerAccent = 0, float floor = ArtistHeroLayout.CompactIdentityHeight)
+                                       uint headerAccent = 0, float floor = ArtistHeroLayout.CompactIdentityHeight,
+                                       Func<bool>? bleedDrawn = null)
     {
         float w = MathF.Max(1f, width);
         float height = m.MinHeight;
@@ -408,6 +411,9 @@ public readonly partial struct Artist
             Width = w, Height = photoH, ZStack = true, ClipToBounds = true,
             TransformOriginX = 0.5f, TransformOriginY = 0f,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
+            // EXPERIMENTAL (artist bleed): while the shell draws the photo behind the chrome, the banner's own copy stays mounted (the
+            // decode is warm and the layout is unchanged, the veil and the copy stay put) but paints nothing.
+            Opacity = bleedDrawn is null ? 1f : Prop.Of(() => bleedDrawn() ? 0f : 1f),
             Children = [art],
         }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 
@@ -677,7 +683,7 @@ public readonly partial struct Artist
                             // The FLAT theme neutral, never a cover tint: a 440-DIP tinted slab is a different design.
                             Ui.Image(p.Url, ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
                                      placeholder: Design.ArtworkPlaceholder, blurHash: null, transition: ImageTransition.None)
-                                with { FocusX = 0.62f, FocusY = 0.34f },
+                                with { FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = 0.34f },
                         ],
                     },
                 ],

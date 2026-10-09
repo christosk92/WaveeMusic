@@ -521,6 +521,8 @@ public static partial class Shell
                     Chord(ZoomResetChord, static () => ZoomStep(0)),
                     Chord(ZoomResetPadChord, static () => ZoomStep(0)),
                     Embed.Comp(static () => new NavStylePresenter()) with { Key = "shell:navstyle-presenter" },
+                    Embed.Comp(static () => new BleedPresenter()) with { Key = "shell:bleed-presenter" },
+                    Embed.Comp(static () => new CardPoseTracker()) with { Key = "shell:card-pose-tracker" },
                     // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
                     // costs GPU, and the docked bar is what stacked a second transport under the video's own, but a
                     // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
@@ -605,18 +607,17 @@ public static partial class Shell
                         Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                         Children =
                         [
-                            new BoxEl
-                            {
-                                Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Prop.Of(s_contentCorners),
-                            },
+                            Embed.Comp(static () => new CardGround()),
                             new BoxEl
                             {
                                 Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
                                 Fill = ColorF.Transparent, Corners = Prop.Of(s_contentCorners), ClipToBounds = true,
                                 IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentRowMorphId,
+                                OnRealized = static h => { s_contentCard = h; PublishCardRect(); },
+                                OnBoundsChanged = static _ => PublishCardRect(),
                                 Children = [Embed.Comp(static () => new ContentHost())],
                             },
-                            ContentRegionStroke(),
+                            Embed.Comp(static () => new CardStroke()),
                         ],
                     },
                     // The rail's 8-DIP breathing room exists only while the rail is inline.
@@ -739,23 +740,245 @@ public static partial class Shell
         if (closeRail) Ui.RailOpen.Value = false;
     };
 
-    static Element ContentRegionStroke() => new BoxEl
+    // ══ 2.2 THE CARD'S GROUND AND STROKE (and the artist bleed's cut-out) ══════════════════════════════════════════════
+
+    /// <summary>EXPERIMENTAL (artist bleed): how much of the card's top fill is gone at this moment, 0..1. The strip over the
+    /// photo's extent and the stroke over it are both drawn at <c>1 - this</c>. 0 with no backdrop, so the ground is today's.</summary>
+    static float BleedCut()
     {
-        ZStack = true, ClipToBounds = true, HitTestVisible = false,
-        Children =
-        [
-            new BoxEl
+        if (Ui.BleedBackdrop.Value is not { } b) return 0f;
+        return Ui.BleedPresence.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
+    }
+
+    static readonly Func<float> s_bleedKeep = static () => 1f - BleedCut();
+
+    /// <summary>The photo's extent below the card top while a backdrop is published (or fading out), else 0. Read at navigation
+    /// rate by <see cref="CardGround"/> and <see cref="CardStroke"/>, which re-render when the publication changes, never per
+    /// scroll.</summary>
+    static float BleedExtent() => Ui.BleedBackdrop.Value?.PhotoHeight ?? 0f;
+
+    /// <summary>The content card's fill. With no backdrop it is the plain rounded fill, no clip and no extra nodes. With one it is
+    /// a clip exactly the photo's extent tall over the plain fill below, and inside the clip the translucent fill is split at ONE
+    /// line, the hero's presented bottom (<see cref="ArtistBleed.RiserTop"/>, a paint-only translation): a STRIP above it that
+    /// fades out as the photo bleeds through (<see cref="BleedCut"/>), a RISER from it down that is always solid, and a short
+    /// FADE above the line that is the photo's own bottom feather turned into fill (so the photo ends in the card's fill, not in
+    /// a hard edge). The strip and the riser TILE the clip, so the translucent fill is never drawn twice. The card rect never
+    /// changes; with no backdrop nothing here is translated or faded.</summary>
+    sealed class CardGround : Component
+    {
+        public override Element Render()
+        {
+            float scale = UseContext(Viewport.Scale);   // the line is snapped to a device pixel (unconditional: hook order)
+            float p = BleedExtent();
+            if (p <= 0f)
+                return new BoxEl { Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Prop.Of(s_contentCorners) };
+            float band = ArtistHeroLayout.PhotoFadeBandFor(p);
+            float Line() => Ui.BleedBackdrop.Value is { } b
+                ? ArtistBleed.SnapToPixel(ArtistBleed.RiserTop(b.ScrollY.Value, b.HeroHeight, b.Floor, p), scale)
+                : p;
+            return new BoxEl
             {
-                // One DIP of extra right overhang so the box can shift left: undocked, the page bleeds to the window edge and the
-                // LEFT stroke leaves the clip (the top stroke stays).
-                Margin = new Edges4(0f, FrameRules.StrokeOverhangTop, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
-                BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
+                Direction = 1, Grow = 1f, ClipToBounds = true, HitTestVisible = false,
                 Corners = Prop.Of(s_contentCorners),
-                Transform = Prop.Of(static () => Affine2D.Translation(
-                    FrameRules.StrokeLeftShift(FrameRules.PaneDocked(Sidebar.Mode.Value)), 0f)),
-            },
-        ],
-    };
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Height = p, Shrink = 0f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Height = p, AlignSelf = FlexAlign.Start, Fill = Prop.Of(static () => Design.Colors.FileArea),
+                                Opacity = Prop.Of(s_bleedKeep),
+                                Transform = Prop.Of(() => Affine2D.Translation(0f, ArtistBleed.StripShift(Line(), p))),
+                            },
+                            new BoxEl
+                            {
+                                Height = band, AlignSelf = FlexAlign.Start, Fill = Prop.Of(static () => Design.Colors.FileArea),
+                                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, band),
+                                Opacity = Prop.Of(static () => BleedCut()),
+                                Transform = Prop.Of(() => Affine2D.Translation(0f, Line() - band)),
+                            },
+                            new BoxEl
+                            {
+                                Height = p, AlignSelf = FlexAlign.Start, Fill = Prop.Of(static () => Design.Colors.FileArea),
+                                Transform = Prop.Of(() => Affine2D.Translation(0f, Line())),
+                            },
+                        ],
+                    },
+                    new BoxEl { Grow = 1f, MinHeight = 0f, Fill = Prop.Of(static () => Design.Colors.FileArea) },
+                ],
+            };
+        }
+    }
+
+    /// <summary>The card's left+top stroke. Without a backdrop it is the single plain ring. With one it is split by CLIPPING,
+    /// never redrawn: a top clip (the photo's extent, faded with the strip) and a lower clip holding the same ring with its
+    /// geometry still starting at the card top, so the union is exactly the plain ring and the left edge below the hero stays.</summary>
+    sealed class CardStroke : Component
+    {
+        static readonly Func<Affine2D> s_leftShift = static () => Affine2D.Translation(
+            FrameRules.StrokeLeftShift(FrameRules.PaneDocked(Sidebar.Mode.Value)), 0f);
+
+        /// <summary>The plain ring (one DIP of extra right overhang so the box can shift left: undocked, the page bleeds to the
+        /// window edge and the LEFT stroke leaves the clip, the top stroke stays), with an overridable top margin.</summary>
+        static BoxEl Ring(float top) => new()
+        {
+            Margin = new Edges4(0f, top, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
+            BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
+            Corners = Prop.Of(s_contentCorners),
+            Transform = Prop.Of(s_leftShift),
+        };
+
+        public override Element Render()
+        {
+            float p = BleedExtent();
+            if (p <= 0f)
+                return new BoxEl { ZStack = true, ClipToBounds = true, HitTestVisible = false, Children = [Ring(FrameRules.StrokeOverhangTop)] };
+            return new BoxEl
+            {
+                ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                Children =
+                [
+                    // (a) over the photo: a clip exactly the photo's extent tall holding today's ring (card-tall: it overhangs the
+                    //     clip's bottom by the card's own height), faded with the strip.
+                    new BoxEl
+                    {
+                        Height = p, AlignSelf = FlexAlign.Start, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                        Opacity = Prop.Of(s_bleedKeep),
+                        Children =
+                        [
+                            Ring(FrameRules.StrokeOverhangTop) with
+                            {
+                                Margin = new Edges4(0f, FrameRules.StrokeOverhangTop, -2f * FrameRules.StrokeW, 0f),
+                                AlignSelf = FlexAlign.Start,
+                                Height = Prop.Of(static () => Ui.CardRect.Value.H + FrameRules.StrokeW),
+                            },
+                        ],
+                    },
+                    // (b) below the photo: the ring's geometry still starts at the card top (negative top margin), so only the part
+                    //     below the hero shows.
+                    new BoxEl
+                    {
+                        Margin = new Edges4(0f, p, 0f, 0f), ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                        Children = [Ring(FrameRules.StrokeOverhangTop - p)],
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>EXPERIMENTAL (artist bleed): the content card host's node, for its laid-out window rect.</summary>
+    static NodeHandle s_contentCard;
+
+    /// <summary>Publishes the card's LAID-OUT rect in window coordinates (the sum of the layout bounds up the parent chain, never
+    /// the FLIP's in-flight pose), value-gated. The material layer derives the backdrop's final span from it. With a backdrop
+    /// showing, a change also arms <see cref="CardPoseTracker"/>; without one the presented pose is simply the final rect.</summary>
+    static void PublishCardRect()
+    {
+        if (s_scene is not { } scene || s_contentCard.IsNull || !scene.IsLive(s_contentCard)) return;
+        float x = 0f, y = 0f;
+        for (var n = s_contentCard; !n.IsNull; n = scene.Parent(n))
+        {
+            ref readonly var b = ref scene.Bounds(n);
+            x += b.X;
+            y += b.Y;
+        }
+        var own = scene.Bounds(s_contentCard);
+        var rect = new RectF(x, y, own.W, own.H);
+        bool moved = Ui.CardRect.SetIfChanged(rect);
+        // Without a backdrop nobody draws the pose: keep it equal to the final rect, so a backdrop that appears later starts in
+        // place. With one the tracker owns it (a FLIP starts at the OLD pose, which is exactly what stays until it samples).
+        if (Ui.BleedBackdrop.Peek() is null) Ui.CardPose.SetIfChanged(rect);
+        else if (moved) Ui.CardSettle.Value++;
+    }
+
+    /// <summary>The card's PRESENTED left/top (the layout transitions' in-flight translation included) into <see cref="Ui.CardPose"/>.</summary>
+    static void SampleCardPose()
+    {
+        if (s_scene is not { } scene || s_contentCard.IsNull || !scene.IsLive(s_contentCard)) return;
+        Ui.CardPose.SetIfChanged(scene.AbsoluteRect(s_contentCard));
+    }
+
+    /// <summary>EXPERIMENTAL (artist bleed): samples the card's presented pose each frame for the length of its layout transition
+    /// (<see cref="Ui.CardSettle"/> re-arms it on every change of the final rect), then lands on the settled pose. The ticker is
+    /// mounted only inside that window, so an idle window pays nothing. Renders an empty, zero-size box.</summary>
+    sealed class CardPoseTracker : Component
+    {
+        readonly Signal<bool> _running = new(false);
+        readonly Action _sample = static () => SampleCardPose();
+        readonly Action _stop;
+
+        public CardPoseTracker() => _stop = () => { SampleCardPose(); _running.Value = false; };
+
+        public override Element Render()
+        {
+            int settle = Ui.CardSettle.Value;       // layout-change rate, never per frame
+            bool running = _running.Value;
+            UseEffect(() => { if (settle > 0) _running.Value = true; }, DepKey.From(settle));
+            UseTimeout(_stop, PaneMs + 120f, DepKey.From(settle));
+            return new BoxEl
+            {
+                Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_sample))] : [],
+            };
+        }
+    }
+
+    /// <summary>EXPERIMENTAL (artist bleed): follows "a backdrop is published" into <see cref="Ui.BleedPresence"/> with a tween of
+    /// <c>Design.Motion.Standard</c> (a snap under reduced motion), and retains the last backdrop in <see cref="Ui.BleedBackdrop"/>
+    /// until the fade-out ends so the card ground keeps its geometry meanwhile. The per-frame ticker is mounted only while the
+    /// tween runs. Renders an empty, zero-size box.</summary>
+    sealed class BleedPresenter : Component
+    {
+        readonly Signal<bool> _running = new(false);
+        readonly Action _step;
+        float _from, _target;
+        long _t0;
+
+        public BleedPresenter() => _step = Step;
+
+        public override Element Render()
+        {
+            var backdrop = MaterialState.Value.Backdrop;   // navigation rate
+            float target = backdrop is null ? 0f : 1f;
+            bool running = _running.Value;
+            UseEffect(() =>
+            {
+                if (backdrop is not null && !ReferenceEquals(Ui.BleedBackdrop.Peek(), backdrop))
+                {
+                    if (Ui.BleedBackdrop.Peek() is null) SampleCardPose();   // the pose was parked at the final rect; start from the presented one
+                    Ui.BleedBackdrop.Value = backdrop;
+                }
+                if (target == _target) return;
+                _from = Ui.BleedPresence.Peek();
+                _target = target;
+                _t0 = Design.FrameTime.NowMs;
+                if (Design.Reduced) Land();
+                else _running.Value = true;
+            }, DepKey.From(HashCode.Combine(target, backdrop)));
+            return new BoxEl
+            {
+                Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_step))] : [],
+            };
+        }
+
+        void Step()
+        {
+            float t = Math.Clamp((Design.FrameTime.NowMs - _t0) / Design.Motion.Standard, 0f, 1f);
+            Ui.BleedPresence.Value = _from + (_target - _from) * Easings.Ease(Easing.FluentStandard, t);
+            if (t >= 1f) Land();
+        }
+
+        void Land()
+        {
+            Ui.BleedPresence.Value = _target;
+            if (_target == 0f) Ui.BleedBackdrop.Value = null;
+            _running.Value = false;
+        }
+    }
 
     static uint PackArgb(ColorF c)
     {

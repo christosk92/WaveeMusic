@@ -2232,7 +2232,18 @@ public readonly record struct HomeWash(WashLayer? Hero, WashLayer? Weekly, WashL
 /// <summary>The published shell-material state: an OWNER token plus the two mutually-exclusive material forms — a flat
 /// <see cref="Tint"/> (detail pages) or a three-layer radial <see cref="Wash"/> (Home). Both null ⇒ the neutral ground.
 /// <para>The owner makes nav transitions race-free: only the page that last CLAIMED the slot may refresh it.</para></summary>
-public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, HomeWash? Wash);
+public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, HomeWash? Wash, ShellBackdrop? Backdrop = null);
+
+/// <summary>EXPERIMENTAL (artist bleed): a full-bleed photo the page publishes for the shell to draw in the material layer,
+/// behind the title bar and the Zune band. Data only: the shell derives the geometry from the content card's rect, and the
+/// page's scroll rides <paramref name="ScrollY"/> (a paint channel, never a render read).
+/// <paramref name="PhotoHeight"/> is the photo's extent below the card top, <paramref name="HeroHeight"/> the extent the solid
+/// ground rides, <paramref name="Floor"/> the collapsed hero's remnant (56 with the band in the page, 0 in row 2),
+/// <paramref name="CollapseDistance"/> the scroll distance over which the hero collapses to it, and <paramref name="DecodeW"/> and
+/// <paramref name="DecodeH"/> the page's own latched decode size (so the shell's decode is the page's, a cache hit), and
+/// <paramref name="Key"/> the identity of the photo (the layer remounts, and so cross-fades, when it changes).</summary>
+public sealed record ShellBackdrop(string Url, float PhotoHeight, float HeroHeight, float Floor,
+                                   IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key);
 
 /// <summary>The shell-owned, page-scoped MATERIAL channel. The shell publishes one signal at the root and paints it as
 /// the layer directly above the ground that backs ALL chrome — title bar, toolbar, sidebar, player dock. The active page
@@ -2256,8 +2267,11 @@ public static class ShellMaterial
     /// pages.</b></para></summary>
     /// <param name="definite">The page has DECIDED it carries no colour (washes off, or this layout applies no tint) —
     /// as opposed to simply not having graded a cover YET, which is transient.</param>
+    /// <param name="backdrop">An optional full-bleed photo (<see cref="ShellBackdrop"/>). It rides the SAME ownership outcome as
+    /// the tint: a known-colour or held-colour write carries it (so a successor's claim, which passes none, drops it), a
+    /// neutral write clears it.</param>
     public static void Publish(Signal<ShellMaterialState>? slot, object owner, bool isClaim, bool definite,
-                               ColorF? tint, HomeWash? wash)
+                               ColorF? tint, HomeWash? wash, ShellBackdrop? backdrop = null)
     {
         if (slot is null) return;
         var cur = slot.Peek();
@@ -2267,9 +2281,13 @@ public static class ShellMaterial
                         || (wash is { } w && (w.Hero.HasValue || w.Weekly.HasValue || w.Mix.HasValue));
         switch (TintOwnership.Resolve(cur.Owner, new TintOwnership.Request(owner, isClaim, definite, hasColor)))
         {
-            case TintOwnership.Outcome.WriteKnownColor: slot.Value = new ShellMaterialState(owner, tint, wash); break;
+            case TintOwnership.Outcome.WriteKnownColor: slot.Value = new ShellMaterialState(owner, tint, wash, backdrop); break;
             case TintOwnership.Outcome.WriteNeutral: slot.Value = new ShellMaterialState(owner, null, null); break;
-            case TintOwnership.Outcome.WriteHeldColor: slot.Value = cur with { Owner = owner }; break;
+            case TintOwnership.Outcome.WriteHeldColor: slot.Value = cur with { Owner = owner, Backdrop = backdrop }; break;
+            // The owner's colour is not graded yet, but its backdrop is data of its own (the page hides its own photo while it
+            // publishes one): an owner refresh carries the backdrop through, never the tint. A stray (non-owner) publish stays a no-op.
+            case TintOwnership.Outcome.NoWrite when ReferenceEquals(cur.Owner, owner) && !Equals(cur.Backdrop, backdrop):
+                slot.Value = cur with { Backdrop = backdrop }; break;
         }
     }
 }
@@ -2620,7 +2638,7 @@ public sealed class CoverShellTintBinder : Component
 {
     /// <inheritdoc cref="CoverShellTintBinder"/>
     public sealed record Props(string? Url, string? FallbackUrl, bool Ready, bool Disabled, bool Apply, object Owner,
-                               Signal<ShellMaterialState>? Slot, uint PayloadAccent = 0);
+                               Signal<ShellMaterialState>? Slot, uint PayloadAccent = 0, ShellBackdrop? Backdrop = null);
 
     /// <summary>The two tint arms. LIGHT lifts the cover's TEXT role to a 5% whisper; DARK takes the tinted background
     /// role at 14%. Two different ROLES, not one role at two alphas — a lifted background role in light is a pastel
@@ -2661,7 +2679,7 @@ public sealed class CoverShellTintBinder : Component
         // a reactivation claims through onActivated explicitly.
         var claimedOnce = UseRef(false);
 
-        void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null);
+        void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null, p.Backdrop);
 
         // The alpha travels inside `known`, so a Subtle/Rich flip changes the DepKey below and re-publishes with no
         // extra key member.
@@ -2673,7 +2691,7 @@ public sealed class CoverShellTintBinder : Component
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Theme,
-                                        p.Ready, p.Disabled, p.Apply, p.PayloadAccent)));
+                                        p.Ready, p.Disabled, p.Apply, HashCode.Combine(p.PayloadAccent, p.Backdrop))));
         // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
         // retake the slot from whatever deactivated in between, even if that never cleared it either.
         UseActivation(onActivated: () => Publish(isClaim: true));

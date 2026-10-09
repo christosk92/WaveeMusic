@@ -1077,6 +1077,30 @@ public static partial class Shell
         /// frame (pane, band, gutter) follows <c>NavStyle</c> at once.</summary>
         public static readonly Signal<ShellNavStyle> PresentedNavStyle = new(ShellNavStyle.Classic);
 
+        /// <summary>EXPERIMENTAL (artist bleed): the content card's LAID-OUT rect in window coordinates (final, never the FLIP's
+        /// in-flight pose), value-gated, written by the card host's bounds callback. The material layer derives the backdrop's
+        /// span and the chrome scrim from it; it changes only on a resize, a pane or rail change or a nav-style switch.</summary>
+        public static readonly Signal<RectF> CardRect = new(default);
+
+        /// <summary>EXPERIMENTAL (artist bleed): where the content card is PRESENTED right now: its left and top in window
+        /// coordinates including the layout transitions' in-flight pose (the pane toggle's and the nav-style switch's FLIPs); the
+        /// size is the final one. Sampled per frame by <c>CardPoseTracker</c> only while a backdrop shows and the card has just
+        /// moved, so the photo and the scrim follow the card instead of snapping to its final rect.</summary>
+        public static readonly Signal<RectF> CardPose = new(default);
+
+        /// <summary>EXPERIMENTAL (artist bleed): bumped each time the card's laid-out rect changes while a backdrop shows, so
+        /// <c>CardPoseTracker</c> samples the presented pose for the length of the card's layout transition.</summary>
+        public static readonly Signal<int> CardSettle = new(0);
+
+        /// <summary>EXPERIMENTAL (artist bleed): how present the page-published backdrop is, 0..1. Tweened by
+        /// <c>BleedPresenter</c> over <c>Design.Motion.Standard</c> (0 ms under reduced motion); every bleed term in the card
+        /// ground and the stroke is multiplied by it, so navigating to or from an artist cross-fades instead of snapping.</summary>
+        public static readonly FloatSignal BleedPresence = new(0f);
+
+        /// <summary>EXPERIMENTAL (artist bleed): the last non-null backdrop, retained while <see cref="BleedPresence"/> fades back
+        /// to 0, so the card ground keeps its geometry for the whole fade-out. Cleared when the fade ends.</summary>
+        public static readonly Signal<ShellBackdrop?> BleedBackdrop = new(null);
+
         /// <summary>The rail is open. When false the rail slot animates its width to 0.</summary>
         public static readonly Signal<bool> RailOpen = new(false);
 

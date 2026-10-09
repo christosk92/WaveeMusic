@@ -293,8 +293,8 @@ public static partial class Palette
     /// loudest visual regression available here.</summary>
     public static Element ShellTint(string? url, bool ready, bool disabled, bool apply, object owner,
                                     Signal<ShellMaterialState>? slot, string key, string? fallbackUrl = null,
-                                    uint payloadAccent = 0)
-        => Embed.Comp(new CoverShellTintBinder.Props(url, fallbackUrl, ready, disabled, apply, owner, slot, payloadAccent),
+                                    uint payloadAccent = 0, ShellBackdrop? backdrop = null)
+        => Embed.Comp(new CoverShellTintBinder.Props(url, fallbackUrl, ready, disabled, apply, owner, slot, payloadAccent, backdrop),
                       static () => new CoverShellTintBinder()) with { Key = key };
 }
 

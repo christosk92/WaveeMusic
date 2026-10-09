@@ -166,30 +166,105 @@ public static partial class Shell
                 Fill = state.Tint ?? Design.Wash.NeutralGround,
                 BrushTransitionMs = Design.Motion.Standard,
             };
+            // EXPERIMENTAL (artist bleed): the page-published photo and its chrome scrim, ABOVE the tint and the washes. Null for
+            // every page that publishes none, which adds nothing to the children below. After the page lets go, the RETAINED backdrop
+            // keeps the nodes mounted while BleedPresence fades them, so the photo and the card's strip share one clock.
+            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, light) : null;
+
             if (state.Wash is not { } wash)
-                return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = [tint] };
+                return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = bleed is null ? [tint] : [tint, .. bleed] };
 
             bool rich = Prefs.Appearance.SurfaceWash() == WashLevel.Rich;
             var legs = new List<Element>(3);
             AddWash(legs, wash.Hero, Design.Wash.Hero, Design.Wash.HeroAlpha(light, rich), "shell.wash.hero", vp);
             AddWash(legs, wash.Weekly, Design.Wash.Weekly, Design.Wash.ShelfAlpha(light, rich), "shell.wash.weekly", vp);
             AddWash(legs, wash.Mix, Design.Wash.Mix, Design.Wash.ShelfAlpha(light, rich), "shell.wash.mix", vp);
+            Element washes = new BoxEl
+            {
+                // THE WASHES STOP AT THE DOCK LINE: the dock paints nothing, so a peak landing under it read as "the
+                // dock has a gradient". An inset MARGIN keeps every placement ratio viewport-independent.
+                Grow = 1f, ZStack = true, HitTestVisible = false, ClipToBounds = true,
+                Margin = new Edges4(0f, 0f, 0f, Design.Wash.HostBottomInset),
+                Children = legs.ToArray(),
+            };
             return new BoxEl
             {
                 Grow = 1f, ZStack = true, HitTestVisible = false,
+                Children = bleed is null ? [tint, washes] : [tint, washes, .. bleed],
+            };
+        }
+
+        /// <summary>EXPERIMENTAL (artist bleed): the backdrop photo and the scrim that keeps the chrome readable over it. Both are
+        /// keyed on the backdrop (a new photo remounts, and so cross-fades, through the WashFade idiom), both are hit-test
+        /// free, and every binding below is a paint channel except Width/Height, which change only on a resize, a pane or rail
+        /// change or a nav-style switch (the card's rect). The span is the card's left..right edge (flush with the window's left
+        /// edge when no pane is docked); it never sits under the right rail or the Classic/Library pane.
+        /// <para>THE PHOTO FOLLOWS THE CARD'S PRESENTED POSE. A pane toggle or a nav-style switch FLIPs the card (Reveal: its
+        /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
+        /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
+        /// crop never rescales mid-move and the left edge never snaps.</para></summary>
+        static Element[] BleedNodes(ShellBackdrop b, bool light)
+        {
+            // The span is the card's own: flush with the window edge whenever no pane is docked (FrameRules.ContentCardX is 0 under
+            // Zune), so it follows the card's FLIP in BOTH directions with no style-keyed snap.
+            static float Right() { var r = Ui.CardRect.Value; return r.X + r.W; }
+            static float FinalLeft() => Ui.CardRect.Value.X;
+            static float FinalWidth() => MathF.Max(0f, Right() - FinalLeft());
+            static float Left() => Ui.CardPose.Value.X;
+            // The clip never runs past the card's right edge (a closing pane's translated photo would otherwise reach under the rail).
+            static float ClipWidth() => MathF.Max(0f, MathF.Min(FinalWidth(), Right() - Left()));
+            float Strength() => Ui.BleedPresence.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
+
+            // The page's own decode (its latched size), so the page's HeroArt decode is the cache hit.
+            float aspect = (float)b.DecodeW / Math.Max(1, b.DecodeH);
+
+            Element photo = new BoxEl
+            {
+                Key = "shell.bleed:" + b.Key,
+                ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Width = Prop.Of(ClipWidth),
+                Height = Prop.Of(() => Ui.CardPose.Value.Y + b.PhotoHeight),
+                Transform = Prop.Of(() => Affine2D.Translation(Left(), ArtistBleed.ParallaxY(b.ScrollY.Value))),
+                Opacity = Prop.Of(Strength),
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
+                Enter = WashFade, Exit = WashFade,
                 Children =
                 [
-                    tint,
-                    // THE WASHES STOP AT THE DOCK LINE: the dock paints nothing, so a peak landing under it read as "the
-                    // dock has a gradient". An inset MARGIN keeps every placement ratio viewport-independent.
                     new BoxEl
                     {
-                        Grow = 1f, ZStack = true, HitTestVisible = false, ClipToBounds = true,
-                        Margin = new Edges4(0f, 0f, 0f, Design.Wash.HostBottomInset),
-                        Children = legs.ToArray(),
+                        ZStack = true, HitTestVisible = false,
+                        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                        Width = Prop.Of(FinalWidth),
+                        // The taller of the final and the presented top, so a Zune-to-Classic ease never runs short of photo.
+                        Height = Prop.Of(() => MathF.Max(Ui.CardRect.Value.Y, Ui.CardPose.Value.Y) + b.PhotoHeight),
+                        Children =
+                        [
+                            Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent)
+                                with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = 0f },
+                        ],
                     },
                 ],
             };
+            var ground = Design.Colors.ShellGround;
+            Element scrim = new BoxEl
+            {
+                Key = "shell.bleed.scrim:" + b.Key,
+                HitTestVisible = false,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Width = Prop.Of(ClipWidth),
+                Height = Prop.Of(() => ArtistBleed.ScrimHeight(Ui.CardPose.Value.Y)),
+                Transform = Prop.Of(() => Affine2D.Translation(Left(), 0f)),
+                Opacity = Prop.Of(Strength),
+                // Straight-alpha stops: the transparent stop carries the ground's own RGB (Design.Wash.Vanish).
+                Gradient = new GradientSpec(GradientShape.Linear, 90f,
+                [
+                    new GradientStop(0f, ground with { A = ArtistBleed.ScrimTopAlpha(light) }),
+                    new GradientStop(1f, Design.Wash.Vanish(ground)),
+                ]),
+                Enter = WashFade, Exit = WashFade,
+            };
+            return [photo, scrim];
         }
 
         static void AddWash(List<Element> legs, WashLayer? layer, ShellWashPlacement p, float alpha, string key, IReadSignal<Size2> vp)
