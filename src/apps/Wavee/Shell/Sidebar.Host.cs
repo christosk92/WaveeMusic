@@ -103,13 +103,12 @@ public static partial class Sidebar
         var design = SidebarDesignInfo.FromInt(Platform.Settings.Get(Platform.Keys.SidebarDesign));
         Design.Value = design;
 
-        // The pane pair for the ACTIVE design plus the global rail detent, seeded before the first layout. The window
-        // never writes any of these: the width is the user's preference, presented (yielded) by the shell.
+        // The pane pair for the ACTIVE design, seeded before the first layout. The window never writes any of these: the
+        // width is the user's preference, presented (yielded) by the shell.
         var pane = SidebarPaneState.Restore(Platform.Settings, design);
         Width.Value = pane.Width;
-        Regime.Value = pane.Regime;
-        RailDetent.Value = SidebarPaneState.RestoreDetent(Platform.Settings);
-        Seam.Value = pane.Regime == SidebarRegime.Rail ? SidebarResizeRules.StripOf(RailDetent.Peek()) : pane.Width;
+        UserCollapsed.Value = pane.Collapsed;
+        Seam.Value = pane.Collapsed ? SidebarRowGeometry.RailWidth : pane.Width;
         PresentedWidth.Value = Seam.Peek();
 
         ClassicPinnedOpen.Value = Platform.Settings.Get(Platform.Keys.ClassicPinnedOpen);
@@ -163,7 +162,7 @@ public static partial class Sidebar
         var cur = Design.Peek();
         if (next == cur) return;
 
-        SidebarPaneState.Snapshot(Platform.Settings, cur, new SidebarPaneSnapshot(Width.Peek(), Regime.Peek()));
+        SidebarPaneState.Snapshot(Platform.Settings, cur, new SidebarPaneSnapshot(Width.Peek(), UserCollapsed.Peek()));
         FlushBagOf(cur);
         Flush();                       // issue any coalesced document write NOW, before the design flips
 
@@ -171,10 +170,10 @@ public static partial class Sidebar
         SeedBagOf(next);
         // A synchronous burst of signal writes on the UI thread coalesces into one frame's layout commit (a signal
         // write is deferred: it marks dependents stale and asks the host for a frame, drained once per frame) — the
-        // pane animates one width/regime step, not two. The rail detent is global and is not touched.
+        // pane animates one width/collapse step, not two.
         Width.SetIfChanged(pane.Width);
-        Regime.SetIfChanged(pane.Regime);
-        Seam.SetIfChanged(pane.Regime == SidebarRegime.Rail ? SidebarResizeRules.StripOf(RailDetent.Peek()) : pane.Width);
+        UserCollapsed.SetIfChanged(pane.Collapsed);
+        Seam.SetIfChanged(pane.Collapsed ? SidebarRowGeometry.RailWidth : pane.Width);
         Design.Value = next;
 
         Platform.Settings.Set(Platform.Keys.SidebarDesign, (int)next);
@@ -228,78 +227,101 @@ public static partial class Sidebar
                 break;
         }
         V3Search.SetIfChanged("");
+        LibrarySearchOpen.SetIfChanged(false);
     }
 
-    // ── pane state (ACTIVE design) + the global rail detent ─────────────────────────────────────────────────────────
-    // Three stored facts, each with one owner: Width (the EXPANDED width, per design), Regime (per design, persisted as
-    // the `sidebar.<slug>.collapsed` bool) and RailDetent (GLOBAL). Seam and PresentedWidth are derived/transient. The
-    // pure rules live in SidebarResizeRules; every writer below goes through Apply.
+    // ── pane state (ACTIVE design) ──────────────────────────────────────────────────────────────────────────────────
+    // Two stored facts, each with one owner: Width (the EXPANDED width, per design) and UserCollapsed (per design,
+    // persisted as the `sidebar.<slug>.collapsed` bool). Band, Mode and OverlayOpen are the window's and the shell's;
+    // Seam and PresentedWidth are derived/transient. The pure rules live in SidebarResizeRules and
+    // SidebarPaneModeRules; every writer below goes through Apply.
 
     /// <summary>The pane EXPANDED width, the user preference. The shell BINDS this signal; <see cref="SwitchDesign"/>
     /// writes a new VALUE, never a new signal. Never written by the window.</summary>
     public static readonly Signal<float> Width = new(SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
 
-    /// <summary>Expanded or Rail: the user preference (the shell presentation, not the window, decides the rest).</summary>
-    public static readonly Signal<SidebarRegime> Regime = new(SidebarRegime.Expanded);
+    /// <summary>The user's collapse (the 48 rail). Written ONLY by a toggle / seam / double-click in the Wide band while
+    /// not editing (<see cref="SidebarPaneModeRules.WritesUserCollapsed"/>).</summary>
+    public static readonly Signal<bool> UserCollapsed = new(false);
 
-    /// <summary>The collapsed rail size. GLOBAL across designs.</summary>
-    public static readonly Signal<SidebarRailDetent> RailDetent = new(SidebarRailDetent.Default);
+    /// <summary>The window band — written ONLY by the shell's band effect.</summary>
+    public static readonly Signal<SidebarWindowBand> Band = new(SidebarWindowBand.Wide);
+
+    /// <summary>What the frame presents — written ONLY by the shell's presentation effect, beside <see cref="PresentedWidth"/>.</summary>
+    public static readonly Signal<SidebarPaneMode> Mode = new(SidebarPaneMode.Expanded);
+
+    /// <summary>The overlay pane (the drawer in Tiny, the pane over a forced rail in Narrow) is open. Session-only.</summary>
+    public static readonly Signal<bool> OverlayOpen = new(false);
+
+    /// <summary>Edit mode (P4). False until then; the title bar, the overlay guards and the seam already read it.</summary>
+    public static readonly Signal<bool> Editing = new(false);
 
     /// <summary>The splitter raw cell: 1:1 with the pointer during a drag, equal to <see cref="PresentedWidth"/> at rest.</summary>
     public static readonly Signal<float> Seam = new(SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
 
     /// <summary>What the column lays out at. Written ONLY by the shell presentation effect
-    /// (<c>SidebarResizeRules.Present</c> / <c>Track</c>).</summary>
+    /// (<c>SidebarPaneModeRules.PresentedWidth</c> / <c>SidebarResizeRules.Track</c>).</summary>
     public static readonly Signal<float> PresentedWidth = new(SidebarDesignInfo.DefaultWidth(SidebarDesign.Classic));
 
-    /// <summary>DRAG PEEK: TRANSIENT, never persisted, never a write to <see cref="Regime"/>. A rail sidebar is
+    /// <summary>DRAG PEEK: TRANSIENT, never persisted, never a write to <see cref="UserCollapsed"/>. A rail sidebar is
     /// PRESENTED expanded for the rest of one drag once the pointer dwells on the rail. Two readers must agree: the
     /// pane decides its own presentation, and the shell clips the column width off the SAME signal.</summary>
     public static readonly Signal<bool> DragPeek = new(false);
 
-    /// <summary>The three stored facts as the pure rules input.</summary>
-    public static SidebarResizeRules.State ResizeState() => new(Regime.Peek(), RailDetent.Peek(), Width.Peek());
+    /// <summary>The two stored facts as the pure rules input.</summary>
+    public static SidebarResizeRules.State ResizeState() => new(UserCollapsed.Peek(), Width.Peek());
 
-    /// <summary>Drag-end: resolve the seam into a settle, write the three facts, persist, and park the seam on the target.</summary>
-    public static void CommitSeam(float velocityDipPerSec = 0f)
-        => Apply(SidebarResizeRules.Resolve(Seam.Peek(), ResizeState(), velocityDipPerSec));
+    /// <summary>Drag end: resolve the seam into a settle, write the facts, persist, park the seam on the target.</summary>
+    public static void CommitSeam() => Apply(SidebarResizeRules.Resolve(Seam.Peek(), ResizeState(), Editing.Peek()));
 
-    /// <summary>Hamburger / double-click / header chevron: flip the regime, keeping both memories.</summary>
-    public static void ToggleRegime() => Apply(SidebarResizeRules.Toggle(ResizeState()));
-
-    public static void SetRegime(SidebarRegime regime) { if (Regime.Peek() != regime) ToggleRegime(); }
-
-    /// <summary>Keyboard left/right (<paramref name="direction"/> -1/+1; <paramref name="large"/> = Shift).</summary>
-    public static void StepSeam(int direction, bool large) => Apply(SidebarResizeRules.Step(ResizeState(), direction, large));
-
-    /// <summary>Pick the collapsed rail size (Settings, the layout menu). Persists; re-parks the seam when a rail is showing.</summary>
-    public static void SetRailDetent(SidebarRailDetent d)
+    /// <summary>The title-bar toggle, the seam's double-click and Enter: in the Wide band it flips the user's collapse;
+    /// in Narrow/Tiny it opens or closes the overlay pane and never writes the collapse. Disabled while editing.</summary>
+    public static void TogglePane()
     {
-        RailDetent.SetIfChanged(d);
-        Platform.Settings.Set(Platform.Keys.SidebarRailDetent, (int)d);
-        if (Regime.Peek() == SidebarRegime.Rail) Seam.SetIfChanged(SidebarResizeRules.StripOf(d));
+        if (Editing.Peek()) return;
+        if (SidebarPaneModeRules.HasOverlay(Band.Peek())) { OverlayOpen.Value = !OverlayOpen.Peek(); return; }
+        Apply(SidebarResizeRules.Toggle(ResizeState()));
     }
 
-    /// <summary>Set the expanded width outright (Home/End, Settings): clamped to [ExpandedMinW, ExpandedMaxW], regime
-    /// Expanded, persisted through the same path as a drag commit.</summary>
+    public static void SetUserCollapsed(bool collapsed) { if (UserCollapsed.Peek() != collapsed) TogglePane(); }
+
+    /// <summary>Show the FULL pane from wherever it is — the rail's search tile (design P.2a: "its search tile expands the
+    /// pane with the search box open"). Narrow / Tiny: open the overlay pane (a forced rail has <c>UserCollapsed</c> false,
+    /// so <see cref="SetUserCollapsed"/> would do nothing there). Wide: clear the user's collapse. Never closes anything;
+    /// a no-op while editing (Edit already presents the pane).</summary>
+    public static void OpenPane()
+    {
+        if (Editing.Peek()) return;
+        if (SidebarPaneModeRules.HasOverlay(Band.Peek())) { OverlayOpen.SetIfChanged(true); return; }
+        if (UserCollapsed.Peek()) Apply(SidebarResizeRules.Toggle(ResizeState()));
+    }
+
+    /// <summary>Your Library's search box is open. SESSION-ONLY and SHARED by every Library mount — the docked pane (a rail
+    /// in Narrow) and the overlay pane are separate <c>PaneView</c> mounts with separate sessions, so a per-session flag
+    /// set by the rail's tile would never open the overlay's box. Cleared with <c>LibrarySearch</c> on a layout or account
+    /// switch.</summary>
+    public static readonly Signal<bool> LibrarySearchOpen = new(false);
+
+    /// <summary>Keyboard ←/→ on the seam (<paramref name="large"/> = Shift).</summary>
+    public static void StepSeam(int direction, bool large)
+        => Apply(SidebarResizeRules.Step(ResizeState(), direction, large, Editing.Peek()));
+
+    /// <summary>Set the expanded width outright (Home/End, Settings): clamped, expanded, persisted.</summary>
     public static void SetExpandedWidth(float width)
     {
         float w = Math.Clamp(float.IsFinite(width) ? width : Width.Peek(), SidebarResizeRules.ExpandedMinW, SidebarResizeRules.ExpandedMaxW);
-        Apply(new SidebarResizeRules.Settle(SidebarRegime.Expanded, RailDetent.Peek(), w, w));
+        Apply(new SidebarResizeRules.Settle(false, w, w));
     }
 
-    /// <summary>"Reset width": the active design default width, Regime Expanded.</summary>
+    /// <summary>"Reset width": the active design default width, expanded.</summary>
     public static void ResetWidth() => SetExpandedWidth(SidebarDesignInfo.DefaultWidth(Design.Peek()));
 
     static void Apply(in SidebarResizeRules.Settle s)
     {
-        var design = Design.Peek();
         Width.SetIfChanged(s.ExpandedWidth);
-        Regime.SetIfChanged(s.Regime);
-        RailDetent.SetIfChanged(s.Detent);
+        if (SidebarPaneModeRules.WritesUserCollapsed(Band.Peek(), Editing.Peek())) UserCollapsed.SetIfChanged(s.UserCollapsed);
         Seam.SetIfChanged(s.TargetWidth);
-        SidebarPaneState.Snapshot(Platform.Settings, design, new SidebarPaneSnapshot(s.ExpandedWidth, s.Regime));
-        if (s.Regime == SidebarRegime.Rail) Platform.Settings.Set(Platform.Keys.SidebarRailDetent, (int)s.Detent);
+        SidebarPaneState.Snapshot(Platform.Settings, Design.Peek(), new SidebarPaneSnapshot(s.ExpandedWidth, UserCollapsed.Peek()));
     }
 
     // ── Classic bag ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -3522,7 +3544,7 @@ public sealed class SidebarEntries
 /// <see cref="SidebarProjectionBinder.PublishInput"/>'s feed-moved shadow. A rebuild that reproduced identical
 /// content on BOTH must not bump it: <c>Revision</c> feeds <c>PaneView.PlanDep</c> (Sidebar.UI.cs) and
 /// <c>V3Session.ShapeInput</c>'s <c>ViewEpoch</c> (Sidebar.UI.LibraryV3.cs), and each folds it into a `DepKey`/hash
-/// that forces a full re-plan (`Sidebar.Plan` + `PlanRail`) or a full re-group (`View.Build`) on any change — an
+/// that forces a full re-plan (`Sidebar.Plan`) or a full re-group (`View.Build`) on any change — an
 /// unconditional bump made every rebuild wake pay for both, twice, regardless of whether anything visible moved.
 /// Engine-free and pure so it is unit-testable without a live binder (<c>SidebarRevisionTests</c>).</summary>
 public static class SidebarRevisionGate

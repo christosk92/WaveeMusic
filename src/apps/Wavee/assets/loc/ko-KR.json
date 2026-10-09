@@ -429,9 +429,7 @@
       "designShort": "디자인",
       "designSub": "왼쪽 탐색 방식을 선택합니다. 즉시 적용됩니다.",
       "customize": "사이드바 사용자 지정",
-      "customizeSub": "Custom의 섹션을 추가, 재정렬 및 구성합니다",
-      "railSize": "접힌 레일 크기",
-      "railSizeSub": "사이드바를 접었을 때 아이콘 레일의 너비입니다."
+      "customizeSub": "Custom의 섹션을 추가, 재정렬 및 구성합니다"
     },
     "layout": {
       "title": "레이아웃 및 밀도",
@@ -617,15 +615,8 @@
       "customize": "사이드바 사용자 지정…",
       "resetWidth": "너비 초기화"
     },
-    "rail": {
-      "size": "접힌 레일 크기",
-      "compact": "작게",
-      "default": "기본",
-      "large": "크게"
-    },
     "seam": {
-      "announceWidth": "사이드바 너비 {width}",
-      "announceRail": "아이콘 레일, {size}"
+      "announceWidth": "사이드바 너비 {width}"
     },
     "layout": {
       "title": "사이드바 레이아웃",

@@ -47,20 +47,16 @@ public static partial class Sidebar
 
     // ══ THE QUICK LAYOUT MENU ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The ONE route into the customizer (header button · rail button · pane background · V3's overflow
-    /// submenu): ◉ Spotify Classic · ◉ LibraryV3 · ◉ Custom · ─ · Customize sidebar… · ─ · Collapsed rail size ▸ (Compact · Default · Large) · Reset width.</summary>
+    /// <summary>The ONE route into the customizer (the pane footer's ⋯ · the pane background · V3's overflow submenu):
+    /// ◉ Spotify Classic · ◉ LibraryV3 · ◉ Custom · ─ · Customize sidebar… · ─ · Reset width.</summary>
     internal static class LayoutMenu
     {
         public const string CustomizeRoute = "sidebar-customize";
 
-        /// <summary>The ⧉ button — always visible, tooltip-named, its flyout built at OPEN time.</summary>
-        public static Element Button(float box = 28f) => Embed.Comp(() => new LayoutMenuButton(box, box <= 24f ? 14f : 16f));
-
         public static IReadOnlyList<MenuFlyoutItem> Rows()
         {
             var design = Sidebar.Design.Peek();   // open time: never subscribe
-            var detent = Sidebar.RailDetent.Peek();
-            return new List<MenuFlyoutItem>(8)
+            return new List<MenuFlyoutItem>(6)
             {
                 MenuFlyoutItem.RadioItem(Loc.Get("sidebar.layout.classic"), design == SidebarDesign.Classic,
                     static () => SwitchDesign(SidebarDesign.Classic)),
@@ -72,15 +68,6 @@ public static partial class Sidebar
                 // The customizer edits the CURATED document, so it always switches first.
                 new(Loc.Get("sidebar.layout.customize"), ActionIcons.Resolve(ActionIcons.Rename), true, OpenCustomizerRoute),
                 MenuFlyoutItem.Separator,
-                MenuFlyoutItem.SubMenu(Loc.Get("sidebar.rail.size"),
-                [
-                    MenuFlyoutItem.RadioItem(Loc.Get("sidebar.rail.compact"), detent == SidebarRailDetent.Compact,
-                        static () => SetRailDetent(SidebarRailDetent.Compact)),
-                    MenuFlyoutItem.RadioItem(Loc.Get("sidebar.rail.default"), detent == SidebarRailDetent.Default,
-                        static () => SetRailDetent(SidebarRailDetent.Default)),
-                    MenuFlyoutItem.RadioItem(Loc.Get("sidebar.rail.large"), detent == SidebarRailDetent.Large,
-                        static () => SetRailDetent(SidebarRailDetent.Large)),
-                ], Icons.SplitView),
                 // Back to the design's default width; dead while the width already is that.
                 new(Loc.Get("sidebar.menu.resetWidth"), default,
                     MathF.Abs(Width.Peek() - SidebarDesignInfo.DefaultWidth(design)) > 0.5f, ResetWidth),
@@ -91,47 +78,33 @@ public static partial class Sidebar
             => new ContextMenuModel(Rows(), new ContextMenuHeader(null, Loc.Get("sidebar.layout.menuTitle"), null));
     }
 
-    sealed class LayoutMenuButton(float box, float glyph) : Component
-    {
-        public override Element Render()
-        {
-            var anchor = UseRef<NodeHandle>(default);
-            var handle = UseRef<OverlayHandle?>(null);
-            var svc = UseContext(Overlay.Service);
-
-            void Toggle()
-            {
-                if (Controls.IsNullOverlay(svc)) return;
-                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                var items = LayoutMenu.Rows();
-                handle.Value = svc.Open(
-                    () => anchor.Value,
-                    () => MenuFlyout.Create(items, () => handle.Value?.Close()),
-                    FlyoutPlacement.BottomEdgeAlignedLeft,
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                    { ConstrainToRootBounds = false });
-                handle.Value.ClosedAction = () => handle.Value = null;
-            }
-
-            return ToolTip.Wrap(new BoxEl
-            {
-                Width = box, Height = box, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Corners = Radii.ControlAll,
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnRealized = h => anchor.Value = h,
-                OnClick = Toggle,
-                Children = [Icon(Icons.SplitView, glyph, Tok.TextSecondary)],
-            }.Interactive(Interaction.Subtle), Loc.Get("sidebar.layout.tooltip"));
-        }
-    }
-
     internal sealed partial class PaneView
     {
         /// <summary>The app's one reference-stable seam bag (owner I).</summary>
         static ActionServices? ActionServicesOrNull() => Actions.Services;
 
         bool HasMenus => !Controls.IsNullOverlay(MenuOverlay) && Acts is not null;
+
+        // ══ THE PANE MENU ══════════════════════════════════════════════════════════════════════════════════════════════
+
+        /// <summary>The global pane menu (the footer ⋯, the seam's and the background's right-click). P2: today's layout
+        /// menu minus the rail-size rows; P4: <c>SidebarMenuModel.Pane</c>.</summary>
+        internal ContextMenuModel? PaneMenu() => LayoutMenu.Model();
+
+        OverlayHandle? _paneMenu;
+
+        /// <summary>Toggle the pane menu from the footer's ⋯: a second press closes it.</summary>
+        internal void OpenPaneMenu(Func<NodeHandle> anchor)
+        {
+            if (Controls.IsNullOverlay(MenuOverlay)) return;
+            if (_paneMenu is { IsOpen: true } open) { open.Close(); return; }
+            var items = PaneMenu()?.Rows ?? [];
+            _paneMenu = MenuOverlay.Open(anchor, () => MenuFlyout.Create(items, () => _paneMenu?.Close()),
+                FlyoutPlacement.TopEdgeAlignedLeft,
+                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+                { ConstrainToRootBounds = true });
+            _paneMenu.ClosedAction = () => _paneMenu = null;
+        }
 
         // ══ ROW MENUS ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -203,17 +176,6 @@ public static partial class Sidebar
         {
             if (!HasMenus) return null;
             var snapshot = entry;
-            return () => EntryModel(in snapshot, null, false, default);
-        }
-
-        /// <summary>A rail tile: the entry menu; a FOLDER tile gets the full folder menu including Expand folder — the
-        /// pane-expanding gesture the tile's click used to be.</summary>
-        internal Func<ContextMenuModel?>? RailTileMenu(string sectionId, in SidebarLibraryEntry entry)
-        {
-            if (!HasMenus) return null;
-            var snapshot = entry;
-            if (snapshot.IsFolder)
-                return () => EntryModel(in snapshot, () => ExpandFolderInPane(snapshot.FolderId), false, default);
             return () => EntryModel(in snapshot, null, false, default);
         }
 

@@ -16,7 +16,7 @@ public sealed class SidebarTypeAheadRulesTests
 
         Assert.Equal(
             new[] { SidebarRowKind.SectionHeader, SidebarRowKind.IconRow, SidebarRowKind.EntityRow,
-                    SidebarRowKind.FolderHeader, SidebarRowKind.Placeholder },
+                    SidebarRowKind.FolderHeader, SidebarRowKind.Placeholder, SidebarRowKind.SectionTile },
             stops);
     }
 

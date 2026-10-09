@@ -380,10 +380,8 @@ public static partial class Platform
         /// and are PERSISTED — never rename one). The default is passed IN, from the design table that owns it
         /// (`SidebarDesignInfo.DefaultWidth`), so this file does not duplicate — and drift from — it.</summary>
         public static SettingKey<float> SidebarWidth(string designSlug, float defaultWidth) => new("sidebar." + designSlug + ".width", defaultWidth);
-        /// <summary>True ⇔ the design's regime is Rail (the pre-resize meaning, unchanged — no migration).</summary>
+        /// <summary>The design's user collapse (the 48-DIP rail): written only in the Wide band and never while editing (SidebarPaneModeRules.WritesUserCollapsed).</summary>
         public static SettingKey<bool> SidebarCollapsed(string designSlug) => new("sidebar." + designSlug + ".collapsed", false);
-        /// <summary>The collapsed rail's size, GLOBAL across designs (0 Compact · 1 Default · 2 Large; unknown ⇒ Default).</summary>
-        public static readonly SettingKey<int> SidebarRailDetent = new("sidebar.rail.detent", 1);
 
         /// <summary>A deck/player preset's own option (`npv.player.&lt;preset&gt;.&lt;option&gt;`).</summary>
         public static SettingKey<int> NpvOption(string presetSlug, string optionSlug) => new("npv.player." + presetSlug + "." + optionSlug, 0);

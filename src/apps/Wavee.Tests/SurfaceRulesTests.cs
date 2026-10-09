@@ -79,8 +79,6 @@ public class SurfaceRulesTests
         Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.Grid, hasMenu: true, showMenu: true));
         Assert.True(SurfaceRules.ShowsMenuTrailing(Shape.Row(48f), hasMenu: true, showMenu: true));
         Assert.False(SurfaceRules.ShowsMenuCorner(Shape.Row(48f), hasMenu: true, showMenu: true));
-        Assert.False(SurfaceRules.ShowsMenuCorner(Shape.RailTileOf(SidebarRailMetrics.For(SidebarRailDetent.Default).Tile), hasMenu: true, showMenu: true));
-        Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.RailTileOf(SidebarRailMetrics.For(SidebarRailDetent.Default).Tile), hasMenu: true, showMenu: true));
         Assert.False(SurfaceRules.ShowsMenuCorner(Shape.Grid, hasMenu: true, showMenu: false));
         Assert.False(SurfaceRules.ShowsMenuTrailing(Shape.Row(48f), hasMenu: true, showMenu: false));
         Assert.False(SurfaceRules.ShowsMenuCorner(Shape.Shelf(), hasMenu: false, showMenu: true));
@@ -123,7 +121,6 @@ public class SurfaceRulesTests
         Assert.True(SurfaceRules.TitleTip(trimmed: false, hasLabels: false));
         Assert.False(SurfaceRules.TitleTip(trimmed: false, hasLabels: true));
         Assert.True(SurfaceRules.TitleTip(trimmed: true, hasLabels: true));
-        Assert.False(Shape.RailTileOf(SidebarRailMetrics.For(SidebarRailDetent.Default).Tile).Labels);
     }
 
     // ── the plate ────────────────────────────────────────────────────────────────────────────────────────────────────

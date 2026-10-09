@@ -429,9 +429,7 @@
       "designShort": "Ontwerp",
       "designSub": "Kies de navigatie aan de linkerkant. Wordt direct toegepast.",
       "customize": "Zijbalk aanpassen",
-      "customizeSub": "Secties in Custom toevoegen, herschikken en instellen",
-      "railSize": "Grootte van samengevouwen balk",
-      "railSizeSub": "Hoe breed de pictogrambalk is wanneer de zijbalk is samengevouwen."
+      "customizeSub": "Secties in Custom toevoegen, herschikken en instellen"
     },
     "layout": {
       "title": "Indeling en dichtheid",
@@ -617,15 +615,8 @@
       "customize": "Zijbalk aanpassen…",
       "resetWidth": "Breedte herstellen"
     },
-    "rail": {
-      "size": "Grootte van samengevouwen balk",
-      "compact": "Compact",
-      "default": "Standaard",
-      "large": "Groot"
-    },
     "seam": {
-      "announceWidth": "Breedte zijbalk {width}",
-      "announceRail": "Pictogrambalk, {size}"
+      "announceWidth": "Breedte zijbalk {width}"
     },
     "layout": {
       "title": "Indeling van zijbalk",

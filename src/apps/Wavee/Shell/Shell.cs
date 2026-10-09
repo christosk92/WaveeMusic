@@ -1122,15 +1122,6 @@ public static partial class Shell
         // DERIVED FACTS LIVE ON THE MODEL (ch 18 §7): the sidebar mounts, the player bar and the rail read these instead
         // of each re-deriving "is the window narrow" from three widths at a call site.
 
-        /// <summary>The LAST-RESORT band: the window cannot hold the expanded sidebar floor AND the content floor
-        /// (<see cref="SidebarResizeRules.LastResort"/>: enters below 660, leaves at 700). In it the inline column shows
-        /// the user's rail detent and the hamburger opens the drawer instead of writing the user's regime. Never reached
-        /// on an ordinary desktop window; it is the only way the window width touches the sidebar's regime.</summary>
-        public static readonly Signal<bool> LastResort = new(false);
-
-        /// <summary>The narrow drawer is open. Meaningless (and forced false) outside the last-resort band.</summary>
-        public static readonly Signal<bool> DrawerOpen = new(false);
-
         // The floating surface's bottom reservation is owner K's `Video.FloatingSurfaceReserve` (the PiP writes it); the
         // content host reads that one cell rather than a second copy here.
 
@@ -1876,9 +1867,9 @@ public static partial class Shell
         public static float SidebarPaneWidth(bool dragPeek, float expanded, float presented)
             => dragPeek ? expanded : presented;
 
-        /// <summary>The last-resort shell has no sidebar seam at all (the rail is fixed at the user's detent and the
-        /// drawer owns the width).</summary>
-        public static float SidebarSeamWidth(bool lastResort) => lastResort ? 0f : SeamStripW;
+        /// <summary>The seam strip exists only where the pane is docked beside the content (the Wide band). A forced band
+        /// (Narrow, Tiny) has no seam: the overlay pane owns the width.</summary>
+        public static float SidebarSeamWidth(bool seamVisible) => seamVisible ? SeamStripW : 0f;
 
         /// <summary>The rail's 8-DIP gap exists ONLY while the rail is inline (open AND fits). A closed or floating rail
         /// leaves the page flush to the window edge.</summary>

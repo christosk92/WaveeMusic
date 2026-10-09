@@ -55,6 +55,11 @@ public static partial class Sidebar
         /// row); the pane's folder-create drop spec clears it on leave and on drop.</summary>
         readonly Signal<bool> _folderPlusDrop = new(false);
 
+        /// <summary>The compact tile's own node: its flyout anchors on it. One per slot (a slot draws one tile at a time).</summary>
+        NodeHandle _tileNode = NodeHandle.Null;
+        Action<NodeHandle>? _tileRealize;
+        Func<NodeHandle>? _tileAnchor;
+
         public PaneSlot(PaneView owner, RowScope scope) { _o = owner; _scope = scope; }
 
         public override Element Render()
@@ -85,6 +90,7 @@ public static partial class Sidebar
                 SidebarRowKind.Skeleton => Skeletons.Row(index, PaneMetrics.ShapeOf(section),
                     heightOverride: PaneMetrics.RowHeight(section), artOverride: PaneMetrics.ArtSize(section)),
                 SidebarRowKind.TreeEnd => TreeEndRow(in row, index),
+                SidebarRowKind.SectionTile => SectionTileRow(section, in row, index, sel),
                 SidebarRowKind.EntityCard => HeroCard(section, in row, sel, index),
                 SidebarRowKind.PromptRow => PromptCard(section),
                 // The customize canvas: only the edit planner emits this kind, into its own recycle pool.
@@ -272,6 +278,7 @@ public static partial class Sidebar
                          SidebarItemSpec? item, int index)
         {
             bool named = entry.Name.Length > 0;
+            bool compact = _o.CompactPlan;
             bool track = entry.IsTrack;
             string? route = entry.RouteKey;
             // A route pin persisted with an empty Name has no entity to resolve one: the route table is its title source.
@@ -335,7 +342,8 @@ public static partial class Sidebar
                 Subtitle = shape == SidebarRowShape.EntityTwoLine ? PaneText.SubtitleOf(in snapshot) : null,
                 Selected = selected,
                 Enabled = named || track || routePin,
-                Depth = row.Depth,
+                Depth = IndentOf(in row),
+                Tile = compact,
                 Shape = shape,
                 Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
                 ArtSize = PaneMetrics.ArtSize(section),
@@ -361,7 +369,7 @@ public static partial class Sidebar
             Element built = EntityRow.Create(in spec);
             if (track) built = EntityRow.WithPlayTrackHint(built);
             // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
-            return Indicator(Tipped(built, spec.LabelTooltip, label), selected, row.Depth, height, route);
+            return Indicator(Tipped(built, spec.LabelTooltip, label), selected, IndentOf(in row), height, route);
         }
 
         /// <summary>A rootlist FOLDER: entity-row geometry, the folder mark, and the disclosure chevron in the TRAILING
@@ -383,8 +391,16 @@ public static partial class Sidebar
             var shape = PaneMetrics.ShapeOf(section);
             float art = PaneMetrics.ArtSize(section);
             string label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Id);
+            bool compact = _o.CompactPlan;
+            if (compact) _o.SetTileAnchor(index, TileAnchor);   // Enter on the focused tile opens the flyout from here
+            string sectionId = row.SectionId;
 
-            Action activate = () => _o.ActivateFolder(folderId, snapshot.Name, index);
+            // A compact folder tile opens its children as a flyout (a second click closes it); the rail never toggles.
+            Action activate = () =>
+            {
+                if (compact) _o.OpenFolderFlyout(sectionId, in snapshot, TileAnchor);
+                else _o.ActivateFolder(folderId, snapshot.Name, index);
+            };
             var menu = _o.FolderMenu(section, index, in snapshot, activate, expanded, row.Key);
             bool reordering = _o.TryBandOf(index, out _);
             Action? rename = reordering ? null : _o.RenameAction(in snapshot);
@@ -413,7 +429,7 @@ public static partial class Sidebar
                 // unlisted folder pin (the rootlist hasn't answered this session) shows its title alone, never a
                 // confident "0 items".
                 Subtitle = shape == SidebarRowShape.EntityTwoLine ? PaneText.SubtitleOf(in entry) : null,
-                Depth = row.Depth,
+                Depth = IndentOf(in row),
                 Shape = shape,
                 Height = height,
                 ArtSize = art,
@@ -421,6 +437,8 @@ public static partial class Sidebar
                 Glyph = section.Opts.Artwork ? null : expanded ? Icons.FolderOpen : Icons.Folder,
                 DisclosureChevron = Chevron.Disclosure(_folderOpen ??= FolderOpenLive, identity: _folderIdentity ??= FolderIdentity),
                 Trailing = FolderTrailing(section, in snapshot, folderId, rootlistItem),
+                Tile = compact,
+                OnRealized = compact ? TileRealize : null,
                 OnClick = activate,
                 Overflow = menu is not null,
                 MenuOverlay = _o.MenuOverlay,
@@ -436,7 +454,7 @@ public static partial class Sidebar
             // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
             // happens on folder rows.
             return Indicator(Tipped(EntityRow.Create(in spec), spec.LabelTooltip, label), _o.RowSelectsRoute(index, sel),
-                row.Depth, height, _o.PillRouteOf(index, sel));
+                IndentOf(in row), height, _o.PillRouteOf(index, sel));
         }
 
         /// <summary>The dimmed retention row for a folder pin the rootlist lost: no click, no disclosure, no drag/drop, and a
@@ -452,7 +470,8 @@ public static partial class Sidebar
                 Label = entry.Name.Length > 0 ? entry.Name : Loc.Get(Strings.Sidebar.V3.Kind.Folder),
                 Subtitle = section.Opts.Subtitles ? reason : null,
                 Enabled = false,
-                Depth = row.Depth,
+                Depth = IndentOf(in row),
+                Tile = _o.CompactPlan,
                 Shape = PaneMetrics.ShapeOf(section),
                 Height = height,
                 ArtSize = art,
@@ -462,7 +481,7 @@ public static partial class Sidebar
                 MenuOverlay = _o.MenuOverlay,
                 Menu = menu,
             };
-            return ToolTip.Wrap(EntityRow.Create(in spec), reason, grow: 1f);
+            return Tipped(EntityRow.Create(in spec), true, reason);
         }
 
         /// <summary>The trailing width a row's label gives up to its count (the quiet badge), and a folder's 40-px chevron
@@ -476,9 +495,39 @@ public static partial class Sidebar
             => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(Sidebar.Width.Peek(), depth, trailing));
 
         /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
-        /// row's wrapper and a sibling of the drop cues, never a child of the row.</summary>
-        static Element Tipped(Element built, bool tooltip, string label)
-            => tooltip ? ToolTip.Wrap(built, label, grow: 1f) : built;
+        /// row's wrapper and a sibling of the drop cues, never a child of the row. A compact TILE always wears its label (the
+        /// 40-DIP tile shows no text) and never grows: it is 40 wide already.</summary>
+        Element Tipped(Element built, bool tooltip, string label)
+            => _o.CompactPlan ? ToolTip.Wrap(built, label)
+                : tooltip ? ToolTip.Wrap(built, label, grow: 1f)
+                : built;
+
+        /// <summary>The depth a row is drawn at in THIS pane: a compact tile is never indented, so its pill sits at PillX(0).</summary>
+        int IndentOf(in SidebarRow row) => _o.CompactPlan ? 0 : row.Depth;
+
+        /// <summary>The compact tile's realize handler, cached so a render allocates no delegate for it.</summary>
+        Action<NodeHandle> TileRealize => _tileRealize ??= h => _tileNode = h;
+
+        /// <summary>The flyout's anchor: the tile's live node. Cached like <see cref="TileRealize"/>.</summary>
+        Func<NodeHandle> TileAnchor => _tileAnchor ??= () => _tileNode;
+
+        /// <summary>A collapsed section in the compact rail (design V.9): one 40×36 glyph tile whose click opens the section's rows
+        /// as a flyout. Takes the pill when the selected route lives inside (pill rule 3).</summary>
+        Element SectionTileRow(SidebarSectionSpec section, in SidebarRow row, int index, string sel)
+        {
+            string id = section.Id;
+            var owner = _o;
+            owner.SetTileAnchor(index, TileAnchor);   // Enter on the focused tile opens the flyout from here
+            var spec = new RowSpec
+            {
+                Key = row.Key, Label = PaneText.TitleOf(section), Shape = SidebarRowShape.Glyph, Tile = true,
+                Glyph = PaneIcon.SectionGlyph(section.Kind), Selected = _o.RowSelectsRoute(index, sel),
+                OnRealized = TileRealize,
+                OnClick = () => owner.OpenSectionFlyout(id, TileAnchor),
+            };
+            var built = ToolTip.Wrap(EntityRow.Create(in spec), spec.Label);
+            return Indicator(built, spec.Selected, 0, SidebarRowGeometry.RowHeight, _o.PillRouteOf(index, sel));
+        }
 
         /// <summary>A hand-picked app route (CollectionShortcuts / StaticLinks). Label + glyph come from the route table so a
         /// pinned "Liked Songs" follows the UI culture; an unknown key in a hand-edited document degrades rather than
@@ -507,6 +556,7 @@ public static partial class Sidebar
                 Height = height,
                 Glyph = RowGlyphs.For(item, dest.Glyph),
                 Trailing = CountBadge(section, key),
+                Tile = _o.CompactPlan,
                 OnClick = () => _o.Navigate(key, null),
                 Overflow = menu is not null,
                 MenuOverlay = _o.MenuOverlay,
@@ -540,6 +590,7 @@ public static partial class Sidebar
                 ArtSize = art,
                 Leading = section.Opts.Artwork ? Cover.ArtUrl(item.FallbackImageUrl, uri, art) : null,
                 Glyph = section.Opts.Artwork ? null : RowGlyphs.For(item, Icons.MusicNote),
+                Tile = _o.CompactPlan,
                 Playing = playing,
                 PlayingAnimated = animated,
                 Track = true,
@@ -572,13 +623,15 @@ public static partial class Sidebar
                 Height = PaneMetrics.RowHeight(section),
                 // Art-wide leading column + the row's own leading gap: the label lines up with its siblings'.
                 Leading = PaneIcon.Leading(item.IconOverride, icon, enabled, PaneMetrics.ArtSize(section)),
+                Tile = _o.CompactPlan,
                 Overflow = menu is not null,
                 OnClick = enabled ? click : null,
                 MenuOverlay = _o.MenuOverlay,
                 Menu = menu,
             };
             Element built = EntityRow.Create(in spec);
-            return reason is { Length: > 0 } why ? ToolTip.Wrap(built, why, grow: 1f) : built;
+            // The disabled reason outranks the label as the tooltip, in both shapes.
+            return Tipped(built, reason is { Length: > 0 }, reason is { Length: > 0 } why ? why : label);
         }
 
         /// <summary>The missing-entity retention row: dimmed, from the item's last-known title/art, with a menu of exactly one
@@ -598,7 +651,8 @@ public static partial class Sidebar
                 Label = label,
                 Subtitle = section.Opts.Subtitles ? missing : null,
                 Enabled = false,
-                Depth = row.Depth,
+                Depth = IndentOf(in row),
+                Tile = _o.CompactPlan,
                 Shape = PaneMetrics.ShapeOf(section),
                 Height = PaneMetrics.RowHeight(section),
                 ArtSize = art,
@@ -607,7 +661,7 @@ public static partial class Sidebar
                 MenuOverlay = _o.MenuOverlay,
                 Menu = _o.MissingItemMenu(section.Id, item),
             };
-            return ToolTip.Wrap(EntityRow.Create(in spec), missing, grow: 1f);
+            return Tipped(EntityRow.Create(in spec), true, missing);
         }
 
         // ── the hero card ────────────────────────────────────────────────────────────────────────────────────────────

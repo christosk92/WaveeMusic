@@ -1,6 +1,6 @@
 // ── Wavee.Tests/SidebarCardsTests.cs — the sidebar's media cards: what each entry kind answers ──────────────────────────
 //
-// The hero card, the grid tile and the collapsed-rail tile are each one `Controls.Surface` fed by `SidebarCards`
+// The hero card and the grid tile are each one `Controls.Surface` fed by `SidebarCards`
 // (Shell/Sidebar.Cards.cs), and every decision those adapters make is a function in `SidebarCardRules`: whether the card draws
 // selected, what activating it does, whether it carries a play affordance, whether it is a drop destination (and whether
 // that drop is a deposit or a refusal), whether it is a drag source, where the "…" lives, the title gate, and the hero's
@@ -24,7 +24,7 @@ public class SidebarCardsTests
         => new(id ?? ("route:" + kind), kind, uri, name, "", StringId.Empty, null, 0, 0, 0, 0, 0, 0, false,
                SidebarPlaylistFlavor.None) { CanEdit = canEdit, IdentityKnown = identityKnown };
 
-    static readonly SidebarCardSurface[] AllSurfaces = [SidebarCardSurface.Hero, SidebarCardSurface.Tile, SidebarCardSurface.Rail];
+    static readonly SidebarCardSurface[] AllSurfaces = [SidebarCardSurface.Hero, SidebarCardSurface.Tile];
 
     // ── selected ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -96,16 +96,6 @@ public class SidebarCardsTests
     }
 
     [Fact]
-    public void The_rail_tile_never_carries_a_play_affordance()
-    {
-        foreach (var kind in Enum.GetValues<SidebarEntryKind>())
-        {
-            var e = Entry(kind);
-            Assert.False(SidebarCardRules.HasPlay(SidebarCardSurface.Rail, in e, playButton: true));
-        }
-    }
-
-    [Fact]
     public void An_entry_with_no_uri_has_nothing_to_play()
     {
         var e = Entry(SidebarEntryKind.Playlist, uri: "");
@@ -124,12 +114,11 @@ public class SidebarCardsTests
     }
 
     [Fact]
-    public void A_read_only_playlist_refuses_with_a_reason_when_expanded_and_stays_transparent_on_the_rail()
+    public void A_read_only_playlist_refuses_with_a_reason_when_expanded()
     {
         var e = Entry(SidebarEntryKind.Playlist, canEdit: false);
         Assert.Equal(SidebarCardDrop.Refuse, SidebarCardRules.Drop(SidebarCardSurface.Hero, in e));
         Assert.Equal(SidebarCardDrop.Refuse, SidebarCardRules.Drop(SidebarCardSurface.Tile, in e));
-        Assert.Equal(SidebarCardDrop.None, SidebarCardRules.Drop(SidebarCardSurface.Rail, in e));
     }
 
     [Theory]
@@ -173,11 +162,10 @@ public class SidebarCardsTests
     // ── the menu glyph ───────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void The_hero_row_shows_the_menu_glyph_and_the_tile_and_rail_keep_the_menu_on_right_click()
+    public void The_hero_row_shows_the_menu_glyph_and_the_tile_keeps_the_menu_on_right_click()
     {
         Assert.True(SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Hero));
         Assert.False(SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Tile));
-        Assert.False(SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Rail));
     }
 
     // ── the title gate ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -197,7 +185,7 @@ public class SidebarCardsTests
     [Fact]
     public void An_entry_whose_identity_has_not_landed_shows_nothing_and_is_pending()
     {
-        // Trap 5: never the raw uri fragment as a title. On the label-less rail tile that is a bone, not an empty tooltip.
+        // Trap 5: never the raw uri fragment as a title. That is a bone, not an empty tooltip.
         var e = Entry(SidebarEntryKind.Playlist, uri: "spotify:playlist:3fMbdgg4jU18AjLCKBhRSm", name: "", identityKnown: false);
         Assert.Equal("", SidebarCardRules.TitleOf(in e));
         Assert.True(SidebarCardRules.IsPending(in e));
@@ -240,15 +228,5 @@ public class SidebarCardsTests
         Assert.Equal(53f, SidebarCardRules.TileCover(69f));
         Assert.Equal(24f, SidebarCardRules.TileCover(40f));
         Assert.Equal(0f, SidebarCardRules.TileCover(10f));
-    }
-
-    [Fact]
-    public void The_rail_tile_is_label_less_so_its_title_is_always_the_tooltip()
-    {
-        Assert.False(global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Labels);
-        Assert.True(SurfaceRules.TitleTip(trimmed: false, hasLabels: global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Labels));
-        // …and it has neither a FAB nor a "…" slot: play and the menu are the context menu's.
-        Assert.Equal(0f, global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Fab);
-        Assert.Equal(MenuPlacement.None, global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Menu);
     }
 }

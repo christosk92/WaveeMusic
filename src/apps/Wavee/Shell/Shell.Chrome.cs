@@ -25,9 +25,6 @@ public static partial class Shell
 
     public static class Layout
     {
-        public const float DrawerMinW = 240f;
-        public const float DrawerViewportInset = 32f;
-
         public const float ToolbarNarrowEnterW = 520f;
         public const float ToolbarNarrowLeaveW = 560f;
 
@@ -48,9 +45,9 @@ public static partial class Shell
         /// go. It is a PERMISSION, not a decision: see <see cref="ChromeActionsEnterW"/>.</summary>
         public const float ChromeNameEnterW = 1360f;
 
-        /// <summary>The ONE "actions in row" stage — bell · friends · pin · settings enter the trailing island
-        /// TOGETHER at this width. 1200, not the old friends-only 1000: four 44-DIP buttons plus the theme toggle
-        /// would starve the search field of a 1000-wide window with two tabs. Below it every one of the four FOLDS
+        /// <summary>The ONE "actions in row" stage — bell · friends · pin enter the trailing island
+        /// TOGETHER at this width. 1200, not the old friends-only 1000: three 44-DIP buttons plus the theme toggle
+        /// would starve the search field of a 1000-wide window with two tabs. Below it every one of the three FOLDS
         /// rather than vanishing — bell and friends become profile-menu rows, and pin simply drops from the row (the
         /// tab/page context menu still offers it).
         /// <para><b>A threshold is a PERMISSION, never a decision (#88).</b> This number and
@@ -77,7 +74,7 @@ public static partial class Shell
         public const float ChromeBarLeadW = 60f;
 
         /// <summary>One island affordance's advance: a 40-DIP bar-nav button + 2+2 margin. Back, Forward and every
-        /// trailing action button (bell, friends, pin, settings) are all exactly this.</summary>
+        /// trailing action button (bell, friends, pin) are all exactly this.</summary>
         public const float ChromeNavButtonW = 44f;
 
         /// <summary>The tab strip's PERMANENTLY reserved "+" slot (32 wide, no margin in text mode). It is mounted at
@@ -170,12 +167,6 @@ public static partial class Shell
             return current ? width < ToolbarNarrowLeaveW : width <= ToolbarNarrowEnterW;
         }
 
-        public static float DrawerWidth(float viewportWidth, float preferredWidth)
-        {
-            float cap = MathF.Max(Design.Size.NavCompactW, viewportWidth - DrawerViewportInset);
-            return MathF.Min(MathF.Max(DrawerMinW, preferredWidth), cap);
-        }
-
         public static float DrawerRestingOpacity(bool open) => open ? 1f : 0f;
         public static float DrawerRestingTranslateX(bool open, float width) => open ? 0f : -width;
     }
@@ -230,11 +221,11 @@ public static partial class Shell
         // never clip a longer title and SHRINKING that must not reclaim space only to hand it straight back.
         float LeadClusterW)
     {
-        /// <summary>Bell · Friends · Pin · Settings are in the trailing row together.</summary>
+        /// <summary>Bell · Friends · Pin are in the trailing row together.</summary>
         public bool ActionsInRow => ShowActions;
 
-        /// <summary>Below the threshold: bell and friends become profile-menu rows (Settings always is one; pin simply
-        /// drops — the tab/page context menu still offers it).</summary>
+        /// <summary>Below the threshold: bell and friends become profile-menu rows (pin simply drops — the tab/page
+        /// context menu still offers it).</summary>
         public bool ActionsInMenu => !ShowActions;
 
         public bool BareAvatar => !ShowName && !ShowActions;
@@ -359,8 +350,8 @@ public static partial class Shell
                 ? Layout.ChromeSearchIconW
                 : FieldWidthFor(SearchWidth, measuredCentreAvail);
 
-        /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves FOUR nav buttons at
-        /// once (bell, friends, pin, settings) REGARDLESS of whether pin actually applies to the current destination:
+        /// <summary>The row's non-tab, non-search DIPs. <paramref name="actionsInRow"/> reserves THREE nav buttons at
+        /// once (bell, friends, pin) REGARDLESS of whether pin actually applies to the current destination:
         /// a page that gains/loses a pin row must not reflow the whole trailing island, and an element tree that
         /// disagrees with the budget reflows the island on every navigation. There is no "…" reservation — Forward
         /// simply hides below its own threshold instead of moving to an overflow menu.</summary>
@@ -373,7 +364,7 @@ public static partial class Shell
              + (newTab ? Layout.ChromeAddSlotW : 0f)
              + (trailing ? ChipWidth(chip) : 0f)
              + (trailing && name && chip == FrameRules.ChipForm.Profile ? Layout.ChromeProfileNameW : 0f)
-             + (actionsInRow ? 4f * Layout.ChromeNavButtonW : 0f)
+             + (actionsInRow ? 3f * Layout.ChromeNavButtonW : 0f)
              + 2f * Layout.ChromeGutterMinW
              + Layout.ChromeMinDragStripW
              + Layout.ChromeCaptionClusterW;
@@ -427,7 +418,7 @@ public static partial class Shell
             //
             // Order is the ladder's own priority, cheapest-to-lose last: the ACTIONS are considered first and the NAME
             // (the lowest-priority item in the row, and so the first to go) only on top of the decision above it. The
-            // name therefore never appears while the four actions are still folded into the profile menu — and, because
+            // name therefore never appears while the three actions are still folded into the profile menu — and, because
             // its own gate is evaluated against the settled actions cost, it cannot flip back off as the window grows
             // past the actions' own entry.
             bool Affords(bool withName, bool withActions)

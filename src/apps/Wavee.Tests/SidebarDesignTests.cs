@@ -82,9 +82,9 @@ public class SidebarPaneStateTests
     {
         var s = new MemoryAppSettings();   // nothing written
 
-        Assert.Equal(new SidebarPaneSnapshot(280f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.Classic));
-        Assert.Equal(new SidebarPaneSnapshot(340f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
-        Assert.Equal(new SidebarPaneSnapshot(320f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.Curated));
+        Assert.Equal(new SidebarPaneSnapshot(280f, false), SidebarPaneState.Restore(s, SidebarDesign.Classic));
+        Assert.Equal(new SidebarPaneSnapshot(340f, false), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
+        Assert.Equal(new SidebarPaneSnapshot(320f, false), SidebarPaneState.Restore(s, SidebarDesign.Curated));
         Assert.Equal(0, s.WrittenCount);   // restoring never writes
     }
 
@@ -96,32 +96,32 @@ public class SidebarPaneStateTests
         var s = new MemoryAppSettings();
 
         // Classic: the user drags to 410 and collapses the pane to the rail.
-        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(410f, SidebarRegime.Rail));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(410f, true));
 
         // → Library V3, never visited: its OWN default, not Classic 410, and not Classic rail regime.
-        Assert.Equal(new SidebarPaneSnapshot(340f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
+        Assert.Equal(new SidebarPaneSnapshot(340f, false), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
 
         // The user drags V3 to 300 and leaves it expanded, then switches back.
-        SidebarPaneState.Snapshot(s, SidebarDesign.LibraryV3, new SidebarPaneSnapshot(300f, SidebarRegime.Expanded));
+        SidebarPaneState.Snapshot(s, SidebarDesign.LibraryV3, new SidebarPaneSnapshot(300f, false));
 
         // → Classic restores byte-for-byte (the expanded width is remembered THROUGH the rail regime).
-        Assert.Equal(new SidebarPaneSnapshot(410f, SidebarRegime.Rail), SidebarPaneState.Restore(s, SidebarDesign.Classic));
+        Assert.Equal(new SidebarPaneSnapshot(410f, true), SidebarPaneState.Restore(s, SidebarDesign.Classic));
 
         // …and V3 still remembers its own, independently.
-        Assert.Equal(new SidebarPaneSnapshot(300f, SidebarRegime.Expanded), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
+        Assert.Equal(new SidebarPaneSnapshot(300f, false), SidebarPaneState.Restore(s, SidebarDesign.LibraryV3));
     }
 
     [Fact]
-    public void CollapsedKey_MeansRailRegime()
+    public void CollapsedKey_MeansCollapsed()
     {
         var s = new MemoryAppSettings();
 
         s.Set(CollapsedKey(SidebarDesign.Classic), true);
-        Assert.Equal(SidebarRegime.Rail, SidebarPaneState.Restore(s, SidebarDesign.Classic).Regime);
+        Assert.True(SidebarPaneState.Restore(s, SidebarDesign.Classic).Collapsed);
 
-        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, SidebarRegime.Expanded));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, false));
         Assert.False(s.Get(CollapsedKey(SidebarDesign.Classic)));
-        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, SidebarRegime.Rail));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, true));
         Assert.True(s.Get(CollapsedKey(SidebarDesign.Classic)));
     }
 
@@ -134,7 +134,7 @@ public class SidebarPaneStateTests
         s.Set(CollapsedKey(SidebarDesign.Curated), true);
 
         var restored = SidebarPaneState.Restore(s, SidebarDesign.Curated);
-        Assert.Equal(SidebarRegime.Rail, restored.Regime);
+        Assert.True(restored.Collapsed);
         Assert.Equal(320f, restored.Width);
         Assert.False(s.WasWritten(WidthKey(SidebarDesign.Curated)));
     }
@@ -143,11 +143,11 @@ public class SidebarPaneStateTests
     public void Snapshot_ClampsThroughTheOneOwner()
     {
         var s = new MemoryAppSettings();
-        SidebarPaneState.Snapshot(s, SidebarDesign.Curated, new SidebarPaneSnapshot(9000f, SidebarRegime.Expanded));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Curated, new SidebarPaneSnapshot(9000f, false));
         Assert.Equal(Max, s.Get(WidthKey(SidebarDesign.Curated)));
         Assert.Equal(Max, SidebarPaneState.Restore(s, SidebarDesign.Curated).Width);
 
-        SidebarPaneState.Snapshot(s, SidebarDesign.Curated, new SidebarPaneSnapshot(10f, SidebarRegime.Expanded));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Curated, new SidebarPaneSnapshot(10f, false));
         Assert.Equal(Min, s.Get(WidthKey(SidebarDesign.Curated)));
         Assert.Equal(Min, SidebarPaneState.Restore(s, SidebarDesign.Curated).Width);
     }
@@ -162,44 +162,13 @@ public class SidebarPaneStateTests
         Assert.Equal(Min, SidebarPaneState.Restore(s, SidebarDesign.Classic).Width);
     }
 
-    // ── the GLOBAL rail detent (decision D6) ─────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void RailDetent_IsGlobal_AndSurvivesADesignSwitch()
-    {
-        var s = new MemoryAppSettings();
-        Assert.Equal(SidebarRailDetent.Default, SidebarPaneState.RestoreDetent(s));   // nothing stored ⇒ Default
-
-        s.Set(Platform.Keys.SidebarRailDetent, (int)SidebarRailDetent.Large);
-
-        // Snapshotting / restoring any design neither reads nor writes the detent: it is not per design.
-        foreach (var d in SidebarDesignInfo.All)
-        {
-            SidebarPaneState.Snapshot(s, d, new SidebarPaneSnapshot(300f, SidebarRegime.Rail));
-            _ = SidebarPaneState.Restore(s, d);
-            Assert.Equal(SidebarRailDetent.Large, SidebarPaneState.RestoreDetent(s));
-        }
-        Assert.Equal("sidebar.rail.detent", Platform.Keys.SidebarRailDetent.Name);
-        Assert.Equal((int)SidebarRailDetent.Default, Platform.Keys.SidebarRailDetent.Default);
-    }
-
-    [Fact]
-    public void AnUnknownStoredDetent_RestoresAsDefault()
-    {
-        var s = new MemoryAppSettings();
-        s.Set(Platform.Keys.SidebarRailDetent, 7);
-        Assert.Equal(SidebarRailDetent.Default, SidebarPaneState.RestoreDetent(s));
-        s.Set(Platform.Keys.SidebarRailDetent, -1);
-        Assert.Equal(SidebarRailDetent.Default, SidebarPaneState.RestoreDetent(s));
-    }
-
     [Fact]
     public void SwitchingDesigns_TouchesOnlyThatDesignsPaneKeys()
     {
         // The shared-pins invariant at the persistence layer: a design switch snapshots/restores the per-design PANE
-        // keys and never writes a pin, a V3 custom-order, another design key or the global rail detent.
+        // keys and never writes a pin, a V3 custom-order or another design key.
         var s = new MemoryAppSettings();
-        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, SidebarRegime.Expanded));
+        SidebarPaneState.Snapshot(s, SidebarDesign.Classic, new SidebarPaneSnapshot(300f, false));
         _ = SidebarPaneState.Restore(s, SidebarDesign.Curated);
 
         Assert.Equal(2, s.WrittenCount);
@@ -207,7 +176,6 @@ public class SidebarPaneStateTests
         Assert.True(s.WasWritten(CollapsedKey(SidebarDesign.Classic)));
         Assert.False(s.WasWritten(WidthKey(SidebarDesign.Curated)));
         Assert.False(s.WasWritten(WidthKey(SidebarDesign.LibraryV3)));
-        Assert.False(s.WasWritten(Platform.Keys.SidebarRailDetent));
     }
 
     // ── the design enum / slug contract (persisted — never renumber, never rename) ────────────────────────────────────

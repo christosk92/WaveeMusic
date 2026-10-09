@@ -16,8 +16,9 @@
 //
 // NAMED PARTIALS (the J1 split — each carries its own header): `Sidebar.UI.Drop.cs` (every drop spec + the rootlist
 // slot commit), `Sidebar.UI.Menus.cs` (row menus, the quick layout menu, "Move to folder…", the options popover),
-// `Sidebar.UI.Slot.cs` (the bound row slot), `Sidebar.UI.Rows.cs` (row primitives), `Sidebar.UI.Rail.cs` (the 56-DIP
-// rail + folder flyout), `Sidebar.UI.LibraryV3.cs` (Library V3's mode, session and fixed chrome).
+// `Sidebar.UI.Slot.cs` (the bound row slot), `Sidebar.UI.Rows.cs` (row primitives), `Sidebar.UI.Flyout.cs` (the compact
+// section and folder flyouts), `Sidebar.UI.Footer.cs` (the pane footer), `Sidebar.UI.LibraryV3.cs` (Library V3's mode,
+// session and fixed chrome).
 //
 // INSIDE `Sidebar`, `Design` is the design SIGNAL (Sidebar.Host.cs) — every token read is `global::Wavee.Design.*`.
 
@@ -40,10 +41,10 @@ public static partial class Sidebar
 {
     // ══ 1. MOUNT POINTS ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The docked sidebar: the active design's pane (expanded layer + 56-DIP rail, both always mounted). Reads
-    /// its own state — <see cref="Design"/>, <see cref="Width"/>, <see cref="Collapsed"/>, <see cref="DragPeek"/>,
+    /// <summary>The docked sidebar: the active design's pane (one layer: the rail is the same list planned compact). Reads
+    /// its own state — <see cref="Design"/>, <see cref="Width"/>, <see cref="Mode"/>, <see cref="DragPeek"/>,
     /// <c>Shell.Current</c> — so the shell mounts it with no arguments and binds the COLUMN width itself
-    /// (<c>Collapsed ∧ ¬DragPeek ? 56 : Width</c>, the 300 ms Reveal, the IsolateLayout firewall).</summary>
+    /// (<c>Compact ∧ ¬DragPeek ? 48 : Width</c>, the 200/100 ms FluentPane Reveal, the IsolateLayout firewall).</summary>
     // MOUNT POINT (stage B contract)
     public static Element Pane() => Embed.Comp(static () => new PaneHost(inDrawer: false));
 
@@ -196,16 +197,6 @@ public static partial class Sidebar
                 SearchHead = false,
                 OnCreatePlaylist = PaneView.CreatePlaylistFlow,
                 HeaderCreate = true,
-                // Read at footer-build time (the rail slot already subscribed to the detent); the tile in the Key
-                // remounts the button, because a component props freeze at mount.
-                RailFooter = static () =>
-                {
-                    var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
-                    float tile = m.Tile, glyph = m.Glyph;
-                    return Embed.Comp(() => new CreateButton(
-                        PaneView.CreatePlaylistFlow, menu: PaneView.CreateRootMenu, box: tile, glyph: glyph))
-                        with { Key = "rail-create:" + tile.ToString(System.Globalization.CultureInfo.InvariantCulture) };
-                },
             }, DepKey.Empty);
             return Embed.Comp(() => new PaneView(config, _inDrawer));
         }
@@ -309,15 +300,10 @@ public static partial class Sidebar
         public bool SearchHead { get; init; }
         /// <summary>Mode chrome above the scroll surface (V3's nav band → header → toolbar → chips → rule).</summary>
         public Func<Element?>? Head { get; init; }
-        /// <summary>Chrome tiles prepended to the rail (V3 only — its nav band left the document).</summary>
-        public Func<Element?>? RailHead { get; init; }
-        /// <summary>How many tiles <see cref="RailHead"/> draws right now — the head's EXACT layout seed
-        /// (<see cref="SidebarRailExtents.HeadExtentOf"/>). Required with a <see cref="RailHead"/>.</summary>
-        public Func<int>? RailHeadTiles { get; init; }
         /// <summary>The canvas seam: non-null state ⇒ the pane renders as the customize canvas.</summary>
         public Func<SidebarEditState?>? Edit { get; init; }
-        public bool RailLayoutMenu { get; init; } = true;
-        public Func<Element?>? RailFooter { get; init; }
+        /// <summary>Whether the pane footer shows the Settings row (null ⇒ shown). The ⋯ is always there.</summary>
+        public Func<bool>? ShowsSettings { get; init; }
         /// <summary>What activating a folder does (null ⇒ toggle the shared expansion). V3's narrow drill uses it.</summary>
         public Action<string, string>? ActivateFolder { get; init; }
         public Func<bool>? DisclosesFoldersInline { get; init; }
@@ -409,8 +395,8 @@ public static partial class Sidebar
     /// re-plans in a <c>UseMemo</c> keyed on their fold, into A/B buffers (a plan ALIASES its buffers). (2) The plan is
     /// published to the bound slots as a PLAIN FIELD from a LAYOUT effect, and only the rows the diff found changed get
     /// their epoch bumped. (3) The row count rides <c>CountSignal</c>, written in the same effect — and it is the ONLY
-    /// publish signal this render reads (W3-A2): the plan version is the slots', the effects' and the ItemsView's edge,
-    /// the rail version is <see cref="PaneView.RailHost"/>'s. A republish that changed some rows' content re-skins those rows and
+    /// publish signal this render reads (W3-A2): the plan version is the slots', the effects' and the ItemsView's edge.
+    /// A republish that changed some rows' content re-skins those rows and
     /// nothing else; the pane itself renders once per RE-PLAN (an input the binder's content gates let through), never a
     /// second time for the publish it caused.</para>
     ///
@@ -426,7 +412,6 @@ public static partial class Sidebar
         internal Signal<float> ExpandedWidth => Width;
 
         readonly SidebarPlanBuffers _paneBuffersA = new(), _paneBuffersB = new();
-        readonly SidebarPlanBuffers _railBuffersA = new(), _railBuffersB = new();
         bool _presentedUsesA;
         bool _planPublished;
         int _nextPlanEpoch;
@@ -443,13 +428,6 @@ public static partial class Sidebar
 
         readonly Signal<int> _rowCount = new(0);
         readonly Signal<int> _planVersion = new(0);
-        /// <summary>Bumped by a publish ONLY when the RAIL plan's rows (or the entries they address) differ from the
-        /// presented rail's, or the publish was wholesale — the rail's frame element re-plans off it, exactly as
-        /// <see cref="_planVersion"/> is the pane's. A re-plan that only touched the expanded list moves
-        /// <see cref="_planVersion"/> and leaves this alone.</summary>
-        internal readonly Signal<int> RailVersion = new(0);
-        /// <summary>The rail's OWN row count — the rail's <c>ItemsView</c> edge, mirroring <see cref="_rowCount"/>.</summary>
-        internal readonly Signal<int> RailRowCount = new(0);
         readonly Signal<int> _dispVersion = new(0);
         readonly Signal<int> _disclosureVersion = new(0);
 
@@ -460,8 +438,8 @@ public static partial class Sidebar
         Element? _paddedList;
         Element? _searchHead;
         Element? _dragPeekWatcher;
-        Element? _railHost;
-        /// <summary>The expanded layer's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
+        Element? _footer;
+        /// <summary>The pane's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
         readonly Prop<float> _expandedWidth = Prop.Of(static () => Sidebar.Width.Value);
 
         // ── per-row epochs (GROW-ONLY: a slot may address an index a frame after the plan shrank) ──
@@ -471,10 +449,6 @@ public static partial class Sidebar
         readonly List<int> _rowSelSet = new(), _rowSelNext = new(), _rowSelFlip = new();
         Func<string, SidebarSectionSpec?>? _sectionOf;
         Func<int, string?>? _rowRouteOf;
-
-        // ── per-RAIL-row epochs (same GROW-ONLY contract, over RailPlan instead of Plan) ──
-        Signal<int>[] _railEpochs = Array.Empty<Signal<int>>();
-        readonly List<int> _railSelSet = new(), _railSelNext = new(), _railSelFlip = new();
 
         // ── disclosure ──
         string? _activeDisclosureKey;
@@ -490,7 +464,6 @@ public static partial class Sidebar
         Action<ItemDisclosureDiagnostic>? _disclosureLog;
 
         readonly ItemsViewController _listController = new();
-        internal readonly ItemsViewController RailListController = new();
 
         /// <summary>THE ONE published drop slot — written once per hover, read by the row's line, its plate and the commit.</summary>
         readonly Signal<SidebarDropSlot> _dropSlot = new(SidebarDropSlot.None);
@@ -520,7 +493,8 @@ public static partial class Sidebar
 
         // ── published to the bound slots (PLAIN FIELDS; seeded with real empty plans, never default) ──
         internal SidebarRowPlan Plan = new(Array.Empty<SidebarRow>(), Array.Empty<SidebarLibraryEntry>(), 0);
-        internal SidebarRowPlan RailPlan = new(Array.Empty<SidebarRow>(), Array.Empty<SidebarLibraryEntry>(), 0);
+        /// <summary>The compact (rail) flag THE PUBLISHED PLAN WAS BUILT WITH — read by the slot (a tile, not a row).</summary>
+        internal bool CompactPlan;
         internal SidebarCustomLayout Doc = SidebarCustomLayout.Empty;
         /// <summary>The edit session THE PUBLISHED PLAN WAS BUILT FROM (in lockstep with <see cref="Plan"/>).</summary>
         internal SidebarEditState? PublishedEdit;
@@ -528,10 +502,24 @@ public static partial class Sidebar
         internal ActionServices? Acts;
         internal Actions.Registry? Registry;
 
+        /// <summary>Each rail tile's anchor by plan index, registered by its slot (grow-only: allocation-free after warm-up),
+        /// so Enter on a tile opens the same flyout its click opens.</summary>
+        Func<NodeHandle>?[] _tileAnchors = Array.Empty<Func<NodeHandle>?>();
+        Func<ContextMenuModel?>? _paneMenuFn;
+
+        internal void SetTileAnchor(int index, Func<NodeHandle> anchor)
+        {
+            if ((uint)index >= (uint)_tileAnchors.Length)
+                Array.Resize(ref _tileAnchors, Math.Max(32, Math.Max(index + 1, _tileAnchors.Length * 2)));
+            _tileAnchors[index] = anchor;
+        }
+
+        Func<NodeHandle>? TileAnchorAt(int index) => (uint)index < (uint)_tileAnchors.Length ? _tileAnchors[index] : null;
+
         Func<int, (float dx, float dy)>? _displacement;
 
-        sealed record PlanStage(SidebarCustomLayout Document, SidebarRowPlan Pane, SidebarRowPlan Rail,
-                                string EffectiveSearch, bool UsesA, int Epoch, SidebarEditState? Edit);
+        sealed record PlanStage(SidebarCustomLayout Document, SidebarRowPlan Pane, string EffectiveSearch, bool UsesA,
+                                int Epoch, SidebarEditState? Edit, bool Compact);
 
         /// <summary>THE MID-DRAG FREEZE: a re-projection arriving during a rootlist filing is parked, not published.</summary>
         readonly SidebarStageHold<PlanStage> _deferredStage = new();
@@ -559,10 +547,6 @@ public static partial class Sidebar
         /// anything realizes.</summary>
         readonly RepeatLayout _rowLayout;
 
-        /// <summary>The rail's own layout: two fixed extents (a tile's <see cref="SidebarRailMetrics.Pitch"/> at the
-        /// current detent or <see cref="Rail.DividerExtent"/>), seeded analytically from <see cref="RailPlan"/> — never measured.</summary>
-        internal readonly RepeatLayout RailLayout;
-
         /// <summary>Reordering rides <c>MotionTok.ItemPlacement</c>.</summary>
         static readonly LayoutTransition RowPlacement = new(TransitionChannels.Position, MotionTok.ItemPlacement.ToDynamics());
 
@@ -575,8 +559,6 @@ public static partial class Sidebar
             Config = config;
             InDrawer = inDrawer;
             _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine));
-            RailLayout = RepeatLayout.Extents(RailExtentSeed,
-                estimatedExtent: SidebarRailMetrics.For(SidebarRailDetent.Default).Pitch);
         }
 
         public override Element Render()
@@ -590,14 +572,13 @@ public static partial class Sidebar
             // The mode's live document — invoked HERE so the signals it reads subscribe this pane.
             var sourceDoc = Config.Document();
             // The drawer always renders expanded; a live drag peek presents expanded too (it flips twice per drag). Compact is
-            // what the FRAME presents (the rail regime, or the last-resort band's inline rail), never the regime alone.
-            bool compact = !InDrawer && (Sidebar.Regime.Value == SidebarRegime.Rail || Shell.Ui.LastResort.Value)
-                           && !_dragPeek.Value;
+            // what the FRAME presents (the pane mode the shell resolved), never the window band alone.
+            bool compact = !InDrawer && Sidebar.Mode.Value == SidebarPaneMode.Compact && !_dragPeek.Value;
             string search = _search.Value;
             // Invoked UNCONDITIONALLY: edit mode must not change the hook sequence (branch on the value, never the hooks).
             var edit = Config.Edit?.Invoke();
 
-            var stage = UseMemo(() => BuildStage(sourceDoc, search, edit), PlanDep(search, in edit));
+            var stage = UseMemo(() => BuildStage(sourceDoc, search, edit, compact), PlanDep(search, in edit, compact));
             if (!_planPublished) PublishStage(stage, notify: false);
             int disclosureUiVersion = _disclosureVersion.Value;
             UseLayoutEffect(() => TryPublishStage(stage), DepKey.From(HashCode.Combine(stage.Epoch, disclosureUiVersion)));
@@ -606,17 +587,6 @@ public static partial class Sidebar
             TrackSelection(SelectedRoute);
             UseSignalEffect(RefreshPlayState);
             UseSignalEffect(RefreshSelection);
-            // The rail's own sweep: RailHost no longer subscribes SelectedRoute (a recycled RailSlot bakes selected in
-            // as a value, ch 25 §9), so THIS is what re-skins the two rail tiles a navigation concerns.
-            UseSignalEffect(RefreshRailSelection);
-            // A detent change re-seeds the rail's analytic extents (the pitch and the V3 head seed are per detent) and
-            // bumps the re-plan edge so the head/footer chrome rebuilds at the new metrics. The read is the subscription.
-            UseSignalEffect(() =>
-            {
-                _ = Sidebar.RailDetent.Value;
-                ReseedRailExtents();
-                RailVersion.Value = RailVersion.Peek() + 1;
-            });
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
             // THE COUNT, never the plan version (W3-A2). This render decides two things off the published plan — empty
             // pane vs list, and whether a pending expansion has its rows yet — and both are functions of the COUNT. The
@@ -641,33 +611,20 @@ public static partial class Sidebar
             }, DepKey.From(HashCode.Combine(disclosureUiVersion, rows)));
             ConfigureReorder();
 
-            Element expanded = new BoxEl
+            // ONE layer: the rail is the SAME list planned compact (design V.9), clipped to the frame's presented column. The
+            // layer is measured at the OPEN width even while presented compact, so text never reflows through the rail width.
+            var layer = new BoxEl
             {
-                Key = "expanded-layer", Direction = 1, Grow = 1f, Shrink = 0f,
-                // Measured at the OPEN width even while presented compact: text never reflows through the rail width.
-                Width = _expandedWidth, ClipToBounds = true,
-                Opacity = compact ? 0f : 1f, HitTestVisible = !compact,
-                Children = ExpandedChildren(rows),
+                Key = "pane-layer", Direction = 1, Grow = 1f, Shrink = 0f, ClipToBounds = true,
+                Width = _expandedWidth,
+                // DRAG PEEK: a spring-load waypoint over the whole rail (never a destination).
+                DropTarget = compact ? RailPeekDropSpec() : null,
+                Children = PaneChildren(rows, compact),
             };
 
-            var children = new List<Element>(3) { expanded };
-            if (!InDrawer)
-            {
-                // THE RAIL IS ITS OWN COMPONENT (W3-A2, RailHost): it re-renders on ITS edges — the rail version, the
-                // route, the culture, the binder's first publish — so a pane render never rebuilds its ~26 tooltip-wrapped
-                // tiles. The embed is held by reference: a propless ComponentEl the reconciler reuses without a render.
-                children.Add(new BoxEl
-                {
-                    Key = "compact-layer", Direction = 1, Grow = 1f, Shrink = 0f,
-                    Width = Prop.Of(static () => Sidebar.PresentedWidth.Value),
-                    Opacity = compact ? 1f : 0f, HitTestVisible = compact,
-                    // DRAG PEEK: a pure spring-load waypoint over the whole rail (never a destination, never a refusal).
-                    DropTarget = RailPeekDropSpec(),
-                    Children = [_railHost ??= Embed.Comp(() => new RailHost(this))],
-                });
-                // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
-                children.Add(_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
-            }
+            var children = new List<Element>(2) { layer };
+            // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
+            if (!InDrawer) children.Add(_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
 
             var root = new BoxEl
             {
@@ -684,7 +641,7 @@ public static partial class Sidebar
             if (!Controls.IsNullOverlay(MenuOverlay))
             {
                 var svc = MenuOverlay;
-                Func<ContextMenuModel?> menu = LayoutMenu.Model;
+                Func<ContextMenuModel?> menu = _paneMenuFn ??= PaneMenu;
                 root = new BoxEl
                 {
                     Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true,
@@ -698,25 +655,34 @@ public static partial class Sidebar
             return root;
         }
 
-        // ── the expanded body ──────────────────────────────────────────────────────────────────────────────────────
+        // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
 
-        Element[] ExpandedChildren(int rows)
+        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head and footer.</summary>
+        static readonly BoxEl s_railSpacer = new() { Key = "empty", Grow = 1f };
+
+        /// <summary>The layer's children, top to bottom: the mode head, the search head, the body (the padded list or the
+        /// empty hint) and the footer, which sits outside the scroller. Nulls are skipped.</summary>
+        Element[] PaneChildren(int rows, bool compact)
         {
             Element? modeHead = Config.Head?.Invoke();
             // No search head on the canvas: at most one body is on screen there, so it would visibly filter nothing.
-            Element? searchHead = Config.SearchHead && PublishedEdit is null && HasEntityList(Doc)
+            // The rail has no room for a text box either.
+            Element? searchHead = Config.SearchHead && !compact && PublishedEdit is null && HasEntityList(Doc)
                 ? (_searchHead ??= Embed.Comp(() => new SearchHead(_search, Sidebar.Width)) with { Key = "head" })
                 : null;
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
             // its CountSignal — so a re-render hands the reconciler the same element and it writes nothing.
-            Element body = rows == 0 ? EmptyPane() : (_paddedList ??= PaddedList());
-            int n = 1 + (modeHead is null ? 0 : 1) + (searchHead is null ? 0 : 1);
+            // The rail has no room for the empty hint: an empty rail is just its head and footer.
+            Element body = rows == 0 ? (compact ? s_railSpacer : EmptyPane()) : (_paddedList ??= PaddedList());
+            Element footer = _footer ??= Embed.Comp(() => new PaneFooter(this)) with { Key = "pane-footer" };
+            int n = 2 + (modeHead is null ? 0 : 1) + (searchHead is null ? 0 : 1);
             var kids = new Element[n];
             int k = 0;
             if (modeHead is { } mh) kids[k++] = mh;
             if (searchHead is { } sh) kids[k++] = sh;
-            kids[k] = body;
+            kids[k++] = body;
+            kids[k] = footer;
             return kids;
         }
 
@@ -785,7 +751,7 @@ public static partial class Sidebar
         /// <summary>The label typeahead reads for a row: a header's title, an entry's name, a route item's destination title.</summary>
         string RowLabelOf(in SidebarRow row)
         {
-            if (row.Kind == SidebarRowKind.SectionHeader)
+            if (row.Kind is SidebarRowKind.SectionHeader or SidebarRowKind.SectionTile)
                 return SectionOf(row.SectionId) is { } header ? PaneText.TitleOf(header) : "";
             if ((uint)row.EntryIndex < (uint)Plan.Entries.Count) return Plan.Entries[row.EntryIndex].Name;
             if (SectionOf(row.SectionId) is { } section && PaneText.ItemOf(section, row.Key) is { Target: SidebarItemTarget.Route } item)
@@ -793,7 +759,8 @@ public static partial class Sidebar
             return "";
         }
 
-        /// <summary>Enter (and a double tap) on the roving stop: a header toggles, a folder toggles, a row runs its click.</summary>
+        /// <summary>Enter (and a double tap) on the roving stop: a header toggles, a folder toggles, a row runs its click; a
+        /// rail tile (a section, or a compact folder) opens its flyout, anchored where its click would anchor it.</summary>
         void InvokeRow(int index)
         {
             var rows = Plan.Rows;
@@ -803,6 +770,13 @@ public static partial class Sidebar
             {
                 case SidebarRowKind.SectionHeader when SectionOf(row.SectionId) is { } s:
                     ToggleSection(s.Id, !s.Collapsed);
+                    break;
+                case SidebarRowKind.SectionTile when TileAnchorAt(index) is { } tile:
+                    OpenSectionFlyout(row.SectionId, tile);
+                    break;
+                case SidebarRowKind.FolderHeader when CompactPlan && (uint)row.EntryIndex < (uint)Plan.Entries.Count
+                                                      && !Plan.Entries[row.EntryIndex].Missing && TileAnchorAt(index) is { } ftile:
+                    OpenFolderFlyout(row.SectionId, Plan.Entries[row.EntryIndex], ftile);
                     break;
                 case SidebarRowKind.FolderHeader when (uint)row.EntryIndex < (uint)Plan.Entries.Count:
                     var folder = Plan.Entries[row.EntryIndex];
@@ -1008,38 +982,11 @@ public static partial class Sidebar
             return (uint)index < (uint)rows.Count ? (int)rows[index].Kind : 0;
         }
 
-        /// <summary>Whether the rail's ONE list carries a head item — item 0, when the mode supplies one
-        /// (<see cref="SidebarRailItems"/>). <c>Config</c> is frozen at mount, so this never flips mid-life.</summary>
-        internal bool HasRailHead => Config.RailHead is not null;
-
-        /// <summary>Whether the rail's ONE list carries a footer item — the LAST item, when the mode supplies footer
-        /// content OR the quick layout menu. Frozen for the same reason.</summary>
-        internal bool HasRailFooter => Config.RailFooter is not null || Config.RailLayoutMenu;
-
-        /// <summary>Distinct NEGATIVE content types for the head/footer chrome items, so a recycled slot never
-        /// rebinds a tile's shape into the head's (or the head's into a tile's) — the same discipline
-        /// <c>Track.Table</c>'s persistent-prefix items use (<c>i &lt; prefix ? -1 - i : (int)RowKindAt(...)</c>).</summary>
-        internal const int RailContentTypeHead = -1;
-        internal const int RailContentTypeFooter = -2;
-
-        internal int RailContentTypeOf(int index)
-        {
-            var rows = RailPlan.Rows;
-            var (kind, rowIndex) = SidebarRailItems.Map(index, HasRailHead, HasRailFooter, rows.Count);
-            return kind switch
-            {
-                SidebarRailItemKind.Head => RailContentTypeHead,
-                SidebarRailItemKind.Footer => RailContentTypeFooter,
-                SidebarRailItemKind.Row when (uint)rowIndex < (uint)rows.Count => (int)rows[rowIndex].Kind,
-                _ => 0,
-            };
-        }
-
         // ── planning ───────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Everything outside the document the plan depends on, folded into one key. Reading them here is ALSO
         /// the subscription that re-plans this pane.</summary>
-        DepKey PlanDep(string search, in SidebarEditState? edit)
+        DepKey PlanDep(string search, in SidebarEditState? edit, bool compact)
         {
             int layoutVer = LayoutVersion.Value;
             int entriesVer = Binder is { } b ? b.Entries.Version.Value : 0;
@@ -1070,7 +1017,7 @@ public static partial class Sidebar
             _pendingReplanCauses |= moved;
             return DepKey.Combine(DepKey.From(layoutVer, entriesVer, pinsVer, folderVer),
                 DepKey.Combine(DepKey.From(revision, mode, editFold, binderEpoch),
-                    DepKey.Combine(DepKey.From(inputVer), search)));
+                    DepKey.Combine(DepKey.Combine(DepKey.From(inputVer), DepKey.From(compact ? 1 : 0)), search)));
         }
 
         // The last PlanDep inputs + the causes accumulated since the last build (Sidebar.Census.cs).
@@ -1080,21 +1027,35 @@ public static partial class Sidebar
         string? _depSearch;
         Shell.SidebarReplanCause _pendingReplanCauses;
 
-        PlanStage BuildStage(SidebarCustomLayout document, string search, SidebarEditState? edit)
+        PlanStage BuildStage(SidebarCustomLayout document, string search, SidebarEditState? edit, bool compact)
         {
             Shell.SidebarReplanCensus.NoteBuild(_pendingReplanCauses);
             _pendingReplanCauses = Shell.SidebarReplanCause.None;
             var input = Input(search);
             bool useA = !_planPublished || !_presentedUsesA;
             var paneBuffers = useA ? _paneBuffersA : _paneBuffersB;
-            var railBuffers = useA ? _railBuffersA : _railBuffersB;
             // The canvas is the EDIT PROJECTION of the same document into the same flat list — never a second renderer.
+            // Edit presents Expanded (the mode rules), so the compact flag never meets a session.
             var pane = edit is { } session
                 ? PlanEdit(document, in input, in session, paneBuffers)
-                : Sidebar.Plan(document, in input, paneBuffers);
-            // The rail is never the canvas: a collapsed pane mid-edit shows the user's actual rail.
-            var rail = PlanRail(document, in input, railBuffers);
-            return new PlanStage(document, pane, rail, SidebarSearch.Normalize(input.Search), useA, ++_nextPlanEpoch, edit);
+                : Sidebar.Plan(document, in input, paneBuffers, compact);
+            return new PlanStage(document, pane, SidebarSearch.Normalize(input.Search), useA, ++_nextPlanEpoch, edit, compact);
+        }
+
+        /// <summary>A collapsed section's rows for its flyout: the ONE planner over a one-section document with that section
+        /// expanded and presented as a List (the flyout draws one entry per row, so a Grid's strips would drop all but their
+        /// first entry), against the pane's own input. P3 rewrites it against the new model.</summary>
+        internal SidebarRowPlan PlanSectionExpanded(string sectionId, SidebarPlanBuffers buffers)
+        {
+            var input = Input(_search.Peek());
+            foreach (var section in Doc.Sections)
+            {
+                if (!string.Equals(section.Id, sectionId, StringComparison.Ordinal)) continue;
+                var one = new SidebarCustomLayout(Doc.TemplateId,
+                    [section with { Collapsed = false, Display = section.Opts with { Presentation = SidebarPresentation.List } }]);
+                return Sidebar.Plan(one, in input, buffers);
+            }
+            return new SidebarRowPlan(Array.Empty<SidebarRow>(), Array.Empty<SidebarLibraryEntry>(), input.Revision);
         }
 
         void TryPublishStage(PlanStage stage)
@@ -1104,7 +1065,8 @@ public static partial class Sidebar
             bool preparedExpansion = _activeDisclosureOpen
                 && (_pendingExpandSection is not null || _pendingExpandFolder is not null);
             if (_activeDisclosureKey is not null && !preparedExpansion) return;
-            if (_planPublished && stage.UsesA == _presentedUsesA && ReferenceEquals(stage.Pane.Rows, Plan.Rows)) return;
+            if (_planPublished && stage.UsesA == _presentedUsesA && stage.Compact == CompactPlan
+                && ReferenceEquals(stage.Pane.Rows, Plan.Rows)) return;
             // THE MID-DRAG FREEZE — exempt for a disclosure in flight (spring-loading a folder exists to reveal its
             // children) and for this gesture's own commit. Track drags are not frozen: they aim at identity, not position.
             if (_publishThroughFreeze) _publishThroughFreeze = false;
@@ -1127,22 +1089,18 @@ public static partial class Sidebar
             // Captured BEFORE the swap — the A/B buffers keep the outgoing rows alive for the diff.
             var oldRows = Plan.Rows;
             var oldEntries = Plan.Entries;
-            var oldRail = RailPlan;
-            // A new document, a new effective query or an edit-session edge changes what rows draw without necessarily
-            // changing the row record, so those bump wholesale.
+            // A new document, a new effective query, an edit-session edge or a presentation flip (expanded ⇄ rail: the same
+            // rows, re-planned) changes what rows draw without necessarily changing the row record, so those bump wholesale.
             bool wholesale = !_planPublished
                              || !ReferenceEquals(stage.Document, Doc)
                              || !string.Equals(stage.EffectiveSearch, _effectiveSearch, StringComparison.Ordinal)
-                             || !Nullable.Equals(stage.Edit, PublishedEdit);
-            // The rail draws from its OWN plan (and the document, for its sections), so it moves on a wholesale publish
-            // or when its rows/entries differ — a re-plan that only touched the expanded list leaves it alone (W3-A2).
-            bool railChanged = wholesale
-                               || PlanDiff.Changed(oldRail.Rows, oldRail.Entries, stage.Rail.Rows, stage.Rail.Entries);
+                             || !Nullable.Equals(stage.Edit, PublishedEdit)
+                             || stage.Compact != CompactPlan;
 
             PublishedEdit = stage.Edit;
             Doc = stage.Document;
             Plan = stage.Pane;
-            RailPlan = stage.Rail;
+            CompactPlan = stage.Compact;
             _effectiveSearch = stage.EffectiveSearch;
             _presentedUsesA = stage.UsesA;
             _planPublished = true;
@@ -1150,33 +1108,24 @@ public static partial class Sidebar
             ResolvePillTarget(SelectedRoutePeek);
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
-            EnsureRailSlots(RailPlan.Rows.Count);
             if (wholesale) ReseedRowExtents();
-            if (railChanged) ReseedRailExtents();
             if (!notify)
             {
                 // The FIRST publish runs synchronously inside the pane's render, before anything has read the count
                 // signal: seeding it here is a forward write (no subscriber yet), and Render's read right after it sees
                 // the real count on frame one.
                 _rowCount.Value = Plan.Rows.Count;
-                RailRowCount.Value = SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count);
                 return;
             }
 
-            Shell.SidebarReplanCensus.NotePublish(railChanged, wholesale);
+            // The rail re-render edge is gone with the second list (P2); P6.6 drops the parameter from the census.
+            Shell.SidebarReplanCensus.NotePublish(railChanged: false, wholesale);
             void PublishSignals()
             {
                 _rowCount.Value = Plan.Rows.Count;
                 _planVersion.Value = _planVersion.Peek() + 1;
                 if (wholesale) BumpAllRowEpochs();
                 else BumpChangedRowEpochs(oldRows, oldEntries);
-                if (railChanged)
-                {
-                    RailRowCount.Value = SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count);
-                    RailVersion.Value = RailVersion.Peek() + 1;
-                    if (wholesale) BumpAllRailEpochs();
-                    else BumpChangedRailEpochs(oldRail.Rows, oldRail.Entries);
-                }
             }
             if (Context.Runtime is { } runtime) runtime.Batch(PublishSignals);
             else PublishSignals();
@@ -1470,7 +1419,7 @@ public static partial class Sidebar
         void RepublishNow()
         {
             if (!_planPublished) return;
-            TryPublishStage(BuildStage(Config.Document(), _search.Peek(), Config.Edit?.Invoke()));
+            TryPublishStage(BuildStage(Config.Document(), _search.Peek(), Config.Edit?.Invoke(), CompactPlan));
         }
 
         Action WithPrefsCommit(Action commit) => () => { commit(); SchedulePrefsCommit(); };
@@ -1501,15 +1450,6 @@ public static partial class Sidebar
             return (uint)index < (uint)epochs.Length ? epochs[index].Value : _planVersion.Value;
         }
 
-        /// <summary>Subscribe the CALLING computation to ONE rail row's epoch — the rail slot's mirror of
-        /// <see cref="SubscribeRowEpoch"/>. Load-bearing for the same reason: a recycled <c>RailSlot</c> is a frozen
-        /// child, so its only path back to fresh content is reading this epoch on every render.</summary>
-        internal int SubscribeRailEpoch(int index)
-        {
-            var epochs = _railEpochs;
-            return (uint)index < (uint)epochs.Length ? epochs[index].Value : RailVersion.Value;
-        }
-
         internal (bool Playing, bool Animated) RowPlayState(int index)
         {
             var play = _rowPlay;
@@ -1529,19 +1469,6 @@ public static partial class Sidebar
             Array.Copy(_rowPlay, play, _rowPlay.Length);
             _rowEpochs = epochs;
             _rowPlay = play;
-        }
-
-        /// <summary>The rail's mirror of <see cref="EnsureRowSlots"/> — no play-state array: a 56-DIP tile draws no
-        /// playing glyph at all (only its selection ring), so the rail has nothing for a play sweep to bump.</summary>
-        void EnsureRailSlots(int count)
-        {
-            if (count <= _railEpochs.Length) return;
-            int cap = Math.Max(32, _railEpochs.Length);
-            while (cap < count) cap *= 2;
-            var epochs = new Signal<int>[cap];
-            Array.Copy(_railEpochs, epochs, _railEpochs.Length);
-            for (int i = _railEpochs.Length; i < cap; i++) epochs[i] = new Signal<int>(0);
-            _railEpochs = epochs;
         }
 
         void BumpRowEpoch(int index)
@@ -1564,27 +1491,6 @@ public static partial class Sidebar
             var entries = Plan.Entries;
             for (int i = 0; i < rows.Count; i++)
                 if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
-        }
-
-        void BumpRailEpoch(int index)
-        {
-            var epochs = _railEpochs;
-            if ((uint)index < (uint)epochs.Length) epochs[index].Value = epochs[index].Peek() + 1;
-        }
-
-        void BumpAllRailEpochs()
-        {
-            var epochs = _railEpochs;
-            for (int i = 0; i < epochs.Length; i++) epochs[i].Value = epochs[i].Peek() + 1;
-        }
-
-        /// <summary>The rail's mirror of <see cref="BumpChangedRowEpochs"/>, over <see cref="RailPlan"/>.</summary>
-        void BumpChangedRailEpochs(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries)
-        {
-            var rows = RailPlan.Rows;
-            var entries = RailPlan.Entries;
-            for (int i = 0; i < rows.Count; i++)
-                if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRailEpoch(i);
         }
 
         /// <summary>The pane's ONE read of playback on behalf of every row: the coarse active-context gate first (an idle
@@ -1721,12 +1627,10 @@ public static partial class Sidebar
             return null;
         }
 
-        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render and
-        /// <see cref="RefreshRailSelection"/> (the rail's own selection sweep) use it.</summary>
+        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render uses it.</summary>
         internal string SelectedRoute => RouteKeyOf(Shell.Current.Value);
 
-        /// <summary>The selected route key WITHOUT subscribing (pane rows and rail tiles re-render on their own
-        /// epoch; a recycled <c>Rail.RailSlot</c> peeks this every render instead of binding to it).</summary>
+        /// <summary>The selected route key WITHOUT subscribing (pane rows re-render on their own epoch).</summary>
         internal string SelectedRoutePeek => RouteKeyOf(Shell.Current.Peek());
 
         /// <summary>Does row <paramref name="index"/> draw SELECTED for <paramref name="route"/>? The ONE rule the sweep
@@ -1763,25 +1667,6 @@ public static partial class Sidebar
                 flipped.Add(_pillTarget.PlanIndex);
             _pillRoute = route;
             for (int i = 0; i < flipped.Count; i++) BumpRowEpoch(flipped[i]);
-            prev.Clear();
-            for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
-        }
-
-        /// <summary>The rail's mirror of <see cref="RefreshSelection"/>, over <see cref="RailPlan"/> — bumps exactly
-        /// the rail tiles whose selected state flipped, which is what makes it safe for a recycled
-        /// <c>Rail.RailSlot</c> to bake <c>selected</c> in as a plain VALUE instead of a bound read.</summary>
-        void RefreshRailSelection()
-        {
-            string route = SelectedRoute;
-            _ = RailVersion.Value;   // a rail republish re-plans which index holds which entity
-            var next = _railSelNext;
-            next.Clear();
-            SidebarRowResolve.Sweep(RailPlan.Rows, RailPlan.Entries, _sectionOf ??= SectionOf, route, next);
-            var prev = _railSelSet;
-            var flipped = _railSelFlip;
-            flipped.Clear();
-            SidebarRowResolve.Flipped(prev, next, flipped);
-            for (int i = 0; i < flipped.Count; i++) BumpRailEpoch(flipped[i]);
             prev.Clear();
             for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
         }
@@ -1880,23 +1765,6 @@ public static partial class Sidebar
         void ReseedRowExtents()
         {
             if (_rowLayout.CustomLayout is MeasuredStackVirtualLayout measured) measured.Reseed(Plan.Rows.Count);
-        }
-
-        /// <summary>The rail's analytic seed — <see cref="SidebarRailExtents.ExtentOf"/>, the head at its exact tile count.</summary>
-        float RailExtentSeed(int index)
-        {
-            var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
-            return SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter,
-                index == 0 && HasRailHead ? Config.RailHeadTiles?.Invoke() ?? 0 : 0, in m);
-        }
-
-        /// <summary>Re-seed the rail's ONE list — head, rows AND footer (the list's item count, not the plan's row count:
-        /// seeding only the rows shrank the table and re-appended the chrome items as fresh estimates). The engine anchors
-        /// the reseed (<c>IAnchoredReseedLayout</c>), and the head seed is exact, so a wholesale republish moves nothing.</summary>
-        void ReseedRailExtents()
-        {
-            if (RailLayout.CustomLayout is MeasuredStackVirtualLayout measured)
-                measured.Reseed(SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count));
         }
 
         /// <summary>The row's LIVE laid-out height (bound-safe: one peek + one rect read), 44 on any degenerate answer.</summary>
@@ -2251,7 +2119,7 @@ public static partial class Sidebar
         internal void SetDragPeek(bool on)
         {
             if (_dragPeek.Peek() != on) _dragPeek.Value = on;
-            // …and the shell, which CLIPS the column: without the mirror the peeked rows lay out expanded inside 56 DIP.
+            // …and the shell, which CLIPS the column: without the mirror the peeked rows lay out expanded inside the 48-DIP rail.
             if (DragPeek.Peek() != on) DragPeek.Value = on;
         }
 
@@ -2260,35 +2128,6 @@ public static partial class Sidebar
         {
             if (_dropSlot.Peek().PlanIndex >= 0) _dropSlot.Value = SidebarDropSlot.None;
             if (_railDropUri.Peek() is not null) _railDropUri.Value = null;
-        }
-
-        /// <summary>THE 56-DIP RAIL AS ITS OWN COMPONENT (W3-A2). The 0.3 first cut memoized <c>Rail.Build</c> INSIDE the
-        /// pane's render on (plan version, theme, culture, binder, rail head, route) — so every publish, each a re-plan the
-        /// binder's content gates had let through, re-rendered the pane (it read <c>_planVersion</c>) and the memo rebuilt
-        /// ~26 tooltip-wrapped tiles: <c>ToolTipSlots</c> compares its target by REFERENCE, so every rebuilt tile re-pushed
-        /// and re-rendered its ToolTip — the <c>ToolTip×33</c> line of the scroll census, while the sidebar itself never
-        /// scrolled. The rail is now a VIRTUALIZED bound list over the SAME uncapped rail plan (Detail hero + full rail
-        /// plan, Part 2): this host still re-renders on <see cref="RailVersion"/> (so the head/footer chrome, built
-        /// fresh from live state, never goes stale), plus the culture, the rail head's document epoch and the binder's
-        /// first publish (the pending-skeleton edge) — but NO LONGER on the route. Rebuilding the frame on every rail
-        /// republish is cheap: <c>ItemsView.CreateBound</c>'s <c>Embed.Comp</c> factory runs once at MOUNT, so the
-        /// reconciler keeps the SAME underlying <c>ItemsView</c> (and every realized <see cref="Rail.RailSlot"/>)
-        /// across the rebuild — a recycled slot reads its own row epoch instead of re-rendering here, which is what
-        /// keeps a republish from rebuilding ~26 tooltip-wrapped tiles. Selection likewise reaches a tile through
-        /// <see cref="RefreshRailSelection"/>'s per-row epoch bump, never through this host re-rendering. A retheme
-        /// re-renders the tree engine-side, so <c>Tok.Epoch</c> is read for parity with the old key only. The pane
-        /// hands the rail its plan as a plain field, exactly as it hands the slots theirs.</summary>
-        sealed class RailHost(PaneView owner) : Component
-        {
-            public override Element Render()
-            {
-                _ = owner.RailVersion.Value;
-                _ = Localization.CultureEpoch.Value;
-                _ = s_binderEpoch.Value;
-                _ = Tok.Epoch;
-                if (owner.Config.RailHead is not null) _ = LayoutVersion.Value;
-                return Rail.Frame(owner);
-            }
         }
 
         /// <summary>Owns the ONE UseDragState() subscription that ends a peek, disarms the cue and flushes the freeze —
@@ -2431,56 +2270,13 @@ public static partial class Sidebar
             StartDisclosure("folder:" + folderId, folderId, folder: true, open: !IsFolderExpanded(folderId), commit);
         }
 
-        // ── the collapsed rail's folder flyout ─────────────────────────────────────────────────────────────────────
-
-        /// <summary>Realized rail tiles by key: a flyout anchors to a NODE and the memoized rail has no hooks.</summary>
-        readonly Dictionary<string, NodeHandle> _railNodes = new(StringComparer.Ordinal);
-
-        internal void RegisterRailNode(string key, NodeHandle node) => _railNodes[key] = node;
-
-        NodeHandle RailNode(string key) => _railNodes.TryGetValue(key, out var h) ? h : NodeHandle.Null;
-
-        OverlayHandle? _railFolderFlyout;
-
-        /// <summary>Toggle the 300-DIP side flyout for a folder tile, anchored to the tile's right edge (the only side a
-        /// 56-DIP strip against the window edge has room on). A second click closes it.</summary>
-        internal void OpenRailFolderFlyout(string sectionId, in SidebarLibraryEntry folder)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay)) return;
-            string folderId = folder.FolderId;
-            if (folderId.Length == 0) return;
-            if (_railFolderFlyout is { IsOpen: true } open) { open.Close(); return; }
-            string key = RailTileKey(in folder);
-            string name = folder.Name;
-            _railFolderFlyout = MenuOverlay.Open(
-                () => RailNode(key),
-                () => Embed.Comp(() => new RailFolderFlyout
-                {
-                    Owner = this,
-                    SectionId = sectionId,
-                    RootFolderId = folderId,
-                    RootFolderName = name,
-                    Close = CloseRailFolderFlyout,
-                }),
-                FlyoutPlacement.RightEdgeAlignedTop,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                {
-                    ConstrainToRootBounds = true,
-                });
-            _railFolderFlyout.ClosedAction = () => _railFolderFlyout = null;
-        }
-
-        internal void CloseRailFolderFlyout() => _railFolderFlyout?.Close();
-
-        /// <summary>The rail registry key — the SAME string the tile is keyed with.</summary>
-        internal static string RailTileKey(in SidebarLibraryEntry entry) => "rail:" + entry.Id;
-
-        /// <summary>The folder menu's Expand verb from a rail tile or flyout row: open the pane and disclose it there.</summary>
+        /// <summary>The folder menu's Expand verb from a compact tile's flyout or a row menu: show the full pane (the overlay
+        /// in Narrow and Tiny), then disclose the folder there.</summary>
         internal void ExpandFolderInPane(string folderId)
         {
             if (folderId.Length == 0) return;
-            CloseRailFolderFlyout();
-            SetRegime(SidebarRegime.Expanded);
+            CloseFlyout();
+            OpenPane();
             SetFolderExpanded(folderId, true);
         }
 

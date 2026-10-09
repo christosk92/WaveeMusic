@@ -1529,6 +1529,17 @@ public static partial class Sidebar
                 Children = [mark],
             };
         }
+
+        /// <summary>A collapsed section's compact-rail tile glyph (design V.9), by the section's kind.</summary>
+        public static string SectionGlyph(SidebarSectionKind kind) => kind switch
+        {
+            SidebarSectionKind.Pinned => Icons.Pin,
+            SidebarSectionKind.CollectionShortcuts => Icons.Library,
+            SidebarSectionKind.PlaylistTree => Icons.MusicNote,
+            SidebarSectionKind.JumpBackIn => Icons.History,
+            SidebarSectionKind.NewReleases => Icons.Album,
+            _ => Icons.List,
+        };
     }
 
     /// <summary>

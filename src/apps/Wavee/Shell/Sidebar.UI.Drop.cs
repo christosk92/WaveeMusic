@@ -198,7 +198,7 @@ public static partial class Sidebar
                 onSpringLoad: onSpringLoad is null ? null : (_, _) => onSpringLoad());
         }
 
-        /// <summary>The collapsed rail's FOLDER tile: Into, and only Into — a 56-DIP strip has no before/after.</summary>
+        /// <summary>The compact folder flyout's FOLDER row: Into, and only Into — a flyout row files, it never reorders.</summary>
         internal DropTargetSpec RailFolderDropSpec(in SidebarLibraryEntry folder, DragPayload target)
         {
             string folderId = folder.FolderId;

@@ -49,7 +49,7 @@ public static class SidebarPillRules
     }
 
     /// <summary>A row that can stand for a whole collapsed section.</summary>
-    public static bool IsSectionAnchor(SidebarRowKind kind) => kind == SidebarRowKind.SectionHeader;
+    public static bool IsSectionAnchor(SidebarRowKind kind) => kind is SidebarRowKind.SectionHeader or SidebarRowKind.SectionTile;
 
     /// <summary>The folders containing <paramref name="route"/> in a depth-first flattened tree, deepest first, into a
     /// caller-owned list (cleared first). Walks backwards from the route's entry, taking each shallower folder once.</summary>
@@ -104,10 +104,10 @@ public static class SidebarSubtitleRules
 /// typeahead do the rest — <c>ListOptions.IsItemEnabled</c> / <c>ItemText</c>).</summary>
 public static class SidebarTypeAheadRules
 {
-    /// <summary>Headers, glyph rows, entity rows and folders are focus stops; separators, hints, skeletons, drop bands
-    /// and the tree's end gutter are not.</summary>
-    public static bool IsFocusStop(SidebarRowKind kind) => kind is SidebarRowKind.SectionHeader or SidebarRowKind.IconRow
-        or SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Placeholder;
+    /// <summary>Headers, collapsed-section tiles, glyph rows, entity rows and folders are focus stops; separators, hints,
+    /// skeletons, drop bands and the tree's end gutter are not.</summary>
+    public static bool IsFocusStop(SidebarRowKind kind) => kind is SidebarRowKind.SectionHeader or SidebarRowKind.SectionTile
+        or SidebarRowKind.IconRow or SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Placeholder;
 
     /// <summary>The typeahead text of a row: its label for a focus stop, "" otherwise.</summary>
     public static string TextOf(SidebarRowKind kind, string label) => IsFocusStop(kind) ? label : "";

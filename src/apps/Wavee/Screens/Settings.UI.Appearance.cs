@@ -47,9 +47,6 @@ public static partial class Settings
     static readonly FloatSignal s_lyricsBlurSlider = new(Lyrics.BlurPolicy.AutoDefault);
     /// <summary>The zoom combo's selection, kept in step with the LIVE zoom by <see cref="ZoomPicker"/>.</summary>
     static readonly Signal<int> s_zoomIndex = new(0);
-    /// <summary>The collapsed-rail-size combo's selection (0 Compact · 1 Default · 2 Large), kept in step with
-    /// <see cref="Sidebar.RailDetent"/> by <see cref="RailDetentPicker"/> so a pick made from the sidebar's own menu shows here.</summary>
-    static readonly Signal<int> s_railDetent = new(1);
     /// <summary>The daylist-clock combo's selection (the <see cref="DaylistClockMode"/> int), kept in step with the store by
     /// <see cref="DaylistClockPicker"/>.</summary>
     static readonly Signal<int> s_daylistClock = new((int)DaylistClockMode.Both);
@@ -555,18 +552,14 @@ public static partial class Settings
             var design = Sidebar.Design.Value;
             // The customizer edits the Curated document; offering it for another design would edit something the user is
             // not looking at, and this row never switches design silently.
-            // The rail size is global (every design collapses to the same rail), so its item is always present.
-            var railSize = Item(Loc.Get(Strings.Settings.Sidebar.RailSize), Loc.Get(Strings.Settings.Sidebar.RailSizeSub),
-                Embed.Comp(static () => new RailDetentPicker()), icon: Icons.SplitView);   // no catalog row: SettingsCatalog lives in Settings.cs
             Element[] items = SidebarDesignGating.CanCustomize(design)
                 ?
                 [
                     Item(Loc.Get(Strings.Settings.Sidebar.Customize), Loc.Get(Strings.Settings.Sidebar.CustomizeSub), null,
                         isClickEnabled: true, onClick: static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.SidebarCustomize)),
                         icon: RowGlyph(Tab.Appearance, "sidebarCustomize")),
-                    railSize,
                 ]
-                : [railSize];
+                : [];
 
             return SettingsExpander.Create(new SettingsExpander.Options
             {
@@ -577,30 +570,6 @@ public static partial class Settings
                 ItemsHeader = ExpanderPanel(SidebarDesignCards(design)),
                 Items = items,
             }) with { Key = "appearance.sidebar.design" };
-        }
-    }
-
-    /// <summary>The "Collapsed rail size" combo: Compact · Default · Large. Its own component because it subscribes to
-    /// <see cref="Sidebar.RailDetent"/> (a pick from the sidebar's layout menu moves the selection with no settings write).</summary>
-    sealed class RailDetentPicker : Component
-    {
-        public override Element Render()
-        {
-            int index = Sidebar.RailDetent.Value switch
-            {
-                SidebarRailDetent.Compact => 0,
-                SidebarRailDetent.Large => 2,
-                _ => 1,
-            };
-            UseEffect(() => s_railDetent.Value = index, DepKey.From(index));
-            return ComboBox.Create(
-                [Loc.Get("sidebar.rail.compact"), Loc.Get("sidebar.rail.default"), Loc.Get("sidebar.rail.large")],
-                s_railDetent, width: 160f, onChange: static i => Sidebar.SetRailDetent(i switch
-                {
-                    0 => SidebarRailDetent.Compact,
-                    2 => SidebarRailDetent.Large,
-                    _ => SidebarRailDetent.Default,
-                }));
         }
     }
 

@@ -917,9 +917,6 @@ public sealed class SidebarRowPlannerTests
     {
         Assert.Equal(5000, SidebarRowPlanner.SectionRowCap);
         Assert.True(SidebarRowPlanner.DynamicSectionRowCap >= 10_000);
-        // The ONE rail cap that survives virtualization (Detail hero + full rail plan, Part 2): recents are a
-        // glance, not a list. RailTileCap/RailPinnedCap/RailEntityListCap are gone — the rail is virtualized.
-        Assert.Equal(4, SidebarRowPlanner.RailJumpBackInCap);
     }
 
     [Fact]
@@ -1166,77 +1163,30 @@ public sealed class SidebarRowPlannerTests
         Assert.True(ContainsEntry(plan, "p", pinned.Id));
         Assert.True(ContainsEntry(plan, "j", pinned.Id));
     }
-
-    [Fact]
-    public void Rail_MirrorsThePane_PinnedEntriesExcludedFromTreeEntityListAndShortcuts()
-    {
-        var pinned = Playlist("1", "Alpha mix", order: 0);
-        var other = Playlist("2", "Beta mix", order: 1);
-        var input = new SidebarProjectionInput
-        {
-            Library = new[] { pinned, other },
-            PlaylistTree = new[] { pinned, other },
-            Pins = new[] { pinned },
-            PinnedIds = new HashSet<string>(StringComparer.Ordinal) { pinned.Id },
-        };
-        var doc = Doc(
-            Sec("p", SidebarSectionKind.Pinned),
-            Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default),
-            Sec("t", SidebarSectionKind.PlaylistTree));
-
-        var rail = SidebarRowPlanner.BuildRail(doc, input);
-
-        Assert.True(ContainsEntry(rail, "p", pinned.Id));
-        Assert.False(ContainsEntry(rail, "e", pinned.Id));
-        Assert.False(ContainsEntry(rail, "t", pinned.Id));
-        Assert.True(ContainsEntry(rail, "e", other.Id));
-        Assert.True(ContainsEntry(rail, "t", other.Id));
-
-        // A pinned route's shortcut tile is likewise skipped in the rail.
-        var liked = new SidebarProjectionInput { PinnedIds = new HashSet<string>(StringComparer.Ordinal) { "liked" } };
-        var shortcutDoc = Doc(
-            Sec("p", SidebarSectionKind.Pinned),
-            Sec("c", SidebarSectionKind.CollectionShortcuts, items: [Route("i1", "liked"), Route("i2", "albums")]));
-        var shortcutRail = SidebarRowPlanner.BuildRail(shortcutDoc, liked);
-        Assert.DoesNotContain(shortcutRail.Rows, r => r.SectionId == "c" && r.Key == "liked");
-        Assert.Contains(shortcutRail.Rows, r => r.SectionId == "c" && r.Key == "albums");
-    }
 }
 #endregion
 
-#region RAIL PLANNER — SidebarRailPlannerTests
-// The mode-specific 56-DIP rail (§C5.2 / §C8.5). The rail is DERIVED, never authored: it is exactly the ShowInRail
-// sections, reduced to tiles, capped, with headings collapsed into compact rules. A rail that silently disagrees with the
-// expanded pane is the bug this class exists to prevent.
-public sealed class SidebarRailPlannerTests
+#region COMPACT ARM — SidebarRowPlannerCompactTests
+// The planner's compact arm (§P2.4): the 48-px rail is the SAME list as the pane, reduced to tiles. There are no headers
+// (they are 0 tall in WinUI's compact pane), a collapsed titled section is ONE SectionTile whose flyout holds its rows,
+// and a playlist tree plans its top level only (a folder's children live behind the folder's own flyout).
+public sealed class SidebarRowPlannerCompactTests
 {
-    // ── fixtures ──────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    static SidebarLibraryEntry Entry(string id, SidebarEntryKind kind, string uri, string name,
-        string creator = "", int sourceOrder = 0, int depth = 0)
-        => new(Id: id, Kind: kind, Uri: uri, Name: name, Creator: creator, Cover: default, MosaicTiles: null,
-            ChildCount: 0, AddedAtMs: 0, SortStamp: 100 + sourceOrder, LastVisitedTicksUtc: 1000 - sourceOrder,
-            SourceOrder: sourceOrder, Depth: depth, Circular: false, Flavor: SidebarPlaylistFlavor.None);
-
-    static SidebarLibraryEntry Playlist(string slug, string name, int order = 0, int depth = 0)
-        => Entry("pl:spotify:playlist:" + slug, SidebarEntryKind.Playlist, "spotify:playlist:" + slug, name,
-            "Owner", order, depth);
-
-    static SidebarLibraryEntry Folder(string id, string name, int depth = 0, int order = 0)
-        => Entry("folder:" + id, SidebarEntryKind.Folder, "", name, "", order, depth);
-
-    static SidebarSectionSpec Sec(string id, SidebarSectionKind kind, SidebarDisplayOptions? display = null,
-        IReadOnlyList<SidebarItemSpec>? items = null, SidebarEntityQuery? query = null,
-        IReadOnlyList<SidebarSectionSpec>? children = null, bool hidden = false)
-        => new(id, kind, null, "sidebar.section.header", hidden, false, display, items, query, children);
+    static SidebarSectionSpec Sec(string id, SidebarSectionKind kind, bool collapsed = false, string? titleLocKey = "sidebar.section.header")
+        => new(id, kind, null, titleLocKey, false, collapsed, null, null, null, null);
 
     static SidebarCustomLayout Doc(params SidebarSectionSpec[] sections)
         => new(SidebarTemplates.Curated, sections);
 
-    static SidebarItemSpec Route(string id, string key) => new(id, SidebarItemTarget.Route, key);
+    static SidebarLibraryEntry Folder(string id, string name, int depth = 0, int order = 0)
+        => new(Id: "folder:" + id, Kind: SidebarEntryKind.Folder, Uri: "", Name: name, Creator: "", Cover: default, MosaicTiles: null,
+            ChildCount: 0, AddedAtMs: 0, SortStamp: 100 + order, LastVisitedTicksUtc: 0, SourceOrder: order, Depth: depth,
+            Circular: false, Flavor: SidebarPlaylistFlavor.None) { FolderId = id, FolderName = name };
 
-    static SidebarItemSpec Entity(string id, string uri, SidebarEntityKind kind = SidebarEntityKind.Playlist)
-        => new(id, SidebarItemTarget.Entity, uri, kind);
+    static SidebarLibraryEntry Playlist(string slug, string name, int order = 0, int depth = 0)
+        => new(Id: "pl:spotify:playlist:" + slug, Kind: SidebarEntryKind.Playlist, Uri: "spotify:playlist:" + slug, Name: name,
+            Creator: "Owner", Cover: default, MosaicTiles: null, ChildCount: 0, AddedAtMs: 0, SortStamp: 100 + order,
+            LastVisitedTicksUtc: 0, SourceOrder: order, Depth: depth, Circular: false, Flavor: SidebarPlaylistFlavor.None);
 
     static SidebarRowKind[] KindsOf(SidebarRowPlan plan)
     {
@@ -1245,628 +1195,45 @@ public sealed class SidebarRailPlannerTests
         return k;
     }
 
-    static int TileCount(SidebarRowPlan plan)
-    {
-        int n = 0;
-        for (int i = 0; i < plan.Rows.Count; i++) if (plan.Rows[i].Kind != SidebarRowKind.Divider) n++;
-        return n;
-    }
-
-    static SidebarLibraryEntry[] Playlists(int n, string prefix = "p")
-    {
-        var a = new SidebarLibraryEntry[n];
-        for (int i = 0; i < n; i++) a[i] = Playlist(prefix + i, "Mix " + i, i);
-        return a;
-    }
-
-    // ── ShowInRail is the whole contract ─────────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public void OnlyShowInRailSections_Contribute()
+    public void A_classic_document_planned_compact_has_no_section_headers()
     {
-        var input = new SidebarProjectionInput { Pins = Playlists(3, "pin"), Library = Playlists(4) };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(
-            Sec("p", SidebarSectionKind.Pinned, SidebarDisplayOptions.Entities with { ShowInRail = false }),
-            Sec("e", SidebarSectionKind.EntityList, SidebarDisplayOptions.Entities with { ShowInRail = true },
-                query: SidebarEntityQuery.Default)), input);
-
-        Assert.Equal(4, TileCount(plan));
-        foreach (var row in plan.Rows) Assert.Equal("e", row.SectionId);
+        var doc = SidebarBuiltInDocuments.Classic(pinnedOpen: true, libraryOpen: true, playlistsOpen: true);
+        var plan = SidebarRowPlanner.Build(doc, new SidebarProjectionInput(), compact: true);
+        Assert.DoesNotContain(SidebarRowKind.SectionHeader, KindsOf(plan));
     }
 
     [Fact]
-    public void HiddenSection_ContributesNothing()
+    public void A_collapsed_titled_section_is_exactly_one_tile_keyed_by_its_id()
     {
-        var input = new SidebarProjectionInput { Pins = Playlists(3, "pin") };
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned, hidden: true)), input);
-        Assert.Empty(plan.Rows);
+        var plan = SidebarRowPlanner.Build(Doc(Sec("a", SidebarSectionKind.Pinned, collapsed: true)),
+            new SidebarProjectionInput(), compact: true);
+        Assert.Single(plan.Rows);
+        Assert.Equal(SidebarRowKind.SectionTile, plan.Rows[0].Kind);
+        Assert.Equal("a", plan.Rows[0].Key);
+        Assert.Equal(-1, plan.Rows[0].EntryIndex);
     }
 
     [Fact]
-    public void EmptyRail_WhenNoSectionShowsInRail()
+    public void Separators_are_kept_in_the_compact_rail()
     {
-        var off = SidebarDisplayOptions.Entities with { ShowInRail = false };
-        var input = new SidebarProjectionInput { Pins = Playlists(3, "pin"), Library = Playlists(4) };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(
-            Sec("p", SidebarSectionKind.Pinned, off),
-            Sec("d", SidebarSectionKind.Divider, off),
-            Sec("e", SidebarSectionKind.EntityList, off, query: SidebarEntityQuery.Default)), input);
-
-        // A legal state: the rail then renders only the quick-menu tile, which is chrome, not a planned row.
-        Assert.Empty(plan.Rows);
-        Assert.Empty(plan.Entries);
-    }
-
-    // ── chrome ───────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void HeaderAndDivider_BecomeCompactDividers_AndCollapse()
-    {
-        var input = new SidebarProjectionInput { Pins = Playlists(1, "pin") };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(
-            Sec("d0", SidebarSectionKind.Divider),
-            Sec("h0", SidebarSectionKind.Header),
-            Sec("p1", SidebarSectionKind.Pinned),
-            Sec("h1", SidebarSectionKind.Header),
-            Sec("d1", SidebarSectionKind.Divider),
-            Sec("p2", SidebarSectionKind.Pinned),
-            Sec("d2", SidebarSectionKind.Divider)), input);
-
-        // Leading run dropped, the middle Header+Divider run collapses to ONE rule, the trailing divider is dropped.
-        Assert.Equal(new[] { SidebarRowKind.EntityRow, SidebarRowKind.Divider, SidebarRowKind.EntityRow },
-            KindsOf(plan));
+        var plan = SidebarRowPlanner.Build(Doc(Sec("a", SidebarSectionKind.Pinned, collapsed: true),
+            Sec("d", SidebarSectionKind.Divider, titleLocKey: null), Sec("b", SidebarSectionKind.JumpBackIn, collapsed: true)),
+            new SidebarProjectionInput(), compact: true);
+        Assert.Equal([SidebarRowKind.SectionTile, SidebarRowKind.Divider, SidebarRowKind.SectionTile], KindsOf(plan));
     }
 
     [Fact]
-    public void ADividerWithShowInRailOff_DrawsNoRule()
-    {
-        var input = new SidebarProjectionInput { Pins = Playlists(1, "pin") };
-        var plan = SidebarRowPlanner.BuildRail(Doc(
-            Sec("p1", SidebarSectionKind.Pinned),
-            Sec("d", SidebarSectionKind.Divider, SidebarDisplayOptions.Entities with { ShowInRail = false }),
-            Sec("p2", SidebarSectionKind.Pinned)), input);
-
-        Assert.Equal(new[] { SidebarRowKind.EntityRow, SidebarRowKind.EntityRow }, KindsOf(plan));
-    }
-
-    // ── caps ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void Rail_tiles_every_pin_and_every_library_entry()
-    {
-        // A rail with 20 pins and a 50-entry library: EVERY pin and EVERY entry tiles — no RailPinnedCap/
-        // RailEntityListCap/RailTileCap left to truncate either (the rail is virtualized, Detail hero + full rail
-        // plan, Part 2).
-        var pinnedOnly = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)),
-            new SidebarProjectionInput { Pins = Playlists(20, "pin") });
-        Assert.Equal(20, TileCount(pinnedOnly));
-
-        var listOnly = SidebarRowPlanner.BuildRail(
-            Doc(Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default)),
-            new SidebarProjectionInput { Library = Playlists(50) });
-        Assert.Equal(50, TileCount(listOnly));
-
-        // Pins + THREE EntityLists over the same 50-entry library: the total is the sum (20 + 50*3), never capped.
-        var everything = SidebarRowPlanner.BuildRail(Doc(
-            Sec("p", SidebarSectionKind.Pinned),
-            Sec("e1", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default),
-            Sec("e2", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default),
-            Sec("e3", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default)),
-            new SidebarProjectionInput { Pins = Playlists(20, "pin"), Library = Playlists(50) });
-
-        Assert.Equal(20 + 50 * 3, TileCount(everything));
-        // Every tile still points at a real entry — a section's own MaxItems still tightens it, but nothing else does.
-        foreach (var row in everything.Rows)
-            if (row.Kind != SidebarRowKind.Divider && row.EntryIndex >= 0)
-                Assert.InRange(row.EntryIndex, 0, everything.Entries.Count - 1);
-    }
-
-    [Fact]
-    public void MaxItems_StillTightensARailSection_WithNoGlobalCapLeft()
-    {
-        var pinned = SidebarRowPlanner.BuildRail(
-            Doc(Sec("p", SidebarSectionKind.Pinned, SidebarDisplayOptions.Entities with { MaxItems = 3 })),
-            new SidebarProjectionInput { Pins = Playlists(20, "pin") });
-        Assert.Equal(3, TileCount(pinned));
-
-        var list = SidebarRowPlanner.BuildRail(
-            Doc(Sec("e", SidebarSectionKind.EntityList, SidebarDisplayOptions.Entities with { MaxItems = 5 },
-                query: SidebarEntityQuery.Default)),
-            new SidebarProjectionInput { Library = Playlists(50) });
-        Assert.Equal(5, TileCount(list));
-    }
-
-    [Fact]
-    public void JumpBackInCapsAtFour_AndMaxItemsTightensTheCapFurther()
-    {
-        var input = new SidebarProjectionInput { Visited = Playlists(10, "v") };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("j", SidebarSectionKind.JumpBackIn)), input);
-        Assert.Equal(SidebarRowPlanner.RailJumpBackInCap, TileCount(plan));
-
-        var tighter = SidebarRowPlanner.BuildRail(Doc(Sec("j", SidebarSectionKind.JumpBackIn,
-            SidebarDisplayOptions.Entities with { MaxItems = 2 })), input);
-        Assert.Equal(2, TileCount(tighter));
-    }
-
-    // ── pinned folders (#102 follow-up) ─────────────────────────────────────────────────────────────────────────────
-    //
-    // A pinned FOLDER must tile the same way a PlaylistTree folder does (`PlaylistTree_ContributesArtTilesForLeaves-
-    // AndFolderTilesForFolders` below): a FolderHeader row, never an EntityRow. `RailFrom` used to hand every pinned
-    // entry an EntityRow unconditionally, which (a) resolved its art through the mosaic/cover lookup — a folder's
-    // Cover is empty but its MosaicTiles carries a child's cover, so the tile drew that CHILD PLAYLIST's artwork
-    // instead of a folder glyph — and (b) read `entry.RouteKey`, which is `null` for a folder, so the rail's click
-    // handler stayed null too. One wrong SidebarRowKind, two visible defects.
-
-    [Fact]
-    public void PinnedFolder_ContributesAFolderHeaderTile_NotAnEntityRow()
+    public void A_playlist_tree_plans_only_its_top_level_in_the_compact_rail()
     {
         var input = new SidebarProjectionInput
         {
-            Pins = new[] { Playlist("keep", "Kept Mix"), Folder("nf", "New Folder", order: 1) },
+            PlaylistTree = new[] { Folder("f1", "Chill", 0, 0), Playlist("3", "Inside folder", order: 1, depth: 1) },
         };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)), input);
-
-        Assert.Equal(new[] { SidebarRowKind.EntityRow, SidebarRowKind.FolderHeader }, KindsOf(plan));
-        Assert.Equal(new[] { "pl:spotify:playlist:keep", "folder:nf" }, KeysOf(plan));
-        // The folder tile still aliases the SAME entry the expanded pane's FolderHeader row reads (name/FolderId/
-        // ChildCount) — the rail's `Tile()` folder arm needs exactly that, not a second projection.
-        var folderRow = plan.Rows[1];
-        Assert.Equal(SidebarEntryKind.Folder, plan.Entries[folderRow.EntryIndex].Kind);
-    }
-
-    [Fact]
-    public void PinnedFolder_tiles_like_any_other_pin()
-    {
-        // A 9th and a 10th pin (the 9th and 10th a folder each) still tile — there is no RailPinnedCap any more.
-        var pins = new List<SidebarLibraryEntry>(Playlists(8, "pin"))
-        {
-            Folder("nf9", "New Folder 9", order: 8),
-            Folder("nf10", "New Folder 10", order: 9),
-        };
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("p", SidebarSectionKind.Pinned)),
-            new SidebarProjectionInput { Pins = pins });
-
-        Assert.Equal(10, TileCount(plan));
-        Assert.Equal(SidebarRowKind.FolderHeader, plan.Rows[^1].Kind);    // the 10th pin, a folder, still gets its tile
-        Assert.Equal(SidebarRowKind.FolderHeader, plan.Rows[^2].Kind);    // so does the 9th
-    }
-
-    // ── per-kind contributions ───────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void CollectionShortcutsAndLinks_ContributeOneTilePerVisibleItem()
-    {
-        var hidden = new SidebarItemSpec("i3", SidebarItemTarget.Route, "history", Hidden: true);
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("c", SidebarSectionKind.CollectionShortcuts,
-            items: [Route("i1", "liked"), Route("i2", "albums"), hidden])), new SidebarProjectionInput());
-
-        Assert.Equal(new[] { SidebarRowKind.IconRow, SidebarRowKind.IconRow }, KindsOf(plan));
-        Assert.Equal("liked", plan.Rows[0].Key);
-        Assert.Equal("albums", plan.Rows[1].Key);
-    }
-
-    [Fact]
-    public void PlaceholderItems_AreSkipped()
-    {
-        var pl = Playlist("known", "Known");
-        var input = new SidebarProjectionInput
-        {
-            ByUri = new Dictionary<string, SidebarLibraryEntry>(StringComparer.Ordinal)
-            {
-                ["spotify:playlist:known"] = pl,
-            },
-        };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("s", SidebarSectionKind.StaticLinks, items:
-        [
-            Route("i0", "home"),
-            Entity("i1", "spotify:playlist:known"),
-            Entity("i2", "spotify:playlist:vanished"),                                    // unresolved -> no tile
-            new SidebarItemSpec("i3", SidebarItemTarget.Track, "spotify:track:1", SidebarEntityKind.Track),
-        ])), input);
-
-        // A route glyph tile + the one resolvable entity. No Placeholder row ever reaches the rail, and a track has no
-        // tile (a text-less rail cannot label it).
-        Assert.Equal(new[] { SidebarRowKind.IconRow, SidebarRowKind.EntityRow }, KindsOf(plan));
-        Assert.DoesNotContain(SidebarRowKind.Placeholder, KindsOf(plan));
-        Assert.Single(plan.Entries);
-        Assert.Equal(pl.Id, plan.Entries[0].Id);
-    }
-
-    [Fact]
-    public void CustomGroupChildren_AreFlattened()
-    {
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("g", SidebarSectionKind.CustomGroup,
-            items: [Route("i1", "home")],
-            children:
-            [
-                Sec("c1", SidebarSectionKind.CollectionShortcuts, items: [Route("i2", "liked"), Route("i3", "albums")]),
-                Sec("c2", SidebarSectionKind.StaticLinks, SidebarDisplayOptions.Shortcuts with { ShowInRail = false },
-                    items: [Route("i4", "settings")]),
-                Sec("c3", SidebarSectionKind.Divider),
-            ])), new SidebarProjectionInput());
-
-        // The group's own item, then c1's two — flattened into one tile run. c2 opted out; a nested divider is noise.
-        Assert.Equal(new[] { SidebarRowKind.IconRow, SidebarRowKind.IconRow, SidebarRowKind.IconRow }, KindsOf(plan));
-        Assert.Equal(new[] { "home", "liked", "albums" }, KeysOf(plan));
-    }
-
-    /// <summary>The rail is TOP LEVEL ONLY. A 56-DIP strip has no indent lane and no disclosure, so a nested tile was
-    /// indistinguishable from a top-level one; a folder's contents are reached through its tile's side flyout
-    /// (<c>SidebarRailFolderFlyout</c>) instead, which is why nothing is lost by dropping them from the strip.</summary>
-    [Fact]
-    public void PlaylistTree_ContributesArtTilesForLeavesAndFolderTilesForFolders()
-    {
-        var input = new SidebarProjectionInput
-        {
-            PlaylistTree = new[]
-            {
-                Folder("f1", "Chill", 0, 0),
-                Playlist("a", "Inner", 1, 1),
-                Playlist("b", "Top", 2, 0),
-            },
-        };
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("t", SidebarSectionKind.PlaylistTree)), input);
-
-        Assert.Equal(new[] { SidebarRowKind.FolderHeader, SidebarRowKind.EntityRow }, KindsOf(plan));
-        Assert.Equal(new[] { "folder:f1", "pl:spotify:playlist:b" }, KeysOf(plan));
-    }
-
-    [Fact]
-    public void PlaylistTree_RailNeverTilesANestedEntry_AtAnyDepth()
-    {
-        var input = new SidebarProjectionInput
-        {
-            PlaylistTree =
-            [
-                Playlist("top", "Top", 0),
-                Folder("g", "Chill", 0, 1),
-                Playlist("b", "Nested", 2, 1),
-                Folder("k", "Deep", 1, 3),
-                Playlist("f", "Deeper", 4, 2),
-                Playlist("tail", "Tail", 5),
-            ],
-        };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("t", SidebarSectionKind.PlaylistTree)), input);
-
-        Assert.Equal(new[] { "pl:spotify:playlist:top", "folder:g", "pl:spotify:playlist:tail" }, KeysOf(plan));
-        // Every entry the plan aliases is top level too — a filtered tile must not leak an orphan entry either.
-        Assert.All(plan.Entries, e => Assert.Equal(0, e.Depth));
-    }
-
-    [Fact]
-    public void PlaylistTree_QuerySortsSiblingTilesAndPrunesEmptyFolders()
-    {
-        var input = new SidebarProjectionInput
-        {
-            PlaylistTree =
-            [
-                Playlist("z-root", "Zulu root", 0),
-                Folder("keep", "Keep", 0, 1),
-                Playlist("z-child", "Zulu child", 2, 1),
-                Playlist("a-child", "Alpha child", 3, 1),
-                Folder("empty", "Empty", 0, 4),
-                Playlist("hidden", "Hidden", 5, 1),
-                Playlist("a-root", "Alpha root", 6),
-            ],
-        };
-        var query = SidebarEntityQuery.PlaylistsAlphabetical with
-        {
-            ExcludeUris = ["spotify:playlist:hidden"],
-        };
-
-        var plan = SidebarRowPlanner.BuildRail(
-            Doc(Sec("t", SidebarSectionKind.PlaylistTree, query: query)), input);
-
-        // Top level only: the folder survives (its descendants still match, so it is not pruned) but its children are
-        // reached through the folder flyout, not through tiles of their own.
-        Assert.Equal(new[] { "pl:spotify:playlist:a-root", "folder:keep", "pl:spotify:playlist:z-root" },
-            KeysOf(plan));
-        Assert.DoesNotContain(plan.Rows, row => row.Key == "folder:empty");
-    }
-
-    [Fact]
-    public void PlaylistTree_GridRailFlattensAndSortsAllLeaves()
-    {
-        var display = SidebarDisplayOptions.Entities with { Presentation = SidebarPresentation.Grid };
-        var input = new SidebarProjectionInput
-        {
-            PlaylistTree =
-            [
-                Folder("f", "Folder"),
-                Playlist("c", "Charlie", 1, 1),
-                Playlist("a", "Alpha", 2, 1),
-                Playlist("b", "Bravo", 3),
-            ],
-        };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("t", SidebarSectionKind.PlaylistTree,
-            display, query: SidebarEntityQuery.PlaylistsAlphabetical)), input);
-
-        Assert.Equal(new[]
-        {
-            "pl:spotify:playlist:a", "pl:spotify:playlist:b", "pl:spotify:playlist:c",
-        }, KeysOf(plan));
-        Assert.All(plan.Rows, row => Assert.Equal(SidebarRowKind.EntityRow, row.Kind));
-    }
-
-    [Fact]
-    public void EntityEmbed_ContributesItsCover_AndNothingWhenUnresolved()
-    {
-        var al = Entry("album:spotify:album:9", SidebarEntryKind.Album, "spotify:album:9", "Ceremony", "Artist");
-        var input = new SidebarProjectionInput
-        {
-            ByUri = new Dictionary<string, SidebarLibraryEntry>(StringComparer.Ordinal)
-            {
-                ["spotify:album:9"] = al,
-            },
-        };
-
-        var resolved = SidebarRowPlanner.BuildRail(Doc(Sec("s", SidebarSectionKind.EntityEmbed,
-            items: [Entity("i1", "spotify:album:9", SidebarEntityKind.Album)])), input);
-        Assert.Equal(new[] { SidebarRowKind.EntityRow }, KindsOf(resolved));
-        Assert.Equal("spotify:album:9", resolved.Rows[0].Key);
-
-        var missing = SidebarRowPlanner.BuildRail(Doc(Sec("s", SidebarSectionKind.EntityEmbed,
-            items: [Entity("i1", "spotify:album:gone", SidebarEntityKind.Album)])), input);
-        Assert.Empty(missing.Rows);
-    }
-
-    [Fact]
-    public void Concerts_ContributeOneGlyphTile()
-    {
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("c", SidebarSectionKind.Concerts)),
-            new SidebarProjectionInput());
-        Assert.Equal(new[] { SidebarRowKind.IconRow }, KindsOf(plan));
-        Assert.Equal("c", plan.Rows[0].Key);
-    }
-
-    [Fact]
-    public void NewReleases_NeverContributesATile()
-    {
-        var input = new SidebarProjectionInput { NewReleases = Playlists(4, "n") };
-
-        // Even with ShowInRail explicitly ON in a hand-edited document: a releases FEED has no meaningful single tile.
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("n", SidebarSectionKind.NewReleases,
-            SidebarDisplayOptions.Entities with { ShowInRail = true })), input);
-        Assert.Empty(plan.Rows);
-    }
-
-    [Fact]
-    public void UnknownSectionKind_ContributesNothing()
-    {
-        var plan = SidebarRowPlanner.BuildRail(
-            Doc(new SidebarSectionSpec("s", (SidebarSectionKind)200)), new SidebarProjectionInput());
-        Assert.Empty(plan.Rows);
-    }
-
-    // ── the shipped default ──────────────────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public void CuratedTemplate_RailComposition()
-    {
-        var pl1 = Playlist("1", "Alpha", 0);
-        var al1 = Entry("album:spotify:album:9", SidebarEntryKind.Album, "spotify:album:9", "Ceremony", "Artist", 1);
-
-        var input = new SidebarProjectionInput
-        {
-            Pins = new[] { pl1, al1 },
-            Played = new[] { al1 },
-            PlaylistTree = new[] { Folder("f1", "Chill"), Playlist("2", "Inner", 1, 1), Playlist("3", "Top", 2) },
-        };
-
-        var plan = SidebarRowPlanner.BuildRail(SidebarTemplates.Build(SidebarTemplates.Curated), input);
-
-        // 2 pin tiles · rule · 5 shortcut glyphs (Audiobooks, A2 plan §3.6, joined beside Podcasts) · rule · folder +
-        // its ONE top-level sibling ("Inner" sits inside the folder, and the rail is top level only). Jump back in
-        // ships ShowInRail:false, and its two flanking dividers collapse into the single quiet rule before the
-        // shortcuts.
-        Assert.Equal(new[]
-        {
-            SidebarRowKind.EntityRow, SidebarRowKind.EntityRow,
-            SidebarRowKind.Divider,
-            SidebarRowKind.IconRow, SidebarRowKind.IconRow, SidebarRowKind.IconRow, SidebarRowKind.IconRow,
-            SidebarRowKind.IconRow,
-            SidebarRowKind.Divider,
-            SidebarRowKind.FolderHeader, SidebarRowKind.EntityRow,
-        }, KindsOf(plan));
-
-        Assert.Equal(new[] { "liked", "albums", "artists", "podcasts", "audiobooks" },
-            new[] { plan.Rows[3].Key, plan.Rows[4].Key, plan.Rows[5].Key, plan.Rows[6].Key, plan.Rows[7].Key });
-    }
-
-    [Fact]
-    public void Rail_IsDeterministic_AndReusesBuffers()
-    {
-        var doc = SidebarTemplates.Build(SidebarTemplates.Curated);
-        var input = new SidebarProjectionInput
-        {
-            Pins = Playlists(3, "pin"),
-            PlaylistTree = Playlists(5),
-            Revision = 11,
-        };
-        var buffers = new SidebarPlanBuffers();
-
-        var a = SidebarRowPlanner.BuildRail(doc, input, buffers);
-        var rowsA = new List<SidebarRow>(a.Rows);
-        Assert.Equal(11, a.Revision);
-
-        var b = SidebarRowPlanner.BuildRail(doc, input, buffers);
-        Assert.Equal(rowsA, b.Rows);
-    }
-
-    // ── the rail is virtualized: no cap, full library, same order as the pane (Detail hero + full rail plan, Part 2) ──
-
-    [Fact]
-    public void Rail_tree_tiles_every_top_level_entry()
-    {
-        var top = new List<SidebarLibraryEntry>(Playlists(200))
-        {
-            Folder("f", "Folder", order: 200),
-            Playlist("nested", "Nested", order: 201, depth: 1),
-        };
-
-        var plan = SidebarRowPlanner.BuildRail(Doc(Sec("t", SidebarSectionKind.PlaylistTree)),
-            new SidebarProjectionInput { PlaylistTree = top });
-
-        // 200 top-level playlists + the folder tile = 201; the nested playlist stays folded (reachable only
-        // through the folder's flyout), never a tile of its own — there is no RailTileCap left to hide it behind.
-        Assert.Equal(201, TileCount(plan));
-        Assert.DoesNotContain(plan.Rows, r => r.Key == "pl:spotify:playlist:nested");
-    }
-
-    [Fact]
-    public void Rail_plan_order_matches_the_expanded_plan_for_V3()
-    {
-        // A true `LibraryV3Document.Build` comparison needs the mode's own live session state (the filter/sort/
-        // search chrome LibraryV3Session owns, plus a real ProjectionBinder) that this pure-value planner test does
-        // not construct headlessly. The narrower but exact invariant this pins instead: for a document `Build` and
-        // `BuildRail` BOTH plan (a real EntityList section, not a chrome-only fixture), the rail's entity order is
-        // byte-for-byte the pane's own order — never independently re-sorted or re-filtered. Library V3's rail rides
-        // the SAME `SidebarRowPlanner.BuildRail` this exercises, so the invariant is the one that actually matters.
-        var lib = Playlists(40);
-        var input = new SidebarProjectionInput { Library = lib };
-        var doc = Doc(Sec("e", SidebarSectionKind.EntityList, query: SidebarEntityQuery.Default));
-
-        var pane = SidebarRowPlanner.Build(doc, input);
-        var rail = SidebarRowPlanner.BuildRail(doc, input);
-
-        var paneIds = EntryIdsOf(pane);
-        var railIds = EntryIdsOf(rail);
-        Assert.NotEmpty(paneIds);
-        Assert.Equal(paneIds, railIds);
-    }
-
-    static List<string> EntryIdsOf(SidebarRowPlan plan)
-    {
-        var ids = new List<string>();
-        foreach (var row in plan.Rows)
-            if (row.Kind is SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader
-                && (uint)row.EntryIndex < (uint)plan.Entries.Count)
-                ids.Add(plan.Entries[row.EntryIndex].Id);
-        return ids;
-    }
-
-    [Fact]
-    public void Rail_extents_are_pitch_or_divider()
-    {
-        var m = SidebarRailMetrics.For(SidebarRailDetent.Default);   // pitch 46, tile 40
-        var rows = new[]
-        {
-            new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a"),
-            new SidebarRow(SidebarRowKind.Divider, "s", 0, -1, 0, "s"),
-            new SidebarRow(SidebarRowKind.FolderHeader, "s", 0, 1, 0, "b"),
-            new SidebarRow(SidebarRowKind.IconRow, "s", 0, -1, 0, "c"),
-        };
-
-        // No head/footer: item i IS row i, so — with no chrome to carry it — the first and last rows fold the
-        // rail's own top/bottom inset (`SidebarRailExtents.TopPad`/`BottomPad`) into their own extent.
-        Assert.Equal(SidebarRailExtents.Pitch(in m) + SidebarRailExtents.TopPad,
-            SidebarRailExtents.ExtentOf(rows, 0, hasHead: false, hasFooter: false, headTiles: 0, in m));
-        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false, headTiles: 0, in m));
-        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 2, hasHead: false, hasFooter: false, headTiles: 0, in m));
-        Assert.Equal(SidebarRailExtents.Pitch(in m) + SidebarRailExtents.BottomPad,
-            SidebarRailExtents.ExtentOf(rows, 3, hasHead: false, hasFooter: false, headTiles: 0, in m));
-        // Out of range answers the common (tile) case rather than throwing — the count signal lands one layout
-        // effect after the plan, so a transient over-read must not crash the layout.
-        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 99, hasHead: false, hasFooter: false, headTiles: 0, in m));
-        Assert.NotEqual(SidebarRailExtents.DividerExtent, SidebarRailExtents.Pitch(in m));
-
-        // With a head AND a footer, THEY carry the inset — item 0 is Head, item 5 is Footer (see
-        // `Rail_item_map_places_head_rows_footer_in_order`), and neither edge row gets padded.
-        Assert.Equal(SidebarRailExtents.HeadExtentOf(6, in m), SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: true, headTiles: 6, in m));
-        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 1, hasHead: true, hasFooter: true, headTiles: 6, in m));
-        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.ExtentOf(rows, 4, hasHead: true, hasFooter: true, headTiles: 6, in m));
-        Assert.Equal(SidebarRailExtents.FooterEstimate, SidebarRailExtents.ExtentOf(rows, 5, hasHead: true, hasFooter: true, headTiles: 6, in m));
-    }
-
-    /// <summary>2026-09-25, item J: the Library V3 rail "jumped" by 186 DIP on selecting an item. Every selection
-    /// republish reseeds the rail layout, and the head's seed was a two-tile guess (101 DIP) while the head really draws
-    /// five destinations + Home = six 40-DIP tiles, 6-DIP gaps, the 8-DIP top pad and the 9-DIP rule = 287 DIP; the
-    /// re-measure corrected the far-off-screen head by 186 DIP on every reseed. The seed is the head's exact extent now.</summary>
-    [Fact]
-    public void Rail_head_seed_is_the_heads_exact_extent()
-    {
-        var m = SidebarRailMetrics.For(SidebarRailDetent.Default);
-        Assert.Equal(40f, m.Tile);
-        Assert.Equal(287f, SidebarRailExtents.HeadExtentOf(6, in m));                     // the owner's head: 5 destinations + Home
-        Assert.Equal(8f + 40f + 9f, SidebarRailExtents.HeadExtentOf(1, in m));
-        Assert.Equal(8f + 9f, SidebarRailExtents.HeadExtentOf(0, in m));
-        // One more tile adds exactly one tile row's pitch.
-        Assert.Equal(SidebarRailExtents.Pitch(in m), SidebarRailExtents.HeadExtentOf(7, in m) - SidebarRailExtents.HeadExtentOf(6, in m));
-        var rows = new[] { new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a") };
-        Assert.Equal(287f, SidebarRailExtents.ExtentOf(rows, 0, hasHead: true, hasFooter: false, headTiles: 6, in m));
-    }
-
-    [Fact]
-    public void Rail_extents_follow_the_detent_metrics()
-    {
-        var compact = SidebarRailMetrics.For(SidebarRailDetent.Compact);   // tile 32, pitch 38
-        var large = SidebarRailMetrics.For(SidebarRailDetent.Large);       // tile 64, pitch 70
-        Assert.Equal(38f, SidebarRailExtents.Pitch(in compact));
-        Assert.Equal(70f, SidebarRailExtents.Pitch(in large));
-        Assert.Equal(8f + 6 * 32f + 5 * 6f + 9f, SidebarRailExtents.HeadExtentOf(6, in compact));   // 239
-        Assert.Equal(8f + 6 * 64f + 5 * 6f + 9f, SidebarRailExtents.HeadExtentOf(6, in large));     // 431
-        // The divider row does not scale with the detent.
-        var rows = new[]
-        {
-            new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 0, 0, "a"),
-            new SidebarRow(SidebarRowKind.Divider, "s", 0, -1, 0, "s"),
-            new SidebarRow(SidebarRowKind.EntityRow, "s", 0, 1, 0, "b"),
-        };
-        Assert.Equal(SidebarRailExtents.DividerExtent, SidebarRailExtents.ExtentOf(rows, 1, hasHead: false, hasFooter: false, headTiles: 0, in large));
-    }
-
-    [Fact]
-    public void Rail_item_map_places_head_rows_footer_in_order()
-    {
-        // No chrome: item i IS row i.
-        for (int i = 0; i < 4; i++)
-            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i, hasHead: false, hasFooter: false, rowCount: 4));
-        Assert.Equal(4, SidebarRailItems.Count(false, false, 4));
-        Assert.Equal((SidebarRailItemKind.None, -1), SidebarRailItems.Map(4, false, false, 4));
-
-        // Head only: item 0 is Head, items 1..4 are rows 0..3.
-        Assert.Equal((SidebarRailItemKind.Head, -1), SidebarRailItems.Map(0, hasHead: true, hasFooter: false, rowCount: 4));
-        for (int i = 0; i < 4; i++)
-            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i + 1, true, false, 4));
-        Assert.Equal(5, SidebarRailItems.Count(true, false, 4));
-        Assert.Equal((SidebarRailItemKind.None, -1), SidebarRailItems.Map(5, true, false, 4));
-
-        // Footer only: items 0..3 are rows, item 4 is Footer.
-        for (int i = 0; i < 4; i++)
-            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i, false, true, 4));
-        Assert.Equal((SidebarRailItemKind.Footer, -1), SidebarRailItems.Map(4, false, true, 4));
-        Assert.Equal(5, SidebarRailItems.Count(false, true, 4));
-
-        // Both: Head, rows 0..3, Footer.
-        Assert.Equal((SidebarRailItemKind.Head, -1), SidebarRailItems.Map(0, true, true, 4));
-        for (int i = 0; i < 4; i++)
-            Assert.Equal((SidebarRailItemKind.Row, i), SidebarRailItems.Map(i + 1, true, true, 4));
-        Assert.Equal((SidebarRailItemKind.Footer, -1), SidebarRailItems.Map(5, true, true, 4));
-        Assert.Equal(6, SidebarRailItems.Count(true, true, 4));
-
-        // A zero-row plan with both chrome items still counts and maps correctly — an empty library still shows
-        // the mode's head/footer.
-        Assert.Equal(2, SidebarRailItems.Count(true, true, 0));
-        Assert.Equal((SidebarRailItemKind.Head, -1), SidebarRailItems.Map(0, true, true, 0));
-        Assert.Equal((SidebarRailItemKind.Footer, -1), SidebarRailItems.Map(1, true, true, 0));
-
-        // Negative indices are never valid.
-        Assert.Equal((SidebarRailItemKind.None, -1), SidebarRailItems.Map(-1, true, true, 4));
-    }
-
-    static string[] KeysOf(SidebarRowPlan plan)
-    {
-        var k = new string[plan.Rows.Count];
-        for (int i = 0; i < k.Length; i++) k[i] = plan.Rows[i].Key;
-        return k;
+        var plan = SidebarRowPlanner.Build(Doc(Sec("t", SidebarSectionKind.PlaylistTree)), input, compact: true);
+        Assert.Contains(SidebarRowKind.FolderHeader, KindsOf(plan));
+        Assert.DoesNotContain(plan.Rows, r => r.Depth > 0);
+        Assert.DoesNotContain(plan.Entries, e => e.Depth > 0);
     }
 }
 #endregion
@@ -2266,6 +1633,10 @@ public sealed class SidebarRowExtentsTests
         Assert.Equal(40f + 44f + 44f + 44f + 24f, running, 3);
         Assert.Equal(running, SidebarRowGeometry.ContentYOf(rows.Count, rows.Count, ExtentOf), 3);
     }
+
+    [Fact]
+    public void A_collapsed_section_tile_is_one_glyph_pitch_tall()
+        => Assert.Equal(40f, H(new[] { Row(SidebarRowKind.SectionTile, "a") }, 0, Sec("a", SidebarSectionKind.Pinned, collapsed: true)));
 }
 #endregion
 
@@ -2902,37 +2273,41 @@ public class SidebarEditPlanTests
 #endregion
 
 #region PANE INVARIANT — SidebarPaneInvariantTests
-// The settled-frame terminal-state validator: the docked pane's rendered facts (which layer is opaque, which is
-// hit-test-visible, is the width what the rules present) either agree with each other or the fault flags say exactly
-// how they do not. The free-resize model: an expanded pane may PRESENT narrower than the stored preference (the window
-// yield) but never wider; a rail (user regime or the last-resort band) renders exactly its detent's strip.
+// The settled-frame terminal-state validator (§P2.9): the docked pane's rendered width either agrees with what the mode
+// rules present, or the fault flags say exactly how it does not. The free-resize model: an expanded pane may PRESENT
+// narrower than the stored preference (the window yield) but never wider; a rail (Compact) renders exactly the 48-px strip;
+// Minimal renders nothing; and a forced band can only present its forced mode.
 public class SidebarPaneInvariantTests
 {
     static SidebarPaneFrameSnapshot Expanded(float preferred = 320f, float presented = 320f, float rendered = 320f) => new(
         Design: SidebarDesign.Curated,
-        Regime: SidebarRegime.Expanded,
-        Detent: SidebarRailDetent.Default,
-        LastResort: false,
+        Mode: SidebarPaneMode.Expanded,
+        Band: SidebarWindowBand.Wide,
+        UserCollapsed: false,
+        OverlayOpen: false,
         PreferredExpandedWidth: preferred,
         PresentedWidth: presented,
-        RenderedPaneWidth: rendered,
-        ExpandedOpacity: 1f,
-        RailOpacity: 0f,
-        ExpandedHitTestVisible: true,
-        RailHitTestVisible: false);
+        RenderedPaneWidth: rendered);
 
-    static SidebarPaneFrameSnapshot Compact(float rendered = 56f, SidebarRailDetent detent = SidebarRailDetent.Default) => new(
+    static SidebarPaneFrameSnapshot Compact(float rendered = 48f, SidebarWindowBand band = SidebarWindowBand.Wide) => new(
         Design: SidebarDesign.LibraryV3,
-        Regime: SidebarRegime.Rail,
-        Detent: detent,
-        LastResort: false,
+        Mode: SidebarPaneMode.Compact,
+        Band: band,
+        UserCollapsed: true,
+        OverlayOpen: false,
         PreferredExpandedWidth: 340f,
         PresentedWidth: rendered,
-        RenderedPaneWidth: rendered,
-        ExpandedOpacity: 0f,
-        RailOpacity: 1f,
-        ExpandedHitTestVisible: false,
-        RailHitTestVisible: true);
+        RenderedPaneWidth: rendered);
+
+    static SidebarPaneFrameSnapshot Minimal(float rendered = 0f) => new(
+        Design: SidebarDesign.Curated,
+        Mode: SidebarPaneMode.Minimal,
+        Band: SidebarWindowBand.Tiny,
+        UserCollapsed: false,
+        OverlayOpen: false,
+        PreferredExpandedWidth: 320f,
+        PresentedWidth: 0f,
+        RenderedPaneWidth: rendered);
 
     [Fact]
     public void ExpandedTerminalState_IsValid()
@@ -2948,14 +2323,21 @@ public class SidebarPaneInvariantTests
         Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in state));
     }
 
-    [Theory]
-    [InlineData(SidebarRailDetent.Compact, 48f)]
-    [InlineData(SidebarRailDetent.Default, 56f)]
-    [InlineData(SidebarRailDetent.Large, 80f)]
-    public void EveryDetentsStripIsAValidRailWidth(SidebarRailDetent detent, float strip)
+    [Fact]
+    public void MinimalTerminalState_IsValidOnlyWhenEmpty()
     {
-        var state = Compact(strip, detent);
-        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in state));
+        var empty = Minimal(rendered: 0f);
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in empty));
+
+        var sliver = Minimal(rendered: 12f);
+        Assert.True(SidebarPaneInvariant.Inspect(in sliver).HasFlag(SidebarPaneInvariantFault.MinimalNotEmpty));
+    }
+
+    [Fact]
+    public void A_rail_at_fifty_six_is_not_the_forty_eight_dip_strip()
+    {
+        var state = Compact(rendered: 56f);
+        Assert.True(SidebarPaneInvariant.Inspect(in state).HasFlag(SidebarPaneInvariantFault.RailWidthMismatch));
     }
 
     [Fact]
@@ -2971,10 +2353,10 @@ public class SidebarPaneInvariantTests
     }
 
     [Theory]
-    [InlineData(55.49f, false)]
-    [InlineData(55.5f, true)]
-    [InlineData(56.5f, true)]
-    [InlineData(56.51f, false)]
+    [InlineData(47.49f, false)]
+    [InlineData(47.5f, true)]
+    [InlineData(48.5f, true)]
+    [InlineData(48.51f, false)]
     public void RailWidth_UsesHalfDipTolerance(float rendered, bool valid)
     {
         var state = Compact(rendered);
@@ -2982,26 +2364,19 @@ public class SidebarPaneInvariantTests
     }
 
     [Fact]
-    public void RailWidthMustMatchTheDetent()
+    public void WindowBandAndModeMustAgree()
     {
-        // Large is 80; a column still laid out at the Default 56 is a settle that never finished.
-        var state = Compact(rendered: 56f, detent: SidebarRailDetent.Large);
-        Assert.True(SidebarPaneInvariant.Inspect(in state).HasFlag(SidebarPaneInvariantFault.RailWidthMismatch));
-    }
+        // A Narrow window is a forced rail: an expanded pane there is a settle that never happened.
+        var inline = Expanded() with { Band = SidebarWindowBand.Narrow };
+        Assert.True(SidebarPaneInvariant.Inspect(in inline).HasFlag(SidebarPaneInvariantFault.ModeBandMismatch));
 
-    [Fact]
-    public void WrongLayerOwnership_IsRejected()
-    {
-        var state = Expanded() with
-        {
-            ExpandedOpacity = 0f,
-            RailOpacity = 1f,
-            ExpandedHitTestVisible = false,
-            RailHitTestVisible = true,
-        };
-        var fault = SidebarPaneInvariant.Inspect(in state);
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.LayerOpacityMismatch));
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.HitTestOwnerMismatch));
+        // A Tiny window is the drawer: a rail there is the same mismatch.
+        var rail = Compact(band: SidebarWindowBand.Tiny);
+        Assert.True(SidebarPaneInvariant.Inspect(in rail).HasFlag(SidebarPaneInvariantFault.ModeBandMismatch));
+
+        // The forced rail in Narrow is valid.
+        var forced = Compact(band: SidebarWindowBand.Narrow);
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in forced));
     }
 
     [Fact]
@@ -3025,21 +2400,6 @@ public class SidebarPaneInvariantTests
     {
         var state = Expanded(preferred: 280f, presented: 320f, rendered: 320f);
         Assert.True(SidebarPaneInvariant.Inspect(in state).HasFlag(SidebarPaneInvariantFault.PresentedExceedsPreferred));
-    }
-
-    [Fact]
-    public void LastResortPresentsTheRail()
-    {
-        // Regime stays Expanded (the user's choice is untouched) but the band folds the inline column to the rail.
-        var rail = Compact(rendered: 80f, detent: SidebarRailDetent.Large) with { Regime = SidebarRegime.Expanded, LastResort = true };
-        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in rail));
-
-        // The full expanded pane laid out inline inside the band is a violation.
-        var inline = Expanded() with { LastResort = true };
-        var fault = SidebarPaneInvariant.Inspect(in inline);
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.RailWidthMismatch));
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.LayerOpacityMismatch));
-        Assert.True(fault.HasFlag(SidebarPaneInvariantFault.HitTestOwnerMismatch));
     }
 
     [Fact]

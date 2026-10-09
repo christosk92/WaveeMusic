@@ -27,9 +27,9 @@ using FluentGpu.Localization;
 
 namespace Wavee;
 
-/// <summary>The three sidebar surfaces that are media cards: the EntityEmbed spotlight card, a Grid-presentation cell and
-/// a collapsed-rail tile. (The rows, the folder tile and the glyph tiles are the sidebar's own grammar, not media.)</summary>
-public enum SidebarCardSurface : byte { Hero, Tile, Rail }
+/// <summary>The two sidebar surfaces that are media cards: the EntityEmbed spotlight card and a Grid-presentation cell.
+/// (The rows, the folder tile and the glyph tiles are the sidebar's own grammar, not media.)</summary>
+public enum SidebarCardSurface : byte { Hero, Tile }
 
 /// <summary>What activating a projected entry does: a track PLAYS (it has no detail route), everything with a route
 /// NAVIGATES, a folder (it expands in place) and a route-less entry do nothing — their surface carries NO click, so it is
@@ -37,7 +37,7 @@ public enum SidebarCardSurface : byte { Hero, Tile, Rail }
 public enum SidebarCardActivation : byte { None, Play, Navigate }
 
 /// <summary>What a card is as a drop destination: nothing, a track DEPOSIT (an editable playlist), or a REFUSAL that
-/// says why (a playlist the user cannot edit — the expanded layouts name the reason, the 56-DIP rail stays transparent).</summary>
+/// says why (a playlist the user cannot edit — the sidebar names the reason).</summary>
 public enum SidebarCardDrop : byte { None, Deposit, Refuse }
 
 /// <summary>The pure facts behind the sidebar's media cards, per entry kind. No engine type is touched, so each answer is
@@ -55,20 +55,17 @@ public static class SidebarCardRules
          : SidebarCardActivation.None;
 
     /// <summary>A play affordance exists on the hero (when its section's <c>PlayButton</c> option is on) and on the grid tile
-    /// for an entry that has a playable context; never on the rail tile (no room — the tile is the target, the context menu
-    /// the verbs). <c>IsPlayable</c> is Playlist / Album / Show / Track: an artist has no single context to start.</summary>
+    /// for an entry that has a playable context. <c>IsPlayable</c> is Playlist / Album / Show / Track: an artist has no single
+    /// context to start.</summary>
     public static bool HasPlay(SidebarCardSurface surface, in SidebarLibraryEntry entry, bool playButton)
-        => surface != SidebarCardSurface.Rail
-           && entry.IsPlayable && !string.IsNullOrEmpty(entry.Uri)
+        => entry.IsPlayable && !string.IsNullOrEmpty(entry.Uri)
            && (surface != SidebarCardSurface.Hero || playButton);
 
     /// <summary>A playlist is the one drop destination a card can be. An editable one takes a track deposit; a read-only one
-    /// REFUSES with a reason on the expanded surfaces — exactly what <c>EntityRow</c> does — but stays transparent on the rail,
-    /// where a refusal sentence has no room and the pre-existing tile never carried the spec.</summary>
+    /// REFUSES with a reason — exactly what <c>EntityRow</c> does.</summary>
     public static SidebarCardDrop Drop(SidebarCardSurface surface, in SidebarLibraryEntry entry)
         => entry.Kind != SidebarEntryKind.Playlist ? SidebarCardDrop.None
          : entry.CanEdit ? SidebarCardDrop.Deposit
-         : surface == SidebarCardSurface.Rail ? SidebarCardDrop.None
          : SidebarCardDrop.Refuse;
 
     /// <summary>A card is a drag source (pin it, add its tracks to a playlist) unless it is a track — a track is never a pin
@@ -81,18 +78,18 @@ public static class SidebarCardRules
 
     /// <summary>The "…" glyph (the surface's own hot-revealed trailing button) exists on the hero row. A grid tile keeps the
     /// menu on right-click only: the shared corner "…" is a 30-DIP disc with 8 DIP of padding, which would cover a 24-110 DIP
-    /// cover. The rail tile has no placement for one at all.</summary>
+    /// cover.</summary>
     public static bool ShowsMenuGlyph(SidebarCardSurface surface) => surface == SidebarCardSurface.Hero;
 
-    /// <summary>The title a tile or a rail tile paints — Trap 5: an entry whose identity has not landed shows NOTHING, never
+    /// <summary>The title a tile paints — Trap 5: an entry whose identity has not landed shows NOTHING, never
     /// the raw uri fragment.</summary>
     public static string TitleOf(in SidebarLibraryEntry entry)
         => entry.Name.Length > 0 ? entry.Name
          : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? Sidebar.PaneText.ShortUri(entry.Uri)
          : "";
 
-    /// <summary>An entry with no title yet. The rail tile is label-less (its tooltip IS the title), so such an entry renders
-    /// as a bone instead of a tile with an empty tooltip — and, like an unresolved <c>EntityRow</c>, is not invokable.</summary>
+    /// <summary>An entry with no title yet, which renders as a bone instead of a tile with an empty title — and, like an
+    /// unresolved <c>EntityRow</c>, is not invokable.</summary>
     public static bool IsPending(in SidebarLibraryEntry entry) => TitleOf(in entry).Length == 0;
 
     /// <summary>The hero's title: the authored alias, then the resolved name, then the item's cached title, then the key's
@@ -208,37 +205,6 @@ public static partial class Sidebar
             };
         }
 
-        // ── the rail tile (label-less: the tooltip IS the title) ────────────────────────────────────────────────────
-
-        /// <summary>A projected entry as a rail tile: the cover at the detent's art edge (<see cref="SidebarRailMetrics.Art"/>),
-        /// the entry's menu on right-click (the same one the expanded row opens), and — for an editable playlist — the
-        /// track-deposit drop spec whose cue is the rail's own published uri (<see cref="PaneView.IsRailDropActive"/>).</summary>
-        public static Controls.CardData RailOf(PaneView o, string sectionId, in SidebarLibraryEntry entry, string sel,
-                                               in SidebarRailMetrics m)
-        {
-            var e = entry;
-            bool circular = e.Circular || e.Kind == SidebarEntryKind.Artist;
-            return new Controls.CardData(e.Uri, SidebarCardRules.TitleOf(in e), null, null,
-                ActivateOf(o, in e, e.Name), null, circular, DragOf(in e),
-                ShowMenu: SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Rail),
-                CoverOverride: Cover.Art(e.Cover, e.MosaicTiles, e.Id, m.Art, circular))
-            {
-                Selected = SidebarCardRules.Selected(in e, sel),
-                Menu = o.RailTileMenu(sectionId, in e),
-                Drop = DropOf(o, SidebarCardSurface.Rail, sectionId, in e),
-            };
-        }
-
-        /// <summary>A rail tile from a mode's own parts (Library V3's hand-placed tiles carry an item, not a projected entry):
-        /// the art, the title the tooltip shows, what a click does and whether it is the open route.</summary>
-        public static Controls.CardData RailOf(Element art, string title, string uri, Action? click, bool selected,
-                                               DropTargetSpec? drop = null)
-            => new(uri, title, null, null, click, null, false, null, ShowMenu: false, CoverOverride: art)
-            {
-                Selected = selected,
-                Drop = drop,
-            };
-
         // ── the shared pieces ────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Today's activation, exactly: a track plays, a routed entry navigates (naming the entry's own title),
@@ -271,14 +237,13 @@ public static partial class Sidebar
             return Drag.Source(() => PaneView.PayloadOf(in e, member), clickPrimary: true);
         }
 
-        /// <summary>The pane's own drop spec — one resolver, one commit. Rail tiles also publish the rail cue uri.</summary>
+        /// <summary>The pane's own drop spec — one resolver, one commit.</summary>
         static DropTargetSpec? DropOf(PaneView o, SidebarCardSurface surface, string sectionId, in SidebarLibraryEntry entry)
         {
             switch (SidebarCardRules.Drop(surface, in entry))
             {
                 case SidebarCardDrop.Deposit:
-                    return o.ResourceDropSpec(sectionId, slot: -1, entry.Uri, entry.Name,
-                        railCueUri: surface == SidebarCardSurface.Rail ? entry.Uri : null, isPlaylistRow: true);
+                    return o.ResourceDropSpec(sectionId, slot: -1, entry.Uri, entry.Name, isPlaylistRow: true);
                 case SidebarCardDrop.Refuse:
                     return o.ResourceDropSpec(sectionId, slot: -1, playlistUri: null, entry.Name, isPlaylistRow: true);
                 default:

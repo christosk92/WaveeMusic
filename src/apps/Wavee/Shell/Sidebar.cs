@@ -66,9 +66,8 @@ namespace Wavee;
 // `Sidebar.Resize.cs`.
 
 /// <summary>The expanded sidebar column's bounds. Issue #84 lowered the floor from 240 to 180 so the pane can go
-/// genuinely narrow; 460 is the ceiling. The collapsed rail's widths are the detents of
-/// <see cref="SidebarRailMetrics"/> — a real surface, not a stub: both layers stay mounted and cross-fade, so text
-/// never reflows through a rail-width layout.</summary>
+/// genuinely narrow; 460 is the ceiling. The collapsed rail is 48 DIP (`SidebarRowGeometry.RailWidth`), the same list
+/// planned compact.</summary>
 public static class SidebarPaneBounds
 {
     /// <summary>THE clamp pair. Every writer goes through it.</summary>
@@ -90,16 +89,10 @@ public static partial class Sidebar
     // CALLER's and they ALIAS: the plan points into them, so a caller keeps two and alternates — otherwise the
     // outgoing rows die under the diff that is still reading them.
 
-    /// <summary>(document × projection) → ONE flat row array, for the expanded pane.</summary>
+    /// <summary>(document × projection) → ONE flat row array, for the expanded pane or, <paramref name="compact"/>, the 48 rail.</summary>
     public static SidebarRowPlan Plan(SidebarCustomLayout layout, in SidebarProjectionInput input,
-                                      SidebarPlanBuffers buffers)
-        => SidebarRowPlanner.Build(layout, in input, buffers);
-
-    /// <summary>The 56-DIP rail's own plan — the same document, projected down to tiles (uncapped; the rail is
-    /// virtualized, so it tiles every entry the pane would list).</summary>
-    public static SidebarRowPlan PlanRail(SidebarCustomLayout layout, in SidebarProjectionInput input,
-                                          SidebarPlanBuffers buffers)
-        => SidebarRowPlanner.BuildRail(layout, in input, buffers);
+                                      SidebarPlanBuffers buffers, bool compact = false)
+        => SidebarRowPlanner.Build(layout, in input, buffers, compact);
 
     /// <summary>The customize canvas: one uniform card per section, over the LIVE pane. There is no preview of a
     /// sidebar; there is the sidebar.</summary>
@@ -670,6 +663,7 @@ public static class SidebarRowExtents
                 return SidebarRowGeometry.PitchOf(shape);
             case SidebarRowKind.Empty: return EmptyHeight(section);
             case SidebarRowKind.TreeEnd: return SidebarRowGeometry.TreeEndHeight;
+            case SidebarRowKind.SectionTile: return SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph);
             case SidebarRowKind.EntityCard: return SidebarRowGeometry.CardHeightFor(section.Opts.Density);
             case SidebarRowKind.PromptRow: return SidebarRowGeometry.PromptHeight(section.Kind != SidebarSectionKind.Concerts);
             case SidebarRowKind.SectionCard: return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
@@ -697,109 +691,6 @@ public static class SidebarRowExtents
                 section.Opts.Density, section.Opts.Subtitles, section.Opts.Artwork)),
             _ => SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
         };
-    }
-}
-
-/// <summary>What rail item <c>index</c> is, in the rail's ONE virtualized list — the head chrome, a plan row, or the
-/// footer chrome. <see cref="SidebarRailItems.None"/> is a transient out-of-range answer, never a thrown exception
-/// (the count signal lands one layout effect after the plan, same discipline as every other rail/pane read).</summary>
-public enum SidebarRailItemKind : byte { Head, Row, Footer, None }
-
-/// <summary>The rail's ONE scroller now carries head chrome, plan rows AND footer chrome as ONE list (the owner
-/// reported the split-frame version back: pinning head/footer OUTSIDE the scroller left the virtualized viewport
-/// between them showing ~2 tiles on a normal window — the OLD unvirtualized rail scrolled everything as one surface,
-/// and tiles need the whole height back). This is the ONE pure index map every rail consumer (the layout's extent
-/// function, the slot's content dispatch, the row-count signal) shares, so they cannot independently disagree about
-/// which index means what.</summary>
-public static class SidebarRailItems
-{
-    /// <summary>The full item count: the optional head item, every plan row, the optional footer item.</summary>
-    public static int Count(bool hasHead, bool hasFooter, int rowCount)
-        => (hasHead ? 1 : 0) + rowCount + (hasFooter ? 1 : 0);
-
-    /// <summary>Item <paramref name="index"/>'s kind, and — for a <see cref="SidebarRailItemKind.Row"/> — the index
-    /// into <c>RailPlan.Rows</c> it addresses (-1 for Head/Footer/None). Head is always item 0 when present; footer
-    /// is always the LAST item when present; everything between is rows, in plan order, unshifted.</summary>
-    public static (SidebarRailItemKind Kind, int RowIndex) Map(int index, bool hasHead, bool hasFooter, int rowCount)
-    {
-        if (index < 0) return (SidebarRailItemKind.None, -1);
-        int i = index;
-        if (hasHead)
-        {
-            if (i == 0) return (SidebarRailItemKind.Head, -1);
-            i--;
-        }
-        if (i < rowCount) return (SidebarRailItemKind.Row, i);
-        i -= rowCount;
-        if (hasFooter && i == 0) return (SidebarRailItemKind.Footer, -1);
-        return (SidebarRailItemKind.None, -1);
-    }
-}
-
-/// <summary>The rail's row geometry — PURE and directly testable (no owner, no component, no measurement),
-/// mirroring how <see cref="SidebarRowExtents"/> serves the pane's own variable-extent layout. Detail hero + full
-/// rail plan, Part 2: the rail is a virtualized list over the SAME uncapped rail plan the pane's own list
-/// renders (`Shell/Sidebar.UI.Rail.cs`'s <c>Rail</c>), so its layout needs an extent function too. Every tile
-/// dimension comes from the <see cref="SidebarRailMetrics"/> of the user's rail detent.</summary>
-public static class SidebarRailExtents
-{
-    /// <summary>A rule ROW's extent: the rail's divider own height (1) plus its vertical margin (4 + 4). The divider
-    /// is drawn RAW (no wrapper), so this is also exactly what the slot measures. Detent-independent.</summary>
-    public const float DividerExtent = 9f;
-
-    /// <summary>The gap between two tiles in the head's column: a tile ROW's <see cref="Pitch"/> is exactly one tile
-    /// plus one of these.</summary>
-    public const float TileGap = 6f;
-
-    /// <summary>A tile ROW's extent: the detent's tile plus the <see cref="TileGap"/> the old, unvirtualized column's
-    /// `Gap` used to add after every child. The slot wraps its tile in a box of exactly this height, so the layout's
-    /// seed and its real measurement always agree — no post-realize correction pass for the common row.</summary>
-    public static float Pitch(in SidebarRailMetrics m) => m.Pitch;
-
-    /// <summary>The head item's EXACT extent for a head of <paramref name="tiles"/> tiles — what its slot renders
-    /// (`Rail.RailSlot`'s Head arm: the <see cref="TopPad"/>, the tile column with <see cref="TileGap"/> between tiles,
-    /// then the rule). The seed and the measurement agree, so a reseed (every wholesale republish) never corrects the head.
-    /// The V3 head of five destinations + Home is 287 DIP at the Default detent; the old two-tile guess (101) was
-    /// re-corrected by 186 DIP on every reseed — the rail's "jump on selection" (2026-09-25, item J).</summary>
-    public static float HeadExtentOf(int tiles, in SidebarRailMetrics m)
-    {
-        if (tiles < 0) tiles = 0;
-        return TopPad + tiles * m.Tile + (tiles > 0 ? (tiles - 1) * TileGap : 0f) + DividerExtent;
-    }
-
-    /// <summary>The footer item's SEED (a rule + the mode's footer content + a rule + the layout-menu tile, rough
-    /// shape) — MEASURED, corrected on realize.</summary>
-    public const float FooterEstimate = 230f;
-
-    /// <summary>The rail's own top inset (the old unvirtualized column's <c>Padding(0,8,0,12)</c>'s top term) —
-    /// carried by whichever item lands FIRST in the ONE list: the head when the mode supplies one, else the first
-    /// plan row.</summary>
-    public const float TopPad = 8f;
-
-    /// <summary>The rail's own bottom inset — carried by whichever item lands LAST: the footer when the mode
-    /// supplies one (or the layout menu), else the last plan row.</summary>
-    public const float BottomPad = 12f;
-
-    /// <summary>The rail layout's analytic seed for item <paramref name="index"/> in the rail's ONE list (head, rows,
-    /// footer — <see cref="SidebarRailItems.Map"/>): <see cref="HeadExtentOf"/> of <paramref name="headTiles"/> for the head
-    /// (exact), <see cref="FooterEstimate"/> for the footer; the detent's pitch/<see cref="DividerExtent"/> for a plan row, plus <see cref="TopPad"/>/
-    /// <see cref="BottomPad"/> on the edge row when there is no head/footer to carry it instead — folded in here so
-    /// the seed and the row slot's own rendered height (`Rail.RailSlot`) always agree exactly, edge row included.
-    /// Out of range answers the common (tile) case rather than throwing.</summary>
-    public static float ExtentOf(IReadOnlyList<SidebarRow> rows, int index, bool hasHead, bool hasFooter, int headTiles,
-                                 in SidebarRailMetrics m)
-    {
-        ArgumentNullException.ThrowIfNull(rows);
-        var (kind, rowIndex) = SidebarRailItems.Map(index, hasHead, hasFooter, rows.Count);
-        if (kind == SidebarRailItemKind.Head) return HeadExtentOf(headTiles, in m);
-        if (kind == SidebarRailItemKind.Footer) return FooterEstimate;
-        if (kind != SidebarRailItemKind.Row) return m.Pitch;
-
-        float extent = (uint)rowIndex < (uint)rows.Count && rows[rowIndex].Kind == SidebarRowKind.Divider
-            ? DividerExtent : m.Pitch;
-        if (!hasHead && rowIndex == 0) extent += TopPad;
-        if (!hasFooter && rowIndex == rows.Count - 1) extent += BottomPad;
-        return extent;
     }
 }
 
@@ -1113,25 +1004,19 @@ public readonly record struct SidebarNavLayout(bool MoveUp, bool MoveDown, bool 
     }
 }
 
-/// <summary>A settled docked-pane observation. Deliberately separate from the persisted preferences — these
-/// are rendered TERMINAL-STATE facts captured by the shell after a transition settles.
-/// <see cref="PresentedWidth"/> is what the shell's presentation effect decided; <see cref="RenderedPaneWidth"/> is
-/// what the column actually laid out at.</summary>
+/// <summary>A settled pane observation (the presentation as decided, plus the column's laid-out width).</summary>
 public readonly record struct SidebarPaneFrameSnapshot(
     SidebarDesign Design,
-    SidebarRegime Regime,
-    SidebarRailDetent Detent,
-    bool LastResort,
+    SidebarPaneMode Mode,
+    SidebarWindowBand Band,
+    bool UserCollapsed,
+    bool OverlayOpen,
     float PreferredExpandedWidth,
     float PresentedWidth,
-    float RenderedPaneWidth,
-    float ExpandedOpacity,
-    float RailOpacity,
-    bool ExpandedHitTestVisible,
-    bool RailHitTestVisible);
+    float RenderedPaneWidth);
 
 /// <summary>All terminal-state violations detected in one observation. Flags make one diagnostic edge sufficient
-/// even when one bad state breaks width, opacity, and hit testing at the same time.</summary>
+/// even when one bad state breaks width and mode at the same time.</summary>
 [Flags]
 public enum SidebarPaneInvariantFault : ushort
 {
@@ -1142,8 +1027,8 @@ public enum SidebarPaneInvariantFault : ushort
     ExpandedWidthOutOfRange = 1 << 3,
     PresentedExceedsPreferred = 1 << 4,
     ExpandedWidthMismatch = 1 << 5,
-    LayerOpacityMismatch = 1 << 6,
-    HitTestOwnerMismatch = 1 << 7,
+    MinimalNotEmpty = 1 << 6,
+    ModeBandMismatch = 1 << 7,
 }
 
 /// <summary>Pure terminal-state validator behind the screenshot/layout probe and the runtime edge diagnostic. It does
@@ -1152,45 +1037,30 @@ public static class SidebarPaneInvariant
 {
     public const float Tolerance = 0.5f;
 
-    public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot state)
+    public static SidebarPaneInvariantFault Inspect(in SidebarPaneFrameSnapshot s)
     {
-        if (!float.IsFinite(state.PreferredExpandedWidth)
-            || !float.IsFinite(state.PresentedWidth)
-            || !float.IsFinite(state.RenderedPaneWidth)
-            || !float.IsFinite(state.ExpandedOpacity)
-            || !float.IsFinite(state.RailOpacity))
+        if (!float.IsFinite(s.PreferredExpandedWidth) || !float.IsFinite(s.PresentedWidth) || !float.IsFinite(s.RenderedPaneWidth))
             return SidebarPaneInvariantFault.NonFiniteValue;
-
-        SidebarPaneInvariantFault fault = SidebarPaneInvariantFault.None;
-        if (!InExpandedRange(state.PreferredExpandedWidth))
-            fault |= SidebarPaneInvariantFault.PreferredWidthOutOfRange;
-
-        // The last-resort band presents the rail at the user's detent, whatever the stored regime says.
-        bool rail = state.Regime == SidebarRegime.Rail || state.LastResort;
-        if (rail)
+        var fault = SidebarPaneInvariantFault.None;
+        if (!InExpandedRange(s.PreferredExpandedWidth)) fault |= SidebarPaneInvariantFault.PreferredWidthOutOfRange;
+        // A forced band can only present its forced mode.
+        if ((s.Band == SidebarWindowBand.Narrow && s.Mode != SidebarPaneMode.Compact)
+            || (s.Band == SidebarWindowBand.Tiny && s.Mode != SidebarPaneMode.Minimal))
+            fault |= SidebarPaneInvariantFault.ModeBandMismatch;
+        switch (s.Mode)
         {
-            if (!Near(state.RenderedPaneWidth, SidebarResizeRules.StripOf(state.Detent)))
-                fault |= SidebarPaneInvariantFault.RailWidthMismatch;
-            if (!Near(state.ExpandedOpacity, 0f) || !Near(state.RailOpacity, 1f))
-                fault |= SidebarPaneInvariantFault.LayerOpacityMismatch;
-            if (state.ExpandedHitTestVisible || !state.RailHitTestVisible)
-                fault |= SidebarPaneInvariantFault.HitTestOwnerMismatch;
+            case SidebarPaneMode.Compact:
+                if (!Near(s.RenderedPaneWidth, SidebarRowGeometry.RailWidth)) fault |= SidebarPaneInvariantFault.RailWidthMismatch;
+                break;
+            case SidebarPaneMode.Minimal:
+                if (!Near(s.RenderedPaneWidth, 0f)) fault |= SidebarPaneInvariantFault.MinimalNotEmpty;
+                break;
+            default:
+                if (!InExpandedRange(s.PresentedWidth)) fault |= SidebarPaneInvariantFault.ExpandedWidthOutOfRange;
+                if (s.PresentedWidth > s.PreferredExpandedWidth + Tolerance) fault |= SidebarPaneInvariantFault.PresentedExceedsPreferred;
+                if (!Near(s.RenderedPaneWidth, s.PresentedWidth)) fault |= SidebarPaneInvariantFault.ExpandedWidthMismatch;
+                break;
         }
-        else
-        {
-            if (!InExpandedRange(state.PresentedWidth))
-                fault |= SidebarPaneInvariantFault.ExpandedWidthOutOfRange;
-            // The window may yield the pane below the preference, never above it.
-            if (state.PresentedWidth > state.PreferredExpandedWidth + Tolerance)
-                fault |= SidebarPaneInvariantFault.PresentedExceedsPreferred;
-            if (!Near(state.RenderedPaneWidth, state.PresentedWidth))
-                fault |= SidebarPaneInvariantFault.ExpandedWidthMismatch;
-            if (!Near(state.ExpandedOpacity, 1f) || !Near(state.RailOpacity, 0f))
-                fault |= SidebarPaneInvariantFault.LayerOpacityMismatch;
-            if (!state.ExpandedHitTestVisible || state.RailHitTestVisible)
-                fault |= SidebarPaneInvariantFault.HitTestOwnerMismatch;
-        }
-
         return fault;
     }
 
@@ -1204,8 +1074,7 @@ public static class SidebarPaneInvariant
     }
 
     static bool InExpandedRange(float width) =>
-        width >= SidebarPaneBounds.NavPaneMinW - Tolerance
-        && width <= SidebarPaneBounds.NavPaneMaxW + Tolerance;
+        width >= SidebarPaneBounds.NavPaneMinW - Tolerance && width <= SidebarPaneBounds.NavPaneMaxW + Tolerance;
 
     static bool Near(float actual, float expected) => MathF.Abs(actual - expected) <= Tolerance;
 }
@@ -1454,6 +1323,9 @@ public enum SidebarRowKind : byte
     // at the end" had no drop target: the old create row squatted that slot and accepted rootlist payloads, so
     // dragging a playlist below everything duplicated it instead of moving it. APPENDED, never inserted.
     TreeEnd       = 14,
+    // A COLLAPSED section in the compact rail (design V.9): one 40×36 glyph tile whose click opens a flyout of the
+    // section's rows. Key == section id, EntryIndex == -1.
+    SectionTile   = 15,
 }
 
 /// <summary>POD. No strings are allocated during planning: labels resolve at render time from the referenced
@@ -1575,54 +1447,20 @@ public static class SidebarRowPlanner
     /// (still finite) ceiling instead.</para></summary>
     public const int DynamicSectionRowCap = 20_000;
 
-    /// <summary>Recents are a glance, not a list — the ONE intentional rail cap that survives virtualization
-    /// (Detail hero + full rail plan, Part 2). Every other rail section tiles in full, exactly as the pane lists it;
-    /// <see cref="DynamicSectionRowCap"/> is the one finite guard, shared with the pane.</summary>
-    public const int RailJumpBackInCap = 4;
-
     const int SkeletonRows = 3;
 
     /// <summary>Deterministic: same inputs -> identical plan. Called from a UseMemo keyed on a DepKey of
     /// (documentRevision, projectionRevision, pinRevision, searchText, cultureEpoch).</summary>
     public static SidebarRowPlan Build(SidebarCustomLayout layout, in SidebarProjectionInput input,
-        SidebarPlanBuffers? buffers = null)
+        SidebarPlanBuffers? buffers = null, bool compact = false)
     {
         ArgumentNullException.ThrowIfNull(layout);
         var st = Begin(buffers);
         st.ExcludePinned = HasPinnedSection(layout);
+        st.Compact = compact;
 
         var sections = layout.Sections;
         for (int i = 0; i < sections.Count; i++) PlanSection(sections[i], 0, in input, ref st);
-
-        return new SidebarRowPlan(st.Rows, st.Entries, input.Revision);
-    }
-
-    /// <summary>The 56-DIP rail plan: tiles only, from sections with <c>ShowInRail</c>.</summary>
-    public static SidebarRowPlan BuildRail(SidebarCustomLayout layout, in SidebarProjectionInput input,
-        SidebarPlanBuffers? buffers = null)
-    {
-        ArgumentNullException.ThrowIfNull(layout);
-        var st = Begin(buffers);
-        st.ExcludePinned = HasPinnedSection(layout);
-
-        var sections = layout.Sections;
-        for (int i = 0; i < sections.Count; i++)
-        {
-            var s = sections[i];
-            if (s.Hidden || !SidebarSectionKinds.IsKnown(s.Kind)) continue;
-            // ShowInRail is the ONE option Header/Divider honour, so it gates them too.
-            if (!s.Opts.ShowInRail) continue;
-
-            // A rail has no headings: a Header collapses into the same compact divider a Divider draws.
-            if (s.Kind is SidebarSectionKind.Divider or SidebarSectionKind.Header)
-            {
-                st.DividerPending = true;
-                st.DividerSectionId = s.Id;
-                st.DividerDepth = 0;
-                continue;
-            }
-            RailSection(s, in input, ref st);
-        }
 
         return new SidebarRowPlan(st.Rows, st.Entries, input.Revision);
     }
@@ -1662,6 +1500,8 @@ public static class SidebarRowPlanner
         // An authored-off section contributes no rows, no rail tiles and no projection work. An unknown (future) kind
         // renders as nothing — it stays in the document and round-trips untouched.
         if (s.Hidden || !SidebarSectionKinds.IsKnown(s.Kind)) return;
+        // "Show in rail" off keeps the section in the pane but plans no tile in the compact rail.
+        if (st.Compact && !s.Opts.ShowInRail) return;
 
         if (s.Kind == SidebarSectionKind.Divider)
         {
@@ -1673,6 +1513,7 @@ public static class SidebarRowPlanner
 
         if (s.Kind == SidebarSectionKind.Header)
         {
+            if (st.Compact) { st.DividerPending = true; st.DividerSectionId = s.Id; st.DividerDepth = depth; return; }   // the rail has no headings
             Add(ref st, new SidebarRow(SidebarRowKind.HeaderLabel, s.Id, depth, -1, 0, s.Id));
             return;
         }
@@ -1681,8 +1522,16 @@ public static class SidebarRowPlanner
         // SectionHeader row of its own. TitleLocKey stays on the spec (the customizer still names the band); this
         // only suppresses the ROW. With no header row here, the quick layout menu host falls through to the next
         // SectionHeader — which the pane already picks as the plan's first header row.
-        if ((s.Title is not null || s.TitleLocKey is not null) && !SidebarIds.IsTopBar(s.Id))
-            Add(ref st, new SidebarRow(SidebarRowKind.SectionHeader, s.Id, depth, -1, 0, s.Id));
+        bool titled = (s.Title is not null || s.TitleLocKey is not null) && !SidebarIds.IsTopBar(s.Id);
+        if (st.Compact)
+        {
+            // The rail has no headers (they are 0 tall in WinUI's compact pane): a collapsed section is ONE tile, an
+            // expanded one plans its rows as tiles.
+            if (titled && s.Collapsed) { Add(ref st, Chrome(SidebarRowKind.SectionTile, s, depth)); return; }
+            PlanBody(s, depth, in input, ref st);
+            return;
+        }
+        if (titled) Add(ref st, new SidebarRow(SidebarRowKind.SectionHeader, s.Id, depth, -1, 0, s.Id));
 
         if (s.Collapsed) return;
 
@@ -1757,7 +1606,7 @@ public static class SidebarRowPlanner
         var pins = input.Pins;
         int start = st.Entries.Count;
         int cap = Cap(s, DynamicSectionRowCap);
-        bool grid = s.Opts.Presentation == SidebarPresentation.Grid;
+        bool grid = IsGrid(s, in st);
         if (pins is not null)
             for (int i = 0; i < pins.Count && st.Entries.Count - start < cap; i++)
             {
@@ -1770,7 +1619,7 @@ public static class SidebarRowPlanner
                     Add(ref st, new SidebarRow(pin.IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow,
                         s.Id, depth, at, 0, pin.Id));
 
-                if (pin.IsFolder && IsExpanded(input, FolderId(in pin)))
+                if (!st.Compact && pin.IsFolder && IsExpanded(input, FolderId(in pin)))
                     AppendPinnedFolderChildren(s, depth, in pin, start, cap, grid, in input, ref st);
             }
 
@@ -1885,7 +1734,7 @@ public static class SidebarRowPlanner
         }
 
         string? search = Search(input);
-        if (search is not null || s.Opts.Presentation == SidebarPresentation.Grid)
+        if (search is not null || IsGrid(s, in st))
             PlanFlatPlaylistTree(s, depth, tree, search, in input, ref st);
         else if (s.Query is null)
             PlanSourcePlaylistTree(s, depth, tree, in input, ref st);
@@ -1919,6 +1768,8 @@ public static class SidebarRowPlanner
                 if (e.Depth > hidePinDepth) continue;
                 hidePinDepth = -1;
             }
+            // The compact rail is top level only: a folder is a tile whose flyout holds its children.
+            if (st.Compact && e.Depth > 0) continue;
             if (HiddenByPin(in input, in st, in e))
             {
                 if (e.Kind == SidebarEntryKind.Folder) hidePinDepth = e.Depth;
@@ -1932,7 +1783,7 @@ public static class SidebarRowPlanner
             {
                 Add(ref st, new SidebarRow(SidebarRowKind.FolderHeader, s.Id, d, at, 0, e.Id));
                 emitted++;
-                if (!IsExpanded(input, e.FolderId))
+                if (st.Compact || !IsExpanded(input, e.FolderId))
                 {
                     int myDepth = e.Depth;
                     while (i + 1 < tree.Count && tree[i + 1].Depth > myDepth) i++;
@@ -1998,6 +1849,8 @@ public static class SidebarRowPlanner
         {
             if (visible[i] == 0) continue;
             var source = tree[i];
+            // The compact rail is top level only, as in PlanSourcePlaylistTree.
+            if (st.Compact && source.Depth > 0) continue;
             byte d = (byte)Math.Min(depth + source.Depth, byte.MaxValue);
             if (source.Kind == SidebarEntryKind.Folder)
             {
@@ -2005,7 +1858,7 @@ public static class SidebarRowPlanner
                 st.Entries.Add(source);
                 Add(ref st, new SidebarRow(SidebarRowKind.FolderHeader, s.Id, d, at, 0, source.Id));
                 emitted++;
-                if (!IsExpanded(input, source.FolderId))
+                if (st.Compact || !IsExpanded(input, source.FolderId))
                 {
                     int myDepth = source.Depth;
                     while (i + 1 < tree.Count && tree[i + 1].Depth > myDepth) i++;
@@ -2157,6 +2010,7 @@ public static class SidebarRowPlanner
         int idx = Resolve(in input, item.Key, ref st);
         // A missing entity is STILL a card (dimmed, from fallback title/image, play affordance hidden) —
         // EntryIndex == -1 is the signal, and the item is never auto-removed.
+        if (st.Compact) { if (idx >= 0) Add(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, depth, idx, 0, item.Key)); return; }
         Add(ref st, new SidebarRow(SidebarRowKind.EntityCard, s.Id, depth, idx, 0, item.Key));
     }
 
@@ -2208,240 +2062,6 @@ public static class SidebarRowPlanner
         if (emitted == 0 && emitEmpty) Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
     }
 
-    // ── rail plan ────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    static void RailSection(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
-    {
-        switch (s.Kind)
-        {
-            case SidebarSectionKind.Pinned:
-                // Cap applies only the section's own MaxItems (SidebarDisplayOptions) — the rail is virtualized, so
-                // every pin tiles unless the user asked for fewer.
-                RailFrom(s, input.Pins, Cap(s, int.MaxValue), skipHidden: true, ref st);
-                break;
-
-            case SidebarSectionKind.JumpBackIn:
-                RailFrom(s, s.Opts.Recents == SidebarRecentsSource.Played ? input.Played : input.Visited,
-                    Cap(s, RailJumpBackInCap), skipHidden: false, ref st);
-                break;
-
-            case SidebarSectionKind.CollectionShortcuts:
-            case SidebarSectionKind.StaticLinks:
-                RailItems(s, in input, ref st);
-                break;
-
-            case SidebarSectionKind.PlaylistTree:
-                RailTree(s, in input, ref st);
-                break;
-
-            case SidebarSectionKind.EntityList:
-                RailEntityList(s, in input, ref st);
-                break;
-
-            case SidebarSectionKind.CustomGroup:
-                RailItems(s, in input, ref st);
-                var kids = s.ChildList;
-                for (int i = 0; i < kids.Count; i++)
-                {
-                    var k = kids[i];
-                    if (k.Hidden || !k.Opts.ShowInRail || !SidebarSectionKinds.IsKnown(k.Kind)) continue;
-                    if (k.Kind is SidebarSectionKind.Divider or SidebarSectionKind.Header) continue;
-                    RailSection(k, in input, ref st);   // children's tiles, flattened
-                }
-                break;
-
-            case SidebarSectionKind.EntityEmbed:
-            {
-                var items = s.ItemList;
-                if (items.Count == 0 || items[0].Hidden) break;
-                int idx = Resolve(in input, items[0].Key, ref st);
-                if (idx < 0) break;                                 // placeholder items contribute no tile
-                AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, items[0].Key));
-                break;
-            }
-
-            case SidebarSectionKind.Concerts:
-                // One glyph tile navigating to the hub (a feed has no single cover).
-                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, s.Id));
-                break;
-
-            case SidebarSectionKind.Extension:
-                // A contribution gets ONE glyph tile in the rail: a 56-DIP strip cannot express a third-party list,
-                // and an unresolved contribution must not be able to fill the rail with prompts either. Tapping it
-                // expands.
-                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, s.Id));
-                break;
-
-            // NewReleases: ShowInRail is forced off for this kind — a releases feed has no meaningful single tile.
-            case SidebarSectionKind.NewReleases:
-            default:
-                break;
-        }
-    }
-
-    static void RailFrom(SidebarSectionSpec s, IReadOnlyList<SidebarLibraryEntry>? src, int cap, bool skipHidden,
-        ref PlanState st)
-    {
-        if (src is null) return;
-        int n = 0;
-        for (int i = 0; i < src.Count && n < cap; i++)
-        {
-            if (skipHidden && IsHiddenOverride(s, src[i])) continue;
-            int idx = st.Entries.Count;
-            st.Entries.Add(src[i]);
-            // A pinned/Jump-Back-In FOLDER needs the same FolderHeader tile RailTree draws (a glyph opening the
-            // rail's flyout) — never EntityRow, whose art/click paths assume a non-folder entry.
-            var kind = src[i].IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow;
-            AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, src[i].Id));
-            n++;
-        }
-    }
-
-    static void RailItems(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var items = s.ItemList;
-        for (int i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            if (item.Hidden) continue;
-
-            if (item.Target == SidebarItemTarget.Route)
-            {
-                if (IsRouteHiddenByPin(in input, in st, item.Key)) continue;
-                AddTile(ref st, new SidebarRow(SidebarRowKind.IconRow, s.Id, 0, -1, 0, item.Key));
-                continue;
-            }
-            if (item.Target == SidebarItemTarget.Track) continue;   // a track tile in a text-less rail is unreadable
-
-            int idx = Resolve(in input, item.Key, ref st);
-            if (idx < 0) continue;                                   // placeholder items are skipped
-            if (HiddenByPin(in input, in st, st.Entries[idx]))
-            {
-                st.Entries.RemoveAt(idx);
-                continue;
-            }
-            AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, idx, 0, item.Key));
-        }
-    }
-
-    static void RailTree(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var tree = input.PlaylistTree;
-        if (tree is null || tree.Count == 0) return;
-        // Every top-level entry tiles: the rail is virtualized (Sidebar.UI.Rail.cs), so a 200-playlist rootlist no
-        // longer races later sections for a shared tile budget — DynamicSectionRowCap, the same finite guard a
-        // projected section gets everywhere else, is the only ceiling.
-        int cap = DynamicSectionRowCap;
-        string? search = Search(input);
-
-        // A grid (and a search result) has no folder chrome — same flatten-to-entities projection the expanded pane
-        // uses. DELIBERATELY EXEMPT from the top-level-only rule below: this arm draws no folder tiles at all, so
-        // filtering by depth would make a nested playlist unreachable rather than merely un-tiled.
-        if (search is not null || s.Opts.Presentation == SidebarPresentation.Grid)
-        {
-            var q = SidebarSectionKinds.EffectiveQuery(SidebarSectionKind.PlaylistTree, s.Query);
-            int start = st.Entries.Count;
-            int hidePinDepth = -1;
-            for (int i = 0; i < tree.Count && st.Entries.Count - start < DynamicSectionRowCap; i++)
-            {
-                var entry = tree[i];
-                if (hidePinDepth >= 0)
-                {
-                    if (entry.Depth > hidePinDepth) continue;
-                    hidePinDepth = -1;
-                }
-                if (HiddenByPin(in input, in st, in entry))
-                {
-                    if (entry.Kind == SidebarEntryKind.Folder) hidePinDepth = entry.Depth;
-                    continue;
-                }
-                if (entry.Kind == SidebarEntryKind.Folder || !TreeLeafMatches(q, in entry, search)) continue;
-                st.Entries.Add(entry);
-            }
-
-            int count = st.Entries.Count - start;
-            if (s.Query is not null && count > 1)
-                System.Runtime.InteropServices.CollectionsMarshal.AsSpan(st.Entries).Slice(start, count)
-                    .Sort(new EntryOrder(q.Sort, q.Descending, input.PinnedIds));
-            if (count > cap)
-            {
-                st.Entries.RemoveRange(start + cap, count - cap);
-                count = cap;
-            }
-            for (int i = 0; i < count; i++)
-            {
-                var entry = st.Entries[start + i];
-                AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, start + i, 0, entry.Id));
-            }
-            return;
-        }
-
-        // With no query, the persisted rootlist order remains byte-for-byte today's rail. With a query, prune folders
-        // whose descendants no longer match and sort leaf slots only within their immediate folder.
-        if (s.Query is not null && !PrepareQueriedPlaylistTree(tree, s.Query, in input, ref st)) return;
-        int drawn = 0;
-        for (int i = 0; i < tree.Count && drawn < cap; i++)
-        {
-            if (s.Query is not null && st.TreeVisible[i] == 0) continue;
-            var source = tree[i];
-            // TOP LEVEL ONLY: a 56-DIP strip has no indent lane, so a nested tile read as an unexplained flat pile
-            // and doubled an expanded folder's tile count. A folder's contents stay reachable via its own flyout.
-            // Skipped BEFORE the per-parent sibling cursor below, so a slot we never draw never consumes it.
-            if (source.Depth > 0) continue;
-            SidebarLibraryEntry e;
-            if (s.Query is null || source.Kind == SidebarEntryKind.Folder) e = source;
-            else
-            {
-                int parentSlot = st.TreeParents[i] + 1;
-                e = tree[st.TreeLeaves[st.TreeCursors[parentSlot]++]];
-            }
-            // A pinned top-level entry (or folder) already has its own rail tile from the Pinned section — skip it
-            // here. Tested against the DRAWN entry, not the walked source slot: with a query, TreeCursors can
-            // reassign a different (reordered) leaf onto this position, so `source` and `e` diverge and only `e` is
-            // what the tile would actually show.
-            if (HiddenByPin(in input, in st, in e)) continue;
-            int idx = st.Entries.Count;
-            st.Entries.Add(e);
-            var kind = e.Kind == SidebarEntryKind.Folder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow;
-            AddTile(ref st, new SidebarRow(kind, s.Id, 0, idx, 0, e.Id));
-            drawn++;
-        }
-    }
-
-    static void RailEntityList(SidebarSectionSpec s, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var lib = input.Library;
-        if (lib is null) return;
-
-        var q = s.Query ?? SidebarEntityQuery.Default;
-        // The rail is virtualized (Sidebar.UI.Rail.cs), so a library section tiles in full like the pane lists it;
-        // DynamicSectionRowCap stays the one finite guard, exactly as for the pane.
-        int cap = s.Opts.MaxItems > 0 ? s.Opts.MaxItems : DynamicSectionRowCap;
-        int start = st.Entries.Count;
-
-        for (int i = 0; i < lib.Count; i++)
-        {
-            var e = lib[i];
-            if (!KindMatches(q.Kinds, e.Kind)) continue;
-            if (q.Qualifier != SidebarPlaylistQualifier.Any &&
-                (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier((byte)q.Qualifier))) continue;
-            if (!UriMatches(q, in e)) continue;
-            if (HiddenByPin(in input, in st, in e)) continue;
-            st.Entries.Add(e);
-        }
-
-        int count = st.Entries.Count - start;
-        if (count == 0) return;
-        if (count > 1)
-            System.Runtime.InteropServices.CollectionsMarshal.AsSpan(st.Entries).Slice(start, count)
-                .Sort(new EntryOrder(q.Sort, q.Descending, input.PinnedIds));
-        if (count > cap) { st.Entries.RemoveRange(start + cap, count - cap); count = cap; }
-
-        for (int i = 0; i < count; i++)
-            AddTile(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, 0, start + i, 0,
-                st.Entries[start + i].Id));
-    }
-
     // ── shared plumbing ──────────────────────────────────────────────────────────────────────────────────────────────
 
     struct PlanState
@@ -2456,9 +2076,12 @@ public static class SidebarRowPlanner
         public bool DividerPending;
         public string? DividerSectionId;
         public byte DividerDepth;
-        // Set once by Build/BuildRail (HasPinnedSection): does the document have a visible Pinned section? Gates
+        // Set once by Build (HasPinnedSection): does the document have a visible Pinned section? Gates
         // HiddenByPin/IsRouteHiddenByPin — stays false for BuildEdit, whose customize canvas must show every item.
         public bool ExcludePinned;
+        // Set by Build(compact: true): the 48-DIP rail's plan. Headers and the placeholder rows are not tiles, and a
+        // folder's children stay in its flyout (see Add and PlanSection).
+        public bool Compact;
     }
 
     static PlanState Begin(SidebarPlanBuffers? buffers)
@@ -2489,6 +2112,9 @@ public static class SidebarRowPlanner
         };
     }
 
+    /// <summary>The rail has no grid: a Grid section tiles its entries one per row, like a list.</summary>
+    static bool IsGrid(SidebarSectionSpec s, in PlanState st) => !st.Compact && s.Opts.Presentation == SidebarPresentation.Grid;
+
     /// <summary>The one row sink. A pending divider resolves HERE, which is what makes leading/trailing dividers
     /// vanish and consecutive dividers collapse — no post-pass, no second walk:
     ///   * TRAILING — a divider that is never followed by a row is simply never flushed;
@@ -2497,6 +2123,10 @@ public static class SidebarRowPlanner
     /// A hidden or empty-and-invisible section in between therefore cannot strand a rule either.</summary>
     static void Add(ref PlanState st, in SidebarRow row)
     {
+        // The compact rail has no placeholder rows: an empty hint, a skeleton, the tree's gutter and a prompt are all
+        // pane chrome with no tile to draw. One seam here, so no call site can forget it.
+        if (st.Compact && row.Kind is SidebarRowKind.Empty or SidebarRowKind.Skeleton or SidebarRowKind.TreeEnd
+                                      or SidebarRowKind.PromptRow) return;
         if (st.DividerPending)
         {
             st.DividerPending = false;
@@ -2509,10 +2139,6 @@ public static class SidebarRowPlanner
         st.Rows.Add(row);
     }
 
-    // The rail is virtualized (Sidebar.UI.Rail.cs), so a tile can no longer be refused for want of room — every
-    // caller still routes through this name (rather than `Add` directly) so a future rail-only rule has one seam.
-    static void AddTile(ref PlanState st, in SidebarRow row) => Add(ref st, row);
-
     static SidebarRow Chrome(SidebarRowKind kind, SidebarSectionSpec s, byte depth)
         => new(kind, s.Id, depth, -1, 0, s.Id);
 
@@ -2524,7 +2150,7 @@ public static class SidebarRowPlanner
     /// <summary>Turns an already-appended entry slice into rows: one EntityRow each, or GridColumns-wide GridStrips.</summary>
     static void EmitProjected(SidebarSectionSpec s, byte depth, int start, int count, ref PlanState st)
     {
-        if (s.Opts.Presentation == SidebarPresentation.Grid)
+        if (IsGrid(s, in st))
         {
             int cols = Math.Clamp(s.Opts.GridColumns, 2, 4);
             for (int i = 0; i < count; i += cols)
@@ -2591,7 +2217,7 @@ public static class SidebarRowPlanner
     }
 
     /// <summary>Does the document have a visible Pinned section — top-level or one level deep inside a CustomGroup
-    /// (the only nesting a section may have)? Computed once per Build/BuildRail and stashed on PlanState so every
+    /// (the only nesting a section may have)? Computed once per Build and stashed on PlanState so every
     /// walker reads a flag instead of re-scanning the document.</summary>
     static bool HasPinnedSection(SidebarCustomLayout layout)
     {

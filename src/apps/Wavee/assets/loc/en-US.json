@@ -1083,9 +1083,7 @@
       "designShort": "Design",
       "designSub": "Choose the left-hand navigation. Applies immediately.",
       "customize": "Customize sidebar",
-      "customizeSub": "Add, reorder and configure the sections in Custom",
-      "railSize": "Collapsed rail size",
-      "railSizeSub": "How wide the icon rail is when the sidebar is collapsed."
+      "customizeSub": "Add, reorder and configure the sections in Custom"
     },
     "notify": {
       "title": "Notifications",
@@ -2274,15 +2272,17 @@
       "folderMissing": "Not in your library on this device yet"
     },
     "rail": {
-      "size": "Collapsed rail size",
-      "compact": "Compact",
-      "default": "Default",
-      "large": "Large",
       "folderFlyoutBack": "Back"
     },
     "seam": {
       "announceWidth": "Sidebar width {width}",
-      "announceRail": "Icon rail, {size}"
+      "announceCollapsed": "Navigation collapsed"
+    },
+    "pane": {
+      "options": "Sidebar options",
+      "collapse": "Collapse navigation",
+      "expand": "Expand navigation",
+      "finishEditing": "Finish editing the sidebar first"
     },
     "header": {
       "options": "Section options"

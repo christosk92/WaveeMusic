@@ -26,10 +26,10 @@ public class ShellFrameGeometryTests
     }
 
     [Fact]
-    public void The_sidebar_seam_vanishes_only_in_the_last_resort_band()
+    public void The_sidebar_seam_vanishes_only_outside_the_wide_band()
     {
-        Assert.Equal(0f, Shell.FrameRules.SidebarSeamWidth(lastResort: true));
-        Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.SidebarSeamWidth(lastResort: false));
+        Assert.Equal(0f, Shell.FrameRules.SidebarSeamWidth(seamVisible: false));
+        Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.SidebarSeamWidth(seamVisible: true));
     }
 
     [Fact]

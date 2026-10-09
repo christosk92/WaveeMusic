@@ -98,11 +98,11 @@ public static class SidebarDesignInfo
 
 /// <summary>One design's remembered pane pair. Immutable so a snapshot can be handed around without aliasing the
 /// live state it came from.</summary>
-public readonly record struct SidebarPaneSnapshot(float Width, SidebarRegime Regime);
+public readonly record struct SidebarPaneSnapshot(float Width, bool Collapsed);
 
 /// <summary>
-/// The PURE per-design pane snapshot/restore rules behind a design switch: the expanded width and the regime
-/// (<c>sidebar.&lt;slug&gt;.collapsed</c> ⇔ Rail). The rail detent is GLOBAL, not per design, and is read separately.
+/// The PURE per-design pane snapshot/restore rules behind a design switch: the expanded width and the user's collapse
+/// (<c>sidebar.&lt;slug&gt;.collapsed</c>).
 /// </summary>
 public static class SidebarPaneState
 {
@@ -114,17 +114,13 @@ public static class SidebarPaneState
     public static void Snapshot(IAppSettings settings, SidebarDesign design, in SidebarPaneSnapshot state)
     {
         settings.Set(WidthKey(design), SidebarPaneBounds.Clamp(state.Width));
-        settings.Set(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design)), state.Regime == SidebarRegime.Rail);
+        settings.Set(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design)), state.Collapsed);
     }
 
     /// <summary>Read a design's remembered pane state.</summary>
     public static SidebarPaneSnapshot Restore(IAppSettings settings, SidebarDesign design)
         => new(SidebarPaneBounds.Clamp(settings.Get(WidthKey(design))),
-               settings.Get(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design))) ? SidebarRegime.Rail : SidebarRegime.Expanded);
-
-    /// <summary>The global collapsed-rail size; an unknown stored int is Default.</summary>
-    public static SidebarRailDetent RestoreDetent(IAppSettings settings)
-        => SidebarRailMetrics.Coerce(settings.Get(Platform.Keys.SidebarRailDetent));
+               settings.Get(Platform.Keys.SidebarCollapsed(SidebarDesignInfo.Slug(design))));
 }
 
 // ── 2. the one-time chooser gate ─────────────────────────────────────────────────────────────────────────────────────
@@ -274,7 +270,7 @@ public static class SidebarBuiltInDocuments
         {
             sections.Add(Divider(DividerToolsId));
             // Classic's flat DevTools row — deliberately header-less (a StaticLinks section with no title plans no
-            // SectionHeader row). ShowInRail off: a bare glyph with no label reads as a stray tile in the 56-DIP rail.
+            // SectionHeader row). ShowInRail off: a bare glyph with no label reads as a stray tile in the 48-DIP rail.
             sections.Add(new SidebarSectionSpec(ToolsId, SidebarSectionKind.StaticLinks,
                 Title: null, TitleLocKey: null,
                 Hidden: false, Collapsed: false,

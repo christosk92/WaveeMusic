@@ -300,10 +300,10 @@ public class FrameWatchRulesTests
     [Fact]
     public void The_sidebar_pane_fault_logs_on_its_edge_only()
     {
-        var bad = SidebarPaneInvariantFault.LayerOpacityMismatch;
+        var bad = SidebarPaneInvariantFault.RailWidthMismatch;
         Assert.True(Diagnostics.PaneFaultEdge(SidebarPaneInvariantFault.None, bad));
         Assert.False(Diagnostics.PaneFaultEdge(bad, bad));                                            // persistent: once
-        Assert.True(Diagnostics.PaneFaultEdge(bad, SidebarPaneInvariantFault.HitTestOwnerMismatch));  // a different fault
+        Assert.True(Diagnostics.PaneFaultEdge(bad, SidebarPaneInvariantFault.MinimalNotEmpty));       // a different fault
         Assert.False(Diagnostics.PaneFaultEdge(bad, SidebarPaneInvariantFault.None));                 // recovery is silent
     }
 
