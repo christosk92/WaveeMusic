@@ -340,7 +340,7 @@ public static partial class Diagnostics
                 {
                     Base(playing: false);   // the motion is the point; a real-data run must not take the account's playback over for it
                     if (BenchHooks.ToggleSidebarSection is not { } toggle) return Skip("no sidebar pane mounted");
-                    string section = SidebarBuiltInDocuments.PlaylistsId;
+                    string section = SidebarCatalogue.IdOf(SidebarSectionKind.Playlists);
                     bool collapsed = false;
                     void Flip() { collapsed = !collapsed; toggle(section, collapsed); s_poseProbe?.Mark(host); }
                     if (o.Shots) Shots(name, host, w, Flip);

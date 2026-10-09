@@ -12,6 +12,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
+  discography, the Blend card, log rows, episode replies and an album's "Show all" now open and close with one smooth
+  motion that is the same in both directions. Everything below moves along with it instead of jumping at the start or
+  end, a second click reverses it mid-way, and several sidebar sections can open or close at once instead of the
+  earlier one snapping shut.
 - **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
   bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
   full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in

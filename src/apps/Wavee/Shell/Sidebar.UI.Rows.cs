@@ -580,9 +580,9 @@ public static partial class Sidebar
     // ══ 3. THE CHEVRON AND THE SELECTION PILL ════════════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// THE one disclosure chevron: ONE glyph whose Rotation rides <c>MotionTokenId.DisclosureChevron</c> (167 ms,
-    /// cubic-bezier(.167,.167,0,1)) through <c>SeedValue</c>, so the token owns the dynamics AND the reduced-motion policy.
-    /// Never a glyph swap — a swap teleports while the section beside it animates.
+    /// THE one disclosure chevron: ONE glyph whose Rotation rides <c>MotionTokenId.Reveal</c> — the SAME spring as the band
+    /// it discloses, so the glyph and the rows land together — through <c>SeedValue</c>, so the token owns the dynamics AND
+    /// the reduced-motion policy. Never a glyph swap — a swap teleports while the section beside it animates.
     ///
     /// <para>A Component because the rotation needs a node ref and an edge-triggered effect — hooks a recycling slot must
     /// not grow conditionally. <c>open</c> and <c>identity</c> are read inside the effect, never in Render, so their signal
@@ -598,19 +598,21 @@ public static partial class Sidebar
         readonly Func<int>? _identity;
         readonly string _glyph;
         readonly float _size, _openDeg;
+        readonly bool _accent;
 
-        Chevron(Func<bool> open, Func<int>? identity, string glyph, float size, float openDeg)
+        Chevron(Func<bool> open, Func<int>? identity, string glyph, float size, float openDeg, bool accent)
         {
-            _open = open; _identity = identity; _glyph = glyph; _size = size; _openDeg = openDeg;
+            _open = open; _identity = identity; _glyph = glyph; _size = size; _openDeg = openDeg; _accent = accent;
         }
 
         /// <summary>A SECTION header's chevron: ChevronDown at rest, rotated 180° when the section is open.</summary>
         public static Element Section(Func<bool> open, float size = 10f, Func<int>? identity = null)
-            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronDown, size, 180f));
+            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronDown, size, 180f, accent: false));
 
-        /// <summary>A DISCLOSURE chevron (a folder row / tree row): ChevronRight at rest, rotated 90° when expanded.</summary>
-        public static Element Disclosure(Func<bool> open, float size = 10f, Func<int>? identity = null)
-            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronRight, size, 90f));
+        /// <summary>A DISCLOSURE chevron (a folder row / tree row): ChevronRight at rest, rotated 90° when expanded.
+        /// <paramref name="accentWhenOpen"/> inks it with the accent while open (the track table's expand cell).</summary>
+        public static Element Disclosure(Func<bool> open, float size = 10f, Func<int>? identity = null, bool accentWhenOpen = false)
+            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronRight, size, 90f, accentWhenOpen));
 
         public override Element Render()
         {
@@ -649,7 +651,7 @@ public static partial class Sidebar
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 HitTestVisible = false,
                 OnRealized = h => node.Value = h,
-                Children = [Icon(_glyph, _size, Tok.TextTertiary)],
+                Children = [Icon(_glyph, _size) with { Color = _accent ? Prop.Of(() => _open() ? Tok.AccentTextPrimary : Tok.TextSecondary) : (Prop<ColorF>)Tok.TextTertiary }],
             };
         }
     }
