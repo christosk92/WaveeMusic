@@ -35,6 +35,13 @@
 // in-page band (the hero collapses to the latched floor, Detail.BandLayout.FloorLatch). A tab click calls the publication's
 // OnPivot, which scrolls the page exactly as the band's own tab does.
 //
+// THE DETAIL PAGES' ROW (A3). An album or a playlist (vertical arm) publishes the same band with no tabs: the title with its
+// byline, then Find, Filter, Insights and Play. Two arms share the row in place, both always mounted so the tree shape never
+// changes when a page publishes: the SELECTION arm (Flow.Show on the page's SelectionVisible signal) cross-fades over the whole
+// cluster while rows are selected, and the SEARCH swap (Flow.Show on SearchExpanded) puts the field in the title's slot. The
+// two-column arm publishes the title only. Liked Songs is a Library page (its row 2 is Library's sub-pivots) and keeps its
+// in-page band, so it never publishes (Detail.BandLayout.PublishesToRow2).
+//
 // ROLES. The pivots carry Role Tab, like the stock SelectorBar items (it was NavigationItem). They stay a band-private item
 // builder rather than an engine SelectorBar because SelectorBar auto-selects on focus entry with no selection, which
 // would navigate. Their text is the two Zune type roles and nothing else (Design.Type.ZunePivot 28/36 for row 1,
@@ -394,6 +401,30 @@ public static partial class Sidebar
                 ? SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(12, 0f), 12f) with { Key = "zune:ctx:title" }
                 : TitleWord(title, pub?.OnTitle);
 
+            // The title group (title, then the byline when the page has one) and the search swap: the expanded field takes the
+            // TITLE's slot, never the actions'. The field is sized from the page column, not this row, so the slot shrinks and clips
+            // it rather than letting a narrow window push the actions out. Both layers are ALWAYS composed, so a page publishing its search changes nothing.
+            Element titleGroup = new BoxEl
+            {
+                Key = "zune:ctx:lead", Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                Children = pub?.Byline is { Length: > 0 } byline
+                    ? [titleEl, Detail.BandByline(byline) with { Key = "zune:ctx:byline" }]
+                    : [titleEl],
+            };
+            var searchOpen = pub?.SearchExpanded ?? s_never;
+            Element lead = new BoxEl
+            {
+                Key = "zune:ctx:leadslot", Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = 0f, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    Flow.Show(() => !searchOpen.Value, titleGroup),
+                    Flow.Show(() => searchOpen.Value, new BoxEl
+                    {
+                        Key = "zune:ctx:search", Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [pub?.SearchField?.Invoke() ?? new BoxEl()],
+                    }),
+                ],
+            };
+
             // The pivots: a skeleton layer and the live tabs share one lane and cross-fade in place. The divider is part of the
             // cluster, so it is present exactly when the lane is.
             bool hasPivots = live ? pub!.Pivots.Count > 0 : seedPivots > 0;
@@ -460,13 +491,30 @@ public static partial class Sidebar
                 };
             }
 
+            // The cluster and the selection arm share the row: a ZStack of the row's height whose two layers swap on the page's own
+            // SelectionVisible signal (the Hero idiom), so a selection never changes the row's size, only what it shows.
+            var selectionOn = pub?.SelectionVisible ?? s_never;
+            Element cluster = new BoxEl
+            {
+                Key = "zune:ctx:cluster", Direction = 0, Height = rowH, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                Children = Detail.BandCluster(lead, pivotsEl, actionsEl, rowH),
+            };
+            Element selection = new BoxEl
+            {
+                Key = "zune:ctx:selection", Direction = 1, Height = rowH, MinWidth = 0f, Justify = FlexJustify.Center, HitTestVisible = true,
+                Children = [pub?.SelectionBar?.Invoke() ?? new BoxEl()],
+            };
             return new BoxEl
             {
-                Key = "zune:sub:context:" + name, Direction = 0, Grow = 1f, Height = rowH, AlignItems = FlexAlign.Center,
-                MinWidth = 0f, Children = Detail.BandCluster(titleEl, pivotsEl, actionsEl, rowH),
+                Key = "zune:sub:context:" + name, ZStack = true, Grow = 1f, Height = rowH, MinWidth = 0f,
+                Children = [Flow.Show(() => !selectionOn.Value, cluster), Flow.Show(() => selectionOn.Value, selection)],
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
         }
+
+        /// <summary>A signal that is never true: the stand-in for a page's selection / search signal before it publishes, so the
+        /// row composes the same two layers either way.</summary>
+        static readonly Signal<bool> s_never = new(false);
 
         /// <summary>The page accent when a publication names none.</summary>
         static readonly Func<ColorF> s_defaultAccent = static () => Tok.AccentDefault;

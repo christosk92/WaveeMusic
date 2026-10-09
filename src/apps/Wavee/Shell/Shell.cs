@@ -2266,9 +2266,16 @@ public static partial class Shell
     /// <summary>What an entity page hands the Zune band: its title, its pivot words, the selected pivot and the action cluster.
     /// <see cref="Active"/> is the page's own signal; <see cref="OnPivot"/>, <see cref="Actions"/> and <see cref="OnTitle"/>
     /// are BEHAVIOUR, so a re-publish that changes only them updates silently. <see cref="Accent"/> is the page's accent for
-    /// the active tab's underline (the band falls back to the app accent).</summary>
+    /// the active tab's underline (the band falls back to the app accent).
+    /// <para>The detail pages (album, playlist) add: <see cref="Byline"/> (caption beside the title), the selection arm
+    /// (<see cref="SelectionVisible"/> + <see cref="SelectionBar"/>, which cross-fades over the row while rows are selected) and
+    /// the search swap (<see cref="SearchExpanded"/> + <see cref="SearchField"/>, which takes the title's slot while open). The
+    /// signals are the page's own (compared by reference); the factories are behaviour. <see cref="ActionsEpoch"/> is a page-owned
+    /// revision of what <see cref="Actions"/> builds (the Insights word joining the cluster): bumping it repaints the row.</para></summary>
     public sealed record PageBandPublication(string Title, IReadOnlyList<string> Pivots, IReadSignal<int> Active, Action<int> OnPivot,
-        Func<Element>? Actions = null, Action? OnTitle = null, Func<ColorF>? Accent = null);
+        Func<Element>? Actions = null, Action? OnTitle = null, Func<ColorF>? Accent = null,
+        string? Byline = null, IReadSignal<bool>? SelectionVisible = null, Func<Element>? SelectionBar = null,
+        IReadSignal<bool>? SearchExpanded = null, Func<Element>? SearchField = null, int ActionsEpoch = 0);
 
     public static class PageBands
     {
@@ -2287,6 +2294,10 @@ public static partial class Shell
             bool changed = !s_map.TryGetValue(routeName, out var old)
                 || !ReferenceEquals(old.Active, publication.Active)
                 || !string.Equals(old.Title, publication.Title, StringComparison.Ordinal)
+                || !string.Equals(old.Byline, publication.Byline, StringComparison.Ordinal)
+                || !ReferenceEquals(old.SelectionVisible, publication.SelectionVisible)
+                || !ReferenceEquals(old.SearchExpanded, publication.SearchExpanded)
+                || old.ActionsEpoch != publication.ActionsEpoch
                 || !SameLabels(old.Pivots, publication.Pivots);
             s_lru.Remove(routeName);
             s_lru.Add(routeName);

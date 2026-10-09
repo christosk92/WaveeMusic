@@ -43,7 +43,7 @@ public class DetailSkeletonGeometryTests
         Assert.False(plan.Artists);
         Assert.True(plan.Meta);
         Assert.Equal(Skeleton.RailTitleLines, plan.TitleLines);
-        Assert.Equal(3, plan.Fabs);                       // heart · Share · ⋯
+        Assert.Equal(4, plan.Fabs);                       // heart · Share · Insights · ⋯ (the Insights slot is reserved by kind)
         Assert.Equal(Skeleton.RailDescriptionLines, plan.DescriptionLines);
     }
 
@@ -73,7 +73,7 @@ public class DetailSkeletonGeometryTests
         var plan = Skeleton.RailPlanFor(DetailKind.Liked, BadgeStyle.None, heart: false, descriptionMaxLines: 6);
         Assert.False(plan.Owner);
         Assert.True(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // Share · ⋯
+        Assert.Equal(3, plan.Fabs);                       // Share · Insights · ⋯
         Assert.Equal(0, plan.DescriptionLines);
     }
 
@@ -103,7 +103,7 @@ public class DetailSkeletonGeometryTests
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+            Fabs: (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0) + (kind is DetailKind.Playlist or DetailKind.Liked ? 1 : 0),
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
 
         Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax));

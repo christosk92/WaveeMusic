@@ -1,5 +1,5 @@
 // ── Entities/Detail.Insights.cs ────────────────────────────────────────────────────────────────────────────────────
-// THE INSIGHTS SHEET — the vertical arm's host for the facts bento (approved prototype "Insights Sheet").
+// THE INSIGHTS SHEET — the host for the facts bento in EVERY arm (approved prototype "Insights Sheet").
 //
 // Role: UI
 // Owner: M
@@ -8,16 +8,20 @@
 //
 // ── WHY THIS EXISTS ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
-// A two-column detail page puts the facts bento in its left rail, beside the list. The VERTICAL (hero/stacked) arm has
-// no rail, so the bento used to be appended under the rows as a page footer nobody scrolled to. Here it becomes a
-// right-anchored sheet laid OVER the content, dismissed by Escape, the scrim, the close button, the toggle again, or
-// navigating away.
+// A playlist and Liked Songs carry a facts bento (cards, charts, lenses). It used to be a row of the two-column rail and, in
+// the vertical (hero/stacked) arm, a page footer nobody scrolled to. Now it is reached ONLY through the Insights toggle among
+// the page's primary actions and shown in a right-anchored sheet laid OVER the content, in every layout: the rail no longer
+// renders it inline. The sheet is dismissed by Escape, the scrim, the close button, the toggle again, or navigating away. It is
+// CLOSED on arrival and never opened by anything but the toggle's own click (width, route and data never open it), and it is an
+// overlay, so opening it moves neither the rail nor the list.
 //
-// TWO ENTRY POINTS, ONE CONTROL: the hero's toolbar row (§6) carries it while the reader is at the top of the page, and
-// the pinned 56-DIP context band (§7) carries it for the whole of the rest of the page — because the hero COLLAPSES,
-// and a sheet meant to be read ALONGSIDE the list cannot be opened from chrome that scrolls away. They are never both
-// legible (the band crossfades in exactly as the hero fades out) and never both interactive (input crosses with the
-// pin, not with the paint). §7 carries the whole argument.
+// ENTRY POINTS, ONE CONTROL: in the vertical arm the hero's toolbar row (§6) carries it while the reader is at the top of the
+// page, and the pinned 56-DIP context band (§7) carries it for the whole of the rest of the page (under Zune that band lives in
+// the Zune band's row 2, which never scrolls away) — because the hero COLLAPSES, and a sheet meant to be read ALONGSIDE the list
+// cannot be opened from chrome that scrolls away. In the two-column arms the rail's CTA group carries it (Detail.UI.cs
+// RailFabs, `InsightsToggleSlot`), in a slot reserved by kind (InsightsSheet.ToggleSlotReserved) that fades in when the facts settle. In
+// the vertical arm they are never both legible (the band crossfades in exactly as the hero fades out) and never both
+// interactive (input crosses with the pin, not with the paint). §7 carries the whole argument.
 //
 // ── WHAT IS ENGINE, AND WHAT IS OURS ─────────────────────────────────────────────────────────────────────────────────
 //
@@ -30,7 +34,7 @@
 // left-edge grip.
 //
 // The pane is composed in the SHARED FRAME (Detail.UI.cs), not per page: every facts-bearing page declares the SAME
-// `FrameSlots.LikedFacts` builder it already declares for the rail, and the frame decides which arm hosts it.
+// `FrameSlots.LikedFacts` builder, and the frame wraps BOTH arms in the overlay.
 //
 // NOT WIRED, ON PURPOSE: the grip is a visual only. An edge-swipe to open/close is undecided and the right edge is
 // contested by the transcript rail.
@@ -113,9 +117,9 @@ public static partial class Detail
 
     // ══ 3. THE FRAME SEAM ════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Wrap the vertical arm's page in the sheet's overlay. ALWAYS composed for a track page's vertical arm —
-    /// open or not, facts or not — so the page's own tree shape never changes when the facts arrive or the sheet opens
-    /// (the list keeps its scroll position and the hero keeps its measured height).
+    /// <summary>Wrap a track page (either arm) in the sheet's overlay. ALWAYS composed for a track page — open or not,
+    /// facts or not — so the page's own tree shape never changes when the facts arrive or the sheet opens (the list keeps
+    /// its scroll position, the hero keeps its measured height and the rail does not move).
     /// <para><paramref name="facts"/> null ⇒ the pane renders nothing and the toggle can never open it.</para></summary>
     public static Element InsightsOverlay(Element page, InsightsToggle toggle, Func<float, Element>? facts,
                                           float pageWidth, string routeKey, Action? onClosed)
@@ -300,7 +304,7 @@ public static partial class Detail
 
     /// <summary>The vertical arm's toolbar ROW: the table's own command bar and, trailing it, the sheet's toggle. With
     /// no toggle the bar IS the row — a page without facts composes exactly the tree it composed before.</summary>
-    static Element ToolbarRow(in HeroParts parts, InsightsToggle? insights)
+    static Element ToolbarRow(in HeroParts parts, InsightsToggle? insights, bool live)
     {
         Element bar = parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight };
         if (insights is null) return bar;
@@ -312,10 +316,22 @@ public static partial class Detail
                 // Direction 1 on the wrapper: a single-child row wrapper shrink-wraps its child on the MAIN axis, and
                 // the command bar must keep the whole remaining width to resolve its own promote/evict fit.
                 new BoxEl { Key = "vhero:toolbar", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [bar] },
-                InsightsToggleButton(insights),
+                InsightsToggleSlot(insights, live, "vhero:insights"),
             ],
         };
     }
+
+    static readonly MotionTokenDef s_toggleFade =
+        MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
+
+    /// <summary>The toggle's RESERVED slot: the button in a keyed box that is always present (so its width is in the layout from
+    /// the first frame), at opacity 0 and inert until the facts have settled <paramref name="live"/>, then faded in. A late fact
+    /// therefore never adds a button, moves a neighbour or changes a wrap.</summary>
+    public static Element InsightsToggleSlot(InsightsToggle toggle, bool live, string key) => new BoxEl
+    {
+        Key = key, Direction = 0, Shrink = 0f, Opacity = live ? 1f : 0f, HitTestVisible = live, IsEnabled = live,
+        Transition = s_toggleFade, Children = [InsightsToggleButton(toggle)],
+    };
 
     /// <summary>The vertical arm's toolbar button — reachable while the hero is expanded, which is precisely the range
     /// the pinned band cannot serve (there it is transparent and owns no input). Its tint is BOUND to the open signal
@@ -369,9 +385,12 @@ public static partial class Detail
     //     chrome is stuck (the chrome sticky's engaged edge → `TableHost._compactInteractive` → the band's HitTestVisible)
     //     and the hero's
     //     presentation stops taking them at the same edge. InsightsSheet.BandToggleTakesInput / HeroToggleTakesInput
-    //     state that invariant, and DetailInsightsSheetTests pins it: at every scroll position EXACTLY ONE of the two
-    //     is reachable. Dropping the hero one would therefore leave the whole pre-stuck range — the top of the page,
-    //     where a reader most naturally reaches for the facts — with no way to open the sheet at all.
+    //     state that invariant, and DetailInsightsSheetTests pins it: with the band in the page, at every scroll position
+    //     EXACTLY ONE of the two is reachable. Dropping the hero one would therefore leave the whole pre-stuck range — the
+    //     top of the page, where a reader most naturally reaches for the facts — with no way to open the sheet at all.
+    //     UNDER ZUNE the band's cluster lives in the Zune band's row 2 (Shell.PageBands), which never scrolls away: that
+    //     word is ALWAYS live (BandToggleTakesInput(bandStuck, inRow2: true)), so both entry points are visible and live
+    //     while the hero is expanded, and exactly the row-2 one once it has collapsed.
     //
     // Position in the cluster: Find · Filter · Insights · Play. The three verbs that shape WHAT YOU SEE sit together
     // and the one primary verb stays terminal.
@@ -382,10 +401,16 @@ public static partial class Detail
     /// <para>Its own component, so that opening or closing the sheet re-renders ONE word: the band is built by the
     /// table's <c>HeroPartsFor</c>, and reading the open signal out there would re-render the table host — and with it
     /// the list. The toggle instance is mount-stable per frame host (a propless factory is safe here: the field cannot
-    /// go stale, because a page that loses its facts unmounts this element outright rather than handing it a different
-    /// toggle).</para></summary>
-    public static Element InsightsBandAction(InsightsToggle toggle)
-        => Embed.Comp(() => new InsightsBandWord(toggle)) with { Key = "band:insights" };
+    /// go stale, because the slot is reserved by kind and stays mounted — the facts only fade it in, through <paramref name="live"/>).</para></summary>
+    public static Element InsightsBandAction(InsightsToggle toggle, bool live)
+        => new BoxEl
+        {
+            // The slot is reserved by kind: present (so the cluster and the search field's claim are final) but invisible and inert
+            // until the facts settle, then faded in.
+            Key = "band:insights", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Opacity = live ? 1f : 0f, HitTestVisible = live, IsEnabled = live, Transition = s_toggleFade,
+            Children = [Embed.Comp(() => new InsightsBandWord(toggle)) with { Key = "band:insights-word" }],
+        };
 
     sealed class InsightsBandWord(InsightsToggle toggle) : Component
     {

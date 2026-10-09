@@ -10,6 +10,7 @@
 
 using Xunit;
 using VerticalLayout = Wavee.Detail.VerticalLayout;
+using BandLayout = Wavee.Detail.BandLayout;
 
 namespace Wavee.Tests;
 
@@ -598,4 +599,131 @@ public class DetailVerticalLayoutTests
         Assert.True(b > 0f);
         Assert.Equal(0f, b % 8f);
     }
+
+    // ── the collapse floor (A3): 56 with the band in the page, 0 once it lives in the Zune band's row 2 ───────────────────
+
+    [Fact]
+    public void ToolbarOwnsSwaps_OnlyWhileTheBandIsInThePage()
+    {
+        Assert.True(VerticalLayout.ToolbarOwnsSwaps(false));
+        Assert.False(VerticalLayout.ToolbarOwnsSwaps(true));
+    }
+
+    [Fact]
+    public void BandFloor_IsTheBandInThePageAndZeroInRow2()
+    {
+        Assert.Equal(56f, VerticalLayout.BandFloor(false));
+        Assert.Equal(0f, VerticalLayout.BandFloor(true));
+        Assert.Equal(VerticalLayout.CompactIdentityHeight, VerticalLayout.BandFloor(false));
+    }
+
+    [Theory]
+    [InlineData(360f)]
+    [InlineData(260f)]
+    [InlineData(568f)]
+    public void CollapseDistance_IsTheHeroLessItsFloor(float h)
+    {
+        Assert.Equal(h, VerticalLayout.CollapseDistance(h, 0f));
+        Assert.Equal(h - 56f, VerticalLayout.CollapseDistance(h, 56f));
+        Assert.Equal(VerticalLayout.CollapseDistance(h, 56f), VerticalLayout.CollapseDistance(h));   // the one-arg form is the 56 form
+        Assert.Equal(1f, VerticalLayout.CollapseDistance(20f, 56f));                                    // never below 1
+    }
+
+    /// <summary>The engine's Collapse pairing (over = H - floor, minH = floor) makes the hero's presented bottom
+    /// <c>H - offset * (H - floor) / over</c>, clamped at the floor: that is <c>max(floor, H - offset)</c> at BOTH floors, so the
+    /// hero rides the rows 1:1 and no gap opens above the stuck column header whichever floor is latched.</summary>
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(56f)]
+    public void TheHerosPresentedBottomRidesTheRowsAtEitherFloor(float floor)
+    {
+        const float H = 360f;
+        float over = VerticalLayout.CollapseDistance(H, floor);
+        for (int offset = 0; offset <= (int)H; offset++)
+        {
+            float shown = H - MathF.Min(offset, over) * (H - floor) / over;
+            Assert.Equal(MathF.Max(floor, H - offset), shown, 3);
+        }
+    }
+
+    /// <summary>The floor flips only below the flip line, where the two pairings present identically: below it the presented
+    /// bottom is the same at 56 and 0, and the hero's fade and the band's reveal have not started at either floor.</summary>
+    [Theory]
+    [InlineData(260f)]
+    [InlineData(360f)]
+    [InlineData(568f)]
+    public void BelowTheFlipLineTheTwoFloorsPresentTheSame(float H)
+    {
+        float line = BandLayout.FlipLine(H);
+        Assert.True(line > 0f);
+        float over56 = VerticalLayout.CollapseDistance(H, 56f), over0 = VerticalLayout.CollapseDistance(H, 0f);
+        for (float o = 0f; o < line; o += 4f)
+        {
+            Assert.Equal(H - o, H - o * (H - 56f) / over56, 3);
+            Assert.Equal(H - o, H - o * H / over0, 3);
+            Assert.True(o <= VerticalLayout.ExpandedFadeStart(over56) && o <= VerticalLayout.ExpandedFadeStart(over0));
+            Assert.True(o <= VerticalLayout.CompactRevealStart(over56) && o <= VerticalLayout.CompactRevealStart(over0));
+        }
+    }
+
+    /// <summary>Latched at one placement, the floor holds above the line and adopts the wanted one below it.</summary>
+    [Fact]
+    public void TheFloorLatchHoldsAboveTheLineAndAdoptsBelowIt()
+    {
+        const float H = 360f;
+        float line = BandLayout.FlipLine(H);
+        Assert.False(BandLayout.FloorLatch(latched: false, wanted: true, offset: line + 1f, H));
+        Assert.True(BandLayout.FloorLatch(latched: true, wanted: false, offset: line + 1f, H));
+        Assert.True(BandLayout.FloorLatch(latched: false, wanted: true, offset: line - 1f, H));
+        Assert.False(BandLayout.FloorLatch(latched: true, wanted: false, offset: 0f, H));
+    }
+
+    // ── the clips follow the floor ──
+
+    [Fact]
+    public void TheStickyClipDropsTheBandsFiftySixInRow2()
+    {
+        Assert.Equal(VerticalLayout.StickyClipInset() - 56f, VerticalLayout.StickyClipInsetFor(true));
+        Assert.Equal(VerticalLayout.StickyClipInset(), VerticalLayout.StickyClipInsetFor(false));
+        Assert.Equal(VerticalLayout.StickyClipInset(48f, 32f) - 56f, VerticalLayout.StickyClipInsetFor(true, 48f, 32f));
+        Assert.Equal(VerticalLayout.ChromeExtent(), VerticalLayout.StickyClipInsetFor(true));           // the chrome alone
+    }
+
+    [Fact]
+    public void TheTrailingClipIsTheFloor()
+    {
+        Assert.Equal(VerticalLayout.TrailingClipInset, VerticalLayout.TrailingClipInsetFor(false));
+        Assert.Equal(0f, VerticalLayout.TrailingClipInsetFor(true));
+        Assert.Equal(VerticalLayout.BandFloor(true), VerticalLayout.TrailingClipInsetFor(true));
+    }
+
+    /// <summary>D49: the skeleton, the pre-measure collapse height and the loaded hero all derive the EXPANDED height from one
+    /// bucketed width, one flag set and one title plan. None of them takes the floor, so a floor flip can never change them; the
+    /// floor only changes where the collapse ends (and so its distance).</summary>
+    [Theory]
+    [InlineData(300f)]
+    [InlineData(560f)]
+    [InlineData(900f)]
+    public void TheExpandedHeightIsFloorIndependent(float w)
+    {
+        bool rowFlow = VerticalLayout.RowFlow(w);
+        float bw = VerticalLayout.BucketW(w);
+        float preMeasure = VerticalLayout.HeroBandHeight(bw, rowFlow, true, true, true, true, title: "A Playlist");
+        var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, "A Playlist", true, true, true, false, false);
+        Assert.Equal(preMeasure, VerticalLayout.HeroBandHeight(bw, rowFlow, plan, true, true, true, true));
+        Assert.Equal(56f, VerticalLayout.CollapseDistance(preMeasure, 0f) - VerticalLayout.CollapseDistance(preMeasure, 56f));
+    }
+
+    // ── which routes publish their band into row 2 ──
+
+    [Theory]
+    [InlineData("album:spotify:album:abc", true)]
+    [InlineData("prerelease:spotify:prerelease:abc", true)]
+    [InlineData("pl:spotify:playlist:abc", true)]
+    [InlineData("liked", false)]       // a Library page: its row 2 is Library's sub-pivots
+    [InlineData("local", false)]       // shows its page title
+    [InlineData("artist:spotify:artist:abc", false)]
+    [InlineData("home", false)]
+    public void OnlyAlbumPrereleaseAndPlaylistRoutesPublishToRow2(string route, bool expected)
+        => Assert.Equal(expected, BandLayout.PublishesToRow2(route));
 }

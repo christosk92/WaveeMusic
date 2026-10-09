@@ -413,6 +413,7 @@ public readonly partial struct Track
         public void ApplyProps(object props)
         {
             _latest = (TableArgs)props;
+            _floorInRow2 ??= new Signal<bool>(WantsRow2(Shell.Ui.PresentedNavStyle.Peek()));
             _args.SetIfChanged(_latest);
         }
 
@@ -460,6 +461,23 @@ public readonly partial struct Track
         readonly Signal<bool> _compactInteractive = new(false);
         readonly Signal<bool> _verticalFacts = new(false);
         readonly Signal<int> _verticalItemCount = new(Detail.VerticalLayout.ItemCount(0, false));
+
+        // ── the Zune row 2 (A3) ── under Zune an album's or a playlist's stuck band lives in the Zune band's second row, so the
+        // hero collapses to the LATCHED floor 0 (Detail.VerticalLayout.BandFloor) instead of the band's 56. The floor flips only
+        // while the scroll is under Detail.BandLayout.FlipLine (FloorLatch), where every scroll channel presents the same, so a
+        // nav-style switch while scrolled never snaps the header. `_floorInRow2` is the ONE input for the hero's floor, the chrome's
+        // stick line and the rows' clip; it is seeded in ApplyProps (before the first render) so a page that mounts under Zune
+        // starts at 0 instead of flipping a frame later.
+        Signal<bool> _floorInRow2 = null!;
+        bool _inRow2;                      // the value Render latched; the trailing arm's builders read this
+        readonly ScrollHandle _vScroll = new();   // the vertical arm's scroller (the list, or the album's outer ScrollView)
+        Memo<bool>? _belowLine;            // offset < FlipLine: a threshold, so the latch subscribes to the crossing only
+        IReadSignal<bool>? _isActive;
+        readonly Func<bool> _belowLineFn;
+        readonly Action _latchFloor, _publishBand;
+        readonly Func<Element> _bandActionsFn;
+        readonly Func<Element>? _selectionRowFn;
+        readonly Func<Element> _searchRowFn;
 
         // ── selection · list controller · counts ───────────────────────────────────────────────────────────────────
         readonly SelectionModel _selection = new();
@@ -533,6 +551,12 @@ public readonly partial struct Track
             _fadeFrom = display => _fade.TryGetValue(display, out var f) ? f : null;
             _verticalFlipFrom = item => IsVerticalRow(item) ? _flipFrom(item - Detail.VerticalLayout.PrefixCount) : null;
             _verticalFadeFrom = item => IsVerticalRow(item) ? _fadeFrom(item - Detail.VerticalLayout.PrefixCount) : null;
+            _belowLineFn = () => _vScroll.Offset.Value < Detail.BandLayout.FlipLine(FlipHeroH());
+            _latchFloor = LatchFloor;
+            _publishBand = PublishBand;
+            _bandActionsFn = () => BandActions(_latest.Vertical?.Insights, _latest.Vertical?.InsightsLive ?? false);
+            _selectionRowFn = SelectionRowSurface;
+            _searchRowFn = () => CompactSearch(ColumnWidthPeek(), RowMetrics.PadXFor(_shape?.Peek().Set.Tier ?? 0), _latest.Vertical?.Insights is not null);
             InitChrome();
         }
 
@@ -902,6 +926,13 @@ public readonly partial struct Track
             _scrollScope = UseContext(Shell.PageScrollScope);
             _post = UsePost();
 
+            // THE FLOOR LATCH and the Zune row 2 (A3). Every hook runs unconditionally: a non-vertical arm just never moves them.
+            _isActive = UseIsActive();
+            _belowLine = UseComputed(_belowLineFn);
+            UseSignalEffect(_latchFloor);
+            UseActivation(onActivated: _publishBand);
+            bool inRow2 = _inRow2 = VerticalArm && _floorInRow2.Value;   // the LATCHED floor placement, read once per render
+
             _snapshot = UseComputed(ComputeSnapshot);
             _shape = UseComputed(ComputeShape);
             _hotSettled = UseComputed(ComputeHotSettled);
@@ -988,8 +1019,13 @@ public readonly partial struct Track
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
             float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f);
-            float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set.Classic));
+            float stickyInset = Detail.VerticalLayout.StickyClipInsetFor(inRow2, extent, TableRules.HeaderHeightFor(shape.Set.Classic));
             UseLayoutEffect(() => ApplyItemBand(stickyInset), DepKey.From(stickyInset, (float)_resetEpoch));
+            // Row 2's words: the deps-gated form (PublishBand reads no signal). The Insights word joining the cluster is the
+            // actions revision; the title and the byline come from the identity.
+            var identity = _latest.Vertical?.Identity;
+            UseEffect(_publishBand, DepKey.From(HashCode.Combine(identity?.Title, identity?.OwnerName, identity?.Meta, identity?.Eyebrow),
+                HashCode.Combine(InsightsRevision(_latest.Vertical), _latest.ScrollKey)));
 
             bool recsCapable = cfg.Recommendations && !args.Embedded && !vertical && P.Recommendations is not null;
             bool hasFacts = vertical && !trailing && args.Vertical!.Slots.LikedFacts is not null;
@@ -1236,6 +1272,7 @@ public readonly partial struct Track
                     Scroll = new ScrollOptions
                     {
                         ScrollKey = ListScrollKey,
+                        Handle = _vScroll,
                         AutoEdgeFade = false,
                         EdgeCues = ScrollEdgeCues.None,
                         ItemClipTopInset = stickyInset,
@@ -1284,12 +1321,12 @@ public readonly partial struct Track
                     Direction = 1, ScrollScope = TableBlockScope,
                     Children =
                     [
-                        Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableBlockScope, engaged: _compactInteractive),
+                        Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.BandFloor(_inRow2), TableBlockScope, engaged: _compactInteractive),
                         listBlock,
                     ],
                 };
                 Element trailBlock = new BoxEl { Direction = 1, Children = kids.ToArray() }
-                    .StickyClip(Detail.VerticalLayout.TrailingClipInset);
+                    .StickyClip(Detail.VerticalLayout.TrailingClipInsetFor(_inRow2));
                 children = [TrailHero(spec), tableBlock, trailBlock];
             }
             else
@@ -1310,6 +1347,7 @@ public readonly partial struct Track
             return ScrollView(new BoxEl { Direction = 1, Grow = 1f, AlignSelf = FlexAlign.Stretch, ScrollScope = TrailScope, Children = children }) with
             {
                 Key = "trail:" + _latest.ScrollKey,
+                Handle = vertical ? _vScroll : null,
                 Grow = 1f,
                 // WinUI's per-notch distance (15 % of the viewport, floored at 48 DIP) snapped to a whole number of
                 // rows at the live density, so a notch lands on a row boundary instead of slicing one in half. Dynamic
@@ -1327,13 +1365,14 @@ public readonly partial struct Track
         {
             float colW = ColumnWidth();
             float heroH = HeroHeightFor(spec, colW);
+            float floor = Detail.VerticalLayout.BandFloor(_inRow2);
             return new BoxEl
             {
                 Key = "vertical:hero-root", Direction = 1, ClipToBounds = true,
                 Children = [new BoxEl { Key = "vhero:header", Direction = 1, Children = [Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))] }],
             }
             .Sticky(0f, TrailScope)
-            .Collapse(Detail.VerticalLayout.CollapseDistance(heroH), Detail.VerticalLayout.CompactIdentityHeight, CollapseAnchor.Leading);
+            .Collapse(Detail.VerticalLayout.CollapseDistance(heroH, floor), floor, CollapseAnchor.Leading);
         }
 
         /// <summary>The hero's spec with its shuffle satellite pointed at THIS table's <see cref="Shuffle"/> (G-264): the
@@ -1363,7 +1402,7 @@ public readonly partial struct Track
         {
             float left = RowMetrics.PadXFor(_shape!.Value.Set.Tier);
             bool toolbar = _latest.ShowToolbar && spec.Config.Content == DetailContent.Tracks;
-            // ── INSIGHTS SHEET (additive) ── the frame's own answer to Detail.InsightsSheet.ShowsToggle, threaded down
+            // ── INSIGHTS SHEET (additive) ── the frame's own answer to Detail.InsightsSheet.ToggleSlotReserved, threaded down
             //    as the presence of the toggle object: the band does not re-derive it, and the pinned band and the hero
             //    toolbar therefore cannot disagree about whether the sheet has an entry point. The BAND is the one that
             //    survives the collapse (Detail.Insights.cs §7); the hero keeps its own for the pre-stuck range, where
@@ -1371,7 +1410,7 @@ public readonly partial struct Track
             var insights = spec.Insights;
             return new Detail.HeroParts(
                 Toolbar: toolbar ? Toolbar() : null,
-                BandActions: BandActions(insights),
+                BandActions: BandActions(insights, spec.InsightsLive),
                 SelectionBar: Cfg.Selection == ItemsSelectionMode.None ? null : SelectionSurface("compact-selection"),
                 SelectionVisible: _selectionVisible!,
                 CompactInteractive: _compactInteractive,
@@ -1380,8 +1419,65 @@ public readonly partial struct Track
                 ColumnWidth: colW,
                 CompactLeft: left,
                 HeroHeight: heroH,
-                OnHeroMeasured: _onHeroMeasured);
+                OnHeroMeasured: _onHeroMeasured,
+                InRow2: _inRow2);
         }
+
+        // ══ the floor latch and the Zune band's row 2 (A3) ═══════════════════════════════════════════════════════════
+
+        /// <summary>The WANTED floor placement: this is an album or a playlist (the routes whose Zune row 2 is the page's band)
+        /// and Zune is the PRESENTED style (never the live one, so the change lands in the quiet commit).</summary>
+        bool WantsRow2(ShellNavStyle presented)
+            => VerticalArm && Detail.BandLayout.PublishesToRow2(_latest.ScrollKey) && Detail.BandLayout.InRow2(presented);
+
+        /// <summary>The hero height the flip line is derived from: measured, else the pre-measure plan. Untracked.</summary>
+        float FlipHeroH()
+        {
+            float measured = _heroH.Peek();
+            if (measured > 1f) return measured;
+            return _latest.Vertical is { } spec ? Detail.HeroBandHeight(spec, ColumnWidthPeek()) : Detail.VerticalLayout.CompactIdentityHeight * 2f;
+        }
+
+        float ColumnWidthPeek()
+        {
+            float w = _colW.Peek();
+            return w > 0f ? w : _latest.WidthSeed > 0f ? _latest.WidthSeed : Detail.VerticalLayout.FallbackW;
+        }
+
+        /// <summary>The floor latch (Detail.BandLayout.FloorLatch): adopt the WANTED placement only while the scroll is under the
+        /// flip line, where the flip is invisible. Subscribes to the presented nav style and the threshold crossing, never to every
+        /// scroll frame.</summary>
+        void LatchFloor()
+        {
+            bool wanted = WantsRow2(Shell.Ui.PresentedNavStyle.Value);
+            _ = _belowLine?.Value;
+            _floorInRow2.SetIfChanged(Detail.BandLayout.FloorLatch(_floorInRow2.Peek(), wanted, _vScroll.Offset.Peek(), FlipHeroH()));
+        }
+
+        /// <summary>Hands the band (title, byline, Find · Filter · [Insights ·] Play, the selection arm and the search field) to the Zune
+        /// band's row 2 under the route name, only while this page is the active one. Safe any time and any number of times: the store
+        /// bumps its version only when the title, the byline, the signals or the actions revision change. It publishes regardless of
+        /// the latch, so row 2 is filled from its first frame. The two-column arm is published by the frame (title only).</summary>
+        void PublishBand()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            if (!VerticalArm || _latest.Vertical is not { } spec || _selectionVisible is null) return;
+            string route = _latest.ScrollKey;
+            if (!Detail.BandLayout.PublishesToRow2(route)) return;
+            var id = spec.Identity;
+            if (id.Title.Length == 0) return;
+            PageHead.PublishBand(route, id.Title, Array.Empty<string>(), Detail.BandNoActive, Detail.BandNoPivot, _bandActionsFn,
+                byline: Detail.Text.Byline(id.OwnerName, id.Meta, id.Eyebrow),
+                selectionVisible: _selectionVisible,
+                selectionBar: _selectionRowFn,
+                searchExpanded: _searchExpanded,
+                searchField: _searchRowFn,
+                actionsEpoch: InsightsRevision(spec));
+        }
+
+        /// <summary>What the published action cluster builds from the sheet's toggle: its reserved slot, and whether it has gone live.</summary>
+        static int InsightsRevision(Detail.VerticalSpec? spec)
+            => (spec?.Insights is null ? 0 : 1) | (spec is { InsightsLive: true } ? 2 : 0);
 
         // ── THE RULE, STATED ONCE ───────────────────────────────────────────────────────────────────────────────────
         // A sticky with NO named scope clamps to its IMMEDIATE parent (CSS containing block), and a component anchor
@@ -1402,9 +1498,11 @@ public readonly partial struct Track
             var spec = _args.Value!.Vertical!;
             float colW = ColumnWidth();
             float heroH = HeroHeightFor(spec, colW);
+            // The LATCHED floor, read in THIS item's render (a recycled bound item: the host's own read does not subscribe it).
+            float floor = Detail.VerticalLayout.BandFloor(_inRow2 = _floorInRow2.Value && VerticalArm);
             return Detail.Hero(HeroSpec(spec), HeroPartsFor(spec, colW, heroH))
                 .Sticky(0f, TableScope)
-                .Collapse(Detail.VerticalLayout.CollapseDistance(heroH), Detail.VerticalLayout.CompactIdentityHeight, CollapseAnchor.Leading);
+                .Collapse(Detail.VerticalLayout.CollapseDistance(heroH, floor), floor, CollapseAnchor.Leading);
         }
 
         /// <summary>Item 1: chips · lens · column header, sticky at the compact band (56) against <see cref="TableScope"/>
@@ -1415,7 +1513,8 @@ public readonly partial struct Track
             var shape = _shape!.Value;
             Element? chips = P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
-            return Chrome(in shape, chips, lens).Sticky(Detail.VerticalLayout.CompactIdentityHeight, TableScope, engaged: _compactInteractive);
+            float floor = Detail.VerticalLayout.BandFloor(_inRow2 = _floorInRow2.Value && VerticalArm);
+            return Chrome(in shape, chips, lens).Sticky(floor, TableScope, engaged: _compactInteractive);
         }
 
         internal Element FooterItem()

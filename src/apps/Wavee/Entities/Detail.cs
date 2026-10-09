@@ -564,7 +564,22 @@ public static partial class Detail
 
         /// <summary>Scroll distance over which the expanded hero becomes the 56-DIP band.</summary>
         public static float CollapseDistance(float expandedHeight)
-            => MathF.Max(1f, expandedHeight - CompactIdentityHeight);
+            => CollapseDistance(expandedHeight, CompactIdentityHeight);
+
+        /// <summary>The collapse distance to an explicit <paramref name="floor"/>: <see cref="BandFloor"/> (56 with the band in the
+        /// page, 0 with the band in the Zune band's row 2). The engine's Collapse pairing is <c>over = H − floor</c> with
+        /// <c>minH = floor</c>, so the hero's presented bottom is <c>max(floor, H − offset)</c> at either floor.</summary>
+        public static float CollapseDistance(float expandedHeight, float floor)
+            => MathF.Max(1f, expandedHeight - floor);
+
+        /// <summary>THE FLOOR the hero collapses to and the chrome sticks at: the band's 56 while the stuck band is drawn in the
+        /// page, 0 once its contents live in the Zune band's second row (the card top is then the stick line).</summary>
+        public static float BandFloor(bool inRow2) => inRow2 ? 0f : CompactIdentityHeight;
+
+        /// <summary>Who draws the band's search and selection swaps while the band's contents live in row 2: row 2 alone. The hero's
+        /// own toolbar (visible until the hero collapses) keeps its search ICON and its normal commands then, so one Find never
+        /// opens two text editors (they would fight over focus) and one selection never shows two bars.</summary>
+        public static bool ToolbarOwnsSwaps(bool inRow2) => !inRow2;
 
         /// <summary>The pinned list-chrome extent: the table's REAL column-header height (Modern 36 / Classic 32 —
         /// <c>Track.TableRules.HeaderHeightFor</c>), its divider, and the optional Liked filter rail.</summary>
@@ -575,11 +590,20 @@ public static partial class Detail
         public static float StickyClipInset(float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight)
             => CompactIdentityHeight + ChromeExtent(contentFilterExtent, headerHeight);
 
+        /// <summary><see cref="StickyClipInset"/> at the latched floor placement: the 56 the constant carries is the band, so it is
+        /// subtracted once the band lives in row 2.</summary>
+        public static float StickyClipInsetFor(bool inRow2, float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight)
+            => StickyClipInset(contentFilterExtent, headerHeight) - (inRow2 ? CompactIdentityHeight : 0f);
+
         /// <summary>The trailing shelves' own clip inset (the album "Also by" / release-panel band under the rows,
         /// Track.Table.cs's <c>TrailingBody</c>): the same line the hero collapses to, so a shelf cannot show through
         /// the compact band while still riding under it. Equal to <see cref="CompactIdentityHeight"/> by construction —
         /// named separately so a caller states what it means, not <see cref="StickyClipInset"/>'s.</summary>
         public static float TrailingClipInset => CompactIdentityHeight;
+
+        /// <summary><see cref="TrailingClipInset"/> at the latched floor placement: the same line the hero collapses to
+        /// (<see cref="BandFloor"/>), so 0 once the band lives in row 2.</summary>
+        public static float TrailingClipInsetFor(bool inRow2) => BandFloor(inRow2);
 
         // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, then (hero system only) the facts
         //    FOOTER — a slot, not a block in the identity column, so the page opens on its songs, not on charts.
@@ -776,12 +800,13 @@ public static partial class Detail
 
     // ══ 3b. THE INSIGHTS SHEET ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>WHERE the facts bento lives, per arm, and how wide the vertical arm's sheet is.
-    /// <para>The two-column arms are unchanged: the bento is a rail row, on screen with the list beside it. The
-    /// VERTICAL arm has no rail, and the bento used to fall to the bottom of the page as a footer nobody scrolled to —
-    /// so there it becomes a dismissable sheet laid OVER the content, reached only through the toolbar toggle. The two
-    /// hosts are mutually exclusive by construction (<see cref="RailHostsFacts"/> / <see cref="SheetHostsFacts"/> read
-    /// the same mode ladder from opposite ends), and there is no third, inline host any more.</para></summary>
+    /// <summary>WHERE the facts bento lives: ONLY in the sheet, in every arm. A facts-bearing page (a playlist, Liked Songs)
+    /// reaches its facts through the Insights toggle among the page's primary actions: the hero's toolbar row and the pinned
+    /// band's word in the vertical arm, the CTA group of the rail in the two-column arms. The sheet is a dismissable overlay laid
+    /// OVER the content (a SplitView in Overlay x Right), closed on arrival and never opened by anything but the toggle's own
+    /// click, so opening it moves neither the rail nor the list. There is no inline host (the rail used to render the bento as a
+    /// row; the vertical arm used to append it as a footer nobody scrolled to). The rail COLLAPSED to its icon strip has no entry
+    /// point, on purpose: the strip is identity only, and expanding the rail brings the toggle back.</summary>
     public static class InsightsSheet
     {
         /// <summary>The sheet's preferred width — one step wider than the rail's own comfortable measure.</summary>
@@ -805,25 +830,28 @@ public static partial class Detail
         /// other kind — this is the same gate, one step earlier).</summary>
         public static bool KindHasFacts(DetailKind kind) => kind is DetailKind.Liked or DetailKind.Playlist;
 
-        /// <summary>The two-column arms: the bento is a rail row, as it has always been. Nothing about them changes.</summary>
-        public static bool RailHostsFacts(int mode, DetailKind kind, bool factsSlot)
-            => factsSlot && KindHasFacts(kind) && RailPolicy.ComposesRail(mode);
+        /// <summary>The sheet hosts the facts when the page offers them and its kind carries any. MODE-FREE: every arm
+        /// answers the same, so a window resize never moves the bento between hosts.</summary>
+        public static bool SheetHostsFacts(DetailKind kind, bool factsSlot) => factsSlot && KindHasFacts(kind);
 
-        /// <summary>The vertical arm: the bento is reachable ONLY through the sheet.</summary>
-        public static bool SheetHostsFacts(int mode, DetailKind kind, bool factsSlot)
-            => factsSlot && KindHasFacts(kind) && mode == Breakpoints.VerticalMode;
-
-        /// <summary>The bento is never appended to the page body again — every mode is answered by exactly one host,
-        /// and a mode that composes neither simply has no facts to show.</summary>
+        /// <summary>The bento is never appended to the page body, and the rail no longer renders it inline either: the
+        /// sheet is the only host, so there is nothing to append.</summary>
         public static bool AppendsFactsToPageBody(int mode, DetailKind kind, bool factsSlot) => false;
 
-        /// <summary>Is the toggle composed at all? The vertical arm only, on a facts-bearing page whose facts have
-        /// actually arrived, and only on a TRACK page (an episode list's vertical arm has no bento).
-        /// <para>ONE predicate, THREE readers: the hero's toolbar button, the pinned band's word, and the sheet itself.
-        /// The band does not re-derive it — the frame threads the answer down as the presence of the toggle object
-        /// (<c>VerticalSpec.Insights</c>), so the two entry points cannot disagree about whether they exist.</para></summary>
-        public static bool ShowsToggle(int mode, DetailKind kind, bool factsSlot, DetailContent content)
-            => content == DetailContent.Tracks && SheetHostsFacts(mode, kind, factsSlot);
+        /// <summary>Is the toggle composed at all? On a facts-bearing page whose facts have actually arrived, and only on a
+        /// TRACK page (an episode list has no bento), in every arm.
+        /// <para>ONE predicate, FOUR readers: the hero's toolbar button, the pinned band's word (page or Zune row 2), the rail's
+        /// CTA button and the sheet itself. The band does not re-derive it: the frame threads the answer down as the presence
+        /// of the toggle object (<c>VerticalSpec.Insights</c>), so the entry points cannot disagree about whether they
+        /// exist.</para></summary>
+        public static bool ShowsToggle(DetailKind kind, bool factsSlot, DetailContent content)
+            => content == DetailContent.Tracks && SheetHostsFacts(kind, factsSlot);
+
+        /// <summary>Is a slot for the toggle RESERVED in the rail's CTA group? ROUTE-STATIC (the kind and the content, never the
+        /// data), so the CTA's wrap is decided from the first frame and the facts arriving only fade the button in. The
+        /// button is present at opacity 0 and inert until <see cref="FactsSettled"/>.</summary>
+        public static bool ToggleSlotReserved(DetailKind kind, DetailContent content)
+            => content == DetailContent.Tracks && KindHasFacts(kind);
 
         // ── the two entry points (Detail.Insights.cs §6/§7) ──
 
@@ -839,12 +867,15 @@ public static partial class Detail
         public static bool FactsSettled(bool everSeen, bool slotNow) => everSeen || slotNow;
 
         /// <summary>Which entry point owns INPUT at this scroll position. The pinned band takes hits only once its
-        /// chrome is stuck; the collapsing hero's presentation stops taking them at the same edge. Exactly one of the
-        /// two answers true for any <paramref name="bandStuck"/> — which is why BOTH are composed: neither alone covers
-        /// the whole scroll range, the pair does, and there is no position at which both are live.</summary>
-        public static bool BandToggleTakesInput(bool bandStuck) => bandStuck;
+        /// chrome is stuck; the collapsing hero's presentation stops taking them at the same edge. With the band in the page,
+        /// exactly one of the two answers true for any <paramref name="bandStuck"/> - which is why BOTH are composed: neither
+        /// alone covers the whole scroll range, the pair does, and there is no position at which both are live. Under Zune
+        /// (<paramref name="inRow2"/>) the band's word lives in the Zune band's row 2, which never scrolls away, so it is ALWAYS
+        /// live and both entry points are visible and live while the hero is expanded.</summary>
+        public static bool BandToggleTakesInput(bool bandStuck, bool inRow2) => inRow2 || bandStuck;
 
-        /// <inheritdoc cref="BandToggleTakesInput"/>
+        /// <summary>The hero toolbar's toggle owns input exactly while the band is not stuck (the collapsing hero stops taking
+        /// hits at the stuck edge), wherever the band lives.</summary>
         public static bool HeroToggleTakesInput(bool bandStuck) => !bandStuck;
 
         /// <summary>The band action cluster's width claim — Find · Filter · Play, and Insights between the view verbs
@@ -865,8 +896,8 @@ public static partial class Detail
         /// <summary>The LIVE open state: a sheet whose toggle has gone (the window widened back into a two-column arm,
         /// or the facts went away) is CLOSED, never merely hidden — so re-entering the vertical arm never restores a
         /// sheet the user cannot remember leaving open.</summary>
-        public static bool OpenFor(bool wanted, int mode, DetailKind kind, bool factsSlot, DetailContent content)
-            => wanted && ShowsToggle(mode, kind, factsSlot, content);
+        public static bool OpenFor(bool wanted, DetailKind kind, bool factsSlot, DetailContent content)
+            => wanted && ShowsToggle(kind, factsSlot, content);
 
         /// <summary>A route change closes the sheet outright: it never survives navigation (the frame is keyed by
         /// subject, but a same-subject route swap reuses the host, so the host closes it itself).</summary>
@@ -996,6 +1027,14 @@ public static partial class Detail
         /// <summary>The WANTED placement: the band lives in the Zune band's row 2 while Zune is the PRESENTED style (the page
         /// reads <c>Shell.Ui.PresentedNavStyle</c>, never the live one, so the change lands in the quiet commit).</summary>
         public static bool InRow2(ShellNavStyle presented) => presented == ShellNavStyle.Zune;
+
+        /// <summary>Does this route's Zune row 2 carry the page's band? The album, prerelease and playlist routes do (their row 2
+        /// is the Context kind, <c>ZuneNavRules.SubRowOf</c>). Liked Songs does NOT: it is a Library page, so its row 2 is Library's
+        /// sub-pivots, and the local-files route shows its page title. Both keep their in-page band (floor 56) under Zune.</summary>
+        public static bool PublishesToRow2(string routeName)
+            => routeName.StartsWith(SidebarPinId.AlbumPrefix, StringComparison.Ordinal)
+            || routeName.StartsWith("prerelease:", StringComparison.Ordinal)   // the Prerelease route's table prefix (Shell.cs)
+            || routeName.StartsWith(SidebarPinId.PlaylistPrefix, StringComparison.Ordinal);
 
         /// <summary>The stuck height: the band's 56 in the page, 0 once the band lives in row 2.</summary>
         public static float StuckHeight(bool inRow2) => inRow2 ? 0f : Height;
@@ -1294,7 +1333,8 @@ public static partial class Detail
                 Artists: typeYear && kind != DetailKind.Episode,
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
-                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
+                Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount)
+                    : (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0) + (InsightsSheet.KindHasFacts(kind) ? 1 : 0),
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,

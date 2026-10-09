@@ -131,6 +131,26 @@ public sealed class ShellPageBandsTests
         Assert.Equal(v + 3, Shell.PageBands.Version.Peek());
     }
 
+    [Fact] public void ADetailPagesBylineSignalsAndActionsRevision_Bump_ButItsFactoriesDoNot()
+    {
+        var active = new Signal<int>(0);
+        var selection = new Signal<bool>(false);
+        var search = new Signal<bool>(false);
+        Shell.PageBandPublication Detail(string? byline, IReadSignal<bool>? sel, IReadSignal<bool>? find, int epoch,
+                                         Func<Element>? bar = null)
+            => new("T", [], active, static _ => { }, null, null, null, byline, sel, bar, find, null, epoch);
+
+        Shell.PageBands.Publish("pl:x", Detail("12 songs", selection, search, 0));
+        int v = Shell.PageBands.Version.Peek();
+        Assert.False(Shell.PageBands.Publish("pl:x", Detail("12 songs", selection, search, 0, static () => new BoxEl())));   // a new factory alone
+        Assert.True(Shell.PageBands.Publish("pl:x", Detail("13 songs", selection, search, 0)));                              // the byline
+        Assert.True(Shell.PageBands.Publish("pl:x", Detail("13 songs", new Signal<bool>(false), search, 0)));                // the selection signal
+        Assert.True(Shell.PageBands.Publish("pl:x", Detail("13 songs", Shell.PageBands.Peek("pl:x")!.SelectionVisible, new Signal<bool>(false), 0)));
+        Assert.True(Shell.PageBands.Publish("pl:x", Detail("13 songs", Shell.PageBands.Peek("pl:x")!.SelectionVisible,
+                                                           Shell.PageBands.Peek("pl:x")!.SearchExpanded, 1)));                // the Insights word joined
+        Assert.Equal(v + 4, Shell.PageBands.Version.Peek());
+    }
+
     [Fact] public void Eviction_IsLeastRecentlyPublished()
     {
         for (int i = 0; i < Shell.PageBands.Capacity; i++)

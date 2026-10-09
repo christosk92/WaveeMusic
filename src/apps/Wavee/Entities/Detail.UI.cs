@@ -276,7 +276,7 @@ public static partial class Detail
         public Func<Element>? PreRelease { get; init; }
         /// <summary>About this release (outerPadding).</summary>
         public Func<bool, Element>? ReleasePanel { get; init; }
-        /// <summary>The liked facts bento (rail).</summary>
+        /// <summary>The liked facts bento. Hosted ONLY by the Insights sheet, in every arm (the rail no longer renders it inline).</summary>
         public Func<float, Element>? LikedFacts { get; init; }
         /// <summary>The album trailing body (HasTrailing).</summary>
         public Func<Element>? Trailing { get; init; }
@@ -517,7 +517,7 @@ public static partial class Detail
         IReadSignal<Size2>? _viewport;
         bool _accentSeeded;
 
-        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the vertical arm's host for the facts bento. One toggle
+        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the host for the facts bento, in every arm. One toggle
         //    per mounted frame: the open state is a signal, so the toolbar button and the pane cannot disagree and
         //    neither costs the page a render. `_sheetRoute` closes it on any route swap the host survives.
         readonly InsightsToggle _insights = new();
@@ -527,6 +527,11 @@ public static partial class Detail
         InputHooks? _inputHooks;
         string _sheetRoute = "\0";
         bool _sheetHosts;
+        // ── the Zune row 2, two-column arm (A3) ── an album or a playlist in a two-column arm publishes its TITLE ONLY (the vertical
+        //    arm's table publishes the whole band); only while this page is the active one.
+        IReadSignal<bool>? _isActive;
+        bool _verticalNow;
+        readonly Action _publishBandTitle;
         //    The FACTS LATCH (InsightsSheet.FactsSettled): the page's bento slot is derived from a scan of the live row
         //    source, which reads empty while the list's open holds its reveal — so an absent slot is "not answered yet",
         //    not "no facts". Latched per ROUTE and dropped with it, beside the open state.
@@ -619,6 +624,18 @@ public static partial class Detail
             _closeInsights = _insights.Close;
             _returnInsightsFocus = ReturnInsightsFocus;
             _syncInsightsArm = () => { if (!_sheetHosts) _insights.Close(); };
+            _publishBandTitle = PublishBandTitle;
+        }
+
+        /// <summary>Hands the two-column album / playlist title to the Zune band's row 2 (see <c>Shell.PageBands</c>). The vertical
+        /// arm's table publishes the whole band, so this is a no-op there. Safe any time and any number of times.</summary>
+        void PublishBandTitle()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            if (_verticalNow || _latest is not { } spec) return;
+            if (spec.Config.Content != DetailContent.Tracks || spec.Identity.Title.Length == 0) return;
+            if (!BandLayout.PublishesToRow2(spec.RouteKey)) return;
+            PageHead.PublishBand(spec.RouteKey, spec.Identity.Title, Array.Empty<string>(), BandNoActive, BandNoPivot);
         }
 
         /// <summary>── INSIGHTS SHEET (additive) ── Focus returns to the toolbar toggle when the sheet closes. The
@@ -705,10 +722,10 @@ public static partial class Detail
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
 
-            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── which arm HOSTS the facts bento. A two-column arm is
-            //    unchanged (the rail row, below). The vertical arm has no rail, so the bento is a sheet over the
-            //    content and the toolbar carries its toggle — and, because the toggle is gated on the same slot
-            //    presence, the bento is never appended to the page body again (Detail.InsightsSheet).
+            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the bento lives ONLY in the sheet, in every arm: the rail no
+            //    longer renders it inline, the vertical arm's toolbar and band carry its toggle and the two-column rail's CTA
+            //    group carries it (Detail.InsightsSheet). The sheet is closed on arrival and nothing but the toggle's own
+            //    click opens it.
             //
             //    The slot is LATCHED for the route first (InsightsSheet.FactsSettled): a page derives its bento slot
             //    from a scan of the live row source, which reads empty while the list's open holds its reveal, so an
@@ -718,10 +735,14 @@ public static partial class Detail
             bool factsNow = spec.Slots.LikedFacts is not null;
             bool factsSettled = InsightsSheet.FactsSettled(_factsLatched is not null, factsNow);
             if (factsNow) _factsLatched = spec.Slots.LikedFacts;      // a plain field, not a signal: no render write
-            _sheetHosts = InsightsSheet.ShowsToggle(mode, id.Kind, factsSettled, cfg.Content);
-            // Widening back into a two-column arm (or losing the facts) CLOSES the sheet — a signal write belongs in an
-            // effect, never in a render (rule 6).
+            _sheetHosts = InsightsSheet.ShowsToggle(id.Kind, factsSettled, cfg.Content);
+            // Losing the facts CLOSES the sheet — a signal write belongs in an effect, never in a render (rule 6).
             UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
+            // The Zune row 2's title for the two-column arm (A3); the vertical arm's table publishes the whole band.
+            _verticalNow = vertical;
+            _isActive = UseIsActive();
+            UseEffect(_publishBandTitle, DepKey.From(vertical ? 1 : 0, HashCode.Combine(id.Title, routeKey)));
+            UseActivation(onActivated: _publishBandTitle);
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
             Element tint = Palette.ShellTint(paletteUrl, ready: true, disabled: !washes, apply: cfg.TwoColumn,
@@ -834,7 +855,8 @@ public static partial class Detail
                     ClipToBounds = true,
                     MinHeight = 0f, Shrink = 0f, Width = railW,
                     Opacity = _railFade,
-                    Children = [RailRegion(spec, acts, railW, titleSize, descLines)],
+                    Children = [RailRegion(spec, acts, railW, titleSize, descLines,
+                        InsightsSheet.ToggleSlotReserved(id.Kind, cfg.Content) ? _insights : null, factsSettled)],
                 };
                 rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
             }
@@ -863,12 +885,18 @@ public static partial class Detail
                     },
                 ],
             };
+            // ── INSIGHTS SHEET ── the same overlay the vertical arm wears, ALWAYS composed for a track page (open or not, facts
+            //    or not), so the tree shape never changes when the facts arrive or the sheet opens: the rail and the list do
+            //    not move. An episode list has no bento.
+            Element twoColumnRoot = cfg.Content == DetailContent.Tracks
+                ? InsightsOverlay(twoColumnPage, _insights, _sheetHosts ? _factsLatched : null, _measuredW, routeKey, _returnInsightsFocus)
+                : twoColumnPage;
             // The page PROVIDES its accent: the heart and every other ambient consumer read it through the context.
             return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)_pageAccent, new BoxEl
             {
                 ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 OnBoundsChanged = _measure, ClipToBounds = true,
-                Children = [tint, tone, twoColumnPage],
+                Children = [tint, tone, twoColumnRoot],
             });
         }
 
@@ -880,10 +908,11 @@ public static partial class Detail
         /// tween). The frame (layer fill + scroller) sits OUTSIDE the boundary so the fill never blinks. The content thunk
         /// closes over this render's spec; a later push re-renders the frame and the region refreshes its Ready branch in
         /// place, so the rail keeps following the header (meta, description, a rename) after the reveal.</summary>
-        Element RailRegion(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descLines)
+        Element RailRegion(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descLines,
+                           InsightsToggle? insights, bool insightsLive)
             => RailFrame(spec.Identity.Kind, railW, new SkelRegionEl(
                 Pending: _railPending, Failed: s_false,
-                Content: () => RailColumn(spec, acts, railW, titleSize, descLines, _accentFn, _playAll),
+                Content: () => RailColumn(spec, acts, railW, titleSize, descLines, _accentFn, _playAll, insights, insightsLive),
                 ShimmerSource: () => RailSkeletonColumn(spec, railW, titleSize, descLines),
                 OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
 
@@ -918,7 +947,12 @@ public static partial class Detail
                 Accent = _accentFn,
                 Vertical = verticalTracks
                     ? new VerticalSpec(spec.Identity, cfg, TrampolineActions(spec.Actions), TrampolineSlots(spec.Slots), _accentFn)
-                    { PlayAll = _playAll, Insights = _sheetHosts ? _insights : null }
+                    {
+                        PlayAll = _playAll,
+                        // The toggle's slot is reserved by KIND (route-static); it goes live when the facts settle.
+                        Insights = InsightsSheet.ToggleSlotReserved(spec.Identity.Kind, cfg.Content) ? _insights : null,
+                        InsightsLive = _sheetHosts,
+                    }
                     : null,
                 ShowToolbar = cfg.Content == DetailContent.Tracks || !vertical,
                 Trailing = trailing,
@@ -980,7 +1014,7 @@ public static partial class Detail
         }
 
         /// <summary>The VERTICAL arm's view of the page's slots. ── INSIGHTS SHEET (additive) ── <c>LikedFacts</c> is
-        /// deliberately DROPPED here: in this arm the bento belongs to the sheet, and the table's own facts FOOTER
+        /// deliberately DROPPED here: the bento belongs to the sheet (in every arm), and the table's own facts FOOTER
         /// (its <c>hasFacts</c> reads exactly this slot) is what used to push it to the bottom of the page. The frame
         /// still hands the page's own builder to the sheet, so nothing is lost — only the host changed.</summary>
         FrameSlots TrampolineSlots(FrameSlots s)
@@ -1214,7 +1248,7 @@ public static partial class Detail
     static Action DefaultPlay(EntityUri subject) => () => Playback.PlayOrToggleContext(subject.Id);
 
     /// <summary>The fixed-width metadata rail (two-column arm): cover · eyebrow/owner · title · artists · meta · daylist ·
-    /// chart · CTA · prerelease · release panel · description · liked facts, in its own scroller. <paramref name="titleSize"/>
+    /// chart · CTA · prerelease · release panel · description, in its own scroller. <paramref name="titleSize"/>
     /// is the title's size CAP (the window rung); the size drawn is <see cref="VerticalLayout.RailTitleTypeFor"/>'s.</summary>
     public static Element Rail(FrameSpec spec, float railWidth, float titleSize, int descriptionLines,
                                Func<ColorF> accent)
@@ -1223,7 +1257,7 @@ public static partial class Detail
 
     static Element RailCore(FrameSpec spec, FrameActions acts, float railW, float titleSize,
                             int descMaxLines, Func<ColorF> accent, Action play)
-        => RailFrame(spec.Identity.Kind, railW, RailColumn(spec, acts, railW, titleSize, descMaxLines, accent, play));
+        => RailFrame(spec.Identity.Kind, railW, RailColumn(spec, acts, railW, titleSize, descMaxLines, accent, play, null, false));
 
     /// <summary>The rail's frame: the layer fill and, the LAST resort once the text has given, the rail's own scroller.
     /// The Liked arm differs in exactly ONE property — no layer fill (ch 03 §9). Holds the loaded column, or the skeleton
@@ -1252,12 +1286,13 @@ public static partial class Detail
 
     /// <summary>The rail's loaded column: cover · eyebrow (+ a show's badges) / owner / an episode's show link · title ·
     /// attribution · rating · meta · an episode's badges · ledger · daylist · chart · CTA (primary + the fixed group or the
-    /// page's satellites) · topics · prerelease · release panel · description · liked facts. The identity rows are
+    /// page's satellites) · topics · prerelease · release panel · description. A facts-bearing page's CTA group carries the Insights
+    /// toggle (a slot reserved by kind). The identity rows are
     /// <see cref="RailLayout.RowsFor"/>'s decisions; <see cref="RailSkeletonColumn"/> reserves the same rows
     /// (<see cref="Skeleton.RailPlanFor"/>) in the same order at the same widths, so the swap is a dissolve and never a
     /// reflow. With none of the podcast slots declared the column is exactly the pre-podcast one.</summary>
     static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize,
-                              int descMaxLines, Func<ColorF> accent, Action play)
+                              int descMaxLines, Func<ColorF> accent, Action play, InsightsToggle? insights, bool insightsLive)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -1269,7 +1304,7 @@ public static partial class Detail
         // The CTA's pieces first: how many FABs it carries is a row decision (it sizes the CTA's lines) as well as its
         // children. A page's Satellites replace the fixed group; no Shuffle either way (the command bar's, W27).
         Element[]? satellites = slots.Satellites?.Invoke();
-        List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent) : null;
+        List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent, insights, insightsLive) : null;
         var presence = PresenceOf(slots, satellites?.Length ?? 0);
         bool lead = RailLayout.LeadsWithAttribution(id.Kind, presence);
         bool blurb = (id.EditableMetadata && slots.Description is not null) || id.DescriptionHtml is { Length: > 0 };
@@ -1368,9 +1403,7 @@ public static partial class Detail
                     descMaxLines, id.Subject.Text, s_navRoute, fullTextTip: true)));
         }
 
-        // Row, not LateRow: the facts panel owns its own entrance.
-        if (slots.LikedFacts is { } facts) kids.Add(Row("rail:likedfacts", facts(cover)));
-
+        // No inline facts: the bento lives in the Insights sheet only (the toggle is in the CTA group above).
         return RailColumnBox(railW, kids.ToArray());
     }
 
@@ -1381,9 +1414,11 @@ public static partial class Detail
         Children = rows,
     };
 
-    /// <summary>The rail's FIXED FAB group — the heart (a Save / Follow kind), Share, and the ⋯ every kind but the album
-    /// carries. What a page's <see cref="FrameSlots.Satellites"/> replace.</summary>
-    static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent)
+    /// <summary>The rail's FIXED FAB group — the heart (a Save / Follow kind), Share, the Insights toggle (a facts-bearing kind,
+    /// in a slot reserved by kind) and the ⋯ every kind but the album carries. What a page's <see cref="FrameSlots.Satellites"/>
+    /// replace.</summary>
+    static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent,
+                                  InsightsToggle? insights = null, bool insightsLive = false)
     {
         var fabs = new List<Element>(3);
         if (heart)
@@ -1395,6 +1430,9 @@ public static partial class Detail
         }
         if (ShareActionFor(id) is { } share)
             fabs.Add(Controls.Named(Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
+        // The Insights toggle, among the primary actions: its slot is RESERVED by kind (InsightsSheet.ToggleSlotReserved), shown at
+        // opacity 0 and inert until the facts have settled, so a late fact never adds a button or changes the CTA's wrap.
+        if (insights is not null) fabs.Add(InsightsToggleSlot(insights, insightsLive, "rail:insights"));
         // ch 05 parity 15: an album's rail has no ⋯ — its overflow is the vertical hero's alone.
         if (acts.More is { } more && id.Kind != DetailKind.Album)
             fabs.Add(MoreButton(more, RailFabSize, 16f, round: true) with { Key = "rail:more" });
