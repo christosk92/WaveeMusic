@@ -460,7 +460,8 @@ public readonly partial struct Artist
                     Children =
                     [
                         Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                               payloadAccent: headerAccent),
+                                               payloadAccent: headerAccent,
+                                               disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
                     ],
                 }.StretchFromTop();
             expanded = new BoxEl

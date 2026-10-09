@@ -1018,6 +1018,37 @@ public class DesignWashTests
     }
 
     [Fact]
+    public void Wash_Rich_IsStrongerThanSubtle_AndCapped()
+    {
+        // Rich is stronger than Subtle on every surface, and every Rich value stays under the 0.5 that keeps body text
+        // above AA on the plane.
+        foreach (bool light in new[] { true, false })
+        {
+            Assert.True(Design.Wash.PlaneAlpha(light, rich: true) > Design.Wash.PlaneAlpha(light, rich: false));
+            Assert.True(Design.Wash.TintAlpha(light, rich: true) > Design.Wash.TintAlpha(light, rich: false));
+            Assert.True(Design.Wash.HeroAlpha(light, rich: true) > Design.Wash.HeroAlpha(light));
+            Assert.True(Design.Wash.ShelfAlpha(light, rich: true) > Design.Wash.ShelfAlpha(light));
+
+            foreach (float a in new[]
+                     {
+                         Design.Wash.PlaneAlpha(light, rich: true), Design.Wash.TintAlpha(light, rich: true),
+                         Design.Wash.HeroAlpha(light, rich: true), Design.Wash.ShelfAlpha(light, rich: true),
+                     })
+                Assert.True(a <= 0.5f, $"Rich alpha {a} exceeds 0.5");
+        }
+    }
+
+    [Fact]
+    public void Wash_Subtle_IsTodaysValues()
+    {
+        // The Subtle path must not move: these are the values the surfaces shipped with before the Rich level.
+        Assert.Equal(0.30f, Design.Wash.PlaneAlpha(light: true, rich: false));
+        Assert.Equal(0.20f, Design.Wash.PlaneAlpha(light: false, rich: false));
+        Assert.Equal(0.05f, Design.Wash.TintAlpha(light: true, rich: false));
+        Assert.Equal(0.14f, Design.Wash.TintAlpha(light: false, rich: false));
+    }
+
+    [Fact]
     public void A_vanishing_stop_keeps_its_own_rgb()
     {
         // Stop interpolation is STRAIGHT-alpha; a premultiplied-black transparent would drag the whole falloff toward

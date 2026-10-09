@@ -2086,8 +2086,31 @@ public static partial class Design
         /// <inheritdoc cref="HeroAlphaLight"/>
         public const float HeroAlphaDark = 0.10f, ShelfAlphaDark = 0.085f;
 
-        public static float HeroAlpha(bool light) => light ? HeroAlphaLight : HeroAlphaDark;
-        public static float ShelfAlpha(bool light) => light ? ShelfAlphaLight : ShelfAlphaDark;
+        /// <summary>Rich: stronger, still under the 0.5 that keeps body text above AA on the plane. Each pair is the
+        /// light/dark value of one surface: the hero and shelf washes, the tone plane and the chrome tint.</summary>
+        public const float HeroAlphaLightRich = 0.08f, ShelfAlphaLightRich = 0.075f;
+        public const float HeroAlphaDarkRich = 0.15f, ShelfAlphaDarkRich = 0.13f;
+        public const float PlaneAlphaLightRich = 0.45f, PlaneAlphaDarkRich = 0.30f;
+        public const float TintAlphaLightRich = 0.10f, TintAlphaDarkRich = 0.22f;
+
+        public static float HeroAlpha(bool light, bool rich = false) => rich
+            ? (light ? HeroAlphaLightRich : HeroAlphaDarkRich)
+            : (light ? HeroAlphaLight : HeroAlphaDark);
+        public static float ShelfAlpha(bool light, bool rich = false) => rich
+            ? (light ? ShelfAlphaLightRich : ShelfAlphaDarkRich)
+            : (light ? ShelfAlphaLight : ShelfAlphaDark);
+
+        /// <summary>The tone plane's alpha over the Mica stack: the Subtle pair from <see cref="CoverPageTonePlane"/>,
+        /// or the Rich pair.</summary>
+        public static float PlaneAlpha(bool light, bool rich) => rich
+            ? (light ? PlaneAlphaLightRich : PlaneAlphaDarkRich)
+            : (light ? CoverPageTonePlane.PlaneAlphaLight : CoverPageTonePlane.PlaneAlphaDark);
+
+        /// <summary>The chrome tint's alpha: the Subtle pair from <see cref="CoverShellTintBinder"/>, or the Rich
+        /// pair.</summary>
+        public static float TintAlpha(bool light, bool rich) => rich
+            ? (light ? TintAlphaLightRich : TintAlphaDarkRich)
+            : (light ? CoverShellTintBinder.TintAlphaLight : CoverShellTintBinder.TintAlphaDark);
 
         /// <summary>Clip a window-relative radial wash to the bounds of its own ellipse at
         /// <paramref name="fadeOffset"/> and re-express the ellipse relative to that box. Pure — no theme, no viewport,
@@ -2305,6 +2328,7 @@ public sealed class CoverPageTonePlane : Component
     public override Element Render()
     {
         var p = UseProps<Props>();
+        bool rich = Prefs.Appearance.SurfaceWash() == WashLevel.Rich;
 
         // The watch subscriptions, resolved ONCE per render and read here. Hoisting them out of the Fill closure
         // matters: a bound brush is re-evaluated on the PAINT path. Render still has to subscribe (not just the brush)
@@ -2320,7 +2344,7 @@ public sealed class CoverPageTonePlane : Component
 
         // At most ONE child, and only in hero-only mode: the tone BAND that fades back to the neutral surface. The
         // default arm paints the plane's own flat fill and nothing else.
-        Element[] kids = p.HeroOnly && HeroOnlyVeil(p) is { } veil ? [veil] : [];
+        Element[] kids = p.HeroOnly && HeroOnlyVeil(p, rich) is { } veil ? [veil] : [];
 
         return new BoxEl
         {
@@ -2329,7 +2353,7 @@ public sealed class CoverPageTonePlane : Component
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
             Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
-                ? t with { A = Tok.Theme == ThemeKind.Light ? PlaneAlphaLight : PlaneAlphaDark }
+                ? t with { A = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich) }
                 : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Standard,
             Children = kids,
@@ -2351,12 +2375,12 @@ public sealed class CoverPageTonePlane : Component
     /// unpainted content stack, the same breathing surface every other page has.
     /// <para>The Settings row that turned this on ("Limit page color to the hero") is GONE and is not to be reinstated;
     /// the arm survives because a caller may still compose it.</para></summary>
-    static Element? HeroOnlyVeil(Props p)
+    static Element? HeroOnlyVeil(Props p, bool rich)
     {
         float pageH = p.PageHeight > 1f ? p.PageHeight : 0f;
         if (pageH <= 1f) return null;
         if (Resolve(p) is not { } tone) return null;
-        float alpha = Tok.Theme == ThemeKind.Light ? PlaneAlphaLight : PlaneAlphaDark;
+        float alpha = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich);
         float start = Math.Clamp(p.BackdropBand / pageH, 0.12f, 0.80f);
         float end = MathF.Min(1f, start + 0.22f);
         return new BoxEl
@@ -2479,7 +2503,10 @@ public sealed class CoverArtistBlendWash : Component
 public sealed class CoverKeyedVeil : Component
 {
     /// <inheritdoc cref="CoverKeyedVeil"/>
-    public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0);
+    /// <para>Disabled (surfaces Off) = the ladder's neutral rung: the veil still darkens the photo for the title, it just
+    /// carries no hue.</para>
+    public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0,
+                               bool Disabled = false);
 
     static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
     bool _mounted;
@@ -2490,19 +2517,20 @@ public sealed class CoverKeyedVeil : Component
     public override Element Render()
     {
         var p = UseProps<Props>();
-        if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
+        if (!p.Disabled && p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         var pagePal = Design.SchemeFor(p.Url);
         // The page palette's own lifted accent is the graded rung; the payload (header) accent and the neutral
         // FillLayerDefault (ArtistHeroVeil then lerps into the layer colour itself = no tint) fill the rest of the
         // ladder — the old chrome-scheme fallback is gone, subsumed by the shared ladder.
         ColorF? graded = pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null;
         bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
-        var result = AccentLadder.Resolve(new(graded, p.PayloadAccent, definite), null, Tok.FillLayerDefault, s_lift);
+        var ladderIn = p.Disabled ? new AccentLadder.Input(null, 0, true) : new AccentLadder.Input(graded, p.PayloadAccent, definite);
+        var result = AccentLadder.Resolve(ladderIn, null, Tok.FillLayerDefault, s_lift);
         // Keyed swap: see CoverArtistBlendWash — a Gradient can't cross-fade through BrushTransitionMs, and a
         // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
         //
         // PRE-SETTLEMENT EXIT GUARD — see VeilSettlement's doc for the defect and the fix.
-        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite);
+        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite || p.Disabled);
         Element veil = new BoxEl
         {
             Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
@@ -2547,6 +2575,7 @@ public sealed class CoverShellTintBinder : Component
         if (p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal))
             _ = Palette.Watch(fb).Value;
 
+        bool rich = Prefs.Appearance.SurfaceWash() == WashLevel.Rich;
         var coverArt = p.Ready ? Design.SchemeFor(p.Url) : null;
         var artPalette = coverArt ?? (p.Ready ? Design.SchemeFor(p.FallbackUrl) : null);
         // DEFINITE "no colour": the page has DECIDED to opt out (colour washes off in Settings, or this layout applies
@@ -2559,13 +2588,13 @@ public sealed class CoverShellTintBinder : Component
             if (artPalette is { } artScheme)
             {
                 known = Tok.Theme == ThemeKind.Light
-                    ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = TintAlphaLight }
-                    : Design.Palette.TintedDark(artScheme) with { A = TintAlphaDark };
+                    ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = Design.Wash.TintAlpha(true, rich) }
+                    : Design.Palette.TintedDark(artScheme) with { A = Design.Wash.TintAlpha(false, rich) };
             }
             else if (p.PayloadAccent != 0)
             {
                 var lifted = Design.Palette.Lift(Design.Palette.ToColor(p.PayloadAccent));
-                known = lifted with { A = Tok.Theme == ThemeKind.Light ? TintAlphaLight : TintAlphaDark };
+                known = lifted with { A = Design.Wash.TintAlpha(Tok.Theme == ThemeKind.Light, rich) };
             }
         }
 
@@ -2575,6 +2604,8 @@ public sealed class CoverShellTintBinder : Component
 
         void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null);
 
+        // The alpha travels inside `known`, so a Subtle/Rich flip changes the DepKey below and re-publishes with no
+        // extra key member.
         // `Tok.Theme` is IN THE KEY on purpose: a live theme flip re-derives the tint ARM (light Lift(TextBase)@0.05 vs
         // dark TintedDark@0.14) and re-publishes it. Without it the chrome keeps the OLD arm's tint until the next
         // navigation.

@@ -161,10 +161,11 @@ public static partial class Shell
             if (state.Wash is not { } wash)
                 return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = [tint] };
 
+            bool rich = Prefs.Appearance.SurfaceWash() == WashLevel.Rich;
             var legs = new List<Element>(3);
-            AddWash(legs, wash.Hero, Design.Wash.Hero, Design.Wash.HeroAlpha(light), "shell.wash.hero", vp);
-            AddWash(legs, wash.Weekly, Design.Wash.Weekly, Design.Wash.ShelfAlpha(light), "shell.wash.weekly", vp);
-            AddWash(legs, wash.Mix, Design.Wash.Mix, Design.Wash.ShelfAlpha(light), "shell.wash.mix", vp);
+            AddWash(legs, wash.Hero, Design.Wash.Hero, Design.Wash.HeroAlpha(light, rich), "shell.wash.hero", vp);
+            AddWash(legs, wash.Weekly, Design.Wash.Weekly, Design.Wash.ShelfAlpha(light, rich), "shell.wash.weekly", vp);
+            AddWash(legs, wash.Mix, Design.Wash.Mix, Design.Wash.ShelfAlpha(light, rich), "shell.wash.mix", vp);
             return new BoxEl
             {
                 Grow = 1f, ZStack = true, HitTestVisible = false,
