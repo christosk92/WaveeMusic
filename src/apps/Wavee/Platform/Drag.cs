@@ -450,6 +450,19 @@ public static partial class Drag
                && resource.Kind is DragKind.Playlist or DragKind.Folder;
     }
 
+    /// <summary>Is ANY drag live right now? <c>Sidebar.EnterEdit</c> refuses while one is (the sidebar's Edit mode never
+    /// straddles a drag, §P4.4).</summary>
+    public static bool IsLive()
+        => (FluentGpu.Hooks.InputHooks.Current.Default.GetDragState?.Invoke() ?? default).Active;
+
+    /// <summary>Is a drag that could be PINNED live right now (an entity, a folder, a route — never a track)? An empty
+    /// Pinned section plans its drop band only while this holds.</summary>
+    public static bool LivePinnable()
+    {
+        var state = FluentGpu.Hooks.InputHooks.Current.Default.GetDragState?.Invoke() ?? default;
+        return state.Active && Unwrap(state.Payload) is { CanPin: true };
+    }
+
     // ── 3.6 the chip (ch 29 W17) ────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The app's chip DATA for a live drag — Wavee's whole contribution to the drag visual. The framework

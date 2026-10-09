@@ -1,10 +1,10 @@
 // ── Wavee.Tests/SidebarCardsTests.cs — the sidebar's media cards: what each entry kind answers ──────────────────────────
 //
-// The hero card, the grid tile and the collapsed-rail tile are each one `Controls.Surface` fed by `SidebarCards`
-// (Shell/Sidebar.Cards.cs), and every decision those adapters make is a function in `SidebarCardRules`: whether the card draws
-// selected, what activating it does, whether it carries a play affordance, whether it is a drop destination (and whether
-// that drop is a deposit or a refusal), whether it is a drag source, where the "…" lives, the title gate, and the hero's
-// pinned geometry. They are pinned here per entry kind. No window, no loop, no element is rendered.
+// The grid tile is one `Controls.Surface` fed by `SidebarCards` (Shell/Sidebar.Cards.cs), and every decision that adapter
+// makes is a function in `SidebarCardRules`: whether the card draws selected, what activating it does, whether it carries
+// a play affordance, whether it is a drop destination (and whether that drop is a deposit or a refusal), whether it is a
+// drag source, where the "…" lives and the title gate. They are pinned here per entry kind. No window, no loop, no
+// element is rendered.
 //
 // What only the engine can show (the hand cursor, the focus ring, the hover plate, the now-playing pill, the drop wash,
 // the tooltip on the label-less tile) is the live check's job — the surface rules themselves are SurfaceRulesTests.
@@ -24,7 +24,7 @@ public class SidebarCardsTests
         => new(id ?? ("route:" + kind), kind, uri, name, "", StringId.Empty, null, 0, 0, 0, 0, 0, 0, false,
                SidebarPlaylistFlavor.None) { CanEdit = canEdit, IdentityKnown = identityKnown };
 
-    static readonly SidebarCardSurface[] AllSurfaces = [SidebarCardSurface.Hero, SidebarCardSurface.Tile, SidebarCardSurface.Rail];
+    static readonly SidebarCardSurface[] AllSurfaces = [SidebarCardSurface.Tile];
 
     // ── selected ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -67,50 +67,11 @@ public class SidebarCardsTests
 
     // ── play ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-    [Theory]
-    [InlineData(SidebarEntryKind.Playlist, true)]
-    [InlineData(SidebarEntryKind.Album, true)]
-    [InlineData(SidebarEntryKind.Show, true)]
-    [InlineData(SidebarEntryKind.Track, true)]
-    [InlineData(SidebarEntryKind.Artist, false)]
-    [InlineData(SidebarEntryKind.Folder, false)]
-    [InlineData(SidebarEntryKind.AppRoute, false)]
-    public void Play_exists_for_a_playable_context_on_the_hero_and_the_tile(SidebarEntryKind kind, bool playable)
-    {
-        var e = Entry(kind);
-        Assert.Equal(playable, SidebarCardRules.HasPlay(SidebarCardSurface.Hero, in e, playButton: true));
-        Assert.Equal(playable, SidebarCardRules.HasPlay(SidebarCardSurface.Tile, in e, playButton: true));
-    }
-
-    [Theory]
-    [InlineData(SidebarEntryKind.Playlist)]
-    [InlineData(SidebarEntryKind.Album)]
-    [InlineData(SidebarEntryKind.Show)]
-    [InlineData(SidebarEntryKind.Track)]
-    public void The_hero_honours_the_sections_play_button_option_and_the_tile_does_not_ask(SidebarEntryKind kind)
-    {
-        var e = Entry(kind);
-        Assert.False(SidebarCardRules.HasPlay(SidebarCardSurface.Hero, in e, playButton: false));
-        // PlayButton is an EntityEmbed-only option: a grid cell has no such switch.
-        Assert.True(SidebarCardRules.HasPlay(SidebarCardSurface.Tile, in e, playButton: false));
-    }
-
-    [Fact]
-    public void The_rail_tile_never_carries_a_play_affordance()
-    {
-        foreach (var kind in Enum.GetValues<SidebarEntryKind>())
-        {
-            var e = Entry(kind);
-            Assert.False(SidebarCardRules.HasPlay(SidebarCardSurface.Rail, in e, playButton: true));
-        }
-    }
-
     [Fact]
     public void An_entry_with_no_uri_has_nothing_to_play()
     {
         var e = Entry(SidebarEntryKind.Playlist, uri: "");
-        Assert.False(SidebarCardRules.HasPlay(SidebarCardSurface.Hero, in e, playButton: true));
-        Assert.False(SidebarCardRules.HasPlay(SidebarCardSurface.Tile, in e, playButton: true));
+        Assert.False(SidebarCardRules.HasPlay(in e));
     }
 
     // ── drop ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -121,15 +82,6 @@ public class SidebarCardsTests
         var e = Entry(SidebarEntryKind.Playlist, canEdit: true);
         foreach (var surface in AllSurfaces)
             Assert.Equal(SidebarCardDrop.Deposit, SidebarCardRules.Drop(surface, in e));
-    }
-
-    [Fact]
-    public void A_read_only_playlist_refuses_with_a_reason_when_expanded_and_stays_transparent_on_the_rail()
-    {
-        var e = Entry(SidebarEntryKind.Playlist, canEdit: false);
-        Assert.Equal(SidebarCardDrop.Refuse, SidebarCardRules.Drop(SidebarCardSurface.Hero, in e));
-        Assert.Equal(SidebarCardDrop.Refuse, SidebarCardRules.Drop(SidebarCardSurface.Tile, in e));
-        Assert.Equal(SidebarCardDrop.None, SidebarCardRules.Drop(SidebarCardSurface.Rail, in e));
     }
 
     [Theory]
@@ -172,14 +124,6 @@ public class SidebarCardsTests
 
     // ── the menu glyph ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public void The_hero_row_shows_the_menu_glyph_and_the_tile_and_rail_keep_the_menu_on_right_click()
-    {
-        Assert.True(SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Hero));
-        Assert.False(SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Tile));
-        Assert.False(SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Rail));
-    }
-
     // ── the title gate ───────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -197,42 +141,13 @@ public class SidebarCardsTests
     [Fact]
     public void An_entry_whose_identity_has_not_landed_shows_nothing_and_is_pending()
     {
-        // Trap 5: never the raw uri fragment as a title. On the label-less rail tile that is a bone, not an empty tooltip.
+        // Trap 5: never the raw uri fragment as a title. That is a bone, not an empty tooltip.
         var e = Entry(SidebarEntryKind.Playlist, uri: "spotify:playlist:3fMbdgg4jU18AjLCKBhRSm", name: "", identityKnown: false);
         Assert.Equal("", SidebarCardRules.TitleOf(in e));
         Assert.True(SidebarCardRules.IsPending(in e));
     }
 
-    [Fact]
-    public void The_hero_title_prefers_alias_then_name_then_cache_then_the_key()
-    {
-        Assert.Equal("Alias", SidebarCardRules.HeroTitle("Alias", resolved: true, "Name", "Cached", "spotify:album:abc"));
-        Assert.Equal("Name", SidebarCardRules.HeroTitle(null, resolved: true, "Name", "Cached", "spotify:album:abc"));
-        Assert.Equal("Cached", SidebarCardRules.HeroTitle(null, resolved: true, "", "Cached", "spotify:album:abc"));
-        Assert.Equal("Cached", SidebarCardRules.HeroTitle("", resolved: false, "Name", "Cached", "spotify:album:abc"));
-        Assert.Equal("abc", SidebarCardRules.HeroTitle(null, resolved: false, null, null, "spotify:album:abc"));
-    }
-
     // ── geometry ─────────────────────────────────────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(SidebarDensity.Compact, 56f, 40f)]
-    [InlineData(SidebarDensity.Cozy, 72f, 56f)]
-    [InlineData(SidebarDensity.Comfortable, 88f, 72f)]
-    public void The_hero_surface_is_exactly_the_sections_one_card_height(SidebarDensity density, float height, float cover)
-    {
-        float card = SidebarRowGeometry.CardHeightFor(density);
-        Assert.Equal(height, card);
-        Assert.Equal(cover, SidebarCardRules.HeroCover(card));
-        // The surface pads 8 on every side, so cover + 2 x pad is the pinned height: the planner's analytic extent holds.
-        Assert.Equal(card, SidebarCardRules.HeroCover(card) + 2f * SurfaceGeometry.RowPad);
-
-        var shape = SidebarCardRules.HeroShape(card);
-        Assert.True(shape.IsRow);
-        Assert.Equal(card, SurfaceGeometry.RowHeight(in shape));
-        Assert.Equal(cover, shape.ArtEdge);
-        Assert.Equal(28f, shape.Fab);
-    }
 
     [Fact]
     public void The_tile_cover_is_the_cell_less_the_plate_padding_on_both_sides()
@@ -240,15 +155,5 @@ public class SidebarCardsTests
         Assert.Equal(53f, SidebarCardRules.TileCover(69f));
         Assert.Equal(24f, SidebarCardRules.TileCover(40f));
         Assert.Equal(0f, SidebarCardRules.TileCover(10f));
-    }
-
-    [Fact]
-    public void The_rail_tile_is_label_less_so_its_title_is_always_the_tooltip()
-    {
-        Assert.False(global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Labels);
-        Assert.True(SurfaceRules.TitleTip(trimmed: false, hasLabels: global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Labels));
-        // …and it has neither a FAB nor a "…" slot: play and the menu are the context menu's.
-        Assert.Equal(0f, global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Fab);
-        Assert.Equal(MenuPlacement.None, global::Wavee.Shape.RailTileOf(global::Wavee.SidebarRailMetrics.For(global::Wavee.SidebarRailDetent.Default).Tile).Menu);
     }
 }

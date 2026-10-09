@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 Releases are cut from the `wavee-v*` tag prefix — see `docs/guide/releasing-wavee.md`. (The FluentGpu engine/gallery
 versions separately under `v*` and is not tracked in this file.)
 
+## [0.3.5] - unreleased
+
+### Changed
+
+- **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
+  bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
+  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in
+  Settings › Appearance or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists, and optional
+  Recently played and New releases sections) or Library (one list with filters, like Spotify's Your Library). In
+  Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips and the
+  toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
+  in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
+  current sidebar carries over.
+
+### Removed
+
+- **The Custom sidebar layout and its full-page customizer.** Its sections are mapped onto the closest Classic or
+  Library setup the first time this version starts (a toast says which ones could not be kept); everything it offered
+  is now in the sidebar's Edit mode.
+
 ## [0.3.4] - 2026-10-06
 
 ### Added

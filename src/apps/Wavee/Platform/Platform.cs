@@ -70,34 +70,30 @@ public static partial class Platform
     // PARTIAL: the Wave-6 keys (`diag.stageRects`, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
     public static partial class Keys
     {
-        // ── sidebar: legacy (v0) global pane keys — read only by the v0→v1 migration. Deliberately NOT deleted: a
-        //    downgrade to an older build must still find a sane pane width. The pane state is per DESIGN (SidebarWidth
-        //    below) since v1.
-        public static readonly SettingKey<float> SidebarWidthLegacy = new("sidebar.width", 300f);
+        // ── sidebar: legacy (v0) global pane keys, read only by the first-run probe
+        //    (`Setup.Bootstrap.IsFreshInstall`): a pane preference written by a build that predates the sidebar designs is
+        //    a witness that this is not a fresh install. The pane state is one value for both layouts (SidebarPaneWidth
+        //    below) since v3.
         public static readonly SettingKey<bool> SidebarWidthUserSetLegacy = new("sidebar.width.userSet", false);
         public static readonly SettingKey<bool> SidebarCollapsedLegacy = new("sidebar.collapsed", false);
-        /// <summary>The active sidebar design as an int. DEFAULT 0 = Classic IS LOAD-BEARING: an existing install that
-        /// never wrote the key silently stays Classic.</summary>
-        public static readonly SettingKey<int> SidebarDesign = new("sidebar.design", 0);
-        /// <summary>The one-time design-chooser marker; set true for EXISTING installs so they never see the chooser.</summary>
-        public static readonly SettingKey<bool> SidebarOnboardingSeen = new("sidebar.onboarding.seen", false);
-        /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; target 1). There is no key-exists
-        /// probe, so this is the ONLY thing that tells "never written" from "written as the default".</summary>
+        /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). There
+        /// is no key-exists probe, so this is the ONLY thing that tells "never written" from "written as the default".</summary>
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
-        public static readonly SettingKey<bool> ClassicPinnedOpen = new("sidebar.classic.section.pinned", true);
-        public static readonly SettingKey<bool> ClassicLibraryOpen = new("sidebar.classic.section.library", true);
-        public static readonly SettingKey<bool> ClassicPlaylistsOpen = new("sidebar.classic.section.playlists", true);
-        public static readonly SettingKey<int> V3Filter = new("sidebar.v3.filter", 0);
-        public static readonly SettingKey<int> V3Qualifier = new("sidebar.v3.qualifier", 0);
-        public static readonly SettingKey<int> V3Sort = new("sidebar.v3.sort", 0);
-        /// <summary>Ignored while the sort is Custom; the stored value is PRESERVED so returning to another sort restores it.</summary>
-        public static readonly SettingKey<bool> V3Desc = new("sidebar.v3.desc", false);
-        public static readonly SettingKey<int> V3View = new("sidebar.v3.view", 1);
-        public static readonly SettingKey<int> V3GridSize = new("sidebar.v3.size", 1);          // 0 S · 1 M · 2 L
-        public static readonly SettingKey<string> CuratedTemplateId = new("sidebar.curated.template", "wavee.curated.default");
-        public static readonly SettingKey<bool> CuratedRailLabels = new("sidebar.curated.rail.labels", false);
+        /// <summary>The active sidebar layout: 0 Classic · 1 Library. Written by the one-time v3 migration.</summary>
+        public static readonly SettingKey<int> SidebarLayoutId = new("sidebar.layout.id", 0);
+        /// <summary>The expanded pane width, one value for both layouts (180-460).</summary>
+        public static readonly SettingKey<float> SidebarPaneWidth = new("sidebar.pane.width", 320f);
+        /// <summary>The user's collapse to the 48 rail — written only in the Wide band, never by a forced mode.</summary>
+        public static readonly SettingKey<bool> SidebarPaneUserCollapsed = new("sidebar.pane.userCollapsed", false);
+        /// <summary>Entity-row density: 0 Default · 1 Compact.</summary>
+        public static readonly SettingKey<int> SidebarPaneDensity = new("sidebar.pane.density", 0);
+        /// <summary>Your Library's chip: 0 none · 1 Playlists · 2 Albums · 3 Artists · 4 Podcasts · 5 Audiobooks.</summary>
+        public static readonly SettingKey<int> SidebarLibraryFilter = new("sidebar.library.filter", 0);
+        /// <summary>The loc keys of what the v2 migration could not carry over, comma-separated (Settings' "What changed").</summary>
+        public static readonly SettingKey<string> SidebarMigrationDropped = new("sidebar.migration.dropped", "");
         /// <summary>One-time upgrade latch: until the first converged walk of the server's ylpin set has pushed every
-        /// pre-existing local pin up, an empty/partial mirror must never look like "unpin everything".</summary>
+        /// pre-existing local pin up, an empty/partial mirror must never look like "unpin everything". Read by the migration
+        /// only; nothing writes it any more.</summary>
         public static readonly SettingKey<bool> PinsMigratedToServer = new("sidebar.pins.migratedToServer", false);
 
         // ── first-run setup wizard ──
@@ -375,15 +371,6 @@ public static partial class Platform
         // discography grid they drove is gone). Kept and unread — a persisted string never changes — so do not renumber,
         // repurpose or delete one: a user's store.json still carries them, and LibraryAlbumSort is still read (the
         // reader's own sort, whose old 0-4 discography values clamp to 0).
-
-        /// <summary>Per-DESIGN sidebar pane state (`sidebar.&lt;slug&gt;.*`; slugs are "classic"/"library-v3"/"curated"
-        /// and are PERSISTED — never rename one). The default is passed IN, from the design table that owns it
-        /// (`SidebarDesignInfo.DefaultWidth`), so this file does not duplicate — and drift from — it.</summary>
-        public static SettingKey<float> SidebarWidth(string designSlug, float defaultWidth) => new("sidebar." + designSlug + ".width", defaultWidth);
-        /// <summary>True ⇔ the design's regime is Rail (the pre-resize meaning, unchanged — no migration).</summary>
-        public static SettingKey<bool> SidebarCollapsed(string designSlug) => new("sidebar." + designSlug + ".collapsed", false);
-        /// <summary>The collapsed rail's size, GLOBAL across designs (0 Compact · 1 Default · 2 Large; unknown ⇒ Default).</summary>
-        public static readonly SettingKey<int> SidebarRailDetent = new("sidebar.rail.detent", 1);
 
         /// <summary>A deck/player preset's own option (`npv.player.&lt;preset&gt;.&lt;option&gt;`).</summary>
         public static SettingKey<int> NpvOption(string presetSlug, string optionSlug) => new("npv.player." + presetSlug + "." + optionSlug, 0);

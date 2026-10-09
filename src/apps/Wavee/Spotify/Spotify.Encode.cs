@@ -90,8 +90,9 @@ public static partial class Spotify
         /// counts it.</summary>
         public const int OtherKind = 3;
 
-        /// <summary>The wire uri Liked Songs pins as (<c>PinSyncRules.LikedWireUri</c>).</summary>
-        public const string LikedPinUri = PinSyncRules.LikedWireUri;
+        /// <summary>The wire uri Liked Songs pins as on the server. <see cref="PinWires"/> still reports it (the server pin
+        /// is real and stays untouched); <c>PinSyncRules.TryPinId</c> refuses it, so it never becomes a sidebar pin (Q1a).</summary>
+        public const string LikedPinUri = "spotify:collection";
 
         // ── 2. client-minted ids ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -940,6 +941,38 @@ public static class LibraryDrops
 /// <summary>One server pin: the ylpin item's uri and when it was added (unix ms, 0 = not stated).</summary>
 public readonly record struct PinWire(string Uri, long AddedAtMs);
 
+/// <summary>The pin writes the bridge must not sweep (<see cref="LibraryPinSync"/>'s <c>hasPending</c>): in flight, or
+/// settled less than <see cref="GraceMs"/> ago. The marks belong to ONE account: <see cref="Rebind"/> forgets them only
+/// when the account changes, never on a market / locale / tier switch of the same account (Q1b).</summary>
+public sealed class PinWriteMarks
+{
+    public const long GraceMs = 60_000;
+    readonly Dictionary<string, long> _at = new(StringComparer.Ordinal);
+    readonly Func<long> _now;
+    string _account = "";
+
+    public PinWriteMarks(Func<long>? now = null) => _now = now ?? (static () => Environment.TickCount64);
+
+    public int Count => _at.Count;
+
+    public void Note(string uri, bool inFlight) => _at[uri] = inFlight ? long.MaxValue : _now();
+
+    public bool IsPending(string uri)
+        => _at.TryGetValue(uri, out long at) && (at == long.MaxValue || _now() - at < GraceMs);
+
+    /// <summary>The live account is <paramref name="accountKey"/>. Another account's marks describe ITS pins, so they go;
+    /// the same account keeps them. An old account's write that settles AFTER this call still lands here:
+    /// <c>SettleCollection</c> notes the settle before its scope check (it must — on a same-account market switch the
+    /// in-flight mark would otherwise never clear), so it leaves a <see cref="GraceMs"/> mark in the new account's set.
+    /// That only delays a sweep of that uri by a minute, and is harmless.</summary>
+    public void Rebind(string accountKey)
+    {
+        if (string.Equals(accountKey, _account, StringComparison.Ordinal)) return;
+        _account = accountKey;
+        _at.Clear();
+    }
+}
+
 /// <summary>THE PIN BRIDGE (G-049): the two-way convergence between Spotify's ylpin set (the <c>Pins</c> edge, read as
 /// <see cref="PinWire"/>s) and the sidebar's <see cref="SidebarPinStore"/> — the port of 0.2.9's
 /// <c>SidebarPinSync</c>, with the decision the register recommended: the STORE stays the ordered, persisted authority
@@ -952,7 +985,7 @@ public readonly record struct PinWire(string Uri, long AddedAtMs);
 /// collection write; an app route or a <c>wavee:</c> playlist stays local.</item>
 /// <item>the upgrade (§1.7): the first converged walk PUSHES every syncable local pin the server lacks instead of
 /// sweeping it — deleting a user's pins because the server never had them would be data loss — then latches
-/// <see cref="Platform.Keys.PinsMigratedToServer"/>.</item>
+/// the loaded account's latch (<see cref="SidebarPinLatch"/>).</item>
 /// </list>
 /// A shape this client cannot represent (a track, an episode, a prerelease, <c>your-episodes</c>, an unknown scheme)
 /// never becomes a local pin and never causes a write, so a foreign client's pin survives on the server untouched.
@@ -960,36 +993,40 @@ public readonly record struct PinWire(string Uri, long AddedAtMs);
 public sealed class LibraryPinSync : IDisposable
 {
     readonly SidebarPinStore _pins;
-    readonly IAppSettings _settings;
+    readonly SidebarPinLatch _latch;
     readonly Action<string, bool> _write;
     readonly Func<string, bool> _hasPending;
     readonly Func<string, string>? _routeTitle;
     readonly Action<SidebarPin, bool> _onLocal;
-    bool _migrated;
 
+    /// <param name="latch">The loaded account's migration latch and the ACCOUNT GUARD (Q1b): while the store holds
+    /// another account's pins, the server set is never converged onto it and no local change is written.</param>
     /// <param name="write">(wire uri, pinned) — one collection write.</param>
     /// <param name="hasPending">Is a write for this wire uri still in flight? A pending pin is never swept.</param>
-    /// <param name="routeTitle">A route pin's display title (Liked Songs has no entity to name it).</param>
-    public LibraryPinSync(SidebarPinStore pins, IAppSettings settings, Action<string, bool> write, Func<string, bool> hasPending,
+    /// <param name="routeTitle">A route pin's display title (none today: every route pin carries its own name).</param>
+    public LibraryPinSync(SidebarPinStore pins, SidebarPinLatch latch, Action<string, bool> write, Func<string, bool> hasPending,
                           Func<string, string>? routeTitle = null)
     {
         _pins = pins;
-        _settings = settings;
+        _latch = latch;
         _write = write;
         _hasPending = hasPending;
         _routeTitle = routeTitle;
-        _migrated = settings.Get(Platform.Keys.PinsMigratedToServer);
         _onLocal = OnLocalPinChanged;
         _pins.OnLocalPinChanged = _onLocal;
     }
 
-    /// <summary>Has the one-time local → server migration run?</summary>
-    public bool Migrated => _migrated;
+    /// <summary>Has the loaded account's one-time local → server migration run? Re-read every time (no cached copy:
+    /// an account swap changes it).</summary>
+    public bool Migrated => _latch.Get();
 
     /// <summary>Converge the store onto the server set. <paramref name="converged"/>: the set has been walked whole at
-    /// least once this scope (the edge is Complete) — an empty or partial mirror must never read as "unpin everything".</summary>
-    public void ApplyServer(IReadOnlyList<PinWire> server, bool converged)
+    /// least once this scope (the edge is Complete) — an empty or partial mirror must never read as "unpin everything".
+    /// Returns false (and changes nothing) when the store holds another account's pins: the swap has not run yet for this
+    /// scope.</summary>
+    public bool ApplyServer(IReadOnlyList<PinWire> server, bool converged)
     {
+        if (!_latch.Matches) return false;
         // Oldest first → appended in pin order. A stable sort by index keeps equal instants in wire order.
         var order = new int[server.Count];
         for (int i = 0; i < order.Length; i++) order[i] = i;
@@ -1012,9 +1049,11 @@ public sealed class LibraryPinSync : IDisposable
             mapped.Add(new SidebarPin(id, kind, SidebarPinId.UriOf(id), name, wire.AddedAtMs));
         }
 
-        bool removeMissing = converged && _migrated;
+        bool migrated = _latch.Get();
+        bool removeMissing = converged && migrated;
         _pins.ApplyRemote(mapped, IsSweepable, removeMissing);
-        if (!_migrated && converged) Migrate(mapped);
+        if (!migrated && converged) Migrate(mapped);
+        return true;
     }
 
     bool IsSweepable(string pinId)
@@ -1022,6 +1061,7 @@ public sealed class LibraryPinSync : IDisposable
 
     void OnLocalPinChanged(SidebarPin pin, bool pinned)
     {
+        if (!_latch.Matches) return;                                      // never write account A's change to account B
         if (PinSyncRules.TryWireUri(pin.Id, "") is not { } uri) return;   // not syncable — a silent local pin
         _write(uri, pinned);
     }
@@ -1037,8 +1077,7 @@ public sealed class LibraryPinSync : IDisposable
             if (PinSyncRules.TryWireUri(pin.Id, "") is not { } uri) continue;
             _write(uri, true);
         }
-        _migrated = true;
-        _settings.Set(Platform.Keys.PinsMigratedToServer, true);
+        _latch.Set(true);
     }
 
     public void Dispose()

@@ -451,7 +451,7 @@ public readonly partial struct Album
                     Design.Type.Eyebrow(Strings.Library.AlsoBy(new Artist(artist).Name)) with { Color = Tok.TextTertiary },
                     // The house shape for a horizontal rail: a stated height (the surface's own shelf extent — a
                     // ScrollEl is a viewport with no content height to grow from), Grow 0, and the edge fade instead
-                    // of a scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.LibraryV3.cs:1389).
+                    // of a scrollbar rail under 96-px art (Concert.Page.cs:736, Sidebar.UI.Library.cs).
                     ScrollView(new BoxEl { Direction = 0, Gap = Spacing.M, Children = tiles.ToArray() }, horizontal: true) with
                     {
                         Grow = 0f, Shrink = 0f, Height = SurfaceMetrics.AlsoByStripH, SuppressScrollBar = true,

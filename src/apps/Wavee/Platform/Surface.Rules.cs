@@ -107,18 +107,8 @@ public static class Shape
     /// <summary>An episode row: 56 art, a two-line title, the 72 floor.</summary>
     public static readonly SurfaceShape EpisodeRow = Row(56f) with { TitleLines = 2, MinHeight = 72f };
 
-    /// <summary>The sidebar's hero card row: 48 art, the 28 FAB, the 64 floor.</summary>
-    public static readonly SurfaceShape SidebarHero = Row(48f) with { Fab = 28f, MinHeight = 64f };
-
     /// <summary>The sidebar's grid tile: the grid card with the 28 FAB.</summary>
     public static readonly SurfaceShape SidebarTile = Grid with { TitleLines = 1, CaptionLines = 1, Fab = 28f };
-
-    /// <summary>The collapsed rail's tile at one detent: a cover inset by the 2-DIP accent ring on each side in a
-    /// <paramref name="tile"/> square (<c>SidebarRailMetrics.Tile</c>), no labels (the tooltip is the label), no FAB, no
-    /// "…" (right-click only).</summary>
-    public static SurfaceShape RailTileOf(float tile)
-        => new(SurfaceLayout.Row, PlateKind.ListRow, tile - 2f * SidebarRailMetrics.RingInset, 0, 0, false, 0f,
-               MenuPlacement.None, PlayReveal.Reveal, tile, Labels: false);
 
     /// <summary>The art edge a row's 30 FAB stops at: above it the art is a hero's and carries the 44.</summary>
     public const float LargeRowEdge = 56f;

@@ -424,14 +424,7 @@
     "title": "Instellingen",
     "sidebar": {
       "title": "Zijbalk",
-      "subtitle": "De navigatie aan de linkerkant",
-      "design": "Ontwerp van de zijbalk",
-      "designShort": "Ontwerp",
-      "designSub": "Kies de navigatie aan de linkerkant. Wordt direct toegepast.",
-      "customize": "Zijbalk aanpassen",
-      "customizeSub": "Secties in Custom toevoegen, herschikken en instellen",
-      "railSize": "Grootte van samengevouwen balk",
-      "railSizeSub": "Hoe breed de pictogrambalk is wanneer de zijbalk is samengevouwen."
+      "subtitle": "De navigatie aan de linkerkant"
     },
     "layout": {
       "title": "Indeling en dichtheid",
@@ -580,10 +573,10 @@
     "audiobooks": "Luisterboeken"
   },
   "sidebar": {
+    "active": "Actief",
     "pinned": "Vastgemaakt",
     "yourLibrary": "Jouw bibliotheek",
     "playlists": "Playlists",
-    "dropToPin": "Sleep items hierheen om ze vast te maken",
     "songCount": "{count, plural, one {# nummer} other {# nummers}}",
     "createPlaylistTooltip": "Playlist maken",
     "createTooltip": "Playlist of map maken",
@@ -594,278 +587,19 @@
       "playlists": "Nog geen playlists — gebruik + om er een te maken"
     },
     "newPlaylist": "Mijn playlist",
-    "pinnedToast": "“{name}” vastgemaakt",
-    "unpinnedToast": "“{name}” losgemaakt",
-    "design": {
-      "classic": "Spotify Classic",
-      "classicSub": "Snelkoppelingen naar Jouw bibliotheek en een platte playlistlijst — de huidige Wavee-zijbalk.",
-      "v3": "LibraryV3",
-      "v3Sub": "Eén samengevoegde bibliotheeklijst met filters, sortering en rasterweergaven.",
-      "custom": "Custom",
-      "customSub": "Stel je eigen zijbalk samen uit de secties die je wilt.",
-      "active": "Actief"
-    },
-    "chooser": {
-      "title": "Kies je zijbalk",
-      "subtitle": "Kies de navigatie aan de linkerkant die bij je past. Je kunt dit altijd wijzigen via Instellingen → Algemeen.",
-      "keep": "Niet nu",
-      "confirm": "Deze indeling gebruiken",
-      "customizeNow": "Nu aanpassen",
-      "later": "Misschien later"
-    },
-    "menu": {
-      "customize": "Zijbalk aanpassen…",
-      "resetWidth": "Breedte herstellen"
-    },
-    "rail": {
-      "size": "Grootte van samengevouwen balk",
-      "compact": "Compact",
-      "default": "Standaard",
-      "large": "Groot"
-    },
     "seam": {
-      "announceWidth": "Breedte zijbalk {width}",
-      "announceRail": "Pictogrambalk, {size}"
-    },
-    "layout": {
-      "title": "Indeling van zijbalk",
-      "menuTitle": "Indeling van zijbalk",
-      "tooltip": "Indeling van zijbalk wijzigen",
-      "classic": "Spotify Classic",
-      "library": "Bibliotheek",
-      "libraryV3": "LibraryV3",
-      "curated": "Custom",
-      "customize": "Zijbalk aanpassen…"
-    },
-    "layoutFault": {
-      "discard": "Opnieuw beginnen"
+      "announceWidth": "Breedte zijbalk {width}"
     },
     "pin": {
       "pinTo": "Vastmaken aan zijbalk",
       "unpin": "Losmaken van zijbalk",
-      "pinned": "Vastgemaakt aan zijbalk",
-      "unpinned": "Verwijderd uit Vastgemaakt",
       "undo": "Ongedaan maken",
-      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem.",
-      "position": "{index} van {count}"
+      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem."
     },
     "section": {
-      "pinned": "Vastgemaakt",
-      "pinnedSub": "De items die je hebt vastgemaakt, in jouw volgorde",
-      "jumpBackIn": "Verder waar je was",
-      "jumpBackInSub": "Wat je het laatst hebt geopend",
       "recentlyPlayed": "Onlangs afgespeeld",
-      "recentlyPlayedSub": "Wat je echt hebt beluisterd, het meest recente eerst",
-      "shortcuts": "Snelkoppelingen naar bibliotheek",
-      "shortcutsSub": "Nummers die je leuk vindt, Albums, Artiesten, Podcasts, Lokale bestanden",
-      "playlistTree": "Playlists",
-      "playlistTreeSub": "Jouw playlists, met mappen",
-      "entityList": "Bibliotheeklijst",
-      "entityListSub": "Een gefilterd, gesorteerd deel van je bibliotheek",
-      "entityEmbed": "Uitgelicht",
-      "entityEmbedSub": "Zet één playlist, album, artiest of nummer helemaal vooraan",
-      "newReleases": "Nieuwe releases",
-      "newReleasesSub": "Nieuwe muziek van de artiesten die je volgt",
-      "concerts": "Concerten bij jou in de buurt",
-      "concertsSub": "Aankomende shows van de artiesten naar wie je luistert",
-      "staticLinks": "Koppelingen",
-      "staticLinksSub": "Snelkoppelingen naar pagina's zoals Start of Zoeken",
-      "group": "Groep",
-      "groupSub": "Je eigen groep met een naam",
-      "header": "Kop",
-      "headerSub": "Een tekstlabel tussen secties",
-      "divider": "Scheidingslijn",
-      "dividerSub": "Een dunne lijn tussen secties",
-      "artistTopTracks": "Populairste nummers van artiest",
-      "artistTopTracksSub": "De meest beluisterde nummers van één artiest",
-      "queue": "Wachtrij",
-      "queueSub": "Wat er hierna wordt afgespeeld",
-      "nowPlaying": "Nu speelt",
-      "nowPlayingSub": "Het huidige nummer in één oogopslag",
-      "extension": "Extensie",
-      "extensionSub": "Een sectie die door een extensie wordt geleverd",
       "empty": "Nog niets hier",
       "emptyRecents": "Speel iets af en het verschijnt hier"
-    },
-    "palette": {
-      "destinations": "Pagina’s",
-      "dynamic": "Dynamisch",
-      "navigation": "Navigatie",
-      "library": "Bibliotheek",
-      "playback": "Afspelen",
-      "layout": "Indeling",
-      "actions": "Acties",
-      "extensions": "Extensies"
-    },
-    "option": {
-      "density": "Dichtheid",
-      "densityCompact": "Compact",
-      "densityCozy": "Ruim",
-      "densityComfortable": "Comfortabel",
-      "presentation": "Indeling",
-      "presentationList": "Lijst",
-      "presentationGrid": "Raster",
-      "artwork": "Artwork weergeven",
-      "subtitles": "Ondertitels weergeven",
-      "countBadges": "Aantallen weergeven",
-      "collapsedByDefault": "Samengevouwen starten",
-      "showInRail": "Weergeven in smalle balk",
-      "maxItems": "Maximum aantal items",
-      "maxItemsAll": "Alle",
-      "gridColumns": "Kolommen",
-      "emptyBehavior": "Wanneer leeg",
-      "emptyDefault": "Aanbevolen",
-      "emptyHide": "Lege inhoud verbergen",
-      "emptyCompact": "Een compacte hint tonen",
-      "emptyAction": "Een actiekaart tonen",
-      "sort": "Sorteren",
-      "sortRecents": "Recent",
-      "sortRecentlyAdded": "Recent toegevoegd",
-      "sortAlphabetical": "Alfabetisch",
-      "sortCreator": "Maker",
-      "sortCustom": "Eigen volgorde",
-      "descending": "Omgekeerde volgorde",
-      "qualifier": "Playlists van",
-      "qualifierAny": "Iedereen",
-      "qualifierByYou": "Door jou",
-      "qualifierBySpotify": "Door Spotify",
-      "qualifierMixed": "Gemengd",
-      "showInRailSub": "Toont een pictogram of hoes in de ingeklapte rail.",
-      "hiddenSub": "Blijft in de editor, maar verdwijnt uit de echte zijbalk.",
-      "collapsedSub": "Begin deze sectie ingeklapt."
-    },
-    "template": {
-      "curated": "Wavee Curated",
-      "curatedSub": "Vastgemaakt, Verder waar je was, snelkoppelingen naar de bibliotheek en playlists met mappen.",
-      "classic": "Geïnspireerd op Klassiek",
-      "classicSub": "De vertrouwde Wavee-zijbalk, nu aanpasbaar.",
-      "library": "Geïnspireerd op Bibliotheek",
-      "librarySub": "Eén filterbare bibliotheeklijst met vastgemaakte items bovenaan.",
-      "minimal": "Minimaal",
-      "minimalSub": "Drie snelkoppelingen en een compacte playlistlijst.",
-      "blank": "Leeg",
-      "blankSub": "Begin met niets en voeg alleen toe wat je wilt."
-    },
-    "customizer": {
-      "designs": "Zijbalkontwerp",
-      "designsSub": "Aanpassen bewerkt het ontwerp Aangepast, dus deze pagina schakelde ernaartoe. Kies een ander om terug te gaan — je secties blijven bewaard.",
-      "hiddenSections": "Verborgen secties",
-      "hiddenSectionsSub": "Verbergen verwijdert nooit iets",
-      "hiddenNone": "Er is niets verborgen.",
-      "unknownSection": "Onbekende sectie",
-      "advanced": "Geavanceerd",
-      "layoutFile": "Lay-outbestand",
-      "layoutFileSub": "Je zijbalk wordt hier opgeslagen. Handmatig bewerken wordt niet ondersteund — Wavee herschrijft het bestand bij elke wijziging en bewaart er één .bak naast.",
-      "showFile": "Tonen in Verkenner",
-      "destinationSub": "Voeg een snelkoppeling naar deze pagina toe",
-      "appendsTo": "voegt toe aan “{name}”",
-      "contributionUnnamed": "Deze extensie geeft nog geen naam op ({id})",
-      "paletteEmpty": "Niets komt overeen met “{query}”",
-      "dropHere": "Hier toevoegen",
-      "dropFull": "Je zijbalk is vol — verwijder eerst een sectie",
-      "rejectSectionCap": "Je zijbalk is vol. Verwijder een sectie voordat je er een toevoegt.",
-      "rejectDuplicateItem": "Dat item staat al in deze sectie.",
-      "rejectInvalidIcon": "Dat pictogram kan hier niet worden gebruikt.",
-      "rejectUnknownItem": "Dat item is niet meer beschikbaar.",
-      "rejectUnknownSection": "Die sectie bestaat niet meer.",
-      "rejectUnknownTemplate": "Dat sjabloon is niet meer beschikbaar.",
-      "rejectNoItems": "Dit soort sectie bevat geen items.",
-      "rejectNotDuplicable": "Deze sectie toont een gedeelde lijst, dus een kopie zou dezelfde rijen herhalen. Dupliceren is niet mogelijk.",
-      "rejectNoChange": "Zo staat het al ingesteld.",
-      "title": "Zijbalk aanpassen",
-      "templates": "Beginnen met een sjabloon",
-      "addSection": "Een sectie toevoegen",
-      "properties": "Sectie-opties",
-      "noSelection": "Selecteer een sectie om de opties ervan te bewerken.",
-      "undo": "Ongedaan maken",
-      "redo": "Opnieuw uitvoeren",
-      "undoOf": "Ongedaan maken: {action}",
-      "redoOf": "Opnieuw uitvoeren: {action}",
-      "reset": "Terugzetten naar sjabloon",
-      "done": "Klaar",
-      "empty": "Je zijbalk is leeg",
-      "emptySub": "Voeg een sectie toe, of begin met een sjabloon.",
-      "renameHint": "Enter om te hernoemen · Esc om te annuleren",
-      "reorderGrabbed": "{name} opgepakt. {position}.",
-      "reorderMoved": "{name}. {position}.",
-      "reorderDropped": "{name} verplaatst. {position}.",
-      "reorderCancelled": "Geannuleerd. {name} is op zijn plek gebleven.",
-      "editShowContents": "Sectie-inhoud tonen",
-      "hidden": "Verborgen",
-      "rejectNesting": "Groepen kunnen niet in andere groepen staan.",
-      "duplicateSuffix": "{name} kopie",
-      "itemLabel": "Label",
-      "itemLabelPlaceholder": "De oorspronkelijke naam gebruiken",
-      "itemIcon": "Pictogram",
-      "itemAdd": "Toevoegen…",
-      "itemRemove": "Verwijderen",
-      "moveUp": "Omhoog verplaatsen",
-      "moveDown": "Omlaag verplaatsen",
-      "missingEntity": "Niet beschikbaar",
-      "missingEntitySub": "Dit item staat momenteel niet in je bibliotheek. Het blijft hier staan totdat je het verwijdert.",
-      "corrupt": "Je opgeslagen zijbalkindeling kon niet worden gelezen",
-      "corruptSub": "We hebben het onleesbare bestand bewaard in {path} en in plaats daarvan Wavee Curated geladen. Je volgende wijziging vervangt het.",
-      "copyPath": "Pad kopiëren",
-      "applyTemplateTitle": "“{template}” toepassen?",
-      "applyTemplateBody": "Hiermee worden je huidige secties vervangen. Je kunt dit ongedaan maken.",
-      "applyTemplateConfirm": "Toepassen",
-      "resetTitle": "Zijbalk terugzetten?",
-      "resetBody": "Hiermee wordt “{template}” hersteld en worden je wijzigingen verwijderd. Je kunt dit ongedaan maken.",
-      "resetConfirm": "Terugzetten",
-      "undo.addSection": "Sectie toevoegen",
-      "undo.removeSection": "Sectie verwijderen",
-      "undo.duplicateSection": "Sectie dupliceren",
-      "undo.renameSection": "Sectie hernoemen",
-      "undo.hideSection": "Sectie verbergen",
-      "undo.showSection": "Sectie weergeven",
-      "undo.collapseSection": "Sectie samenvouwen",
-      "undo.expandSection": "Sectie uitvouwen",
-      "undo.moveSection": "Sectie verplaatsen",
-      "undo.addItem": "Item toevoegen",
-      "undo.moveItem": "Item verplaatsen",
-      "undo.removeItem": "Item verwijderen",
-      "undo.relabelItem": "Item hernoemen",
-      "undo.reiconItem": "Pictogram wijzigen",
-      "undo.setOption": "Optie wijzigen",
-      "undo.setQuery": "Filter wijzigen",
-      "undo.setExtensionConfig": "Extensie-instellingen wijzigen",
-      "undo.setItemAction": "Actie van snelkoppeling wijzigen",
-      "undo.addTopBarItem": "Snelkoppeling toevoegen",
-      "undo.moveTopBarItem": "Snelkoppeling verplaatsen",
-      "undo.removeTopBarItem": "Snelkoppeling verwijderen",
-      "undo.applyTemplate": "Sjabloon toepassen",
-      "undo.reset": "Zijbalk terugzetten",
-      "rejectConfigTooLarge": "Deze instellingen zijn te groot om op te slaan. Verwijder enkele items.",
-      "rejectExtensionRefMissing": "Kies eerst een bijdrage.",
-      "saveFault": "Je zijbalkindeling kan nu niet worden opgeslagen",
-      "saveFaultSub": "De indeling is groter geworden dan de maximale grootte. Maak de instellingen van een sectie kleiner om het opslaan te hervatten — er is niets verloren gegaan.",
-      "paletteSearch": "Secties zoeken",
-      "itemAction": "Actiesnelkoppeling",
-      "itemActionSub": "Voer een Wavee-actie uit vanuit de zijbalk",
-      "likedSongsSub": "Open je opgeslagen nummers met één snelkoppeling",
-      "targetLabel": "Werkt op",
-      "targetNone": "Niets (een globale actie)",
-      "targetEntity": "Een gekozen item",
-      "targetTrack": "Een gekozen nummer",
-      "targetRoute": "De geopende pagina",
-      "savedLocally": "Lokaal opgeslagen",
-      "sectionCount": "{used}/{max}",
-      "topBarAddItem": "Pagina of bibliotheekitem toevoegen",
-      "topBarAddTrack": "Huidig nummer toevoegen",
-      "topBarDuplicate": "Die snelkoppeling staat er al bij.",
-      "topBarInvalidIcon": "Dat pictogram kan niet voor een snelkoppeling worden gebruikt.",
-      "topBarUnknownItem": "Die snelkoppeling is niet meer beschikbaar.",
-      "topBarNoChange": "Snelkoppelingen zijn al zo ingesteld.",
-      "group": {
-        "general": "Algemeen",
-        "content": "Inhoud",
-        "appearance": "Weergave",
-        "behavior": "Gedrag"
-      }
-    },
-    "recents": {
-      "sourceVisited": "Onlangs bezocht",
-      "sourcePlayed": "Onlangs afgespeeld"
     },
     "item": {
       "playTrack": "Nummer afspelen",
@@ -874,18 +608,6 @@
     },
     "newReleases": {
       "empty": "Geen nieuwe releases van de artiesten die je volgt."
-    },
-    "concerts": {
-      "locationPrompt": "Stel je locatie in om concerten te zien",
-      "setLocation": "Je locatie instellen",
-      "empty": "Geen aankomende concerten bij jou in de buurt."
-    },
-    "extension": {
-      "manage": "Extensie beheren"
-    },
-    "topbar": {
-      "title": "Snelkoppelingen",
-      "capReached": "Snelkoppelingen biedt plaats aan maximaal 6 items."
     },
     "action": {
       "unavailable": {
@@ -898,58 +620,13 @@
         "notNow": "Nu niet beschikbaar"
       }
     },
-    "source": {
-      "library": {
-        "kinds": "Weergeven",
-        "sort": "Sorteren op",
-        "descending": "Omgekeerde volgorde",
-        "qualifier": "Type playlist",
-        "includeUris": "Alleen opnemen",
-        "excludeUris": "Uitsluiten",
-        "maxItems": "Maximum aantal items"
-      },
-      "recents": {
-        "maxItems": "Maximum aantal items"
-      },
-      "newReleases": {
-        "maxItems": "Maximum aantal items"
-      },
-      "concerts": {
-        "maxItems": "Maximum aantal evenementen",
-        "radiusKm": "Zoekradius (km)"
-      },
-      "artistTopTracks": {
-        "artist": "Artiest",
-        "maxItems": "Maximum aantal nummers",
-        "unset": "Kies een artiest"
-      },
-      "queue": {
-        "maxItems": "Maximum aantal items"
-      }
-    },
     "v3": {
       "title": "Jouw bibliotheek",
-      "searchTooltip": "Zoek in je bibliotheek",
       "searchPlaceholder": "Zoeken in Jouw bibliotheek",
       "clearSearch": "Zoekopdracht wissen",
       "clearFilter": "Filter wissen",
-      "clearFilters": "Filters wissen",
-      "collapse": "Jouw bibliotheek samenvouwen",
-      "expand": "Jouw bibliotheek uitvouwen",
-      "filter": {
-        "playlists": "Playlists",
-        "podcasts": "Podcasts",
-        "albums": "Albums",
-        "artists": "Artiesten"
-      },
-      "qualifier": {
-        "byYou": "Door jou",
-        "bySpotify": "Door Spotify",
-        "mixed": "Gemengd"
-      },
       "sort": {
-        "custom": "Eigen volgorde",
-        "reversed": "Omgekeerd"
+        "custom": "Eigen volgorde"
       },
       "kind": {
         "playlist": "Playlist",
@@ -966,10 +643,6 @@
         "search": "Geen resultaten voor “{query}”",
         "searchSub": "Probeer een andere spelling, of wis het filter."
       }
-    },
-    "a11y": {
-      "filterGroup": "Jouw bibliotheek filteren",
-      "sortView": "Sorteer- en weergaveopties"
     }
   },
   "common": {

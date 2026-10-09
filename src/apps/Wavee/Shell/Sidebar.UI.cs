@@ -1,6 +1,6 @@
 // ── Shell/Sidebar.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the pane and the three designs (Classic / Library V3 / Wavee Curated), the collapsed rail, folder flyout, tree
-// drag cues, multi-select, the "Move to folder…" picker, the section options popover
+// the pane and its two layouts (Classic / Library), the collapsed rail, folder flyout, tree drag cues, multi-select,
+// the "Move to folder…" picker
 //
 // Role: UI
 // Owner: J
@@ -8,18 +8,16 @@
 // Budget: 7500 lines (this file + its named partials — see below)
 // Spec: ch 26 §9.4 · ch 25 (the pane) · ch 26 W21/W22 (what the pipeline and a bound action draw)
 //
-// THE ONE RENDERER. Classic, Library V3 and Curated are a document + a `PaneConfig` over ONE `PaneView` (ch 25 §0.1);
-// the renderer never branches on the design. This file holds the mount points, the design host (a design switch is a
-// Key remount), the Classic and Curated mode shells, the config/metrics vocabulary and the pane's core: plan →
-// publish → per-row epochs, the route and now-playing sweeps, the NavigationView pill transaction, disclosure
-// choreography, reorder bands, the tree multi-selection, drag peek and the canvas commands.
+// THE ONE RENDERER. Classic and Library are a document + a `PaneConfig` over ONE `PaneView` (ch 25 §0.1); the renderer
+// never branches on the layout. This file holds the mount points, the layout host (a layout switch is a Key remount),
+// the Classic mode shell and the config/metrics vocabulary, and the pane's core: plan → publish → per-row epochs, the
+// route and now-playing sweeps, the NavigationView pill transaction, disclosure choreography, reorder bands, the tree
+// multi-selection and drag peek.
 //
 // NAMED PARTIALS (the J1 split — each carries its own header): `Sidebar.UI.Drop.cs` (every drop spec + the rootlist
-// slot commit), `Sidebar.UI.Menus.cs` (row menus, the quick layout menu, "Move to folder…", the options popover),
-// `Sidebar.UI.Slot.cs` (the bound row slot), `Sidebar.UI.Rows.cs` (row primitives), `Sidebar.UI.Rail.cs` (the 56-DIP
-// rail + folder flyout), `Sidebar.UI.LibraryV3.cs` (Library V3's mode, session and fixed chrome).
-//
-// INSIDE `Sidebar`, `Design` is the design SIGNAL (Sidebar.Host.cs) — every token read is `global::Wavee.Design.*`.
+// slot commit), `Sidebar.UI.Menus.cs` (row menus, the quick layout menu, "Move to folder…"), `Sidebar.UI.Slot.cs` (the
+// bound row slot), `Sidebar.UI.Rows.cs` (row primitives), `Sidebar.UI.Flyout.cs` (the compact section and folder
+// flyouts), `Sidebar.UI.Footer.cs` (the pane footer), `Sidebar.UI.Library.cs` (Library's mode, session and head).
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,10 +38,10 @@ public static partial class Sidebar
 {
     // ══ 1. MOUNT POINTS ════════════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The docked sidebar: the active design's pane (expanded layer + 56-DIP rail, both always mounted). Reads
-    /// its own state — <see cref="Design"/>, <see cref="Width"/>, <see cref="Collapsed"/>, <see cref="DragPeek"/>,
+    /// <summary>The docked sidebar: the active layout's pane (one layer: the rail is the same list planned compact). Reads
+    /// its own state — <see cref="Layout"/>, <see cref="Width"/>, <see cref="Mode"/>, <see cref="DragPeek"/>,
     /// <c>Shell.Current</c> — so the shell mounts it with no arguments and binds the COLUMN width itself
-    /// (<c>Collapsed ∧ ¬DragPeek ? 56 : Width</c>, the 300 ms Reveal, the IsolateLayout firewall).</summary>
+    /// (<c>Compact ∧ ¬DragPeek ? 48 : Width</c>, the 200/100 ms FluentPane Reveal, the IsolateLayout firewall).</summary>
     // MOUNT POINT (stage B contract)
     public static Element Pane() => Embed.Comp(static () => new PaneHost(inDrawer: false));
 
@@ -52,15 +50,15 @@ public static partial class Sidebar
     // MOUNT POINT (stage B contract)
     public static Element DrawerPane() => Embed.Comp(static () => new PaneHost(inDrawer: true));
 
-    // ══ 2. THE DESIGN HOST + THE BINDER PUMP ═══════════════════════════════════════════════════════════════════════════
+    // ══ 2. THE LAYOUT HOST + THE BINDER PUMP ═══════════════════════════════════════════════════════════════════════════
 
     /// <summary>Bumped once, when the projection binder first builds. The pane folds it into its plan key so a pane
     /// that rendered before the first projection re-plans the moment one exists (the binder is a plain service, so its
     /// first publish is otherwise invisible to a render that saw <c>Revision == 0</c>).</summary>
     static readonly Signal<int> s_binderEpoch = new(0);
 
-    /// <summary>The ONE mount seam (0.2.9 <c>SidebarHost</c>): re-renders only on a design switch and mounts that design
-    /// under <see cref="MountKey"/>, so a switch REMOUNTS (fresh hooks, section and scroll state) with a 150 ms fade.</summary>
+    /// <summary>The ONE mount seam: re-renders only on a layout switch and mounts that layout under its own Key, so a
+    /// switch REMOUNTS (fresh hooks, section and scroll state) with a 150 ms fade.</summary>
     internal sealed class PaneHost : Component
     {
         readonly bool _inDrawer;
@@ -73,15 +71,20 @@ public static partial class Sidebar
             // which is an effect, because a rebuild publishes the entries cell.
             EnsureBinder();
             UseSignalEffect(PumpBinder);
+            // The account edge (§P3.8): idempotent — a market, locale or tier switch keeps the account and returns at once.
+            UseSignalEffect(static () =>
+            {
+                _ = Entities.ScopeEpoch.Value;
+                if (Entities.Current is { } scope) EnsureAccount(scope.Key);
+            });
+            // The one-shot migration toast (§P3.10): after the first pane mounts, never before.
+            UseEffect(static () => { ShowPendingMigrationToast(); return null; }, DepKey.Empty);
 
             // The ONLY signal this body reads: a width, filter or collapse change never re-renders the host.
-            var design = Sidebar.Design.Value;
-            Element mode = design switch
-            {
-                SidebarDesign.LibraryV3 => Embed.Comp(() => new LibraryV3Mode(_inDrawer)),
-                SidebarDesign.Curated => Embed.Comp(() => new CuratedMode(_inDrawer)),
-                _ => Embed.Comp(() => new ClassicMode(_inDrawer)),
-            };
+            var layout = Layout.Value;
+            Element mode = layout == SidebarLayoutId.Library
+                ? Embed.Comp(() => new LibraryMode(_inDrawer))
+                : Embed.Comp(() => new ClassicMode(_inDrawer));
             return new BoxEl
             {
                 Grow = 1f, Direction = 1,
@@ -89,7 +92,7 @@ public static partial class Sidebar
                 // switch. A quick fade only — the shell's width transition owns spatial motion.
                 Children = [mode with
                 {
-                    Key = MountKey(design),
+                    Key = layout == SidebarLayoutId.Library ? "sidebar.library" : "sidebar.classic",
                     Enter = new EnterExit(Opacity: 0f, Active: true),
                     Transition = MotionTok.ControlFast,
                 }],
@@ -97,29 +100,38 @@ public static partial class Sidebar
         }
     }
 
-    /// <summary>The projection binder, built once per process. 0.2.9 mounted a component pump at the app root; in 0.3
-    /// the binder is a plain service whose <c>Sync()</c> is idempotent (one trigger fold), so both pane mounts may pump
-    /// it. The two feed seams are read HERE, once — which is why their owners install them before the first mount.</summary>
-    static SidebarProjectionBinder EnsureBinder()
+    /// <summary>Set by the migration when a customized section or item was carried over or dropped; shown once, after the
+    /// first pane mounts.</summary>
+    internal static SidebarMigrationResult? PendingMigrationToast;
+
+    static void ShowPendingMigrationToast()
     {
-        if (Binder is { } existing) return existing;
-        var binder = new SidebarProjectionBinder();
-        var table = WaveeBuiltInDataSources.RegisterAll(binder, NewReleasesFetch, ConcertsFetch);
-        binder.UseHost(new WaveeBuiltInDataSources.ContributionHost(table), table);
-        WaveeBuiltInDataSources.Attach(table, s_sourcePost, binder.OnSourceChanged);
-        Binder = binder;
-        return binder;
+        if (PendingMigrationToast is not { } r) return;
+        PendingMigrationToast = null;
+        string layout = Loc.Get(r.Layout == SidebarLayoutId.Library ? "sidebar.layoutName.library" : "sidebar.layoutName.classic");
+        string text = r.Dropped.Count == 0
+            ? Loc.Format("sidebar.migration.toast", ("layout", layout))
+            : Loc.Format("sidebar.migration.toastDropped", ("layout", layout), ("names", DroppedNames(r.Dropped)));
+        Notify.Say(text, InfoBarSeverity.Informational, actionLabel: Loc.Get("sidebar.menu.edit"), onAction: EnterEdit,
+                   dedupeKey: "sidebar.migration", durationMs: 8000f);
     }
 
-    /// <summary>The marshaller handed to the async sources: an INDIRECTION through <see cref="ToUi"/>, so an
-    /// <see cref="Activate"/> that lands after the binder exists (a shell remount) still reaches every source.</summary>
-    static readonly Action<Action> s_sourcePost = static a => ToUi(a);
+    internal static string DroppedNames(IReadOnlyList<string> keys)
+    {
+        var parts = new string[keys.Count];
+        for (int i = 0; i < parts.Length; i++) parts[i] = Loc.Get(keys[i]);
+        return string.Join(", ", parts);
+    }
 
-    /// <summary>The binder's subscription, as ONE signal effect: every table/edge the projection or a feed reads, the
-    /// two shell logs, playback, and every preference that reshapes the pass. The binder itself only Peeks (it is not a
-    /// computation), so this is what makes a hydrated playlist title, a rootlist push, a navigation, a play or a V3 filter
-    /// change reach the pane. It SYNCS, never invalidates: the binder's gate folds the row versions of exactly the rows
-    /// the sidebar shows, so a wake from a table change elsewhere in the app costs one fold, not a three-pass rebuild
+    /// <summary>The projection binder, built once per process. The binder is a plain service whose <c>Sync()</c> is
+    /// idempotent (one trigger fold), so both pane mounts may pump it.</summary>
+    static SidebarProjectionBinder EnsureBinder() => Binder ??= new SidebarProjectionBinder();
+
+    /// <summary>The binder's subscription, as ONE signal effect: every table/edge the projection reads, the two shell logs,
+    /// the layout and library signals, and every preference that reshapes the pass. The binder itself only Peeks (it is not
+    /// a computation), so this is what makes a hydrated playlist title, a rootlist push, a navigation or a filter change
+    /// reach the pane. It SYNCS, never invalidates: the binder's gate folds the row versions of exactly the rows the
+    /// sidebar shows, so a wake from a table change elsewhere in the app costs one fold, not a three-pass rebuild
     /// (G-180, sidebar decision D8). It reads <see cref="Entities.ScopeEpoch"/> first, because the welcome effect
     /// switches scope on every login and this effect must re-point at the new scope's signals, not keep holding the
     /// retired set's (G-179).</summary>
@@ -140,29 +152,18 @@ public static partial class Sidebar
             _ = scope.Albums.Changed.Value;
             _ = scope.Artists.Changed.Value;
             _ = scope.Shows.Changed.Value;
-            // The feeds (G-173): queue and now playing, their track/episode rows, top tracks, concerts.
-            _ = edges.Queue.Changed.Value;
-            _ = edges.TrackArtists.Changed.Value;
-            _ = edges.ArtistPopular.Changed.Value;
-            _ = edges.FeedSection.Changed.Value;
-            _ = scope.Tracks.Changed.Value;
-            _ = scope.Episodes.Changed.Value;
-            _ = scope.Concerts.Changed.Value;
         }
-        _ = Playback.Current.Value;
-        // The recency feeds and the Recents sort (G-172).
+        // The recency feeds and the Recents sort (G-172), the new-releases feed.
         _ = Shell.History.Store.Version.Value;
         _ = Shell.PlayLog.Version.Value;
+        _ = Notify.Items.Value;
+        _ = Notify.ReleasesState.Value;
         _ = PinsVersion.Value;
         _ = LayoutVersion.Value;
+        _ = Layout.Value;
         _ = FolderVersion.Value;
-        _ = V3OrderVersion.Value;
-        _ = Sidebar.Design.Value;
-        _ = V3Filter.Value;
-        _ = V3Qualifier.Value;
-        _ = V3Sort.Value;
-        _ = V3Desc.Value;
-        _ = V3Search.Value;
+        _ = LibraryFilter.Value;
+        _ = LibrarySearch.Value;
 
         bool first = binder.Revision == 0;
         if (first) binder.Start();
@@ -170,16 +171,13 @@ public static partial class Sidebar
         if (first) s_binderEpoch.Value = s_binderEpoch.Peek() + 1;
     }
 
-    // ══ 3. THE CLASSIC AND CURATED MODE SHELLS ═════════════════════════════════════════════════════════════════════════
+    // ══ 3. THE CLASSIC MODE SHELL ══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Classic: a LOCKED built-in document rebuilt from three persisted section flags, read-only, with the rail
-    /// "+" appended by the pane (a rail plan is tiles-from-sections and cannot express authored chrome).</summary>
+    /// <summary>Classic: the catalogue's sectioned list, one scroller (design P.1). Its document is the live
+    /// <see cref="Doc"/> — the user's layout overlay resolved by <see cref="SidebarLayoutRules.Resolve"/>.</summary>
     internal sealed class ClassicMode : Component
     {
         readonly bool _inDrawer;
-        // A freshly-minted document per render defeats the pane's wholesale reference test (every publish would re-skin
-        // the whole realized window), so the build is cached on the flags + band reference.
-        readonly ClassicDocumentCache _docCache = new();
 
         public ClassicMode(bool inDrawer) => _inDrawer = inDrawer;
 
@@ -187,189 +185,71 @@ public static partial class Sidebar
         {
             var config = UseMemo(() => new PaneConfig
             {
-                Design = SidebarDesign.Classic,
+                Layout = SidebarLayoutId.Classic,
                 ScrollKeyPrefix = "sidebar.classic",
-                Document = BuildDocument,
-                ModeEpoch = SectionEpoch,
-                SetSectionCollapsed = SetSection,
-                ReadOnly = true,
-                SearchHead = false,
+                Document = static () => { _ = LayoutVersion.Value; return Doc; },
                 OnCreatePlaylist = PaneView.CreatePlaylistFlow,
-                HeaderCreate = true,
-                // Read at footer-build time (the rail slot already subscribed to the detent); the tile in the Key
-                // remounts the button, because a component props freeze at mount.
-                RailFooter = static () =>
-                {
-                    var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
-                    float tile = m.Tile, glyph = m.Glyph;
-                    return Embed.Comp(() => new CreateButton(
-                        PaneView.CreatePlaylistFlow, menu: PaneView.CreateRootMenu, box: tile, glyph: glyph))
-                        with { Key = "rail-create:" + tile.ToString(System.Globalization.CultureInfo.InvariantCulture) };
-                },
+                ShowsSettings = static () => Doc.ShowsSettings,
             }, DepKey.Empty);
             return Embed.Comp(() => new PaneView(config, _inDrawer));
         }
-
-        /// <summary>The three flag reads are UNCONDITIONAL and first — they are the pane's subscription (this runs inside
-        /// the pane's render); only the build is cached. The dev-tools section is gone with the API console (Q7).</summary>
-        SidebarCustomLayout BuildDocument()
-        {
-            bool pinnedOpen = ClassicPinnedOpen.Value;
-            bool libraryOpen = ClassicLibraryOpen.Value;
-            bool playlistsOpen = ClassicPlaylistsOpen.Value;
-            _ = LayoutVersion.Value;   // the shortcut band lives on the Curated document
-            return _docCache.Get(pinnedOpen, libraryOpen, playlistsOpen, devTools: false, topBar: TopBar);
-        }
-
-        static int SectionEpoch()
-            => ClassicDocumentCache.FlagsOf(ClassicPinnedOpen.Value, ClassicLibraryOpen.Value, ClassicPlaylistsOpen.Value);
-
-        static void SetSection(string sectionId, bool collapsed)
-        {
-            if (SidebarBuiltInDocuments.ClassicSectionOf(sectionId) is { } section) SetClassicSection(section, !collapsed);
-        }
-    }
-
-    /// <summary>Wavee Curated: the persisted, EDITABLE document with the shortcut band materialised as its first
-    /// section, the library-only search head, and the ONE canvas seam — armed exactly while the customize route is the
-    /// active destination (the route cannot go stale; a flag set by a KeepAlive page would).</summary>
-    internal sealed class CuratedMode : Component
-    {
-        readonly bool _inDrawer;
-        SidebarCustomLayout? _sourceDoc;
-        SidebarCustomLayout? _renderDoc;
-
-        public CuratedMode(bool inDrawer) => _inDrawer = inDrawer;
-
-        public override Element Render()
-        {
-            var config = UseMemo(() => new PaneConfig
-            {
-                Design = SidebarDesign.Curated,
-                ScrollKeyPrefix = "sidebar.curated",
-                Document = BuildDocument,
-                SetSectionCollapsed = static (id, collapsed) => Dispatch(new SetSectionCollapsed(id, collapsed)),
-                ReadOnly = false,
-                SearchHead = true,
-                Edit = ReadEditSession,
-                OnCustomize = OpenCustomizerRoute,
-                OnCreatePlaylist = PaneView.CreatePlaylistFlow,
-                HeaderCreate = true,
-            }, DepKey.Empty);
-            return Embed.Comp(() => new PaneView(config, _inDrawer));
-        }
-
-        /// <summary>The persisted document with the band prepended, cached on the document REFERENCE (the reducer's
-        /// no-change arm returns the input, so a reference match proves nothing moved).</summary>
-        SidebarCustomLayout BuildDocument()
-        {
-            _ = LayoutVersion.Value;
-            var source = Layout;
-            if (_renderDoc is { } cached && ReferenceEquals(_sourceDoc, source)) return cached;
-            _sourceDoc = source;
-            _renderDoc = SidebarShortcutsSection.Prepend(source, source.EffectiveTopBar);
-            return _renderDoc;
-        }
-
-        /// <summary>The live edit session, or null when the customizer is not the active destination.</summary>
-        static SidebarEditState? ReadEditSession()
-            => Shell.Current.Value.Kind == Shell.RouteKind.SidebarCustomize ? Edit.Read() : null;
-    }
-
-    /// <summary>"Customize sidebar…": switch to Curated (a no-op when already there) THEN navigate — the silent
-    /// force-switch the customizer's design segmented makes visible (ch 26 §0.11).</summary>
-    internal static void OpenCustomizerRoute()
-    {
-        SwitchDesign(SidebarDesign.Curated);
-        Shell.GoTo(new Shell.Route(Shell.RouteKind.SidebarCustomize));
     }
 
     // ══ 4. THE MODE SEAM, THE REORDER COMMIT, THE METRICS ══════════════════════════════════════════════════════════════
 
-    /// <summary>THE ONLY MODE SEAM (0.2.9 <c>SidebarPaneConfig</c>, member for member). Built ONCE per mode mount and
-    /// frozen into the pane, so EVERY member is a delegate or a flag — a value member would pin frame 1 forever.
-    /// <c>Document</c>/<c>Input</c>/<c>ModeEpoch</c>/<c>Edit</c> are invoked inside the pane's render, which is what
-    /// subscribes the pane to the signals they read. The renderer never branches on <see cref="Design"/>.</summary>
+    /// <summary>THE ONLY MODE SEAM. Built ONCE per mode mount and frozen into the pane, so EVERY member is a delegate or a
+    /// flag — a value member would pin frame 1 forever. <c>Document</c>/<c>Input</c>/<c>ModeEpoch</c>/<c>Options</c> are
+    /// invoked inside the pane's render, which is what subscribes the pane to the signals they read. The renderer never
+    /// branches on <see cref="Layout"/>.</summary>
     internal sealed record PaneConfig
     {
-        public required SidebarDesign Design { get; init; }
+        public required SidebarLayoutId Layout { get; init; }
         public required string ScrollKeyPrefix { get; init; }
-        public required Func<SidebarCustomLayout> Document { get; init; }
-        /// <summary>The mode's transform of the binder's planner input (V3 folds its filter/sort/search/drill).</summary>
+        /// <summary>The live document — invoked in the pane's render (its read of LayoutVersion subscribes the pane).</summary>
+        public required Func<SidebarLayoutDoc> Document { get; init; }
+        /// <summary>The mode's transform of the binder's planner input (Library: the shaped list + the tree regroup).</summary>
         public Func<SidebarProjectionInput, SidebarProjectionInput>? Input { get; init; }
-        /// <summary>Mode-owned state folded into the plan key AND the per-row epoch (Classic's flags, V3's view).</summary>
+        /// <summary>Mode-owned state folded into the plan key (Library: filter, columns, drill).</summary>
         public Func<int>? ModeEpoch { get; init; }
-        /// <summary>Where a header click's collapse lives (Curated: the undoable command; Classic: its flags).</summary>
-        public Action<string, bool>? SetSectionCollapsed { get; init; }
-        /// <summary>Not the user's document here: no inline controls, no Remove verb, no empty-pane CTA.</summary>
-        public bool ReadOnly { get; init; }
-        /// <summary>A "+" in every PlaylistTree header (flyout + drop-to-create). A flag, never a design branch.</summary>
-        public bool HeaderCreate { get; init; }
-        /// <summary>The library-only search head (only while the document holds a visible EntityList).</summary>
-        public bool SearchHead { get; init; }
-        /// <summary>Mode chrome above the scroll surface (V3's nav band → header → toolbar → chips → rule).</summary>
+        /// <summary>The planner options the mode decides (Library: the chip and the grid columns).</summary>
+        public Func<SidebarPlanOptions, SidebarPlanOptions>? Options { get; init; }
         public Func<Element?>? Head { get; init; }
-        /// <summary>Chrome tiles prepended to the rail (V3 only — its nav band left the document).</summary>
-        public Func<Element?>? RailHead { get; init; }
-        /// <summary>How many tiles <see cref="RailHead"/> draws right now — the head's EXACT layout seed
-        /// (<see cref="SidebarRailExtents.HeadExtentOf"/>). Required with a <see cref="RailHead"/>.</summary>
-        public Func<int>? RailHeadTiles { get; init; }
-        /// <summary>The canvas seam: non-null state ⇒ the pane renders as the customize canvas.</summary>
-        public Func<SidebarEditState?>? Edit { get; init; }
-        public bool ShowLayoutMenu { get; init; } = true;
-        public bool RailLayoutMenu { get; init; } = true;
-        public Func<Element?>? RailFooter { get; init; }
-        /// <summary>What activating a folder does (null ⇒ toggle the shared expansion). V3's narrow drill uses it.</summary>
         public Action<string, string>? ActivateFolder { get; init; }
         public Func<bool>? DisclosesFoldersInline { get; init; }
-        public Func<SidebarSectionKind, bool>? IsReorderableSection { get; init; }
         /// <summary>A live probe: a non-custom sort refuses positional drops with "clear sorting to reorder".</summary>
         public Func<bool>? TreeSortedNonCustom { get; init; }
         public Action? SortedListRefusalAction { get; init; }
         /// <summary>(kind, from, requested) ⇒ reachable slot. Allocation-free: it runs on the displacement path.</summary>
         public Func<SidebarSectionKind, int, int, int>? ClampReorderSlot { get; init; }
         public Action<PaneReorder>? CommitReorder { get; init; }
-        public Action? OnCustomize { get; init; }
         public Action? OnCreatePlaylist { get; init; }
+        /// <summary>Whether the pane footer shows the Settings row (null ⇒ shown). The ⋯ is always there.</summary>
+        public Func<bool>? ShowsSettings { get; init; }
+        /// <summary>Arrow navigation ran off an END of the list (−1 above the first row, +1 below the last). Return true when
+        /// the mode took focus (Library: Up from the first row lands on the page dropdown, design V.11).</summary>
+        public Func<int, bool>? OnEdgeNavigate { get; init; }
+        /// <summary>Whether a LIST row carries the pill now (the pane calls it on change only): the Library head's dropdown
+        /// carries the pill only when no row does (pill rule 1 beats rule 3).</summary>
+        public Action<bool>? PillOnRowChanged { get; init; }
+        /// <summary>Ctrl+F with the pane focused, when set (Library: open the toolbar's search box); otherwise Classic's
+        /// transient Playlists filter (P1.5).</summary>
+        public Action? OpenSearch { get; init; }
     }
 
     /// <summary>One committed same-list reorder in BAND-SLOT space: the renderer knows the geometry, only the mode knows
     /// where the order lives.</summary>
-    internal readonly record struct PaneReorder(SidebarSectionSpec Section, int FromSlot, int ToSlot, int SlotCount,
+    internal readonly record struct PaneReorder(SidebarSection Section, int FromSlot, int ToSlot, int SlotCount,
                                                 Func<int, string> KeyAt);
 
-    /// <summary>The built-in commit Classic and Curated share: Pinned through the shared pin store (mapped through pin
-    /// IDS — hidden overrides shift the band against the store), every other kind through the undoable item command.</summary>
+    /// <summary>The shared commit: Pinned through the pin store (mapped by pin id — a band position can drift from it),
+    /// RECORDED in the undo ring (design C.5 / Q14; never toasted).</summary>
     internal static void DefaultReorderCommit(in PaneReorder r)
     {
-        if (r.FromSlot == r.ToSlot) return;
-        if (r.Section.Kind == SidebarSectionKind.Pinned)
-        {
-            int pf = Pins.IndexOf(r.KeyAt(r.FromSlot));
-            int pt = Pins.IndexOf(r.KeyAt(r.ToSlot));
-            if (pf < 0 || pt < 0) { MovePin(r.FromSlot, r.ToSlot); return; }
-            MovePin(pf, pt);
-            return;
-        }
-        int itemFrom = ItemIndexAt(r.Section, r.FromSlot);
-        int itemTo = ItemIndexAt(r.Section, r.ToSlot);
-        if (itemFrom < 0 || itemTo < 0) return;
-        // SidebarItemCommands picks MoveTopBarItem for the materialised Shortcuts band (not in `Sections`).
-        Dispatch(SidebarItemCommands.Move(r.Section.Id, itemFrom, itemTo));
-    }
-
-    /// <summary>Band position → item-list index: the planner skips hidden items in order.</summary>
-    static int ItemIndexAt(SidebarSectionSpec section, int slot)
-    {
-        var items = section.ItemList;
-        int seen = 0;
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (items[i].Hidden) continue;
-            if (seen == slot) return i;
-            seen++;
-        }
-        return items.Count == 0 ? -1 : items.Count - 1;
+        if (r.FromSlot == r.ToSlot || r.Section.Kind != SidebarSectionKind.Pinned) return;
+        int pf = Pins.IndexOf(r.KeyAt(r.FromSlot));
+        int pt = Pins.IndexOf(r.KeyAt(r.ToSlot));
+        if (pf < 0 || pt < 0) MovePinRecorded(r.FromSlot, r.ToSlot);
+        else MovePinRecorded(pf, pt);
     }
 
     /// <summary>One contiguous run of reorderable plan rows owned by one section, at that section's ONE row height.</summary>
@@ -378,46 +258,30 @@ public static partial class Sidebar
         public bool Contains(int planIndex) => Count > 0 && planIndex >= Start && planIndex < Start + Count;
     }
 
-    /// <summary>ONE inset system and ONE height ladder (0.2.9 <c>SidebarPaneMetrics</c>). The pane pads (8,8,8,12) ONCE
-    /// around the virtualized list; every band inside sits at the row inset; a chrome band ABOVE the list lands on the
-    /// content lane by itself.</summary>
+    /// <summary>The pane's one inset (the list's 4-px WinUI item margin + the 3-px content-grid top) and the shape of
+    /// each section's rows. Every band above or below the list reproduces <see cref="PanePad"/>'s horizontal 4.</summary>
     internal static class PaneMetrics
     {
-        public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, 8f, SidebarRowGeometry.PaneEdge, 12f);
+        public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f);
         public const float PaneInsetH = SidebarRowGeometry.PaneEdge * 2f;
-        public const float ContentLane = SidebarRowGeometry.ContentLane;
-        public const float ContentLaneEnd = SidebarRowGeometry.ContentLaneEnd;
-        public static readonly Edges4 RowInset = new(SidebarRowGeometry.RowInsetLeft, 0f, SidebarRowGeometry.RowInsetRight, 0f);
-        public static readonly Edges4 BandInset = new(ContentLane, 0f, ContentLaneEnd, 0f);
-        /// <summary>21 — where every row's art column starts; the V3 header glyph, closed search and first chip sit here.</summary>
-        public const float LeadInset = ContentLane + SidebarRowGeometry.LeadingLaneWidth;
-        public static readonly Edges4 LeadBandInset = new(LeadInset, 0f, ContentLaneEnd, 0f);
-        public const float SectionGap = SidebarRowGeometry.SectionGap;
-        public const float HeaderBodyGap = SidebarRowGeometry.HeaderBodyGap;
-        /// <summary>THE one edit-card height: the card band is a Reorderable with one pitch.</summary>
-        public const float EditCardHeight = SidebarRowGeometry.ClassicHeight;
+        /// <summary>A band above the list whose content starts at the header text's x (pane 16).</summary>
+        public static readonly Edges4 HeadBandInset = new(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX, 0f,
+                                                          SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TrailingPad, 0f);
         public const float EmptyHintHeight = SidebarRowGeometry.EmptyHintHeight;
         /// <summary>Grid cells stay media-card sized at the 460-DIP maximum.</summary>
         public const float GridCellMax = 160f;
-
-        /// <summary>A section's UNIFORM row height — from its subtitle INTENT, never from whether a row has one.</summary>
-        public static float RowHeight(SidebarSectionSpec section)
-            => SidebarRowGeometry.HeightFor(section.Opts.Density, section.Opts.Subtitles);
-
-        public static float ArtSize(SidebarSectionSpec section) => SidebarRowGeometry.ArtFor(section.Opts.Density);
-        public static float CardHeight(SidebarSectionSpec section) => SidebarRowGeometry.CardHeightFor(section.Opts.Density);
     }
 
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>THE ONE SIDEBAR PANE RENDERER (0.2.9 <c>SidebarPane</c>).
     ///
-    /// <para>HOW A FRAME FLOWS. (1) Render subscribes the document/projection/pin/folder/search/mode/edit epochs and
+    /// <para>HOW A FRAME FLOWS. (1) Render subscribes the document/projection/pin/folder/search/mode/options epochs and
     /// re-plans in a <c>UseMemo</c> keyed on their fold, into A/B buffers (a plan ALIASES its buffers). (2) The plan is
     /// published to the bound slots as a PLAIN FIELD from a LAYOUT effect, and only the rows the diff found changed get
     /// their epoch bumped. (3) The row count rides <c>CountSignal</c>, written in the same effect — and it is the ONLY
-    /// publish signal this render reads (W3-A2): the plan version is the slots', the effects' and the ItemsView's edge,
-    /// the rail version is <see cref="PaneView.RailHost"/>'s. A republish that changed some rows' content re-skins those rows and
+    /// publish signal this render reads (W3-A2): the plan version is the slots', the effects' and the ItemsView's edge.
+    /// A republish that changed some rows' content re-skins those rows and
     /// nothing else; the pane itself renders once per RE-PLAN (an input the binder's content gates let through), never a
     /// second time for the publish it caused.</para>
     ///
@@ -433,7 +297,6 @@ public static partial class Sidebar
         internal Signal<float> ExpandedWidth => Width;
 
         readonly SidebarPlanBuffers _paneBuffersA = new(), _paneBuffersB = new();
-        readonly SidebarPlanBuffers _railBuffersA = new(), _railBuffersB = new();
         bool _presentedUsesA;
         bool _planPublished;
         int _nextPlanEpoch;
@@ -442,15 +305,14 @@ public static partial class Sidebar
         readonly Signal<string> _search = new("");
         string _effectiveSearch = "";
 
+        /// <summary>The Classic filter box's section (null = closed). Its query is the pane's search signal.</summary>
+        string? _filterSectionId;
+        /// <summary>Bumped to focus the filter box: opening it and a second Ctrl+F both move focus into it.</summary>
+        readonly Signal<int> _filterFocus = new(0);
+        Action<KeyEventArgs>? _paneKey;
+
         readonly Signal<int> _rowCount = new(0);
         readonly Signal<int> _planVersion = new(0);
-        /// <summary>Bumped by a publish ONLY when the RAIL plan's rows (or the entries they address) differ from the
-        /// presented rail's, or the publish was wholesale — the rail's frame element re-plans off it, exactly as
-        /// <see cref="_planVersion"/> is the pane's. A re-plan that only touched the expanded list moves
-        /// <see cref="_planVersion"/> and leaves this alone.</summary>
-        internal readonly Signal<int> RailVersion = new(0);
-        /// <summary>The rail's OWN row count — the rail's <c>ItemsView</c> edge, mirroring <see cref="_rowCount"/>.</summary>
-        internal readonly Signal<int> RailRowCount = new(0);
         readonly Signal<int> _dispVersion = new(0);
         readonly Signal<int> _disclosureVersion = new(0);
 
@@ -459,10 +321,9 @@ public static partial class Sidebar
         // across renders is exactly the reference short-circuit ToolTipSlots and the props seam rely on. Each of these
         // reads only fields that never change after mount (the layout, the count signal, the controller, `this`).
         Element? _paddedList;
-        Element? _searchHead;
         Element? _dragPeekWatcher;
-        Element? _railHost;
-        /// <summary>The expanded layer's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
+        Element? _footer;
+        /// <summary>The pane's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
         readonly Prop<float> _expandedWidth = Prop.Of(static () => Sidebar.Width.Value);
 
         // ── per-row epochs (GROW-ONLY: a slot may address an index a frame after the plan shrank) ──
@@ -470,11 +331,7 @@ public static partial class Sidebar
         byte[] _rowPlay = Array.Empty<byte>();                 // bit 0 current, bit 1 actively playing
         readonly List<int> _rowPlaySet = new();
         readonly List<int> _rowSelSet = new(), _rowSelNext = new(), _rowSelFlip = new();
-        Func<string, SidebarSectionSpec?>? _sectionOf;
-
-        // ── per-RAIL-row epochs (same GROW-ONLY contract, over RailPlan instead of Plan) ──
-        Signal<int>[] _railEpochs = Array.Empty<Signal<int>>();
-        readonly List<int> _railSelSet = new(), _railSelNext = new(), _railSelFlip = new();
+        Func<int, string?>? _rowRouteOf;
 
         // ── disclosure ──
         string? _activeDisclosureKey;
@@ -490,7 +347,9 @@ public static partial class Sidebar
         Action<ItemDisclosureDiagnostic>? _disclosureLog;
 
         readonly ItemsViewController _listController = new();
-        internal readonly ItemsViewController RailListController = new();
+        /// <summary>The list's edge adapter: one cached delegate, so the options record never allocates a closure per render.</summary>
+        Action<int>? _edgeNav;
+        bool _pillOnRow;
 
         /// <summary>THE ONE published drop slot — written once per hover, read by the row's line, its plate and the commit.</summary>
         readonly Signal<SidebarDropSlot> _dropSlot = new(SidebarDropSlot.None);
@@ -500,6 +359,17 @@ public static partial class Sidebar
         internal readonly Signal<int> SelectionVersion = new(0);
         internal readonly Signal<bool> ChecksVisible = new(false);
         readonly List<string> _treeVisibleOrder = new();
+
+        // ── edit mode (§P4.5) ──
+        /// <summary>Edit mode's pane (the edit bar and the Outline), mount-stable: built once and swapped in for the head, list
+        /// and footer while <see cref="Sidebar.Editing"/> is set.</summary>
+        Element? _editPane;
+        bool _wasEditing;
+        /// <summary>The keyboard-current row's key, captured on the edit edge while the list is still mounted.</summary>
+        string? _editReturnKey;
+        bool _restoreAfterEdit;
+        /// <summary>The footer's ⋯ node (<c>PaneFooter</c> registers it), the focus fallback after Edit.</summary>
+        internal NodeHandle _footerMore;
         readonly HashSet<string> _selBefore = new(StringComparer.Ordinal);
 
         /// <summary>DRAG PEEK — a transient expansion of a collapsed pane for one drag (never a write to Collapsed).</summary>
@@ -509,35 +379,58 @@ public static partial class Sidebar
 
         readonly Dictionary<string, Reorderable> _reorder = new(StringComparer.Ordinal);
         readonly List<PaneBand> _bands = new();
-        PaneBand _sectionBand;
-        Reorderable? _sectionReorder;
         readonly HashSet<string> _pinnedSubtrees = new(StringComparer.Ordinal);
         readonly Dictionary<string, byte> _pinnedDepths = new(StringComparer.Ordinal);
-        readonly Dictionary<string, SidebarSectionSpec> _sections = new(StringComparer.Ordinal);
+        readonly Dictionary<string, SidebarSection> _sections = new(StringComparer.Ordinal);
+
+        /// <summary>The Pinned band's drop cue is armed while a pinnable drag is live (design V.3): <see cref="Render"/> builds
+        /// the plan options with it, and the drag watcher writes it on every drag edge.</summary>
+        readonly Signal<bool> _pinDropArmed = new(false);
 
         /// <summary>The context-menu SHIELD's key — the node MUST stay childless (see Render).</summary>
         internal const string ContextShieldKey = "sidebar:context-shield";
 
         // ── published to the bound slots (PLAIN FIELDS; seeded with real empty plans, never default) ──
         internal SidebarRowPlan Plan = new(Array.Empty<SidebarRow>(), Array.Empty<SidebarLibraryEntry>(), 0);
-        internal SidebarRowPlan RailPlan = new(Array.Empty<SidebarRow>(), Array.Empty<SidebarLibraryEntry>(), 0);
-        internal SidebarCustomLayout Doc = SidebarCustomLayout.Empty;
-        /// <summary>The edit session THE PUBLISHED PLAN WAS BUILT FROM (in lockstep with <see cref="Plan"/>).</summary>
-        internal SidebarEditState? PublishedEdit;
+        /// <summary>The compact (rail) flag THE PUBLISHED PLAN WAS BUILT WITH — read by the slot (a tile, not a row).</summary>
+        internal bool CompactPlan;
+        internal SidebarLayoutDoc Doc = SidebarLayoutDoc.Empty;
         internal IOverlayService MenuOverlay = Overlay.Service.Default;
         internal ActionServices? Acts;
         internal Actions.Registry? Registry;
-        internal string? MenuHostSectionId;
+
+        /// <summary>Each rail tile's anchor by plan index, registered by its slot (grow-only: allocation-free after warm-up),
+        /// so Enter on a tile opens the same flyout its click opens.</summary>
+        Func<NodeHandle>?[] _tileAnchors = Array.Empty<Func<NodeHandle>?>();
+        Func<ContextMenuModel?>? _paneMenuFn;
+
+        internal void SetTileAnchor(int index, Func<NodeHandle> anchor)
+        {
+            if ((uint)index >= (uint)_tileAnchors.Length)
+                Array.Resize(ref _tileAnchors, Math.Max(32, Math.Max(index + 1, _tileAnchors.Length * 2)));
+            _tileAnchors[index] = anchor;
+        }
+
+        Func<NodeHandle>? TileAnchorAt(int index) => (uint)index < (uint)_tileAnchors.Length ? _tileAnchors[index] : null;
 
         Func<int, (float dx, float dy)>? _displacement;
 
-        sealed record PlanStage(SidebarCustomLayout Document, SidebarRowPlan Pane, SidebarRowPlan Rail,
-                                string EffectiveSearch, bool UsesA, int Epoch, SidebarEditState? Edit);
+        sealed record PlanStage(SidebarLayoutDoc Document, SidebarRowPlan Pane, string EffectiveSearch, bool UsesA,
+                                int Epoch, bool Compact, int GridColumns);
+
+        /// <summary>The grid column count the PUBLISHED plan's strips were cut with (GridStripRow wraps by it).</summary>
+        internal int GridColumns { get; private set; } = 2;
 
         /// <summary>THE MID-DRAG FREEZE: a re-projection arriving during a rootlist filing is parked, not published.</summary>
         readonly SidebarStageHold<PlanStage> _deferredStage = new();
         /// <summary>One-shot: this gesture's OWN commit is not a foreign projection and must publish through the freeze.</summary>
         bool _publishThroughFreeze;
+
+        // ── the pill target (design V.5): ONE pill per pane ──
+        SidebarPillTarget _pillTarget = SidebarPillTarget.None;
+        string _pillRoute = "";
+        readonly List<string> _ancestorScratch = new(4);
+        InputHooks? _hooks;
 
         // ── selection travel (the NavigationView pill transaction) ──
         string _selRoute = "";
@@ -546,6 +439,7 @@ public static partial class Sidebar
         NodeHandle _selectionFlightFrom, _selectionFlightTo;
         readonly Dictionary<string, NodeHandle> _selectionPills = new(StringComparer.Ordinal);
         readonly Dictionary<int, string> _selectionRouteByNode = new();
+        readonly Dictionary<int, SidebarPillLane> _selectionLaneByNode = new();
         Shell.Route _routeCache = Shell.Route.None;
         string _routeKeyCache = "";
 
@@ -553,10 +447,6 @@ public static partial class Sidebar
         /// from the plan (<see cref="SidebarRowExtents"/>) so a folder expansion lands at its final geometry before
         /// anything realizes.</summary>
         readonly RepeatLayout _rowLayout;
-
-        /// <summary>The rail's own layout: two fixed extents (a tile's <see cref="SidebarRailMetrics.Pitch"/> at the
-        /// current detent or <see cref="Rail.DividerExtent"/>), seeded analytically from <see cref="RailPlan"/> — never measured.</summary>
-        internal readonly RepeatLayout RailLayout;
 
         /// <summary>Reordering rides <c>MotionTok.ItemPlacement</c>.</summary>
         static readonly LayoutTransition RowPlacement = new(TransitionChannels.Position, MotionTok.ItemPlacement.ToDynamics());
@@ -569,29 +459,26 @@ public static partial class Sidebar
         {
             Config = config;
             InDrawer = inDrawer;
-            _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.ClassicHeight);
-            RailLayout = RepeatLayout.Extents(RailExtentSeed,
-                estimatedExtent: SidebarRailMetrics.For(SidebarRailDetent.Default).Pitch);
+            _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine));
         }
 
         public override Element Render()
         {
             _post = UsePost();
             MenuOverlay = UseContext(Overlay.Service) ?? Overlay.Service.Default;
+            _hooks = UseContext(InputHooks.Current);
             Acts = ActionServicesOrNull();
             Registry = Actions.Registry.Current ?? Acts?.Extensions;
 
             // The mode's live document — invoked HERE so the signals it reads subscribe this pane.
             var sourceDoc = Config.Document();
             // The drawer always renders expanded; a live drag peek presents expanded too (it flips twice per drag). Compact is
-            // what the FRAME presents (the rail regime, or the last-resort band's inline rail), never the regime alone.
-            bool compact = !InDrawer && (Sidebar.Regime.Value == SidebarRegime.Rail || Shell.Ui.LastResort.Value)
-                           && !_dragPeek.Value;
+            // what the FRAME presents (the pane mode the shell resolved), never the window band alone.
+            bool compact = !InDrawer && Sidebar.Mode.Value == SidebarPaneMode.Compact && !_dragPeek.Value;
             string search = _search.Value;
-            // Invoked UNCONDITIONALLY: edit mode must not change the hook sequence (branch on the value, never the hooks).
-            var edit = Config.Edit?.Invoke();
+            var options = OptionsFor(compact, _pinDropArmed.Value);
 
-            var stage = UseMemo(() => BuildStage(sourceDoc, search, edit), PlanDep(search, in edit));
+            var stage = UseMemo(() => BuildStage(sourceDoc, search, in options), PlanDep(search, compact, in options));
             if (!_planPublished) PublishStage(stage, notify: false);
             int disclosureUiVersion = _disclosureVersion.Value;
             UseLayoutEffect(() => TryPublishStage(stage), DepKey.From(HashCode.Combine(stage.Epoch, disclosureUiVersion)));
@@ -600,17 +487,6 @@ public static partial class Sidebar
             TrackSelection(SelectedRoute);
             UseSignalEffect(RefreshPlayState);
             UseSignalEffect(RefreshSelection);
-            // The rail's own sweep: RailHost no longer subscribes SelectedRoute (a recycled RailSlot bakes selected in
-            // as a value, ch 25 §9), so THIS is what re-skins the two rail tiles a navigation concerns.
-            UseSignalEffect(RefreshRailSelection);
-            // A detent change re-seeds the rail's analytic extents (the pitch and the V3 head seed are per detent) and
-            // bumps the re-plan edge so the head/footer chrome rebuilds at the new metrics. The read is the subscription.
-            UseSignalEffect(() =>
-            {
-                _ = Sidebar.RailDetent.Value;
-                ReseedRailExtents();
-                RailVersion.Value = RailVersion.Peek() + 1;
-            });
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
             // THE COUNT, never the plan version (W3-A2). This render decides two things off the published plan — empty
             // pane vs list, and whether a pending expansion has its rows yet — and both are functions of the COUNT. The
@@ -635,38 +511,55 @@ public static partial class Sidebar
             }, DepKey.From(HashCode.Combine(disclosureUiVersion, rows)));
             ConfigureReorder();
 
-            Element expanded = new BoxEl
+            // EDIT MODE (§P4.5). The list is unmounted while editing, so the keyboard-current row is captured by KEY on the
+            // false → true edge (the old list is still mounted here) and restored by key after the true → false edge. An
+            // account switch leaves focus where it is (ExitEditCore(false) clears EditExitRestoresFocus).
+            bool editing = Sidebar.Editing.Value;
+            if (editing && !_wasEditing)
             {
-                Key = "expanded-layer", Direction = 1, Grow = 1f, Shrink = 0f,
-                // Measured at the OPEN width even while presented compact: text never reflows through the rail width.
-                Width = _expandedWidth, ClipToBounds = true,
-                Opacity = compact ? 0f : 1f, HitTestVisible = !compact,
-                Children = ExpandedChildren(rows),
+                int current = _listController.CurrentItemIndex;
+                var planRows = Plan.Rows;
+                _editReturnKey = (uint)current < (uint)planRows.Count ? planRows[current].Key : null;
+            }
+            else if (!editing && _wasEditing)
+                _restoreAfterEdit = Sidebar.EditExitRestoresFocus;
+            _wasEditing = editing;
+            UseLayoutEffect(() =>
+            {
+                if (!_restoreAfterEdit) return;
+                _restoreAfterEdit = false;
+                string? key = _editReturnKey;
+                _editReturnKey = null;
+                _post?.Invoke(() =>
+                {
+                    int at = key is null ? -1 : IndexOfRowKey(key);
+                    if (at >= 0) _listController.FocusItem(at);   // current + into view + keyboard focus
+                    else FocusFooterMore();                       // the row is gone (or focus was never in the list)
+                });
+            }, DepKey.From(editing ? 1 : 0));
+
+            // ONE layer: the rail is the SAME list planned compact (design V.9), clipped to the frame's presented column. The
+            // layer is measured at the OPEN width even while presented compact, so text never reflows through the rail width.
+            var layer = new BoxEl
+            {
+                Key = "pane-layer", Direction = 1, Grow = 1f, Shrink = 0f, ClipToBounds = true,
+                Width = _expandedWidth,
+                // The docked rail is inert behind a pinned overlay (design C.3); the drawer IS that overlay, so it stays live.
+                HitTestVisible = InDrawer || !SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, editing),
+                // DRAG PEEK: a spring-load waypoint over the whole rail (never a destination).
+                DropTarget = compact ? RailPeekDropSpec() : null,
+                Children = PaneChildren(rows, compact, editing),
             };
 
-            var children = new List<Element>(3) { expanded };
-            if (!InDrawer)
-            {
-                // THE RAIL IS ITS OWN COMPONENT (W3-A2, RailHost): it re-renders on ITS edges — the rail version, the
-                // route, the culture, the binder's first publish — so a pane render never rebuilds its ~26 tooltip-wrapped
-                // tiles. The embed is held by reference: a propless ComponentEl the reconciler reuses without a render.
-                children.Add(new BoxEl
-                {
-                    Key = "compact-layer", Direction = 1, Grow = 1f, Shrink = 0f,
-                    Width = Prop.Of(static () => Sidebar.PresentedWidth.Value),
-                    Opacity = compact ? 1f : 0f, HitTestVisible = compact,
-                    // DRAG PEEK: a pure spring-load waypoint over the whole rail (never a destination, never a refusal).
-                    DropTarget = RailPeekDropSpec(),
-                    Children = [_railHost ??= Embed.Comp(() => new RailHost(this))],
-                });
-                // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
-                children.Add(_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
-            }
+            var children = new List<Element>(2) { layer };
+            // Owns the ONE UseDragState() subscription that ends a peek (2 flips per drag, not the drag epoch).
+            if (!InDrawer) children.Add(_dragPeekWatcher ??= Embed.Comp(() => new DragPeekWatcher(this)) with { Key = "drag-peek" });
 
             var root = new BoxEl
             {
                 // No fill, no corners: the sidebar is flush frame chrome over Mica (ch 25 §4).
                 Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true,
+                OnKeyDown = _paneKey ??= OnPaneKey,
                 Children = [.. children],
             };
 
@@ -677,7 +570,7 @@ public static partial class Sidebar
             if (!Controls.IsNullOverlay(MenuOverlay))
             {
                 var svc = MenuOverlay;
-                Func<ContextMenuModel?> menu = LayoutMenu.Model;
+                Func<ContextMenuModel?> menu = _paneMenuFn ??= PaneMenu;
                 root = new BoxEl
                 {
                     Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true,
@@ -691,29 +584,48 @@ public static partial class Sidebar
             return root;
         }
 
-        // ── the expanded body ──────────────────────────────────────────────────────────────────────────────────────
+        // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
 
-        Element[] ExpandedChildren(int rows)
+        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head and footer.</summary>
+        static readonly BoxEl s_railSpacer = new() { Key = "empty", Grow = 1f };
+
+        /// <summary>The layer's children, top to bottom: the mode head, the body (the padded list or the empty hint) and the
+        /// footer, which sits outside the scroller. Nulls are skipped.</summary>
+        Element[] PaneChildren(int rows, bool compact, bool editing)
         {
+            // Edit mode (expanded only) swaps the head, the list and the footer for the Outline; the list is unmounted and its
+            // state stays with its element (§P4.5).
+            if (editing && !compact) return [_editPane ??= Embed.Comp(() => new EditPane(this)) with { Key = "edit-pane" }];
             Element? modeHead = Config.Head?.Invoke();
-            // No search head on the canvas: at most one body is on screen there, so it would visibly filter nothing.
-            Element? searchHead = Config.SearchHead && PublishedEdit is null && HasEntityList(Doc)
-                ? (_searchHead ??= Embed.Comp(() => new SearchHead(_search, Sidebar.Width)) with { Key = "head" })
-                : null;
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
             // its CountSignal — so a re-render hands the reconciler the same element and it writes nothing.
-            Element body = rows == 0 ? EmptyPane() : (_paddedList ??= PaddedList());
-            int n = 1 + (modeHead is null ? 0 : 1) + (searchHead is null ? 0 : 1);
-            var kids = new Element[n];
+            // The rail has no room for the empty hint: an empty rail is just its head and footer.
+            Element body = rows == 0 ? (compact ? s_railSpacer : EmptyPane()) : (_paddedList ??= PaddedList());
+            Element footer = _footer ??= Embed.Comp(() => new PaneFooter(this)) with { Key = "pane-footer" };
+            var kids = new Element[modeHead is null ? 2 : 3];
             int k = 0;
             if (modeHead is { } mh) kids[k++] = mh;
-            if (searchHead is { } sh) kids[k++] = sh;
-            kids[k] = body;
+            kids[k++] = body;
+            kids[k] = footer;
             return kids;
         }
 
-        /// <summary>THE PANE'S ONE INSET: (8,8,8,12) around the virtualized list, and nowhere else.</summary>
+        /// <summary>The plan row whose key is <paramref name="key"/>, or −1.</summary>
+        int IndexOfRowKey(string key)
+        {
+            var rows = Plan.Rows;
+            for (int i = 0; i < rows.Count; i++) if (string.Equals(rows[i].Key, key, StringComparison.Ordinal)) return i;
+            return -1;
+        }
+
+        /// <summary>The footer's ⋯ (the Edit entry most pointer users came from). <c>PaneFooter</c> registers its node here.</summary>
+        internal void FocusFooterMore()
+        {
+            if (!_footerMore.IsNull) _hooks?.FocusNode?.Invoke(_footerMore, true);
+        }
+
+        /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>
         Element PaddedList() => new BoxEl
         {
             Key = "plan-pad", Direction = 1, Grow = 1f, Padding = PaneMetrics.PanePad,
@@ -751,40 +663,238 @@ public static partial class Sidebar
                     OnExpandSettled = OnExpandSettled,
                     Diagnostic = _disclosureLog ??= LogDisclosure,
                 },
+                IsItemEnabled = IsRowFocusStop,
+                ItemText = RowTypeAheadText,
+                IsItemInvokedEnabled = true,
+                OnInvoked = InvokeRow,
+                KeepAlive = KeepFilterRow,
+                OnEdgeNavigate = Config.OnEdgeNavigate is { } edge ? (_edgeNav ??= d => edge(d)) : null,
             }) with { Key = "plan" };
 
-        /// <summary>The authored-empty pane (ch 25 W8): it names the state and offers the one fix; a LOCKED document has
-        /// no customizer, so the CTA is ABSENT rather than dead.</summary>
+        /// <summary>Give list row <paramref name="index"/> keyboard focus (current + into view) — the Library head's Down
+        /// from the dropdown, and the Edit-mode exit's focus return (§P4.5).</summary>
+        internal void FocusListItem(int index) => _listController.FocusItem(index);
+
+        // ── the roving stops, typeahead and Enter (P1) ──
+
+        /// <summary>A header, glyph row, entity row or folder is a roving stop; separators, hints and drop bands are not.</summary>
+        bool IsRowFocusStop(int index)
+        {
+            var rows = Plan.Rows;
+            return (uint)index < (uint)rows.Count && SidebarTypeAheadRules.IsFocusStop(rows[index].Kind);
+        }
+
+        string RowTypeAheadText(int index)
+        {
+            var rows = Plan.Rows;
+            if ((uint)index >= (uint)rows.Count) return "";
+            var row = rows[index];
+            return SidebarTypeAheadRules.TextOf(row.Kind, RowLabelOf(in row));
+        }
+
+        /// <summary>The label typeahead reads for a row: a header's title, an entry's name, a glyph row's destination title.</summary>
+        string RowLabelOf(in SidebarRow row)
+        {
+            if (row.Kind is SidebarRowKind.SectionHeader or SidebarRowKind.SectionTile)
+                return SectionOf(row.SectionId) is { } header ? PaneText.TitleOf(header) : "";
+            if ((uint)row.EntryIndex < (uint)Plan.Entries.Count) return Plan.Entries[row.EntryIndex].Name;
+            return row.Kind == SidebarRowKind.IconRow ? Shell.Dest(Shell.Parse(row.Key)).Title : "";
+        }
+
+        /// <summary>Enter (and a double tap) on the roving stop: a header toggles, a folder toggles, a row runs its click; a
+        /// rail tile (a section, or a compact folder) opens its flyout, anchored where its click would anchor it.</summary>
+        void InvokeRow(int index)
+        {
+            var rows = Plan.Rows;
+            if ((uint)index >= (uint)rows.Count) return;
+            var row = rows[index];
+            switch (row.Kind)
+            {
+                case SidebarRowKind.SectionHeader when SectionOf(row.SectionId) is { } s:
+                    ToggleSection(s.Id, !s.Collapsed);
+                    break;
+                case SidebarRowKind.SectionTile when TileAnchorAt(index) is { } tile:
+                    OpenSectionFlyout(row.SectionId, tile);
+                    break;
+                case SidebarRowKind.FolderHeader when CompactPlan && (uint)row.EntryIndex < (uint)Plan.Entries.Count
+                                                      && !Plan.Entries[row.EntryIndex].Missing && TileAnchorAt(index) is { } ftile:
+                    OpenFolderFlyout(row.SectionId, Plan.Entries[row.EntryIndex], ftile);
+                    break;
+                case SidebarRowKind.FolderHeader when (uint)row.EntryIndex < (uint)Plan.Entries.Count:
+                    var folder = Plan.Entries[row.EntryIndex];
+                    if (folder.Missing) return;   // drawn disabled: no click, no disclosure
+                    ActivateFolder(folder.FolderId, folder.Name, index);
+                    break;
+                default:
+                    if ((uint)row.EntryIndex < (uint)Plan.Entries.Count)
+                    {
+                        var e = Plan.Entries[row.EntryIndex];
+                        // The slot draws an unnamed, non-track, non-route entry disabled (EntryRow's Enabled rule): inert here too.
+                        if (e.Name.Length == 0 && !e.IsTrack && e.Kind != SidebarEntryKind.AppRoute) return;
+                    }
+                    if (RowRouteOf(index) is { Length: > 0 } route)
+                        Navigate(route, (uint)row.EntryIndex < (uint)Plan.Entries.Count ? Plan.Entries[row.EntryIndex].Name : null);
+                    else if ((uint)row.EntryIndex < (uint)Plan.Entries.Count && Plan.Entries[row.EntryIndex].IsTrack)
+                        Play(Plan.Entries[row.EntryIndex].Uri, asTrack: true);
+                    break;
+            }
+        }
+
+        /// <summary>The Classic filter box's header row stays realized while it is open (its editor keeps caret, focus and IME
+        /// composition through a scroll).</summary>
+        bool KeepFilterRow(int index)
+        {
+            var rows = Plan.Rows;
+            return _filterSectionId is { } id && (uint)index < (uint)rows.Count
+                   && rows[index].Kind == SidebarRowKind.SectionHeader && string.Equals(rows[index].SectionId, id, StringComparison.Ordinal);
+        }
+
+        // ── the Classic filter box (design V.11) ──
+
+        internal bool FilterOpenFor(string sectionId) => string.Equals(_filterSectionId, sectionId, StringComparison.Ordinal);
+
+        /// <summary>The first visible top-level section of <paramref name="kind"/>, or null.</summary>
+        string? FirstVisibleSectionId(SidebarSectionKind kind)
+            => Doc.Find(kind) is { Hidden: false } section ? section.Id : null;
+
+        /// <summary>Ctrl+F on the pane opens the filter under the Playlists header; a second press re-focuses it.</summary>
+        void OnPaneKey(KeyEventArgs e)
+        {
+            if (e.Handled) return;
+            // Ctrl+Z / Ctrl+Y with focus IN the sidebar (this handler only sees keys routed through the pane): the ring's
+            // undo/redo, while editing or while a sidebar toast is open (Q6). A focused TextBox consumed its own Ctrl+Z
+            // first; FocusedIsTextEditor covers its empty-stack fall-through (TextEditCore.cs:349-352).
+            if (e.Mods == KeyModifiers.Ctrl && (e.KeyCode == Keys.Z || e.KeyCode == Keys.Y))
+            {
+                if (SidebarUndoRing.KeyAllowed(Sidebar.Editing.Peek(), Sidebar.SidebarToastOpen, Shell.FocusedIsTextEditor()))
+                {
+                    if (e.KeyCode == Keys.Z) Sidebar.Undo(); else Sidebar.Redo();
+                    e.Handled = true;
+                }
+                return;
+            }
+            if (e.KeyCode != Keys.F || e.Mods != KeyModifiers.Ctrl) return;
+            if (Config.OpenSearch is { } open) { open(); e.Handled = true; return; }
+            string? tree = FirstVisibleSectionId(SidebarSectionKind.Playlists);
+            if (tree is null) return;
+            if (!HasHeaderRow(tree)) return;   // a title-less section has nowhere to host the box
+            _filterSectionId = tree;
+            _filterFocus.Value = _filterFocus.Peek() + 1;
+            RepublishNow();
+            e.Handled = true;
+        }
+
+        bool HasHeaderRow(string sectionId)
+        {
+            var rows = Plan.Rows;
+            for (int i = 0; i < rows.Count; i++)
+                if (rows[i].Kind == SidebarRowKind.SectionHeader && string.Equals(rows[i].SectionId, sectionId, StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
+        /// <summary>Closes the filter box and clears its query.</summary>
+        internal void CloseFilter()
+        {
+            if (_filterSectionId is null) return;
+            _filterSectionId = null;
+            _search.Value = "";
+            RepublishNow();
+        }
+
+        /// <summary>The transient filter (design V.11): a 32-px field under the Playlists header, focused on open; Esc, or
+        /// leaving it empty on blur, closes it and clears the query.</summary>
+        internal Element FilterBox() => Embed.Comp(() => new PaneFilterBox(this)) with { Key = "pane-filter" };
+
+        /// <summary>The filter field: the pane's own search signal in a plain editor, focused when it opens and again on a
+        /// re-press of Ctrl+F (the ticket moves).</summary>
+        sealed class PaneFilterBox(PaneView owner) : Component
+        {
+            public override Element Render()
+            {
+                var hooks = UseContext(InputHooks.Current);
+                var post = UsePost();
+                var root = UseRef<NodeHandle>(default);
+                // A fresh box takes focus on its first realization; a later Ctrl+F moves focus through the ticket.
+                var pending = UseRef(true);
+                int ticket = owner._filterFocus.Value;
+                void Focus(NodeHandle h) => post(() => hooks.FocusNode?.Invoke(hooks.FirstFocusableIn?.Invoke(h) ?? h, true));
+                UseLayoutEffect(() =>
+                {
+                    if (!root.Value.IsNull) Focus(root.Value);
+                }, DepKey.From(ticket));
+
+                var parts = UseMemo(() =>
+                {
+                    var pr = new TemplateParts();
+                    pr[EditableText.PartRoot] = b => b with
+                    {
+                        Fill = ColorF.Transparent, HoverFill = ColorF.Transparent,
+                        OnRealized = h =>
+                        {
+                            root.Value = h;
+                            if (!pending.Value) return;
+                            pending.Value = false;
+                            Focus(h);
+                        },
+                    };
+                    return pr;
+                }, DepKey.Empty);
+
+                return new BoxEl
+                {
+                    Direction = 1, Height = 32f,
+                    Margin = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.TrailingPad, 4f),
+                    Children =
+                    [
+                        Embed.Comp(() => new EditableText
+                        {
+                            Text = owner._search, Placeholder = Loc.Get(Strings.Sidebar.V3.SearchPlaceholder),
+                            Width = float.NaN, Height = 32f, FontSize = 13f, Parts = parts,
+                            ShowDeleteButton = true,
+                            PreviewKeyDown = e =>
+                            {
+                                if (e.KeyCode != Keys.Escape) return false;
+                                owner.CloseFilter();
+                                return true;
+                            },
+                            OnFocusChanged = gained =>
+                            {
+                                if (!gained && owner._search.Peek().Length == 0) owner.CloseFilter();
+                            },
+                        }),
+                    ],
+                };
+            }
+        }
+
+        // ── the section header's ⋯ menu ──
+
+        /// <summary>A section header's ⋯ menu (design C.4): the header model — limits, Show, Collapse/Expand, Move, Hide section —
+        /// mapped by the one mapper. The lock reasons come from <see cref="SidebarMenus.LockingNames"/>. The kinds with no header
+        /// menu are ruled out from the catalogue; the model itself is built only when the menu opens.</summary>
+        internal Func<ContextMenuModel?>? HeaderMenu(string sectionId)
+        {
+            if (!SidebarCatalogue.TryKindOf(sectionId, out var kind) || kind is SidebarSectionKind.Library or SidebarSectionKind.Home or SidebarSectionKind.Settings) return null;
+            return () =>
+            {
+                SidebarMenus.Overlay = MenuOverlay;
+                var rows = SidebarMenuModel.Header(Sidebar.Layout.Peek(), Sidebar.State, sectionId, SidebarMenus.LockingNames());
+                return rows.Count == 0 ? null : new ContextMenuModel(SidebarMenus.Map(rows, sectionId));
+            };
+        }
+
+        /// <summary>The authored-empty pane (ch 25 W8): it names the state only. There is no customizer to offer a fix from.</summary>
         Element EmptyPane()
         {
-            var kids = new List<Element>(4)
+            var kids = new List<Element>(2)
             {
                 Icon(Icons.SplitView, 24f, Tok.TextTertiary),
-                new TextEl(Loc.Get("sidebar.customizer.empty"))
+                new TextEl(Loc.Get("sidebar.paneEmpty"))
                 {
                     Size = 14f, Weight = 600, Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2,
                 },
-                new TextEl(Loc.Get("sidebar.customizer.emptySub"))
-                {
-                    Size = 12f, Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 3,
-                },
             };
-            if (Config.OnCustomize is { } customize)
-                kids.Add(new BoxEl
-                {
-                    Height = 32f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Padding = new Edges4(12f, 0f, 12f, 0f), Corners = Radii.ControlAll,
-                    Fill = Tok.AccentDefault, Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-                    OnClick = customize,
-                    Children =
-                    [
-                        global::Wavee.Design.Type.DenseTitle(Loc.Get("sidebar.layout.customize")) with
-                        {
-                            Color = Tok.TextOnAccentPrimary, MaxLines = 1,
-                        },
-                    ],
-                }.Interactive(Interaction.Subtle));
-
             return new BoxEl
             {
                 Key = "empty", Direction = 1, Grow = 1f, Gap = Spacing.S,
@@ -800,50 +910,26 @@ public static partial class Sidebar
             return (uint)index < (uint)rows.Count ? (int)rows[index].Kind : 0;
         }
 
-        /// <summary>Whether the rail's ONE list carries a head item — item 0, when the mode supplies one
-        /// (<see cref="SidebarRailItems"/>). <c>Config</c> is frozen at mount, so this never flips mid-life.</summary>
-        internal bool HasRailHead => Config.RailHead is not null;
-
-        /// <summary>Whether the rail's ONE list carries a footer item — the LAST item, when the mode supplies footer
-        /// content OR the quick layout menu. Frozen for the same reason.</summary>
-        internal bool HasRailFooter => Config.RailFooter is not null || Config.RailLayoutMenu;
-
-        /// <summary>Distinct NEGATIVE content types for the head/footer chrome items, so a recycled slot never
-        /// rebinds a tile's shape into the head's (or the head's into a tile's) — the same discipline
-        /// <c>Track.Table</c>'s persistent-prefix items use (<c>i &lt; prefix ? -1 - i : (int)RowKindAt(...)</c>).</summary>
-        internal const int RailContentTypeHead = -1;
-        internal const int RailContentTypeFooter = -2;
-
-        internal int RailContentTypeOf(int index)
-        {
-            var rows = RailPlan.Rows;
-            var (kind, rowIndex) = SidebarRailItems.Map(index, HasRailHead, HasRailFooter, rows.Count);
-            return kind switch
-            {
-                SidebarRailItemKind.Head => RailContentTypeHead,
-                SidebarRailItemKind.Footer => RailContentTypeFooter,
-                SidebarRailItemKind.Row when (uint)rowIndex < (uint)rows.Count => (int)rows[rowIndex].Kind,
-                _ => 0,
-            };
-        }
-
         // ── planning ───────────────────────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Everything outside the document the plan depends on, folded into one key. Reading them here is ALSO
         /// the subscription that re-plans this pane.</summary>
-        DepKey PlanDep(string search, in SidebarEditState? edit)
+        DepKey PlanDep(string search, bool compact, in SidebarPlanOptions options)
         {
             int layoutVer = LayoutVersion.Value;
             int entriesVer = Binder is { } b ? b.Entries.Version.Value : 0;
-            // Everything else the planner reads from the binder — pins band, recency, queue / now playing, feeds, a
-            // contributed section's rows — moves THIS edge, not the entries cell (G-172/G-173).
+            // Everything else the planner reads from the binder — pins band, recency, feeds, a contributed section's rows —
+            // moves THIS edge, not the entries cell (G-172/G-173).
             int inputVer = Binder is { } bi ? bi.InputVersion.Value : 0;
             int pinsVer = PinsVersion.Value;
             int folderVer = FolderVersion.Value;
             int binderEpoch = s_binderEpoch.Value;
             int revision = Binder?.Revision ?? 0;
             int mode = Config.ModeEpoch?.Invoke() ?? 0;
-            int editFold = SidebarEditPlan.Fold(in edit);
+            // The planner options the mode decided: Library's chip, grid columns and folder shape. The drop band's arming
+            // is its own fold (PinDrop), so a drag that starts or ends names that cause instead of Mode.
+            int pinDrop = options.PinDropArmed ? 1 : 0;
+            int optionsFold = HashCode.Combine((int)options.Filter, options.GridColumns, options.FoldersInline, options.Drilled);
             // The re-plan census (Sidebar.Census.cs): which of these inputs moved since the LAST BUILD. Accumulated here
             // (every render folds the key) and claimed by BuildStage, which runs only when the key actually moved.
             var moved = Shell.SidebarReplanCause.None;
@@ -855,38 +941,54 @@ public static partial class Sidebar
             if (binderEpoch != _depBinder) moved |= Shell.SidebarReplanCause.Binder;
             if (revision != _depRevision) moved |= Shell.SidebarReplanCause.Revision;
             if (mode != _depMode) moved |= Shell.SidebarReplanCause.Mode;
-            if (editFold != _depEdit) moved |= Shell.SidebarReplanCause.Edit;
+            if (optionsFold != _depOptions) moved |= Shell.SidebarReplanCause.Mode;
+            if (pinDrop != _depPinDrop) moved |= Shell.SidebarReplanCause.PinDrop;
             if (!string.Equals(search, _depSearch, StringComparison.Ordinal)) moved |= Shell.SidebarReplanCause.Search;
             _depLayout = layoutVer; _depEntries = entriesVer; _depInput = inputVer; _depPins = pinsVer; _depFolder = folderVer;
-            _depBinder = binderEpoch; _depRevision = revision; _depMode = mode; _depEdit = editFold; _depSearch = search;
+            _depBinder = binderEpoch; _depRevision = revision; _depMode = mode; _depOptions = optionsFold; _depPinDrop = pinDrop;
+            _depSearch = search;
             _pendingReplanCauses |= moved;
             return DepKey.Combine(DepKey.From(layoutVer, entriesVer, pinsVer, folderVer),
-                DepKey.Combine(DepKey.From(revision, mode, editFold, binderEpoch),
-                    DepKey.Combine(DepKey.From(inputVer), search)));
+                DepKey.Combine(DepKey.From(revision, mode, optionsFold, binderEpoch),
+                    DepKey.Combine(DepKey.Combine(DepKey.From(inputVer), DepKey.From(compact ? 1 : 0, pinDrop)), search)));
         }
 
         // The last PlanDep inputs + the causes accumulated since the last build (Sidebar.Census.cs).
         int _depLayout = int.MinValue, _depEntries = int.MinValue, _depInput = int.MinValue, _depPins = int.MinValue,
             _depFolder = int.MinValue, _depBinder = int.MinValue, _depRevision = int.MinValue, _depMode = int.MinValue,
-            _depEdit = int.MinValue;
+            _depOptions = int.MinValue, _depPinDrop = int.MinValue;
         string? _depSearch;
         Shell.SidebarReplanCause _pendingReplanCauses;
 
-        PlanStage BuildStage(SidebarCustomLayout document, string search, SidebarEditState? edit)
+        /// <summary>The options this pane plans with: the frame's presentation and the drop band's arming first, then the
+        /// mode's decision (<see cref="PaneConfig.Options"/>). The caller passes the two signal reads it subscribes to.</summary>
+        SidebarPlanOptions OptionsFor(bool compact, bool pinDropArmed)
+        {
+            var options = new SidebarPlanOptions(
+                Mode: compact ? SidebarPaneMode.Compact : SidebarPaneMode.Expanded,
+                PinDropArmed: pinDropArmed);
+            return Config.Options is { } shape ? shape(options) : options;
+        }
+
+        PlanStage BuildStage(SidebarLayoutDoc document, string search, in SidebarPlanOptions options)
         {
             Shell.SidebarReplanCensus.NoteBuild(_pendingReplanCauses);
             _pendingReplanCauses = Shell.SidebarReplanCause.None;
             var input = Input(search);
             bool useA = !_planPublished || !_presentedUsesA;
             var paneBuffers = useA ? _paneBuffersA : _paneBuffersB;
-            var railBuffers = useA ? _railBuffersA : _railBuffersB;
-            // The canvas is the EDIT PROJECTION of the same document into the same flat list — never a second renderer.
-            var pane = edit is { } session
-                ? PlanEdit(document, in input, in session, paneBuffers)
-                : Sidebar.Plan(document, in input, paneBuffers);
-            // The rail is never the canvas: a collapsed pane mid-edit shows the user's actual rail.
-            var rail = PlanRail(document, in input, railBuffers);
-            return new PlanStage(document, pane, rail, SidebarSearch.Normalize(input.Search), useA, ++_nextPlanEpoch, edit);
+            var pane = Sidebar.Plan(document, in input, in options, paneBuffers);
+            return new PlanStage(document, pane, SidebarSearch.Normalize(input.Search), useA, ++_nextPlanEpoch,
+                options.Mode == SidebarPaneMode.Compact, options.GridColumns);
+        }
+
+        /// <summary>A collapsed section's rows for its flyout: the ONE planner over a one-section document with that section
+        /// expanded and presented as a List (the flyout draws one entry per row, so a Grid's strips would drop all but their
+        /// first entry), against the pane's own input.</summary>
+        internal SidebarRowPlan PlanSectionExpanded(string sectionId, SidebarPlanBuffers buffers)
+        {
+            var input = Input(_search.Peek());
+            return SidebarRowPlanner.BuildSection(Doc, sectionId, in input, buffers);
         }
 
         void TryPublishStage(PlanStage stage)
@@ -896,7 +998,8 @@ public static partial class Sidebar
             bool preparedExpansion = _activeDisclosureOpen
                 && (_pendingExpandSection is not null || _pendingExpandFolder is not null);
             if (_activeDisclosureKey is not null && !preparedExpansion) return;
-            if (_planPublished && stage.UsesA == _presentedUsesA && ReferenceEquals(stage.Pane.Rows, Plan.Rows)) return;
+            if (_planPublished && stage.UsesA == _presentedUsesA && stage.Compact == CompactPlan
+                && ReferenceEquals(stage.Pane.Rows, Plan.Rows)) return;
             // THE MID-DRAG FREEZE — exempt for a disclosure in flight (spring-loading a folder exists to reveal its
             // children) and for this gesture's own commit. Track drags are not frozen: they aim at identity, not position.
             if (_publishThroughFreeze) _publishThroughFreeze = false;
@@ -919,54 +1022,50 @@ public static partial class Sidebar
             // Captured BEFORE the swap — the A/B buffers keep the outgoing rows alive for the diff.
             var oldRows = Plan.Rows;
             var oldEntries = Plan.Entries;
-            var oldRail = RailPlan;
-            // A new document, a new effective query or an edit-session edge changes what rows draw without necessarily
-            // changing the row record, so those bump wholesale.
+            var oldDoc = Doc;
+            // A new document, a new effective query or a presentation flip (expanded ⇄ rail: the same rows, re-planned)
+            // changes what rows draw without necessarily changing the row record, so those bump wholesale. A document that
+            // only COLLAPSED or EXPANDED a section is not one of them: every section/folder toggle mints such a document, and
+            // bumping wholesale re-rendered every realized row on each click (~15 KB a row, ~0.5 MB a toggle in the frame
+            // bench). Its rows still re-seed their extents, like any re-shaped plan; only the rows the diff finds changed,
+            // and the headers whose state flipped, re-render.
+            bool collapseOnly = _planPublished && !ReferenceEquals(stage.Document, oldDoc) && stage.Document.SameExceptCollapsed(oldDoc);
             bool wholesale = !_planPublished
-                             || !ReferenceEquals(stage.Document, Doc)
+                             || (!ReferenceEquals(stage.Document, oldDoc) && !collapseOnly)
                              || !string.Equals(stage.EffectiveSearch, _effectiveSearch, StringComparison.Ordinal)
-                             || !Nullable.Equals(stage.Edit, PublishedEdit);
-            // The rail draws from its OWN plan (and the document, for its sections), so it moves on a wholesale publish
-            // or when its rows/entries differ — a re-plan that only touched the expanded list leaves it alone (W3-A2).
-            bool railChanged = wholesale
-                               || PlanDiff.Changed(oldRail.Rows, oldRail.Entries, stage.Rail.Rows, stage.Rail.Entries);
+                             || stage.Compact != CompactPlan;
 
-            PublishedEdit = stage.Edit;
             Doc = stage.Document;
             Plan = stage.Pane;
-            RailPlan = stage.Rail;
+            CompactPlan = stage.Compact;
+            GridColumns = stage.GridColumns;
             _effectiveSearch = stage.EffectiveSearch;
             _presentedUsesA = stage.UsesA;
             _planPublished = true;
             RebuildIndex(Plan);
+            ResolvePillTarget(SelectedRoutePeek);
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
-            EnsureRailSlots(RailPlan.Rows.Count);
-            if (wholesale) ReseedRowExtents();
-            if (railChanged) ReseedRailExtents();
+            if (wholesale || collapseOnly) ReseedRowExtents();
             if (!notify)
             {
                 // The FIRST publish runs synchronously inside the pane's render, before anything has read the count
                 // signal: seeding it here is a forward write (no subscriber yet), and Render's read right after it sees
                 // the real count on frame one.
                 _rowCount.Value = Plan.Rows.Count;
-                RailRowCount.Value = SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count);
                 return;
             }
 
-            Shell.SidebarReplanCensus.NotePublish(railChanged, wholesale);
+            Shell.SidebarReplanCensus.NotePublish(wholesale);
             void PublishSignals()
             {
                 _rowCount.Value = Plan.Rows.Count;
                 _planVersion.Value = _planVersion.Peek() + 1;
                 if (wholesale) BumpAllRowEpochs();
-                else BumpChangedRowEpochs(oldRows, oldEntries);
-                if (railChanged)
+                else
                 {
-                    RailRowCount.Value = SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count);
-                    RailVersion.Value = RailVersion.Peek() + 1;
-                    if (wholesale) BumpAllRailEpochs();
-                    else BumpChangedRailEpochs(oldRail.Rows, oldRail.Entries);
+                    BumpChangedRowEpochs(oldRows, oldEntries);
+                    if (collapseOnly) BumpFlippedHeaders(oldDoc);
                 }
             }
             if (Context.Runtime is { } runtime) runtime.Batch(PublishSignals);
@@ -981,33 +1080,21 @@ public static partial class Sidebar
             if (binder is null || binder.Revision == 0)
             {
                 // No projection yet: every dynamic source is honestly PENDING — skeletons, never an empty library.
-                input = input with
-                {
-                    LibraryState = SidebarSourceState.Pending,
-                    TreeState = SidebarSourceState.Pending,
-                    RecentsState = SidebarSourceState.Pending,
-                    NewReleasesState = SidebarSourceState.Pending,
-                    ConcertsState = SidebarSourceState.Pending,
-                };
+                input = input with { LibraryState = SidebarSourceState.Pending, TreeState = SidebarSourceState.Pending };
             }
+            input = input with { LikedTitle = Loc.Get("nav.likedSongs") };
             if (Config.Input is { } shape) input = shape(input);
             if (search.Length > 0) input = input with { Search = search };
             return input;
         }
 
-        /// <summary>Rebuilt with every plan: the section map, the menu host, the tree order + prune, the reorder bands.</summary>
+        /// <summary>Rebuilt with every plan: the section map, the tree order + prune, the Pinned reorder band.</summary>
         void RebuildIndex(SidebarRowPlan plan)
         {
             _sections.Clear();
             var sections = Doc.Sections;
-            for (int i = 0; i < sections.Count; i++)
-            {
-                _sections[sections[i].Id] = sections[i];
-                var kids = sections[i].ChildList;
-                for (int j = 0; j < kids.Count; j++) _sections[kids[j].Id] = kids[j];
-            }
+            for (int i = 0; i < sections.Count; i++) _sections[sections[i].Id] = sections[i];
 
-            MenuHostSectionId = null;
             _bands.Clear();
             RebuildTreeSelectionOrder(plan);
             if (TreeSelection.Prune(_treeVisibleOrder))
@@ -1018,13 +1105,12 @@ public static partial class Sidebar
             }
             _pinnedSubtrees.Clear();
             _pinnedDepths.Clear();
-            RebuildSectionBand(plan);
             var rows = plan.Rows;
             for (int i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
                 if (SectionOf(row.SectionId)?.Kind != SidebarSectionKind.Pinned) continue;
-                if (row.Kind is SidebarRowKind.SectionHeader or SidebarRowKind.SectionCard)
+                if (row.Kind == SidebarRowKind.SectionHeader)
                 {
                     _pinnedDepths[row.SectionId] = row.Depth;
                     continue;
@@ -1037,13 +1123,10 @@ public static partial class Sidebar
 
             string? bandId = null;
             int bandStart = 0;
-            float bandExtent = SidebarRowGeometry.ClassicHeight;
+            float bandExtent = SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             for (int i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
-                if (Config.ShowLayoutMenu && MenuHostSectionId is null && row.Kind == SidebarRowKind.SectionHeader)
-                    MenuHostSectionId = row.SectionId;
-
                 bool item = IsReorderableRow(row);
                 if (item && bandId is not null && string.Equals(bandId, row.SectionId, StringComparison.Ordinal)) continue;
                 if (bandId is not null)
@@ -1052,72 +1135,19 @@ public static partial class Sidebar
                     bandId = null;
                 }
                 if (!item) continue;
+                // Only Pinned reorders in place: Your Library's list reorders as a rootlist move, never a local overlay.
                 var section = SectionOf(row.SectionId);
-                if (section is null || !IsReorderableSection(section.Kind) || _pinnedSubtrees.Contains(row.SectionId))
+                if (section is null || section.Kind != SidebarSectionKind.Pinned || _pinnedSubtrees.Contains(row.SectionId))
                     continue;
                 bandId = row.SectionId;
                 bandStart = i;
-                bandExtent = PaneMetrics.RowHeight(section);
+                bandExtent = SidebarRowGeometry.PitchOf(section.Shape);
             }
             if (bandId is not null) _bands.Add(new PaneBand(bandId, bandStart, rows.Count - bandStart, bandExtent));
         }
 
-        /// <summary>The section-card drag band: armed only on the canvas while every card is a card, skipping the pinned
-        /// Shortcuts head (it is not in <c>Sections</c>), verified contiguous, and never for fewer than two cards.</summary>
-        void RebuildSectionBand(SidebarRowPlan plan)
-        {
-            _sectionBand = default;
-            if (PublishedEdit is not { } edit || !SidebarEditPlan.SectionsReorderable(in edit)) return;
-            var rows = plan.Rows;
-            int start = -1, count = 0;
-            for (int i = 0; i < rows.Count; i++)
-            {
-                if (rows[i].Kind != SidebarRowKind.SectionCard) { if (start >= 0) break; continue; }
-                if (SidebarEditPlan.IsPinnedCard(rows[i].SectionId)) { if (start >= 0) break; continue; }
-                if (start < 0) start = i;
-                count++;
-            }
-            if (start < 0 || count < 2) return;
-            _sectionBand = new PaneBand(SidebarEditPlan.SectionDragKind, start, count, PaneMetrics.EditCardHeight);
-        }
-
-        internal bool TryEditSectionBand(int planIndex, out PaneBand band)
-        {
-            band = _sectionBand;
-            return band.Contains(planIndex);
-        }
-
-        /// <summary>The section-card Reorderable. Its OWN drag kind; LiveProject off and no insertion line (a recycling
-        /// list with no <c>List(...)</c> wrapper); the ghost lift stays because the chip resolver answers only
-        /// <see cref="Drag.Resource"/>.</summary>
-        internal Reorderable SectionReorder => _sectionReorder ??= new Reorderable(SidebarEditPlan.SectionDragKind)
-        {
-            LiveProject = false,
-            ShowInsertionLine = false,
-            AnnounceAssertive = true,
-        };
-
         static bool IsReorderableRow(in SidebarRow row) => row.Kind
-            is SidebarRowKind.EntityRow or SidebarRowKind.IconRow or SidebarRowKind.Placeholder
-            or SidebarRowKind.FolderHeader;
-
-        bool IsReorderableSection(SidebarSectionKind kind)
-            => Config.IsReorderableSection is { } test
-                ? test(kind)
-                : kind is SidebarSectionKind.Pinned or SidebarSectionKind.StaticLinks or SidebarSectionKind.CustomGroup;
-
-        static bool HasEntityList(SidebarCustomLayout doc)
-        {
-            var sections = doc.Sections;
-            for (int i = 0; i < sections.Count; i++)
-            {
-                if (sections[i].Kind == SidebarSectionKind.EntityList && !sections[i].Hidden) return true;
-                var kids = sections[i].ChildList;
-                for (int j = 0; j < kids.Count; j++)
-                    if (kids[j].Kind == SidebarSectionKind.EntityList && !kids[j].Hidden) return true;
-            }
-            return false;
-        }
+            is SidebarRowKind.EntityRow or SidebarRowKind.IconRow or SidebarRowKind.FolderHeader;
 
         // ── disclosure choreography ────────────────────────────────────────────────────────────────────────────────
         // Expand: the inserted band fades/rises while survivors FLIP; collapse: departing rows stay alive while
@@ -1265,7 +1295,7 @@ public static partial class Sidebar
         void RepublishNow()
         {
             if (!_planPublished) return;
-            TryPublishStage(BuildStage(Config.Document(), _search.Peek(), Config.Edit?.Invoke()));
+            TryPublishStage(BuildStage(Config.Document(), _search.Peek(), OptionsFor(CompactPlan, _pinDropArmed.Peek())));
         }
 
         Action WithPrefsCommit(Action commit) => () => { commit(); SchedulePrefsCommit(); };
@@ -1296,15 +1326,6 @@ public static partial class Sidebar
             return (uint)index < (uint)epochs.Length ? epochs[index].Value : _planVersion.Value;
         }
 
-        /// <summary>Subscribe the CALLING computation to ONE rail row's epoch — the rail slot's mirror of
-        /// <see cref="SubscribeRowEpoch"/>. Load-bearing for the same reason: a recycled <c>RailSlot</c> is a frozen
-        /// child, so its only path back to fresh content is reading this epoch on every render.</summary>
-        internal int SubscribeRailEpoch(int index)
-        {
-            var epochs = _railEpochs;
-            return (uint)index < (uint)epochs.Length ? epochs[index].Value : RailVersion.Value;
-        }
-
         internal (bool Playing, bool Animated) RowPlayState(int index)
         {
             var play = _rowPlay;
@@ -1326,23 +1347,24 @@ public static partial class Sidebar
             _rowPlay = play;
         }
 
-        /// <summary>The rail's mirror of <see cref="EnsureRowSlots"/> — no play-state array: a 56-DIP tile draws no
-        /// playing glyph at all (only its selection ring), so the rail has nothing for a play sweep to bump.</summary>
-        void EnsureRailSlots(int count)
-        {
-            if (count <= _railEpochs.Length) return;
-            int cap = Math.Max(32, _railEpochs.Length);
-            while (cap < count) cap *= 2;
-            var epochs = new Signal<int>[cap];
-            Array.Copy(_railEpochs, epochs, _railEpochs.Length);
-            for (int i = _railEpochs.Length; i < cap; i++) epochs[i] = new Signal<int>(0);
-            _railEpochs = epochs;
-        }
-
         void BumpRowEpoch(int index)
         {
             var epochs = _rowEpochs;
             if ((uint)index < (uint)epochs.Length) epochs[index].Value = epochs[index].Peek() + 1;
+        }
+
+        /// <summary>The headers of the sections whose Collapsed flag differs from <paramref name="oldDoc"/>: their chevron
+        /// reads the flag, and a header row's record does not carry it (a collapse from Edit mode or a reset has no
+        /// disclosure to re-skin it).</summary>
+        void BumpFlippedHeaders(SidebarLayoutDoc oldDoc)
+        {
+            var sections = Doc.Sections;
+            for (int i = 0; i < sections.Count && i < oldDoc.Sections.Count; i++)
+            {
+                if (sections[i].Collapsed == oldDoc.Sections[i].Collapsed) continue;
+                int header = SectionHeaderIndexOf(Plan, sections[i].Id);
+                if (header >= 0) BumpRowEpoch(header);
+            }
         }
 
         void BumpAllRowEpochs()
@@ -1359,27 +1381,6 @@ public static partial class Sidebar
             var entries = Plan.Entries;
             for (int i = 0; i < rows.Count; i++)
                 if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRowEpoch(i);
-        }
-
-        void BumpRailEpoch(int index)
-        {
-            var epochs = _railEpochs;
-            if ((uint)index < (uint)epochs.Length) epochs[index].Value = epochs[index].Peek() + 1;
-        }
-
-        void BumpAllRailEpochs()
-        {
-            var epochs = _railEpochs;
-            for (int i = 0; i < epochs.Length; i++) epochs[i].Value = epochs[i].Peek() + 1;
-        }
-
-        /// <summary>The rail's mirror of <see cref="BumpChangedRowEpochs"/>, over <see cref="RailPlan"/>.</summary>
-        void BumpChangedRailEpochs(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarLibraryEntry> oldEntries)
-        {
-            var rows = RailPlan.Rows;
-            var entries = RailPlan.Entries;
-            for (int i = 0; i < rows.Count; i++)
-                if (PlanDiff.RowChanged(oldRows, oldEntries, rows, entries, i)) BumpRailEpoch(i);
         }
 
         /// <summary>The pane's ONE read of playback on behalf of every row: the coarse active-context gate first (an idle
@@ -1424,23 +1425,7 @@ public static partial class Sidebar
             var row = rows[index];
             var entries = Plan.Entries;
             bool resolved = row.EntryIndex >= 0 && row.EntryIndex < entries.Count;
-            switch (row.Kind)
-            {
-                case SidebarRowKind.EntityCard:
-                    return resolved ? entries[row.EntryIndex].Uri : "";
-                case SidebarRowKind.IconRow:
-                case SidebarRowKind.EntityRow:
-                case SidebarRowKind.Placeholder:
-                {
-                    if (resolved) return entries[row.EntryIndex].Uri;
-                    var section = SectionOf(row.SectionId);
-                    if (section is null) return "";
-                    var item = SidebarRowResolve.ItemOf(section, row.Key);
-                    return item is { Target: SidebarItemTarget.Track } ? item.Key : "";
-                }
-                default:
-                    return "";
-            }
+            return row.Kind == SidebarRowKind.EntityRow && resolved ? entries[row.EntryIndex].Uri : "";
         }
 
         string RouteKeyOf(in Shell.Route route)
@@ -1453,12 +1438,76 @@ public static partial class Sidebar
             return _routeKeyCache;
         }
 
-        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render and
-        /// <see cref="RefreshRailSelection"/> (the rail's own selection sweep) use it.</summary>
+        /// <summary>The last pointer was a finger: header ⋯ buttons stay visible (design V.6).</summary>
+        internal bool TouchLast => _hooks?.LastPointerWasTouch?.Invoke() ?? false;
+
+        /// <summary>Recompute the one pill target for <paramref name="route"/> over the PUBLISHED plan.</summary>
+        void ResolvePillTarget(string route)
+        {
+            SidebarPillRules.AncestorFolders(Binder?.CurrentInput.PlaylistTree, route, _ancestorScratch);
+            _pillTarget = SidebarPillRules.Resolve(Plan.Rows, Plan.Entries, _rowRouteOf ??= RowRouteOf, route, _ancestorScratch,
+                OwningSection(route));
+            bool onRow = _pillTarget.PlanIndex >= 0;
+            if (onRow != _pillOnRow)
+            {
+                _pillOnRow = onRow;
+                Config.PillOnRowChanged?.Invoke(onRow);
+            }
+        }
+
+        /// <summary>The route a pill drawn on row <paramref name="index"/> registers under: the live route when the row is
+        /// the pill's ancestor / header anchor, the row's own route otherwise.</summary>
+        internal string? PillRouteOf(int index, string liveRoute)
+            => index == _pillTarget.PlanIndex && _pillTarget.Anchor != SidebarPillAnchor.Row ? liveRoute : RowRouteOf(index);
+
+        /// <summary>The route plan row <paramref name="index"/> navigates to, by the rule the selection sweep uses: a projected
+        /// entry's route, else a hand-placed route item's key. Null when the row is not a navigation target.</summary>
+        internal string? RowRouteOf(int index)
+        {
+            var rows = Plan.Rows;
+            if ((uint)index >= (uint)rows.Count) return null;
+            var row = rows[index];
+            return SidebarRowResolve.RouteOf(in row, Plan.Entries);
+        }
+
+        /// <summary>The first visible top-level section that would hold <paramref name="route"/> if it were expanded: Pinned for
+        /// a pinned route, Collections for one of its pages, Playlists for a playlist or folder in the tree, and Your Library
+        /// for an entity route under the Library layout. Null otherwise.</summary>
+        string? OwningSection(string route)
+        {
+            if (route.Length == 0) return null;
+            var doc = Doc;
+            if (doc.Find(SidebarSectionKind.Pinned) is { Hidden: false } pinned && IsPinned(SidebarPinId.FromRoute(route))) return pinned.Id;
+            if (doc.Find(SidebarSectionKind.Collections) is { Hidden: false } collections && ItemsHold(collections.Items, route))
+                return collections.Id;
+            if (doc.Find(SidebarSectionKind.Playlists) is { Hidden: false } playlists
+                && Binder?.CurrentInput.PlaylistTree is { } tree && EntriesHold(tree, route)) return playlists.Id;
+            if (doc.Layout == SidebarLayoutId.Library && doc.Find(SidebarSectionKind.Library) is { Hidden: false } library
+                && Binder?.CurrentInput.Library is { } list && EntriesHold(list, route)) return library.Id;
+            return null;
+        }
+
+        static bool ItemsHold(IReadOnlyList<string> items, string route)
+        {
+            for (int i = 0; i < items.Count; i++)
+                if (string.Equals(items[i], route, StringComparison.Ordinal)) return true;
+            return false;
+        }
+
+        static bool EntriesHold(IReadOnlyList<SidebarLibraryEntry> entries, string route)
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                if (string.Equals(entry.Id, route, StringComparison.Ordinal) || SidebarRowResolve.EntrySelects(in entry, route)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render uses it.</summary>
         internal string SelectedRoute => RouteKeyOf(Shell.Current.Value);
 
-        /// <summary>The selected route key WITHOUT subscribing (pane rows and rail tiles re-render on their own
-        /// epoch; a recycled <c>Rail.RailSlot</c> peeks this every render instead of binding to it).</summary>
+        /// <summary>The selected route key WITHOUT subscribing (pane rows re-render on their own epoch).</summary>
         internal string SelectedRoutePeek => RouteKeyOf(Shell.Current.Peek());
 
         /// <summary>Does row <paramref name="index"/> draw SELECTED for <paramref name="route"/>? The ONE rule the sweep
@@ -1468,7 +1517,8 @@ public static partial class Sidebar
             var rows = Plan.Rows;
             if ((uint)index >= (uint)rows.Count) return false;
             var row = rows[index];
-            return SidebarRowResolve.SelectsRoute(in row, Plan.Entries, SectionOf(row.SectionId), route);
+            return SidebarRowResolve.SelectsRoute(in row, Plan.Entries, route)
+                   || (index == _pillTarget.PlanIndex && _pillTarget.Anchor != SidebarPillAnchor.Row);
         }
 
         /// <summary>The ONE route sweep: bump the symmetric difference of the selected rows — the row that lost the
@@ -1477,33 +1527,23 @@ public static partial class Sidebar
         {
             string route = SelectedRoute;
             _ = _planVersion.Value;
+            ResolvePillTarget(route);
             var next = _rowSelNext;
             next.Clear();
-            SidebarRowResolve.Sweep(Plan.Rows, Plan.Entries, _sectionOf ??= SectionOf, route, next);
+            SidebarRowResolve.Sweep(Plan.Rows, Plan.Entries, route, next);
+            // The one pill's row joins the selected set even when the sweep does not draw it selected (an ancestor or header anchor).
+            if (_pillTarget.PlanIndex >= 0 && !next.Contains(_pillTarget.PlanIndex)) next.Add(_pillTarget.PlanIndex);
             var prev = _rowSelSet;
             var flipped = _rowSelFlip;
             flipped.Clear();
             SidebarRowResolve.Flipped(prev, next, flipped);
+            // A route change that keeps the pill on the same non-row anchor (pl:a → pl:b in one collapsed folder) must still
+            // re-render that anchor: its slot registers the pill under the live route.
+            if (_pillTarget.PlanIndex >= 0 && _pillTarget.Anchor != SidebarPillAnchor.Row
+                && !string.Equals(route, _pillRoute, StringComparison.Ordinal) && !flipped.Contains(_pillTarget.PlanIndex))
+                flipped.Add(_pillTarget.PlanIndex);
+            _pillRoute = route;
             for (int i = 0; i < flipped.Count; i++) BumpRowEpoch(flipped[i]);
-            prev.Clear();
-            for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
-        }
-
-        /// <summary>The rail's mirror of <see cref="RefreshSelection"/>, over <see cref="RailPlan"/> — bumps exactly
-        /// the rail tiles whose selected state flipped, which is what makes it safe for a recycled
-        /// <c>Rail.RailSlot</c> to bake <c>selected</c> in as a plain VALUE instead of a bound read.</summary>
-        void RefreshRailSelection()
-        {
-            string route = SelectedRoute;
-            _ = RailVersion.Value;   // a rail republish re-plans which index holds which entity
-            var next = _railSelNext;
-            next.Clear();
-            SidebarRowResolve.Sweep(RailPlan.Rows, RailPlan.Entries, _sectionOf ??= SectionOf, route, next);
-            var prev = _railSelSet;
-            var flipped = _railSelFlip;
-            flipped.Clear();
-            SidebarRowResolve.Flipped(prev, next, flipped);
-            for (int i = 0; i < flipped.Count; i++) BumpRailEpoch(flipped[i]);
             prev.Clear();
             for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
         }
@@ -1520,7 +1560,7 @@ public static partial class Sidebar
 
         /// <summary>Bind a realized indicator node to the route it draws for; the reverse index makes it CHECKABLE after
         /// a recycle (a registration is removed only when the outgoing route still points back at THIS node).</summary>
-        internal void RegisterSelectionPill(string route, NodeHandle node)
+        internal void RegisterSelectionPill(string route, NodeHandle node, SidebarPillLane lane)
         {
             var scene = Context.Scene;
             if (route.Length == 0 || scene is null || node.IsNull || !scene.IsLive(node)) return;
@@ -1530,8 +1570,12 @@ public static partial class Sidebar
                 && _selectionPills.TryGetValue(previous, out var owned) && owned == node)
                 _selectionPills.Remove(previous);
             _selectionRouteByNode[index] = route;
+            _selectionLaneByNode[index] = lane;
             _selectionPills[route] = node;
         }
+
+        SidebarPillLane LaneOf(NodeHandle node)
+            => _selectionLaneByNode.TryGetValue((int)node.Raw.Index, out var lane) ? lane : SidebarPillLane.List;
 
         /// <summary>Would the pill's own bound read light this node? The transaction may only assert "visible" for a
         /// node this answers true for (#22/#23).</summary>
@@ -1567,8 +1611,9 @@ public static partial class Sidebar
                 NavigationSelectionMotion.SnapVertical(anim, incoming, visible: true);
                 return;
             }
-            // Same lane ⇒ the continuous worm; a real depth change scales (linear, no opacity leg).
-            bool sameLane = MathF.Abs(to.X - from.X) < 0.5f;
+            // Same container and depth ⇒ the continuous worm; anything else — a depth change, or the pill moving between the
+            // head, the list and the footer (design V.5) — scales out and in place, pivoting at the facing edges.
+            bool sameLane = SidebarPillMotionRules.Slides(LaneOf(outgoing), LaneOf(incoming), to.X - from.X);
             NavigationSelectionMotion.StartVertical(anim, outgoing, 0f, travel, SelectionPill.PillH, outgoing: true, sameDepth: sameLane);
             NavigationSelectionMotion.StartVertical(anim, incoming, -travel, 0f, SelectionPill.PillH, outgoing: false, sameDepth: sameLane);
             _selectionFlightFrom = outgoing;
@@ -1593,10 +1638,10 @@ public static partial class Sidebar
         /// <summary>The analytic seed extent (NaN = measure). Called only when the host seeds/resizes — never per frame.</summary>
         float RowExtentSeed(int index)
         {
-            if (!_planPublished) return SidebarRowGeometry.ClassicHeight;
+            if (!_planPublished) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             var rows = Plan.Rows;
-            if ((uint)index >= (uint)rows.Count) return SidebarRowGeometry.ClassicHeight;
-            return SidebarRowExtents.HeightOf(rows, index, SectionOf(rows[index].SectionId), !Config.ReadOnly);
+            if ((uint)index >= (uint)rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            return SidebarRowExtents.HeightOf(rows, index, SectionOf(rows[index].SectionId));
         }
 
         void ReseedRowExtents()
@@ -1604,54 +1649,21 @@ public static partial class Sidebar
             if (_rowLayout.CustomLayout is MeasuredStackVirtualLayout measured) measured.Reseed(Plan.Rows.Count);
         }
 
-        /// <summary>The rail's analytic seed — <see cref="SidebarRailExtents.ExtentOf"/>, the head at its exact tile count.</summary>
-        float RailExtentSeed(int index)
-        {
-            var m = SidebarRailMetrics.For(Sidebar.RailDetent.Peek());
-            return SidebarRailExtents.ExtentOf(RailPlan.Rows, index, HasRailHead, HasRailFooter,
-                index == 0 && HasRailHead ? Config.RailHeadTiles?.Invoke() ?? 0 : 0, in m);
-        }
-
-        /// <summary>Re-seed the rail's ONE list — head, rows AND footer (the list's item count, not the plan's row count:
-        /// seeding only the rows shrank the table and re-appended the chrome items as fresh estimates). The engine anchors
-        /// the reseed (<c>IAnchoredReseedLayout</c>), and the head seed is exact, so a wholesale republish moves nothing.</summary>
-        void ReseedRailExtents()
-        {
-            if (RailLayout.CustomLayout is MeasuredStackVirtualLayout measured)
-                measured.Reseed(SidebarRailItems.Count(HasRailHead, HasRailFooter, RailPlan.Rows.Count));
-        }
-
         /// <summary>The row's LIVE laid-out height (bound-safe: one peek + one rect read), 44 on any degenerate answer.</summary>
         internal float RowExtentOf(int index)
         {
-            if ((uint)index >= (uint)Plan.Rows.Count) return SidebarRowGeometry.ClassicHeight;
+            if ((uint)index >= (uint)Plan.Rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             float cross = MathF.Max(1f, Sidebar.Width.Peek() - PaneMetrics.PaneInsetH);
             var layout = _rowLayout.CustomLayout;
-            if (layout is null) return SidebarRowGeometry.ClassicHeight;
+            if (layout is null) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             float extent = layout.ItemRect(index, cross).H;
-            return float.IsFinite(extent) && extent > 0f ? extent : SidebarRowGeometry.ClassicHeight;
+            return float.IsFinite(extent) && extent > 0f ? extent : SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
         }
 
         /// <summary>The normalized query that built the published plan (pane head, or V3's mode-global query).</summary>
         internal string SearchText => _effectiveSearch;
 
-        internal SidebarSectionSpec? SectionOf(string sectionId) => _sections.TryGetValue(sectionId, out var s) ? s : null;
-
-        readonly Dictionary<string, (int Revision, bool HasFolder)> _sectionHasFolder = new(StringComparer.Ordinal);
-
-        /// <summary>Does this section plan a folder row (memoized per plan revision, never scanned per realized row)?</summary>
-        internal bool SectionHasFolder(string sectionId)
-        {
-            if (_sectionHasFolder.TryGetValue(sectionId, out var cached) && cached.Revision == Plan.Revision)
-                return cached.HasFolder;
-            var rows = Plan.Rows;
-            bool has = false;
-            for (int i = 0; i < rows.Count; i++)
-                if (rows[i].Kind == SidebarRowKind.FolderHeader
-                    && string.Equals(rows[i].SectionId, sectionId, StringComparison.Ordinal)) { has = true; break; }
-            _sectionHasFolder[sectionId] = (Plan.Revision, has);
-            return has;
-        }
+        internal SidebarSection? SectionOf(string sectionId) => _sections.TryGetValue(sectionId, out var s) ? s : null;
 
         internal bool TryBandOf(int planIndex, out PaneBand band)
         {
@@ -1683,7 +1695,6 @@ public static partial class Sidebar
 
         void ConfigureReorder()
         {
-            ConfigureSectionReorder();
             for (int i = 0; i < _bands.Count; i++)
             {
                 var band = _bands[i];
@@ -1707,56 +1718,9 @@ public static partial class Sidebar
             Context.RequestRerender();
         }
 
-        void ConfigureSectionReorder()
-        {
-            if (_sectionReorder is null && _sectionBand.Count == 0) return;
-            var ro = SectionReorder;
-            ro.Scene = Context.Scene;
-            ro.RequestRender = BumpDisplacement;
-            ro.ItemCount = _sectionBand.Count;
-            ro.ItemExtent = PaneMetrics.EditCardHeight;
-            ro.Spacing = 0f;
-            ro.ItemOf = null;
-            ro.OnReorder = CommitSectionMove;
-            // The keyboard lift's only feedback (Space · arrows · Space · Esc) — composed on the EDGE, never per frame.
-            ro.AnnounceText = SectionAnnounce;
-        }
-
-        string? SectionAnnounce(ReorderAnnounce a)
-        {
-            string name = SectionTitleAtCardSlot(a.Index);
-            if (name.Length == 0) return null;
-            string where = Loc.Format("sidebar.pin.position", ("index", a.Slot + 1), ("count", a.Count));
-            return a.Kind switch
-            {
-                ReorderAnnounceKind.Grab => Loc.Format("sidebar.customizer.reorderGrabbed", ("name", name), ("position", where)),
-                ReorderAnnounceKind.Move => Loc.Format("sidebar.customizer.reorderMoved", ("name", name), ("position", where)),
-                ReorderAnnounceKind.Drop => Loc.Format("sidebar.customizer.reorderDropped", ("name", name), ("position", where)),
-                _ => Loc.Format("sidebar.customizer.reorderCancelled", ("name", name)),
-            };
-        }
-
-        string SectionTitleAtCardSlot(int slot)
-        {
-            string id = SidebarEditPlan.SectionIdAt(Plan.Rows, _sectionBand.Start, _sectionBand.Count, slot);
-            var section = id.Length == 0 ? null : SectionOf(id);
-            return section is null ? "" : PaneText.TitleOf(section);
-        }
-
-        /// <summary>A section-card drag as the undoable MoveSection, translated against the PERSISTED document (the
-        /// render document carries the materialised Shortcuts section at index 0).</summary>
-        void CommitSectionMove(int from, int to)
-        {
-            if (Config.ReadOnly) return;
-            var command = SidebarEditPlan.ToMoveSection(Layout, Plan.Rows, _sectionBand.Start, _sectionBand.Count, from, to);
-            if (command is not null) DispatchCanvas(command);
-        }
-
         /// <summary>The ItemsView displacement channel in plan-row space. Stable delegate (ListOptions freeze at mount).</summary>
         (float dx, float dy) Displacement(int planIndex)
         {
-            if (_sectionBand.Contains(planIndex) && _sectionReorder is { IsLifted: true } sro)
-                return (0f, sro.OffsetFor(planIndex - _sectionBand.Start));
             if (!TryBandOf(planIndex, out var band)) return (0f, 0f);
             var ro = ReorderFor(band.SectionId);
             if (!ro.IsLifted) return (0f, 0f);
@@ -1800,33 +1764,6 @@ public static partial class Sidebar
             return default;
         }
 
-        /// <summary>Menu Move up / Move down: the band's own commit when armed; the pin store when a Pinned band is
-        /// disarmed (an expanded folder) — drag is one way, never the only way.</summary>
-        internal void MoveRowByKey(string sectionId, string key, int delta)
-        {
-            if (delta == 0 || key.Length == 0) return;
-            var section = SectionOf(sectionId);
-            if (section is null) return;
-            var band = BandFor(sectionId);
-            if (band.Count > 0)
-            {
-                int from = -1;
-                for (int s = 0; s < band.Count; s++)
-                    if (string.Equals(KeyAt(sectionId, s), key, StringComparison.Ordinal)) { from = s; break; }
-                if (from < 0) return;
-                int to = from + delta;
-                if ((uint)to >= (uint)band.Count) return;
-                CommitReorder(sectionId, from, to);
-                return;
-            }
-            if (section.Kind != SidebarSectionKind.Pinned) return;
-            string id = SidebarPinId.Canonical(key) ?? key;
-            int pinFrom = Pins.IndexOf(id);
-            int pinTo = pinFrom + delta;
-            if (pinFrom < 0 || (uint)pinTo >= (uint)Pins.Count) return;
-            MovePin(pinFrom, pinTo);
-        }
-
         void CommitReorder(string sectionId, int from, int to)
         {
             var section = SectionOf(sectionId);
@@ -1865,12 +1802,10 @@ public static partial class Sidebar
             int at = Pins.IndexOf(pinId);
             if (at >= 0)
             {
-                MovePin(at, slot > at ? slot - 1 : slot);   // remove-then-insert shifts later indices down by one
+                MovePinRecorded(at, slot > at ? slot - 1 : slot);   // remove-then-insert shifts later indices down by one
                 return;
             }
-            PinWithToast(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), p.Name);
-            int now = Pins.IndexOf(pinId);
-            if (now > slot && slot >= 0) MovePin(now, slot);
+            PinWithToast(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), p.Name, slot);
         }
 
         // ── the tree multi-selection ───────────────────────────────────────────────────────────────────────────────
@@ -1886,7 +1821,7 @@ public static partial class Sidebar
             {
                 var row = rows[i];
                 if (row.Kind is not (SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader)) continue;
-                if (SectionOf(row.SectionId)?.Kind != SidebarSectionKind.PlaylistTree) continue;
+                if (SectionOf(row.SectionId)?.Kind is not (SidebarSectionKind.Playlists or SidebarSectionKind.Library)) continue;
                 if ((uint)row.EntryIndex >= (uint)entries.Count) continue;
                 var entry = entries[row.EntryIndex];
                 if (entry.Kind is not (SidebarEntryKind.Playlist or SidebarEntryKind.Folder) || entry.Id.Length == 0) continue;
@@ -1989,7 +1924,7 @@ public static partial class Sidebar
         internal void SetDragPeek(bool on)
         {
             if (_dragPeek.Peek() != on) _dragPeek.Value = on;
-            // …and the shell, which CLIPS the column: without the mirror the peeked rows lay out expanded inside 56 DIP.
+            // …and the shell, which CLIPS the column: without the mirror the peeked rows lay out expanded inside the 48-DIP rail.
             if (DragPeek.Peek() != on) DragPeek.Value = on;
         }
 
@@ -2000,35 +1935,6 @@ public static partial class Sidebar
             if (_railDropUri.Peek() is not null) _railDropUri.Value = null;
         }
 
-        /// <summary>THE 56-DIP RAIL AS ITS OWN COMPONENT (W3-A2). The 0.3 first cut memoized <c>Rail.Build</c> INSIDE the
-        /// pane's render on (plan version, theme, culture, binder, rail head, route) — so every publish, each a re-plan the
-        /// binder's content gates had let through, re-rendered the pane (it read <c>_planVersion</c>) and the memo rebuilt
-        /// ~26 tooltip-wrapped tiles: <c>ToolTipSlots</c> compares its target by REFERENCE, so every rebuilt tile re-pushed
-        /// and re-rendered its ToolTip — the <c>ToolTip×33</c> line of the scroll census, while the sidebar itself never
-        /// scrolled. The rail is now a VIRTUALIZED bound list over the SAME uncapped rail plan (Detail hero + full rail
-        /// plan, Part 2): this host still re-renders on <see cref="RailVersion"/> (so the head/footer chrome, built
-        /// fresh from live state, never goes stale), plus the culture, the rail head's document epoch and the binder's
-        /// first publish (the pending-skeleton edge) — but NO LONGER on the route. Rebuilding the frame on every rail
-        /// republish is cheap: <c>ItemsView.CreateBound</c>'s <c>Embed.Comp</c> factory runs once at MOUNT, so the
-        /// reconciler keeps the SAME underlying <c>ItemsView</c> (and every realized <see cref="Rail.RailSlot"/>)
-        /// across the rebuild — a recycled slot reads its own row epoch instead of re-rendering here, which is what
-        /// keeps a republish from rebuilding ~26 tooltip-wrapped tiles. Selection likewise reaches a tile through
-        /// <see cref="RefreshRailSelection"/>'s per-row epoch bump, never through this host re-rendering. A retheme
-        /// re-renders the tree engine-side, so <c>Tok.Epoch</c> is read for parity with the old key only. The pane
-        /// hands the rail its plan as a plain field, exactly as it hands the slots theirs.</summary>
-        sealed class RailHost(PaneView owner) : Component
-        {
-            public override Element Render()
-            {
-                _ = owner.RailVersion.Value;
-                _ = Localization.CultureEpoch.Value;
-                _ = s_binderEpoch.Value;
-                _ = Tok.Epoch;
-                if (owner.Config.RailHead is not null) _ = LayoutVersion.Value;
-                return Rail.Frame(owner);
-            }
-        }
-
         /// <summary>Owns the ONE UseDragState() subscription that ends a peek, disarms the cue and flushes the freeze —
         /// on SESSION END (drop, cancel and Escape alike), in a layout effect keyed on the active EDGE.</summary>
         sealed class DragPeekWatcher(PaneView owner) : Component
@@ -2036,6 +1942,8 @@ public static partial class Sidebar
             public override Element Render()
             {
                 bool active = UseDragState().Active;
+                // The Pinned band's cue follows the drag: armed while a pinnable drag is live, so it appears and leaves with it.
+                UseLayoutEffect(() => { owner._pinDropArmed.SetIfChanged(Drag.LivePinnable()); }, active ? 1 : 0);
                 UseLayoutEffect(() =>
                 {
                     if (active) return;
@@ -2050,111 +1958,15 @@ public static partial class Sidebar
 
         // ── commands the rows raise ────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>A document command; a no-op under a LOCKED document (the belt to the rows' braces).</summary>
-        internal void Dispatch(SidebarCommand command)
-        {
-            if (Config.ReadOnly) return;
-            Sidebar.Dispatch(command);
-        }
-
-        /// <summary>Collapse/expand through the MODE's owner, choreographed by the disclosure channel.</summary>
+        /// <summary>Collapse/expand through the disclosure channel, which choreographs it and then commits the layout's one
+        /// command. A New releases section that opens is seen (its badge clears).</summary>
         internal void ToggleSection(string sectionId, bool collapsed)
         {
-            if (Config.SetSectionCollapsed is not { } apply) return;
-            StartDisclosure("section:" + sectionId, sectionId, folder: false, open: !collapsed, () => apply(sectionId, collapsed));
-        }
-
-        // ── the customize canvas ───────────────────────────────────────────────────────────────────────────────────
-
-        /// <summary>The host the options popover hands the customizer's control set — the session itself.</summary>
-        internal ISidebarEditHost EditHost => Edit;
-
-        /// <summary>SESSION state, never SetSectionCollapsed: opening a card to look inside must not rewrite the real
-        /// sidebar's collapse state or fill the undo ring.</summary>
-        internal void ToggleEditExpanded(string sectionId) => Edit.ToggleExpanded(sectionId);
-
-        /// <summary>Reads the session the PUBLISHED plan was built from, so a chevron never claims "open" over no body.</summary>
-        internal bool EditShowsBody(SidebarSectionSpec section)
-            => PublishedEdit is { } edit && SidebarEditPlan.ShowsBody(in edit, section);
-
-        internal void SetSectionHidden(string sectionId, bool hidden)
-        {
-            if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            DispatchCanvas(new SetSectionHidden(sectionId, hidden));
-        }
-
-        /// <summary>The card menu's Move up/down: addresses the document, so it works while the drag band is disarmed.</summary>
-        internal void MoveSectionBy(string sectionId, int delta)
-        {
-            if (Config.ReadOnly || delta == 0 || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            var layout = Layout;
-            var at = layout.Locate(sectionId);
-            if (at.Index < 0) return;
-            int siblings = at.Parent is null ? layout.Sections.Count : at.Parent.ChildList.Count;
-            int next = at.Index + delta;
-            if (next < 0 || next >= siblings) return;
-            DispatchCanvas(new MoveSection(sectionId, at.Parent?.Id, next));
-        }
-
-        internal void RemoveEditSection(string sectionId)
-        {
-            if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            if (DispatchCanvas(new RemoveSection(sectionId)) != SidebarRejectReason.None) return;
-            if (string.Equals(Edit.Expanded.Peek(), sectionId, StringComparison.Ordinal)) Edit.Expanded.Value = null;
-        }
-
-        /// <summary>Is there room for one more section? Runs per frame per target during a palette drag — a compare only.</summary>
-        internal bool CanAcceptPaletteDrop => !Config.ReadOnly && Layout.SectionCount < SidebarLayoutReducer.MaxSections;
-
-        /// <summary>The per-CARD accept: room for a section AND a card a new section can land above (a child card inside a
-        /// group is not a top-level slot). Allocation-free, per frame.</summary>
-        internal bool CanAcceptPaletteDropBefore(string sectionId)
-            => CanAcceptPaletteDrop && SidebarEditPlan.CanAddBefore(Layout, sectionId);
-
-        /// <summary>Why this card refuses a palette chip — the caption the drag chip shows beside its not-allowed glyph, so
-        /// the refusal is said while the user is still aiming (a loc lookup, never a composed string).</summary>
-        internal string PaletteRefusalKey(string sectionId)
-        {
-            var layout = Layout;
-            if (Config.ReadOnly || layout.SectionCount >= SidebarLayoutReducer.MaxSections) return PaneLoc.EditDropFull;
-            return layout.Locate(sectionId).Index < 0
-                ? SidebarRejectText.LocKey(SidebarRejectReason.UnknownSection)!
-                : SidebarRejectText.LocKey(SidebarRejectReason.NestingTooDeep)!;
-        }
-
-        internal void AddSectionFromPalette(string beforeSectionId, SidebarSectionDropPayload payload)
-        {
-            if (Config.ReadOnly) return;
-            // The accept already refused the cases the caption explains; a command that still cannot be built (a kind this
-            // build does not know) is said, not swallowed.
-            if (SidebarEditPlan.ToAddSection(Layout, beforeSectionId, payload) is { } command) DispatchCanvas(command);
-            else SayCanvasRejection(SidebarRejectReason.UnknownSection);
-        }
-
-        internal void DuplicateEditSection(string sectionId, string copyTitle)
-        {
-            if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return;
-            DispatchCanvas(new DuplicateSection(sectionId, copyTitle));
-        }
-
-        /// <summary>A canvas command — a card drag, a card-menu verb, a palette drop — through the edit session, so the
-        /// options popover's controls see the verdict (<c>RejectEpoch</c> / <c>LastReject</c>), and, because the canvas has
-        /// no inline reject strip of its own, a rejection is SAID (G-184: these went straight to <c>Sidebar.Dispatch</c>
-        /// and a refused one was silent).</summary>
-        SidebarRejectReason DispatchCanvas(SidebarCommand command)
-        {
-            var reason = Edit.Apply(command);
-            SayCanvasRejection(reason);
-            return reason;
-        }
-
-        /// <summary>The rejection sentence as a toast. A NoChange is silence, not a rejection (the gesture that produced it
-        /// landed where it started).</summary>
-        static void SayCanvasRejection(SidebarRejectReason reason)
-        {
-            if (reason is SidebarRejectReason.None or SidebarRejectReason.NoChange) return;
-            if (SidebarRejectText.LocKey(reason) is { } key)
-                Notify.Say(Loc.Get(key), InfoBarSeverity.Informational, dedupeKey: "sidebar.canvas.reject");
+            StartDisclosure("section:" + sectionId, sectionId, folder: false, open: !collapsed, () =>
+            {
+                Sidebar.Dispatch(new SetSectionCollapsed(Config.Layout, sectionId, collapsed));
+                if (!collapsed && sectionId == SidebarCatalogue.IdOf(SidebarSectionKind.NewReleases)) Sidebar.MarkNewReleasesSeen();
+            });
         }
 
         /// <summary>A folder activation through the mode seam, structurally animated only when it discloses inline.</summary>
@@ -2169,56 +1981,13 @@ public static partial class Sidebar
             StartDisclosure("folder:" + folderId, folderId, folder: true, open: !IsFolderExpanded(folderId), commit);
         }
 
-        // ── the collapsed rail's folder flyout ─────────────────────────────────────────────────────────────────────
-
-        /// <summary>Realized rail tiles by key: a flyout anchors to a NODE and the memoized rail has no hooks.</summary>
-        readonly Dictionary<string, NodeHandle> _railNodes = new(StringComparer.Ordinal);
-
-        internal void RegisterRailNode(string key, NodeHandle node) => _railNodes[key] = node;
-
-        NodeHandle RailNode(string key) => _railNodes.TryGetValue(key, out var h) ? h : NodeHandle.Null;
-
-        OverlayHandle? _railFolderFlyout;
-
-        /// <summary>Toggle the 300-DIP side flyout for a folder tile, anchored to the tile's right edge (the only side a
-        /// 56-DIP strip against the window edge has room on). A second click closes it.</summary>
-        internal void OpenRailFolderFlyout(string sectionId, in SidebarLibraryEntry folder)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay)) return;
-            string folderId = folder.FolderId;
-            if (folderId.Length == 0) return;
-            if (_railFolderFlyout is { IsOpen: true } open) { open.Close(); return; }
-            string key = RailTileKey(in folder);
-            string name = folder.Name;
-            _railFolderFlyout = MenuOverlay.Open(
-                () => RailNode(key),
-                () => Embed.Comp(() => new RailFolderFlyout
-                {
-                    Owner = this,
-                    SectionId = sectionId,
-                    RootFolderId = folderId,
-                    RootFolderName = name,
-                    Close = CloseRailFolderFlyout,
-                }),
-                FlyoutPlacement.RightEdgeAlignedTop,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                {
-                    ConstrainToRootBounds = true,
-                });
-            _railFolderFlyout.ClosedAction = () => _railFolderFlyout = null;
-        }
-
-        internal void CloseRailFolderFlyout() => _railFolderFlyout?.Close();
-
-        /// <summary>The rail registry key — the SAME string the tile is keyed with.</summary>
-        internal static string RailTileKey(in SidebarLibraryEntry entry) => "rail:" + entry.Id;
-
-        /// <summary>The folder menu's Expand verb from a rail tile or flyout row: open the pane and disclose it there.</summary>
+        /// <summary>The folder menu's Expand verb from a compact tile's flyout or a row menu: show the full pane (the overlay
+        /// in Narrow and Tiny), then disclose the folder there.</summary>
         internal void ExpandFolderInPane(string folderId)
         {
             if (folderId.Length == 0) return;
-            CloseRailFolderFlyout();
-            SetRegime(SidebarRegime.Expanded);
+            CloseFlyout();
+            OpenPane();
             SetFolderExpanded(folderId, true);
         }
 
@@ -2245,8 +2014,6 @@ public static partial class Sidebar
             if (Acts?.Play is { } play) play(target);
             else Shell.OnPlayContext?.Invoke(target);
         }
-
-        internal void OpenCustomizer() => Config.OnCustomize?.Invoke();
 
         /// <summary>The mode's create verb, else the ONE shared flow (Library V3 supplies none and calls this directly
         /// from its own header/rail "+").</summary>

@@ -1,7 +1,7 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
 // the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
 // row density + hide artwork, track list style, track page layout + the two rail rows; then the daylist clock combo) ·
-// Sidebar (the design picker's three compact cards + "Customize sidebar") · Lyrics (blur, the on-device AI lyrics card) ·
+// Sidebar (the layout cards and density) · Lyrics (blur, the on-device AI lyrics card) ·
 // Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen
 // stage's gallery settings, mirrored through `Prefs.Stage`) · Now playing (hero*, player style)
 //
@@ -47,9 +47,6 @@ public static partial class Settings
     static readonly FloatSignal s_lyricsBlurSlider = new(Lyrics.BlurPolicy.AutoDefault);
     /// <summary>The zoom combo's selection, kept in step with the LIVE zoom by <see cref="ZoomPicker"/>.</summary>
     static readonly Signal<int> s_zoomIndex = new(0);
-    /// <summary>The collapsed-rail-size combo's selection (0 Compact · 1 Default · 2 Large), kept in step with
-    /// <see cref="Sidebar.RailDetent"/> by <see cref="RailDetentPicker"/> so a pick made from the sidebar's own menu shows here.</summary>
-    static readonly Signal<int> s_railDetent = new(1);
     /// <summary>The daylist-clock combo's selection (the <see cref="DaylistClockMode"/> int), kept in step with the store by
     /// <see cref="DaylistClockPicker"/>.</summary>
     static readonly Signal<int> s_daylistClock = new((int)DaylistClockMode.Both);
@@ -141,7 +138,7 @@ public static partial class Settings
 
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Sidebar.Title), SectionGlyph(Tab.Appearance, "Sidebar"),
             Loc.Get(Strings.Settings.Sidebar.Subtitle)));
-        kids.Add(Embed.Comp(static () => new SidebarDesignCard()));
+        kids.Add(Embed.Comp(static () => new SidebarLayoutCard()));
 
         // The blur dial, then the on-device AI lyrics card (its own component: setup progress re-renders only the card).
         // The second line and the animated backdrop are no longer settings at all.
@@ -544,77 +541,85 @@ public static partial class Settings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>ONE shape for all three designs, one Key — a design switch never remounts the card or changes the
-    /// section's silhouette. Its own component so it subscribes to <see cref="Sidebar.Design"/> directly: a switch made
-    /// from the sidebar's own layout menu while this page is open re-labels, re-selects and adds/removes the
-    /// "Customize sidebar" item live.</summary>
-    sealed class SidebarDesignCard : Component
+    /// <summary>Settings › Sidebar (design C.2 entry 3): the layout (two cards, "· modified"), density, Edit sidebar (P4),
+    /// reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
+    /// signals, so a change made on the sidebar itself shows here live.</summary>
+    sealed class SidebarLayoutCard : Component
     {
         public override Element Render()
         {
-            var design = Sidebar.Design.Value;
-            // The customizer edits the Curated document; offering it for another design would edit something the user is
-            // not looking at, and this row never switches design silently.
-            // The rail size is global (every design collapses to the same rail), so its item is always present.
-            var railSize = Item(Loc.Get(Strings.Settings.Sidebar.RailSize), Loc.Get(Strings.Settings.Sidebar.RailSizeSub),
-                Embed.Comp(static () => new RailDetentPicker()), icon: Icons.SplitView);   // no catalog row: SettingsCatalog lives in Settings.cs
-            Element[] items = SidebarDesignGating.CanCustomize(design)
-                ?
-                [
-                    Item(Loc.Get(Strings.Settings.Sidebar.Customize), Loc.Get(Strings.Settings.Sidebar.CustomizeSub), null,
-                        isClickEnabled: true, onClick: static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.SidebarCustomize)),
-                        icon: RowGlyph(Tab.Appearance, "sidebarCustomize")),
-                    railSize,
-                ]
-                : [railSize];
-
+            var layout = Sidebar.Layout.Value;
+            _ = Sidebar.LayoutVersion.Value;
+            var density = Sidebar.Density.Value;
+            bool editing = Sidebar.Editing.Value;
+            // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
+            string finish = Loc.Get("sidebar.pane.finishEditing");
+            var items = new List<Element>(4)
+            {
+                Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
+                    Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList),
+                Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
+                    isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
+                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo),
+                Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
+                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit),
+                Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
+                    isClickEnabled: !editing,
+                    // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
+                    onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
+                    icon: Icons.Delete),
+            };
+            if (Sidebar.LayoutFileFault)
+                items.Insert(0, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning));
+            if (Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped) is { Length: > 0 } dropped)
+                items.Add(Item(Loc.Get(Strings.Settings.Sidebar.WhatChanged),
+                    Strings.Settings.Sidebar.WhatChangedSub(Sidebar.DroppedNames(dropped.Split(','))), null,
+                    icon: Icons.Info));
             return SettingsExpander.Create(new SettingsExpander.Options
             {
-                Header = Loc.Get(Strings.Settings.Sidebar.DesignShort),   // "Design": the eyebrow already says Sidebar
-                Description = Loc.Get(Strings.Settings.Sidebar.DesignSub),
+                Header = Loc.Get(Strings.Settings.Sidebar.Layout),
+                Description = Loc.Get(Strings.Settings.Sidebar.LayoutSub),
                 HeaderIcon = RowGlyph(Tab.Appearance, "sidebarDesign"),
-                Content = ValueTag(Loc.Get(SidebarDesignGating.TitleKey(design))),
-                ItemsHeader = ExpanderPanel(SidebarDesignCards(design)),
-                Items = items,
-            }) with { Key = "appearance.sidebar.design" };
+                Content = ValueTag(Sidebar.LayoutName(layout)),
+                ItemsHeader = ExpanderPanel(SidebarLayoutCards(layout, editing)),
+                Items = [.. items],
+            }) with { Key = "appearance.sidebar.layout" };
         }
     }
 
-    /// <summary>The "Collapsed rail size" combo: Compact · Default · Large. Its own component because it subscribes to
-    /// <see cref="Sidebar.RailDetent"/> (a pick from the sidebar's layout menu moves the selection with no settings write).</summary>
-    sealed class RailDetentPicker : Component
+    /// <summary>Default · Compact (design P.4).</summary>
+    sealed class SidebarDensityPicker : Component
     {
+        static readonly Signal<int> s_index = new(0);
         public override Element Render()
         {
-            int index = Sidebar.RailDetent.Value switch
-            {
-                SidebarRailDetent.Compact => 0,
-                SidebarRailDetent.Large => 2,
-                _ => 1,
-            };
-            UseEffect(() => s_railDetent.Value = index, DepKey.From(index));
-            return ComboBox.Create(
-                [Loc.Get("sidebar.rail.compact"), Loc.Get("sidebar.rail.default"), Loc.Get("sidebar.rail.large")],
-                s_railDetent, width: 160f, onChange: static i => Sidebar.SetRailDetent(i switch
-                {
-                    0 => SidebarRailDetent.Compact,
-                    2 => SidebarRailDetent.Large,
-                    _ => SidebarRailDetent.Default,
-                }));
+            int index = (int)Sidebar.Density.Peek();
+            UseEffect(() => s_index.Value = index, DepKey.From(index));
+            return ComboBox.Create([Loc.Get("sidebar.density.default"), Loc.Get("sidebar.density.compact")], s_index, width: 160f,
+                onChange: static i => Sidebar.SetDensity(i == 1 ? SidebarDensity.Compact : SidebarDensity.Default));
         }
     }
 
-    /// <summary>The three compact (200-wide) design cards as ONE radio group, applied IMMEDIATELY through
-    /// <see cref="Sidebar.SwitchDesign"/> (the snapshot/restore contract; a no-op when unchanged, so a keyboard rove is safe).
-    /// Public so the setup wizard can reuse the card mechanic rather than grow a second copy.</summary>
-    public static Element SidebarDesignCards(SidebarDesign active)
-        => Controls.PickerStrip(SidebarDesignInfo.All.Length, SidebarDesignGating.IndexOf(active),
-            static (i, on) => SidebarDesignCardFace(SidebarDesignGating.FromIndex(i), on),
-            static i => Sidebar.SwitchDesign(SidebarDesignGating.FromIndex(i)));
+    /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
+    /// (design Q7). Public: the setup wizard's Layout step reuses them (P4).</summary>
+    public static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
+    {
+        var strip = Controls.PickerStrip(2, (int)active,
+            static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
+            editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
+        if (!editing) return strip;
+        // Q7: never a silent dead control — the cards say why they do not switch.
+        return new BoxEl
+        {
+            Direction = 1, Gap = 6f,
+            Children = [strip, Ui.Caption(Loc.Get("sidebar.pane.finishEditing")) with { Color = Tok.TextSecondary }],
+        };
+    }
 
-    static Element SidebarDesignCardFace(SidebarDesign design, bool on)
+    static Element SidebarLayoutCardFace(SidebarLayoutId layout, bool on)
     {
         var ink = Controls.PickerInk.For(on);
+        bool library = layout == SidebarLayoutId.Library;
         Element preview = new BoxEl
         {
             Height = 96f, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Direction = 1, Gap = 3f, ClipToBounds = true,
@@ -622,9 +627,9 @@ public static partial class Settings
             Corners = CornerRadius4.All(6f),
             Fill = on ? Tok.AccentSubtle : Tok.FillLayerDefault,
             BorderWidth = 1f, BorderColor = on ? Tok.AccentDefault : Tok.StrokeCardDefault,
-            Children = SidebarPreview(design, ink),
+            Children = SidebarPreview(layout, ink),
         };
-        var title = Controls.PickerLabel(Loc.Get(SidebarDesignGating.TitleKey(design)), on);
+        var title = Controls.PickerLabel(Sidebar.LayoutName(layout), on);
         Element titleRow = new BoxEl
         {
             Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
@@ -632,47 +637,39 @@ public static partial class Settings
             Children = on ? [title with { Shrink = 1f }, ActiveTag()] : [title],
         };
         return Controls.PickerCard(on, Controls.PickerPaneCompact, preview, titleRow,
-            Design.Type.MicroMeta(Loc.Get(SidebarDesignGating.SubtitleKey(design))) with
+            Design.Type.MicroMeta(Loc.Get(library ? "sidebar.layoutName.librarySub" : "sidebar.layoutName.classicSub")) with
             {
                 Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
                 AlignSelf = FlexAlign.Stretch,
-            }) with { Key = SidebarDesignInfo.Slug(design) };
+            }) with { Key = library ? "library" : "classic" };
     }
 
     static Element ActiveTag() => new BoxEl
     {
         Height = Spacing.L, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
         Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f), Corners = Radii.PillAll, Fill = Tok.AccentDefault,
-        Children = [new TextEl(Loc.Get(Strings.Sidebar.Design.Active)) { Size = 9f, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1 }],
+        Children = [new TextEl(Loc.Get(Strings.Sidebar.Active)) { Size = 9f, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1 }],
     };
 
     /// <summary>Static semantic geometry at quarter scale (the compact counts) — never a mounted sidebar, never text.</summary>
-    static Element[] SidebarPreview(SidebarDesign design, Controls.PickerInk ink)
+    static Element[] SidebarPreview(SidebarLayoutId layout, Controls.PickerInk ink)
     {
         var kids = new List<Element>(9);
-        switch (design)
+        if (layout == SidebarLayoutId.Library)   // the filter chip strip, the sort pill, then the unified list
         {
-            case SidebarDesign.LibraryV3:   // the filter chip strip, the sort pill, then the unified list
-                kids.Add(new BoxEl
-                {
-                    Direction = 0, Gap = 4f, Shrink = 0f,
-                    Children = [MiniBar(26f, 9f, ink.Block), MiniBar(20f, 9f, ink.Faint), MiniBar(24f, 9f, ink.Faint), MiniBar(18f, 9f, ink.Faint)],
-                });
-                kids.Add(new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [MiniBar(34f, 8f, ink.Faint)] });
-                for (int i = 0; i < 3; i++) kids.Add(MiniArtRow(ink));
-                break;
-            case SidebarDesign.Curated:     // two pins, a rule, the 2-up grid, the route links, a library row
-                kids.Add(new BoxEl { Direction = 0, Gap = 5f, Shrink = 0f, Children = [MiniPinTile(ink), MiniPinTile(ink)] });
-                kids.Add(MiniHairline(ink));
-                kids.Add(new BoxEl { Direction = 0, Gap = 5f, Shrink = 0f, Children = [MiniGridCell(ink), MiniGridCell(ink)] });
-                for (int i = 0; i < 2; i++) kids.Add(MiniIconRow(i, ink));
-                kids.Add(MiniArtRow(ink));
-                break;
-            default:                        // Classic: the library shortcuts, a rule, the flat playlist list
-                for (int i = 0; i < 4; i++) kids.Add(MiniIconRow(i, ink));
-                kids.Add(MiniHairline(ink));
-                for (int i = 0; i < 2; i++) kids.Add(MiniArtRow(ink));
-                break;
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = 4f, Shrink = 0f,
+                Children = [MiniBar(26f, 9f, ink.Block), MiniBar(20f, 9f, ink.Faint), MiniBar(24f, 9f, ink.Faint), MiniBar(18f, 9f, ink.Faint)],
+            });
+            kids.Add(new BoxEl { Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [MiniBar(34f, 8f, ink.Faint)] });
+            for (int i = 0; i < 3; i++) kids.Add(MiniArtRow(ink));
+        }
+        else                                     // Classic: the library shortcuts, a rule, the flat playlist list
+        {
+            for (int i = 0; i < 4; i++) kids.Add(MiniIconRow(i, ink));
+            kids.Add(MiniHairline(ink));
+            for (int i = 0; i < 2; i++) kids.Add(MiniArtRow(ink));
         }
         return kids.ToArray();
     }
@@ -708,24 +705,6 @@ public static partial class Settings
                 Direction = 1, Gap = Spacing.XXS, Grow = 1f, Basis = 0f, MinWidth = 0f,
                 Children = [MiniBar(52f, Spacing.XS, ink.Faint), MiniBar(34f, Spacing.XXS, ink.Faint)],
             },
-        ],
-    };
-
-    static Element MiniPinTile(Controls.PickerInk ink) => new BoxEl
-    {
-        Grow = 1f, Shrink = 1f, Height = 16f, MinWidth = 0f, Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
-        Padding = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f), ClipToBounds = true, Corners = Radii.ControlAll, Fill = ink.Faint,
-        Children = [new BoxEl { Width = Spacing.XL, Height = Spacing.XXS, Corners = Radii.PillAll, Fill = Tok.AccentDefault with { A = 0.58f } }],
-    };
-
-    static Element MiniGridCell(Controls.PickerInk ink) => new BoxEl
-    {
-        Grow = 1f, Shrink = 1f, Height = 18f, MinWidth = 0f, Gap = Spacing.XXS, Direction = 0, AlignItems = FlexAlign.Center,
-        Padding = new Edges4(Spacing.XXS, 0f, Spacing.XXS, 0f), Corners = Radii.ControlAll, Fill = ink.Faint,
-        Children =
-        [
-            new BoxEl { Width = 14f, Height = 14f, Shrink = 0f, Corners = Radii.ControlAll, Fill = ink.Block },
-            MiniBar(22f, Spacing.XXS, ink.Block),
         ],
     };
 

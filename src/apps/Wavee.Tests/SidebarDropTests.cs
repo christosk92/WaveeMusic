@@ -7,13 +7,13 @@
 // non-mouse organisation verbs (`RootlistTreeNav`, `RootlistSelection`, `RootlistBatchOrder`,
 // `SidebarTreeNavLayout`), the folder flyout's drill-in stack (`SidebarFolderTree`, `SidebarFolderFlyoutNav`), the
 // tree's multi-selection (`SidebarTreeSelection`), the mid-drag freeze (`SidebarStageHold<T>`), the reorder-clamp
-// displacement offset (`SidebarReorderClamp`), and the row's navbar-customization extras (`SidebarNavLayout`).
+// displacement offset (`SidebarReorderClamp`).
 // Pure, engine-free: no `TestScope.Fresh()`, no `[Collection(EntitiesCollection.Name)]`, no engine loop — matching
 // what every type tested here already promises ("Engine-free... so a test can drive the real ... directly").
 //
 // An earlier pass of this port DROPPED every fact above that touched a type Sidebar.cs declared WITHOUT `public`
 // (`SidebarTreeSelection`, `SidebarFolderFlyoutNav`, `SidebarFolderTree`, `SidebarReorderClamp`,
-// `SidebarStageHold<T>`, the queue-row `SidebarNavLayout`, `RootlistDropDecision`, `RootlistSlotMapper`,
+// `SidebarStageHold<T>`, `RootlistDropDecision`, `RootlistSlotMapper`,
 // `SidebarRowGeometry`) — this assembly reaches Sidebar.cs only via an ordinary `ProjectReference` and the solution
 // carries no `InternalsVisibleTo` anywhere, so none of them were reachable from `Wavee.Tests`, contradicting
 // Sidebar.cs's own file header ("source-visible to `Wavee.Tests`"). That was confirmed to be an artifact of how the
@@ -28,8 +28,8 @@
 // `TryBuildMove`/`TryBuildMoves`/`PlaylistDiffApplier` write seam, and every 0.2.9 fact that asserted the resulting
 // rootlist ORDER after a drop (most of `RootlistDropScenarioTests.cs`, half of `RootlistSlotToOpTests.cs`), has no
 // reachable 0.3 equivalent — inventing one would test something Sidebar.cs does not do. `SidebarDragClampTests.cs`'s
-// `LibraryV3View`/`SidebarRailDropRules` facts also stay out: those types live in `Sidebar.Modes.cs`/
-// `Platform/Drag.cs`, not Sidebar.cs, and are another file's gate.
+// `LibraryV3View`/`SidebarRailDropRules` facts also stay out: both types are gone (the list shaper is
+// `SidebarLibraryShaper`, Sidebar.Library.cs), and the drag gate lives in `Platform/Drag.cs`, not Sidebar.cs.
 
 using System;
 using System.Collections.Generic;
@@ -148,11 +148,10 @@ static class SidebarTreeFixture
 /// note. Kept in one place so every region that needs the ladder cites the same numbers.</summary>
 static class RowGeometryLiteral
 {
-    /// <summary>TreeContentX(0) = IndentFor(0) + LeadingLaneWidth = 4 + 9.</summary>
-    public const float TreeContentX0 = 13f;
+    /// <summary>TreeContentX(0) = IndentFor(0) = 0: a tree row starts at the row origin.</summary>
+    public const float TreeContentX0 = 0f;
     /// <summary>== IndentStep.</summary>
-    public const float TreeGuideStep = 12f;
-    public const float RowInsetRight = 8f;
+    public const float TreeGuideStep = 31f;
     public const float TreeEndHeight = 24f;
 
     public static float TreeContentX(int depth) => TreeContentX0 + depth * TreeGuideStep;
@@ -409,9 +408,9 @@ public class RootlistSlotResolverTests
     }
 
     [Theory]
-    [InlineData(13f, 0)]     // TreeContentX(0) — where a depth-0 row starts drawing
-    [InlineData(25f, 1)]     // TreeContentX(1)
-    [InlineData(37f, 2)]     // TreeContentX(2): the row's own depth
+    [InlineData(0f, 0)]      // TreeContentX(0) — where a depth-0 row starts drawing
+    [InlineData(31f, 1)]     // TreeContentX(1)
+    [InlineData(62f, 2)]     // TreeContentX(2): the row's own depth
     [InlineData(999f, 2)]    // past the ladder: clamped to Max
     [InlineData(-50f, 0)]    // before the row: clamped to Min
     public void DepthPick_ReadsTheTreeContentLadderFromPointerX(float x, int expected)
@@ -428,7 +427,7 @@ public class RootlistSlotResolverTests
     public void DepthPick_TheOutdentBandIsReachable(int depth)
     {
         // Parked on the row's own content origin the pick is that depth; half a step plus 5 DIP to the LEFT of it —
-        // a deliberate slide, still inside the row — it is one shallower. depth 1: 31 → 20. depth 2: 43 → 32.
+        // a deliberate slide, still inside the row — it is one shallower. depth 1: 31 → 10.5. depth 2: 62 → 41.5.
         var f = Leaf(depth: depth, nextDepth: 0);
         float here = RowGeometryLiteral.TreeContentX(depth);
         float outdent = here - RowGeometryLiteral.TreeGuideStep / 2f - 5f;
@@ -441,12 +440,12 @@ public class RootlistSlotResolverTests
     {
         var f = Leaf(depth: 2, nextDepth: 0);
         var previous = new SidebarDropSlot(3, SidebarDropKind.After, 1, SidebarDropRefusal.None);
-        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 31. Inside 4 DIP of it the previous holds…
-        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 32f, 44f, in f, in previous).Depth);
+        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 46.5. Inside 4 DIP of it the previous holds…
+        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, in previous).Depth);
         // …and past it the pick commits.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 37f, 44f, in f, in previous).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 51f, 44f, in f, in previous).Depth);
         // With no previous slot there is nothing to hold: the raw pick wins.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 32f, 44f, in f, SidebarDropSlot.None).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None).Depth);
     }
 
     [Fact]
@@ -767,10 +766,10 @@ public class SidebarDropCueTests
     [InlineData(0)]
     [InlineData(1)]
     [InlineData(2)]
-    public void LineWidth_IsTheContentLaneMinusTheDepthIndent(int depth)
+    public void LineWidth_IsTheContentWidthMinusTheDepthIndent(int depth)
     {
         const float content = 300f;
-        float expected = content - RowGeometryLiteral.TreeContentX(depth) - RowGeometryLiteral.RowInsetRight;
+        float expected = content - 31f * depth;
         Assert.Equal(expected, SidebarDropCue.LineWidth(content, depth), 3);
         // A deeper caret is strictly shorter — that IS the depth cue.
         if (depth > 0)
@@ -980,8 +979,7 @@ public class RootlistFolderPickerTests
 
 // ── SidebarNavExtrasTests: the tree row's Move up / Move down / Move to folder menu extras ─────────────────────────
 //
-// Full port of SidebarNavExtrasTests.cs — SidebarTreeNavLayout is public, distinct from the internal (queue-row)
-// SidebarNavLayout the 0.2.9 SidebarNavLayoutTests.cs targeted (see the header note; that file is DROPPED).
+// Full port of SidebarNavExtrasTests.cs — SidebarTreeNavLayout is public.
 public class SidebarNavExtrasTests
 {
     static SidebarTreeNavLayout Layout(string id)
@@ -1548,8 +1546,8 @@ public class SidebarFolderFlyoutNavTests
 // ── SidebarReorderClamp: the reorder-clamp displacement offset, restored ───────────────────────────────────────────
 //
 // Only the SidebarReorderClamp.Offset facts from SidebarDragClampTests.cs — restored now that the type is public.
-// The rest of that old file (LibraryV3View.ClampToSiblingRun, SidebarRailDropRules) is left out on purpose: those
-// types live in Sidebar.Modes.cs and Platform/Drag.cs, not Sidebar.cs, and are a different file's gate.
+// The rest of that old file (LibraryV3View.ClampToSiblingRun, SidebarRailDropRules) is left out on purpose: both types
+// are gone (the list shaper is SidebarLibraryShaper, Sidebar.Library.cs), and the drag gate lives in Platform/Drag.cs.
 public class SidebarDragClampTests
 {
     [Fact]
@@ -1659,64 +1657,5 @@ public class SidebarDropFreezeTests
         bay.TryHold(sessionLive: true, "second-session");
         Assert.True(bay.TryFlush(out string? second));
         Assert.Equal("second-session", second);
-    }
-}
-
-// ── SidebarNavLayout: the row's navbar-customization extras, restored ──────────────────────────────────────────────
-//
-// Full port of SidebarNavLayoutTests.cs, restored now that SidebarNavLayout is public. Distinct from the (also
-// public) SidebarTreeNavLayout already exercised by SidebarNavExtrasTests above: this one decides Move up / Move
-// down / Remove for a navbar-customization row (a reorder band or the pin store), not the rootlist tree's Move up /
-// Move down / Move to folder.
-public class SidebarNavLayoutTests
-{
-    [Fact]
-    public void AMiddleItem_CanMoveBothWays()
-    {
-        var layout = SidebarNavLayout.Decide(orderIndex: 1, orderCount: 3, removable: false);
-        Assert.True(layout.MoveUp);
-        Assert.True(layout.MoveDown);
-        Assert.False(layout.Remove);
-        Assert.False(layout.IsEmpty);
-    }
-
-    [Fact]
-    public void TheFirstItem_CanOnlyMoveDown()
-    {
-        var layout = SidebarNavLayout.Decide(0, 3, removable: false);
-        Assert.False(layout.MoveUp);
-        Assert.True(layout.MoveDown);
-    }
-
-    [Fact]
-    public void TheLastItem_CanOnlyMoveUp()
-    {
-        var layout = SidebarNavLayout.Decide(2, 3, removable: false);
-        Assert.True(layout.MoveUp);
-        Assert.False(layout.MoveDown);
-    }
-
-    [Fact]
-    public void ALoneItem_CannotMove()
-    {
-        var layout = SidebarNavLayout.Decide(0, 1, removable: false);
-        Assert.True(layout.IsEmpty);
-    }
-
-    [Fact]
-    public void AProjectedLeaf_WithNoOrder_OffersNothing()
-    {
-        var layout = SidebarNavLayout.Decide(-1, 0, removable: false);
-        Assert.True(layout.IsEmpty);
-    }
-
-    [Fact]
-    public void AnAuthoredItem_CanBeRemovedEvenWhenItCannotMove()
-    {
-        var layout = SidebarNavLayout.Decide(0, 1, removable: true);
-        Assert.False(layout.MoveUp);
-        Assert.False(layout.MoveDown);
-        Assert.True(layout.Remove);
-        Assert.False(layout.IsEmpty);
     }
 }

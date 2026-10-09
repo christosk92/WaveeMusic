@@ -293,10 +293,12 @@ public class ShellPageMotionTests
 public class ShellResponsiveLayoutTests
 {
     [Fact]
-    public void The_drawer_never_outgrows_the_window()
+    public void The_overlay_never_outgrows_the_window()
     {
-        Assert.Equal(Shell.Layout.DrawerMinW, Shell.Layout.DrawerWidth(1200f, 100f));
-        Assert.Equal(320f - Shell.Layout.DrawerViewportInset, Shell.Layout.DrawerWidth(320f, 400f));
+        // The preference is clamped to the pane bounds, then capped so a rail's worth of page stays visible.
+        Assert.Equal(SidebarPaneBounds.NavPaneMinW, SidebarPaneModeRules.OverlayWidth(100f, 1200f));
+        Assert.Equal(320f - SidebarRowGeometry.RailWidth, SidebarPaneModeRules.OverlayWidth(400f, 320f));
+        Assert.Equal(0f, SidebarPaneModeRules.OverlayWidth(320f, 40f));
     }
 
     [Fact]
@@ -395,12 +397,12 @@ public class MergedChromeLayoutTests
     }
 
     [Fact]
-    public void The_budget_charges_for_four_trailing_buttons_unconditionally()
+    public void The_budget_charges_for_three_trailing_buttons_unconditionally()
     {
         // A page that gains or loses a pin row must not reflow the whole trailing island.
         float withActions = Shell.Chrome.FixedBudget(name: true, actionsInRow: true, forward: true, back: true, newTab: true, trailing: true);
         float without = Shell.Chrome.FixedBudget(name: true, actionsInRow: false, forward: true, back: true, newTab: true, trailing: true);
-        Assert.Equal(4f * Shell.Layout.ChromeNavButtonW, withActions - without, 3);
+        Assert.Equal(3f * Shell.Layout.ChromeNavButtonW, withActions - without, 3);
     }
 
     [Fact]
@@ -420,11 +422,12 @@ public class MergedChromeLayoutTests
     {
         // The OPPOSITE polarity from the boolean stages: growth must never clip a longer title, and shrinking must not
         // reclaim space only to hand it straight back next frame.
-        var wide = Shell.Chrome.Resolve(1600f, 720f, null);
-        var slightlyShorter = Shell.Chrome.Resolve(1600f, 700f, wide);
+        // At 2000 the search sits at ChromeSearchMaxW, so only the tab content moves and the hold is what is tested.
+        var wide = Shell.Chrome.Resolve(2000f, 720f, null);
+        var slightlyShorter = Shell.Chrome.Resolve(2000f, 700f, wide);
         Assert.Equal(wide.LeadClusterW, slightlyShorter.LeadClusterW);
 
-        var muchShorter = Shell.Chrome.Resolve(1600f, 240f, wide);
+        var muchShorter = Shell.Chrome.Resolve(2000f, 240f, wide);
         Assert.True(muchShorter.LeadClusterW < wide.LeadClusterW);
     }
 
@@ -463,7 +466,7 @@ public class MergedChromeLayoutTests
     [InlineData(848f, 110f, true, Shell.Layout.ChromeSearchMinW)]     // …and 280 exactly seats the minimum field
     [InlineData(957f, 220f, false, Shell.Layout.ChromeSearchIconW)]   // two tabs cost 110 more, so the flip moves 110 up
     [InlineData(958f, 220f, true, Shell.Layout.ChromeSearchMinW)]
-    [InlineData(1250f, 270f, true, 340f)]                             // the lane (346) is under the DESIRE (350): take the lane
+    [InlineData(1216f, 270f, true, 340f)]                             // the lane is under the DESIRE (350): take the lane
     [InlineData(2400f, 330f, true, Shell.Layout.ChromeSearchMaxW)]    // plenty spare: the desire caps at the max
     public void The_field_is_chosen_and_sized_by_the_lane_the_row_can_really_give(
         float width, float extent, bool field, float searchWidth)
@@ -611,9 +614,9 @@ public class MergedChromeLayoutTests
     public void A_wider_window_never_takes_the_search_field_away()
     {
         // Monotonicity, now unconditional. This test used to PERMIT a Field → Icon step wherever the fixed budget grew,
-        // which is exactly the defect: the trailing actions (1200, +176 DIP) and the profile name (1360, +90) entered on
+        // which is exactly the defect: the trailing actions (1200, +132 DIP) and the profile name (1360, +90) entered on
         // the RAW width with nothing asking whether the row could afford them, so widening past 1200 took the search box
-        // away — across ≈[1200, 1244) with three tabs, ≈[1200, 1354) with four — and past 1360 again. Both promotions
+        // away — across ≈[1200, 1310) with four tabs — and past 1360 again. Both promotions
         // are budget-checked now, so growing the window is a one-way improvement for the search at every width.
         foreach (var chip in SweepChips)
         foreach (float extent in SweepExtents)
@@ -634,12 +637,12 @@ public class MergedChromeLayoutTests
 
     [Theory]
     // measured tab extent · the RAW threshold · the width the row can first afford the stage at
-    [InlineData(330f, Shell.Layout.ChromeActionsEnterW, 1244f)]   // three tabs: 634 + 280 + 330
-    [InlineData(440f, Shell.Layout.ChromeActionsEnterW, 1354f)]   // four tabs:  634 + 280 + 440
+    [InlineData(330f, Shell.Layout.ChromeActionsEnterW, 1200f)]   // three tabs: 590 + 280 + 330 (affordable at the raw threshold)
+    [InlineData(440f, Shell.Layout.ChromeActionsEnterW, 1310f)]   // four tabs:  590 + 280 + 440
     public void The_trailing_actions_wait_until_the_row_can_seat_them_beside_the_field(
         float extent, float raw, float afford)
     {
-        // Across the whole band the four buttons stay FOLDED (bell and friends are profile-menu rows; pin is on the tab
+        // Across the whole band the three buttons stay FOLDED (bell and friends are profile-menu rows; pin is on the tab
         // menu) and the search keeps its field — the trade the ladder always meant to make and the raw threshold broke.
         for (float w = raw; w < afford; w += 1f)
         {
@@ -656,14 +659,14 @@ public class MergedChromeLayoutTests
     [Fact]
     public void The_profile_name_waits_for_the_same_check_on_top_of_the_actions()
     {
-        // Four tabs: the name's raw threshold is 1360 but the row cannot seat 724 + 280 + 440 until 1444.
-        for (float w = Shell.Layout.ChromeNameEnterW; w < 1444f; w += 1f)
+        // Four tabs: the name's raw threshold is 1360 but the row cannot seat 680 + 280 + 440 until 1400.
+        for (float w = Shell.Layout.ChromeNameEnterW; w < 1400f; w += 1f)
         {
             var c = Shell.Chrome.Resolve(w, 440f);
             Assert.False(c.ShowName, $"The name entered at {w} without the row affording it.");
             Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
         }
-        var at = Shell.Chrome.Resolve(1444f, 440f);
+        var at = Shell.Chrome.Resolve(1400f, 440f);
         Assert.True(at.ShowName);
         Assert.Equal(Shell.MergedSearchMode.Field, at.SearchMode);
 
@@ -682,14 +685,14 @@ public class MergedChromeLayoutTests
         var narrow = Shell.Chrome.Resolve(Shell.Layout.ChromeActionsEnterW, 440f);
         Assert.False(narrow.ShowActions);
 
-        Assert.False(Shell.Chrome.Resolve(1354f, 440f, narrow).ShowActions);   // at the affordable width: still held
-        Assert.False(Shell.Chrome.Resolve(1393f, 440f, narrow).ShowActions);
-        var promoted = Shell.Chrome.Resolve(1394f, 440f, narrow);              // …a full reserve past it
+        Assert.False(Shell.Chrome.Resolve(1310f, 440f, narrow).ShowActions);   // at the affordable width: still held
+        Assert.False(Shell.Chrome.Resolve(1349f, 440f, narrow).ShowActions);
+        var promoted = Shell.Chrome.Resolve(1350f, 440f, narrow);              // …a full reserve past it
         Assert.True(promoted.ShowActions);
         Assert.Equal(Shell.MergedSearchMode.Field, promoted.SearchMode);
 
-        Assert.True(Shell.Chrome.Resolve(1354f, 440f, promoted).ShowActions);  // coming back down it holds…
-        Assert.False(Shell.Chrome.Resolve(1353f, 440f, promoted).ShowActions); // …and then goes at once
+        Assert.True(Shell.Chrome.Resolve(1310f, 440f, promoted).ShowActions);  // coming back down it holds…
+        Assert.False(Shell.Chrome.Resolve(1309f, 440f, promoted).ShowActions); // …and then goes at once
     }
 
     // ══ THE AUTH CHIP'S REAL WIDTH (#88) ════════════════════════════════════════════════════════════════════════════

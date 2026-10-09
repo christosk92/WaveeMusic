@@ -1,6 +1,6 @@
 // ── Shell/Sidebar.Cards.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the sidebar's projection → media-surface adapters: a hero card, a grid tile and a collapsed-rail tile are each ONE
-// `Controls.Surface` fed by `SidebarCards`, and every decision the adapters make is a function in `SidebarCardRules`
+// the sidebar's projection → media-surface adapters: a grid tile is ONE `Controls.Surface` fed by `SidebarCards`, and
+// every decision the adapter makes is a function in `SidebarCardRules`
 //
 // Role: UI
 // Owner: J
@@ -27,9 +27,9 @@ using FluentGpu.Localization;
 
 namespace Wavee;
 
-/// <summary>The three sidebar surfaces that are media cards: the EntityEmbed spotlight card, a Grid-presentation cell and
-/// a collapsed-rail tile. (The rows, the folder tile and the glyph tiles are the sidebar's own grammar, not media.)</summary>
-public enum SidebarCardSurface : byte { Hero, Tile, Rail }
+/// <summary>The sidebar's media card: a Grid-presentation cell. (The rows, the folder tile and the glyph tiles are the
+/// sidebar's own grammar, not media.)</summary>
+public enum SidebarCardSurface : byte { Tile }
 
 /// <summary>What activating a projected entry does: a track PLAYS (it has no detail route), everything with a route
 /// NAVIGATES, a folder (it expands in place) and a route-less entry do nothing — their surface carries NO click, so it is
@@ -37,7 +37,7 @@ public enum SidebarCardSurface : byte { Hero, Tile, Rail }
 public enum SidebarCardActivation : byte { None, Play, Navigate }
 
 /// <summary>What a card is as a drop destination: nothing, a track DEPOSIT (an editable playlist), or a REFUSAL that
-/// says why (a playlist the user cannot edit — the expanded layouts name the reason, the 56-DIP rail stays transparent).</summary>
+/// says why (a playlist the user cannot edit — the sidebar names the reason).</summary>
 public enum SidebarCardDrop : byte { None, Deposit, Refuse }
 
 /// <summary>The pure facts behind the sidebar's media cards, per entry kind. No engine type is touched, so each answer is
@@ -54,21 +54,15 @@ public static class SidebarCardRules
          : entry.RouteKey is { Length: > 0 } ? SidebarCardActivation.Navigate
          : SidebarCardActivation.None;
 
-    /// <summary>A play affordance exists on the hero (when its section's <c>PlayButton</c> option is on) and on the grid tile
-    /// for an entry that has a playable context; never on the rail tile (no room — the tile is the target, the context menu
-    /// the verbs). <c>IsPlayable</c> is Playlist / Album / Show / Track: an artist has no single context to start.</summary>
-    public static bool HasPlay(SidebarCardSurface surface, in SidebarLibraryEntry entry, bool playButton)
-        => surface != SidebarCardSurface.Rail
-           && entry.IsPlayable && !string.IsNullOrEmpty(entry.Uri)
-           && (surface != SidebarCardSurface.Hero || playButton);
+    /// <summary>A play affordance exists on the grid tile for an entry that has a playable context. <c>IsPlayable</c> is
+    /// Playlist / Album / Show / Track: an artist has no single context to start.</summary>
+    public static bool HasPlay(in SidebarLibraryEntry entry) => entry.IsPlayable && !string.IsNullOrEmpty(entry.Uri);
 
     /// <summary>A playlist is the one drop destination a card can be. An editable one takes a track deposit; a read-only one
-    /// REFUSES with a reason on the expanded surfaces — exactly what <c>EntityRow</c> does — but stays transparent on the rail,
-    /// where a refusal sentence has no room and the pre-existing tile never carried the spec.</summary>
+    /// REFUSES with a reason — exactly what <c>EntityRow</c> does.</summary>
     public static SidebarCardDrop Drop(SidebarCardSurface surface, in SidebarLibraryEntry entry)
         => entry.Kind != SidebarEntryKind.Playlist ? SidebarCardDrop.None
          : entry.CanEdit ? SidebarCardDrop.Deposit
-         : surface == SidebarCardSurface.Rail ? SidebarCardDrop.None
          : SidebarCardDrop.Refuse;
 
     /// <summary>A card is a drag source (pin it, add its tracks to a playlist) unless it is a track — a track is never a pin
@@ -79,37 +73,19 @@ public static class SidebarCardRules
     public static bool RootlistMember(in SidebarLibraryEntry entry)
         => entry.Kind is SidebarEntryKind.Playlist or SidebarEntryKind.Folder;
 
-    /// <summary>The "…" glyph (the surface's own hot-revealed trailing button) exists on the hero row. A grid tile keeps the
-    /// menu on right-click only: the shared corner "…" is a 30-DIP disc with 8 DIP of padding, which would cover a 24-110 DIP
-    /// cover. The rail tile has no placement for one at all.</summary>
-    public static bool ShowsMenuGlyph(SidebarCardSurface surface) => surface == SidebarCardSurface.Hero;
-
-    /// <summary>The title a tile or a rail tile paints — Trap 5: an entry whose identity has not landed shows NOTHING, never
+    /// <summary>The title a tile paints — Trap 5: an entry whose identity has not landed shows NOTHING, never
     /// the raw uri fragment.</summary>
     public static string TitleOf(in SidebarLibraryEntry entry)
         => entry.Name.Length > 0 ? entry.Name
          : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? Sidebar.PaneText.ShortUri(entry.Uri)
          : "";
 
-    /// <summary>An entry with no title yet. The rail tile is label-less (its tooltip IS the title), so such an entry renders
-    /// as a bone instead of a tile with an empty tooltip — and, like an unresolved <c>EntityRow</c>, is not invokable.</summary>
+    /// <summary>An entry with no title yet, which renders as a bone instead of a tile with an empty title — and, like an
+    /// unresolved <c>EntityRow</c>, is not invokable.</summary>
     public static bool IsPending(in SidebarLibraryEntry entry) => TitleOf(in entry).Length == 0;
 
-    /// <summary>The hero's title: the authored alias, then the resolved name, then the item's cached title, then the key's
-    /// last segment — never blank.</summary>
-    public static string HeroTitle(string? alias, bool resolved, string? name, string? cached, string rowKey)
-        => alias is { Length: > 0 } ? alias
-         : resolved && name is { Length: > 0 } ? name
-         : cached is { Length: > 0 } ? cached
-         : Sidebar.PaneText.ShortUri(rowKey);
-
-    /// <summary>The hero's art square: its pinned height less the row's padding on both sides, so the surface's content is
-    /// EXACTLY the section's one card height (iron rule 4).</summary>
-    public static float HeroCover(float cardHeight) => cardHeight - 2f * SurfaceGeometry.RowPad;
-
-    /// <summary>The hero's shape: the shared sidebar hero row at the section's card height and its derived art edge.</summary>
-    public static SurfaceShape HeroShape(float cardHeight)
-        => Shape.SidebarHero with { ArtEdge = HeroCover(cardHeight), MinHeight = cardHeight };
+    /// <summary>An artist and a circular entry are drawn as a circle (the grid tile's cover box follows the same answer).</summary>
+    public static bool Circular(in SidebarLibraryEntry entry) => entry.Circular || entry.Kind == SidebarEntryKind.Artist;
 
     /// <summary>A grid tile's cover: the cell less the shared grid card's plate padding on both sides. The cover is a fixed
     /// square (it is built from a <c>Cover</c> factory, not a fluid image), so it is sized from the cell the strip derived.</summary>
@@ -118,89 +94,34 @@ public static class SidebarCardRules
 
 public static partial class Sidebar
 {
-    /// <summary>THE adapters: a projected entry (or a hero's plan row) → the <see cref="Controls.CardData"/> its media surface
+    /// <summary>THE adapters: a projected entry → the <see cref="Controls.CardData"/> its media surface
     /// renders. Each runs inside its slot's render, so it reads the live pane state a recycle needs, and every delegate it hands
     /// the surface is a closure over a SNAPSHOT of the entry (an <c>in</c> parameter cannot be captured) — the host invokes the
     /// newest pushed one through its trampolines, so a data-equal re-push with fresh closures is still honoured.</summary>
     internal static class SidebarCards
     {
-        // ── the hero (SidebarRowKind.EntityCard) ─────────────────────────────────────────────────────────────────────
-
-        /// <summary>The spotlight card's data. An UNRESOLVED entity is still a card — its title and art come from the item's
-        /// cached values and it carries no click, menu, play, drag or drop; the caller dims and disables it
-        /// (<c>Resolved</c>), because a surface has no disabled state of its own. Selection is the pane's own resolver, so the
-        /// card that draws the selected skin and the row whose epoch the route sweep bumped can never disagree.</summary>
-        public static (Controls.CardData Data, bool Resolved) Hero(PaneView o, SidebarSectionSpec section, in SidebarRow row,
-                                                                    string sel, int index)
-        {
-            string rowKey = row.Key;
-            string sectionId = row.SectionId;
-            var item = PaneText.ItemOf(section, rowKey);
-            var entries = o.Plan.Entries;
-            bool resolved = (uint)row.EntryIndex < (uint)entries.Count;
-            var entry = resolved ? entries[row.EntryIndex] : default;
-            float height = PaneMetrics.CardHeight(section);
-            float cover = SidebarCardRules.HeroCover(height);
-
-            string title = SidebarCardRules.HeroTitle(item?.LabelOverride, resolved, resolved ? entry.Name : null,
-                item?.FallbackTitle, rowKey);
-            string? subtitle = resolved ? PaneText.SubtitleOf(in entry) : Loc.Get(PaneLoc.MissingEntity);
-            bool circular = resolved
-                ? entry.Circular || entry.Kind == SidebarEntryKind.Artist
-                : item?.EntityKind == SidebarEntityKind.Artist;
-            // ForEntry for a resolved card: it owes the entry's kind dispatch (folder tile, route glyph, Liked's cover).
-            Element art = resolved
-                ? Cover.ForEntry(in entry, cover)
-                : Cover.ArtUrl(item?.FallbackImageUrl, rowKey, cover, circular);
-
-            Action? play = null;
-            Action? click = null;
-            DragSource? drag = null;
-            DropTargetSpec? drop = null;
-            Func<ContextMenuModel?>? menu = null;
-            string uri = resolved ? entry.Uri : "";
-            if (resolved)
-            {
-                if (SidebarCardRules.HasPlay(SidebarCardSurface.Hero, in entry, section.Opts.PlayButton))
-                    play = () => o.Play(uri, asTrack: false);
-                click = ActivateOf(o, in entry, title);
-                drag = DragOf(in entry);
-                drop = DropOf(o, SidebarCardSurface.Hero, sectionId, in entry);
-                menu = o.EntryMenu(section, index, in entry, item, rowKey);
-            }
-
-            var data = new Controls.CardData(uri, title, SubtitleOf(subtitle), null, click, play, circular, drag,
-                ShowMenu: SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Hero), CoverOverride: art)
-            {
-                Height = height,
-                Selected = o.RowSelectsRoute(index, sel),
-                Menu = menu,
-                Drop = drop,
-            };
-            return (data, resolved);
-        }
-
         // ── the grid tile (one cell of a SidebarRowKind.GridStrip) ──────────────────────────────────────────────────
 
         /// <summary>One grid cell's data. A cell is not a plan row (one strip draws several), so it asks the resolver about the
-        /// ENTRY — the same predicate the row-level sweep ORs across the strip's range.</summary>
-        public static Controls.CardData Tile(PaneView o, SidebarSectionSpec section, in SidebarLibraryEntry entry, float cell,
+        /// ENTRY — the same predicate the row-level sweep ORs across the strip's range. The menu stays on right-click only: the
+        /// shared corner "…" is a 30-DIP disc with 8 DIP of padding, which would cover a 24-110 DIP cover.</summary>
+        public static Controls.CardData Tile(PaneView o, SidebarSection section, in SidebarLibraryEntry entry, float cell,
                                              string sel)
         {
             var e = entry;
-            bool circular = e.Circular || e.Kind == SidebarEntryKind.Artist;
+            bool circular = SidebarCardRules.Circular(in e);
             Action? play = null;
-            if (SidebarCardRules.HasPlay(SidebarCardSurface.Tile, in e, playButton: true))
+            if (SidebarCardRules.HasPlay(in e))
             {
                 string uri = e.Uri;
                 play = () => o.Play(uri, asTrack: false);
             }
             // ForEntry, never the raw cover factory: an app-route entry keeps its glyph tile and Liked its dynamic cover.
             return new Controls.CardData(e.Uri, SidebarCardRules.TitleOf(in e),
-                section.Opts.Subtitles ? SubtitleOf(PaneText.SubtitleOf(in e)) : null, null,
+                section.Shape == SidebarRowShape.EntityTwoLine ? SubtitleOf(PaneText.SubtitleOf(in e)) : null, null,
                 ActivateOf(o, in e, e.Name), play, circular, DragOf(in e),
-                ShowMenu: SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Tile),
-                CoverOverride: Cover.ForEntry(in e, SidebarCardRules.TileCover(cell)))
+                ShowMenu: false,
+                CoverOverride: CoverOf(in e, SidebarCardRules.TileCover(cell)))
             {
                 Selected = SidebarCardRules.Selected(in e, sel),
                 Menu = o.GridCellMenu(in e),
@@ -208,36 +129,41 @@ public static partial class Sidebar
             };
         }
 
-        // ── the rail tile (label-less: the tooltip IS the title) ────────────────────────────────────────────────────
-
-        /// <summary>A projected entry as a rail tile: the cover at the detent's art edge (<see cref="SidebarRailMetrics.Art"/>),
-        /// the entry's menu on right-click (the same one the expanded row opens), and — for an editable playlist — the
-        /// track-deposit drop spec whose cue is the rail's own published uri (<see cref="PaneView.IsRailDropActive"/>).</summary>
-        public static Controls.CardData RailOf(PaneView o, string sectionId, in SidebarLibraryEntry entry, string sel,
-                                               in SidebarRailMetrics m)
+        /// <summary>The cover box of a grid tile: the entry's art, or for an entry with no art yet its kind glyph (24,
+        /// <c>TextSecondary</c>) on the subtle fill — never the grey skeleton bone the placeholder tile draws.</summary>
+        static Element CoverOf(in SidebarLibraryEntry e, float size)
         {
-            var e = entry;
-            bool circular = e.Circular || e.Kind == SidebarEntryKind.Artist;
-            return new Controls.CardData(e.Uri, SidebarCardRules.TitleOf(in e), null, null,
-                ActivateOf(o, in e, e.Name), null, circular, DragOf(in e),
-                ShowMenu: SidebarCardRules.ShowsMenuGlyph(SidebarCardSurface.Rail),
-                CoverOverride: Cover.Art(e.Cover, e.MosaicTiles, e.Id, m.Art, circular))
+            if (HasArt(in e)) return Cover.ForEntry(in e, size);
+            return new BoxEl
             {
-                Selected = SidebarCardRules.Selected(in e, sel),
-                Menu = o.RailTileMenu(sectionId, in e),
-                Drop = DropOf(o, SidebarCardSurface.Rail, sectionId, in e),
+                Width = size, Height = size, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Corners = CornerRadius4.All(Cover.Radius(size, SidebarCardRules.Circular(in e))),
+                Fill = Tok.FillSubtleSecondary,
+                Children = [Ui.Icon(KindGlyph(in e), 24f, Tok.TextSecondary)],
             };
         }
 
-        /// <summary>A rail tile from a mode's own parts (Library V3's hand-placed tiles carry an item, not a projected entry):
-        /// the art, the title the tooltip shows, what a click does and whether it is the open route.</summary>
-        public static Controls.CardData RailOf(Element art, string title, string uri, Action? click, bool selected,
-                                               DropTargetSpec? drop = null)
-            => new(uri, title, null, null, click, null, false, null, ShowMenu: false, CoverOverride: art)
-            {
-                Selected = selected,
-                Drop = drop,
-            };
+        /// <summary>An entry paints art when it has a cover, a mosaic or is the Liked collection (its own mosaic / heart).
+        /// Folders and app routes wear their own glyph, so they never take the bone either.</summary>
+        static bool HasArt(in SidebarLibraryEntry e)
+        {
+            if (string.Equals(e.Id, SidebarCatalogue.LikedRoute, StringComparison.Ordinal) || EntityUri.IsLikedCollection(e.Uri))
+                return true;
+            if (e.Kind is SidebarEntryKind.Folder or SidebarEntryKind.AppRoute) return false;
+            return Controls.ArtUrl(e.Cover) is not null || e.MosaicTiles is { Count: > 0 };
+        }
+
+        /// <summary>The glyph a no-art tile carries: the entry kind's own mark (a folder's or a route's glyph included).</summary>
+        static string KindGlyph(in SidebarLibraryEntry e) => e.Kind switch
+        {
+            SidebarEntryKind.Folder => Icons.Folder,
+            SidebarEntryKind.AppRoute => Shell.Dest(Shell.Parse(e.Id)).Glyph,
+            SidebarEntryKind.Album => Icons.Album,
+            SidebarEntryKind.Artist => Icons.Contact,
+            SidebarEntryKind.Show => Icons.Microphone,
+            _ => Icons.MusicNote,
+        };
 
         // ── the shared pieces ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -271,14 +197,13 @@ public static partial class Sidebar
             return Drag.Source(() => PaneView.PayloadOf(in e, member), clickPrimary: true);
         }
 
-        /// <summary>The pane's own drop spec — one resolver, one commit. Rail tiles also publish the rail cue uri.</summary>
+        /// <summary>The pane's own drop spec — one resolver, one commit.</summary>
         static DropTargetSpec? DropOf(PaneView o, SidebarCardSurface surface, string sectionId, in SidebarLibraryEntry entry)
         {
             switch (SidebarCardRules.Drop(surface, in entry))
             {
                 case SidebarCardDrop.Deposit:
-                    return o.ResourceDropSpec(sectionId, slot: -1, entry.Uri, entry.Name,
-                        railCueUri: surface == SidebarCardSurface.Rail ? entry.Uri : null, isPlaylistRow: true);
+                    return o.ResourceDropSpec(sectionId, slot: -1, entry.Uri, entry.Name, isPlaylistRow: true);
                 case SidebarCardDrop.Refuse:
                     return o.ResourceDropSpec(sectionId, slot: -1, playlistUri: null, entry.Name, isPlaylistRow: true);
                 default:

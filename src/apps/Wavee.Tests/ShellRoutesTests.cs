@@ -35,10 +35,10 @@ public class ShellRouteTableTests
         // destination in the app.
         for (int i = 0; i < Shell.RouteKindCount; i++)
             Assert.Equal((Shell.RouteKind)i, Shell.Row((Shell.RouteKind)i).Kind);
-        // 16 exact (15 + LibraryAudiobooks, A2 plan §3.6) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
+        // 15 exact (14 + LibraryAudiobooks, A2 plan §3.6; SidebarCustomize deleted in P3) + 10 prefix + 3 concert + Episode (podcast rework wave P2)
         // + User + ProfileList (profile pages, #161) + ConnectDiagnostics + CaptureDiagnostics
         // (realtime-capture-implementation.md unit 6) + Logs (privacy-diagnostics-tab-implementation.md D6) + NotFound
-        Assert.Equal(36, Shell.RouteKindCount);
+        Assert.Equal(35, Shell.RouteKindCount);
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public class ShellRouteTableTests
     {
         var keyed = new[]
         {
-            Shell.RouteKind.Search, Shell.RouteKind.WhatsNew, Shell.RouteKind.SidebarCustomize,
+            Shell.RouteKind.Search, Shell.RouteKind.WhatsNew,
             Shell.RouteKind.HomeCustomize, Shell.RouteKind.Discography, Shell.RouteKind.Module,
             Shell.RouteKind.ProfileList,
         };
@@ -238,7 +238,6 @@ public class ShellRouteCodecTests
     [InlineData("playback-diagnostics", Shell.RouteKind.PlaybackDiagnostics)]
     [InlineData("logs", Shell.RouteKind.Logs)]
     [InlineData("whatsnew", Shell.RouteKind.WhatsNew)]
-    [InlineData("sidebar-customize", Shell.RouteKind.SidebarCustomize)]
     [InlineData("home-customize", Shell.RouteKind.HomeCustomize)]
     [InlineData("concerts", Shell.RouteKind.Concerts)]
     public void Every_exact_key_resolves_to_its_kind(string key, Shell.RouteKind expected)

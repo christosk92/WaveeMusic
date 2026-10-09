@@ -77,8 +77,8 @@ this reason.
 - **Plans with real code.** Multi-part work gets a plan in `docs/plans/wavee/*-implementation.md` with the actual
   code, component trees and ASCII wireframes; implementation is parallel subagents on disjoint files, and only the
   orchestrator builds/tests/launches.
-- App skills: `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar platform),
-  `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board, issue
-  forms — every modifying `gh` call is approved by the user first). Sidebar platform design: `docs/guide/sidebar-extension-platform.md`;
-  playback modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`; scrolling:
+- App skills: `.claude/skills/wavee` (deep links, backend, diagnostics), `wavee-sidebar` (the sidebar: layouts, modes,
+  Edit mode, pins), `releasing` (the release runbook + gotchas), `github-triage` (labels, milestones, the project board,
+  issue forms — every modifying `gh` call is approved by the user first). Sidebar: `docs/guide/sidebar.md`; playback
+  modules: `docs/guide/playback-modules.md`; releasing: `docs/guide/releasing-wavee.md`; scrolling:
   `docs/guide/scrolling.md`; the full-screen stage and its visualizers: `docs/guide/fullscreen-visualizers.md`.

@@ -26,10 +26,10 @@ public class ShellFrameGeometryTests
     }
 
     [Fact]
-    public void The_sidebar_seam_vanishes_only_in_the_last_resort_band()
+    public void The_sidebar_seam_vanishes_only_outside_the_wide_band()
     {
-        Assert.Equal(0f, Shell.FrameRules.SidebarSeamWidth(lastResort: true));
-        Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.SidebarSeamWidth(lastResort: false));
+        Assert.Equal(0f, Shell.FrameRules.SidebarSeamWidth(seamVisible: false));
+        Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.SidebarSeamWidth(seamVisible: true));
     }
 
     [Fact]
@@ -152,7 +152,8 @@ public class ShellFrameBodyRulesTests
     [Fact]
     public void A_pin_id_is_the_route_key_screened_by_the_sidebar()
     {
-        Assert.Equal("home", Shell.FrameRules.PinIdFor(new Shell.Route(Shell.RouteKind.Home)));
+        Assert.Equal("search", Shell.FrameRules.PinIdFor(new Shell.Route(Shell.RouteKind.Search)));
+        Assert.Null(Shell.FrameRules.PinIdFor(new Shell.Route(Shell.RouteKind.Home)));   // Home is always first, never a pin (Q1a)
         Assert.Null(Shell.FrameRules.PinIdFor(new Shell.Route(Shell.RouteKind.Settings)));   // a tool, never a pin
         Assert.Null(Shell.FrameRules.PinIdFor(Shell.Route.None));
         const string album = "album:spotify:album:6dVIqQ8qmQ5GBnJ9shOYGE";

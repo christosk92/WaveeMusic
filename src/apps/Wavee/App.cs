@@ -218,7 +218,7 @@ public static class App
         Home.InstallPages();             // home, search, browse, recents + the omnibar's suggestion source (WP-5.P)
         Album.InstallPages();            // album, prerelease, show + the track row's "View credits" seam (WP-5.M)
         Playlist.InstallPages();         // playlist, liked, library + the window's file-drop play target (WP-5.O)
-        Artist.InstallPages();           // artist + discography + concerts (hub, schedule, detail), ConcertHost, Sidebar.ConcertsFetch — EAGER: before the sidebar pane's first mount (WP-5.N)
+        Artist.InstallPages();           // artist + discography + concerts (hub, schedule, detail), ConcertHost (WP-5.N)
         Settings.InstallScreens();       // the Settings page, What's new, the report dialog and the setup wizard (WP-6.R)
         Diagnostics.Install();           // run marker, diagnostics pages, network cost host, the screens' diagnostics seams (WP-6.S)
         Log.Event(WaveeLogLevel.Info, "app", "boot.pages", "", null, Log.SinceStartMs);

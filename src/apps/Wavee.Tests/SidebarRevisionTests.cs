@@ -3,7 +3,7 @@
 // docs/plans/wavee/wavee-0.3-bug-handoff-2026-09-15.md §7 (E2): `SidebarProjectionBinder.Rebuild` used to bump
 // `_revision` UNCONDITIONALLY, even though the two things that trigger real downstream work — `Entries.Publish`'s
 // byte-change shadow and `PublishInput`'s feed-moved shadow — are both carefully content-gated. `Revision` feeds
-// `PaneView.PlanDep` (a full re-plan) and `V3Session.ShapeInput`'s `ViewEpoch` (a full re-bucket/re-group of the
+// `PaneView.PlanDep` (a full re-plan) and `LibrarySession.ShapeInput`'s `ViewEpoch` (a full re-bucket/re-group of the
 // whole library), so an unconditional bump forced both on every rebuild wake regardless of whether anything
 // published actually changed. The fix extracts the decision into `SidebarRevisionGate` (Sidebar.Host.cs) — a
 // one-line pure function, but per CLAUDE.md's "no source-text tests" rule the decision still gets its own table

@@ -37,17 +37,17 @@ public class SettingsIsolationTests
     public void The_defaults_only_store_answers_defaults_and_drops_writes()
     {
         var store = DefaultsOnlySettings.Instance;
-        store.Set(Platform.Keys.SidebarDesign, 2);
-        Assert.Equal(Platform.Keys.SidebarDesign.Default, store.Get(Platform.Keys.SidebarDesign));
+        store.Set(Platform.Keys.SidebarLayoutId, 1);
+        Assert.Equal(Platform.Keys.SidebarLayoutId.Default, store.Get(Platform.Keys.SidebarLayoutId));
     }
 
     [Fact]
     public void The_fake_store_keeps_a_demo_write_in_memory_over_the_defaults()
     {
         var fake = new Diagnostics.Headless.OverlaySettings(DefaultsOnlySettings.Instance);
-        Assert.Equal(0, fake.Get(Platform.Keys.SidebarDesign));                 // a real profile's Library V3 never leaks in
-        fake.Set(Platform.Keys.SidebarDesign, 1);
-        Assert.Equal(1, fake.Get(Platform.Keys.SidebarDesign));
+        Assert.Equal(0, fake.Get(Platform.Keys.SidebarLayoutId));               // a real profile's Library never leaks in
+        fake.Set(Platform.Keys.SidebarLayoutId, 1);
+        Assert.Equal(1, fake.Get(Platform.Keys.SidebarLayoutId));
         Assert.Equal(Platform.Keys.ThemeMode.Default, fake.Get(Platform.Keys.ThemeMode));
     }
 
@@ -74,7 +74,7 @@ public class SettingsIsolationTests
             Assert.Equal("nl-NL", b.Get(Platform.Keys.UiCulture));
             Assert.Equal(1234567890123L, b.Get(Platform.Keys.UpdateLastCheckedMs));
             Assert.Equal(2.35, b.Get(Platform.Keys.VideoCustomAspectRatio));
-            Assert.Equal(Platform.Keys.SidebarDesign.Default, b.Get(Platform.Keys.SidebarDesign));
+            Assert.Equal(Platform.Keys.SidebarLayoutId.Default, b.Get(Platform.Keys.SidebarLayoutId));
         }
         finally { try { Directory.Delete(Path.GetDirectoryName(path)!, recursive: true); } catch (IOException) { } }
     }

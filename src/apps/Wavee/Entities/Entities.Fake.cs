@@ -37,8 +37,8 @@
 //   • AlbumTracks / PlaylistTracks memberships, so the album and playlist detail frames have rows to scroll.
 //   • The default queue (owner Q, Wave 5): 1 now playing + 3 queued + 5 next up + 3 autoplay (`SeedQueue`).
 // NOT in this cut (ch 31 §7.1's SEED-SURFACES rows: home, search, browse, concerts, recents, lyrics, video, the
-// clock-anchored countdown/chart/tour fixtures of §7.3, `Sample`'s full W13 index set beyond what the customizer
-// asks for today). `Clock.SeedEpoch` (Platform.cs) is still the one time input; nothing here reads a second clock.
+// clock-anchored countdown/chart/tour fixtures of §7.3.
+// `Clock.SeedEpoch` (Platform.cs) is still the one time input; nothing here reads a second clock.
 
 using FluentGpu.Foundation;
 
@@ -485,48 +485,4 @@ public static partial class Entities
             _ => Table.None,
         };
     }
-
-    // ── the customizer's sample (ch 31 §7.2 rules C/D; G-181) ───────────────────────────────────────────────────────
-
-    /// <summary>One miniature fixture: what <see cref="Sidebar.MiniaturePlaylist"/>/<see cref="Sidebar.MiniatureArtist"/>
-    /// read to preview a TEMPLATE, not this account. Pure over the seed's own generator arithmetic — it never reads
-    /// <c>Entities.Current</c> (ch 31 §7.2 rule D), so it answers identically whether or not <see cref="SeedFake"/> has
-    /// ever run: on the real backend it still previews the same template the fake one renders for real (rule C: the
-    /// customizer's nine hand-indexed call sites — playlists 1, 2, 5, 7, 8, 10, 12, 14 and artist 3 — must always name
-    /// the same fixture).</summary>
-    public static FakeSample Sample(EntityKind kind, int index) => kind switch
-    {
-        EntityKind.Artist => new FakeSample(
-            InternNoRetain(s_artistNames[Wrap(index, s_artistNames.Length)]),
-            InternNoRetain(Cover(index + 3)), 0, false),
-        _ => new FakeSample(
-            InternNoRetain(s_playlistNames[Wrap(index, s_playlistNames.Length)]),
-            InternNoRetain(Cover(index + 7)), PlaylistTrackCount(Wrap(index, PlaylistCount)), false),
-    };
-
-    /// <summary>A read-only preview string. Sample is read far more than it changes and every string here is one of the
-    /// small closed vocabularies above, so it is fine for two calls with the same index to intern the same text twice
-    /// (the interner de-duplicates) — nothing here RETAINS the id into a column, so nothing has to release it either.</summary>
-    static StringId InternNoRetain(string s) => Intern(Utf8(s));
-
-    /// <summary>The shortcut badges' TEMPLATE counts (ch 31 §2 W13's "shortcut badges → LibraryStats()"), keyed by the
-    /// same route key the sidebar's own shortcut items carry ("liked"/"albums"/"artists"/"podcasts"). Deliberately
-    /// consistent with this file's seeded counts (166/13/12/8) rather than porting 0.2.9's mismatched 7-vs-8 stat
-    /// (ch 31 §0.10c — the gap register calls that a defect to fix, not a fixture to keep) — a template preview and
-    /// the seeded reality should never quietly disagree about a count nothing else distinguishes. Pure: like
-    /// <see cref="Sample"/>, it never reads <c>Entities.Current</c> (rule D), so it answers the same on every
-    /// backend. <c>null</c> for a key this cut has no badge fixture for.</summary>
-    public static int? SampleShortcutCount(string routeKey) => routeKey switch
-    {
-        "liked" => TrackCount,
-        "albums" => AlbumCount,
-        "artists" => ArtistCount,
-        "podcasts" => ShowCount,
-        _ => null,
-    };
 }
-
-/// <summary>One sample of the fake catalog's template — what the sidebar customizer's miniature previews.
-/// <see cref="Count"/> is a track/member count where the kind has one (a playlist); <see cref="Circular"/> is
-/// reserved for a future artist-avatar-in-a-ring preview and is always false in this cut.</summary>
-public readonly record struct FakeSample(StringId Title, StringId Image, int Count, bool Circular);

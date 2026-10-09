@@ -11,7 +11,7 @@
 // The thirteen first-party descriptors are the NAMED PARTIAL `Platform/Actions.Table.cs` (this file ran >30 % past its
 // budget; the name is the one ch 29 §9.10 gave that half).
 //
-// SHIPPED EARLY IN THE WAVE (§5 sequencing item 2, A7): owner J's binder and the customizer's action picker read the
+// SHIPPED EARLY IN THE WAVE (§5 sequencing item 2, A7): owner J's binder and the command palette read the
 // DESCRIPTOR SHAPE below, and `PinRowRule` goes the other way, into `Sidebar.cs`. The shape is frozen when this lands.
 //
 // TWO THINGS THIS FILE OWNS THAT 0.2.9 PUT ELSEWHERE, and why:
@@ -19,7 +19,7 @@
 //   * `ActionBinding` / `ActionTargetMode` — 0.2.9 spelled these `SidebarActionBinding` / `SidebarActionTargetMode`
 //     and put them in the sidebar's document. They are the PERSISTED VOCABULARY a descriptor is resolved against, and
 //     the registry, the picker and (later) the command palette all speak it, so it belongs with the descriptor. Owner
-//     J's `Sidebar.Doc.cs` DECODES `sidebar-layout.json` into this type rather than declaring a second one.
+//     J's former `Sidebar.Doc.cs` decoded the v2 `sidebar-layout.json` into this type; since the sidebar rework nothing persists it.
 //   * The route↔pin-id mapping is `Shell`'s (`Shell.NameOf` / `Shell.For` / `Shell.UriOf`), because a pin id IS a
 //     route key. 0.2.9's `SidebarPinId` is not re-created here.
 //
@@ -191,8 +191,7 @@ public enum ActionUnavailable : byte
     NotApplicable = 7,
 }
 
-/// <summary>ONE bound action's persisted target. Owner J's <c>Sidebar.Doc.cs</c> decodes <c>sidebar-layout.json</c>
-/// into this; the customizer's picker writes it; the registry resolves it.</summary>
+/// <summary>ONE bound action's target: the action picker writes it and the registry resolves it.</summary>
 /// <param name="ProviderId">The publisher segment (<c>wavee</c>, <c>publisher</c>).</param>
 /// <param name="ActionId">The contribution segment, or already the fully-qualified key.</param>
 /// <param name="TargetMode">Which target this binding names.</param>
@@ -318,11 +317,11 @@ public sealed class ActionDescriptor
     /// <summary>Semantic icon key (<see cref="ActionIcons"/>) — never a raw glyph.</summary>
     public required string IconKey { get; init; }
 
-    /// <summary>The target modes this action accepts. The customizer's binding UI offers exactly these; a stored
+    /// <summary>The target modes this action accepts. A binding UI offers exactly these; a stored
     /// binding naming anything else resolves <see cref="ActionUnavailable.ModeNotSupported"/>.</summary>
     public ActionTargetModes AcceptedTargets { get; init; } = ActionTargetModes.None;
 
-    /// <summary>The argument schema as OPAQUE JSON (the customizer generates property controls from it later). Null =
+    /// <summary>The argument schema as OPAQUE JSON (a binding UI generates property controls from it later). Null =
     /// the action takes no arguments. Arguments themselves ride on the binding and are likewise never interpreted
     /// here.</summary>
     public string? ArgumentSchema { get; init; }
@@ -380,8 +379,7 @@ public static partial class Actions
         /// <c>wavee</c> — there is no privileged non-extension path.</summary>
         public const string FirstPartyPublisher = "wavee";
 
-        /// <summary>Upper bound on a whole key. Generous but bounded: a key is persisted inside
-        /// <c>sidebar-layout.json</c>, so an unbounded one is a document-size hazard.</summary>
+        /// <summary>Upper bound on a whole key. Generous but bounded: a key may be persisted by a caller, so an unbounded one is a size hazard.</summary>
         public const int MaxLength = 128;
 
         /// <summary>A valid key is 2+ separator-separated segments, each starting with an ASCII letter and continuing
@@ -752,7 +750,7 @@ public static partial class Actions
         }
     }
 
-    /// <summary>What an extension may contribute today: actions (bindable from the customizer's action picker) and
+    /// <summary>What an extension may contribute today: actions (bindable, and listed by the command palette) and
     /// sidebar data sources (the row providers behind an extension section). Widened additively later, so an
     /// implementation written against this keeps compiling.
     /// <para>A data source is owner J's type (<c>Sidebar.cs</c>); the registry stores it behind <see cref="object"/>
@@ -776,7 +774,7 @@ public static partial class Actions
     }
 
     /// <summary>THE contribution registry. It replaces the fixed-only <see cref="AppActions.All"/> lookup for
-    /// everything BOUND — a binding, the customizer's action picker, a curated section's data source — while the
+    /// everything BOUND — a binding, the command palette, a curated section's data source — while the
     /// <see cref="ActionId"/> enum and the <see cref="AppAction"/> context-menu table stay as they are (first-party
     /// descriptors wrap them). The guardrails, encoded here:
     /// <list type="bullet">
@@ -812,7 +810,7 @@ public static partial class Actions
         }
 
         /// <summary>Every registered action, in registration order — first-party first, because the built-in table
-        /// registers first. This IS the customizer's action-picker source.</summary>
+        /// registers first. This IS the command palette's action source.</summary>
         public IReadOnlyList<ActionDescriptor> Actions => _actions.Items;
 
         /// <summary>Every registered data source, in registration order.</summary>

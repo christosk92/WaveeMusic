@@ -92,30 +92,63 @@ public class SetupGatingTests
         => Assert.Equal(expected, Setup.Gating.NeedsFreshInstallReset(fresh, completed, termsAccepted));
 
     [Fact]
-    public void The_page_ladder_skips_sign_in_when_asked_and_clamps_at_both_ends()
+    public void The_page_ladder_skips_sign_in_and_layout_when_asked_and_clamps_at_both_ends()
     {
-        Assert.Equal(Setup.WizardPage.SignIn, Setup.Gating.NextPage(Setup.WizardPage.Terms, skipSignIn: false));
-        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.Terms, skipSignIn: true));
-        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.LocalPlayback, skipSignIn: false));
-        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.LocalPlayback, skipSignIn: true));
-        Assert.Equal(Setup.WizardPage.SignIn, Setup.Gating.PrevPage(Setup.WizardPage.LocalPlayback, skipSignIn: false));
-        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.Terms, skipSignIn: false));
+        const Setup.WizardPage terms = Setup.WizardPage.Terms;
+        Assert.Equal(Setup.WizardPage.SignIn, Setup.Gating.NextPage(terms, skipSignIn: false, skipLayout: false));
+        Assert.Equal(Setup.WizardPage.Layout, Setup.Gating.NextPage(terms, skipSignIn: true, skipLayout: false));
+        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(terms, skipSignIn: true, skipLayout: true));
+        Assert.Equal(Setup.WizardPage.LocalPlayback, Setup.Gating.NextPage(Setup.WizardPage.LocalPlayback, skipSignIn: false, skipLayout: false));
+        Assert.Equal(Setup.WizardPage.Layout, Setup.Gating.PrevPage(Setup.WizardPage.LocalPlayback, skipSignIn: false, skipLayout: false));
+        Assert.Equal(Setup.WizardPage.SignIn, Setup.Gating.PrevPage(Setup.WizardPage.LocalPlayback, skipSignIn: false, skipLayout: true));
+        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.LocalPlayback, skipSignIn: true, skipLayout: true));
+        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(Setup.WizardPage.Layout, skipSignIn: true, skipLayout: false));
+        Assert.Equal(Setup.WizardPage.Terms, Setup.Gating.PrevPage(terms, skipSignIn: false, skipLayout: false));
         Assert.NotEqual(Setup.WizardPage.SignIn,
-            Setup.Gating.PrevPage(Setup.Gating.NextPage(Setup.WizardPage.Terms, true), true));
+            Setup.Gating.PrevPage(Setup.Gating.NextPage(terms, skipSignIn: true, skipLayout: false), skipSignIn: true, skipLayout: false));
+    }
+
+    [Theory]
+    [InlineData(Setup.WizardEntry.FirstRun, true)]
+    [InlineData(Setup.WizardEntry.Reauth, false)]        // a re-auth never walks back through the first-run layout pick
+    [InlineData(Setup.WizardEntry.TermsRearm, false)]
+    public void Layout_is_offered_on_a_first_run_only(Setup.WizardEntry entry, bool expected)
+        => Assert.Equal(expected, Setup.Gating.ShowsLayout(entry));
+
+    [Theory]
+    [InlineData(Setup.WizardEntry.FirstRun, true)]
+    [InlineData(Setup.WizardEntry.Reauth, false)]
+    [InlineData(Setup.WizardEntry.TermsRearm, false)]
+    public void Walking_forward_visits_layout_only_on_a_first_run(Setup.WizardEntry entry, bool visitsLayout)
+    {
+        bool skipLayout = !Setup.Gating.ShowsLayout(entry);
+        var page = Setup.WizardPage.Terms;
+        bool sawLayout = false;
+        while (page != Setup.WizardPage.LocalPlayback)
+        {
+            page = Setup.Gating.NextPage(page, skipSignIn: true, skipLayout: skipLayout);
+            if (page == Setup.WizardPage.Layout) sawLayout = true;
+        }
+        Assert.Equal(visitsLayout, sawLayout);
     }
 
     [Fact]
-    public void The_footer_counts_two_steps_after_pre_setup()
+    public void The_footer_counts_three_steps_after_pre_setup()
     {
-        Assert.Null(Setup.Gating.StepNumber(Setup.WizardPage.Terms));
-        Assert.Equal(1, Setup.Gating.StepNumber(Setup.WizardPage.SignIn)!.Value.Step);
-        Assert.Equal(2, Setup.Gating.StepNumber(Setup.WizardPage.LocalPlayback)!.Value.Step);
-        Assert.Equal(Setup.Gating.StepTotal, Setup.Gating.StepNumber(Setup.WizardPage.LocalPlayback)!.Value.Total);
-        Assert.Equal(0f, Setup.Gating.Progress(Setup.WizardPage.Terms), 5);
-        Assert.Equal(0.5f, Setup.Gating.Progress(Setup.WizardPage.SignIn), 5);
-        Assert.Equal(1f, Setup.Gating.Progress(Setup.WizardPage.LocalPlayback), 5);
+        Assert.Null(Setup.Gating.StepNumber(Setup.WizardPage.Terms, skipLayout: false));
+        Assert.Equal(1, Setup.Gating.StepNumber(Setup.WizardPage.SignIn, skipLayout: false)!.Value.Step);
+        Assert.Equal(2, Setup.Gating.StepNumber(Setup.WizardPage.Layout, skipLayout: false)!.Value.Step);
+        Assert.Equal(3, Setup.Gating.StepNumber(Setup.WizardPage.LocalPlayback, skipLayout: false)!.Value.Step);
+        Assert.Equal(Setup.Gating.StepTotal, Setup.Gating.StepNumber(Setup.WizardPage.LocalPlayback, skipLayout: false)!.Value.Total);
+        Assert.Equal(3, Setup.Gating.StepTotal);
+        Assert.Equal(0f, Setup.Gating.Progress(Setup.WizardPage.Terms, skipLayout: false), 5);
+        Assert.Equal(1f / 3f, Setup.Gating.Progress(Setup.WizardPage.SignIn, skipLayout: false), 5);
+        Assert.Equal(2f / 3f, Setup.Gating.Progress(Setup.WizardPage.Layout, skipLayout: false), 5);
+        Assert.Equal(1f, Setup.Gating.Progress(Setup.WizardPage.LocalPlayback, skipLayout: false), 5);
+        Assert.True(Setup.Gating.ShowsBack(Setup.WizardPage.Layout));
         Assert.True(Setup.Gating.ShowsBack(Setup.WizardPage.LocalPlayback));
         Assert.False(Setup.Gating.ShowsBack(Setup.WizardPage.SignIn));
+        Assert.False(Setup.Gating.ShowsBack(Setup.WizardPage.Terms));
     }
 
     [Fact]
@@ -144,9 +177,8 @@ public class SetupBootstrapTests
         Assert.True(settings.Get(Platform.Keys.SetupPending));
         Assert.False(settings.Get(Platform.Keys.SetupCompleted));
         Assert.Equal(Setup.Bootstrap.TargetVersion, settings.Get(Platform.Keys.SetupBootstrapVersion));
-        // One onboarding prompt on a first launch, not two (0.2.9's rule; the dropped SidebarDesign fact, restored here).
-        Assert.False(SidebarDesignGating.ShouldShowChooser(settings));
-        Assert.Equal(SidebarDesign.Classic, SidebarDesignGating.ActiveDesign(settings));
+        // A first launch starts on Classic (SidebarLayoutId's default 0): nothing is written for the layout.
+        Assert.Equal(0, settings.Get(Platform.Keys.SidebarLayoutId));
     }
 
     [Fact]
@@ -158,8 +190,7 @@ public class SetupBootstrapTests
         Assert.True(settings.Get(Platform.Keys.SetupCompleted));
         Assert.False(settings.Get(Platform.Keys.SetupPending));
         Assert.Equal(Setup.Gating.TermsVersion, settings.Get(Platform.Keys.TermsAcceptedVersion));
-        Assert.False(SidebarDesignGating.ShouldShowChooser(settings));
-        Assert.False(settings.WasWritten(Platform.Keys.SidebarDesign));   // an existing install's design is never stomped
+        Assert.False(settings.WasWritten(Platform.Keys.SidebarLayoutId));   // an existing install's layout is never stomped
     }
 
     [Theory]

@@ -17,7 +17,7 @@ namespace Wavee.Tests;
 public class CommandTableShapeTests
 {
     [Fact]
-    public void The_builtin_table_is_nineteen_rows_nav_first()
+    public void The_builtin_table_is_nav_first_with_the_sidebar_rows_before_library()
     {
         var rows = Shell.CommandTable.Builtins();
         Assert.Equal(Shell.CommandTable.BuiltinCount, rows.Length);
@@ -27,7 +27,10 @@ public class CommandTableShapeTests
         Assert.Equal("nav.recents", rows[3].Id);
         Assert.Equal("nav.settings", rows[4].Id);
         Assert.Equal("playback.playPause", rows[5].Id);
-        Assert.Equal("library.newFolder", rows[18].Id);
+        Assert.Equal("sidebar.edit", rows[17].Id);
+        Assert.Equal("sidebar.classic", rows[18].Id);
+        Assert.Equal("sidebar.library", rows[19].Id);
+        Assert.Equal("library.newFolder", rows[21].Id);
     }
 
     [Fact]

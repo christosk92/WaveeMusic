@@ -2,8 +2,12 @@
   "$culture": "en-US",
   "$unusedAllow": [
     "modulePage.openOn",
-    "sidebar.template.curated",
-    "sidebar.template.curatedSub"
+    "sidebar.item.albums", "sidebar.item.artists", "sidebar.item.audiobooks", "sidebar.item.liked", "sidebar.item.podcasts",
+    "sidebar.section.title.collections", "sidebar.section.title.home", "sidebar.section.title.newReleases",
+    "sidebar.section.title.pinned", "sidebar.section.title.playlists", "sidebar.section.title.recent",
+    "sidebar.section.title.settings",
+    "sidebar.sort.alphabetical", "sidebar.sort.creator", "sidebar.sort.customOrder", "sidebar.sort.recentlyAdded",
+    "sidebar.sort.recents"
   ],
   "$comment": "Wavee base culture — every user-facing UI string. Other cultures override per-key and fall back here. Keys flatten to a `Wavee.Strings` class via FluentGpu.SourceGen (Strings.Detail.Play == \"detail.play\"); parameterized keys expose a typed format method. `$unusedAllow` is analyzer-only (FLLOC005 keepers).",
   "drag": {
@@ -1077,15 +1081,19 @@
   "settings": {
     "title": "Settings",
     "sidebar": {
+      "editSub": "Show, hide and reorder sections and pins in place",
+      "resetEverythingSub": "Both layouts and the density back to their defaults. Pins stay.",
       "title": "Sidebar",
-      "subtitle": "The left-hand navigation",
-      "design": "Sidebar design",
-      "designShort": "Design",
-      "designSub": "Choose the left-hand navigation. Applies immediately.",
-      "customize": "Customize sidebar",
-      "customizeSub": "Add, reorder and configure the sections in Custom",
-      "railSize": "Collapsed rail size",
-      "railSizeSub": "How wide the icon rail is when the sidebar is collapsed."
+      "subtitle": "Saved on this PC",
+      "layout": "Layout",
+      "layoutSub": "Classic or Library. Applies immediately.",
+      "density": "Density",
+      "densitySub": "Two-line or one-line rows for playlists and albums",
+      "reset": "Reset this layout",
+      "resetSub": "Back to the default sections and order",
+      "fileFault": "Your sidebar layout couldn't be read, so the default is shown.",
+      "whatChanged": "What changed",
+      "whatChangedSub": "Not carried over from your custom sidebar: {names}."
     },
     "notify": {
       "title": "Notifications",
@@ -2197,10 +2205,95 @@
     "audiobooks": "Audiobooks"
   },
   "sidebar": {
+    "sort": {
+      "recents": "Recently played",
+      "short": {
+        "recents": "Recents"
+      },
+      "recentlyAdded": "Recently added",
+      "alphabetical": "Alphabetical",
+      "creator": "Creator",
+      "customOrder": "Custom order",
+      "customOnlyPlaylists": "Custom order works for playlists only",
+      "reverse": "Reverse order"
+    },
+    "chip": {
+      "playlists": "Playlists"
+    },
+    "library": {
+      "title": "Your Library",
+      "titleOnPage": "Your Library · {page}",
+      "pageSuffix": "· {page}",
+      "search": "Search in Your Library",
+      "searchPlaceholder": "Search in Your Library",
+      "options": "More options"
+    },
+    "view": {
+      "list": "List",
+      "grid": "Grid"
+    },
+    "undo": {
+      "undoAction": "Undo",
+      "redo": "Redo",
+      "undid": "Undid: {what}",
+      "redid": "Redid: {what}",
+      "label": {
+        "hide": "Hide {name}",
+        "show": "Show {name}",
+        "move": "Move {name}",
+        "reset": "Reset {name}",
+        "density": "Change density",
+        "limit": "Show {count}",
+        "sort": "Sort by {name}",
+        "view": "View as {name}",
+        "liked": "Liked Songs",
+        "pin": "Pin {name}",
+        "unpin": "Unpin {name}",
+        "unpinShortcuts": "Unpin all shortcuts",
+        "resetEverything": "Reset everything"
+      }
+    },
+    "edit": {
+      "title": "Edit sidebar",
+      "reset": "Reset",
+      "done": "Done",
+      "resetAllTitle": "Reset everything?",
+      "resetAllBody": "Both layouts and the density go back to their defaults. Pins stay.",
+      "resetAllConfirm": "Reset everything",
+      "emptyOnDone": "{name} has nothing to show yet.",
+      "announceGrabbed": "Grabbed {name}, position {pos} of {count}",
+      "announceMoved": "{name}, position {pos} of {count}",
+      "announceDropped": "Dropped {name} at position {pos} of {count}",
+      "announceCancelled": "Move cancelled",
+      "footClassic": "Drag sections by their header or grip. Changes apply at once.",
+      "footLibrary": "Library keeps a fixed order. Changes apply at once.",
+      "stillInProfile": "Still in the profile menu",
+      "pinsSummary": "{count} pinned",
+      "showAllPins": "Show all {count} pins",
+      "playlistsSummary": "{count} playlists",
+      "recentHint": "Filled from what you play",
+      "newReleasesHint": "Fresh releases from the artists you follow",
+      "libraryHint": "Search, filters and everything you saved",
+      "filters": "Filters",
+      "collectionsSummary": "{count} of {total} pages · hiding all hides Collections",
+      "collectionsLastSummary": "Last page · hiding it hides Collections",
+      "showInSidebar": "Show {name} in sidebar",
+      "finishDrag": "Finish dragging first"
+    },
+    "toast": {
+      "reset": "{name} reset to its defaults",
+      "hidden": "{name} hidden",
+      "shortcutsUnpinned": "Shortcuts unpinned",
+      "resetEverything": "Sidebar reset",
+      "settingsHidden": "Settings hidden. It stays in the profile menu"
+    },
+    "palette": {
+      "useLayout": "Use {layout} layout"
+    },
+    "active": "Active",
     "pinned": "Pinned",
     "yourLibrary": "Your Library",
     "playlists": "Playlists",
-    "dropToPin": "Drop items here to pin",
     "songCount": "{count, plural, one {# song} other {# songs}}",
     "createPlaylistTooltip": "Create playlist",
     "createTooltip": "Create playlist or folder",
@@ -2217,7 +2310,6 @@
     "deleteFolder": "Delete folder",
     "newFolderInside": "New folder inside",
     "newPlaylistHere": "New playlist in this folder",
-    "deleteFolderConfirm": "Delete “{name}”? {count, plural, one {The playlist inside} other {The # playlists inside}} will move up a level. Playlists are not deleted.",
     "folderCreated": "Folder created",
     "folderRenamed": "Folder renamed",
     "folderDeleted": "Folder deleted",
@@ -2226,335 +2318,96 @@
     "moveToFolderBody": "Choose where “{name}” should live.",
     "findFolder": "Find a folder",
     "noFolders": "No folders yet",
-    "pinnedToast": "Pinned “{name}”",
-    "unpinnedToast": "Unpinned “{name}”",
-    "design": {
-      "classic": "Spotify Classic",
-      "classicSub": "The classic Spotify you love(d) before the LibraryV3 re-design.",
-      "v3": "LibraryV3",
-      "v3Sub": "The latest Spotify library sidebar.",
-      "custom": "Custom",
-      "customSub": "Build your own sidebar from the sections you want.",
-      "comingSoon": "Coming soon",
-      "active": "Active"
-    },
-    "chooser": {
-      "title": "Choose your sidebar",
-      "subtitle": "Pick the left-hand navigation that suits you. You can change this any time in Settings → General.",
-      "keep": "Not now",
-      "confirm": "Use this layout",
-      "customizeNow": "Customize now",
-      "later": "Maybe later"
-    },
     "menu": {
-      "customize": "Customize sidebar…",
-      "resetWidth": "Reset width"
+      "layout": "Layout",
+      "showSection": "Show section",
+      "nothingHidden": "Nothing is hidden",
+      "density": "Density",
+      "edit": "Edit sidebar…",
+      "resetEverything": "Reset everything…",
+      "show": "Show",
+      "showCount": "Show {count}",
+      "showHidden": "Show hidden",
+      "unpinShortcuts": "Unpin all shortcuts",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "hideSection": "Hide section",
+      "unpinFirst": "Unpin {names} first",
+      "hideFromSidebar": "Hide from sidebar",
+      "sort": "Sort",
+      "view": "View",
+      "filters": "Filters",
+      "showLiked": "Show Liked Songs",
+      "hidePinned": "Hide pinned",
+      "resetLayout": "Reset this layout",
+      "expand": "Expand",
+      "collapse": "Collapse"
     },
-    "layout": {
-      "title": "Sidebar layout",
-      "menuTitle": "Sidebar layout",
-      "tooltip": "Change sidebar layout",
-      "classic": "Spotify Classic",
-      "library": "Library",
-      "libraryV3": "LibraryV3",
-      "curated": "Custom",
-      "customize": "Customize sidebar…"
-    },
-    "layoutFault": {
-      "discard": "Start fresh"
-    },
+    "paneEmpty": "Your sidebar is empty",
     "pin": {
+      "pinnedShownAgain": "Pinned shortcuts are shown again",
+      "pinnedNamed": "Pinned {name}",
+      "unpinnedNamed": "Unpinned {name}",
       "pinTo": "Pin to sidebar",
       "unpin": "Unpin from sidebar",
-      "pinned": "Pinned to sidebar",
-      "unpinned": "Removed from Pinned",
       "undo": "Undo",
       "emptyHint": "Or use the pin action on any library item.",
-      "position": "{index} of {count}",
-      "folderMissing": "Not in your library on this device yet"
+      "folderMissing": "Not in your library on this device yet",
+      "unavailable": "Unavailable",
+      "dropHere": "Drop here to pin",
+      "signedOut": "Sign in to pin to the sidebar",
+      "folder": "Folder",
+      "cantPin": {
+        "track": "Tracks can't be pinned",
+        "episode": "Episodes can't be pinned",
+        "local": "Local files can't be pinned",
+        "home": "Home is always first",
+        "liked": "Liked Songs always has its own row"
+      }
     },
     "rail": {
-      "size": "Collapsed rail size",
-      "compact": "Compact",
-      "default": "Default",
-      "large": "Large",
       "folderFlyoutBack": "Back"
     },
     "seam": {
       "announceWidth": "Sidebar width {width}",
-      "announceRail": "Icon rail, {size}"
+      "announceCollapsed": "Navigation collapsed"
+    },
+    "pane": {
+      "options": "Sidebar options",
+      "collapse": "Collapse navigation",
+      "expand": "Expand navigation",
+      "finishEditing": "Finish editing the sidebar first"
+    },
+    "header": {
+      "options": "Section options"
     },
     "section": {
-      "pinned": "Pinned",
-      "pinnedSub": "The items you pinned, in your order",
-      "jumpBackIn": "Jump back in",
-      "jumpBackInSub": "What you opened most recently",
+      "title": {
+        "home": "Home",
+        "pinned": "Pinned",
+        "collections": "Collections",
+        "playlists": "Playlists",
+        "library": "Your Library",
+        "recent": "Recently played",
+        "newReleases": "New releases",
+        "settings": "Settings"
+      },
       "recentlyPlayed": "Recently played",
-      "recentlyPlayedSub": "What you actually listened to, most recent first",
-      "shortcuts": "Library shortcuts",
-      "shortcutsSub": "Liked Songs, Albums, Artists, Podcasts, Local files",
-      "playlistTree": "Playlists",
-      "playlistTreeSub": "Your playlists, with folders",
-      "entityList": "Library list",
-      "entityListSub": "A filtered, sorted slice of your library",
-      "entityEmbed": "Spotlight",
-      "entityEmbedSub": "Put one playlist, album, artist or track front and centre",
-      "newReleases": "New releases",
-      "newReleasesSub": "Fresh music from the artists you follow",
-      "concerts": "Concerts near you",
-      "concertsSub": "Upcoming shows for the artists you listen to",
-      "staticLinks": "Links",
-      "staticLinksSub": "Shortcuts to pages like Home or Search",
-      "group": "Group",
-      "groupSub": "Your own named group of items",
-      "header": "Heading",
-      "headerSub": "A text label between sections",
-      "divider": "Divider",
-      "dividerSub": "A thin rule between sections",
-      "artistTopTracks": "Artist top tracks",
-      "artistTopTracksSub": "The most-played tracks of one artist",
-      "queue": "Queue",
-      "queueSub": "What's playing next",
-      "nowPlaying": "Now playing",
-      "nowPlayingSub": "The current track at a glance",
-      "extension": "Extension",
-      "extensionSub": "A section contributed by an extension",
       "empty": "Nothing here yet",
       "emptyRecents": "Play something and it'll show up here"
     },
-    "palette": {
-      "destinations": "Pages",
-      "dynamic": "Dynamic",
-      "navigation": "Navigation",
-      "library": "Library",
-      "playback": "Playback",
-      "layout": "Layout",
-      "actions": "Actions",
-      "extensions": "Extensions"
-    },
-    "option": {
-      "density": "Density",
-      "densityCompact": "Compact",
-      "densityCozy": "Cozy",
-      "densityComfortable": "Comfortable",
-      "presentation": "Layout",
-      "presentationList": "List",
-      "presentationGrid": "Grid",
-      "artwork": "Show artwork",
-      "subtitles": "Show subtitles",
-      "countBadges": "Show counts",
-      "collapsedByDefault": "Start collapsed",
-      "showInRail": "Show in collapsed rail",
-      "maxItems": "Maximum items",
-      "maxItemsAll": "All",
-      "gridColumns": "Columns",
-      "emptyBehavior": "When empty",
-      "emptyDefault": "Recommended",
-      "emptyHide": "Hide empty content",
-      "emptyCompact": "Show a compact hint",
-      "emptyAction": "Show an action card",
-      "sort": "Sort",
-      "sortRecents": "Recents",
-      "sortRecentlyAdded": "Recently added",
-      "sortAlphabetical": "Alphabetical",
-      "sortCreator": "Creator",
-      "sortCustom": "Custom order",
-      "descending": "Reverse order",
-      "qualifier": "Playlists by",
-      "qualifierAny": "Anyone",
-      "qualifierByYou": "By you",
-      "qualifierBySpotify": "By Spotify",
-      "qualifierMixed": "Mixed",
-      "showInRailSub": "Contributes an icon or artwork to the collapsed rail.",
-      "hiddenSub": "Keep it in the editor but remove it from the live sidebar.",
-      "collapsedSub": "Start this section collapsed."
-    },
-    "template": {
-      "curated": "Wavee curated",
-      "curatedSub": "Pinned, Jump back in, library shortcuts and folder-aware playlists.",
-      "classic": "Classic-inspired",
-      "classicSub": "The familiar Wavee sidebar, now editable.",
-      "library": "Library-inspired",
-      "librarySub": "One filterable library list with pins on top.",
-      "minimal": "Minimal",
-      "minimalSub": "Three shortcuts and a compact playlist list.",
-      "blank": "Blank",
-      "blankSub": "Start from nothing and add only what you want."
-    },
-    "customizer": {
-      "designs": "Sidebar design",
-      "designsSub": "Customizing edits the Custom design, so opening this page switched to it. Pick another to switch back — your sections are kept.",
-      "hiddenSections": "Hidden sections",
-      "hiddenSectionsSub": "Hiding never removes anything",
-      "hiddenNone": "Nothing is hidden.",
-      "unknownSection": "Unrecognized section",
-      "advanced": "Advanced",
-      "layoutFile": "Layout file",
-      "layoutFileSub": "Your sidebar is saved here. Editing it by hand is unsupported — Wavee rewrites the file on every change, and keeps one .bak beside it.",
-      "showFile": "Show in Explorer",
-      "destinationSub": "Add a shortcut to this page",
-      "appendsTo": "adds to “{name}”",
-      "contributionUnnamed": "This extension declares no name yet ({id})",
-      "paletteEmpty": "Nothing matches “{query}”",
-      "dropHere": "Add here",
-      "dropFull": "Your sidebar is full — remove a section first",
-      "rejectSectionCap": "Your sidebar is full. Remove a section before adding another.",
-      "rejectDuplicateItem": "That item is already in this section.",
-      "rejectInvalidIcon": "That icon can’t be used here.",
-      "rejectUnknownItem": "That item is no longer available.",
-      "rejectUnknownSection": "That section is no longer there.",
-      "rejectUnknownTemplate": "That template is no longer available.",
-      "rejectNoItems": "This kind of section doesn’t hold items.",
-      "rejectNotDuplicable": "This section shows a shared list, so a copy would repeat the same rows. It can’t be duplicated.",
-      "rejectNoChange": "That’s already how it is set.",
-      "title": "Customize sidebar",
-      "templates": "Start from a template",
-      "addSection": "Add a section",
-      "properties": "Section options",
-      "noSelection": "Select a section to edit its options.",
-      "undo": "Undo",
-      "redo": "Redo",
-      "undoOf": "Undo: {action}",
-      "redoOf": "Redo: {action}",
-      "reset": "Reset to template",
-      "done": "Done",
-      "empty": "Your sidebar is empty",
-      "emptySub": "Add a section, or start from a template.",
-      "renameHint": "Enter to rename · Esc to cancel",
-      "reorderGrabbed": "Picked up {name}. {position}.",
-      "reorderMoved": "{name}. {position}.",
-      "reorderDropped": "Moved {name}. {position}.",
-      "reorderCancelled": "Cancelled. {name} stayed where it was.",
-      "editShowContents": "Show section contents",
-      "hidden": "Hidden",
-      "rejectNesting": "Groups can’t go inside other groups.",
-      "duplicateSuffix": "{name} copy",
-      "itemLabel": "Label",
-      "itemLabelPlaceholder": "Use the original name",
-      "itemIcon": "Icon",
-      "itemAdd": "Add…",
-      "itemRemove": "Remove",
-      "moveUp": "Move up",
-      "moveDown": "Move down",
-      "missingEntity": "Unavailable",
-      "missingEntitySub": "This item isn’t in your library right now. It stays here until you remove it.",
-      "corrupt": "Your saved sidebar layout couldn’t be read",
-      "corruptSub": "We kept the unreadable file at {path} and loaded Wavee Curated instead. Your next change replaces it.",
-      "copyPath": "Copy path",
-      "applyTemplateTitle": "Apply “{template}”?",
-      "applyTemplateBody": "This replaces your current sections. You can undo it.",
-      "applyTemplateConfirm": "Apply",
-      "resetTitle": "Reset the sidebar?",
-      "resetBody": "This restores “{template}” and discards your changes. You can undo it.",
-      "resetConfirm": "Reset",
-      "undo.addSection": "Add section",
-      "undo.removeSection": "Remove section",
-      "undo.duplicateSection": "Duplicate section",
-      "undo.renameSection": "Rename section",
-      "undo.hideSection": "Hide section",
-      "undo.showSection": "Show section",
-      "undo.collapseSection": "Collapse section",
-      "undo.expandSection": "Expand section",
-      "undo.moveSection": "Move section",
-      "undo.addItem": "Add item",
-      "undo.moveItem": "Move item",
-      "undo.removeItem": "Remove item",
-      "undo.relabelItem": "Rename item",
-      "undo.reiconItem": "Change icon",
-      "undo.setOption": "Change option",
-      "undo.setQuery": "Change filter",
-      "undo.setExtensionConfig": "Change extension settings",
-      "undo.setItemAction": "Change shortcut action",
-      "undo.addTopBarItem": "Add shortcut",
-      "undo.moveTopBarItem": "Move shortcut",
-      "undo.removeTopBarItem": "Remove shortcut",
-      "undo.applyTemplate": "Apply template",
-      "undo.reset": "Reset sidebar",
-      "rejectConfigTooLarge": "These settings are too large to save. Remove some entries.",
-      "rejectExtensionRefMissing": "Pick a contribution first.",
-      "saveFault": "Your sidebar layout can't be saved right now",
-      "saveFaultSub": "The layout grew past its size budget. Shrink a section's settings to resume saving — nothing has been lost.",
-      "paletteSearch": "Search sections",
-      "itemAction": "Action shortcut",
-      "itemActionSub": "Run a Wavee action from the sidebar",
-      "likedSongsSub": "Open your saved tracks with one shortcut",
-      "targetLabel": "Acts on",
-      "targetNone": "Nothing (a global action)",
-      "targetEntity": "A chosen item",
-      "targetTrack": "A chosen track",
-      "targetRoute": "The open page",
-      "savedLocally": "Saved locally",
-      "sectionCount": "{used}/{max}",
-      "topBarAddItem": "Add page or library item",
-      "topBarAddTrack": "Add current track",
-      "topBarDuplicate": "That shortcut is already in Shortcuts.",
-      "topBarInvalidIcon": "That icon can’t be used for a shortcut.",
-      "topBarUnknownItem": "That shortcut is no longer available.",
-      "topBarNoChange": "Shortcuts is already set that way.",
-      "group": {
-        "general": "General",
-        "content": "Content",
-        "appearance": "Appearance",
-        "behavior": "Behavior"
-      },
-      "tooNew": "This sidebar layout belongs to a newer Wavee",
-      "tooNewSub": "The file at {path} was saved by a newer version of Wavee, so it is left untouched and Wavee Curated is shown instead. Changes made here are not saved until you update.",
-      "icon": {
-        "MusicNote": "Music note",
-        "Heart": "Heart",
-        "Album": "Album",
-        "Contact": "Contact",
-        "RadioTower": "Radio tower",
-        "Folder": "Folder",
-        "FolderOpen": "Folder open",
-        "Home": "Home",
-        "Search": "Search",
-        "Clock": "Clock",
-        "Star": "Star",
-        "FavoriteStar": "Favorite star",
-        "Tag": "Tag",
-        "Headphones": "Headphones",
-        "Microphone": "Microphone",
-        "Movie": "Movie",
-        "Picture": "Picture",
-        "Queue": "Queue",
-        "Shuffle": "Shuffle",
-        "Link": "Link",
-        "Grid": "Grid",
-        "List": "List",
-        "Pin": "Pin",
-        "Settings": "Settings",
-        "Code": "Code",
-        "Globe": "Globe",
-        "Device": "Device",
-        "Friends": "Friends",
-        "Equalizer": "Equalizer",
-        "Download": "Download"
-      }
-    },
-    "recents": {
-      "sourceVisited": "Recently visited",
-      "sourcePlayed": "Recently played"
-    },
     "item": {
+      "liked": "Liked Songs",
+      "albums": "Albums",
+      "artists": "Artists",
+      "podcasts": "Podcasts",
+      "audiobooks": "Audiobooks",
       "playTrack": "Play track",
       "expandFolder": "Expand folder",
       "collapseFolder": "Collapse folder"
     },
     "newReleases": {
       "empty": "No new releases from the artists you follow."
-    },
-    "concerts": {
-      "locationPrompt": "Set your location to see concerts",
-      "setLocation": "Set your location",
-      "empty": "No upcoming concerts near you."
-    },
-    "extension": {
-      "manage": "Manage extension"
-    },
-    "topbar": {
-      "title": "Shortcuts",
-      "capReached": "Shortcuts holds up to 6 items."
     },
     "action": {
       "unavailable": {
@@ -2567,58 +2420,13 @@
         "notNow": "Not available right now"
       }
     },
-    "source": {
-      "library": {
-        "kinds": "Show",
-        "sort": "Sort by",
-        "descending": "Reverse order",
-        "qualifier": "Playlist type",
-        "includeUris": "Only include",
-        "excludeUris": "Exclude",
-        "maxItems": "Maximum items"
-      },
-      "recents": {
-        "maxItems": "Maximum items"
-      },
-      "newReleases": {
-        "maxItems": "Maximum items"
-      },
-      "concerts": {
-        "maxItems": "Maximum events",
-        "radiusKm": "Search radius (km)"
-      },
-      "artistTopTracks": {
-        "artist": "Artist",
-        "maxItems": "Maximum tracks",
-        "unset": "Pick an artist"
-      },
-      "queue": {
-        "maxItems": "Maximum items"
-      }
-    },
     "v3": {
       "title": "Your Library",
-      "searchTooltip": "Search your library",
       "searchPlaceholder": "Search in Your Library",
       "clearSearch": "Clear search",
       "clearFilter": "Clear filter",
-      "clearFilters": "Clear filters",
-      "collapse": "Collapse Your Library",
-      "expand": "Expand Your Library",
-      "filter": {
-        "playlists": "Playlists",
-        "podcasts": "Podcasts",
-        "albums": "Albums",
-        "artists": "Artists"
-      },
-      "qualifier": {
-        "byYou": "By you",
-        "bySpotify": "By Spotify",
-        "mixed": "Mixed"
-      },
       "sort": {
-        "custom": "Custom order",
-        "reversed": "Reversed"
+        "custom": "Custom order"
       },
       "kind": {
         "playlist": "Playlist",
@@ -2636,9 +2444,34 @@
         "searchSub": "Try a different spelling, or clear the filter."
       }
     },
-    "a11y": {
-      "filterGroup": "Filter Your Library",
-      "sortView": "Sort and view options"
+    "collections": "Collections",
+    "recentlyPlayed": "Recently played",
+    "layoutName": {
+      "classic": "Classic",
+      "library": "Library",
+      "modified": "{layout} · modified",
+      "classicSub": "Sections you can show, hide and reorder.",
+      "librarySub": "Spotify's one list with filters."
+    },
+    "density": {
+      "default": "Default",
+      "compact": "Compact"
+    },
+    "migration": {
+      "toast": "Your sidebar became {layout}. Shortcuts are now pins.",
+      "toastDropped": "Your sidebar became {layout}. Shortcuts are now pins. Not carried over: {names}.",
+      "kind": {
+        "spotlight": "Spotlight",
+        "queue": "Queue",
+        "nowPlaying": "Now playing",
+        "topTracks": "Artist top tracks",
+        "concerts": "Concerts",
+        "links": "Links",
+        "heading": "Headings",
+        "group": "Groups",
+        "libraryList": "Library list",
+        "extension": "Extension sections"
+      }
     }
   },
   "common": {
@@ -2805,6 +2638,11 @@
     "homeSubtitle": "Genres, moods and charts — everything Spotify is featuring right now."
   },
   "setup": {
+    "layout": {
+      "title": "Choose your sidebar",
+      "body": "Classic shows sections you can arrange. Library is one list with filters. You can switch any time in Settings."
+    },
+    "next": "Next",
     "stepOf": "Step {n} of {total}",
     "preSetup": "Pre-setup",
     "accept": "Accept",
