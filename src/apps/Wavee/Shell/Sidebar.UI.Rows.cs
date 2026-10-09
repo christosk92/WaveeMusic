@@ -185,8 +185,9 @@ public static partial class Sidebar
             // Icon colour = label colour in every state (NVX:425-427): TextPrimary, a disabled row fades as a whole.
             var ink = spec.Ink ?? Tok.TextPrimary;
 
-            // A Text row (Classic, Show covers off) has no icon column and no LabelGap: its label starts at the header's x.
-            bool textOnly = spec.Shape == SidebarRowShape.Text;
+            // A Text row (Classic, Show covers off) with no glyph and no leading visual has no icon column and no LabelGap: its
+            // label starts at the header's x. A Text row that carries a glyph (a folder's mark) keeps the icon column.
+            bool textOnly = spec.Shape == SidebarRowShape.Text && spec.Leading is null && spec.Glyph is null;
 
             // ── the icon column: 40 wide, the glyph (16) or art centred at slot x 20 ──
             Element visual = spec.Leading

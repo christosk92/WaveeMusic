@@ -330,7 +330,9 @@ public enum SidebarRowShape : byte
     EntityTwoLine = 1,
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
-    /// <summary>Classic with Show covers off: 28 tall, no icon column, the label at the header's x (pane 16), one line.</summary>
+    /// <summary>Classic with Show covers off: 28 tall, one line. A row with no leading visual has no icon column and its
+    /// label at the header's x (pane 16); a FOLDER row still carries its 16-DIP folder mark in the icon column (label at
+    /// pane 48), so the tree reads as a tree without covers.</summary>
     Text = 3,
 }
 
@@ -361,7 +363,8 @@ public static class SidebarRowGeometry
     public const float TextRowHeight = 28f;
     public const float IconColumn = 40f;
     public const float GlyphSize = 16f;
-    /// <summary>A Classic text row's label x: the header's text x in slot space (pane 16).</summary>
+    /// <summary>A Classic text row's label x when it has NO icon column (no glyph, no leading): the header's text x in
+    /// slot space (pane 16). A Text row that carries a glyph (a folder) uses the icon column and <see cref="LabelGap"/> instead.</summary>
     public const float TextLabelX = HeaderTextX;
     /// <summary>The ContentPresenter's 4-px left margin between the icon column and the label (TR:251).</summary>
     public const float LabelGap = 4f;
@@ -439,9 +442,19 @@ public static class SidebarRowGeometry
     /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
     public static float TreeContentX(int depth) => IndentFor(depth);
 
+    /// <summary>The x (slot space) of the 1-px tree guide that joins the rows under an ancestor at level
+    /// <paramref name="level"/>: the folder mark's centre column (20) plus 32 per level.</summary>
+    public static float TreeGuideX(int level) => IconColumn * 0.5f + IndentStep * level;
+
     /// <summary>Pane-space rulers (diagnostics, tests).</summary>
     public const float IconCentreX = PaneEdge + IconColumn * 0.5f;              // 24
     public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 48
+    /// <summary>A tree guide's x in pane space: pane 24 + 32·level (the folder mark's centre column).</summary>
+    public static float TreeGuidePaneX(int level) => PaneEdge + TreeGuideX(level);
+    /// <summary>A glyph-less Text row's label x in pane space: the header's x (16) plus the depth indent.</summary>
+    public static float TextLabelPaneX(int depth) => PaneEdge + IndentFor(depth) + TextLabelX;
+    /// <summary>An icon-column row's label x in pane space: 48 plus the depth indent.</summary>
+    public static float LabelPaneX(int depth) => LabelX + IndentFor(depth);
     public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
     public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
 

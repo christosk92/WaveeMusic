@@ -92,4 +92,25 @@ public sealed class SidebarRowGeometryTests
         Assert.Equal(8f, SidebarRowGeometry.SeparatorHeight);
         Assert.Equal(48f, SidebarRowGeometry.RailWidth);
     }
+
+    [Fact]
+    public void TreeGuides_SitOnTheFolderMarkColumn_32PerLevel()
+    {
+        Assert.Equal(SidebarRowGeometry.IconCentreX, SidebarRowGeometry.TreeGuidePaneX(0));   // 24
+        Assert.Equal(56f, SidebarRowGeometry.TreeGuidePaneX(1));
+        Assert.Equal(88f, SidebarRowGeometry.TreeGuidePaneX(2));
+        Assert.Equal(20f, SidebarRowGeometry.TreeGuideX(0));                                  // slot space
+    }
+
+    [Fact]
+    public void ChildrenStartUnderTheFoldersName()
+    {
+        // Text shape: a folder mark at 24, its label at 48, and a depth-1 child's label at 48 too.
+        Assert.Equal(SidebarRowGeometry.LabelX, SidebarRowGeometry.TextLabelPaneX(1));
+        Assert.Equal(48f, SidebarRowGeometry.LabelPaneX(0));
+        Assert.Equal(SidebarRowGeometry.HeaderTextPaneX, SidebarRowGeometry.TextLabelPaneX(0));   // 16
+        // Cover shapes: a depth-1 child's art centre is at 56 and its label at 80.
+        Assert.Equal(56f, SidebarRowGeometry.IconCentreX + SidebarRowGeometry.IndentFor(1));
+        Assert.Equal(80f, SidebarRowGeometry.LabelPaneX(1));
+    }
 }

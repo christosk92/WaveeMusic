@@ -157,10 +157,12 @@ public static class SidebarLabelFit
     public const float AverageCharWidth = 7f;
 
     /// <summary>The label column of a row in a pane <paramref name="paneWidth"/> wide at <paramref name="depth"/>, with
-    /// <paramref name="trailing"/> DIP of trailing content.</summary>
-    public static float LabelWidth(float paneWidth, int depth, float trailing)
-        => paneWidth - 2f * SidebarRowGeometry.PaneEdge - SidebarRowGeometry.IndentFor(depth) - SidebarRowGeometry.IconColumn
-           - SidebarRowGeometry.LabelGap - SidebarRowGeometry.TrailingPad - trailing;
+    /// <paramref name="trailing"/> DIP of trailing content. A text-only row (<paramref name="iconColumn"/> false) has no icon
+    /// column: its label starts at <see cref="SidebarRowGeometry.TextLabelX"/> instead.</summary>
+    public static float LabelWidth(float paneWidth, int depth, float trailing, bool iconColumn = true)
+        => paneWidth - 2f * SidebarRowGeometry.PaneEdge - SidebarRowGeometry.IndentFor(depth)
+           - (iconColumn ? SidebarRowGeometry.IconColumn + SidebarRowGeometry.LabelGap : SidebarRowGeometry.TextLabelX)
+           - SidebarRowGeometry.TrailingPad - trailing;
 
     public static bool Overflows(string? label, float labelWidth)
         => label is { Length: > 0 } && label.Length * AverageCharWidth > labelWidth;
