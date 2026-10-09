@@ -1423,6 +1423,14 @@ public static partial class Design
             LineHeight = 20f, Weight = selected ? (ushort)600 : (ushort)400, MaxLines = 1, Wrap = TextWrap.NoWrap,
         };
 
+        /// <summary>The Zune title bar's WORDMARK ("wavee") that stands in for the tab strip while there is one tab:
+        /// <c>Ui.Subtitle</c>'s 20 / 28 pair in the display face with the same -6/1000 em tracking as <see cref="NpvLyric"/>,
+        /// one line. Ink is the call site's.</summary>
+        public static TextEl Wordmark(string s) => Ui.Subtitle(s) with
+        {
+            FontFamily = DisplayFace, CharSpacing = -6f, MaxLines = 1,
+        };
+
         /// <summary>NPV lyrics-peek reel — Subtitle's 20/28 pair in the display face at SemiLight 350.</summary>
         public static TextEl NpvLyric(string s) => Ui.Subtitle(s) with
         {

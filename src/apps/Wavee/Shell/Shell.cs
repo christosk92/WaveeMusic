@@ -1955,6 +1955,11 @@ public static partial class Shell
         /// pivot word and the page title share an x. DERIVED, never a literal.</summary>
         public static float ZuneBandInset(float cardX, float gutter) => cardX + gutter;
 
+        /// <summary>The Zune title bar shows the "wavee" wordmark in place of the tab strip while there is at most one tab
+        /// (a lone tab's strip says nothing the page title does not). The 1 to 2+ swap is a cross-fade inside the tab lane,
+        /// whose width change rides <c>TabLaneMotion</c>.</summary>
+        public static bool ShowsWordmark(ShellNavStyle style, int tabCount) => style == ShellNavStyle.Zune && tabCount <= 1;
+
         /// <summary>The seam strip exists only where the pane is docked beside the content (the Wide band). A forced band
         /// (Narrow, Tiny) has no seam: the overlay pane owns the width.</summary>
         public static float SidebarSeamWidth(bool seamVisible) => seamVisible ? SeamStripW : 0f;

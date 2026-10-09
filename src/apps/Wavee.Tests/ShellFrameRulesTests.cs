@@ -457,3 +457,132 @@ public class ShellHoistSettleTests
         Assert.True(Shell.FrameRules.HoistSettleMs >= MotionTok.PaneClose.DurationMs);
     }
 }
+
+/// <summary>P10: the Zune title bar. The wordmark stands in for the tab strip at one tab, the search is a compact field
+/// before the avatar, Forward is never priced, and the theme toggle left the row in every style.</summary>
+public class ShellZuneChromeTests
+{
+    static readonly float[] Widths = [900f, 1100f, 1400f, 1800f];
+    static readonly float[] Extents = [110f, 400f];
+
+    static readonly Shell.FrameRules.ChipForm[] Chips =
+    [
+        Shell.FrameRules.ChipForm.Profile, Shell.FrameRules.ChipForm.Connecting,
+        Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
+    ];
+
+    [Theory]
+    [InlineData(ShellNavStyle.Zune, 1, true)]
+    [InlineData(ShellNavStyle.Zune, 0, true)]
+    [InlineData(ShellNavStyle.Zune, 2, false)]
+    [InlineData(ShellNavStyle.Zune, 7, false)]
+    [InlineData(ShellNavStyle.Classic, 1, false)]
+    [InlineData(ShellNavStyle.Library, 1, false)]
+    [InlineData(ShellNavStyle.Classic, 0, false)]
+    public void The_wordmark_replaces_the_strip_only_under_zune_with_at_most_one_tab(ShellNavStyle style, int tabs, bool wordmark)
+        => Assert.Equal(wordmark, Shell.FrameRules.ShowsWordmark(style, tabs));
+
+    [Fact]
+    public void A_compact_search_is_exactly_the_minimum_and_the_row_still_seats_it()
+    {
+        foreach (var chip in Chips)
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+        {
+            var compact = Shell.Chrome.Resolve(w, extent, null, chip, zune: true, compactSearch: true);
+            if (compact.SearchMode != Shell.MergedSearchMode.Field) continue;
+            Assert.Equal(Shell.Layout.ChromeSearchMinW, compact.SearchWidth);
+            Assert.True(compact.FootprintFor(extent) <= w,
+                $"Compact field at {w} (extent {extent}, chip {chip}) needs {compact.FootprintFor(extent)} DIP.");
+        }
+    }
+
+    [Fact]
+    public void Compact_search_never_yields_a_field_where_the_ladder_yields_an_icon()
+    {
+        // The compact width is the minimum the field stage is already admitted on, so it changes the width and nothing else.
+        foreach (var chip in Chips)
+        for (float w = 200f; w <= 2600f; w += 1f)
+        foreach (float extent in Extents)
+        {
+            var classic = Shell.Chrome.Resolve(w, extent, null, chip);
+            var compact = Shell.Chrome.Resolve(w, extent, null, chip, zune: false, compactSearch: true);
+            Assert.Equal(classic.SearchMode, compact.SearchMode);
+            Assert.False(classic.SearchMode == Shell.MergedSearchMode.Icon && compact.SearchMode == Shell.MergedSearchMode.Field);
+            Assert.Equal(classic.ShowActions, compact.ShowActions);
+            Assert.Equal(classic.ShowName, compact.ShowName);
+        }
+    }
+
+    [Fact]
+    public void The_default_flags_are_the_classic_resolution()
+    {
+        foreach (var chip in Chips)
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+            Assert.Equal(Shell.Chrome.Resolve(w, extent, null, chip),
+                Shell.Chrome.Resolve(w, extent, null, chip, zune: false, compactSearch: false));
+    }
+
+    [Fact]
+    public void Zune_never_shows_forward_and_never_prices_it()
+    {
+        for (float w = 200f; w <= 2600f; w += 1f)
+        {
+            var z = Shell.Chrome.Resolve(w, 220f, null, Shell.FrameRules.ChipForm.Profile, zune: true);
+            Assert.False(z.ShowForward, $"Forward shown under Zune at {w}.");
+            // Not pricing Forward can only free room: the field is never LATER than the classic one.
+            var classic = Shell.Chrome.Resolve(w, 220f);
+            Assert.False(classic.SearchMode == Shell.MergedSearchMode.Field && z.SearchMode == Shell.MergedSearchMode.Icon);
+        }
+    }
+
+    [Fact]
+    public void The_theme_toggle_is_no_longer_in_the_budget()
+    {
+        // The baseline row: lead, back, forward, add slot, the avatar, two gutters, the drag strip and the caption cluster.
+        float expected = Shell.Layout.ChromeBarLeadW + 2f * Shell.Layout.ChromeNavButtonW + Shell.Layout.ChromeAddSlotW
+                       + Shell.Layout.ChromeProfileChipW + 2f * Shell.Layout.ChromeGutterMinW
+                       + Shell.Layout.ChromeMinDragStripW + Shell.Layout.ChromeCaptionClusterW;
+        Assert.Equal(expected, Shell.Chrome.FixedBudget(name: false, actionsInRow: false, forward: true, back: true,
+            newTab: true, trailing: true), 3);
+        Assert.Equal(414f, expected, 3);
+    }
+
+    [Theory]
+    [InlineData(false, true, 400f, true)]     // unfocused and empty with room: shown
+    [InlineData(true, true, 400f, false)]     // focused: the ghost completion owns the end of the field
+    [InlineData(false, false, 400f, false)]   // typed text can never run under the chip
+    [InlineData(true, false, 400f, false)]
+    public void The_hint_shows_only_while_the_field_is_unfocused_and_empty(bool focused, bool empty, float width, bool shown)
+        => Assert.Equal(shown, Shell.Chrome.ShowSearchHint(focused, empty, width));
+
+    [Fact]
+    public void The_hint_is_dropped_by_rule_below_the_pill_floor()
+    {
+        float floor = Shell.Chrome.SearchPillMinW;
+        Assert.True(Shell.Chrome.ShowSearchHint(false, true, floor));
+        Assert.False(Shell.Chrome.ShowSearchHint(false, true, floor - 1f));
+        Assert.Equal("Ctrl+F", Shell.Chrome.SearchHintChord);
+    }
+
+    [Fact]
+    public void The_row_never_sizes_the_pill_below_its_floor()
+    {
+        Assert.True(Shell.Layout.ChromeSearchMinW >= Shell.Chrome.SearchPillMinW);
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+        {
+            var c = Shell.Chrome.Resolve(w, extent);
+            if (c.SearchMode == Shell.MergedSearchMode.Field) Assert.True(c.SearchWidth >= Shell.Chrome.SearchPillMinW);
+        }
+    }
+
+    [Fact]
+    public void A_non_finite_allocation_takes_the_compact_width()
+    {
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(float.NaN, float.PositiveInfinity));
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(float.PositiveInfinity, float.PositiveInfinity));
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(280f, float.PositiveInfinity));
+    }
+}

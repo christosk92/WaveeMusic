@@ -331,9 +331,21 @@ public static partial class Shell
     /// never for "whichever form is current" — so the still-mounted field can never be laid out at the icon's
     /// 44.</para></summary>
     static Element CenterIsland(IReadSignal<float> avail)
-        => ChromeLayout.Value.SearchMode == MergedSearchMode.Field
-            ? Embed.Comp(() => new SearchField(avail)) with { Key = "chrome-search-host" }
+        => Sidebar.NavStyle.Value != ShellNavStyle.Zune && ChromeLayout.Value.SearchMode == MergedSearchMode.Field
+            ? Embed.Comp(() => new SearchField(avail)) with { Key = "chrome-search-host", Exit = PageHead.FadeOut, Transition = s_chromeFade }
             : new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+
+    /// <summary>The centre-measurement stand-in for a field that is NOT in the bar's flexible centre column (Zune's trailing,
+    /// right-aligned search): there is no measured lane to trim against, so the field takes its allocated compact width.</summary>
+    static readonly Signal<float> s_unboundedAvail = new(float.PositiveInfinity);
+
+    /// <summary>Zune's compact search, seated in the trailing island just before the identity chip. The centre column is
+    /// empty there. The host fades in and out in place; its width is the allocator's fixed <see cref="Layout.ChromeSearchMinW"/>
+    /// from the first frame, so it never resizes on arrival.</summary>
+    static Element ZuneSearchHost() => Embed.Comp(static () => new SearchField(s_unboundedAvail)) with
+    {
+        Key = "chrome-search-host", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_chromeFade,
+    };
 
     static Element SearchFlyoutButton() => Embed.Comp(static () => new SearchFlyoutButtonView()) with { Key = "chrome-search-button-host" };
 
@@ -386,7 +398,8 @@ public static partial class Shell
             {
                 Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
                 Width = width,
-                Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup, allowNarrow: false))],
+                Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup,
+                    allowNarrow: false, hintAvail: avail))],
             };
         }
     }
@@ -462,7 +475,7 @@ public static partial class Shell
     /// <summary>The real AutoSuggestBox (focus, editing, accessibility, popup lifetime) with Wavee's artwork-aware rows.
     /// The text IS <see cref="SearchText"/>, synced to the route on navigation only.</summary>
     sealed class RichOmnibar(TemplateParts? parts, float maxWidth, AutoSuggestBoxSuggestionPresentation presentation,
-        bool allowNarrow, Action? afterChoose = null) : Component
+        bool allowNarrow, Action? afterChoose = null, IReadSignal<float>? hintAvail = null) : Component
     {
         // The request in flight for the current generation. A superseding keystroke, a clear and an unmount cancel it; the
         // store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
@@ -545,16 +558,39 @@ public static partial class Shell
             // growing COLUMN so the box is STRETCHED to this component's width: a fill-mode box contributes only its query
             // button to its measured width, so laid out as a row's content it stayed ~37 DIP once one narrow frame
             // (leaving the search page or full screen re-mounts the title bar's field) set its self-measured width there.
+            //
+            // The field is a PILL in every nav style (corner radius = half the control height) with the short "Search"
+            // placeholder. The shortcut hint is a chip in a ZStack layer over the field's trailing end, just left of the
+            // engine's query slot (the editor and the fixed-width slot are flex siblings, and only the slot's plate and
+            // glyph are Parts-modifiable, so the chip cannot live inside it). The layer is ALWAYS mounted and only its
+            // opacity moves, so showing or hiding it never relayouts the row.
+            Element field = AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchShort),
+                grow: 1f, maxFillWidth: maxWidth, text: SearchText, onQuerySubmitted: Submit,
+                minHeight: Controls.ButtonHeight, cornerRadius: Controls.ButtonHeight / 2f, presenter: presenter, parts: parts,
+                chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion);
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f,
-                Children =
-                [
-                    AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchPlaceholder),
-                        grow: 1f, maxFillWidth: maxWidth, text: SearchText, onQuerySubmitted: Submit,
-                        minHeight: 32f, cornerRadius: 0f, presenter: presenter, parts: parts,
-                        chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion),
-                ],
+                Children = hintAvail is null ? [field] : [ZStack(field, SearchHintChip(hintAvail))],
+            };
+        }
+
+        /// <summary>The shortcut chip over the pill's trailing end. Visible ONLY while the field is unfocused AND empty and the
+        /// pill is at least <see cref="Chrome.SearchPillMinW"/> wide (<see cref="Chrome.ShowSearchHint"/>); it fades on change.
+        /// Never hit-testable, so a click lands on the field.</summary>
+        static Element SearchHintChip(IReadSignal<float> avail)
+        {
+            float pill = Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, avail.Value);
+            bool show = Chrome.ShowSearchHint(s_searchFocused.Value, SearchText.Value.Length == 0, pill);
+            return new BoxEl
+            {
+                Key = "search-hint", Direction = 0, Shrink = 0f, HitTestVisible = false,
+                JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
+                Margin = new Edges4(0f, 0f, AutoSuggestBox.QueryButtonWidth + AutoSuggestBox.QueryButtonLeftMargin + AutoSuggestBox.RightButtonMargin, 0f),
+                Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(4f),
+                BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
+                Opacity = show ? 1f : 0f, Transition = s_chromeFade,
+                Children = [Caption(Chrome.SearchHintChord) with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap }],
             };
         }
 

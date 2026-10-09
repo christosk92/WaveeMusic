@@ -288,8 +288,9 @@ public static partial class Shell
                 Sidebar.Band.Value = next;
                 if (!SidebarPaneModeRules.HasOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);
             });
-            // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
-            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value && Sidebar.NavStyle.Value != ShellNavStyle.Zune));
+            // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here). Under
+            // Zune it is not disabled but ABSENT: ChromeContentVersion hides it through TitleBar.ShowPaneToggle.
+            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value));
             // THE ONE PRESENTATION EFFECT: ① the mode, ② the presented width. A live drag presents Track(seam). It never
             // writes Sidebar.Width or UserCollapsed (those are the preference, persisted at commit).
             UseSignalEffect(() =>
@@ -471,7 +472,9 @@ public static partial class Shell
                 // The identity chip's FORM is a budget input, not a decoration: "Connecting" and "Reconnect" are 58-68
                 // DIP wider than the avatar, well past the 16-DIP gutter cushion (#88). Reading it here also subscribes
                 // this effect to the auth fold, so a sign-in or a resume RE-ALLOCATES the row instead of overflowing it.
-                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value));
+                // Zune: no Forward in the budget (it is not drawn) and a compact, right-aligned search at its minimum.
+                bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value), zune: zune, compactSearch: zune);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_searchFocused.Peek(), s_searchFlyoutOpen.Peek()))
                     SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1;
                 ChromeLayout.SetIfChanged(next);
@@ -1388,13 +1391,21 @@ public static partial class Shell
 
     static TabStrip? s_strip;
 
+    /// <summary>The mounted title bar, so <see cref="ChromeContentVersion"/> can set its public <c>ShowPaneToggle</c> before the
+    /// bar reads it.</summary>
+    static TitleBar? s_titleBar;
+
+    /// <summary>The chrome islands' fade: the wordmark, the tab strip and the compact search cross-fade in place. The chrome
+    /// row is a SIBLING of the content card, not a descendant, so the card's descendant suppression never touches these.</summary>
+    static readonly MotionTokenDef s_chromeFade =
+        MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
+
     /// <summary>The title bar's pane toggle reads this for its enabled state (see <see cref="PaneToggleTip"/>). A plain
     /// signal mirrored by the frame component, so the bar's live binding needs no runtime at construction.</summary>
     static readonly Signal<bool> s_paneToggleEnabled = new(true);
 
     static string PaneToggleTip()
-        => Sidebar.NavStyle.Value == ShellNavStyle.Zune ? Loc.Get("sidebar.pane.zuneNoPane")
-         : Sidebar.Editing.Value ? Loc.Get("sidebar.pane.finishEditing")
+        => Sidebar.Editing.Value ? Loc.Get("sidebar.pane.finishEditing")
          : Sidebar.Mode.Value == SidebarPaneMode.Expanded || Sidebar.OverlayOpen.Value ? Loc.Get("sidebar.pane.collapse")
          : Loc.Get("sidebar.pane.expand");
 
@@ -1406,7 +1417,7 @@ public static partial class Shell
         var bar = new TitleBar
         {
             IconGlyph = "", ShowBackButton = false, ShowCaptionButtons = true,
-            ShowPaneToggle = true, OnPaneToggle = Sidebar.TogglePane,
+            ShowPaneToggle = Sidebar.NavStyle.Peek() != ShellNavStyle.Zune, OnPaneToggle = Sidebar.TogglePane,
             PaneToggleEnabledSignal = s_paneToggleEnabled, PaneToggleToolTip = PaneToggleTip,
             ShowRailBaseline = false,          // the seam below is the content region's own stroke
             Tabs = TabsIsland, TabsVersion = TitleBarTabsVersion,
@@ -1415,15 +1426,22 @@ public static partial class Shell
             ContentVersion = ChromeContentVersion,
         };
         bar.CenterContent = _ => CenterIsland(bar.CenterAvail);
+        s_titleBar = bar;
         return bar;
     });
 
     static int ChromeContentVersion()
     {
         var l = ChromeLayout.Value;
+        // Zune presents no pane, so its toggle is ABSENT (no button, no client region), not disabled. TitleBar.Render calls this
+        // before it reads ShowPaneToggle for its memo key and its region deps, so setting the field HERE lands in the same
+        // render that re-pushes the drag regions (no ordering dependency on a signal effect), and bit 128 below makes the
+        // bar re-render and re-push when the style flips.
+        bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+        if (s_titleBar is { } bar) bar.ShowPaneToggle = !zune;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
-                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
+                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (zune ? 128 : 0);
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
         // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
@@ -1435,7 +1453,10 @@ public static partial class Shell
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the
     // exit leg after the commit), not only when the workspace or the selection changes.
-    static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value);
+    // The nav style and the tab count ride along: the lane swaps the strip for the wordmark at one tab under Zune, and a
+    // hidden pane toggle shifts the lane, so the bar must re-render and re-push its regions on either.
+    static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value,
+        (int)Sidebar.NavStyle.Value, Tabs.Count);
 
     static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value);
 
@@ -1454,7 +1475,20 @@ public static partial class Shell
             kids.Add(Embed.Comp(static () => new NavHistoryButton(forward: true)) with { Key = "chrome-forward" });
         }
         if (s_strip is { } strip) strip.IsAddTabButtonVisible = l.ShowNewTab;
-        kids.Add(Embed.Comp(BuildTabStrip) with { Key = "chrome-tab-strip" });
+        // One tab under Zune: the wordmark stands in for the strip. The lane keeps its key, its width and TabLaneMotion, so the
+        // 1 to 2+ swap is a cross-fade of the two arms inside a lane whose width change (if any) slides; the exiting arm leaves
+        // layout as an orphan layer, so the entering one is never pushed aside.
+        if (FrameRules.ShowsWordmark(Sidebar.NavStyle.Value, Tabs.Count))
+            kids.Add(Design.Type.Wordmark(Loc.Get(Strings.Shell.Wordmark)) with
+            {
+                Key = "chrome-wordmark", Color = Tok.TextPrimary, Margin = new Edges4(Spacing.S, 0f, 0f, 0f),
+                Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_chromeFade,
+            });
+        else
+            kids.Add(Embed.Comp(BuildTabStrip) with
+            {
+                Key = "chrome-tab-strip", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_chromeFade,
+            });
         return new BoxEl
         {
             Key = "chrome-tabs-lane", Animate = TabLaneMotion,
@@ -1607,16 +1641,12 @@ public static partial class Shell
 
     static Element CaptionLeadingIsland()
     {
+        // No theme toggle here any more: the profile menu's Theme row (Actions.ProfileRules.Rows) carries it in every nav style.
         var l = ChromeLayout.Value;
-        bool dark = Theme.Dark;
-        var theme = ToolTip.Wrap(
-            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => ToggleTheme(s_requestTheme), ChromeButtonStyle)
-                with { Key = "chrome-theme-toggle", Margin = ChromeButtonMargin },
-            Loc.Get(dark ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme));
         return new BoxEl
         {
             Direction = 0, Height = TitleBar.ExpandedHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Children = l.SearchMode == MergedSearchMode.Icon ? [theme, SearchFlyoutButton()] : [theme],
+            Children = l.SearchMode == MergedSearchMode.Icon ? [SearchFlyoutButton()] : [],
         };
     }
 
@@ -1624,7 +1654,10 @@ public static partial class Shell
     {
         var l = ChromeLayout.Value;
         if (!l.ShowTrailing) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        var kids = new List<Element>(5) { AuthChip(l.Chip) };
+        var kids = new List<Element>(6);
+        // Zune: the compact search sits right-aligned just before the identity chip (the centre column is empty there).
+        if (Sidebar.NavStyle.Value == ShellNavStyle.Zune && l.SearchMode == MergedSearchMode.Field) kids.Add(ZuneSearchHost());
+        kids.Add(AuthChip(l.Chip));
         // The ONE "actions in row" stage: bell, friends and pin enter together. Below it they fold into the profile menu
         // (pin simply drops — the tab menu still offers it).
         if (l.ActionsInRow)
