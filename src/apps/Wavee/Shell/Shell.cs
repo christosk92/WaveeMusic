@@ -2265,9 +2265,10 @@ public static partial class Shell
 
     /// <summary>What an entity page hands the Zune band: its title, its pivot words, the selected pivot and the action cluster.
     /// <see cref="Active"/> is the page's own signal; <see cref="OnPivot"/>, <see cref="Actions"/> and <see cref="OnTitle"/>
-    /// are BEHAVIOUR, so a re-publish that changes only them updates silently.</summary>
+    /// are BEHAVIOUR, so a re-publish that changes only them updates silently. <see cref="Accent"/> is the page's accent for
+    /// the active tab's underline (the band falls back to the app accent).</summary>
     public sealed record PageBandPublication(string Title, IReadOnlyList<string> Pivots, IReadSignal<int> Active, Action<int> OnPivot,
-        Func<Element>? Actions = null, Action? OnTitle = null);
+        Func<Element>? Actions = null, Action? OnTitle = null, Func<ColorF>? Accent = null);
 
     public static class PageBands
     {

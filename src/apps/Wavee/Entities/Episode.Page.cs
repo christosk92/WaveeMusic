@@ -217,11 +217,21 @@ public readonly partial struct Episode
     /// (no tab switch, no unmount), the pivot's underline follows the scroll position through the engine-free
     /// <see cref="Detail.ScrollSpy.ActiveSectionOf"/>, and a pivot click still reveals its section (bring-into-view).
     /// Mounted in a <see cref="Detail.Band"/>-geometry row at the top of the Episodes slot, so the header height and
-    /// pivot metrics are the same tokens Show/Album/Artist's own bands use.</summary>
+    /// pivot metrics are the same tokens Show/Album/Artist's own bands use.
+    /// <para>UNDER ZUNE the four pivots live in the Zune band's row 2 (published under the route name, with the episode's name
+    /// as the title and no actions) and this row's height eases from 56 to 0 on <see cref="PageHead.Reflow"/> in the quiet
+    /// <c>PresentedNavStyle</c> commit. The row is OUTSIDE the reader's own scroller, so it can never be above the viewport
+    /// when its height changes: no floor latch is needed here.</para></summary>
     sealed class EpisodeReader : Component
     {
         const int SectionCount = 4;
         readonly Signal<int> _active = new(0);
+        IReadSignal<bool>? _isActive;
+        bool _inRow2;
+        string[]? _bandLabels;
+        string _bandTitle = "", _bandRoute = "";
+        readonly Action _publishBand;
+        readonly Action<int> _onBandPivot;
         readonly Signal<float> _scrollY = new(0f);
         readonly Signal<float> _viewportH = new(0f);
         readonly NodeHandle[] _anchors = new NodeHandle[SectionCount];
@@ -243,6 +253,8 @@ public readonly partial struct Episode
                 _sectionClicks[i] = () => GoToSection(index);
             }
             _captureViewport = h => _viewport = h;
+            _publishBand = PublishBand;
+            _onBandPivot = GoToSection;
             _resolveSpy = ResolveSpy;
             // A COARSE key: the 24-DIP write floor and the viewport height in 4-DIP steps.
             _watchScroll = () =>
@@ -264,6 +276,8 @@ public readonly partial struct Episode
             string key = epoch + ":" + p.Subject.Text;
             UseEffect(_resolveSpy);   // auto-tracks _scrollY/_viewportH — re-answers on every scroll step let through
             UseSignalEffect(_watchScroll);
+            _isActive = UseIsActive();
+            UseActivation(onActivated: _publishBand);
 
             (string Label, Action OnClick)[] pivotItems =
             [
@@ -272,12 +286,25 @@ public readonly partial struct Episode
                 (Loc.Get(Strings.Podcast.Reader.Transcript), _sectionClicks[2]),
                 (Loc.Get(Strings.Podcast.Reader.Comments), _sectionClicks[3]),
             ];
+            if (_bandLabels is null || _bandLabels[0] != pivotItems[0].Label)
+                _bandLabels = [pivotItems[0].Label, pivotItems[1].Label, pivotItems[2].Label, pivotItems[3].Label];
+            _bandTitle = TitleOf(e);
+            _bandRoute = p.RouteKey;
+            // Row 2's words: the deps-gated form (PublishBand reads no signal), so an episode-to-episode prop change re-publishes.
+            UseEffect(_publishBand, DepKey.From(HashCode.Combine(_bandLabels[0], _bandTitle, _bandRoute)));
+
+            // The row: 56 in the page, 0 once the pivots live in Zune's row 2 (the PRESENTED style, so the change lands in the quiet
+            // commit and EASES). One stable keyed node; its content keeps its size and the box clips, so the tween only moves the cut.
+            _inRow2 = Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Value);
+            float stuck = Detail.BandLayout.StuckHeight(_inRow2);
             Element band = new BoxEl
             {
-                Height = Detail.BandLayout.Height, Shrink = 0, MinWidth = 0, Direction = 1, Children =
+                Key = "episode:pivots", Height = stuck, Shrink = 0, MinWidth = 0, Direction = 1, ClipToBounds = true,
+                Animate = PageHead.Reflow, HitTestVisible = stuck > 0f,
+                Children =
                 [
-                    Detail.Band(float.NaN, Spacing.L, [Detail.Pivot(pivotItems, _active, static () => Tok.AccentDefault)])
-                        with { Grow = 1, Basis = 0, MinWidth = 0 },
+                    Detail.Band(float.NaN, Spacing.L, [Detail.Pivot(pivotItems, _active, static () => Tok.AccentDefault, enabled: !_inRow2)])
+                        with { Height = Detail.BandLayout.Height - Detail.BandLayout.HairlineHeight, Shrink = 0, MinWidth = 0 },
                     Detail.BandHairline(),
                 ],
             };
@@ -338,10 +365,20 @@ public readonly partial struct Episode
         void GoToSection(int section)
         {
             var scene = Context.Scene;
+            if ((uint)section >= (uint)SectionCount) return;
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
-                margin: Detail.BandLayout.Height);
+                margin: Detail.BandLayout.StuckHeight(_inRow2));
+        }
+
+        /// <summary>Hands the four pivots to the Zune band's row 2 under the route name (the episode's name as the title, no
+        /// actions), only while this page is the active one. Safe any time: the store bumps its version only on a data change.</summary>
+        void PublishBand()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            if (_bandLabels is not { } labels || _bandTitle.Length == 0 || _bandRoute.Length == 0) return;
+            PageHead.PublishBand(_bandRoute, _bandTitle, labels, _active, _onBandPivot, accent: static () => Tok.AccentDefault);
         }
 
         /// <summary>THE SPY: Detail.ScrollSpy.ActiveSectionOf over each anchor's viewport-relative top (the SAME

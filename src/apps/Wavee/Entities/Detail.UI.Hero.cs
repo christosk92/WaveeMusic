@@ -328,7 +328,7 @@ public static partial class Detail
             string? byline = Text.Byline(id.OwnerName, id.Meta, id.Eyebrow);
             Element identityBlock = new BoxEl
             {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, Gap = 0f,
+                Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
                 Children = byline is { Length: > 0 } ? [BandTitle(id.Title), BandByline(byline)] : [BandTitle(id.Title)],
             };
             // The expanded search field takes the TITLE's place, never the actions' — one zero-gap slot, so the hidden
@@ -630,40 +630,98 @@ public static partial class Detail
     };
 
     // ══ 5. THE BAND HELPERS (the detail band and the artist band are ONE band) ═══════════════════════════════════════
+    //
+    // ONE BASELINE. The title (600, primary), a subtle 1x16 divider, the tabs (400, ink plus the shared accent underline at one
+    // fixed y, never a weight change) and the trailing text actions (Controls.TextAction) each sit in a slot of BandLayout.ItemHeight
+    // (32) and centre the band's ONE 20-DIP line (BandLayout.TextLine), so their baselines are the same line. BandCluster builds
+    // the row; the Zune band's row 2 (Sidebar.UI.Zune.cs) calls the SAME builder at rowH = 32, so the in-page band and row 2 share
+    // text and underline geometry. The pivot used to be a text-plus-underline column centred in 32, which put its word 3 DIP above
+    // the title's. Under Zune the artist, profile, episode and show pages publish this band into row 2 and do not compose it
+    // (the floor placement is Detail.BandLayout.FloorLatch).
 
     /// <summary>The identity row: 56 tall, gutter-padded, UNPAINTED (no fill, no edge — the caller places the one
-    /// hairline), still hit-testable so its actions work and it swallows wheel/click meant for the rows behind it.</summary>
-    public static Element Band(float width, float gutter, Element identity, Element actions) => new BoxEl
-    {
-        Direction = 0, Width = width, Height = BandLayout.Height,
-        Padding = new Edges4(gutter, 0f, gutter, 0f),
-        Gap = BandLayout.ClusterGap, AlignItems = FlexAlign.Center,
-        HitTestVisible = true,
-        Children =
-        [
-            identity,
-            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Height = 1f, HitTestVisible = false },
-            actions,
-        ],
-    };
+    /// hairline), still hit-testable so its actions work and it swallows wheel/click meant for the rows behind it. A
+    /// <see cref="BandCluster"/> of the identity and the actions.</summary>
+    public static Element Band(float width, float gutter, Element identity, Element actions)
+        => Band(width, gutter, BandCluster(identity, null, actions, BandLayout.Height));
 
-    /// <summary>The artist arm's row (0.2.9 ContextBand.Row): title · pivot · actions as cluster children, same geometry as Band.</summary>
+    /// <summary>The artist arm's row (0.2.9 ContextBand.Row): the cluster's children (<see cref="BandCluster"/>), same geometry as
+    /// the detail band. No flex gap: the cluster carries its own spacers.</summary>
     public static BoxEl Band(float width, float gutter, Element[] children) => new BoxEl
     {
         Direction = 0, Width = width, Height = BandLayout.Height, Padding = new Edges4(gutter, 0f, gutter, 0f),
-        Gap = BandLayout.ClusterGap, AlignItems = FlexAlign.Center, HitTestVisible = true, Children = children,
+        AlignItems = FlexAlign.Center, HitTestVisible = true, Children = children,
     };
 
-    /// <summary>The band title: BodyStrong 14/20/600, primary, one line, ellipsised — never wraps, never drops.</summary>
+    /// <summary>One group's slot: a row of <c>min(ItemHeight, rowH)</c>, its child centred, so the title, the tabs and the
+    /// actions all centre their 20-DIP line in the same box. <paramref name="shrink"/> is 1 only for the title lane.</summary>
+    public static Element BandSlot(Element child, float rowH, float shrink = 0f) => new BoxEl
+    {
+        Direction = 0, Height = MathF.Min(BandLayout.ItemHeight, rowH), AlignItems = FlexAlign.Center,
+        Shrink = shrink, MinWidth = 0f, Children = [child],
+    };
+
+    /// <summary>The 1 x 16 divider between the title and the tabs.</summary>
+    public static Element BandDivider() => new BoxEl
+    {
+        Width = 1f, Height = BandLayout.DividerH, Shrink = 0f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false,
+    };
+
+    /// <summary>A band action: the shared <see cref="Controls.TextAction"/> at the band's item height and waist.</summary>
+    public static BoxEl BandAction(string label, Action? onClick, bool primary = false)
+        => Controls.TextAction(label, onClick, primary, height: BandLayout.ItemHeight, padX: BandLayout.ActionPadX);
+
+    /// <summary>The band's cluster, ONE builder for the in-page band (<paramref name="rowH"/> = 56) and the Zune band's row 2
+    /// (32): [title slot] · [divider · tabs, elastic] · [actions slot]. The title and the actions never drop; the tabs are
+    /// the only elastic lane. With no tabs a grow spacer carries the actions to the end. The row has no flex gap: the divider
+    /// air and the minimum title-to-actions gap are explicit spacers.</summary>
+    public static Element[] BandCluster(Element title, Element? pivots, Element? actions, float rowH)
+    {
+        var kids = new List<Element>(7) { BandSlot(title, rowH, shrink: 1f) };
+        if (pivots is not null)
+        {
+            kids.Add(Spacer(BandLayout.DividerGap));
+            kids.Add(BandDivider());
+            kids.Add(Spacer(BandLayout.DividerGap));
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = rowH, AlignItems = FlexAlign.Center,
+                Children = [pivots],
+            });
+        }
+        else
+        {
+            kids.Add(new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Height = 1f, HitTestVisible = false });
+        }
+        if (actions is not null)
+        {
+            kids.Add(Spacer(BandLayout.ClusterGap));
+            kids.Add(BandSlot(actions, rowH));
+        }
+        return [.. kids];
+    }
+
+    /// <summary>The band title: BodyStrong 14/600 on the band's 20-DIP line, primary, one line, ellipsised — never wraps,
+    /// never drops.</summary>
     public static Element BandTitle(string title) => Ui.BodyStrong(title) with
     {
-        Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+        LineHeight = BandLayout.TextLine, Weight = 600, Color = Tok.TextPrimary,
+        MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
     };
 
-    /// <summary>The band byline: Caption 12/16, tertiary, one line — context for the title, not a competing label.</summary>
-    public static Element BandByline(string byline) => Ui.Caption(byline) with
+    /// <summary>The band byline: Caption 12 on the same 20-DIP line as the title, tertiary, one line — context for the title,
+    /// not a competing label. It joins the title's line (<c>[title, S, byline]</c>) and ellipsises first.</summary>
+    public static Element BandByline(string byline) => new BoxEl
     {
-        Color = Tok.TextTertiary, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+        Direction = 0, MinWidth = 0f, Shrink = 1f, AlignItems = FlexAlign.Center,
+        Children =
+        [
+            Ui.Caption(byline) with
+            {
+                LineHeight = BandLayout.TextLine, Color = Tok.TextTertiary,
+                MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+            },
+        ],
     };
 
     /// <summary>The band's ONE lower edge, as a real laid-out row child — placed on the LAST stuck stratum only.</summary>
@@ -677,15 +735,18 @@ public static partial class Detail
     /// the active one — ALWAYS mounted, switching colour over 167 ms. <paramref name="active"/> is the caller's scroll-spy
     /// answer; the section set is re-pushed (it grows after mount), the signal instance freezes at mount.</summary>
     public static Element Pivot(IReadOnlyList<(string Label, Action OnClick)> sections, IReadSignal<int> active,
-                                Func<ColorF> accent)
-        => Embed.Comp(new PivotProps(sections, active, accent), static () => new PivotHost());
+                                Func<ColorF> accent, bool enabled = true)
+        => Embed.Comp(new PivotProps(sections, active, accent, enabled), static () => new PivotHost());
 
-    sealed record PivotProps(IReadOnlyList<(string Label, Action OnClick)> Sections, IReadSignal<int> Active, Func<ColorF> Accent)
+    /// <summary><paramref name="Enabled"/> false takes the tabs out of the keyboard order (a disabled node is not collected as a
+    /// focus stop) while they stay painted: the episode's row keeps them visible as it eases away under Zune.</summary>
+    sealed record PivotProps(IReadOnlyList<(string Label, Action OnClick)> Sections, IReadSignal<int> Active, Func<ColorF> Accent,
+                             bool Enabled = true)
     {
         public bool Equals(PivotProps? o)
         {
             if (ReferenceEquals(this, o)) return true;
-            if (o is null || !ReferenceEquals(Active, o.Active) || Sections.Count != o.Sections.Count) return false;
+            if (o is null || !ReferenceEquals(Active, o.Active) || Enabled != o.Enabled || Sections.Count != o.Sections.Count) return false;
             for (int i = 0; i < Sections.Count; i++)
                 if (!string.Equals(Sections[i].Label, o.Sections[i].Label, StringComparison.Ordinal)) return false;
             return true;
@@ -737,7 +798,7 @@ public static partial class Detail
 
             var kids = new Element[shown];
             for (int i = 0; i < shown; i++)
-                kids[i] = PivotLink(p.Sections[i].Label, i == current, _tabFills[i], _tabClicks[i], _tabRealized[i]);
+                kids[i] = PivotLink(p.Sections[i].Label, i == current, p.Enabled, _tabFills[i], _tabClicks[i], _tabRealized[i]);
             return new ScrollEl
             {
                 Horizontal = true, ContentSized = true,
@@ -789,33 +850,46 @@ public static partial class Detail
             _seeded = true;
         }
 
-        /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone.</summary>
-        static Element PivotLink(string label, bool isActive, Func<ColorF> fill, Action go, Action<NodeHandle> realized) => new BoxEl
+        /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone. A ZSTACK of
+        /// <see cref="BandLayout.ItemHeight"/>: the word centred on the band's 20-DIP line (the same line as the title and
+        /// the actions), the active mark an OVERLAY at <see cref="BandLayout.UnderlineY"/>. The weight is a CONSTANT 400 in both
+        /// states (active = primary ink plus the mark), so a tab never changes width while the scroll spy moves and a title
+        /// (600) never looks like a tab.</summary>
+        static Element PivotLink(string label, bool isActive, bool enabled, Func<ColorF> fill, Action go, Action<NodeHandle> realized) => new BoxEl
         {
-            Direction = 1, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Height = BandLayout.Height - 2f * Spacing.M,
+            ZStack = true, Shrink = 0f,
+            Height = BandLayout.ItemHeight,
             Padding = new Edges4(BandLayout.PivotPadX, 0f, BandLayout.PivotPadX, 0f),
             Corners = Radii.ControlAll,
-            Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = go, OnRealized = realized,
+            Role = AutomationRole.Tab, Focusable = true, IsEnabled = enabled, Cursor = CursorId.Hand, OnClick = go, OnRealized = realized,
             Children =
             [
-                new TextEl(label)
+                new BoxEl
                 {
-                    Size = Controls.TextActionSize, LineHeight = Controls.TextActionLineHeight, Weight = Controls.TextActionWeight,
-                    Color = isActive ? Tok.TextPrimary : Tok.TextSecondary,
-                    HoverColor = Tok.TextPrimary,
-                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                    Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(label)
+                        {
+                            Size = Controls.TextActionSize, LineHeight = BandLayout.TextLine, Weight = PivotWeight,
+                            Color = isActive ? Tok.TextPrimary : Tok.TextSecondary,
+                            HoverColor = Tok.TextPrimary,
+                            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
                 },
                 new BoxEl
                 {
                     Height = BandLayout.UnderlineHeight, AlignSelf = FlexAlign.Stretch,
-                    Margin = new Edges4(0f, BandLayout.UnderlineGap, 0f, 0f),
+                    Margin = new Edges4(0f, BandLayout.UnderlineY, 0f, 0f),
                     Fill = fill,
                     BrushTransitionMs = AccentTransitionMs,
                     HitTestVisible = false,
                 },
             ],
         };
+
+        /// <summary>A tab's weight, constant in both states (see <see cref="PivotLink"/>).</summary>
+        const ushort PivotWeight = 400;
     }
 }

@@ -171,7 +171,10 @@ public static class ProfileHeroLayout
          + m.StatRows * StatHeight + (m.StatRows - 1) * StatRowGap
          + StatsToActions(in m) + ActionRow;
 
-    public static float CollapseDistance(in ProfileHeroMetrics m) => ArtistHeroLayout.CollapseDistance(m.Height);
+    public static float CollapseDistance(in ProfileHeroMetrics m) => CollapseDistance(in m, ArtistHeroLayout.CompactIdentityHeight);
+
+    /// <summary>The collapse distance to <paramref name="floor"/> (56 with the band in the page, 0 once it lives in the Zune band's row 2).</summary>
+    public static float CollapseDistance(in ProfileHeroMetrics m, float floor) => ArtistHeroLayout.CollapseDistance(m.Height, floor);
     public static float WashHeight(in ProfileHeroMetrics m) => m.Height + ArtistHeroLayout.ContentBlendTail;
     public static float WashBoundary(in ProfileHeroMetrics m) => m.Height / (m.Height + ArtistHeroLayout.ContentBlendTail);
 }

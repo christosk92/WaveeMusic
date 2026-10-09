@@ -112,8 +112,8 @@ public static class PageHead
     /// <summary>Hands an entity page's Zune band (title, pivots, actions) to the band's row 2 (see <c>Shell.PageBands</c>).
     /// Returns whether the band must re-render.</summary>
     public static bool PublishBand(string routeName, string title, IReadOnlyList<string> pivots, IReadSignal<int> active,
-        Action<int> onPivot, Func<Element>? actions = null, Action? onTitle = null)
-        => Shell.PageBands.Publish(routeName, new Shell.PageBandPublication(title, pivots, active, onPivot, actions, onTitle));
+        Action<int> onPivot, Func<Element>? actions = null, Action? onTitle = null, Func<ColorF>? accent = null)
+        => Shell.PageBands.Publish(routeName, new Shell.PageBandPublication(title, pivots, active, onPivot, actions, onTitle, accent));
 
     /// <summary>Hands a page's views to the Zune band (see <c>Shell.PageViews</c>). Returns whether the band must re-render.</summary>
     public static bool Publish(string routeName, IReadOnlyList<string> labels, Signal<int> selected, Action<int> onSelect,

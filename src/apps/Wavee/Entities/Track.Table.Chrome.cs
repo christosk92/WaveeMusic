@@ -396,16 +396,16 @@ public readonly partial struct Track
             Element[] kids = insights is null
                 ?
                 [
-                    Controls.TextAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
+                    Detail.BandAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
                     Embed.Comp(() => new TableFilterButton(this, textMode: true)) with { Key = "band:filter" },
-                    Controls.TextAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
+                    Detail.BandAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
                 ]
                 :
                 [
-                    Controls.TextAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
+                    Detail.BandAction(Loc.Get(Strings.Detail.Filter.Find), _toggleFind) with { Key = "band:find", OnRealized = _captureSearchButton },
                     Embed.Comp(() => new TableFilterButton(this, textMode: true)) with { Key = "band:filter" },
                     Detail.InsightsBandAction(insights),
-                    Controls.TextAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
+                    Detail.BandAction(Loc.Get(Strings.Detail.Play), _playAll, primary: true) with { Key = "band:play" },
                 ];
             return new BoxEl
             {
@@ -969,7 +969,8 @@ public readonly partial struct Track
                     { ConstrainToRootBounds = true });
 
                 if (textMode)
-                    return ToolTip.Wrap(Controls.TextAction(Loc.Get(Strings.Detail.Filter.Short), Toggle, toggledOn: active)
+                    return ToolTip.Wrap(Controls.TextAction(Loc.Get(Strings.Detail.Filter.Short), Toggle, toggledOn: active,
+                        height: Detail.BandLayout.ItemHeight, padX: Detail.BandLayout.ActionPadX)
                         with { OnRealized = n => anchor.Value = n }, Loc.Get(Strings.Detail.Filter.Title));
 
                 ColorF accent = Tok.AccentTextPrimary;

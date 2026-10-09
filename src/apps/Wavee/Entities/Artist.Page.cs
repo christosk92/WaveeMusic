@@ -37,6 +37,17 @@
 // an effect: `OnRealized` fires during the reconcile of this very render, an effect after present — ch 08 §9 #6). The
 // spy is an auto-tracked effect over the page's scroll signals that resolves `Detail.BandLayout.ActiveSection` into the
 // pivot's `active` signal, so a scroll step re-renders the pivot only when the answer changes.
+//
+// ── ONE BASELINE, AND THE ZUNE ROW 2 (A2) ───────────────────────────────────────────────────────────────────────────────
+//
+// The band is `Detail.BandCluster`: title · divider · tabs · actions share one 20-DIP line (Detail.BandLayout). Under Zune the
+// band lives in row 2: the page publishes the same words (`PageHead.PublishBand`, under its route name), its in-page band is
+// not composed, its stuck floor is 0 and the hero collapses to that floor itself. The floor is LATCHED
+// (Detail.BandLayout.FloorLatch): it flips only while the scroll is under FlipLine, where every scroll channel presents the
+// same, so a nav-style switch while scrolled never snaps the hero, the sentinel or the clip. Above the line the page keeps its
+// band (row 2 shows the same words for that window) until the scroll next crosses back. `_inRow2` is the ONE input for the
+// hero's floor, both clips, the facets' pin, the spy's band height, GoToSection's margin, the sentinel and whether the band
+// composes.
 
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -128,6 +139,14 @@ public readonly partial struct Artist
         long _scrollKey = long.MinValue;   // the last coarse geometry key the watch let through
         readonly Signal<int> _active = new(Detail.BandLayout.NoSection);   // nothing lit until the spy answers (RCA E)
         readonly Signal<int> _pivotEpoch = new(0);
+        // The LATCHED floor placement (Detail.BandLayout.FloorLatch): true while the band lives in the Zune band's row 2.
+        readonly Signal<bool> _floorInRow2 = new(Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Peek()));
+        bool _inRow2;                      // the value Compose latched this render; every other reader uses this
+        float _flipHeroH = ArtistHeroLayout.WideHeight;
+        Memo<bool>? _belowLine;            // offset < FlipLine: a threshold, so the latch subscribes to the crossing only
+        IReadSignal<bool>? _isActive;
+        string[]? _bandLabels;
+        int _bandLabelsHash;
         NodeHandle _viewport;
         readonly NodeHandle[] _anchors = new NodeHandle[ArtistSections.Count];
         readonly Action<NodeHandle>[] _anchorRealized = new Action<NodeHandle>[ArtistSections.Count];
@@ -168,6 +187,10 @@ public readonly partial struct Artist
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _demandRows, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
         readonly Action _play, _shuffle, _radio, _scrollToTop;
+        readonly Action _latchFloor, _publishBand;
+        readonly Func<bool> _belowLineFn;
+        readonly Action<int> _onBandPivot;
+        readonly Func<Element> _bandActions;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
         readonly Action _watchScroll;
@@ -198,6 +221,14 @@ public readonly partial struct Artist
             _shuffle = Shuffle;
             _radio = Radio;
             _scrollToTop = ScrollToTop;
+            _latchFloor = LatchFloor;
+            _publishBand = PublishBand;
+            _belowLineFn = () => _scroll.Offset.Value < Detail.BandLayout.FlipLine(_flipHeroH);
+            _onBandPivot = i =>
+            {
+                if ((uint)i < (uint)_pivotCount) _sectionClicks[(int)_pivot[i]]();
+            };
+            _bandActions = BandActions;
             _captureViewport = h => _viewport = h;
             _measure = r =>
             {
@@ -290,6 +321,11 @@ public readonly partial struct Artist
             UseEffect(_publishAccent);                                    // the watched chrome accent
             UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));
             UseEffect(_resolveSpy);                                       // the scroll spy
+            // THE FLOOR LATCH and the Zune row 2 (A2). Every hook runs unconditionally: Compose is not always reached.
+            _isActive = UseIsActive();
+            _belowLine = UseComputed(_belowLineFn);
+            UseSignalEffect(_latchFloor);
+            UseActivation(onActivated: _publishBand);
 
             // ch 08 §6's settings, each subscribing the appearance epoch.
             bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
@@ -363,6 +399,8 @@ public readonly partial struct Artist
             if (_bodyReady) _heroGateOpened = true;
             _body = _bodyReady ? Compose(a, paletteUrl, _heroUrl, washes, routeKey) : null;
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));   // a new section set → re-resolve the spy
+            // Row 2's words: the deps-gated form (PublishBand reads no signal), keyed on everything the publication carries.
+            UseEffect(_publishBand, DepKey.From(HashCode.Combine(_bodyReady, _bandLabelsHash, a.IsValid ? a.Name : null, routeKey)));
             UseSignalEffect(_watchScroll);
 
             // ONE region, and the shimmer is DERIVED — `PageShimmer` is a ShimmerSource (a representative tree at the
@@ -427,6 +465,7 @@ public readonly partial struct Artist
             ColorF accent = _accent.Value;
             var m = _metrics;
             float width = _width;
+            bool inRow2 = _inRow2 = _floorInRow2.Value;   // the LATCHED floor placement, read once for the whole compose
             // ── what is present (ch 08 §7's readiness column) ──
             // Keep edge-backed section slots in the page plan while their first answer is pending. Without this,
             // every late edge answer inserts a new sibling into the magazine and shifts all following anchors/cards.
@@ -498,18 +537,28 @@ public readonly partial struct Artist
             var pivotItems = new (string Label, Action OnClick)[pivots];
             for (int i = 0; i < pivots; i++) pivotItems[i] = (PivotLabel(_pivot[i]), _sectionClicks[(int)_pivot[i]]);
 
-            float collapse = ArtistHeroLayout.CollapseDistance(m.MinHeight);
+            // The floor: 56 with the band in the page, 0 once it lives in row 2. The ONE input below is the LATCHED value.
+            float floor = Detail.BandLayout.StuckHeight(inRow2);
+            _flipHeroH = m.MinHeight;
+            float collapse = ArtistHeroLayout.CollapseDistance(m.MinHeight, floor);
             bool compact = _compact.Value;
-            Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems);
+            if (_bandLabels is null || _bandLabelsHash != _pivotHash || _bandLabels.Length != pivots)
+            {
+                _bandLabelsHash = _pivotHash;
+                var labels = new string[pivots];
+                for (int i = 0; i < pivots; i++) labels[i] = pivotItems[i].Label;
+                _bandLabels = labels;
+            }
+            Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems, inRow2);
             Element hero = HeroBanner(HeroText.For(a), uri, heroUrl, paletteUrl, width, in m, accent,
-                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent);
+                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor);
 
             // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`_compact`). The
             // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two
             // presents after the render-posed clip — `[scroll.engaged.present] ticksAfterCross=2`); it is the clip's own
             // composite-time parameter below (EdgeFadeSpec.WhileStuck).
             Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
-                .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: _compact);
+                .Sticky(floor, engaged: _compact);
 
             // The blend wash, from the RESOLVED metrics (ch 08 §9 inconsistency #1); a cover-keyed leaf, so a grading
             // re-renders only the wash. Tinted surfaces Off ⇒ it renders nothing; the veil falls to its neutral rung and
@@ -534,7 +583,7 @@ public readonly partial struct Artist
                     new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
                     new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter)] },
                 ],
-            }.StickyClip(Detail.BandLayout.ClipInset);
+            }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2));
 
             return new BoxEl
             {
@@ -542,7 +591,7 @@ public readonly partial struct Artist
                 Children =
                 [
                     new BoxEl { Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash] }
-                        .StickyClip(Detail.BandLayout.ClipInset),
+                        .StickyClip(Detail.BandLayout.ClipInsetFor(inRow2)),
                     new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
                 ],
             };
@@ -573,15 +622,18 @@ public readonly partial struct Artist
             _ => "",
         };
 
+        /// <summary>The stuck height under the LATCHED floor placement: the facets pin their headers at it.</summary>
+        float Stuck => Detail.BandLayout.StuckHeight(_inRow2);
+
         /// <summary>One section's body, in the plan's order (ArtistPage.cs:234-269).</summary>
         Element SectionBody(ArtistSection s, Artist a, ColorF accent, int[] fans, int relatedCount) => s switch
         {
             ArtistSection.Popular => TopBand(a, accent),
             ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), UpcomingCard(a, _accentFn, wide: false), accent),
             ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), LatestBanner(a.Latest, accent), accent),
-            ArtistSection.Albums => FacetSection(a, DiscoFacet.Albums, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.Singles => FacetSection(a, DiscoFacet.Singles, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.Compilations => FacetSection(a, DiscoFacet.Compilations, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
+            ArtistSection.Albums => FacetSection(a, DiscoFacet.Albums, _accentFn, Stuck, Stuck + FacetHeaderRowH),
+            ArtistSection.Singles => FacetSection(a, DiscoFacet.Singles, _accentFn, Stuck, Stuck + FacetHeaderRowH),
+            ArtistSection.Compilations => FacetSection(a, DiscoFacet.Compilations, _accentFn, Stuck, Stuck + FacetHeaderRowH),
             ArtistSection.AppearsOn => AppearsOnShelf(a, accent),
             ArtistSection.Tour => TourBanner(a, accent),
             ArtistSection.MusicVideos => VideosShelf(a, accent),
@@ -596,47 +648,30 @@ public readonly partial struct Artist
 
         // ── 2.2 the context band's artist arm (ArtistCompactBar.cs) ────────────────────────────────────────────────
 
-        /// <summary>title · pivot · Play + Follow as WORDS, one hairline, no fill, no avatar, no capsules (ch 08 §0 #4).
-        /// Everything geometric is the shared band's; the gutter is the hero metrics' and the content is this page's.
-        /// Reveals over the last 44 DIP of the collapse with a 4-DIP settle; takes input only past the sentinel's edge.</summary>
+        /// <summary>title · divider · tabs · Play + Follow as WORDS on one baseline (<see cref="Detail.BandCluster"/>), one
+        /// hairline, no fill, no avatar, no capsules (ch 08 §0 #4). Everything geometric is the shared band's; the gutter is the
+        /// hero metrics' and the content is this page's. Reveals over the last 44 DIP of the collapse with a 4-DIP settle; takes
+        /// input only past the sentinel's edge. With the band in Zune's row 2 (<paramref name="inRow2"/>) the SAME outer box
+        /// stays (the hero's tree shape never changes) with no children and no input.</summary>
         Element BandBar(Artist a, float width, float gutter, float collapse, bool canHit,
-                        (string Label, Action OnClick)[] pivotItems)
+                        (string Label, Action OnClick)[] pivotItems, bool inRow2)
         {
-            string uri = a.Uri.Text;
-            string name = a.Name;
-            float actionH = Detail.BandLayout.Height - 2f * Spacing.M;
-            // No "Overview" pivot tab: the title itself is the way back to the top of the page.
-            Element title = new BoxEl
+            Element[] kids = [];
+            if (!inRow2)
             {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
-                Cursor = CursorId.Hand, OnClick = _scrollToTop,
-                Children = [Detail.BandTitle(name)],
-            };
-            // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
-            Element pivot = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-                Children = [Detail.Pivot(pivotItems, _active, _accentFn)],
-            };
-            Element actions = new BoxEl
-            {
-                Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
-                Children =
+                // No "Overview" pivot tab: the title itself is the way back to the top of the page.
+                Element title = new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap, AlignItems = FlexAlign.Center,
+                    Cursor = CursorId.Hand, OnClick = _scrollToTop,
+                    Children = [Detail.BandTitle(a.Name)],
+                };
+                // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
+                Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter,
+                    Detail.BandCluster(title, Detail.Pivot(pivotItems, _active, _accentFn), BandActions(), Detail.BandLayout.Height));
+                kids =
                 [
-                    Controls.TextAction(Loc.Get(Strings.Artist.Play), _play, primary: true,
-                        height: actionH, padX: Detail.BandLayout.ActionPadX),
-                    Embed.Comp(() => new Controls.FollowTextAction { Uri = uri, Name = name, Height = actionH, PadX = Detail.BandLayout.ActionPadX })
-                        with { Key = "artist-band-follow:" + uri, SkeletonProxy = s_emptyShape },
-                ],
-            };
-            // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-            Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter, [title, pivot, actions]);
-            return new BoxEl
-            {
-                Width = width, Height = Detail.BandLayout.Height, ZStack = true,
-                HitTestVisible = canHit, HitTestPassThrough = true,
-                Children =
-                [
+                    // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
                     new BoxEl
                     {
                         Direction = 0, Width = width, Height = Detail.BandLayout.Height, Justify = FlexJustify.Center,
@@ -648,9 +683,56 @@ public readonly partial struct Artist
                         Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
                         HitTestVisible = false, Children = [Detail.BandHairline()],
                     },
-                ],
+                ];
+            }
+            return new BoxEl
+            {
+                Key = "artist-band", Width = width, Height = Detail.BandLayout.Height, ZStack = true,
+                HitTestVisible = canHit && !inRow2, HitTestPassThrough = true,
+                Children = kids,
             }.Reveal(ArtistHeroLayout.CompactRevealStart(collapse), collapse - ArtistHeroLayout.CompactRevealStart(collapse),
                 Design.Reduced ? 0f : Spacing.XS).Skeletonized(false);
+        }
+
+        /// <summary>Play + Follow, the band's action cluster: the in-page band and the Zune band's row 2 both build it here.</summary>
+        Element BandActions()
+        {
+            string uri = _artist.Uri.Text;
+            string name = _artist.Name;
+            return new BoxEl
+            {
+                Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    Detail.BandAction(Loc.Get(Strings.Artist.Play), _play, primary: true),
+                    Embed.Comp(() => new Controls.FollowTextAction
+                        { Uri = uri, Name = name, Height = Detail.BandLayout.ItemHeight, PadX = Detail.BandLayout.ActionPadX })
+                        with { Key = "artist-band-follow:" + uri, SkeletonProxy = s_emptyShape },
+                ],
+            };
+        }
+
+        /// <summary>The floor latch (Detail.BandLayout.FloorLatch): adopt the WANTED placement only while the scroll is under
+        /// the flip line, where the flip is invisible. Subscribes to the presented nav style and the threshold crossing, never
+        /// to every scroll frame.</summary>
+        void LatchFloor()
+        {
+            bool wanted = Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Value);
+            _ = _belowLine?.Value;
+            _floorInRow2.SetIfChanged(Detail.BandLayout.FloorLatch(_floorInRow2.Peek(), wanted, _scroll.Offset.Peek(), _flipHeroH));
+        }
+
+        /// <summary>Hands the band to the Zune band's row 2 under the route name, only while this page is the active one (a parked
+        /// artist must not take the slot's words away from the page on screen). Safe any time and any number of times: the store
+        /// bumps its version only when the title, the tabs or the active signal change. It publishes regardless of the latch, so
+        /// row 2 is filled from its first frame.</summary>
+        void PublishBand()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            var labels = _bandLabels;
+            var p = _latest;
+            if (labels is null || p is null || !_artist.IsValid || !_bodyReady) return;
+            PageHead.PublishBand(p.RouteKey, _artist.Name, labels, _active, _onBandPivot, _bandActions, _scrollToTop, _accentFn);
         }
 
         /// <summary>A pivot click parks the section's top exactly under the band, animated unless reduced motion is on,
@@ -661,7 +743,7 @@ public readonly partial struct Artist
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
-                margin: Detail.BandLayout.Height);
+                margin: Detail.BandLayout.StuckHeight(_inRow2));
         }
 
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
@@ -689,7 +771,8 @@ public readonly partial struct Artist
             }
             float viewportHeight = _viewportH.Peek();
             if (viewportHeight <= 0f) viewportHeight = vp.H;
-            int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.Height, viewportHeight, atEnd);
+            float band = Detail.BandLayout.StuckHeight(_inRow2);
+            int at = Detail.BandLayout.ActiveSection(tops[..n], band, viewportHeight, atEnd);
             if (at != _spyLogged) LogSpy(at, tops[..n], viewportHeight, atEnd);
             if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had (D40); NoSection lights nothing
         }
@@ -716,7 +799,7 @@ public readonly partial struct Artist
                 WaveeLogField.Of("at", at),
                 WaveeLogField.Of("label", label),
                 WaveeLogField.Of("tops", sb.ToString()),
-                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(Detail.BandLayout.Height, viewportHeight)),
+                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(Detail.BandLayout.StuckHeight(_inRow2), viewportHeight)),
                 WaveeLogField.Of("vh", (double)viewportHeight),
                 WaveeLogField.Of("atEnd", atEnd));
         }

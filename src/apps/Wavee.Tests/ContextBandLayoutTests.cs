@@ -189,4 +189,127 @@ public class ContextBandLayoutTests
         Assert.Equal(VerticalLayout.StickyFadeBand, BandLayout.ClipFadeBand);
         Assert.True(BandLayout.ClipFadeBand > 0f);
     }
+
+    // ── ONE BASELINE (A2) ────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The title, the tab and the action share ONE 20-DIP line centred in the same 32-DIP slot, so their text tops
+    /// are the same y in the 56 band (18), and the underline is the slot's bottom 2 DIP.</summary>
+    [Fact]
+    public void TitleTabAndAction_ShareOneBaseline()
+    {
+        Assert.Equal(20f, BandLayout.TextLine);
+        Assert.Equal(32f, BandLayout.ItemHeight);
+        Assert.Equal(6f, BandLayout.TextTopIn(BandLayout.ItemHeight));
+        Assert.Equal(18f, (BandLayout.Height - BandLayout.ItemHeight) / 2f + BandLayout.TextTopIn(BandLayout.ItemHeight));
+        Assert.Equal(BandLayout.TextTopIn(BandLayout.Height), (BandLayout.Height - BandLayout.ItemHeight) / 2f + BandLayout.TextTopIn(BandLayout.ItemHeight));
+    }
+
+    [Fact]
+    public void TheUnderline_SitsAtOneFixedYOnTheSlotsBottomEdge()
+    {
+        Assert.Equal(30f, BandLayout.UnderlineY);
+        Assert.Equal(BandLayout.ItemHeight, BandLayout.UnderlineY + BandLayout.UnderlineHeight);
+        Assert.Equal(BandLayout.UnderlineGap, BandLayout.UnderlineY - (BandLayout.TextTopIn(BandLayout.ItemHeight) + BandLayout.TextLine));
+        Assert.Equal(BandLayout.ClusterGap * 0.5f, BandLayout.DividerGap);
+        Assert.Equal(16f, BandLayout.DividerH);
+    }
+
+    /// <summary>The Zune band's row 2 and the in-page band have IDENTICAL text and underline geometry.</summary>
+    [Fact]
+    public void ZuneRow2_SharesTheBandsItemHeight()
+        => Assert.Equal(BandLayout.ItemHeight, ZuneNavRules.SubRowHeight);
+
+    // ── THE FLOOR (A2) ───────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void TheStuckHeight_IsTheBandInThePageAndZeroInRow2()
+    {
+        Assert.Equal(56f, BandLayout.StuckHeight(false));
+        Assert.Equal(0f, BandLayout.StuckHeight(true));
+        Assert.Equal(BandLayout.StuckHeight(false), BandLayout.ClipInsetFor(false));
+        Assert.Equal(BandLayout.StuckHeight(true), BandLayout.ClipInsetFor(true));
+    }
+
+    [Fact]
+    public void OnlyZune_WantsTheBandInRow2()
+    {
+        Assert.True(BandLayout.InRow2(ShellNavStyle.Zune));
+        Assert.False(BandLayout.InRow2(ShellNavStyle.Classic));
+        Assert.False(BandLayout.InRow2(ShellNavStyle.Library));
+    }
+
+    [Fact]
+    public void TheFlipLine_IsWhereTheEarliestFloorDependentChannelStarts()
+    {
+        // H - 56 - 96: the expanded copy's fade at floor 56 starts before the band's reveal (H - 56 - 44).
+        Assert.Equal(248f, BandLayout.FlipLine(400f));
+        Assert.Equal(0f, BandLayout.FlipLine(30f));
+        Assert.Equal(0f, BandLayout.FlipLine(120f));
+    }
+
+    /// <summary>Under the line the wanted placement is adopted; at or above it the latched one holds, so a nav-style switch while
+    /// scrolled never snaps a stuck element.</summary>
+    [Fact]
+    public void TheFloorLatch_FlipsOnlyUnderTheLine()
+    {
+        Assert.True(BandLayout.FloorLatch(false, true, 100.0, 400f));
+        Assert.False(BandLayout.FloorLatch(true, false, 100.0, 400f));
+        Assert.False(BandLayout.FloorLatch(false, true, 248.0, 400f));
+        Assert.False(BandLayout.FloorLatch(false, true, 900.0, 400f));
+        Assert.True(BandLayout.FloorLatch(true, false, 248.0, 400f));
+        Assert.True(BandLayout.FloorLatch(true, false, 900.0, 400f));
+        // Nothing wanted differently: nothing changes anywhere.
+        Assert.True(BandLayout.FloorLatch(true, true, 900.0, 400f));
+        Assert.False(BandLayout.FloorLatch(false, false, 0.0, 400f));
+    }
+
+    static float Ramp(double offset, float from, float to)
+        => to <= from ? (offset >= to ? 1f : 0f) : (float)Math.Clamp((offset - from) / (to - from), 0.0, 1.0);
+
+    /// <summary>THE PROOF's arithmetic: under the flip line the presented height, the parallax, the expanded copy's fade and the
+    /// band's reveal are the same whether the hero collapses to the 56 floor or to 0, and a Sticky(floor) element right below the
+    /// hero is engaged in neither pairing.</summary>
+    [Theory]
+    [InlineData(400f)]
+    [InlineData(300f)]
+    [InlineData(520f)]
+    public void UnderTheFlipLine_BothFloorsPresentTheSameChannels(float h)
+    {
+        float c56 = ArtistHeroLayout.CollapseDistance(h, 56f), c0 = ArtistHeroLayout.CollapseDistance(h, 0f);
+        for (float offset = 0f; offset < BandLayout.FlipLine(h); offset += 4f)
+        {
+            float at56 = h - offset * (h - 56f) / c56;
+            float at0 = h - offset * h / c0;
+            Assert.Equal(at56, at0, 0.001f);
+            // The parallax slope is -1 in both (0..collapse maps to 0..-collapse).
+            Assert.Equal(offset * -c56 / c56, offset * -c0 / c0, 0.001f);
+            // The expanded copy's fade: still fully opaque at both floors.
+            Assert.Equal(Ramp(offset, ArtistHeroLayout.ExpandedFadeStart(c56), c56), Ramp(offset, ArtistHeroLayout.ExpandedFadeStart(c0), c0));
+            Assert.Equal(0f, Ramp(offset, ArtistHeroLayout.ExpandedFadeStart(c56), c56));
+            // The band's reveal at floor 56: not started, so the band composed there and the band absent at floor 0 look alike.
+            Assert.Equal(0f, Ramp(offset, ArtistHeroLayout.CompactRevealStart(c56), c56));
+            // The element right below the hero sits at h - offset, which is above BOTH floors: engaged in neither.
+            Assert.True(h - offset > 56f, $"engaged at offset {offset}");
+        }
+    }
+
+    /// <summary>The line is tight: the first offset at or past it already differs between the floors (the fade has begun at 56).</summary>
+    [Fact]
+    public void AtTheFlipLine_TheFloorsStartToDiffer()
+    {
+        const float h = 400f;
+        float c56 = ArtistHeroLayout.CollapseDistance(h, 56f), c0 = ArtistHeroLayout.CollapseDistance(h, 0f);
+        double o = BandLayout.FlipLine(h) + 20.0;
+        Assert.NotEqual(Ramp(o, ArtistHeroLayout.ExpandedFadeStart(c56), c56), Ramp(o, ArtistHeroLayout.ExpandedFadeStart(c0), c0));
+    }
+
+    /// <summary>With the band in row 2 (band height 0) the spy rule is unchanged: the section whose top is above the quarter line.</summary>
+    [Fact]
+    public void TheSpy_WithNoStuckBand_AnswersTheSectionAboveTheQuarterLine()
+    {
+        float line = BandLayout.SpyLine(0f, 800f);
+        Assert.Equal(208f, line);
+        Assert.Equal(1, BandLayout.ActiveSection([-400f, line, 900f], 0f, 800f, atScrollEnd: false));
+        Assert.Equal(0, BandLayout.ActiveSection([-400f, line + 1f, 900f], 0f, 800f, atScrollEnd: false));
+    }
 }

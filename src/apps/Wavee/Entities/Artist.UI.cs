@@ -132,7 +132,12 @@ public static class ArtistHeroLayout
     public static float PageGutterFor(float width) => PageGeometry.GutterFor(width);
 
     public static float PhotoFadeBandFor(float height) => Math.Clamp(height * 0.28f, 120f, 180f);
-    public static float CollapseDistance(float height) => MathF.Max(1f, height - CompactIdentityHeight);
+    /// <summary>The scroll distance over which a hero of <paramref name="height"/> collapses to the compact band's 56.</summary>
+    public static float CollapseDistance(float height) => CollapseDistance(height, CompactIdentityHeight);
+
+    /// <summary>The distance to collapse to <paramref name="floor"/>: 56 while the band is in the page, 0 once the band lives in the Zune
+    /// band's row 2 (the hero then collapses fully, so no remnant stays pinned at the card top).</summary>
+    public static float CollapseDistance(float height, float floor) => MathF.Max(1f, height - floor);
     public static float ExpandedFadeStart(float collapseDistance) => Detail.VerticalLayout.ExpandedFadeStart(collapseDistance);
     public static float CompactRevealStart(float collapseDistance) => Detail.VerticalLayout.CompactRevealStart(collapseDistance);
 
@@ -240,9 +245,6 @@ public static class ArtistSections
     /// <summary>The shelf caps (Shelves.cs): videos, playlists and gallery 16; concerts and merch 12.</summary>
     public const int AppearsOnCap = 16;
     public const int VideoCap = 16, PlaylistCap = 16, ConcertCap = 12, MerchCap = 12, GalleryCap = 16;
-
-    /// <summary>The inline facet's reveal inset: the band (56) plus the pinned facet header (40).</summary>
-    public const float FacetExpandedTopInset = 96f;
 
     static readonly string[] s_keys =
     [
@@ -378,11 +380,13 @@ public readonly partial struct Artist
     internal static Element HeroBanner(in HeroText text, string uri, string? photoUrl, string? paletteUrl, float width,
                                        in ArtistHeroMetrics m, ColorF accent, bool compactCanHit,
                                        Action? play, Action? shuffle, Action? radio, Element? band,
-                                       uint headerAccent = 0)
+                                       uint headerAccent = 0, float floor = ArtistHeroLayout.CompactIdentityHeight)
     {
         float w = MathF.Max(1f, width);
         float height = m.MinHeight;
-        float collapse = ArtistHeroLayout.CollapseDistance(height);
+        // The ONE collapse distance: the page computes it with the same floor, so the sentinel, the magazine and the spy all read
+        // the same number as the Parallax, Fade and Collapse channels below.
+        float collapse = ArtistHeroLayout.CollapseDistance(height, floor);
         float photoH = ArtistHeroLayout.PhotoHeightFor(m);
 
         // W4b: no url ⇒ HeroArt is NOT mounted; the flat theme neutral stands in (never a cover tint — ch 08 §4 row 6b).
@@ -479,7 +483,7 @@ public readonly partial struct Artist
         {
             Direction = 1, Height = height, ZStack = true,
             Children = band is null ? [expanded] : [expanded, band],
-        }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
+        }.Sticky(0f).Collapse(collapse, floor, CollapseAnchor.Leading);
     }
 
     /// <summary>Verified · name · first sentence · meta, then the action row (Hero.cs:34-95).</summary>

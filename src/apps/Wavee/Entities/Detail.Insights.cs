@@ -395,7 +395,7 @@ public static partial class Detail
             // The ONLY signal this render reads — so this is the whole cost of a toggle click.
             bool open = t.Open.Value;
             return Controls.TextAction(Loc.Get(Strings.Detail.LikedFacts.SheetOpen), t.ToggleFromBand, toggledOn: open,
-                                       padX: BandLayout.ActionPadX) with
+                                       height: BandLayout.ItemHeight, padX: BandLayout.ActionPadX) with
             {
                 // ToggleButton, not Button: pressed/unpressed IS the control's meaning, exactly as in the hero (§6).
                 Role = AutomationRole.ToggleButton,

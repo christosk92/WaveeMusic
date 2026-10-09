@@ -28,6 +28,13 @@
 // so they render from the frame commit and reveal with the band. On a navigation row 2 is never empty; on a style switch it
 // is never doubled, except for A2/A3's documented latch window.
 //
+// THE CONTEXT ROW IS THE PAGE'S BAND (A2). Row 2 of an entity route is Detail.BandCluster at the row's 32 (= BandLayout.ItemHeight): the
+// title (ZuneSubPivot selected, primary), a 1x16 divider, the page's scroll-spy tabs (ZuneSubPivot at a constant 400, ink plus the
+// shared 2-DIP underline at BandLayout.UnderlineY in the page's accent, the band falling back to Tok.AccentDefault) and the page's
+// own action cluster. The artist, profile, episode and show pages publish it (Shell.PageBands) and, under Zune, do not compose their
+// in-page band (the hero collapses to the latched floor, Detail.BandLayout.FloorLatch). A tab click calls the publication's
+// OnPivot, which scrolls the page exactly as the band's own tab does.
+//
 // ROLES. The pivots carry Role Tab, like the stock SelectorBar items (it was NavigationItem). They stay a band-private item
 // builder rather than an engine SelectorBar because SelectorBar auto-selects on focus entry with no selection, which
 // would navigate. Their text is the two Zune type roles and nothing else (Design.Type.ZunePivot 28/36 for row 1,
@@ -359,7 +366,9 @@ public static partial class Sidebar
         // ── Context ──
 
         /// <summary>An entity's title row: its title, its pivots and its actions as the page published them under its route
-        /// name; until then the title from the route's display name plus skeleton pivots and action pills of the final size.</summary>
+        /// name; until then the title from the route's display name plus skeleton pivots and action pills of the final size.
+        /// It is the in-page band's OWN cluster (<see cref="Detail.BandCluster"/>) at the row's 32 (= <see cref="Detail.BandLayout.ItemHeight"/>),
+        /// so the title, the tabs, the underline and the actions have identical geometry in the page and here.</summary>
         static Element ContextRow(in Shell.Route route, string name)
             => Embed.Comp(new RowProps(route, name), static () => new ContextRowView()) with { Key = "zune:context-comp:" + name };
 
@@ -377,76 +386,144 @@ public static partial class Sidebar
             var pub = Shell.PageBands.For(name);
             bool live = pub is not null;
             var (seedPivots, seedActions) = ZuneNavRules.ContextSeed(route.Kind);
+            float rowH = ZuneNavRules.SubRowHeight;
 
-            // The title. The same node for the skeleton and the live band, so the swap is a text change, not a re-mount.
+            // The title. The same keyed node for the skeleton and the live band, so the swap is a text change, not a re-mount.
             string title = pub?.Title ?? Entities.Strings.Resolve(route.Arg);
-            Element titleEl;
-            if (title.Length == 0)
-                titleEl = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(12, 0f), 12f) with { Key = "zune:ctx:title" };
-            else if (pub?.OnTitle is { } onTitle)
-                titleEl = PivotItem("ctx:title", title, true, sub: true, onTitle);
-            else
-                titleEl = new BoxEl
+            Element titleEl = title.Length == 0
+                ? SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(12, 0f), 12f) with { Key = "zune:ctx:title" }
+                : TitleWord(title, pub?.OnTitle);
+
+            // The pivots: a skeleton layer and the live tabs share one lane and cross-fade in place. The divider is part of the
+            // cluster, so it is present exactly when the lane is.
+            bool hasPivots = live ? pub!.Pivots.Count > 0 : seedPivots > 0;
+            Element? pivotsEl = null;
+            if (hasPivots)
+            {
+                var seedKids = new Element[seedPivots];
+                for (int i = 0; i < seedKids.Length; i++) seedKids[i] = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(8, 0f), 12f);
+                Element seedLayer = new BoxEl
                 {
-                    Key = "zune:ctx:title", Direction = 0, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
-                    MaxWidth = Detail.BandLayout.TitleCap, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, HitTestVisible = false,
-                    Children = [Design.Type.ZuneSubPivot(title, selected: true) with { Color = Tok.TextPrimary }],
+                    Key = "zune:ctx:seed", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap, Height = rowH,
+                    HitTestVisible = false, Opacity = live ? 0f : 1f, Transition = s_viewsFade, Children = seedKids,
                 };
-
-            // The seed layer: skeleton pivots, then skeleton action pills. Faded out when the band is published.
-            var seedKids = new List<Element>(seedPivots + seedActions + 1);
-            for (int i = 0; i < seedPivots; i++) seedKids.Add(SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(8, 0f), 12f));
-            seedKids.Add(new BoxEl { Grow = 1f });
-            for (int i = 0; i < seedActions; i++)
-                seedKids.Add(SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(6, Detail.BandLayout.ActionPadX), 20f));
-            Element seedLayer = new BoxEl
-            {
-                Key = "zune:ctx:seed", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap, Height = ZuneNavRules.SubRowHeight,
-                Grow = 1f, MinWidth = 0f, HitTestVisible = false, Opacity = live ? 0f : 1f, Transition = s_viewsFade, Children = [.. seedKids],
-            };
-
-            // The live layer: the published pivots (scrolling), then the actions. Faded in when the band is published.
-            var liveKids = new List<Element>(2);
-            if (pub is not null)
-            {
-                int current = Detail.BandLayout.PivotCurrent(pub.Active.Value, pub.Pivots.Count);
-                var words = new Element[pub.Pivots.Count];
-                for (int i = 0; i < words.Length; i++)
+                var liveKids = new List<Element>(1);
+                if (pub is not null)
                 {
-                    int at = i;
-                    words[i] = PivotItem("ctx:" + i, pub.Pivots[i].ToLower(CultureInfo.CurrentCulture), i == current, sub: true,
-                        () => Shell.PageBands.Peek(name)?.OnPivot(at));
-                }
-                liveKids.Add(WordStrip(words, "zune.context"));
-                if (pub.Actions?.Invoke() is { } actions)
-                    liveKids.Add(new BoxEl
+                    int current = Detail.BandLayout.PivotCurrent(pub.Active.Value, pub.Pivots.Count);
+                    var accent = pub.Accent ?? s_defaultAccent;
+                    var words = new Element[pub.Pivots.Count];
+                    for (int i = 0; i < words.Length; i++)
                     {
-                        Key = "zune:ctx:actions", Direction = 0, Shrink = 0f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
-                        Children = [actions],
-                    });
+                        int at = i;
+                        words[i] = SpyTab("ctx:" + i, pub.Pivots[i].ToLower(CultureInfo.CurrentCulture), i == current, accent,
+                            () => Shell.PageBands.Peek(name)?.OnPivot(at));
+                    }
+                    liveKids.Add(WordStrip(words, "zune.context"));
+                }
+                Element liveLayer = new BoxEl
+                {
+                    Key = "zune:ctx:live", Direction = 0, AlignItems = FlexAlign.Center, Height = rowH,
+                    HitTestVisible = live, Opacity = live ? 1f : 0f, Transition = s_viewsFade, Children = [.. liveKids],
+                };
+                pivotsEl = new BoxEl
+                {
+                    Key = "zune:ctx:pivots", Direction = 0, ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Height = rowH,
+                    Children = [seedLayer, liveLayer],
+                };
             }
-            Element liveLayer = new BoxEl
+
+            // The actions: skeleton pills, then the page's own cluster, end-aligned so a width difference never leaves a gap.
+            // The lane stays while the seed OR the publication has it, so pills the page never fills (the own profile) fade out in place.
+            bool hasActions = seedActions > 0 || (live && pub!.Actions is not null);
+            Element? actionsEl = null;
+            if (hasActions)
             {
-                Key = "zune:ctx:live", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = ZuneNavRules.SubRowHeight,
-                Grow = 1f, MinWidth = 0f, HitTestVisible = live, Opacity = live ? 1f : 0f, Transition = s_viewsFade, Children = [.. liveKids],
-            };
+                var pills = new Element[seedActions];
+                for (int i = 0; i < pills.Length; i++)
+                    pills[i] = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(6, Detail.BandLayout.ActionPadX), 20f);
+                Element seedPills = new BoxEl
+                {
+                    Key = "zune:ctx:pills", Direction = 0, AlignItems = FlexAlign.Center, Gap = Detail.BandLayout.ActionGap, Height = rowH,
+                    HitTestVisible = false, Opacity = live ? 0f : 1f, Transition = s_viewsFade, Children = pills,
+                };
+                Element liveActions = new BoxEl
+                {
+                    Key = "zune:ctx:actions", Direction = 0, Shrink = 0f, Height = rowH, AlignItems = FlexAlign.Center,
+                    HitTestVisible = live, Opacity = live ? 1f : 0f, Transition = s_viewsFade,
+                    Children = pub?.Actions?.Invoke() is { } actions ? [actions] : [],
+                };
+                actionsEl = new BoxEl
+                {
+                    Key = "zune:ctx:actions-stack", Direction = 0, ZStack = true, Justify = FlexJustify.End, Shrink = 0f, Height = rowH,
+                    Children = [seedPills, liveActions],
+                };
+            }
 
             return new BoxEl
             {
-                Key = "zune:sub:context:" + name, Direction = 0, Grow = 1f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
-                MinWidth = 0f, Gap = Spacing.L,
-                Children =
-                [
-                    titleEl,
-                    new BoxEl
-                    {
-                        Direction = 0, ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Height = ZuneNavRules.SubRowHeight,
-                        Children = [seedLayer, liveLayer],
-                    },
-                ],
+                Key = "zune:sub:context:" + name, Direction = 0, Grow = 1f, Height = rowH, AlignItems = FlexAlign.Center,
+                MinWidth = 0f, Children = Detail.BandCluster(titleEl, pivotsEl, actionsEl, rowH),
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
         }
+
+        /// <summary>The page accent when a publication names none.</summary>
+        static readonly Func<ColorF> s_defaultAccent = static () => Tok.AccentDefault;
+
+        /// <summary>The entity's title word: <c>ZuneSubPivot</c> selected (600), primary ink, capped at the band's title width so a
+        /// long name never pushes the tabs. When the page offers a title action (scroll to top) the word is a button.</summary>
+        static Element TitleWord(string title, Action? onTitle)
+        {
+            Element word = Design.Type.ZuneSubPivot(title, selected: true) with
+            {
+                Color = Tok.TextPrimary, MinWidth = 0f, Shrink = 1f, Trim = TextTrim.CharacterEllipsis,
+            };
+            var box = new BoxEl
+            {
+                Key = "zune:ctx:title", Direction = 0, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
+                MaxWidth = Detail.BandLayout.TitleCap, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [word],
+            };
+            return onTitle is null
+                ? box with { HitTestVisible = false }
+                : box with
+                {
+                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, Corners = Radii.ControlAll,
+                    FocusVisualMargin = Design.FocusInsetRow, OnClick = onTitle,
+                };
+        }
+
+        static readonly Func<ColorF> s_noUnderline = static () => ColorF.Transparent;
+
+        /// <summary>A scroll-spy tab: the word at a CONSTANT weight (400), ink carrying the state (primary when active), and the
+        /// page-accent underline an overlay at <see cref="Detail.BandLayout.UnderlineY"/> in a slot of <see cref="Detail.BandLayout.ItemHeight"/> —
+        /// the in-page band's own tab geometry.</summary>
+        static Element SpyTab(string key, string label, bool on, Func<ColorF> accent, Action go) => new BoxEl
+        {
+            Key = "zune:" + key, ZStack = true, Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, Shrink = 0f,
+            Height = ZuneNavRules.SubRowHeight, Corners = Radii.ControlAll, FocusVisualMargin = Design.FocusInsetRow, OnClick = go,
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                    Children =
+                    [
+                        Design.Type.ZuneSubPivot(label, selected: false) with
+                        {
+                            Color = on ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary,
+                            BrushTransitionMs = Design.Motion.Faster,
+                        },
+                    ],
+                },
+                new BoxEl
+                {
+                    Height = Detail.BandLayout.UnderlineHeight, AlignSelf = FlexAlign.Stretch,
+                    Margin = new Edges4(0f, Detail.BandLayout.UnderlineY, 0f, 0f),
+                    Fill = on ? accent : s_noUnderline, BrushTransitionMs = Design.Motion.Faster, HitTestVisible = false,
+                },
+            ],
+        };
 
         static readonly MotionTokenDef s_viewsFade =
             MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);

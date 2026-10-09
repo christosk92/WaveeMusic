@@ -968,6 +968,65 @@ public static partial class Detail
         public const float UnderlineGap = 4f;
         /// <summary>The widest slot the title claims; the surplus goes to the pivot.</summary>
         public const float TitleCap = 280f;
+
+        // ── ONE BASELINE ──
+        // The title, the section tabs and the trailing text actions share ONE 20-DIP line box, vertically centred in the
+        // same 32-DIP item slot, so their baselines are the same line. The pivot used to be a text-plus-underline COLUMN
+        // centred in 32, which put its word 3 DIP above the title's; the underline is an overlay now, at a fixed y.
+
+        /// <summary>THE line box of every text in a band (<c>Controls.TextActionLineHeight</c>, 20).</summary>
+        public const float TextLine = Controls.TextActionLineHeight;
+        /// <summary>Every group's slot (title, tabs, actions): the band less its 12-DIP air above and below (32).</summary>
+        public const float ItemHeight = Height - 2f * FluentGpu.Dsl.Spacing.M;
+        /// <summary>The top of a <see cref="TextLine"/> centred in a box of <paramref name="box"/> DIP.</summary>
+        public static float TextTopIn(float box) => (box - TextLine) * 0.5f;
+        /// <summary>The active mark's top inside an item slot: under the text line plus <see cref="UnderlineGap"/> (30), so it sits
+        /// on the slot's bottom edge (<see cref="ItemHeight"/> − <see cref="UnderlineHeight"/>).</summary>
+        public const float UnderlineY = (ItemHeight - TextLine) * 0.5f + TextLine + UnderlineGap;
+        /// <summary>The 1-DIP divider between the title and the tabs.</summary>
+        public const float DividerH = 16f;
+        /// <summary>The air on each side of the divider.</summary>
+        public const float DividerGap = ClusterGap * 0.5f;
+
+        // ── THE FLOOR ──
+        // Under Zune an entity page (artist, profile, episode, show) publishes its band into the Zune band's second row, so its
+        // in-page band is not composed and its sticky floor is 0 instead of the band's 56. The hero collapses to that floor
+        // itself (its Collapse floor is the same number), so no hero remnant stays pinned at the card top.
+
+        /// <summary>The WANTED placement: the band lives in the Zune band's row 2 while Zune is the PRESENTED style (the page
+        /// reads <c>Shell.Ui.PresentedNavStyle</c>, never the live one, so the change lands in the quiet commit).</summary>
+        public static bool InRow2(ShellNavStyle presented) => presented == ShellNavStyle.Zune;
+
+        /// <summary>The stuck height: the band's 56 in the page, 0 once the band lives in row 2.</summary>
+        public static float StuckHeight(bool inRow2) => inRow2 ? 0f : Height;
+
+        /// <summary>The clip a stuck page content is cut at: exactly the stuck height.</summary>
+        public static float ClipInsetFor(bool inRow2) => StuckHeight(inRow2);
+
+        /// <summary>The scroll offset below which a 56-to-0 floor flip is INVISIBLE. THE PROOF. A hero of laid-out height H
+        /// collapses LINEARLY: the engine (ScrollEffect.Collapse) runs the presented height from H to its floor over
+        /// <c>over = H − floor</c> scroll DIP, and Collapse, Parallax, Fade, Reveal and Sticky are paint channels (PresentedH,
+        /// ClipBottom, TransY, opacity), not layout. Collapse: with floor 56 the presented height at offset o is
+        /// <c>H − o·(H−56)/(H−56) = H − o</c>; with floor 0 it is <c>H − o·H/H = H − o</c>, and the parallax slope is −1 in both.
+        /// Sticky: a <c>Sticky(floor)</c> element right below the hero sits at H − o &gt; 56 there, so it is engaged in NEITHER
+        /// pairing, and the clip it carries is not engaged either. Fade and Reveal are NOT floor-free: each runs over the hero's
+        /// own collapse distance, so the expanded copy fades over <c>[ExpandedFadeStart(H−floor), H−floor]</c> and the band
+        /// reveals from <c>CompactRevealStart(H−floor)</c>. At floor 56 the fade starts at H − 56 − 96 and the reveal at
+        /// H − 56 − 44; at floor 0 they start 56 DIP later. Both stay at 0 (copy fully opaque, band unrevealed or absent) for every
+        /// offset below the EARLIER of the two starts at floor 56, which is therefore the flip line (o &lt; <see cref="FlipLine"/>):
+        /// every channel is identical there and the flip cannot be seen. Above it the flip would pop the copy and the band and snap
+        /// the stuck header and clip by 56 DIP, so the floor HOLDS (latches) until the scroll next crosses back under the line.</summary>
+        public static float FlipLine(float heroH)
+        {
+            float collapseAt56 = heroH - Height;
+            return MathF.Min(VerticalLayout.ExpandedFadeStart(collapseAt56), VerticalLayout.CompactRevealStart(collapseAt56));
+        }
+
+        /// <summary>The floor placement to use now. Below <see cref="FlipLine"/> the WANTED placement is adopted (the flip is
+        /// invisible); at or above it the LATCHED one holds, so a nav-style switch while scrolled never snaps a stuck element.</summary>
+        public static bool FloorLatch(bool latched, bool wanted, double offset, float heroH)
+            => offset < FlipLine(heroH) ? wanted : latched;
+
         /// <summary>Average advance at the band's 14/600 rung, deliberately generous so a localized label reserves.</summary>
         public const float AvgCharW = 7.6f;
 
