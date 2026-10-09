@@ -604,8 +604,7 @@ public static partial class Settings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>Settings › Sidebar (design C.2 entry 3): the layout (two cards, "· modified"), density, Edit sidebar (P4),
-    /// reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
+    /// <summary>Settings › Sidebar (design C.2 entry 3): the navigation style (cards), the style's own rows (Library: View, Density, Show Liked Songs), Edit sidebar (P4), reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
     /// signals, so a change made on the sidebar itself shows here live.</summary>
     sealed class SidebarLayoutCard : Component
     {
@@ -617,21 +616,28 @@ public static partial class Settings
             bool editing = Sidebar.Editing.Value;
             // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
             string finish = Loc.Get("sidebar.pane.finishEditing");
-            var items = new List<Element>(4)
+            var items = new List<Element>(7);
+            // The style's own rows come first: Library shows its view and Liked Songs (the same ops as the toolbar and ⋯ menu).
+            if (layout == SidebarLayoutId.Library)
             {
-                Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
-                    Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList),
-                Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
-                    isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
-                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo),
-                Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
-                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit),
-                Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
-                    isClickEnabled: !editing,
-                    // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
-                    onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
-                    icon: Icons.Delete),
-            };
+                items.Add(Item(Loc.Get("settings.sidebar.view"), Loc.Get("settings.sidebar.viewSub"),
+                    Embed.Comp(() => new SidebarViewPicker()) with { Key = "sidebar.view:" + (int)Sidebar.Doc.Library.View }, icon: Icons.ViewGrid));
+                items.Add(Item(Loc.Get("settings.sidebar.showLiked"), Loc.Get("settings.sidebar.showLikedSub"),
+                    ToggleSwitch.Create(new Signal<bool>(Sidebar.Doc.Library.ShowLiked), onChange: static on => Sidebar.Dispatch(new SetShowLiked(on)),
+                        style: SettingsCard.CompactToggleStyle()), icon: Icons.Heart));
+            }
+            items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
+                Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList));
+            items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
+                isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
+                onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo));
+            items.Add(Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
+                isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit));
+            items.Add(Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
+                isClickEnabled: !editing,
+                // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
+                onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
+                icon: Icons.Delete));
             if (Sidebar.LayoutFileFault)
                 items.Insert(0, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning));
             if (Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped) is { Length: > 0 } dropped)
@@ -647,6 +653,19 @@ public static partial class Settings
                 ItemsHeader = ExpanderPanel(SidebarLayoutCards(layout, editing)),
                 Items = [.. items],
             }) with { Key = "appearance.sidebar.layout" };
+        }
+    }
+
+    /// <summary>List · Grid for Your Library (the toolbar's and the ⋯ menu's view radios, as a combo).</summary>
+    sealed class SidebarViewPicker : Component
+    {
+        static readonly Signal<int> s_index = new(0);
+        public override Element Render()
+        {
+            int index = (int)Sidebar.Doc.Library.View;
+            UseEffect(() => s_index.Value = index, DepKey.From(index));
+            return ComboBox.Create([Loc.Get("sidebar.view.list"), Loc.Get("sidebar.view.grid")], s_index, width: 160f,
+                onChange: static i => Sidebar.Dispatch(new SetLibraryView(i == 1 ? SidebarLibraryView.Grid : SidebarLibraryView.List)));
         }
     }
 
