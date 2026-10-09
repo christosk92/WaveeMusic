@@ -645,8 +645,8 @@ public static partial class Sidebar
         /// factory safe.</summary>
         Element? FolderTrailing(SidebarSection section, in SidebarLibraryEntry entry, string folderId, bool rootlistItem)
         {
-            Element? badge = section.Kind == SidebarSectionKind.Playlists ? Counts.Badge(entry.ChildCount) : null;
-            if (!rootlistItem || folderId.Length == 0 || _o.Acts is null) return badge;
+            // No count: the "N items" subtitle already says it, and the chevron column is the folder's trailing edge.
+            if (!rootlistItem || folderId.Length == 0 || _o.Acts is null) return null;
 
             var owner = _o;
             string name = entry.Name;
@@ -659,12 +659,7 @@ public static partial class Sidebar
                 dropActive: () => active.Value,
                 revealOpacity: reveal,
                 box: 20f, glyph: 12f)) with { Key = "folder-create" };
-            if (badge is null) return plus;
-            return new BoxEl
-            {
-                Direction = 0, Gap = 2f, Shrink = 0f, AlignItems = FlexAlign.Center,
-                Children = [badge, plus],
-            };
+            return plus;
         }
 
         /// <summary>The folder "+"'s base opacity, BOUND. Mouse hover is the engine's own reveal cascade, but hover flags
@@ -680,12 +675,10 @@ public static partial class Sidebar
 
         // ── shared row plumbing ──────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>A FEED row's trailing slot: a playlist's quiet count (the Playlists section) or a new release's age badge
+        /// <summary>A FEED row's trailing slot: a new release's age badge (a playlist's count is its subtitle)
         /// ("3d"). The equalizer is the row primitive's own slot; route counts are <see cref="CountBadge"/>'s.</summary>
         static Element? TrailingBadge(SidebarSection section, in SidebarLibraryEntry entry)
         {
-            if (section.Kind == SidebarSectionKind.Playlists && entry.Kind == SidebarEntryKind.Playlist)
-                return Counts.Badge(entry.ChildCount);
             if (section.Kind == SidebarSectionKind.NewReleases && PaneText.AgeBadge(entry.SortStamp) is { Length: > 0 } age)
                 return global::Wavee.Design.Type.MicroMeta(age) with { Color = Tok.TextTertiary, MaxLines = 1 };
             return null;
