@@ -899,6 +899,20 @@ public class SidebarPaneInvariantTests
     }
 
     [Fact]
+    public void HiddenPane_IsValidOnlyAsMinimal()
+    {
+        // Zune presents no pane in any band: a hidden pane in Narrow is Minimal and empty; Compact is a band mismatch.
+        var hidden = new SidebarPaneFrameSnapshot(
+            Layout: SidebarLayoutId.Classic, Mode: SidebarPaneMode.Minimal, Band: SidebarWindowBand.Narrow,
+            UserCollapsed: false, OverlayOpen: false, PreferredExpandedWidth: 320f, PresentedWidth: 0f,
+            RenderedPaneWidth: 0f, PaneHidden: true);
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in hidden));
+
+        var compact = hidden with { Mode = SidebarPaneMode.Compact, RenderedPaneWidth = 48f, PresentedWidth = 48f };
+        Assert.True(SidebarPaneInvariant.Inspect(in compact).HasFlag(SidebarPaneInvariantFault.ModeBandMismatch));
+    }
+
+    [Fact]
     public void A_rail_at_fifty_six_is_not_the_forty_eight_dip_strip()
     {
         var state = Compact(rendered: 56f);

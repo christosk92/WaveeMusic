@@ -53,13 +53,15 @@ public static class SidebarPaneModeRules
     public static SidebarWindowBand InitialBand(float viewportW) => BandOf(viewportW, SidebarWindowBand.Wide);
 
     /// <summary>① The mode. Narrow ⇒ Compact and Tiny ⇒ Minimal whatever the user or Edit mode wants (Edit then pins the
-    /// OVERLAY open instead); Wide ⇒ the user's collapse, unless editing.</summary>
-    public static SidebarPaneMode Resolve(SidebarWindowBand band, bool userCollapsed, bool editing) => band switch
-    {
-        SidebarWindowBand.Tiny => SidebarPaneMode.Minimal,
-        SidebarWindowBand.Narrow => SidebarPaneMode.Compact,
-        _ => editing || !userCollapsed ? SidebarPaneMode.Expanded : SidebarPaneMode.Compact,
-    };
+    /// OVERLAY open instead); Wide ⇒ the user's collapse, unless editing. <paramref name="paneHidden"/> is the Zune style:
+    /// it presents no pane in any band (Minimal).</summary>
+    public static SidebarPaneMode Resolve(SidebarWindowBand band, bool userCollapsed, bool editing, bool paneHidden = false)
+        => paneHidden ? SidebarPaneMode.Minimal : band switch
+        {
+            SidebarWindowBand.Tiny => SidebarPaneMode.Minimal,
+            SidebarWindowBand.Narrow => SidebarPaneMode.Compact,
+            _ => editing || !userCollapsed ? SidebarPaneMode.Expanded : SidebarPaneMode.Compact,
+        };
 
     /// <summary>② The inline column's width: Expanded clamps the preference to [180, 460] and to the content floor;
     /// Compact is the 48 rail; Minimal is nothing.</summary>

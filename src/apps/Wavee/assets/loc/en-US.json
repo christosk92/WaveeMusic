@@ -2390,7 +2390,8 @@
       "options": "Sidebar options",
       "collapse": "Collapse navigation",
       "expand": "Expand navigation",
-      "finishEditing": "Finish editing the sidebar first"
+      "finishEditing": "Finish editing the sidebar first",
+      "zuneNoPane": "The Zune style has no sidebar"
     },
     "header": {
       "options": "Section options"

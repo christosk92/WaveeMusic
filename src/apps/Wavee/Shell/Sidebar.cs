@@ -877,7 +877,8 @@ public readonly record struct SidebarPaneFrameSnapshot(
     bool OverlayOpen,
     float PreferredExpandedWidth,
     float PresentedWidth,
-    float RenderedPaneWidth);
+    float RenderedPaneWidth,
+    bool PaneHidden = false);
 
 /// <summary>All terminal-state violations detected in one observation. Flags make one diagnostic edge sufficient
 /// even when one bad state breaks width and mode at the same time.</summary>
@@ -908,8 +909,11 @@ public static class SidebarPaneInvariant
         var fault = SidebarPaneInvariantFault.None;
         if (!InExpandedRange(s.PreferredExpandedWidth)) fault |= SidebarPaneInvariantFault.PreferredWidthOutOfRange;
         // A forced band can only present its forced mode.
-        if ((s.Band == SidebarWindowBand.Narrow && s.Mode != SidebarPaneMode.Compact)
-            || (s.Band == SidebarWindowBand.Tiny && s.Mode != SidebarPaneMode.Minimal))
+        // A hidden pane (Zune) presents Minimal in every band.
+        if (s.PaneHidden
+                ? s.Mode != SidebarPaneMode.Minimal
+                : (s.Band == SidebarWindowBand.Narrow && s.Mode != SidebarPaneMode.Compact)
+                  || (s.Band == SidebarWindowBand.Tiny && s.Mode != SidebarPaneMode.Minimal))
             fault |= SidebarPaneInvariantFault.ModeBandMismatch;
         switch (s.Mode)
         {

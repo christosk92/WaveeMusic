@@ -242,7 +242,8 @@ public static partial class Shell
                 float w0 = vp.Peek().Width;
                 var band0 = SidebarPaneModeRules.BandOf(w0, SidebarWindowBand.Wide);
                 Sidebar.Band.SetIfChanged(band0);
-                var mode0 = SidebarPaneModeRules.Resolve(band0, Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek());
+                var mode0 = SidebarPaneModeRules.Resolve(band0, Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(),
+                    paneHidden: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune);
                 Sidebar.Mode.SetIfChanged(mode0);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode0, Sidebar.Width.Peek(), w0));
             }
@@ -257,7 +258,7 @@ public static partial class Shell
                 if (!SidebarPaneModeRules.HasOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);
             });
             // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
-            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value));
+            UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value && Sidebar.NavStyle.Value != ShellNavStyle.Zune));
             // THE ONE PRESENTATION EFFECT: ① the mode, ② the presented width. A live drag presents Track(seam). It never
             // writes Sidebar.Width or UserCollapsed (those are the preference, persisted at commit).
             UseSignalEffect(() =>
@@ -266,7 +267,8 @@ public static partial class Shell
                 var band = Sidebar.Band.Value;
                 bool editing = Sidebar.Editing.Value;
                 var state = new SidebarResizeRules.State(Sidebar.UserCollapsed.Value, Sidebar.Width.Value);
-                if (_sidebarDragging.Value && SidebarPaneModeRules.SeamVisible(band))
+                bool hidden = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+                if (_sidebarDragging.Value && SidebarPaneModeRules.SeamVisible(band) && !hidden)
                 {
                     var live = SidebarResizeRules.Track(Sidebar.Seam.Value, in state, editing);
                     Sidebar.Mode.SetIfChanged(live.Collapsed ? SidebarPaneMode.Compact : SidebarPaneMode.Expanded);
@@ -275,7 +277,7 @@ public static partial class Shell
                     return;
                 }
                 _sidebarFade.SetIfChanged(1f);
-                var mode = SidebarPaneModeRules.Resolve(band, state.UserCollapsed, editing);
+                var mode = SidebarPaneModeRules.Resolve(band, state.UserCollapsed, editing, paneHidden: hidden);
                 Sidebar.Mode.SetIfChanged(mode);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode, state.ExpandedWidth, vpW));
             });
@@ -581,7 +583,8 @@ public static partial class Shell
             new BoxEl
             {
                 Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value))),
+                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value)
+                    && Sidebar.NavStyle.Value != ShellNavStyle.Zune)),
                 Transform = Prop.Of(static () => Affine2D.Translation(Sidebar.PresentedWidth.Value, 0f)),
                 Children =
                 [
@@ -835,7 +838,8 @@ public static partial class Shell
         float rendered = s_scene is { } scene && !s_sidebarColumn.IsNull && scene.IsLive(s_sidebarColumn)
             ? scene.AbsoluteRect(s_sidebarColumn).W : Sidebar.PresentedWidth.Peek();
         return new SidebarPaneFrameSnapshot(Sidebar.Layout.Peek(), Sidebar.Mode.Peek(), Sidebar.Band.Peek(),
-            Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered);
+            Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered,
+            PaneHidden: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune);
     }
 
     static void PublishScrimClip()
@@ -1059,7 +1063,8 @@ public static partial class Shell
     static readonly Signal<bool> s_paneToggleEnabled = new(true);
 
     static string PaneToggleTip()
-        => Sidebar.Editing.Value ? Loc.Get("sidebar.pane.finishEditing")
+        => Sidebar.NavStyle.Value == ShellNavStyle.Zune ? Loc.Get("sidebar.pane.zuneNoPane")
+         : Sidebar.Editing.Value ? Loc.Get("sidebar.pane.finishEditing")
          : Sidebar.Mode.Value == SidebarPaneMode.Expanded || Sidebar.OverlayOpen.Value ? Loc.Get("sidebar.pane.collapse")
          : Loc.Get("sidebar.pane.expand");
 
@@ -1428,7 +1433,7 @@ public static partial class Shell
         public override Element Render()
         {
             var band = Sidebar.Band.Value;
-            bool overlay = SidebarPaneModeRules.HasOverlay(band);
+            bool overlay = SidebarPaneModeRules.HasOverlay(band) && Sidebar.NavStyle.Value != ShellNavStyle.Zune;
             bool pinned = SidebarPaneModeRules.OverlayPinned(band, Sidebar.Editing.Value);
             bool open = overlay && (Sidebar.OverlayOpen.Value || pinned);
             var hooks = UseContext(InputHooks.Current);

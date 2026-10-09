@@ -14,6 +14,32 @@ namespace Wavee;
 /// <summary>The two sidebar layouts. PERSISTED as <c>sidebar.layout.id</c> (0 Classic · 1 Library) — append only.</summary>
 public enum SidebarLayoutId : byte { Classic = 0, Library = 1 }
 
+/// <summary>The navigation style: the two sidebar layouts plus Zune, which hides the pane and navigates by the header's
+/// pivots. PERSISTED as <c>sidebar.layout.id</c> (0 Classic · 1 Library · 2 Zune) — append only. Classic and Library are
+/// sidebar layouts; Zune hides the pane and navigates by the header's pivots.</summary>
+public enum ShellNavStyle : byte { Classic = 0, Library = 1, Zune = 2 }
+
+/// <summary>The pure mapping between the stored <c>sidebar.layout.id</c>, <see cref="ShellNavStyle"/> and the sidebar layout
+/// that Zune keeps underneath (Zune leaves the layout as it was, so leaving Zune returns to it).</summary>
+public static class ShellNavStyleRules
+{
+    public static ShellNavStyle FromStored(int stored) => stored switch { 1 => ShellNavStyle.Library, 2 => ShellNavStyle.Zune, _ => ShellNavStyle.Classic };
+
+    public static ShellNavStyle Of(SidebarLayoutId l) => l == SidebarLayoutId.Library ? ShellNavStyle.Library : ShellNavStyle.Classic;
+
+    /// <summary>The sidebar layout a style presents. Zune keeps <paramref name="current"/>, so the layout survives a trip
+    /// through Zune.</summary>
+    public static SidebarLayoutId LayoutOf(ShellNavStyle s, SidebarLayoutId current) => s switch
+    {
+        ShellNavStyle.Classic => SidebarLayoutId.Classic,
+        ShellNavStyle.Library => SidebarLayoutId.Library,
+        _ => current,
+    };
+
+    /// <summary>Zune presents no pane in any window band.</summary>
+    public static bool HidesPane(ShellNavStyle s) => s == ShellNavStyle.Zune;
+}
+
 /// <summary>The closed section catalogue (design C.1). Not persisted by number: the files use <see cref="SidebarCatalogue.IdOf"/>.</summary>
 public enum SidebarSectionKind : byte
 {

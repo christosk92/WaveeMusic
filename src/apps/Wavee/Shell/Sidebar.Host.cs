@@ -75,7 +75,9 @@ public static partial class Sidebar
         SidebarMigrationHost.RunIfNeeded(Platform.Settings, s_profileDir, Entities.Current.Key);
 
         var s = Platform.Settings;
-        Layout.Value = s.Get(Platform.Keys.SidebarLayoutId) == 1 ? SidebarLayoutId.Library : SidebarLayoutId.Classic;
+        NavStyle.Value = ShellNavStyleRules.FromStored(s.Get(Platform.Keys.SidebarLayoutId));
+        Layout.Value = ShellNavStyleRules.LayoutOf(NavStyle.Peek(), SidebarLayoutId.Classic);
+        ZunePins.Value = s.Get(Platform.Keys.SidebarZunePins);
         Density.Value = s.Get(Platform.Keys.SidebarPaneDensity) == 1 ? SidebarDensity.Compact : SidebarDensity.Default;
         ClassicCovers.Value = s.Get(Platform.Keys.SidebarClassicCovers);
         Width.Value = SidebarPaneBounds.Clamp(s.Get(Platform.Keys.SidebarPaneWidth));
@@ -155,8 +157,15 @@ public static partial class Sidebar
 
     // ── the layout ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The navigation style (<c>sidebar.layout.id</c>: Classic, Library or Zune). Zune hides the pane; the layout
+    /// under it is kept in <see cref="Layout"/>.</summary>
+    public static readonly Signal<ShellNavStyle> NavStyle = new(ShellNavStyle.Classic);
+
     /// <summary>The active layout (<c>sidebar.layout.id</c>). A switch remounts the mode (fresh hooks, fresh scroll).</summary>
     public static readonly Signal<SidebarLayoutId> Layout = new(SidebarLayoutId.Classic);
+
+    /// <summary>Zune's pins beside the pivots (<c>sidebar.zune.pins</c>).</summary>
+    public static readonly Signal<bool> ZunePins = new(true);
 
     /// <summary>Entity-row density (<c>sidebar.pane.density</c>), global.</summary>
     public static readonly Signal<SidebarDensity> Density = new(SidebarDensity.Default);
@@ -265,16 +274,29 @@ public static partial class Sidebar
     }
 
     /// <summary>Switch the layout (Settings, the pane menu, the palette). Each layout keeps its own overlay.</summary>
-    public static void SwitchLayout(SidebarLayoutId next)
+    public static void SwitchLayout(SidebarLayoutId next) => SwitchNavStyle(ShellNavStyleRules.Of(next));
+
+    /// <summary>Switch the navigation style (Classic, Library or Zune). Zune keeps the sidebar layout it had, so leaving Zune
+    /// returns to it.</summary>
+    public static void SwitchNavStyle(ShellNavStyle next)
     {
-        if (Layout.Peek() == next || Editing.Peek()) return;
+        if (NavStyle.Peek() == next || Editing.Peek()) return;
         LibrarySearch.SetIfChanged("");
         LibrarySearchOpen.SetIfChanged(false);
-        Layout.Value = next;
+        NavStyle.Value = next;
+        Layout.Value = ShellNavStyleRules.LayoutOf(next, Layout.Peek());
+        OverlayOpen.SetIfChanged(false);
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
         ClearRing();                                                  // the ring is per layout switch (design C.5)
         Platform.Settings.Set(Platform.Keys.SidebarLayoutId, (int)next);
         Log.Info("sidebar", "layout.changed to=" + next);
+    }
+
+    /// <summary>Zune's pins beside the pivots (Settings): persisted at once.</summary>
+    public static void SetZunePins(bool on)
+    {
+        ZunePins.SetIfChanged(on);
+        Platform.Settings.Set(Platform.Keys.SidebarZunePins, on);
     }
 
     /// <summary>Density (Settings, the pane menu): recorded in the ring, never toasted.</summary>
@@ -468,6 +490,7 @@ public static partial class Sidebar
     public static void EnterEdit()
     {
         if (Editing.Peek()) return;
+        if (NavStyle.Peek() == ShellNavStyle.Zune) { SayZuneHasNoPane(); return; }
         if (Drag.IsLive())
         {
             Notify.Say(Loc.Get("sidebar.edit.finishDrag"), InfoBarSeverity.Informational, dedupeKey: "sidebar.edit.finish-drag");
@@ -475,6 +498,9 @@ public static partial class Sidebar
         }
         Editing.Value = true;
     }
+
+    /// <summary>Zune has no pane: a control that cannot act says why (one deduped toast).</summary>
+    static void SayZuneHasNoPane() => Notify.Say(Loc.Get("sidebar.pane.zuneNoPane"), InfoBarSeverity.Informational, dedupeKey: "sidebar.pane.zune-no-pane");
 
     /// <summary>Done / Esc: back to the sidebar, focus restored to the row that had it before Edit (§P4.5). The ring is
     /// KEPT (Q6: the edit bar's Undo after Done is the toast's).</summary>
@@ -548,6 +574,7 @@ public static partial class Sidebar
     /// in Narrow/Tiny it opens or closes the overlay pane and never writes the collapse. Disabled while editing.</summary>
     public static void TogglePane()
     {
+        if (NavStyle.Peek() == ShellNavStyle.Zune) { SayZuneHasNoPane(); return; }
         if (Editing.Peek()) return;
         if (SidebarPaneModeRules.HasOverlay(Band.Peek())) { OverlayOpen.Value = !OverlayOpen.Peek(); return; }
         Apply(SidebarResizeRules.Toggle(ResizeState()));
@@ -561,6 +588,7 @@ public static partial class Sidebar
     /// a no-op while editing (Edit already presents the pane).</summary>
     public static void OpenPane()
     {
+        if (NavStyle.Peek() == ShellNavStyle.Zune) return;            // called by code, not the user: no toast
         if (Editing.Peek()) return;
         if (SidebarPaneModeRules.HasOverlay(Band.Peek())) { OverlayOpen.SetIfChanged(true); return; }
         if (UserCollapsed.Peek()) Apply(SidebarResizeRules.Toggle(ResizeState()));
