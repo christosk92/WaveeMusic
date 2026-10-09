@@ -65,13 +65,4 @@ public class FacetBandTests
     [InlineData(true)]
     public void A_zone_bodys_clip_line_is_its_headers_stick_line_plus_the_header_and_its_gap(bool hoisted)
         => Assert.Equal(Facet.StuckBottomFor(hoisted) + Zones.HeaderH + Zones.HeaderGap, Zones.BodyClipInsetFor(hoisted));
-
-    [Fact]
-    public void The_zune_views_bar_fits_the_bands_second_row()
-    {
-        var st = Design.ZuneViewsStyle;
-        Assert.Equal(ZuneNavRules.SubRowHeight, st.ItemHeight + 2f * PageGeometry.ViewsBarPadY);
-        Assert.True(st.ShowPill);
-        Assert.Equal(0f, st.LeadingInset);
-    }
 }

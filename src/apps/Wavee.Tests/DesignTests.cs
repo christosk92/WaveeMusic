@@ -77,7 +77,7 @@ public class DesignTypeRampTests
         Assert.Equal(700, Design.Type.ArtistTitle("x").ResolvedWeight);
         Assert.Equal(700, Design.Type.ArtistCompactTitle("x").ResolvedWeight);
         // THREE SemiLight 350s — the same cut the engine's own pivot header uses.
-        Assert.Equal(350, Design.Type.PivotLabel("x").ResolvedWeight);
+        Assert.Equal(350, Design.Type.ZunePivot("x", false).ResolvedWeight);
         Assert.Equal(350, Design.Type.NpvLyric("x").ResolvedWeight);
         Assert.Equal(350, Design.Type.StatHero("2B", null).Weight);
     }
@@ -177,11 +177,37 @@ public class DesignTypeRampTests
             Assert.Equal(weight, el.ResolvedWeight);
         }
 
-        OffRamp(Design.Type.PivotLabel("x"), 19f, 25f, 350);
         OffRamp(Design.Type.MicroMeta("x"), 11f, 15f, 400);
         OffRamp(Design.Type.DenseMeta("x"), 13f, 18f, 400);
         OffRamp(Design.Type.DenseTitle("x"), 13f, 18f, 600);
         OffRamp(Design.Type.SheetTitle("x"), 16f, 22f, 600);
+    }
+
+    [Fact]
+    public void ZunePivot_is_the_28_36_display_cut_at_350_rest_and_600_selected()
+    {
+        var rest = Design.Type.ZunePivot("x", false);
+        var on = Design.Type.ZunePivot("x", true);
+        Assert.Equal(28f, on.Size);
+        Assert.Equal(36f, on.LineHeight);
+        Assert.Equal(600, on.ResolvedWeight);
+        Assert.Equal("Segoe UI Variable Display", on.FontFamily);
+        // Selection changes the weight only: the line box stays, so a pivot never moves the row.
+        Assert.Equal(on.Size, rest.Size);
+        Assert.Equal(on.LineHeight, rest.LineHeight);
+    }
+
+    [Fact]
+    public void ZuneSubPivot_is_14_20_at_400_rest_and_600_selected()
+    {
+        var rest = Design.Type.ZuneSubPivot("x", false);
+        var on = Design.Type.ZuneSubPivot("x", true);
+        Assert.Equal(14f, rest.Size);
+        Assert.Equal(20f, rest.LineHeight);
+        Assert.Equal(400, rest.ResolvedWeight);
+        Assert.Equal(14f, on.Size);
+        Assert.Equal(20f, on.LineHeight);
+        Assert.Equal(600, on.ResolvedWeight);
     }
 
     [Fact]

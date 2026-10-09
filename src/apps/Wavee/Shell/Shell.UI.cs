@@ -141,6 +141,7 @@ public static partial class Shell
     static readonly EasingSpec PaneEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
     const float PaneMs = FrameRules.CardMotionMs;
     const string ContentRowMorphId = "shell.content-row";
+    const string FrameColumnMorphId = "shell.frame-column";
 
     /// <summary>The pane opens in 200 ms and closes in 100 ms on WinUI's SplitView spline (MotionTok.PaneOpen/PaneClose).</summary>
     static readonly LayoutTransition SidebarPaneAnim = new(TransitionChannels.Size | TransitionChannels.Position,
@@ -148,6 +149,26 @@ public static partial class Shell
         ExitDynamics: TransitionDynamics.Tween(MotionTok.PaneClose.DurationMs, Easing.FluentPane), SuppressDescendantTransitions: true);
 
     static readonly LayoutTransition ContentCardAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
+
+    /// <summary>The whole content region's answer to a nav-style switch (the band above it opens or closes by 84 DIP): a Position
+    /// FLIP relative to the frame column, which never moves, plus a Height RELAYOUT. The column lays out once at the band's
+    /// final height, so the region's top jumps by the band height and its height changes by the same amount in that commit.
+    /// The FLIP eases the top back down over the band's own <see cref="PaneMs"/> / <see cref="PaneEase"/> tween, and the
+    /// Relayout re-solves the region's subtree at the interpolated height each tick, so the region's BOTTOM edge stays on the
+    /// dock the whole time (a Reveal would leave an empty strip above the dock when the region shrinks, and overlap the dock
+    /// when it grows). Height only, so width stays with the card's own X FLIP. It is a one-off: the chrome mounting is
+    /// latched out by <c>_chromeEdge</c> and a window resize never captures.</summary>
+    static readonly LayoutTransition ContentRegionAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), Axes: SizeAxes.Height);
+
+    /// <summary>The Zune band's height change on a nav-style switch: a Size REVEAL on the card's own tween (never a Reflow).
+    /// The column lays out at the band's final height ONCE; the band's clip reveals over <see cref="PaneMs"/> /
+    /// <see cref="PaneEase"/> while <see cref="ContentRegionAnim"/> eases the content region down in the same tween, so the
+    /// band's revealed bottom edge and the card's top travel together and the region's bottom edge stays on the dock.</summary>
+    public static readonly LayoutTransition ZuneBandAnim = new(TransitionChannels.Size,
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
 
@@ -207,11 +228,15 @@ public static partial class Shell
         readonly Signal<float> _railFade = new(1f);
         readonly Signal<bool> _sidebarDragging = new(false);
         readonly Signal<bool> _railDragging = new(false);
+        /// <summary>True for <see cref="FrameRules.ChromeEdgeSnapMs"/> after the chrome mounts or unmounts: the content region
+        /// then SNAPS instead of FLIPping (see <see cref="ContentRegionAnim"/>).</summary>
+        readonly Signal<bool> _chromeEdge = new(false);
         /// <summary>A module watch page's stage would host what is playing — split from the resize-rate effect so the
         /// playable-uri reads run at navigation/track rate, not per resize pixel.</summary>
         readonly Signal<bool> _pageStageHosts = new(false);
 
         bool _bandSeeded;
+        bool _chromeWas = s_chromeMounted();
         TemplateParts? _seamParts;
         TemplateParts? _railSeamParts;
         float _lastAutoZoom;
@@ -301,7 +326,21 @@ public static partial class Shell
                     FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value));
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(cardW, Ui.PageGutter.Peek()));
             });
-            UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
+            // The chrome's mount edge (full-screen video, immersive lyrics) is NOT a nav-style switch: the collapsed region is
+            // arranged 0x0 at the cursor, so on the way back ContentRegionAnim would see a Y/H change and fly the whole card
+            // in from the window top. The edge latches the same layout-transition suppression a seam drag uses, for the
+            // commit that carries it (the latch is written in the flush, before the layout and ApplyProjections).
+            var chromeEdgeEnd = UseTimeout(() => _chromeEdge.Value = false, FrameRules.ChromeEdgeSnapMs);
+            UseSignalEffect(() =>
+            {
+                bool mounted = s_chromeMounted();
+                if (mounted == _chromeWas) return;
+                _chromeWas = mounted;
+                _chromeEdge.Value = true;
+                chromeEdgeEnd.RestartIn(FrameRules.ChromeEdgeSnapMs);
+            });
+            UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(
+                MotionSuppressionSource.AppResize, _sidebarDragging.Value || _chromeEdge.Value));
             // F243: a rail drag ends (the splitter clears `dragging` AFTER its commit). A COMMITTED drag already made the
             // preview equal; a CANCELLED one never commits, so the preview falls back to the committed width here.
             UseSignalEffect(() =>
@@ -465,7 +504,7 @@ public static partial class Shell
             var column = new BoxEl
             {
                 // Window-tall, bound: the content region yields instead of shoving the docked bar off the bottom.
-                Direction = 1, Grow = 1f, Height = Prop.Of(() => vp.Value.Height),
+                Direction = 1, Grow = 1f, Height = Prop.Of(() => vp.Value.Height), MorphId = FrameColumnMorphId,
                 OnKeyDown = OnShellKey,
                 Children =
                 [
@@ -562,17 +601,29 @@ public static partial class Shell
                             },
                         ],
                     },
+                    // The Zune frame gap: 8 DIP between the (hidden, 0-wide) pane column and the card, ZERO in Classic/Library.
+                    // It paints nothing and carries NO transition: the card's ContentCardAnim FLIP (RelativeTo this row) moves the
+                    // visible 8 DIP in the same tween as the pane. Not folded into the sidebar column, whose width the pane
+                    // invariant compares with PresentedWidth.
                     new BoxEl
                     {
-                        // The stock Win11 content region: flush, one corner, a left+top stroke, no shadow, no gutter.
+                        Key = "shell:lead-gap", Shrink = 0f, HitTestVisible = false,
+                        Width = Prop.Of(static () => FrameRules.ContentLeadGap(Sidebar.NavStyle.Value)),
+                    },
+                    new BoxEl
+                    {
+                        // The stock Win11 content region: flush (a left gap only under Zune), one corner (none under Zune), a left+top stroke, no shadow.
                         Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                         Children =
                         [
-                            new BoxEl { Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Design.Size.ContentPaneCorners },
+                            new BoxEl
+                            {
+                                Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Prop.Of(s_contentCorners),
+                            },
                             new BoxEl
                             {
                                 Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                                Fill = ColorF.Transparent, Corners = Design.Size.ContentPaneCorners, ClipToBounds = true,
+                                Fill = ColorF.Transparent, Corners = Prop.Of(s_contentCorners), ClipToBounds = true,
                                 IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentRowMorphId,
                                 Children = [Embed.Comp(static () => new ContentHost())],
                             },
@@ -668,11 +719,17 @@ public static partial class Shell
             // content row's MorphId stays on an inner node with an unbound Visible (the BindContract rule guards the
             // tagged node itself).
             Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+            Animate = ContentRegionAnim, RelativeTo = FrameColumnMorphId,
             Visible = Prop.Of(s_chromeMounted),
             OnRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnBoundsChanged = static _ => PublishScrimClip(),
         };
     }
+
+    /// <summary>The content card's corners, bound to the nav style: one thunk for the ground, the clip, the stroke and the
+    /// cover-tone plane, so they change in the same commit.</summary>
+    internal static readonly Func<CornerRadius4> s_contentCorners =
+        static () => FrameRules.ContentCorners(Sidebar.NavStyle.Value);
 
     static readonly Func<bool> s_chromeMounted = static () =>
         FrameRules.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), Ui.ImmersiveLyrics.Value);
@@ -701,7 +758,7 @@ public static partial class Shell
             new BoxEl
             {
                 Margin = StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
-                Corners = Design.Size.ContentPaneCorners,
+                Corners = Prop.Of(s_contentCorners),
             },
         ],
     };

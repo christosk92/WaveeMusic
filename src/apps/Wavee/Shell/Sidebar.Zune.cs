@@ -6,7 +6,12 @@
 // Plan: docs/plans/wavee/sidebar-rework-implementation.md §P10 (NAV 3)
 //
 // Engine-free and allocation-light (PinTiles reuses the caller's list), so Wavee.Tests pins every decision here. The
-// Zune band (Shell.Zune*.cs, a later package) only draws what these rules decide.
+// Zune band (Sidebar.UI.Zune.cs) only draws what these rules decide.
+//
+// The band is ALWAYS BandHeight tall under Zune (both rows, on every route), and its height change on a nav-style switch
+// is a Size Reveal on the content card's own tween (Shell.ZuneBandAnim) while the content region FLIPs down and relayouts
+// its height in the same tween (Shell.ContentRegionAnim): the column lays out once, the card moves once and its bottom
+// edge stays on the dock.
 
 using System;
 using System.Collections.Generic;
@@ -21,7 +26,7 @@ public enum ZuneSubRow : byte
     None,
     /// <summary>Library's sub-pivots.</summary>
     Library,
-    /// <summary>The page's own views, published through <c>Shell.PageViews</c> (Home, Recents).</summary>
+    /// <summary>The page's own views and trailing control, published through <c>Shell.PageViews</c> (Home, Recents).</summary>
     PageViews,
 }
 
@@ -31,10 +36,13 @@ public static class ZuneNavRules
     /// <summary>Pins shown beside the pivots (folders are skipped: they have no route).</summary>
     public const int MaxPins = 6;
 
-    public const float PivotSize = 28f, SubPivotSize = 14f, PinTile = 32f, PinGap = 8f, PivotGap = 24f, SubPivotGap = 20f;
+    /// <summary>The pivot words' sizes are the <c>Design.Type.ZunePivot</c> / <c>ZuneSubPivot</c> roles. The band's left inset is
+    /// DERIVED (<see cref="Shell.FrameRules.ZuneBandInset"/>: the frame gap plus the page gutter), never a literal here.</summary>
+    public const float PinTile = 32f, PinGap = 8f, PivotGap = 24f, SubPivotGap = 20f;
 
-    /// <summary>The page frame's x (<see cref="PageGeometry.GutterWide"/>, the page gutter): the band's content starts where the page content does.</summary>
-    public const float InsetX = 36f;
+    /// <summary>A pin's now-playing dot (size, gap under its tile): the dot is ALWAYS laid out (a 4-DIP box that is transparent
+    /// when idle), so a pin starting to play changes ink only. 32 (tile) + 2 (gap) + 4 (dot) = 38 &lt;= <see cref="PivotRowHeight"/>.</summary>
+    public const float PinDot = 4f, PinDotGap = 2f;
 
     public const float PivotRowHeight = 52f, SubRowHeight = 32f;
 
@@ -88,6 +96,9 @@ public static class ZuneNavRules
 
     /// <summary>The sub-pivots show only under Library.</summary>
     public static bool ShowsSub(string routeName) => TopOf(routeName) == LibraryPivot;
+
+    /// <summary>A pin's now-playing dot is lit: the pin has a uri, playback has an active context, and the pin relates to it.</summary>
+    public static bool PinShowsPlaying(string uri, bool activeContext, bool relatesTo) => uri.Length > 0 && activeContext && relatesTo;
 
     /// <summary>The pins show when the setting is on and the viewport is wide enough for them beside the pivots.</summary>
     public static bool ShowsPins(bool setting, float viewportW) => setting && float.IsFinite(viewportW) && viewportW >= PinsMinViewportW;

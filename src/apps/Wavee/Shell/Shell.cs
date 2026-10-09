@@ -1866,8 +1866,12 @@ public static partial class Shell
         /// file stays free of a control's constant.</summary>
         public const float SeamStripW = 16f;
 
-        /// <summary>The rail's breathing gap while it is INLINE (<c>Spacing.S</c>).</summary>
-        public const float RailGapW = 8f;
+        /// <summary>THE frame gap (<c>Spacing.S</c>): the inline rail's breathing room and, under Zune, the content card's left
+        /// gap. One number, so the band's inset and the page text share an x with the rail open or closed.</summary>
+        public const float FrameGap = 8f;
+
+        /// <summary>The rail's breathing gap while it is INLINE.</summary>
+        public const float RailGapW = FrameGap;
 
         /// <summary>The sidebar column's bound width — THE W12 TRAP. A drag that starts on a COLLAPSED rail presents the
         /// pane expanded for the whole drag (drag peek); the column is <c>ClipToBounds</c>, so deriving its width from
@@ -1886,15 +1890,29 @@ public static partial class Shell
         /// after the frame motion has settled: its Reflow then runs in a quiet commit.</summary>
         public const float HoistSettleMs = CardMotionMs + 32f;
 
+        /// <summary>How long after the chrome mounts or unmounts (full-screen video, immersive lyrics) the content region's
+        /// layout transition stays suppressed: long enough to cover the commit that carries the edge, short enough that a
+        /// nav-style switch right after it still animates.</summary>
+        public const float ChromeEdgeSnapMs = 100f;
+
         /// <summary>The content card's width: the viewport less the sidebar column, the content lead gap, the rail's
         /// inline gap and the rail's inline reservation. The seam strips are translated overlays and take no width. The
         /// page gutter is decided from THIS, so it steps in the same commit as the card does.</summary>
         public static float CardWidth(float viewportW, float sidebarW, float leadGap, float railGap, float railReserved)
             => MathF.Max(0f, viewportW - sidebarW - leadGap - railGap - railReserved);
 
-        /// <summary>The gap between the sidebar column and the content card for a nav style. Zero in every style until the
-        /// Zune frame gap lands.</summary>
-        public static float ContentLeadGap(ShellNavStyle style) => 0f;
+        /// <summary>The gap between the sidebar column and the content card for a nav style: <see cref="FrameGap"/> under Zune
+        /// (the pane is hidden, so the card gets a LEFT gap only), flush in Classic and Library.</summary>
+        public static float ContentLeadGap(ShellNavStyle style) => style == ShellNavStyle.Zune ? FrameGap : 0f;
+
+        /// <summary>The content card's corners for a nav style: the stock Win11 single rounded top-left under Classic and Library
+        /// (the card abuts the docked pane), NONE under Zune (no pane, so no corner to round). Ground, clip, stroke and the
+        /// wash plane all read this, bound to the nav style, so the corner changes in the commit the lead gap does.</summary>
+        public static CornerRadius4 ContentCorners(ShellNavStyle style) => style == ShellNavStyle.Zune ? default : Design.Size.ContentPaneCorners;
+
+        /// <summary>The Zune band's left padding: where the page text starts (the lead gap plus the page gutter), so the first
+        /// pivot word and the page title share an x. DERIVED, never a literal.</summary>
+        public static float ZuneBandInset(float gutter) => FrameGap + gutter;
 
         /// <summary>The seam strip exists only where the pane is docked beside the content (the Wide band). A forced band
         /// (Narrow, Tiny) has no seam: the overlay pane owns the width.</summary>

@@ -3,6 +3,7 @@
 // docs/plans/wavee/sidebar-rework-implementation.md §P10 (NAV 3). The stored id (sidebar.layout.id: 0 Classic · 1 Library ·
 // 2 Zune) maps to a ShellNavStyle; Zune's pivots, sub-pivots and pin tiles are pure rules, driven here with plain values.
 
+using System;
 using System.Collections.Generic;
 using Wavee;
 using Xunit;
@@ -111,6 +112,30 @@ public sealed class ShellNavStyleTests
     [InlineData("local")] [InlineData("home-section:x")] [InlineData("browse:pop")] [InlineData("browse-section:x")]
     [InlineData("search")] [InlineData("settings")] [InlineData("album:x")]
     public void IsPivotDestination_FalseForTheRest(string route) => Assert.False(ZuneNavRules.IsPivotDestination(route));
+
+    [Fact] public void PinShowsPlaying_NeedsAUriAnActiveContextAndTheRelation()
+    {
+        const string uri = "spotify:album:1";
+        Assert.False(ZuneNavRules.PinShowsPlaying("", true, true));
+        Assert.False(ZuneNavRules.PinShowsPlaying(uri, false, true));
+        Assert.False(ZuneNavRules.PinShowsPlaying(uri, true, false));
+        Assert.True(ZuneNavRules.PinShowsPlaying(uri, true, true));
+    }
+
+    [Fact] public void SubRowOf_ResolvesEveryZuneRouteToExactlyOneRowKind()
+    {
+        var routes = new List<string>(ZuneNavRules.LibraryPages) { "home", "browse", "recents", "local", "search", "settings" };
+        foreach (string route in routes)
+        {
+            // A route is a Library page, a published-views page or neither: never two kinds at once.
+            var kind = ZuneNavRules.SubRowOf(route);
+            Assert.Equal(ZuneNavRules.TopOf(route) == ZuneNavRules.LibraryPivot, kind == ZuneSubRow.Library);
+            Assert.Equal(route is "home" or "recents", kind == ZuneSubRow.PageViews);
+        }
+        // Every top pivot lands on a route whose row kind is defined.
+        foreach (string pivot in ZuneNavRules.Top)
+            Assert.True(Enum.IsDefined(ZuneNavRules.SubRowOf(ZuneNavRules.LandingOf(pivot))));
+    }
 
     [Fact] public void BandHeight_IsTheSameOnEveryRoute_AndZeroOutsideZune()
     {

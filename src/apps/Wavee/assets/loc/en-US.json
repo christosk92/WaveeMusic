@@ -2393,6 +2393,9 @@
       "finishEditing": "Finish editing the sidebar first",
       "zuneNoPane": "The Zune style has no sidebar"
     },
+    "zune": {
+      "pinned": "pinned"
+    },
     "header": {
       "options": "Section options"
     },

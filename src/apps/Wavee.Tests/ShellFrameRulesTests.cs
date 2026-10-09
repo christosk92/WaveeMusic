@@ -76,10 +76,62 @@ public class ShellFrameGeometryTests
         => Assert.Equal(300f, Shell.FrameRules.CardMotionMs);
 
     [Fact]
-    public void No_nav_style_has_a_content_lead_gap_yet()
+    public void There_is_one_frame_gap_and_the_rail_gap_is_it()
+        => Assert.Equal(Shell.FrameRules.FrameGap, Shell.FrameRules.RailGapW);
+
+    [Fact]
+    public void Only_the_Zune_style_has_a_content_lead_gap_and_it_is_the_frame_gap()
     {
-        foreach (var style in Enum.GetValues<ShellNavStyle>())
-            Assert.Equal(0f, Shell.FrameRules.ContentLeadGap(style));
+        Assert.Equal(Shell.FrameRules.FrameGap, Shell.FrameRules.ContentLeadGap(ShellNavStyle.Zune));
+        Assert.Equal(0f, Shell.FrameRules.ContentLeadGap(ShellNavStyle.Classic));
+        Assert.Equal(0f, Shell.FrameRules.ContentLeadGap(ShellNavStyle.Library));
+    }
+
+    [Fact]
+    public void The_content_card_has_no_top_left_corner_under_zune()
+    {
+        Assert.Equal(default, Shell.FrameRules.ContentCorners(ShellNavStyle.Zune));
+        Assert.Equal(Design.Size.ContentPaneCorners, Shell.FrameRules.ContentCorners(ShellNavStyle.Classic));
+        Assert.Equal(Design.Size.ContentPaneCorners, Shell.FrameRules.ContentCorners(ShellNavStyle.Library));
+    }
+
+    [Fact]
+    public void The_chrome_edge_snap_window_is_shorter_than_a_card_tween()
+    {
+        // Long enough for the edge's commit, short enough that a nav-style switch right after still animates.
+        Assert.InRange(Shell.FrameRules.ChromeEdgeSnapMs, 1f, Shell.FrameRules.CardMotionMs - 1f);
+    }
+
+    [Fact]
+    public void The_Zune_band_inset_is_the_frame_gap_plus_the_gutter()
+    {
+        Assert.Equal(40f, Shell.FrameRules.ZuneBandInset(32f));
+        Assert.Equal(Shell.FrameRules.FrameGap + PageGeometry.GutterWide, Shell.FrameRules.ZuneBandInset(PageGeometry.GutterWide));
+    }
+
+    [Theory]
+    [InlineData(500f, false)]
+    [InlineData(500f, true)]
+    [InlineData(700f, false)]
+    [InlineData(700f, true)]
+    [InlineData(1200f, false)]
+    [InlineData(1200f, true)]
+    public void Under_Zune_the_first_pivot_word_and_the_page_title_share_an_x(float w, bool railOpen)
+    {
+        // The pane is hidden under Zune, so the sidebar column is 0 wide whatever the band; the card starts at the lead gap.
+        var band = SidebarPaneModeRules.BandOf(w, SidebarWindowBand.Wide);
+        var mode = SidebarPaneModeRules.Resolve(band, false, false, paneHidden: true);
+        float column = SidebarPaneModeRules.PresentedWidth(mode, 280f, w);
+        Assert.Equal(0f, column);
+
+        float railGap = Shell.FrameRules.RailGapWidth(railOpen, fits: true);
+        float railReserved = Shell.FrameRules.RailReservedWidth(railOpen, fits: true, 360f);
+        float lead = Shell.FrameRules.ContentLeadGap(ShellNavStyle.Zune);
+        float cardW = Shell.FrameRules.CardWidth(w, column, lead, railGap, railReserved);
+        float gutter = PageGeometry.GutterFor(cardW);
+
+        float pageTitleX = column + lead + gutter;
+        Assert.Equal(pageTitleX, Shell.FrameRules.ZuneBandInset(gutter));
     }
 
     [Theory]

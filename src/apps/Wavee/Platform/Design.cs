@@ -1175,12 +1175,11 @@ public static partial class Design
     /// no vertical rhythm at all. The engine ramp carries eight pairs (12/16 · 14/20 · 14/20-600 · 18/24 · 20/28-600 ·
     /// 28/36-600 · 40/52-600 · 68/92-600); the app adds four rungs on that ladder (<see cref="MicroMeta"/> 11/15,
     /// <see cref="DenseMeta"/> 13/18, <see cref="DenseTitle"/> 13/18-600, <see cref="SheetTitle"/> 16/22-600) — twelve
-    /// named sizes total, not a thirteenth invented ad hoc. <see cref="PivotLabel"/> 19/25/350 remains a sanctioned
-    /// off-ramp. Repointing a call site at an alias brings the line height with it.</para>
+    /// named sizes total, not a thirteenth invented ad hoc. Repointing a call site at an alias brings the line height with it.</para>
     ///
     /// <para><b>WEIGHT POLICY: 400 and 600 only, with SIX documented divergences.</b> Three DISPLAY-FACE identity
     /// aliases keep 700 (<see cref="ArtistDisplay"/> / <see cref="ArtistTitle"/> / <see cref="ArtistCompactTitle"/> —
-    /// the masthead voice, not UI labels) and three keep SemiLight 350 (<see cref="PivotLabel"/> /
+    /// the masthead voice, not UI labels) and three keep SemiLight 350 (<see cref="ZunePivot"/> /
     /// <see cref="NpvLyric"/> / <see cref="StatHero"/> — the same WinUI SemiLight the engine's own pivot control uses
     /// for its header row). A SEVENTH is a regression.</para>
     ///
@@ -1189,8 +1188,7 @@ public static partial class Design
     /// <see cref="TrackMeta"/>'s secondary read is a restatement rather than a change.</para></summary>
     public static class Type
     {
-        /// <summary>The display face every display-voice alias here sets — and the retired <see cref="FacetTitleStyle"/>
-        /// (no caller since Home's facet words became the page's views; the sidebar-rework cleanup package removes it).</summary>
+        /// <summary>The display face every display-voice alias here sets.</summary>
         internal const string DisplayFace = "Segoe UI Variable Display";
 
         /// <summary>Track / album / playlist titles in lists. → <c>Ui.BodyStrong</c> (14 / 20 / 600).</summary>
@@ -1407,13 +1405,21 @@ public static partial class Design
         /// policy and 32 px has no rung on the engine ramp.</summary>
         public static TextEl FoldTitle(string s) => PickQuote(s);
 
-        /// <summary>A pivot tab header (All / Music / Podcasts / Artists) — the display face at SemiLight, one rung
-        /// under <see cref="RailHeader(string)"/>. 19 / 25 / <b>350</b>, and deliberately OFF the eight-rung engine
-        /// ramp: the second and last sanctioned off-ramp (the other is <c>Controls.Picker.Label</c>'s <c>size + 4</c>
-        /// line box, which at its default 12 lands exactly on the 12/16 rung). A THIRD off-ramp is a regression.</summary>
-        public static TextEl PivotLabel(string s) => Ui.BodyLarge(s) with
+        /// <summary>The Zune band's TOP pivot word (home · browse · library · recents): <c>Ui.Title</c>'s 28 / 36 pair in the
+        /// display face, selected 600 and the rest SemiLight 350 (the second of the six sanctioned weight divergences: the same
+        /// WinUI SemiLight the engine's own pivot header uses). The line height does not change with weight, so a selection
+        /// never moves the row. Ink is the call site's (secondary at rest, primary on hover and when selected).</summary>
+        public static TextEl ZunePivot(string s, bool selected) => Ui.Title(s) with
         {
-            FontFamily = DisplayFace, Size = 19f, LineHeight = 25f, Weight = 350, CharSpacing = -6f,
+            FontFamily = DisplayFace, Weight = selected ? (ushort)600 : (ushort)350, CharSpacing = -12f,
+            MaxLines = 1, Wrap = TextWrap.NoWrap,
+        };
+
+        /// <summary>The Zune band's SUB pivot word (Library's pages): <c>Ui.Body</c>'s 14 / 20 pair, selected 600 and the rest 400.
+        /// Ink is the call site's.</summary>
+        public static TextEl ZuneSubPivot(string s, bool selected) => Ui.Body(s) with
+        {
+            LineHeight = 20f, Weight = selected ? (ushort)600 : (ushort)400, MaxLines = 1, Wrap = TextWrap.NoWrap,
         };
 
         /// <summary>NPV lyrics-peek reel — Subtitle's 20/28 pair in the display face at SemiLight 350.</summary>
@@ -1461,38 +1467,6 @@ public static partial class Design
         }
     }
 
-    /// <summary>RETIRED: it has no caller since Home's facet words became the page's VIEWS in <see cref="PageViewsStyle"/>
-    /// under a real "Home" title; the sidebar-rework cleanup package (P9) removes it.
-    /// <para>It was the Home FACET ROW as the page's title (All · Music · Podcasts · Audiobooks): the stock
-    /// <see cref="SelectorBar"/> restyled into the prototype's page-title pivot. The words are 28 / 36 in the display
-    /// face — <c>Ui.Title</c>'s engine rung, no tracking — SECONDARY at rest and PRIMARY 600 when selected, so the
-    /// selected facet reads as the heading and its siblings as the choices beside it. No pill: the selection is the
-    /// weight and the ink. Hover and press lay the subtle fill ladder (subtle-hover, then subtle-press) on an
-    /// 8-DIP-padded, 40-tall item, 24 apart, and the first item pulls −8 so its WORD — not its plate — sits on the
-    /// page's leading edge.</para>
-    /// <para>A PROPERTY, like <see cref="Controls.TileCardStyle"/>: every colour is a live token read, so a theme flip
-    /// re-resolves it at the next render.</para></summary>
-    public static SelectorBarStyle FacetTitleStyle => new()
-    {
-        LabelSize = 28f,
-        LineHeight = 36f,
-        FontFamily = Type.DisplayFace,
-        CharSpacing = 0f,
-        RestWeight = 400,
-        SelectedWeight = 600,
-        RestColor = Tok.TextSecondary,
-        SelectedColor = Tok.TextPrimary,
-        HoverColor = Tok.TextPrimary,
-        PressedColor = Tok.TextSecondary,
-        HoverFill = Tok.FillSubtleSecondary,
-        PressedFill = Tok.FillSubtleTertiary,
-        ShowPill = false,
-        ItemPadding = new Edges4(8f, 2f, 8f, 2f),
-        ItemHeight = 40f,
-        ItemGap = 24f,
-        LeadingInset = -8f,
-    };
-
     /// <summary>THE style for a page's own VIEWS (the <see cref="SelectorBar"/> under a page head: Songs · Albums ·
     /// Playlists): the stock bar at 14 / 20 with the pill, plus <see cref="PageGeometry.ViewsLeadingInset"/> so the first
     /// WORD — not its 12-DIP plate — lands on the page gutter. Everything else stays the stock look, so a page's views
@@ -1502,18 +1476,6 @@ public static partial class Design
         LabelSize = 14f,
         LineHeight = 20f,
         LeadingInset = PageGeometry.ViewsLeadingInset,
-    };
-
-    /// <summary>A page's views inside the Zune band's second row: <see cref="PageViewsStyle"/> with the item box shrunk so
-    /// the whole bar (item + the container's 4 / 4 padding) is exactly <see cref="ZuneNavRules.SubRowHeight"/> (32), not the
-    /// 48 of a page head. The label line (20) and the pill slot (3) share the 24-DIP item, so the accent pill still shows and
-    /// slides. <c>LeadingInset</c> is 0: the row's scroll viewport absorbs the first plate's pad, so the first WORD sits on
-    /// the pivots' edge.</summary>
-    public static SelectorBarStyle ZuneViewsStyle => PageViewsStyle with
-    {
-        LeadingInset = 0f,
-        ItemHeight = ZuneNavRules.SubRowHeight - 2f * PageGeometry.ViewsBarPadY,
-        ItemPadding = new Edges4(12f, 0f, 12f, 0f),
     };
 
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -2405,7 +2367,7 @@ public sealed class CoverPageTonePlane : Component
         return new BoxEl
         {
             ZStack = true, Grow = 1f, HitTestVisible = false,
-            ClipToBounds = true, Corners = Design.Size.ContentPaneCorners,
+            ClipToBounds = true, Corners = Prop.Of(Shell.s_contentCorners),
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
             Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
