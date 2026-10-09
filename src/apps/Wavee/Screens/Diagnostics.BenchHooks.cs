@@ -19,5 +19,9 @@ public static partial class Diagnostics
 
         /// <summary>(display index): open that row's drawer, or close it when it is the open one — the chevron's path.</summary>
         internal static Action<int>? ToggleTrackDrawer;
+
+        /// <summary>The open drawer's clip box (null when none is realized): the bench reads its shown height, layout height
+        /// plus the reveal's FlowDelta, to time a toggle's first moving frame.</summary>
+        internal static Func<FluentGpu.Foundation.NodeHandle>? TrackDrawerNode;
     }
 }

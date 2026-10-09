@@ -342,7 +342,7 @@ public static partial class Diagnostics
                     if (BenchHooks.ToggleSidebarSection is not { } toggle) return Skip("no sidebar pane mounted");
                     string section = SidebarBuiltInDocuments.PlaylistsId;
                     bool collapsed = false;
-                    void Flip() { collapsed = !collapsed; toggle(section, collapsed); }
+                    void Flip() { collapsed = !collapsed; toggle(section, collapsed); s_poseProbe?.Mark(host); }
                     if (o.Shots) Shots(name, host, w, Flip);
                     s_poseProbe = new PoseProbe("sidebar");
                     var r = Measure(new Driver(now => { Flip(); return now + 0.6; }), "section=" + section);
@@ -362,9 +362,12 @@ public static partial class Diagnostics
                     Settle(2.0);
                     if (BenchHooks.ToggleTrackDrawer is not { } toggle) return Skip("no track table mounted");
                     bool open = false;
-                    void Flip() { open = !open; toggle(2); }
+                    void Flip() { open = !open; toggle(2); s_poseProbe?.Mark(host); }
                     if (o.Shots) Shots(name, host, w, Flip);
+                    s_poseProbe = new PoseProbe("drawer");
                     var r = Measure(new Driver(now => { Flip(); return now + 0.6; }), "playlist=" + t.Playlists[0] + " row=3");
+                    s_poseProbe.Write(Path.Combine(OutDir(), name + "-pose.csv"));
+                    s_poseProbe = null;
                     if (open) Flip();
                     Settle(1.0);
                     return r;
@@ -425,20 +428,37 @@ public static partial class Diagnostics
             readonly List<(double Ms, float Presented, float Extent, ulong Presents)> _rows = new(4096);
             readonly long _t0 = Stopwatch.GetTimestamp();
 
+            double Now() => (Stopwatch.GetTimestamp() - _t0) * 1000.0 / Stopwatch.Frequency;
+
+            /// <summary>A toggle was issued (a row with presented = -1): the start latency is measured from it.</summary>
+            public void Mark(AppHost host) => _rows.Add((Now(), -1f, 0f, host.PresentedSequence));
+
             public void Sample(AppHost host)
             {
+                if (BenchHooks.TrackDrawerNode is { } drawer && keyPart == "drawer")
+                {
+                    // the drawer's clip box: its shown height (layout + the reveal's FlowDelta), 0 when it is not realized
+                    var h = drawer();
+                    float shown = !h.IsNull && host.Scene.IsLive(h) ? host.Scene.Bounds(h).H + host.Scene.Paint(h).FlowDelta : 0f;
+                    _rows.Add((Now(), MathF.Max(0f, shown), 0f, host.PresentedSequence));
+                    return;
+                }
                 _vps.Clear();
                 host.CopyViewports(_vps);
                 foreach (var v in _vps)
                 {
                     if (v.Horizontal || v.ScrollKey is not { } key || !key.Contains(keyPart, StringComparison.Ordinal)) continue;
                     var content = host.Scene.FirstChild(host.Scene.HandleAt(v.NodeIndex));
-                    if (!host.Scene.TryGetRevealBands(content, out var bands, out byte mask, out _, out _)) return;
+                    if (!host.Scene.TryGetRevealBands(content, out var bands, out byte mask, out _, out _))
+                    {
+                        if (keyPart.Length == 0) continue;   // any viewport: keep looking for the one with bands
+                        return;
+                    }
                     for (int slot = 0; slot < FluentGpu.Scene.RevealBands.Capacity; slot++)
                     {
                         if ((mask & (1 << slot)) == 0) continue;
                         var b = bands.Get(slot);
-                        _rows.Add(((Stopwatch.GetTimestamp() - _t0) * 1000.0 / Stopwatch.Frequency, b.Presented, b.Extent, host.PresentedSequence));
+                        _rows.Add((Now(), b.Presented, b.Extent, host.PresentedSequence));
                         return;
                     }
                     return;

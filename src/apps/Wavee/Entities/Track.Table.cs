@@ -478,6 +478,7 @@ public readonly partial struct Track
         readonly Signal<int> _tailEpoch = new(0);
         readonly HashSet<string> _tails = new(StringComparer.Ordinal);
         NodeHandle _drawerNode;
+        Func<NodeHandle>? _benchDrawerNode;
         string _drawerNodeKey = "";
         readonly Signal<int> _videoDropRow = new(-1);
         InsertionOptions? _insertion;
@@ -824,8 +825,14 @@ public readonly partial struct Track
                 var t = DisplayTrack(display);
                 if (t.IsValid) ToggleExpanded(MembershipDiff.RowKey(t, ItemIdAt(display), display), t);
             };
+            var node = _benchDrawerNode ??= () => _drawerNode;
             Diagnostics.BenchHooks.ToggleTrackDrawer = toggle;
-            return () => { if (ReferenceEquals(Diagnostics.BenchHooks.ToggleTrackDrawer, toggle)) Diagnostics.BenchHooks.ToggleTrackDrawer = null; };
+            Diagnostics.BenchHooks.TrackDrawerNode = node;
+            return () =>
+            {
+                if (ReferenceEquals(Diagnostics.BenchHooks.ToggleTrackDrawer, toggle)) Diagnostics.BenchHooks.ToggleTrackDrawer = null;
+                if (ReferenceEquals(Diagnostics.BenchHooks.TrackDrawerNode, node)) Diagnostics.BenchHooks.TrackDrawerNode = null;
+            };
         }
 
         Track DisplayTrack(int display)
