@@ -2158,10 +2158,7 @@
       "mostVisited": "Most visited",
       "visitCount": "{count, plural, one {# visit} other {# visits}}",
       "visitMultiplier": "{count}×",
-      "stat": {
-        "visits": "Visits",
-        "unique": "Unique"
-      },
+      "meta": "{visits, plural, one {# visit} other {# visits}} · {unique} unique",
       "filter": {
         "all": "All",
         "playlists": "Playlists",

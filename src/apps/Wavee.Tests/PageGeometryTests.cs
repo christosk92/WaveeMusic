@@ -103,6 +103,10 @@ public class PageGeometryRhythmTests
     }
 
     [Fact]
+    public void The_show_reader_uses_the_one_bottom_reserve()
+        => Assert.Equal(PageGeometry.BottomReserve, Show.BottomReserve);
+
+    [Fact]
     public void The_reserved_lines_are_the_type_roles_own_line_heights()
     {
         Assert.Equal(PageGeometry.TitleLine, Design.Type.PageTitle("x").LineHeight);

@@ -1070,13 +1070,21 @@ public readonly partial struct Concert
         Element TourDates(IReadOnlyList<ConcertMonthGroup> groups, int selected, HashSet<string> nearby, string name, bool wide, bool seed)
         {
             var labels = ConcertScheduleShaping.MonthTabLabels(groups, CultureInfo.CurrentCulture);
+            // The page-views bar (Design.PageViewsStyle, the stock look) on a STABLE key, so choosing a month slides the pill and
+            // never re-mounts the bar. The viewport absorbs the first plate's pad (margin -12, bar inset 0 — the PageHead scroll
+            // idiom), so the first WORD sits on the card's text edge; the row is the fixed PageGeometry.ViewsBarH (48).
             Element tabs = ScrollView(new BoxEl
             {
                 Direction = 0,
-                Children = [SelectorBar.Create(labels, new Signal<int>(selected), onChange: i => _month.Value = groups[i].Key)],
+                Children =
+                [
+                    SelectorBar.Create(labels, new Signal<int>(selected), onChange: i => _month.Value = groups[i].Key,
+                        style: Design.PageViewsStyle with { LeadingInset = 0f }) with { Key = "concert:months:bar" },
+                ],
             }, horizontal: true) with
             {
-                Height = 48f, Grow = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true,
+                Height = PageGeometry.ViewsBarH, Grow = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true,
+                Margin = new Edges4(PageGeometry.ViewsLeadingInset, 0f, 0f, 0f),
                 ScrollKey = _scrollScope + "artist-schedule-months:" + _routeKey,
             };
             var group = groups[selected];

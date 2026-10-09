@@ -7,8 +7,8 @@
 // Budget: 400 lines
 // Spec: ch 16 §0 item 15, §1.2, §2 W17-W21 + W25, §3.2, §3.3, §5 rows 27-28, §6.2, §9.1 item 14
 //
-// The navigation log as a page: a header (clock · title · two stat pills · Clear all), a search box, the filter chips
-// and the sort combo, then either date-grouped cards (Most recent) or one deduplicated card (Most visited). EVERY
+// The navigation log as a page: the shared PageHead (title · visits / unique meta · search · Clear all · the filters as
+// its views · the sort combo), then either date-grouped cards (Most recent) or one deduplicated card (Most visited). EVERY
 // decision it renders — the kinds, the filter, the search, the visible list, the most-visited fold, the date buckets,
 // the timestamps, the unique count — is `Shell.cs` §11 (`Shell.History`), and the store is `Shell.Host.cs`. This file
 // only lays them out.
@@ -77,17 +77,19 @@ public static partial class Shell
                 body = HistoryDateGroups(visible, now, developerMode);
 
             var (filters, sorts) = labels.Value.Value;
+            float g = Ui.PageGutter.Value;
             return new BoxEl
             {
                 Grow = 1f, Direction = 1,
                 Children =
                 [
                     HistoryHeader(overlay, search, filterIndex, sortIndex, filters, sorts, entries.Count,
-                        History.CountUniqueRoutes(entries)),
+                        History.CountUniqueRoutes(entries), g),
                     FluentGpu.Dsl.Ui.ScrollView(new BoxEl
                     {
                         Direction = 1, Gap = Spacing.L,
-                        Padding = new Edges4(Spacing.PageWide, Spacing.M, Spacing.PageWide, Spacing.XXL),
+                        // The head's own ViewsToBodyGap is the top air; the bottom clears the player bar.
+                        Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
                         Children = [body],
                     }) with { Grow = 1f },
                 ],
@@ -97,77 +99,45 @@ public static partial class Shell
 
     // ── the header ──────────────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The shared page head, kind TitleViews (PageHeadRules.Extent 164): the visits / unique line fills the RESERVED
+    /// meta slot, search and Clear all are the title row's actions, the filters are the views bar (one stable signal, so the
+    /// pill slides) with the sort combo at its trailing end. Nothing in it depends on the log, so the head is the same height
+    /// on the first frame and on the last.</summary>
     static Element HistoryHeader(IOverlayService overlay, FluentGpu.Signals.Signal<string> search,
         FluentGpu.Signals.Signal<int> filterIndex, FluentGpu.Signals.Signal<int> sortIndex, string[] filters, string[] sorts,
-        int totalVisits, int uniqueRoutes)
-        => new BoxEl
+        int totalVisits, int uniqueRoutes, float gutter)
+        => PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Nav.History.Title))
         {
-            Direction = 1, Gap = Spacing.M,
-            // No fill: the header inherits the content ground (a fill here fought the light theme).
-            Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                    Children =
-                    [
-                        FluentGpu.Dsl.Ui.Icon(Icons.Clock, 22f, Tok.TextPrimary),
-                        Design.Type.PageHero(Loc.Get(Strings.Nav.History.Title)) with { Grow = 1f },
-                        new BoxEl
-                        {
-                            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-                            Children =
-                            [
-                                HistoryStatPill(FormatCache.Int(totalVisits), Loc.Get(Strings.Nav.History.Stat.Visits)),
-                                HistoryStatPill(FormatCache.Int(uniqueRoutes), Loc.Get(Strings.Nav.History.Stat.Unique)),
-                            ],
-                        },
-                        // Destructive and unrecoverable (Clear also DELETES the file), so it asks first; the default
-                        // button is Cancel.
-                        Button.Standard(Loc.Get(Strings.Nav.History.ClearAll), () => Controls.Confirm(
-                            overlay,
-                            Loc.Get(Strings.Nav.History.ClearAllConfirm),
-                            Loc.Get(Strings.Nav.History.ClearAllConfirmBody),
-                            Loc.Get(Strings.Nav.History.ClearAll),
-                            static () => History.Store.Clear())),
-                    ],
-                },
-                AutoSuggestBox.Create(
-                    Array.Empty<string>(),
-                    placeholder: Loc.Get(Strings.Nav.History.SearchPlaceholder),
-                    grow: 1f,
-                    text: search,
-                    onQuerySubmitted: q => search.Value = q,
-                    onChange: q => search.Value = q,
-                    minHeight: 36f,
-                    cornerRadius: Radii.Control),
-                new BoxEl
-                {
-                    // The bottom margin clears the chip bar's selection pill from the first group header.
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                    Margin = new Edges4(0f, 0f, 0f, Spacing.S),
-                    Children =
-                    [
-                        SelectorBar.Create(filters, filterIndex),
-                        new BoxEl { Grow = 1f },
-                        ComboBox.Create(sorts, sortIndex, width: 160f),
-                    ],
-                },
-            ],
-        };
-
-    static BoxEl HistoryStatPill(string value, string label) => new()
-    {
-        Direction = 0, Gap = Spacing.XS, AlignItems = FlexAlign.Center,
-        Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Spacing.XS), Corners = Radii.FullAll,
-        Fill = Tok.FillSubtleSecondary,
-        Children =
-        [
-            new TextEl(value) { Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextPrimary },
-            new TextEl(label) { Size = 12f, LineHeight = 16f, Color = Tok.TextSecondary },
-        ],
-    };
+            Meta = Strings.Nav.History.Meta(totalVisits, FormatCache.Int(uniqueRoutes)),
+            Actions = new BoxEl
+            {
+                Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    AutoSuggestBox.Create(
+                        Array.Empty<string>(),
+                        placeholder: Loc.Get(Strings.Nav.History.SearchPlaceholder),
+                        width: 240f,
+                        grow: 0f,
+                        text: search,
+                        onQuerySubmitted: q => search.Value = q,
+                        onChange: q => search.Value = q,
+                        minHeight: 36f,
+                        cornerRadius: Radii.Control),
+                    // Destructive and unrecoverable (Clear also DELETES the file), so it asks first; the default
+                    // button is Cancel.
+                    Button.Standard(Loc.Get(Strings.Nav.History.ClearAll), () => Controls.Confirm(
+                        overlay,
+                        Loc.Get(Strings.Nav.History.ClearAllConfirm),
+                        Loc.Get(Strings.Nav.History.ClearAllConfirmBody),
+                        Loc.Get(Strings.Nav.History.ClearAll),
+                        static () => History.Store.Clear())),
+                ],
+            },
+            Views = filters, ViewsSelected = filterIndex,
+            ViewsTrailing = ComboBox.Create(sorts, sortIndex, width: 160f),
+            Gutter = gutter, Key = "history:head",
+        });
 
     // ── the bodies ──────────────────────────────────────────────────────────────────────────────────────────────────
 
