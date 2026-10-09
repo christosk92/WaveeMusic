@@ -438,7 +438,8 @@ public static partial class Queue
         }
 
         /// <summary>The now-playing cover's graded chrome accent when the plane has it, the album's wire accent until then,
-        /// the last remembered colour while a cover is still grading, the semantic accent otherwise.</summary>
+        /// the last remembered colour while a cover is still grading, the semantic accent otherwise. With now-playing colours
+        /// off, the system accent always.</summary>
         void ResolveChipAccent(string cover)
         {
             ColorF? graded = Design.ChromeSchemeFor(cover) is { } scheme ? Design.Palette.ChromeAccent(scheme) : null;
@@ -446,9 +447,12 @@ public static partial class Queue
                 ? album.Accent : 0u;
             var r = AccentLadder.Resolve(new AccentLadder.Input(graded, payload, Definite: cover.Length == 0), _queueHold, Tok.AccentDefault,
                                          static a => Design.Palette.ChromeFromPayload(a));
-            if (r.Remember) _queueHold = r.Color;
-            _chipPending = r.Color;
-            UseEffect(_pushChip, DepKey.From(r.Color.GetHashCode()));
+            // With now-playing colours off the chip takes the system accent: the cover's colour is never read, so nothing is held.
+            bool np = Prefs.Appearance.NowPlayingColors();
+            ColorF chip = np ? r.Color : Tok.AccentDefault;
+            if (np && r.Remember) _queueHold = r.Color;
+            _chipPending = chip;
+            UseEffect(_pushChip, DepKey.From(chip.GetHashCode()));
         }
 
         protected override float ExtentOf(QueueSlot slot) => slot.Kind switch

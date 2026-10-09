@@ -336,10 +336,12 @@ public static partial class Rail
 
     /// <summary>THE hero wash — one function, three surfaces (the cover placeholder, the deck faces' art and the flyout's
     /// "Album colour" swatch), so the three can never grade the artwork differently. The palette watch is read INSIDE, so
-    /// a late grading repaints a bound placeholder without re-rendering anything.</summary>
+    /// a late grading repaints a bound placeholder without re-rendering anything. With now-playing colours off the wash is
+    /// the neutral card fill; this also neutralises the player-style flyout's "Album colour" swatch.</summary>
     public static ColorF HeroWashColor(string? url)
     {
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
+        if (!Prefs.Appearance.NowPlayingColors()) return Tok.FillCardSecondary;
         ColorF accent = Design.SchemeFor(url) is { } s ? Design.Palette.Lift(Design.Palette.Accent(s)) : Tok.AccentDefault;
         return ColorF.Lerp(Tok.FillCardSecondary, accent, Tok.Theme == ThemeKind.Dark ? 0.18f : 0.10f);
     }
