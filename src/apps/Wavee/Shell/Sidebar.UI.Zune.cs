@@ -315,53 +315,60 @@ public static partial class Sidebar
 
         static Element ViewsContent(in Shell.Route route, string name)
         {
-            // Drawn only once the style is PRESENTED (the page's own words are still on screen until then), so the words show in
-            // exactly one place per commit and land in the quiet hoist commit with the head's reflow.
+            // Seeded from the first frame of the reveal, like LibraryRow and TitleRow: row 2 is never an empty strip. The words
+            // are drawn at opacity 0 until the style is PRESENTED (the page's own words are still on screen until then), so
+            // they show in exactly one place per commit and fade in with the head's reflow instead of mounting late.
             bool presented = Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune;
-            var pub = presented ? Shell.PageViews.For(name) : null;
+            float shown = presented ? 1f : 0f;
+            var pub = Shell.PageViews.For(name);
             var kind = route.Kind;
             var kids = new List<Element>(2);
-            if (presented)
+            var seedKeys = ZuneNavRules.ViewSeedKeys(route.Kind);
+            bool published = pub is not null && pub.Labels.Count > 0;
+            if (published || seedKeys is not null)
             {
-                var seedKeys = ZuneNavRules.ViewSeedKeys(route.Kind);
-                bool published = pub is not null && pub.Labels.Count > 0;
-                if (published || seedKeys is not null)
+                int n = published ? pub!.Labels.Count : seedKeys!.Length;
+                int selected = published ? pub!.Selected.Value : ZuneNavRules.SeedSelected(in route);
+                var words = new Element[n];
+                for (int i = 0; i < n; i++)
                 {
-                    int n = published ? pub!.Labels.Count : seedKeys!.Length;
-                    int selected = published ? pub!.Selected.Value : ZuneNavRules.SeedSelected(in route);
-                    var words = new Element[n];
-                    for (int i = 0; i < n; i++)
+                    int at = i;
+                    string label = published ? pub!.Labels[i] : Loc.Get(seedKeys![i]);
+                    // A click resolves the LATEST delegate (a re-publish that only changes it does not bump the store's Version).
+                    // Before any publication it is ignored, except Settings, whose tab is a plain call.
+                    words[i] = PivotItem("view:" + i, label.ToLower(CultureInfo.CurrentCulture), i == selected, sub: true, () =>
                     {
-                        int at = i;
-                        string label = published ? pub!.Labels[i] : Loc.Get(seedKeys![i]);
-                        // A click resolves the LATEST delegate (a re-publish that only changes it does not bump the store's Version).
-                        // Before any publication it is ignored, except Settings, whose tab is a plain call.
-                        words[i] = PivotItem("view:" + i, label.ToLower(CultureInfo.CurrentCulture), i == selected, sub: true, () =>
-                        {
-                            if (Shell.PageViews.Peek(name) is { } live) live.OnSelect(at);
-                            else if (kind == Shell.RouteKind.Settings) Settings.Open((Settings.Tab)at);
-                        });
-                    }
-                    kids.Add(WordStrip(words, "zune.views"));
-                }
-                else
-                {
-                    // Search before its first answer: skeleton words of the facet row's size.
-                    var bars = new Element[5];
-                    for (int i = 0; i < bars.Length; i++)
-                        bars[i] = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(8, 0f), 12f);
-                    kids.Add(new BoxEl
-                    {
-                        Key = "zune:view:skeleton", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap,
-                        Grow = 1f, MinWidth = 0f, Children = bars,
+                        if (Shell.PageViews.Peek(name) is { } live) live.OnSelect(at);
+                        else if (kind == Shell.RouteKind.Settings) Settings.Open((Settings.Tab)at);
                     });
                 }
-                if (published && pub!.Trailing?.Invoke() is { } trailing)
-                    kids.Add(new BoxEl
-                    {
-                        Key = "zune:view:trailing", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [trailing],
-                    });
+                kids.Add(new BoxEl
+                {
+                    Key = "zune:view:bar", Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Shrink = 1f, Basis = 0f,
+                    MinWidth = 0f, Opacity = shown, HitTestVisible = presented,
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+                    Children = [WordStrip(words, "zune.views")],
+                });
             }
+            else
+            {
+                // Search before its first answer: skeleton words of the facet row's size.
+                var bars = new Element[5];
+                for (int i = 0; i < bars.Length; i++)
+                    bars[i] = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(8, 0f), 12f);
+                kids.Add(new BoxEl
+                {
+                    Key = "zune:view:skeleton", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap,
+                    Grow = 1f, MinWidth = 0f, Opacity = shown, Children = bars,
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+                });
+            }
+            if (published && pub!.Trailing?.Invoke() is { } trailing)
+                kids.Add(new BoxEl
+                {
+                    Key = "zune:view:trailing", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [trailing],
+                    Opacity = shown, HitTestVisible = presented, Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+                });
             return new BoxEl
             {
                 Key = "zune:sub:views:" + name, Direction = 0, Grow = 1f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
