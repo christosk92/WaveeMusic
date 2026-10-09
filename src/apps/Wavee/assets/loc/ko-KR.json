@@ -610,9 +610,6 @@
     "newReleases": {
       "empty": "팔로우하는 아티스트의 새 앨범이나 싱글이 없습니다."
     },
-    "extension": {
-      "manage": "확장 프로그램 관리"
-    },
     "action": {
       "unavailable": {
         "mode": "이 바로가기에는 해당 대상을 사용할 수 없습니다",
@@ -647,15 +644,6 @@
         "search": "“{query}”에 대한 결과가 없습니다",
         "searchSub": "다르게 입력해 보거나 필터를 지워 보세요."
       }
-    },
-    "customizer": {
-      "itemAdd": "추가…",
-      "itemAction": "동작 바로 가기",
-      "targetLabel": "적용 대상",
-      "targetNone": "없음(전역 동작)",
-      "targetEntity": "선택한 항목",
-      "targetTrack": "선택한 곡",
-      "targetRoute": "열려 있는 페이지"
     }
   },
   "common": {

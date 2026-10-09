@@ -2410,9 +2410,6 @@
     "newReleases": {
       "empty": "No new releases from the artists you follow."
     },
-    "extension": {
-      "manage": "Manage extension"
-    },
     "action": {
       "unavailable": {
         "mode": "This shortcut can't use that target",
@@ -2476,15 +2473,6 @@
         "libraryList": "Library list",
         "extension": "Extension sections"
       }
-    },
-    "customizer": {
-      "itemAdd": "Add…",
-      "itemAction": "Action shortcut",
-      "targetLabel": "Acts on",
-      "targetNone": "Nothing (a global action)",
-      "targetEntity": "A chosen item",
-      "targetTrack": "A chosen track",
-      "targetRoute": "The open page"
     }
   },
   "common": {

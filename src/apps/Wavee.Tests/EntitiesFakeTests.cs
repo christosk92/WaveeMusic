@@ -1,9 +1,8 @@
 // ── Wavee.Tests/EntitiesFakeTests.cs — the offline demo seed's contract (ch 31; gap G-015, decision D17) ────────────
 //
-// This is the SEED-CORE cut's gate: determinism (no clock read beyond `now0`, no randomness), the fixture counts the
-// gap register names verbatim (rootlist with folders, the library's four sets, pins, 166 liked, 16 covers), and the
-// customizer's `Sample`/`SampleShortcutCount` answering the same on a scope that never seeded at all (ch 31 §7.2
-// rule D). No source-text tests: everything below drives the real `Entities.SeedFake`, never greps it.
+// This is the SEED-CORE cut's gate: determinism (no clock read beyond `now0`, no randomness) and the fixture counts the
+// gap register names verbatim (rootlist with folders, the library's four sets, pins, 166 liked, 16 covers).
+// No source-text tests: everything below drives the real `Entities.SeedFake`, never greps it.
 
 using FluentGpu.Foundation;
 using Wavee;
@@ -144,44 +143,6 @@ public class EntitiesFakeTests
 
         Assert.True(Entities.Current.Edges.AlbumTracks.Count(album.Slot) > 0);
         Assert.True(Entities.Current.Edges.PlaylistTracks.Count(playlist.Slot) > 0);
-    }
-
-    // ── the customizer's sample: pure, index-addressable, and answers even without a seed (ch 31 §7.2 rules C/D) ────
-
-    [Fact]
-    public void Sample_answers_the_same_index_the_same_way_on_a_scope_that_never_seeded()
-    {
-        Entities.Boot(CatalogScope.Fake());   // deliberately NOT calling SeedFake — rule D's whole point
-
-        var first = Entities.Sample(EntityKind.Playlist, 7);
-        var second = Entities.Sample(EntityKind.Playlist, 7);
-        Assert.Equal(first.Title, second.Title);
-        Assert.Equal(first.Image, second.Image);
-        Assert.Equal(first.Count, second.Count);
-    }
-
-    [Fact]
-    public void Sample_is_stable_across_the_customizers_nine_hand_indexed_slots()
-    {
-        Entities.Boot(CatalogScope.Fake());
-        foreach (int i in new[] { 1, 2, 5, 7, 8, 10, 12, 14 })
-        {
-            var a = Entities.Sample(EntityKind.Playlist, i);
-            var b = Entities.Sample(EntityKind.Playlist, i);
-            Assert.Equal(a, b);
-        }
-        var artist = Entities.Sample(EntityKind.Artist, 3);
-        Assert.Equal(artist, Entities.Sample(EntityKind.Artist, 3));
-    }
-
-    [Fact]
-    public void SampleShortcutCount_matches_the_seeded_library_counts()
-    {
-        Assert.Equal(166, Entities.SampleShortcutCount("liked"));
-        Assert.Equal(13, Entities.SampleShortcutCount("albums"));
-        Assert.Equal(12, Entities.SampleShortcutCount("artists"));
-        Assert.Equal(8, Entities.SampleShortcutCount("podcasts"));
-        Assert.Null(Entities.SampleShortcutCount("recents"));
     }
 
     // ── the podcast visits (Entities.Fake.Podcast.cs; podcast plan §9): the three first screens the show reader's head

@@ -610,9 +610,6 @@
     "newReleases": {
       "empty": "Geen nieuwe releases van de artiesten die je volgt."
     },
-    "extension": {
-      "manage": "Extensie beheren"
-    },
     "action": {
       "unavailable": {
         "mode": "Deze snelkoppeling kan dat doel niet gebruiken",
@@ -647,15 +644,6 @@
         "search": "Geen resultaten voor “{query}”",
         "searchSub": "Probeer een andere spelling, of wis het filter."
       }
-    },
-    "customizer": {
-      "itemAdd": "Toevoegen…",
-      "itemAction": "Actiesnelkoppeling",
-      "targetLabel": "Werkt op",
-      "targetNone": "Niets (een globale actie)",
-      "targetEntity": "Een gekozen item",
-      "targetTrack": "Een gekozen nummer",
-      "targetRoute": "De geopende pagina"
     }
   },
   "common": {

@@ -268,18 +268,12 @@ internal static class SidebarMigrationHost
             SidebarAccountKey.Of(scope));
         var r = SidebarMigrationV2.Migrate(in input);
 
-        // Written NOW and waited for (bounded): the pane mounts right after Boot and must read what this produced.
-        Directory.CreateDirectory(profileDir);
-        var device = new SidebarFileStore(SidebarStoreV3.PathUnder(profileDir));
-        device.Commit(SidebarStoreV3.Serialize(r.State));
-        device.FlushNow();
-        device.WaitForWrites(2000);
-        if (r.Account.Pins.Count > 0 || r.Account.ExpandedFolders.Count > 0 || r.Account.FirstSeen.Count > 0)
+        // Written NOW and waited for (bounded): the pane mounts right after Boot and must read what this produced. The latch
+        // is set only when every file landed; otherwise sidebar-layout.json v2 stays untouched and the next start runs this again.
+        if (!WriteFiles(profileDir, r))
         {
-            var acct = new SidebarFileStore(Path.Combine(profileDir, SidebarAccountStore.FileNameOf(r.Account.Key)));
-            acct.Commit(SidebarAccountStore.Serialize(r.Account));
-            acct.FlushNow();
-            acct.WaitForWrites(2000);
+            Log.Warn("sidebar", "migration.v2_write_failed design=" + design.ToString(CultureInfo.InvariantCulture));
+            return;
         }
 
         settings.Set(Platform.Keys.SidebarLayoutId, (int)r.Layout);
@@ -294,5 +288,29 @@ internal static class SidebarMigrationHost
             + " layout=" + r.Layout + " pins=" + r.Account.Pins.Count.ToString(CultureInfo.InvariantCulture)
             + " account=" + (r.Account.Key.Length == 0 ? "pending" : SidebarAccountKey.Hash(r.Account.Key))
             + " dropped=" + r.Dropped.Count.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>True only when the device file and, when there is account data, the account file both landed. A timeout
+    /// or a failed write is false: the caller then leaves the latch at its old value.</summary>
+    static bool WriteFiles(string profileDir, SidebarMigrationResult r)
+    {
+        try
+        {
+            Directory.CreateDirectory(profileDir);
+            var device = new SidebarFileStore(SidebarStoreV3.PathUnder(profileDir));
+            device.Commit(SidebarStoreV3.Serialize(r.State));
+            device.FlushNow();
+            if (!device.WaitForWrites(2000) || !device.LastWriteResult.Success) return false;
+            if (r.Account.Pins.Count > 0 || r.Account.ExpandedFolders.Count > 0 || r.Account.FirstSeen.Count > 0)
+            {
+                var acct = new SidebarFileStore(Path.Combine(profileDir, SidebarAccountStore.FileNameOf(r.Account.Key)));
+                acct.Commit(SidebarAccountStore.Serialize(r.Account));
+                acct.FlushNow();
+                if (!acct.WaitForWrites(2000) || !acct.LastWriteResult.Success) return false;
+            }
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 }

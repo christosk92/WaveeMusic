@@ -104,73 +104,10 @@ public static partial class Actions
         public static bool ShowsTier(Spotify.Tier tier) => tier != Spotify.Tier.Unknown;
     }
 
-    // ══ 3. THE PICKERS' PURE HALF ═══════════════════════════════════════════════════════════════════════════════════
+    // ══ 3. THE DESTINATION PICKER'S PURE HALF ═══════════════════════════════════════════════════════════════════════
 
     public static class PickRules
     {
-        /// <summary>The five persisted modes, in the order the customizer offers them.</summary>
-        static readonly ActionTargetMode[] s_order =
-        [
-            ActionTargetMode.None, ActionTargetMode.FixedEntity, ActionTargetMode.FixedTrack,
-            ActionTargetMode.NowPlaying, ActionTargetMode.ActiveRoute,
-        ];
-
-        /// <summary>Exactly the modes a descriptor declares, in offer order — the picker offers no others (a stored
-        /// binding naming anything else resolves ModeNotSupported, so offering it would be a lie).</summary>
-        public static ActionTargetMode[] AcceptedModes(ActionTargetModes accepted)
-        {
-            int n = 0;
-            for (int i = 0; i < s_order.Length; i++) if (Accepts(accepted, s_order[i])) n++;
-            var modes = new ActionTargetMode[n];
-            n = 0;
-            for (int i = 0; i < s_order.Length; i++) if (Accepts(accepted, s_order[i])) modes[n++] = s_order[i];
-            return modes;
-        }
-
-        /// <summary>Choosing an action resets the mode to the FIRST one it accepts, so a leftover mode from another
-        /// action can never be committed as ModeNotSupported.</summary>
-        public static ActionTargetMode FirstMode(ActionTargetModes accepted)
-        {
-            for (int i = 0; i < s_order.Length; i++) if (Accepts(accepted, s_order[i])) return s_order[i];
-            return ActionTargetMode.None;
-        }
-
-        public static int IndexOfMode(ReadOnlySpan<ActionTargetMode> modes, ActionTargetMode mode)
-        {
-            for (int i = 0; i < modes.Length; i++) if (modes[i] == mode) return i;
-            return 0;
-        }
-
-        /// <summary>The two FIXED modes need a chosen target key before the binding is committable.</summary>
-        public static bool NeedsTarget(ActionTargetMode mode) => mode is ActionTargetMode.FixedEntity or ActionTargetMode.FixedTrack;
-
-        /// <summary>The picker's accent button is enabled only when an action is chosen AND, if its mode needs one, a
-        /// target is set.</summary>
-        public static bool Ready(bool hasDescriptor, ActionTargetMode mode, string? targetKey)
-            => hasDescriptor && (!NeedsTarget(mode) || !string.IsNullOrEmpty(targetKey));
-
-        /// <summary>The mode's label key (the customizer's own table).</summary>
-        public static string ModeLocKey(ActionTargetMode mode) => mode switch
-        {
-            ActionTargetMode.None => Strings.Sidebar.Customizer.TargetNone,
-            ActionTargetMode.FixedEntity => Strings.Sidebar.Customizer.TargetEntity,
-            ActionTargetMode.FixedTrack => Strings.Sidebar.Customizer.TargetTrack,
-            ActionTargetMode.NowPlaying => Strings.Sidebar.Section.NowPlaying,   // reused, as 0.2.9 did
-            _ => Strings.Sidebar.Customizer.TargetRoute,
-        };
-
-        /// <summary>The binding a pick commits. A binding stores the publisher and the contribution SEPARATELY (so a
-        /// currently-missing extension still round-trips); <see cref="Key.Compose"/> is the exact inverse. A target key
-        /// is kept only for the two FIXED modes.</summary>
-        public static ActionBinding Bind(string descriptorKey, ActionTargetMode mode, string? targetKey)
-        {
-            string provider = Key.PublisherOf(descriptorKey);
-            string action = provider.Length > 0 && descriptorKey.Length > provider.Length + 1
-                ? descriptorKey[(provider.Length + 1)..]
-                : descriptorKey;
-            return new ActionBinding(provider, action, mode, NeedsTarget(mode) ? targetKey : null);
-        }
-
         /// <summary>The destination picker's live filter: a PINNED row (Top level, New playlist) is never filtered away
         /// — a user who typed and changed their mind must keep the way back — and everything else is a
         /// case-insensitive contains.</summary>

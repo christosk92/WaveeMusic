@@ -937,12 +937,12 @@ public enum SidebarEntryKind : byte
     AppRoute = 0, Playlist = 1, Folder = 2, Album = 3, Artist = 4, Show = 5, Track = 6,
 }
 
-/// <summary>Playlist provenance for the V3 qualifier chips. <see cref="None"/> = unknown — the chips stay hidden
+/// <summary>Playlist provenance for the Your Library chips. <see cref="None"/> = unknown — the chips stay hidden
 /// unless at least two distinct non-None flavors are present.</summary>
 public enum SidebarPlaylistFlavor : byte { None = 0, ByYou = 1, BySpotify = 2, Mixed = 3 }
 
 /// <summary>Which kinds a projection pass should emit. A mask (not a single kind) because every consumer asks for a
-/// SET: the V3 "All" filter wants everything, the Podcasts chip wants shows only.</summary>
+/// SET: the "All" filter wants everything, the `SidebarLibraryFilter.Podcasts` chip wants shows only.</summary>
 [Flags]
 public enum SidebarEntryKindMask : byte
 {
@@ -1113,9 +1113,9 @@ public readonly record struct SidebarLibraryEntry(
     public string Publisher => Kind == SidebarEntryKind.Show ? Creator : "";
     public int FolderDepth => Depth;
 
-    /// <summary>Qualifier-chip match. A qualifier of 0 (Any/Unknown) matches everything; the non-zero values of the V3
-    /// and Core qualifier vocabularies are byte-identical to <see cref="SidebarPlaylistFlavor"/>, so one byte
-    /// comparison serves both.</summary>
+    /// <summary>Qualifier-chip match. A qualifier of 0 (Any/Unknown) matches everything; the non-zero values of the
+    /// Your Library chips are byte-identical to <see cref="SidebarPlaylistFlavor"/>, so one byte
+    /// comparison serves them all.</summary>
     public bool MatchesQualifier(byte qualifier) => qualifier == 0 || (byte)Flavor == qualifier;
 
     /// <summary>An APP-ROUTE row (Home / Search / Liked / ...). Authored by the surface, never produced by the
@@ -3096,7 +3096,7 @@ public static class SidebarProjection
          : rootlistState == EdgeState.Unknown ? SidebarPinFolderState.Pending
          : SidebarPinFolderState.Missing;
 
-    /// <summary>Trap 5 + Library V3: a row whose Identity has not landed must not fall back to a raw id/uri
+    /// <summary>Trap 5 + Your Library: a row whose Identity has not landed must not fall back to a raw id/uri
     /// fragment as its title. ShortUri is only for a resolved nameless entity. <paramref name="isPinned"/> is kept
     /// so call sites stay one predicate; the pin/library distinction is no longer a gate.</summary>
     public static bool ShouldShowUriFallbackTitle(bool isPinned, bool identityKnown)

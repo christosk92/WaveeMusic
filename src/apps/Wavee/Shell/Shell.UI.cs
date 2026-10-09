@@ -1252,7 +1252,7 @@ public static partial class Shell
     static MenuFlyoutItem? PinRow(in Route route)
     {
         string? pinId = FrameRules.PinIdFor(route);
-        var kind = PinRowRule.Decide(hasStore: true, pinId, Sidebar.IsPinned(pinId));
+        var kind = PinRowRule.Decide(hasStore: Sidebar.AccountKey.Length > 0, pinId, Sidebar.IsPinned(pinId));
         if (kind == PinRowKind.None || pinId is not { } id) return null;
         string title = route.Kind == RouteKind.Search ? Loc.Get(Strings.Nav.Search) : Dest(route).Title;
         return Actions.Menu.Pin(kind == PinRowKind.Unpin, () => PinDestination(id, title), () => UnpinDestination(id));
