@@ -83,8 +83,11 @@ public static partial class AiLyrics
         /// <summary>Longer songs are not timed (the job's memory and NPU time grow with the length).</summary>
         public const long MaxDurationMs = 20L * 60 * 1000;
 
-        /// <summary>Models are unloaded (NPU contexts freed) after this long without a job. Reload costs ~1.5 s.</summary>
-        public const long IdleUnloadMs = 10L * 60 * 1000;
+        /// <summary>Models are unloaded (NPU contexts freed) after this long without a job or a load. They are ~0.9 GB of
+        /// mapped context binaries plus ~230 MB of shared NPU buffers, and a song's job finishes in seconds, so they are
+        /// held only around a job: the next song reloads them from the compiled cache in ~1.5 s, overlapping its audio
+        /// fetch. (10 minutes kept them resident for a whole listening session, a song never being that far apart.)</summary>
+        public const long IdleUnloadMs = 90L * 1000;
 
         /// <summary>The floor of one graph's prepare weight: even a tiny graph costs seconds to compile.</summary>
         public const long PrepareWeightFloor = 16L * 1024 * 1024;
@@ -485,8 +488,10 @@ public static partial class AiLyrics
         public static float Fraction(double part, double whole)
             => whole > 0 && part > 0 ? (float)Math.Min(1.0, part / whole) : 0f;
 
-        /// <summary>Free the NPU contexts after <see cref="IdleUnloadMs"/> without a job.</summary>
-        public static bool UnloadAfterIdle(long lastJobEndMs, long nowMs) => nowMs - lastJobEndMs >= IdleUnloadMs;
+        /// <summary>How long the worker waits for its next command before the idle unload is due: forever when nothing is
+        /// loaded, else what is left of <see cref="IdleUnloadMs"/> since it last used the models (0 = unload now).</summary>
+        public static int IdleWaitMs(bool loaded, long lastUseMs, long nowMs)
+            => !loaded ? Timeout.Infinite : (int)Math.Clamp(lastUseMs + IdleUnloadMs - nowMs, 0L, int.MaxValue);
 
         /// <summary>Setup finished: toast only when the card is not on screen (it already says Ready).</summary>
         public static bool ToastOnReady(bool settingsPageVisible) => !settingsPageVisible;

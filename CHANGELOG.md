@@ -26,6 +26,10 @@ versions separately under `v*` and is not tracked in this file.)
   toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
   in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
   current sidebar carries over.
+- **About 900 MB less memory when on-device lyrics sync is not working.** The NPU models it loads for a song are
+  released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
+  and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
+  half, while its audio downloads.
 
 ### Removed
 

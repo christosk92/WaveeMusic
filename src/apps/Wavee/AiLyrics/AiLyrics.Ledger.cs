@@ -23,9 +23,6 @@ public static partial class AiLyrics
         /// (feature off, files or a language removed, unload).</summary>
         public int LoadEpoch { get; private set; }
 
-        /// <summary>When the worker last did something (a job ended, a load finished): the idle unload counts from here.</summary>
-        public long LastActivityMs { get; private set; }
-
         public bool JobRunning => JobTrack.Length > 0;
 
         public int BeginJob(string trackId)
@@ -35,11 +32,10 @@ public static partial class AiLyrics
         }
 
         /// <summary>The job ended, failed or was cancelled; its later posts are stale.</summary>
-        public void EndJob(long nowMs)
+        public void EndJob()
         {
             JobTrack = "";
             JobEpoch++;
-            LastActivityMs = nowMs;
         }
 
         public bool IsCurrentJob(int epoch, string trackId) => epoch == JobEpoch && JobTrack.Length > 0 && JobTrack == trackId;
@@ -51,10 +47,5 @@ public static partial class AiLyrics
 
         public bool IsCurrentLoad(int epoch) => epoch == LoadEpoch;
 
-        /// <summary>A load finished: the models are fresh, so the idle unload starts counting now (not from app start).</summary>
-        public void Touch(long nowMs) => LastActivityMs = nowMs;
-
-        /// <summary>Unload the NPU sessions after <see cref="Rules.IdleUnloadMs"/> without a job or a load.</summary>
-        public bool ShouldUnload(bool loaded, long nowMs) => loaded && !JobRunning && Rules.UnloadAfterIdle(LastActivityMs, nowMs);
     }
 }
