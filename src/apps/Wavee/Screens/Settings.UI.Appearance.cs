@@ -1,5 +1,5 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
-// the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
+// the Appearance tab: Theme (theme, zoom, marquee, tinted surfaces / accent from artwork / now playing colours, page motion*) · Lists (the three collapsed picker groups:
 // row density + hide artwork, track list style, track page layout + the two rail rows; then the daylist clock combo) ·
 // Sidebar (the layout cards and density) · Lyrics (blur, the on-device AI lyrics card) ·
 // Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen
@@ -17,7 +17,8 @@
 // items 12-20; ch 30 §1.1 (which epoch each write bumps) + N12 (the row-density write reaches mounted pages); ch 25 W21
 // (the design cards — no 0.3 `SidebarDesignPicker` exists, so the compact cards are built here on owner L's picker)
 //
-// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
+// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / tinted surfaces / accent from artwork /
+// now playing colours / hide artwork /
 // row density / track list style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
 // the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
 // tab reads that epoch); the six Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
@@ -115,8 +116,12 @@ public static partial class Settings
                 Embed.Comp(static () => new ZoomPicker()), RowGlyph(Tab.Appearance, "zoom")),
             Row(Loc.Get(Strings.Settings.Appearance.Marquee), Loc.Get(Strings.Settings.Appearance.MarqueeSub),
                 AppearanceToggle(Platform.Keys.MarqueeEnabled), RowGlyph(Tab.Appearance, "marquee")),
-            Row(Loc.Get(Strings.Settings.Appearance.ColorWashes), Loc.Get(Strings.Settings.Appearance.ColorWashesSub),
-                AppearanceToggle(Platform.Keys.ColorWashesEnabled), RowGlyph(Tab.Appearance, "colorWashes")),
+            Row(Loc.Get(Strings.Settings.Appearance.WashSurfaces), Loc.Get(Strings.Settings.Appearance.WashSurfacesSub),
+                WashSurfacesControl(), RowGlyph(Tab.Appearance, "washSurfaces")),
+            Row(Loc.Get(Strings.Settings.Appearance.WashAccent), Loc.Get(Strings.Settings.Appearance.WashAccentSub),
+                WashToggle(Platform.Keys.WashAccent, Prefs.Appearance.AccentFromArtwork()), RowGlyph(Tab.Appearance, "washAccent")),
+            Row(Loc.Get(Strings.Settings.Appearance.WashNowPlaying), Loc.Get(Strings.Settings.Appearance.WashNowPlayingSub),
+                WashToggle(Platform.Keys.WashNowPlaying, Prefs.Appearance.NowPlayingColors()), RowGlyph(Tab.Appearance, "washNowPlaying")),
         };
 
         // A SelectorBar, not a ComboBox: it re-pushes its selected index every render (ch 27 §0's frozen-inputs rule),
@@ -300,6 +305,64 @@ public static partial class Settings
 
     /// <summary>An appearance switch: persist, bump the appearance epoch once, bump the page.</summary>
     static Element AppearanceToggle(SettingKey<bool> key) => Toggle(key, afterWrite: static _ => Prefs.Appearance.Bump());
+
+    /// <summary>An On/Off wash switch: a fresh signal seeded from the reactive read, the write through the one appearance
+    /// writer, then the page bump.</summary>
+    static Element WashToggle(SettingKey<int> key, bool on) => ToggleSwitch.Create(new Signal<bool>(on), onChange: v =>
+    {
+        Prefs.Appearance.Set(key, v ? 1 : 0);
+        Bump();
+    }, style: SettingsCard.CompactToggleStyle());
+
+    /// <summary>Tinted surfaces: the Off / Subtle / Rich picker beside a swatch of what the level paints.</summary>
+    static Element WashSurfacesControl()
+    {
+        var level = Prefs.Appearance.SurfaceWash();
+        return new BoxEl
+        {
+            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                WashPreview(level),
+                SelectorBar.Create([Loc.Get(Strings.Settings.Appearance.WashOff), Loc.Get(Strings.Settings.Appearance.WashSubtle), Loc.Get(Strings.Settings.Appearance.WashRich)],
+                    new Signal<int>((int)level), onChange: static i =>
+                    {
+                        Prefs.Appearance.Set(Platform.Keys.WashSurfaces, Math.Clamp(i, 0, 2));
+                        Bump();
+                    }),
+            ],
+        };
+    }
+
+    /// <summary>The display scale of the swatch. The real wash alphas (the chrome tint 0.05–0.22, the plane 0.20–0.45)
+    /// cannot be told apart on a 64-px chip, so the swatch multiplies them by this factor, capped at 0.6. It is for
+    /// display only: the app paints with the unscaled values.</summary>
+    const float WashPreviewScale = 3f;
+
+    /// <summary>A miniature window: the chrome strip over the page plane, painted with the real Design.Wash alphas. The
+    /// Settings route claims the neutral material, so this swatch is how the choice shows while Settings is open.</summary>
+    static Element WashPreview(WashLevel level)
+    {
+        bool light = Tok.Theme == ThemeKind.Light;
+        bool rich = level == WashLevel.Rich;
+        ColorF chrome = level == WashLevel.Off ? Design.Wash.NeutralGround
+            : Tok.AccentDefault with { A = Shown(Design.Wash.TintAlpha(light, rich)) };
+        ColorF page = level == WashLevel.Off ? Design.Wash.NeutralGround
+            : Tok.AccentDefault with { A = Shown(Design.Wash.PlaneAlpha(light, rich)) };
+        return new BoxEl
+        {
+            Width = 64f, Height = 36f, Shrink = 0f, Direction = 1, ClipToBounds = true,
+            Corners = CornerRadius4.All(4f), Fill = Tok.FillLayerDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            HitTestVisible = false,
+            Children =
+            [
+                new BoxEl { Height = 12f, Shrink = 0f, Fill = chrome },
+                new BoxEl { Grow = 1f, Fill = page },
+            ],
+        };
+    }
+
+    static float Shown(float alpha) => MathF.Min(alpha * WashPreviewScale, 0.6f);
 
     // ══ 4. LISTS ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
