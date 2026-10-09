@@ -110,6 +110,7 @@ public static partial class Sidebar
                 Action invoke = () => Run(row, sectionId, pane);
                 var item = r.Radio ? MenuFlyoutItem.RadioItem(label, r.Checked, invoke)
                     : r.Action is SidebarMenuAction.ToggleLiked or SidebarMenuAction.ToggleKind or SidebarMenuAction.ToggleDescending
+                        or SidebarMenuAction.ToggleCovers
                         ? MenuFlyoutItem.Toggle(label, r.Checked, invoke)
                     : new MenuFlyoutItem(label, default, r.Enabled, invoke);
                 // A disabled verb says why on its trailing line (Q7: "Finish editing the sidebar first"); HideSection
@@ -166,6 +167,7 @@ public static partial class Sidebar
                 case SidebarMenuAction.ToggleDescending: Dispatch(new SetLibrarySort(Doc.Library.Sort, !Doc.Library.Descending)); break;
                 case SidebarMenuAction.SetView: Dispatch(new SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List)); break;
                 case SidebarMenuAction.ToggleLiked: Dispatch(new SetShowLiked(!Doc.Library.ShowLiked)); break;
+                case SidebarMenuAction.ToggleCovers: Sidebar.SetClassicCovers(!Sidebar.ClassicCovers.Peek()); break;
                 case SidebarMenuAction.ToggleKind: ToggleKind(r.Arg); break;
                 case SidebarMenuAction.SetLimit when sectionId is not null:
                     Dispatch(new SetSectionLimit(layout, sectionId, int.Parse(r.Arg, CultureInfo.InvariantCulture)));
@@ -266,7 +268,7 @@ public static partial class Sidebar
         {
             SidebarMenus.Overlay = MenuOverlay;
             return new ContextMenuModel(SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-                Sidebar.Editing.Peek(), SidebarMenus.LockingNames())));
+                Sidebar.Editing.Peek(), SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek())));
         }
 
         OverlayHandle? _paneMenu;

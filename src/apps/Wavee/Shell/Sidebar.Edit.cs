@@ -167,7 +167,7 @@ public enum SidebarMenuAction : byte
     SwitchLayout, ResetLayout, ShowSection, SetDensity, EditSidebar, ResetEverything,
     SetSort, SetView, ToggleLiked, ToggleKind, SetLimit, ShowItem, Collapse, Expand, MoveUp, MoveDown, HideSection,
     UnpinAllShortcuts, Unpin, MovePinUp, MovePinDown, HideItem, MoveRootlistUp, MoveRootlistDown,
-    ToggleDescending, NavigatePage,
+    ToggleDescending, NavigatePage, ToggleCovers,
 }
 
 /// <summary>A rootlist row's one-step moves (from <c>PaneView.RootlistStepOf</c>: <c>TreeMoves</c>' sibling run and the marker
@@ -196,12 +196,12 @@ public static class SidebarMenuModel
     const string FinishEditing = "sidebar.pane.finishEditing";
 
     /// <summary>The global pane menu (design C.4): Layout ▸ · Show section ▸ · [Library: Hide pinned · Unpin all shortcuts]
-    /// · Density ▸ · Edit sidebar… · ─ · Reset everything…. While editing, the layout radios and Reset everything are disabled
+    /// · Classic: Show covers / Library: Density ▸ · Edit sidebar… · ─ · Reset everything…. While editing, the layout radios and Reset everything are disabled
     /// with the reason (Q7); Density stays. Library has no Pinned header (P.2a), so its two Pinned verbs live HERE: "Hide
     /// pinned" (disabled with "Unpin {names} first" while route/module pins lock it) and "Unpin all shortcuts" (Q17, while
     /// such pins exist). <paramref name="lockingPinNames"/> = <see cref="SidebarVisibilityRules.LockingPins"/>.</summary>
     public static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density, bool editing,
-                                                     IReadOnlyList<string> lockingPinNames)
+                                                     IReadOnlyList<string> lockingPinNames, bool classicCovers = false)
     {
         var hidden = new List<SidebarMenuRow>();
         var overlay = state.Of(layout);
@@ -233,11 +233,13 @@ public static class SidebarMenuModel
             new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.showSection",
                 Enabled: hidden.Count > 0, ReasonKey: hidden.Count == 0 ? "sidebar.menu.nothingHidden" : null, Children: hidden),
             .. pinnedRows,
-            new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.density", Children:
-            [
-                new SidebarMenuRow(SidebarMenuAction.SetDensity, "sidebar.density.default", "default", Checked: density == SidebarDensity.Default, Radio: true),
-                new SidebarMenuRow(SidebarMenuAction.SetDensity, "sidebar.density.compact", "compact", Checked: density == SidebarDensity.Compact, Radio: true),
-            ]),
+            layout == SidebarLayoutId.Classic
+                ? new SidebarMenuRow(SidebarMenuAction.ToggleCovers, "sidebar.menu.showCovers", Checked: classicCovers)
+                : new SidebarMenuRow(SidebarMenuAction.None, "sidebar.menu.density", Children:
+                [
+                    new SidebarMenuRow(SidebarMenuAction.SetDensity, "sidebar.density.default", "default", Checked: density == SidebarDensity.Default, Radio: true),
+                    new SidebarMenuRow(SidebarMenuAction.SetDensity, "sidebar.density.compact", "compact", Checked: density == SidebarDensity.Compact, Radio: true),
+                ]),
             new SidebarMenuRow(SidebarMenuAction.EditSidebar, "sidebar.menu.edit", Enabled: !editing),
             SidebarMenuRow.Divider,
             new SidebarMenuRow(SidebarMenuAction.ResetEverything, "sidebar.menu.resetEverything",

@@ -604,7 +604,7 @@ public static partial class Settings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>Settings › Sidebar (design C.2 entry 3): the navigation style (cards), the style's own rows (Library: View, Density, Show Liked Songs), Edit sidebar (P4), reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
+    /// <summary>Settings › Sidebar (design C.2 entry 3): the navigation style (cards), the style's own rows (Classic: Show covers; Library: View, Density, Show Liked Songs), Edit sidebar (P4), reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
     /// signals, so a change made on the sidebar itself shows here live.</summary>
     sealed class SidebarLayoutCard : Component
     {
@@ -613,21 +613,28 @@ public static partial class Settings
             var layout = Sidebar.Layout.Value;
             _ = Sidebar.LayoutVersion.Value;
             var density = Sidebar.Density.Value;
+            bool covers = Sidebar.ClassicCovers.Value;
             bool editing = Sidebar.Editing.Value;
             // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
             string finish = Loc.Get("sidebar.pane.finishEditing");
             var items = new List<Element>(7);
-            // The style's own rows come first: Library shows its view and Liked Songs (the same ops as the toolbar and ⋯ menu).
+            // The style's own rows come first: Classic shows its covers toggle, Library its view, Density and Liked Songs (the same ops as the toolbar and ⋯ menu).
+            if (layout == SidebarLayoutId.Classic)
+            {
+                items.Add(Item(Loc.Get("settings.sidebar.showCovers"), Loc.Get("settings.sidebar.showCoversSub"),
+                    ToggleSwitch.Create(new Signal<bool>(covers), onChange: static on => Sidebar.SetClassicCovers(on),
+                        style: SettingsCard.CompactToggleStyle()), icon: Icons.Picture));
+            }
             if (layout == SidebarLayoutId.Library)
             {
                 items.Add(Item(Loc.Get("settings.sidebar.view"), Loc.Get("settings.sidebar.viewSub"),
                     Embed.Comp(() => new SidebarViewPicker()) with { Key = "sidebar.view:" + (int)Sidebar.Doc.Library.View }, icon: Icons.ViewGrid));
+                items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
+                    Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList));
                 items.Add(Item(Loc.Get("settings.sidebar.showLiked"), Loc.Get("settings.sidebar.showLikedSub"),
                     ToggleSwitch.Create(new Signal<bool>(Sidebar.Doc.Library.ShowLiked), onChange: static on => Sidebar.Dispatch(new SetShowLiked(on)),
                         style: SettingsCard.CompactToggleStyle()), icon: Icons.Heart));
             }
-            items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
-                Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList));
             items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
                 isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
                 onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo));

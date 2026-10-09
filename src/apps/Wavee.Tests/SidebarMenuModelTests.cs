@@ -19,8 +19,8 @@ public sealed class SidebarMenuModelTests
     static readonly string[] Search = ["Search"];
 
     static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density = SidebarDensity.Default,
-        bool editing = false, IReadOnlyList<string>? locking = null)
-        => SidebarMenuModel.Pane(layout, state, density, editing, locking ?? None);
+        bool editing = false, IReadOnlyList<string>? locking = null, bool classicCovers = false)
+        => SidebarMenuModel.Pane(layout, state, density, editing, locking ?? None, classicCovers);
 
     static IReadOnlyList<SidebarMenuRow> Header(SidebarLayoutId layout, SidebarLayoutState state, string section, IReadOnlyList<string>? locking = null)
         => SidebarMenuModel.Header(layout, state, section, locking ?? None);
@@ -67,7 +67,7 @@ public sealed class SidebarMenuModelTests
     [Fact]
     public void Pane_Editing_LayoutAndResetEverythingDisabledWithReason_DensityLive()
     {
-        var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, SidebarDensity.Compact, editing: true);
+        var rows = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default, SidebarDensity.Compact, editing: true);
         var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
         Assert.Equal(2, switches.Count);
         Assert.All(switches, r =>
@@ -84,6 +84,30 @@ public sealed class SidebarMenuModelTests
         Assert.Equal(2, density.Count);
         Assert.All(density, r => Assert.True(r.Enabled));
         Assert.True(density.Single(r => r.Arg == "compact").Checked);
+        AssertEveryLabelKeyResolves(rows);
+    }
+
+    [Fact]
+    public void Pane_Classic_OffersShowCoversNotDensity()
+    {
+        var off = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, classicCovers: false);
+        var covers = FindAll(off, SidebarMenuAction.ToggleCovers);
+        Assert.Single(covers);
+        Assert.False(covers[0].Checked);
+        Assert.Empty(FindAll(off, SidebarMenuAction.SetDensity));
+        Assert.DoesNotContain(off, r => r.LabelKey == "sidebar.menu.density");
+
+        var on = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, classicCovers: true);
+        Assert.True(FindAll(on, SidebarMenuAction.ToggleCovers).Single().Checked);
+        AssertEveryLabelKeyResolves(on);
+    }
+
+    [Fact]
+    public void Pane_Library_OffersDensityNotShowCovers()
+    {
+        var rows = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default, classicCovers: true);
+        Assert.Empty(FindAll(rows, SidebarMenuAction.ToggleCovers));
+        Assert.Equal(2, FindAll(rows, SidebarMenuAction.SetDensity).Count);
         AssertEveryLabelKeyResolves(rows);
     }
 
