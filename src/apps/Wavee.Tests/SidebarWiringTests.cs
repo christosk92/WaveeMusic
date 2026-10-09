@@ -5,12 +5,11 @@
 //   SidebarCreateDropRulesTests    G-170 — a "+" drop or click whose library seam is missing REFUSES with a sentence,
 //                                  never cues a drop that does nothing (PURE).
 //   SidebarFolderRenameTests       G-171 — what the folder rename prompt commits (PURE).
-//   SidebarCanvasRuleTests         G-184 — the options popover's subject watch and the palette's per-card accept (PURE).
 //   SidebarFolderPayloadTests      D10  — a folder payload's wire uri, its group id and its pin id agree (PURE).
 //   SidebarRecencyFoldTests        G-172 — the shell logs folded into the sidebar's recency shapes.
 //   SidebarLibraryFingerprintTests G-180 — the rebuild gate's content lane moves for a sidebar row, not for any row.
 //   SidebarBinderWiringTests       G-172/G-173/G-180 — the binder's gate, its recency wiring and InputVersion; G-176 —
-//                                  Sidebar.Shutdown lands the last edit.
+//                                  Sidebar.Shutdown lands the last pin in the account file.
 //   SidebarShortcutCountTests      W3-A2 — the library-shortcut count badge's pure half: route → relation, state → what
 //                                  the badge shows, and the stamp its live component gates its render on (PURE).
 //   SidebarPlanDiffTests           W3-A2 — the pane's publish diff: which rows a republish re-skins and whether the rail
@@ -18,9 +17,9 @@
 //                                  change) (PURE).
 //
 // The classes that touch `Entities`, `Shell.Parse` or the process-wide `Sidebar` service join EntitiesCollection (no
-// parallelism). The binder takes its two logs through `ISidebarRecencyLogs`, and the service its store through
-// `Sidebar.UseStore`, so nothing here reads the real shell stores or the real profile. No engine loop, no window, no
-// network.
+// parallelism). The binder takes its two logs through `ISidebarRecencyLogs`, and the service its profile folder through
+// `Sidebar.UseProfileDir`, so nothing here reads the real shell stores or the real profile. No engine loop, no window,
+// no network.
 
 using FluentGpu.Foundation;
 using Wavee;
@@ -118,59 +117,6 @@ public class SidebarFolderRenameTests
         => Assert.Equal(expected, SidebarFolderRename.Commit(typed, current));
 }
 
-// ── G-184: the canvas leftovers ─────────────────────────────────────────────────────────────────────────────────────
-
-public class SidebarCanvasRuleTests
-{
-    static SidebarCustomLayout Doc()
-        => new(SidebarTemplates.Curated,
-        [
-            new SidebarSectionSpec("sec_top", SidebarSectionKind.Pinned),
-            new SidebarSectionSpec("sec_grp", SidebarSectionKind.CustomGroup,
-                Children: [new SidebarSectionSpec("sec_child", SidebarSectionKind.StaticLinks)]),
-        ]);
-
-    [Fact]
-    public void The_options_popover_keeps_its_subject_while_it_is_selected_and_in_the_document()
-        => Assert.False(SidebarEditPlan.OptionsSubjectGone("sec_top", "sec_top", subjectInDocument: true));
-
-    [Fact]
-    public void Remove_section_inside_the_popover_clears_the_subject_and_closes_it()
-        => Assert.True(SidebarEditPlan.OptionsSubjectGone(null, "sec_top", subjectInDocument: true));
-
-    [Fact]
-    public void Another_subject_or_a_section_gone_from_the_document_closes_it_too()
-    {
-        Assert.True(SidebarEditPlan.OptionsSubjectGone("sec_grp", "sec_top", subjectInDocument: true));
-        Assert.True(SidebarEditPlan.OptionsSubjectGone("sec_top", "sec_top", subjectInDocument: false));
-    }
-
-    [Fact]
-    public void A_palette_chip_lands_above_a_top_level_card_the_shortcuts_head_or_nothing()
-    {
-        var doc = Doc();
-        Assert.True(SidebarEditPlan.CanAddBefore(doc, "sec_top"));
-        Assert.True(SidebarEditPlan.CanAddBefore(doc, "sec_grp"));
-        Assert.True(SidebarEditPlan.CanAddBefore(doc, SidebarIds.TopBarSection));
-        Assert.True(SidebarEditPlan.CanAddBefore(doc, null));
-        // Each of these agrees with the command translation it guards.
-        var payload = new SidebarSectionDropPayload(SidebarSectionKind.Divider, "Divider");
-        Assert.NotNull(SidebarEditPlan.ToAddSection(doc, "sec_grp", payload));
-    }
-
-    [Fact]
-    public void A_child_card_or_a_vanished_card_refuses_the_chip_instead_of_dropping_it_into_nothing()
-    {
-        var doc = Doc();
-        var payload = new SidebarSectionDropPayload(SidebarSectionKind.Divider, "Divider");
-        Assert.False(SidebarEditPlan.CanAddBefore(doc, "sec_child"));
-        Assert.Null(SidebarEditPlan.ToAddSection(doc, "sec_child", payload));
-        Assert.False(SidebarEditPlan.CanAddBefore(doc, "sec_gone"));
-        Assert.Null(SidebarEditPlan.ToAddSection(doc, "sec_gone", payload));
-        Assert.False(SidebarEditPlan.CanAddBefore(null, "sec_top"));
-    }
-}
-
 // ── D10: a folder's three spellings ─────────────────────────────────────────────────────────────────────────────────
 
 [Collection(EntitiesCollection.Name)]   // a non-folder uri reaches EntityUri.Parse, which interns
@@ -217,8 +163,8 @@ public class SidebarFolderPayloadTests
 [Collection(EntitiesCollection.Name)]
 public class SidebarRecencyFoldTests
 {
-    static Shell.PlayEntry Play(string track, string? context, long atMs)
-        => new(EntityUri.Parse(track), context is null ? default : EntityUri.Parse(context), atMs, null);
+    static Shell.PlayEntry Play(string track, string? context, long atMs, string? title = null)
+        => new(EntityUri.Parse(track), context is null ? default : EntityUri.Parse(context), atMs, title);
 
     [Fact]
     public void Played_contexts_are_newest_first_context_first_and_distinct()
@@ -230,13 +176,13 @@ public class SidebarRecencyFoldTests
             Play("spotify:track:t2", "spotify:album:a", 2_000),
             Play("spotify:track:t3", null, 3_000),
             Play("spotify:track:t4", "spotify:collection:tracks", 4_000),
-            Play("spotify:track:t5", "spotify:playlist:p", 5_000),
+            Play("spotify:track:t5", "spotify:playlist:p", 5_000, "Morning Mix"),
         };
         var into = new List<SidebarPlayedContext>();
 
         Assert.Equal(4, SidebarRecencyFold.PlayedContexts(log, 40, into, new HashSet<string>(StringComparer.Ordinal)));
 
-        Assert.Equal(new SidebarPlayedContext("spotify:playlist:p", SidebarEntryKind.Playlist, 5_000), into[0]);
+        Assert.Equal(new SidebarPlayedContext("spotify:playlist:p", SidebarEntryKind.Playlist, 5_000, "Morning Mix"), into[0]);
         Assert.Equal(SidebarEntryKind.AppRoute, into[1].Kind);                  // Liked Songs is the "liked" ROUTE
         Assert.Equal(new SidebarPlayedContext("spotify:track:t3", SidebarEntryKind.Track, 3_000), into[2]);
         Assert.Equal(new SidebarPlayedContext("spotify:album:a", SidebarEntryKind.Album, 2_000), into[3]);   // newest play of it
@@ -407,7 +353,7 @@ public sealed class SidebarBinderWiringTests : IDisposable
         var me = SidebarWiringStage.Me();
         SidebarWiringStage.SetRootlist(me, mine);
 
-        var binder = new SidebarProjectionBinder(new FakeLogs());
+        var binder = new SidebarProjectionBinder(new FakeLogs(), peek: null);
         binder.Start();
         Assert.Equal(1, binder.Revision);
         Assert.False(binder.Sync());                                            // nothing moved: one fold, no pass
@@ -430,32 +376,32 @@ public sealed class SidebarBinderWiringTests : IDisposable
         SidebarWiringStage.SetRootlist(me, mine);
 
         var logs = new FakeLogs();
-        var binder = new SidebarProjectionBinder(logs);
+        var binder = new SidebarProjectionBinder(logs, peek: null);
         binder.Start();
         int input = binder.InputVersion.Peek();
-        Assert.Empty(binder.CurrentInput.Visited!);
+        Assert.Empty(binder.CurrentInput.Played!);
 
-        // A navigation: "Jump back in" gains the page.
-        logs.HistoryList.Add(new Shell.HistoryEntry(Shell.Parse("home"), new DateTime(2026, 9, 13, 9, 0, 0, DateTimeKind.Utc)));
-        logs.HistoryVersion++;
-        Assert.True(binder.Sync());
-        Assert.Equal("home", Assert.Single(binder.CurrentInput.Visited!).Id);
-        Assert.Single(((ISidebarProjectionSnapshot)binder).Visits);
-        Assert.True(binder.InputVersion.Peek() > input);
-        input = binder.InputVersion.Peek();
+        // "Recently played" is filled only while its section is shown, and it is hidden by default.
+        Assert.Equal(SidebarOpReject.None, Sidebar.Dispatch(new SetSectionShown(SidebarLayoutId.Classic, "recent", true)));
+        try
+        {
+            // A play: "Recently played" gains the context, and the Recents sort's stamp lands on the library row.
+            logs.PlayList.Add(new Shell.PlayEntry(EntityUri.Parse("spotify:track:t"), EntityUri.Parse("spotify:playlist:mine"), 999, null));
+            logs.LastPlayedMap["spotify:playlist:mine"] = 999;
+            logs.PlayLogVersion++;
+            Assert.True(binder.Sync());
+            var played = Assert.Single(binder.CurrentInput.Played!);
+            Assert.Equal(SidebarPinId.PlaylistPrefix + "spotify:playlist:mine", played.Id);
+            Assert.Equal("Mine", played.Name);                                  // joined to the projection
+            Assert.Equal(999L, binder.CurrentInput.PlaylistTree![0].LastPlayedMs);
+            Assert.True(binder.InputVersion.Peek() > input);
 
-        // A play: "Recently played" gains the context, and the Recents sort's stamp lands on the library row.
-        logs.PlayList.Add(new Shell.PlayEntry(EntityUri.Parse("spotify:track:t"), EntityUri.Parse("spotify:playlist:mine"), 999, null));
-        logs.LastPlayedMap["spotify:playlist:mine"] = 999;
-        logs.PlayLogVersion++;
-        Assert.True(binder.Sync());
-        var played = Assert.Single(binder.CurrentInput.Played!);
-        Assert.Equal(SidebarPinId.PlaylistPrefix + "spotify:playlist:mine", played.Id);
-        Assert.Equal("Mine", played.Name);                                      // joined to the projection
-        Assert.Equal(999L, binder.CurrentInput.PlaylistTree![0].LastPlayedMs);
-        Assert.True(binder.InputVersion.Peek() > input);
-
-        Assert.False(binder.Sync());
+            Assert.False(binder.Sync());
+        }
+        finally
+        {
+            Sidebar.Dispatch(new SetSectionShown(SidebarLayoutId.Classic, "recent", false));
+        }
     }
 
     [Fact]
@@ -466,7 +412,7 @@ public sealed class SidebarBinderWiringTests : IDisposable
         var me = SidebarWiringStage.Me();
         SidebarWiringStage.SetRootlist(me, mine);
 
-        var binder = new SidebarProjectionBinder(new FakeLogs());
+        var binder = new SidebarProjectionBinder(new FakeLogs(), peek: null);
         binder.Start();
         int rev = binder.Revision;
 
@@ -476,7 +422,7 @@ public sealed class SidebarBinderWiringTests : IDisposable
         // can reproduce.
         Entities.Switch(CatalogScope.Fake(market: "GB"));
         Assert.True(binder.Sync());
-        Assert.Equal(SidebarSourceState.Pending, ((ISidebarProjectionSnapshot)binder).TreeState);
+        Assert.Equal(SidebarSourceState.Pending, binder.CurrentInput.TreeState);
         Assert.Empty(binder.CurrentInput.PlaylistTree!);
 
         var theirs = SidebarWiringStage.StagePlaylist("spotify:playlist:theirs", "Theirs");
@@ -485,34 +431,64 @@ public sealed class SidebarBinderWiringTests : IDisposable
 
         Assert.True(binder.Sync());
         Assert.True(binder.Revision > rev);
-        Assert.Equal(SidebarSourceState.Ready, ((ISidebarProjectionSnapshot)binder).TreeState);
+        Assert.Equal(SidebarSourceState.Ready, binder.CurrentInput.TreeState);
         Assert.Equal("Theirs", binder.CurrentInput.PlaylistTree![0].Name);
         Assert.False(binder.Sync());
     }
 
     [Fact]
-    public void Shutdown_writes_the_last_edit_before_it_returns()
+    public void Shutdown_writes_the_last_pin_to_the_account_file_before_it_returns()
     {
-        string path = Path.Combine(_dir, "WaveeMusic", "sidebar-layout.json");
-        Sidebar.UseStore(new SidebarLayoutStore(path));
+        // Signed in, so the account file exists (a signed-out scope keeps no pins on disk). The profile folder is the
+        // fact's temp folder: the real %LOCALAPPDATA%\Wavee\WaveeMusic is never read or written.
+        Entities.Boot(new CatalogScope("spotify", "wiring", "en-US", "US", 0, true));
+        string dir = Path.Combine(_dir, "WaveeMusic");
+        Sidebar.UseProfileDir(dir);
         Sidebar.Boot();
         try
         {
+            Assert.Equal("spotify:wiring", Sidebar.AccountKey);
             Assert.True(Sidebar.Pin(new SidebarPin("pl:spotify:playlist:keep", SidebarEntryKind.Playlist,
                 "spotify:playlist:keep", "Keep", AddedAtMs: 1)));
 
-            // The pin armed the 300 ms debounce; Shutdown fires it and waits for the pool write.
+            // The pin armed the 300 ms coalesced commit; Shutdown fires it and waits for the pool write.
             Assert.True(Sidebar.Shutdown(10_000));
 
-            var doc = new SidebarLayoutStore(path).Load().Doc;
-            Assert.NotNull(doc);
-            Assert.Contains(doc!.Pins!, p => p.Id == "pl:spotify:playlist:keep");
+            string file = Path.Combine(dir, SidebarAccountStore.FileNameOf("spotify:wiring"));
+            Assert.True(SidebarAccountStore.TryParse(File.ReadAllBytes(file), "spotify:wiring", out var data));
+            Assert.Contains(data.Pins, p => p.Id == "pl:spotify:playlist:keep");
+            Assert.True(File.Exists(SidebarStoreV3.PathUnder(dir)));        // the device file landed beside it
         }
         finally
         {
-            // Hand the service an empty store and re-Boot: a first-run load starts the pin list empty, so no later fact
-            // inherits this one's pin — and nothing is committed to do it.
-            Sidebar.UseStore(new SidebarLayoutStore(Path.Combine(_dir, "reset", "sidebar-layout.json")));
+            // Signed out, an empty profile, a re-Boot: Boot reloads the account, so no later fact inherits this pin, and
+            // nothing is committed to do it.
+            TestScope.Fresh();
+            Sidebar.UseProfileDir(Path.Combine(_dir, "reset"));
+            Sidebar.Boot();
+        }
+    }
+
+    [Fact]
+    public void Boot_reads_and_writes_only_the_profile_folder_it_was_given()
+    {
+        TestScope.Fresh();
+        string dir = Path.Combine(_dir, "WaveeMusic");
+        try
+        {
+            Sidebar.UseProfileDir(dir);
+            Sidebar.Boot();
+            Assert.Equal(SidebarOpReject.None, Sidebar.Dispatch(new SetSectionShown(SidebarLayoutId.Classic, "recent", true)));
+            Assert.True(Sidebar.Shutdown(10_000));
+            Assert.True(File.Exists(SidebarStoreV3.PathUnder(dir)));
+            Assert.Equal("", Sidebar.AccountKey);                           // CatalogScope.Fake() is signed out
+            Assert.Empty(Directory.GetFiles(dir, "sidebar.acct-*.json"));   // … so no account file
+        }
+        finally
+        {
+            // Recent shown would make every later binder fold the whole Playlists table; Dispose deletes this folder.
+            TestScope.Fresh();
+            Sidebar.UseProfileDir(Path.Combine(_dir, "reset"));
             Sidebar.Boot();
         }
     }

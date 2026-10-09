@@ -56,7 +56,6 @@ public static partial class Shell
     {
         RootFactory = static () => Frame();
         SetPage(RouteKind.History, static (in Route _) => HistoryPage());
-        SetPage(RouteKind.SidebarCustomize, static (in Route _) => Sidebar.CustomizerPage());
         if (NotificationsLauncher is null) NotificationsLauncher = OpenNotificationPanel;
 
         Design.Install();   // G-196: Tok.Use(Tok.NeutralPalette, _) rather than the engine's own default ramp
@@ -824,7 +823,7 @@ public static partial class Shell
     {
         float rendered = s_scene is { } scene && !s_sidebarColumn.IsNull && scene.IsLive(s_sidebarColumn)
             ? scene.AbsoluteRect(s_sidebarColumn).W : Sidebar.PresentedWidth.Peek();
-        return new SidebarPaneFrameSnapshot(Sidebar.Design.Peek(), Sidebar.Mode.Peek(), Sidebar.Band.Peek(),
+        return new SidebarPaneFrameSnapshot(Sidebar.Layout.Peek(), Sidebar.Mode.Peek(), Sidebar.Band.Peek(),
             Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered);
     }
 

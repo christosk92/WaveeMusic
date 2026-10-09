@@ -10,8 +10,8 @@
 // Spec: ch 25 §0.13, W11-W15, W22, §3 + §5 V3 rows, §6 (V3 overflow, chip rail keys, search Escape, sort/view flyout),
 //       §10 items 40-54 and 71-76
 //
-// V3 IS A DOCUMENT PLUS CHROME: `LibraryV3Document` (CORE) rendered by the one `PaneView` through `PaneConfig` delegates,
-// plus the fixed chrome nav band → header 44 → toolbar 36 → chip rail 40 → rule (→ breadcrumb 32) → banner / empty state,
+// V3 IS A DOCUMENT PLUS CHROME: the Library layout document (`Doc`) rendered by the one `PaneView` through `PaneConfig`
+// delegates, plus the fixed chrome nav band → header 44 → toolbar 36 → chip rail 40 → rule (→ breadcrumb 32) → banner / empty state,
 // which never scrolls, filters or reorders with the list. Every pure decision is CALLED from `Sidebar.Modes.cs`.
 
 using System;
@@ -67,28 +67,25 @@ public static partial class Sidebar
             {
                 _ = search.Value;
                 _ = FolderVersion.Value;
-                _ = V3OrderVersion.Value;
                 V3Session.Resync();
             });
 
             var config = UseMemo(() => new PaneConfig
             {
-                Design = SidebarDesign.LibraryV3,
-                ScrollKeyPrefix = "sidebar.v3",
-                Document = s.BuildDocument,
+                Layout = SidebarLayoutId.Library,
+                ScrollKeyPrefix = "sidebar.library",
+                Document = static () => { _ = LayoutVersion.Value; return Doc; },
                 Input = s.ShapeInput,
                 ModeEpoch = s.ReadModeEpoch,
-                SetSectionCollapsed = null,   // every V3 section is title-less: no header row, nothing to collapse
-                ReadOnly = true,              // the chrome owns every piece of the ephemeral document's state
-                SearchHead = false,           // V3's own library-only search lives in the toolbar
+                Options = s.ShapeOptions,
                 Head = s.ChromeHead,
-                IsReorderableSection = s.IsSectionReorderable,
                 TreeSortedNonCustom = s.TreeSortedNonCustom,
                 SortedListRefusalAction = s.SwitchToCustomSortForReorder,
                 ClampReorderSlot = s.ClampReorderSlot,
                 CommitReorder = s.CommitReorder,
                 ActivateFolder = s.ActivateFolder,
                 DisclosesFoldersInline = s.DisclosesFoldersInline,
+                ShowsSettings = static () => Doc.ShowsSettings,
                 // Null: V3's "+" calls PaneView.CreatePlaylist() — the pane's ONE create flow (no second one here).
                 OnCreatePlaylist = null,
             }, DepKey.Empty);
@@ -134,12 +131,7 @@ public static partial class Sidebar
         public readonly Func<ContextMenuModel?> CreateMenuFn;
         public readonly Func<bool> HeaderDropActiveFn;
 
-        readonly LibraryV3Window _pins = new();                 // the pin band: a WINDOW over the published list
-        readonly List<string> _orderScratch = new(64);          // a custom-order commit materializes the whole order
         readonly List<string> _folderIds = new(4), _folderNames = new(4);
-        LibraryV3DocState _docState;
-        IReadOnlyList<SidebarItemSpec>? _docTopBar;
-        SidebarCustomLayout? _docLayout;
         long _viewEpoch = long.MinValue;                        // the pane shapes its input twice per plan (list + rail)
 
         // ── the view state ────────────────────────────────────────────────────────────────────────────────────────
@@ -161,7 +153,7 @@ public static partial class Sidebar
             return new LibraryV3DocState(filter, qualifier, sort, desc, view, columns, searching,
                 DrillActive ? CurrentFolderId : null,
                 cell.PinCount > 0,
-                IsPinned(LibraryV3Document.LikedRouteKey),
+                LikedPinned: false,           // Liked is never a pin (Q1a)
                 cell.QualifiersAvailable,
                 DragInFlight.Value);
         }
@@ -169,28 +161,15 @@ public static partial class Sidebar
         public int ComputeColumns()
         {
             int view = LibraryV3Metrics.NormalizeView(V3View.Value);
-            if (!LibraryV3Metrics.IsGrid(view)) return LibraryV3Document.ClampColumns(0);
+            if (!LibraryV3Metrics.IsGrid(view)) return LibraryV3Metrics.ClampColumns(0);
             // Against the pane's ONE inset — the grid strip derives its cell edge from exactly that width.
             float cross = Sidebar.Width.Value - PaneMetrics.PaneInsetH;
-            return LibraryV3Document.ClampColumns(LibraryV3Metrics.Columns(view, cross));
+            return LibraryV3Metrics.ClampColumns(LibraryV3Metrics.Columns(view, cross));
         }
 
         public bool ComputeNarrow() => InDrawer || Sidebar.Width.Value < LibraryV3Metrics.DrillInWidth;
 
-        // ── PaneConfig: document, epoch, head, input ─────────────────────────────────────────────────────────────
-
-        /// <summary>Invoked in the PANE's render (that read is its subscription). Cached on the state AND the shortcut
-        /// band reference: a freshly-minted document per render defeats the pane's publish reference check.</summary>
-        public SidebarCustomLayout BuildDocument()
-        {
-            var state = ReadState();
-            var topBar = TopBar;
-            if (_docLayout is { } cached && _docState.Equals(state) && ReferenceEquals(_docTopBar, topBar)) return cached;
-            _docState = state;
-            _docTopBar = topBar;
-            _docLayout = LibraryV3Document.Build(in state, topBar);
-            return _docLayout;
-        }
+        // ── PaneConfig: epoch, head, input, options ──────────────────────────────────────────────────────────────
 
         public int ReadModeEpoch() => ReadState().GetHashCode();
 
@@ -198,17 +177,17 @@ public static partial class Sidebar
         /// survive (its hooks own the search focus latch and the self-correcting effects).</summary>
         public Element? ChromeHead() => Embed.Comp(() => new V3Chrome(this)) with { Key = "v3-chrome" };
 
-        /// <summary>The published projection (already filtered, searched, sorted, pins-first) as two WINDOWS: the pin band and
-        /// the remainder, re-grouped into tree order or sliced to one folder level — nothing re-filtered or re-sorted.
-        /// <c>ExpandedFolders = null</c>: a collapsed folder's children are already ABSENT from the projection.</summary>
+        /// <summary>The published projection (filtered, searched, sorted, matching pins FIRST) re-grouped into tree order or
+        /// sliced to one folder level. While Pinned is shown the planner draws the pins from <c>input.Pins</c> (§P3.5), so the
+        /// list skips the published pin head; with Pinned hidden the pins stay in their natural place.</summary>
         public SidebarProjectionInput ShapeInput(SidebarProjectionInput input)
         {
             var state = ReadState();
             var cell = Cell;
             var published = cell.Current;
             int pinCount = Math.Clamp(cell.PinCount, 0, published.Count);
-            int skip = state.PinsBandVisible ? pinCount : 0;
-            bool group = LibraryV3Document.FoldersApply(in state);
+            int skip = Doc.Find(SidebarSectionKind.Pinned) is { Hidden: false } && !state.Drilled ? pinCount : 0;
+            bool group = LibraryV3Metrics.FoldersApply(in state);
             int revision = Binder?.Revision ?? 0;
 
             // BUG E, step 3: the VIEW's own re-bucket gate, split from the binder's composite `Revision` — see
@@ -225,11 +204,21 @@ public static partial class Sidebar
                 _viewEpoch = epoch;
                 View.Build(published, skip, input.PlaylistTree, revision, state.DrillFolderId, group);
             }
-
-            _pins.Set(published, 0, skip);
-            input = input with { Pins = _pins, ExpandedFolders = null };
-            return group ? input with { PlaylistTree = View.Rows } : input with { Library = View.Rows };
+            // ExpandedFolders is KEPT: the shaped list is already depth-stamped (the planner never re-filters it), and
+            // PlanLibrary reads the set for one thing only — an expanded PINNED folder's children (§P3.5).
+            return input with { Library = View.Rows, LibraryIsTree = group };
         }
+
+        public SidebarPlanOptions ShapeOptions(SidebarPlanOptions o)
+            => o with
+            {
+                Filter = LibraryFilter.Value, GridColumns = Columns?.Value ?? 2,
+                // A pinned folder opens in place only where the pane discloses folders inline (wide list, not drilled);
+                // the narrow/drawer pane and the grid drill instead (ActivateFolder).
+                FoldersInline = DisclosesFoldersInline() && !DrillActive,
+                // A drilled level plans the folder's children only: no pins, no drop band, no Liked row (§P3.5).
+                Drilled = DrillActive,
+            };
 
         static long ViewEpoch(int entriesVersion, int skip, bool group, string? drill)
         {
@@ -243,53 +232,31 @@ public static partial class Sidebar
             }
         }
 
-        // ── PaneConfig: reorder (§3.2.9's LOCAL custom order) ────────────────────────────────────────────────────
+        // ── PaneConfig: reorder. Pins reorder through the pin store; the library reorders only as a ROOTLIST move under
+        //    Playlists · Custom order (the pane's resource drop → WaveeResourceDrop.MoveRootlist), never a local overlay. ──
 
-        /// <summary>The pin band always reorders; the library only under the local-overlay conditions below.</summary>
-        public bool IsSectionReorderable(SidebarSectionKind kind)
-            => kind == SidebarSectionKind.Pinned || (kind == SidebarSectionKind.PlaylistTree && CanReorderCustom());
-
-        /// <summary>Playlists ∧ Custom sort ∧ no query ∧ a list view ∧ no drill. Peeked: read inside a live drag's hover.</summary>
         bool CanReorderCustom()
-            => CanReorderV3 && !DrillActive && !LibraryV3Metrics.HasQuery(V3Search.Peek())
-               && LibraryV3Metrics.IsList(LibraryV3Metrics.NormalizeView(V3View.Peek()));
+            => LibraryFilter.Peek() == SidebarLibraryFilter.Playlists && Doc.Library.Sort == SidebarLibrarySort.CustomOrder
+               && LibrarySearch.Peek().Length == 0 && Doc.Library.View == SidebarLibraryView.List && !DrillActive;
 
-        /// <summary>D10 — the exact complement: the tree shows a SORTED view, so positional drops refuse with "clear
-        /// sorting to reorder" while Into stays legal.</summary>
+        /// <summary>D10 — the tree shows a SORTED view, so positional drops refuse with "clear sorting to reorder" while Into
+        /// stays legal.</summary>
         public bool TreeSortedNonCustom() => !CanReorderCustom();
 
-        /// <summary>D11 — the sibling-run clamp during the gesture. Only the library band clamps.</summary>
-        public int ClampReorderSlot(SidebarSectionKind kind, int from, int to)
-            => kind == SidebarSectionKind.PlaylistTree && CanReorderCustom() ? View.ClampToSiblingRun(from, to) : to;
+        /// <summary>No local overlay to clamp: a rootlist move is the server's.</summary>
+        public int ClampReorderSlot(SidebarSectionKind kind, int from, int to) => to;
 
-        /// <summary>Pins commit through the shared pin store (mapped by pin id — a band position can drift from the
-        /// store). The library band writes V3's local overlay and NOTHING else, after verifying the plan and the view
-        /// agree (a publish mid-gesture must not persist a shuffled library) and the drop stays inside its folder.</summary>
         public void CommitReorder(PaneReorder r)
         {
-            if (r.FromSlot == r.ToSlot) return;
-            if (r.Section.Kind == SidebarSectionKind.Pinned)
-            {
-                int pf = Pins.IndexOf(r.KeyAt(r.FromSlot)), pt = Pins.IndexOf(r.KeyAt(r.ToSlot));
-                if (pf < 0 || pt < 0) MovePin(r.FromSlot, r.ToSlot);
-                else MovePin(pf, pt);
-                Resync();
-                return;
-            }
-            if (!CanReorderCustom() || r.SlotCount != View.Count) return;
-            if (!string.Equals(r.KeyAt(r.FromSlot), View.KeyAt(r.FromSlot), StringComparison.Ordinal)) return;
-            if (!View.SameParent(r.FromSlot, r.ToSlot)) return;
-            View.MaterializeOrder(_orderScratch, r.FromSlot, r.ToSlot);
-            SetV3CustomOrder(_orderScratch);
+            DefaultReorderCommit(in r);
             Resync();
         }
 
-        /// <summary>H3 (#85) — the refusal toast's action: the ONE state where a positional reorder is legal again needs
-        /// BOTH the Playlists lens and the Custom sort, so set both.</summary>
+        /// <summary>H3 (#85) — the refusal toast's action: Playlists + Custom order, the one state a positional reorder is legal.</summary>
         public void SwitchToCustomSortForReorder()
         {
-            SetV3Filter((int)SidebarV3Filter.Playlists);
-            SetV3Sort((int)SidebarV3Sort.Custom, V3Desc.Peek());
+            SetLibraryFilter(SidebarLibraryFilter.Playlists);
+            Dispatch(new SetLibrarySort(SidebarLibrarySort.CustomOrder, false));
             Resync();
         }
 
@@ -396,11 +363,6 @@ public static partial class Sidebar
             binder.Invalidate();
             binder.Sync();
         }
-
-        public static string LabelOf(SidebarItemSpec item)
-            => item.LabelOverride is { Length: > 0 } alias ? alias
-             : item.FallbackTitle is { Length: > 0 } cached ? cached
-             : PaneText.ShortUri(item.Key);
     }
 
     // ══ 3. THE CHROME ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -625,10 +587,13 @@ public static partial class Sidebar
 
     // ══ 4. THE NAV BAND (W3 / W22) ══════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Home ABOVE the header: the destination word rail + <c>TopBar</c> as read-only chrome. It never filters (a
-    /// search must not hide the way home), so it subscribes <c>LayoutVersion</c>, never the V3 state.</summary>
+    /// <summary>Home ABOVE the header: the destination word rail as read-only chrome. It never filters (a search must not
+    /// hide the way home), so it reads no V3 state; the rail's counts subscribe their own relations.</summary>
     internal sealed class V3NavBand : Component
     {
+        /// <summary>The library destinations the word rail names (P3-P4; P5 replaces this band with the page dropdown).</summary>
+        static readonly string[] s_destinations = ["liked", "albums", "artists", "podcasts", "audiobooks"];
+
         readonly V3Session _s;
         // W4 — the word rail's pager state: its scroll handle, whose AtStart/AtEnd edge signals ARE "is there more to
         // reach" on each side. Mounted once per pane, so plain fields persist across renders.
@@ -644,41 +609,22 @@ public static partial class Sidebar
 
         public override Element Render()
         {
-            _ = LayoutVersion.Value;
-            var items = TopBar;
             string route = Shell.NameOf(Shell.Current.Value);
-
-            // No early-out on an empty band: the user may empty it on purpose, and the destination rail is not part of it.
-            var kids = new List<Element>(items.Count + 2) { DestinationRail(route) };
-            for (int i = 0; i < items.Count; i++)
-            {
-                var item = items[i];
-                if (item is null || item.Hidden) continue;
-                Element row = item.Target switch
-                {
-                    SidebarItemTarget.Action => ActionTile(item),
-                    SidebarItemTarget.Track => TrackTile(item),
-                    SidebarItemTarget.Entity => EntityTile(item, route),
-                    _ => RouteTile(item, route),
-                };
-                // Keyed independently of the row's own wrapper; Direction 1 so the plate spans the pane (a ROW wrapper
-                // would hug the label — the Reorderable.Item trap).
-                kids.Add(new BoxEl { Key = item.Id, Direction = 1, Children = [row] });
-            }
-
-            kids.Add(Divider() with
-            {
-                Key = "v3-nav-rule",
-                Margin = new Edges4(SidebarRowGeometry.HeaderTextX, 4f, SidebarRowGeometry.TrailingPad, 4f),
-            });
-
             return new BoxEl
             {
                 Key = "v3-nav-band",
                 Direction = 1, Shrink = 0f,
                 // Rows carry their own inset, so padding to the bare pane edge lands their glyph on the icon column.
                 Padding = new Edges4(SidebarRowGeometry.PaneEdge, 0f, SidebarRowGeometry.PaneEdge, 0f),
-                Children = [.. kids],
+                Children =
+                [
+                    DestinationRail(route),
+                    Divider() with
+                    {
+                        Key = "v3-nav-rule",
+                        Margin = new Edges4(SidebarRowGeometry.HeaderTextX, 4f, SidebarRowGeometry.TrailingPad, 4f),
+                    },
+                ],
             };
         }
 
@@ -687,7 +633,7 @@ public static partial class Sidebar
         /// Labels never drop to glyphs — the rail scrolls instead.</summary>
         Element DestinationRail(string route)
         {
-            var keys = SidebarShortcutsSection.LibraryDestinations;
+            var keys = s_destinations;
             var words = new Element[keys.Length];
             for (int i = 0; i < keys.Length; i++)
             {
@@ -823,91 +769,6 @@ public static partial class Sidebar
             return relation.Total(me.Slot);
         }
 
-        // ── the four tile shapes (the pane's row vocabulary minus drag, drop, menus, reorder and multi-select) ─────
-
-        Element RouteTile(SidebarItemSpec item, string route)
-        {
-            var dest = Shell.Dest(Shell.Parse(item.Key));
-            string key = item.Key;
-            var spec = new RowSpec
-            {
-                Key = item.Id,
-                Label = item.LabelOverride is { Length: > 0 } alias ? alias : dest.Title,
-                Selected = string.Equals(route, key, StringComparison.Ordinal),
-                Enabled = true,
-                Depth = 0,
-                Shape = SidebarRowShape.Glyph,
-                Height = LibraryV3Metrics.NavRowHeight,
-                Glyph = RowGlyphs.For(item, dest.Glyph),
-                OnClick = () => _s.Navigate(key, null),
-                Focusable = true,
-                Overflow = false,
-            };
-            return EntityRow.Create(in spec);
-        }
-
-        /// <summary>An ACTION shortcut through the pane's action seam. Unavailable ⇒ visible-but-disabled with the reason
-        /// as its tooltip; it never vanishes.</summary>
-        Element ActionTile(SidebarItemSpec item)
-        {
-            if (_s.PaneRef is not { } pane) return new BoxEl { Height = LibraryV3Metrics.NavRowHeight };
-            var a = pane.ResolveActionRow(item);
-            var spec = new RowSpec
-            {
-                Key = item.Id,
-                Label = a.Label,
-                Enabled = a.Enabled,
-                Shape = SidebarRowShape.Glyph,
-                Height = LibraryV3Metrics.NavRowHeight,
-                // Art-wide leading column + the row's own LeadingGap (W7): the label lines up with Home's.
-                Leading = PaneIcon.Leading(item.IconOverride, a.Icon, a.Enabled, SidebarRowGeometry.ArtOf(SidebarRowShape.Glyph)),
-                OnClick = a.Enabled ? a.Click : null,
-                Focusable = a.Enabled,
-            };
-            Element row = EntityRow.Create(in spec);
-            return a.Reason is { Length: > 0 } r ? ToolTip.Wrap(row, r, grow: 1f) : row;
-        }
-
-        /// <summary>A hand-placed TRACK: click PLAYS, never navigates.</summary>
-        Element TrackTile(SidebarItemSpec item)
-        {
-            string uri = item.Key;
-            var spec = new RowSpec
-            {
-                Key = item.Id,
-                Label = V3Session.LabelOf(item),
-                Enabled = true,
-                Shape = SidebarRowShape.EntityTwoLine,
-                Height = LibraryV3Metrics.NavRowHeight,
-                Leading = Cover.ArtUrl(item.FallbackImageUrl, uri, Cover.S32),
-                Track = true,
-                OnClick = () => { if (uri.Length > 0) _s.PaneRef?.PlayTrack(uri); },
-                Focusable = true,
-            };
-            return EntityRow.WithPlayTrackHint(EntityRow.Create(in spec));
-        }
-
-        /// <summary>A hand-placed ENTITY: drawn from the item's own fallback title/art, navigating through the pin
-        /// scheme's uri → route map exactly like the pane's rows.</summary>
-        Element EntityTile(SidebarItemSpec item, string route)
-        {
-            string label = V3Session.LabelOf(item);
-            string? target = SidebarNavBandModel.RouteKeyOf(item);
-            var spec = new RowSpec
-            {
-                Key = item.Id,
-                Label = label,
-                Selected = SidebarNavBandModel.SelectsRoute(item, route),
-                Enabled = true,
-                Shape = SidebarRowShape.EntityTwoLine,
-                Height = LibraryV3Metrics.NavRowHeight,
-                Leading = Cover.ArtUrl(item.FallbackImageUrl, item.Key, Cover.S32,
-                                       circular: item.EntityKind == SidebarEntityKind.Artist),
-                OnClick = target is { Length: > 0 } t ? () => _s.Navigate(t, label) : null,
-                Focusable = target is { Length: > 0 },
-            };
-            return EntityRow.Create(in spec);
-        }
     }
 
     // ══ 5. THE HEADER BAND + TOOLBAR (§3.2.3) ═══════════════════════════════════════════════════════════════════════
@@ -1543,7 +1404,7 @@ public static partial class Sidebar
                 handle.Value.ClosedAction = () => handle.Value = null;
             }
 
-            bool showDirection = SidebarSort.SupportsDirection((SidebarV3Sort)sort);
+            bool showDirection = SidebarSort.SupportsDirection((SidebarLibrarySort)sort);
             var kids = new List<Element>(5) { Icon(Icons.Sort, 14f, Tok.TextSecondary) };
             if (!iconOnly)
             {
@@ -1615,7 +1476,7 @@ public static partial class Sidebar
         static Element SortRow(int key, int sort, bool desc)
         {
             bool active = sort == key;
-            bool directional = SidebarSort.SupportsDirection((SidebarV3Sort)key);
+            bool directional = SidebarSort.SupportsDirection((SidebarLibrarySort)key);
             return new BoxEl
             {
                 Key = "v3sort" + key,

@@ -17,18 +17,23 @@ namespace Wavee.Tests;
 [Collection(EntitiesCollection.Name)]
 public class SidebarPinSyncTests
 {
+    sealed class LatchBox { public bool Migrated; }
+
+    static SidebarPinLatch TestLatch(string loaded, string live, LatchBox box)
+        => new(() => loaded, () => live, () => box.Migrated, v => box.Migrated = v);
+
     sealed class Rig
     {
         public readonly SidebarPinStore Pins = new();
-        public readonly MemoryAppSettings Settings = new();
+        public readonly LatchBox Latch = new();
         public readonly List<(string Uri, bool Pinned)> Writes = new();
         public readonly LibraryPinSync Sync;
 
         public Rig(bool migrated, Func<string, bool>? hasPending = null)
         {
-            Settings.Set(Platform.Keys.PinsMigratedToServer, migrated);
-            Sync = new LibraryPinSync(Pins, Settings, (uri, pinned) => Writes.Add((uri, pinned)), hasPending ?? (_ => false),
-                id => id == "liked" ? "Liked Songs" : "");
+            Latch.Migrated = migrated;
+            Sync = new LibraryPinSync(Pins, TestLatch("spotify:me", "spotify:me", Latch),
+                (uri, pinned) => Writes.Add((uri, pinned)), hasPending ?? (_ => false));
         }
 
         public void Server(bool converged, params string[] uris)
@@ -137,7 +142,7 @@ public class SidebarPinSyncTests
         Assert.Contains(("spotify:playlist:a", true), rig.Writes);
         Assert.Contains(("spotify:playlist:b", true), rig.Writes);
         Assert.Contains(("spotify:folder:ab12", true), rig.Writes);
-        Assert.True(rig.Settings.Get(Platform.Keys.PinsMigratedToServer));
+        Assert.True(rig.Latch.Migrated);
         Assert.True(rig.Sync.Migrated);
     }
 
@@ -147,27 +152,35 @@ public class SidebarPinSyncTests
         var rig = new Rig(migrated: true, hasPending: uri => uri == "spotify:playlist:pending");
         Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:missing", SidebarEntryKind.Playlist, "spotify:playlist:missing")));
         Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:pending", SidebarEntryKind.Playlist, "spotify:playlist:pending")));
-        Assert.True(rig.Pins.Pin(Pin("home", SidebarEntryKind.AppRoute, "", "Home")));
+        Assert.True(rig.Pins.Pin(Pin("search", SidebarEntryKind.AppRoute, "", "Search")));
         rig.Writes.Clear();
 
         rig.Server(converged: true);                                   // both playlist pins are "missing"
 
         Assert.False(rig.Pins.IsPinned("pl:spotify:playlist:missing"));
         Assert.True(rig.Pins.IsPinned("pl:spotify:playlist:pending")); // shielded by the in-flight write
-        Assert.True(rig.Pins.IsPinned("home"));                        // never syncable — always kept
+        Assert.True(rig.Pins.IsPinned("search"));                      // never syncable — always kept
         Assert.Empty(rig.Writes);                                      // ApplyServer never writes back
     }
 
     [Fact]
-    public void RemoteAdd_OfTheLikedRoute_CarriesTheRouteTitle()
+    public void ServerLiked_NeverBecomesAPin()
     {
+        // Liked Songs has a fixed home and is never a pin (Q1a): the server's collection uri makes no local pin and no write.
         var rig = new Rig(migrated: false);
         rig.Server(converged: false, "spotify:collection");
 
-        Assert.True(rig.Pins.IsPinned("liked"));
-        var pin = rig.Pins[rig.Pins.IndexOf("liked")];
-        Assert.Equal(SidebarEntryKind.AppRoute, pin.Kind);
-        Assert.Equal("Liked Songs", pin.Name);
+        Assert.Empty(rig.Pins);
+        Assert.Empty(rig.Writes);
+    }
+
+    [Fact]
+    public void LocalLiked_IsNeverWritten()
+    {
+        var rig = new Rig(migrated: false);
+        Assert.False(rig.Pins.Pin(Pin("liked", SidebarEntryKind.AppRoute, "", "Liked Songs")));
+
+        Assert.Empty(rig.Writes);
     }
 
     [Fact]
@@ -213,6 +226,64 @@ public class SidebarPinSyncTests
         rig.Sync.ApplyServer([new PinWire("spotify:playlist:new", 3000), new PinWire("spotify:playlist:old", 1000)], converged: false);
 
         Assert.Equal(new[] { "pl:spotify:playlist:old", "pl:spotify:playlist:new" }, rig.Pins.Select(p => p.Id).ToArray());
+    }
+
+    [Fact]
+    public void Mismatch_NoConvergeNoWrite()
+    {
+        // The loaded store belongs to one account and the live session is another: a converged walk of the live server
+        // set neither sweeps nor migrates the loaded pins, and writes nothing.
+        var pins = new SidebarPinStore();
+        var box = new LatchBox { Migrated = true };
+        var writes = new List<(string Uri, bool Pinned)>();
+        var sync = new LibraryPinSync(pins, TestLatch("spotify:a", "spotify:b", box),
+            (uri, pinned) => writes.Add((uri, pinned)), _ => false);
+        Assert.True(pins.Pin(Pin("pl:spotify:playlist:a", SidebarEntryKind.Playlist, "spotify:playlist:a")));
+        writes.Clear();
+
+        sync.ApplyServer([], converged: true);
+
+        Assert.True(pins.IsPinned("pl:spotify:playlist:a"));
+        Assert.Empty(writes);
+    }
+
+    [Fact]
+    public void SameAccountScopeSwitch_KeepsPendingMarks()
+    {
+        long t = 1_000;
+        var marks = new PinWriteMarks(() => t);
+        marks.Rebind("spotify:me");
+        marks.Note("spotify:playlist:a", inFlight: true);
+        marks.Rebind("spotify:me");                       // a market / locale / tier switch: same account
+        Assert.True(marks.IsPending("spotify:playlist:a"));
+        marks.Rebind("spotify:other");                    // a real account change
+        Assert.False(marks.IsPending("spotify:playlist:a"));
+        Assert.Equal(0, marks.Count);
+    }
+
+    [Fact]
+    public void SettledMark_ExpiresAfterTheGrace()
+    {
+        long t = 0;
+        var marks = new PinWriteMarks(() => t);
+        marks.Note("spotify:playlist:a", inFlight: false);
+        t = PinWriteMarks.GraceMs - 1;
+        Assert.True(marks.IsPending("spotify:playlist:a"));
+        t = PinWriteMarks.GraceMs;
+        Assert.False(marks.IsPending("spotify:playlist:a"));
+    }
+
+    [Fact]
+    public void SameAccountScopeSwitch_ConvergedWalk_DoesNotSweepAnInFlightPin()
+    {
+        var marks = new PinWriteMarks(() => 0);
+        marks.Rebind("spotify:me");
+        var rig = new Rig(migrated: true, hasPending: marks.IsPending);
+        Assert.True(rig.Pins.Pin(Pin("pl:spotify:playlist:a", SidebarEntryKind.Playlist, "spotify:playlist:a")));
+        marks.Note("spotify:playlist:a", inFlight: true);  // the ylpin write the pin raised is in flight …
+        marks.Rebind("spotify:me");                         // … when the market switches
+        rig.Server(converged: true);                        // a converged read that raced the write
+        Assert.True(rig.Pins.IsPinned("pl:spotify:playlist:a"));
     }
 
     [Fact]

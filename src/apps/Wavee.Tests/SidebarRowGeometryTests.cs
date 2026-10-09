@@ -67,14 +67,4 @@ public sealed class SidebarRowGeometryTests
         Assert.Equal(8f, SidebarRowGeometry.SeparatorHeight);
         Assert.Equal(48f, SidebarRowGeometry.RailWidth);
     }
-
-    [Theory]
-    [InlineData(SidebarDensity.Compact, true, true, SidebarRowShape.EntityOneLine)]
-    [InlineData(SidebarDensity.Cozy, false, true, SidebarRowShape.EntityOneLine)]
-    [InlineData(SidebarDensity.Cozy, true, false, SidebarRowShape.Glyph)]
-    [InlineData(SidebarDensity.Cozy, true, true, SidebarRowShape.EntityTwoLine)]
-    [InlineData(SidebarDensity.Comfortable, true, true, SidebarRowShape.EntityTwoLine)]
-    public void ShapeFor_PicksTheRowByDensitySubtitlesAndArtwork(SidebarDensity density, bool subtitles, bool artwork,
-                                                                  SidebarRowShape expected)
-        => Assert.Equal(expected, SidebarRowGeometry.ShapeFor(density, subtitles, artwork));
 }

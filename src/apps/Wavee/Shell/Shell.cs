@@ -50,9 +50,9 @@ public static partial class Shell
     /// <see cref="RouteKind.NotFound"/> (29 in 0.2.9, less ApiConsole — deleted, plan §9.6 Q7).</summary>
     public enum RouteKind : byte
     {
-        // s_exact (16) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12: the console and its four ApiDebug* helpers are cut
+        // s_exact (15) — ApiConsole DELETED, plan §9.6 Q7, 2026-09-12; SidebarCustomize deleted with the customizer (sidebar rework P3)
         Home, Browse, Search, LibraryAlbums, LibraryArtists, LibraryPodcasts, LibraryAudiobooks, Liked, Local,
-        History, Recents, Settings, PlaybackDiagnostics, WhatsNew, SidebarCustomize, HomeCustomize,
+        History, Recents, Settings, PlaybackDiagnostics, WhatsNew, HomeCustomize,
         // s_prefixes (10) — "<prefix><entity uri>"; a bare prefix addresses nothing and is NOT a route
         Album, Playlist, Artist, Show, Prerelease, Discography, Module, BrowseCategory, HomeSection, BrowseSection,
         // ConcertRoutes (3)
@@ -164,7 +164,6 @@ public static partial class Shell
         new(RouteKind.Settings,            "settings",             false, Strings.Nav.Settings,         Icons.Settings,    false, false, false),
         new(RouteKind.PlaybackDiagnostics, "playback-diagnostics", false, Strings.Nav.PlaybackRuntime,  Icons.MusicNote,   true,  false, false),
         new(RouteKind.WhatsNew,            "whatsnew",             false, Strings.WhatsNew.Title,       Icons.RefineSparkle, false, false, true, PlaceByArg: true),
-        new(RouteKind.SidebarCustomize,    "sidebar-customize",    false, Strings.Sidebar.Customizer.Title, Icons.Edit,    false, false, true, PlaceByArg: true),
         new(RouteKind.HomeCustomize,       "home-customize",       false, Strings.Home.Customizer.Title, Icons.Edit,       false, false, true, PlaceByArg: true),
 
         new(RouteKind.Album,               "album:",               true,  Strings.Nav.Album,            Icons.Album,       false, true,  false),
@@ -245,13 +244,12 @@ public static partial class Shell
     // cost. Each group installs at most ONCE (the bool below), then every kind in it resolves the ordinary way.
     //
     // NOT moved here — each stays eager in App.cs, called exactly where it always was:
-    //   • Artist.InstallPages (Artist/Discography + Concert.InstallPages's three concert kinds): its own comment says
-    //     why — Sidebar.ConcertsFetch must be set before the sidebar pane's FIRST mount, which happens as part of
-    //     Shell.Run(), long before any navigation could reach an Artist/Concert route.
+    //   • Artist.InstallPages (Artist/Discography + Concert.InstallPages's three concert kinds): kept eager for its
+    //     ConcertHost seam (nothing in the sidebar reads it since P3).
     //   • Modules.InstallUi, Settings.InstallScreens, Diagnostics.Install: each also wires a seam nothing routes past —
     //     Shell.LinkModules/MatchLink answer ANY pasted link, the setup wizard and the crash-report dialog must be on
     //     screen at first launch, and the crash-prompt latch / network-cost host are process-lifetime, not per-page.
-    //   • Shell.InstallUi's own two SetPage calls (History, SidebarCustomize): RootFactory must exist before Run.
+    //   • Shell.InstallUi's own SetPage call (History): RootFactory must exist before Run.
     //   • Queue.InstallUi / Track.InstallActions: neither owns a route (Queue is a rail/stage arm, Track a menu's
     //     verbs) — Queue's Play/PlayNext/AddToQueue registrations must still win the first-wins race, so Track keeps
     //     running immediately after it, exactly as before.
@@ -360,13 +358,13 @@ public static partial class Shell
     /// <summary>Kinds whose <c>Arg</c> is a DISPLAY NAME rather than a slot discriminator. <c>search</c> is in both
     /// camps on purpose: the query is the label AND the keep-alive discriminator, exactly as 0.2.9 has it.</summary>
     static bool CarriesDisplayName(RouteKind k) => k is not (RouteKind.Discography or RouteKind.ProfileList or RouteKind.WhatsNew
-        or RouteKind.SidebarCustomize or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
+        or RouteKind.HomeCustomize or RouteKind.Home   // Home's arg is a facet id
         or RouteKind.Settings);   // Settings' arg, when present, is a tab slug (`route=settings&arg=privacy`), never a display name
 
     // ── 1.2 the key codec: (name, arg) ⇄ Route ──────────────────────────────────────────────────────────────────────
     //
     // Every persisted document in the app still speaks 0.2.9's opaque `(name, arg)` pair: `history.json`,
-    // `session.json`, `workspace.tabs.pinned`, `sidebar-layout.json`'s pin ids and the `wavee://` verb map. The codec
+    // `session.json`, `workspace.tabs.pinned`, `sidebar.acct-*.json`'s pin ids and the `wavee://` verb map. The codec
     // is therefore part of the CORE, not a compatibility shim: a pin id IS a route key.
 
     /// <summary>The ONE back-compat rewrite for committed navigation (0.2.9's `NavRouteNormalizer`, ported verbatim)

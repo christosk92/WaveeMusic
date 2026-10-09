@@ -107,9 +107,6 @@ public static class Shape
     /// <summary>An episode row: 56 art, a two-line title, the 72 floor.</summary>
     public static readonly SurfaceShape EpisodeRow = Row(56f) with { TitleLines = 2, MinHeight = 72f };
 
-    /// <summary>The sidebar's hero card row: 48 art, the 28 FAB, the 64 floor.</summary>
-    public static readonly SurfaceShape SidebarHero = Row(48f) with { Fab = 28f, MinHeight = 64f };
-
     /// <summary>The sidebar's grid tile: the grid card with the 28 FAB.</summary>
     public static readonly SurfaceShape SidebarTile = Grid with { TitleLines = 1, CaptionLines = 1, Fab = 28f };
 

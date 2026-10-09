@@ -144,9 +144,8 @@ public class SetupBootstrapTests
         Assert.True(settings.Get(Platform.Keys.SetupPending));
         Assert.False(settings.Get(Platform.Keys.SetupCompleted));
         Assert.Equal(Setup.Bootstrap.TargetVersion, settings.Get(Platform.Keys.SetupBootstrapVersion));
-        // One onboarding prompt on a first launch, not two (0.2.9's rule; the dropped SidebarDesign fact, restored here).
-        Assert.False(SidebarDesignGating.ShouldShowChooser(settings));
-        Assert.Equal(SidebarDesign.Classic, SidebarDesignGating.ActiveDesign(settings));
+        // A first launch starts on Classic (SidebarLayoutId's default 0): nothing is written for the layout.
+        Assert.Equal(0, settings.Get(Platform.Keys.SidebarLayoutId));
     }
 
     [Fact]
@@ -158,8 +157,7 @@ public class SetupBootstrapTests
         Assert.True(settings.Get(Platform.Keys.SetupCompleted));
         Assert.False(settings.Get(Platform.Keys.SetupPending));
         Assert.Equal(Setup.Gating.TermsVersion, settings.Get(Platform.Keys.TermsAcceptedVersion));
-        Assert.False(SidebarDesignGating.ShouldShowChooser(settings));
-        Assert.False(settings.WasWritten(Platform.Keys.SidebarDesign));   // an existing install's design is never stomped
+        Assert.False(settings.WasWritten(Platform.Keys.SidebarLayoutId));   // an existing install's layout is never stomped
     }
 
     [Theory]

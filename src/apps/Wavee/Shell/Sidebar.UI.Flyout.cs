@@ -255,7 +255,7 @@ public static partial class Sidebar
             };
         }
 
-        Element Row(IReadOnlyList<SidebarLibraryEntry>? tree, SidebarSectionSpec? section, SidebarLibraryEntry entry,
+        Element Row(IReadOnlyList<SidebarLibraryEntry>? tree, SidebarSection? section, SidebarLibraryEntry entry,
                     string sel, bool cursored)
         {
             var owner = Owner;
@@ -268,7 +268,7 @@ public static partial class Sidebar
             Func<ContextMenuModel?>? menu = section is null ? null
                 : folder ? owner.FolderMenu(section, -1, in entry, () => owner.ExpandFolderInPane(entry.FolderId),
                                             IsFolderExpanded(entry.FolderId), entry.Id)
-                : owner.EntryMenu(section, -1, in entry, null, entry.Id);
+                : owner.EntryMenu(section, -1, in entry, entry.Id);
 
             // A rootlist member either way: a playlist drags out onto any sidebar/rootlist target, a sub-folder files
             // elsewhere. Drops are the pane's own specs: Into-only filing on a sub-folder, the whole-row track deposit on a

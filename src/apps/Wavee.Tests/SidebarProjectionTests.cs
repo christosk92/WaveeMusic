@@ -26,7 +26,6 @@
 //   BINDER TRIGGERS   SidebarBinderTriggers — the rebuild gate's trigger fold; PURE.
 //   BINDER SHAPE      SidebarBinderPipeline.Project/Shape — filter → sort → pins-first; PURE.
 //   UNLISTED PIN      SidebarBinderPipeline.ResolveUnlistedPin — the offline-display-cache overlay; PURE.
-//   CONTRIBUTION      SidebarBinderPipeline.Resolve/ResolveExtensions + SidebarDataSourceTable; PURE.
 //
 // DROPPED (see the porting agent's handoff for the full accounting):
 //   - The pin-id vocabulary (SidebarPinId.FromUri/KindOf/RouteOf/FromRoute/UriOf/FolderIdOf/FromEntry, PinId_*): a
@@ -34,15 +33,11 @@
 //     a second copy here would fork the source of truth over the same production code rather than adding a real
 //     fact. (Its own header names real gaps in its own coverage — KindOf/RouteOf/UriOf/FolderIdOf/the FromUri success
 //     paths are not yet driven anywhere; that belongs in SidebarPinTests.cs, not here.)
-//   - SidebarChurnTests.cs's F3a (ClassicDocumentCache) is already covered by SidebarDesignTests.cs's "REGION 1"
-//     (its header says so explicitly). F3c (the selection sweep, SidebarRowResolve) and F3d (the accent pill,
-//     SidebarPillState) belong to Sidebar.cs's DIFF region — never named in this task's authoritative type list, and
-//     not exercised by anything in this project yet; they are a different port, not weakened here.
 //   - SidebarProjectionBinderTests.cs's row-planner facts (SidebarRowPlanner.Build/BuildRail for Extension sections,
 //     the EntityQuery include/exclude-uri facts): SidebarRowPlanner belongs to Sidebar.cs's PLAN region, never named
 //     in this task's authoritative type list either.
 //   - SidebarProjectionBinder's integration facts live in SidebarWiringTests.cs now that the seams exist:
-//     `Sidebar.Store` is lazy with `Sidebar.UseStore(...)` (no real profile touched) and the binder takes its two
+//     the profile folder is set with `Sidebar.UseProfileDir(...)` (no real profile touched) and the binder takes its two
 //     shell logs through `ISidebarRecencyLogs`. The rebuild gate, the recency wiring and InputVersion are ported
 //     there; StateOf/AvailabilityOf over a live host still are not.
 //   - The Build-integration half of the FirstSeen facts (rebuild stability / prune-and-persist through
@@ -85,7 +80,7 @@ public class SidebarSortFacts
         return a;
     }
 
-    static List<SidebarLibraryEntry> Sorted(List<SidebarLibraryEntry> list, SidebarV3Sort sort, bool desc = false,
+    static List<SidebarLibraryEntry> Sorted(List<SidebarLibraryEntry> list, SidebarLibrarySort sort, bool desc = false,
                                            IReadOnlyList<string>? custom = null)
     {
         SidebarSort.Apply(list, sort, desc, custom);
@@ -101,7 +96,7 @@ public class SidebarSortFacts
             Pl("b", "Bravo", played: 300),
             Pl("c", "Charlie", played: 200),
         };
-        Assert.Equal(new[] { "Bravo", "Charlie", "Alpha" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+        Assert.Equal(new[] { "Bravo", "Charlie", "Alpha" }, Names(Sorted(list, SidebarLibrarySort.Recents)));
     }
 
     [Fact]
@@ -113,7 +108,7 @@ public class SidebarSortFacts
             Pl("v1", "Played", played: 5),
             Pl("n2", "NeverNew", sortStamp: 99),
         };
-        Assert.Equal(new[] { "Played", "NeverNew", "NeverOld" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+        Assert.Equal(new[] { "Played", "NeverNew", "NeverOld" }, Names(Sorted(list, SidebarLibrarySort.Recents)));
     }
 
     [Fact]
@@ -126,7 +121,7 @@ public class SidebarSortFacts
             Pl("n1", "N1", sortStamp: 10),
             Pl("n2", "N2", sortStamp: 20),
         };
-        Assert.Equal(new[] { "V1", "V2", "N1", "N2" }, Names(Sorted(list, SidebarV3Sort.Recents, desc: true)));
+        Assert.Equal(new[] { "V1", "V2", "N1", "N2" }, Names(Sorted(list, SidebarLibrarySort.Recents, desc: true)));
     }
 
     /// <summary>Opening a row (a click ⇒ a navigation ⇒ LastVisitedTicksUtc moves) must NOT reorder "Recents" — only
@@ -137,11 +132,11 @@ public class SidebarSortFacts
         var a = Pl("a", "Alpha", played: 200, visited: 10);
         var b = Pl("b", "Bravo", played: 100, visited: 20);
         var list = new List<SidebarLibraryEntry> { a, b };
-        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarV3Sort.Recents)));
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarLibrarySort.Recents)));
 
         var bVisitedAgain = b with { LastVisitedTicksUtc = 999_999 };
         var list2 = new List<SidebarLibraryEntry> { a, bVisitedAgain };
-        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list2, SidebarV3Sort.Recents)));
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list2, SidebarLibrarySort.Recents)));
     }
 
     [Fact]
@@ -154,7 +149,7 @@ public class SidebarSortFacts
             Pl("b", "Bravo", sortStamp: 500, order: 1),
             Pl("z", "Zulu", sortStamp: 900, order: 9),
         };
-        Assert.Equal(new[] { "Zulu", "Alpha", "Bravo", "Charlie" }, Names(Sorted(list, SidebarV3Sort.RecentlyAdded)));
+        Assert.Equal(new[] { "Zulu", "Alpha", "Bravo", "Charlie" }, Names(Sorted(list, SidebarLibrarySort.RecentlyAdded)));
     }
 
     [Fact]
@@ -165,7 +160,7 @@ public class SidebarSortFacts
             Pl("a", "Alpha", sortStamp: 100),
             Pl("b", "Bravo", sortStamp: 200),
         };
-        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarV3Sort.RecentlyAdded, desc: true)));
+        Assert.Equal(new[] { "Alpha", "Bravo" }, Names(Sorted(list, SidebarLibrarySort.RecentlyAdded, desc: true)));
     }
 
     [Fact]
@@ -178,7 +173,7 @@ public class SidebarSortFacts
             Pl("z", "Zebra"),
             Pl("b", "Bravo"),
         };
-        Assert.Equal(new[] { "alpha", "Bravo", "The Beatles", "Zebra" }, Names(Sorted(list, SidebarV3Sort.Alphabetical)));
+        Assert.Equal(new[] { "alpha", "Bravo", "The Beatles", "Zebra" }, Names(Sorted(list, SidebarLibrarySort.Alphabetical)));
     }
 
     [Fact]
@@ -196,8 +191,8 @@ public class SidebarSortFacts
     {
         var list = new List<SidebarLibraryEntry>();
         for (int i = 0; i < 40; i++) list.Add(Pl("id" + i, "Same name", "Same creator", sortStamp: 7, order: 0));
-        var first = Names(Sorted(list, SidebarV3Sort.RecentlyAdded));
-        var second = Names(Sorted(list, SidebarV3Sort.RecentlyAdded));
+        var first = Names(Sorted(list, SidebarLibrarySort.RecentlyAdded));
+        var second = Names(Sorted(list, SidebarLibrarySort.RecentlyAdded));
         Assert.Equal(first, second);
     }
 
@@ -212,10 +207,10 @@ public class SidebarSortFacts
             Pl("c", "Gamma", "Adam"),
         };
         Assert.Equal(new[] { "Alpha", "Gamma", "Beta", "An Artist" },
-                     Names(Sorted(list, SidebarV3Sort.Creator)));
+                     Names(Sorted(list, SidebarLibrarySort.Creator)));
 
         Assert.Equal(new[] { "Beta", "Gamma", "Alpha", "An Artist" },
-                     Names(Sorted(list, SidebarV3Sort.Creator, desc: true)));
+                     Names(Sorted(list, SidebarLibrarySort.Creator, desc: true)));
     }
 
     [Fact]
@@ -230,7 +225,7 @@ public class SidebarSortFacts
         };
         var order = new[] { "pl:spotify:playlist:known1", "pl:spotify:playlist:known2" };
         Assert.Equal(new[] { "Known1", "Known2", "New1", "New2" },
-                     Names(Sorted(list, SidebarV3Sort.Custom, desc: false, custom: order)));
+                     Names(Sorted(list, SidebarLibrarySort.CustomOrder, desc: false, custom: order)));
     }
 
     [Fact]
@@ -243,8 +238,8 @@ public class SidebarSortFacts
             Pl("k", "K", order: 7),
             Pl("u1", "U1", order: 1),
         };
-        var asc = Names(Sorted(list, SidebarV3Sort.Custom, desc: false, custom: order));
-        var desc = Names(Sorted(list, SidebarV3Sort.Custom, desc: true, custom: order));
+        var asc = Names(Sorted(list, SidebarLibrarySort.CustomOrder, desc: false, custom: order));
+        var desc = Names(Sorted(list, SidebarLibrarySort.CustomOrder, desc: true, custom: order));
         Assert.Equal(new[] { "K", "U1", "U2" }, asc);
         Assert.Equal(asc, desc);
     }
@@ -253,7 +248,7 @@ public class SidebarSortFacts
     public void Custom_WithNoStoredOrder_IsPureSourceOrder()
     {
         var list = new List<SidebarLibraryEntry> { Pl("b", "B", order: 2), Pl("a", "A", order: 1) };
-        Assert.Equal(new[] { "A", "B" }, Names(Sorted(list, SidebarV3Sort.Custom, custom: null)));
+        Assert.Equal(new[] { "A", "B" }, Names(Sorted(list, SidebarLibrarySort.CustomOrder, custom: null)));
     }
 
     [Fact]
@@ -267,12 +262,12 @@ public class SidebarSortFacts
     [Fact]
     public void Effective_FallsBackToAlphabetical_WhenCustomIsPickedOutsideThePlaylistsFilter()
     {
-        Assert.Equal(SidebarV3Sort.Custom, SidebarSort.Effective(SidebarV3Sort.Custom, SidebarV3Filter.Playlists));
-        Assert.Equal(SidebarV3Sort.Alphabetical, SidebarSort.Effective(SidebarV3Sort.Custom, SidebarV3Filter.All));
-        Assert.Equal(SidebarV3Sort.Alphabetical, SidebarSort.Effective(SidebarV3Sort.Custom, SidebarV3Filter.Albums));
-        Assert.Equal(SidebarV3Sort.Recents, SidebarSort.Effective(SidebarV3Sort.Recents, SidebarV3Filter.Albums));
-        Assert.False(SidebarSort.SupportsDirection(SidebarV3Sort.Custom));
-        Assert.True(SidebarSort.SupportsDirection(SidebarV3Sort.Recents));
+        Assert.Equal(SidebarLibrarySort.CustomOrder, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.Playlists));
+        Assert.Equal(SidebarLibrarySort.Alphabetical, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.None));
+        Assert.Equal(SidebarLibrarySort.Alphabetical, SidebarSort.Effective(SidebarLibrarySort.CustomOrder, SidebarLibraryFilter.Albums));
+        Assert.Equal(SidebarLibrarySort.Recents, SidebarSort.Effective(SidebarLibrarySort.Recents, SidebarLibraryFilter.Albums));
+        Assert.False(SidebarSort.SupportsDirection(SidebarLibrarySort.CustomOrder));
+        Assert.True(SidebarSort.SupportsDirection(SidebarLibrarySort.Recents));
     }
 
     [Fact]
@@ -285,7 +280,7 @@ public class SidebarSortFacts
             Artist("c", "Charlie", order: 2),
             Pl("d", "alpha", "Adam", sortStamp: 50, visited: 100, order: 0),
         };
-        var sorts = new[] { SidebarV3Sort.Recents, SidebarV3Sort.RecentlyAdded, SidebarV3Sort.Alphabetical, SidebarV3Sort.Creator };
+        var sorts = new[] { SidebarLibrarySort.Recents, SidebarLibrarySort.RecentlyAdded, SidebarLibrarySort.Alphabetical, SidebarLibrarySort.Creator };
         foreach (var s in sorts)
             foreach (bool desc in new[] { false, true })
             {
@@ -348,18 +343,11 @@ public class SidebarEntryKindsFacts
     [Fact]
     public void From_MapsEachV3FilterToItsKindMask()
     {
-        Assert.Equal(SidebarEntryKindMask.PlaylistTree, SidebarEntryKinds.From(SidebarV3Filter.Playlists));
-        Assert.Equal(SidebarEntryKindMask.Show, SidebarEntryKinds.From(SidebarV3Filter.Podcasts));
-        Assert.Equal(SidebarEntryKindMask.Album, SidebarEntryKinds.From(SidebarV3Filter.Albums));
-        Assert.Equal(SidebarEntryKindMask.Artist, SidebarEntryKinds.From(SidebarV3Filter.Artists));
-        Assert.Equal(SidebarEntryKindMask.All, SidebarEntryKinds.From(SidebarV3Filter.All));
-    }
-
-    [Fact]
-    public void From_MapsCoreEntityKindsToProjectionKinds()
-    {
-        Assert.Equal(SidebarEntryKindMask.PlaylistTree | SidebarEntryKindMask.Album,
-                     SidebarEntryKinds.From(SidebarEntityKinds.Playlists | SidebarEntityKinds.Albums));
+        Assert.Equal(SidebarEntryKindMask.PlaylistTree, SidebarEntryKinds.From(SidebarLibraryFilter.Playlists));
+        Assert.Equal(SidebarEntryKindMask.Show, SidebarEntryKinds.From(SidebarLibraryFilter.Podcasts));
+        Assert.Equal(SidebarEntryKindMask.Album, SidebarEntryKinds.From(SidebarLibraryFilter.Albums));
+        Assert.Equal(SidebarEntryKindMask.Artist, SidebarEntryKinds.From(SidebarLibraryFilter.Artists));
+        Assert.Equal(SidebarEntryKindMask.All, SidebarEntryKinds.From(SidebarLibraryFilter.None));
     }
 
     [Fact]
@@ -419,7 +407,7 @@ public class SidebarProjectionPinsFirstFacts
     public void PinsLead_InPinOrder_RegardlessOfTheSortOrder()
     {
         var rows = new List<SidebarLibraryEntry> { Pl("a", "Alpha"), Pl("b", "Bravo"), Pl("c", "Charlie") };
-        SidebarSort.Apply(rows, SidebarV3Sort.Alphabetical, desc: false);
+        SidebarSort.Apply(rows, SidebarLibrarySort.Alphabetical, desc: false);
 
         var pins = new[] { Pin("pl:spotify:playlist:c", "Charlie"), Pin("pl:spotify:playlist:a", "Alpha") };
         int band = SidebarProjection.PinsFirst(rows, pins);
@@ -2274,16 +2262,16 @@ public class SidebarBinderTriggersFacts
     [Fact]
     public void AFilterSortOrDesignChange_TriggersARebuild()
     {
-        int all = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.All,
-            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: true);
-        int playlists = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.Playlists,
-            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: true);
-        int alphabetical = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.All,
-            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Alphabetical, descending: true);
-        int ascending = SidebarBinderTriggers.PackV3((int)SidebarDesign.LibraryV3, (int)SidebarV3Filter.All,
-            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: false);
-        int curated = SidebarBinderTriggers.PackV3((int)SidebarDesign.Curated, (int)SidebarV3Filter.All,
-            (int)SidebarV3Qualifier.Any, (int)SidebarV3Sort.Recents, descending: true);
+        int all = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.None,
+            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: true);
+        int playlists = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.Playlists,
+            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: true);
+        int alphabetical = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.None,
+            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Alphabetical, descending: true);
+        int ascending = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Library, (int)SidebarLibraryFilter.None,
+            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: false);
+        int curated = SidebarBinderTriggers.PackV3((int)SidebarLayoutId.Classic, (int)SidebarLibraryFilter.None,
+            (int)SidebarV3Qualifier.Any, (int)SidebarLibrarySort.Recents, descending: true);
 
         Assert.Equal(5, new HashSet<int> { all, playlists, alphabetical, ascending, curated }.Count);
     }
@@ -2358,20 +2346,20 @@ public class SidebarBinderPipelineShapeFacts
     ];
 
     static (List<SidebarLibraryEntry> Rows, SidebarEntriesShape Shape) Project(
-        SidebarV3Filter filter = SidebarV3Filter.All,
+        SidebarLibraryFilter filter = SidebarLibraryFilter.None,
         SidebarV3Qualifier qualifier = SidebarV3Qualifier.Any,
-        SidebarV3Sort sort = SidebarV3Sort.Recents,
+        SidebarLibrarySort sort = SidebarLibrarySort.Recents,
         bool desc = true,
         string? search = null,
         bool qualifiersAvailable = false,
         IReadOnlyList<SidebarPin>? pins = null,
-        IReadOnlyList<string>? customOrder = null,
         IReadOnlyList<SidebarLibraryEntry>? library = null)
     {
         var into = new List<SidebarLibraryEntry>();
         var scratch = new List<SidebarLibraryEntry>();
-        var query = new SidebarV3Query(filter, qualifier, sort, desc, search, qualifiersAvailable);
-        var shape = SidebarBinderPipeline.Project(library ?? Library, into, scratch, in query, pins, customOrder);
+        var query = new SidebarLibraryQuery(filter, qualifier, Sort: sort, Descending: desc, Search: search,
+                                               QualifiersAvailable: qualifiersAvailable);
+        var shape = SidebarBinderPipeline.Project(library ?? Library, into, scratch, in query, pins);
         return (into, shape);
     }
 
@@ -2379,9 +2367,9 @@ public class SidebarBinderPipelineShapeFacts
     public void TheFilter_SelectsTheContributingKinds()
     {
         Assert.Equal(4, Project().Shape.Count);
-        Assert.Equal(1, Project(SidebarV3Filter.Albums).Shape.Count);
-        Assert.Equal(0, Project(SidebarV3Filter.Artists).Shape.Count);
-        Assert.Equal(3, Project(SidebarV3Filter.Playlists).Shape.Count);   // playlists INCLUDE their folders
+        Assert.Equal(1, Project(SidebarLibraryFilter.Albums).Shape.Count);
+        Assert.Equal(0, Project(SidebarLibraryFilter.Artists).Shape.Count);
+        Assert.Equal(3, Project(SidebarLibraryFilter.Playlists).Shape.Count);   // playlists INCLUDE their folders
     }
 
     [Fact]
@@ -2402,8 +2390,8 @@ public class SidebarBinderPipelineShapeFacts
     [Fact]
     public void AStaleQualifier_CannotHideTheList_WhenTheChipsAreUnavailable()
     {
-        Assert.Equal(3, Project(SidebarV3Filter.Playlists, SidebarV3Qualifier.BySpotify).Shape.Count);
-        Assert.Equal(1, Project(SidebarV3Filter.Playlists, SidebarV3Qualifier.BySpotify,
+        Assert.Equal(3, Project(SidebarLibraryFilter.Playlists, SidebarV3Qualifier.BySpotify).Shape.Count);
+        Assert.Equal(1, Project(SidebarLibraryFilter.Playlists, SidebarV3Qualifier.BySpotify,
                                 qualifiersAvailable: true).Shape.Count);
     }
 
@@ -2411,7 +2399,7 @@ public class SidebarBinderPipelineShapeFacts
     public void Pins_LeadInPinOrder_AndPinCountIsTheBandLength()
     {
         var pins = new[] { Pin("album:spotify:album:9"), Pin("pl:spotify:playlist:2") };
-        var (rows, shape) = Project(sort: SidebarV3Sort.Alphabetical, desc: false, pins: pins);
+        var (rows, shape) = Project(sort: SidebarLibrarySort.Alphabetical, desc: false, pins: pins);
 
         Assert.Equal(2, shape.PinCount);
         Assert.Equal("album:spotify:album:9", rows[0].Id);
@@ -2426,25 +2414,9 @@ public class SidebarBinderPipelineShapeFacts
     public void APinTheFilterExcludes_DoesNotAppear()
     {
         var pins = new[] { Pin("album:spotify:album:9") };
-        var (rows, shape) = Project(SidebarV3Filter.Playlists, pins: pins);
+        var (rows, shape) = Project(SidebarLibraryFilter.Playlists, pins: pins);
         Assert.Equal(0, shape.PinCount);
         for (int i = 0; i < rows.Count; i++) Assert.NotEqual("album:spotify:album:9", rows[i].Id);
-    }
-
-    [Fact]
-    public void CustomSort_OutsideThePlaylistsFilter_FallsBackToAlphabetical()
-    {
-        var order = new[] { "album:spotify:album:9" };
-        var (rows, _) = Project(SidebarV3Filter.All, sort: SidebarV3Sort.Custom, customOrder: order);
-        Assert.NotEqual("album:spotify:album:9", rows[0].Id);
-    }
-
-    [Fact]
-    public void CustomSort_UnderThePlaylistsFilter_HonoursTheLocalOrder()
-    {
-        var order = new[] { "pl:spotify:playlist:2" };
-        var (rows, _) = Project(SidebarV3Filter.Playlists, sort: SidebarV3Sort.Custom, customOrder: order);
-        Assert.Equal("pl:spotify:playlist:2", rows[0].Id);
     }
 
     [Fact]
@@ -2452,11 +2424,44 @@ public class SidebarBinderPipelineShapeFacts
     {
         var list = new List<SidebarLibraryEntry> { Playlist("1", "Alpha"), Playlist("2", "Beta") };
         var scratch = new List<SidebarLibraryEntry>();
-        var query = new SidebarV3Query(SidebarV3Filter.Playlists, Search: "beta");
+        var query = new SidebarLibraryQuery(SidebarLibraryFilter.Playlists, Search: "beta");
         var shape = SidebarBinderPipeline.Shape(list, scratch, in query);
         Assert.Equal(1, shape.Count);
         Assert.Single(list);
         Assert.Equal("Beta", list[0].Name);
+    }
+
+    static SidebarLibraryEntry ShowEntry(string id, bool audiobook)
+        => new("show:" + id, SidebarEntryKind.Show, "spotify:show:" + id, id, "", default, null, 0, 0, 0, 0, 0, 0, false,
+               SidebarPlaylistFlavor.None) { FolderId = "", FolderName = "", FirstArtistName = "", IsAudiobook = audiobook };
+    static SidebarLibraryEntry AlbumEntry(string id)
+        => new("album:" + id, SidebarEntryKind.Album, "spotify:album:" + id, id, "", default, null, 10, 0, 0, 0, 0, 0, false,
+               SidebarPlaylistFlavor.None) { FolderId = "", FolderName = "", FirstArtistName = "" };
+
+    [Fact]
+    public void Shape_PodcastsChip_ExcludesAudiobooks()
+    {
+        // The projection's mask for both chips is Show: with NO search, Shape alone splits them.
+        var list = new List<SidebarLibraryEntry> { ShowEntry("pod", false), ShowEntry("book", true) };
+        var podcasts = new SidebarLibraryQuery(SidebarLibraryFilter.Podcasts);
+        var shape = SidebarBinderPipeline.Shape(list, new List<SidebarLibraryEntry>(), in podcasts);
+        Assert.Equal(1, shape.Count);
+        Assert.Equal("show:pod", list[0].Id);
+
+        list = [ShowEntry("pod", false), ShowEntry("book", true)];
+        var audiobooks = new SidebarLibraryQuery(SidebarLibraryFilter.Audiobooks);
+        SidebarBinderPipeline.Shape(list, new List<SidebarLibraryEntry>(), in audiobooks);
+        Assert.Equal("show:book", Assert.Single(list).Id);
+    }
+
+    [Fact]
+    public void Shape_HiddenKind_RemovedFromUnfilteredList()
+    {
+        var list = new List<SidebarLibraryEntry> { AlbumEntry("a"), ShowEntry("pod", false), ShowEntry("book", true) };
+        var query = new SidebarLibraryQuery(HiddenKinds: SidebarLibraryKinds.Albums | SidebarLibraryKinds.Audiobooks);
+        var shape = SidebarBinderPipeline.Shape(list, new List<SidebarLibraryEntry>(), in query);
+        Assert.Equal(1, shape.Count);
+        Assert.Equal("show:pod", list[0].Id);
     }
 }
 
@@ -2687,257 +2692,6 @@ public class SidebarBinderPipelineUnlistedPinFacts
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// ── CONTRIBUTION RESOLUTION — Extension sections resolved against a data-source table (PURE) ────────────────────────
-// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-public class SidebarBinderPipelineContributionFacts
-{
-    static SidebarLibraryEntry Playlist(string slug, string name) =>
-        new("pl:spotify:playlist:" + slug, SidebarEntryKind.Playlist, "spotify:playlist:" + slug, name, "Owner",
-            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 1, LastVisitedTicksUtc: 0,
-            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
-
-    static SidebarLibraryEntry Album(string slug, string name) =>
-        new("album:spotify:album:" + slug, SidebarEntryKind.Album, "spotify:album:" + slug, name, "Artist",
-            default, null, ChildCount: 0, AddedAtMs: 0, SortStamp: 1, LastVisitedTicksUtc: 0,
-            SourceOrder: 0, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None);
-
-    static SidebarSectionSpec ExtSection(string id, string contribution, int schemaVersion = 1, int maxItems = 0)
-        => new(id, SidebarSectionKind.Extension, null, null)
-        {
-            Extension = new SidebarExtensionRef(SidebarContributions.WaveeExtensionId, contribution, schemaVersion, default),
-            Display = maxItems > 0 ? SidebarDisplayOptions.Default with { MaxItems = maxItems } : null,
-        };
-
-    static SidebarCustomLayout Doc(params SidebarSectionSpec[] sections) => new(SidebarTemplates.Curated, sections);
-
-    /// <summary>A configurable contributed source — the shape a sandboxed extension arrives in.</summary>
-    sealed class StubSource : SidebarDataSourceBase
-    {
-        readonly List<SidebarLibraryEntry> _rows = new();
-        public bool PartialThenThrow;
-        public int SchemaVersion = 1;
-
-        public StubSource(string id) : base(id) { }
-
-        public override SidebarConfigSchema ConfigSchema => new(SchemaVersion, Array.Empty<SidebarConfigField>());
-
-        public StubSource With(params SidebarLibraryEntry[] rows)
-        {
-            _rows.Clear();
-            _rows.AddRange(rows);
-            return this;
-        }
-
-        public void Publish(SidebarSourceState state, bool prompt = false) => SetHealth(state, null, prompt);
-
-        public override int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request)
-        {
-            if (PartialThenThrow)
-            {
-                into.Add(Playlist("partial", "Partial"));
-                throw new InvalidOperationException("boom after a partial fill");
-            }
-            int max = request.MaxItems > 0 ? request.MaxItems : _rows.Count;
-            int n = _rows.Count < max ? _rows.Count : max;
-            for (int i = 0; i < n; i++) into.Add(_rows[i]);
-            return n;
-        }
-    }
-
-    static SidebarSectionSlice Resolve(SidebarSectionSpec section, ISidebarContributionHost? host,
-        List<SidebarLibraryEntry> pool, SidebarContributionCache? cache = null)
-        => SidebarBinderPipeline.Resolve(section, host, pool, cache);
-
-    [Fact]
-    public void AnUnregisteredContribution_ResolvesToMissing()
-    {
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "charts"), new SidebarDataSourceTable(), pool);
-        Assert.Equal(SidebarContributionAvailability.Missing, slice.Availability);
-        Assert.Equal(0, slice.Count);
-        Assert.Empty(pool);
-    }
-
-    [Fact]
-    public void ASectionWithNoExtensionRef_ResolvesToMissing()
-    {
-        var pool = new List<SidebarLibraryEntry>();
-        var bare = new SidebarSectionSpec("sec_bare", SidebarSectionKind.Extension, null, null);
-        Assert.Equal(SidebarContributionAvailability.Missing, Resolve(bare, new SidebarDataSourceTable(), pool).Availability);
-    }
-
-    [Fact]
-    public void ADisabledContribution_ResolvesToDisabled_AndKeepsTheSection()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha")));
-        table.SetEnabled(SidebarContributions.Library, false);
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "library"), table, pool);
-        Assert.Equal(SidebarContributionAvailability.Disabled, slice.Availability);
-        Assert.Empty(pool);
-    }
-
-    [Fact]
-    public void ANewerConfigSchema_ResolvesToIncompatible_AndChangesNothing()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha")));
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "library", schemaVersion: 2), table, pool);
-        Assert.Equal(SidebarContributionAvailability.Incompatible, slice.Availability);
-        Assert.Empty(pool);
-    }
-
-    [Fact]
-    public void ALiveSource_FillsAWindowIntoTheSharedPool()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha"), Playlist("2", "Beta")));
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "library"), table, pool);
-
-        Assert.Equal(SidebarContributionAvailability.Live, slice.Availability);
-        Assert.Equal(0, slice.Start);
-        Assert.Equal(2, slice.Count);
-        Assert.Equal(2, pool.Count);
-    }
-
-    [Fact]
-    public void TheSectionsMaxItems_ReachesTheSourceAsTheRequestBound()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Library)
-            .With(Playlist("1", "Alpha"), Playlist("2", "Beta"), Playlist("3", "Gamma")));
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "library", maxItems: 2), table, pool);
-        Assert.Equal(2, slice.Count);
-    }
-
-    [Fact]
-    public void EveryExtensionSection_GetsADisjointWindowOverOnePool()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha")));
-        table.Add(new StubSource(SidebarContributions.Queue).With(Album("9", "Ceremony"), Album("8", "Other")));
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slices = new SidebarExtensionSlices();
-        SidebarBinderPipeline.ResolveExtensions(
-            Doc(ExtSection("sec_1", "library"), ExtSection("sec_2", "queue")), table, pool, slices);
-
-        Assert.True(slices.TryGet("sec_1", out var one));
-        Assert.True(slices.TryGet("sec_2", out var two));
-        Assert.Equal((0, 1), (one.Start, one.Count));
-        Assert.Equal((1, 2), (two.Start, two.Count));
-        Assert.Equal(3, pool.Count);
-    }
-
-    [Fact]
-    public void ExtensionSections_NestedInACustomGroup_AreResolvedToo()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Queue).With(Album("9", "Ceremony")));
-
-        var group = new SidebarSectionSpec("sec_group", SidebarSectionKind.CustomGroup, null, null)
-        {
-            Children = new[] { ExtSection("sec_child", "queue") },
-        };
-        var pool = new List<SidebarLibraryEntry>();
-        var slices = new SidebarExtensionSlices();
-        SidebarBinderPipeline.ResolveExtensions(Doc(group), table, pool, slices);
-
-        Assert.True(slices.TryGet("sec_child", out var slice));
-        Assert.Equal(1, slice.Count);
-    }
-
-    [Fact]
-    public void AThrowingSource_LeaksNoPartialRows_AndReportsError()
-    {
-        var table = new SidebarDataSourceTable();
-        table.Add(new StubSource(SidebarContributions.Library) { PartialThenThrow = true });
-
-        var pool = new List<SidebarLibraryEntry> { Album("9", "Pre-existing") };
-        var slice = Resolve(ExtSection("sec_1", "library"), table, pool);
-
-        Assert.Equal(SidebarSourceState.Error, slice.State);
-        Assert.Equal(0, slice.Count);
-        Assert.Single(pool);
-        Assert.Equal("album:spotify:album:9", pool[0].Id);
-    }
-
-    [Fact]
-    public void AFailedSource_ReplaysItsLastGoodSnapshot_AsCached()
-    {
-        var table = new SidebarDataSourceTable();
-        var source = new StubSource(SidebarContributions.Library).With(Playlist("1", "Alpha"), Playlist("2", "Beta"));
-        table.Add(source);
-        var cache = new SidebarContributionCache();
-        var section = ExtSection("sec_1", "library");
-
-        var pool = new List<SidebarLibraryEntry>();
-        var live = Resolve(section, table, pool, cache);
-        Assert.Equal(SidebarContributionAvailability.Live, live.Availability);
-        Assert.True(cache.Has(SidebarContributions.Library));
-
-        source.With();
-        source.Publish(SidebarSourceState.Error);
-        pool.Clear();
-        var stale = Resolve(section, table, pool, cache);
-
-        Assert.Equal(SidebarContributionAvailability.Cached, stale.Availability);
-        Assert.Equal(SidebarSourceState.Ready, stale.State);
-        Assert.Equal(2, stale.Count);
-        Assert.Equal(2, pool.Count);
-    }
-
-    [Fact]
-    public void AFailingSourceWithNoSnapshot_IsAnErrorSlice_NotACachedOne()
-    {
-        var table = new SidebarDataSourceTable();
-        var source = new StubSource(SidebarContributions.Library);
-        source.Publish(SidebarSourceState.Error);
-        table.Add(source);
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "library"), table, pool, new SidebarContributionCache());
-        Assert.Equal(SidebarContributionAvailability.Live, slice.Availability);
-        Assert.Equal(SidebarSourceState.Error, slice.State);
-        Assert.Equal(0, slice.Count);
-    }
-
-    [Fact]
-    public void AnActionableDegradedState_TravelsToTheSlice()
-    {
-        var table = new SidebarDataSourceTable();
-        var concerts = new StubSource(SidebarContributions.Concerts);
-        concerts.Publish(SidebarSourceState.Ready, prompt: true);
-        table.Add(concerts);
-
-        var pool = new List<SidebarLibraryEntry>();
-        var slice = Resolve(ExtSection("sec_1", "concerts"), table, pool);
-        Assert.True(slice.NeedsPrompt);
-        Assert.Equal(SidebarSourceState.Ready, slice.State);
-        Assert.Equal(0, slice.Count);
-    }
-
-    [Fact]
-    public void TheSliceTable_ReportsAvailabilityForTheSurfacesBadge()
-    {
-        var slices = new SidebarExtensionSlices();
-        slices.Set("sec_1", new SidebarSectionSlice(0, 0, SidebarSourceState.Error, SidebarContributionAvailability.Disabled));
-        Assert.Equal(SidebarContributionAvailability.Disabled, slices.AvailabilityOf("sec_1"));
-        Assert.Equal(SidebarContributionAvailability.Missing, slices.AvailabilityOf("sec_unknown"));
-        slices.Clear();
-        Assert.Equal(0, slices.Count);
-    }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 // ── FINGERPRINT (G-059) — the rebuild gate's content lane (SidebarLibraryFingerprint, Sidebar.cs) must wake a
 //    cover-less playlist's row when its MOSAIC-feeding edge lands, not just when the playlist's own row changes ─────
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -3081,5 +2835,40 @@ public class SidebarPlaylistCountTests
             out bool known, out int count);
         Assert.True(known);
         Assert.Equal(0, count);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── RECENTS + TREE PINS — a played context nobody can name is skipped; a pinned playlist under Custom order plans once ──
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+public class SidebarRecentsAndPinnedTreeFacts
+{
+    [Fact]
+    public void UnnamedPlayedEntry_IsSkipped()
+    {
+        // No index hit, no resident peek, no title in the play log: the context is invisible, never a blank row (D9).
+        var into = new List<SidebarLibraryEntry>();
+        var contexts = new[] { new SidebarPlayedContext("spotify:playlist:nameless", SidebarEntryKind.Playlist, 5) };
+        Assert.Equal(0, SidebarRecentsRules.Resolve(contexts, SidebarSourceIndex.Empty, null, 10, into));
+        Assert.Empty(into);
+    }
+
+    [Fact]
+    public void PinnedPlaylist_AbsentFromTheTree_UnderCustomOrder()
+    {
+        // Custom order is the rootlist: the pinned playlist is planned once, in the pin band, and the shaped Library list
+        // (the pin band removed) does not carry it a second time.
+        var pin = new SidebarLibraryEntry("pl:spotify:playlist:1", SidebarEntryKind.Playlist, "spotify:playlist:1", "Alpha",
+            "Owner", default, null, 3, 0, 0, 0, 0, 0, false, SidebarPlaylistFlavor.None)
+            { FolderId = "", FolderName = "", FirstArtistName = "", IsPinned = true };
+        var beta = new SidebarLibraryEntry("pl:spotify:playlist:2", SidebarEntryKind.Playlist, "spotify:playlist:2", "Beta",
+            "Owner", default, null, 3, 0, 0, 0, 1, 0, false, SidebarPlaylistFlavor.None)
+            { FolderId = "", FolderName = "", FirstArtistName = "" };
+        var input = new SidebarProjectionInput(Library: [beta], Pins: [pin], LibraryIsTree: true);
+        var doc = SidebarLayoutRules.Resolve(SidebarLayoutState.Default, SidebarLayoutId.Library, SidebarDensity.Default);
+        var plan = SidebarRowPlanner.Build(doc, in input, new SidebarPlanOptions(
+            Filter: SidebarLibraryFilter.None));
+        Assert.Single(plan.Rows, r => r.Key == pin.Id);
+        Assert.Single(plan.Rows, r => r.Key == beta.Id);
     }
 }

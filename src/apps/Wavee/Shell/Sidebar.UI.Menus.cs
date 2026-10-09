@@ -1,14 +1,13 @@
 // ── Shell/Sidebar.UI.Menus.cs ──────────────────────────────────────────────────────────────────────────────────────
 // NAMED PARTIAL of Sidebar.UI.cs (J1): every row menu the pane opens, the navbar extras (Move up/down · Move to folder…
-// · Select · Remove), the "+" create flyouts, the quick layout menu, the "Move to folder…" destination picker, the edit
-// card "…" menu and the section options popover — composed from owner I's menu vocabulary (Platform/Actions.UI.cs)
+// · Select), the "+" create flyouts, the quick layout menu, the "Move to folder…" destination picker — composed from
+// owner I's menu vocabulary (Platform/Actions.UI.cs)
 //
 // Role: UI
 // Owner: J
 // Wave: 4
 // Budget: 700 lines (part of Sidebar.UI.cs's 7,500)
-// Spec: ch 25 §6 (menus, exact rows in order; keyboard), W24 (the picker), W10 (the popover); ch 26 §6.5 (the two
-//       menus that bracket the customizer)
+// Spec: ch 25 §6 (menus, exact rows in order; keyboard), W24 (the picker), W10 (the popover)
 //
 // EVERY MENU IS BUILT AT OPEN TIME (a `Func<ContextMenuModel?>` the row hands to `ContextMenu.Attach`): labels resolve
 // then, so no row subscribes to the culture epoch, and every positional verb is decided against the LIVE plan and tree
@@ -37,6 +36,7 @@ public static partial class Sidebar
         s.IsPinned = static route => SidebarPinId.FromRoute(Shell.NameOf(route)) is { } id && IsPinned(id);
         s.SetPinned = static (route, pinned) =>
         {
+            if (AccountKey.Length == 0) return;   // signed out: nowhere to keep a pin
             string key = Shell.NameOf(route);
             if (SidebarPinId.FromRoute(key) is not { } id) return;
             if (!pinned) { PaneView.UnpinWithToast(id); return; }
@@ -45,32 +45,35 @@ public static partial class Sidebar
         };
     }
 
+    /// <summary>"Classic" / "Classic · modified" (design C.1). The ONE layout name: the pane menu, the menu mapper
+    /// (P4 <c>SidebarMenus</c>), the reset toast and Settings › Sidebar all read it.</summary>
+    internal static string LayoutName(SidebarLayoutId layout)
+    {
+        string name = Loc.Get(layout == SidebarLayoutId.Library ? "sidebar.layoutName.library" : "sidebar.layoutName.classic");
+        return SidebarLayoutRules.IsModified(State.Of(layout)) ? Loc.Format("sidebar.layoutName.modified", ("layout", name)) : name;
+    }
+
     // ══ THE QUICK LAYOUT MENU ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The ONE route into the customizer (the pane footer's ⋯ · the pane background · V3's overflow submenu):
-    /// ◉ Spotify Classic · ◉ LibraryV3 · ◉ Custom · ─ · Customize sidebar… · ─ · Reset width.</summary>
+    /// <summary>The pane's layout menu: ◉ Classic · ◉ Library · ─ · Reset layout · ─ · Reset width. Built at open time, so
+    /// the rows read the live layout and width without subscribing.</summary>
     internal static class LayoutMenu
     {
-        public const string CustomizeRoute = "sidebar-customize";
-
         public static IReadOnlyList<MenuFlyoutItem> Rows()
         {
-            var design = Sidebar.Design.Peek();   // open time: never subscribe
-            return new List<MenuFlyoutItem>(6)
+            var layout = Sidebar.Layout.Peek();   // open time: never subscribe
+            bool editing = Sidebar.Editing.Peek();
+            return new List<MenuFlyoutItem>(5)
             {
-                MenuFlyoutItem.RadioItem(Loc.Get("sidebar.layout.classic"), design == SidebarDesign.Classic,
-                    static () => SwitchDesign(SidebarDesign.Classic)),
-                MenuFlyoutItem.RadioItem(Loc.Get("sidebar.layout.libraryV3"), design == SidebarDesign.LibraryV3,
-                    static () => SwitchDesign(SidebarDesign.LibraryV3)),
-                MenuFlyoutItem.RadioItem(Loc.Get("sidebar.layout.curated"), design == SidebarDesign.Curated,
-                    static () => SwitchDesign(SidebarDesign.Curated)),
+                MenuFlyoutItem.RadioItem(LayoutName(SidebarLayoutId.Classic), layout == SidebarLayoutId.Classic,
+                    static () => SwitchLayout(SidebarLayoutId.Classic)) with { Enabled = !editing },
+                MenuFlyoutItem.RadioItem(LayoutName(SidebarLayoutId.Library), layout == SidebarLayoutId.Library,
+                    static () => SwitchLayout(SidebarLayoutId.Library)) with { Enabled = !editing },
                 MenuFlyoutItem.Separator,
-                // The customizer edits the CURATED document, so it always switches first.
-                new(Loc.Get("sidebar.layout.customize"), ActionIcons.Resolve(ActionIcons.Rename), true, OpenCustomizerRoute),
-                MenuFlyoutItem.Separator,
-                // Back to the design's default width; dead while the width already is that.
+                new(Loc.Get("sidebar.menu.resetLayout"), default, SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
+                    static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()))),
                 new(Loc.Get("sidebar.menu.resetWidth"), default,
-                    MathF.Abs(Width.Peek() - SidebarDesignInfo.DefaultWidth(design)) > 0.5f, ResetWidth),
+                    MathF.Abs(Width.Peek() - SidebarPaneBounds.DefaultWidth) > 0.5f, ResetWidth),
             };
         }
 
@@ -109,54 +112,33 @@ public static partial class Sidebar
         // ══ ROW MENUS ══════════════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>A projected entry's menu (playlist / album / artist / show / route / track) + the pane's extras.</summary>
-        internal Func<ContextMenuModel?>? EntryMenu(SidebarSectionSpec section, int planIndex, in SidebarLibraryEntry entry,
-                                                     SidebarItemSpec? item, string rowKey)
+        internal Func<ContextMenuModel?>? EntryMenu(SidebarSection section, int planIndex, in SidebarLibraryEntry entry, string rowKey)
         {
             if (!HasMenus) return null;
             var snapshot = entry;
-            return () => EntryModel(in snapshot, null, false, NavExtras(section, planIndex, item, rowKey));
+            return () => EntryModel(in snapshot, null, false, NavExtras(section, planIndex, rowKey));
         }
 
         /// <summary>A folder row's menu: Expand/Collapse · New playlist in this folder · New folder inside · ─ ·
         /// Organize ▸ · Rename folder · ─ · Delete folder.</summary>
-        internal Func<ContextMenuModel?>? FolderMenu(SidebarSectionSpec section, int planIndex, in SidebarLibraryEntry folder,
+        internal Func<ContextMenuModel?>? FolderMenu(SidebarSection section, int planIndex, in SidebarLibraryEntry folder,
                                                       Action activate, bool expanded, string rowKey)
         {
             if (!HasMenus) return null;
             var snapshot = folder;
             return () => EntryModel(in snapshot, activate, IsFolderExpanded(snapshot.FolderId),
-                                    NavExtras(section, planIndex, PaneText.ItemOf(section, rowKey), rowKey));
+                                    NavExtras(section, planIndex, rowKey));
         }
 
         /// <summary>A hand-placed route row: Open · Pin + the extras.</summary>
-        internal Func<ContextMenuModel?>? RouteMenu(SidebarSectionSpec section, SidebarItemSpec item, int planIndex)
+        internal Func<ContextMenuModel?>? RouteMenu(SidebarSection section, string routeKey, int planIndex)
         {
             if (!HasMenus) return null;
-            string key = item.Key;
             return () =>
             {
-                var entry = SidebarLibraryEntry.ForRoute(key, Shell.Dest(Shell.Parse(key)).Title);
-                return EntryModel(in entry, null, false, NavExtras(section, planIndex, item, key));
+                var entry = SidebarLibraryEntry.ForRoute(routeKey, Shell.Dest(Shell.Parse(routeKey)).Title);
+                return EntryModel(in entry, null, false, NavExtras(section, planIndex, routeKey));
             };
-        }
-
-        /// <summary>An action shortcut / a hand-placed track: the extras alone, or null (nothing to open).</summary>
-        internal Func<ContextMenuModel?>? LayoutOnlyMenu(SidebarSectionSpec section, SidebarItemSpec item, int planIndex, string key)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay) || NavExtras(section, planIndex, item, key).IsEmpty) return null;
-            return () => Actions.Menu.WithLayoutExtras(null, NavExtras(section, planIndex, item, key).Flat());
-        }
-
-        /// <summary>A missing entity: exactly ONE verb — Remove (absent under a locked document).</summary>
-        internal Func<ContextMenuModel?>? MissingItemMenu(string sectionId, SidebarItemSpec? item)
-        {
-            if (Config.ReadOnly || Controls.IsNullOverlay(MenuOverlay) || item is not { Id.Length: > 0 } present) return null;
-            string itemId = present.Id;
-            return () => new ContextMenuModel(
-            [
-                new MenuFlyoutItem(Loc.Get("sidebar.customizer.itemRemove"), ActionIcons.Resolve(ActionIcons.Remove), true,
-                    () => Dispatch(SidebarItemCommands.Remove(sectionId, itemId))),
-            ]);
         }
 
         /// <summary>A folder pin the rootlist lost: exactly ONE verb — Unpin.</summary>
@@ -335,9 +317,8 @@ public static partial class Sidebar
         // ══ THE NAVBAR EXTRAS ══════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>Move up · Move down (band or pin store) · the ROOTLIST Move up/down · Move to folder… (or "Move N to
-        /// folder…" for a row inside a ≥2 selection) · Select — into Organize ▸; Remove (authored items only, never
-        /// Pinned, whose remove is Unpin) — trailing. Built at open time from the live plan index.</summary>
-        Actions.Menu.Extras NavExtras(SidebarSectionSpec section, int planIndex, SidebarItemSpec? item, string key)
+        /// folder…" for a row inside a ≥2 selection) · Select. Built at open time from the live plan index.</summary>
+        Actions.Menu.Extras NavExtras(SidebarSection section, int planIndex, string key)
         {
             int at = -1, count = 0;
             if (TryBandOf(planIndex, out var band) && string.Equals(band.SectionId, section.Id, StringComparison.Ordinal))
@@ -351,9 +332,7 @@ public static partial class Sidebar
                 at = Pins.IndexOf(id);
                 count = Pins.Count;
             }
-            bool removable = !Config.ReadOnly && item is { Id.Length: > 0 }
-                             && section.Kind != SidebarSectionKind.Pinned && SidebarSectionKinds.AcceptsItems(section.Kind);
-            var layout = SidebarNavLayout.Decide(at, count, removable);
+            var layout = SidebarNavLayout.Decide(at, count, removable: false);
             var (tree, entryId) = TreeMoves(section, planIndex);
             if (layout.IsEmpty && tree.IsEmpty && entryId.Length == 0) return default;
 
@@ -384,21 +363,16 @@ public static partial class Sidebar
                 rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.select"),
                     new IconRef { Glyph = Icons.Check, Font = Theme.IconFont }, true, () => BeginTreeCheckMode(entryId)));
 
-            List<MenuFlyoutItem>? trailing = null;
-            if (layout.Remove)
-            {
-                string itemId = item!.Id;
-                trailing = [new MenuFlyoutItem(Loc.Get("sidebar.customizer.itemRemove"), ActionIcons.Resolve(ActionIcons.Remove),
-                    true, () => Dispatch(SidebarItemCommands.Remove(sectionId, itemId)))];
-            }
-            return new Actions.Menu.Extras(rows.Count > 0 ? rows : null, trailing);
+            return new Actions.Menu.Extras(rows.Count > 0 ? rows : null, null);
         }
 
         /// <summary>Which ROOTLIST verbs a tree row offers (structure from the full tree, legality from the marker
         /// stream) — empty for a non-rootlist row and for a row inside a reorder band (its Reorderable owns ordering).</summary>
-        (SidebarTreeNavLayout Layout, string EntryId) TreeMoves(SidebarSectionSpec section, int planIndex)
+        (SidebarTreeNavLayout Layout, string EntryId) TreeMoves(SidebarSection section, int planIndex)
         {
-            if (section.Kind != SidebarSectionKind.PlaylistTree || TryBandOf(planIndex, out _)) return (default, "");
+            if (!(section.Kind == SidebarSectionKind.Playlists
+                  || (section.Kind == SidebarSectionKind.Library && Config.TreeSortedNonCustom?.Invoke() == false))
+                || TryBandOf(planIndex, out _)) return (default, "");
             var rows = Plan.Rows;
             var entries = Plan.Entries;
             if ((uint)planIndex >= (uint)rows.Count) return (default, "");
@@ -503,7 +477,7 @@ public static partial class Sidebar
 
         // ══ THE "+" FLYOUTS, RENAME, ALT+ARROWS ════════════════════════════════════════════════════════════════════
 
-        /// <summary>The header "+" flyout. The slot offers the Classic/Curated header "+" only when the mode supplies a
+        /// <summary>The header "+" flyout. The slot offers the Playlists header "+" only when the mode supplies a
         /// create verb; Library V3's own chrome "+" reaches this with none, so it is not gated here.</summary>
         internal ContextMenuModel? CreateMenu() => CreateRootMenu();
 
@@ -584,145 +558,6 @@ public static partial class Sidebar
             if (entry.Kind is not (SidebarEntryKind.Playlist or SidebarEntryKind.Folder) || entry.Id.Length == 0) return null;
             string id = entry.Id;
             return delta => MoveSibling(id, delta);
-        }
-
-        // ══ THE CANVAS: CARD MENU + OPTIONS POPOVER ════════════════════════════════════════════════════════════════
-
-        /// <summary>The card "…" / right-click menu: Move up · Move down · ─ · Hide/Show section · Duplicate section · ─ ·
-        /// Remove section. The pinned Shortcuts card has none (every verb would be an UnknownSection rejection).</summary>
-        internal ContextMenuModel? EditCardMenu(string sectionId)
-        {
-            if (Config.ReadOnly || SidebarEditPlan.IsPinnedCard(sectionId)) return null;
-            var layout = Layout;
-            if (layout.Find(sectionId) is not { } spec) return null;
-            var at = layout.Locate(sectionId);
-            int siblings = at.Parent is null ? layout.Sections.Count : at.Parent.ChildList.Count;
-            string title = PaneText.TitleOf(spec);
-            return new ContextMenuModel(new List<MenuFlyoutItem>(7)
-            {
-                new(Loc.Get("sidebar.customizer.moveUp"), default, at.Index > 0, () => MoveSectionBy(sectionId, -1)),
-                new(Loc.Get("sidebar.customizer.moveDown"), default, at.Index >= 0 && at.Index < siblings - 1,
-                    () => MoveSectionBy(sectionId, 1)),
-                MenuFlyoutItem.Separator,
-                new(Loc.Get(spec.Hidden ? "sidebar.customizer.undo.showSection" : "sidebar.customizer.undo.hideSection"),
-                    default, true, () => SetSectionHidden(sectionId, !spec.Hidden)),
-                new(Loc.Get("sidebar.customizer.undo.duplicateSection"), default, true,
-                    () => DuplicateEditSection(sectionId, Loc.Format("sidebar.customizer.duplicateSuffix", ("name", title)))),
-                MenuFlyoutItem.Separator,
-                new(Loc.Get("sidebar.customizer.undo.removeSection"), new IconRef { Glyph = Icons.Delete, Font = Theme.IconFont },
-                    true, () => RemoveEditSection(sectionId)),
-            });
-        }
-
-        OverlayHandle? _optionsPopover;
-        string? _optionsSection;
-
-        /// <summary>The section options popover (W10): 320×520, to the RIGHT of the card, top-aligned, light dismiss +
-        /// focus trap, hosting the customizer's property surface over the SAME edit session the companion page drives.
-        /// The subject is what was clicked; it is cleared on close so a stale one never opens the next popover on the wrong
-        /// section. A second click on the same card closes it.</summary>
-        internal void OpenSectionOptions(string sectionId, Func<NodeHandle> anchor)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay) || sectionId.Length == 0) return;
-            if (_optionsPopover is { IsOpen: true } open)
-            {
-                bool same = string.Equals(_optionsSection, sectionId, StringComparison.Ordinal);
-                open.Close();
-                if (same) return;
-            }
-            ISidebarEditHost host = Edit;
-            host.Select(sectionId);
-            _optionsSection = sectionId;
-            Action closeIfStillThis = () => CloseSectionOptions(sectionId);
-            _optionsPopover = MenuOverlay.Open(anchor,
-                () => new BoxEl
-                {
-                    Direction = 1, Width = 320f, Height = 520f, MinHeight = 0f, ClipToBounds = true,
-                    // Keyed by the subject: the panel's rows freeze their section at mount, so a popover reopened on
-                    // another card must remount the whole surface.
-                    Children =
-                    [
-                        PropertyPanel(host, "sidebar.section.props") with { Key = "sec-props:" + sectionId },
-                        // The subject watch: "Remove section" inside the panel clears the subject, and a remove or undo
-                        // elsewhere drops the section — either way the popover closes instead of idling on
-                        // "Select a section…" (G-184).
-                        Embed.Comp(() => new OptionsSubjectWatch(host.Selected, sectionId, closeIfStillThis))
-                            with { Key = "sec-props-watch:" + sectionId },
-                    ],
-                },
-                FlyoutPlacement.RightEdgeAlignedTop,
-                new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                { ConstrainToRootBounds = true });
-            _optionsPopover.ClosedAction = () =>
-            {
-                _optionsPopover = null;
-                if (string.Equals(host.Selected.Peek(), sectionId, StringComparison.Ordinal)) host.Select(null);
-                if (string.Equals(_optionsSection, sectionId, StringComparison.Ordinal)) _optionsSection = null;
-            };
-        }
-
-        /// <summary>Close the options popover — only while it is still open on <paramref name="sectionId"/>, so a watch
-        /// left over from a popover already replaced by another card's can never close the new one.</summary>
-        void CloseSectionOptions(string sectionId)
-        {
-            if (_optionsPopover is { IsOpen: true } open && string.Equals(_optionsSection, sectionId, StringComparison.Ordinal))
-                open.Close();
-        }
-
-        /// <summary>The popover's zero-size subject watch. One signal effect over the edit session's subject and the
-        /// document version; the decision is <see cref="SidebarEditPlan.OptionsSubjectGone"/>. Props are frozen at mount,
-        /// which is exactly right: a popover is opened fresh, and keyed, per subject.</summary>
-        sealed class OptionsSubjectWatch(Signal<string?> selected, string subject, Action close) : Component
-        {
-            Action? _watch;
-
-            public override Element Render()
-            {
-                UseSignalEffect(_watch ??= Watch);
-                return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
-            }
-
-            void Watch()
-            {
-                string? current = selected.Value;
-                _ = LayoutVersion.Value;
-                if (SidebarEditPlan.OptionsSubjectGone(current, subject, Layout.Find(subject) is not null)) close();
-            }
-        }
-
-        // ══ THE BOUND ACTION ROW (ch 26 W22) ═══════════════════════════════════════════════════════════════════════
-
-        /// <summary>What an ACTION shortcut draws, resolved ONLY through the registry: label (override → descriptor →
-        /// "Manage extension"), icon, enablement, the reason sentence (never absent while disabled) and the click.
-        /// The default reason is assigned before any lookup, so a cold shell frame is disabled-with-a-sentence.</summary>
-        internal (string Label, IconRef Icon, bool Enabled, string? Reason, Action? Click) ResolveActionRow(SidebarItemSpec item)
-        {
-            string label = item.LabelOverride ?? "";
-            IconRef icon = default;
-            bool enabled = false;
-            string? reason = Loc.Get(Actions.LocKeyNotApplicable);
-            Action? click = null;
-            if (item.Action is not { } docBinding)
-                reason = Loc.Get(Actions.LocKeyActionMissing);
-            else
-            {
-                var binding = docBinding.ToActionBinding();
-                var registry = Registry;
-                if (registry is not null && registry.TryGetAction(in binding, out var descriptor))
-                {
-                    if (label.Length == 0) label = descriptor.Label();
-                    icon = descriptor.Icon();
-                }
-                if (registry is not null && Acts is { } services)
-                {
-                    var resolution = registry.Resolve(services, in binding);
-                    enabled = resolution.Available;
-                    reason = resolution.ReasonLocKey is { } key ? Loc.Get(key) : null;
-                    if (enabled) click = () => registry.Execute(services, in binding);
-                }
-            }
-            if (label.Length == 0) label = Loc.Get("sidebar.extension.manage");
-            return (label, icon, enabled, reason, click);
         }
     }
 }

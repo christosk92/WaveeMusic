@@ -1,9 +1,9 @@
 // ── Shell/Sidebar.Rules.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // the sidebar's pure rules for the selection pill (where the one pill sits), the row subtitle grammar, the typeahead
-// focus stops and the label-overflow estimate
+// focus stops, the label-overflow estimate, the fixed-route pin rules and the menu label clip
 //
 // Role: CORE
-// Plan: docs/plans/wavee/sidebar-rework-implementation.md §P1.2
+// Plan: docs/plans/wavee/sidebar-rework-implementation.md §P1.2, §P3.9
 //
 // Engine-free and allocation-free after warm-up, so Wavee.Tests pins every decision here. The UI (Sidebar.UI*.cs)
 // only draws what these rules decide: the pill's row, the subtitle's words and the focus stops.
@@ -107,7 +107,7 @@ public static class SidebarTypeAheadRules
     /// <summary>Headers, collapsed-section tiles, glyph rows, entity rows and folders are focus stops; separators, hints,
     /// skeletons, drop bands and the tree's end gutter are not.</summary>
     public static bool IsFocusStop(SidebarRowKind kind) => kind is SidebarRowKind.SectionHeader or SidebarRowKind.SectionTile
-        or SidebarRowKind.IconRow or SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Placeholder;
+        or SidebarRowKind.IconRow or SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader;
 
     /// <summary>The typeahead text of a row: its label for a focus stop, "" otherwise.</summary>
     public static string TextOf(SidebarRowKind kind, string label) => IsFocusStop(kind) ? label : "";
@@ -128,4 +128,53 @@ public static class SidebarLabelFit
 
     public static bool Overflows(string? label, float labelWidth)
         => label is { Length: > 0 } && label.Length * AverageCharWidth > labelWidth;
+}
+
+/// <summary>The fixed-home routes (design D10 + Q1a): Home is always first and Liked Songs has a fixed home in each
+/// layout, so neither is EVER a pin — not by the menu, not by a drop, not from the server (Spotify pins Liked Songs by
+/// default; that server pin stays on the server, untouched, and never reaches the sidebar), not from a migrated file.</summary>
+public static class SidebarPinRules
+{
+    public static bool IsFixedRoute(string? pinId) => pinId is "home" or "liked";
+
+    /// <summary>The drag chip's caption key when a drag over Pinned (a pin row or the empty "Drop here to pin" band) can
+    /// NOT be pinned — design corner case "Pin of an unpinnable thing (track, episode, local file, search result, Home)":
+    /// the menu item is absent (<c>PinRowRule</c>) and a drop is refused with a reason. A search result is one of these
+    /// kinds, so it needs no arm. Null when the payload pins. Order: a local file before the plain track (a local file
+    /// IS a track payload), then the fixed routes.</summary>
+    public static string? RefusalKeyOf(DragKind kind, string? id, string? uri)
+    {
+        if (kind == DragKind.Track && uri is { } u
+            && (u.StartsWith("wavee:local:", System.StringComparison.Ordinal) || u.StartsWith("local:", System.StringComparison.Ordinal)))
+            return "sidebar.pin.cantPin.local";
+        if (kind == DragKind.Track) return "sidebar.pin.cantPin.track";
+        if (kind == DragKind.Episode) return "sidebar.pin.cantPin.episode";
+        if (kind == DragKind.Route && id == "home") return "sidebar.pin.cantPin.home";
+        if (kind == DragKind.Route && id == "liked") return "sidebar.pin.cantPin.liked";
+        return null;
+    }
+}
+
+/// <summary>Menu-row label hygiene — pure, engine-free, and therefore directly testable. A context-menu row label
+/// grows to fit its text with no trimming of its own, so a long DYNAMIC label (an interpolated playlist name) would
+/// otherwise clip: it widens the whole flyout, and every other row with it. The fix is minting the label pre-clipped
+/// before it reaches the loc format string.</summary>
+public static class MenuLabel
+{
+    /// <summary>The default clip width for an interpolated entity name inside a menu label, in characters. Sized
+    /// against the 250-DIP context-menu minimum: ~28 characters of 14px UI text plus the surrounding verb fills that
+    /// column without widening it.</summary>
+    public const int NameChars = 28;
+
+    /// <summary>Clip <paramref name="name"/> to <paramref name="max"/> characters, ending in a single ellipsis.
+    /// Shorter names (and a null/empty one) come back untouched — the ellipsis appears only when something was
+    /// actually dropped.</summary>
+    public static string Clip(string? name, int max = NameChars)
+    {
+        if (name is not { Length: > 0 }) return "";
+        if (max < 1) return "…";
+        if (name.Length <= max) return name;
+        // Trim the trailing space the cut usually lands on, so the result is "Late night…" not "Late night …".
+        return string.Concat(name.AsSpan(0, max - 1).TrimEnd(), "…");
+    }
 }

@@ -109,8 +109,7 @@ public static partial class Spotify
             // and the fake catalog are never held; the disk leg is never gated.
             Fetch.CanSend = static p => p != EntityProvider.Spotify || Spotify.Current.IsOnline;
             Sidebar.LibraryWrites = Writes;
-            s_pinSync = new LibraryPinSync(Sidebar.Pins, Platform.Settings, WritePin, IsPinWritePending,
-                static id => string.Equals(id, "liked", StringComparison.Ordinal) ? Loc.Get("nav.likedSongs") : "");
+            s_pinSync = new LibraryPinSync(Sidebar.Pins, Sidebar.PinLatch, WritePin, IsPinWritePending, static id => "");
             s_runtime = new FluentGpu.Signals.ReactiveRuntime { FrameRequested = RequestFlush };
             s_sessionWatch = new FluentGpu.Signals.Effect(s_runtime, WatchSession);
             s_edgeWatch = new FluentGpu.Signals.Effect(s_runtime, WatchEdges);
@@ -170,7 +169,7 @@ public static partial class Spotify
         }
 
         /// <summary>The signed-in account's scope: a Spotify catalog scope whose account row resolved.</summary>
-        static bool IsAccountScope(Scope? scope)
+        static bool IsAccountScope([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] Scope? scope)
             => scope is not null && scope.Key.Provider == "spotify" && scope.MeSlot > Table.None && scope.Key.Account.Length > 0;
 
         /// <summary>A write may go out: an account scope, and a session that can send.</summary>
@@ -297,6 +296,12 @@ public static partial class Spotify
                 // scope that is gone (C7), and a stale "revalidated" would let a restored baseline paint unasked.
                 ListStamps.ForgetAll();
                 s_rootlistAskedFor = null;
+                // Q1b: the sidebar's pin store follows the ACCOUNT before any pin of this scope is converged onto it (the pane's
+                // own ScopeEpoch effect may run later, in another runtime). The grace marks are forgotten ONLY when the
+                // account really changed: a market / locale / tier switch keeps the account, and a mark dropped there would
+                // let the next converged walk sweep a pin whose ylpin write is still in flight (IsSweepable).
+                if (scope is not null) Sidebar.EnsureAccount(scope.Key);
+                s_pinWrites.Rebind(Sidebar.AccountKey);
             }
             if (s_waiters.Count > 0) PumpWaiters();
             if (!IsAccountScope(scope)) return;
@@ -620,13 +625,11 @@ public static partial class Spotify
 
         // A pin whose write is in flight — or settled in the last minute, before any read could reflect it — is never
         // swept by the bridge: a pins read that raced the write would otherwise un-pin what the user just pinned.
-        const long PinWriteGraceMs = 60_000;
-        static readonly Dictionary<string, long> s_pinWrites = new(StringComparer.Ordinal);
+        static readonly PinWriteMarks s_pinWrites = new();
 
-        static void NotePinWrite(string uri, bool inFlight) => s_pinWrites[uri] = inFlight ? long.MaxValue : Environment.TickCount64;
+        static void NotePinWrite(string uri, bool inFlight) => s_pinWrites.Note(uri, inFlight);
 
-        static bool IsPinWritePending(string uri)
-            => s_pinWrites.TryGetValue(uri, out long at) && (at == long.MaxValue || Environment.TickCount64 - at < PinWriteGraceMs);
+        static bool IsPinWritePending(string uri) => s_pinWrites.IsPending(uri);
 
         /// <summary>Reflect an accepted pin write in the Pins edge, so the bridge's next look agrees with the server without
         /// a read. Rebuilt whole rather than spliced: a pin's target is only an identity WITH its kind byte, and a

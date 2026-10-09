@@ -676,16 +676,15 @@ public static partial class Setup
         public const int TargetVersion = 1;
 
         /// <summary>Fresh iff no witness exists: not the library, not a stored credential, not the navigation history, and no
-        /// pane preference written by a build that predates the sidebar designs. One answer, shared by the wizard and the
-        /// sidebar chooser (the sidebar miner's D6 folded 0.2.9's second detector into this one).</summary>
+        /// pane preference written by a build that predates the sidebar designs. One answer, for the wizard (the sidebar miner's D6
+        /// folded 0.2.9's second detector into this one).</summary>
         public static bool IsFreshInstall(in InstallWitnesses disk, IAppSettings settings)
             => !disk.LibraryDb && !disk.StoredCredential && !disk.History
                && !settings.Get(Platform.Keys.SidebarWidthUserSetLegacy) && !settings.Get(Platform.Keys.SidebarCollapsedLegacy);
 
         /// <summary>Arm the wizard for a fresh install, suppress it for an existing one — ONCE per install — then the two
         /// every-launch checks: a wiped data folder resets a "completed" install, and a terms bump re-arms a completed one.
-        /// Both branches of the one-time arm mark the sidebar chooser seen: on a fresh install the wizard is the one onboarding
-        /// prompt (0.2.9's rule), and an existing install never saw the chooser to begin with.</summary>
+        /// On a fresh install the wizard is the one onboarding prompt (0.2.9's rule).</summary>
         public static void Run(IAppSettings settings, in InstallWitnesses disk)
         {
             bool fresh = IsFreshInstall(in disk, settings);
@@ -703,7 +702,6 @@ public static partial class Setup
             {
                 settings.Set(Platform.Keys.SetupPending, fresh);
                 settings.Set(Platform.Keys.SetupCompleted, !fresh);
-                settings.Set(Platform.Keys.SidebarOnboardingSeen, true);
                 settings.Set(Platform.Keys.SetupBootstrapVersion, TargetVersion);
                 Log.Info("setup", fresh ? "fresh install: first-run setup wizard armed" : "existing install: first-run setup wizard suppressed");
             }

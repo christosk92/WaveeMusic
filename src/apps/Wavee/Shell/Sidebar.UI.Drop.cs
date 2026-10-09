@@ -77,9 +77,18 @@ public static partial class Sidebar
                 return SidebarDropRefusal.None;
             }
 
+            // The pinned region refuses what can never be a pin, WITH the reason (design corner case). A pinned PLAYLIST
+            // row keeps its own track answer: it deposits, or refuses with "can't edit this playlist" (WhyRefused's
+            // existing arm), which names the real reason better than "Tracks can't be pinned".
+            string? PinRefusal(DragPayload source)
+                => slot >= 0 && !(playlistRow && source.CanCopyTracks)
+                    ? SidebarPinRules.RefusalKeyOf(source.Kind, source.Id, source.Uri)
+                    : null;
+
             bool Compatible(DragPayload source)
             {
                 if (Filing(source)) return PayloadRefusal(source) == SidebarDropRefusal.None;
+                if (PinRefusal(source) is not null) return false;
                 if (canDepositHere && source.CanCopyTracks) return true;
                 return slot >= 0 && source.CanPin;
             }
@@ -168,6 +177,7 @@ public static partial class Sidebar
             // TRANSPARENT = none of my business (an album/artist/show/route row a track drag is merely crossing).
             bool Transparent(DragPayload source)
             {
+                if (PinRefusal(source) is not null) return false;
                 if (railCueUri is { Length: > 0 } && Drag.RailTileTransparent(source.RootlistItem, source.CanCopyTracks))
                     return true;
                 if (slot >= 0 && source.CanPin) return false;
@@ -178,6 +188,7 @@ public static partial class Sidebar
             // REFUSED = you aimed here, and here is why.
             string? WhyRefused(DragPayload source)
             {
+                if (PinRefusal(source) is { } pinKey) return Loc.Get(pinKey);
                 var refusal = PayloadRefusal(source);
                 if (refusal != SidebarDropRefusal.None) return RefusalSentence(refusal);
                 if (playlistRow && !canDepositHere && source.CanCopyTracks) return Loc.Get("drag.cantEditPlaylist");
@@ -483,7 +494,12 @@ public static partial class Sidebar
         /// idempotent; a double invoke must never claim it did something).</summary>
         internal static void PinWithToast(string pinId, SidebarEntryKind kind, string? uri, string? name)
         {
-            if (string.IsNullOrEmpty(pinId)) return;
+            if (string.IsNullOrEmpty(pinId) || SidebarPinRules.IsFixedRoute(pinId)) return;
+            if (SidebarAccountKey.IsSignedOut(AccountKey))
+            {
+                Notify.Say(Loc.Get("sidebar.pin.signedOut"), InfoBarSeverity.Informational);
+                return;
+            }
             var pin = new SidebarPin(pinId, kind, uri ?? "", name ?? "", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             if (!Pin(pin)) return;
             Notify.Say(name is { Length: > 0 } n ? Loc.Format("sidebar.pinnedToast", ("name", n)) : Loc.Get("sidebar.pin.pinned"),

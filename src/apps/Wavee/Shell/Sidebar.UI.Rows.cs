@@ -1,7 +1,6 @@
 // ── Shell/Sidebar.UI.Rows.cs ───────────────────────────────────────────────────────────────────────────────────────
 // the sidebar row primitives: the one entity row, covers, the rotating chevron, the selection pill, quiet counts,
-// skeletons, the section header, the pin drop zone + the "+" create button, the customize-canvas section card, the
-// EntityList inline controls + search head, and the pane's text / loc / glyph tables
+// skeletons, the section header, the "+" create button, and the pane's text / loc / glyph tables
 //
 // Role: UI
 // Owner: J
@@ -13,7 +12,7 @@
 //
 // Everything here is either a PURE STATIC over a value (a Component per row would cost a mount per slot in a 10k
 // virtualized list) or a small Component that owns exactly the hooks a static cannot: a node ref + an animation seed
-// (Chevron, SelectionPill), a drag-state subscription (PinDropZone), an anchor + overlay handle (CreateButton, the sort
+// (Chevron, SelectionPill), an anchor + overlay handle (CreateButton, the sort
 // trigger, the card's options button). Props freeze at mount, so every changing input is a Func probe, never a value.
 
 using System;
@@ -34,8 +33,8 @@ public static partial class Sidebar
 {
     // ══ 1. THE ONE ENTITY ROW ════════════════════════════════════════════════════════════════════════════════════════
     //
-    // Classic's pinned rows, Library V3's list rows and Curated's entity rows all come out of EntityRow.Create, so the
-    // three designs cannot drift apart. It owns the neutral NavigationViewItem backplate ramp (`NavRow`: the pill is the
+    // Classic's rows and Library V3's list rows all come out of EntityRow.Create, so the two layouts cannot drift apart.
+    // It owns the neutral NavigationViewItem backplate ramp (`NavRow`: the pill is the
     // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 31-px depth indent), the slot
     // order, the one key handler and the drag source.
 
@@ -47,7 +46,7 @@ public static partial class Sidebar
         public RowSpec()
         {
             Key = ""; Label = ""; Subtitle = null; Selected = false; Enabled = true; Depth = 0;
-            Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN;
+            Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN; Ink = null;
             ArtSize = float.NaN; Leading = null; Glyph = null; DisclosureChevron = null; Pinned = false; Trailing = null;
             Playing = false; PlayingAnimated = false; Track = false; Overflow = false; OnClick = null; OnRealized = null;
             MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropActive = null; Animate = null;
@@ -76,6 +75,9 @@ public static partial class Sidebar
         public bool Tile;
         /// <summary>The full label as a tooltip (a truncated title, or a rail tile).</summary>
         public bool LabelTooltip;
+        /// <summary>The label's (and so the glyph's — one ink per row) colour when not TextPrimary: a pin that is unavailable,
+        /// or still unnamed (design Q9, D9). Null = TextPrimary.</summary>
+        public ColorF? Ink;
         /// <summary>PIN the height (NaN ⇒ derive). A section pins it so a Reorderable pitch and the extent table see ONE
         /// height per section.</summary>
         public float Height;
@@ -180,7 +182,7 @@ public static partial class Sidebar
             var activate = spec.OnActivate;
             var checksVisible = spec.ChecksVisible;
             // Icon colour = label colour in every state (NVX:425-427): TextPrimary, a disabled row fades as a whole.
-            var ink = Tok.TextPrimary;
+            var ink = spec.Ink ?? Tok.TextPrimary;
 
             // ── the icon column: 40 wide, the glyph (16) or art centred at slot x 20 ──
             Element visual = spec.Leading
@@ -913,93 +915,7 @@ public static partial class Sidebar
         };
     }
 
-    // ══ 5. THE PIN DROP ZONE AND THE "+" ═════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>
-    /// The ZERO-PIN state (W4). At rest a real 56-DIP card — a solid StrokeCardDefault hairline, the pin mark, and two
-    /// lines naming the gesture AND its alternative, so a user who never drags still learns how to pin. The dashed accent
-    /// border, the AccentSubtle fill and the 72-DIP growth are reserved for a live COMPATIBLE drag, where a louder target
-    /// is actually useful. A track drag fails <c>CanPin</c>, so no pin affordance appears.
-    ///
-    /// <para>Its own Component so <c>UseDragState</c> (a re-render per drag CONTENT edge) is scoped to this card.</para>
-    /// </summary>
-    internal sealed class PinDropZone : Component
-    {
-        /// <summary>The resting height a virtualizing host seeds; the growth is a measured reflow on top of it.</summary>
-        public const float RestHeight = SidebarRowGeometry.PinDropZoneRestHeight;
-        public const float ActiveHeight = 72f;
-
-        static readonly LayoutTransition Resize = new(
-            TransitionChannels.Size, MotionTok.ContentResize.ToDynamics(),
-            Size: SizeMode.Reflow, Anchor: SizeAnchor.Trailing);
-
-        readonly Action<object?, int> _accept;
-
-        public PinDropZone(Action<object?, int> accept) => _accept = accept;
-
-        public override Element Render()
-        {
-            var drag = UseDragState();
-            var over = UseSignal(false);
-            // The accept test IS the pin-eligibility test; the caption names WHAT gets pinned (the half the chip covers).
-            var spec = UseMemo(() => Drop.Target<DragPayload>(
-                Drag.Resource,
-                accepts: static p => p.CanPin,
-                caption: static p => Drag.Pin(p.Name),
-                onEnter: (_, _) => over.Value = true,
-                onOver: (_, _) => over.Value = true,
-                onLeave: _ => over.Value = false,
-                onDrop: (p, _) => { over.Value = false; _accept(p, 0); },
-                visualPolicy: DropTargetVisualPolicy.Spotlight), DepKey.Empty);
-
-            bool compatible = drag.Active
-                && string.Equals(drag.Kind, Drag.Resource, StringComparison.Ordinal)
-                && Drag.Unwrap(drag.Payload) is { CanPin: true };
-            bool active = compatible || over.Value;
-
-            return new BoxEl
-            {
-                Key = "pins-empty",
-                Height = active ? ActiveHeight : RestHeight,
-                // The pane owns the 8-DIP horizontal inset; the card carries only its trailing gap. It is the CARD family:
-                // its plate starts at PanePad like every row fill, its content padded inside.
-                Margin = new Edges4(0f, 0f, 0f, Spacing.XS),
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S,
-                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                Corners = Radii.ControlAll,
-                DropTarget = spec,
-                Fill = active ? Tok.AccentSubtle : ColorF.Transparent,
-                BorderColor = active ? Tok.AccentDefault : Tok.StrokeCardDefault,
-                BorderWidth = 1f,
-                BorderDashOn = active ? Spacing.XS : 0f,
-                BorderDashOff = active ? Spacing.XXS : 0f,
-                Transition = MotionTok.ControlFaster,
-                Layout = Resize,
-                Children =
-                [
-                    Icon(Icons.Pin, 16f, active ? Tok.AccentTextPrimary : Tok.TextTertiary),
-                    new BoxEl
-                    {
-                        Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = Spacing.XXS,
-                        Children =
-                        [
-                            new TextEl(Loc.Get(Strings.Sidebar.DropToPin))
-                            {
-                                Size = 12f, Weight = (ushort)(active ? 600 : 400),
-                                Color = active ? Tok.AccentTextPrimary : Tok.TextSecondary,
-                                MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                            },
-                            // ONE ellipsised line: a nudge, not a paragraph.
-                            global::Wavee.Design.Type.MicroMeta(Loc.Get(Strings.Sidebar.Pin.EmptyHint)) with
-                            {
-                                Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                            },
-                        ],
-                    },
-                ],
-            };
-        }
-    }
+    // ══ 5. THE "+" ═════════════════════════════════════════════════════════════════════════════
 
     /// <summary>
     /// THE "+" create affordance for every surface that offers it (the PlaylistTree header, a folder row, the rail
@@ -1080,284 +996,18 @@ public static partial class Sidebar
         }
     }
 
-    // ══ 6. THE SECTION CARD (the customize canvas, W9 / W10) ═════════════════════════════════════════════════════════
-    //
-    // What a whole section looks like while the pane IS the customize canvas: ONE uniform 44-DIP card — grip · kind tile
-    // · title · count or "Hidden" · eye · "…" · chevron. A uniform pitch is what lets the section band be an ordinary
-    // Reorderable run inside the one virtualized plan list. Every affordance mutates through the pane's command methods,
-    // so every edit is reduced, undoable, autosaved and visible in the same frame.
-
-    internal static class EditCard
-    {
-        /// <summary>The plate's vertical inset: PADDING on the slot root, never a Margin, so the measured extent and the
-        /// Reorderable pitch are the same number.</summary>
-        const float PlateInsetY = 2f;
-
-        /// <summary>A hidden section stays IN the canvas, dimmed; dimming + the tag is the difference from "gone".</summary>
-        const float HiddenOpacity = 0.55f;
-
-        /// <summary>One card. <paramref name="chevron"/> is built by the SLOT: a hook-owning component whose probe must
-        /// capture the recycling slot, never a section id.</summary>
-        public static Element Build(PaneView owner, SidebarSectionSpec section, int planIndex, Element chevron)
-        {
-            string id = section.Id;
-            bool pinned = SidebarEditPlan.IsPinnedCard(id);
-            bool hidden = section.Hidden;
-            bool open = owner.EditShowsBody(section);
-            // A Divider / Header card reveals nothing: no chevron, no click — but a same-width spacer keeps every card in
-            // the one recycle pool the same shape.
-            bool expandable = SidebarEditPlan.HasBody(section.Kind);
-            // Inside the armed band, Reorderable.Item's wrapper is the focus stop (and the Space/arrow lift keys).
-            bool inBand = owner.TryEditSectionBand(planIndex, out _);
-            // HIDDEN wins the trailing slot over the count; a projected section shows no count rather than a guessed one.
-            int count = hidden ? -1 : SidebarEditPlan.CardCount(section);
-            bool badge = hidden || count >= 0;
-
-            var kids = new Element[3 + (badge ? 1 : 0) + (pinned ? 0 : 2) + 1];
-            int k = 0;
-
-            // The GRIP is a pure mark: the drag source is the whole card. The pinned Shortcuts card cannot move, so none.
-            kids[k++] = new BoxEl
-            {
-                Width = 12f, Height = PaneMetrics.EditCardHeight - PlateInsetY * 2f, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-                Children = [pinned ? Blank(12f) : Icon(Icons.GripperBar, 12f, Tok.TextTertiary)],
-            };
-            kids[k++] = new BoxEl
-            {
-                Width = 24f, Height = 24f, Shrink = 0f, Corners = Radii.ControlAll,
-                Fill = open ? Tok.AccentSubtle : Tok.FillSubtleSecondary,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
-                Children = [Icon(RowGlyphs.ForSectionKind(section.Kind), 13f,
-                                 open ? Tok.AccentTextPrimary : Tok.TextSecondary)],
-            };
-            kids[k++] = global::Wavee.Design.Type.DenseTitle(PaneText.TitleOf(section)) with
-            {
-                Color = hidden ? Tok.TextTertiary : Tok.TextPrimary,
-                Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-            };
-            if (hidden) kids[k++] = HiddenTag();
-            else if (count >= 0) kids[k++] = Counts.Number(count);
-
-            // The eye and the "…" are absent on the pinned Shortcuts card: the sentinel is not in `Sections`, so hide /
-            // options addressed at it are rejections — an affordance that silently rejects is worse than none. One eye
-            // glyph for both states; the STATE is the tint plus the card's dimming.
-            if (!pinned)
-            {
-                kids[k++] = Affordance(Icons.RevealPassword, Loc.Get(hidden ? PaneLoc.EditShow : PaneLoc.EditHide),
-                    () => owner.SetSectionHidden(id, !hidden),
-                    hidden ? Tok.AccentTextPrimary : Tok.TextSecondary);
-                // Keyed by section id, so a recycle onto another section remounts it instead of keeping a frozen subject.
-                kids[k++] = Embed.Comp(() => new OptionsButton(owner, id)) with { Key = "sec-opt:" + id };
-            }
-            kids[k] = expandable ? chevron : Blank(10f);
-
-            Action? activate = null;
-            if (expandable) activate = () => owner.ToggleEditExpanded(id);
-
-            var plate = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f,
-                Gap = Spacing.XS, AlignItems = FlexAlign.Center,
-                Padding = new Edges4(4f, 0f, 4f, 0f),
-                Corners = Radii.ControlAll,
-                // The EXPANDED card wears the selected plate: it is the one whose rows are on screen.
-                Fill = open ? global::Wavee.Design.Colors.SelectedRest : Tok.FillCardDefault,
-                HoverFill = open ? global::Wavee.Design.Colors.SelectedHover : Tok.FillCardSecondary,
-                PressedFill = open ? global::Wavee.Design.Colors.SelectedPressed : Tok.FillSubtleTertiary,
-                BorderWidth = 1f,
-                BorderColor = open ? Tok.AccentSubtle : Tok.StrokeCardDefault,
-                BrushTransitionMs = global::Wavee.Design.Motion.Faster,
-                Opacity = hidden ? HiddenOpacity : 1f,
-                Role = expandable ? AutomationRole.Button : AutomationRole.None,
-                Cursor = expandable ? CursorId.Hand : CursorId.Arrow,
-                Focusable = !inBand,
-                OnClick = activate,
-                DropTarget = PaletteDrop(owner, id),
-                Children = kids,
-            };
-            // Right-click is where the NON-drag ways to move a section live (drag is one way, never the only one).
-            if (!pinned) plate = plate.WithContextMenu(owner.MenuOverlay, () => owner.EditCardMenu(id));
-
-            return new BoxEl
-            {
-                Key = id,
-                Direction = 1, Height = PaneMetrics.EditCardHeight, Shrink = 0f,
-                Padding = new Edges4(0f, PlateInsetY, SidebarRowGeometry.TrailingPad, PlateInsetY),
-                Children = [plate],
-            };
-        }
-
-        /// <summary>
-        /// The palette→canvas drop: each CARD is its own target and a drop inserts the new section immediately above it.
-        /// The band's Reorderable cannot host it — the pane mounts no list wrapper, so its foreign seams have no target
-        /// and its slot math would measure from the wrong origin. A card-to-card drag is a ReorderPayload whose Item is
-        /// null, so it never unwraps here. Every delegate runs per frame while a drag is live, so none allocates: a count
-        /// comparison, a document walk and constant-key lookups.
-        /// </summary>
-        static DropTargetSpec PaletteDrop(PaneView owner, string sectionId) =>
-            Drop.Target<SidebarSectionDropPayload>(
-                SidebarEditPlan.SectionDragKind,
-                // The section cap AND a card a new section can land above: a child card inside a group accepted the chip,
-                // cued "Add here" and then dispatched nothing (G-184).
-                accepts: _ => owner.CanAcceptPaletteDropBefore(sectionId),
-                onDrop: (payload, _) => owner.AddSectionFromPalette(sectionId, payload),
-                caption: _ => Loc.Get(PaneLoc.EditDropHere),
-                // Every refusal is a reason the user can act on — never an invisible refusal.
-                refusalCaption: _ => Loc.Get(owner.PaletteRefusalKey(sectionId)));
-
-        /// <summary>A 24-DIP card affordance. Non-focusable: the card's (or the band wrapper's) stop is the row's, and every
-        /// command here is also in the context menu.</summary>
-        static Element Affordance(string glyph, string tip, Action onClick, ColorF tint)
-        {
-            var box = new BoxEl
-            {
-                Width = 24f, Height = 24f, Shrink = 0f, Corners = Radii.ControlAll,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Cursor = CursorId.Hand, Focusable = false, Role = AutomationRole.Button,
-                OnClick = onClick,
-                Children = [Icon(glyph, 12f, tint)],
-            }.Interactive(Interaction.Subtle);
-            return ToolTip.Wrap(box, tip);
-        }
-
-        static Element Blank(float size) => new BoxEl { Width = size, Height = 0f, Shrink = 0f };
-
-        /// <summary>The "Hidden" pill (10/600 on FillSubtleSecondary, r Full) — the customizer's own string.</summary>
-        static Element HiddenTag() => new BoxEl
-        {
-            Shrink = 0f, Padding = new Edges4(6f, 1f, 6f, 2f), Corners = CornerRadius4.All(Radii.Full),
-            Fill = Tok.FillSubtleSecondary, HitTestVisible = false,
-            Children =
-            [
-                new TextEl(Loc.Get(PaneLoc.EditHidden)) { Size = 10f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1 },
-            ],
-        };
-
-        /// <summary>The card's "…": OPTIONS LIVE ON THE OBJECT. The pane owns the 320×520 popover (anchored
-        /// RightEdgeAlignedTop, so it never covers the rows the options are about); this component owns only what a
-        /// static builder cannot — the anchor node — and hands the pane a probe for it.</summary>
-        sealed class OptionsButton : Component
-        {
-            readonly PaneView _owner;
-            readonly string _sectionId;
-            Func<NodeHandle>? _anchorProbe;
-
-            public OptionsButton(PaneView owner, string sectionId) { _owner = owner; _sectionId = sectionId; }
-
-            public override Element Render()
-            {
-                var anchor = UseRef<NodeHandle>(default);
-                var probe = _anchorProbe ??= () => anchor.Value;
-                return ToolTip.Wrap(new BoxEl
-                {
-                    Width = 24f, Height = 24f, Shrink = 0f, Corners = Radii.ControlAll,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                    OnRealized = h => anchor.Value = h,
-                    OnClick = () => _owner.OpenSectionOptions(_sectionId, probe),
-                    Children = [Icon(Icons.More, 14f, Tok.TextSecondary)],
-                }.Interactive(Interaction.Subtle), Loc.Get(PaneLoc.EditOptions));
-            }
-        }
-    }
-
-    // ══ 7. INLINE CONTROLS (W1b) AND THE SEARCH HEAD ═════════════════════════════════════════════════════════════════
-    //
-    // An EntityList section's filter chips, rendered as HEADER chrome (never a virtualized row).
-    // Every edit rewrites THIS SECTION'S PERSISTED SPEC through SetQuery / SetDisplayOption → reducer → undo pre-image →
-    // autosave — which is exactly why this is not V3's mode-global flyout.
-
-    internal static class InlineControls
-    {
-        /// <summary>The kind chips. "On" means the chip's kind is the WHOLE filter; tapping the active chip clears back to
-        /// everything, so no chip can blank its own section.</summary>
-        public static Element Chips(PaneView owner, SidebarSectionSpec section)
-        {
-            var q = section.Query ?? SidebarEntityQuery.Default;
-            return new BoxEl
-            {
-                // No horizontal inset of its own: the pane owns the edge (a second one made a fifth left edge).
-                Direction = 0, Wrap = true, Gap = 4f, Padding = new Edges4(0f, 0f, 0f, 2f),
-                Children =
-                [
-                    Chip(owner, section.Id, q, SidebarEntityKinds.Playlists, PaneLoc.FilterPlaylists),
-                    Chip(owner, section.Id, q, SidebarEntityKinds.Albums, PaneLoc.FilterAlbums),
-                    Chip(owner, section.Id, q, SidebarEntityKinds.Artists, PaneLoc.FilterArtists),
-                    Chip(owner, section.Id, q, SidebarEntityKinds.Shows, PaneLoc.FilterPodcasts),
-                ],
-            };
-        }
-
-        /// <summary>Workstream B: the grammar table's "Filter/mode toggles" row — a stock <see cref="ToggleButton.Controlled"/>
-        /// at <see cref="ControlSize.Small"/> (24/r4, <see cref="SidebarRowGeometry.ChipHeight"/>), stock checked = accent,
-        /// replacing the hand-rolled pill.</summary>
-        static Element Chip(PaneView owner, string sectionId, SidebarEntityQuery q, SidebarEntityKinds kind,
-                            string labelKey)
-        {
-            bool on = q.Kinds == kind;
-            return ToggleButton.Controlled(Loc.Get(labelKey), on,
-                _ => owner.Dispatch(new SetQuery(sectionId, q with { Kinds = on ? SidebarEntityKinds.All : kind })),
-                size: ControlSize.Small, parts: Controls.RootNoShrink) with { Key = labelKey };
-        }
-    }
-
-    /// <summary>The Curated pane's library-only search: fixed chrome ABOVE the scroll surface, so it carries the pane's
-    /// horizontal inset itself (band pad 8,8,8,4; field 32 tall, 13 px, width max(120, paneW − 16)). It writes the pane's
-    /// OWN session signal, never V3's mode-global search. The width is a bound signal, so a seam drag does not re-render
-    /// this component per frame.</summary>
-    internal sealed class SearchHead : Component
-    {
-        readonly Signal<string> _text;
-        readonly Signal<float> _paneWidth;
-
-        public SearchHead(Signal<string> text, Signal<float> paneWidth) { _text = text; _paneWidth = paneWidth; }
-
-        public override Element Render()
-        {
-            var width = UseComputed(() => MathF.Max(120f, _paneWidth.Value - PaneMetrics.PaneInsetH));
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Padding = new Edges4(8f, 8f, 8f, 4f),
-                Children =
-                [
-                    Embed.Comp(() => new EditableText
-                    {
-                        Text = _text,
-                        Placeholder = Loc.Get(PaneLoc.SearchPlaceholder),
-                        WidthSignal = width,
-                        Height = 32f,
-                        FontSize = 13f,
-                        ShowDeleteButton = true,
-                        LeftAffix = Icon(Icons.Search, 14f, Tok.TextSecondary),
-                    }),
-                ],
-            };
-        }
-    }
-
     // ══ 8. THE PANE'S TEXT, LOC AND GLYPH TABLES ═════════════════════════════════════════════════════════════════════
 
-    /// <summary>The renderer's display rules: section titles, per-kind subtitles, the item join, icon fallbacks and the
+    /// <summary>The renderer's display rules: section titles, per-kind subtitles, icon fallbacks and the
     /// "never render a blank row" degradations — split out so the row builders stay about LAYOUT.
     /// <para>Public, not internal: this assembly has no <c>InternalsVisibleTo</c> (see <c>Playlist.UI.cs</c>'s own
     /// note on the same pattern), so <c>Wavee.Tests</c> can only pin <see cref="SubtitleOf"/>'s bug A1 contract — an
     /// unknown COUNT renders no subtitle, never "0 songs" — by calling the real method.</para></summary>
     public static class PaneText
     {
-        /// <summary>The user's rename wins, then the template's key, then the kind's default (JumpBackIn follows its
-        /// recents source).</summary>
-        public static string TitleOf(SidebarSectionSpec section)
-        {
-            if (section.Title is { Length: > 0 } title) return title;
-            if (section.TitleLocKey is { Length: > 0 } key) return Loc.Get(key);
-            var fallback = SidebarSectionKinds.DefaultTitleLocKey(section.Kind, section.Opts.Recents);
-            return fallback is null ? "" : Loc.Get(fallback);
-        }
-
-        /// <summary>The hand-placed item a row was projected from (the one join rule, shared with the selection sweep).</summary>
-        public static SidebarItemSpec? ItemOf(SidebarSectionSpec section, string key) => SidebarRowResolve.ItemOf(section, key);
+        /// <summary>The section's title: its kind's loc key (a section has no rename).</summary>
+        public static string TitleOf(SidebarSection section)
+            => SidebarCatalogue.TitleKeyOf(section.Kind) is { } key ? Loc.Get(key) : "";
 
         /// <summary>The subtitle text: the grammar is <see cref="SidebarSubtitleRules.Of"/> (data), the words are the loc table's.
         /// Playlist → "N songs" (or "N items" with an episode) · album → "Album · first artist" · artist → "Artist" · show →
@@ -1395,28 +1045,6 @@ public static partial class Sidebar
             return (days / 30).ToString(inv) + "mo";
         }
 
-        /// <summary>An event's day over its month in the art slot; the month comes from the culture's abbreviated names.</summary>
-        public static Element DateBlock(long epochMs, float size)
-        {
-            var when = DateTimeOffset.FromUnixTimeMilliseconds(epochMs).ToLocalTime();
-            var culture = System.Globalization.CultureInfo.CurrentCulture;
-            return new BoxEl
-            {
-                Width = size, Height = size, Shrink = 0f,
-                Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Corners = CornerRadius4.All(Cover.Radius(size, circular: false)),
-                Fill = Tok.FillSubtleSecondary,
-                Children =
-                [
-                    new TextEl(when.Day.ToString(culture))
-                    {
-                        Size = size >= 32f ? 14f : 11f, Weight = 600, Color = Tok.TextPrimary, MaxLines = 1,
-                    },
-                    new TextEl(when.ToString("MMM", culture)) { Size = size >= 32f ? 9f : 8f, Color = Tok.TextTertiary, MaxLines = 1 },
-                ],
-            };
-        }
-
         /// <summary>The last resort when nothing names a row: the uri's / key's final segment. Never blank, never a crash —
         /// a hand-edited document must render something the user can right-click and remove.</summary>
         public static string ShortUri(string? uri)
@@ -1426,28 +1054,10 @@ public static partial class Sidebar
             return at >= 0 && at + 1 < uri.Length ? uri[(at + 1)..] : uri;
         }
 
-        /// <summary>An item's glyph, preferring its authored override. Null-item tolerant (a projected row has no item).</summary>
-        public static string Glyph(SidebarItemSpec? item, string fallback)
-            => item is null ? fallback : RowGlyphs.For(item, fallback);
-
-        /// <summary>The natural mark for a PROJECTED row's family (the projection's own enum).</summary>
-        public static string EntryGlyph(SidebarEntryKind kind) => kind switch
-        {
-            SidebarEntryKind.Playlist => Icons.MusicNote,
-            SidebarEntryKind.Album => Icons.Album,
-            SidebarEntryKind.Artist => Icons.Contact,
-            SidebarEntryKind.Show => Icons.RadioTower,
-            SidebarEntryKind.Folder => Icons.Folder,
-            SidebarEntryKind.AppRoute => Icons.Home,
-            _ => Icons.MusicNote,
-        };
-
         /// <summary>The EMPTY copy for a section that resolved to zero rows, per kind (never a borrowed debug string).</summary>
         public static string EmptyText(SidebarSectionKind kind) => kind switch
         {
-            SidebarSectionKind.JumpBackIn => Loc.Get(PaneLoc.SectionEmptyRecents),
             SidebarSectionKind.NewReleases => Loc.Get(PaneLoc.NewReleasesEmpty),
-            SidebarSectionKind.Concerts => Loc.Get(PaneLoc.ConcertsEmpty),
             _ => Loc.Get(PaneLoc.SectionEmpty),
         };
     }
@@ -1456,173 +1066,26 @@ public static partial class Sidebar
     /// a typo renders loudly as <c>[key]</c>.</summary>
     internal static class PaneLoc
     {
-        public const string ExtensionManage = "sidebar.extension.manage";
-        public const string ExtensionMissing = "sidebar.action.unavailable.missing";
-        public const string ExtensionNotNow = "sidebar.action.unavailable.notNow";
-        public const string ConcertsPrompt = "sidebar.concerts.locationPrompt";
-        public const string ConcertsEmpty = "sidebar.concerts.empty";
         public const string NewReleasesEmpty = "sidebar.newReleases.empty";
-        public const string MissingEntity = "sidebar.customizer.missingEntity";
-        public const string RemoveItem = "sidebar.customizer.undo.removeItem";
-        /// <summary>The row menu's Remove — the customizer item list's own word, so the two cannot disagree.</summary>
-        public const string ItemRemove = "sidebar.customizer.itemRemove";
-        public const string PaneEmpty = "sidebar.customizer.empty";
-        public const string PaneEmptySub = "sidebar.customizer.emptySub";
         public const string SectionEmpty = "sidebar.section.empty";
-        public const string SectionEmptyRecents = "sidebar.section.emptyRecents";
         public const string LibraryEmpty = "sidebar.v3.empty.library";
         public const string SearchEmpty = "sidebar.v3.empty.search";
-        public const string SearchPlaceholder = "sidebar.v3.searchPlaceholder";
         /// <summary>A section header's ⋯ button (its tooltip / accessible name).</summary>
         public const string SectionOptions = "sidebar.header.options";
-        public const string FilterPlaylists = "sidebar.v3.filter.playlists";
-        public const string FilterPodcasts = "sidebar.v3.filter.podcasts";
-        public const string FilterAlbums = "sidebar.v3.filter.albums";
-        public const string FilterArtists = "sidebar.v3.filter.artists";
-
-        // ── the customize canvas ──
-        /// <summary>The options popover's title — the docked inspector's own string (the same surface, re-hosted).</summary>
-        public const string EditOptions = "sidebar.customizer.properties";
-        public const string EditHide = "sidebar.customizer.undo.hideSection";
-        public const string EditShow = "sidebar.customizer.undo.showSection";
-        public const string EditHidden = "sidebar.customizer.hidden";
-        public const string EditMoveUp = "sidebar.customizer.moveUp";
-        public const string EditMoveDown = "sidebar.customizer.moveDown";
-        public const string EditRemove = "sidebar.customizer.undo.removeSection";
-        public const string EditDuplicate = "sidebar.customizer.undo.duplicateSection";
-        public const string EditDuplicateSuffix = "sidebar.customizer.duplicateSuffix";
-        /// <summary>The palette→canvas cues: CONSTANT for the whole gesture, so the caption resolvers stay 0-alloc.</summary>
-        public const string EditDropHere = "sidebar.customizer.dropHere";
-        public const string EditDropFull = "sidebar.customizer.dropFull";
-
-        /// <summary>REUSED "{index} of {count}" — a second key for one sentence is how translations drift.</summary>
-        public const string ReorderPosition = "sidebar.pin.position";
-        public const string ReorderGrabbed = "sidebar.customizer.reorderGrabbed";
-        public const string ReorderMoved = "sidebar.customizer.reorderMoved";
-        public const string ReorderDropped = "sidebar.customizer.reorderDropped";
-        public const string ReorderCancelled = "sidebar.customizer.reorderCancelled";
     }
 
-    /// <summary>An action descriptor's <see cref="IconRef"/> as a leading element — the app-side twin of the engine's
-    /// internal IconRef render path (a registered themed name wins over the glyph; a glyph keeps its font override).</summary>
+    /// <summary>The compact-rail tile glyphs (design V.9).</summary>
     internal static class PaneIcon
     {
-        /// <param name="art">The section's art edge: the 16-DIP mark is CENTRED in an art-wide column, so an action row's
-        /// label lands at the same x as every other row in its section (W7).</param>
-        public static Element? Leading(string? iconOverride, IconRef icon, bool enabled, float art)
-        {
-            var color = enabled ? Tok.TextSecondary : Tok.TextTertiary;
-            Element mark;
-            // An authored override is the user's explicit choice and beats the descriptor's own mark.
-            if (iconOverride is { Length: > 0 } name && RowGlyphs.IsAllowed(name))
-                mark = Icon(RowGlyphs.Glyph(name, Icons.MusicNote), 16f, color);
-            else if (icon.ThemedName is { Length: > 0 } themed && ThemedIconRegistry.Has(themed))
-                mark = ThemedIcon.Create(themed, 16f);
-            else if (icon.Glyph is { Length: > 0 } glyph)
-                mark = Icon(glyph, 16f, color, icon.Font);
-            else
-                mark = Icon(Icons.MusicNote, 16f, color);
-            return new BoxEl
-            {
-                Width = art, Height = art, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                Children = [mark],
-            };
-        }
-
         /// <summary>A collapsed section's compact-rail tile glyph (design V.9), by the section's kind.</summary>
         public static string SectionGlyph(SidebarSectionKind kind) => kind switch
         {
             SidebarSectionKind.Pinned => Icons.Pin,
-            SidebarSectionKind.CollectionShortcuts => Icons.Library,
-            SidebarSectionKind.PlaylistTree => Icons.MusicNote,
-            SidebarSectionKind.JumpBackIn => Icons.History,
+            SidebarSectionKind.Collections => Icons.Library,
+            SidebarSectionKind.Playlists => Icons.MusicNote,
+            SidebarSectionKind.Recent => Icons.History,
             SidebarSectionKind.NewReleases => Icons.Album,
             _ => Icons.List,
-        };
-    }
-
-    /// <summary>
-    /// The glyph whitelist for hand-placed items. A layout document is a hand-editable JSON file, so an IconOverride is a
-    /// NAME, never a codepoint — this map is the only thing that turns a name into a glyph, so no document can inject an
-    /// arbitrary codepoint. The NAME list is CORE (<c>SidebarIconNames</c>, the reducer validates against it); this owns
-    /// name → glyph, and an unknown name degrades to the row's natural mark, never a blank box.
-    /// </summary>
-    internal static class RowGlyphs
-    {
-        /// <summary>Ordered, stable — the icon-picker order.</summary>
-        public static string[] Allowed => SidebarIconNames.Allowed;
-
-        public static bool IsAllowed(string? name) => SidebarIconNames.IsAllowed(name);
-
-        public static string Glyph(string? name, string fallback) => name switch
-        {
-            "MusicNote" => Icons.MusicNote,
-            "Heart" => Icons.Heart,
-            "Album" => Icons.Album,
-            "Contact" => Icons.Contact,
-            "RadioTower" => Icons.RadioTower,
-            "Folder" => Icons.Folder,
-            "FolderOpen" => Icons.FolderOpen,
-            "Home" => Icons.Home,
-            "Search" => Icons.Search,
-            "Clock" => Icons.Clock,
-            "Star" => Icons.Star,
-            "FavoriteStar" => Icons.FavoriteStar,
-            "Tag" => Icons.Tag,
-            "Headphones" => Icons.Headphones,
-            "Microphone" => Icons.Microphone,
-            "Movie" => Icons.Movie,
-            "Picture" => Icons.Picture,
-            "Queue" => Icons.Queue,
-            "Shuffle" => Icons.Shuffle,
-            "Link" => Icons.Link,
-            "Grid" => Icons.Grid,
-            "List" => Icons.List,
-            "Pin" => Icons.Pin,
-            "Settings" => Icons.Settings,
-            "Code" => Icons.Code,
-            "Globe" => Icons.Globe,
-            "Device" => Icons.Device,
-            "Friends" => Icons.Friends,
-            "Equalizer" => Icons.Equalizer,
-            "Download" => Icons.Download,
-            _ => fallback,
-        };
-
-        /// <summary>An item's glyph: its override, else <paramref name="fallback"/> (a route item passes its route glyph).</summary>
-        public static string For(SidebarItemSpec item, string fallback) => Glyph(item.IconOverride, fallback);
-
-        /// <summary>The natural placeholder mark for an entity family (the persisted enum).</summary>
-        public static string ForEntityKind(SidebarEntityKind kind) => kind switch
-        {
-            SidebarEntityKind.Playlist => Icons.MusicNote,
-            SidebarEntityKind.Album => Icons.Album,
-            SidebarEntityKind.Artist => Icons.Contact,
-            SidebarEntityKind.Show => Icons.RadioTower,
-            SidebarEntityKind.PlaylistFolder => Icons.Folder,
-            SidebarEntityKind.Track => Icons.MusicNote,
-            _ => Icons.MusicNote,
-        };
-
-        /// <summary>A section KIND's mark — the one table the section card, the customizer outline and its inspector
-        /// header read, so a renamed section is still identifiable at a glance (0.2.9's <c>CzGlyphs.ForKind</c>).</summary>
-        public static string ForSectionKind(SidebarSectionKind kind) => kind switch
-        {
-            SidebarSectionKind.Pinned => Icons.Pin,
-            SidebarSectionKind.JumpBackIn => Icons.Clock,
-            SidebarSectionKind.CollectionShortcuts => Icons.Heart,
-            SidebarSectionKind.PlaylistTree => Icons.Folder,
-            SidebarSectionKind.EntityList => Icons.Filter,
-            SidebarSectionKind.StaticLinks => Icons.Link,
-            SidebarSectionKind.CustomGroup => Icons.Grid,
-            SidebarSectionKind.Header => Icons.Font,
-            SidebarSectionKind.Divider => Icons.Remove,
-            SidebarSectionKind.EntityEmbed => Icons.FavoriteStar,
-            SidebarSectionKind.NewReleases => Icons.Album,
-            SidebarSectionKind.Concerts => Icons.Calendar,
-            SidebarSectionKind.Extension => Icons.Code,
-            _ => Icons.MusicNote,
         };
     }
 }

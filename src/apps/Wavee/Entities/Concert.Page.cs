@@ -41,13 +41,11 @@ public readonly partial struct Concert
     // ══ 1. INSTALL AND THE MOUNT POINTS (contract §7) ═════════════════════════════════════════════════════════════════
 
     /// <summary>Owner N-C's install, called by <c>Artist.InstallPages</c>: the three concert route kinds, the loc copy the
-    /// rules speak, the hub's data seam and the sidebar's concert feed seam (G-174).</summary>
+    /// rules speak and the hub's data seam.</summary>
     internal static void InstallPages()
     {
         ConcertCopy.Current = ConcertCopy.Localized;
         ConcertHost.Current = Spotify.Api.Concerts;
-        Sidebar.ConcertsFetch = static (place, radiusKm, feed) =>
-            ConcertHost.Current.Feed(feed, new ConcertFeedQuery(ConcertPlaces.From(place), null, radiusKm), false, null);
         Shell.SetPage(Shell.RouteKind.Concerts, MountHub);
         Shell.SetPage(Shell.RouteKind.ArtistConcerts, MountSchedule);
         Shell.SetPage(Shell.RouteKind.Concert, MountDetail);

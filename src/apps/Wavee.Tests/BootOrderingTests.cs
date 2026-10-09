@@ -14,20 +14,18 @@
 //                never re-installs on a later miss (the cheap hit path stays cheap).
 //   CHAIN 1      Track.InstallActions() AFTER Queue.InstallUi(): AppActions.Register is first-wins per id, and Queue
 //                and Track both register Play/PlayNext/AddToQueue — Queue's must win.
-//   CHAIN 2      Artist.InstallPages() (which chains Concert.InstallPages) sets Sidebar.ConcertsFetch — an EAGER
-//                install precisely because the sidebar pane's first mount, which happens before any navigation could
-//                reach an Artist/Concert route, reads it.
 //   CHAIN 3      Sidebar.Boot() before Sidebar.InstallActionSeams() before Spotify.Library.Install(): the library
 //                host's own doc comment says why (it hands Sidebar.LibraryWrites its seam, and the pin bridge needs
-//                the pin store Boot() loads) — and InstallActionSeams's IsPinned/SetPinned only answer correctly once
-//                that store is live.
+//                the pin store and the account Boot() loads) — and InstallActionSeams's IsPinned/SetPinned only answer
+//                correctly once that store is live.
 //
 // No source-text tests: every fact below calls the real production Install* methods and reads real, live registry
 // state (Shell.PageFor, AppActions.Find, the ActionServices seams, Sidebar's own pin store) — nothing here greps
 // App.cs or Shell.cs.
 //
 // GLOBAL STATE, KEPT LOCAL: Shell's route table, AppActions and a handful of cross-cutting seams (Track.MenuSeams,
-// Sidebar.ConcertsFetch, Sidebar.LibraryWrites, ActionServices) are process-wide statics with no reset of their own —
+// Sidebar.LibraryWrites, ActionServices) are process-wide statics with no reset of their own — Sidebar's profile folder
+// is pointed at the fact's temp folder (`Sidebar.UseProfileDir`), so the real profile is never touched —
 // that is why Diagnostics.Install() is deliberately NOT called here (besides its two SetPage calls it starts a real
 // Windows network-cost subscription and a recurring background timer that would outlive this whole test process); its
 // two routes are registered directly, through the exact same public factories it uses. Shell's page table is the one
@@ -47,8 +45,6 @@ public sealed class BootOrderingTests : IDisposable
 {
     readonly string _dir = Path.Combine(Path.GetTempPath(), "wavee-boot-ordering-tests", Guid.NewGuid().ToString("n"));
     readonly Shell.PageFactory?[] _pagesSnapshot = Shell.SnapshotPagesForTests();
-
-    SidebarLayoutStore FreshSidebarStore() => new(Path.Combine(_dir, "sidebar-layout.json"));
 
     public void Dispose()
     {
@@ -103,8 +99,9 @@ public sealed class BootOrderingTests : IDisposable
         // appended RouteKind.LibraryAudiobooks, resolved through the SAME Playlist.InstallPages lazy-group miss as
         // LibraryAlbums/LibraryArtists/LibraryPodcasts (Playlist.Page.cs's InstallPages still owes it one more
         // Shell.SetPage(RouteKind.LibraryAudiobooks, User.LibraryPageFor) line — outside this wave's ownership) —
-        // and realtime-capture-implementation.md unit 6 appended RouteKind.CaptureDiagnostics, registered above.
-        Assert.Equal(36, Shell.RouteKindCount);
+        // and realtime-capture-implementation.md unit 6 appended RouteKind.CaptureDiagnostics, registered above. 36 less
+        // RouteKind.SidebarCustomize, deleted with the sidebar's customizer in P3.
+        Assert.Equal(35, Shell.RouteKindCount);
     }
 
     // ══ LAZY_GROUP: a miss installs its whole group once, the hit path never re-installs ══════════════════════════
@@ -159,33 +156,15 @@ public sealed class BootOrderingTests : IDisposable
         Assert.NotNull(AppActions.Find(ActionId.ViewCredits));
     }
 
-    // ══ CHAIN 2: Artist.InstallPages() before the sidebar pane's first mount ═══════════════════════════════════════
-
-    [Fact]
-    public void Artist_InstallPages_sets_the_sidebar_concerts_seam_the_pane_reads_at_its_first_mount()
-    {
-        // Reset explicitly: Sidebar.ConcertsFetch is a process-wide static another fact may already have set, and the
-        // whole point of this fact is that Artist.InstallPages is what sets it — not a coincidence of run order.
-        Sidebar.ConcertsFetch = null;
-        Assert.Null(Sidebar.ConcertsFetch);
-
-        Artist.InstallPages();
-
-        Assert.NotNull(Sidebar.ConcertsFetch);
-        // This is exactly why Artist.InstallPages stays EAGER in App.cs rather than moving to Shell.PageFor's lazy
-        // groups with Home/Album/Playlist: the sidebar pane mounts as part of Shell.Run(), before any navigation
-        // could reach an Artist or Concert route, so a lazy trigger keyed on THOSE routes would run too late.
-    }
-
     // ══ CHAIN 3: Sidebar.Boot() → Sidebar.InstallActionSeams() → Spotify.Library.Install() ════════════════════════
 
     [Fact]
     public void Sidebar_boot_then_action_seams_then_library_install_wires_a_working_pin_bridge()
     {
         TestScope.Fresh();
-        Sidebar.UseStore(FreshSidebarStore());
+        Sidebar.UseProfileDir(Path.Combine(_dir, "WaveeMusic"));
 
-        Sidebar.Boot();                 // "design, pane state, the layout document and pins" — loads the pin store
+        Sidebar.Boot();                 // the layout, the device file and the live account's pins
         Sidebar.InstallActionSeams();   // Actions.Services.IsPinned / SetPinned
         Spotify.Library.Install();      // "after Sidebar.Boot, before the pane mounts" — the pin bridge + the seam
 
@@ -194,17 +173,20 @@ public sealed class BootOrderingTests : IDisposable
 
         // InstallActionSeams's two seams only answer correctly because Sidebar.Boot already loaded a live (here,
         // empty) pin store for them to read — a fresh route starts unpinned...
-        var liked = new Shell.Route(Shell.RouteKind.Liked);
+        var search = new Shell.Route(Shell.RouteKind.Search);
         Assert.NotNull(Actions.Services.IsPinned);
-        Assert.False(Actions.Services.IsPinned!(liked));
+        Assert.False(Actions.Services.IsPinned!(search));
 
         // ...and the SAME seam reflects a pin the moment the store it depends on carries one, proving the seam reads
         // Sidebar's LIVE state rather than a snapshot taken before Boot() ran.
-        Assert.True(Sidebar.Pin(new SidebarPin("liked", SidebarEntryKind.AppRoute, "", "Liked Songs", AddedAtMs: 1)));
-        Assert.True(Actions.Services.IsPinned!(liked));
+        Assert.True(Sidebar.Pin(new SidebarPin("search", SidebarEntryKind.AppRoute, "", "Search", AddedAtMs: 1)));
+        Assert.True(Actions.Services.IsPinned!(search));
 
-        // Flush the pin's debounced write now, while the temp directory this fact pointed Sidebar.UseStore at still
-        // exists — Dispose deletes it right after this fact returns (only THIS fact touches the store at all).
+        // Liked Songs has a fixed home and is never a pin (Q1a): the store refuses it whoever asks.
+        Assert.False(Sidebar.Pin(new SidebarPin("liked", SidebarEntryKind.AppRoute, "", "Liked Songs", AddedAtMs: 1)));
+        Assert.False(Actions.Services.IsPinned!(new Shell.Route(Shell.RouteKind.Liked)));
+
+        // Land the device file now, while the temp folder still exists — Dispose deletes it right after this fact.
         Sidebar.Shutdown();
     }
 }

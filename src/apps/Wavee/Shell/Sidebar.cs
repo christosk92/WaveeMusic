@@ -1,26 +1,18 @@
 // ── Shell/Sidebar.cs ───────────────────────────────────────────────────────────────────────────────────────────────
-// projection / binder / planner / sources / geometry / drop / selection / edit and every pure rule of §6; PinRowRule
-// lands here (A7)
-//
-// Role: CORE
-// Owner: J
-// Wave: 4
-// Budget: 5000 lines
-// Spec: ch 26 §9.4 (9,000 less the 4,000 that leaves for Sidebar.Doc.cs)
-//
-// Every decision the sidebar makes that is not a pixel and not a file. Pure, engine-free, allocation-free after
-// warm-up, and source-visible to `Wavee.Tests` — which is the point: the sidebar's hard parts are its RULES (where a
-// drop lands, which row is selected, how tall a band is, what order pins take in every sort mode), and a rule that
-// lives inside a renderer cannot be pinned by a test.
+// projection / binder / sources / geometry / drop / selection / pins — and every pure rule of the sidebar that is not a
+// pixel and not a file. Pure, engine-free, allocation-free after warm-up, and source-visible to `Wavee.Tests` — which is
+// the point: the sidebar's hard parts are its RULES (where a drop lands, which row is selected, how tall a band is, what
+// order pins take in every sort mode), and a rule that lives inside a renderer cannot be pinned by a test.
 //
 // The sections, in file order:
 //
+//   CORE       `SidebarPaneBounds` — the expanded width's clamp pair and its default.
 //   GEOMETRY   `SidebarRowGeometry`, `SidebarRowExtents` — the one height/indent/art/lane ladder. Art starts at pane
 //              centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
 //              band breaks both the `Reorderable` slot pitch and the virtualizing host's extent table).
-//   PLAN       `SidebarRowPlanner` + `SidebarRow`/`SidebarRowPlan`/`SidebarPlanBuffers` — (document × projection)
-//              flattened into ONE array of row kinds, rendered by ONE bound list. The buffers are caller-owned and
-//              ALIAS, so the outgoing rows survive the diff.
+//   ROWS       `SidebarRowKind`, `SidebarRow`/`SidebarRowPlan`, `SidebarProjectionInput`, `SidebarPlanBuffers` — the
+//              plan's vocabulary. The planner itself is `Sidebar.Planner.cs`: (document × projection) flattened into ONE
+//              array of row kinds, rendered by ONE bound list. The buffers are caller-owned and ALIAS.
 //   DIFF       `SidebarRowDiff`, `SidebarRowResolve`, `SidebarPillState` — which realized rows re-render, which row
 //              draws selected, and the one lit/dark rule for the accent pill.
 //   DROP       `RootlistSlotResolver` + `SidebarDropCue` + `RootlistDropDecision` + `RootlistTreeNav` — ONE resolver,
@@ -29,28 +21,19 @@
 //   SELECTION  `SidebarTreeSelection` — WinUI extended multi-select semantics, keyed by row ID because the tree
 //              re-flows constantly.
 //   PROJECT    `SidebarProjection`, `SidebarSort`, `SidebarSearch`, `SidebarBinderPipeline` — the library AS edges.
-//              In 0.2.9 this copied records out of a store; in 0.3 it is a read over `User.Me`'s edges, which is why
-//              there is no hydration step and no second copy of a playlist's name.
-//   SOURCES    `ISidebarDataSource` and the contribution contract the customizer generates property rows from.
-//   EDIT       `SidebarEditPlan` — the customize canvas over the live pane.
-//   DESIGN     `SidebarDesignInfo`, `SidebarPaneState`, `SidebarDesignGating`, `SidebarBuiltInDocuments` — slugs,
-//              mount keys, width tiers, the chooser gate, and Classic's entire information architecture.
-//   V3         `LibraryV3Document`/`View`/`ChipStrip`/`SearchRules`/`Metrics` — Library V3's synthesized document.
+//              In 0.3 it is a read over `User.Me`'s edges, which is why there is no hydration step and no second copy
+//              of a playlist's name.
+//   LIBRARY    `SidebarLibraryFilters` lives with the layout (`Sidebar.Layout.cs`); the query and the shaping are above.
 //   PINS       `SidebarPinId`, `PinSyncRules`, `PinRowRule` — the pin id IS the nav route key (A7).
-//   CUSTOMIZER `SidebarPalette`, `SidebarDisplayValues`, `SidebarConfigJson`, `SidebarNumberEdit` — the pure tables
-//              the customizer page renders from.
 //   DIAG       `SidebarPaneInvariant` — the settled-frame terminal-state validator.
 //
-// NOT here: the document and the reducer (`Sidebar.Doc.cs`), the disk and the binder pump (`Sidebar.Host.cs`), and
-// every `Element` (`Sidebar.UI.cs`, `Sidebar.Customizer.UI.cs` — stage 2).
+// NOT here: the layout document and its rules (`Sidebar.Layout.cs`), the planner (`Sidebar.Planner.cs`), the stores
+// and the binder pump (`Sidebar.Store.cs`, `Sidebar.Host.cs`), and every `Element` (`Sidebar.UI*.cs`).
 
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using FluentGpu.Foundation;
 using FluentGpu.Signals;
 
@@ -59,7 +42,7 @@ namespace Wavee;
 // ── 0. the pane's own width bounds, and the CORE entry points ────────────────────────────────────────────────────────
 //
 // One clamp pair, owned HERE rather than by the shell, because every writer of the sidebar's expanded width (the
-// splitter seam, the keyboard nudge, `SidebarPaneState.Restore`, a diagnostics probe) must go through the same numbers
+// splitter seam, the keyboard nudge, `Sidebar.Boot`, a diagnostics probe) must go through the same numbers
 // or the pane gets persisted at a width it cannot render at. That drift is exactly what a second literal pair caused
 // in 0.2.9. `Shell/Shell.cs` READS these; it does not redeclare them. The width BETWEEN the bounds is the user's: there
 // is no responsive ladder (the window never moves the sidebar) — the rail's geometry and the resize rules live in
@@ -73,6 +56,9 @@ public static class SidebarPaneBounds
     /// <summary>THE clamp pair. Every writer goes through it.</summary>
     public const float NavPaneMinW = 180f, NavPaneMaxW = 460f;
 
+    /// <summary>The width a fresh pane opens at, and the width Reset returns to.</summary>
+    public const float DefaultWidth = 320f;
+
     /// <summary>The anti-flicker band for a threshold crossing (the regime flip's drag-back distance).</summary>
     public const float NavPaneHysteresisDip = 24f;
 
@@ -85,24 +71,14 @@ public static partial class Sidebar
 {
     // ── the planner, named ───────────────────────────────────────────────────────────────────────────────────────────
     //
-    // Three thin names over `SidebarRowPlanner` so a caller never has to pick an overload. The buffers are the
-    // CALLER's and they ALIAS: the plan points into them, so a caller keeps two and alternates — otherwise the
-    // outgoing rows die under the diff that is still reading them.
+    // One thin name over `SidebarRowPlanner` so a caller never has to pick an overload. The buffers are the CALLER's and
+    // they ALIAS: the plan points into them, so a caller keeps two and alternates — otherwise the outgoing rows die under
+    // the diff that is still reading them.
 
-    /// <summary>(document × projection) → ONE flat row array, for the expanded pane or, <paramref name="compact"/>, the 48 rail.</summary>
-    public static SidebarRowPlan Plan(SidebarCustomLayout layout, in SidebarProjectionInput input,
-                                      SidebarPlanBuffers buffers, bool compact = false)
-        => SidebarRowPlanner.Build(layout, in input, buffers, compact);
-
-    /// <summary>The customize canvas: one uniform card per section, over the LIVE pane. There is no preview of a
-    /// sidebar; there is the sidebar.</summary>
-    public static SidebarRowPlan PlanEdit(SidebarCustomLayout layout, in SidebarProjectionInput input,
-                                          in SidebarEditState edit, SidebarPlanBuffers buffers)
-        => SidebarRowPlanner.BuildEdit(layout, in input, in edit, buffers);
-
-    /// <summary>The mount key a design switch remounts under — fresh hooks, fresh section and scroll state. A design
-    /// switch is a genuine remount, never a re-render with a different flag.</summary>
-    public static string MountKey(SidebarDesign design) => SidebarDesignInfo.MountKey(design);
+    /// <summary>(document × projection) → ONE flat row array, for the expanded pane or the 48 rail.</summary>
+    public static SidebarRowPlan Plan(SidebarLayoutDoc doc, in SidebarProjectionInput input, in SidebarPlanOptions options,
+                                      SidebarPlanBuffers buffers)
+        => SidebarRowPlanner.Build(doc, in input, in options, buffers);
 }
 // ── ROOTLIST MARKER STREAM + MOVE LEGALITY ─────────────────────────────────────────────────────────────────────────
 // The marker-stream value shape (RootlistEntry) and the item/placement/move value types every sidebar drop, every
@@ -450,26 +426,6 @@ public static class SidebarRowGeometry
     public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
         => shape == SidebarRowShape.EntityTwoLine && subtitle is { Length: > 0 };
 
-    /// <summary>TRANSITIONAL (deleted in P3 with <c>SidebarDisplayOptions</c>): today's per-section display options →
-    /// the shape. A glyph section (no artwork) is row A; Compact or no subtitles is row B; otherwise row C.</summary>
-    public static SidebarRowShape ShapeFor(SidebarDensity density, bool subtitles, bool artwork)
-        => !artwork ? SidebarRowShape.Glyph
-         : density == SidebarDensity.Compact || !subtitles ? SidebarRowShape.EntityOneLine
-         : SidebarRowShape.EntityTwoLine;
-
-    // The EntityEmbed / PromptRow / chip-strip ladder survives only until P3 deletes Curated:
-    public static float CardHeightFor(SidebarDensity density) => density switch
-    {
-        SidebarDensity.Compact => 56f,
-        SidebarDensity.Comfortable => 88f,
-        _ => 72f,
-    };
-    public static float PromptHeight(bool hasReason) => hasReason ? 56f : 48f;
-    public const float ChipHeight = 24f;
-    public const float ChipStripHeight = ChipHeight + 2f;
-    public const float ChipStripGap = 4f;
-    public const float PinDropZoneRestHeight = 56f;
-
     // ── pure plan geometry ──
 
     /// <summary>The CONTENT-SPACE top of plan row <paramref name="index"/>: the prefix sum of every earlier row's
@@ -639,57 +595,23 @@ public static class SidebarRowGeometry
 /// every row does today.</summary>
 public static class SidebarRowExtents
 {
-    /// <summary>The analytic extent of plan row <paramref name="index"/>: one SLOT (row + its 2 + 2 margin) per item kind,
-    /// 40 per header, 8 per separator. NaN for a grid strip (estimate, then correct on measure).</summary>
-    public static float HeightOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSectionSpec? section, bool editable)
+    /// <summary>The analytic extent of plan row <paramref name="index"/>, read off the row's kind and its section's shape: one
+    /// SLOT (row + its 2 + 2 margin) per item kind, 40 per header, 8 per separator. NaN for a grid strip (estimate, then
+    /// correct on measure). A glyph row inside an entity section takes the SECTION's pitch, so a band never mixes two.</summary>
+    public static float HeightOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSection? section)
     {
         ArgumentNullException.ThrowIfNull(rows);
-        if ((uint)index >= (uint)rows.Count) return 0f;
-        var row = rows[index];
-        if (section is null) return 0f;
-        var shape = SidebarRowGeometry.ShapeFor(section.Opts.Density, section.Opts.Subtitles, section.Opts.Artwork);
-        switch (row.Kind)
+        if ((uint)index >= (uint)rows.Count || section is null) return 0f;
+        return rows[index].Kind switch
         {
-            case SidebarRowKind.SectionHeader:
-                return SidebarRowGeometry.HeaderHeight
-                     + (CarriesChipStrip(section, editable) ? SidebarRowGeometry.ChipStripGap + SidebarRowGeometry.ChipStripHeight : 0f);
-            case SidebarRowKind.HeaderLabel: return SidebarRowGeometry.HeaderHeight;
-            case SidebarRowKind.Divider: return SidebarRowGeometry.SeparatorHeight;
-            case SidebarRowKind.IconRow:
-            case SidebarRowKind.EntityRow:
-            case SidebarRowKind.Placeholder:
-            case SidebarRowKind.FolderHeader:
-            case SidebarRowKind.Skeleton:
-                return SidebarRowGeometry.PitchOf(shape);
-            case SidebarRowKind.Empty: return EmptyHeight(section);
-            case SidebarRowKind.TreeEnd: return SidebarRowGeometry.TreeEndHeight;
-            case SidebarRowKind.SectionTile: return SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph);
-            case SidebarRowKind.EntityCard: return SidebarRowGeometry.CardHeightFor(section.Opts.Density);
-            case SidebarRowKind.PromptRow: return SidebarRowGeometry.PromptHeight(section.Kind != SidebarSectionKind.Concerts);
-            case SidebarRowKind.SectionCard: return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
-            default: return float.NaN;
-        }
-    }
-
-    /// <summary>An <c>EntityList</c> header carries the inline filter chips only when the pane is editable, the
-    /// section asked for them, and the section is open.</summary>
-    static bool CarriesChipStrip(SidebarSectionSpec section, bool editable)
-        => editable && section.Kind == SidebarSectionKind.EntityList
-           && section.Opts.InlineControls && !section.Collapsed;
-
-    /// <summary>A section that resolved to zero rows: Pinned's empty state IS its (unconditional) drop zone, a
-    /// <c>HideBody</c> section draws nothing at all, an <c>ActionCard</c> borrows the section's row pitch, and the
-    /// default is the quiet one-line hint in its 4,2 margin.</summary>
-    static float EmptyHeight(SidebarSectionSpec section)
-    {
-        if (section.Kind == SidebarSectionKind.Pinned) return SidebarRowGeometry.PinDropZoneRestHeight;
-        var behavior = SidebarSectionKinds.EmptyBehaviorFor(section.Kind, section.Opts.EmptyBehavior);
-        return behavior switch
-        {
-            SidebarEmptyBehavior.HideBody => 0f,
-            SidebarEmptyBehavior.ActionCard => SidebarRowGeometry.PitchOf(SidebarRowGeometry.ShapeFor(
-                section.Opts.Density, section.Opts.Subtitles, section.Opts.Artwork)),
-            _ => SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
+            SidebarRowKind.SectionHeader => SidebarRowGeometry.HeaderHeight,
+            SidebarRowKind.Divider => SidebarRowGeometry.SeparatorHeight,
+            SidebarRowKind.IconRow or SidebarRowKind.SectionTile => SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
+            SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader or SidebarRowKind.Skeleton => SidebarRowGeometry.PitchOf(section.Shape),
+            SidebarRowKind.Empty => SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
+            SidebarRowKind.DropBand => SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
+            SidebarRowKind.TreeEnd => SidebarRowGeometry.TreeEndHeight,
+            _ => float.NaN,   // GridStrip: estimate, correct on measure
         };
     }
 }
@@ -749,97 +671,41 @@ public static class SidebarRowDiff
 /// call.</summary>
 public static class SidebarRowResolve
 {
-    /// <summary>The hand-placed item a plan row was projected from (a hand-placed row carries <c>Key == item.Key</c>,
-    /// unique within its section). Also finds a Pinned OVERRIDE row's side-table entry, which is what makes an
-    /// alias/icon override apply to a pinned row.</summary>
-    public static SidebarItemSpec? ItemOf(SidebarSectionSpec section, string key)
+    /// <summary>The route a plan row navigates to: a glyph row's key, an entity row's entry route; null for everything
+    /// else (headers, separators, folders, tracks, hints, tiles).</summary>
+    public static string? RouteOf(in SidebarRow row, IReadOnlyList<SidebarLibraryEntry> entries) => row.Kind switch
     {
-        var items = section.ItemList;
-        for (int i = 0; i < items.Count; i++)
-        {
-            var item = items[i];
-            if (item.Hidden) continue;
-            if (string.Equals(item.Key, key, StringComparison.Ordinal)) return item;
-            if (string.Equals(item.Id, key, StringComparison.Ordinal)) return item;
-        }
-        return null;
-    }
+        SidebarRowKind.IconRow => row.Key,
+        SidebarRowKind.EntityRow when (uint)row.EntryIndex < (uint)entries.Count => entries[row.EntryIndex].RouteKey,
+        _ => null,
+    };
 
-    /// <summary>The ONE selection rule for a PROJECTED entity (an entity row, a grid cell, a card): it draws
-    /// selected when its nav route IS the live route. A folder and a track have no route, so neither can ever be
-    /// the selected row.</summary>
     public static bool EntrySelects(in SidebarLibraryEntry entry, string route)
-        => route.Length > 0
-           && entry.RouteKey is { Length: > 0 } r
-           && string.Equals(r, route, StringComparison.Ordinal);
+        => route.Length > 0 && entry.RouteKey is { Length: > 0 } r && string.Equals(r, route, StringComparison.Ordinal);
 
-    /// <summary>Does the plan row draw itself SELECTED for <paramref name="route"/>? Resolved EXACTLY as the slot
-    /// draws it, kind by kind:
-    /// <list type="bullet">
-    /// <item><c>IconRow</c>/<c>EntityRow</c>/<c>Placeholder</c> — an ACTION item never selects; then the projected
-    /// entry; then a hand-placed TRACK never selects and a hand-placed ROUTE selects on its own key; a missing-entity
-    /// retention row never selects.</item>
-    /// <item><c>EntityCard</c> — the resolved entry's route, or the pin route derived from its uri when unresolved.</item>
-    /// <item><c>GridStrip</c> — one route per CELL, so the ROW is "selected" when ANY cell in its range is (the unit
-    /// the pane's per-row epoch can address).</item>
-    /// <item>everything else (headers, dividers, folders, empties, skeletons, create rows, prompts) — never.</item>
-    /// </list></summary>
-    public static bool SelectsRoute(in SidebarRow row, IReadOnlyList<SidebarLibraryEntry> entries,
-                                    SidebarSectionSpec? section, string route)
+    public static bool SelectsRoute(in SidebarRow row, IReadOnlyList<SidebarLibraryEntry> entries, string route)
     {
         if (route.Length == 0 || entries is null) return false;
-        bool resolved = row.EntryIndex >= 0 && row.EntryIndex < entries.Count;
-        switch (row.Kind)
+        if (row.Kind == SidebarRowKind.GridStrip)
         {
-            case SidebarRowKind.IconRow:
-            case SidebarRowKind.EntityRow:
-            case SidebarRowKind.Placeholder:
-            {
-                var item = section is null ? null : ItemOf(section, row.Key);
-                if (item is { Target: SidebarItemTarget.Action }) return false;
-                if (resolved) return EntrySelects(entries[row.EntryIndex], route);
-                if (item is { Target: SidebarItemTarget.Track }) return false;
-                return item is { Target: SidebarItemTarget.Route }
-                       && string.Equals(item.Key, route, StringComparison.Ordinal);
-            }
-
-            case SidebarRowKind.EntityCard:
-            {
-                string uri = resolved ? entries[row.EntryIndex].Uri : "";
-                string? key = resolved ? entries[row.EntryIndex].RouteKey : SidebarPinId.FromUri(uri);
-                return key is { Length: > 0 } && string.Equals(key, route, StringComparison.Ordinal);
-            }
-
-            case SidebarRowKind.GridStrip:
-            {
-                int start = row.EntryIndex;
-                int count = row.ItemCount;
-                if (start < 0 || count <= 0 || start >= entries.Count) return false;
-                if (start + count > entries.Count) count = entries.Count - start;
-                for (int i = 0; i < count; i++)
-                    if (EntrySelects(entries[start + i], route)) return true;
-                return false;
-            }
-
-            default:
-                return false;
+            int start = row.EntryIndex, count = row.ItemCount;
+            if (start < 0 || count <= 0 || start >= entries.Count) return false;
+            if (start + count > entries.Count) count = entries.Count - start;
+            for (int i = 0; i < count; i++) if (EntrySelects(entries[start + i], route)) return true;
+            return false;
         }
+        return RouteOf(in row, entries) is { Length: > 0 } r && string.Equals(r, route, StringComparison.Ordinal);
     }
 
     /// <summary>Every plan-row index that draws selected for <paramref name="route"/>, in ASCENDING order (the pane
     /// diffs two of these with a linear merge, so the order is part of the contract). <paramref name="into"/> is
     /// caller-owned and is NOT cleared — a warm sweep therefore allocates nothing.</summary>
-    public static void Sweep(IReadOnlyList<SidebarRow> rows, IReadOnlyList<SidebarLibraryEntry> entries,
-                             Func<string, SidebarSectionSpec?> sectionOf, string route, List<int> into)
+    public static void Sweep(IReadOnlyList<SidebarRow> rows, IReadOnlyList<SidebarLibraryEntry> entries, string route,
+                             List<int> into)
     {
         ArgumentNullException.ThrowIfNull(into);
         if (rows is null || entries is null || route.Length == 0) return;
-        for (int i = 0; i < rows.Count; i++)
-        {
-            var row = rows[i];
-            var section = sectionOf?.Invoke(row.SectionId);
-            if (SelectsRoute(in row, entries, section, route)) into.Add(i);
-        }
+        for (int i = 0; i < rows.Count; i++) { var row = rows[i]; if (SelectsRoute(in row, entries, route)) into.Add(i); }
     }
 
     /// <summary>The SYMMETRIC DIFFERENCE of two ascending index lists — the rows that GAINED or LOST the selection,
@@ -1006,7 +872,7 @@ public readonly record struct SidebarNavLayout(bool MoveUp, bool MoveDown, bool 
 
 /// <summary>A settled pane observation (the presentation as decided, plus the column's laid-out width).</summary>
 public readonly record struct SidebarPaneFrameSnapshot(
-    SidebarDesign Design,
+    SidebarLayoutId Layout,
     SidebarPaneMode Mode,
     SidebarWindowBand Band,
     bool UserCollapsed,
@@ -1101,8 +967,7 @@ public enum SidebarEntryKind : byte
 public enum SidebarPlaylistFlavor : byte { None = 0, ByYou = 1, BySpotify = 2, Mixed = 3 }
 
 /// <summary>Which kinds a projection pass should emit. A mask (not a single kind) because every consumer asks for a
-/// SET: the V3 "All" filter wants everything, a Curated EntityList section wants its query's kinds, the Podcasts chip
-/// wants shows only.</summary>
+/// SET: the V3 "All" filter wants everything, the Podcasts chip wants shows only.</summary>
 [Flags]
 public enum SidebarEntryKindMask : byte
 {
@@ -1135,28 +1000,17 @@ public static class SidebarEntryKinds
 
     public static bool Has(SidebarEntryKindMask mask, SidebarEntryKind kind) => (mask & Of(kind)) != 0;
 
-    /// <summary>The V3 chip row -> kinds. Playlists includes folders (a folder IS part of the playlist tree); every
-    /// other chip is a single kind.</summary>
-    public static SidebarEntryKindMask From(SidebarV3Filter filter) => filter switch
+    /// <summary>The library chip -> projection kinds. Playlists includes folders (a folder IS part of the playlist tree).
+    /// Podcasts and Audiobooks are both Show rows: the mask cannot split them, so <see cref="SidebarBinderPipeline.Shape"/>
+    /// does the exact match.</summary>
+    public static SidebarEntryKindMask From(SidebarLibraryFilter filter) => filter switch
     {
-        SidebarV3Filter.Playlists => SidebarEntryKindMask.PlaylistTree,
-        SidebarV3Filter.Podcasts => SidebarEntryKindMask.Show,
-        SidebarV3Filter.Albums => SidebarEntryKindMask.Album,
-        SidebarV3Filter.Artists => SidebarEntryKindMask.Artist,
+        SidebarLibraryFilter.Playlists => SidebarEntryKindMask.PlaylistTree,
+        SidebarLibraryFilter.Podcasts or SidebarLibraryFilter.Audiobooks => SidebarEntryKindMask.Show,
+        SidebarLibraryFilter.Albums => SidebarEntryKindMask.Album,
+        SidebarLibraryFilter.Artists => SidebarEntryKindMask.Artist,
         _ => SidebarEntryKindMask.All,
     };
-
-    /// <summary>A Curated <c>SidebarEntityQuery.Kinds</c> -> projection kinds. The Core mask has no folder bit, so a
-    /// query that asks for playlists gets the tree (folders included) — that is what the section renders.</summary>
-    public static SidebarEntryKindMask From(SidebarEntityKinds kinds)
-    {
-        var m = SidebarEntryKindMask.None;
-        if ((kinds & SidebarEntityKinds.Playlists) != 0) m |= SidebarEntryKindMask.PlaylistTree;
-        if ((kinds & SidebarEntityKinds.Albums) != 0) m |= SidebarEntryKindMask.Album;
-        if ((kinds & SidebarEntityKinds.Artists) != 0) m |= SidebarEntryKindMask.Artist;
-        if ((kinds & SidebarEntityKinds.Shows) != 0) m |= SidebarEntryKindMask.Show;
-        return m;
-    }
 }
 
 /// <summary>
@@ -1256,6 +1110,10 @@ public readonly record struct SidebarLibraryEntry(
     /// <summary>Whether the playlist is editable by the current user.</summary>
     public bool CanEdit { get; init; }
 
+    /// <summary>A saved show that is an AUDIOBOOK (Spotify files both under SavedShows; the flags decide —
+    /// <c>LibraryAudiobookFilter.IsAudiobookRow</c>). Splits the Podcasts and Audiobooks chips.</summary>
+    public bool IsAudiobook { get; init; }
+
     /// <summary>An album's FIRST billed artist, uncollapsed (<see cref="Creator"/> is the joined display string). ""
     /// for every other kind. Kept as a reference to the source string — no substring allocation.</summary>
     public string FirstArtistName { get => _firstArtistName ?? ""; init => _firstArtistName = value; }
@@ -1296,36 +1154,21 @@ public readonly record struct SidebarLibraryEntry(
         { FolderId = "", FolderName = "", FirstArtistName = "" };
 }
 
-// ── the plan itself: SidebarCustomLayout + the live projection, planned into ONE flat row list ─────────────────────
-
-/// <summary>The row vocabulary the Curated renderer switches on. Also the ItemsView's <c>ContentType</c>, so each kind
-/// gets its own recycling pool.</summary>
+// ── the plan itself: SidebarLayoutDoc + the live projection, planned into ONE flat row list ─────────────────────
+/// <summary>The row vocabulary — also the ItemsView's <c>ContentType</c>, so each kind recycles in its own pool.</summary>
 public enum SidebarRowKind : byte
 {
-    SectionHeader = 0,   // clickable, toggles Collapsed
-    HeaderLabel   = 1,   // Kind == Header (no chevron)
-    Divider       = 2,
-    IconRow       = 3,   // glyph + label (+ optional count badge)
-    EntityRow     = 4,   // artwork + label (+ optional subtitle)
-    FolderHeader  = 5,   // a PlaylistTree folder; indent-aware, clickable
-    GridStrip     = 6,   // one row of a grid section: [EntryIndex, ItemCount] into the plan's entries
-    Placeholder   = 7,   // a missing entity (fallback title/art, dimmed)
-    Empty         = 8,   // a section resolved to zero rows
-    Skeleton      = 9,   // the section's source is still pending
-    // 10 was CreateAction (a PlaylistTree section's trailing "+" row), DELETED — the affordance is the section
-    // header's "+" now. Left unused rather than reclaimed: renumbering would re-pool every existing row (ContentType).
-    EntityCard    = 11,  // the EntityEmbed hero card: taller row, cover-left, play affordance
-    PromptRow     = 12,  // an actionable degraded state (e.g. Concerts' "Set your location" row)
-    // EDIT MODE ONLY — one uniform-height card standing in for a whole section on the customize canvas: grip, glyph,
-    // title, count, eye, "...". ItemCount carries the card's honest count (-1 = none); EntryIndex stays -1.
-    SectionCard   = 13,
-    // The PlaylistTree's closing gutter (24 DIP), planned right after the last tree row. Exists because "top level,
-    // at the end" had no drop target: the old create row squatted that slot and accepted rootlist payloads, so
-    // dragging a playlist below everything duplicated it instead of moving it. APPENDED, never inserted.
-    TreeEnd       = 14,
-    // A COLLAPSED section in the compact rail (design V.9): one 40×36 glyph tile whose click opens a flyout of the
-    // section's rows. Key == section id, EntryIndex == -1.
-    SectionTile   = 15,
+    SectionHeader = 0,   // 40-px header (expanded only)
+    Divider       = 2,   // the 8-px full-width separator between two rendered sections
+    IconRow       = 3,   // a glyph row for an app route (Home, a Collections page); Key = the route key, EntryIndex = -1
+    EntityRow     = 4,   // a projected entry (an entity, a route pin, the Library's Liked row); EntryIndex >= 0
+    FolderHeader  = 5,   // a rootlist folder; disclosure in the trailing chevron column
+    GridStrip     = 6,   // Library grid: [EntryIndex, ItemCount] cells
+    Empty         = 8,   // a quiet one-line hint (an empty Playlists, a search with no match)
+    Skeleton      = 9,   // the source is pending and nothing is known yet
+    TreeEnd       = 14,  // the tree's closing drop gutter
+    SectionTile   = 15,  // a collapsed section in the compact rail
+    DropBand      = 16,  // empty Pinned while a pinnable drag is live: "Drop here to pin"
 }
 
 /// <summary>POD. No strings are allocated during planning: labels resolve at render time from the referenced
@@ -1354,70 +1197,31 @@ public readonly record struct SidebarRowPlan(
 /// must plan real (empty) content, not a screenful of skeletons.</summary>
 public enum SidebarSourceState : byte { Ready = 0, Pending = 1, Error = 2 }
 
-/// <summary>One <c>SidebarSectionKind.Extension</c> section's resolved rows: a WINDOW into
-/// <see cref="SidebarProjectionInput.ExtensionEntries"/> plus the health/availability the binder observed.
-///
-/// <para>This is the whole planner-side extension contract, and it keeps the planner PURE: the binder resolves the
-/// contribution id through the registry, fills the shared entry pool and records this struct; the planner only reads
-/// it and never switches on an extension id (the forward-compat guardrail).</para></summary>
-/// <param name="NeedsPrompt">The source's degraded state is ACTIONABLE (Concerts with no location) — the section
-/// plans one <c>PromptRow</c> instead of an empty caption, even though the source itself is Ready.</param>
-public readonly record struct SidebarSectionSlice(
-    int Start,
-    int Count,
-    SidebarSourceState State = SidebarSourceState.Ready,
-    SidebarContributionAvailability Availability = SidebarContributionAvailability.Live,
-    bool NeedsPrompt = false);
-
-/// <summary>sectionId -> its resolved extension slice. An interface (not a dictionary) so the binder's reusable table
-/// can back it without materialising anything per rebuild.</summary>
-public interface ISidebarSectionSlices
-{
-    bool TryGet(string sectionId, out SidebarSectionSlice slice);
-}
-
-/// <summary>Everything outside the document the plan depends on. Every slice is nullable so a headless test, the fake
-/// backend, or a live-only adapter that is not registered can simply omit it.</summary>
+/// <summary>Everything outside the document the plan depends on. Every list is nullable so a headless test can omit it.</summary>
 public readonly record struct SidebarProjectionInput(
-    // The unified library projection (playlists/albums/artists/shows), in source order — EntityList's input.
+    // The library projection: Classic reads it for nothing; Library reads the mode-shaped list (filtered, searched,
+    // sorted, the pin band removed, tree-regrouped when folders apply).
     IReadOnlyList<SidebarLibraryEntry>? Library = null,
-    // The rootlist tree, DEPTH-FIRST FLATTENED with Depth stamped and folders carried as SidebarEntryKind.Folder
-    // entries. Flattened rather than a tree so planning a 10k rootlist is one linear pass with no recursion and no
-    // per-node allocation.
+    // The rootlist tree, depth-first flattened, folders as SidebarEntryKind.Folder entries — Classic's Playlists.
     IReadOnlyList<SidebarLibraryEntry>? PlaylistTree = null,
-    // The shared pin store, resolved, in pin order.
+    // Every pin, resolved, in pin order (entities, folders, routes, modules).
     IReadOnlyList<SidebarLibraryEntry>? Pins = null,
-    // Navigation recency, newest first, deduped by uri.
-    IReadOnlyList<SidebarLibraryEntry>? Visited = null,
-    // Playback recency, context-first, newest first, deduped.
+    // Recently played contexts, resolved (never a nameless row), newest first.
     IReadOnlyList<SidebarLibraryEntry>? Played = null,
     // New releases from followed artists, newest first.
     IReadOnlyList<SidebarLibraryEntry>? NewReleases = null,
-    // Upcoming concerts, soonest first. Name = event title, Creator = venue, SortStamp = the event's epoch-ms.
-    IReadOnlyList<SidebarLibraryEntry>? Concerts = null,
-    // Resolves a hand-placed item's Key (a spotify uri) to its projected entry. A miss is the missing-entity path,
-    // never a dropped row.
-    IReadOnlyDictionary<string, SidebarLibraryEntry>? ByUri = null,
-    // The pinned entry ids — pins sort first inside every EntityList sort mode.
     IReadOnlySet<string>? PinnedIds = null,
-    // Expanded rootlist folder ids. null means "everything expanded" (the headless default).
+    // Expanded rootlist folder ids. null = everything expanded (the headless default).
     IReadOnlySet<string>? ExpandedFolders = null,
-    // The library-only search text. Filters EntityList and PlaylistTree; never shortcuts or links.
+    // Classic's Playlists filter / Library's search, normalized by the planner.
     string? Search = null,
     SidebarSourceState LibraryState = SidebarSourceState.Ready,
     SidebarSourceState TreeState = SidebarSourceState.Ready,
-    SidebarSourceState RecentsState = SidebarSourceState.Ready,
-    SidebarSourceState NewReleasesState = SidebarSourceState.Ready,
-    SidebarSourceState ConcertsState = SidebarSourceState.Ready,
-    // True when the user has no location yet — Concerts then plans one actionable PromptRow.
-    bool ConcertsLocationUnset = false,
-    // The caller's composite revision (document + projection + pins + search + culture epoch). Echoed into the plan
-    // so Build stays deterministic — the planner never carries hidden counter state.
-    int Revision = 0,
-    // ── extension contributions ────────────────────────────────────────────────────────────────────────────────────
-    // ONE shared pool holding every Extension section's rows back to back, and the sectionId -> window table over it.
-    IReadOnlyList<SidebarLibraryEntry>? ExtensionEntries = null,
-    ISidebarSectionSlices? ExtensionSlices = null);
+    // Library: the localized "Liked Songs" title (the Liked row's label and its search match).
+    string? LikedTitle = null,
+    // Library: Library is a depth-stamped tree (folders inline) rather than a flat sorted list.
+    bool LibraryIsTree = false,
+    int Revision = 0);
 
 /// <summary>Caller-owned row/entry storage. Hand the SAME instance to every <c>Build</c> for a given pane and a warm
 /// re-plan reuses its capacity (the 10k-library alloc bound). The returned plan's lists ALIAS these buffers, so a plan
@@ -1426,913 +1230,8 @@ public sealed class SidebarPlanBuffers
 {
     internal readonly List<SidebarRow> Rows = new(256);
     internal readonly List<SidebarLibraryEntry> Entries = new(256);
-    internal readonly List<int> TreeParents = new(256);
-    internal readonly List<byte> TreeVisible = new(256);
-    internal readonly List<int> TreeLeaves = new(256);
-    internal readonly List<int> TreeCursors = new(256);
-    internal readonly List<int> TreeAncestors = new(16);
 }
 
-public static class SidebarRowPlanner
-{
-    /// <summary>The guard on a HAND-AUTHORED item list (StaticLinks / CustomGroup / Pinned overrides). Unreachable in
-    /// practice: the layout reducer already caps those at 500 items per section.</summary>
-    public const int SectionRowCap = 5000;
-
-    /// <summary>The guard on a PROJECTED section (EntityList / PlaylistTree / Pinned / JumpBackIn / feeds).
-    /// <para>DEVIATION, deliberate: one spec clause gives a single <c>SectionRowCap = 5000</c> "a section never plans
-    /// more than this many rows", while another requires a 10 000-entry EntityList to plan IN FULL — the app is sized
-    /// for 10k+ libraries. Truncating a real library at 5 000 rows would silently hide half of it — a correctness bug,
-    /// not a guard. So <see cref="SectionRowCap"/> keeps its job for authored lists, and projected sections get this
-    /// (still finite) ceiling instead.</para></summary>
-    public const int DynamicSectionRowCap = 20_000;
-
-    const int SkeletonRows = 3;
-
-    /// <summary>Deterministic: same inputs -> identical plan. Called from a UseMemo keyed on a DepKey of
-    /// (documentRevision, projectionRevision, pinRevision, searchText, cultureEpoch).</summary>
-    public static SidebarRowPlan Build(SidebarCustomLayout layout, in SidebarProjectionInput input,
-        SidebarPlanBuffers? buffers = null, bool compact = false)
-    {
-        ArgumentNullException.ThrowIfNull(layout);
-        var st = Begin(buffers);
-        st.ExcludePinned = HasPinnedSection(layout);
-        st.Compact = compact;
-
-        var sections = layout.Sections;
-        for (int i = 0; i < sections.Count; i++) PlanSection(sections[i], 0, in input, ref st);
-
-        return new SidebarRowPlan(st.Rows, st.Entries, input.Revision);
-    }
-
-    /// <summary>PHASE 2 — the edit projection of the same document. A SEPARATE entry point (not a flag on
-    /// <see cref="Build"/>) so the normal path stays byte-identical: every top-level section becomes ONE
-    /// <see cref="SidebarRowKind.SectionCard"/> row, and the expanded section(s) plan their ordinary body right
-    /// underneath via the same per-kind planners the live pane uses.
-    /// <para>Three differences from <see cref="Build"/>: a hidden section still gets a (dimmed) card but never a
-    /// body; no <c>SectionHeader</c> row is emitted (the card IS the header); an unknown section kind plans no card.
-    /// A revealed body also ignores the section's persisted <c>Collapsed</c> bit — expanding a card is the EDITOR's
-    /// reveal and leaves the document's own collapse state untouched.</para></summary>
-    public static SidebarRowPlan BuildEdit(SidebarCustomLayout layout, in SidebarProjectionInput input,
-        in SidebarEditState edit, SidebarPlanBuffers? buffers = null)
-    {
-        ArgumentNullException.ThrowIfNull(layout);
-        var st = Begin(buffers);
-
-        var sections = layout.Sections;
-        for (int i = 0; i < sections.Count; i++)
-        {
-            var s = sections[i];
-            if (!SidebarSectionKinds.IsKnown(s.Kind)) continue;
-            // The card is a chrome row like any other: Key == section.Id, EntryIndex == -1, no string allocated.
-            Add(ref st, new SidebarRow(SidebarRowKind.SectionCard, s.Id, 0, -1,
-                                       SidebarEditPlan.CardCount(s), s.Id));
-            if (SidebarEditPlan.ShowsBody(in edit, s)) PlanBody(s, 0, in input, ref st);
-        }
-
-        return new SidebarRowPlan(st.Rows, st.Entries, input.Revision);
-    }
-
-    // ── expanded plan ────────────────────────────────────────────────────────────────────────────────────────────────
-
-    static void PlanSection(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        // An authored-off section contributes no rows, no rail tiles and no projection work. An unknown (future) kind
-        // renders as nothing — it stays in the document and round-trips untouched.
-        if (s.Hidden || !SidebarSectionKinds.IsKnown(s.Kind)) return;
-        // "Show in rail" off keeps the section in the pane but plans no tile in the compact rail.
-        if (st.Compact && !s.Opts.ShowInRail) return;
-
-        if (s.Kind == SidebarSectionKind.Divider)
-        {
-            st.DividerPending = true;      // flushed by the next row: leading/trailing drop, consecutive collapse
-            st.DividerSectionId = s.Id;
-            st.DividerDepth = depth;
-            return;
-        }
-
-        if (s.Kind == SidebarSectionKind.Header)
-        {
-            if (st.Compact) { st.DividerPending = true; st.DividerSectionId = s.Id; st.DividerDepth = depth; return; }   // the rail has no headings
-            Add(ref st, new SidebarRow(SidebarRowKind.HeaderLabel, s.Id, depth, -1, 0, s.Id));
-            return;
-        }
-
-        // The shortcuts/top-bar band (Home, Search, ...) is never collapsible chrome, so it must never claim a
-        // SectionHeader row of its own. TitleLocKey stays on the spec (the customizer still names the band); this
-        // only suppresses the ROW. With no header row here, the quick layout menu host falls through to the next
-        // SectionHeader — which the pane already picks as the plan's first header row.
-        bool titled = (s.Title is not null || s.TitleLocKey is not null) && !SidebarIds.IsTopBar(s.Id);
-        if (st.Compact)
-        {
-            // The rail has no headers (they are 0 tall in WinUI's compact pane): a collapsed section is ONE tile, an
-            // expanded one plans its rows as tiles.
-            if (titled && s.Collapsed) { Add(ref st, Chrome(SidebarRowKind.SectionTile, s, depth)); return; }
-            PlanBody(s, depth, in input, ref st);
-            return;
-        }
-        if (titled) Add(ref st, new SidebarRow(SidebarRowKind.SectionHeader, s.Id, depth, -1, 0, s.Id));
-
-        if (s.Collapsed) return;
-
-        PlanBody(s, depth, in input, ref st);
-    }
-
-    /// <summary>A section's BODY rows — everything after its header. Split out of <see cref="PlanSection"/> so the
-    /// edit projection (<see cref="BuildEdit"/>) can plan a real body under a card without also planning a second
-    /// header; <see cref="PlanSection"/> is unchanged in behaviour (header, collapse gate, then this).</summary>
-    static void PlanBody(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        switch (s.Kind)
-        {
-            case SidebarSectionKind.Pinned: PlanPinned(s, depth, in input, ref st); break;
-            case SidebarSectionKind.JumpBackIn: PlanJumpBackIn(s, depth, in input, ref st); break;
-            case SidebarSectionKind.CollectionShortcuts:
-            case SidebarSectionKind.StaticLinks: PlanItems(s, depth, in input, ref st, iconRows: true); break;
-            case SidebarSectionKind.PlaylistTree: PlanPlaylistTree(s, depth, in input, ref st); break;
-            case SidebarSectionKind.EntityList: PlanEntityList(s, depth, in input, ref st); break;
-            case SidebarSectionKind.CustomGroup: PlanGroup(s, depth, in input, ref st); break;
-            case SidebarSectionKind.EntityEmbed: PlanEmbed(s, depth, in input, ref st); break;
-            case SidebarSectionKind.NewReleases:
-                PlanFeed(s, depth, input.NewReleases, input.NewReleasesState, ref st);
-                break;
-            case SidebarSectionKind.Concerts: PlanConcerts(s, depth, in input, ref st); break;
-            case SidebarSectionKind.Extension: PlanExtension(s, depth, in input, ref st); break;
-        }
-    }
-
-    /// <summary>An extension contribution: the binder already resolved it into a window over
-    /// <see cref="SidebarProjectionInput.ExtensionEntries"/>. The section KEEPS its spec in every degraded case — a
-    /// missing / disabled / schema-incompatible contribution plans exactly ONE actionable <c>PromptRow</c> ("Manage
-    /// extension"), never a silent disappearance and never a removal from the document.</summary>
-    static void PlanExtension(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var slices = input.ExtensionSlices;
-        if (slices is null || !slices.TryGet(s.Id, out var slice)
-            || slice.Availability is SidebarContributionAvailability.Missing
-                                  or SidebarContributionAvailability.Disabled
-                                  or SidebarContributionAvailability.Incompatible)
-        {
-            Add(ref st, Chrome(SidebarRowKind.PromptRow, s, depth));
-            return;
-        }
-
-        // Clamp the window defensively: the pool and the table are published together, but a stale table must degrade
-        // to "empty", never index out of range.
-        var pool = input.ExtensionEntries;
-        int available = pool?.Count ?? 0;
-        int start = slice.Start, count = slice.Count;
-        if (start < 0 || count <= 0 || start >= available) count = 0;
-        else if (start + count > available) count = available - start;
-
-        if (count == 0)
-        {
-            // An actionable degraded state beats both a skeleton and an empty caption (the Concerts "Set your location" row).
-            if (slice.NeedsPrompt) Add(ref st, Chrome(SidebarRowKind.PromptRow, s, depth));
-            else if (slice.State == SidebarSourceState.Pending) EmitSkeletons(s, depth, ref st);
-            else Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-            return;
-        }
-
-        int cap = Cap(s, DynamicSectionRowCap);
-        if (count > cap) count = cap;
-        int at = st.Entries.Count;
-        for (int i = 0; i < count; i++) st.Entries.Add(pool![start + i]);
-        EmitProjected(s, depth, at, count, ref st);
-    }
-
-    static void PlanPinned(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var pins = input.Pins;
-        int start = st.Entries.Count;
-        int cap = Cap(s, DynamicSectionRowCap);
-        bool grid = IsGrid(s, in st);
-        if (pins is not null)
-            for (int i = 0; i < pins.Count && st.Entries.Count - start < cap; i++)
-            {
-                var pin = pins[i];
-                if (IsHiddenOverride(s, pin)) continue;
-
-                int at = st.Entries.Count;
-                st.Entries.Add(pin);
-                if (!grid)
-                    Add(ref st, new SidebarRow(pin.IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow,
-                        s.Id, depth, at, 0, pin.Id));
-
-                if (!st.Compact && pin.IsFolder && IsExpanded(input, FolderId(in pin)))
-                    AppendPinnedFolderChildren(s, depth, in pin, start, cap, grid, in input, ref st);
-            }
-
-        int count = st.Entries.Count - start;
-        // Empty Pinned is the real DropZone row ("Drop items here to pin"), not a caption.
-        if (count == 0) { Add(ref st, Chrome(SidebarRowKind.Empty, s, depth)); return; }
-        if (grid) EmitProjected(s, depth, start, count, ref st);
-    }
-
-    /// <summary>Expand one pinned folder against the canonical flattened rootlist. The pinned folder itself is a root
-    /// row in this section; descendants keep only their depth RELATIVE to that root. Nested disclosures obey the same
-    /// shared expansion set as PlaylistTree, and the section's item cap bounds roots plus descendants together.</summary>
-    static void AppendPinnedFolderChildren(SidebarSectionSpec s, byte depth, in SidebarLibraryEntry pin,
-        int sectionStart, int cap, bool grid, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var tree = input.PlaylistTree;
-        if (tree is null || tree.Count == 0) return;
-
-        string folderId = FolderId(in pin);
-        int root = -1;
-        for (int i = 0; i < tree.Count; i++)
-        {
-            var candidate = tree[i];
-            if (!candidate.IsFolder) continue;
-            if (string.Equals(candidate.Id, pin.Id, StringComparison.Ordinal)
-                || string.Equals(FolderId(in candidate), folderId, StringComparison.Ordinal))
-            {
-                root = i;
-                break;
-            }
-        }
-        if (root < 0) return;
-
-        int rootDepth = tree[root].Depth;
-        for (int i = root + 1; i < tree.Count && st.Entries.Count - sectionStart < cap; i++)
-        {
-            var child = tree[i];
-            if (child.Depth <= rootDepth) break;
-
-            int at = st.Entries.Count;
-            st.Entries.Add(child);
-            if (!grid)
-            {
-                int relativeDepth = Math.Max(1, child.Depth - rootDepth);
-                byte rowDepth = (byte)Math.Min(depth + relativeDepth, byte.MaxValue);
-                Add(ref st, new SidebarRow(child.IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow,
-                    s.Id, rowDepth, at, 0, child.Id));
-            }
-
-            if (child.IsFolder && !IsExpanded(input, FolderId(in child)))
-            {
-                int collapsedDepth = child.Depth;
-                while (i + 1 < tree.Count && tree[i + 1].Depth > collapsedDepth) i++;
-            }
-        }
-    }
-
-    static void PlanJumpBackIn(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var src = s.Opts.Recents == SidebarRecentsSource.Played ? input.Played : input.Visited;
-        if (input.RecentsState == SidebarSourceState.Pending && (src is null || src.Count == 0))
-        {
-            EmitSkeletons(s, depth, ref st);
-            return;
-        }
-        PlanTopN(s, depth, src, ref st);
-    }
-
-    static void PlanFeed(SidebarSectionSpec s, byte depth, IReadOnlyList<SidebarLibraryEntry>? src,
-        SidebarSourceState state, ref PlanState st)
-    {
-        if (state == SidebarSourceState.Pending && (src is null || src.Count == 0))
-        {
-            EmitSkeletons(s, depth, ref st);
-            return;
-        }
-        PlanTopN(s, depth, src, ref st);
-    }
-
-    static void PlanTopN(SidebarSectionSpec s, byte depth, IReadOnlyList<SidebarLibraryEntry>? src, ref PlanState st)
-    {
-        int start = st.Entries.Count;
-        int cap = Cap(s, DynamicSectionRowCap);
-        if (src is not null)
-            for (int i = 0; i < src.Count && st.Entries.Count - start < cap; i++) st.Entries.Add(src[i]);
-
-        int count = st.Entries.Count - start;
-        if (count == 0) { Add(ref st, Chrome(SidebarRowKind.Empty, s, depth)); return; }
-        EmitProjected(s, depth, start, count, ref st);
-    }
-
-    static void PlanConcerts(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        // Location unset is an ACTIONABLE degraded state, not an empty list.
-        if (input.ConcertsLocationUnset) { Add(ref st, Chrome(SidebarRowKind.PromptRow, s, depth)); return; }
-        PlanFeed(s, depth, input.Concerts, input.ConcertsState, ref st);
-    }
-
-    static void PlanPlaylistTree(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var tree = input.PlaylistTree;
-        if (input.TreeState == SidebarSourceState.Pending && (tree is null || tree.Count == 0))
-        {
-            EmitSkeletons(s, depth, ref st);
-            return;
-        }
-        if (tree is null || tree.Count == 0)
-        {
-            // The kind's ordinary Empty hint, and nothing else. The affordance is the header's "+" now.
-            Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-            return;
-        }
-
-        string? search = Search(input);
-        if (search is not null || IsGrid(s, in st))
-            PlanFlatPlaylistTree(s, depth, tree, search, in input, ref st);
-        else if (s.Query is null)
-            PlanSourcePlaylistTree(s, depth, tree, in input, ref st);
-        else
-            PlanQueriedPlaylistTree(s, depth, tree, s.Query, in input, ref st);
-
-        // The closing gutter, and only where there is a tree to close: an empty section's placeholder is not
-        // something you can drop AFTER, and a skeleton has no order yet. It is the section's LAST row outright.
-        if (EmittedTreeRows(in st)) Add(ref st, Chrome(SidebarRowKind.TreeEnd, s, depth));
-    }
-
-    /// <summary>Did the tree body just emit a real, orderable row? A trailing Empty/Skeleton means it did not.</summary>
-    static bool EmittedTreeRows(in PlanState st)
-    {
-        var rows = st.Rows;
-        if (rows.Count == 0) return false;
-        return rows[rows.Count - 1].Kind is SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader
-                                          or SidebarRowKind.GridStrip;
-    }
-
-    static void PlanSourcePlaylistTree(SidebarSectionSpec s, byte depth,
-        IReadOnlyList<SidebarLibraryEntry> tree, in SidebarProjectionInput input, ref PlanState st)
-    {
-        int emitted = 0;
-        int hidePinDepth = -1;   // >= 0 while walking a pinned folder's subtree (reachable through the pin, not here)
-        for (int i = 0; i < tree.Count && emitted < DynamicSectionRowCap; i++)
-        {
-            var e = tree[i];
-            if (hidePinDepth >= 0)
-            {
-                if (e.Depth > hidePinDepth) continue;
-                hidePinDepth = -1;
-            }
-            // The compact rail is top level only: a folder is a tile whose flyout holds its children.
-            if (st.Compact && e.Depth > 0) continue;
-            if (HiddenByPin(in input, in st, in e))
-            {
-                if (e.Kind == SidebarEntryKind.Folder) hidePinDepth = e.Depth;
-                continue;
-            }
-
-            byte d = (byte)Math.Min(depth + e.Depth, byte.MaxValue);
-            int at = st.Entries.Count;
-            st.Entries.Add(e);
-            if (e.Kind == SidebarEntryKind.Folder)
-            {
-                Add(ref st, new SidebarRow(SidebarRowKind.FolderHeader, s.Id, d, at, 0, e.Id));
-                emitted++;
-                if (st.Compact || !IsExpanded(input, e.FolderId))
-                {
-                    int myDepth = e.Depth;
-                    while (i + 1 < tree.Count && tree[i + 1].Depth > myDepth) i++;
-                }
-                continue;
-            }
-            Add(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, d, at, 0, e.Id));
-            emitted++;
-        }
-        if (emitted == 0) Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-    }
-
-    static void PlanFlatPlaylistTree(SidebarSectionSpec s, byte depth,
-        IReadOnlyList<SidebarLibraryEntry> tree, string? search, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var q = SidebarSectionKinds.EffectiveQuery(SidebarSectionKind.PlaylistTree, s.Query);
-        int start = st.Entries.Count;
-        int hidePinDepth = -1;
-        for (int i = 0; i < tree.Count && st.Entries.Count - start < DynamicSectionRowCap; i++)
-        {
-            var e = tree[i];
-            if (hidePinDepth >= 0)
-            {
-                if (e.Depth > hidePinDepth) continue;
-                hidePinDepth = -1;
-            }
-            if (HiddenByPin(in input, in st, in e))
-            {
-                if (e.Kind == SidebarEntryKind.Folder) hidePinDepth = e.Depth;
-                continue;
-            }
-            if (e.Kind == SidebarEntryKind.Folder || !TreeLeafMatches(q, in e, search)) continue;
-            st.Entries.Add(e);
-        }
-
-        int count = st.Entries.Count - start;
-        if (count == 0) { Add(ref st, Chrome(SidebarRowKind.Empty, s, depth)); return; }
-        if (s.Query is not null && count > 1)
-            System.Runtime.InteropServices.CollectionsMarshal.AsSpan(st.Entries).Slice(start, count)
-                .Sort(new EntryOrder(q.Sort, q.Descending, input.PinnedIds));
-        EmitProjected(s, depth, start, count, ref st);
-    }
-
-    /// <summary>Filter a flattened preorder without breaking its tree: leaf slots sort only against other leaf slots
-    /// under the same immediate parent; folders keep their structural source positions and survive iff a descendant
-    /// leaf survives. Scratch lists belong to SidebarPlanBuffers, so a warm re-plan allocates nothing.</summary>
-    static void PlanQueriedPlaylistTree(SidebarSectionSpec s, byte depth,
-        IReadOnlyList<SidebarLibraryEntry> tree, SidebarEntityQuery q,
-        in SidebarProjectionInput input, ref PlanState st)
-    {
-        var parents = st.TreeParents;
-        var visible = st.TreeVisible;
-        var leaves = st.TreeLeaves;
-        var cursors = st.TreeCursors;
-        if (!PrepareQueriedPlaylistTree(tree, q, in input, ref st))
-        {
-            Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-            return;
-        }
-
-        int emitted = 0;
-        for (int i = 0; i < tree.Count && emitted < DynamicSectionRowCap; i++)
-        {
-            if (visible[i] == 0) continue;
-            var source = tree[i];
-            // The compact rail is top level only, as in PlanSourcePlaylistTree.
-            if (st.Compact && source.Depth > 0) continue;
-            byte d = (byte)Math.Min(depth + source.Depth, byte.MaxValue);
-            if (source.Kind == SidebarEntryKind.Folder)
-            {
-                int at = st.Entries.Count;
-                st.Entries.Add(source);
-                Add(ref st, new SidebarRow(SidebarRowKind.FolderHeader, s.Id, d, at, 0, source.Id));
-                emitted++;
-                if (st.Compact || !IsExpanded(input, source.FolderId))
-                {
-                    int myDepth = source.Depth;
-                    while (i + 1 < tree.Count && tree[i + 1].Depth > myDepth) i++;
-                }
-                continue;
-            }
-
-            int parentSlot = parents[i] + 1;
-            int sortedSource = leaves[cursors[parentSlot]++];
-            var leaf = tree[sortedSource];
-            int entryAt = st.Entries.Count;
-            st.Entries.Add(leaf);
-            Add(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, d, entryAt, 0, leaf.Id));
-            emitted++;
-        }
-    }
-
-    static bool PrepareQueriedPlaylistTree(IReadOnlyList<SidebarLibraryEntry> tree, SidebarEntityQuery q,
-        in SidebarProjectionInput input, ref PlanState st)
-    {
-        var parents = st.TreeParents;
-        var visible = st.TreeVisible;
-        var leaves = st.TreeLeaves;
-        var cursors = st.TreeCursors;
-        var ancestors = st.TreeAncestors;
-        parents.Clear();
-        visible.Clear();
-        leaves.Clear();
-        cursors.Clear();
-        ancestors.Clear();
-
-        int hidePinDepth = -1;
-        for (int i = 0; i < tree.Count; i++)
-        {
-            var e = tree[i];
-            while (ancestors.Count > 0 && tree[ancestors[^1]].Depth >= e.Depth)
-                ancestors.RemoveAt(ancestors.Count - 1);
-
-            int parent = ancestors.Count == 0 ? -1 : ancestors[^1];
-            parents.Add(parent);
-            visible.Add(0);
-
-            bool inHiddenSubtree = hidePinDepth >= 0 && e.Depth > hidePinDepth;
-            if (!inHiddenSubtree && hidePinDepth >= 0) hidePinDepth = -1;   // exited a previously hidden subtree
-
-            if (e.Kind == SidebarEntryKind.Folder)
-            {
-                ancestors.Add(i);
-                if (!inHiddenSubtree && HiddenByPin(in input, in st, in e)) hidePinDepth = e.Depth;
-                continue;
-            }
-            if (inHiddenSubtree || HiddenByPin(in input, in st, in e)) continue;
-            if (!TreeLeafMatches(q, in e, search: null)) continue;
-
-            visible[i] = 1;
-            leaves.Add(i);
-            for (int a = 0; a < ancestors.Count; a++) visible[ancestors[a]] = 1;
-        }
-
-        if (leaves.Count == 0) return false;
-        System.Runtime.InteropServices.CollectionsMarshal.AsSpan(leaves).Sort(
-            new TreeLeafOrder(tree, parents, new EntryOrder(q.Sort, q.Descending, input.PinnedIds)));
-
-        for (int i = 0; i <= tree.Count; i++) cursors.Add(-1);
-        for (int i = 0; i < leaves.Count; i++)
-        {
-            int slot = parents[leaves[i]] + 1;
-            if (cursors[slot] < 0) cursors[slot] = i;
-        }
-        return true;
-    }
-
-    static bool TreeLeafMatches(SidebarEntityQuery q, in SidebarLibraryEntry e, string? search)
-    {
-        if (!KindMatches(q.Kinds, e.Kind)) return false;
-        if (q.Qualifier != SidebarPlaylistQualifier.Any &&
-            (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier((byte)q.Qualifier))) return false;
-        if (!UriMatches(q, in e)) return false;
-        return search is null || SidebarSearch.Matches(in e, search);
-    }
-
-    static void PlanEntityList(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var lib = input.Library;
-        if (input.LibraryState == SidebarSourceState.Pending && (lib is null || lib.Count == 0))
-        {
-            EmitSkeletons(s, depth, ref st);
-            return;
-        }
-
-        var q = s.Query ?? SidebarEntityQuery.Default;
-        string? search = Search(input);
-        int start = st.Entries.Count;
-
-        if (lib is not null)
-            for (int i = 0; i < lib.Count && st.Entries.Count - start < DynamicSectionRowCap; i++)
-            {
-                var e = lib[i];
-                if (!KindMatches(q.Kinds, e.Kind)) continue;
-                if (q.Qualifier != SidebarPlaylistQualifier.Any &&
-                    (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier((byte)q.Qualifier))) continue;
-                if (!UriMatches(q, in e)) continue;
-                if (search is not null && !SidebarSearch.Matches(in e, search)) continue;
-                if (HiddenByPin(in input, in st, in e)) continue;
-                st.Entries.Add(e);
-            }
-
-        int count = st.Entries.Count - start;
-        if (count == 0) { Add(ref st, Chrome(SidebarRowKind.Empty, s, depth)); return; }
-
-        // Sort the slice in place — no temporary list, no boxed comparer (struct comparer, generic Span.Sort).
-        if (count > 1)
-            System.Runtime.InteropServices.CollectionsMarshal.AsSpan(st.Entries).Slice(start, count)
-                .Sort(new EntryOrder(q.Sort, q.Descending, input.PinnedIds));
-
-        int cap = Cap(s, DynamicSectionRowCap);
-        if (count > cap)
-        {
-            // MaxItems truncates the PLAN, never the document.
-            st.Entries.RemoveRange(start + cap, count - cap);
-            count = cap;
-        }
-
-        EmitProjected(s, depth, start, count, ref st);
-    }
-
-    static void PlanGroup(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        int before = st.Rows.Count;
-        byte inner = (byte)Math.Min(depth + 1, byte.MaxValue);
-        PlanItems(s, inner, in input, ref st, iconRows: true, emitEmpty: false);
-
-        var kids = s.ChildList;
-        for (int i = 0; i < kids.Count; i++) PlanSection(kids[i], inner, in input, ref st);
-
-        if (st.Rows.Count == before) Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-    }
-
-    static void PlanEmbed(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st)
-    {
-        var items = s.ItemList;
-        if (items.Count == 0 || items[0].Hidden)
-        {
-            Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-            return;
-        }
-
-        var item = items[0];
-        int idx = Resolve(in input, item.Key, ref st);
-        // A missing entity is STILL a card (dimmed, from fallback title/image, play affordance hidden) —
-        // EntryIndex == -1 is the signal, and the item is never auto-removed.
-        if (st.Compact) { if (idx >= 0) Add(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, depth, idx, 0, item.Key)); return; }
-        Add(ref st, new SidebarRow(SidebarRowKind.EntityCard, s.Id, depth, idx, 0, item.Key));
-    }
-
-    static void PlanItems(SidebarSectionSpec s, byte depth, in SidebarProjectionInput input, ref PlanState st,
-        bool iconRows, bool emitEmpty = true)
-    {
-        var items = s.ItemList;
-        int emitted = 0;
-        for (int i = 0; i < items.Count && emitted < SectionRowCap; i++)
-        {
-            var item = items[i];
-            if (item.Hidden) continue;
-
-            if (item.Target == SidebarItemTarget.Route)
-            {
-                // A pinned route (e.g. "liked", or Home) already draws as a pin — skip the shortcut's own row.
-                if (IsRouteHiddenByPin(in input, in st, item.Key)) continue;
-                // Routes are glyph rows — a hand-picked page has no artwork and never resolves against the projection.
-                Add(ref st, new SidebarRow(iconRows ? SidebarRowKind.IconRow : SidebarRowKind.EntityRow,
-                    s.Id, depth, -1, 0, item.Key));
-                emitted++;
-                continue;
-            }
-
-            int idx = Resolve(in input, item.Key, ref st);
-            if (item.Target == SidebarItemTarget.Track)
-            {
-                // A track has no detail route, and a HAND-PLACED track is not part of the library projection either
-                // (only a feed source emits SidebarEntryKind.Track rows): the row renders from the item spec and
-                // PLAYS on click. Tracks are never pinnable, so no HiddenByPin check applies here.
-                Add(ref st, new SidebarRow(SidebarRowKind.EntityRow, s.Id, depth, idx, 0, item.Key));
-                emitted++;
-                continue;
-            }
-
-            // An ENTITY item whose resolved entry is pinned already draws as a pin — skip the shortcut's own row. An
-            // unresolved item (idx < 0) has nothing to test and keeps the existing Placeholder behaviour.
-            if (idx >= 0 && HiddenByPin(in input, in st, st.Entries[idx]))
-            {
-                st.Entries.RemoveAt(idx);   // Resolve just appended it at the tail — undo so no orphan entry lingers
-                continue;
-            }
-
-            Add(ref st, new SidebarRow(idx >= 0 ? SidebarRowKind.EntityRow : SidebarRowKind.Placeholder,
-                s.Id, depth, idx, 0, item.Key));
-            emitted++;
-        }
-
-        if (emitted == 0 && emitEmpty) Add(ref st, Chrome(SidebarRowKind.Empty, s, depth));
-    }
-
-    // ── shared plumbing ──────────────────────────────────────────────────────────────────────────────────────────────
-
-    struct PlanState
-    {
-        public List<SidebarRow> Rows;
-        public List<SidebarLibraryEntry> Entries;
-        public List<int> TreeParents;
-        public List<byte> TreeVisible;
-        public List<int> TreeLeaves;
-        public List<int> TreeCursors;
-        public List<int> TreeAncestors;
-        public bool DividerPending;
-        public string? DividerSectionId;
-        public byte DividerDepth;
-        // Set once by Build (HasPinnedSection): does the document have a visible Pinned section? Gates
-        // HiddenByPin/IsRouteHiddenByPin — stays false for BuildEdit, whose customize canvas must show every item.
-        public bool ExcludePinned;
-        // Set by Build(compact: true): the 48-DIP rail's plan. Headers and the placeholder rows are not tiles, and a
-        // folder's children stay in its flyout (see Add and PlanSection).
-        public bool Compact;
-    }
-
-    static PlanState Begin(SidebarPlanBuffers? buffers)
-    {
-        var rows = buffers?.Rows ?? new List<SidebarRow>(64);
-        var entries = buffers?.Entries ?? new List<SidebarLibraryEntry>(64);
-        var treeParents = buffers?.TreeParents ?? new List<int>(64);
-        var treeVisible = buffers?.TreeVisible ?? new List<byte>(64);
-        var treeLeaves = buffers?.TreeLeaves ?? new List<int>(64);
-        var treeCursors = buffers?.TreeCursors ?? new List<int>(64);
-        var treeAncestors = buffers?.TreeAncestors ?? new List<int>(8);
-        rows.Clear();
-        entries.Clear();
-        treeParents.Clear();
-        treeVisible.Clear();
-        treeLeaves.Clear();
-        treeCursors.Clear();
-        treeAncestors.Clear();
-        return new PlanState
-        {
-            Rows = rows,
-            Entries = entries,
-            TreeParents = treeParents,
-            TreeVisible = treeVisible,
-            TreeLeaves = treeLeaves,
-            TreeCursors = treeCursors,
-            TreeAncestors = treeAncestors,
-        };
-    }
-
-    /// <summary>The rail has no grid: a Grid section tiles its entries one per row, like a list.</summary>
-    static bool IsGrid(SidebarSectionSpec s, in PlanState st) => !st.Compact && s.Opts.Presentation == SidebarPresentation.Grid;
-
-    /// <summary>The one row sink. A pending divider resolves HERE, which is what makes leading/trailing dividers
-    /// vanish and consecutive dividers collapse — no post-pass, no second walk:
-    ///   * TRAILING — a divider that is never followed by a row is simply never flushed;
-    ///   * LEADING  — a divider flushed before any row exists has nothing to separate, so it is dropped;
-    ///   * CONSECUTIVE — a run of dividers keeps overwriting the pending slot, so only the last one draws.
-    /// A hidden or empty-and-invisible section in between therefore cannot strand a rule either.</summary>
-    static void Add(ref PlanState st, in SidebarRow row)
-    {
-        // The compact rail has no placeholder rows: an empty hint, a skeleton, the tree's gutter and a prompt are all
-        // pane chrome with no tile to draw. One seam here, so no call site can forget it.
-        if (st.Compact && row.Kind is SidebarRowKind.Empty or SidebarRowKind.Skeleton or SidebarRowKind.TreeEnd
-                                      or SidebarRowKind.PromptRow) return;
-        if (st.DividerPending)
-        {
-            st.DividerPending = false;
-            var id = st.DividerSectionId!;
-            byte depth = st.DividerDepth;
-            st.DividerSectionId = null;
-            st.DividerDepth = 0;
-            if (st.Rows.Count > 0) st.Rows.Add(new SidebarRow(SidebarRowKind.Divider, id, depth, -1, 0, id));
-        }
-        st.Rows.Add(row);
-    }
-
-    static SidebarRow Chrome(SidebarRowKind kind, SidebarSectionSpec s, byte depth)
-        => new(kind, s.Id, depth, -1, 0, s.Id);
-
-    static void EmitSkeletons(SidebarSectionSpec s, byte depth, ref PlanState st)
-    {
-        for (int i = 0; i < SkeletonRows; i++) Add(ref st, Chrome(SidebarRowKind.Skeleton, s, depth));
-    }
-
-    /// <summary>Turns an already-appended entry slice into rows: one EntityRow each, or GridColumns-wide GridStrips.</summary>
-    static void EmitProjected(SidebarSectionSpec s, byte depth, int start, int count, ref PlanState st)
-    {
-        if (IsGrid(s, in st))
-        {
-            int cols = Math.Clamp(s.Opts.GridColumns, 2, 4);
-            for (int i = 0; i < count; i += cols)
-                Add(ref st, new SidebarRow(SidebarRowKind.GridStrip, s.Id, depth, start + i,
-                    Math.Min(cols, count - i), s.Id));
-            return;
-        }
-        for (int i = 0; i < count; i++)
-        {
-            var e = st.Entries[start + i];
-            // A folder can reach a projected section two ways: pinned (playlist folders are pinnable) or via a
-            // Playlists-kinded EntityList (which maps to the whole tree).
-            Add(ref st, new SidebarRow(e.IsFolder ? SidebarRowKind.FolderHeader : SidebarRowKind.EntityRow,
-                s.Id, depth, start + i, 0, e.Id));
-        }
-    }
-
-    static int Resolve(in SidebarProjectionInput input, string key, ref PlanState st)
-    {
-        if (input.ByUri is null || key.Length == 0) return -1;
-        if (!input.ByUri.TryGetValue(key, out var e)) return -1;
-        int idx = st.Entries.Count;
-        st.Entries.Add(e);
-        return idx;
-    }
-
-    static int Cap(SidebarSectionSpec s, int hard)
-    {
-        int m = s.Opts.MaxItems;
-        return m > 0 ? Math.Min(m, hard) : hard;
-    }
-
-    static bool IsHiddenOverride(SidebarSectionSpec s, in SidebarLibraryEntry e)
-    {
-        var items = s.ItemList;
-        for (int i = 0; i < items.Count; i++)
-        {
-            if (!items[i].Hidden) continue;
-            var k = items[i].Key;
-            if (string.Equals(k, e.Uri, StringComparison.Ordinal) ||
-                string.Equals(k, e.Id, StringComparison.Ordinal)) return true;
-        }
-        return false;
-    }
-
-    static bool IsExpanded(in SidebarProjectionInput input, string folderId)
-        => input.ExpandedFolders is null || input.ExpandedFolders.Contains(folderId);
-
-    /// <summary>Once an item is pinned it must not ALSO appear in the normal lists — one predicate, applied everywhere
-    /// a library entry or tree entry is walked. <c>PlanPinned</c> itself is untouched — this only hides an entry from
-    /// EVERYTHING ELSE.
-    /// <para><see cref="PlanState.ExcludePinned"/> gates the whole rule: a document WITHOUT a visible Pinned section
-    /// keeps showing pinned items in place — otherwise they would vanish from the sidebar entirely.</para></summary>
-    static bool HiddenByPin(in SidebarProjectionInput input, in PlanState st, in SidebarLibraryEntry e)
-        => st.ExcludePinned && (e.IsPinned || (input.PinnedIds is { } p && p.Contains(e.Id)));
-
-    /// <summary>The shortcut-item mirror of <see cref="HiddenByPin"/> for a <c>Route</c> target (Classic's "Liked
-    /// Songs" row, a pinned "Home", ...), which has no projected <see cref="SidebarLibraryEntry"/> to test — only the
-    /// route's own pin identity against the pin set.</summary>
-    static bool IsRouteHiddenByPin(in SidebarProjectionInput input, in PlanState st, string routeKey)
-    {
-        if (!st.ExcludePinned || input.PinnedIds is not { } pins) return false;
-        return SidebarPinId.FromRoute(routeKey) is { } pinId && pins.Contains(pinId);
-    }
-
-    /// <summary>Does the document have a visible Pinned section — top-level or one level deep inside a CustomGroup
-    /// (the only nesting a section may have)? Computed once per Build and stashed on PlanState so every
-    /// walker reads a flag instead of re-scanning the document.</summary>
-    static bool HasPinnedSection(SidebarCustomLayout layout)
-    {
-        var sections = layout.Sections;
-        for (int i = 0; i < sections.Count; i++)
-        {
-            var s = sections[i];
-            if (s.Kind == SidebarSectionKind.Pinned && !s.Hidden) return true;
-            var kids = s.ChildList;
-            for (int j = 0; j < kids.Count; j++)
-                if (kids[j].Kind == SidebarSectionKind.Pinned && !kids[j].Hidden) return true;
-        }
-        return false;
-    }
-
-    static string FolderId(in SidebarLibraryEntry entry)
-        => entry.FolderId.Length > 0 ? entry.FolderId : SidebarPinId.FolderIdOf(entry.Id);
-
-    /// <summary>The trimmed library-only query, or null when the pane is not searching.</summary>
-    static string? Search(in SidebarProjectionInput input)
-    {
-        var q = SidebarSearch.Normalize(input.Search);
-        return q.Length == 0 ? null : q;
-    }
-
-    static bool KindMatches(SidebarEntityKinds kinds, SidebarEntryKind kind)
-        => SidebarEntryKinds.Has(SidebarEntryKinds.From(kinds), kind);
-
-    /// <summary>The query's include/exclude uri sets — "only these artists" without turning the section into a
-    /// manually maintained item list. <c>Include</c> is a WHITELIST (null/empty = everything passes) and
-    /// <c>Exclude</c> ALWAYS wins, so a uri named in both is excluded. Each key is matched against the entry's uri OR
-    /// its id, because an authored list may legitimately be written in either vocabulary.</summary>
-    static bool UriMatches(SidebarEntityQuery q, in SidebarLibraryEntry e)
-    {
-        var exclude = q.ExcludeUris;
-        if (exclude is { Count: > 0 })
-            for (int i = 0; i < exclude.Count; i++)
-                if (SameEntity(exclude[i], in e)) return false;
-
-        var include = q.IncludeUris;
-        if (include is not { Count: > 0 }) return true;
-        for (int i = 0; i < include.Count; i++)
-            if (SameEntity(include[i], in e)) return true;
-        return false;
-    }
-
-    static bool SameEntity(string? key, in SidebarLibraryEntry e)
-        => key is { Length: > 0 }
-           && (string.Equals(key, e.Uri, StringComparison.Ordinal) || string.Equals(key, e.Id, StringComparison.Ordinal));
-
-    /// <summary>An empty rank map: <c>SidebarSortMode.CustomOrder</c> is Mode B's LOCAL overlay, which a Curated
-    /// EntityList has no access to — <c>SidebarSort.Custom</c> with no ranks is exactly the documented degradation
-    /// (pure SourceOrder + the ordinal Id tiebreak), so the order is still total and deterministic.</summary>
-    static readonly Dictionary<string, int> NoRanks = new(0, StringComparer.Ordinal);
-
-    /// <summary>Total order over the projection: pins first, then the section's sort mode. The per-mode comparison is
-    /// SidebarSort's — the one owner of sidebar collation — so a Curated EntityList and the V3 list can never drift
-    /// apart. A struct comparer + the generic Span.Sort overload means no boxing and no per-plan delegate.</summary>
-    readonly struct EntryOrder : IComparer<SidebarLibraryEntry>
-    {
-        readonly SidebarSortMode _mode;
-        readonly bool _desc;
-        readonly IReadOnlySet<string>? _pins;
-
-        public EntryOrder(SidebarSortMode mode, bool descending, IReadOnlySet<string>? pins)
-        {
-            _mode = mode;
-            // DIRECTION RECONCILIATION. SidebarSort's `desc` means "REVERSE this comparator's natural direction", and
-            // its recency comparators are naturally newest-first; the Core query's `Descending` means "descending"
-            // literally. Map per mode so the default query (Recents, Descending: true) really is newest-first and
-            // PlaylistsAlphabetical (Descending: false) really is A->Z.
-            _desc = mode is SidebarSortMode.Recents or SidebarSortMode.RecentlyAdded ? !descending : descending;
-            _pins = pins;
-        }
-
-        public int Compare(SidebarLibraryEntry a, SidebarLibraryEntry b)
-        {
-            // Pins sort first in EVERY sort mode. The caller's explicit set wins; otherwise the projection's own
-            // IsPinned stamp is the authority.
-            bool pa = _pins?.Contains(a.Id) ?? a.IsPinned;
-            bool pb = _pins?.Contains(b.Id) ?? b.IsPinned;
-            if (pa != pb) return pa ? -1 : 1;
-
-            return _mode switch
-            {
-                SidebarSortMode.RecentlyAdded => SidebarSort.RecentlyAdded(in a, in b, _desc),
-                SidebarSortMode.Alphabetical => SidebarSort.Alphabetical(in a, in b, _desc),
-                SidebarSortMode.Creator => SidebarSort.Creator(in a, in b, _desc),
-                SidebarSortMode.CustomOrder => SidebarSort.Custom(in a, in b, NoRanks),
-                _ => SidebarSort.Recents(in a, in b, _desc),
-            };
-        }
-    }
-
-    /// <summary>Sort leaf source indices into parent bands, then by the shared entry order inside each band.</summary>
-    readonly struct TreeLeafOrder : IComparer<int>
-    {
-        readonly IReadOnlyList<SidebarLibraryEntry> _tree;
-        readonly IReadOnlyList<int> _parents;
-        readonly EntryOrder _entries;
-
-        public TreeLeafOrder(IReadOnlyList<SidebarLibraryEntry> tree, IReadOnlyList<int> parents, EntryOrder entries)
-        {
-            _tree = tree;
-            _parents = parents;
-            _entries = entries;
-        }
-
-        public int Compare(int a, int b)
-        {
-            int parent = _parents[a].CompareTo(_parents[b]);
-            return parent != 0 ? parent : _entries.Compare(_tree[a], _tree[b]);
-        }
-    }
-}
 // ── DROP, TREE NAV, FOLDER FLYOUT AND MULTI-SELECTION ─────────────────────────────────────────────────────────────
 //
 // The rootlist drag-and-drop authority, and the non-mouse verbs that share it. ONE pure resolver turns a pointer
@@ -3517,13 +2416,11 @@ public sealed class SidebarTreeSelection
         return changed;
     }
 }
-// ── PROJECTION, SHAPING PIPELINE, SORT, SEARCH & THE DATA-SOURCE CONTRACT ─────────────────────────────────────────────
+// ── PROJECTION, SHAPING PIPELINE, SORT, SEARCH ───────────────────────────────────────────────────────────────────────
 //
-// The pure half of the binder: turns `User.Me`'s edges into the flat `SidebarLibraryEntry` list every design renders
-// (SidebarProjection), filters/sorts/pins-first-partitions that list for a view (SidebarSort, SidebarSearch,
-// SidebarBinderPipeline), decides which extension section resolves to which row slice (SidebarDataSourceTable /
-// SidebarExtensionSlices / SidebarContributionCache), and the contribution CONTRACT third-party sources implement
-// (SidebarDataSource). Nothing here awaits, fetches, hydrates or touches a store — that half is Sidebar.Host.cs.
+// The pure half of the binder: turns `User.Me`'s edges into the flat `SidebarLibraryEntry` list both layouts render
+// (SidebarProjection) and filters/sorts/pins-first-partitions it for Your Library (SidebarSort, SidebarSearch,
+// SidebarBinderPipeline). Nothing here awaits, fetches, hydrates or touches a store — that half is Sidebar.Host.cs.
 
 // ── SidebarSort — the five row orders (ported verbatim) ──────────────────────────────────────────────────────────────
 //
@@ -3552,16 +2449,16 @@ public static class SidebarSort
     static readonly Comparison<SidebarLibraryEntry> s_creatorDesc = static (a, b) => Creator(in a, in b, desc: true);
 
     /// <summary>The comparator for a (sort, direction) pair. <paramref name="customOrder"/> is read only for
-    /// <see cref="SidebarV3Sort.Custom"/>; null/empty degrades to pure SourceOrder.</summary>
-    public static Comparison<SidebarLibraryEntry> For(SidebarV3Sort sort, bool desc,
+    /// <see cref="SidebarLibrarySort.CustomOrder"/>; null/empty degrades to pure SourceOrder.</summary>
+    public static Comparison<SidebarLibraryEntry> For(SidebarLibrarySort sort, bool desc,
                                                      IReadOnlyList<string>? customOrder = null)
     {
         switch (sort)
         {
-            case SidebarV3Sort.RecentlyAdded: return desc ? s_addedDesc : s_addedAsc;
-            case SidebarV3Sort.Alphabetical: return desc ? s_alphaDesc : s_alphaAsc;
-            case SidebarV3Sort.Creator: return desc ? s_creatorDesc : s_creatorAsc;
-            case SidebarV3Sort.Custom:
+            case SidebarLibrarySort.RecentlyAdded: return desc ? s_addedDesc : s_addedAsc;
+            case SidebarLibrarySort.Alphabetical: return desc ? s_alphaDesc : s_alphaAsc;
+            case SidebarLibrarySort.Creator: return desc ? s_creatorDesc : s_creatorAsc;
+            case SidebarLibrarySort.CustomOrder:
             {
                 // Rank map: O(1) lookups instead of an IndexOf per comparison. `desc` is deliberately IGNORED.
                 var rank = BuildRanks(customOrder);
@@ -3572,7 +2469,7 @@ public static class SidebarSort
     }
 
     /// <summary>Sort in place. Filters run BEFORE the sort; pins are partitioned AFTER it.</summary>
-    public static void Apply(List<SidebarLibraryEntry> list, SidebarV3Sort sort, bool desc,
+    public static void Apply(List<SidebarLibraryEntry> list, SidebarLibrarySort sort, bool desc,
                              IReadOnlyList<string>? customOrder = null)
     {
         if (list.Count > 1) list.Sort(For(sort, desc, customOrder));
@@ -3580,11 +2477,11 @@ public static class SidebarSort
 
     /// <summary>Custom exists only under the Playlists filter; elsewhere it falls back to Alphabetical FOR DISPLAY
     /// while the persisted preference is left untouched.</summary>
-    public static SidebarV3Sort Effective(SidebarV3Sort sort, SidebarV3Filter filter) =>
-        sort == SidebarV3Sort.Custom && filter != SidebarV3Filter.Playlists ? SidebarV3Sort.Alphabetical : sort;
+    public static SidebarLibrarySort Effective(SidebarLibrarySort sort, SidebarLibraryFilter filter) =>
+        sort == SidebarLibrarySort.CustomOrder && filter != SidebarLibraryFilter.Playlists ? SidebarLibrarySort.Alphabetical : sort;
 
     /// <summary>True when the direction affordance should be shown at all (Custom has no inverse).</summary>
-    public static bool SupportsDirection(SidebarV3Sort sort) => sort != SidebarV3Sort.Custom;
+    public static bool SupportsDirection(SidebarLibrarySort sort) => sort != SidebarLibrarySort.CustomOrder;
 
     public static Dictionary<string, int> BuildRanks(IReadOnlyList<string>? order)
     {
@@ -3957,7 +2854,7 @@ public static class SidebarProjection
                     SourceOrder: i, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
                 {
                     FolderId = "", FolderName = "", FirstArtistName = "", LastPlayedMs = LastPlayed(lastPlayed, uri),
-                    IdentityKnown = identityKnown,
+                    IdentityKnown = identityKnown, IsAudiobook = LibraryAudiobookFilter.IsAudiobookRow(sh.Flags),
                 });
             }
         }
@@ -4510,12 +3407,13 @@ public static class SidebarLibraryFingerprint
     }
 }
 
-/// <summary>The Library-V3 view state a rebuild shapes the published entry list with.</summary>
-public readonly record struct SidebarV3Query(
-    SidebarV3Filter Filter = SidebarV3Filter.All,
+/// <summary>Your Library's shaping state: the chip, the qualifier (deleted in P5), the hidden kinds, the sort and the search.</summary>
+public readonly record struct SidebarLibraryQuery(
+    SidebarLibraryFilter Filter = SidebarLibraryFilter.None,
     SidebarV3Qualifier Qualifier = SidebarV3Qualifier.Any,
-    SidebarV3Sort Sort = SidebarV3Sort.Recents,
-    bool Descending = true,
+    SidebarLibraryKinds HiddenKinds = SidebarLibraryKinds.None,
+    SidebarLibrarySort Sort = SidebarLibrarySort.Recents,
+    bool Descending = false,
     string? Search = null,
     bool QualifiersAvailable = false);
 
@@ -4524,8 +3422,8 @@ public readonly record struct SidebarEntriesShape(int Count, int PinCount);
 
 public static class SidebarBinderPipeline
 {
-    /// <summary>Shape the unified projection into the list a V3/Classic surface renders: FILTER (kinds → qualifier →
-    /// search), then SORT, then the pins-first partition — the order that makes pins lead in every sort mode.
+    /// <summary>Shape the unified projection into the list Your Library renders: FILTER (kinds, the chip's exact match,
+    /// qualifier, search), then SORT, then the pins-first partition — the order that makes pins lead in every sort mode.
     /// <paramref name="all"/> is the full source-order projection (every kind); <paramref name="into"/> and
     /// <paramref name="scratch"/> are caller-owned and reused.
     ///
@@ -4536,9 +3434,8 @@ public static class SidebarBinderPipeline
         IReadOnlyList<SidebarLibraryEntry>? all,
         List<SidebarLibraryEntry> into,
         List<SidebarLibraryEntry> scratch,
-        in SidebarV3Query query,
-        IReadOnlyList<SidebarPin>? pins = null,
-        IReadOnlyList<string>? customOrder = null)
+        in SidebarLibraryQuery query,
+        IReadOnlyList<SidebarPin>? pins = null)
     {
         ArgumentNullException.ThrowIfNull(into);
         ArgumentNullException.ThrowIfNull(scratch);
@@ -4549,17 +3446,17 @@ public static class SidebarBinderPipeline
         for (int i = 0; i < all.Count; i++)
             if (SidebarEntryKinds.Has(kinds, all[i].Kind)) into.Add(all[i]);
 
-        return Shape(into, scratch, in query, pins, customOrder);
+        return Shape(into, scratch, in query, pins);
     }
 
-    /// <summary>The IN-PLACE half of <see cref="Project"/>, for a list that already holds exactly the kinds the filter
-    /// wants: compact by qualifier + search, then sort, then partition pins to the front.</summary>
+    /// <summary>The IN-PLACE half of <see cref="Project"/>, for a list that already holds the kinds the filter's MASK wants:
+    /// compact by hidden kinds + the chip's exact match (the Podcasts/Audiobooks split the mask cannot express) + qualifier
+    /// + search, then sort, then partition pins to the front.</summary>
     public static SidebarEntriesShape Shape(
         List<SidebarLibraryEntry> list,
         List<SidebarLibraryEntry> scratch,
-        in SidebarV3Query query,
-        IReadOnlyList<SidebarPin>? pins = null,
-        IReadOnlyList<string>? customOrder = null)
+        in SidebarLibraryQuery query,
+        IReadOnlyList<SidebarPin>? pins = null)
     {
         ArgumentNullException.ThrowIfNull(list);
         ArgumentNullException.ThrowIfNull(scratch);
@@ -4567,23 +3464,33 @@ public static class SidebarBinderPipeline
         string search = SidebarSearch.Normalize(query.Search);
         bool searching = search.Length > 0;
         byte qualifier = query.QualifiersAvailable ? (byte)query.Qualifier : (byte)0;
+        // Not only while searching: the kind mask cannot split Podcasts from Audiobooks (both are Show) and does not know the
+        // kinds hidden through Filters, so the loop also runs for a hidden kind and for those two chips.
+        bool narrow = searching || qualifier != 0 || query.HiddenKinds != SidebarLibraryKinds.None
+                      || query.Filter is SidebarLibraryFilter.Podcasts or SidebarLibraryFilter.Audiobooks;
 
-        if (searching || qualifier != 0)
+        if (narrow)
         {
             int write = 0;
             for (int read = 0; read < list.Count; read++)
             {
                 var e = list[read];
-                // Searching FLATTENS: matching leaves only, no folder chrome.
-                if (searching && e.Kind == SidebarEntryKind.Folder) continue;
+                if (SidebarLibraryFilters.IsHidden(query.HiddenKinds, in e)) continue;
+                if (query.Filter != SidebarLibraryFilter.None && !SidebarLibraryFilters.Matches(query.Filter, in e)) continue;
                 if (qualifier != 0 && (e.Kind != SidebarEntryKind.Playlist || !e.MatchesQualifier(qualifier))) continue;
-                if (searching && !SidebarSearch.Matches(in e, search)) continue;
+                if (searching)
+                {
+                    // Searching FLATTENS: matching leaves only, no folder chrome.
+                    if (e.Kind == SidebarEntryKind.Folder) continue;
+                    if (!SidebarSearch.Matches(in e, search)) continue;
+                }
                 list[write++] = e;
             }
             if (write < list.Count) list.RemoveRange(write, list.Count - write);
         }
 
-        SidebarSort.Apply(list, SidebarSort.Effective(query.Sort, query.Filter), query.Descending, customOrder);
+        // No custom-order overlay: Custom order is the rootlist's own source order.
+        SidebarSort.Apply(list, SidebarSort.Effective(query.Sort, query.Filter), query.Descending, null);
         int band = SidebarProjection.PinsFirst(list, pins, scratch);
         return new SidebarEntriesShape(list.Count, band);
     }
@@ -4639,228 +3546,6 @@ public static class SidebarBinderPipeline
         };
     }
 
-    /// <summary>Resolve EVERY <c>SidebarSectionKind.Extension</c> section (top level + one nesting level) into a row
-    /// slice, appending rows into the shared <paramref name="entries"/> pool. The planner stays PURE — this resolves
-    /// contributions, the planner only reads the slice table.</summary>
-    /// <param name="cache">The per-contribution last-good snapshot — a source that fails after having served rows
-    /// replays its snapshot as <see cref="SidebarContributionAvailability.Cached"/> rather than blanking the section.</param>
-    public static void ResolveExtensions(
-        SidebarCustomLayout? layout,
-        ISidebarContributionHost? host,
-        List<SidebarLibraryEntry> entries,
-        SidebarExtensionSlices slices,
-        SidebarContributionCache? cache = null,
-        string? search = null)
-    {
-        ArgumentNullException.ThrowIfNull(entries);
-        ArgumentNullException.ThrowIfNull(slices);
-        entries.Clear();
-        slices.Clear();
-        if (layout is null) return;
-
-        var sections = layout.Sections;
-        for (int i = 0; i < sections.Count; i++)
-        {
-            var s = sections[i];
-            if (s.Kind == SidebarSectionKind.Extension) slices.Set(s.Id, Resolve(s, host, entries, cache, search));
-            var kids = s.ChildList;
-            for (int j = 0; j < kids.Count; j++)
-            {
-                var k = kids[j];
-                if (k.Kind == SidebarSectionKind.Extension) slices.Set(k.Id, Resolve(k, host, entries, cache, search));
-            }
-        }
-    }
-
-    /// <summary>Resolve ONE extension section. Never throws: a contributed source that throws is reported as an Error
-    /// slice, with its last-good snapshot replayed when there is one.</summary>
-    public static SidebarSectionSlice Resolve(
-        SidebarSectionSpec section,
-        ISidebarContributionHost? host,
-        List<SidebarLibraryEntry> entries,
-        SidebarContributionCache? cache = null,
-        string? search = null)
-    {
-        ArgumentNullException.ThrowIfNull(section);
-        ArgumentNullException.ThrowIfNull(entries);
-
-        var xref = section.Extension;
-        if (xref is null) return Unavailable(SidebarContributionAvailability.Missing);
-
-        string sourceId = SidebarContributions.SourceId(xref.ExtensionId, xref.ContributionId);
-        if (sourceId.Length == 0) return Unavailable(SidebarContributionAvailability.Missing);
-
-        ISidebarDataSource? source = null;
-        var availability = SidebarContributionAvailability.Missing;
-        if (host is not null) source = host.Resolve(sourceId, out availability);
-        if (source is null)
-            return Unavailable(availability == SidebarContributionAvailability.Live
-                ? SidebarContributionAvailability.Missing : availability);
-
-        // A document authored against a NEWER config schema than this build knows: keep the section, say so, change
-        // nothing.
-        if (xref.SchemaVersion > source.ConfigSchema.Version)
-            return Unavailable(SidebarContributionAvailability.Incompatible);
-
-        int start = entries.Count;
-        var request = new SidebarSourceRequest(new SidebarSourceConfig(xref.Config), section.Opts.MaxItems, search);
-        int count;
-        var state = SidebarSourceState.Ready;
-        bool prompt = false;
-        try
-        {
-            source.EnsureFresh(request);
-            count = source.Fill(entries, request);
-            if (count < 0) count = 0;
-            if (entries.Count - start != count) count = Math.Max(0, entries.Count - start);
-            state = source.State;
-            prompt = source.NeedsPrompt;
-        }
-        catch (Exception)
-        {
-            if (entries.Count > start) entries.RemoveRange(start, entries.Count - start);   // no partial fill leaks
-            count = 0;
-            state = SidebarSourceState.Error;
-        }
-
-        if (count == 0 && state == SidebarSourceState.Error && cache is not null)
-        {
-            int replayed = cache.TryReplay(sourceId, entries);
-            if (replayed > 0)
-                return new SidebarSectionSlice(start, replayed, SidebarSourceState.Ready,
-                                               SidebarContributionAvailability.Cached);
-        }
-
-        if (count > 0) cache?.Store(sourceId, entries, start, count);
-        return new SidebarSectionSlice(start, count, state, SidebarContributionAvailability.Live, prompt);
-    }
-
-    static SidebarSectionSlice Unavailable(SidebarContributionAvailability availability)
-        => new(0, 0, SidebarSourceState.Error, availability);
-}
-
-/// <summary>The sidebar's contribution lookup: source id → source, plus a per-source enable flag. An engine-free,
-/// source-included type so resolution is unit-tested against the real host; M3's sandboxed host can replace it wholly
-/// by implementing <see cref="ISidebarContributionHost"/>.</summary>
-public sealed class SidebarDataSourceTable : ISidebarContributionHost
-{
-    readonly Dictionary<string, ISidebarDataSource> _sources = new(StringComparer.Ordinal);
-    readonly List<ISidebarDataSource> _ordered = new();
-    readonly HashSet<string> _disabled = new(StringComparer.Ordinal);
-
-    public int Count => _sources.Count;
-
-    public void Add(ISidebarDataSource? source)
-    {
-        if (source is null || string.IsNullOrEmpty(source.Id)) return;
-        // A re-registration replaces the source IN PLACE, so the registration order the customizer lists never moves.
-        if (_sources.TryGetValue(source.Id, out var previous)) _ordered[_ordered.IndexOf(previous)] = source;
-        else _ordered.Add(source);
-        _sources[source.Id] = source;
-    }
-
-    /// <summary>Every source in REGISTRATION order — the customizer's contribution-pick list (ch 26 W3), which a
-    /// dictionary's enumeration order does not promise.</summary>
-    public IReadOnlyList<ISidebarDataSource> Ordered => _ordered;
-
-    /// <summary>A registered source regardless of its enable flag (the options surface asks "is it registered at all").</summary>
-    public bool TryGet(string? sourceId, [NotNullWhen(true)] out ISidebarDataSource? source)
-    {
-        source = null;
-        return sourceId is { Length: > 0 } && _sources.TryGetValue(sourceId, out source);
-    }
-
-    /// <summary>Turn a registered contribution off without unregistering it — the honest Disabled row rather than a
-    /// section that silently vanishes.</summary>
-    public void SetEnabled(string sourceId, bool enabled)
-    {
-        if (string.IsNullOrEmpty(sourceId)) return;
-        if (enabled) _disabled.Remove(sourceId);
-        else _disabled.Add(sourceId);
-    }
-
-    public bool IsEnabled(string sourceId) => !_disabled.Contains(sourceId);
-
-    public ISidebarDataSource? Resolve(string sourceId, out SidebarContributionAvailability availability)
-    {
-        if (!_sources.TryGetValue(sourceId, out var source))
-        {
-            availability = SidebarContributionAvailability.Missing;
-            return null;
-        }
-        if (_disabled.Contains(sourceId))
-        {
-            availability = SidebarContributionAvailability.Disabled;
-            return null;
-        }
-        availability = SidebarContributionAvailability.Live;
-        return source;
-    }
-
-    /// <summary>Every registered source, for lifecycle attach + the customizer's palette.</summary>
-    public IEnumerable<ISidebarDataSource> All => _sources.Values;
-
-    public SidebarSourceState StateOf(string sourceId)
-        => _sources.TryGetValue(sourceId, out var s) ? s.State : SidebarSourceState.Error;
-}
-
-/// <summary>sectionId → slice, reused across rebuilds.</summary>
-public sealed class SidebarExtensionSlices : ISidebarSectionSlices
-{
-    readonly Dictionary<string, SidebarSectionSlice> _slices = new(StringComparer.Ordinal);
-
-    public int Count => _slices.Count;
-
-    public void Clear() => _slices.Clear();
-
-    public void Set(string sectionId, SidebarSectionSlice slice)
-    {
-        if (!string.IsNullOrEmpty(sectionId)) _slices[sectionId] = slice;
-    }
-
-    public bool TryGet(string sectionId, out SidebarSectionSlice slice) => _slices.TryGetValue(sectionId, out slice);
-
-    /// <summary>The availability a surface shows as a badge/placeholder reason. Missing for an unknown section id.</summary>
-    public SidebarContributionAvailability AvailabilityOf(string sectionId)
-        => _slices.TryGetValue(sectionId, out var s) ? s.Availability : SidebarContributionAvailability.Missing;
-}
-
-/// <summary>The per-contribution LAST-GOOD snapshot — the stale-badge seam. First-party sources are always live, so
-/// this only fires when a contributed source that HAD rows starts failing. Bounded: one list per contribution id,
-/// each capped at <see cref="PerSourceCap"/> rows.</summary>
-public sealed class SidebarContributionCache
-{
-    public const int PerSourceCap = 200;
-
-    readonly Dictionary<string, List<SidebarLibraryEntry>> _snapshots = new(StringComparer.Ordinal);
-
-    public int Count => _snapshots.Count;
-
-    public bool Has(string sourceId) => _snapshots.TryGetValue(sourceId, out var s) && s.Count > 0;
-
-    /// <summary>Copy <paramref name="count"/> rows starting at <paramref name="start"/> into this contribution's
-    /// snapshot, replacing whatever was there.</summary>
-    public void Store(string sourceId, IReadOnlyList<SidebarLibraryEntry> entries, int start, int count)
-    {
-        if (string.IsNullOrEmpty(sourceId) || count <= 0) return;
-        if (start < 0 || start + count > entries.Count) return;
-        if (!_snapshots.TryGetValue(sourceId, out var snap)) _snapshots[sourceId] = snap = new List<SidebarLibraryEntry>(count);
-        snap.Clear();
-        int n = count < PerSourceCap ? count : PerSourceCap;
-        for (int i = 0; i < n; i++) snap.Add(entries[start + i]);
-    }
-
-    /// <summary>Append this contribution's snapshot to <paramref name="into"/>; returns how many rows were replayed.</summary>
-    public int TryReplay(string sourceId, List<SidebarLibraryEntry> into)
-    {
-        if (string.IsNullOrEmpty(sourceId) || !_snapshots.TryGetValue(sourceId, out var snap) || snap.Count == 0) return 0;
-        for (int i = 0; i < snap.Count; i++) into.Add(snap[i]);
-        return snap.Count;
-    }
-
-    public void Forget(string sourceId) => _snapshots.Remove(sourceId);
-
-    public void Clear() => _snapshots.Clear();
 }
 
 // ── SidebarEntriesShadow — whether a rebuild bumps the version ───────────────────────────────────────────────────────
@@ -4938,228 +3623,6 @@ public sealed class SidebarEntriesShadow
     }
 }
 
-// ── SidebarSourceMap — the pure feed→entry mappers that survive the port ────────────────────────────────────────────
-//
-// TRIMMED from 0.2.9: `FromTrack`/`Tracks` (queue/now-playing rows), `NewReleases` and `FromEvent` needed
-// `ArtistRef`/`Image`/`NewReleaseNotification`/`ConcertRoutes` — none confirmed in the 0.3 Entities surface this part
-// owns — and are DROPPED (see the report) for the owner who ports the concrete Sidebar.Host.cs data sources, who reads
-// the real Track/Album handle shapes directly. What ports is the shared glue every kept mapper needs, plus the two
-// named decisions: an offline feed maps to Ready (empty, not broken), and an unresolved played context is emitted with
-// an EMPTY Name — the surface's "render dimmed from the uri" signal.
-
-/// <summary>The engine-free shape of one "recently played" row: the context the user pressed play on, or the track
-/// itself when a play had no context.</summary>
-public readonly record struct SidebarPlayedContext(string Uri, SidebarEntryKind Kind, long PlayedAtMs)
-{
-    public bool IsTrack => Kind == SidebarEntryKind.Track;
-}
-
-/// <summary>What a contributed FEED (new releases, concerts) has to say about itself. 0.2.9 spelled this
-/// <c>NotificationFeedState</c> and it lived with the notification service; in 0.3 the feed seams belong to
-/// <c>Sidebar.Host.cs</c>, so the vocabulary comes with them. Members and order are 0.2.9's.</summary>
-public enum SidebarFeedState : byte { Idle, Loading, Populated, Empty, Offline, Error }
-
-public static class SidebarSourceMap
-{
-    /// <summary>A service feed's state → the planner's source state. Offline maps to READY on purpose: an offline feed
-    /// is EMPTY, not broken, and must render its empty caption rather than a permanent skeleton.</summary>
-    public static SidebarSourceState FromFeedState(SidebarFeedState state) => state switch
-    {
-        SidebarFeedState.Idle or SidebarFeedState.Loading => SidebarSourceState.Pending,
-        SidebarFeedState.Error => SidebarSourceState.Error,
-        _ => SidebarSourceState.Ready,   // Populated / Empty / Offline
-    };
-
-    /// <summary>One track as a sidebar row. The queue and the now-playing feeds are the only sources that emit track
-    /// rows, and they share this ONE builder so a queued track and the now-playing track cannot drift apart.</summary>
-    /// <param name="t">The handle; the caller filters an invalid one out first.</param>
-    /// <param name="order">Position within the feed — a track row carries no other order.</param>
-    /// <param name="stampMs">The PLAY time for a played feed; 0 for a queue.</param>
-    public static SidebarLibraryEntry FromTrack(Track t, int order, long stampMs = 0)
-    {
-        var artists = t.ArtistSlots;
-        string uri = t.Uri.Text;
-        return new SidebarLibraryEntry(uri, SidebarEntryKind.Track, uri,
-            Entities.Strings.Resolve(t.TitleId), JoinTrackArtists(artists),
-            t.ImageId, null,
-            ChildCount: 0, AddedAtMs: 0,
-            SortStamp: stampMs,
-            LastVisitedTicksUtc: 0,
-            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
-        {
-            FolderId = "", FolderName = "",
-            FirstArtistName = artists.Length > 0 ? new Artist(artists[0]).Name : "",
-        };
-    }
-
-    /// <summary>One EPISODE as a sidebar row — the queue's and now-playing's other playable kind (G-173). The same TRACK
-    /// row kind (it plays, it never navigates, it is never pinnable), with the show as its creator line and the show's
-    /// art standing in for an episode that has none of its own.</summary>
-    public static SidebarLibraryEntry FromEpisode(Episode e, int order, long stampMs = 0)
-    {
-        var show = e.Show;
-        bool hasShow = show.Slot > Table.None;
-        string uri = e.Uri.Text;
-        var image = e.ImageId.IsEmpty && hasShow ? show.ImageId : e.ImageId;
-        return new SidebarLibraryEntry(uri, SidebarEntryKind.Track, uri,
-            Entities.Strings.Resolve(e.TitleId), hasShow ? show.Title : "",
-            image, null,
-            ChildCount: 0, AddedAtMs: 0,
-            SortStamp: stampMs,
-            LastVisitedTicksUtc: 0,
-            SourceOrder: order, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
-        {
-            FolderId = "", FolderName = "", FirstArtistName = "",
-        };
-    }
-
-    /// <summary>Append ONE playable row — a track or an episode — for a queue / now-playing ref. False (nothing added)
-    /// for a ref that is neither kind, points at no row, or names a uri already in this source's slice of
-    /// <paramref name="into"/> (from <paramref name="sliceStart"/>: the pool is shared by every contributed section, and
-    /// a track queued AND playing belongs in both sections; a queue legitimately repeats a track, the row KEY must not).</summary>
-    public static bool TryAddPlayable(EntityRef row, List<SidebarLibraryEntry> into, int order, int sliceStart = 0)
-    {
-        if (row.IsNone) return false;
-        SidebarLibraryEntry entry;
-        switch (row.Kind)
-        {
-            case EntityKind.Track:
-            {
-                var t = new Track(row.Slot);
-                if (!t.IsValid) return false;
-                entry = FromTrack(t, order);
-                break;
-            }
-            case EntityKind.Episode:
-            {
-                var e = new Episode(row.Slot);
-                if (!e.IsValid) return false;
-                entry = FromEpisode(e, order);
-                break;
-            }
-            default:
-                return false;
-        }
-        if (entry.Uri.Length == 0) return false;
-        for (int i = sliceStart < 0 ? 0 : sliceStart; i < into.Count; i++)
-            if (string.Equals(into[i].Id, entry.Id, StringComparison.Ordinal)) return false;
-        into.Add(entry);
-        return true;
-    }
-
-    /// <summary>Append up to <paramref name="max"/> tracks. Deduped by uri — a queue legitimately repeats a track, but
-    /// the sidebar's row KEY must stay unique or the reconciler collapses the two rows into one.</summary>
-    public static int Tracks(IReadOnlyList<Track>? tracks, List<SidebarLibraryEntry> into, int max)
-    {
-        if (tracks is null || tracks.Count == 0 || max <= 0) return 0;
-        int n = 0;
-        for (int i = 0; i < tracks.Count && n < max; i++)
-        {
-            var t = tracks[i];
-            if (!t.IsValid) continue;
-            string uri = t.Uri.Text;
-            if (uri.Length == 0 || ContainsId(into, uri)) continue;
-            into.Add(FromTrack(t, n));
-            n++;
-        }
-        return n;
-    }
-
-    // "A, B, C" capped at three, then "…" — the same shape SidebarProjection joins album artists with. One artist
-    // returns the interned name with no allocation.
-    static string JoinTrackArtists(ReadOnlySpan<int> artistSlots)
-    {
-        if (artistSlots.Length == 0) return "";
-        if (artistSlots.Length == 1) return new Artist(artistSlots[0]).Name;
-        var sb = new StringBuilder(48);
-        int n = artistSlots.Length < 3 ? artistSlots.Length : 3;
-        for (int i = 0; i < n; i++)
-        {
-            if (i > 0) sb.Append(", ");
-            sb.Append(new Artist(artistSlots[i]).Name);
-        }
-        if (artistSlots.Length > n) sb.Append('…');
-        return sb.ToString();
-    }
-
-    /// <summary>The play log's context-first rows, resolved against the library projection. A context the projection
-    /// knows becomes its real entry (art, creator, count) stamped with the PLAY time; one it does not know is still
-    /// emitted — with an EMPTY Name, the surface's "unavailable, render dimmed from the uri" signal.</summary>
-    /// <param name="contexts">Newest-first, already deduped.</param>
-    /// <param name="byId">The projection's id/uri → entry index.</param>
-    public static int Played(IReadOnlyList<SidebarPlayedContext>? contexts, SidebarSourceIndex byId,
-                             List<SidebarLibraryEntry> into, int max)
-    {
-        if (contexts is null || contexts.Count == 0 || max <= 0) return 0;
-        int n = 0;
-        for (int i = 0; i < contexts.Count && n < max; i++)
-        {
-            var c = contexts[i];
-            if (c.Uri.Length == 0) continue;
-
-            if (c.IsTrack)
-            {
-                if (ContainsId(into, c.Uri)) continue;
-                into.Add(new SidebarLibraryEntry(
-                    c.Uri, SidebarEntryKind.Track, c.Uri, "", "", StringId.Empty, null,
-                    ChildCount: 0, AddedAtMs: 0, SortStamp: c.PlayedAtMs, LastVisitedTicksUtc: 0,
-                    SourceOrder: n, Depth: 0, Circular: false, Flavor: SidebarPlaylistFlavor.None)
-                { FolderId = "", FolderName = "", FirstArtistName = "" });
-                n++;
-                continue;
-            }
-
-            string? id = SidebarPinId.FromUri(c.Uri);
-            if (id is null || ContainsId(into, id)) continue;
-
-            if (byId.TryGet(id, out var known))
-            {
-                into.Add(known with { SortStamp = c.PlayedAtMs, SourceOrder = n });
-                n++;
-                continue;
-            }
-
-            into.Add(new SidebarLibraryEntry(
-                id, c.Kind, c.Uri, "", "", StringId.Empty, null,
-                ChildCount: 0, AddedAtMs: 0, SortStamp: c.PlayedAtMs, LastVisitedTicksUtc: 0,
-                SourceOrder: n, Depth: 0, Circular: c.Kind == SidebarEntryKind.Artist,
-                Flavor: SidebarPlaylistFlavor.None)
-            { FolderId = "", FolderName = "", FirstArtistName = "" });
-            n++;
-        }
-        return n;
-    }
-
-    /// <summary>The navigation log's newest-first distinct route keys, resolved against the projection. Generic
-    /// accessors keep the history row shape out of this layer. Pass STATIC lambdas.</summary>
-    /// <param name="entriesOldestFirst">The history store's own order.</param>
-    public static int Visited<T>(IReadOnlyList<T>? entriesOldestFirst, Func<T, string> keyOf, Func<T, long> ticksUtcOf,
-                                 SidebarSourceIndex byId, List<SidebarLibraryEntry> into, int max)
-    {
-        if (entriesOldestFirst is null || entriesOldestFirst.Count == 0 || max <= 0) return 0;
-        int n = 0;
-        for (int i = entriesOldestFirst.Count - 1; i >= 0 && n < max; i--)
-        {
-            string key = keyOf(entriesOldestFirst[i]);
-            if (string.IsNullOrEmpty(key) || ContainsId(into, key)) continue;   // newest wins — we walk backwards
-            long ticks = ticksUtcOf(entriesOldestFirst[i]);
-
-            if (byId.TryGet(key, out var known)) into.Add(known with { LastVisitedTicksUtc = ticks, SourceOrder = n });
-            else into.Add(SidebarLibraryEntry.ForRoute(key, "", n, ticks));
-            n++;
-        }
-        return n;
-    }
-
-    /// <summary>Linear duplicate check. O(n²) on purpose: every caller is a top-N feed (tens of rows at most).</summary>
-    static bool ContainsId(List<SidebarLibraryEntry> list, string id)
-    {
-        for (int i = 0; i < list.Count; i++)
-            if (string.Equals(list[i].Id, id, StringComparison.Ordinal)) return true;
-        return false;
-    }
-}
-
 /// <summary>id/uri → projected entry, built ONCE per rebuild off the unified projection and shared by every feed
 /// adapter. Both keys live in one map: entry ids and bare uris are disjoint namespaces, so one lookup serves both.</summary>
 public sealed class SidebarSourceIndex
@@ -5224,296 +3687,6 @@ public sealed class SidebarSourceIndex
     }
 }
 
-// ── SidebarDataSource — the contribution CONTRACT (ported near-verbatim) ────────────────────────────────────────────
-//
-// ONE interface for first-party and (later) third-party row producers. `wavee.library` registers through exactly the
-// same call an external extension will use. Health is a plain property + a plain event (never a Signal<T>): the
-// concrete adapters in Sidebar.Host.cs hold the engine-bound services and raise Changed on the UI thread.
-
-public enum SidebarSourceItemType : byte { Entity = 0, Track = 1, Event = 2, Route = 3, Mixed = 4 }
-
-[Flags]
-public enum SidebarSourceFilters : byte
-{
-    None = 0,
-    Kinds = 1,
-    Qualifier = 2,
-    Search = 4,
-    IncludeExcludeUris = 8,
-}
-
-[Flags]
-public enum SidebarSourceSorts : byte
-{
-    None = 0,
-    SourceOrder = 1,
-    Recents = 2,
-    RecentlyAdded = 4,
-    Alphabetical = 8,
-    Creator = 16,
-    CustomOrder = 32,
-    All = SourceOrder | Recents | RecentlyAdded | Alphabetical | Creator | CustomOrder,
-}
-
-/// <summary>How much a source can be asked for at once. TopN = the whole (small) list every time; Paged honours
-/// <see cref="SidebarSourceRequest.Page"/>.</summary>
-public enum SidebarSourcePaging : byte { None = 0, TopN = 1, Paged = 2 }
-
-/// <summary>The property-control families the customizer can generate from a schema. Deliberately semantic — never a
-/// raw colour/pixel/duration.</summary>
-public enum SidebarConfigFieldKind : byte { String = 0, Int = 1, Bool = 2, EntityUri = 3, Enum = 4, UriList = 5 }
-
-/// <summary>One generated property control. <paramref name="LabelLocKey"/> is a loc KEY, never a literal.</summary>
-public sealed record SidebarConfigField(
-    string Key,
-    SidebarConfigFieldKind Kind,
-    string LabelLocKey,
-    bool Required = false,
-    string? DefaultJson = null,
-    int Min = 0,
-    int Max = 0,
-    IReadOnlyList<string>? EnumValues = null);
-
-/// <summary>A source's configuration schema. <paramref name="Version"/> is compared against the document's
-/// <c>SchemaVersion</c>: a document authored by a NEWER schema resolves to Incompatible and keeps its spec.</summary>
-public sealed record SidebarConfigSchema(int Version, IReadOnlyList<SidebarConfigField> Fields)
-{
-    public static readonly SidebarConfigSchema None = new(1, Array.Empty<SidebarConfigField>());
-
-    public SidebarConfigField? Find(string key)
-    {
-        for (int i = 0; i < Fields.Count; i++)
-            if (string.Equals(Fields[i].Key, key, StringComparison.Ordinal)) return Fields[i];
-        return null;
-    }
-}
-
-/// <summary>An OPAQUE section configuration with typed, never-throwing readers. A wrong-typed, absent or disposed
-/// element yields the fallback — a hand-edited document must degrade, never crash the sidebar.</summary>
-public readonly record struct SidebarSourceConfig(JsonElement Value)
-{
-    public static readonly SidebarSourceConfig Empty = default;
-
-    public bool IsObject
-    {
-        get { try { return Value.ValueKind == JsonValueKind.Object; } catch (Exception) { return false; } }
-    }
-
-    public string? Str(string key, string? fallback = null)
-    {
-        if (!TryProp(key, out var p)) return fallback;
-        try { return p.ValueKind == JsonValueKind.String ? p.GetString() : fallback; }
-        catch (Exception) { return fallback; }
-    }
-
-    public int Int(string key, int fallback = 0)
-    {
-        if (!TryProp(key, out var p)) return fallback;
-        try { return p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out int v) ? v : fallback; }
-        catch (Exception) { return fallback; }
-    }
-
-    public bool Bool(string key, bool fallback = false)
-    {
-        if (!TryProp(key, out var p)) return fallback;
-        return p.ValueKind switch
-        {
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            _ => fallback,
-        };
-    }
-
-    /// <summary>A string array property, appended into <paramref name="into"/>. Returns how many were appended.</summary>
-    public int Strings(string key, List<string> into)
-    {
-        if (!TryProp(key, out var p)) return 0;
-        try
-        {
-            if (p.ValueKind != JsonValueKind.Array) return 0;
-            int n = 0;
-            foreach (var item in p.EnumerateArray())
-            {
-                if (item.ValueKind != JsonValueKind.String) continue;
-                if (item.GetString() is { Length: > 0 } s) { into.Add(s); n++; }
-            }
-            return n;
-        }
-        catch (Exception) { return 0; }
-    }
-
-    bool TryProp(string key, out JsonElement prop)
-    {
-        prop = default;
-        try
-        {
-            if (Value.ValueKind != JsonValueKind.Object) return false;
-            return Value.TryGetProperty(key, out prop);
-        }
-        catch (Exception) { return false; }   // a JsonElement whose document was disposed
-    }
-}
-
-/// <summary>What the binder asks a source for. A POD passed by <c>in</c> — a fill is on the rebuild path, which
-/// allocates nothing.</summary>
-public readonly record struct SidebarSourceRequest(
-    SidebarSourceConfig Config,
-    int MaxItems = 0,
-    string? Search = null,
-    int Page = 0)
-{
-    public static readonly SidebarSourceRequest Default = new(SidebarSourceConfig.Empty);
-}
-
-/// <summary>Whether a section's contribution is LIVE, replayed from the last-good snapshot, or not served at all. The
-/// planner turns the non-Live-non-Cached values into ONE actionable "Manage extension" prompt row.</summary>
-public enum SidebarContributionAvailability : byte
-{
-    Live = 0,
-    Cached = 1,
-    Missing = 2,
-    Disabled = 3,
-    Incompatible = 4,
-}
-
-/// <summary>A registered sidebar row producer — the same call an external extension will use.</summary>
-public interface ISidebarDataSource
-{
-    /// <summary>The namespaced stable id — <c>extensionId + "." + contributionId</c>.</summary>
-    string Id { get; }
-
-    SidebarConfigSchema ConfigSchema { get; }
-    SidebarSourceItemType ItemType { get; }
-    SidebarSourceFilters SupportedFilters { get; }
-    SidebarSourceSorts SupportedSorts { get; }
-    SidebarSourcePaging Paging { get; }
-
-    /// <summary>The health signal, as a UI-thread property. The binder surfaces it verbatim as the planner's
-    /// <see cref="SidebarSourceState"/>.</summary>
-    SidebarSourceState State { get; }
-
-    /// <summary>Why the source is not Ready, as a loc KEY (null when Ready or nothing useful to say).</summary>
-    string? StateDetailLocKey { get; }
-
-    /// <summary>True when the degraded state is ACTIONABLE rather than empty (Concerts with no location).</summary>
-    bool NeedsPrompt { get; }
-
-    /// <summary>Kick any warm/refresh this source needs. Idempotent, non-blocking, must never throw.</summary>
-    void EnsureFresh(in SidebarSourceRequest request);
-
-    /// <summary>APPEND this source's current rows to <paramref name="into"/> and return how many were appended. No
-    /// LINQ, no closures, no per-row allocation, never a blocking wait.</summary>
-    int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request);
-
-    /// <summary>Raised on the UI thread after this source's rows or State changed.</summary>
-    event Action? Changed;
-}
-
-/// <summary>Convenience base: the Changed plumbing, the health fields and sane declared capabilities.</summary>
-public abstract class SidebarDataSourceBase : ISidebarDataSource
-{
-    protected SidebarDataSourceBase(string id) => Id = id;
-
-    public string Id { get; }
-    public virtual SidebarConfigSchema ConfigSchema => SidebarConfigSchema.None;
-    public virtual SidebarSourceItemType ItemType => SidebarSourceItemType.Entity;
-    public virtual SidebarSourceFilters SupportedFilters => SidebarSourceFilters.None;
-    public virtual SidebarSourceSorts SupportedSorts => SidebarSourceSorts.SourceOrder;
-    public virtual SidebarSourcePaging Paging => SidebarSourcePaging.TopN;
-
-    public SidebarSourceState State { get; protected set; } = SidebarSourceState.Ready;
-    public string? StateDetailLocKey { get; protected set; }
-    public bool NeedsPrompt { get; protected set; }
-
-    public event Action? Changed;
-
-    public virtual void EnsureFresh(in SidebarSourceRequest request) { }
-
-    public abstract int Fill(List<SidebarLibraryEntry> into, in SidebarSourceRequest request);
-
-    /// <summary>Publish a health change + notify. No-op when nothing moved, so a poll-shaped adapter cannot spin the
-    /// binder.</summary>
-    protected void SetHealth(SidebarSourceState state, string? detailLocKey = null, bool needsPrompt = false)
-    {
-        if (State == state && NeedsPrompt == needsPrompt
-            && string.Equals(StateDetailLocKey, detailLocKey, StringComparison.Ordinal)) return;
-        State = state;
-        StateDetailLocKey = detailLocKey;
-        NeedsPrompt = needsPrompt;
-        Raise();
-    }
-
-    /// <summary>Publish a health change WITHOUT notifying — the only setter a <see cref="Fill"/> may use, so a
-    /// per-section verdict never re-enters the binder mid-rebuild.</summary>
-    protected void SetHealthQuiet(SidebarSourceState state, string? detailLocKey = null, bool needsPrompt = false)
-    {
-        State = state;
-        StateDetailLocKey = detailLocKey;
-        NeedsPrompt = needsPrompt;
-    }
-
-    /// <summary>Notify the binder that the ROWS changed (health unchanged). NEVER from <see cref="Fill"/>.</summary>
-    protected void Raise() => Changed?.Invoke();
-}
-
-/// <summary>The host that resolves a contribution id to a source. An interface, not a delegate, so the availability
-/// verdict travels WITH the lookup — "registered but disabled" and "never registered" are different rows.</summary>
-public interface ISidebarContributionHost
-{
-    ISidebarDataSource? Resolve(string sourceId, out SidebarContributionAvailability availability);
-}
-
-/// <summary>The first-party contribution ids + the ONE place a source id is composed or split. New UI must never
-/// switch on an extension id — it resolves through the host.</summary>
-public static class SidebarContributions
-{
-    /// <summary>The trusted first-party extension id — first-party is literally an extension named "wavee".</summary>
-    public const string WaveeExtensionId = "wavee";
-
-    public const string Library = "wavee.library";
-    public const string HistoryVisited = "wavee.history.visited";
-    public const string HistoryPlayed = "wavee.history.played";
-    public const string PlaylistTree = "wavee.playlistTree";
-    public const string ArtistTopTracks = "wavee.artist.topTracks";
-    public const string NewReleases = "wavee.newReleases";
-    public const string Concerts = "wavee.concerts";
-    public const string Queue = "wavee.queue";
-    public const string NowPlaying = "wavee.nowPlaying";
-
-    /// <summary>Every first-party source id, in registration order.</summary>
-    public static readonly string[] FirstParty =
-    [
-        Library, HistoryVisited, HistoryPlayed, PlaylistTree, ArtistTopTracks,
-        NewReleases, Concerts, Queue, NowPlaying,
-    ];
-
-    /// <summary><c>extensionId + "." + contributionId</c>. Empty when either half is missing. A
-    /// <paramref name="contributionId"/> that is ALREADY fully qualified is taken as-is rather than double-prefixed.</summary>
-    public static string SourceId(string? extensionId, string? contributionId)
-    {
-        if (string.IsNullOrEmpty(contributionId)) return "";
-        if (string.IsNullOrEmpty(extensionId)) return "";
-        if (contributionId!.Length > extensionId!.Length
-            && contributionId[extensionId.Length] == '.'
-            && contributionId.StartsWith(extensionId, StringComparison.Ordinal)) return contributionId;
-        return extensionId + "." + contributionId;
-    }
-
-    /// <summary>The contribution half of a first-party source id ("library", "artist.topTracks", …).</summary>
-    public static string ContributionOf(string sourceId)
-    {
-        int dot = sourceId.IndexOf('.');
-        return dot < 0 || dot + 1 >= sourceId.Length ? "" : sourceId[(dot + 1)..];
-    }
-
-    public static bool IsFirstParty(string? sourceId)
-    {
-        if (sourceId is null) return false;
-        for (int i = 0; i < FirstParty.Length; i++)
-            if (string.Equals(FirstParty[i], sourceId, StringComparison.Ordinal)) return true;
-        return false;
-    }
-}
 // ── PINS, THE PIN MENU ROW AND THE EDIT PLAN ─────────────────────────────────────────────────────────────────────────
 //
 // The pin id IS the nav route key — which is why a pinned row renders through the same route table as any other
@@ -5553,13 +3726,13 @@ public static class SidebarPinId
     /// <summary>The pre-seeded app routes shown by pickers. Dynamic route families (see
     /// <see cref="PinnableRoutePrefixes"/>) are also pinnable when reached; their instances only exist at runtime,
     /// so they are recognised by prefix rather than enumerated here.</summary>
-    /// <remarks>"recents" is the full recently-played page. It is offered by the CUSTOMIZER only and is deliberately
-    /// NOT in the default top bar — a destination a user may add, not one the shell mandates.</remarks>
+    /// <remarks>"recents" is the full recently-played page: a destination a user may pin, never one the shell
+    /// mandates.</remarks>
     public static readonly string[] PinnableRoutes =
-        ["home", "search", "albums", "artists", "liked", "podcasts", "local", "history", "recents"];
+        ["search", "albums", "artists", "podcasts", "audiobooks", "local", "history", "recents"];
 
-    /// <summary>Real, durable pages that <see cref="FromRoute"/> accepts but that the curated picker deliberately
-    /// does NOT seed — reachable from an artist page, not offered alongside Home and Search. Pinnable when REACHED,
+    /// <summary>Real, durable pages that <see cref="FromRoute"/> accepts but that is deliberately not
+    /// seeded — reachable from an artist page, not offered alongside Home and Search. Pinnable when REACHED,
     /// not suggested.</summary>
     public static readonly string[] AlsoPinnableRoutes = ["concerts"];
 
@@ -5580,7 +3753,7 @@ public static class SidebarPinId
     /// <summary>Real pages that are never pins. The first three are tooling/editor surfaces; the last is a report
     /// reached from a dialog.</summary>
     static readonly string[] UnpinnableRoutes =
-        ["settings", "api-console", "sidebar-customize", "home-customize", "playback-diagnostics"];
+        ["settings", "api-console", "home-customize", "playback-diagnostics"];
 
     /// <summary>One dated event. Its page is real and navigable, but a concert happens and is then over, so a pin
     /// would decay into a dead row — the durable destinations are the hub ("concerts") and an artist's schedule
@@ -5635,7 +3808,7 @@ public static class SidebarPinId
     };
 
     /// <summary>Route key → pin id, and the app's one route RECOGNISER. Every durable application destination is
-    /// stable enough to pin — the curated <see cref="PinnableRoutes"/> set, <see cref="AlsoPinnableRoutes"/>, and
+    /// stable enough to pin — the seeded <see cref="PinnableRoutes"/> set, <see cref="AlsoPinnableRoutes"/>, and
     /// the dynamic <see cref="PinnableRoutePrefixes"/> families. Refused: tooling/editor surfaces, one dated event,
     /// and anything UNRECOGNISED.
     ///
@@ -5646,6 +3819,7 @@ public static class SidebarPinId
     public static string? FromRoute(string? routeKey)
     {
         if (string.IsNullOrWhiteSpace(routeKey)) return null;
+        if (SidebarPinRules.IsFixedRoute(routeKey)) return null;
 
         for (int i = 0; i < UnpinnableRoutes.Length; i++)
             if (string.Equals(UnpinnableRoutes[i], routeKey, StringComparison.Ordinal)) return null;
@@ -5727,15 +3901,11 @@ public static class SidebarPinId
 /// write-side spelling that matters.</para></summary>
 public static class PinSyncRules
 {
-    /// <summary>The wire uri Liked Songs pins as, inside the "pins" (ylpin) set — bare <c>spotify:collection</c>,
-    /// NOT the <c>:tracks</c>-suffixed or user-namespaced forms the catalog/routing layer uses elsewhere.</summary>
-    public const string LikedWireUri = "spotify:collection";
-
     /// <summary>pin id → the collection2v2 item uri, or null when this pin is local-only.</summary>
     public static string? TryWireUri(string? pinId, string username)
     {
         if (string.IsNullOrEmpty(pinId)) return null;
-        if (string.Equals(pinId, "liked", StringComparison.Ordinal)) return LikedWireUri;
+        if (SidebarPinRules.IsFixedRoute(pinId)) return null;
         switch (SidebarPinId.KindOf(pinId))
         {
             case SidebarEntryKind.Playlist:
@@ -5758,7 +3928,8 @@ public static class PinSyncRules
     {
         if (string.IsNullOrEmpty(wireUri) || !wireUri.StartsWith("spotify:", StringComparison.Ordinal)) return null;
         if (EntityUri.FolderIdOf(wireUri) is { Length: > 0 } folderId) return SidebarPinId.ForFolder(folderId.ToString());
-        return SidebarPinId.FromUri(wireUri);   // collapses every Liked spelling onto "liked"; refuses tracks/episodes
+        var id = SidebarPinId.FromUri(wireUri);   // every Liked spelling becomes "liked", which the fixed-route guard refuses
+        return id is null || SidebarPinRules.IsFixedRoute(id) ? null : id;
     }
 
     public static bool IsSyncable(string? pinId, string username) => TryWireUri(pinId, username) is not null;
@@ -5786,7 +3957,7 @@ public static class PinRowRule
     /// the CURRENT pinned state.</summary>
     public static PinRowKind Decide(bool hasStore, string? pinId, bool isPinned)
     {
-        if (!hasStore || string.IsNullOrEmpty(pinId)) return PinRowKind.None;
+        if (!hasStore || string.IsNullOrEmpty(pinId) || SidebarPinRules.IsFixedRoute(pinId)) return PinRowKind.None;
         return isPinned ? PinRowKind.Unpin : PinRowKind.Pin;
     }
 }
@@ -5801,748 +3972,5 @@ public static class SidebarFolderRename
         string next = (typed ?? "").Trim();
         if (next.Length == 0 || string.Equals(next, current, StringComparison.Ordinal)) return null;
         return next;
-    }
-}
-
-// ── 8. the edit session as a value, and the pure rules over it ─────────────────────────────────────────────────────
-
-// "Customize" is a MODE OVER THE LIVE PANE, not a page that redraws the sidebar. Everything the pane needs to know
-// about that mode is this one POD record, handed to the renderer through a config delegate — a delegate, never a
-// snapshot, because the config freezes at mount and a value member would pin frame 1's session forever. The one
-// thing this section must NOT gain is a branch on `SidebarDesign`: only Curated supplies an edit session, but the
-// rules below only ever see "there is a session" / "there is not".
-
-/// <summary>
-/// One live edit session, as a value. Read fresh from the pane config on every render.
-///
-/// <para><paramref name="ExpandedSection"/> — the ONE section whose real rows are revealed under its card (null =
-/// every section is a card). One at a time on purpose: a 60-row expanded sidebar turns section dragging into a
-/// scroll-fight, and a card-only plan has the uniform pitch reordering wants.</para>
-///
-/// <para><paramref name="ShowContents"/> — the companion page's "Show section contents" switch. True reveals every
-/// (visible) section's body at once, for item-level work; it deliberately DISARMS section drag, because the card run
-/// is then no longer contiguous (see <see cref="SidebarEditPlan.SectionsReorderable"/>).</para>
-///
-/// <para><paramref name="OptionsSection"/> — the section whose per-section options popover is open. Deliberately NOT
-/// part of <see cref="SidebarEditPlan.Fold"/>: opening a popover changes nothing about the planned rows.</para>
-/// </summary>
-public readonly record struct SidebarEditState(
-    string? ExpandedSection = null,
-    bool ShowContents = false,
-    string? OptionsSection = null);
-
-/// <summary>
-/// What a palette chip carries while it is being dragged onto the canvas — the whole <c>AddSection</c> argument list
-/// minus the index, so the drop site does not have to know what a palette entry is. A record rather than a struct
-/// because the drag payload travels as <c>object?</c> anyway, allocated once per gesture.
-///
-/// <para><paramref name="Label"/> is the already-localized name the drag chip shows, resolved at composition time:
-/// the chip resolver runs inside the 0-alloc frame region while a drag is live, so it may look a string up but must
-/// never build one.</para>
-/// </summary>
-public sealed record SidebarSectionDropPayload(
-    SidebarSectionKind Kind,
-    string Label,
-    SidebarItemSpec? Item = null,
-    SidebarExtensionRef? Extension = null);
-
-/// <summary>The pure rules an edit session implies. Engine-free, so Wavee.Tests drives the real ones.</summary>
-public static class SidebarEditPlan
-{
-    /// <summary>The drag KIND shared by the section-card reorder band and the companion palette's chips. ONE owner:
-    /// the pane reads this const rather than re-spelling the literal, because a drag kind typed twice is a drop that
-    /// silently accepts nothing.</summary>
-    public const string SectionDragKind = "wavee.sidebar.section";
-
-    /// <summary>Does this section reveal its real rows under its card?
-    ///
-    /// <para>A HIDDEN section never does, even while it is the expanded one: its body contributes nothing to the
-    /// live sidebar, and drawing rows the user's own sidebar does not have would be the editor lying about the
-    /// artifact it edits. The card itself stays — dimmed, with its eye-off badge — nothing vanishes into an
-    /// invisible elsewhere.</para></summary>
-    public static bool ShowsBody(in SidebarEditState edit, SidebarSectionSpec section)
-    {
-        ArgumentNullException.ThrowIfNull(section);
-        if (section.Hidden || !HasBody(section.Kind)) return false;
-        if (edit.ShowContents) return true;
-        return edit.ExpandedSection is { Length: > 0 } id
-               && string.Equals(id, section.Id, StringComparison.Ordinal);
-    }
-
-    /// <summary>Can this kind reveal anything at all under its card? A Divider and a Header are pure chrome — the
-    /// planner has no body arm for either — so their cards carry no disclosure mark and are not expandable.</summary>
-    public static bool HasBody(SidebarSectionKind kind)
-        => kind is not (SidebarSectionKind.Divider or SidebarSectionKind.Header);
-
-    /// <summary>Is the section-card drag band armed for this session?
-    ///
-    /// <para>Only while EVERY section is a card. A reorderable band is one CONTIGUOUS run of plan rows at ONE
-    /// uniform pitch; the moment a section expands, its body rows split the card run in two and the slot math would
-    /// address body rows as if they were cards. Explicit Move up / Move down stay available from every card's "…"
-    /// menu, so a section can always be reordered — drag is one of several ways, never the only way.</para></summary>
-    public static bool SectionsReorderable(in SidebarEditState edit)
-        => !edit.ShowContents && edit.ExpandedSection is not { Length: > 0 };
-
-    /// <summary>Is this card the PINNED head — the materialised Shortcuts band (the top-bar sentinel)?
-    ///
-    /// <para>The sentinel is not in the document's <c>Sections</c>, so move/hide/duplicate/remove addressed at it
-    /// are all rejections. Its card therefore carries no grip, no eye and no "…": an affordance that silently rejects
-    /// is strictly worse than an affordance that is not offered. Its ITEMS are still fully editable — expanding the
-    /// card reveals the real rows, whose reorder routes through the top-bar commands.</para></summary>
-    public static bool IsPinnedCard(string? sectionId) => SidebarIds.IsTopBar(sectionId);
-
-    /// <summary>The honest count a card may show beside its title, or -1 for "this section has no count worth
-    /// claiming".
-    ///
-    /// <para>Deliberately NOT "how many rows would this section plan": that is only knowable by planning the body,
-    /// and planning a 10,000-entry list once per card per re-plan to print a number would be a real cost for a
-    /// decoration. A card counts what the DOCUMENT holds — a group's child sections, an authored item list's visible
-    /// items — and a projected section (Pinned / PlaylistTree / EntityList / a feed / a contribution) shows nothing
-    /// rather than a number it would have to guess.</para></summary>
-    public static int CardCount(SidebarSectionSpec section)
-    {
-        ArgumentNullException.ThrowIfNull(section);
-        if (section.Kind == SidebarSectionKind.CustomGroup) return section.ChildList.Count;
-        if (!SidebarSectionKinds.AcceptsItems(section.Kind)) return -1;
-        // Pinned "items" are display OVERRIDES for pins made elsewhere, not the pin list — counting them would print
-        // "0" over a band showing twelve pins.
-        if (section.Kind == SidebarSectionKind.Pinned) return -1;
-
-        var items = section.ItemList;
-        int n = 0;
-        for (int i = 0; i < items.Count; i++)
-            if (!items[i].Hidden) n++;
-        return n;
-    }
-
-    /// <summary>The session folded into one int for the pane's plan dep-key. <c>OptionsSection</c> is excluded — see
-    /// the record's remarks.</summary>
-    public static int Fold(in SidebarEditState? edit)
-    {
-        if (edit is not { } e) return 0;
-        unchecked
-        {
-            int h = e.ShowContents ? 0x5f5f_0001 : 0x5f5f_0002;   // never 0: "no session" must not collide with "session"
-            if (e.ExpandedSection is { Length: > 0 } id) h = h * 31 + StringComparer.Ordinal.GetHashCode(id);
-            return h;
-        }
-    }
-
-    /// <summary>Translate one committed section-card drag into the undoable <c>MoveSection</c> command, or null when
-    /// there is nothing honest to dispatch.
-    ///
-    /// <para>Two index spaces meet here: BAND SLOTS enumerate the SectionCard rows of the plan (the document's
-    /// top-level sections in order minus any kind this build does not understand and minus the pinned Shortcuts
-    /// head, which the band never covers); <c>MoveSection.NewIndex</c> is an index into
-    /// <paramref name="document"/><c>.Sections</c> interpreted AFTER the removal. The two are bridged through the
-    /// NEIGHBOUR the drop landed above — the only translation that stays exact when a card is missing from the
-    /// middle of the run.</para></summary>
-    /// <param name="document">The PERSISTED document, never the render-path document the pane plans from: the
-    /// latter carries the materialised Shortcuts section at index 0, so every index in it is one too high for a
-    /// command the reducer will execute.</param>
-    /// <param name="rows">The published plan rows.</param>
-    /// <param name="bandStart">Plan index of band slot 0.</param>
-    /// <param name="bandCount">Number of cards in the band.</param>
-    /// <param name="from">The lifted card's band slot.</param>
-    /// <param name="to">The committed band slot, post-removal.</param>
-    public static SidebarCommand? ToMoveSection(SidebarCustomLayout? document, IReadOnlyList<SidebarRow>? rows,
-                                                int bandStart, int bandCount, int from, int to)
-    {
-        if (document is null || rows is null) return null;
-        if (bandCount <= 1 || from == to) return null;
-        if ((uint)from >= (uint)bandCount || (uint)to >= (uint)bandCount) return null;
-
-        string movingId = SectionIdAt(rows, bandStart, bandCount, from);
-        if (movingId.Length == 0 || IsPinnedCard(movingId)) return null;   // the sentinel is not in `Sections`
-
-        var moving = document.Locate(movingId);
-        if (moving.Index < 0 || moving.Parent is not null) return null;    // a card is always a TOP-LEVEL section
-
-        // The post-removal band holds bandCount-1 cards, so slot bandCount-1 is "append". Any other slot names the
-        // card the moved one lands ABOVE; its ORIGINAL slot is shifted by one wherever the removal was above it.
-        int successorSlot = to >= bandCount - 1 ? -1 : (to < from ? to : to + 1);
-
-        int newIndex;
-        if (successorSlot < 0)
-        {
-            newIndex = document.Sections.Count - 1;                        // post-removal tail
-        }
-        else
-        {
-            string successorId = SectionIdAt(rows, bandStart, bandCount, successorSlot);
-            var successor = document.Locate(successorId);
-            if (successor.Index < 0 || successor.Parent is not null) return null;
-            newIndex = successor.Index > moving.Index ? successor.Index - 1 : successor.Index;
-        }
-
-        if (newIndex < 0 || newIndex == moving.Index) return null;         // a no-op is silence, not a rejection
-        return new MoveSection(movingId, null, newIndex);
-    }
-
-    /// <summary>Translate one palette chip dropped ON a section card into the undoable <c>AddSection</c>, or null
-    /// when there is nothing honest to dispatch.
-    ///
-    /// <para>The drop convention is "insert BEFORE the card you aimed at" — the same neighbour-bridging discipline
-    /// <see cref="ToMoveSection"/> uses: the canvas enumerates CARDS (top-level sections this build understands,
-    /// plus the materialised Shortcuts head) while <c>AddSection.Index</c> is an index into
-    /// <paramref name="document"/><c>.Sections</c>.</para>
-    ///
-    /// <para>The pinned Shortcuts head is not in <c>Sections</c>, so a drop on it resolves to index 0 — "above
-    /// everything the reducer can address". A null/blank <paramref name="beforeSectionId"/> means "no card under the
-    /// pointer" and APPENDS.</para></summary>
-    /// <param name="document">The PERSISTED document, never the render-path document: the latter carries the
-    /// materialised Shortcuts section at index 0, so every index in it is one too high.</param>
-    public static SidebarCommand? ToAddSection(SidebarCustomLayout? document, string? beforeSectionId,
-                                               SidebarSectionDropPayload? payload)
-    {
-        if (document is null || payload is null) return null;
-        if (!SidebarSectionKinds.IsKnown(payload.Kind)) return null;
-
-        int index = document.Sections.Count;                       // no card under the pointer ⇒ append
-        if (beforeSectionId is { Length: > 0 } id && !IsPinnedCard(id))
-        {
-            var at = document.Locate(id);
-            // A child card is not a top-level slot; refusing is better than silently filing the new section
-            // somewhere the cue never pointed.
-            if (at.Index < 0 || at.Parent is not null) return null;
-            index = at.Index;
-        }
-        else if (beforeSectionId is { Length: > 0 })
-        {
-            index = 0;                                             // the Shortcuts head: above every addressable section
-        }
-
-        return new AddSection(payload.Kind, index, ParentId: null, Item: payload.Item, Extension: payload.Extension);
-    }
-
-    /// <summary>Would a palette chip dropped on this card translate into a command at all? The allocation-free twin of
-    /// <see cref="ToAddSection"/>'s null arms, for a drop target's per-frame <c>accepts</c>: a CHILD card is not a
-    /// top-level slot, and a card the document no longer holds is nowhere — both must refuse with a sentence rather than
-    /// cue "Add here" and then do nothing.</summary>
-    public static bool CanAddBefore(SidebarCustomLayout? document, string? beforeSectionId)
-    {
-        if (document is null) return false;
-        if (beforeSectionId is not { Length: > 0 } id || IsPinnedCard(id)) return true;
-        var at = document.Locate(id);
-        return at.Index >= 0 && at.Parent is null;
-    }
-
-    /// <summary>Has the options popover lost its subject? It has once the edit session selects another section or none
-    /// (the popover's own "Remove section" clears the subject) and once the document stops holding the section (a remove
-    /// from the card menu, an undo of its add). A popover left open over "Select a section…" is the J2 leftover this
-    /// closes (G-184).</summary>
-    public static bool OptionsSubjectGone(string? selected, string subject, bool subjectInDocument)
-        => !subjectInDocument || !string.Equals(selected, subject, StringComparison.Ordinal);
-
-    /// <summary>The section id at a band slot, or "" when the slot is out of the plan.</summary>
-    public static string SectionIdAt(IReadOnlyList<SidebarRow>? rows, int bandStart, int bandCount, int slot)
-    {
-        if (rows is null || (uint)slot >= (uint)bandCount) return "";
-        int index = bandStart + slot;
-        if ((uint)index >= (uint)rows.Count) return "";
-        var row = rows[index];
-        return row.Kind == SidebarRowKind.SectionCard ? row.SectionId : "";
-    }
-}
-// ── CUSTOMIZER PURE TABLES: palette, query-panel shape, number editor, display projection, config rewriter ────────────
-
-// The customizer page's PURE model: the searchable section palette (including the Destinations group), the query-panel
-// shape a section kind owns, the discrete-number editor's normalization rule, the display-option projection the
-// generated property controls bind, and the opaque extension-config rewriter. Engine-free by construction — the page
-// (stage 2) renders FROM these tables; it never grows a second copy of a kind switch or a config writer.
-
-/// <summary>The query controls a section kind owns, so the property panel never grows a second, untested kind switch.</summary>
-public readonly record struct SidebarQueryPanelShape(bool ShowKinds, bool ShowQualifier)
-{
-    public static SidebarQueryPanelShape For(SidebarSectionKind kind, bool qualifiersAvailable) => kind switch
-    {
-        SidebarSectionKind.PlaylistTree => new(false, true),
-        SidebarSectionKind.EntityList => new(true, qualifiersAvailable),
-        _ => new(false, false),
-    };
-}
-
-/// <summary>The discrete-number editor's one normalization rule. The UI uses the returned integer both for dispatch and
-/// for rejection snap-back.</summary>
-public static class SidebarNumberEdit
-{
-    public static int Normalize(double value, int min, int max)
-        => Math.Clamp((int)Math.Round(value), min, max);
-}
-
-// ── the palette (grouped + searchable; Destinations included) ──────────────────────────────────────────────────────
-
-/// <summary>The palette's groups. <see cref="Destinations"/> is APPENDED (7) rather than inserted at 0 even though it
-/// renders FIRST: the numeric order is only this enum's storage — <see cref="SidebarPalette.Groups"/> is the single
-/// authority on render order, and renumbering the six that shipped would silently rewrite every existing entry's
-/// group.</summary>
-public enum SidebarPaletteGroup : byte
-{
-    Navigation = 0, Library = 1, Playback = 2, DynamicFeeds = 3, Layout = 4, Actions = 5, Extensions = 6,
-
-    /// <summary>Real app pages, so typing "home" answers with <b>Home</b> instead of "Links — shortcuts to pages like
-    /// Home or Search". Entries are generated from <c>SidebarPinId.PinnableRoutes</c> plus the extra destinations that
-    /// are reachable but not pinnable; their labels resolve from the route key at the UI edge, so they can never
-    /// disagree with the tab strip or the breadcrumb.</summary>
-    Destinations = 7,
-}
-
-/// <summary>What the palette ADDS when clicked. Kept as data (not a switch in a render) so the palette, its search
-/// filter and the tests all read one table.</summary>
-public enum SidebarPaletteAdd : byte
-{
-    /// <summary>A plain <c>AddSection(Kind)</c>.</summary>
-    Section = 0,
-    /// <summary>An <c>AddSection(JumpBackIn)</c> that then flips its recents source to the play log.</summary>
-    RecentlyPlayed = 1,
-    /// <summary>An <c>AddSection(Extension, Extension: ref)</c> for <see cref="SidebarPaletteEntry.ContributionId"/>.</summary>
-    Contribution = 2,
-    /// <summary>The action picker, then <c>AddSection(StaticLinks, Item: the bound action item)</c> — ONE undo step.</summary>
-    ActionShortcut = 3,
-    /// <summary>The contribution picker (every registered source), then <see cref="Contribution"/>.</summary>
-    AnyContribution = 4,
-    /// <summary>A pre-seeded StaticLinks section containing the localized Liked Songs route.</summary>
-    LikedSongsShortcut = 5,
-
-    /// <summary>An app PAGE: one undoable <c>AddSection(StaticLinks, Item: the route)</c>. Appends into a StaticLinks
-    /// subject instead of minting a sibling (<see cref="SidebarPalette.AppendsToSelection"/>).</summary>
-    Destination = 6,
-
-    /// <summary>DEFECT 7 — a bare Links section that opens the destination picker immediately, so it is never left
-    /// with zero items.</summary>
-    LinksWithPicker = 7,
-}
-
-/// <summary>One palette row. <paramref name="IconName"/> is a GLYPH NAME (this table is engine-free — the app-side
-/// palette view maps it). <paramref name="RouteKey"/> is set only on <see cref="SidebarPaletteGroup.Destinations"/>
-/// rows, which carry NO name loc key on purpose — a destination's label is owned by the route table at the UI edge
-/// (the tab strip, the breadcrumb, the pinned rows); minting a second spelling here is the drift the single-owner
-/// rule exists to catch.</summary>
-public sealed record SidebarPaletteEntry(
-    string Id,
-    SidebarPaletteGroup Group,
-    SidebarSectionKind Kind,
-    SidebarPaletteAdd Add,
-    string NameLocKey,
-    string DescriptionLocKey,
-    string IconName,
-    string? ContributionId = null,
-    string? RouteKey = null);
-
-/// <summary>The palette table + its pure search filter.</summary>
-public static class SidebarPalette
-{
-    /// <summary>The SECTION half of the palette, in group order: 4 Navigation, 3 Library, 3 Playback, 4 Dynamic feeds,
-    /// 3 Layout, 1 Actions, 1 Extensions — 19 rows. "Queue" and "Now Playing" are two distinct first-party
-    /// contributions (<c>wavee.queue</c>, <c>wavee.nowPlaying</c>) with their own loc keys, so they are two rows, not
-    /// one.</summary>
-    public static readonly SidebarPaletteEntry[] Sections =
-    [
-        // Navigation
-        new("pinned", SidebarPaletteGroup.Navigation, SidebarSectionKind.Pinned, SidebarPaletteAdd.Section,
-            "sidebar.section.pinned", "sidebar.section.pinnedSub", "Pin"),
-        new("shortcuts", SidebarPaletteGroup.Navigation, SidebarSectionKind.CollectionShortcuts,
-            SidebarPaletteAdd.Section, "sidebar.section.shortcuts", "sidebar.section.shortcutsSub", "Heart"),
-        new("likedSongs", SidebarPaletteGroup.Navigation, SidebarSectionKind.StaticLinks,
-            SidebarPaletteAdd.LikedSongsShortcut, "nav.likedSongs", "sidebar.customizer.likedSongsSub", "Heart"),
-        // DEFECT 7 — a bare "Links" section used to add a zero-item section that plans as one generic grey hint, and
-        // adding it twice gave two identical dead rows. It now opens the destination picker on the way in.
-        new("staticLinks", SidebarPaletteGroup.Navigation, SidebarSectionKind.StaticLinks,
-            SidebarPaletteAdd.LinksWithPicker, "sidebar.section.staticLinks", "sidebar.section.staticLinksSub", "Link"),
-
-        // Library
-        new("playlistTree", SidebarPaletteGroup.Library, SidebarSectionKind.PlaylistTree, SidebarPaletteAdd.Section,
-            "sidebar.section.playlistTree", "sidebar.section.playlistTreeSub", "Folder"),
-        new("entityList", SidebarPaletteGroup.Library, SidebarSectionKind.EntityList, SidebarPaletteAdd.Section,
-            "sidebar.section.entityList", "sidebar.section.entityListSub", "Filter"),
-        new("entityEmbed", SidebarPaletteGroup.Library, SidebarSectionKind.EntityEmbed, SidebarPaletteAdd.Section,
-            "sidebar.section.entityEmbed", "sidebar.section.entityEmbedSub", "FavoriteStar"),
-
-        // Playback
-        new("recentlyPlayed", SidebarPaletteGroup.Playback, SidebarSectionKind.JumpBackIn,
-            SidebarPaletteAdd.RecentlyPlayed, "sidebar.section.recentlyPlayed", "sidebar.section.recentlyPlayedSub",
-            "Headphones"),
-        new("queue", SidebarPaletteGroup.Playback, SidebarSectionKind.Extension, SidebarPaletteAdd.Contribution,
-            "sidebar.section.queue", "sidebar.section.queueSub", "Queue", SidebarContributions.Queue),
-        new("nowPlaying", SidebarPaletteGroup.Playback, SidebarSectionKind.Extension, SidebarPaletteAdd.Contribution,
-            "sidebar.section.nowPlaying", "sidebar.section.nowPlayingSub", "Play", SidebarContributions.NowPlaying),
-
-        // Dynamic feeds
-        new("jumpBackIn", SidebarPaletteGroup.DynamicFeeds, SidebarSectionKind.JumpBackIn, SidebarPaletteAdd.Section,
-            "sidebar.section.jumpBackIn", "sidebar.section.jumpBackInSub", "Clock"),
-        new("artistTopTracks", SidebarPaletteGroup.DynamicFeeds, SidebarSectionKind.Extension,
-            SidebarPaletteAdd.Contribution, "sidebar.section.artistTopTracks", "sidebar.section.artistTopTracksSub",
-            "Contact", SidebarContributions.ArtistTopTracks),
-        new("newReleases", SidebarPaletteGroup.DynamicFeeds, SidebarSectionKind.NewReleases, SidebarPaletteAdd.Section,
-            "sidebar.section.newReleases", "sidebar.section.newReleasesSub", "Album"),
-        new("concerts", SidebarPaletteGroup.DynamicFeeds, SidebarSectionKind.Concerts, SidebarPaletteAdd.Section,
-            "sidebar.section.concerts", "sidebar.section.concertsSub", "Calendar"),
-
-        // Layout
-        new("group", SidebarPaletteGroup.Layout, SidebarSectionKind.CustomGroup, SidebarPaletteAdd.Section,
-            "sidebar.section.group", "sidebar.section.groupSub", "Grid"),
-        new("header", SidebarPaletteGroup.Layout, SidebarSectionKind.Header, SidebarPaletteAdd.Section,
-            "sidebar.section.header", "sidebar.section.headerSub", "Font"),
-        new("divider", SidebarPaletteGroup.Layout, SidebarSectionKind.Divider, SidebarPaletteAdd.Section,
-            "sidebar.section.divider", "sidebar.section.dividerSub", "Remove"),
-
-        // Actions
-        new("actionShortcut", SidebarPaletteGroup.Actions, SidebarSectionKind.StaticLinks,
-            SidebarPaletteAdd.ActionShortcut, "sidebar.customizer.itemAction", "sidebar.customizer.itemActionSub",
-            "RefineSparkle"),
-
-        // Extensions
-        new("extension", SidebarPaletteGroup.Extensions, SidebarSectionKind.Extension,
-            SidebarPaletteAdd.AnyContribution, "sidebar.section.extension", "sidebar.section.extensionSub", "Code"),
-    ];
-
-    /// <summary>Real destinations NOT in <c>SidebarPinId.PinnableRoutes</c>: settings is refused by
-    /// <c>SidebarPinId.FromRoute</c> as a tooling surface; the concerts hub is pinnable
-    /// (<c>SidebarPinId.AlsoPinnableRoutes</c>) but absent from the curated PIN picker on purpose.
-    ///
-    /// <para>DECLARED ABOVE <see cref="Destinations"/> ON PURPOSE: C# runs static field initializers in TEXTUAL order,
-    /// so declaring this below the field that reads it would leave it null inside <c>BuildDestinations</c> and ship an
-    /// empty Destinations group.</para></summary>
-    static readonly string[] ExtraDestinationRoutes = ["settings", ConcertsRoute];
-
-    /// <summary>Literal, not a shared constant — this table is source-included by <c>Wavee.Tests</c>, which cannot see
-    /// the engine-bound owner of the concerts route.</summary>
-    const string ConcertsRoute = "concerts";
-
-    /// <summary><c>SidebarPinId.PinnableRoutes</c> ∪ <see cref="ExtraDestinationRoutes"/> — 11 rows, always; there is
-    /// no developer-mode gate on this table. Every entry is <c>StaticLinks</c> +
-    /// <see cref="SidebarPaletteAdd.Destination"/>, one undo step; no icon override — a route row resolves its glyph
-    /// from the route table at the row site.</summary>
-    public static readonly SidebarPaletteEntry[] Destinations = BuildDestinations();
-
-    static SidebarPaletteEntry[] BuildDestinations()
-    {
-        var routes = SidebarPinId.PinnableRoutes;
-        var extra = ExtraDestinationRoutes;
-        var into = new SidebarPaletteEntry[routes.Length + extra.Length];
-        for (int i = 0; i < routes.Length; i++) into[i] = Destination(routes[i]);
-        for (int i = 0; i < extra.Length; i++) into[routes.Length + i] = Destination(extra[i]);
-        return into;
-    }
-
-    /// <summary>One destination row. The name key is EMPTY — the label resolves from the route at the UI edge; the
-    /// description is one shared string for the whole group.</summary>
-    static SidebarPaletteEntry Destination(string routeKey) => new(
-        "dest:" + routeKey, SidebarPaletteGroup.Destinations, SidebarSectionKind.StaticLinks,
-        SidebarPaletteAdd.Destination, "", DestinationSubLocKey, "Link", ContributionId: null, RouteKey: routeKey);
-
-    /// <summary>The one description every destination row shares.</summary>
-    public const string DestinationSubLocKey = "sidebar.customizer.destinationSub";
-
-    /// <summary>The WHOLE palette: destinations first, then the section kinds. One array, so <see cref="Filter"/>, the
-    /// grouping loop and the tests all read one table.</summary>
-    public static readonly SidebarPaletteEntry[] All = Concat(Destinations, Sections);
-
-    static SidebarPaletteEntry[] Concat(SidebarPaletteEntry[] a, SidebarPaletteEntry[] b)
-    {
-        var into = new SidebarPaletteEntry[a.Length + b.Length];
-        Array.Copy(a, into, a.Length);
-        Array.Copy(b, 0, into, a.Length, b.Length);
-        return into;
-    }
-
-    /// <summary>Render order. DESTINATIONS FIRST: a user who types (or scrolls looking for) "home" meets the page
-    /// before they meet the abstraction that could hold it. The remaining six keep the order they shipped in.</summary>
-    public static readonly SidebarPaletteGroup[] Groups =
-    [
-        SidebarPaletteGroup.Destinations,
-        SidebarPaletteGroup.Navigation, SidebarPaletteGroup.Library, SidebarPaletteGroup.Playback,
-        SidebarPaletteGroup.DynamicFeeds, SidebarPaletteGroup.Layout, SidebarPaletteGroup.Actions,
-        SidebarPaletteGroup.Extensions,
-    ];
-
-    /// <summary>The palette entry that NAMES a contribution id, or null. Looking it up here means the pick list says
-    /// "Queue" where a first-party name is known and falls back to the raw id exactly once where it is not.</summary>
-    public static SidebarPaletteEntry? EntryForContribution(string? contributionId)
-    {
-        if (contributionId is not { Length: > 0 }) return null;
-        for (int i = 0; i < Sections.Length; i++)
-        {
-            var e = Sections[i];
-            if (e.ContributionId is { Length: > 0 } id
-                && string.Equals(id, contributionId, StringComparison.Ordinal)) return e;
-        }
-        return null;
-    }
-
-    /// <summary>Can this entry be DRAGGED onto the canvas? A drag must resolve to ONE <c>AddSection</c> at the drop
-    /// position: the two entries that open a modal first, the contribution-picker entry, and "Recently played"
-    /// (deliberately TWO commands) cannot, so they stay click-only rather than lying about the outcome.</summary>
-    public static bool CanDrag(SidebarPaletteAdd add) => add is SidebarPaletteAdd.Section
-        or SidebarPaletteAdd.Contribution or SidebarPaletteAdd.LikedSongsShortcut or SidebarPaletteAdd.Destination;
-
-    /// <summary>Does clicking this entry APPEND to the selected section instead of creating a sibling? Only a
-    /// destination does, and only into a <c>StaticLinks</c> section — anywhere else would be a
-    /// <c>KindDoesNotAcceptItems</c> rejection dressed up as a feature.</summary>
-    public static bool AppendsToSelection(SidebarPaletteEntry? entry, SidebarSectionSpec? selected)
-        => entry is { Add: SidebarPaletteAdd.Destination, RouteKey.Length: > 0 }
-           && selected is { Kind: SidebarSectionKind.StaticLinks };
-
-    public static string GroupLocKey(SidebarPaletteGroup group) => group switch
-    {
-        SidebarPaletteGroup.Destinations => "sidebar.palette.destinations",
-        SidebarPaletteGroup.Navigation => "sidebar.palette.navigation",
-        SidebarPaletteGroup.Library => "sidebar.palette.library",
-        SidebarPaletteGroup.Playback => "sidebar.palette.playback",
-        SidebarPaletteGroup.DynamicFeeds => "sidebar.palette.dynamic",
-        SidebarPaletteGroup.Layout => "sidebar.palette.layout",
-        SidebarPaletteGroup.Actions => "sidebar.palette.actions",
-        _ => "sidebar.palette.extensions",
-    };
-
-    /// <summary>Trim + lowercase, "" for nothing typed. Normalized ONCE per keystroke, never per row.</summary>
-    public static string NormalizeQuery(string? query)
-        => string.IsNullOrWhiteSpace(query) ? "" : query!.Trim().ToLowerInvariant();
-
-    /// <summary>Token-wise contains: EVERY whitespace-separated token of the (already normalized) query must appear in
-    /// the label or the description, so "top art" finds "Artist top tracks". An empty query matches everything.</summary>
-    public static bool Matches(string normalizedQuery, string? label, string? description)
-    {
-        if (normalizedQuery.Length == 0) return true;
-        int i = 0;
-        while (i < normalizedQuery.Length)
-        {
-            while (i < normalizedQuery.Length && normalizedQuery[i] == ' ') i++;
-            int start = i;
-            while (i < normalizedQuery.Length && normalizedQuery[i] != ' ') i++;
-            if (i == start) break;
-            var token = normalizedQuery.AsSpan(start, i - start);
-            bool hit = Contains(label, token) || Contains(description, token);
-            if (!hit) return false;
-        }
-        return true;
-
-        static bool Contains(string? haystack, ReadOnlySpan<char> token)
-            => haystack is { Length: > 0 } && haystack.AsSpan().Contains(token, StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>Append the entries matching <paramref name="query"/> (in table order) to <paramref name="into"/>; the
-    /// two projections are delegates because the localized strings live at the UI edge. Every one of the 11
-    /// destination rows is offered — there is no developer-mode gate in this build. Returns how many were
-    /// appended.</summary>
-    public static int Filter(string? query, Func<SidebarPaletteEntry, string> labelOf,
-                            Func<SidebarPaletteEntry, string?>? descriptionOf, List<SidebarPaletteEntry> into)
-    {
-        ArgumentNullException.ThrowIfNull(labelOf);
-        ArgumentNullException.ThrowIfNull(into);
-        into.Clear();
-        string q = NormalizeQuery(query);
-        for (int i = 0; i < All.Length; i++)
-        {
-            var e = All[i];
-            if (!Matches(q, labelOf(e), descriptionOf?.Invoke(e))) continue;
-            into.Add(e);
-        }
-        return into.Count;
-    }
-}
-
-// ── display options: the property panel's row order + the int projection its generated controls bind ────────────────
-
-/// <summary>The display-option half of the property panel, kept pure so the panel is a RENDERER of this table rather
-/// than a hand-written per-kind form (the drift <c>SidebarSectionKinds.AllowsDisplayField</c> exists to prevent).</summary>
-public static class SidebarDisplayValues
-{
-    /// <summary>Row order in the property panel. Which of these a KIND actually shows is
-    /// <c>SidebarSectionKinds.AllowsDisplayField</c>'s answer — never a second table.</summary>
-    public static readonly SidebarDisplayField[] Order =
-    [
-        SidebarDisplayField.Density,
-        SidebarDisplayField.Presentation,
-        SidebarDisplayField.GridColumns,
-        SidebarDisplayField.Artwork,
-        SidebarDisplayField.Subtitles,
-        SidebarDisplayField.CountBadges,
-        SidebarDisplayField.InlineControls,
-        SidebarDisplayField.PlayButton,
-        SidebarDisplayField.RecentsSource,
-        SidebarDisplayField.MaxItems,
-        SidebarDisplayField.EmptyBehavior,
-        SidebarDisplayField.CollapsedByDefault,
-        SidebarDisplayField.ShowInRail,
-    ];
-
-    /// <summary>The field's current value as the int <c>SetDisplayOption</c> carries (bools encode 0/1) — the exact
-    /// inverse of <c>SidebarLayoutReducer.WithField</c>.</summary>
-    public static int Read(SidebarDisplayOptions? options, SidebarDisplayField field)
-    {
-        var o = options ?? SidebarDisplayOptions.Default;
-        return field switch
-        {
-            SidebarDisplayField.Density => (int)o.Density,
-            SidebarDisplayField.Presentation => (int)o.Presentation,
-            SidebarDisplayField.Artwork => o.Artwork ? 1 : 0,
-            SidebarDisplayField.Subtitles => o.Subtitles ? 1 : 0,
-            SidebarDisplayField.CountBadges => o.CountBadges ? 1 : 0,
-            SidebarDisplayField.CollapsedByDefault => o.CollapsedByDefault ? 1 : 0,
-            SidebarDisplayField.ShowInRail => o.ShowInRail ? 1 : 0,
-            SidebarDisplayField.MaxItems => o.MaxItems,
-            SidebarDisplayField.GridColumns => o.GridColumns,
-            SidebarDisplayField.InlineControls => o.InlineControls ? 1 : 0,
-            SidebarDisplayField.PlayButton => o.PlayButton ? 1 : 0,
-            SidebarDisplayField.RecentsSource => (int)o.Recents,
-            SidebarDisplayField.EmptyBehavior => (int)o.EmptyBehavior,
-            _ => 0,
-        };
-    }
-
-    /// <summary>True for the fields the panel renders as a toggle (everything that encodes 0/1).</summary>
-    public static bool IsFlag(SidebarDisplayField field) => field is SidebarDisplayField.Artwork
-        or SidebarDisplayField.Subtitles or SidebarDisplayField.CountBadges
-        or SidebarDisplayField.CollapsedByDefault or SidebarDisplayField.ShowInRail
-        or SidebarDisplayField.InlineControls or SidebarDisplayField.PlayButton;
-
-    /// <summary>The row's label loc key (the catalog's <c>sidebar.option.*</c> family).</summary>
-    public static string LabelLocKey(SidebarDisplayField field) => field switch
-    {
-        SidebarDisplayField.Density => "sidebar.option.density",
-        SidebarDisplayField.Presentation => "sidebar.option.presentation",
-        SidebarDisplayField.Artwork => "sidebar.option.artwork",
-        SidebarDisplayField.Subtitles => "sidebar.option.subtitles",
-        SidebarDisplayField.CountBadges => "sidebar.option.countBadges",
-        SidebarDisplayField.CollapsedByDefault => "sidebar.option.collapsedByDefault",
-        SidebarDisplayField.ShowInRail => "sidebar.option.showInRail",
-        SidebarDisplayField.MaxItems => "sidebar.option.maxItems",
-        SidebarDisplayField.GridColumns => "sidebar.option.gridColumns",
-        SidebarDisplayField.InlineControls => "sidebar.a11y.sortView",          // the inline filter/sort row
-        SidebarDisplayField.PlayButton => "detail.play",
-        SidebarDisplayField.RecentsSource => "sidebar.option.sortRecents",
-        SidebarDisplayField.EmptyBehavior => "sidebar.option.emptyBehavior",
-        _ => "",
-    };
-
-    /// <summary>The choice labels for the ENUM fields (empty for flags and numbers). The ORDER here is load-bearing:
-    /// index i must be enum value i, which <c>DisplayValues_EveryFieldRoundTripsEveryChoiceThePanelCanOffer</c>
-    /// pins.</summary>
-    public static string[] ChoiceLocKeys(SidebarDisplayField field) => field switch
-    {
-        SidebarDisplayField.Density =>
-            ["sidebar.option.densityCompact", "sidebar.option.densityCozy", "sidebar.option.densityComfortable"],
-        SidebarDisplayField.Presentation =>
-            ["sidebar.option.presentationList", "sidebar.option.presentationGrid"],
-        SidebarDisplayField.RecentsSource =>
-            ["sidebar.recents.sourceVisited", "sidebar.recents.sourcePlayed"],
-        SidebarDisplayField.EmptyBehavior =>
-            [
-                "sidebar.option.emptyDefault", "sidebar.option.emptyHide",
-                "sidebar.option.emptyCompact", "sidebar.option.emptyAction",
-            ],
-        _ => Array.Empty<string>(),
-    };
-}
-
-// ── opaque extension config: the writer behind the schema-generated property controls ─────────────────────────────────
-
-/// <summary>Rewrites an <c>SidebarExtensionRef.Config</c> object one field at a time — the ONE place the customizer
-/// turns a generated control's value back into JSON. Every write COPIES the untouched members through verbatim, so a
-/// config member this build's schema does not know survives an edit. Never throws: a non-object config degrades to
-/// just the edited member. Uses <see cref="Utf8JsonWriter"/>/<see cref="JsonElement"/> directly — no reflection-based
-/// serialization.</summary>
-public static class SidebarConfigJson
-{
-    /// <summary>The config a freshly added contributed section starts from: <c>{}</c> plus every schema field that
-    /// declares a <c>DefaultJson</c>, so a queue/top-tracks section is bounded before the inspector is touched.</summary>
-    public static JsonElement Defaults(SidebarConfigSchema? schema)
-    {
-        if (schema is null || schema.Fields.Count == 0) return SidebarJson.EmptyObject;
-        var buffer = new System.Buffers.ArrayBufferWriter<byte>(256);
-        using (var w = new Utf8JsonWriter(buffer))
-        {
-            w.WriteStartObject();
-            var fields = schema.Fields;
-            for (int i = 0; i < fields.Count; i++)
-            {
-                var f = fields[i];
-                if (f.DefaultJson is not { Length: > 0 } raw) continue;
-                if (!TryWriteRaw(w, f.Key, raw)) continue;
-            }
-            w.WriteEndObject();
-        }
-        return Parse(buffer);
-    }
-
-    public static JsonElement WithString(JsonElement config, string key, string? value)
-        => Rewrite(config, key, value is null ? null : w => w.WriteStringValue(value));
-
-    public static JsonElement WithInt(JsonElement config, string key, int value)
-        => Rewrite(config, key, w => w.WriteNumberValue(value));
-
-    public static JsonElement WithBool(JsonElement config, string key, bool value)
-        => Rewrite(config, key, w => w.WriteBooleanValue(value));
-
-    /// <summary>A string array (the <c>UriList</c> field kind). A null/empty list REMOVES the member rather than
-    /// storing <c>[]</c> — the same "empty normalizes to absent" rule the query's uri sets follow.</summary>
-    public static JsonElement WithStrings(JsonElement config, string key, IReadOnlyList<string>? values)
-    {
-        if (values is null || values.Count == 0) return Rewrite(config, key, null);
-        return Rewrite(config, key, w =>
-        {
-            w.WriteStartArray();
-            for (int i = 0; i < values.Count; i++)
-            {
-                string one = values[i]?.Trim() ?? "";
-                if (one.Length == 0) continue;
-                w.WriteStringValue(one);
-            }
-            w.WriteEndArray();
-        });
-    }
-
-    /// <summary>Copy every member except <paramref name="key"/>, then write <paramref name="write"/> under it (null
-    /// <paramref name="write"/> = remove the member).</summary>
-    public static JsonElement Rewrite(JsonElement config, string key, Action<Utf8JsonWriter>? write)
-    {
-        if (string.IsNullOrEmpty(key)) return SidebarJson.Own(config);
-
-        var buffer = new System.Buffers.ArrayBufferWriter<byte>(256);
-        using (var w = new Utf8JsonWriter(buffer))
-        {
-            w.WriteStartObject();
-            try
-            {
-                if (config.ValueKind == JsonValueKind.Object)
-                    foreach (var prop in config.EnumerateObject())
-                    {
-                        if (string.Equals(prop.Name, key, StringComparison.Ordinal)) continue;
-                        prop.WriteTo(w);
-                    }
-            }
-            catch (Exception) { /* a disposed/mangled element degrades to "just the edited member" */ }
-
-            if (write is not null)
-            {
-                w.WritePropertyName(key);
-                write(w);
-            }
-            w.WriteEndObject();
-        }
-        return Parse(buffer);
-    }
-
-    static bool TryWriteRaw(Utf8JsonWriter w, string key, string rawJson)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(rawJson);
-            w.WritePropertyName(key);
-            doc.RootElement.WriteTo(w);
-            return true;
-        }
-        catch (Exception) { return false; }
-    }
-
-    static JsonElement Parse(System.Buffers.ArrayBufferWriter<byte> buffer)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(buffer.WrittenMemory);
-            return doc.RootElement.Clone();
-        }
-        catch (Exception) { return SidebarJson.EmptyObject; }
     }
 }

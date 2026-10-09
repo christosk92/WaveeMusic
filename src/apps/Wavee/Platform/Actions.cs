@@ -19,7 +19,7 @@
 //   * `ActionBinding` / `ActionTargetMode` — 0.2.9 spelled these `SidebarActionBinding` / `SidebarActionTargetMode`
 //     and put them in the sidebar's document. They are the PERSISTED VOCABULARY a descriptor is resolved against, and
 //     the registry, the picker and (later) the command palette all speak it, so it belongs with the descriptor. Owner
-//     J's `Sidebar.Doc.cs` DECODES `sidebar-layout.json` into this type rather than declaring a second one.
+//     J's former `Sidebar.Doc.cs` decoded the v2 `sidebar-layout.json` into this type; since the sidebar rework nothing persists it.
 //   * The route↔pin-id mapping is `Shell`'s (`Shell.NameOf` / `Shell.For` / `Shell.UriOf`), because a pin id IS a
 //     route key. 0.2.9's `SidebarPinId` is not re-created here.
 //
@@ -191,8 +191,7 @@ public enum ActionUnavailable : byte
     NotApplicable = 7,
 }
 
-/// <summary>ONE bound action's persisted target. Owner J's <c>Sidebar.Doc.cs</c> decodes <c>sidebar-layout.json</c>
-/// into this; the customizer's picker writes it; the registry resolves it.</summary>
+/// <summary>ONE bound action's target: the action picker writes it and the registry resolves it.</summary>
 /// <param name="ProviderId">The publisher segment (<c>wavee</c>, <c>publisher</c>).</param>
 /// <param name="ActionId">The contribution segment, or already the fully-qualified key.</param>
 /// <param name="TargetMode">Which target this binding names.</param>
@@ -380,8 +379,7 @@ public static partial class Actions
         /// <c>wavee</c> — there is no privileged non-extension path.</summary>
         public const string FirstPartyPublisher = "wavee";
 
-        /// <summary>Upper bound on a whole key. Generous but bounded: a key is persisted inside
-        /// <c>sidebar-layout.json</c>, so an unbounded one is a document-size hazard.</summary>
+        /// <summary>Upper bound on a whole key. Generous but bounded: a key may be persisted by a caller, so an unbounded one is a size hazard.</summary>
         public const int MaxLength = 128;
 
         /// <summary>A valid key is 2+ separator-separated segments, each starting with an ASCII letter and continuing

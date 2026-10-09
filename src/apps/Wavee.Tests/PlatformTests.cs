@@ -266,7 +266,6 @@ public class PlatformSettingsTests
         {
             Assert.Equal(1, Platform.Settings.Get(Platform.Keys.RowDensity));                 // Default, not Compact
             Assert.True(Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
-            Assert.Equal("wavee.curated.default", Platform.Settings.Get(Platform.Keys.CuratedTemplateId));
         });
 
     /// <summary>Every write bumps the epoch `Platform/Prefs.cs` (owner L, Wave 4) hangs its four preference epochs
@@ -406,8 +405,8 @@ public class PlatformSettingsTests
         Assert.Equal("library.artists.leftw", Platform.Keys.LibraryLeftW("artists").Name);
         Assert.Equal(280f, Platform.Keys.LibraryLeftW("artists").Default);      // artists is the one narrow default
         Assert.Equal(340f, Platform.Keys.LibraryLeftW("albums").Default);
-        Assert.Equal("sidebar.library-v3.width", Platform.Keys.SidebarWidth("library-v3", 300f).Name);
-        Assert.Equal(300f, Platform.Keys.SidebarWidth("library-v3", 300f).Default);
+        Assert.Equal("sidebar.layout.id", Platform.Keys.SidebarLayoutId.Name);
+        Assert.Equal(0, Platform.Keys.SidebarLayoutId.Default);                 // 0 ⇒ Classic
         Assert.Equal("npv.player.ipod.wheel", Platform.Keys.NpvOption("ipod", "wheel").Name);
     }
 

@@ -289,7 +289,7 @@ public static partial class Diagnostics
                 var fault = SidebarPaneInvariant.Inspect(in snap);
                 if (PaneFaultEdge(s_paneFault, fault))
                     Log.Event(WaveeLogLevel.Error, "sidebar", "sidebar.pane.invariant_failed", "Sidebar pane did not settle in a valid terminal state", null, -1, null,
-                        WaveeLogField.Of("route", s_route), WaveeLogField.Of("mode", snap.Mode.ToString()),
+                        WaveeLogField.Of("route", s_route), WaveeLogField.Of("layout", snap.Layout.ToString()), WaveeLogField.Of("mode", snap.Mode.ToString()),
                         WaveeLogField.Of("band", snap.Band.ToString()), WaveeLogField.Of("userCollapsed", snap.UserCollapsed),
                         WaveeLogField.Of("overlayOpen", snap.OverlayOpen), WaveeLogField.Of("presentedWidth", snap.PresentedWidth),
                         WaveeLogField.Of("preferredWidth", snap.PreferredExpandedWidth), WaveeLogField.Of("renderedWidth", snap.RenderedPaneWidth),

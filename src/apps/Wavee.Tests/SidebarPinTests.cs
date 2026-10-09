@@ -8,18 +8,13 @@
 //                  and a pin survives a library refresh because it never depends on a list index. Here: IsPinnable /
 //                  FromEntry, the one screen every pin-creation call site (menu, drag, touch) funnels a row through
 //                  — Track is the one refusal.
-//   PinSyncRules   the pin id <-> Spotify's ylpin wire uri map. Liked Songs is the bare `spotify:collection` on the
-//                  wire, not the `:tracks`-suffixed or user-namespaced forms the catalog/routing layer uses
-//                  elsewhere.
+//   PinSyncRules   the pin id <-> Spotify's ylpin wire uri map. Liked Songs is never a pin: `liked` has no wire
+//                  uri, and no collection spelling (bare, `:tracks`-suffixed or user-namespaced) maps back to one.
 //   PinRowRule     Decide(hasStore, pinId, isPinned) is an ABSOLUTE-state pair, never a toggle: no store (the
 //                  feature's kill switch) or an unpinnable target -> PinRowKind.None — the menu OMITS the row
 //                  rather than showing a dead one.
 //
 // NOT ported here (see the porting agent's handoff for the full accounting):
-//   - SidebarPinSyncTests.cs, in full: every fact there drives SidebarPinStore / SidebarPinSync / InMemoryStore /
-//     MemoryAppSettings — a live store-and-network bridge, none of which exist in 0.3 yet (still parked under
-//     src/apps/_old). That is not a pure rule and belongs in a separate integration-style port once the bridge
-//     lands.
 //   - SidebarPinKindWireTests.cs's wire-string/legacy-int round trips (PinKindName / TryParsePinKind /
 //     TryLegacyPinKind / LegacyPinKindInt): SidebarDocTests.cs already drives those; only the IsPinnable/FromEntry
 //     half is ported here.
@@ -75,14 +70,11 @@ public class SidebarPinTests
         => Assert.Equal(expectedUri, PinSyncRules.TryWireUri(pinId, User));
 
     [Fact]
-    public void Liked_route_maps_to_the_bare_collection_uri()
-        => Assert.Equal("spotify:collection", PinSyncRules.TryWireUri("liked", User));
-
-    [Fact]
-    public void Liked_route_is_syncable_even_before_the_username_is_known()
+    public void Liked_is_never_a_wire_pin()
     {
-        Assert.Equal("spotify:collection", PinSyncRules.TryWireUri("liked", ""));
-        Assert.True(PinSyncRules.IsSyncable("liked", ""));
+        Assert.Null(PinSyncRules.TryWireUri("liked", User));
+        Assert.Null(PinSyncRules.TryWireUri("liked", ""));
+        Assert.False(PinSyncRules.IsSyncable("liked", ""));
     }
 
     [Theory]
@@ -115,7 +107,7 @@ public class SidebarPinTests
     [InlineData("album:spotify:album:x", true)]
     [InlineData("artist:spotify:artist:x", true)]
     [InlineData("show:spotify:show:x", true)]
-    [InlineData("liked", true)]
+    [InlineData("liked", false)]
     [InlineData("folder:x", true)]
     [InlineData("home", false)]
     [InlineData("pl:wavee:playlist:x", false)]
@@ -130,15 +122,15 @@ public class SidebarPinTests
     public void Wire_uris_map_back_to_their_pin_id(string wireUri, string expectedId)
         => Assert.Equal(expectedId, PinSyncRules.TryPinId(wireUri));
 
-    // Every spelling EntityUri.IsLikedCollection recognises collapses onto the one "liked" route pin, plus the bare
-    // "spotify:collection" the ylpin set actually carries on the wire.
+    // Liked Songs is never a pin, so none of the spellings EntityUri.IsLikedCollection recognises (nor the bare
+    // "spotify:collection" an older ylpin set may still carry) comes back as one.
     [Theory]
     [InlineData("spotify:collection")]
     [InlineData("spotify:collection:tracks")]
     [InlineData("spotify:user:bob:collection")]
     [InlineData("spotify:user:bob:collection:tracks")]
-    public void Every_liked_spelling_maps_to_the_liked_route_pin(string wireUri)
-        => Assert.Equal("liked", PinSyncRules.TryPinId(wireUri));
+    public void No_liked_spelling_becomes_a_pin(string wireUri)
+        => Assert.Null(PinSyncRules.TryPinId(wireUri));
 
     [Theory]
     [InlineData("spotify:track:4cOdK2wGLETKBW3PvgPWqT")]    // tracks are never pinnable
@@ -186,5 +178,23 @@ public class SidebarPinTests
         string? pinId = SidebarPinId.FromUri(uri);
         Assert.Null(pinId);
         Assert.Equal(PinRowKind.None, PinRowRule.Decide(hasStore: true, pinId, isPinned: false));
+    }
+
+    [Fact]
+    public void Liked_shows_no_pin_row_because_it_is_never_a_pin()
+        => Assert.Equal(PinRowKind.None, PinRowRule.Decide(hasStore: true, "liked", isPinned: false));
+
+    [Fact]
+    public void RefusalKeyOf_Unpinnables_NamedReason_PinnablesNull()
+    {
+        Assert.Equal("sidebar.pin.cantPin.track", SidebarPinRules.RefusalKeyOf(DragKind.Track, "t1", "spotify:track:1"));
+        Assert.Equal("sidebar.pin.cantPin.local", SidebarPinRules.RefusalKeyOf(DragKind.Track, "l1", "wavee:local:track:1"));
+        Assert.Equal("sidebar.pin.cantPin.episode", SidebarPinRules.RefusalKeyOf(DragKind.Episode, "e1", "spotify:episode:1"));
+        Assert.Equal("sidebar.pin.cantPin.home", SidebarPinRules.RefusalKeyOf(DragKind.Route, "home", ""));
+        Assert.Equal("sidebar.pin.cantPin.liked", SidebarPinRules.RefusalKeyOf(DragKind.Route, "liked", ""));
+        Assert.Null(SidebarPinRules.RefusalKeyOf(DragKind.Route, "search", ""));
+        Assert.Null(SidebarPinRules.RefusalKeyOf(DragKind.Playlist, "pl:a", "spotify:playlist:a"));
+        Assert.Null(SidebarPinRules.RefusalKeyOf(DragKind.Folder, "folder:f", "spotify:user:u:folder:f"));
+        Assert.Null(SidebarPinRules.RefusalKeyOf(DragKind.Album, "album:a", "spotify:album:a"));
     }
 }
