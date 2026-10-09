@@ -82,9 +82,8 @@ public static partial class Sidebar
                 ReadOnly = true,              // the chrome owns every piece of the ephemeral document's state
                 SearchHead = false,           // V3's own library-only search lives in the toolbar
                 Head = s.ChromeHead,
-                // §3.2.3: the design switch rides V3's overflow menu, so no header layout button. The RAIL keeps its copy
-                // (0.2.9 `RailLayoutMenu = true`): a collapsed pane has no overflow menu to reach.
-                ShowLayoutMenu = false,
+                // The RAIL keeps its layout button (0.2.9 `RailLayoutMenu = true`): a collapsed pane has no overflow menu
+                // to reach; P2's footer ⋯ replaces it.
                 RailLayoutMenu = true,
                 RailHead = s.BuildRailHead,
                 RailHeadTiles = s.RailHeadTileCount,
@@ -579,7 +578,7 @@ public static partial class Sidebar
                 Divider() with
                 {
                     Key = "v3-chrome-rule",
-                    Margin = new Edges4(PaneMetrics.ContentLane, 4f, PaneMetrics.ContentLaneEnd, 4f),
+                    Margin = new Edges4(PaneMetrics.HeadBandInset.Left, 4f, PaneMetrics.HeadBandInset.Right, 4f),
                 },
             };
 
@@ -604,7 +603,7 @@ public static partial class Sidebar
             Key = "v3-breadcrumb",
             Direction = 0, Height = LibraryV3Metrics.BreadcrumbHeight, AlignItems = FlexAlign.Center, Gap = 4f,
             // Optical lane: the 24-DIP box starts 6 before the lane so its 12-DIP GLYPH sits on it.
-            Padding = new Edges4(PaneMetrics.ContentLane - 6f, 0f, PaneMetrics.ContentLaneEnd, 0f),
+            Padding = new Edges4(PaneMetrics.HeadBandInset.Left - 6f, 0f, PaneMetrics.HeadBandInset.Right, 0f),
             Animate = BreadcrumbFly,
             Children =
             [
@@ -759,15 +758,14 @@ public static partial class Sidebar
             kids.Add(Divider() with
             {
                 Key = "v3-nav-rule",
-                Margin = new Edges4(PaneMetrics.ContentLane - SidebarRowGeometry.PaneEdge, 4f,
-                                    PaneMetrics.ContentLaneEnd - SidebarRowGeometry.PaneEdge, 4f),
+                Margin = new Edges4(SidebarRowGeometry.HeaderTextX, 4f, SidebarRowGeometry.TrailingPad, 4f),
             });
 
             return new BoxEl
             {
                 Key = "v3-nav-band",
                 Direction = 1, Shrink = 0f,
-                // Rows carry their own inset, so padding to the bare pane edge lands their glyph on ArtX(0).
+                // Rows carry their own inset, so padding to the bare pane edge lands their glyph on the icon column.
                 Padding = new Edges4(SidebarRowGeometry.PaneEdge, 0f, SidebarRowGeometry.PaneEdge, 0f),
                 Children = [.. kids],
             };
@@ -835,7 +833,7 @@ public static partial class Sidebar
             Element scroller = ScrollView(new BoxEl
             {
                 Direction = 0, Gap = LibraryV3Metrics.DestinationWordGap, AlignItems = FlexAlign.Center,
-                Padding = new Edges4(SidebarRowGeometry.ArtX(0) - SidebarRowGeometry.PaneEdge, 0f, 0f, 0f),
+                Padding = new Edges4(SidebarRowGeometry.IndentFor(0), 0f, 0f, 0f),
                 Children = words,
             }, horizontal: true) with
             {
@@ -927,7 +925,7 @@ public static partial class Sidebar
                 Selected = string.Equals(route, key, StringComparison.Ordinal),
                 Enabled = true,
                 Depth = 0,
-                Density = SidebarDensity.Cozy,
+                Shape = SidebarRowShape.Glyph,
                 Height = LibraryV3Metrics.NavRowHeight,
                 Glyph = RowGlyphs.For(item, dest.Glyph),
                 OnClick = () => _s.Navigate(key, null),
@@ -948,10 +946,10 @@ public static partial class Sidebar
                 Key = item.Id,
                 Label = a.Label,
                 Enabled = a.Enabled,
-                Density = SidebarDensity.Cozy,
+                Shape = SidebarRowShape.Glyph,
                 Height = LibraryV3Metrics.NavRowHeight,
                 // Art-wide leading column + the row's own LeadingGap (W7): the label lines up with Home's.
-                Leading = PaneIcon.Leading(item.IconOverride, a.Icon, a.Enabled, SidebarRowGeometry.ArtFor(SidebarDensity.Cozy)),
+                Leading = PaneIcon.Leading(item.IconOverride, a.Icon, a.Enabled, SidebarRowGeometry.ArtOf(SidebarRowShape.Glyph)),
                 OnClick = a.Enabled ? a.Click : null,
                 Focusable = a.Enabled,
             };
@@ -968,7 +966,7 @@ public static partial class Sidebar
                 Key = item.Id,
                 Label = V3Session.LabelOf(item),
                 Enabled = true,
-                Density = SidebarDensity.Cozy,
+                Shape = SidebarRowShape.EntityTwoLine,
                 Height = LibraryV3Metrics.NavRowHeight,
                 Leading = Cover.ArtUrl(item.FallbackImageUrl, uri, Cover.S32),
                 Track = true,
@@ -990,7 +988,7 @@ public static partial class Sidebar
                 Label = label,
                 Selected = SidebarNavBandModel.SelectsRoute(item, route),
                 Enabled = true,
-                Density = SidebarDensity.Cozy,
+                Shape = SidebarRowShape.EntityTwoLine,
                 Height = LibraryV3Metrics.NavRowHeight,
                 Leading = Cover.ArtUrl(item.FallbackImageUrl, item.Key, Cover.S32,
                                        circular: item.EntityKind == SidebarEntityKind.Artist),
@@ -1079,8 +1077,8 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Direction = 0, Height = LibraryV3Metrics.HeaderHeight, AlignItems = FlexAlign.Center, Gap = 4f,
-                // W7 — LeadBandInset: the mark lands on the rows' art column, like the nav rows and the search host.
-                Padding = PaneMetrics.LeadBandInset,
+                // W7 — HeadBandInset: the mark lands on the rows' icon column, like the nav rows and the search host.
+                Padding = PaneMetrics.HeadBandInset,
                 Children = [.. kids],
             };
         }
@@ -1126,7 +1124,7 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Direction = 0, Height = LibraryV3Metrics.ToolbarHeight, AlignItems = FlexAlign.Center, Gap = 4f,
-                Padding = PaneMetrics.LeadBandInset,
+                Padding = PaneMetrics.HeadBandInset,
                 Children =
                 [
                     Embed.Comp(() => new V3SearchHost(_s)) with { Key = "v3-search" },
@@ -1177,7 +1175,7 @@ public static partial class Sidebar
             bool expanded = layout.Expanded;
             // Quantized so a drag re-renders only when the INTEGER open width moves.
             var openWidth = UseComputed(() => MathF.Round(LibraryV3SearchRules.OpenWidth(
-                Sidebar.Width.Value, PaneMetrics.LeadInset + PaneMetrics.ContentLaneEnd)));
+                Sidebar.Width.Value, PaneMetrics.HeadBandInset.Horizontal)));
 
             // PartRoot: focus the EDITOR after commit (the node is not laid out yet inside OnRealized) through
             // FirstFocusableIn, and keep the field a transparent lane in every state (no InputActive plate).
@@ -1377,7 +1375,7 @@ public static partial class Sidebar
             {
                 Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f,
                 // The LEAD lane (W7): the first chip lands on the art column.
-                Padding = PaneMetrics.LeadBandInset,
+                Padding = PaneMetrics.HeadBandInset,
                 OnKeyDown = e => Rove(e, hooks, nodes, focusedKey, slots, Apply),
                 // The zero-size a11y label sits OUTSIDE the gapped row, or it collects a 6-DIP gap before the first pill.
                 Children =

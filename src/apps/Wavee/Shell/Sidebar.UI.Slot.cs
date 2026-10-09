@@ -49,6 +49,7 @@ public static partial class Sidebar
         Func<ColorF>? _plateFill, _plateBorder;
         Func<Affine2D>? _lineTransform;
         SidebarPillState _pillState;
+        Action<KeyEventArgs>? _slotKey;
 
         /// <summary>Is this slot's folder "+" the armed drop destination? One flag per SLOT (a slot draws at most one folder
         /// row); the pane's folder-create drop spec clears it on leave and on drop.</summary>
@@ -72,16 +73,16 @@ public static partial class Sidebar
 
             Element content = row.Kind switch
             {
-                SidebarRowKind.SectionHeader => HeaderRow(section, in row, index, rows),
-                SidebarRowKind.HeaderLabel => Banded(SectionHeader.Label(PaneText.TitleOf(section)), index, rows),
+                SidebarRowKind.SectionHeader => HeaderRow(section, in row, index, sel),
+                SidebarRowKind.HeaderLabel => SectionHeader.Header(PaneText.TitleOf(section), true, null, null, null, null),
                 // Only a Divider SECTION plans this row; ordinary section joins are whitespace, never implicit rules.
-                SidebarRowKind.Divider => SectionHeader.ExplicitDivider(),
+                SidebarRowKind.Divider => SectionHeader.Separator(),
                 SidebarRowKind.IconRow or SidebarRowKind.EntityRow or SidebarRowKind.Placeholder
                     => ItemOrEntity(section, in row, sel, index),
-                SidebarRowKind.FolderHeader => FolderRow(section, in row, index),
+                SidebarRowKind.FolderHeader => FolderRow(section, in row, index, sel),
                 SidebarRowKind.GridStrip => GridStripRow(section, in row, sel),
                 SidebarRowKind.Empty => EmptyRow(section),
-                SidebarRowKind.Skeleton => Skeletons.Row(index, section.Opts.Density, section.Opts.Subtitles,
+                SidebarRowKind.Skeleton => Skeletons.Row(index, PaneMetrics.ShapeOf(section),
                     heightOverride: PaneMetrics.RowHeight(section), artOverride: PaneMetrics.ArtSize(section)),
                 SidebarRowKind.TreeEnd => TreeEndRow(in row, index),
                 SidebarRowKind.EntityCard => HeroCard(section, in row, sel, index),
@@ -102,7 +103,15 @@ public static partial class Sidebar
             // a banded row carries no Drag payload, no Animate, no OnRename/OnMove of its own.
             if (ReorderBand(in row, index) is { } pair)
                 content = pair.Ro.Item(index - pair.Start, FillSlot(content), key: row.Key, transition: PaneView.Placement);
-            return content;
+            return new BoxEl { Direction = 1, OnKeyDown = _slotKey ??= SlotKey, OnFocusChanged = _scope.OnFocusChanged, Children = [content] };
+        }
+
+        /// <summary>The roving stop is this slot's ROOT (ItemsView focuses it): Enter / Space reach the list's invoke through it.</summary>
+        void SlotKey(KeyEventArgs e)
+        {
+            if (e.Handled || e.IsRepeat || (e.Mods & KeyModifiers.Alt) != 0) return;
+            if (e.KeyCode == Keys.Enter) { _scope.OnInteraction(ItemContainerTrigger.EnterKey, e.Mods); e.Handled = true; }
+            else if (e.KeyCode == Keys.Space) { _scope.OnInteraction(ItemContainerTrigger.SpaceKey, e.Mods); e.Handled = true; }
         }
 
         static Element Nothing => new BoxEl { Height = 0f, Shrink = 0f };
@@ -125,29 +134,26 @@ public static partial class Sidebar
 
         // ── section chrome ───────────────────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The 28-DIP section header inside its rhythm band. The trailing slot can carry, in order: an editable
-        /// EntityList's sort/view trigger, a PlaylistTree's "+" (its ONLY create affordance — gated on a CONFIG flag, never
-        /// on the design, because V3's own chrome carries its own "+"), and — on the FIRST header only — the quick layout
-        /// menu, which must never be crowded out. An editable EntityList with <c>InlineControls</c> hangs its chip strip
-        /// under the header INSIDE the band (header chrome, never a virtualized row).</summary>
-        Element HeaderRow(SidebarSectionSpec section, in SidebarRow row, int index, IReadOnlyList<SidebarRow> rows)
+        /// <summary>The 40-px section header (P1.4.6): the title, then the "+" (a PlaylistTree's create affordance, gated on a
+        /// CONFIG flag, never on the design, because V3's own chrome carries its own "+"), the ⋯ (<see cref="PaneView.HeaderMenu"/>,
+        /// revealed on hover, permanent after a touch) and the chevron. An editable EntityList with <c>InlineControls</c>
+        /// hangs its chip strip under the header; an open Classic filter replaces the header's tail with its box. The header
+        /// is the pill's section anchor (the one-pill rule's third arm), so the pill is drawn here too.</summary>
+        Element HeaderRow(SidebarSectionSpec section, in SidebarRow row, int index, string sel)
         {
             string id = section.Id;
-            bool editable = !_o.Config.ReadOnly;
             var owner = _o;
 
-            Element? sort = null, create = null, layout = null;
-            if (editable && section.Kind == SidebarSectionKind.EntityList)
-                sort = InlineControls.SortTrigger(_o, section);
             // Every delegate reads LIVE pane state: a header slot recycles across sections.
+            Element? create = null, more = null;
             if (section.Kind == SidebarSectionKind.PlaylistTree && _o.Config.HeaderCreate && _o.Config.OnCreatePlaylist is not null)
                 create = Embed.Comp(() => new CreateButton(
-                    owner.CreatePlaylist,
-                    menu: owner.CreateMenu,
-                    drop: owner.HeaderCreateDropSpec(),
-                    dropActive: () => owner.HeaderCreateDropActive.Value)) with { Key = "tree-create" };
-            if (string.Equals(_o.MenuHostSectionId, row.SectionId, StringComparison.Ordinal))
-                layout = LayoutMenu.Button(24f);
+                    owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
+                    dropActive: () => owner.HeaderCreateDropActive.Value,
+                    box: SidebarRowGeometry.HeaderButton, glyph: 12f)) with { Key = "tree-create" };
+            if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu)
+                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast)
+                    .WithContextMenu(svc, menu) with { ClickRequestsContext = true }, Loc.Get(PaneLoc.SectionOptions));
 
             // Explicit locals, never a ternary against null: a lambda has no natural type in that position.
             Action<bool>? toggle = null;
@@ -159,48 +165,24 @@ public static partial class Sidebar
             {
                 toggle = open => owner.ToggleSection(id, !open);
                 // ONE rotating glyph, never a swap; a recycle onto another section seeds its angle instead of spinning.
-                chevron = Chevron.Section(_headerOpen ??= HeaderOpenLive, identity: _sectionIdentity ??= SectionIdentity);
+                chevron = new BoxEl
+                {
+                    Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton, Shrink = 0f,
+                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                    Children = [Chevron.Section(_headerOpen ??= HeaderOpenLive, identity: _sectionIdentity ??= SectionIdentity)],
+                };
             }
 
-            Element header = SectionHeader.Header(PaneText.TitleOf(section), !section.Collapsed, toggle,
-                Cluster(sort, create, layout), chevron);
-            if (!editable || section.Kind != SidebarSectionKind.EntityList || !section.Opts.InlineControls || section.Collapsed)
-                return Banded(header, index, rows);
-            return Banded(new BoxEl
-            {
-                Direction = 1, Gap = 4f,
-                Children = [header, InlineControls.Chips(_o, section)],
-            }, index, rows);
-        }
+            Element header = SectionHeader.Header(PaneText.TitleOf(section), !section.Collapsed, toggle, create, more, chevron);
+            if (_o.FilterOpenFor(id)) header = new BoxEl { Direction = 1, Children = [header, _o.FilterBox()] };
+            else if (!_o.Config.ReadOnly && section.Kind == SidebarSectionKind.EntityList && section.Opts.InlineControls && !section.Collapsed)
+                header = new BoxEl { Direction = 1, Gap = 4f, Children = [header, InlineControls.Chips(_o, section)] };
 
-        static Element? Cluster(Element? a, Element? b, Element? c)
-        {
-            int n = (a is null ? 0 : 1) + (b is null ? 0 : 1) + (c is null ? 0 : 1);
-            if (n == 0) return null;
-            if (n == 1) return a ?? b ?? c;
-            var kids = new Element[n];
-            int k = 0;
-            if (a is not null) kids[k++] = a;
-            if (b is not null) kids[k++] = b;
-            if (c is not null) kids[k++] = c;
-            return new BoxEl { Direction = 0, Gap = 2f, AlignItems = FlexAlign.Center, Children = kids };
-        }
-
-        /// <summary>SECTION RHYTHM: a header band carries 8 DIP of air above and 2 below. It is PADDING on a wrapper, never a
-        /// margin on the header, so the variable-extent layout's measured height stays honest and scroll anchoring cannot
-        /// drift. The air above is suppressed THREE ways — the pane's first row, directly after a Divider, and directly
-        /// after a bare HeaderLabel — because the last two already supply the gap.</summary>
-        static Element Banded(Element header, int index, IReadOnlyList<SidebarRow> rows)
-        {
-            float top = PaneMetrics.SectionGap;
-            if (index <= 0) top = 0f;
-            else if (rows[index - 1].Kind is SidebarRowKind.Divider or SidebarRowKind.HeaderLabel) top = 0f;
-            return new BoxEl
-            {
-                Direction = 1, Shrink = 0f,
-                Padding = new Edges4(0f, top, 0f, PaneMetrics.HeaderBodyGap),
-                Children = [header],
-            };
+            // The header's own pill: centred on the 40-px title band (a header has no margin, so no RowMarginY).
+            _pillState = new SidebarPillState(_o.PillRouteOf(index, sel), _o.RowSelectsRoute(index, sel), 0f,
+                (SidebarRowGeometry.HeaderHeight - SidebarRowGeometry.PillH) * 0.5f);
+            Func<SidebarPillState> probe = _pillProbe ??= PillState;
+            return ZStack(header, Embed.Comp(() => new SelectionPill(owner, probe)));
         }
 
         /// <summary>The header chevron's live open state. Captures only the SLOT: it re-reads the plan row at the slot's
@@ -312,12 +294,8 @@ public static partial class Sidebar
             bool selected = _o.RowSelectsRoute(index, sel);
             bool reordering = _o.TryBandOf(index, out _);
             var (playing, animated) = _o.RowPlayState(index);
+            var shape = PaneMetrics.ShapeOf(section);
             float height = PaneMetrics.RowHeight(section);
-            // TreeLeading == StandardLeading at depth 0, so the only reason to take the tree path is the connector guides a
-            // deeper row draws — and depth only exists where a folder does. A folder-free tree renders flush.
-            bool treeNode = section.Kind == SidebarSectionKind.PlaylistTree && _o.SectionHasFolder(row.SectionId);
-            int treeDepth = treeNode ? entry.Depth : 0;
-            int baseDepth = treeNode ? Math.Max(0, row.Depth - treeDepth) : row.Depth;
 
             var snapshot = entry;   // an `in` parameter cannot be captured — copy the record struct for the closures
             Action? click = null;
@@ -353,14 +331,12 @@ public static partial class Sidebar
             {
                 Key = row.Key,
                 Label = label,
-                Subtitle = section.Opts.Subtitles ? PaneText.SubtitleOf(in snapshot) : null,
+                // The shape already decides the second line (a one-line shape never draws one), so the text is only built for a two-line row.
+                Subtitle = shape == SidebarRowShape.EntityTwoLine ? PaneText.SubtitleOf(in snapshot) : null,
                 Selected = selected,
                 Enabled = named || track || routePin,
-                Depth = baseDepth,
-                TreeNode = treeNode,
-                TreeDepth = treeDepth,
-                TreeContinuationMask = treeNode ? TreeMaskOf(row.SectionId, index, treeDepth) : (byte)0,
-                Density = section.Opts.Density,
+                Depth = row.Depth,
+                Shape = shape,
                 Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
                 ArtSize = PaneMetrics.ArtSize(section),
                 Leading = LeadingArt(section, in snapshot, item),
@@ -380,16 +356,18 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, (spec.Trailing is null ? 0f : CountTrail)
+                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null || spec.Pinned || playing));
             Element built = EntityRow.Create(in spec);
             if (track) built = EntityRow.WithPlayTrackHint(built);
-            // Tree connectors own their depth lanes; the selection pill stays in the row's base gutter.
-            return Indicator(built, selected, baseDepth, height, route);
+            // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
+            return Indicator(Tipped(built, spec.LabelTooltip, label), selected, row.Depth, height, route);
         }
 
         /// <summary>A rootlist FOLDER: entity-row geometry, the folder mark, and the disclosure chevron in the TRAILING
         /// cluster (W7). A folder never navigates; by default it toggles its expansion, and a mode may reroute that gesture
         /// through <c>Config.ActivateFolder</c> (V3's narrow drill-in) — click and menu verb take the same path.</summary>
-        Element FolderRow(SidebarSectionSpec section, in SidebarRow row, int index)
+        Element FolderRow(SidebarSectionSpec section, in SidebarRow row, int index, string sel)
         {
             var entries = _o.Plan.Entries;
             if ((uint)row.EntryIndex >= (uint)entries.Count) return Nothing;
@@ -401,19 +379,17 @@ public static partial class Sidebar
             // A synced folder pin the rootlist no longer carries renders visible-but-disabled, never vanishes.
             if (entry.Missing) return MissingFolderRow(section, in entry, in row, height);
 
-            // W7: the same tree test EntryRow uses; TreeDepth is the row's OWN tree depth, so a pinned folder sits flush
-            // with its pinned siblings instead of marching right by its rootlist nesting.
-            bool treeNode = section.Kind == SidebarSectionKind.PlaylistTree;
-            int treeDepth = treeNode ? entry.Depth : 0;
-            int baseDepth = treeNode ? Math.Max(0, row.Depth - treeDepth) : row.Depth;
             var snapshot = entry;
+            var shape = PaneMetrics.ShapeOf(section);
             float art = PaneMetrics.ArtSize(section);
+            string label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Id);
 
             Action activate = () => _o.ActivateFolder(folderId, snapshot.Name, index);
             var menu = _o.FolderMenu(section, index, in snapshot, activate, expanded, row.Key);
             bool reordering = _o.TryBandOf(index, out _);
             Action? rename = reordering ? null : _o.RenameAction(in snapshot);
-            bool rootlistItem = treeNode && !reordering;
+            // Only a PlaylistTree folder is a rootlist member; a folder elsewhere is a plain pin row.
+            bool rootlistItem = section.Kind == SidebarSectionKind.PlaylistTree && !reordering;
             // Alt+↑/↓ moves the folder's whole subtree among its siblings, exactly as it moves a playlist.
             Action<int>? move = rootlistItem ? _o.TreeMoveAction(in snapshot) : null;
             var resource = PaneView.PayloadOf(in snapshot, rootlistItem);
@@ -431,17 +407,14 @@ public static partial class Sidebar
             var spec = new RowSpec
             {
                 Key = row.Key,
-                Label = entry.Name.Length > 0 ? entry.Name : PaneText.ShortUri(entry.Id),
+                Label = label,
                 // Trap 5: routed through the same PURE decision every other kind's subtitle uses
                 // (`PaneText.SubtitleOf`), which gates a folder's "N items" on `entry.CountKnown` — a Pending
                 // unlisted folder pin (the rootlist hasn't answered this session) shows its title alone, never a
                 // confident "0 items".
-                Subtitle = section.Opts.Subtitles ? PaneText.SubtitleOf(in entry) : null,
-                Depth = baseDepth,
-                TreeNode = treeNode,
-                TreeDepth = treeDepth,
-                TreeContinuationMask = treeNode ? TreeMaskOf(row.SectionId, index, treeDepth) : (byte)0,
-                Density = section.Opts.Density,
+                Subtitle = shape == SidebarRowShape.EntityTwoLine ? PaneText.SubtitleOf(in entry) : null,
+                Depth = row.Depth,
+                Shape = shape,
                 Height = height,
                 ArtSize = art,
                 Leading = section.Opts.Artwork ? Cover.Folder(art, expanded) : null,
@@ -458,9 +431,12 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
-            // No pill (a folder has no route), but both drop cues: the bottom band of an expanded header IS the "first
-            // child" slot, and the whole outdent gesture happens on folder rows.
-            return DropCueOverlay(EntityRow.Create(in spec));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail + EntityRow.OverflowReserve(menu is not null, trailing: true));
+            // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
+            // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
+            // happens on folder rows.
+            return Indicator(Tipped(EntityRow.Create(in spec), spec.LabelTooltip, label), _o.RowSelectsRoute(index, sel),
+                row.Depth, height, _o.PillRouteOf(index, sel));
         }
 
         /// <summary>The dimmed retention row for a folder pin the rootlist lost: no click, no disclosure, no drag/drop, and a
@@ -477,7 +453,7 @@ public static partial class Sidebar
                 Subtitle = section.Opts.Subtitles ? reason : null,
                 Enabled = false,
                 Depth = row.Depth,
-                Density = section.Opts.Density,
+                Shape = PaneMetrics.ShapeOf(section),
                 Height = height,
                 ArtSize = art,
                 Leading = section.Opts.Artwork ? Cover.Folder(art, expanded: false) : null,
@@ -489,35 +465,20 @@ public static partial class Sidebar
             return ToolTip.Wrap(EntityRow.Create(in spec), reason, grow: 1f);
         }
 
-        /// <summary>Which connector columns continue below a realized tree row. The plan is preorder, so the first later tree
-        /// entry at or above a level decides it: equal ⇒ a sibling continues; lower ⇒ the branch ended. Renderer-side
-        /// because it is visual chrome, not document/query semantics.</summary>
-        byte TreeMaskOf(string sectionId, int index, int depth)
-        {
-            int levels = Math.Clamp(depth, 0, 4);
-            if (levels == 0) return 0;
-            int unresolved = (1 << levels) - 1;
-            int mask = 0;
-            var plan = _o.Plan;
-            var rows = plan.Rows;
-            var entries = plan.Entries;
-            for (int i = index + 1; i < rows.Count && unresolved != 0; i++)
-            {
-                var next = rows[i];
-                if (!string.Equals(next.SectionId, sectionId, StringComparison.Ordinal)) break;
-                if (next.Kind is not (SidebarRowKind.EntityRow or SidebarRowKind.FolderHeader)) break;
-                if ((uint)next.EntryIndex >= (uint)entries.Count) break;
-                int nextDepth = entries[next.EntryIndex].Depth;
-                for (int level = 1; level <= levels; level++)
-                {
-                    int bit = 1 << (level - 1);
-                    if ((unresolved & bit) == 0 || nextDepth > level) continue;
-                    if (nextDepth == level) mask |= bit;
-                    unresolved &= ~bit;
-                }
-            }
-            return (byte)mask;
-        }
+        /// <summary>The trailing width a row's label gives up to its count (the quiet badge), and a folder's 40-px chevron
+        /// column (which replaces the 14-px trailing pad). Both feed <see cref="LabelOverflows"/>: the estimate has to know
+        /// what the row keeps for itself.</summary>
+        const float CountTrail = 28f, FolderTrail = SidebarRowGeometry.ChevronColumn - SidebarRowGeometry.TrailingPad;
+
+        /// <summary>Does the one-line label truncate in this row? The pane's CURRENT width (peeked: a tooltip decision, not a
+        /// subscription) minus the row's own ladder, through the one estimate <see cref="SidebarLabelFit"/> owns.</summary>
+        static bool LabelOverflows(string label, int depth, float trailing)
+            => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(Sidebar.Width.Peek(), depth, trailing));
+
+        /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
+        /// row's wrapper and a sibling of the drop cues, never a child of the row.</summary>
+        static Element Tipped(Element built, bool tooltip, string label)
+            => tooltip ? ToolTip.Wrap(built, label, grow: 1f) : built;
 
         /// <summary>A hand-picked app route (CollectionShortcuts / StaticLinks). Label + glyph come from the route table so a
         /// pinned "Liked Songs" follows the UI culture; an unknown key in a hand-edited document degrades rather than
@@ -542,7 +503,7 @@ public static partial class Sidebar
                 Label = title,
                 Selected = selected,
                 Depth = 0,
-                Density = section.Opts.Density,
+                Shape = PaneMetrics.ShapeOf(section),
                 Height = height,
                 Glyph = RowGlyphs.For(item, dest.Glyph),
                 Trailing = CountBadge(section, key),
@@ -553,7 +514,9 @@ public static partial class Sidebar
                 Drag = drag,
                 DropTarget = PinSpec(section, section.Id, index),
             };
-            return Indicator(EntityRow.Create(in spec), selected, 0, height, key);
+            spec.LabelTooltip = LabelOverflows(title, 0, (spec.Trailing is null ? 0f : CountTrail)
+                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null));
+            return Indicator(Tipped(EntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
         }
 
         /// <summary>A hand-placed TRACK: click PLAYS, never navigates, and the hover/focus play glyph makes that legible before
@@ -572,7 +535,7 @@ public static partial class Sidebar
             {
                 Key = uri,
                 Label = label,
-                Density = section.Opts.Density,
+                Shape = PaneMetrics.ShapeOf(section),
                 Height = PaneMetrics.RowHeight(section),
                 ArtSize = art,
                 Leading = section.Opts.Artwork ? Cover.ArtUrl(item.FallbackImageUrl, uri, art) : null,
@@ -585,7 +548,8 @@ public static partial class Sidebar
                 MenuOverlay = _o.MenuOverlay,
                 Menu = menu,
             };
-            return EntityRow.WithPlayTrackHint(EntityRow.Create(in spec));
+            spec.LabelTooltip = LabelOverflows(label, 0, 0f);
+            return Tipped(EntityRow.WithPlayTrackHint(EntityRow.Create(in spec)), spec.LabelTooltip, label);
         }
 
         /// <summary>An ACTION shortcut, resolved ONLY through the pane's registry seam (W22). An unavailable target renders
@@ -604,7 +568,7 @@ public static partial class Sidebar
                 Label = label,
                 Selected = false,
                 Enabled = enabled,
-                Density = section.Opts.Density,
+                Shape = PaneMetrics.ShapeOf(section),
                 Height = PaneMetrics.RowHeight(section),
                 // Art-wide leading column + the row's own leading gap: the label lines up with its siblings'.
                 Leading = PaneIcon.Leading(item.IconOverride, icon, enabled, PaneMetrics.ArtSize(section)),
@@ -635,7 +599,7 @@ public static partial class Sidebar
                 Subtitle = section.Opts.Subtitles ? missing : null,
                 Enabled = false,
                 Depth = row.Depth,
-                Density = section.Opts.Density,
+                Shape = PaneMetrics.ShapeOf(section),
                 Height = PaneMetrics.RowHeight(section),
                 ArtSize = art,
                 Leading = section.Opts.Artwork ? Cover.ArtUrl(item?.FallbackImageUrl, row.Key, art) : null,
@@ -719,7 +683,7 @@ public static partial class Sidebar
         /// <summary>A section that resolved to ZERO rows — FOUR arms. Pinned runs FIRST and unconditionally: its empty state IS
         /// the drop target, and an authored HideBody must never delete the one surface that teaches drop-to-pin. HideBody ⇒ a
         /// literal blank (the header stays; V3's own actionable state is then the only empty message on screen). ActionCard ⇒
-        /// a disabled row at the section's own row height. Otherwise the quiet 32-DIP 11px tertiary hint, per-kind copy; a
+        /// a disabled row at the section's own row height. Otherwise the quiet 40-DIP 11px tertiary hint in its 4,2 margin, per-kind copy; a
         /// PlaylistTree names the header "+" that fixes it, and swaps to the query copy while a search is live.</summary>
         Element EmptyRow(SidebarSectionSpec section)
         {
@@ -747,7 +711,7 @@ public static partial class Sidebar
                     Key = section.Id + ":empty",
                     Label = text,
                     Enabled = false,
-                    Density = section.Opts.Density,
+                    Shape = PaneMetrics.ShapeOf(section),
                     Height = PaneMetrics.RowHeight(section),
                     Glyph = section.Kind == SidebarSectionKind.Concerts ? Icons.Calendar : Icons.Grid,
                 });
@@ -755,7 +719,8 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Height = PaneMetrics.EmptyHintHeight, AlignItems = FlexAlign.Center,
-                Padding = PaneMetrics.RowInset,
+                Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
+                Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.TrailingPad, 0f),
                 Children =
                 [
                     global::Wavee.Design.Type.MicroMeta(text) with { Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
@@ -851,7 +816,7 @@ public static partial class Sidebar
                     return owner.TreeSelection.Contains(entryId);
                 },
                 interact: (_, _) => owner.ToggleTreeSelection(entryId),
-                // The row owns its own left inset (depth ladder + selection gutter), so the lane adds none.
+                // The row owns its own left inset (the 31-px depth ladder), so the lane adds none.
                 leftMargin: 0f);
         }
 
@@ -943,19 +908,16 @@ public static partial class Sidebar
         /// — plate UNDER the row (text never tinted), pill over it, insertion line on top.</summary>
         Element Indicator(Element row, bool selected, int depth, float height, string? route)
         {
-            if (!float.IsFinite(height) || height <= 0f) height = SidebarRowGeometry.ClassicHeight;
+            if (!float.IsFinite(height) || height <= 0f) height = SidebarRowGeometry.HeightOf(SidebarRowShape.EntityTwoLine);
             _pillState = new SidebarPillState(
                 Route: route,
                 Selected: selected,
-                Indent: SidebarRowGeometry.IndentFor(depth),
-                Top: MathF.Max(0f, (height - SelectionPill.PillH) * 0.5f));
+                Indent: SidebarRowGeometry.PillX(depth),
+                Top: SidebarRowGeometry.PillTop(height));
             var owner = _o;
             Func<SidebarPillState> probe = _pillProbe ??= PillState;
             return ZStack(DropPlate(), row, Embed.Comp(() => new SelectionPill(owner, probe)), InsertionLine());
         }
-
-        /// <summary>A row with no selection pill that still owns both drop cues (a folder header).</summary>
-        Element DropCueOverlay(Element row) => ZStack(DropPlate(), row, InsertionLine());
 
         /// <summary>THE "INTO" PLATE (W16): mounted once per row, ALWAYS, as the ZStack's first child — accent@0.18 with a
         /// 1-DIP accent border, radius 4, auto-sized to the row's rect, out of hit-testing so hover and the drop reach the
@@ -964,6 +926,8 @@ public static partial class Sidebar
         Element DropPlate() => new BoxEl
         {
             Key = "drop-plate",
+            // The plate covers the row, not the row's 2-px vertical margin.
+            Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
             Corners = CornerRadius4.All(4f),
             BorderWidth = 1f,
             Fill = Prop.Of(_plateFill ??= CuePlateFill),

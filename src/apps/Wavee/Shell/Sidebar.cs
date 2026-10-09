@@ -16,8 +16,8 @@
 // The sections, in file order:
 //
 //   GEOMETRY   `SidebarRowGeometry`, `SidebarRowExtents` — the one height/indent/art/lane ladder. Art starts at pane
-//              x = 21 on EVERY row shape; one height per SECTION, never per row (a mixed band breaks both the
-//              `Reorderable` slot pitch and the virtualizing host's extent table).
+//              centre x = 24 and the label at x = 48 on EVERY row shape; one height per SECTION, never per row (a mixed
+//              band breaks both the `Reorderable` slot pitch and the virtualizing host's extent table).
 //   PLAN       `SidebarRowPlanner` + `SidebarRow`/`SidebarRowPlan`/`SidebarPlanBuffers` — (document × projection)
 //              flattened into ONE array of row kinds, rendered by ONE bound list. The buffers are caller-owned and
 //              ALIAS, so the outgoing rows survive the diff.
@@ -351,160 +351,131 @@ public static class RootlistMarkerStream
 // stage-hold parking bay; context-menu verb layout; and the docked-pane terminal-state invariant. Every number here
 // is a fact verified against a screenshot ruler — port it exactly, never re-derive it.
 
-/// <summary>THE ONE ROW-GEOMETRY LADDER: row height/indent/tree-content geometry and the pure plan-geometry helpers
-/// (content-Y, route index, direction, folder/section ranges, pin glyph, grid fallback columns). Engine-free
-/// (System + the row/plan types only) so <c>Wavee.Tests</c> can pin the ladder directly.</summary>
+/// <summary>Which of the three WinUI row shapes a section's rows take (design V.3). One shape per SECTION, never per
+/// row: a band's reorder pitch and the virtualizing host's extent table both assume it.</summary>
+public enum SidebarRowShape : byte
+{
+    /// <summary>Row A — a glyph row (Home, Collections, Settings, a route pin in a glyph section): 36 tall, 16-px glyph.</summary>
+    Glyph = 0,
+    /// <summary>Row C — an entity row at Default density: 40 tall, 32-px art, title + subtitle.</summary>
+    EntityTwoLine = 1,
+    /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
+    EntityOneLine = 2,
+}
+
+/// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
+/// a 4,2 margin (TR:217, TR:228), a 40-px icon column whose centre sits at pane x 24 (TR:612), the label at pane x 48
+/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 31-px
+/// folder indents (NavigationViewItemBase.h:63) and the 3×16 r2 pill at slot x 31·depth (TR:220-222). Numbers are SLOT
+/// space (the list's one 4-px inset is <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
 public static class SidebarRowGeometry
 {
-    /// <summary>The Classic entity-row height (44) — the number every landed sidebar row already uses.</summary>
-    public const float ClassicHeight = 44f;
+    // ── the pane ──
+    /// <summary>The list's horizontal inset (4) — WinUI's item margin X, applied ONCE around the list
+    /// (<c>PaneMetrics.PanePad</c>), never per row.</summary>
+    public const float PaneEdge = 4f;
+    /// <summary>The pane content grid's top margin (TR:233's −1,3 with the −1 dropped: no content border to tuck under).</summary>
+    public const float PaneTopInset = 3f;
+    /// <summary>The vertical half of the 4,2 item margin, carried by every row.</summary>
+    public const float RowMarginY = 2f;
+    /// <summary>The compact rail (TR:208 NavigationViewCompactPaneLength).</summary>
+    public const float RailWidth = 48f;
+    /// <summary>A compact-rail row: the 48 rail less the two 4-px insets.</summary>
+    public const float TileWidth = 40f;
 
-    // ── THE ONE CONTENT LANE ──
-    // Rows and the fixed chrome bands mounted above the list used to compute their own left inset (14 vs 8+6) and
-    // disagreed by 6 DIP. ContentLane/ContentLaneEnd name the lane once so nothing invents a third number.
+    // ── rows ──
+    public const float RowHeight = 36f;
+    public const float TwoLineRowHeight = 40f;
+    public const float IconColumn = 40f;
+    public const float GlyphSize = 16f;
+    /// <summary>The ContentPresenter's 4-px left margin between the icon column and the label (TR:251).</summary>
+    public const float LabelGap = 4f;
+    /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
+    public const float TrailingPad = 14f;
+    /// <summary>The chevron column (TR:617): its −14 margin cancels <see cref="TrailingPad"/>.</summary>
+    public const float ChevronColumn = 40f;
+    public const float IndentStep = 31f;
+    public const int MaxIndentDepth = 3;
+    /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
+    public const float TrailingGap = 6f;
 
-    /// <summary>The pane's horizontal edge inset (8), applied ONCE around the virtualized list; a band mounted above
-    /// that list must reproduce it via <see cref="ContentLane"/> rather than padding to 8 on its own.</summary>
-    public const float PaneEdge = 8f;
+    // ── chrome rows ──
+    public const float HeaderHeight = 40f;
+    /// <summary>The header title's x: pane 16 (TR:229's 16,0) less <see cref="PaneEdge"/>.</summary>
+    public const float HeaderTextX = 12f;
+    /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
+    public const float HeaderButton = 24f;
+    /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
+    public const float SeparatorHeight = 8f;
+    public const float SeparatorLineTop = 3f;
+    /// <summary>A quiet one-line hint (an empty Playlists, a search with no match): 40 tall in the 4,2 margin.</summary>
+    public const float EmptyHintHeight = 40f;
+    /// <summary>The tree's closing drop gutter.</summary>
+    public const float TreeEndHeight = 24f;
 
-    /// <summary>A row's own leading padding at depth 0 (4) — the base term of <see cref="IndentFor"/>.</summary>
-    public const float RowInsetLeft = 4f;
+    // ── the pill ──
+    public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
 
-    /// <summary>A row's own trailing padding (8).</summary>
-    public const float RowInsetRight = 8f;
+    public static float HeightOf(SidebarRowShape shape)
+        => shape == SidebarRowShape.EntityTwoLine ? TwoLineRowHeight : RowHeight;
 
-    /// <summary>THE CONTENT LANE (12): the x at which pane content begins. Rows reach it as
-    /// <see cref="PaneEdge"/> + <see cref="IndentFor"/>(0); a fixed band above the list pads to it directly.</summary>
-    public const float ContentLane = PaneEdge + RowInsetLeft;
+    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40).</summary>
+    public static float PitchOf(SidebarRowShape shape) => HeightOf(shape) + 2f * RowMarginY;
 
-    /// <summary>The lane's trailing twin (16) — 4 DIP wider than <see cref="ContentLane"/> because the landed row
-    /// padding is asymmetric (4 leading / 8 trailing); carried forward as-is.</summary>
-    public const float ContentLaneEnd = PaneEdge + RowInsetRight;
-
-    /// <summary>Row height by density: Compact 32 (no room for a subtitle) / Cozy 40 / Cozy+subtitle 44 (Classic's
-    /// entity row) / Comfortable 44 or 48 with a subtitle. A glyph/shortcut row never paints a subtitle and lands on
-    /// the 40 arm.</summary>
-    public static float HeightFor(SidebarDensity density, bool hasSubtitle) => density switch
+    /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact).</summary>
+    public static float ArtOf(SidebarRowShape shape) => shape switch
     {
-        SidebarDensity.Compact => 32f,
-        SidebarDensity.Comfortable => hasSubtitle ? 48f : 44f,
-        _ => hasSubtitle ? 44f : 40f,
+        SidebarRowShape.Glyph => GlyphSize,
+        SidebarRowShape.EntityTwoLine => 32f,
+        _ => 24f,
     };
 
-    /// <summary>A section's uniform row height straight from its persisted display options.</summary>
-    public static float HeightFor(SidebarDisplayOptions? opts)
-    {
-        var o = opts ?? SidebarDisplayOptions.Default;
-        return HeightFor(o.Density, o.Subtitles);
-    }
+    public static int ClampDepth(int depth) => depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
 
-    /// <summary>One nesting level of indent (12). Named because the drop resolver reads the ladder BACKWARDS — it
-    /// turns a pointer x into a depth.</summary>
-    public const float IndentStep = 12f;
+    /// <summary>The content indent for a nesting depth: 31 per level, capped at 3 (93). The FILL stays full width; only
+    /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
+    public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
 
-    /// <summary>The deepest level the indent ladder honours; beyond it rows stop marching right.</summary>
-    public const int MaxIndentDepth = 4;
+    /// <summary>The pill's x in slot space (pane 4 + 31·depth).</summary>
+    public static float PillX(int depth) => IndentFor(depth);
 
-    // ── THE ONE TREE-CONTENT ORIGIN ──
-    // A tree row is not laid out on IndentFor(depth): it pads once at IndentFor(0), then spends the selection
-    // gutter and one connector cell per level. There is NO reserved disclosure cell — the folder's chevron lives in
-    // the row's TRAILING cluster, so TreeLeading == StandardLeading at depth 0 regardless of whether a section
-    // contains a folder.
+    /// <summary>The pill's y inside a slot whose row is <paramref name="rowHeight"/> tall: centred on the row, below its
+    /// 2-px top margin.</summary>
+    public static float PillTop(float rowHeight) => RowMarginY + (rowHeight - PillH) * 0.5f;
 
-    /// <summary>The 3-DIP selection-accent reserve every row leads with.</summary>
-    public const float SelGutterWidth = 3f;
+    /// <summary>Where the drop caret for depth <paramref name="depth"/> starts (slot space): the same x as the pill, so
+    /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
+    public static float TreeContentX(int depth) => IndentFor(depth);
 
-    // ── THE ONE LEADING LANE ──
-    // Art rows, glyph rows and tree rows used to compute three different distances from the row padding to the
-    // leading visual (27 / 29 / 33). LeadingGap/LeadingLaneWidth name the lane once for every row shape.
+    /// <summary>Pane-space rulers (diagnostics, tests).</summary>
+    public const float IconCentreX = PaneEdge + IconColumn * 0.5f;              // 24
+    public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 48
+    public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
+    public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
 
-    /// <summary>The gap between the selection gutter and the leading visual (6) — the same for art, glyph and tree
-    /// rows.</summary>
-    public const float LeadingGap = 6f;
+    /// <summary>A subtitle line is drawn only in a two-line row and only when there is text.</summary>
+    public static bool SubtitleVisible(SidebarRowShape shape, string? subtitle)
+        => shape == SidebarRowShape.EntityTwoLine && subtitle is { Length: > 0 };
 
-    /// <summary>The span from a row's <see cref="IndentFor"/> padding to its leading visual (9 = gutter + gap).</summary>
-    public const float LeadingLaneWidth = SelGutterWidth + LeadingGap;
+    /// <summary>TRANSITIONAL (deleted in P3 with <c>SidebarDisplayOptions</c>): today's per-section display options →
+    /// the shape. A glyph section (no artwork) is row A; Compact or no subtitles is row B; otherwise row C.</summary>
+    public static SidebarRowShape ShapeFor(SidebarDensity density, bool subtitles, bool artwork)
+        => !artwork ? SidebarRowShape.Glyph
+         : density == SidebarDensity.Compact || !subtitles ? SidebarRowShape.EntityOneLine
+         : SidebarRowShape.EntityTwoLine;
 
-    /// <summary>The pane-relative x of a row's art/glyph column at <paramref name="depth"/> (21 at depth 0).</summary>
-    public static float ArtX(int depth) => PaneEdge + IndentFor(depth) + LeadingLaneWidth;
-
-    /// <summary>Art/glyph size by density (20 / 32 / 40).</summary>
-    public static float ArtFor(SidebarDensity density) => density switch
-    {
-        SidebarDensity.Compact => 20f,
-        SidebarDensity.Comfortable => 40f,
-        _ => 32f,
-    };
-
-    /// <summary>One tree connector cell (12 — the engine's <c>Spacing.M</c>). Equal to <see cref="IndentStep"/> by
-    /// design: a tree level and an indent level are the same step, drawn two different ways.</summary>
-    public const float TreeGuideStep = IndentStep;
-
-    /// <summary>The x at which a tree row's CONTENT (its art, and the caret that means "insert at this depth")
-    /// begins: <c>IndentFor(0) + LeadingLaneWidth + depth·TreeGuideStep</c> — 19, 31, 43, … Kept as the ORIGINAL
-    /// spelling (<c>IndentFor(0) + …</c>, not <c>IndentFor(depth)</c>): the two are equal only while
-    /// <see cref="IndentStep"/> == <see cref="TreeGuideStep"/>, and the caret must not break silently if they ever
-    /// diverge.</summary>
-    public static float TreeContentX(int depth)
-    {
-        int d = depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
-        return IndentFor(0) + LeadingLaneWidth + d * TreeGuideStep;
-    }
-
-    /// <summary>Left padding for a nesting depth: <see cref="RowInsetLeft"/> base + <see cref="IndentStep"/> per
-    /// level, clamped at <see cref="MaxIndentDepth"/> levels.</summary>
-    public static float IndentFor(int depth)
-        => RowInsetLeft + (depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth) * IndentStep;
-
-    /// <summary>The section header band's own height (28).</summary>
-    public const float HeaderHeight = 28f;
-
-    /// <summary>R3.1.3 — the vertical air above a section header that is not the pane's first row, and the gap
-    /// between a header and its first body row.</summary>
-    public const float SectionGap = 8f;
-    /// <inheritdoc cref="SectionGap"/>
-    public const float HeaderBodyGap = 2f;
-
-    /// <summary>An explicit <c>Divider</c> section's band height (16) — the hairline centred 8 DIP below the
-    /// previous row.</summary>
-    public const float DividerHeight = 16f;
-
-    /// <summary>The quiet empty hint's band height (32).</summary>
-    public const float EmptyHintHeight = 32f;
-
-    /// <summary>The Pinned section's empty state IS its drop zone, resting at 56 (it grows to 72 only while a
-    /// compatible drag is live — a transient the measured layout corrects on its own).</summary>
-    public const float PinDropZoneRestHeight = 56f;
-
-    /// <summary>The inline filter-chip strip an editable <c>EntityList</c> header carries: a 24-DIP toggle row
-    /// (Workstream B: <c>FluentGpu.Controls.ControlSize.Small</c>'s <c>MinHeight</c>, not the old 26 hand-rolled pill) + its
-    /// 2-DIP bottom padding, joined to the header by a 4-DIP gap. It WRAPS at a narrow pane, so this is the one term
-    /// of the ladder that is an honest approximation rather than an identity — the measured seam corrects it on
-    /// realize.</summary>
-    public const float ChipHeight = 24f;
-    /// <inheritdoc cref="ChipHeight"/>
-    public const float ChipStripHeight = ChipHeight + 2f;
-    /// <inheritdoc cref="ChipStripHeight"/>
-    public const float ChipStripGap = 4f;
-
-    /// <summary>The EntityEmbed hero card's height ladder (Compact 56 / Cozy 72 / Comfortable 88).</summary>
+    // The EntityEmbed / PromptRow / chip-strip ladder survives only until P3 deletes Curated:
     public static float CardHeightFor(SidebarDensity density) => density switch
     {
         SidebarDensity.Compact => 56f,
         SidebarDensity.Comfortable => 88f,
         _ => 72f,
     };
-
-    /// <summary>The actionable degraded state's band (48, or 56 when it carries a reason line).</summary>
     public static float PromptHeight(bool hasReason) => hasReason ? 56f : 48f;
-
-    /// <summary>The <c>TreeEnd</c> chrome row's extent (24) — small enough to read as the tree's closing gutter
-    /// rather than as an item.</summary>
-    public const float TreeEndHeight = 24f;
-
-    /// <summary>Subtitles are never rendered at Compact density.</summary>
-    public static bool SubtitleVisible(SidebarDensity density, string? subtitle)
-        => density != SidebarDensity.Compact && subtitle is { Length: > 0 };
+    public const float ChipHeight = 24f;
+    public const float ChipStripHeight = ChipHeight + 2f;
+    public const float ChipStripGap = 4f;
+    public const float PinDropZoneRestHeight = 56f;
 
     // ── pure plan geometry ──
 
@@ -675,70 +646,34 @@ public static class SidebarRowGeometry
 /// every row does today.</summary>
 public static class SidebarRowExtents
 {
-    /// <summary>R3.1.3 SECTION RHYTHM — the air a header band carries ABOVE it: 8 DIP, suppressed for the pane's
-    /// first row (nothing to separate from) and directly after a <c>Divider</c> or bare <c>HeaderLabel</c>, both of
-    /// which already supply the gap. The one term of the ladder that depends on the PREVIOUS row.</summary>
-    public static float BandTop(IReadOnlyList<SidebarRow> rows, int index)
-    {
-        ArgumentNullException.ThrowIfNull(rows);
-        if (index <= 0 || index >= rows.Count) return 0f;
-        var prev = rows[index - 1].Kind;
-        return prev is SidebarRowKind.Divider or SidebarRowKind.HeaderLabel ? 0f : SidebarRowGeometry.SectionGap;
-    }
-
-    /// <summary>The analytic extent of plan row <paramref name="index"/>. <paramref name="section"/> is the row's
-    /// section (null ⇒ the slot renders nothing, so the row is 0 tall); <paramref name="editable"/> is the pane's
-    /// <c>!Config.ReadOnly</c>, which decides whether an <c>EntityList</c> header carries the inline chip strip.
-    /// Returns <see cref="float.NaN"/> for a <c>GridStrip</c> — "use the estimate and correct on measure".</summary>
+    /// <summary>The analytic extent of plan row <paramref name="index"/>: one SLOT (row + its 2 + 2 margin) per item kind,
+    /// 40 per header, 8 per separator. NaN for a grid strip (estimate, then correct on measure).</summary>
     public static float HeightOf(IReadOnlyList<SidebarRow> rows, int index, SidebarSectionSpec? section, bool editable)
     {
         ArgumentNullException.ThrowIfNull(rows);
         if ((uint)index >= (uint)rows.Count) return 0f;
         var row = rows[index];
-        if (section is null) return 0f;                     // the slot renders Blank (height 0)
-
+        if (section is null) return 0f;
+        var shape = SidebarRowGeometry.ShapeFor(section.Opts.Density, section.Opts.Subtitles, section.Opts.Artwork);
         switch (row.Kind)
         {
             case SidebarRowKind.SectionHeader:
-                return BandTop(rows, index) + SidebarRowGeometry.HeaderHeight
-                     + (CarriesChipStrip(section, editable)
-                            ? SidebarRowGeometry.ChipStripGap + SidebarRowGeometry.ChipStripHeight : 0f)
-                     + SidebarRowGeometry.HeaderBodyGap;
-
-            case SidebarRowKind.HeaderLabel:
-                return BandTop(rows, index) + SidebarRowGeometry.HeaderHeight + SidebarRowGeometry.HeaderBodyGap;
-
-            case SidebarRowKind.Divider:
-                return SidebarRowGeometry.DividerHeight;
-
-            // Every item-shaped kind is the section's ONE uniform row height (iron rule 4: one height per SECTION).
+                return SidebarRowGeometry.HeaderHeight
+                     + (CarriesChipStrip(section, editable) ? SidebarRowGeometry.ChipStripGap + SidebarRowGeometry.ChipStripHeight : 0f);
+            case SidebarRowKind.HeaderLabel: return SidebarRowGeometry.HeaderHeight;
+            case SidebarRowKind.Divider: return SidebarRowGeometry.SeparatorHeight;
             case SidebarRowKind.IconRow:
             case SidebarRowKind.EntityRow:
             case SidebarRowKind.Placeholder:
             case SidebarRowKind.FolderHeader:
             case SidebarRowKind.Skeleton:
-                return SidebarRowGeometry.HeightFor(section.Opts);
-
-            case SidebarRowKind.Empty:
-                return EmptyHeight(section);
-
-            case SidebarRowKind.TreeEnd:
-                return SidebarRowGeometry.TreeEndHeight;
-
-            case SidebarRowKind.EntityCard:
-                return SidebarRowGeometry.CardHeightFor(section.Opts.Density);
-
-            case SidebarRowKind.PromptRow:
-                // A Concerts prompt never carries a reason line; the reason string is a render-time resolution, so
-                // the ladder takes the taller shape only for a kind that can have one.
-                return SidebarRowGeometry.PromptHeight(section.Kind != SidebarSectionKind.Concerts);
-
-            case SidebarRowKind.SectionCard:
-                return SidebarRowGeometry.ClassicHeight;    // the ONE edit-card height
-
-            case SidebarRowKind.GridStrip:
-            default:
-                return float.NaN;                           // not analytic — estimate, then correct on measure
+                return SidebarRowGeometry.PitchOf(shape);
+            case SidebarRowKind.Empty: return EmptyHeight(section);
+            case SidebarRowKind.TreeEnd: return SidebarRowGeometry.TreeEndHeight;
+            case SidebarRowKind.EntityCard: return SidebarRowGeometry.CardHeightFor(section.Opts.Density);
+            case SidebarRowKind.PromptRow: return SidebarRowGeometry.PromptHeight(section.Kind != SidebarSectionKind.Concerts);
+            case SidebarRowKind.SectionCard: return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
+            default: return float.NaN;
         }
     }
 
@@ -749,8 +684,8 @@ public static class SidebarRowExtents
            && section.Opts.InlineControls && !section.Collapsed;
 
     /// <summary>A section that resolved to zero rows: Pinned's empty state IS its (unconditional) drop zone, a
-    /// <c>HideBody</c> section draws nothing at all, an <c>ActionCard</c> borrows the section's row height, and the
-    /// default is the quiet 32-DIP hint.</summary>
+    /// <c>HideBody</c> section draws nothing at all, an <c>ActionCard</c> borrows the section's row pitch, and the
+    /// default is the quiet one-line hint in its 4,2 margin.</summary>
     static float EmptyHeight(SidebarSectionSpec section)
     {
         if (section.Kind == SidebarSectionKind.Pinned) return SidebarRowGeometry.PinDropZoneRestHeight;
@@ -758,8 +693,9 @@ public static class SidebarRowExtents
         return behavior switch
         {
             SidebarEmptyBehavior.HideBody => 0f,
-            SidebarEmptyBehavior.ActionCard => SidebarRowGeometry.HeightFor(section.Opts),
-            _ => SidebarRowGeometry.EmptyHintHeight,
+            SidebarEmptyBehavior.ActionCard => SidebarRowGeometry.PitchOf(SidebarRowGeometry.ShapeFor(
+                section.Opts.Density, section.Opts.Subtitles, section.Opts.Artwork)),
+            _ => SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
         };
     }
 }
@@ -1413,6 +1349,10 @@ public readonly record struct SidebarLibraryEntry(
     /// reading either as a count is what painted "0 songs" on every playlist.</para>
     /// Meaningless for every other kind.</summary>
     public bool CountKnown { get; init; }
+
+    /// <summary>A playlist holding at least one episode — its subtitle counts "items", not "songs" (design P.1). Stamped by
+    /// the projection from <c>Playlist.EpisodeCount</c>; false for every other kind.</summary>
+    public bool HasEpisodes { get; init; }
 
     /// <summary>uri -> last-played unix ms from local + server listening history, stamped by the projection for
     /// Playlist/Album/Artist/Show rows. 0 = never played. This is what the Recents sort mode sorts on — NOT
@@ -3011,10 +2951,10 @@ public static class RootlistSlotResolver
         if (min >= max) return max;
         if (!float.IsFinite(xInRow)) return max;
 
-        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d actually starts drawing —
-        // the row's leading lane (gutter + gap) plus one connector cell per level — so one cell left is one outdent.
-        // There is no reserved disclosure cell (the folder chevron is trailing).
-        float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.TreeGuideStep;
+        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (31 per level
+        // from the row origin, the pill's x) — so one step left is one outdent. There is no reserved disclosure cell
+        // (the folder chevron is trailing).
+        float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.IndentStep;
         int picked = (int)MathF.Round(steps);
         if (picked < min) picked = min;
         if (picked > max) picked = max;
@@ -3025,7 +2965,7 @@ public static class RootlistSlotResolver
             && previous.Depth != picked)
         {
             float boundary = SidebarRowGeometry.TreeContentX(0)
-                + (previous.Depth + (picked > previous.Depth ? 0.5f : -0.5f)) * SidebarRowGeometry.TreeGuideStep;
+                + (previous.Depth + (picked > previous.Depth ? 0.5f : -0.5f)) * SidebarRowGeometry.IndentStep;
             float travelled = MathF.Abs(xInRow - boundary);
             if (travelled < DepthHysteresis) return previous.Depth;
         }
@@ -3056,10 +2996,10 @@ public static class SidebarDropCue
     public static bool DrawsPlate(SidebarDropKind kind) => kind == SidebarDropKind.Into;
 
     /// <summary>The caret's width: the row's content lane from <see cref="SidebarRowGeometry.TreeContentX"/> to the
-    /// row's trailing inset. ONE origin with the caret's transform and with <c>PickDepth</c>.</summary>
+    /// row's right edge. ONE origin with the caret's transform and with <c>PickDepth</c>.</summary>
     public static float LineWidth(float contentWidth, int depth)
     {
-        float w = contentWidth - SidebarRowGeometry.TreeContentX(depth) - SidebarRowGeometry.RowInsetRight;
+        float w = contentWidth - SidebarRowGeometry.TreeContentX(depth);
         return w > 0f ? w : 0f;
     }
 
@@ -4569,6 +4509,7 @@ public static class SidebarProjection
                         LastPlayedMs = LastPlayed(lastPlayed, uri),
                         IdentityKnown = identityKnown,
                         CountKnown = countKnown,
+                        HasEpisodes = p.EpisodeCount > 0,
                     });
                     break;
                 }

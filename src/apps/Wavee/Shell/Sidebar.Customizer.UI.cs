@@ -2344,7 +2344,7 @@ public static partial class Sidebar
         static Element PreviewRow(string title, string? artUrl, string glyph, SidebarSectionSpec section, string seed,
                                   int count, bool circular = false, int depth = 0)
         {
-            float height = SidebarRowGeometry.HeightFor(section.Opts.Density, section.Opts.Subtitles);
+            float height = PaneMetrics.RowHeight(section);
             float art = section.Opts.Density == SidebarDensity.Compact ? Cover.S20 : Cover.S28;
             var kids = new List<Element>(4);
             if (depth > 0) kids.Add(TreeGuide(height));
@@ -2384,7 +2384,7 @@ public static partial class Sidebar
 
         static Element TreeFolder(SidebarSectionSpec section) => new BoxEl
         {
-            Direction = 0, Height = SidebarRowGeometry.HeightFor(section.Opts.Density, section.Opts.Subtitles),
+            Direction = 0, Height = PaneMetrics.RowHeight(section),
             Shrink = 0f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
             Children =
             [

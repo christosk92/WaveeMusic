@@ -525,8 +525,8 @@ public static partial class Sidebar
                     ? Strings.Sidebar.V3.ItemCount(SidebarFolderTree.ChildCount(tree, entry.FolderId))
                     : PaneText.SubtitleOf(in entry),
                 Selected = selected,
-                Density = SidebarDensity.Cozy,
-                Leading = Cover.ForEntry(in entry, SidebarRowGeometry.ArtFor(SidebarDensity.Cozy)),
+                Shape = SidebarRowShape.EntityTwoLine,
+                Leading = Cover.ForEntry(in entry, SidebarRowGeometry.ArtOf(SidebarRowShape.EntityTwoLine)),
                 // A sub-folder announces that it drills IN — the pointer twin of the → key.
                 Trailing = folder ? Ui.Icon(Icons.ChevronRight, 12f, Tok.TextTertiary) with { Shrink = 0f } : null,
                 OnClick = () => Activate(in entry),

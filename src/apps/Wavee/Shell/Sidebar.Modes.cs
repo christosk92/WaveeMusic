@@ -202,8 +202,8 @@ public static class SidebarDesignGating
 /// Today's IA, transcribed verbatim: Pinned · a rule · Your Library (albums · artists · liked · podcasts · local,
 /// with counts) · a rule · Playlists (artwork + song-count subtitle + the create row) · a rule · the DevTools entry
 /// (developer-mode only, header-less). The display options are chosen so the shared height ladder reproduces
-/// Classic's rows exactly: Pinned/Playlists → Cozy + Subtitles ⇒ 44 with 32-DIP artwork; Your Library/DevTools →
-/// glyph rows on Shortcuts/Links, Cozy + Subtitles:false ⇒ 40 (neither section ever paints a subtitle line).
+/// Classic's rows exactly: Pinned/Playlists → Cozy + Subtitles ⇒ the two-line row (40 tall, 44 pitch, 32 art); Your Library/DevTools →
+/// glyph/one-line rows on Shortcuts/Links (36 tall, 40 pitch; neither section ever paints a subtitle line).
 /// </summary>
 public static class SidebarBuiltInDocuments
 {
@@ -247,8 +247,8 @@ public static class SidebarBuiltInDocuments
             new SidebarSectionSpec(LibraryId, SidebarSectionKind.CollectionShortcuts,
                 Title: null, TitleLocKey: "sidebar.yourLibrary",
                 Hidden: false, Collapsed: !libraryOpen,
-                // The Shortcuts preset alone (Cozy + Subtitles:false) is the honest 40-DIP height for a row that
-                // never paints a subtitle, with the same 32-DIP art column every other content row uses.
+                // The Shortcuts preset alone (Cozy + Subtitles:false) is the 36-DIP one-line row (40 pitch) for a row that
+                // never paints a subtitle.
                 Display: SidebarDisplayOptions.Shortcuts,
                 Items:
                 [
@@ -262,7 +262,7 @@ public static class SidebarBuiltInDocuments
 
             Divider(DividerPlaylistsId),
 
-            // Artwork + the song-count subtitle ⇒ Cozy 44 with 32-DIP covers; the planner appends the create row.
+            // Artwork + the song-count subtitle ⇒ the two-line row, 44 pitch with 32-DIP covers; the planner appends the create row.
             new SidebarSectionSpec(PlaylistsId, SidebarSectionKind.PlaylistTree,
                 Title: null, TitleLocKey: "sidebar.playlists",
                 Hidden: false, Collapsed: !playlistsOpen,
@@ -1104,9 +1104,8 @@ public static class LibraryV3Document
             sections.Add(new SidebarSectionSpec(LikedId, SidebarSectionKind.StaticLinks,
                 Title: null, TitleLocKey: null,
                 Hidden: false, Collapsed: false,
-                // A GLYPH row must be 44 tall with a 32-wide glyph column so its label lands at the content rows'
-                // label x: Cozy + Subtitles=true selects 44/32 even though no subtitle text is ever drawn (a route
-                // row never passes one). Fixed for every V3 view — Liked Songs is always exactly one row.
+                // Artwork:false makes it a Glyph row (36 tall, 40 pitch), its 16-px glyph centred in the 40-px icon
+                // column, so its label lands at pane x 48 with the content rows'. Fixed for every V3 view — Liked Songs is always exactly one row.
                 Display: new SidebarDisplayOptions(
                     Density: SidebarDensity.Cozy,
                     Presentation: SidebarPresentation.List,
@@ -1152,7 +1151,7 @@ public static class LibraryV3Document
            && (state.Filter == (int)SidebarV3Filter.All || state.Filter == (int)SidebarV3Filter.Playlists);
 
     /// <summary>The display options every CONTENT band (pin band and library) shares — V3's view code, mapped once.
-    /// CompactList ⇒ List+Compact (32 rows, 20 art, no subtitle) · List ⇒ List+Cozy (44/32/subtitle) · CompactGrid
+    /// CompactList ⇒ List+Compact (36/40 rows, 24 art, no subtitle) · List ⇒ List+Cozy (40/44, 32 art, subtitle) · CompactGrid
     /// ⇒ Grid, no subtitle · Grid ⇒ Grid with a subtitle. Grid column count is derived from the pane width by the
     /// caller (the sidebar's cell size is derived, never chosen).</summary>
     public static SidebarDisplayOptions ContentDisplay(in LibraryV3DocState state) => new(
@@ -1175,7 +1174,7 @@ public static class LibraryV3Document
         => view == (int)SidebarV3View.CompactList ? SidebarDensity.Compact : SidebarDensity.Cozy;
 
     /// <summary>Only the two roomy views carry a second line. Compact density suppresses subtitles anyway; saying
-    /// so here keeps the pane's height ladder honest (Cozy + subtitle = 44, Cozy alone = 40).</summary>
+    /// so here keeps the pane's height ladder honest (Cozy + subtitle = 44 pitch, Cozy alone = the 40-pitch one-line row).</summary>
     public static bool SubtitlesFor(int view)
         => view == (int)SidebarV3View.List || view == (int)SidebarV3View.Grid;
 

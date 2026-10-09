@@ -33,14 +33,18 @@ public readonly record struct SidebarRailMetrics(
 
     public static SidebarRailMetrics For(SidebarRailDetent d) => Of(TileOf(d));
 
-    public static SidebarRailMetrics Of(float tile) => new(
-        Tile: tile,
-        Art: tile - 2f * RingInset,
-        Glyph: tile >= Design.Size.Thumb64 ? 20f : 16f,       // ControlSize.Large.IconSize : the stock 16
-        Corner: Sidebar.Cover.Radius(tile, circular: false),   // 6 ≤ 40, else 8
-        StripW: tile + 2f * SidebarRowGeometry.PaneEdge,       // (56 − 40)/2 = 8 today
-        Pitch: tile + SidebarRailExtents.TileGap,
-        DividerW: tile - 2f * SidebarRowGeometry.PaneEdge);
+    public static SidebarRailMetrics Of(float tile)
+    {
+        const float RailEdge = 8f;                              // (56 − 40)/2 today; P2 deletes the detents with it
+        return new(
+            Tile: tile,
+            Art: tile - 2f * RingInset,
+            Glyph: tile >= Design.Size.Thumb64 ? 20f : 16f,       // ControlSize.Large.IconSize : the stock 16
+            Corner: Sidebar.Cover.Radius(tile, circular: false),   // 6 ≤ 40, else 8
+            StripW: tile + 2f * RailEdge,
+            Pitch: tile + SidebarRailExtents.TileGap,
+            DividerW: tile - 2f * RailEdge);
+    }
 
     public static SidebarRailDetent Coerce(int stored) => (uint)stored <= 2 ? (SidebarRailDetent)stored : SidebarRailDetent.Default;
 }

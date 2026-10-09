@@ -2284,6 +2284,9 @@
       "announceWidth": "Sidebar width {width}",
       "announceRail": "Icon rail, {size}"
     },
+    "header": {
+      "options": "Section options"
+    },
     "section": {
       "pinned": "Pinned",
       "pinnedSub": "The items you pinned, in your order",

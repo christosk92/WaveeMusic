@@ -1205,7 +1205,7 @@ public sealed class LibraryV3SearchRulesTests
     [Fact]
     public void OpenWidth_IsThePaneMinusPaddingMinusThePillAndGap()
     {
-        // 320 pane, 43 toolbar padding (LeadInset 27 + ContentLaneEnd 16) -> 320 - 43 - 28 - 4 = 245.
+        // 320 pane, 43 DIP of toolbar padding -> 320 - 43 - 28 - 4 = 245.
         float width = LibraryV3SearchRules.OpenWidth(320f, 43f);
         Assert.Equal(245f, width);
     }

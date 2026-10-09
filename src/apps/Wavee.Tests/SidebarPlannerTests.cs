@@ -1871,7 +1871,7 @@ public sealed class SidebarRailPlannerTests
 }
 #endregion
 
-#region ROW GEOMETRY — SidebarRowGeometryTests
+#region ROW GEOMETRY — SidebarPlanGeometryTests
 // SidebarRowGeometry is the engine-free half of the sidebar's row ladder. Two things are under test:
 //
 //   1. HEIGHT PARITY between the two documents that render the SAME "Your Library" section — Classic's locked built-in
@@ -1884,98 +1884,63 @@ public sealed class SidebarRailPlannerTests
 //
 //   2. The pure plan geometry the selection cue needs: cumulative content-space Y, route→index lookup, and the travel
 //      direction (whose 0 case — "unknowable" — is a real answer the indicator depends on, not an error).
-public sealed class SidebarRowGeometryTests
+public sealed class SidebarPlanGeometryTests
 {
     // ── 0. THE TREE-CONTENT ORIGIN (the caret's x) ────────────────────────────────────────────────
     //
-    // A tree row is NOT laid out on `IndentFor(depth)`. A tree row pads once at IndentFor(0) and then spends real
-    // cells — the 3-DIP selection gutter and one 12-DIP connector cell per level — before the art, with no reserved
-    // disclosure cell any more (the folder's chevron lives in the row's TRAILING cluster, so a tree row's content
-    // starts exactly where a depth-0 standard-leading row's does).
+    // A tree row's content origin is `TreeContentX(depth)` = `IndentFor(depth)`: one 31-DIP level per folder, no
+    // gutter and no connector cells (the WinUI ladder). The folder's chevron lives in the row's TRAILING cluster, so
+    // a depth-0 tree row's content starts exactly where a depth-0 row of any other section does.
 
     [Theory]
-    [InlineData(0, 13f)]     // 4 padding + 3 gutter + 6 gap — identical to StandardLeading at depth 0
-    [InlineData(1, 25f)]
-    [InlineData(2, 37f)]
-    [InlineData(3, 49f)]
-    [InlineData(4, 61f)]
-    [InlineData(9, 61f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
-    [InlineData(-3, 13f)]
-    public void TreeContentX_IsTheSumOfTheRowsOwnLeadingCells(int depth, float expected)
+    [InlineData(0, 0f)]
+    [InlineData(1, 31f)]
+    [InlineData(2, 62f)]
+    [InlineData(3, 93f)]
+    [InlineData(4, 93f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
+    [InlineData(-3, 0f)]
+    public void TreeContentX_IsThirtyOnePerLevelFromTheRowOrigin(int depth, float expected)
     {
         Assert.Equal(expected, SidebarRowGeometry.TreeContentX(depth), 3);
         // …and it IS a sum of the named constants, not a literal that happens to match.
         int clamped = Math.Clamp(depth, 0, SidebarRowGeometry.MaxIndentDepth);
-        Assert.Equal(SidebarRowGeometry.IndentFor(0) + SidebarRowGeometry.LeadingLaneWidth
-                     + clamped * SidebarRowGeometry.TreeGuideStep,
+        Assert.Equal(SidebarRowGeometry.IndentFor(0) + clamped * SidebarRowGeometry.IndentStep,
                      SidebarRowGeometry.TreeContentX(depth), 3);
     }
 
     [Fact]
-    public void TreeContentX_MarchesOneWholeConnectorCellPerLevel()
+    public void TreeContentX_MarchesOneIndentStepPerLevel()
     {
         // The step the depth pick reads backwards. If these two ever differ, an outdent lands on the wrong level.
         for (int d = 0; d < SidebarRowGeometry.MaxIndentDepth; d++)
-            Assert.Equal(SidebarRowGeometry.TreeGuideStep,
+            Assert.Equal(SidebarRowGeometry.IndentStep,
                          SidebarRowGeometry.TreeContentX(d + 1) - SidebarRowGeometry.TreeContentX(d), 3);
-        Assert.Equal(SidebarRowGeometry.IndentStep, SidebarRowGeometry.TreeGuideStep);
     }
 
-    // ── 0b. THE ONE LEADING LANE (the art/glyph column's x, and the label that follows it) ──────────────────────────────
-    //
-    // One art column, one label x, for every row SHAPE (art / bare glyph / tree) at a given density, and for the fixed
-    // chrome bands mounted above the list too.
+    // ── 1. the row ladder (WinUI NavigationView) ─────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(SidebarRowShape.Glyph, 36f, 40f)]
+    [InlineData(SidebarRowShape.EntityOneLine, 36f, 40f)]
+    [InlineData(SidebarRowShape.EntityTwoLine, 40f, 44f)]
+    public void HeightAndPitch_AreTheThreeWinUiShapes(SidebarRowShape shape, float height, float pitch)
+    {
+        Assert.Equal(height, SidebarRowGeometry.HeightOf(shape));
+        Assert.Equal(pitch, SidebarRowGeometry.PitchOf(shape));
+    }
 
     [Fact]
-    public void ArtX_AtDepthZero_Is21_TheContentLanePlusTheLeadingLane()
-    {
-        Assert.Equal(21f, SidebarRowGeometry.ArtX(0));
-        Assert.Equal(SidebarRowGeometry.ContentLane + SidebarRowGeometry.LeadingLaneWidth, SidebarRowGeometry.ArtX(0));
-    }
+    public void ClassicEntityRow_IsTheTwoLinePitch()
+        => Assert.Equal(SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine),
+                        SidebarRowGeometry.PitchOf(SidebarRowGeometry.ShapeFor(SidebarDensity.Cozy, true, true)));
 
     [Theory]
-    [InlineData(SidebarDensity.Compact, 20f)]
-    [InlineData(SidebarDensity.Cozy, 32f)]
-    [InlineData(SidebarDensity.Comfortable, 40f)]
-    public void ArtFor_IsTheThreeCanonicalArtSizes(SidebarDensity density, float expected)
-        => Assert.Equal(expected, SidebarRowGeometry.ArtFor(density));
-
-    [Theory]
-    [InlineData(SidebarDensity.Compact, 47f)]     // 21 + 20 + 6
-    [InlineData(SidebarDensity.Cozy, 59f)]        // 21 + 32 + 6
-    [InlineData(SidebarDensity.Comfortable, 67f)] // 21 + 40 + 6
-    public void GlyphRowAndArtRow_AtOneDensity_ShareOneLabelX(SidebarDensity density, float expectedLabelX)
-    {
-        // Both the bare-glyph arm (the icon centres inside the leading column) and the art arm build an
-        // ArtFor(density)-wide leading column, with the SAME LeadingGap before the text either way. One formula, one
-        // label x, whether the row shows a glyph (Home, Liked) or cover art (a playlist) at the same density.
-        float labelX = SidebarRowGeometry.ArtX(0) + SidebarRowGeometry.ArtFor(density) + SidebarRowGeometry.LeadingGap;
-        Assert.Equal(expectedLabelX, labelX);
-    }
-
-    // ── 1. the height ladder ─────────────────────────────────────────────────────────────────────────────────────────
-
-    [Theory]
-    [InlineData(SidebarDensity.Compact, false, 32f)]
-    [InlineData(SidebarDensity.Compact, true, 32f)]     // Compact suppresses subtitles outright — no second line, no growth
-    [InlineData(SidebarDensity.Cozy, false, 40f)]
-    [InlineData(SidebarDensity.Cozy, true, 44f)]        // = Classic's entity row (a glyph/shortcut row is Cozy+NO subtitle — 40, Task C)
-    [InlineData(SidebarDensity.Comfortable, false, 44f)]// also 44 — but a 40-DIP art column, no longer used for Shortcuts/Links
-    [InlineData(SidebarDensity.Comfortable, true, 48f)]
-    public void HeightFor_IsTheThreeCanonicalHeightsPlusComfortable(SidebarDensity d, bool sub, float expected)
-        => Assert.Equal(expected, SidebarRowGeometry.HeightFor(d, sub));
-
-    [Fact]
-    public void ClassicHeight_IsTheCozyWithSubtitleHeight()
-        => Assert.Equal(SidebarRowGeometry.ClassicHeight, SidebarRowGeometry.HeightFor(SidebarDensity.Cozy, true));
-
-    [Theory]
-    [InlineData(-1, 4f)]
-    [InlineData(0, 4f)]
-    [InlineData(1, 16f)]
-    [InlineData(4, 52f)]
-    [InlineData(9, 52f)]   // clamped at four levels
-    public void IndentFor_IsFourPlusTwelvePerLevelClampedAtFour(int depth, float expected)
+    [InlineData(-1, 0f)]
+    [InlineData(0, 0f)]
+    [InlineData(1, 31f)]
+    [InlineData(4, 93f)]
+    [InlineData(9, 93f)]   // clamped at three levels
+    public void IndentFor_IsThirtyOnePerLevelClampedAtThree(int depth, float expected)
         => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
 
     // ── 2. Classic ⇄ Curated shortcut-row parity (the reported defect) ────────────────────────────────────────────────
@@ -1987,15 +1952,19 @@ public sealed class SidebarRowGeometryTests
         throw new InvalidOperationException("no CollectionShortcuts section");
     }
 
+    /// <summary>A section's row pitch: the shape its display options resolve to, through the one ladder.</summary>
+    static float PitchFor(SidebarDisplayOptions o)
+        => SidebarRowGeometry.PitchOf(SidebarRowGeometry.ShapeFor(o.Density, o.Subtitles, o.Artwork));
+
     [Fact]
     public void ClassicAndCuratedTemplate_ShortcutRowsAreTheSameHeight()
     {
         var classic = Shortcuts(SidebarBuiltInDocuments.Classic(true, true, true));
         var curated = Shortcuts(SidebarTemplates.Build(SidebarTemplates.Curated));
 
-        Assert.Equal(SidebarRowGeometry.HeightFor(classic.Opts), SidebarRowGeometry.HeightFor(curated.Opts));
+        Assert.Equal(PitchFor(classic.Opts), PitchFor(curated.Opts));
         // …and the number itself, so a future "let's make Curated cozier" edit fails HERE instead of in a screenshot.
-        Assert.Equal(40f, SidebarRowGeometry.HeightFor(curated.Opts));
+        Assert.Equal(40f, PitchFor(curated.Opts));
     }
 
     [Fact]
@@ -2018,7 +1987,7 @@ public sealed class SidebarRowGeometryTests
         // who picks it gets rows that are not the Classic rows it is named after.
         var classic = Shortcuts(SidebarBuiltInDocuments.Classic(true, true, true));
         var inspired = Shortcuts(SidebarTemplates.Build(SidebarTemplates.ClassicInspired));
-        Assert.Equal(SidebarRowGeometry.HeightFor(classic.Opts), SidebarRowGeometry.HeightFor(inspired.Opts));
+        Assert.Equal(PitchFor(classic.Opts), PitchFor(inspired.Opts));
     }
 
     // ── 3. pure plan geometry ────────────────────────────────────────────────────────────────────────────────────────
@@ -2159,7 +2128,8 @@ public sealed class SidebarRowExtentsTests
     [Fact]
     public void ItemRows_AreTheSectionsOneUniformHeight()
     {
-        // The ladder is per SECTION, never per row (iron rule 4): Cozy+subtitles = 44 = Classic's row.
+        // The ladder is per SECTION, never per row (iron rule 4): Cozy+subtitles = 44 = Classic's row. Compact is the
+        // one-line shape (36 tall, 40 pitch); Comfortable shares the two-line pitch (its art is the only difference).
         var cozy = Sec("s", SidebarSectionKind.EntityList,
             SidebarDisplayOptions.Default with { Density = SidebarDensity.Cozy, Subtitles = true });
         var compact = Sec("s", SidebarSectionKind.EntityList,
@@ -2175,10 +2145,10 @@ public sealed class SidebarRowExtentsTests
         for (int i = 0; i < rows.Count; i++)
         {
             Assert.Equal(44f, H(rows, i, cozy));
-            Assert.Equal(32f, H(rows, i, compact));
-            Assert.Equal(48f, H(rows, i, comfy));
+            Assert.Equal(40f, H(rows, i, compact));
+            Assert.Equal(44f, H(rows, i, comfy));
         }
-        Assert.Equal(SidebarRowGeometry.ClassicHeight, H(rows, 0, cozy));
+        Assert.Equal(SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine), H(rows, 0, cozy));
     }
 
     [Fact]
@@ -2204,9 +2174,9 @@ public sealed class SidebarRowExtentsTests
             Row(SidebarRowKind.Divider), Row(SidebarRowKind.TreeEnd), Row(SidebarRowKind.SectionCard),
             Row(SidebarRowKind.EntityCard), Row(SidebarRowKind.GridStrip),
         };
-        Assert.Equal(SidebarRowGeometry.DividerHeight, H(rows, 0, section));
+        Assert.Equal(SidebarRowGeometry.SeparatorHeight, H(rows, 0, section));
         Assert.Equal(SidebarRowGeometry.TreeEndHeight, H(rows, 1, section));
-        Assert.Equal(SidebarRowGeometry.ClassicHeight, H(rows, 2, section));
+        Assert.Equal(SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine), H(rows, 2, section));
         Assert.Equal(SidebarRowGeometry.CardHeightFor(section.Opts.Density), H(rows, 3, section));
         // A GridStrip's cells wrap artwork + text at font metrics this layer cannot see: NOT analytic, by contract.
         Assert.True(float.IsNaN(H(rows, 4, section)));
@@ -2221,8 +2191,8 @@ public sealed class SidebarRowExtentsTests
         // Pinned's empty state IS its drop zone, and it is unconditional (R3.1.5).
         Assert.Equal(SidebarRowGeometry.PinDropZoneRestHeight,
             H(rows, 0, Sec("p", SidebarSectionKind.Pinned)));
-        // A quiet feed hint is the 32-DIP band, not a full row.
-        Assert.Equal(SidebarRowGeometry.EmptyHintHeight,
+        // A quiet feed hint is the 40-DIP band inside its 2 + 2 margin, not a full row.
+        Assert.Equal(SidebarRowGeometry.EmptyHintHeight + 2f * SidebarRowGeometry.RowMarginY,
             H(rows, 0, Sec("s", SidebarSectionKind.EntityList,
                 SidebarDisplayOptions.Default with { EmptyBehavior = SidebarEmptyBehavior.CompactHint })));
         // HideBody draws nothing at all.
@@ -2232,36 +2202,31 @@ public sealed class SidebarRowExtentsTests
     }
 
     [Fact]
-    public void BandedRhythm_IsEightExceptFirstRowAndAfterADividerOrHeading()
+    public void Headers_AreTheHeaderHeightEverywhere_SeparatorsCarryTheRhythm()
     {
+        // No section gap and no header-to-body gap any more: a separator row is the only rhythm, so every heading is
+        // the same 40-DIP band wherever it sits in the plan.
         var rows = new List<SidebarRow>
         {
-            Row(SidebarRowKind.SectionHeader, "a"),     // 0 - the pane's first row
+            Row(SidebarRowKind.SectionHeader, "a"),
             Row(SidebarRowKind.EntityRow, "a"),
-            Row(SidebarRowKind.SectionHeader, "b"),     // 2 - after a row: full air
+            Row(SidebarRowKind.SectionHeader, "b"),
             Row(SidebarRowKind.Divider, "d"),
-            Row(SidebarRowKind.SectionHeader, "c"),     // 4 - after a divider: none
+            Row(SidebarRowKind.SectionHeader, "c"),
             Row(SidebarRowKind.HeaderLabel, "e"),
-            Row(SidebarRowKind.SectionHeader, "f"),     // 6 - after a bare heading: none
+            Row(SidebarRowKind.SectionHeader, "f"),
         };
-        Assert.Equal(0f, SidebarRowExtents.BandTop(rows, 0));
-        Assert.Equal(SidebarRowGeometry.SectionGap, SidebarRowExtents.BandTop(rows, 2));
-        Assert.Equal(0f, SidebarRowExtents.BandTop(rows, 4));
-        Assert.Equal(0f, SidebarRowExtents.BandTop(rows, 6));
-
         var section = Sec("a", SidebarSectionKind.EntityList);
-        float bare = SidebarRowGeometry.HeaderHeight + SidebarRowGeometry.HeaderBodyGap;
-        Assert.Equal(bare, H(rows, 0, section));
-        Assert.Equal(bare + SidebarRowGeometry.SectionGap, H(rows, 2, section));
-        Assert.Equal(bare, H(rows, 4, section));
-        Assert.Equal(bare + SidebarRowGeometry.SectionGap, H(rows, 5, section));   // the heading itself follows a header
+        foreach (int i in new[] { 0, 2, 4, 5, 6 })
+            Assert.Equal(SidebarRowGeometry.HeaderHeight, H(rows, i, section));
+        Assert.Equal(SidebarRowGeometry.SeparatorHeight, H(rows, 3, section));
     }
 
     [Fact]
     public void InlineChipStrip_OnlyOnAnEditableOpenEntityListThatAsksForIt()
     {
         var rows = new List<SidebarRow> { Row(SidebarRowKind.SectionHeader) };
-        float bare = SidebarRowGeometry.HeaderHeight + SidebarRowGeometry.HeaderBodyGap;
+        float bare = SidebarRowGeometry.HeaderHeight;
         float withChips = bare + SidebarRowGeometry.ChipStripGap + SidebarRowGeometry.ChipStripHeight;
         var chips = SidebarDisplayOptions.Default with { InlineControls = true };
 
@@ -2296,9 +2261,9 @@ public sealed class SidebarRowExtentsTests
             Assert.Equal(running, SidebarRowGeometry.ContentYOf(i, rows.Count, ExtentOf), 3);
             running += ExtentOf(i);
         }
-        // 30 header (first row, no air) + 44 folder + 44 + 44 + 24 tree end. The trailing 44-DIP CREATE row is gone:
-        // the affordance is the section header's "+", which is chrome inside the header band's own extent.
-        Assert.Equal(30f + 44f + 44f + 44f + 24f, running, 3);
+        // 40 header + 44 folder + 44 + 44 + 24 tree end. The trailing CREATE row is gone: the affordance is the section
+        // header's "+", which is chrome inside the header band's own extent.
+        Assert.Equal(40f + 44f + 44f + 44f + 24f, running, 3);
         Assert.Equal(running, SidebarRowGeometry.ContentYOf(rows.Count, rows.Count, ExtentOf), 3);
     }
 }
@@ -3086,25 +3051,13 @@ public class SidebarPaneInvariantTests
 
     // ── THE ONE CONTENT LANE ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The lane is DERIVED, never typed twice: the pane edge plus a depth-0 row's own indent. If someone
-    /// re-tunes <c>IndentFor</c> or the pane pad, the lane moves with them instead of silently disagreeing.</summary>
+    /// <summary>A NESTED row indents from the row origin, so a depth-1 child sits exactly one 31-DIP level inside it,
+    /// and the ladder stops at three levels.</summary>
     [Fact]
-    public void ContentLane_IsThePaneEdgePlusTheDepthZeroRowIndent()
+    public void NestedRowsIndentOneStepPerLevel()
     {
-        Assert.Equal(SidebarRowGeometry.ContentLane, SidebarRowGeometry.PaneEdge + SidebarRowGeometry.IndentFor(0));
-        Assert.Equal(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.RowInsetRight, SidebarRowGeometry.ContentLaneEnd);
-        // The landed numbers the screenshots were measured against, pinned so a "harmless" retune is a visible diff.
-        Assert.Equal(12f, SidebarRowGeometry.ContentLane);
-        Assert.Equal(16f, SidebarRowGeometry.ContentLaneEnd);
-    }
-
-    /// <summary>A NESTED row indents from the lane, so a depth-1 child sits exactly one 12-DIP level inside it.</summary>
-    [Fact]
-    public void NestedRowsIndentFromTheLane()
-    {
-        Assert.Equal(SidebarRowGeometry.ContentLane + 12f,
-                     SidebarRowGeometry.PaneEdge + SidebarRowGeometry.IndentFor(1));
-        Assert.Equal(SidebarRowGeometry.IndentFor(4), SidebarRowGeometry.IndentFor(9));   // clamped at 4 levels
+        Assert.Equal(SidebarRowGeometry.IndentStep, SidebarRowGeometry.IndentFor(1));
+        Assert.Equal(SidebarRowGeometry.IndentFor(3), SidebarRowGeometry.IndentFor(9));   // clamped at 3 levels
     }
 }
 #endregion

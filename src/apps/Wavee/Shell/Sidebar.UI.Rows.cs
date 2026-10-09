@@ -35,9 +35,9 @@ public static partial class Sidebar
     // ══ 1. THE ONE ENTITY ROW ════════════════════════════════════════════════════════════════════════════════════════
     //
     // Classic's pinned rows, Library V3's list rows and Curated's entity rows all come out of EntityRow.Create, so the
-    // three designs cannot drift apart. It owns the 4-state selection-aware ramp (a selected row DARKENS on hover — the
-    // NavigationViewItem backplate ladder), the height ladder, the 3-DIP pill gutter, the depth indent, the slot order,
-    // the one key handler and the drag source.
+    // three designs cannot drift apart. It owns the neutral NavigationViewItem backplate ramp (`NavRow`: the pill is the
+    // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 31-px depth indent), the slot
+    // order, the one key handler and the drag source.
 
     /// <summary>Everything <see cref="EntityRow.Create"/> needs: a mutable struct filled with an object initializer and
     /// passed by <c>in</c>, so a row costs no allocation beyond its elements. Always <c>new RowSpec { … }</c>, never
@@ -46,8 +46,8 @@ public static partial class Sidebar
     {
         public RowSpec()
         {
-            Key = ""; Label = ""; Subtitle = null; Selected = false; Enabled = true; Depth = 0; TreeNode = false;
-            TreeDepth = 0; TreeContinuationMask = 0; Density = SidebarDensity.Cozy; Gap = float.NaN; Height = float.NaN;
+            Key = ""; Label = ""; Subtitle = null; Selected = false; Enabled = true; Depth = 0;
+            Shape = SidebarRowShape.EntityTwoLine; Tile = false; LabelTooltip = false; Height = float.NaN;
             ArtSize = float.NaN; Leading = null; Glyph = null; DisclosureChevron = null; Pinned = false; Trailing = null;
             Playing = false; PlayingAnimated = false; Track = false; Overflow = false; OnClick = null; OnRealized = null;
             MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropActive = null; Animate = null;
@@ -60,30 +60,26 @@ public static partial class Sidebar
         public string Key;
         /// <summary>REQUIRED. The title — also the accessible name (the engine has no separate automation-name channel).</summary>
         public string Label;
-        /// <summary>Second line (count / kind · creator). Ignored at Compact.</summary>
+        /// <summary>Second line (count / kind · creator). Drawn only in an <see cref="SidebarRowShape.EntityTwoLine"/> row.</summary>
         public string? Subtitle;
 
         // ── state ──
-        /// <summary>The open ROUTE is this row: drives the accent plate of the 4-state ramp.</summary>
+        /// <summary>The open ROUTE is this row: the selected leg of the neutral NavRow ramp (the pill is drawn by the slot).</summary>
         public bool Selected;
-        /// <summary>False dims to 0.55 and drops the ramp (missing entity / unavailable action retention).</summary>
+        /// <summary>False dims to 0.3 and drops the ramp (missing entity / unavailable action retention).</summary>
         public bool Enabled;
-        /// <summary>Nesting depth: 12 DIP per level, clamped at 4.</summary>
+        /// <summary>Nesting depth: 31 DIP per level, capped at 3.</summary>
         public int Depth;
-        /// <summary>A PlaylistTree row: its depth is drawn as connector cells instead of anonymous padding.</summary>
-        public bool TreeNode;
-        /// <summary>Depth inside the tree itself (separate from <see cref="Depth"/>).</summary>
-        public int TreeDepth;
-        /// <summary>One bit per tree level: set ⇒ that level has a later sibling and its vertical guide continues.</summary>
-        public byte TreeContinuationMask;
-        /// <summary>Row height + art size ladder.</summary>
-        public SidebarDensity Density;
-        /// <summary>Main-axis gap. NaN ⇒ <c>SidebarRowGeometry.LeadingGap</c> (6) for every row shape.</summary>
-        public float Gap;
+        /// <summary>The section's ONE row shape (height, art size, subtitle line).</summary>
+        public SidebarRowShape Shape;
+        /// <summary>A compact-rail tile (P2): 40 wide, icon only, the label as tooltip.</summary>
+        public bool Tile;
+        /// <summary>The full label as a tooltip (a truncated title, or a rail tile).</summary>
+        public bool LabelTooltip;
         /// <summary>PIN the height (NaN ⇒ derive). A section pins it so a Reorderable pitch and the extent table see ONE
         /// height per section.</summary>
         public float Height;
-        /// <summary>Art-slot edge. NaN ⇒ <c>SidebarRowGeometry.ArtFor(Density)</c>.</summary>
+        /// <summary>Art-slot edge. NaN ⇒ <c>SidebarRowGeometry.ArtOf(Shape)</c>.</summary>
         public float ArtSize;
 
         // ── slots ──
@@ -128,7 +124,7 @@ public static partial class Sidebar
         public LayoutTransition? Animate;
         /// <summary>A third text line (11 px tertiary). Nothing sets it today; the shape is free.</summary>
         public string? Caption;
-        /// <summary>The multi-select lane (<c>SelectorVisualsBound.BoundCheckLane</c>), placed inside the leading cluster.</summary>
+        /// <summary>The multi-select lane (<c>SelectorVisualsBound.BoundCheckLane</c>), placed as a sibling before the icon column.</summary>
         public Element? CheckLane;
         /// <summary>In the tree MULTI-selection: the quiet FillSubtleSecondary plate (never the accent one).</summary>
         public bool MultiSelected;
@@ -151,14 +147,25 @@ public static partial class Sidebar
         /// <summary>The hover "…" box — also the trailing cluster's reserve, so a chevron or a count never sits under it.</summary>
         const float OverflowWidth = 26f;
 
+        /// <summary>The width a row's label gives up to the hover "…" reserve: only a row with a menu AND trailing content
+        /// (a count, a pin mark, a chevron) keeps one.</summary>
+        public static float OverflowReserve(bool menu, bool trailing) => menu && trailing ? OverflowWidth : 0f;
+
         /// <summary>The height <paramref name="spec"/> renders at, for a host that sizes a slot before building the row.</summary>
         public static float HeightOf(in RowSpec spec)
-            => float.IsNaN(spec.Height)
-                ? SidebarRowGeometry.HeightFor(spec.Density, SidebarRowGeometry.SubtitleVisible(spec.Density, spec.Subtitle))
-                : spec.Height;
+            => float.IsNaN(spec.Height) ? SidebarRowGeometry.HeightOf(spec.Shape) : spec.Height;
 
-        /// <summary>The 3-DIP reserve the selection pill sits in; exists so row content never shifts as selection moves.</summary>
-        public static Element SelGutter() => new BoxEl { Width = SidebarRowGeometry.SelGutterWidth, Shrink = 0f };
+        /// <summary>WinUI's NavigationViewItem backplate ramp verbatim (TR:9-32 / 75-98): neutral fills, the pill is the only
+        /// "you are here". Rest / hover / pressed / disabled, brush cross-fade 83 ms (ControlFaster).</summary>
+        public static InteractionRecipe NavRow(bool selected) => new()
+        {
+            Fill = new StateBrush(
+                selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTransparent,
+                selected ? Tok.FillSubtleTertiary : Tok.FillSubtleSecondary,
+                selected ? Tok.FillSubtleSecondary : Tok.FillSubtleTertiary,
+                Tok.FillSubtleTransparent),
+            BrushMs = 83f,
+        };
 
         /// <summary>Build the row. Returns a <see cref="BoxEl"/> so a caller can still <c>with</c> layout fields (Grow for a
         /// Reorderable wrapper); the fill ramp must never be overridden downstream.</summary>
@@ -166,108 +173,107 @@ public static partial class Sidebar
         {
             bool selected = spec.Selected;
             bool enabled = spec.Enabled;
-            bool hasSubtitle = SidebarRowGeometry.SubtitleVisible(spec.Density, spec.Subtitle);
-            float height = float.IsNaN(spec.Height) ? SidebarRowGeometry.HeightFor(spec.Density, hasSubtitle) : spec.Height;
-            float art = float.IsNaN(spec.ArtSize) ? SidebarRowGeometry.ArtFor(spec.Density) : spec.ArtSize;
-            bool bareGlyph = spec.Leading is null && spec.Glyph is { Length: > 0 };
-            float gap = float.IsNaN(spec.Gap) ? SidebarRowGeometry.LeadingGap : spec.Gap;
-            // Copies: an `in` parameter cannot be captured by the bound thunks / handlers below.
-            var plateOn = spec.DropActive;
+            bool hasSubtitle = !spec.Tile && SidebarRowGeometry.SubtitleVisible(spec.Shape, spec.Subtitle);
+            bool hasCaption = spec.Caption is { Length: > 0 };
+            float height = float.IsNaN(spec.Height) ? SidebarRowGeometry.HeightOf(spec.Shape) : spec.Height;
+            float art = float.IsNaN(spec.ArtSize) ? SidebarRowGeometry.ArtOf(spec.Shape) : spec.ArtSize;
             var activate = spec.OnActivate;
             var checksVisible = spec.ChecksVisible;
-            // TWO selections, two skins: the open ROUTE takes the accent plate (+ the pill), a tree MULTI-selection the
-            // quiet one. Re-asserted as a value on every reconcile, so it re-enters the brush cross-fade for free.
-            ColorF rest = !enabled ? ColorF.Transparent
-                : selected ? global::Wavee.Design.Colors.SelectedRest
-                : spec.MultiSelected ? Tok.FillSubtleSecondary
-                : ColorF.Transparent;
-            ColorF hoverFill = !enabled ? ColorF.Transparent
-                : selected ? global::Wavee.Design.Colors.SelectedHover : Tok.FillSubtleSecondary;
+            // Icon colour = label colour in every state (NVX:425-427): TextPrimary, a disabled row fades as a whole.
+            var ink = Tok.TextPrimary;
 
-            // ── leading column: a glyph row builds the SAME art-wide column an art row does, so labels align (W7) ──
-            Element leading;
-            if (spec.Leading is { } given) leading = given;
-            else if (bareGlyph)
-                leading = new BoxEl
+            // ── the icon column: 40 wide, the glyph (16) or art centred at slot x 20 ──
+            Element visual = spec.Leading
+                ?? (spec.Glyph is { Length: > 0 } g ? Icon(g, SidebarRowGeometry.GlyphSize, ink) : new BoxEl { Width = art, Height = art });
+            if (spec.Track && spec.Leading is not null) visual = TrackArt(visual, art, spec.Shape);
+            Element iconColumn = new BoxEl
+            {
+                Width = SidebarRowGeometry.IconColumn, Height = height, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [visual],
+            };
+            if (spec.Tile)
+                return Finish(in spec, new BoxEl
                 {
-                    Width = art, Height = art, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [Icon(spec.Glyph!, 16f, selected ? Tok.TextPrimary : Tok.TextSecondary)],
-                };
-            else leading = new BoxEl { Width = art, Height = art, Shrink = 0f };
-            if (spec.Track && spec.Leading is not null) leading = TrackArt(leading, art, spec.Density);
+                    Key = spec.Key, Animate = spec.Animate, OnRealized = spec.OnRealized,
+                    Width = SidebarRowGeometry.TileWidth, Height = height, Shrink = 0f,
+                    Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
+                    Corners = Radii.ControlAll, AlignItems = FlexAlign.Center,
+                    Children = [iconColumn],
+                }, enabled, selected, activate, checksVisible);
 
-            // ── text column: Shrink + MinWidth 0 on both arms, or a long title runs under the trailing cluster ──
+            // ── the label column ──
             Element text;
-            if (!hasSubtitle && spec.Caption is null)
+            if (!hasSubtitle && !hasCaption)
             {
                 text = Body(spec.Label) with
                 {
                     Grow = 1f, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, MaxLines = 1,
+                    Wrap = TextWrap.NoWrap, Color = ink,
                 };
             }
             else
             {
-                bool hasCaption = spec.Caption is { Length: > 0 };
-                var stack = new Element[1 + (hasSubtitle ? 1 : 0) + (hasCaption ? 1 : 0)];
-                int n = 0;
-                stack[n++] = Body(spec.Label) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+                var lines = new List<Element>(3)
+                {
+                    Body(spec.Label) with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1, Wrap = TextWrap.NoWrap, Color = ink, LineHeight = 18f },
+                };
                 if (hasSubtitle)
-                    stack[n++] = Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1 };
+                    lines.Add(Caption(spec.Subtitle!).Secondary() with { Trim = TextTrim.CharacterEllipsis, MaxLines = 1, Wrap = TextWrap.NoWrap });
                 if (hasCaption)
-                    stack[n] = global::Wavee.Design.Type.MicroMeta(spec.Caption!) with
+                    lines.Add(global::Wavee.Design.Type.MicroMeta(spec.Caption!) with
                     {
                         Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    };
-                text = new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 1f, Children = stack };
+                    });
+                text = new BoxEl
+                {
+                    Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Justify = FlexJustify.Center,
+                    Children = [.. lines],
+                };
             }
 
-            // ── trailing cluster: chevron · equalizer · pin · trailing, ONE grouped element ──
+            // ── trailing: equalizer · pin mark · count/badge, ending at W − 18; the chevron column replaces the 14 pad ──
             bool overflow = spec.Overflow && enabled && spec.MenuOverlay is not null && spec.Menu is not null;
-            // The shared hand-cursor RULE (SurfaceRules): an invokable row — by a plain click or by the modifier-aware
-            // activation — wears the hand, a disabled or click-less one the arrow. The row keeps its own grammar otherwise.
-            var own = SurfaceRules.Ownership(inSlot: false, hasClick: enabled && (activate is not null || spec.OnClick is not null));
-            Element? trailingCluster = null;
-            int trailingCount = (spec.DisclosureChevron is null ? 0 : 1) + (spec.Playing ? 1 : 0)
-                              + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
+            int trailingCount = (spec.Playing ? 1 : 0) + (spec.Pinned ? 1 : 0) + (spec.Trailing is null ? 0 : 1);
+            var kids = new List<Element>(6);
+            // The check lane is a gapless sibling BEFORE the icon column: while the checks show it pushes the whole row
+            // right (WinUI's multi-select content offset) instead of crushing the 40-px column.
+            if (spec.CheckLane is { } lane) kids.Add(lane);
+            kids.Add(iconColumn);
+            kids.Add(new BoxEl { Width = SidebarRowGeometry.LabelGap, Shrink = 0f });
+            kids.Add(text);
             if (trailingCount > 0)
             {
                 var parts = new Element[trailingCount];
                 int t = 0;
-                if (spec.DisclosureChevron is { } chevron) parts[t++] = chevron;
                 if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
                 if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
                 if (spec.Trailing is { } trailingContent) parts[t] = trailingContent;
-                trailingCluster = new BoxEl
+                kids.Add(new BoxEl
                 {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = gap,
-                    // Reserve the overlay's width only when the row actually carries the "…".
-                    Padding = overflow ? new Edges4(0f, 0f, OverflowWidth, 0f) : default,
-                    Children = parts,
-                };
+                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.TrailingGap,
+                    Margin = new Edges4(SidebarRowGeometry.TrailingGap, 0f, 0f, 0f), Children = parts,
+                });
             }
-
-            Element leadingCluster = spec.TreeNode
-                ? TreeLeading(leading, spec.TreeDepth, spec.TreeContinuationMask, height)
-                : StandardLeading(leading, gap);
-            // The check lane rides INSIDE the leading cluster in a gapless box: as a gapped sibling its hidden Flow.Show
-            // boundary still cost one row gap, pushing every rootlist row right of the album/artist rows beside it.
-            if (spec.CheckLane is { } checkLane)
-                leadingCluster = new BoxEl
+            bool chevron = spec.DisclosureChevron is not null;
+            // The hover "…" never covers the count, the pin mark or the chevron: a row with trailing content reserves its
+            // width in the flow, and on a folder the button parks in that reserve just left of the chevron column.
+            if (overflow && (trailingCount > 0 || chevron)) kids.Add(new BoxEl { Width = OverflowWidth, Shrink = 0f });
+            if (spec.DisclosureChevron is { } chev)
+                kids.Add(new BoxEl
                 {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [checkLane, leadingCluster],
-                };
+                    Width = SidebarRowGeometry.ChevronColumn, Height = height, Shrink = 0f,
+                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Children = [chev],
+                });
 
-            var kids = new Element[trailingCluster is null ? 2 : 3];
-            kids[0] = leadingCluster;
-            kids[1] = text;
-            if (trailingCluster is not null) kids[2] = trailingCluster;
-
-            // The "…" is a ZSTACK OVERLAY, never a flex sibling: it costs the title ZERO width, so a title never ellipsizes
-            // early and hovering never re-trims it. A long title may run under it — accepted: the row is translucent over
-            // Mica, there is no opaque tone to fade into, and a hover-conditional width would relayout on every enter.
+            // The "…" is a ZSTACK OVERLAY, never a flex sibling: on a row with no trailing content it costs the title ZERO
+            // width, so a title never ellipsizes early and hovering never re-trims it. A long title may run under it —
+            // accepted: the row is translucent over Mica, there is no opaque tone to fade into, and a hover-conditional
+            // width would relayout on every enter.
             Element[] rowChildren = overflow
-                ? [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = gap, Children = kids }, OverflowButton()]
-                : kids;
+                ? [new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Children = [.. kids] },
+                   OverflowButton(chevron ? SidebarRowGeometry.ChevronColumn : 0f)]
+                : [.. kids];
 
             var row = new BoxEl
             {
@@ -275,45 +281,52 @@ public static partial class Sidebar
                 Animate = spec.Animate,
                 OnRealized = spec.OnRealized,
                 ZStack = overflow,
-                Direction = 0, Height = height, AlignItems = FlexAlign.Center, Gap = gap,
-                Padding = new Edges4(SidebarRowGeometry.IndentFor(spec.Depth), 0f, SidebarRowGeometry.RowInsetRight, 0f),
-                Corners = CornerRadius4.All(4f),
-                // THE 4-STATE SELECTION-AWARE RAMP, written once for every row in every design. An armed whole-row drop
-                // reads as a lit accent PLATE (bound — this runs while a drag is live, inside the 0-alloc region).
-                Fill = plateOn is null ? rest : Prop.Of(() => plateOn() ? Tok.AccentDefault with { A = 0.18f } : rest),
-                HoverFill = hoverFill,
-                PressedFill = !enabled ? ColorF.Transparent
-                    : selected ? global::Wavee.Design.Colors.SelectedPressed : Tok.FillSubtleTertiary,
-                BorderWidth = plateOn is null ? 0f : 1f,
-                BorderColor = plateOn is null
-                    ? ColorF.Transparent
-                    : Prop.Of(() => plateOn() ? Tok.AccentDefault : ColorF.Transparent),
-                Opacity = enabled ? 1f : 0.55f,
+                Direction = 0, Height = height, AlignItems = FlexAlign.Center,
+                Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
+                Padding = new Edges4(SidebarRowGeometry.IndentFor(spec.Depth), 0f, chevron ? 0f : SidebarRowGeometry.TrailingPad, 0f),
+                Corners = Radii.ControlAll,
+                Children = rowChildren,
+            };
+            return Finish(in spec, row, enabled, selected, activate, checksVisible);
+        }
+
+        /// <summary>The wiring every row shape shares: the neutral ramp (the multi-selection's quiet plate is the selected
+        /// rest fill without a pill), disabled 0.3 (TR:501), the click / modifier-aware activation, the keys, the drag
+        /// source, the drop target, and the context menu.</summary>
+        static BoxEl Finish(in RowSpec spec, BoxEl row, bool enabled, bool selected, Action<KeyModifiers>? activate,
+                            Func<bool>? checksVisible)
+        {
+            var own = SurfaceRules.Ownership(inSlot: false, hasClick: enabled && (activate is not null || spec.OnClick is not null));
+            row = (row with
+            {
+                Opacity = enabled ? 1f : 0.3f,
                 IsEnabled = enabled,
+                Role = AutomationRole.NavigationItem,
                 Cursor = SurfaceRules.Cursor(in own),
-                // A row with OnActivate wires the POINTER-RELEASED path: OnClick throws the modifiers away, and Ctrl/Shift
-                // ARE the gesture. A double click always activates plainly (WinUI's DoubleTap rule); a single tap while
-                // the check lane is up gets Ctrl synthesized.
                 OnClick = enabled && activate is null ? spec.OnClick : null,
                 OnPointerReleased = enabled && activate is not null
                     ? args => activate!(args.ClickCount >= 2
                         ? KeyModifiers.None
                         : SelectorVisualsBound.MultiSelectMods(checksVisible?.Invoke() ?? false, args.Mods))
                     : null,
-                Focusable = spec.Focusable
-                            || (enabled && (spec.OnRename is not null || spec.OnMove is not null || activate is not null)),
-                OnKeyDown = enabled && (spec.OnRename is not null || spec.OnMove is not null
-                                        || activate is not null || spec.OnEscape is not null)
+                Focusable = spec.Focusable || (enabled && (spec.OnRename is not null || spec.OnMove is not null || activate is not null)),
+                OnKeyDown = enabled && (spec.OnRename is not null || spec.OnMove is not null || activate is not null || spec.OnEscape is not null)
                     ? KeyHandler(spec.OnRename, spec.OnMove, activate, spec.OnEscape)
                     : null,
-                // The RESOURCE drag, click-primary: navigating is the constant intent, so a click landed while the mouse
-                // is still travelling is not eaten by a promotion. A row in a reorderable band carries no Drag at all.
                 Draggable = enabled && spec.Drag is { } payload ? Drag.Source(() => payload, clickPrimary: true) : null,
                 DropTarget = spec.DropTarget,
-                Children = rowChildren,
-            };
-
-            // Right-click / Menu key / long-press — the attach CHAINS onto OnRealized, never clobbering the pill capture.
+            }).Interactive(NavRow(selected || spec.MultiSelected), isEnabled: enabled);
+            // The folder flyout's whole-row cue paints OVER the ramp, so it lands after Interactive (which writes the brushes).
+            if (spec.DropActive is { } plateOn)
+            {
+                ColorF rest = NavRow(selected || spec.MultiSelected).Fill.Resting(enabled);
+                row = row with
+                {
+                    Fill = Prop.Of(() => plateOn() ? Tok.AccentDefault with { A = 0.18f } : rest),
+                    BorderWidth = 1f,
+                    BorderColor = Prop.Of(() => plateOn() ? Tok.AccentDefault : ColorF.Transparent),
+                };
+            }
             if (spec.MenuOverlay is { } svc && spec.Menu is { } factory) row = row.WithContextMenu(svc, factory);
             return row;
         }
@@ -351,76 +364,14 @@ public static partial class Sidebar
             else if (e.KeyCode == Keys.Down) { e.Handled = true; move(1); }
         };
 
-        static Element StandardLeading(Element leading, float gap) => new BoxEl
-        {
-            Direction = 0, Shrink = 0f, Gap = gap, AlignItems = FlexAlign.Center,
-            Children = [SelGutter(), leading],
-        };
-
-        /// <summary>A tree row: the gutter and depth's connector cells butted together (SidebarRowGeometry.TreeContentX is
-        /// exactly that sum — a gap there would put the caret one gap short of what the row draws), then one LeadingGap.
-        /// Identical to <see cref="StandardLeading"/> at depth 0.</summary>
-        static Element TreeLeading(Element leading, int depth, byte continuationMask, float height)
-        {
-            int levels = Math.Clamp(depth, 0, SidebarRowGeometry.MaxIndentDepth);
-            Element lane = levels > 0
-                ? new BoxEl
-                {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
-                    Children = [SelGutter(), TreeGuides(levels, continuationMask, height)],
-                }
-                : SelGutter();
-            return new BoxEl
-            {
-                Direction = 0, Shrink = 0f, Gap = SidebarRowGeometry.LeadingGap, AlignItems = FlexAlign.Center,
-                Children = [lane, leading],
-            };
-        }
-
-        /// <summary>One 12-DIP cell per level: a 1-DIP guide (half height on the current level when it has no later
-        /// sibling) and, on the current level, an 8-DIP elbow at mid height.</summary>
-        static Element TreeGuides(int depth, byte continuationMask, float height)
-        {
-            var cells = new Element[depth];
-            for (int level = 1; level <= depth; level++)
-            {
-                bool current = level == depth;
-                bool continues = (continuationMask & (1 << (level - 1))) != 0;
-                bool guide = current || continues;
-                var marks = new Element[(guide ? 1 : 0) + (current ? 1 : 0)];
-                int m = 0;
-                if (guide)
-                    marks[m++] = new BoxEl
-                    {
-                        Width = 1f, Height = current && !continues ? height / 2f : height, Shrink = 0f,
-                        AlignSelf = FlexAlign.Start, Margin = new Edges4(Spacing.XS, 0f, 0f, 0f),
-                        Fill = Tok.StrokeDividerDefault,
-                    };
-                if (current)
-                    marks[m] = new BoxEl
-                    {
-                        Width = Spacing.S, Height = 1f, Shrink = 0f, AlignSelf = FlexAlign.Start,
-                        Margin = new Edges4(Spacing.XS, height / 2f, 0f, 0f), Fill = Tok.StrokeDividerDefault,
-                    };
-                cells[level - 1] = new BoxEl
-                {
-                    Width = SidebarRowGeometry.TreeGuideStep, Height = height, Shrink = 0f, ZStack = true,
-                    HitTestPassThrough = true, Children = marks,
-                };
-            }
-            return new BoxEl
-            {
-                Direction = 0, Width = depth * SidebarRowGeometry.TreeGuideStep, Height = height, Shrink = 0f,
-                HitTestPassThrough = true, Children = cells,
-            };
-        }
-
-        /// <summary>The hover "…" parked flush against the row's trailing padding (JustifySelf End) inside the row's
-        /// ZStack. ClickRequestsContext re-enters the context-request funnel, so the button and a right-click open the SAME
-        /// menu, anchored at the button.</summary>
-        static Element OverflowButton() => new BoxEl
+        /// <summary>The hover "…" parked against the row's trailing edge (JustifySelf End) inside the row's ZStack,
+        /// <paramref name="trailingInset"/> short of it on a folder so it clears the chevron column. ClickRequestsContext
+        /// re-enters the context-request funnel, so the button and a right-click open the SAME menu, anchored at the
+        /// button.</summary>
+        static Element OverflowButton(float trailingInset) => new BoxEl
         {
             Width = OverflowWidth, Height = OverflowWidth, JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
+            Margin = new Edges4(0f, 0f, trailingInset, 0f),
             Opacity = 0f, HoverOpacity = 1f,
             Children =
             [
@@ -439,7 +390,7 @@ public static partial class Sidebar
         /// <summary>A track row's cover with a hover scrim + play glyph. The reveal is HoverOpacity on a DESCENDANT, which
         /// the engine resolves against the ROW's hover. A scrim is dark in BOTH themes, so the glyph is literal white
         /// (never TextOnAccentPrimary, which is black in dark).</summary>
-        static Element TrackArt(Element cover, float art, SidebarDensity density) => ZStack(
+        static Element TrackArt(Element cover, float art, SidebarRowShape shape) => ZStack(
             cover,
             new BoxEl
             {
@@ -448,7 +399,7 @@ public static partial class Sidebar
                 Corners = CornerRadius4.All(Cover.Radius(art, circular: false)),
                 Fill = new ColorF(0f, 0f, 0f, 0.55f),
                 Opacity = 0f, HoverOpacity = 1f, HitTestVisible = false,
-                Children = [Icon(Icons.Play, density == SidebarDensity.Compact ? 10f : 14f, ColorF.FromRgba(0xFF, 0xFF, 0xFF))],
+                Children = [Icon(Icons.Play, shape == SidebarRowShape.EntityOneLine ? 10f : 14f, ColorF.FromRgba(0xFF, 0xFF, 0xFF))],
             }) with { Width = art, Height = art, Shrink = 0f };
     }
 
@@ -706,7 +657,7 @@ public static partial class Sidebar
     /// </summary>
     internal sealed class SelectionPill : Component
     {
-        public const float PillW = 3f, PillH = 16f;
+        public const float PillW = SidebarRowGeometry.PillW, PillH = SidebarRowGeometry.PillH;
 
         readonly PaneView _owner;
         readonly Func<SidebarPillState> _state;
@@ -743,7 +694,7 @@ public static partial class Sidebar
                 Width = PillW,
                 Height = PillH,
                 Margin = new Edges4(state.Indent, state.Top, 0f, 0f),
-                Corners = CornerRadius4.All(PillW * 0.5f),
+                Corners = CornerRadius4.All(SidebarRowGeometry.PillRadius),
                 Fill = Tok.AccentDefault,
                 Opacity = _opacity,
                 // NavigationSelectionMotion expresses WinUI's CenterPoint swap as painted-top coordinates: a top-edge
@@ -857,26 +808,37 @@ public static partial class Sidebar
     /// tiles are not here: they are the media surface's own seed face — <c>Rail.SeedStack</c>.)</summary>
     internal static class Skeletons
     {
-        /// <summary>One pending row: pad (9,0,8,0), gap 10, a cover-ladder tile, bars 140×12 (+ 80×10 at gap 4), r4.
-        /// Uniform by design (<paramref name="index"/> is position-independent).</summary>
-        public static Element Row(int index, SidebarDensity density, bool subtitle, float heightOverride = float.NaN,
+        /// <summary>One pending row in the row's own ladder: the 40-px icon column with the art centred at slot x 20, the
+        /// label at slot x 44, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4. Uniform by design
+        /// (<paramref name="index"/> is position-independent).</summary>
+        public static Element Row(int index, SidebarRowShape shape, float heightOverride = float.NaN,
                                   float artOverride = float.NaN)
         {
-            float height = float.IsNaN(heightOverride) ? SidebarRowGeometry.HeightFor(density, subtitle) : heightOverride;
-            float art = float.IsNaN(artOverride) ? SidebarRowGeometry.ArtFor(density) : artOverride;
+            bool subtitle = shape == SidebarRowShape.EntityTwoLine;
+            float height = float.IsNaN(heightOverride) ? SidebarRowGeometry.HeightOf(shape) : heightOverride;
+            float art = float.IsNaN(artOverride) ? SidebarRowGeometry.ArtOf(shape) : artOverride;
             Element text = subtitle
                 ? new BoxEl { Direction = 1, Grow = 1f, Gap = 4f, Children = [Bar(140f, 12f), Bar(80f, 10f)] }
                 : new BoxEl { Direction = 1, Grow = 1f, Children = [Bar(140f, 12f)] };
             return new BoxEl
             {
-                Direction = 0, Height = height, AlignItems = FlexAlign.Center, Gap = 10f,
-                Padding = new Edges4(9f, 0f, 8f, 0f),
+                Direction = 0, Height = height, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.LabelGap,
+                Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
+                Padding = new Edges4(0f, 0f, SidebarRowGeometry.TrailingPad, 0f),
                 Children =
                 [
                     new BoxEl
                     {
-                        Width = art, Height = art, Corners = CornerRadius4.All(Cover.Radius(art, false)),
-                        Fill = Tok.FillSubtleSecondary,
+                        Width = SidebarRowGeometry.IconColumn, Height = height, Shrink = 0f,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Width = art, Height = art, Corners = CornerRadius4.All(Cover.Radius(art, false)),
+                                Fill = Tok.FillSubtleSecondary,
+                            },
+                        ],
                     },
                     text,
                 ],
@@ -889,56 +851,65 @@ public static partial class Sidebar
         };
     }
 
-    /// <summary>The 28-DIP section header band, the bare heading and the explicit divider. (0.2.9's Section / Rule /
-    /// RevealWrapper had no call sites — the virtualized pane plans rows, it never wraps a body in a clip.)</summary>
+    /// <summary>The 40-px section header (design V.6): the title at slot x 12 (pane 16), 14 SemiBold TextSecondary, brightening
+    /// to TextPrimary on hover (no plate); then the "+" (always, Playlists / Your Library), the ⋯ (revealed on hover, permanent
+    /// after a touch), and the chevron (24×24, always visible, ending at pane W − 4). A click anywhere collapses; the slot root
+    /// is the roving focus stop (ToggleButton). <paramref name="onToggle"/> null ⇒ a heading with no chevron.</summary>
     internal static class SectionHeader
     {
         public const float Height = SidebarRowGeometry.HeaderHeight;
 
-        /// <summary>Title (12/600 secondary, ellipsised — #84: the one row family that used to overflow) · spacer ·
-        /// optional action · the chevron. <paramref name="onToggle"/> gets the NEW state; null ⇒ not collapsible (no
-        /// chevron, no click, no hover plate). A clickable action consumes its own clicks.</summary>
-        public static Element Header(string title, bool open, Action<bool>? onToggle, Element? action = null,
-                                     Element? chevron = null)
+        public static Element Header(string title, bool open, Action<bool>? onToggle, Element? create, Element? more,
+                                     Element? chevron)
         {
-            bool collapsible = onToggle is not null;
-            var kids = new Element[2 + (action is null ? 0 : 1) + (collapsible ? 1 : 0)];
-            int k = 0;
-            // Shrink 1 is required: the spacer is a zero-basis Grow box, so the title is the only child that can give
-            // width back once the row overflows.
-            kids[k++] = new TextEl(title)
+            var kids = new List<Element>(5)
             {
-                Size = 12f, Weight = 600, Color = Tok.TextSecondary,
-                Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
+                new TextEl(title)
+                {
+                    Size = 14f, Weight = 600, Color = Tok.TextSecondary, HoverColor = Tok.TextPrimary,
+                    Shrink = 1f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Wrap = TextWrap.NoWrap,
+                },
+                new BoxEl { Grow = 1f },
             };
-            kids[k++] = new BoxEl { Grow = 1f };
-            if (action is { } a) kids[k++] = a;
-            if (collapsible) kids[k] = chevron ?? Icon(open ? Icons.ChevronUp : Icons.ChevronDown, 10f, Tok.TextTertiary);
-
+            if (create is not null) kids.Add(create);
+            if (more is not null) kids.Add(more);
+            if (onToggle is not null) kids.Add(chevron ?? Icon(open ? Icons.ChevronUp : Icons.ChevronDown, 12f, Tok.TextSecondary));
             Action? click = null;
             if (onToggle is { } toggle) click = () => toggle(!open);
             return new BoxEl
             {
-                Direction = 0, Height = SidebarRowGeometry.HeaderHeight, AlignItems = FlexAlign.Center, Gap = 4f,
-                // THE ROW INSET, never a literal 8: the header is a sibling of the rows it labels (one lane).
-                Padding = PaneMetrics.RowInset, Corners = CornerRadius4.All(4f),
-                HoverFill = collapsible ? Tok.FillSubtleSecondary : ColorF.Transparent,
-                Role = collapsible ? AutomationRole.Button : AutomationRole.None,
+                Direction = 0, Height = SidebarRowGeometry.HeaderHeight, AlignItems = FlexAlign.Center, Gap = 0f,
+                Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, 0f, 0f),
+                Role = onToggle is null ? AutomationRole.None : AutomationRole.ToggleButton,
+                Cursor = onToggle is null ? CursorId.Arrow : CursorId.Hand,
                 OnClick = click,
-                Children = kids,
+                Children = [.. kids],
             };
         }
 
-        /// <summary>A non-collapsible heading (<c>SidebarSectionKind.Header</c>): same type, no chevron, no plate.</summary>
-        public static Element Label(string title) => Header(title, open: true, onToggle: null);
+        /// <summary>A header's 24×24 inline button (⋯ / +): consumes its own click, hover plate FillSubtleSecondary.
+        /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). A <see cref="BoxEl"/> so the caller can attach a
+        /// context menu; the caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
+        public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal)
+            => new BoxEl
+            {
+                Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = onClick,
+                Opacity = reveal ? 0f : 1f, HoverOpacity = 1f,
+                BlocksDragArm = true,
+                Children = [Icon(glyph, 12f, Tok.TextSecondary)],
+            }.Interactive(Interaction.Subtle);
 
-        /// <summary>An explicit Divider section: a 16-DIP band spanning exactly the row content box (one inset owner),
-        /// its hairline centred 8 DIP below the previous row.</summary>
-        public static Element ExplicitDivider() => new BoxEl
+        /// <summary>The 8-px separator (TR:223, TR:247): a 1-px StrokeDividerDefault rule at y 3, bleeding over the list's
+        /// 4-px inset so it spans the full pane width.</summary>
+        public static Element Separator() => new BoxEl
         {
-            Direction = 0, Height = SidebarRowGeometry.DividerHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Padding = PaneMetrics.RowInset,
-            Children = [new BoxEl { Grow = 1f, Height = 1f, Fill = Tok.StrokeDividerDefault }],
+            Direction = 1, Height = SidebarRowGeometry.SeparatorHeight, Shrink = 0f,
+            Margin = new Edges4(-SidebarRowGeometry.PaneEdge, 0f, -SidebarRowGeometry.PaneEdge, 0f),
+            Padding = new Edges4(0f, SidebarRowGeometry.SeparatorLineTop, 0f, 0f),
+            HitTestVisible = false,
+            Children = [new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault }],
         };
     }
 
@@ -1212,8 +1183,7 @@ public static partial class Sidebar
             {
                 Key = id,
                 Direction = 1, Height = PaneMetrics.EditCardHeight, Shrink = 0f,
-                Padding = new Edges4(SidebarRowGeometry.RowInsetLeft, PlateInsetY, SidebarRowGeometry.RowInsetRight,
-                                     PlateInsetY),
+                Padding = new Edges4(0f, PlateInsetY, SidebarRowGeometry.TrailingPad, PlateInsetY),
                 Children = [plate],
             };
         }
@@ -1294,7 +1264,7 @@ public static partial class Sidebar
 
     // ══ 7. INLINE CONTROLS (W1b) AND THE SEARCH HEAD ═════════════════════════════════════════════════════════════════
     //
-    // An EntityList section's filter chips + sort/view trigger, rendered as HEADER chrome (never a virtualized row).
+    // An EntityList section's filter chips, rendered as HEADER chrome (never a virtualized row).
     // Every edit rewrites THIS SECTION'S PERSISTED SPEC through SetQuery / SetDisplayOption → reducer → undo pre-image →
     // autosave — which is exactly why this is not V3's mode-global flyout.
 
@@ -1329,89 +1299,6 @@ public static partial class Sidebar
             return ToggleButton.Controlled(Loc.Get(labelKey), on,
                 _ => owner.Dispatch(new SetQuery(sectionId, q with { Kinds = on ? SidebarEntityKinds.All : kind })),
                 size: ControlSize.Small, parts: Controls.RootNoShrink) with { Key = labelKey };
-        }
-
-        /// <summary>The header's 24-DIP sort/view trigger. Keyed by section id: a recycled header slot remounts it.</summary>
-        public static Element SortTrigger(PaneView owner, SidebarSectionSpec section)
-            => Embed.Comp(() => new SortButton(owner, section.Id)) with { Key = "sec-sort:" + section.Id };
-
-        /// <summary>The flyout rows, built AT OPEN TIME from the LIVE document (labels resolve then; a reopen after an edit
-        /// shows the new state).</summary>
-        public static IReadOnlyList<MenuFlyoutItem> Rows(PaneView owner, string sectionId)
-        {
-            var section = Sidebar.Layout.Find(sectionId) ?? owner.SectionOf(sectionId);
-            if (section is null) return Array.Empty<MenuFlyoutItem>();
-            var q = section.Query ?? SidebarEntityQuery.Default;
-
-            var rows = new List<MenuFlyoutItem>(10)
-            {
-                Sort(owner, sectionId, q, SidebarSortMode.Recents, PaneLoc.SortRecents),
-                Sort(owner, sectionId, q, SidebarSortMode.RecentlyAdded, PaneLoc.SortRecentlyAdded),
-                Sort(owner, sectionId, q, SidebarSortMode.Alphabetical, PaneLoc.SortAlphabetical),
-                Sort(owner, sectionId, q, SidebarSortMode.Creator, PaneLoc.SortCreator),
-            };
-            // Custom order only means something for a playlists-ONLY query — elsewhere it would silently do nothing.
-            if (q.Kinds == SidebarEntityKinds.Playlists)
-                rows.Add(Sort(owner, sectionId, q, SidebarSortMode.CustomOrder, PaneLoc.SortCustom));
-            // "Reversed" = not this sort's NATURAL direction: recency is naturally newest-first, collation A→Z.
-            bool recency = q.Sort is SidebarSortMode.Recents or SidebarSortMode.RecentlyAdded;
-            bool reversed = recency ? !q.Descending : q.Descending;
-            rows.Add(MenuFlyoutItem.Toggle(Loc.Get(PaneLoc.SortReversed), reversed,
-                () => owner.Dispatch(new SetQuery(sectionId, q with { Descending = !q.Descending }))));
-            rows.Add(MenuFlyoutItem.Separator);
-
-            bool grid = section.Opts.Presentation == SidebarPresentation.Grid;
-            rows.Add(MenuFlyoutItem.RadioItem(Loc.Get(PaneLoc.ViewList), !grid,
-                () => owner.Dispatch(new SetDisplayOption(sectionId, SidebarDisplayField.Presentation,
-                    (int)SidebarPresentation.List)), Icons.ViewList));
-            rows.Add(MenuFlyoutItem.RadioItem(Loc.Get(PaneLoc.ViewGrid), grid,
-                () => owner.Dispatch(new SetDisplayOption(sectionId, SidebarDisplayField.Presentation,
-                    (int)SidebarPresentation.Grid)), Icons.ViewGrid));
-            return rows;
-        }
-
-        static MenuFlyoutItem Sort(PaneView owner, string sectionId, SidebarEntityQuery q, SidebarSortMode mode,
-                                   string labelKey)
-            => MenuFlyoutItem.RadioItem(Loc.Get(labelKey), q.Sort == mode,
-                () => owner.Dispatch(new SetQuery(sectionId, q with { Sort = mode })));
-
-        /// <summary>The sort/view icon button: an anchor node + an open handle; the section's spec is re-read at open.</summary>
-        sealed class SortButton : Component
-        {
-            readonly PaneView _owner;
-            readonly string _sectionId;
-
-            public SortButton(PaneView owner, string sectionId) { _owner = owner; _sectionId = sectionId; }
-
-            public override Element Render()
-            {
-                var anchor = UseRef<NodeHandle>(default);
-                var handle = UseRef<OverlayHandle?>(null);
-
-                void Toggle()
-                {
-                    if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
-                    var items = Rows(_owner, _sectionId);
-                    if (items.Count == 0) return;
-                    handle.Value = _owner.MenuOverlay.Open(
-                        () => anchor.Value,
-                        () => MenuFlyout.Create(items, () => handle.Value?.Close()),
-                        FlyoutPlacement.BottomEdgeAlignedRight,
-                        new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss,
-                                         Chrome: PopupChrome.Popup) { ConstrainToRootBounds = false });
-                    handle.Value.ClosedAction = () => handle.Value = null;
-                }
-
-                return ToolTip.Wrap(new BoxEl
-                {
-                    Width = 24f, Height = 24f, Shrink = 0f,
-                    AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                    OnRealized = h => anchor.Value = h,
-                    OnClick = Toggle,
-                    Children = [Icon(Icons.Sort, 14f, Tok.TextSecondary)],
-                }.Interactive(Interaction.Subtle), Loc.Get(PaneLoc.SortLabel));
-            }
         }
     }
 
@@ -1472,34 +1359,28 @@ public static partial class Sidebar
         /// <summary>The hand-placed item a row was projected from (the one join rule, shared with the selection sweep).</summary>
         public static SidebarItemSpec? ItemOf(SidebarSectionSpec section, string key) => SidebarRowResolve.ItemOf(section, key);
 
-        /// <summary>Playlist → "N songs" · album → "Album · first artist" · artist → "Artist" · show → "Podcast ·
-        /// publisher" · folder → "N items" · track → its artist · route → a concert's venue (its Creator).</summary>
-        public static string? SubtitleOf(in SidebarLibraryEntry e) => e.Kind switch
+        /// <summary>The subtitle text: the grammar is <see cref="SidebarSubtitleRules.Of"/> (data), the words are the loc table's.
+        /// Playlist → "N songs" (or "N items" with an episode) · album → "Album · first artist" · artist → "Artist" · show →
+        /// "Podcast · publisher" · folder → "N items" · track → its artist · route → a concert's venue (its Creator). An
+        /// UNKNOWN count is null, never "0 songs" (bug A1).</summary>
+        public static string? SubtitleOf(in SidebarLibraryEntry e)
         {
-            // Bug A1: an unknown COUNT shows NO subtitle, never "0 songs" — a genuinely empty playlist (count
-            // landed, TrackCount == 0) is a real state and DOES say "0 songs". Gate on `CountKnown`, never on
-            // `IdentityKnown` (a route can land Identity while carrying no length at all, ListMetadataV2) and never
-            // on TrackCount itself, which cannot tell "not yet known" from "genuinely zero" apart.
-            SidebarEntryKind.Playlist => e.CountKnown ? Strings.Sidebar.SongCount(e.TrackCount) : null,
-            // A LIBRARY album bills its first artist in FirstArtistName; a FEED album carries its one creator in Creator.
-            SidebarEntryKind.Album => ArtistOf(in e) is { Length: > 0 } artist
-                ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + artist
-                : Loc.Get(Strings.Sidebar.V3.Kind.Album),
-            SidebarEntryKind.Artist => Loc.Get(Strings.Sidebar.V3.Kind.Artist),
-            SidebarEntryKind.Show => e.Publisher.Length > 0
-                ? Loc.Get(Strings.Sidebar.V3.Kind.Show) + " · " + e.Publisher
-                : Loc.Get(Strings.Sidebar.V3.Kind.Show),
-            // Trap 5: an unknown item count (a Pending unlisted folder pin — the rootlist has never answered this
-            // session, SidebarProjection.ResolveFolderPinState) shows NO subtitle, never a confident "0 items". A
-            // folder WalkRootlist actually walked always has a real count by the time its row is emitted (patched
-            // at FolderEnd or the end-of-walk drain) and is always CountKnown.
-            SidebarEntryKind.Folder => e.CountKnown ? Strings.Sidebar.V3.ItemCount(e.ChildCount) : null,
-            SidebarEntryKind.Track => e.Creator.Length > 0 ? e.Creator : null,
-            SidebarEntryKind.AppRoute => e.Creator.Length > 0 ? e.Creator : null,
-            _ => null,
-        };
-
-        static string ArtistOf(in SidebarLibraryEntry e) => e.FirstArtistName.Length > 0 ? e.FirstArtistName : e.Creator;
+            var s = SidebarSubtitleRules.Of(in e);
+            return s.Kind switch
+            {
+                SidebarSubtitleKind.Songs => Strings.Sidebar.SongCount(s.Count),
+                SidebarSubtitleKind.Items => Strings.Sidebar.V3.ItemCount(s.Count),
+                SidebarSubtitleKind.Album => s.Detail.Length > 0
+                    ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + s.Detail
+                    : Loc.Get(Strings.Sidebar.V3.Kind.Album),
+                SidebarSubtitleKind.Podcast => s.Detail.Length > 0
+                    ? Loc.Get(Strings.Sidebar.V3.Kind.Show) + " · " + s.Detail
+                    : Loc.Get(Strings.Sidebar.V3.Kind.Show),
+                SidebarSubtitleKind.Artist => Loc.Get(Strings.Sidebar.V3.Kind.Artist),
+                SidebarSubtitleKind.Text => s.Detail,
+                _ => null,
+            };
+        }
 
         /// <summary>A release's compact age ("3d" / "2w" / "4mo"): digits + a unit letter (no loc key exists for it).</summary>
         public static string? AgeBadge(long epochMs)
@@ -1592,15 +1473,8 @@ public static partial class Sidebar
         public const string LibraryEmpty = "sidebar.v3.empty.library";
         public const string SearchEmpty = "sidebar.v3.empty.search";
         public const string SearchPlaceholder = "sidebar.v3.searchPlaceholder";
-        public const string SortLabel = "sidebar.option.sort";
-        public const string SortRecents = "sidebar.option.sortRecents";
-        public const string SortRecentlyAdded = "sidebar.option.sortRecentlyAdded";
-        public const string SortAlphabetical = "sidebar.option.sortAlphabetical";
-        public const string SortCreator = "sidebar.option.sortCreator";
-        public const string SortCustom = "sidebar.v3.sort.custom";
-        public const string SortReversed = "sidebar.v3.sort.reversed";
-        public const string ViewList = "sidebar.option.presentationList";
-        public const string ViewGrid = "sidebar.option.presentationGrid";
+        /// <summary>A section header's ⋯ button (its tooltip / accessible name).</summary>
+        public const string SectionOptions = "sidebar.header.options";
         public const string FilterPlaylists = "sidebar.v3.filter.playlists";
         public const string FilterPodcasts = "sidebar.v3.filter.podcasts";
         public const string FilterAlbums = "sidebar.v3.filter.albums";

@@ -316,7 +316,6 @@ public static partial class Sidebar
         public Func<int>? RailHeadTiles { get; init; }
         /// <summary>The canvas seam: non-null state ⇒ the pane renders as the customize canvas.</summary>
         public Func<SidebarEditState?>? Edit { get; init; }
-        public bool ShowLayoutMenu { get; init; } = true;
         public bool RailLayoutMenu { get; init; } = true;
         public Func<Element?>? RailFooter { get; init; }
         /// <summary>What activating a folder does (null ⇒ toggle the shared expansion). V3's narrow drill uses it.</summary>
@@ -378,34 +377,28 @@ public static partial class Sidebar
         public bool Contains(int planIndex) => Count > 0 && planIndex >= Start && planIndex < Start + Count;
     }
 
-    /// <summary>ONE inset system and ONE height ladder (0.2.9 <c>SidebarPaneMetrics</c>). The pane pads (8,8,8,12) ONCE
-    /// around the virtualized list; every band inside sits at the row inset; a chrome band ABOVE the list lands on the
-    /// content lane by itself.</summary>
+    /// <summary>The pane's one inset (the list's 4-px WinUI item margin + the 3-px content-grid top) and the shape of
+    /// each section's rows. Every band above or below the list reproduces <see cref="PanePad"/>'s horizontal 4.</summary>
     internal static class PaneMetrics
     {
-        public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, 8f, SidebarRowGeometry.PaneEdge, 12f);
+        public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f);
         public const float PaneInsetH = SidebarRowGeometry.PaneEdge * 2f;
-        public const float ContentLane = SidebarRowGeometry.ContentLane;
-        public const float ContentLaneEnd = SidebarRowGeometry.ContentLaneEnd;
-        public static readonly Edges4 RowInset = new(SidebarRowGeometry.RowInsetLeft, 0f, SidebarRowGeometry.RowInsetRight, 0f);
-        public static readonly Edges4 BandInset = new(ContentLane, 0f, ContentLaneEnd, 0f);
-        /// <summary>21 — where every row's art column starts; the V3 header glyph, closed search and first chip sit here.</summary>
-        public const float LeadInset = ContentLane + SidebarRowGeometry.LeadingLaneWidth;
-        public static readonly Edges4 LeadBandInset = new(LeadInset, 0f, ContentLaneEnd, 0f);
-        public const float SectionGap = SidebarRowGeometry.SectionGap;
-        public const float HeaderBodyGap = SidebarRowGeometry.HeaderBodyGap;
-        /// <summary>THE one edit-card height: the card band is a Reorderable with one pitch.</summary>
-        public const float EditCardHeight = SidebarRowGeometry.ClassicHeight;
+        /// <summary>A band above the list whose content starts at the header text's x (pane 16).</summary>
+        public static readonly Edges4 HeadBandInset = new(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX, 0f,
+                                                          SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TrailingPad, 0f);
         public const float EmptyHintHeight = SidebarRowGeometry.EmptyHintHeight;
         /// <summary>Grid cells stay media-card sized at the 460-DIP maximum.</summary>
         public const float GridCellMax = 160f;
 
-        /// <summary>A section's UNIFORM row height — from its subtitle INTENT, never from whether a row has one.</summary>
-        public static float RowHeight(SidebarSectionSpec section)
-            => SidebarRowGeometry.HeightFor(section.Opts.Density, section.Opts.Subtitles);
-
-        public static float ArtSize(SidebarSectionSpec section) => SidebarRowGeometry.ArtFor(section.Opts.Density);
+        /// <summary>A section's ONE row shape (P1: from its display options; P3: from the catalogue + density).</summary>
+        public static SidebarRowShape ShapeOf(SidebarSectionSpec section)
+            => SidebarRowGeometry.ShapeFor(section.Opts.Density, section.Opts.Subtitles, section.Opts.Artwork);
+        public static float RowHeight(SidebarSectionSpec section) => SidebarRowGeometry.HeightOf(ShapeOf(section));
+        public static float RowPitch(SidebarSectionSpec section) => SidebarRowGeometry.PitchOf(ShapeOf(section));
+        public static float ArtSize(SidebarSectionSpec section) => SidebarRowGeometry.ArtOf(ShapeOf(section));
         public static float CardHeight(SidebarSectionSpec section) => SidebarRowGeometry.CardHeightFor(section.Opts.Density);
+        /// <summary>THE one edit-card height: the card band is a Reorderable with one pitch.</summary>
+        public const float EditCardHeight = 44f;
     }
 
     // ══ 5. THE PANE ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -442,6 +435,12 @@ public static partial class Sidebar
         readonly Signal<string> _search = new("");
         string _effectiveSearch = "";
 
+        /// <summary>The Classic filter box's section (null = closed). Its query is the pane's search signal.</summary>
+        string? _filterSectionId;
+        /// <summary>Bumped to focus the filter box: opening it and a second Ctrl+F both move focus into it.</summary>
+        readonly Signal<int> _filterFocus = new(0);
+        Action<KeyEventArgs>? _paneKey;
+
         readonly Signal<int> _rowCount = new(0);
         readonly Signal<int> _planVersion = new(0);
         /// <summary>Bumped by a publish ONLY when the RAIL plan's rows (or the entries they address) differ from the
@@ -471,6 +470,7 @@ public static partial class Sidebar
         readonly List<int> _rowPlaySet = new();
         readonly List<int> _rowSelSet = new(), _rowSelNext = new(), _rowSelFlip = new();
         Func<string, SidebarSectionSpec?>? _sectionOf;
+        Func<int, string?>? _rowRouteOf;
 
         // ── per-RAIL-row epochs (same GROW-ONLY contract, over RailPlan instead of Plan) ──
         Signal<int>[] _railEpochs = Array.Empty<Signal<int>>();
@@ -527,7 +527,6 @@ public static partial class Sidebar
         internal IOverlayService MenuOverlay = Overlay.Service.Default;
         internal ActionServices? Acts;
         internal Actions.Registry? Registry;
-        internal string? MenuHostSectionId;
 
         Func<int, (float dx, float dy)>? _displacement;
 
@@ -538,6 +537,12 @@ public static partial class Sidebar
         readonly SidebarStageHold<PlanStage> _deferredStage = new();
         /// <summary>One-shot: this gesture's OWN commit is not a foreign projection and must publish through the freeze.</summary>
         bool _publishThroughFreeze;
+
+        // ── the pill target (design V.5): ONE pill per pane ──
+        SidebarPillTarget _pillTarget = SidebarPillTarget.None;
+        string _pillRoute = "";
+        readonly List<string> _ancestorScratch = new(4);
+        InputHooks? _hooks;
 
         // ── selection travel (the NavigationView pill transaction) ──
         string _selRoute = "";
@@ -569,7 +574,7 @@ public static partial class Sidebar
         {
             Config = config;
             InDrawer = inDrawer;
-            _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.ClassicHeight);
+            _rowLayout = RepeatLayout.Extents(RowExtentSeed, estimatedExtent: SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine));
             RailLayout = RepeatLayout.Extents(RailExtentSeed,
                 estimatedExtent: SidebarRailMetrics.For(SidebarRailDetent.Default).Pitch);
         }
@@ -578,6 +583,7 @@ public static partial class Sidebar
         {
             _post = UsePost();
             MenuOverlay = UseContext(Overlay.Service) ?? Overlay.Service.Default;
+            _hooks = UseContext(InputHooks.Current);
             Acts = ActionServicesOrNull();
             Registry = Actions.Registry.Current ?? Acts?.Extensions;
 
@@ -667,6 +673,7 @@ public static partial class Sidebar
             {
                 // No fill, no corners: the sidebar is flush frame chrome over Mica (ch 25 §4).
                 Grow = 1f, Direction = 1, ZStack = true, ClipToBounds = true,
+                OnKeyDown = _paneKey ??= OnPaneKey,
                 Children = [.. children],
             };
 
@@ -713,7 +720,7 @@ public static partial class Sidebar
             return kids;
         }
 
-        /// <summary>THE PANE'S ONE INSET: (8,8,8,12) around the virtualized list, and nowhere else.</summary>
+        /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>
         Element PaddedList() => new BoxEl
         {
             Key = "plan-pad", Direction = 1, Grow = 1f, Padding = PaneMetrics.PanePad,
@@ -751,7 +758,208 @@ public static partial class Sidebar
                     OnExpandSettled = OnExpandSettled,
                     Diagnostic = _disclosureLog ??= LogDisclosure,
                 },
+                IsItemEnabled = IsRowFocusStop,
+                ItemText = RowTypeAheadText,
+                IsItemInvokedEnabled = true,
+                OnInvoked = InvokeRow,
+                KeepAlive = KeepFilterRow,
             }) with { Key = "plan" };
+
+        // ── the roving stops, typeahead and Enter (P1) ──
+
+        /// <summary>A header, glyph row, entity row or folder is a roving stop; separators, hints and drop bands are not.</summary>
+        bool IsRowFocusStop(int index)
+        {
+            var rows = Plan.Rows;
+            return (uint)index < (uint)rows.Count && SidebarTypeAheadRules.IsFocusStop(rows[index].Kind);
+        }
+
+        string RowTypeAheadText(int index)
+        {
+            var rows = Plan.Rows;
+            if ((uint)index >= (uint)rows.Count) return "";
+            var row = rows[index];
+            return SidebarTypeAheadRules.TextOf(row.Kind, RowLabelOf(in row));
+        }
+
+        /// <summary>The label typeahead reads for a row: a header's title, an entry's name, a route item's destination title.</summary>
+        string RowLabelOf(in SidebarRow row)
+        {
+            if (row.Kind == SidebarRowKind.SectionHeader)
+                return SectionOf(row.SectionId) is { } header ? PaneText.TitleOf(header) : "";
+            if ((uint)row.EntryIndex < (uint)Plan.Entries.Count) return Plan.Entries[row.EntryIndex].Name;
+            if (SectionOf(row.SectionId) is { } section && PaneText.ItemOf(section, row.Key) is { Target: SidebarItemTarget.Route } item)
+                return item.LabelOverride is { Length: > 0 } alias ? alias : Shell.Dest(Shell.Parse(item.Key)).Title;
+            return "";
+        }
+
+        /// <summary>Enter (and a double tap) on the roving stop: a header toggles, a folder toggles, a row runs its click.</summary>
+        void InvokeRow(int index)
+        {
+            var rows = Plan.Rows;
+            if ((uint)index >= (uint)rows.Count) return;
+            var row = rows[index];
+            switch (row.Kind)
+            {
+                case SidebarRowKind.SectionHeader when SectionOf(row.SectionId) is { } s:
+                    ToggleSection(s.Id, !s.Collapsed);
+                    break;
+                case SidebarRowKind.FolderHeader when (uint)row.EntryIndex < (uint)Plan.Entries.Count:
+                    var folder = Plan.Entries[row.EntryIndex];
+                    if (folder.Missing) return;   // drawn disabled: no click, no disclosure
+                    ActivateFolder(folder.FolderId, folder.Name, index);
+                    break;
+                default:
+                    if ((uint)row.EntryIndex < (uint)Plan.Entries.Count)
+                    {
+                        var e = Plan.Entries[row.EntryIndex];
+                        // The slot draws an unnamed, non-track, non-route entry disabled (EntryRow's Enabled rule): inert here too.
+                        if (e.Name.Length == 0 && !e.IsTrack && e.Kind != SidebarEntryKind.AppRoute) return;
+                    }
+                    if (RowRouteOf(index) is { Length: > 0 } route)
+                        Navigate(route, (uint)row.EntryIndex < (uint)Plan.Entries.Count ? Plan.Entries[row.EntryIndex].Name : null);
+                    else if ((uint)row.EntryIndex < (uint)Plan.Entries.Count && Plan.Entries[row.EntryIndex].IsTrack)
+                        Play(Plan.Entries[row.EntryIndex].Uri, asTrack: true);
+                    break;
+            }
+        }
+
+        /// <summary>The Classic filter box's header row stays realized while it is open (its editor keeps caret, focus and IME
+        /// composition through a scroll).</summary>
+        bool KeepFilterRow(int index)
+        {
+            var rows = Plan.Rows;
+            return _filterSectionId is { } id && (uint)index < (uint)rows.Count
+                   && rows[index].Kind == SidebarRowKind.SectionHeader && string.Equals(rows[index].SectionId, id, StringComparison.Ordinal);
+        }
+
+        // ── the Classic filter box (design V.11) ──
+
+        internal bool FilterOpenFor(string sectionId) => string.Equals(_filterSectionId, sectionId, StringComparison.Ordinal);
+
+        /// <summary>The first visible top-level section of <paramref name="kind"/>, or null.</summary>
+        string? FirstVisibleSectionId(SidebarSectionKind kind)
+        {
+            var sections = Doc.Sections;
+            for (int i = 0; i < sections.Count; i++)
+                if (!sections[i].Hidden && sections[i].Kind == kind) return sections[i].Id;
+            return null;
+        }
+
+        /// <summary>Ctrl+F on the pane opens the filter under the Playlists header; a second press re-focuses it.</summary>
+        void OnPaneKey(KeyEventArgs e)
+        {
+            if (e.Handled || e.KeyCode != Keys.F || e.Mods != KeyModifiers.Ctrl) return;
+            string? tree = FirstVisibleSectionId(SidebarSectionKind.PlaylistTree);
+            if (tree is null) return;
+            if (Config.SetSectionCollapsed is null || !HasHeaderRow(tree)) return;   // a title-less section has nowhere to host the box
+            _filterSectionId = tree;
+            _filterFocus.Value = _filterFocus.Peek() + 1;
+            RepublishNow();
+            e.Handled = true;
+        }
+
+        bool HasHeaderRow(string sectionId)
+        {
+            var rows = Plan.Rows;
+            for (int i = 0; i < rows.Count; i++)
+                if (rows[i].Kind == SidebarRowKind.SectionHeader && string.Equals(rows[i].SectionId, sectionId, StringComparison.Ordinal))
+                    return true;
+            return false;
+        }
+
+        /// <summary>Closes the filter box and clears its query.</summary>
+        internal void CloseFilter()
+        {
+            if (_filterSectionId is null) return;
+            _filterSectionId = null;
+            _search.Value = "";
+            RepublishNow();
+        }
+
+        /// <summary>The transient filter (design V.11): a 32-px field under the Playlists header, focused on open; Esc, or
+        /// leaving it empty on blur, closes it and clears the query.</summary>
+        internal Element FilterBox() => Embed.Comp(() => new PaneFilterBox(this)) with { Key = "pane-filter" };
+
+        /// <summary>The filter field: the pane's own search signal in a plain editor, focused when it opens and again on a
+        /// re-press of Ctrl+F (the ticket moves).</summary>
+        sealed class PaneFilterBox(PaneView owner) : Component
+        {
+            public override Element Render()
+            {
+                var hooks = UseContext(InputHooks.Current);
+                var post = UsePost();
+                var root = UseRef<NodeHandle>(default);
+                // A fresh box takes focus on its first realization; a later Ctrl+F moves focus through the ticket.
+                var pending = UseRef(true);
+                int ticket = owner._filterFocus.Value;
+                void Focus(NodeHandle h) => post(() => hooks.FocusNode?.Invoke(hooks.FirstFocusableIn?.Invoke(h) ?? h, true));
+                UseLayoutEffect(() =>
+                {
+                    if (!root.Value.IsNull) Focus(root.Value);
+                }, DepKey.From(ticket));
+
+                var parts = UseMemo(() =>
+                {
+                    var pr = new TemplateParts();
+                    pr[EditableText.PartRoot] = b => b with
+                    {
+                        Fill = ColorF.Transparent, HoverFill = ColorF.Transparent,
+                        OnRealized = h =>
+                        {
+                            root.Value = h;
+                            if (!pending.Value) return;
+                            pending.Value = false;
+                            Focus(h);
+                        },
+                    };
+                    return pr;
+                }, DepKey.Empty);
+
+                return new BoxEl
+                {
+                    Direction = 1, Height = 32f,
+                    Margin = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.TrailingPad, 4f),
+                    Children =
+                    [
+                        Embed.Comp(() => new EditableText
+                        {
+                            Text = owner._search, Placeholder = Loc.Get(Strings.Sidebar.V3.SearchPlaceholder),
+                            Width = float.NaN, Height = 32f, FontSize = 13f, Parts = parts,
+                            ShowDeleteButton = true,
+                            PreviewKeyDown = e =>
+                            {
+                                if (e.KeyCode != Keys.Escape) return false;
+                                owner.CloseFilter();
+                                return true;
+                            },
+                            OnFocusChanged = gained =>
+                            {
+                                if (!gained && owner._search.Peek().Length == 0) owner.CloseFilter();
+                            },
+                        }),
+                    ],
+                };
+            }
+        }
+
+        // ── the section header's ⋯ menu ──
+
+        /// <summary>A section header's ⋯ menu: Collapse or Expand (P1; P4 replaces the body with the section model). Null for the
+        /// pinned top bar and for a pane with no collapse host.</summary>
+        internal Func<ContextMenuModel?>? HeaderMenu(string sectionId)
+        {
+            if (Config.SetSectionCollapsed is null || SidebarIds.IsTopBar(sectionId)) return null;
+            return () =>
+            {
+                if (SectionOf(sectionId) is not { } section) return null;
+                string text = Loc.Get(section.Collapsed ? SidebarUndoLabels.ExpandSection : SidebarUndoLabels.CollapseSection);
+                return new ContextMenuModel(new List<MenuFlyoutItem>(1)
+                {
+                    new(text, default, true, () => ToggleSection(sectionId, !section.Collapsed)),
+                });
+            };
+        }
 
         /// <summary>The authored-empty pane (ch 25 W8): it names the state and offers the one fix; a LOCKED document has
         /// no customizer, so the CTA is ABSENT rather than dead.</summary>
@@ -939,6 +1147,7 @@ public static partial class Sidebar
             _presentedUsesA = stage.UsesA;
             _planPublished = true;
             RebuildIndex(Plan);
+            ResolvePillTarget(SelectedRoutePeek);
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
             EnsureRailSlots(RailPlan.Rows.Count);
@@ -1007,7 +1216,6 @@ public static partial class Sidebar
                 for (int j = 0; j < kids.Count; j++) _sections[kids[j].Id] = kids[j];
             }
 
-            MenuHostSectionId = null;
             _bands.Clear();
             RebuildTreeSelectionOrder(plan);
             if (TreeSelection.Prune(_treeVisibleOrder))
@@ -1037,13 +1245,10 @@ public static partial class Sidebar
 
             string? bandId = null;
             int bandStart = 0;
-            float bandExtent = SidebarRowGeometry.ClassicHeight;
+            float bandExtent = SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             for (int i = 0; i < rows.Count; i++)
             {
                 var row = rows[i];
-                if (Config.ShowLayoutMenu && MenuHostSectionId is null && row.Kind == SidebarRowKind.SectionHeader)
-                    MenuHostSectionId = row.SectionId;
-
                 bool item = IsReorderableRow(row);
                 if (item && bandId is not null && string.Equals(bandId, row.SectionId, StringComparison.Ordinal)) continue;
                 if (bandId is not null)
@@ -1057,7 +1262,7 @@ public static partial class Sidebar
                     continue;
                 bandId = row.SectionId;
                 bandStart = i;
-                bandExtent = PaneMetrics.RowHeight(section);
+                bandExtent = PaneMetrics.RowPitch(section);
             }
             if (bandId is not null) _bands.Add(new PaneBand(bandId, bandStart, rows.Count - bandStart, bandExtent));
         }
@@ -1453,6 +1658,69 @@ public static partial class Sidebar
             return _routeKeyCache;
         }
 
+        /// <summary>The last pointer was a finger: header ⋯ buttons stay visible (design V.6).</summary>
+        internal bool TouchLast => _hooks?.LastPointerWasTouch?.Invoke() ?? false;
+
+        /// <summary>Recompute the one pill target for <paramref name="route"/> over the PUBLISHED plan.</summary>
+        void ResolvePillTarget(string route)
+        {
+            SidebarPillRules.AncestorFolders(Binder?.CurrentInput.PlaylistTree, route, _ancestorScratch);
+            _pillTarget = SidebarPillRules.Resolve(Plan.Rows, Plan.Entries, _rowRouteOf ??= RowRouteOf, route, _ancestorScratch,
+                OwningSection(route));
+        }
+
+        /// <summary>The route a pill drawn on row <paramref name="index"/> registers under: the live route when the row is
+        /// the pill's ancestor / header anchor, the row's own route otherwise.</summary>
+        internal string? PillRouteOf(int index, string liveRoute)
+            => index == _pillTarget.PlanIndex && _pillTarget.Anchor != SidebarPillAnchor.Row ? liveRoute : RowRouteOf(index);
+
+        /// <summary>The route plan row <paramref name="index"/> navigates to, by the rule the selection sweep uses: a projected
+        /// entry's route, else a hand-placed route item's key. Null when the row is not a navigation target.</summary>
+        internal string? RowRouteOf(int index)
+        {
+            var rows = Plan.Rows;
+            if ((uint)index >= (uint)rows.Count) return null;
+            var row = rows[index];
+            switch (row.Kind)
+            {
+                case SidebarRowKind.IconRow:
+                case SidebarRowKind.EntityRow:
+                case SidebarRowKind.Placeholder:
+                    if ((uint)row.EntryIndex < (uint)Plan.Entries.Count)
+                        return Plan.Entries[row.EntryIndex].RouteKey is { Length: > 0 } entryRoute ? entryRoute : null;
+                    return SectionOf(row.SectionId) is { } section && PaneText.ItemOf(section, row.Key) is { Target: SidebarItemTarget.Route } item
+                        ? item.Key : null;
+                case SidebarRowKind.EntityCard:
+                    return (uint)row.EntryIndex < (uint)Plan.Entries.Count && Plan.Entries[row.EntryIndex].RouteKey is { Length: > 0 } cardRoute
+                        ? cardRoute : null;
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>The first visible top-level section that would hold <paramref name="route"/> (the P1 model): a Pinned section
+        /// when the route is pinned, a section whose item list carries it, else the first PlaylistTree section when the route is a
+        /// playlist or folder in the tree. Null otherwise.</summary>
+        string? OwningSection(string route)
+        {
+            if (route.Length == 0) return null;
+            bool pinned = IsPinned(SidebarPinId.FromRoute(route));
+            var sections = Doc.Sections;
+            string? tree = null;
+            for (int i = 0; i < sections.Count; i++)
+            {
+                var s = sections[i];
+                if (s.Hidden) continue;
+                if (pinned && s.Kind == SidebarSectionKind.Pinned) return s.Id;
+                if (PaneText.ItemOf(s, route) is not null) return s.Id;
+                if (tree is null && s.Kind == SidebarSectionKind.PlaylistTree) tree = s.Id;
+            }
+            if (tree is null || Binder?.CurrentInput.PlaylistTree is not { } entries) return null;
+            for (int i = 0; i < entries.Count; i++)
+                if (string.Equals(entries[i].Id, route, StringComparison.Ordinal)) return tree;
+            return null;
+        }
+
         /// <summary>The live selected route key. SUBSCRIBES the caller — only the pane's own render and
         /// <see cref="RefreshRailSelection"/> (the rail's own selection sweep) use it.</summary>
         internal string SelectedRoute => RouteKeyOf(Shell.Current.Value);
@@ -1468,7 +1736,8 @@ public static partial class Sidebar
             var rows = Plan.Rows;
             if ((uint)index >= (uint)rows.Count) return false;
             var row = rows[index];
-            return SidebarRowResolve.SelectsRoute(in row, Plan.Entries, SectionOf(row.SectionId), route);
+            return SidebarRowResolve.SelectsRoute(in row, Plan.Entries, SectionOf(row.SectionId), route)
+                   || (index == _pillTarget.PlanIndex && _pillTarget.Anchor != SidebarPillAnchor.Row);
         }
 
         /// <summary>The ONE route sweep: bump the symmetric difference of the selected rows — the row that lost the
@@ -1477,13 +1746,22 @@ public static partial class Sidebar
         {
             string route = SelectedRoute;
             _ = _planVersion.Value;
+            ResolvePillTarget(route);
             var next = _rowSelNext;
             next.Clear();
             SidebarRowResolve.Sweep(Plan.Rows, Plan.Entries, _sectionOf ??= SectionOf, route, next);
+            // The one pill's row joins the selected set even when the sweep does not draw it selected (an ancestor or header anchor).
+            if (_pillTarget.PlanIndex >= 0 && !next.Contains(_pillTarget.PlanIndex)) next.Add(_pillTarget.PlanIndex);
             var prev = _rowSelSet;
             var flipped = _rowSelFlip;
             flipped.Clear();
             SidebarRowResolve.Flipped(prev, next, flipped);
+            // A route change that keeps the pill on the same non-row anchor (pl:a → pl:b in one collapsed folder) must still
+            // re-render that anchor: its slot registers the pill under the live route.
+            if (_pillTarget.PlanIndex >= 0 && _pillTarget.Anchor != SidebarPillAnchor.Row
+                && !string.Equals(route, _pillRoute, StringComparison.Ordinal) && !flipped.Contains(_pillTarget.PlanIndex))
+                flipped.Add(_pillTarget.PlanIndex);
+            _pillRoute = route;
             for (int i = 0; i < flipped.Count; i++) BumpRowEpoch(flipped[i]);
             prev.Clear();
             for (int i = 0; i < next.Count; i++) prev.Add(next[i]);
@@ -1593,9 +1871,9 @@ public static partial class Sidebar
         /// <summary>The analytic seed extent (NaN = measure). Called only when the host seeds/resizes — never per frame.</summary>
         float RowExtentSeed(int index)
         {
-            if (!_planPublished) return SidebarRowGeometry.ClassicHeight;
+            if (!_planPublished) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             var rows = Plan.Rows;
-            if ((uint)index >= (uint)rows.Count) return SidebarRowGeometry.ClassicHeight;
+            if ((uint)index >= (uint)rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             return SidebarRowExtents.HeightOf(rows, index, SectionOf(rows[index].SectionId), !Config.ReadOnly);
         }
 
@@ -1624,34 +1902,18 @@ public static partial class Sidebar
         /// <summary>The row's LIVE laid-out height (bound-safe: one peek + one rect read), 44 on any degenerate answer.</summary>
         internal float RowExtentOf(int index)
         {
-            if ((uint)index >= (uint)Plan.Rows.Count) return SidebarRowGeometry.ClassicHeight;
+            if ((uint)index >= (uint)Plan.Rows.Count) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             float cross = MathF.Max(1f, Sidebar.Width.Peek() - PaneMetrics.PaneInsetH);
             var layout = _rowLayout.CustomLayout;
-            if (layout is null) return SidebarRowGeometry.ClassicHeight;
+            if (layout is null) return SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
             float extent = layout.ItemRect(index, cross).H;
-            return float.IsFinite(extent) && extent > 0f ? extent : SidebarRowGeometry.ClassicHeight;
+            return float.IsFinite(extent) && extent > 0f ? extent : SidebarRowGeometry.PitchOf(SidebarRowShape.EntityTwoLine);
         }
 
         /// <summary>The normalized query that built the published plan (pane head, or V3's mode-global query).</summary>
         internal string SearchText => _effectiveSearch;
 
         internal SidebarSectionSpec? SectionOf(string sectionId) => _sections.TryGetValue(sectionId, out var s) ? s : null;
-
-        readonly Dictionary<string, (int Revision, bool HasFolder)> _sectionHasFolder = new(StringComparer.Ordinal);
-
-        /// <summary>Does this section plan a folder row (memoized per plan revision, never scanned per realized row)?</summary>
-        internal bool SectionHasFolder(string sectionId)
-        {
-            if (_sectionHasFolder.TryGetValue(sectionId, out var cached) && cached.Revision == Plan.Revision)
-                return cached.HasFolder;
-            var rows = Plan.Rows;
-            bool has = false;
-            for (int i = 0; i < rows.Count; i++)
-                if (rows[i].Kind == SidebarRowKind.FolderHeader
-                    && string.Equals(rows[i].SectionId, sectionId, StringComparison.Ordinal)) { has = true; break; }
-            _sectionHasFolder[sectionId] = (Plan.Revision, has);
-            return has;
-        }
 
         internal bool TryBandOf(int planIndex, out PaneBand band)
         {
