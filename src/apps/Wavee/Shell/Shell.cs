@@ -2186,7 +2186,11 @@ public static partial class Shell
     //
     // Under the Zune style a pivot destination's views (Songs · Albums · Playlists) move from the page head into the
     // band's second row. The page publishes what the band needs to draw them under its ROUTE NAME; the band reads it.
-    // Same idiom as the mastheads: UI state, an LRU, a Version bumped only when the visible data changes.
+    // Same idiom as the mastheads: UI state, an LRU, a Version bumped only when the visible data changes. The band's row 2
+    // is route-decided and ALWAYS filled (ZuneNavRules.SubRowOf): until a page publishes, the band draws the route's SEED
+    // (the loc keys of ZuneNavRules.ViewSeedKeys, selected by SeedSelected), and the publication replaces the words in place.
+    // Settings, Search, the people lists and the discography publish too, though their heads are not pivot destinations:
+    // under Zune their views move to the band (PageHeadSpec.ViewsInBand) and the head keeps its title and meta.
 
     /// <summary>What a page hands the Zune band for its views. <see cref="Selected"/> is the page's own signal (the band's
     /// bar writes it and the page reads it, so the two bars never disagree); <see cref="OnSelect"/> is BEHAVIOUR.
@@ -2245,6 +2249,76 @@ public static partial class Shell
 
         /// <summary>Drops every publication. Public, not internal: this assembly has no <c>InternalsVisibleTo</c>, so the
         /// tests reset the store through it.</summary>
+        public static void Clear()
+        {
+            s_map.Clear();
+            s_lru.Clear();
+        }
+    }
+
+    // ══ 13c. THE ENTITY BAND PUBLICATIONS ═════════════════════════════════════════════════════════════════════════════
+    //
+    // An entity page (artist, profile, episode, show, album, playlist) keeps its own sticky band in Classic and Library. Under
+    // Zune that band is suppressed and the page publishes the same words here, under its route name, for the Zune band's row
+    // 2 (the A2 and A3 pages publish; until then the row shows the route's seed). Same idiom as the page views: UI state, an
+    // LRU, a Version bumped only when the visible data changes.
+
+    /// <summary>What an entity page hands the Zune band: its title, its pivot words, the selected pivot and the action cluster.
+    /// <see cref="Active"/> is the page's own signal; <see cref="OnPivot"/>, <see cref="Actions"/> and <see cref="OnTitle"/>
+    /// are BEHAVIOUR, so a re-publish that changes only them updates silently.</summary>
+    public sealed record PageBandPublication(string Title, IReadOnlyList<string> Pivots, IReadSignal<int> Active, Action<int> OnPivot,
+        Func<Element>? Actions = null, Action? OnTitle = null);
+
+    public static class PageBands
+    {
+        public const int Capacity = 16;
+
+        /// <summary>Bumped only when a publication's DATA changes (its title, its pivot labels or its active signal), so the band
+        /// re-renders at navigation rate. A new delegate or actions factory alone updates silently.</summary>
+        public static readonly Signal<int> Version = new(0);
+
+        static readonly Dictionary<string, PageBandPublication> s_map = new(StringComparer.Ordinal);
+        static readonly List<string> s_lru = [];
+
+        /// <summary>Publish (or re-publish) a route's band. Returns whether the band must re-render.</summary>
+        public static bool Publish(string routeName, PageBandPublication publication)
+        {
+            bool changed = !s_map.TryGetValue(routeName, out var old)
+                || !ReferenceEquals(old.Active, publication.Active)
+                || !string.Equals(old.Title, publication.Title, StringComparison.Ordinal)
+                || !SameLabels(old.Pivots, publication.Pivots);
+            s_lru.Remove(routeName);
+            s_lru.Add(routeName);
+            s_map[routeName] = publication;
+            while (s_map.Count > Capacity && s_lru.Count > 0)
+            {
+                s_map.Remove(s_lru[0]);
+                s_lru.RemoveAt(0);
+            }
+            if (changed) Version.Value = Version.Peek() + 1;
+            return changed;
+        }
+
+        static bool SameLabels(IReadOnlyList<string> a, IReadOnlyList<string> b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        /// <summary>Subscribing read (the band).</summary>
+        public static PageBandPublication? For(string routeName)
+        {
+            _ = Version.Value;
+            return s_map.TryGetValue(routeName, out var p) ? p : null;
+        }
+
+        /// <summary>Non-subscribing read: a click resolves the LATEST delegate here.</summary>
+        public static PageBandPublication? Peek(string routeName) => s_map.TryGetValue(routeName, out var p) ? p : null;
+
+        /// <summary>Drops every publication (public: this assembly has no <c>InternalsVisibleTo</c>, so the tests reset the store).</summary>
         public static void Clear()
         {
             s_map.Clear();

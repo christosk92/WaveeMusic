@@ -85,3 +85,67 @@ public sealed class ShellPageViewsTests
         Assert.Null(Shell.PageViews.Peek("home"));
     }
 }
+
+/// <summary>The entity band publications (Shell.PageBands): the same idiom as the views store. Version moves only on DATA
+/// (the title, the pivot labels, the active signal), never on a new delegate or actions factory.</summary>
+public sealed class ShellPageBandsTests
+{
+    public ShellPageBandsTests() => Shell.PageBands.Clear();
+
+    static Shell.PageBandPublication Pub(string title, string[] pivots, IReadSignal<int> active, Action<int>? onPivot = null,
+        Func<Element>? actions = null)
+        => new(title, pivots, active, onPivot ?? (static _ => { }), actions);
+
+    [Fact] public void AFirstPublish_BumpsTheVersion_AndIsReadable()
+    {
+        int before = Shell.PageBands.Version.Peek();
+        var active = new Signal<int>(0);
+        Assert.True(Shell.PageBands.Publish("artist:x", Pub("X", ["a", "b"], active)));
+        Assert.Equal(before + 1, Shell.PageBands.Version.Peek());
+        Assert.Equal("X", Shell.PageBands.For("artist:x")!.Title);
+        Assert.Same(active, Shell.PageBands.Peek("artist:x")!.Active);
+    }
+
+    [Fact] public void TheSameTitleLabelsAndSignal_DoNotBump_NorDoesANewDelegateAlone()
+    {
+        var active = new Signal<int>(0);
+        Shell.PageBands.Publish("artist:x", Pub("X", ["a", "b"], active));
+        int before = Shell.PageBands.Version.Peek();
+        Assert.False(Shell.PageBands.Publish("artist:x", Pub("X", ["a", "b"], active)));
+        Func<Element> factory = static () => new BoxEl();
+        Action<int> next = static _ => { };
+        Assert.False(Shell.PageBands.Publish("artist:x", Pub("X", ["a", "b"], active, next, factory)));
+        Assert.Equal(before, Shell.PageBands.Version.Peek());
+        Assert.Same(next, Shell.PageBands.Peek("artist:x")!.OnPivot);          // stored, so a click resolves the latest
+        Assert.Same(factory, Shell.PageBands.Peek("artist:x")!.Actions);
+    }
+
+    [Fact] public void AChangedTitleLabelOrSignal_Bumps()
+    {
+        var active = new Signal<int>(0);
+        Shell.PageBands.Publish("artist:x", Pub("X", ["a", "b"], active));
+        int v = Shell.PageBands.Version.Peek();
+        Assert.True(Shell.PageBands.Publish("artist:x", Pub("Y", ["a", "b"], active)));
+        Assert.True(Shell.PageBands.Publish("artist:x", Pub("Y", ["a", "c"], active)));
+        Assert.True(Shell.PageBands.Publish("artist:x", Pub("Y", ["a", "c"], new Signal<int>(0))));
+        Assert.Equal(v + 3, Shell.PageBands.Version.Peek());
+    }
+
+    [Fact] public void Eviction_IsLeastRecentlyPublished()
+    {
+        for (int i = 0; i < Shell.PageBands.Capacity; i++)
+            Shell.PageBands.Publish("r" + i, Pub("T", ["a"], new Signal<int>(0)));
+        Shell.PageBands.Publish("r0", Pub("T", ["a"], new Signal<int>(0)));       // r0 is now the newest
+        Shell.PageBands.Publish("new", Pub("T", ["a"], new Signal<int>(0)));       // evicts r1, the oldest
+        Assert.NotNull(Shell.PageBands.Peek("r0"));
+        Assert.Null(Shell.PageBands.Peek("r1"));
+        Assert.NotNull(Shell.PageBands.Peek("new"));
+    }
+
+    [Fact] public void Clear_EmptiesTheStore()
+    {
+        Shell.PageBands.Publish("artist:x", Pub("X", ["a"], new Signal<int>(0)));
+        Shell.PageBands.Clear();
+        Assert.Null(Shell.PageBands.Peek("artist:x"));
+    }
+}

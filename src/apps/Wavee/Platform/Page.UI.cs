@@ -19,7 +19,9 @@
 // (c) A hoist changes the height only through Shell.Ui.PresentedNavStyle, which never changes in the commit that moves the
 //     content card (it lags Sidebar.NavStyle by FrameRules.HoistSettleMs). So PageHead.Reflow is never snapped by the card's
 //     descendant suppression (AppHost.cs:7392-7437). The body below is reflow-shoved: the engine lands its position on the
-//     reflow's per-tick re-solve (AppHost.cs:7405-7418, 7454-7465).
+//     reflow's per-tick re-solve (AppHost.cs:7405-7418, 7454-7465). A page whose views moved to the Zune band's row 2
+//     (ViewsInBand: Settings, Search, the people lists, the discography) changes height the same way, only on
+//     PresentedNavStyle: TitleViews 164 to Title 120, CrumbTitleViews 200 to CrumbTitle 156.
 // (d) A mount never animates: the engine skips FLIP capture on first layout (AppHost.cs:6024).
 
 using FluentGpu.Animation;
@@ -66,6 +68,10 @@ public sealed record PageHeadSpec(string Title)
     /// <summary>The head is hoisted into the Zune band (<see cref="PageHead.HoistedFor"/>).</summary>
     public bool Hoisted { get; init; }
 
+    /// <summary>The views live in the Zune band's row 2 (<see cref="PageHead.ViewsInBandFor"/>), and the head keeps its title
+    /// and meta. <see cref="Views"/> is still passed (the page's own bar is back the moment the style is not presented).</summary>
+    public bool ViewsInBand { get; init; }
+
     /// <summary>The page gutter (<c>Shell.Ui.PageGutter</c>).</summary>
     public float Gutter { get; init; } = PageGeometry.GutterWide;
 
@@ -92,11 +98,22 @@ public static class PageHead
         MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
     /// <summary>The head's kind: three ROUTE-STATIC facts and nothing else.</summary>
-    public static PageHeadKind PlanOf(PageHeadSpec s) => PageHeadRules.KindOf(s.Hoisted, s.Above is not null, s.Views is not null);
+    public static PageHeadKind PlanOf(PageHeadSpec s)
+        => PageHeadRules.KindOf(s.Hoisted, s.Above is not null, s.Views is not null && !s.ViewsInBand);
 
     /// <summary>Whether a route's head hoists, read from the PRESENTED nav style (never the live one). Subscribing: call it
     /// in Render.</summary>
     public static bool HoistedFor(string routeName) => PageHeadRules.Hoisted(Shell.Ui.PresentedNavStyle.Value, routeName);
+
+    /// <summary>Whether a non-pivot route's views live in the Zune band, read from the PRESENTED nav style (never the live
+    /// one), so the head's height change lands in the quiet hoist commit. Subscribing: call it in Render.</summary>
+    public static bool ViewsInBandFor(in Shell.Route route) => PageHeadRules.ViewsInBand(Shell.Ui.PresentedNavStyle.Value, in route);
+
+    /// <summary>Hands an entity page's Zune band (title, pivots, actions) to the band's row 2 (see <c>Shell.PageBands</c>).
+    /// Returns whether the band must re-render.</summary>
+    public static bool PublishBand(string routeName, string title, IReadOnlyList<string> pivots, IReadSignal<int> active,
+        Action<int> onPivot, Func<Element>? actions = null, Action? onTitle = null)
+        => Shell.PageBands.Publish(routeName, new Shell.PageBandPublication(title, pivots, active, onPivot, actions, onTitle));
 
     /// <summary>Hands a page's views to the Zune band (see <c>Shell.PageViews</c>). Returns whether the band must re-render.</summary>
     public static bool Publish(string routeName, IReadOnlyList<string> labels, Signal<int> selected, Action<int> onSelect,
@@ -219,7 +236,7 @@ public static class PageHead
             });
             list.Add(Spacer(PageGeometry.TitleToMeta));
             list.Add(MetaSlot(s.Meta));
-            if (s.Views is { } views)
+            if (s.Views is { } views && !s.ViewsInBand)
             {
                 list.Add(Spacer(PageGeometry.HeadToViewsGap));
                 list.Add(Views(views, s.ViewsSelected, s.OnView, s.ViewsTrailing, s.ViewsPlaceholder, s.ViewsScroll, s.Key + ":views")

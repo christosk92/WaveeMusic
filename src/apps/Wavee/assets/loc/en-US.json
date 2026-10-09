@@ -641,6 +641,12 @@
     "pause": "Pause",
     "album": "Album",
     "facetAll": "All",
+    "facet": {
+      "$comment": "The Zune band's seed words for Home's facets, shown until the page publishes the server's own chips.",
+      "music": "Music",
+      "podcasts": "Podcasts",
+      "audiobooks": "Audiobooks"
+    },
     "following": "Following",
     "seeAll": "See all",
     "seeAllN": "See all {n}",
@@ -2647,6 +2653,13 @@
     "title": "Browse",
     "homeTitle": "Browse",
     "top": "Top",
+    "topCategory": {
+      "$comment": "The four top categories as the Zune band's second row words on the Browse pages (the Top group of the taxonomy, in map order).",
+      "music": "Music",
+      "podcasts": "Podcasts",
+      "audiobooks": "Audiobooks",
+      "liveEvents": "Live events"
+    },
     "forYou": "For you",
     "genres": "Genres",
     "moodActivity": "Mood & activity",

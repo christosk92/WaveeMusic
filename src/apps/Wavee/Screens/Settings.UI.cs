@@ -59,8 +59,13 @@ public static partial class Settings
     public static void Open(Tab tab)
     {
         s_tab.Value = (int)tab;
-        Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+        Shell.GoTo(s_route);
     }
+
+    /// <summary>The remembered tab's index: the Zune band's seed selection before the page publishes its views.</summary>
+    public static int TabIndex => s_tab.Peek();
+
+    static readonly Shell.Route s_route = new(Shell.RouteKind.Settings);
 
     /// <summary>Owner S's notification simulator (G-218): push a real event of the topic through the pipeline and report
     /// what consumed it. Null → "Send event" answers <see cref="TestEventOutcome.Unavailable"/>.</summary>
@@ -130,7 +135,14 @@ public static partial class Settings
                 return (Action?)(static () => EnterPlayback(false));
             }, DepKey.Empty);
             // The route is keep-alive: a PARKED page is not unmounted, so the same teardown rides the deactivation edge.
-            UseActivation(onDeactivated: static () => EnterPlayback(false));
+            UseActivation(onActivated: PublishViews, onDeactivated: static () => EnterPlayback(false));
+            // The tab views go to the Zune band's second row (only the ACTIVE instance publishes; the store's version moves
+            // only when the labels or the signal change).
+            var active = UseIsActive();
+            UseSignalEffect(() =>
+            {
+                if (active.Value) PublishViews();
+            });
 
             _ = s_epoch.Value;
             _ = Prefs.PlayerBar.Epoch.Value;
@@ -167,8 +179,9 @@ public static partial class Settings
             }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
 
             // W28: the head (title + the tab views) is a SIBLING of the scroller — nothing compacts, sticks or gains a
-            // shadow. The head is TitleViews (164) on every tab and the bar is one stable key on s_tab, so a tab switch
-            // moves only the pill; the body's top edge never moves.
+            // shadow. The head is TitleViews (164) on every tab (Title, 120, while the PRESENTED nav style is Zune: the views
+            // then live in the band's row 2) and the bar is one stable key on s_tab, so a tab switch moves only the pill; the
+            // body's top edge never moves.
             return new BoxEl
             {
                 Grow = 1f, Direction = 1,
@@ -177,6 +190,7 @@ public static partial class Settings
                     PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Settings.Title))
                     {
                         Views = TabLabels(), ViewsSelected = s_tab, Gutter = g, Key = "settings:head",
+                        ViewsInBand = PageHead.ViewsInBandFor(s_route),
                     }),
                     content,
                 ],
@@ -184,16 +198,19 @@ public static partial class Settings
         }
     }
 
-    static string[] TabLabels() =>
-    [
-        Loc.Get(Strings.Settings.Tabs.General),
-        Loc.Get(Strings.Settings.Tabs.Appearance),
-        Loc.Get(Strings.Settings.Tabs.Playback),
-        Loc.Get(Strings.Settings.Notify.Title),
-        Loc.Get(Strings.Settings.Tabs.Storage),
-        Loc.Get(Strings.Settings.Tabs.Privacy),
-        Loc.Get(Strings.Settings.Tabs.About),
-    ];
+    /// <summary>The seven tab words, from the keys the Zune band's seed shares (<see cref="ZuneNavRules.SettingsTabKeys"/>), so the page's
+    /// bar and the band's words cannot drift. Built per call, so a locale change relabels.</summary>
+    public static string[] TabLabels()
+    {
+        var keys = ZuneNavRules.SettingsTabKeys;
+        var labels = new string[keys.Length];
+        for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(keys[i]);
+        return labels;
+    }
+
+    /// <summary>Hands the tab words to the Zune band under the route name. A band click is <see cref="Open"/>, the same path
+    /// the palette takes.</summary>
+    static void PublishViews() => PageHead.Publish("settings", TabLabels(), s_tab, static i => Open((Tab)i));
 
     // ══ 3. THE SHARED ROW GRAMMAR (0.2.9 `SettingsPage.cs:192-290`, `SettingsShared.cs`) ══════════════════════════
 

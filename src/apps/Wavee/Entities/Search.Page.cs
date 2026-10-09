@@ -105,9 +105,13 @@ public readonly partial struct Search
         readonly Func<Element> _content, _shimmer, _onFailed;
         readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _syncChip, _selectPlaylists;
         readonly Action<int> _onChip;
+        readonly Action _publishViews;
+        IReadSignal<bool>? _active;
+        IReadOnlyList<string> _viewLabels = Array.Empty<string>();
 
         public PageHost()
         {
+            _publishViews = PublishViews;
             for (int i = 0; i < _selectors.Length; i++)
             {
                 int index = i;
@@ -129,6 +133,24 @@ public readonly partial struct Search
             _syncChip = () => _chipIndex.SetIfChanged(Math.Max(0, Math.Min(_chip.Peek(), _facetCount - 1)));
             _onChip = i => { if ((uint)i < (uint)_facetCount) _selectors[i](); };
             _selectPlaylists = () => SelectFacet(SearchFacet.Playlists);
+        }
+
+        static readonly Shell.Route s_route = new(Shell.RouteKind.Search);
+
+        static int LabelsKey(IReadOnlyList<string> labels)
+        {
+            var h = new HashCode();
+            for (int i = 0; i < labels.Count; i++) h.Add(labels[i], StringComparer.Ordinal);
+            return h.ToHashCode();
+        }
+
+        /// <summary>Hands the facet words (counts included) to the Zune band under <c>search</c>. Safe any time and any number
+        /// of times: the store's version moves only when the labels or the signal change. An EMPTY set is published too (a new
+        /// query's pending state), so the band shows skeleton words instead of the previous query's facets.</summary>
+        void PublishViews()
+        {
+            if (_active is { } a && !a.Peek()) return;
+            PageHead.Publish("search", _viewLabels, _chipIndex, _onChip);
         }
 
         public override Element Render()
@@ -177,20 +199,33 @@ public readonly partial struct Search
             _prevChip = chip;
             _slideArmed = true;
 
-            if (!_all.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Empty);
-
-            var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
             // The tabs arrive WITH the first result, not a beat before it: the views row stays empty (its same-height skeleton
             // showing) until the body has answered once for this query (Search.ChipRowSkeletal). The head is TitleViews (164)
             // in every state, so the swap changes words inside a row that was reserved from the first frame.
-            _bodyAnswered |= BodyReadiness() != Readiness.Pending;
-            bool skeletal = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered);
-            IReadOnlyList<string> labels = skeletal ? Array.Empty<string>() : FacetLabels();
+            IReadOnlyList<string> labels = Array.Empty<string>();
+            if (_all.IsValid)
+            {
+                var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
+                _bodyAnswered |= BodyReadiness() != Readiness.Pending;
+                bool skeletal = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered);
+                labels = skeletal ? Array.Empty<string>() : FacetLabels();
+            }
+
+            // The facet words go to the Zune band's row 2 as well (only the ACTIVE instance publishes). Hooks run before the
+            // vacancy return below. An empty set is published too: the band shows its skeleton words until the first answer.
+            _viewLabels = labels;
+            _active = UseIsActive();
+            UseEffect(_publishViews, DepKey.From(LabelsKey(labels), _facetCount));
+            UseActivation(onActivated: _publishViews);
+
+            if (!_all.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Empty);
+
             float g = Shell.Ui.PageGutter.Value;
             Element head = PageHead.Create(new PageHeadSpec(_echo)
             {
                 Views = labels, ViewsSelected = _chipIndex, OnView = _onChip,
                 ViewsPlaceholder = FacetRowSkeleton(), ViewsScroll = true,
+                ViewsInBand = PageHead.ViewsInBandFor(s_route),
                 Gutter = g, Key = "search:head",
             });
 

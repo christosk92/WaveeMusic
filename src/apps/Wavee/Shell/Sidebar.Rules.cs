@@ -9,8 +9,33 @@
 // only draws what these rules decide: the pill's row, the subtitle's words and the focus stops.
 
 using System.Collections.Generic;
+using FluentGpu.Controls;
 
 namespace Wavee;
+
+/// <summary>The glyph an entry wears where it has no art: the Liked collection's heart, a folder's folder, an app route's own
+/// destination glyph, else its kind's mark. ONE rule for the grid cards (Sidebar.Cards.cs) and the Zune band's pin tiles, so a
+/// pin that has not resolved yet reads as what it is, never as a generic library icon. Pure: no scene, no signal.</summary>
+public static class SidebarKindGlyph
+{
+    /// <param name="kind">The entry's kind.</param>
+    /// <param name="id">The entry's id (a route key for an app route; <c>liked</c> for Liked Songs).</param>
+    /// <param name="uri">The entry's uri (the Liked collection's uri also marks it).</param>
+    public static string For(SidebarEntryKind kind, string id, string uri)
+    {
+        if (string.Equals(id, SidebarCatalogue.LikedRoute, System.StringComparison.Ordinal) || EntityUri.IsLikedCollection(uri))
+            return Icons.Heart;
+        return kind switch
+        {
+            SidebarEntryKind.Folder => Icons.Folder,
+            SidebarEntryKind.AppRoute => Shell.Dest(Shell.Parse(id)).Glyph,
+            SidebarEntryKind.Album => Icons.Album,
+            SidebarEntryKind.Artist => Icons.Contact,
+            SidebarEntryKind.Show => Icons.Microphone,
+            _ => Icons.MusicNote,
+        };
+    }
+}
 
 /// <summary>Where the one selection pill sits (design V.5).</summary>
 public enum SidebarPillAnchor : byte { None = 0, Row = 1, AncestorFolder = 2, SectionHeader = 3 }

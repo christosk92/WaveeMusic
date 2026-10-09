@@ -130,8 +130,12 @@ public static partial class ProfileLists
         // ── cached delegates (a node handler never captures a render's closure) ──
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _sync, _watchLetters, _retry, _syncFacet;
+        readonly Action _demand, _sync, _watchLetters, _retry, _syncFacet, _publishViews;
         readonly Action<int> _jump, _onView;
+        IReadSignal<bool>? _active;
+        string _viewsName = "";
+        string[] _viewLabels = [];
+        Shell.Route _route;
         readonly Action<RectF> _onBounds;
         readonly Func<BoundItemScope<ProfileRowItem>, Element> _rowT;
         readonly Func<int, float> _extentOf;
@@ -152,6 +156,7 @@ public static partial class ProfileLists
             _watchLetters = WatchLetters;
             _retry = Retry;
             _syncFacet = SyncFacet;
+            _publishViews = PublishViews;
             _onView = OnView;
             _jump = Jump;
             _onBounds = r =>
@@ -215,6 +220,13 @@ public static partial class ProfileLists
             UseLayoutEffect(_syncFacet, DepKey.From(ProfileListFacets.IndexOf(facet)));
             UseSignalEffect(_sync);
             UseSignalEffect(_watchLetters);
+            // The two list words (with their counts) go to the Zune band's row 2 too; ONLY the active instance publishes.
+            _route = p.Route;
+            _viewsName = Shell.NameOf(p.Route);
+            _viewLabels = ViewLabels(u);
+            _active = UseIsActive();
+            UseEffect(_publishViews, DepKey.From(LabelsKey(_viewLabels), _viewsName.GetHashCode()));
+            UseActivation(onActivated: _publishViews);
             if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             float g = Shell.Ui.PageGutter.Value;
@@ -254,13 +266,7 @@ public static partial class ProfileLists
             string name = valid ? u.Name : "";
             if (name.Length == 0) name = Loc.Get(Strings.Person.List.FallbackName);
             string title = Loc.Get(facet == ProfileFacet.Followers ? Strings.Person.List.Title.Followers : Strings.Person.List.Title.Following);
-            bool social = valid && u.Knows(UserFields.Social);
-            var culture = CultureInfo.CurrentCulture;
-            string[] labels =
-            [
-                ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Following), valid ? u.Following : 0, social, culture),
-                ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Followers), valid ? u.Followers : 0, social, culture),
-            ];
+            string[] labels = _viewLabels;
             var profile = valid ? ProfileRoute.For(u) : Shell.Route.None;
             // CrumbTitleViews (200) in every data state: a late name or count changes only text inside boxes that were
             // reserved from the first frame (the crumb's AboveLine, the views row's labels).
@@ -268,8 +274,37 @@ public static partial class ProfileLists
             {
                 Above = BreadcrumbBar.Create([name, title], i => { if (i == 0 && !profile.IsNone) Shell.GoTo(profile); }),
                 Views = labels, ViewsSelected = _facetIndex, OnView = _onView,
-                Gutter = g, Key = "profile-lists:head",
+                ViewsInBand = PageHead.ViewsInBandFor(_route), Gutter = g, Key = "profile-lists:head",
             });
+        }
+
+        /// <summary>The two list words with their counts ("Following 24"), in <see cref="ProfileListFacets.Order"/>'s order. The
+        /// head's bar and the Zune band's row 2 draw the SAME strings.</summary>
+        static string[] ViewLabels(User u)
+        {
+            bool valid = u.IsValid;
+            bool social = valid && u.Knows(UserFields.Social);
+            var culture = CultureInfo.CurrentCulture;
+            return
+            [
+                ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Following), valid ? u.Following : 0, social, culture),
+                ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Followers), valid ? u.Followers : 0, social, culture),
+            ];
+        }
+
+        static int LabelsKey(string[] labels)
+        {
+            var h = new HashCode();
+            foreach (var l in labels) h.Add(l, StringComparer.Ordinal);
+            return h.ToHashCode();
+        }
+
+        /// <summary>Hands the two list words to the Zune band under the route name. Safe any time and any number of times.</summary>
+        void PublishViews()
+        {
+            if (_active is { } a && !a.Peek()) return;
+            if (_viewsName.Length == 0 || _viewLabels.Length == 0) return;
+            PageHead.Publish(_viewsName, _viewLabels, _facetIndex, _onView);
         }
 
         /// <summary>A word chosen in the views bar: the ROUTE, not the control, is the truth. A change navigates and the layout

@@ -177,7 +177,17 @@ public static class PageHeadRules
     public static bool Hoisted(ShellNavStyle presented, string routeName)
         => presented == ShellNavStyle.Zune && ZuneNavRules.IsPivotDestination(routeName);
 
-    /// <summary>The head kind for three route-static facts. A hoisted head ignores the other two.</summary>
+    /// <summary>Whether a NON-pivot page's views live in the Zune band's row 2 instead of the head: the presented style is
+    /// Zune, the route is not a pivot destination (those hoist whole) and its band row carries views
+    /// (<see cref="ZuneSubRow.Views"/>: Settings, Search, the people lists, the discography). The head then keeps its title
+    /// and meta line and loses the 48-DIP views row, so it is Title (120) / CrumbTitle (156) instead of TitleViews (164) /
+    /// CrumbTitleViews (200). Like a hoist it moves only with <c>PresentedNavStyle</c>, never with data.</summary>
+    public static bool ViewsInBand(ShellNavStyle presented, in Shell.Route route)
+        => presented == ShellNavStyle.Zune && !ZuneNavRules.IsPivotDestination(Shell.NameOf(route))
+           && ZuneNavRules.SubRowOf(route) == ZuneSubRow.Views;
+
+    /// <summary>The head kind for three route-static facts. A hoisted head ignores the other two. A page whose views moved to
+    /// the band passes <c>hasViews: false</c>.</summary>
     public static PageHeadKind KindOf(bool hoisted, bool hasAbove, bool hasViews)
         => hoisted ? PageHeadKind.Hoisted
          : hasAbove ? (hasViews ? PageHeadKind.CrumbTitleViews : PageHeadKind.CrumbTitle)

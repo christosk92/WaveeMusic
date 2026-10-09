@@ -61,12 +61,6 @@ public sealed class ShellNavStyleTests
         Assert.Equal("home", ZuneNavRules.LandingOf("home"));
     }
 
-    [Fact] public void ShowsSub_OnlyUnderLibrary()
-    {
-        Assert.True(ZuneNavRules.ShowsSub("artists"));
-        Assert.False(ZuneNavRules.ShowsSub("home"));
-    }
-
     [Fact] public void ShowsPins_NeedsTheSettingAndTheMinimumViewport()
     {
         Assert.False(ZuneNavRules.ShowsPins(true, 719f));
@@ -92,16 +86,150 @@ public sealed class ShellNavStyleTests
         Assert.Equal(new[] { "home", "albums", "artists", "podcasts", "audiobooks", "recents" }, tiles.ConvertAll(p => p.Id).ToArray());
     }
 
+    // ── what row 2 carries, decided by the ROUTE ──
+
     [Theory]
+    [InlineData("liked", ZuneSubRow.Library)]
     [InlineData("albums", ZuneSubRow.Library)]
+    [InlineData("artists", ZuneSubRow.Library)]
+    [InlineData("podcasts", ZuneSubRow.Library)]
+    [InlineData("audiobooks", ZuneSubRow.Library)]
     [InlineData("local", ZuneSubRow.Library)]
-    [InlineData("home", ZuneSubRow.PageViews)]
-    [InlineData("recents", ZuneSubRow.PageViews)]
-    [InlineData("browse", ZuneSubRow.None)]
-    [InlineData("settings", ZuneSubRow.None)]
-    [InlineData("album:x", ZuneSubRow.None)]
-    public void SubRowOf_IsRouteOnly(string route, ZuneSubRow expected)
-        => Assert.Equal(expected, ZuneNavRules.SubRowOf(route));
+    [InlineData("home", ZuneSubRow.Views)]
+    [InlineData("recents", ZuneSubRow.Views)]
+    [InlineData("settings", ZuneSubRow.Views)]
+    [InlineData("people:0:spotify:user:abc", ZuneSubRow.Views)]
+    [InlineData("people:1:spotify:user:abc", ZuneSubRow.Views)]
+    [InlineData("disco:0:spotify:artist:abc", ZuneSubRow.Views)]
+    [InlineData("disco:2:spotify:artist:abc", ZuneSubRow.Views)]
+    [InlineData("browse", ZuneSubRow.Categories)]
+    [InlineData("browse:spotify:page:0JQ5DAqbMKFSi39LMRT0Cy", ZuneSubRow.Categories)]
+    [InlineData("browse:spotify:page:0JQ5DArNBzkmxXHCqFLx2J", ZuneSubRow.Categories)]
+    [InlineData("browse:spotify:page:0JQ5DAqbMKFETqK4t8f1n3", ZuneSubRow.Categories)]
+    [InlineData("browse:spotify:page:0JQ5DAqbMKFEC4WFtoNRpw", ZuneSubRow.Title)]        // a genre: not a top category
+    [InlineData("artist:spotify:artist:abc", ZuneSubRow.Context)]
+    [InlineData("user:spotify:user:abc", ZuneSubRow.Context)]
+    [InlineData("episode:spotify:episode:abc", ZuneSubRow.Context)]
+    [InlineData("show:spotify:show:abc", ZuneSubRow.Context)]
+    [InlineData("album:spotify:album:abc", ZuneSubRow.Context)]
+    [InlineData("pl:spotify:playlist:abc", ZuneSubRow.Context)]
+    [InlineData("history", ZuneSubRow.Title)]
+    [InlineData("logs", ZuneSubRow.Title)]
+    [InlineData("concerts", ZuneSubRow.Title)]
+    [InlineData("whatsnew", ZuneSubRow.Title)]
+    [InlineData("home-section:spotify:section:abc", ZuneSubRow.Title)]
+    public void SubRowOf_IsRouteOnly(string name, ZuneSubRow expected)
+        => Assert.Equal(expected, ZuneNavRules.SubRowOf(Shell.Parse(name)));
+
+    [Fact] public void SubRowOf_SearchWithAQueryCarriesItsViews()
+        => Assert.Equal(ZuneSubRow.Views, ZuneNavRules.SubRowOf(Shell.Parse("search".AsSpan(), "abc".AsSpan())));
+
+    [Fact] public void SubRowOf_EveryTopCategoryThatParsesIsCategories()
+    {
+        int parsed = 0;
+        foreach (string uri in BrowseTaxonomy.TopUris)
+        {
+            var route = BrowseTiles.PageRoute(uri, null);
+            if (route.Subject.Text != uri) continue;          // a client feature (spotify:concerts) is not a page uri
+            parsed++;
+            Assert.Equal(ZuneSubRow.Categories, ZuneNavRules.SubRowOf(route));
+        }
+        Assert.True(parsed >= 3);
+    }
+
+    [Fact] public void SubRowOf_EveryRouteKindMapsToOneKindWithoutThrowing()
+    {
+        foreach (Shell.RouteKind kind in Enum.GetValues<Shell.RouteKind>())
+            Assert.True(Enum.IsDefined(ZuneNavRules.SubRowOf(new Shell.Route(kind))));
+    }
+
+    [Fact] public void BrowseTaxonomy_TopUris_AreTheFourTopEntriesInMapOrder()
+    {
+        Assert.Equal(4, BrowseTaxonomy.TopUris.Count);
+        Assert.Equal("spotify:concerts", BrowseTaxonomy.TopUris[3]);
+        Assert.Equal(BrowseTaxonomy.UrisOf(BrowseGroup.Top), BrowseTaxonomy.TopUris);
+        Assert.Equal(BrowseTaxonomy.TopUris.Count, ZuneNavRules.CategoryLabelKeys.Length);
+    }
+
+    // ── the seeds ──
+
+    [Fact] public void ViewSeedKeys_FilledForViewKindsAndNullForSearch()
+    {
+        foreach (var kind in new[] { Shell.RouteKind.Home, Shell.RouteKind.Recents, Shell.RouteKind.Settings,
+                     Shell.RouteKind.ProfileList, Shell.RouteKind.Discography })
+        {
+            var keys = ZuneNavRules.ViewSeedKeys(kind);
+            Assert.NotNull(keys);
+            Assert.NotEmpty(keys!);
+        }
+        Assert.Null(ZuneNavRules.ViewSeedKeys(Shell.RouteKind.Search));
+        Assert.Null(ZuneNavRules.ViewSeedKeys(Shell.RouteKind.History));
+    }
+
+    [Fact] public void SettingsSeed_HasAsManyWordsAsTheTabBar()
+    {
+        Assert.Equal(Settings.TabLabels().Length, ZuneNavRules.ViewSeedKeys(Shell.RouteKind.Settings)!.Length);
+        Assert.Equal(Settings.TabSlugs.Length, ZuneNavRules.SettingsTabKeys.Length);
+    }
+
+    [Fact] public void RecentsSeed_IsTheViewsInPivotOrder_AndSelectsTheRouteArgsPivot()
+    {
+        Assert.Equal(RecentsView.PivotOrder.Length, ZuneNavRules.RecentsViewKeys.Length);
+        foreach (string? token in RecentsView.PivotOrder)
+        {
+            var route = new Shell.Route(Shell.RouteKind.Recents, Arg: token is null ? default : Entities.Strings.Intern(token));
+            Assert.Equal(RecentsView.PivotIndexOf(token), ZuneNavRules.SeedSelected(route));
+        }
+    }
+
+    [Fact] public void ProfileListAndDiscographySeedsSelectTheFacetInTheRoute()
+    {
+        Assert.Equal(0, ZuneNavRules.SeedSelected(Shell.Parse("people:0:spotify:user:abc")));
+        Assert.Equal(1, ZuneNavRules.SeedSelected(Shell.Parse("people:1:spotify:user:abc")));
+        Assert.Equal(0, ZuneNavRules.SeedSelected(Shell.Parse("disco:0:spotify:artist:abc")));
+        Assert.Equal(2, ZuneNavRules.SeedSelected(Shell.Parse("disco:2:spotify:artist:abc")));
+        Assert.Equal(ZuneNavRules.ProfileListViewKeys.Length, ProfileListFacets.Order.Length);
+    }
+
+    [Fact] public void ContextSeed_IsTheSkeletonWordCountPerEntity()
+    {
+        Assert.Equal((3, 2), ZuneNavRules.ContextSeed(Shell.RouteKind.Artist));
+        Assert.Equal((2, 1), ZuneNavRules.ContextSeed(Shell.RouteKind.User));
+        Assert.Equal((4, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Episode));
+        Assert.Equal((0, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Show));
+        Assert.Equal((0, 1), ZuneNavRules.ContextSeed(Shell.RouteKind.Album));
+        Assert.Equal((0, 1), ZuneNavRules.ContextSeed(Shell.RouteKind.Playlist));
+    }
+
+    // ── the band's rhythm and the two Zune type roles ──
+
+    [Fact] public void BandHeight_IsBuiltFromTheNamedRhythmTerms()
+    {
+        Assert.Equal(ZuneNavRules.PivotTop + ZuneNavRules.PivotLine + ZuneNavRules.PivotToSub
+                     + ZuneNavRules.SubRowHeight + ZuneNavRules.SubToCard, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+        Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+        Assert.Equal(44f, ZuneNavRules.PivotRowHeight);
+        Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic));
+        Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library));
+    }
+
+    [Fact] public void ThePinColumnFitsInsideThePivotRow()
+        => Assert.True(ZuneNavRules.PinTile + ZuneNavRules.PinDotGap + ZuneNavRules.PinDot <= ZuneNavRules.PivotRowHeight);
+
+    [Fact] public void PivotLine_IsTheTopPivotRolesLineHeight()
+    {
+        Assert.Equal(ZuneNavRules.PivotLine, Design.Type.ZunePivot("x", false).LineHeight);
+        Assert.Equal(Design.Type.ZunePivot("x", false).LineHeight, Design.Type.ZunePivot("x", true).LineHeight);
+        Assert.Equal(Design.Type.ZunePivot("x", false).Size, Design.Type.ZunePivot("x", true).Size);
+    }
+
+    [Fact] public void SubPivotRole_IsTwentyAndFitsRowTwo()
+    {
+        Assert.Equal(20f, Design.Type.ZuneSubPivot("x", false).LineHeight);
+        Assert.True(Design.Type.ZuneSubPivot("x", false).LineHeight <= ZuneNavRules.SubRowHeight);
+        Assert.Equal(Design.Type.ZuneSubPivot("x", false).LineHeight, Design.Type.ZuneSubPivot("x", true).LineHeight);
+        Assert.Equal(Design.Type.ZuneSubPivot("x", false).Size, Design.Type.ZuneSubPivot("x", true).Size);
+    }
 
     [Theory]
     [InlineData("home")] [InlineData("browse")] [InlineData("recents")] [InlineData("liked")] [InlineData("albums")]
@@ -124,17 +252,17 @@ public sealed class ShellNavStyleTests
 
     [Fact] public void SubRowOf_ResolvesEveryZuneRouteToExactlyOneRowKind()
     {
-        var routes = new List<string>(ZuneNavRules.LibraryPages) { "home", "browse", "recents", "local", "search", "settings" };
-        foreach (string route in routes)
+        var routes = new List<string>(ZuneNavRules.LibraryPages) { "home", "browse", "recents", "local", "settings" };
+        foreach (string name in routes)
         {
-            // A route is a Library page, a published-views page or neither: never two kinds at once.
-            var kind = ZuneNavRules.SubRowOf(route);
-            Assert.Equal(ZuneNavRules.TopOf(route) == ZuneNavRules.LibraryPivot, kind == ZuneSubRow.Library);
-            Assert.Equal(route is "home" or "recents", kind == ZuneSubRow.PageViews);
+            // A route is a Library page or it is not: the library pages (and Local) always carry the sub-pivots.
+            var kind = ZuneNavRules.SubRowOf(Shell.Parse(name));
+            Assert.Equal(ZuneNavRules.TopOf(name) == ZuneNavRules.LibraryPivot, kind == ZuneSubRow.Library);
+            Assert.Equal(name is "home" or "recents" or "settings", kind == ZuneSubRow.Views);
         }
         // Every top pivot lands on a route whose row kind is defined.
         foreach (string pivot in ZuneNavRules.Top)
-            Assert.True(Enum.IsDefined(ZuneNavRules.SubRowOf(ZuneNavRules.LandingOf(pivot))));
+            Assert.True(Enum.IsDefined(ZuneNavRules.SubRowOf(Shell.Parse(ZuneNavRules.LandingOf(pivot)))));
     }
 
     [Fact] public void BandHeight_IsTheSameOnEveryRoute_AndZeroOutsideZune()
@@ -148,6 +276,6 @@ public sealed class ShellNavStyleTests
             Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic));
             Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library));
         }
-        Assert.Equal(ZuneNavRules.PivotRowHeight + ZuneNavRules.SubRowHeight, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+        Assert.Equal(ZuneNavRules.PivotRowHeight + ZuneNavRules.SubRowHeight + ZuneNavRules.SubToCard, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
     }
 }

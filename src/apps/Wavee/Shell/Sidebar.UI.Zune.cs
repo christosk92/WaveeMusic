@@ -1,24 +1,54 @@
 // ── Shell/Sidebar.UI.Zune.cs ───────────────────────────────────────────────────────────────────────────────────────
 // The Zune navigation style's band (design NAV 3): the big pivots across the top, row 2 under them (Library's sub-pivots,
-// or the page's published views and trailing control), the pin tiles beside the pivots, and the band's right-click menu
-// (Layout ▸ · Pins in the title bar · Reset everything)
+// the page's views, the Browse categories, an entity's title row or the page title), the pin tiles beside the pivots, and
+// the band's right-click menu (Layout ▸ · Pins in the title bar · Reset everything)
 //
 // Role: UI · Spec: sidebar-rework-implementation.md §P11 (NAV 3 UI) · the rules are Sidebar.Zune.cs (ZuneNavRules)
 //
 // LAYOUT STABILITY. The band root is ONE keyed node in every nav style. Its Height is ZuneNavRules.BandHeight(NavStyle)
-// (84 under Zune on every route, 0 otherwise) and it carries Shell.ZuneBandAnim: a Size REVEAL on the content card's own
-// tween, never a Reflow. The column therefore lays out once at the final height. The whole content region
-// (Shell.ContentRegionAnim: a Position FLIP relative to the frame column plus a Height Relayout) eases down in the same
-// tween, so the card's top travels with the band's revealed bottom edge, its bottom edge stays on the dock, and a nav-style
-// switch moves the card one time. Row 2 is ALWAYS laid out (an empty route's row is just as tall), so a navigation never
-// moves the card. The inset is DERIVED (FrameRules.ZuneBandInset: the card's x, 0 under Zune where the page bleeds to the window edge, plus the page gutter the pages read), so the first
-// pivot word and the page title share an x. Band HEIGHT follows NavStyle (the frame commit); row 2's views WORDS follow
-// Shell.Ui.PresentedNavStyle (the later, quiet hoist commit): until then the page head still draws them, and they would
-// otherwise show twice.
+// (84 under Zune on every route, 0 otherwise: PivotTop + PivotLine + PivotToSub + SubRowHeight + SubToCard, every term a
+// named constant) and it carries Shell.ZuneBandAnim: a Size REVEAL on the content card's own tween, never a Reflow. The
+// column therefore lays out once at the final height. The whole content region (Shell.ContentRegionAnim: a Position FLIP
+// relative to the frame column plus a Height Relayout) eases down in the same tween, so the card's top travels with the
+// band's revealed bottom edge, its bottom edge stays on the dock, and a nav-style switch moves the card one time. Row 2 is
+// ALWAYS laid out at SubRowHeight and ALWAYS filled (ZuneNavRules.SubRowOf decides from the ROUTE what it carries), so a
+// navigation never moves the card, and a skeleton-to-words swap is an opacity cross-fade inside slots of the final size.
+// The inset is DERIVED (FrameRules.ZuneBandInset: the card's x, 0 under Zune where the page bleeds to the window edge,
+// plus the page gutter the pages read), so the first pivot word and the page title share an x.
+//
+// ROW 2 BY KIND (ZuneSubRow). Library: the sub-pivots (one stable key across the library pages, so only the selected
+// word's weight changes). Views: the words Shell.PageViews holds for the route, else the route's SEED (the loc keys of
+// ZuneNavRules.ViewSeedKeys, selected by SeedSelected); Search, whose facets depend on its results, seeds skeleton words.
+// Categories: the four top Browse categories, which navigate. Context: the entity's title, then same-size skeleton pivots
+// and action pills until the page publishes its band (Shell.PageBands). Title: the page title as one primary word.
+//
+// TIMING. Band HEIGHT follows NavStyle (the frame commit). The Views kind follows Shell.Ui.PresentedNavStyle (the later,
+// quiet hoist commit): until then the page head still draws its views, and they would otherwise show twice. Library,
+// Categories, Context and Title have no in-page twin before the floor latches (the A2/A3 entity pages' own sticky band),
+// so they render from the frame commit and reveal with the band. On a navigation row 2 is never empty; on a style switch it
+// is never doubled, except for A2/A3's documented latch window.
 //
 // ROLES. The pivots carry Role Tab, like the stock SelectorBar items (it was NavigationItem). They stay a band-private item
 // builder rather than an engine SelectorBar because SelectorBar auto-selects on focus entry with no selection, which
-// would navigate. The pin tiles keep Role Button.
+// would navigate. Their text is the two Zune type roles and nothing else (Design.Type.ZunePivot 28/36 for row 1,
+// Design.Type.ZuneSubPivot 14/20 for row 2). The pin tiles keep Role Button. The pivots are PLATELESS: ink alone carries
+// state (secondary at rest, primary on hover and when selected, tertiary on press) and the selected word is heavier, so a
+// selected word can never look pressed; the box exists for the click, the cursor and the focus ring.
+//
+// PINS RESOLVE. A pin's cover comes from the projection binder. Under Zune no pane is mounted (the sidebar presents no
+// pane), so the band pumps the binder itself (PumpWhenZune: Sync is idempotent, a mounted pane and the band may both pump
+// it, and the effect is disposed with the band). Until a pin resolves its tile shows the kind's glyph
+// (SidebarKindGlyph.For), never a generic library icon.
+//
+// CHROME AUDIT (the card edge is the only boundary above the content). Audited between the window top and the card's top
+// edge: the material layer (Shell.Masthead.UI.cs: ONE tint box that spans the whole window column, Grow, no inset, gated by
+// Prefs.Appearance.SurfaceWash at Design.Wash.TintAlpha in every nav style), TitleBar (no fill), the ChromeRow islands
+// (Fill, Gradient, Shadow and BorderColor: none), this band and its rows (none; the pins keep a tile plate and the skeleton
+// words are small PendingBars, both content, not chrome), the pivot and row-2 ScrollViews' AutoEdgeFade (masks only its own
+// content), the content region's stroke box (StrokeOverhang), and the former lead-gap box (gone). No painter ends at the
+// band or row-2 boundary: the only boundary in the chrome is the card edge (the FileArea fill and the StrokeCardDefault
+// stroke), and the visible step was the empty row-2 strip, which the filled row 2 closes. Softening the card edge itself
+// (a lower-alpha or tinted FileArea over the tint) is a separate design decision, not made here.
 
 using System.Globalization;
 using FluentGpu.Animation;
@@ -41,6 +71,15 @@ public static partial class Sidebar
     /// frame's column under the chrome row.</summary>
     public static Element ZuneBand() => Embed.Comp(static () => new ZuneBandView()) with { Key = "zune-band" };
 
+    /// <summary>The binder's pump while the Zune frame is up: the pane is not mounted then, so the band keeps the projection
+    /// (and with it the pins' covers) alive. A no-op in the other styles, where the pane pumps; the read of the style makes
+    /// the effect re-run when it switches.</summary>
+    static void PumpWhenZune()
+    {
+        if (NavStyle.Value != ShellNavStyle.Zune) return;
+        PumpBinder();
+    }
+
     internal sealed class ZuneBandView : Component
     {
         readonly List<SidebarPin> _tiles = new(ZuneNavRules.MaxPins);
@@ -51,6 +90,10 @@ public static partial class Sidebar
             var overlay = UseContext(Overlay.Service);
             var vp = UseContextSignal(Viewport.Size);
             bool pinsShown = UseComputed(() => ZuneNavRules.ShowsPins(ZunePins.Value, vp.Value.Width)).Value;
+            // The pins' covers: the band pumps the binder (the pane is not mounted under Zune) and re-renders on its first projection.
+            EnsureBinder();
+            UseSignalEffect(PumpWhenZune);
+            _ = s_binderEpoch.Value;
             var style = NavStyle.Value;
             bool zune = style == ShellNavStyle.Zune;
             float gutter = Shell.Ui.PageGutter.Value;
@@ -59,8 +102,9 @@ public static partial class Sidebar
             Element[] rows = [];
             if (zune)
             {
-                string name = Shell.NameOf(Shell.Current.Value);
-                rows = [TopRow(name, pinsShown), SubRowFor(name)];
+                var route = Shell.Current.Value;
+                string name = Shell.NameOf(route);
+                rows = [TopRow(name, pinsShown), SubRowFor(in route, name), Spacer(ZuneNavRules.SubToCard)];
             }
 
             // Band HEIGHT follows the live style (the frame commit) and reveals on the card's own tween.
@@ -72,7 +116,9 @@ public static partial class Sidebar
             }.WithContextMenu(overlay, () => ZuneMenu(overlay));
         }
 
-        /// <summary>Row 1: the top pivots, and the pin tiles beside them when the setting is on and the viewport is wide enough.</summary>
+        /// <summary>Row 1: the top pivots, and the pin tiles beside them when the setting is on and the viewport is wide enough.
+        /// <see cref="ZuneNavRules.PivotRowHeight"/> tall: the pivot line (<see cref="ZuneNavRules.PivotLine"/>) with its air
+        /// above and below.</summary>
         Element TopRow(string name, bool pinsShown)
         {
             string? top = ZuneNavRules.TopOf(name);
@@ -85,13 +131,21 @@ public static partial class Sidebar
                 string key = ZuneNavRules.Top[i];
                 pivots[i] = PivotItem(key, Title(key), key == top, sub: false, () => Shell.GoTo(Shell.Parse(ZuneNavRules.LandingOf(key))));
             }
-            Element strip = ScrollView(new BoxEl
+            Element strip = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PivotGap, MinWidth = 0f, Children = pivots,
-            }, horizontal: true) with
-            {
-                Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = ZuneNavRules.PivotRowHeight, AutoEdgeFade = true,
-                SuppressScrollBar = true, ScrollKey = "zune.pivots",
+                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = ZuneNavRules.PivotRowHeight,
+                Padding = new Edges4(0f, ZuneNavRules.PivotTop, 0f, ZuneNavRules.PivotToSub),
+                Children =
+                [
+                    ScrollView(new BoxEl
+                    {
+                        Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PivotGap, MinWidth = 0f, Children = pivots,
+                    }, horizontal: true) with
+                    {
+                        Height = ZuneNavRules.PivotLine, AlignSelf = FlexAlign.Stretch, Shrink = 0f, MinWidth = 0f, AutoEdgeFade = true,
+                        SuppressScrollBar = true, ScrollKey = "zune.pivots",
+                    },
+                ],
             };
 
             var row = new List<Element>(2) { strip };
@@ -119,28 +173,49 @@ public static partial class Sidebar
             };
         }
 
+        // ══ ROW 2 ═════════════════════════════════════════════════════════════════════════════════════════════════════
+
         /// <summary>Row 2: ALWAYS a <see cref="ZuneNavRules.SubRowHeight"/> box, whatever the route carries, so a navigation or a
-        /// page publishing its views never moves the content card. Its content is keyed by kind and route, so pivoting
-        /// cross-fades the words while the row's height never changes. A ZStack, so an outgoing and an incoming content share
-        /// the row rather than sit side by side.</summary>
-        static Element SubRowFor(string name)
+        /// page publishing never moves the content card. Its content is chosen from the ROUTE (<see cref="ZuneNavRules.SubRowOf"/>)
+        /// and keyed by kind, so pivoting cross-fades the words while the row's height never changes. A ZStack, so an outgoing
+        /// and an incoming content share the row rather than sit side by side.</summary>
+        static Element SubRowFor(in Shell.Route route, string name)
         {
-            var kind = ZuneNavRules.SubRowOf(name);
-            Element? content = kind switch
+            Element content = ZuneNavRules.SubRowOf(route) switch
             {
                 ZuneSubRow.Library => LibraryRow(name),
-                ZuneSubRow.PageViews => ViewsRow(name),
-                _ => null,
+                ZuneSubRow.Views => ViewsRow(in route, name),
+                ZuneSubRow.Categories => CategoriesRow(in route),
+                ZuneSubRow.Context => ContextRow(in route, name),
+                _ => TitleRow(in route, name),
             };
             return new BoxEl
             {
                 Key = "zune:sub", Direction = 0, ZStack = true, Height = ZuneNavRules.SubRowHeight, Shrink = 0f, MinWidth = 0f,
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
-                Children = content is null
-                    ? [new BoxEl { Key = "zune:sub:none", Grow = 1f, Height = ZuneNavRules.SubRowHeight, HitTestVisible = false }]
-                    : [content],
+                Children = [content],
             };
         }
+
+        /// <summary>A horizontal strip of row-2 words, scrolling rather than wrapping or clipping a long set.</summary>
+        static Element WordStrip(Element[] words, string scrollKey) => ScrollView(new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap, MinWidth = 0f, Children = words,
+        }, horizontal: true) with
+        {
+            Height = ZuneNavRules.SubRowHeight, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, AutoEdgeFade = true,
+            SuppressScrollBar = true, ScrollKey = scrollKey,
+        };
+
+        /// <summary>A skeleton slot: a bar of the final word's size on the row's 20 line, in a box the row's height. Row 2 swaps
+        /// it for the word by opacity, so the swap never changes the row.</summary>
+        static Element SkeletonSlot(float width, float height) => new BoxEl
+        {
+            Height = ZuneNavRules.SubRowHeight, Shrink = 0f, AlignItems = FlexAlign.Center, HitTestVisible = false,
+            Children = [Controls.PendingBar(width, height)],
+        };
+
+        // ── Library ──
 
         /// <summary>Library's sub-pivots. Their words are the same on every Library page, so the content key carries no route:
         /// pivoting between Library pages changes ink and weight in place and never cross-fades the words.</summary>
@@ -154,52 +229,120 @@ public static partial class Sidebar
                 subs[i] = PivotItem(page, Shell.Dest(Shell.Parse(page)).Title.ToLower(CultureInfo.CurrentCulture), page == name, sub: true,
                     () => Shell.GoTo(Shell.Parse(ZuneNavRules.LandingOf(page))));
             }
-            return ScrollView(new BoxEl
+            return WordStrip(subs, "zune.sub") with
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap, MinWidth = 0f, Children = subs,
-            }, horizontal: true) with
-            {
-                Key = "zune:sub:library", Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = ZuneNavRules.SubRowHeight, AutoEdgeFade = true,
-                SuppressScrollBar = true, ScrollKey = "zune.sub", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+                Key = "zune:sub:library", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
         }
 
-        /// <summary>A page's own views (Home's facet words) and its trailing control (Following), as the page published them
-        /// under its route name. Until the page publishes (or the style is PRESENTED), the content is empty in the same
-        /// reserved row; the words then fade in place. Its own component, so a facet change re-renders row 2's words, not the band.</summary>
-        static Element ViewsRow(string name) => Embed.Comp(() => new ViewsRowView(name)) with { Key = "zune:views-comp:" + name };
+        // ── Categories ──
 
-        sealed class ViewsRowView(string name) : Component
+        /// <summary>The four top Browse categories, in <see cref="BrowseTaxonomy.TopUris"/> order. A word navigates to its page
+        /// (Live events to the Concerts hub); it is on when the route is that category's page, and none is on at the Browse root.
+        /// One stable key, so moving between the four only re-weights a word.</summary>
+        static Element CategoriesRow(in Shell.Route route)
         {
-            public override Element Render() => ViewsContent(name);
+            var uris = BrowseTaxonomy.TopUris;
+            var keys = ZuneNavRules.CategoryLabelKeys;
+            string current = route.Kind == Shell.RouteKind.BrowseCategory ? route.Subject.Text : "";
+            var words = new Element[uris.Count];
+            for (int i = 0; i < words.Length; i++)
+            {
+                string uri = uris[i];
+                string label = Loc.Get(keys[i]);
+                words[i] = PivotItem("cat:" + i, label.ToLower(CultureInfo.CurrentCulture), uri == current, sub: true, () =>
+                {
+                    var target = BrowseTiles.FeatureRoute(uri);
+                    Shell.GoTo(target.IsNone ? BrowseTiles.PageRoute(uri, label) : target);
+                });
+            }
+            return WordStrip(words, "zune.categories") with
+            {
+                Key = "zune:sub:categories", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+            };
         }
 
-        static Element ViewsContent(string name)
+        // ── Title ──
+
+        /// <summary>The page title as one primary word, for every route with nothing else to say. Not interactive.</summary>
+        static Element TitleRow(in Shell.Route route, string name) => new BoxEl
+        {
+            Key = "zune:sub:title:" + name, Direction = 0, Grow = 1f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
+            MinWidth = 0f, HitTestVisible = false, Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+            Children =
+            [
+                Design.Type.ZuneSubPivot(Shell.Dest(in route).Title.ToLower(CultureInfo.CurrentCulture), selected: true) with
+                {
+                    Color = Tok.TextPrimary, Shrink = 1f, MinWidth = 0f,
+                },
+            ],
+        };
+
+        // ── Views ──
+
+        /// <summary>What a row-2 component needs from the route: the route itself (its facet, its display name) and its name,
+        /// which is the key a page publishes under.</summary>
+        sealed record RowProps(Shell.Route Route, string Name);
+
+        /// <summary>A page's own views (Home's facet words, Settings' tabs) and its trailing control (Following), as the page
+        /// published them under its route name; until it does, the route's SEED. Its own component, so a facet change
+        /// re-renders row 2's words, not the band.</summary>
+        static Element ViewsRow(in Shell.Route route, string name)
+            => Embed.Comp(new RowProps(route, name), static () => new ViewsRowView()) with { Key = "zune:views-comp:" + name };
+
+        sealed class ViewsRowView : Component
+        {
+            public override Element Render()
+            {
+                var p = UseProps<RowProps>();
+                return ViewsContent(p.Route, p.Name);
+            }
+        }
+
+        static Element ViewsContent(in Shell.Route route, string name)
         {
             // Drawn only once the style is PRESENTED (the page's own words are still on screen until then), so the words show in
-            // exactly one place per commit and land in the quiet hoist commit with Home's lead reflow.
-            var pub = Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune ? Shell.PageViews.For(name) : null;
+            // exactly one place per commit and land in the quiet hoist commit with the head's reflow.
+            bool presented = Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune;
+            var pub = presented ? Shell.PageViews.For(name) : null;
+            var kind = route.Kind;
             var kids = new List<Element>(2);
-            if (pub is not null && pub.Labels.Count > 0)
+            if (presented)
             {
-                var words = new Element[pub.Labels.Count];
-                int selected = pub.Selected.Value;
-                for (int i = 0; i < words.Length; i++)
+                var seedKeys = ZuneNavRules.ViewSeedKeys(route.Kind);
+                bool published = pub is not null && pub.Labels.Count > 0;
+                if (published || seedKeys is not null)
                 {
-                    int at = i;
-                    // A click resolves the LATEST delegate (a re-publish that only changes it does not bump the store's Version).
-                    words[i] = PivotItem("view:" + i, pub.Labels[i].ToLower(CultureInfo.CurrentCulture), i == selected, sub: true,
-                        () => Shell.PageViews.Peek(name)?.OnSelect(at));
+                    int n = published ? pub!.Labels.Count : seedKeys!.Length;
+                    int selected = published ? pub!.Selected.Value : ZuneNavRules.SeedSelected(in route);
+                    var words = new Element[n];
+                    for (int i = 0; i < n; i++)
+                    {
+                        int at = i;
+                        string label = published ? pub!.Labels[i] : Loc.Get(seedKeys![i]);
+                        // A click resolves the LATEST delegate (a re-publish that only changes it does not bump the store's Version).
+                        // Before any publication it is ignored, except Settings, whose tab is a plain call.
+                        words[i] = PivotItem("view:" + i, label.ToLower(CultureInfo.CurrentCulture), i == selected, sub: true, () =>
+                        {
+                            if (Shell.PageViews.Peek(name) is { } live) live.OnSelect(at);
+                            else if (kind == Shell.RouteKind.Settings) Settings.Open((Settings.Tab)at);
+                        });
+                    }
+                    kids.Add(WordStrip(words, "zune.views"));
                 }
-                kids.Add(ScrollView(new BoxEl
+                else
                 {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap, MinWidth = 0f, Children = words,
-                }, horizontal: true) with
-                {
-                    Height = ZuneNavRules.SubRowHeight, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
-                    AutoEdgeFade = true, SuppressScrollBar = true, ScrollKey = "zune.views",
-                });
-                if (pub.Trailing?.Invoke() is { } trailing)
+                    // Search before its first answer: skeleton words of the facet row's size.
+                    var bars = new Element[5];
+                    for (int i = 0; i < bars.Length; i++)
+                        bars[i] = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(8, 0f), 12f);
+                    kids.Add(new BoxEl
+                    {
+                        Key = "zune:view:skeleton", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap,
+                        Grow = 1f, MinWidth = 0f, Children = bars,
+                    });
+                }
+                if (published && pub!.Trailing?.Invoke() is { } trailing)
                     kids.Add(new BoxEl
                     {
                         Key = "zune:view:trailing", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [trailing],
@@ -209,6 +352,98 @@ public static partial class Sidebar
             {
                 Key = "zune:sub:views:" + name, Direction = 0, Grow = 1f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
                 MinWidth = 0f, Gap = Spacing.M, Children = [.. kids],
+                Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+            };
+        }
+
+        // ── Context ──
+
+        /// <summary>An entity's title row: its title, its pivots and its actions as the page published them under its route
+        /// name; until then the title from the route's display name plus skeleton pivots and action pills of the final size.</summary>
+        static Element ContextRow(in Shell.Route route, string name)
+            => Embed.Comp(new RowProps(route, name), static () => new ContextRowView()) with { Key = "zune:context-comp:" + name };
+
+        sealed class ContextRowView : Component
+        {
+            public override Element Render()
+            {
+                var p = UseProps<RowProps>();
+                return ContextContent(p.Route, p.Name);
+            }
+        }
+
+        static Element ContextContent(in Shell.Route route, string name)
+        {
+            var pub = Shell.PageBands.For(name);
+            bool live = pub is not null;
+            var (seedPivots, seedActions) = ZuneNavRules.ContextSeed(route.Kind);
+
+            // The title. The same node for the skeleton and the live band, so the swap is a text change, not a re-mount.
+            string title = pub?.Title ?? Entities.Strings.Resolve(route.Arg);
+            Element titleEl;
+            if (title.Length == 0)
+                titleEl = SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(12, 0f), 12f) with { Key = "zune:ctx:title" };
+            else if (pub?.OnTitle is { } onTitle)
+                titleEl = PivotItem("ctx:title", title, true, sub: true, onTitle);
+            else
+                titleEl = new BoxEl
+                {
+                    Key = "zune:ctx:title", Direction = 0, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
+                    MaxWidth = Detail.BandLayout.TitleCap, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, HitTestVisible = false,
+                    Children = [Design.Type.ZuneSubPivot(title, selected: true) with { Color = Tok.TextPrimary }],
+                };
+
+            // The seed layer: skeleton pivots, then skeleton action pills. Faded out when the band is published.
+            var seedKids = new List<Element>(seedPivots + seedActions + 1);
+            for (int i = 0; i < seedPivots; i++) seedKids.Add(SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(8, 0f), 12f));
+            seedKids.Add(new BoxEl { Grow = 1f });
+            for (int i = 0; i < seedActions; i++)
+                seedKids.Add(SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(6, Detail.BandLayout.ActionPadX), 20f));
+            Element seedLayer = new BoxEl
+            {
+                Key = "zune:ctx:seed", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.SubPivotGap, Height = ZuneNavRules.SubRowHeight,
+                Grow = 1f, MinWidth = 0f, HitTestVisible = false, Opacity = live ? 0f : 1f, Transition = s_viewsFade, Children = [.. seedKids],
+            };
+
+            // The live layer: the published pivots (scrolling), then the actions. Faded in when the band is published.
+            var liveKids = new List<Element>(2);
+            if (pub is not null)
+            {
+                int current = Detail.BandLayout.PivotCurrent(pub.Active.Value, pub.Pivots.Count);
+                var words = new Element[pub.Pivots.Count];
+                for (int i = 0; i < words.Length; i++)
+                {
+                    int at = i;
+                    words[i] = PivotItem("ctx:" + i, pub.Pivots[i].ToLower(CultureInfo.CurrentCulture), i == current, sub: true,
+                        () => Shell.PageBands.Peek(name)?.OnPivot(at));
+                }
+                liveKids.Add(WordStrip(words, "zune.context"));
+                if (pub.Actions?.Invoke() is { } actions)
+                    liveKids.Add(new BoxEl
+                    {
+                        Key = "zune:ctx:actions", Direction = 0, Shrink = 0f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
+                        Children = [actions],
+                    });
+            }
+            Element liveLayer = new BoxEl
+            {
+                Key = "zune:ctx:live", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Height = ZuneNavRules.SubRowHeight,
+                Grow = 1f, MinWidth = 0f, HitTestVisible = live, Opacity = live ? 1f : 0f, Transition = s_viewsFade, Children = [.. liveKids],
+            };
+
+            return new BoxEl
+            {
+                Key = "zune:sub:context:" + name, Direction = 0, Grow = 1f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
+                MinWidth = 0f, Gap = Spacing.L,
+                Children =
+                [
+                    titleEl,
+                    new BoxEl
+                    {
+                        Direction = 0, ZStack = true, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, Height = ZuneNavRules.SubRowHeight,
+                        Children = [seedLayer, liveLayer],
+                    },
+                ],
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
         }
@@ -236,8 +471,10 @@ public static partial class Sidebar
         static string Title(string key) => (key == ZuneNavRules.LibraryPivot ? Loc.Get("sidebar.library.title")
             : Shell.Dest(Shell.Parse(key)).Title).ToLower(CultureInfo.CurrentCulture);
 
+        // ══ PINS ══════════════════════════════════════════════════════════════════════════════════════════════════════
+
         /// <summary>A pin: its 32-DIP tile over the now-playing dot. The dot's box is ALWAYS laid out (4 DIP), so a pin starting
-        /// to play only changes its ink. 32 + 2 + 4 = 38, inside the 52-DIP pivot row.</summary>
+        /// to play only changes its ink. 32 + 2 + 4 = 38, inside the 44-DIP pivot row.</summary>
         static Element PinColumn(SidebarPin pin) => new BoxEl
         {
             // The top margin balances the dot hanging below the tile, so the TILE (not the column) sits on the row's centre line,
@@ -251,14 +488,15 @@ public static partial class Sidebar
             ],
         };
 
-        /// <summary>A 32-DIP pin tile: the route's glyph for an app-route pin, the entry's cover once resolved, else the kind glyph.</summary>
+        /// <summary>A 32-DIP pin tile: the route's glyph for an app-route pin, the entry's cover once resolved, else the kind's
+        /// glyph. The tile keeps its plate (a tile is a button) with no padding inside its fixed 32, so the plate hugs the tile.</summary>
         static Element PinTile(SidebarPin pin)
         {
             string route = pin.RouteKey;
             Element art = pin.Kind == SidebarEntryKind.AppRoute
                 ? Icon(Shell.Dest(Shell.Parse(pin.Id)).Glyph, 16f, Tok.TextSecondary)
                 : ResolvedPin(pin.Id) is { } entry ? Cover.ForEntry(in entry, ZuneNavRules.PinTile)
-                : Icon(Icons.Library, 16f, Tok.TextSecondary);
+                : Icon(SidebarKindGlyph.For(pin.Kind, pin.Id, pin.Uri), 16f, Tok.TextSecondary);
             var tile = new BoxEl
             {
                 Width = ZuneNavRules.PinTile, Height = ZuneNavRules.PinTile, Shrink = 0f, Corners = Radii.ControlAll,

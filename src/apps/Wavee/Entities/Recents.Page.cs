@@ -334,12 +334,16 @@ public readonly partial struct Recents
 
         // ── the head's views (W3, W10, §0 #3) ────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The four words, in <see cref="RecentsView.PivotOrder"/>'s order. Built per render so a locale change relabels.</summary>
-        static string[] ViewLabels() =>
-        [
-            Loc.Get(Strings.Detail.Filter.All), Loc.Get(Strings.Recents.Chip.Music),
-            Loc.Get(Strings.Recents.Chip.Podcasts), Loc.Get(Strings.Recents.Pivot.Artists),
-        ];
+        /// <summary>The four words, in <see cref="RecentsView.PivotOrder"/>'s order, from the keys the Zune band's seed shares
+        /// (<see cref="ZuneNavRules.RecentsViewKeys"/>): the page's bar and the band's words are ONE list. Built per render so a
+        /// locale change relabels.</summary>
+        static string[] ViewLabels()
+        {
+            var keys = ZuneNavRules.RecentsViewKeys;
+            var labels = new string[keys.Length];
+            for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(keys[i]);
+            return labels;
+        }
 
         static long LabelsKey(string[] labels)
         {

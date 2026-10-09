@@ -134,6 +134,17 @@ public static class BrowseTaxonomy
 
     static readonly Dictionary<string, BrowseGroup> Map = BuildMap();
 
+    /// <summary>The Top group's uris in map order (Music, Podcasts, Audiobooks, <c>spotify:concerts</c>), read from the
+    /// entries table so nothing is restated. The Zune band's Browse words are these four, in this order.</summary>
+    public static readonly IReadOnlyList<string> TopUris = BuildTopUris();
+
+    static string[] BuildTopUris()
+    {
+        var list = new List<string>(4);
+        foreach (var (uri, group) in Entries) if (group == BrowseGroup.Top) list.Add(uri);
+        return [.. list];
+    }
+
     static Dictionary<string, BrowseGroup> BuildMap()
     {
         var map = new Dictionary<string, BrowseGroup>(Entries.Length, StringComparer.Ordinal);

@@ -1662,7 +1662,8 @@ public readonly partial struct Artist
 
     sealed record DiscoPageProps(Shell.Route Route, string Key);
 
-    static readonly string[] s_facetLabelKeys = [Strings.Artist.Albums, Strings.Artist.SinglesEps, Strings.Artist.Compilations];
+    /// <summary>The facet words' keys: the Zune band's seed shares them, so the page's bar and the band cannot drift.</summary>
+    static readonly string[] s_facetLabelKeys = ZuneNavRules.DiscographyViewKeys;
 
     sealed class DiscoPageHost : Component
     {
@@ -1680,13 +1681,16 @@ public readonly partial struct Artist
         /// from the route's facet in a layout effect.</summary>
         readonly Signal<int> _facetIndex = new(0);
         readonly Action<int> _onView;
-        readonly Action _syncFacet;
+        readonly Action _syncFacet, _publishViews;
+        IReadSignal<bool>? _active;
+        string _viewsName = "";
 
         public DiscoPageHost()
         {
             _demand = Demand;
             _onView = OnView;
             _syncFacet = SyncFacet;
+            _publishViews = PublishViews;
             _watchScroll = () =>
             {
                 float y = (float)_handle.Offset.Value;
@@ -1706,6 +1710,17 @@ public readonly partial struct Artist
         }
 
         void SyncFacet() => _facetIndex.SetIfChanged((int)_facet);
+
+        /// <summary>Hands the three facet words to the Zune band under the route name (the facet is in it). ONLY the active
+        /// instance publishes, and the store bumps its version only when the labels or the signal change.</summary>
+        void PublishViews()
+        {
+            if (_active is { } a && !a.Peek()) return;
+            if (_viewsName.Length == 0) return;
+            var labels = new string[s_facetLabelKeys.Length];
+            for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(s_facetLabelKeys[i]);
+            PageHead.Publish(_viewsName, labels, _facetIndex, _onView);
+        }
 
         void Demand()
         {
@@ -1736,6 +1751,10 @@ public readonly partial struct Artist
             UseEffect(_demand, DepKey.From(_artist.Slot, (int)facet));
             UseLayoutEffect(_syncFacet, DepKey.From((int)facet));
             UseSignalEffect(_watchScroll);
+            _viewsName = Shell.NameOf(p.Route);
+            _active = UseIsActive();
+            UseEffect(_publishViews, DepKey.From((int)facet, _viewsName.GetHashCode()));
+            UseActivation(onActivated: _publishViews);
             if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             var a = _artist;
@@ -1752,7 +1771,7 @@ public readonly partial struct Artist
             {
                 Above = BreadcrumbBar.Create([name, title], i => { if (i == 0) Shell.GoTo(Shell.For(goArtist, name)); }),
                 Views = labels, ViewsSelected = _facetIndex, OnView = _onView,
-                Gutter = g, Key = "disco:head",
+                ViewsInBand = PageHead.ViewsInBandFor(p.Route), Gutter = g, Key = "disco:head",
             });
 
             var content = new BoxEl

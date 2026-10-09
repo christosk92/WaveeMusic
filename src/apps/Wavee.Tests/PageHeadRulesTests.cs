@@ -71,4 +71,49 @@ public sealed class PageHeadRulesTests
         foreach (var route in new[] { "home", "browse", "recents", "liked", "albums", "artists", "podcasts", "audiobooks", "settings", "search" })
             Assert.False(PageHeadRules.Hoisted(style, route));
     }
+
+    // ── views in the band (non-pivot pages whose row 2 carries their views) ──
+
+    [Theory]
+    [InlineData("settings")] [InlineData("people:0:spotify:user:abc")] [InlineData("disco:1:spotify:artist:abc")]
+    public void ViewsInBand_TrueUnderZuneForThePagesWhoseRowTwoCarriesViews(string name)
+        => Assert.True(PageHeadRules.ViewsInBand(ShellNavStyle.Zune, Shell.Parse(name)));
+
+    [Theory]
+    [InlineData(ShellNavStyle.Classic)] [InlineData(ShellNavStyle.Library)]
+    public void ViewsInBand_NeverOutsideZune(ShellNavStyle style)
+    {
+        foreach (var name in new[] { "settings", "search", "people:0:spotify:user:abc", "disco:1:spotify:artist:abc", "home", "recents" })
+            Assert.False(PageHeadRules.ViewsInBand(style, Shell.Parse(name)));
+    }
+
+    [Theory]
+    [InlineData("home")] [InlineData("recents")] [InlineData("browse")] [InlineData("liked")]   // pivot destinations hoist whole instead
+    [InlineData("history")] [InlineData("artist:spotify:artist:abc")] [InlineData("album:spotify:album:abc")]
+    public void ViewsInBand_FalseForPivotDestinationsAndPagesWithoutViews(string name)
+        => Assert.False(PageHeadRules.ViewsInBand(ShellNavStyle.Zune, Shell.Parse(name)));
+
+    [Fact] public void ViewsInBand_SearchWithAQueryMovesItsFacetsToTheBandUnderZune()
+    {
+        var search = Shell.Parse("search".AsSpan(), "abc".AsSpan());
+        Assert.True(PageHeadRules.ViewsInBand(ShellNavStyle.Zune, search));
+        Assert.False(PageHeadRules.ViewsInBand(ShellNavStyle.Classic, search));
+    }
+
+    [Fact] public void TheHeadHeightFollowsOnlyThePresentedStyle_NeverData()
+    {
+        // Settings: views in the head (164) outside Zune, in the band (120) under it. The inputs are the style and the route.
+        var settings = Shell.Parse("settings");
+        foreach (var style in new[] { ShellNavStyle.Classic, ShellNavStyle.Library, ShellNavStyle.Zune })
+        {
+            bool inBand = PageHeadRules.ViewsInBand(style, settings);
+            var kind = PageHeadRules.KindOf(PageHeadRules.Hoisted(style, "settings"), false, !inBand);
+            Assert.Equal(inBand ? 120f : 164f, PageHeadRules.Extent(kind));
+        }
+        Assert.Equal(120f, PageHeadRules.Extent(PageHeadRules.KindOf(false, false, false)));
+        Assert.Equal(164f, PageHeadRules.Extent(PageHeadRules.KindOf(false, false, true)));
+        // A breadcrumb page (people lists, discography) loses the same 44 DIP.
+        Assert.Equal(156f, PageHeadRules.Extent(PageHeadRules.KindOf(false, true, false)));
+        Assert.Equal(200f, PageHeadRules.Extent(PageHeadRules.KindOf(false, true, true)));
+    }
 }
