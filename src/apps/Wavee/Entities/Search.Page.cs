@@ -1,5 +1,5 @@
 // ── Entities/Search.Page.cs ────────────────────────────────────────────────────────────────────────────────────────
-// the search results page: the route, the page component (query echo, facet row, the keyed sliding facet body), the
+// the search results page: the route, the page component (the page head with the query echo and the facet views, the keyed sliding facet body), the
 // ONE demand, the readiness of each facet, and the facet dispatch
 //
 // Role: UI
@@ -42,6 +42,7 @@ using FluentGpu.Controls;
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 using static FluentGpu.Dsl.Ui;
 
@@ -81,6 +82,7 @@ public readonly partial struct Search
     sealed class PageHost : Component
     {
         readonly Signal<int> _chip = new(0);
+        readonly Signal<int> _chipIndex = new(0);              // the views bar's selection: follows _chip in a layout effect, so the pill slides
         readonly Signal<int> _recheck = new(0);
         readonly SearchFacet[] _facets = new SearchFacet[SearchTable.FacetCount];
         readonly Action[] _selectors = new Action[SearchTable.FacetCount];
@@ -101,7 +103,8 @@ public readonly partial struct Search
         readonly Func<float, int> _colsFor;
         readonly Func<bool> _pending, _failed;
         readonly Func<Element> _content, _shimmer, _onFailed;
-        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _selectPlaylists;
+        readonly Action _demand, _demandTracked, _retry, _retryAll, _recheckNow, _clampChip, _syncChip, _selectPlaylists;
+        readonly Action<int> _onChip;
 
         public PageHost()
         {
@@ -123,6 +126,8 @@ public readonly partial struct Search
             _retryAll = RetryAll;
             _recheckNow = Recheck;
             _clampChip = () => { if (_chip.Peek() >= _facetCount) _chip.Value = 0; };
+            _syncChip = () => _chipIndex.SetIfChanged(Math.Max(0, Math.Min(_chip.Peek(), _facetCount - 1)));
+            _onChip = i => { if ((uint)i < (uint)_facetCount) _selectors[i](); };
             _selectPlaylists = () => SelectFacet(SearchFacet.Playlists);
         }
 
@@ -159,6 +164,7 @@ public readonly partial struct Search
 
             int chip = _chip.Value;
             UseEffect(_clampChip, _facetCount);
+            UseLayoutEffect(_syncChip, DepKey.From(Math.Min(chip, _facetCount - 1)));
             _facet = (uint)chip < (uint)_facetCount ? _facets[chip] : SearchFacet.All;
             _row = _facet is SearchFacet.All or SearchFacet.Genres || _query.Length == 0 ? _all : Entities.Search(_query.AsSpan(), _facet);
 
@@ -174,18 +180,19 @@ public readonly partial struct Search
             if (!_all.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Empty);
 
             var allReady = ReadinessOf(_all, SearchFields.Chips, _askedAll);
-            // The tabs arrive WITH the first result, not a beat before it: the chip row stays skeletal until the body has
-            // answered once for this query (Search.ChipRowSkeletal). Both rows are keyed so the swap is a mount, not an
-            // in-place patch — an unkeyed swap never fires Enter — and the real row rides the body's own 8-DIP rise.
+            // The tabs arrive WITH the first result, not a beat before it: the views row stays empty (its same-height skeleton
+            // showing) until the body has answered once for this query (Search.ChipRowSkeletal). The head is TitleViews (164)
+            // in every state, so the swap changes words inside a row that was reserved from the first frame.
             _bodyAnswered |= BodyReadiness() != Readiness.Pending;
-            Element chipRow = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered)
-                ? FacetRowSkeleton() with { Key = "facets-skel" }
-                : FacetRow(_all, _facets.AsSpan(0, _facetCount), Math.Min(chip, _facetCount - 1), _selectors) with
-                {
-                    Key = "facets",
-                    Enter = new EnterExit(Dy: 8f, Opacity: 0f, Active: true),
-                    Transition = MotionTokenDef.Eased(Design.Motion.Standard, Easing.SmoothOut),
-                };
+            bool skeletal = ChipRowSkeletal(_hadChips, allReady == Readiness.Pending, _bodyAnswered);
+            IReadOnlyList<string> labels = skeletal ? Array.Empty<string>() : FacetLabels();
+            float g = Shell.Ui.PageGutter.Value;
+            Element head = PageHead.Create(new PageHeadSpec(_echo)
+            {
+                Views = labels, ViewsSelected = _chipIndex, OnView = _onChip,
+                ViewsPlaceholder = FacetRowSkeleton(), ViewsScroll = true,
+                Gutter = g, Key = "search:head",
+            });
 
             var region = new SkelRegionEl(
                 Pending: _pending, Failed: _failed, Content: _content, ShimmerSource: _shimmer, OnFailed: _onFailed,
@@ -199,13 +206,13 @@ public readonly partial struct Search
                 {
                     Key = "facet-body:" + facetId, Animate = motion,
                     Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
-                    Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, 0f),
+                    Padding = new Edges4(g, 0f, g, 0f),
                     Children = [region],
                 }
                 : ScrollView(new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-                    Padding = new Edges4(Spacing.L, Spacing.S, Spacing.L, Design.Dock.Reserve + Spacing.XXL),
+                    Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
                     Children =
                     [
                         new BoxEl { Key = "facet-body:" + facetId, Animate = motion, Direction = 1, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Children = [region] },
@@ -220,15 +227,24 @@ public readonly partial struct Search
                 Direction = 1, Grow = 1f, MinWidth = 0f, MinHeight = 0f, AlignSelf = FlexAlign.Stretch,
                 Children =
                 [
-                    new BoxEl
-                    {
-                        Direction = 1, Shrink = 0f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch, Gap = Spacing.S,
-                        Padding = new Edges4(Spacing.L, Spacing.M, Spacing.L, Spacing.S),
-                        Children = [QueryEcho(_echo), chipRow],
-                    },
+                    head,
                     body,
                 ],
             };
+        }
+
+        /// <summary>The views' labels over the live facet list: server rank first, All always first, the count omitted for All
+        /// and for 0 (W3).</summary>
+        string[] FacetLabels()
+        {
+            var labels = new string[_facetCount];
+            for (int i = 0; i < labels.Length; i++)
+            {
+                var f = _facets[i];
+                int count = f == SearchFacet.All ? 0 : FacetCount(_all.RawTotalOf(f), LocalCountOf(_all, f));
+                labels[i] = FacetLabel(Loc.Get(FacetNameKey(f)), count);
+            }
+            return labels;
         }
 
         /// <summary>Every table the page paints from: a hydrating hit row, a landed page, a genre tile.</summary>

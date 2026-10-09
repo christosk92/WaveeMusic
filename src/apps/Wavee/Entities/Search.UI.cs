@@ -1,5 +1,5 @@
 // ── Entities/Search.UI.cs ──────────────────────────────────────────────────────────────────────────────────────────
-// the search surface's static factories: the facet row and its 11-pill skeleton, the three loading shapes, the hit row,
+// the search surface's static factories: the facet label and the 11-pill facet skeleton, the three loading shapes, the hit row,
 // the top-result hero, Best matches, the playlist rail, the Songs grid, the Albums / Playlists facet grid, the flat hit
 // lists, the Artists row, the genre links and the related queries
 //
@@ -67,54 +67,41 @@ public readonly partial struct Search
     /// changes when the row hydrates.</summary>
     internal readonly record struct HitItem(EntityRef Ref, uint Version, SearchHitFlags Flags);
 
-    internal const float FacetUnderlineH = 3f, FacetUnderlineMs = 260f, HeroHeight = 228f;
+    internal const float HeroHeight = 228f;
     internal const float SongsColMin = 280f;
 
     // ══ 1. THE FACET ROW (W3, §0.3-§0.5) ═════════════════════════════════════════════════════════════════════════════
+    //
+    // The facet row is the page head's VIEWS bar (PageHead, Search.Page.cs): the stock SelectorBar in Design.PageViewsStyle,
+    // one fixed 48-DIP row that never wraps and scrolls horizontally when the eleven facets outgrow it. The query echo is
+    // the head's title. This file owns only the two things the head cannot know: a facet's label and the skeleton.
 
-    /// <summary>The query echo: the committed query lowercased in the display face, one line, Shrink never Grow (§0.2).</summary>
-    internal static Element QueryEcho(string lowered)
-        => Design.Type.SurfaceDisplay(lowered) with
-        {
-            MaxLines = 1, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f, AlignSelf = FlexAlign.Stretch,
-        };
+    /// <summary>A facet's views label: the name, then its count — omitted for 0 (so All, which never carries one, and a facet
+    /// the server counted as empty read as the bare name; W3).</summary>
+    public static string FacetLabel(string name, int count)
+        => count <= 0 ? name : name + " " + FormatCache.Int(count);
 
-    /// <summary>The eleven placeholder pills at their real widths, each with a transparent underline spacer so the
-    /// row's per-tab height matches a real tab (W2, §9 must-not-simplify 3).</summary>
+    /// <summary>The eleven placeholder pills at their real widths in ONE non-wrapping row (W2, §9 must-not-simplify 3). Each
+    /// pill sits in a box of <see cref="PageGeometry.ViewsItemH"/> with the stock SelectorBar item's padding (12, 10, 12, 7)
+    /// and the row takes the bar's <see cref="PageGeometry.ViewsLeadingInset"/>, so the first pill lands on the gutter and
+    /// the row is exactly as tall as the real bar — the skeleton matches the bar by construction. The row is a placeholder
+    /// inside the head's reserved views row: the head's height never depends on which one shows.</summary>
     internal static Element FacetRowSkeleton()
     {
         var widths = ChipSkeletonWidths;
-        var tabs = new Element[widths.Length];
+        var pills = new Element[widths.Length];
         for (int i = 0; i < widths.Length; i++)
-            tabs[i] = new BoxEl
+            pills[i] = new BoxEl
             {
-                Direction = 1, Shrink = 0f,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 0, AlignItems = FlexAlign.Center,
-                        Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.XS),
-                        Children = [new BoxEl { Width = widths[i], Height = 16f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary }],
-                    },
-                    new BoxEl { Height = FacetUnderlineH, Shrink = 0f },
-                ],
+                Direction = 0, Shrink = 0f, Height = PageGeometry.ViewsItemH, AlignItems = FlexAlign.Center,
+                Padding = new Edges4(12f, 10f, 12f, 7f),
+                Children = [new BoxEl { Width = widths[i], Height = 16f, Shrink = 0f, Corners = CornerRadius4.All(Radii.Control), Fill = Tok.FillSubtleSecondary }],
             };
-        return new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs };
-    }
-
-    /// <summary>The real facet row over the All row's chip strip: server rank first, All always first, counts omitted for
-    /// All and for 0 (W3). <paramref name="selectors"/> holds one cached click per index (the page owns them).</summary>
-    internal static Element FacetRow(Search all, ReadOnlySpan<SearchFacet> facets, int selected, Action[] selectors)
-    {
-        var tabs = new Element[facets.Length];
-        for (int i = 0; i < facets.Length; i++)
+        return new BoxEl
         {
-            var f = facets[i];
-            int count = f == SearchFacet.All ? 0 : FacetCount(all.RawTotalOf(f), LocalCountOf(all, f));
-            tabs[i] = FacetTab(Loc.Get(FacetNameKey(f)), count, i == selected, selectors[i]);
-        }
-        return new BoxEl { Direction = 0, Wrap = true, AlignItems = FlexAlign.End, MinWidth = 0f, Grow = 1f, Children = tabs };
+            Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, ClipToBounds = true, AlignItems = FlexAlign.Center,
+            Margin = new Edges4(PageGeometry.ViewsLeadingInset, 0f, 0f, 0f), Children = pills,
+        };
     }
 
     /// <summary>The All row's own list count for a facet: its hits of that kind, the genre tiles for Genres.</summary>
@@ -123,46 +110,6 @@ public readonly partial struct Search
         if (f == SearchFacet.Genres) return all.GenreSlots.Length;
         var kind = KindOf(f);
         return kind == EntityKind.Unknown ? 0 : all.CountOf(kind);
-    }
-
-    /// <summary>One tab: label + count over a 3-DIP underline that GROWS from its left edge when selected (§0.4). Tabs
-    /// are focus stops (§9 gap 3).</summary>
-    static Element FacetTab(string name, int total, bool selected, Action onClick)
-    {
-        Element label = Body(name) with
-        {
-            Color = selected ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextSecondary,
-            Wrap = TextWrap.NoWrap, Shrink = 0f, MaxLines = 1,
-        };
-        Element[] labelKids = total > 0
-            ? [label, Caption(total.ToString(CultureInfo.InvariantCulture)) with { Color = Tok.TextTertiary, Wrap = TextWrap.NoWrap, Shrink = 0f, MaxLines = 1 }]
-            : [label];
-        return new BoxEl
-        {
-            Direction = 1, Shrink = 0f,
-            Role = AutomationRole.Tab, Focusable = true, FocusVisualMargin = Design.FocusInsetRow,
-            Cursor = CursorId.Hand, OnClick = onClick,
-            Children =
-            [
-                new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
-                    Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.XS),
-                    Children = labelKids,
-                },
-                selected
-                    ? new BoxEl
-                    {
-                        Key = "underline",
-                        Height = FacetUnderlineH, Shrink = 0f, AlignSelf = FlexAlign.Stretch,
-                        Corners = Radii.FullAll, Fill = Tok.AccentDefault,
-                        TransformOriginX = 0f,
-                        Enter = new EnterExit(Sx: 0f, Active: true),
-                        Transition = MotionTokenDef.Eased(FacetUnderlineMs, Easing.SmoothOut),
-                    }
-                    : new BoxEl { Height = FacetUnderlineH, Shrink = 0f },
-            ],
-        };
     }
 
     /// <summary>A section label: the 3×14 accent tick (BrowseLayout's, shared with Browse's band label) beside a rail

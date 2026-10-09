@@ -36,8 +36,8 @@ public class SearchChipSkeletonPolicyTests
     [Fact]
     public void TheSkeletonIsTheElevenPillFacetSuperset()
     {
-        // The placeholder row is the known facet superset (All + the ten fallback facets), so it wraps to the same two
-        // rows the real strip usually does.
+        // The placeholder row is the known facet superset (All + the ten fallback facets), in the views row's one
+        // non-wrapping line (the real bar scrolls horizontally when the superset outgrows it).
         Assert.Equal(SearchTable.FacetCount, Search.ChipSkeletonWidths.Length);
         Assert.Equal(SearchTable.FacetCount - 1, Search.FallbackFacets.Length);
         foreach (float w in Search.ChipSkeletonWidths) Assert.True(w > 0f);
