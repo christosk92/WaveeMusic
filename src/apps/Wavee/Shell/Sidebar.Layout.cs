@@ -20,8 +20,9 @@ public enum SidebarSectionKind : byte
     Home = 0, Pinned = 1, Collections = 2, Playlists = 3, Library = 4, Recent = 5, NewReleases = 6, Settings = 7,
 }
 
-/// <summary>Row density for entity rows (design P.4): Default = row C (two lines, art 32), Compact = row B (one line, art
-/// 24). Glyph rows and headers are unaffected. PERSISTED as <c>sidebar.pane.density</c>.</summary>
+/// <summary>Row density for Library's entity rows (design P.4): Default = row C (two lines, art 32), Compact = row B (one
+/// line, art 24). Glyph rows, headers and Classic's entity rows are unaffected (Classic has its own Show covers switch).
+/// PERSISTED as <c>sidebar.pane.density</c>.</summary>
 public enum SidebarDensity : byte { Default = 0, Compact = 1 }
 
 /// <summary>Your Library's list presentation.</summary>
@@ -551,7 +552,8 @@ public static class SidebarLayoutRules
     }
 
     /// <summary>The resolved document for a layout (§P3.3).</summary>
-    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density)
+    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density,
+        bool classicCovers = false)
     {
         var overlay = state.Of(layout);
         var sections = new SidebarSection[overlay.Sections.Count];
@@ -564,7 +566,7 @@ public static class SidebarLayoutRules
             var visible = new List<string>(order.Count);
             for (int k = 0; k < order.Count; k++) if (!Contains(s.HiddenList, order[k])) visible.Add(order[k]);
             sections[i] = new SidebarSection(kind, s.Hidden, s.Collapsed, s.Limit ?? SidebarCatalogue.DefaultLimit(kind),
-                SidebarSection.ShapeFor(kind, density), visible.ToArray());
+                SidebarSection.ShapeFor(layout, kind, density, classicCovers), visible.ToArray());
             if (kind == SidebarSectionKind.Library)
             {
                 var hiddenKinds = SidebarLibraryKinds.None;
@@ -590,11 +592,31 @@ public sealed record SidebarSection(
 {
     public string Id => SidebarCatalogue.IdOf(Kind);
 
-    /// <summary>The one row shape per section (design V.3): glyph sections are row A; entity sections follow the density.</summary>
+    /// <summary>The one row shape per section (design V.3), Library semantics: glyph sections are row A; entity sections
+    /// follow the density. The compact rail uses this for every layout (see <see cref="ForRail"/>).</summary>
     public static SidebarRowShape ShapeFor(SidebarSectionKind kind, SidebarDensity density)
         => kind is SidebarSectionKind.Home or SidebarSectionKind.Collections or SidebarSectionKind.Settings
             ? SidebarRowShape.Glyph
             : density == SidebarDensity.Compact ? SidebarRowShape.EntityOneLine : SidebarRowShape.EntityTwoLine;
+
+    /// <summary>The one row shape per section in a layout. Glyph sections stay row A in every layout. Classic's entity
+    /// sections are text-only (28) unless Show covers is on, then one-line 36 rows with a 24 cover; density does not
+    /// apply in Classic. Library follows the density. A covers flip changes Shape, so <see cref="SidebarLayoutDoc.SameExceptCollapsed"/>
+    /// reports it as a change and the pane publishes the whole document.</summary>
+    public static SidebarRowShape ShapeFor(SidebarLayoutId layout, SidebarSectionKind kind, SidebarDensity density, bool classicCovers)
+        => kind is SidebarSectionKind.Home or SidebarSectionKind.Collections or SidebarSectionKind.Settings
+            ? SidebarRowShape.Glyph
+            : layout == SidebarLayoutId.Classic
+                ? (classicCovers ? SidebarRowShape.EntityOneLine : SidebarRowShape.Text)
+                : ShapeFor(kind, density);
+
+    /// <summary>The compact rail keeps its density-based tiles in every layout (the rail is unchanged): a section's shape is
+    /// remapped to <see cref="ShapeFor(SidebarSectionKind, SidebarDensity)"/> for the rail's plan.</summary>
+    public static SidebarSection ForRail(SidebarSection s, SidebarDensity density)
+    {
+        var shape = ShapeFor(s.Kind, density);
+        return shape == s.Shape ? s : s with { Shape = shape };
+    }
 }
 
 /// <summary>Your Library's resolved options (the <c>library</c> section's state).</summary>

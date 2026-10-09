@@ -348,15 +348,52 @@ public sealed class SidebarLayoutRulesTests
     }
 
     [Fact]
-    public void Resolve_ShapesFollowDensity()
+    public void Resolve_ClassicShapes_AreTextUnlessShowCovers()
     {
+        // Classic ignores density: its entity rows are text-only (28) by default, one-line with a cover when covers are on.
         var def = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default);
-        Assert.Equal(SidebarRowShape.EntityTwoLine, def.Find(SidebarSectionKind.Pinned)!.Shape);
+        Assert.Equal(SidebarRowShape.Text, def.Find(SidebarSectionKind.Pinned)!.Shape);
+        Assert.Equal(SidebarRowShape.Text, def.Find(SidebarSectionKind.Playlists)!.Shape);
         Assert.Equal(SidebarRowShape.Glyph, def.Find(SidebarSectionKind.Collections)!.Shape);
 
-        var compact = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Compact);
+        var compact = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Compact, classicCovers: true);
         Assert.Equal(SidebarRowShape.EntityOneLine, compact.Find(SidebarSectionKind.Pinned)!.Shape);
         Assert.Equal(SidebarRowShape.Glyph, compact.Find(SidebarSectionKind.Collections)!.Shape);
+
+        var covers = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default, classicCovers: true);
+        Assert.Equal(SidebarRowShape.EntityOneLine, covers.Find(SidebarSectionKind.Pinned)!.Shape);
+    }
+
+    [Fact]
+    public void Resolve_LibraryShapes_FollowDensity()
+    {
+        var def = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Library, SidebarDensity.Default, classicCovers: false);
+        Assert.Equal(SidebarRowShape.EntityTwoLine, def.Find(SidebarSectionKind.Pinned)!.Shape);
+
+        var compact = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Library, SidebarDensity.Compact);
+        Assert.Equal(SidebarRowShape.EntityOneLine, compact.Find(SidebarSectionKind.Pinned)!.Shape);
+        Assert.Equal(SidebarRowShape.Glyph, compact.Find(SidebarSectionKind.Home)!.Shape);
+    }
+
+    [Fact]
+    public void ForRail_RestoresTheDensityShape()
+    {
+        var text = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default).Find(SidebarSectionKind.Pinned)!;
+        Assert.Equal(SidebarRowShape.Text, text.Shape);
+        Assert.Equal(SidebarRowShape.EntityTwoLine, SidebarSection.ForRail(text, SidebarDensity.Default).Shape);
+        Assert.Equal(SidebarRowShape.EntityOneLine, SidebarSection.ForRail(text, SidebarDensity.Compact).Shape);
+
+        var glyph = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default).Find(SidebarSectionKind.Collections)!;
+        Assert.Same(glyph, SidebarSection.ForRail(glyph, SidebarDensity.Default));
+    }
+
+    [Fact]
+    public void Two_Classic_docs_differing_only_in_covers_are_not_the_same_document()
+    {
+        var text = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default);
+        var covers = SidebarLayoutRules.Resolve(S(), SidebarLayoutId.Classic, SidebarDensity.Default, classicCovers: true);
+        Assert.False(covers.SameExceptCollapsed(text));
+        Assert.False(text.SameExceptCollapsed(covers));
     }
 
     [Fact]

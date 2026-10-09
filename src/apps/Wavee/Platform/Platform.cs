@@ -87,6 +87,8 @@ public static partial class Platform
         public static readonly SettingKey<bool> SidebarPaneUserCollapsed = new("sidebar.pane.userCollapsed", false);
         /// <summary>Entity-row density: 0 Default · 1 Compact.</summary>
         public static readonly SettingKey<int> SidebarPaneDensity = new("sidebar.pane.density", 0);
+        /// <summary>Classic only: cover art on entity rows (off = Spotify-classic text rows).</summary>
+        public static readonly SettingKey<bool> SidebarClassicCovers = new("sidebar.classic.covers", false);
         /// <summary>Your Library's chip: 0 none · 1 Playlists · 2 Albums · 3 Artists · 4 Podcasts · 5 Audiobooks.</summary>
         public static readonly SettingKey<int> SidebarLibraryFilter = new("sidebar.library.filter", 0);
         /// <summary>The loc keys of what the v2 migration could not carry over, comma-separated (Settings' "What changed").</summary>

@@ -77,6 +77,7 @@ public static partial class Sidebar
         var s = Platform.Settings;
         Layout.Value = s.Get(Platform.Keys.SidebarLayoutId) == 1 ? SidebarLayoutId.Library : SidebarLayoutId.Classic;
         Density.Value = s.Get(Platform.Keys.SidebarPaneDensity) == 1 ? SidebarDensity.Compact : SidebarDensity.Default;
+        ClassicCovers.Value = s.Get(Platform.Keys.SidebarClassicCovers);
         Width.Value = SidebarPaneBounds.Clamp(s.Get(Platform.Keys.SidebarPaneWidth));
         UserCollapsed.Value = s.Get(Platform.Keys.SidebarPaneUserCollapsed);
         Seam.Value = UserCollapsed.Peek() ? SidebarRowGeometry.RailWidth : Width.Peek();
@@ -160,6 +161,10 @@ public static partial class Sidebar
     /// <summary>Entity-row density (<c>sidebar.pane.density</c>), global.</summary>
     public static readonly Signal<SidebarDensity> Density = new(SidebarDensity.Default);
 
+    /// <summary>Classic's Show covers (<c>sidebar.classic.covers</c>): off = text-only entity rows, on = one-line rows with a
+    /// cover. Classic only; Library ignores it.</summary>
+    public static readonly Signal<bool> ClassicCovers = new(false);
+
     /// <summary>Your Library's active chip (<c>sidebar.library.filter</c>).</summary>
     public static readonly Signal<SidebarLibraryFilter> LibraryFilter = new(SidebarLibraryFilter.None);
 
@@ -172,6 +177,7 @@ public static partial class Sidebar
     static int s_docVersion = -1;
     static SidebarLayoutId s_docLayout;
     static SidebarDensity s_docDensity;
+    static bool s_docCovers;
 
     /// <summary>Both overlays (the undo ring and the Outline read them).</summary>
     public static SidebarLayoutState State => s_state;
@@ -180,8 +186,8 @@ public static partial class Sidebar
     public static IReadSignal<int> LayoutVersion => s_layoutVersion;
 
     /// <summary>The active layout's resolved document. PEEKS: a render that must re-plan reads <see cref="LayoutVersion"/>.
-    /// Cached on (version, layout, density), so the same instance comes back until something changed — the pane's
-    /// publish reference test depends on it.</summary>
+    /// Cached on (version, layout, density, classicCovers), so the same instance comes back until something changed — the
+    /// pane's publish reference test depends on it.</summary>
     public static SidebarLayoutDoc Doc
     {
         get
@@ -189,12 +195,14 @@ public static partial class Sidebar
             int v = s_layoutVersion.Peek();
             var layout = Layout.Peek();
             var density = Density.Peek();
-            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity)
+            bool covers = ClassicCovers.Peek();
+            if (s_doc is null || v != s_docVersion || layout != s_docLayout || density != s_docDensity || covers != s_docCovers)
             {
-                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density);
+                s_doc = SidebarLayoutRules.Resolve(s_state, layout, density, covers);
                 s_docVersion = v;
                 s_docLayout = layout;
                 s_docDensity = density;
+                s_docCovers = covers;
             }
             return s_doc;
         }
@@ -287,6 +295,16 @@ public static partial class Sidebar
         Platform.Settings.Set(Platform.Keys.SidebarPaneDensity, (int)density);
     }
 
+    /// <summary>Show covers (Classic): a preference, not a ring edit, like the width. The version bump is what makes the pane
+    /// re-plan; <see cref="SidebarLayoutDoc.SameExceptCollapsed"/> sees the Shape change, so every row re-renders.</summary>
+    public static void SetClassicCovers(bool on)
+    {
+        if (ClassicCovers.Peek() == on) return;
+        ClassicCovers.Value = on;
+        s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
+        Platform.Settings.Set(Platform.Keys.SidebarClassicCovers, on);
+    }
+
     public static void SetLibraryFilter(SidebarLibraryFilter filter)
     {
         LibraryFilter.SetIfChanged(filter);
@@ -294,7 +312,7 @@ public static partial class Sidebar
     }
 
     /// <summary>"Reset everything" (design C.3): both layouts and the density back to their defaults (the width too, which
-    /// is a preference, not a ring edit) — ONE batch under ONE toast "Sidebar reset · Undo". Pins untouched.</summary>
+    /// is a preference, not a ring edit), and Show covers off — ONE batch under ONE toast "Sidebar reset · Undo". Pins untouched.</summary>
     public static void ResetEverythingRecorded()
     {
         var classicBefore = State.Of(SidebarLayoutId.Classic);
@@ -304,6 +322,7 @@ public static partial class Sidebar
         ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library)));
         SetDensityUnrecorded(SidebarDensity.Default);
         SetExpandedWidth(SidebarPaneBounds.DefaultWidth);
+        SetClassicCovers(false);
         string label = Loc.Get("sidebar.undo.label.resetEverything");
         Record(SidebarUndoEntry.Batch(Layout.Peek(), label,
         [

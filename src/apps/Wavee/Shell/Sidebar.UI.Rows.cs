@@ -67,9 +67,10 @@ public static partial class Sidebar
         public bool Selected;
         /// <summary>False dims to 0.3 and drops the ramp (missing entity / unavailable action retention).</summary>
         public bool Enabled;
-        /// <summary>Nesting depth: 32 DIP per level, capped at 3.</summary>
+        /// <summary>Nesting depth: 32 DIP per level, capped at 3 (a Text row adds its label x on top of the indent).</summary>
         public int Depth;
-        /// <summary>The section's ONE row shape (height, art size, subtitle line).</summary>
+        /// <summary>The section's ONE row shape (height, art size, subtitle line). A Text row has no icon column: its label sits
+        /// at the header's x (pane 16) and it draws no art, glyph or subtitle.</summary>
         public SidebarRowShape Shape;
         /// <summary>A compact-rail tile (P2): 40 wide, icon only, the label as tooltip.</summary>
         public bool Tile;
@@ -184,6 +185,9 @@ public static partial class Sidebar
             // Icon colour = label colour in every state (NVX:425-427): TextPrimary, a disabled row fades as a whole.
             var ink = spec.Ink ?? Tok.TextPrimary;
 
+            // A Text row (Classic, Show covers off) has no icon column and no LabelGap: its label starts at the header's x.
+            bool textOnly = spec.Shape == SidebarRowShape.Text;
+
             // ── the icon column: 40 wide, the glyph (16) or art centred at slot x 20 ──
             Element visual = spec.Leading
                 ?? (spec.Glyph is { Length: > 0 } g ? Icon(g, SidebarRowGeometry.GlyphSize, ink) : new BoxEl { Width = art, Height = art });
@@ -241,8 +245,11 @@ public static partial class Sidebar
             // The check lane is a gapless sibling BEFORE the icon column: while the checks show it pushes the whole row
             // right (WinUI's multi-select content offset) instead of crushing the 40-px column.
             if (spec.CheckLane is { } lane) kids.Add(lane);
-            kids.Add(iconColumn);
-            kids.Add(new BoxEl { Width = SidebarRowGeometry.LabelGap, Shrink = 0f });
+            if (!textOnly)
+            {
+                kids.Add(iconColumn);
+                kids.Add(new BoxEl { Width = SidebarRowGeometry.LabelGap, Shrink = 0f });
+            }
             kids.Add(text);
             if (trailingCount > 0)
             {
@@ -285,7 +292,8 @@ public static partial class Sidebar
                 ZStack = overflow,
                 Direction = 0, Height = height, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
-                Padding = new Edges4(SidebarRowGeometry.IndentFor(spec.Depth), 0f, chevron ? 0f : SidebarRowGeometry.TrailingPad, 0f),
+                Padding = new Edges4(SidebarRowGeometry.IndentFor(spec.Depth) + (textOnly ? SidebarRowGeometry.TextLabelX : 0f), 0f,
+                    chevron ? 0f : SidebarRowGeometry.TrailingPad, 0f),
                 Corners = Radii.ControlAll,
                 Children = rowChildren,
             };
@@ -821,6 +829,15 @@ public static partial class Sidebar
             bool subtitle = shape == SidebarRowShape.EntityTwoLine;
             float height = float.IsNaN(heightOverride) ? SidebarRowGeometry.HeightOf(shape) : heightOverride;
             float art = float.IsNaN(artOverride) ? SidebarRowGeometry.ArtOf(shape) : artOverride;
+            if (shape == SidebarRowShape.Text)
+                // A Text row has no icon column: one bar at the header's x (pane 16), the row's own trailing pad.
+                return new BoxEl
+                {
+                    Direction = 0, Height = height, AlignItems = FlexAlign.Center,
+                    Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
+                    Padding = new Edges4(SidebarRowGeometry.TextLabelX, 0f, SidebarRowGeometry.TrailingPad, 0f),
+                    Children = [new BoxEl { Direction = 1, Grow = 1f, Children = [Bar(140f, 12f)] }],
+                };
             Element text = subtitle
                 ? new BoxEl { Direction = 1, Grow = 1f, Gap = 4f, Children = [Bar(140f, 12f), Bar(80f, 10f)] }
                 : new BoxEl { Direction = 1, Grow = 1f, Children = [Bar(140f, 12f)] };

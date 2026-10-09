@@ -252,6 +252,8 @@ public static partial class Sidebar
             bool reordering = _o.TryBandOf(index, out _);
             var (playing, animated) = _o.RowPlayState(index);
             var shape = section.Shape;
+            // A Text section (Classic, Show covers off) is text-only: no cover and no route glyph, so a route pin is text too.
+            bool textOnly = shape == SidebarRowShape.Text;
             float height = SidebarRowGeometry.HeightOf(shape);
 
             var snapshot = entry;   // an `in` parameter cannot be captured — copy the record struct for the closures
@@ -302,8 +304,8 @@ public static partial class Sidebar
                 Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
                 ArtSize = SidebarRowGeometry.ArtOf(shape),
                 Ink = placeholderTitle || unavailable ? Tok.TextTertiary : null,
-                Leading = routeGlyph ? null : Cover.ForEntry(in snapshot, SidebarRowGeometry.ArtOf(shape)),
-                Glyph = routeGlyph ? Shell.Dest(Shell.Parse(entry.Id)).Glyph : null,
+                Leading = routeGlyph || textOnly ? null : Cover.ForEntry(in snapshot, SidebarRowGeometry.ArtOf(shape)),
+                Glyph = routeGlyph && !textOnly ? Shell.Dest(Shell.Parse(entry.Id)).Glyph : null,
                 // The warning mark is the unavailable pin's trailing mark, so it shows in every row shape.
                 Trailing = unavailable ? Icon(Icons.Warning, 12f, Tok.TextTertiary) : TrailingBadge(section, in snapshot),
                 Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
@@ -389,7 +391,7 @@ public static partial class Sidebar
                 Shape = shape,
                 Height = height,
                 ArtSize = art,
-                Leading = Cover.Folder(art, expanded),
+                Leading = shape == SidebarRowShape.Text ? null : Cover.Folder(art, expanded),
                 // A pinned folder shows the mark LEFT of its chevron (Library's depth-0 pins; §P5.6). Its IsPinned is not a
                 // rootlist fact, so the folder's own state never enters the rule.
                 Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
@@ -433,7 +435,7 @@ public static partial class Sidebar
                 Shape = section.Shape,
                 Height = height,
                 ArtSize = art,
-                Leading = Cover.Folder(art, expanded: false),
+                Leading = section.Shape == SidebarRowShape.Text ? null : Cover.Folder(art, expanded: false),
                 Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
                 Overflow = menu is not null,
                 MenuOverlay = _o.MenuOverlay,

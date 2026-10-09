@@ -1093,7 +1093,13 @@ public static partial class Sidebar
         {
             _sections.Clear();
             var sections = Doc.Sections;
-            for (int i = 0; i < sections.Count; i++) _sections[sections[i].Id] = sections[i];
+            // The compact rail keeps its density tiles in every layout. CompactPlan is assigned before RebuildIndex in the publish path.
+            for (int i = 0; i < sections.Count; i++)
+            {
+                var s = sections[i];
+                if (CompactPlan) s = SidebarSection.ForRail(s, Doc.Density);
+                _sections[s.Id] = s;
+            }
 
             _bands.Clear();
             RebuildTreeSelectionOrder(plan);

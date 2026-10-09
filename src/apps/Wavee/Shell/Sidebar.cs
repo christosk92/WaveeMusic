@@ -330,6 +330,8 @@ public enum SidebarRowShape : byte
     EntityTwoLine = 1,
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
+    /// <summary>Classic with Show covers off: 28 tall, no icon column, the label at the header's x (pane 16), one line.</summary>
+    Text = 3,
 }
 
 /// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
@@ -355,8 +357,12 @@ public static class SidebarRowGeometry
     // ── rows ──
     public const float RowHeight = 36f;
     public const float TwoLineRowHeight = 40f;
+    /// <summary>A Classic text row (Show covers off): 28 tall, the label only.</summary>
+    public const float TextRowHeight = 28f;
     public const float IconColumn = 40f;
     public const float GlyphSize = 16f;
+    /// <summary>A Classic text row's label x: the header's text x in slot space (pane 16).</summary>
+    public const float TextLabelX = HeaderTextX;
     /// <summary>The ContentPresenter's 4-px left margin between the icon column and the label (TR:251).</summary>
     public const float LabelGap = 4f;
     /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
@@ -397,10 +403,14 @@ public static class SidebarRowGeometry
     // ── the pill ──
     public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
 
-    public static float HeightOf(SidebarRowShape shape)
-        => shape == SidebarRowShape.EntityTwoLine ? TwoLineRowHeight : RowHeight;
+    public static float HeightOf(SidebarRowShape shape) => shape switch
+    {
+        SidebarRowShape.EntityTwoLine => TwoLineRowHeight,
+        SidebarRowShape.Text => TextRowHeight,
+        _ => RowHeight,
+    };
 
-    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40).</summary>
+    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40 / 32).</summary>
     public static float PitchOf(SidebarRowShape shape) => HeightOf(shape) + 2f * RowMarginY;
 
     /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact).</summary>
@@ -408,6 +418,7 @@ public static class SidebarRowGeometry
     {
         SidebarRowShape.Glyph => GlyphSize,
         SidebarRowShape.EntityTwoLine => 32f,
+        SidebarRowShape.Text => 0f,
         _ => 24f,
     };
 

@@ -65,6 +65,16 @@ public sealed class SidebarRowGeometryTests
     }
 
     [Fact]
+    public void Text_Is28_Pitch32_NoArt()
+    {
+        Assert.Equal(28f, SidebarRowGeometry.HeightOf(SidebarRowShape.Text));
+        Assert.Equal(32f, SidebarRowGeometry.PitchOf(SidebarRowShape.Text));
+        Assert.Equal(0f, SidebarRowGeometry.ArtOf(SidebarRowShape.Text));
+        Assert.Equal(16f, SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TextLabelX);   // the label sits at the header's x
+        Assert.True(SidebarRowGeometry.RowButton < SidebarRowGeometry.TextRowHeight);     // a folder's + fits inside the row
+    }
+
+    [Fact]
     public void Caret_StartsWhereThePillDoes() => Assert.Equal(SidebarRowGeometry.PillX(2), SidebarRowGeometry.TreeContentX(2));
 
     [Fact]
