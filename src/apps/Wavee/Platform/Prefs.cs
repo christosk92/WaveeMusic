@@ -48,7 +48,7 @@ public static partial class Prefs
     /// <summary>The cross-surface APPEARANCE epoch. Settings writes bump it once so mounted and KeepAlive-parked
     /// player/detail/artist surfaces re-read their persisted appearance flags on the same frame.
     ///
-    /// <para>WHAT BUMPS IT: marquee text, colour washes, row density, hide-track-artwork, track list style, the animated
+    /// <para>WHAT BUMPS IT: marquee text, the three colour-wash settings, row density, hide-track-artwork, track list style, the animated
     /// lyrics backdrop, the liked-cover treatment, and the daylist clock. WHAT DOES NOT: the THEME (the engine's own epoch re-themes every
     /// mounted render in place) and the ZOOM (the host folds it into the window scale, which relayouts everything
     /// anyway).</para></summary>
@@ -76,13 +76,31 @@ public static partial class Prefs
             return Platform.Settings.Get(Platform.Keys.MarqueeEnabled);
         }
 
-        /// <summary>Reactive read of the colour-wash master switch. FALSE means every tone plane, hero wash, artist
-        /// blend and shell tint binder takes its <c>disabled</c> arm and paints NOTHING — on the already-open page, with
-        /// no restart and no navigation.</summary>
-        public static bool ColorWashes()
+        /// <summary>Reactive read of the tinted-surfaces level. <see cref="WashLevel.Off"/> means every tone plane, hero
+        /// wash, artist blend and shell tint binder takes its <c>disabled</c> arm and paints NOTHING, on the already-open
+        /// page, with no restart and no navigation.</summary>
+        public static WashLevel SurfaceWash()
         {
             _ = Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.ColorWashesEnabled);
+            return ColorWashRules.Level(Platform.Settings.Get(Platform.Keys.WashSurfaces),
+                Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
+        }
+
+        /// <summary>Reactive read of "accent from artwork": may a page take its accent colour from the cover art?</summary>
+        public static bool AccentFromArtwork()
+        {
+            _ = Epoch.Value;
+            return ColorWashRules.Flag(Platform.Settings.Get(Platform.Keys.WashAccent),
+                Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
+        }
+
+        /// <summary>Reactive read of "now-playing colours": may the lyrics pill and the Verse ghosts take the playing
+        /// track's colours?</summary>
+        public static bool NowPlayingColors()
+        {
+            _ = Epoch.Value;
+            return ColorWashRules.Flag(Platform.Settings.Get(Platform.Keys.WashNowPlaying),
+                Platform.Settings.Get(Platform.Keys.ColorWashesEnabled));
         }
 
         /// <summary>Reactive read of the row-density rung (0 Compact · 1 Default · 2 Cozy · 3 Comfortable), clamped.
@@ -328,4 +346,42 @@ public static partial class Prefs
         PlayerBar.Bump();
         Stage.Bump();
     }
+}
+
+/// <summary>How much colour the tinted surfaces paint. Stored as the int 0 / 1 / 2 in <c>appearance.wash.surfaces</c>.</summary>
+public enum WashLevel : byte
+{
+    Off = 0,
+    Subtle = 1,
+    Rich = 2,
+}
+
+/// <summary>The colour-wash settings' migration rule, pure so the tests can pin it without a store.
+///
+/// <para>The migration happens at READ time, not at boot: the settings store has no "does this key exist" probe, so the
+/// three new keys default to <see cref="Unset"/> (-1) and fall back to the legacy <c>appearance.colorWashes.enabled</c>.
+/// An explicit write always wins. A stray value outside 0..2 (a hand-edited store, a newer build) also falls back to the
+/// legacy answer, never to a crash.</para></summary>
+public static class ColorWashRules
+{
+    /// <summary>The "never written" value of the three wash keys.</summary>
+    public const int Unset = -1;
+
+    /// <summary>The surfaces level. An unset or out-of-range value answers from the legacy switch: TRUE is Subtle, FALSE is Off.</summary>
+    public static WashLevel Level(int stored, bool legacyEnabled) => stored switch
+    {
+        0 => WashLevel.Off,
+        1 => WashLevel.Subtle,
+        2 => WashLevel.Rich,
+        _ => legacyEnabled ? WashLevel.Subtle : WashLevel.Off,
+    };
+
+    /// <summary>An On/Off wash flag (accent from artwork, now-playing colours). An unset or out-of-range value answers
+    /// from the legacy switch.</summary>
+    public static bool Flag(int stored, bool legacyEnabled) => stored switch
+    {
+        0 => false,
+        1 => true,
+        _ => legacyEnabled,
+    };
 }

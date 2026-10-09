@@ -239,7 +239,7 @@ public static partial class Profile
             UseEffect(_resolveSpy);
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
 
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
 
             _ = _layoutEpoch.Value;
             _width = MathF.Max(1f, _heroWidth.Value);

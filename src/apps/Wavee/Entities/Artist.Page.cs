@@ -292,7 +292,7 @@ public readonly partial struct Artist
             UseEffect(_resolveSpy);                                       // the scroll spy
 
             // ch 08 §6's settings, each subscribing the appearance epoch.
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
             _classic = Prefs.Appearance.TrackRowStyle() == 1;
             _showArtwork = !Prefs.Appearance.TrackArtworkHidden();
 

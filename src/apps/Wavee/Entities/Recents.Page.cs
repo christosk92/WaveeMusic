@@ -247,7 +247,7 @@ public readonly partial struct Recents
             _owners = () => new OwnerDemand(this);
         }
 
-        /// <summary>The accent before any cover grades, with washes off, or with no source row: byte-identical to what
+        /// <summary>The accent before any cover grades, with accent from artwork off, or with no source row: byte-identical to what
         /// every consumer painted before the page had a dynamic accent (§4.1).</summary>
         internal static Design.PageAccent Fallback() => new(Tok.AccentTextPrimary, Tok.AccentDefault, "");
 
@@ -1159,7 +1159,8 @@ public readonly partial struct Recents
         public override Element Render()
         {
             var slot = UseContext(ShellMaterial.Slot);
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
+            bool artAccent = Prefs.Appearance.AccentFromArtwork();
             _ = Entities.ScopeEpoch.Value;
             _ = page.AccentDay.Value;
             _ = page.ShapeEpoch.Value;
@@ -1174,7 +1175,7 @@ public readonly partial struct Recents
             string? url = target.Slot > 0 ? FactsOf(target).Cover : null;
 
             var resolved = PageView.Fallback();
-            if (washes && url is { Length: > 0 })
+            if (artAccent && url is { Length: > 0 })
             {
                 _ = Palette.Watch(url).Value;
                 if (Design.ChromeSchemeFor(url) is { } scheme)
@@ -1202,7 +1203,7 @@ public readonly partial struct Recents
                 claimed.Value = true;
             }, DepKey.From(HashCode.Combine(washes, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
             UseActivation(onActivated: () => ShellMaterial.Publish(slot, page.WashOwner, isClaim: true,
-                definite: !Prefs.Appearance.ColorWashes(), tint: null, page.LastWash));
+                definite: Prefs.Appearance.SurfaceWash() == WashLevel.Off, tint: null, page.LastWash));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
         }
     }

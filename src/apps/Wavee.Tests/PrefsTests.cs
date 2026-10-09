@@ -39,9 +39,45 @@ public sealed class PrefsTests : IDisposable
         // The epoch caches NOTHING. A value written behind the epoch's back (a settings import, a second window) is
         // still what the next read returns.
         _store.Set(Platform.Keys.ColorWashesEnabled, false);
-        Assert.False(Prefs.Appearance.ColorWashes());
+        Assert.Equal(WashLevel.Off, Prefs.Appearance.SurfaceWash());
         _store.Set(Platform.Keys.ColorWashesEnabled, true);
-        Assert.True(Prefs.Appearance.ColorWashes());
+        Assert.Equal(WashLevel.Subtle, Prefs.Appearance.SurfaceWash());
+    }
+
+    [Fact]
+    public void Legacy_off_starts_all_three_off()
+    {
+        // An upgrade from the single switch: the three new keys were never written, so the old answer carries over.
+        _store.Set(Platform.Keys.ColorWashesEnabled, false);
+        Assert.Equal(WashLevel.Off, Prefs.Appearance.SurfaceWash());
+        Assert.False(Prefs.Appearance.AccentFromArtwork());
+        Assert.False(Prefs.Appearance.NowPlayingColors());
+    }
+
+    [Fact]
+    public void Defaults_are_subtle_and_on()
+    {
+        Assert.Equal(WashLevel.Subtle, Prefs.Appearance.SurfaceWash());
+        Assert.True(Prefs.Appearance.AccentFromArtwork());
+        Assert.True(Prefs.Appearance.NowPlayingColors());
+    }
+
+    [Fact]
+    public void An_explicit_write_beats_the_legacy_key()
+    {
+        _store.Set(Platform.Keys.ColorWashesEnabled, false);
+        _store.Set(Platform.Keys.WashSurfaces, 2);
+        _store.Set(Platform.Keys.WashAccent, 1);
+        Assert.Equal(WashLevel.Rich, Prefs.Appearance.SurfaceWash());
+        Assert.True(Prefs.Appearance.AccentFromArtwork());
+    }
+
+    [Fact]
+    public void ColorWashRules_out_of_range_falls_back()
+    {
+        Assert.Equal(WashLevel.Subtle, ColorWashRules.Level(7, true));
+        Assert.Equal(WashLevel.Off, ColorWashRules.Level(-1, false));
+        Assert.False(ColorWashRules.Flag(5, false));
     }
 
     [Fact]

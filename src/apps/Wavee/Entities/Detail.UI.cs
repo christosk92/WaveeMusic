@@ -666,7 +666,7 @@ public static partial class Detail
             var cfg = spec.Config;
 
             // ── preferences (each subscribes its epoch, then re-reads the store) ──
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
             int pageLayout = Prefs.DetailHero.PageLayout();
             bool uniform = Prefs.DetailHero.RailUniform();
             int railEpoch = Prefs.DetailHero.Epoch.Value;

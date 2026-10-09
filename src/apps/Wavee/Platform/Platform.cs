@@ -140,8 +140,15 @@ public static partial class Platform
         /// <summary>TRUE (the default) scrolls overflowing text; FALSE truncates. Renamed from the negative DisableMarquee
         /// (no migration — pre-1.0, cosmetic).</summary>
         public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);
-        /// <summary>FALSE keeps the neutral surface: every tone plane / wash / tint binder paints nothing.</summary>
+        /// <summary>LEGACY. FALSE kept the neutral surface. Read only as the fallback for the three wash keys below while
+        /// they are unset (-1), and never written again.</summary>
         public static readonly SettingKey<bool> ColorWashesEnabled = new("appearance.colorWashes.enabled", true);
+        /// <summary>-1 unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On · 2 Rich (surfaces only).</summary>
+        public static readonly SettingKey<int> WashSurfaces = new("appearance.wash.surfaces", -1);
+        /// <summary>-1 unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
+        public static readonly SettingKey<int> WashAccent = new("appearance.wash.accent", -1);
+        /// <summary>-1 unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
+        public static readonly SettingKey<int> WashNowPlaying = new("appearance.wash.nowPlaying", -1);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>

@@ -495,9 +495,8 @@ public sealed class HomeScreen : Component
         }
         var shellSlot = UseContext(ShellMaterial.Slot);
         uint payload = WashPick.Pick(accent, 0, 0);
-        // Every detail-shaped page must mount ONE of these or the window chrome stays neutral while the page is
-        // coloured (Palette.Host.cs's own doc comment) — the 0-size leaf lives in the tree, never discarded.
-        return Palette.ShellTint(url, ready: url is { Length: > 0 }, disabled: false, apply: true,
+        // Surfaces Off publishes the definite neutral claim, like every detail page.
+        return Palette.ShellTint(url, ready: url is { Length: > 0 }, disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off, apply: true,
             owner: _tintOwner, slot: shellSlot, key: "home-tint", payloadAccent: payload);
     }
 }
