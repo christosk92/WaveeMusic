@@ -38,15 +38,30 @@ public sealed class SidebarRowGeometryTests
     }
 
     [Theory]
-    [InlineData(0, 0f)] [InlineData(1, 31f)] [InlineData(3, 93f)] [InlineData(7, 93f)] [InlineData(-1, 0f)]
-    public void Indent_Is31PerLevel_CappedAt3(int depth, float expected) => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
+    [InlineData(0, 0f)] [InlineData(1, 32f)] [InlineData(3, 96f)] [InlineData(7, 96f)] [InlineData(-1, 0f)]
+    public void Indent_Is32PerLevel_CappedAt3(int depth, float expected) => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
 
     [Fact]
     public void Pill_StartsAtTheIndent_CentredBelowTheMargin()
     {
-        Assert.Equal(31f, SidebarRowGeometry.PillX(1));
+        Assert.Equal(32f, SidebarRowGeometry.PillX(1));
         Assert.Equal(12f, SidebarRowGeometry.PillTop(36f));     // 2 + (36 − 16) / 2
         Assert.Equal(14f, SidebarRowGeometry.PillTop(40f));
+    }
+
+    [Fact]
+    public void Chrome_TopInset4_SeparatorLine4_HeaderButton28()
+    {
+        Assert.Equal(4f, SidebarRowGeometry.PaneTopInset);
+        Assert.Equal(4f, SidebarRowGeometry.SeparatorLineTop);
+        Assert.Equal(28f, SidebarRowGeometry.HeaderButton);
+        Assert.Equal(SidebarLibraryHeadRules.ToolbarIconButton, SidebarRowGeometry.HeaderButton);
+        Assert.Equal(16f, SidebarRowGeometry.HeaderGlyph);
+        Assert.Equal(16f, SidebarRowGeometry.PlusGlyph);
+        Assert.Equal(24f, SidebarRowGeometry.RowButton);
+        Assert.True(SidebarRowGeometry.RowButton <= 28f);   // fits inside Classic's 28-px text row
+        Assert.Equal(16f, SidebarRowGeometry.HeaderTextPaneX);
+        Assert.Equal(296f, 320f - SidebarRowGeometry.PaneEdge - SidebarRowGeometry.HeaderTrailingPad - SidebarRowGeometry.HeaderButton / 2f);
     }
 
     [Fact]

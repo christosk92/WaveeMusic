@@ -859,7 +859,7 @@ public static partial class Sidebar
                     case SidebarLibraryHeadRules.HeadTabStop.Create:
                         kids.Add(Embed.Comp(() => new CreateButton(s.CreatePlaylist, menu: s.CreateMenuFn,
                             drop: s.PaneRef?.HeaderCreateDropSpec(), dropActive: s.HeaderDropActiveFn,
-                            box: SidebarLibraryHeadRules.ToolbarControl, glyph: 14f)) with { Key = "lib-create" });
+                            box: SidebarLibraryHeadRules.ToolbarControl, glyph: SidebarRowGeometry.PlusGlyph)) with { Key = "lib-create" });
                         break;
                     case SidebarLibraryHeadRules.HeadTabStop.More:
                         kids.Add(ToolTip.Wrap(IconButton.Create(Icons.More, () => OpenOptions(moreAnchor.Value, filter), parts: moreParts,
@@ -872,7 +872,8 @@ public static partial class Sidebar
             {
                 Key = "library-toolbar", Direction = 0, Height = SidebarLibraryHeadRules.ToolbarHeight, Shrink = 0f,
                 AlignItems = FlexAlign.Center, Gap = SidebarLibraryHeadRules.ToolbarGap,
-                Padding = new Edges4(SidebarLibraryHeadRules.BandInsetX - SidebarRowGeometry.PaneEdge, 4f, 0f, 4f),
+                Padding = new Edges4(SidebarLibraryHeadRules.ToolbarInsetLeft - SidebarRowGeometry.PaneEdge, 4f,
+                                     SidebarLibraryHeadRules.ToolbarInsetRight - SidebarRowGeometry.PaneEdge, 4f),
                 Children = [.. kids],
             };
         }

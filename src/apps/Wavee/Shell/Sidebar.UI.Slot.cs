@@ -145,7 +145,7 @@ public static partial class Sidebar
                 create = Embed.Comp(() => new CreateButton(
                     owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
                     dropActive: () => owner.HeaderCreateDropActive.Value,
-                    box: SidebarRowGeometry.HeaderButton, glyph: 12f)) with { Key = "tree-create" };
+                    box: SidebarRowGeometry.HeaderButton, glyph: SidebarRowGeometry.PlusGlyph)) with { Key = "tree-create" };
             if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu)
                 more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast)
                     .WithContextMenu(svc, menu) with { ClickRequestsContext = true }, Loc.Get(PaneLoc.SectionOptions));
@@ -324,7 +324,7 @@ public static partial class Sidebar
                 + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null || spec.Pinned || playing));
             Element built = EntityRow.Create(in spec);
             if (track) built = EntityRow.WithPlayTrackHint(built);
-            // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
+            // The pill stays in the row's own indent (32 per depth level), never the drop caret's gutter.
             return Indicator(Tipped(built, spec.LabelTooltip, label), selected, IndentOf(in row), height, route);
         }
 
@@ -635,12 +635,12 @@ public static partial class Sidebar
                     return owner.TreeSelection.Contains(entryId);
                 },
                 interact: (_, _) => owner.ToggleTreeSelection(entryId),
-                // The row owns its own left inset (the 31-px depth ladder), so the lane adds none.
+                // The row owns its own left inset (the 32-px depth ladder), so the lane adds none.
                 leftMargin: 0f);
         }
 
         /// <summary>A folder row's trailing slot: the quiet count (the Playlists section), then the folder's own "+"
-        /// (20 box, glyph 12) — the count is the fact, the "+" the verb. The "+" is keyed inside a row keyed by the entry,
+        /// (24 box, glyph 16) — the count is the fact, the "+" the verb. The "+" is keyed inside a row keyed by the entry,
         /// so it remounts when this slot recycles onto another folder, which is what makes capturing the folder id in its
         /// factory safe.</summary>
         Element? FolderTrailing(SidebarSection section, in SidebarLibraryEntry entry, string folderId, bool rootlistItem)
@@ -658,7 +658,7 @@ public static partial class Sidebar
                 drop: owner.FolderCreateDropSpec(folderId, name, active),
                 dropActive: () => active.Value,
                 revealOpacity: reveal,
-                box: 20f, glyph: 12f)) with { Key = "folder-create" };
+                box: SidebarRowGeometry.RowButton, glyph: SidebarRowGeometry.PlusGlyph)) with { Key = "folder-create" };
             return plus;
         }
 

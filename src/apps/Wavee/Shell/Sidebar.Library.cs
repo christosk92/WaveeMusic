@@ -42,9 +42,11 @@ public static class SidebarLibraryHeadRules
     public const float TitleX = 16f;
     public const float TitleHitInset = 8f;
     public const float TitleChevron = 10f;
-    /// <summary>The chip row's and the toolbar's lead/trail inset in pane space (the chips' first edge sits under the title).</summary>
-    public const float BandInsetX = 12f;
-    /// <summary>The whole head above the list: 3 (top inset) + 40 + 8 + 40 + 40 + 40 + 1 = 172.</summary>
+    /// <summary>The chip row's lead/trail inset in pane space: the chips' first edge sits under the title's x.</summary>
+    public const float BandInsetX = 16f;
+    /// <summary>The toolbar's lead and trail inset in pane space: the 28-px search button centres on x 24 and the 28-px ⋯ on W − 24.</summary>
+    public const float ToolbarInsetLeft = 10f, ToolbarInsetRight = 10f;
+    /// <summary>The whole head above the list: 4 (top inset) + 40 + 8 + 40 + 40 + 40 + 1 = 173.</summary>
     public const float HeadHeight = SidebarRowGeometry.PaneTopInset + HomeRowHeight + SeparatorHeight + DropdownRowHeight
                                     + ChipRowHeight + ToolbarHeight + RuleHeight;
 
@@ -156,8 +158,8 @@ public static class SidebarLibraryHeadRules
     /// control that gets clipped.</summary>
     public enum ToolbarShape : byte { Full = 0, IconSort = 1, Folded = 2 }
 
-    /// <summary>The toolbar's content lane: the pane minus the head's 4+4 pad and the toolbar's own lead inset (8).</summary>
-    public static float ToolbarLane(float paneWidth) => paneWidth - 2f * SidebarRowGeometry.PaneEdge - (BandInsetX - SidebarRowGeometry.PaneEdge);
+    /// <summary>The toolbar's content lane: the pane less its two pane-space insets (10 + 10).</summary>
+    public static float ToolbarLane(float paneWidth) => paneWidth - ToolbarInsetLeft - ToolbarInsetRight;
 
     /// <summary>The summed control widths plus gaps for a shape (the spacer is 0 at the minimum). The label is measured
     /// with the row label's estimate (<see cref="SidebarLabelFit.AverageCharWidth"/>).</summary>

@@ -334,8 +334,8 @@ public enum SidebarRowShape : byte
 
 /// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
 /// a 4,2 margin (TR:217, TR:228), a 40-px icon column whose centre sits at pane x 24 (TR:612), the label at pane x 48
-/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 31-px
-/// folder indents (NavigationViewItemBase.h:63) and the 3×16 r2 pill at slot x 31·depth (TR:220-222). Numbers are SLOT
+/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 32-px
+/// folder indents (WinUI's 31, rounded to the 8-px grid) and the 3×16 r2 pill at slot x 32·depth (TR:220-222). Numbers are SLOT
 /// space (the list's one 4-px inset is <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
 public static class SidebarRowGeometry
 {
@@ -344,7 +344,7 @@ public static class SidebarRowGeometry
     /// (<c>PaneMetrics.PanePad</c>), never per row.</summary>
     public const float PaneEdge = 4f;
     /// <summary>The pane content grid's top margin (TR:233's −1,3 with the −1 dropped: no content border to tuck under).</summary>
-    public const float PaneTopInset = 3f;
+    public const float PaneTopInset = 4f;
     /// <summary>The vertical half of the 4,2 item margin, carried by every row.</summary>
     public const float RowMarginY = 2f;
     /// <summary>The compact rail (TR:208 NavigationViewCompactPaneLength).</summary>
@@ -363,20 +363,32 @@ public static class SidebarRowGeometry
     public const float TrailingPad = 14f;
     /// <summary>The chevron column (TR:617): its −14 margin cancels <see cref="TrailingPad"/>.</summary>
     public const float ChevronColumn = 40f;
-    public const float IndentStep = 31f;
+    public const float IndentStep = 32f;
     public const int MaxIndentDepth = 3;
     /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
     public const float TrailingGap = 6f;
 
     // ── chrome rows ──
     public const float HeaderHeight = 40f;
-    /// <summary>The header title's x: pane 16 (TR:229's 16,0) less <see cref="PaneEdge"/>.</summary>
+    /// <summary>The header title's x: pane 16 (TR:229's 16,0) less <see cref="PaneEdge"/>. Slot space: it already draws at pane 16.</summary>
     public const float HeaderTextX = 12f;
-    /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
-    public const float HeaderButton = 24f;
+    /// <summary>The header title's x in pane space (16), the ruler the tests pin.</summary>
+    public const float HeaderTextPaneX = PaneEdge + HeaderTextX;
+    /// <summary>A header's inline button (⋯, +, and the footer ⋯): a 28×28 box carrying a 16 glyph, the same as
+    /// <c>SidebarLibraryHeadRules.ToolbarIconButton</c>. The chevron keeps its own glyph size.</summary>
+    public const float HeaderButton = 28f;
+    /// <summary>The glyph inside a header's inline button and every '+' glyph.</summary>
+    public const float HeaderGlyph = 16f;
+    /// <summary>Every '+' glyph (a header's create, the Library toolbar's create, a folder row's +).</summary>
+    public const float PlusGlyph = 16f;
+    /// <summary>A row's own trailing button (the folder +): 24 so it fits inside every row shape, including Classic's
+    /// 28-px text row.</summary>
+    public const float RowButton = 24f;
+    /// <summary>6: a header's or the footer's last 28-px button centres on pane W − 24, the chevron column's centre.</summary>
+    public const float HeaderTrailingPad = (ChevronColumn - HeaderButton) * 0.5f;
     /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
     public const float SeparatorHeight = 8f;
-    public const float SeparatorLineTop = 3f;
+    public const float SeparatorLineTop = 4f;
     /// <summary>A quiet one-line hint (an empty Playlists, a search with no match): 40 tall in the 4,2 margin.</summary>
     public const float EmptyHintHeight = 40f;
     /// <summary>The tree's closing drop gutter.</summary>
@@ -401,11 +413,11 @@ public static class SidebarRowGeometry
 
     public static int ClampDepth(int depth) => depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
 
-    /// <summary>The content indent for a nesting depth: 31 per level, capped at 3 (93). The FILL stays full width; only
+    /// <summary>The content indent for a nesting depth: 32 per level, capped at 3 (96). The FILL stays full width; only
     /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
     public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
 
-    /// <summary>The pill's x in slot space (pane 4 + 31·depth).</summary>
+    /// <summary>The pill's x in slot space (pane 4 + 32·depth).</summary>
     public static float PillX(int depth) => IndentFor(depth);
 
     /// <summary>The pill's y inside a slot whose row is <paramref name="rowHeight"/> tall: centred on the row, below its
@@ -1449,7 +1461,7 @@ public static class RootlistSlotResolver
         if (min >= max) return max;
         if (!float.IsFinite(xInRow)) return max;
 
-        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (31 per level
+        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (32 per level
         // from the row origin, the pill's x) — so one step left is one outdent. There is no reserved disclosure cell
         // (the folder chevron is trailing).
         float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.IndentStep;

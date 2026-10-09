@@ -544,17 +544,17 @@ public sealed class SidebarPlanGeometryTests
 {
     // ── 0. THE TREE-CONTENT ORIGIN (the caret's x) ────────────────────────────────────────────────────────────────────
     //
-    // A tree row's content origin is `TreeContentX(depth)` = `IndentFor(depth)`: one 31-DIP level per folder, no gutter
+    // A tree row's content origin is `TreeContentX(depth)` = `IndentFor(depth)`: one 32-DIP level per folder, no gutter
     // and no connector cells. The folder's chevron lives in the row's TRAILING cluster.
 
     [Theory]
     [InlineData(0, 0f)]
-    [InlineData(1, 31f)]
-    [InlineData(2, 62f)]
-    [InlineData(3, 93f)]
-    [InlineData(4, 93f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
+    [InlineData(1, 32f)]
+    [InlineData(2, 64f)]
+    [InlineData(3, 96f)]
+    [InlineData(4, 96f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
     [InlineData(-3, 0f)]
-    public void TreeContentX_IsThirtyOnePerLevelFromTheRowOrigin(int depth, float expected)
+    public void TreeContentX_IsThirtyTwoPerLevelFromTheRowOrigin(int depth, float expected)
     {
         Assert.Equal(expected, SidebarRowGeometry.TreeContentX(depth), 3);
         // …and it IS a sum of the named constants, not a literal that happens to match.
@@ -587,10 +587,10 @@ public sealed class SidebarPlanGeometryTests
     [Theory]
     [InlineData(-1, 0f)]
     [InlineData(0, 0f)]
-    [InlineData(1, 31f)]
-    [InlineData(4, 93f)]
-    [InlineData(9, 93f)]   // clamped at three levels
-    public void IndentFor_IsThirtyOnePerLevelClampedAtThree(int depth, float expected)
+    [InlineData(1, 32f)]
+    [InlineData(4, 96f)]
+    [InlineData(9, 96f)]   // clamped at three levels
+    public void IndentFor_IsThirtyTwoPerLevelClampedAtThree(int depth, float expected)
         => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
 
     // ── 2. pure plan geometry ────────────────────────────────────────────────────────────────────────────────────────
@@ -975,7 +975,7 @@ public class SidebarPaneInvariantTests
 
     // ── THE ONE CONTENT LANE ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A NESTED row indents from the row origin, so a depth-1 child sits exactly one 31-DIP level inside it,
+    /// <summary>A NESTED row indents from the row origin, so a depth-1 child sits exactly one 32-DIP level inside it,
     /// and the ladder stops at three levels.</summary>
     [Fact]
     public void NestedRowsIndentOneStepPerLevel()

@@ -258,7 +258,7 @@ public static partial class Sidebar
         public bool Contains(int planIndex) => Count > 0 && planIndex >= Start && planIndex < Start + Count;
     }
 
-    /// <summary>The pane's one inset (the list's 4-px WinUI item margin + the 3-px content-grid top) and the shape of
+    /// <summary>The pane's one inset (the list's 4-px WinUI item margin + the 4-px content-grid top) and the shape of
     /// each section's rows. Every band above or below the list reproduces <see cref="PanePad"/>'s horizontal 4.</summary>
     internal static class PaneMetrics
     {
@@ -625,7 +625,7 @@ public static partial class Sidebar
             if (!_footerMore.IsNull) _hooks?.FocusNode?.Invoke(_footerMore, true);
         }
 
-        /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>
+        /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,4,4,0) around the virtualized list, and nowhere else.</summary>
         Element PaddedList() => new BoxEl
         {
             Key = "plan-pad", Direction = 1, Grow = 1f, Padding = PaneMetrics.PanePad,

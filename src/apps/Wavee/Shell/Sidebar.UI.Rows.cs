@@ -35,7 +35,7 @@ public static partial class Sidebar
     //
     // Classic's rows and Library V3's list rows all come out of EntityRow.Create, so the two layouts cannot drift apart.
     // It owns the neutral NavigationViewItem backplate ramp (`NavRow`: the pill is the
-    // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 31-px depth indent), the slot
+    // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 32-px depth indent), the slot
     // order, the one key handler and the drag source.
 
     /// <summary>Everything <see cref="EntityRow.Create"/> needs: a mutable struct filled with an object initializer and
@@ -67,7 +67,7 @@ public static partial class Sidebar
         public bool Selected;
         /// <summary>False dims to 0.3 and drops the ramp (missing entity / unavailable action retention).</summary>
         public bool Enabled;
-        /// <summary>Nesting depth: 31 DIP per level, capped at 3.</summary>
+        /// <summary>Nesting depth: 32 DIP per level, capped at 3.</summary>
         public int Depth;
         /// <summary>The section's ONE row shape (height, art size, subtitle line).</summary>
         public SidebarRowShape Shape;
@@ -857,7 +857,7 @@ public static partial class Sidebar
 
     /// <summary>The 40-px section header (design V.6): the title at slot x 12 (pane 16), 14 SemiBold TextSecondary, brightening
     /// to TextPrimary on hover (no plate); then the "+" (always, Playlists / Your Library), the ⋯ (revealed on hover, permanent
-    /// after a touch), and the chevron (24×24, always visible, ending at pane W − 4). A click anywhere collapses; the slot root
+    /// after a touch), and the chevron (always visible, centred on pane W − 24). A click anywhere collapses; the slot root
     /// is the roving focus stop (ToggleButton). <paramref name="onToggle"/> null ⇒ a heading with no chevron.</summary>
     internal static class SectionHeader
     {
@@ -883,7 +883,7 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Direction = 0, Height = SidebarRowGeometry.HeaderHeight, AlignItems = FlexAlign.Center, Gap = 0f,
-                Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, 0f, 0f),
+                Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.HeaderTrailingPad, 0f),
                 Role = onToggle is null ? AutomationRole.None : AutomationRole.ToggleButton,
                 Cursor = onToggle is null ? CursorId.Arrow : CursorId.Hand,
                 OnClick = click,
@@ -891,7 +891,7 @@ public static partial class Sidebar
             };
         }
 
-        /// <summary>A header's 24×24 inline button (⋯ / +): consumes its own click, hover plate FillSubtleSecondary.
+        /// <summary>A header's 28×28 inline button (⋯ / +), a 16 glyph: consumes its own click, hover plate FillSubtleSecondary.
         /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). A <see cref="BoxEl"/> so the caller can attach a
         /// context menu; the caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
         public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal)
@@ -902,10 +902,10 @@ public static partial class Sidebar
                 Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = onClick,
                 Opacity = reveal ? 0f : 1f, HoverOpacity = 1f,
                 BlocksDragArm = true,
-                Children = [Icon(glyph, 12f, Tok.TextSecondary)],
+                Children = [Icon(glyph, SidebarRowGeometry.HeaderGlyph, Tok.TextSecondary)],
             }.Interactive(Interaction.Subtle);
 
-        /// <summary>The 8-px separator (TR:223, TR:247): a 1-px StrokeDividerDefault rule at y 3, bleeding over the list's
+        /// <summary>The 8-px separator (TR:223, TR:247): a 1-px StrokeDividerDefault rule at y 4, bleeding over the list's
         /// 4-px inset so it spans the full pane width.</summary>
         public static Element Separator() => new BoxEl
         {
@@ -943,7 +943,7 @@ public static partial class Sidebar
 
         public CreateButton(Action onPlaylist, Func<ContextMenuModel?>? menu = null, DropTargetSpec? drop = null,
                             Func<bool>? dropActive = null, Func<float>? revealOpacity = null, float box = 24f,
-                            float glyph = 14f)
+                            float glyph = SidebarRowGeometry.PlusGlyph)
         {
             _onPlaylist = onPlaylist; _menu = menu; _drop = drop; _dropActive = dropActive;
             _revealOpacity = revealOpacity; _box = box; _glyph = glyph;

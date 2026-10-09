@@ -25,7 +25,7 @@ namespace Wavee;
 public static partial class Sidebar
 {
     /// <summary>THE PANE FOOTER (design V.2): outside the scroller, bottom-anchored, margin 0,0,0,4. Expanded: ONE 40-px
-    /// slot — the Settings row (row A) whose chevron column holds the ⋯ pane button (24×24, tooltip "Sidebar options",
+    /// slot — the Settings row (row A) whose chevron column holds the ⋯ pane button (28×28 with a 16 glyph, tooltip "Sidebar options",
     /// always visible); with Settings hidden only the ⋯, right-aligned. Compact: a Settings tile over a ⋯ tile. The ⋯ is
     /// never hidden: it is the layout-independent entry to the pane menu.</summary>
     internal sealed class PaneFooter(PaneView owner) : Component
@@ -91,13 +91,13 @@ public static partial class Sidebar
                 body = new BoxEl
                 {
                     Direction = 0, Height = SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph), AlignItems = FlexAlign.Center,
-                    Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, (SidebarRowGeometry.ChevronColumn - SidebarRowGeometry.HeaderButton) * 0.5f, 0f),
+                    Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, SidebarRowGeometry.HeaderTrailingPad, 0f),
                     Children = [more],
                 };
             else
                 body = ZStack(settings, pill, new BoxEl
                 {
-                    // The ⋯ sits centred in the Settings row's chevron column (pane W − 44..W − 4).
+                    // The ⋯ sits centred in the Settings row's chevron column (pane W − 44..W − 4), its centre on W − 24.
                     Width = SidebarRowGeometry.ChevronColumn, Height = SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
                     JustifySelf = FlexAlign.End, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                     Children = [more],
