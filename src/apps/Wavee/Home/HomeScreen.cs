@@ -13,25 +13,30 @@
 //   HomeScreen
 //   └─ ZStack [ Palette.ShellTint,
 //      ScrollView (Key/ScrollKey per PUBLISHED facet, Handle = _scroll)
-//        └─ centred column  Gap=XL(20)  MaxWidth=PageMaxW  Padding=(PageWide, XXL(24), PageWide, Dock.Reserve+32)
+//        └─ centred column  Gap=0  MaxWidth=PageMaxW  Padding=(g, 0, g, PageGeometry.BottomReserve), g = Shell.Ui.PageGutter
 //           │                ScrollScope=Facet.PageScope
-//           ├─ FacetRow (Facet.UI.cs: SelectorBar in Design.FacetTitleStyle — the facet words ARE the page title —
-//           │     · Following ToggleButton · busy ProgressBar · failure InfoBar)
-//           │     its band is `.Sticky(Facet.StuckInset, scope: Facet.PageScope)` — transparent, no acrylic
-//           └─ content  `.StickyClip(Facet.StuckBottom)` + EdgeFade(Top, 24) { WhileStuck }   (the Browse masthead idiom)
+//           ├─ FacetRow (Facet.UI.cs): lead (the "Home" title + reserved meta slot) → band (the facet words as the page's
+//           │     VIEWS in Design.PageViewsStyle + Following | the busy ProgressBar; sticky only when NOT hoisted) → gap →
+//           │     failure InfoBar. 164 DIP tall, or the 72-DIP hoisted strip under the Zune band.
+//           └─ content  `.StickyClip(Facet.ContentClipFor(hoisted))` + EdgeFade(Top, 24) { WhileStuck } when not hoisted
 //      (the ScrollView has EdgeCues None: its viewport top feather would fade the pinned rows)
 //                └─ SkelRegionEl(Content: keyed facet column → dim host (Opacity/HitTest binds only) → Zones.Column(model),
 //                                ShimmerSource: Zones.Column(Seed), OnFailed: Controls.Vacancy(Error, retry), Reveal None) ]
 //
-// NO GREETING HEADLINE (owner, seventh pass): the greeting lives only in the daylist card's eyebrow (Daylist.UI.cs).
-// The page column's own gap is the 20-px facet-row → content step; the 40-px rhythm between zones is Zones.Column's.
+// THE HEAD IS THE STANDARD ONE (sidebar rework): the greeting still lives only in the daylist card's eyebrow (Daylist.UI.cs);
+// the page title is "Home" and the facet words are its views, so Home's body top is the same 164 as every TitleViews page.
+// The 40-px rhythm between zones is Zones.Column's.
+//
+// ZUNE: under the Zune nav style the head hoists (PageHead.HoistedFor reads the PRESENTED nav style, which lags the switch
+// by FrameRules.HoistSettleMs): the facet words and Following are PUBLISHED to the band's second row
+// (`PageHead.Publish("home", ...)`), the in-scroll band stops being sticky and the content clip is 0.
 //
 // STICKY WITHOUT A BACKGROUND: the facet band paints nothing (live Mica); the content column under it cuts ITSELF at
-// the band's lower edge (`StickyClip(Facet.StuckBottom)`) with a top feather that arms only while the clip is engaged
-// (`EdgeFadeSpec.WhileStuck`), so content dissolves into the band, is never guillotined, and never softens at rest.
+// the band's lower edge (`StickyClip(Facet.ContentClipFor(false))`) with a top feather that arms only while the clip is
+// engaged (`EdgeFadeSpec.WhileStuck`), so content dissolves into the band, is never guillotined, and never softens at rest.
 // Unlike Browse the band is IN the scroll flow (an in-flow `.Sticky(Facet.StuckInset)` row, 12 below the viewport top),
 // so no spacer is needed above the clipped node: the clip engages exactly when the content's top reaches the pinned
-// band's lower edge. Chapter headers inside `Zones.Column` pin at `Facet.StuckBottom` under this band (Zones.UI.cs).
+// band's lower edge. Chapter headers inside `Zones.Column` pin at `Facet.StuckBottomFor(hoisted)` (Zones.UI.cs).
 //
 // ── FACET HISTORY + DEEP LINK (owner decision, v1) ──
 //   A facet switch calls `Shell.GoTo(new Shell.Route(Shell.RouteKind.Home, arg: FacetRoute.ArgOf(facet), Tab: tab))`.
@@ -83,6 +88,9 @@ public sealed class HomeScreen : Component
     readonly ScrollHandle _scroll = new();
     readonly object _tintOwner = new();
     FacetRowProps? _rowProps;                             // built once: its delegates read _tab, never a render-time capture
+    IReadSignal<bool>? _active;                           // whether this Home is the one on screen (a parked Home must not publish)
+    Action<int>? _onView;                                 // the Zune band's word click (cached: a new delegate is not a new publication)
+    Func<Element>? _followingFactory;                     // the Zune band's Following builder (cached for the same reason)
     int _tab;
     LoadState? _lastVerdict;                              // edge-gated facet.verdict log
     string? _contentFacet;                                // the facet whose content root is mounted (facet.content log)
@@ -170,6 +178,19 @@ public sealed class HomeScreen : Component
             Dismiss: () => _switch.Value = FacetSwitch.Dismiss(_switch.Peek()),
             FollowingMemory: id => _followingMemory.TryGetValue(id, out bool on) && on);
 
+        // ── the Zune band's second row: the facet words + Following, published under the route name. The effect re-runs
+        // when the words array is replaced or this Home becomes the active one. ONLY the active instance publishes: a parked
+        // Home (another tab or slot) still re-renders on shared-table changes and must not take the slot's selection or click
+        // target away from the Home on screen. ──
+        var active = _active = UseIsActive();
+        UseSignalEffect(() =>
+        {
+            if (!active.Value) return;
+            _ = _words.Value;
+            PublishViews();
+        });
+        UseActivation(onActivated: PublishViews);
+
         // smoothResize false: a page-level region whose branches differ by hundreds of DIP lands its height at once.
         // Reveal None: the zones own their entrance (Design.Entrance rows in Zones.Column); the shimmer is the SAME tree
         // rendered against the seed, so the skeleton is derived from the real page, never authored by hand.
@@ -183,24 +204,27 @@ public sealed class HomeScreen : Component
 
         // THE CLIP IS THE CONTRACT: the band paints nothing, so the content cuts itself at the band's lower edge and
         // feathers that cut exactly while the clip is engaged (Browse.Page.cs's directory / Artist.Page.cs's magazine).
+        // Hoisted, nothing is pinned above the content, so there is no clip to feather: the clip is 0 and the feather is off.
+        bool hoisted = PageHead.HoistedFor("home");
         Element content = new BoxEl
         {
             Key = "home:content", Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            EdgeFade = new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
+            EdgeFade = hoisted ? null : new EdgeFadeSpec(EdgeMask.Top, Detail.VerticalLayout.StickyFadeBand) { WhileStuck = true },
             Children = [region],
-        }.StickyClip(Facet.StuckBottom);
+        }.StickyClip(Facet.ContentClipFor(hoisted));
 
-        // The centred page column (Artist.Page.cs's Magazine): Grow toward the free width, capped at PageMaxW, the wide
-        // gutter, the dock's reserve under the last section. It NAMES the sticky scope the facet band pins against. The
-        // facet row is the page title, so the column opens 24 below the top and steps 20 to the content (the prototype's
-        // facet-row → first zone step); the zones space themselves at SectionGapWide inside Zones.Column.
+        // The centred page column (Artist.Page.cs's Magazine): Grow toward the free width, capped at PageMaxW, the page
+        // gutter, the bottom reserve under the last section. It NAMES the sticky scope the facet band pins against. The
+        // head (FacetRow) carries its own top air and ends 9 under the busy bar, so the content follows with no gap; the
+        // zones space themselves at SectionGapWide inside Zones.Column.
         string facet = facetSig.Value;
+        float g = Shell.Ui.PageGutter.Value;
         Element column = new BoxEl
         {
-            Key = "home:column", Direction = 1, Gap = Spacing.XL,
+            Key = "home:column", Direction = 1,
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
             AlignItems = FlexAlign.Stretch, ScrollScope = Facet.PageScope,
-            Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.XXXL),
+            Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
             Children =
             [
                 Embed.Comp(_rowProps, static () => new FacetRow()) with { Key = "home:facet-row" },
@@ -342,6 +366,30 @@ public sealed class HomeScreen : Component
         ZoneKind.BrowseTiles => LayoutZone.Browse,
         _ => null,
     };
+
+    // ══ THE ZUNE BAND'S VIEWS ══════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Hands the facet words and Following to the Zune band (<c>Shell.PageViews</c>). Safe to call any time and any
+    /// number of times: the store bumps its version only when the labels or the selected signal change. The band's word
+    /// click and Following builder are cached, so a re-publish with the same words updates silently.</summary>
+    void PublishViews()
+    {
+        if (_active is { } a && !a.Peek()) return;
+        var ws = _words.Peek();
+        var labels = new string[ws.Length];
+        for (int i = 0; i < labels.Length; i++) labels[i] = ws[i].Label;
+        _onView ??= OnView;
+        _followingFactory ??= () => Embed.Comp(_rowProps!, static () => new FollowingHost());
+        PageHead.Publish("home", labels, _facetIndex, _onView, _followingFactory);
+    }
+
+    /// <summary>A word clicked in the Zune band: the same target the page's own bar selects.</summary>
+    void OnView(int i)
+    {
+        var ws = _words.Peek();
+        if ((uint)i >= (uint)ws.Length) return;
+        SelectFacet(FacetPivot.Target(ws[i], _followingMemory.TryGetValue(ws[i].Id, out bool on) && on), _tab);
+    }
 
     // ══ FACET SELECTION ═════════════════════════════════════════════════════════════════════════════════════════════
 

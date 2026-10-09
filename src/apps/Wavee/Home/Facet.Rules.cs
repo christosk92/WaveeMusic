@@ -36,16 +36,3 @@ public static class FacetDimPlan
         _ => (1f, Design.Motion.Fast),
     };
 }
-
-/// <summary>Which form the facet row takes at its measured width (06 §2.1): the 28-px page-title words while the row
-/// holds four of them and the Following toggle, the 20-px compact words below that. Never wraps, never scrolls.</summary>
-public static class FacetForm
-{
-    /// <summary>The narrowest row that still fits the four English title words plus the Following toggle: on the
-    /// owner's 1717×1150 @150 % window the row measures 632 and holds both with ≈ 40 to spare, so the edge sits at 600.
-    /// (The prototype's "~720" is a 1440-board figure with wider spacing.)</summary>
-    public const float TitleMinWidth = 600f;
-
-    /// <summary>True → <c>Design.FacetTitleStyle</c>; false → <c>Design.FacetCompactStyle</c>.</summary>
-    public static bool IsTitle(float rowWidth) => rowWidth >= TitleMinWidth;
-}

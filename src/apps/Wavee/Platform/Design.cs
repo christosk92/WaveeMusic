@@ -1189,8 +1189,8 @@ public static partial class Design
     /// <see cref="TrackMeta"/>'s secondary read is a restatement rather than a change.</para></summary>
     public static class Type
     {
-        /// <summary>The display face every display-voice alias here sets — and <see cref="FacetTitleStyle"/>, the one
-        /// control style that speaks in it.</summary>
+        /// <summary>The display face every display-voice alias here sets — and the retired <see cref="FacetTitleStyle"/>
+        /// (no caller since Home's facet words became the page's views; the sidebar-rework cleanup package removes it).</summary>
         internal const string DisplayFace = "Segoe UI Variable Display";
 
         /// <summary>Track / album / playlist titles in lists. → <c>Ui.BodyStrong</c> (14 / 20 / 600).</summary>
@@ -1461,13 +1461,15 @@ public static partial class Design
         }
     }
 
-    /// <summary>The Home FACET ROW as the page's title (All · Music · Podcasts · Audiobooks): the stock
+    /// <summary>RETIRED: it has no caller since Home's facet words became the page's VIEWS in <see cref="PageViewsStyle"/>
+    /// under a real "Home" title; the sidebar-rework cleanup package (P9) removes it.
+    /// <para>It was the Home FACET ROW as the page's title (All · Music · Podcasts · Audiobooks): the stock
     /// <see cref="SelectorBar"/> restyled into the prototype's page-title pivot. The words are 28 / 36 in the display
     /// face — <c>Ui.Title</c>'s engine rung, no tracking — SECONDARY at rest and PRIMARY 600 when selected, so the
     /// selected facet reads as the heading and its siblings as the choices beside it. No pill: the selection is the
     /// weight and the ink. Hover and press lay the subtle fill ladder (subtle-hover, then subtle-press) on an
     /// 8-DIP-padded, 40-tall item, 24 apart, and the first item pulls −8 so its WORD — not its plate — sits on the
-    /// page's leading edge.
+    /// page's leading edge.</para>
     /// <para>A PROPERTY, like <see cref="Controls.TileCardStyle"/>: every colour is a live token read, so a theme flip
     /// re-resolves it at the next render.</para></summary>
     public static SelectorBarStyle FacetTitleStyle => new()
@@ -1502,11 +1504,17 @@ public static partial class Design
         LeadingInset = PageGeometry.ViewsLeadingInset,
     };
 
-    /// <summary><see cref="FacetTitleStyle"/> one rung down the ramp (20/28; items 8 apart, so with the plates' own 8-DIP
-    /// padding the WORDS stay 24 apart) for a facet row too narrow for
-    /// four 28-px words and the Following toggle (the prototype's compact form, 06 §2.1; the edge is Home's FacetForm). Same
-    /// 40-tall item, so the pinned band's height — every sticky inset under it — never changes with the form.</summary>
-    public static SelectorBarStyle FacetCompactStyle => FacetTitleStyle with { LabelSize = 20f, LineHeight = 28f, ItemGap = 8f };
+    /// <summary>A page's views inside the Zune band's second row: <see cref="PageViewsStyle"/> with the item box shrunk so
+    /// the whole bar (item + the container's 4 / 4 padding) is exactly <see cref="ZuneNavRules.SubRowHeight"/> (32), not the
+    /// 48 of a page head. The label line (20) and the pill slot (3) share the 24-DIP item, so the accent pill still shows and
+    /// slides. <c>LeadingInset</c> is 0: the row's scroll viewport absorbs the first plate's pad, so the first WORD sits on
+    /// the pivots' edge.</summary>
+    public static SelectorBarStyle ZuneViewsStyle => PageViewsStyle with
+    {
+        LeadingInset = 0f,
+        ItemHeight = ZuneNavRules.SubRowHeight - 2f * PageGeometry.ViewsBarPadY,
+        ItemPadding = new Edges4(12f, 0f, 12f, 0f),
+    };
 
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
     //

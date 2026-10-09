@@ -76,7 +76,14 @@ public static partial class Sidebar
                     Children = [.. row],
                 },
             };
-            if (top == ZuneNavRules.LibraryPivot) children.Add(SubRow(name));
+            // Row 2 is ALWAYS laid out under Zune (ZuneNavRules.BandHeight), whatever it carries, so a navigation or a page
+            // publishing its views never moves the content card.
+            children.Add(ZuneNavRules.SubRowOf(name) switch
+            {
+                ZuneSubRow.Library => SubRow(name),
+                ZuneSubRow.PageViews => ViewsRow(name),
+                _ => new BoxEl { Key = "zune:sub:none", Height = ZuneNavRules.SubRowHeight, Shrink = 0f },
+            });
 
             return new BoxEl
             {
@@ -104,6 +111,40 @@ public static partial class Sidebar
                 SuppressScrollBar = true, ScrollKey = "zune.sub",
             };
         }
+
+        /// <summary>A page's own views (Home's facet words) and its trailing control (Following), as the page published them
+        /// under its route name. Until the page publishes, the row is the same height and empty; the words then fade in place.</summary>
+        static Element ViewsRow(string name)
+        {
+            // Drawn only once the style is PRESENTED (the page's own words are still on screen until then), so the words show in
+            // exactly one place per commit and land in the quiet hoist commit with Home's lead reflow.
+            var pub = Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune ? Shell.PageViews.For(name) : null;
+            var kids = new List<Element>(2);
+            if (pub is not null && pub.Labels.Count > 0)
+            {
+                // The viewport absorbs the first item's plate pad (the PageHead.Views idiom), so the first WORD sits on the pivots' edge.
+                // A click resolves the LATEST delegate (a re-publish that only changes it does not bump the store's Version).
+                var bar = SelectorBar.Create(pub.Labels, pub.Selected, i => Shell.PageViews.Peek(name)?.OnSelect(i),
+                    style: Design.ZuneViewsStyle) with { Key = "zune:views:bar" };
+                kids.Add(ScrollView(new BoxEl { Direction = 0, Children = [bar] }, horizontal: true) with
+                {
+                    Height = ZuneNavRules.SubRowHeight, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f,
+                    Margin = new Edges4(PageGeometry.ViewsLeadingInset, 0f, 0f, 0f),
+                    AutoEdgeFade = true, SuppressScrollBar = true, ScrollKey = "zune.views",
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
+                });
+                if (pub.Trailing?.Invoke() is { } trailing)
+                    kids.Add(new BoxEl { Key = "zune:views:trailing", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Children = [trailing] });
+            }
+            return new BoxEl
+            {
+                Key = "zune:views", Direction = 0, Height = ZuneNavRules.SubRowHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
+                MinWidth = 0f, Children = [.. kids],
+            };
+        }
+
+        static readonly MotionTokenDef s_viewsFade =
+            MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
         /// <summary>A pivot: its text is the target. The selected one reads heavier and brighter (600 against the rest weight).</summary>
         static Element Pivot(string key, string title, bool on, float size, ushort rest) => new BoxEl
