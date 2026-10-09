@@ -336,6 +336,42 @@ public static partial class Diagnostics
                     Base(playing: false);
                     SettleQuiet(host, w, 20);
                     return HideRestore(name, host, w, o);
+                case FrameBenchScenarios.SidebarDisclosure:
+                {
+                    Base(playing: false);   // the motion is the point; a real-data run must not take the account's playback over for it
+                    if (BenchHooks.ToggleSidebarSection is not { } toggle) return Skip("no sidebar pane mounted");
+                    string section = SidebarCatalogue.IdOf(SidebarSectionKind.Playlists);
+                    bool collapsed = false;
+                    void Flip() { collapsed = !collapsed; toggle(section, collapsed); s_poseProbe?.Mark(host); }
+                    if (o.Shots) Shots(name, host, w, Flip);
+                    s_poseProbe = new PoseProbe("sidebar");
+                    var r = Measure(new Driver(now => { Flip(); return now + 0.6; }), "section=" + section);
+                    s_poseProbe.Write(Path.Combine(OutDir(), name + "-pose.csv"));
+                    s_poseProbe = null;
+                    if (collapsed) Flip();
+                    Settle(1.0);
+                    return r;
+                }
+                case FrameBenchScenarios.DrawerToggle:
+                {
+                    if (t.Playlists.Length == 0) return Skip("no playlist");
+                    Base(playing: false);
+                    long nav0 = NavigationFrameWatch.NavigationId;
+                    Nav(Shell.For(EntityUri.Parse(t.Playlists[0]), "Bench playlist"));
+                    PumpUntil(host, w, () => NavigationFrameWatch.NavigationId != nav0, 10);
+                    Settle(2.0);
+                    if (BenchHooks.ToggleTrackDrawer is not { } toggle) return Skip("no track table mounted");
+                    bool open = false;
+                    void Flip() { open = !open; toggle(2); s_poseProbe?.Mark(host); }
+                    if (o.Shots) Shots(name, host, w, Flip);
+                    s_poseProbe = new PoseProbe("drawer");
+                    var r = Measure(new Driver(now => { Flip(); return now + 0.6; }), "playlist=" + t.Playlists[0] + " row=3");
+                    s_poseProbe.Write(Path.Combine(OutDir(), name + "-pose.csv"));
+                    s_poseProbe = null;
+                    if (open) Flip();
+                    Settle(1.0);
+                    return r;
+                }
                 case FrameBenchScenarios.LedgerOverhead:
                     if (play is null) return Skip("no track to play");
                     return OffOn(name, host, w, o, play, "ledger off vs on, stage-visualizer", restore: true,
@@ -347,6 +383,97 @@ public static partial class Diagnostics
                         set: on => host.GpuPassTimingEnabled = on);
                 default:
                     return Skip("unknown scenario");
+            }
+        }
+
+        /// <summary>`--bench-shots`: two toggles (open and close, or the reverse) from rest, every presented frame of each captured
+        /// for 0.6 s as `shots\<scenario>-<toggle>-<frame>-<ms>.png` (ms from the toggle to the captured turn). A capture stalls the GPU for its turn,
+        /// so these frames are spaced wider than the display's; the motion is time-based, so each one is still the true pose at
+        /// its moment. Not part of the measured window.</summary>
+        static void Shots(string name, AppHost host, Win32Window w, Action toggle)
+        {
+            string dir = Path.Combine(OutDir(), "shots");
+            Directory.CreateDirectory(dir);
+            for (int k = 0; k < 2 && !w.IsClosed; k++)
+            {
+                Pump(host, w, 1.0, null);
+                toggle();
+                long t0 = Stopwatch.GetTimestamp();
+                double Ms() => (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                for (int i = 0; i < 60 && !w.IsClosed && Ms() < 600; i++)
+                {
+                    host.RequestFrameCapture();
+                    FrameCaptureResult? cap = null;
+                    long until = Environment.TickCount64 + 1000;
+                    while (!w.IsClosed && Environment.TickCount64 < until && !host.TryTakeFrameCapture(out cap)) Pump(host, w, 0.001, null);
+                    if (cap?.Bgra is not { } px) continue;
+                    double presentedMs = (cap.Qpc - t0) * 1000.0 / Stopwatch.Frequency;   // the turn's own stamp, not the readback's end
+                    string file = name + "-" + k + "-" + i.ToString("00", CultureInfo.InvariantCulture) + "-"
+                        + presentedMs.ToString("000", CultureInfo.InvariantCulture) + "ms.png";
+                    try { PngWriter.WriteBgra(Path.Combine(dir, file), px, cap.WidthPx, cap.HeightPx); }
+                    catch (IOException ex) { Log.Warn("probe", "[frame-bench] could not write " + file, ex); }
+                }
+            }
+            Pump(host, w, 1.0, null);
+        }
+
+        static PoseProbe? s_poseProbe;
+
+        /// <summary>What a reveal PRESENTS after every UI frame: the live band of the first vertical viewport whose scroll key
+        /// contains <c>keyPart</c> (its presented extent), stamped with the UI frame's time and the host's presented count.
+        /// Says whether the pose advances on every frame, which a screen capture or the present count cannot.</summary>
+        sealed class PoseProbe(string keyPart)
+        {
+            readonly List<ViewportInfo> _vps = new();
+            readonly List<(double Ms, float Presented, float Extent, ulong Presents)> _rows = new(4096);
+            readonly long _t0 = Stopwatch.GetTimestamp();
+
+            double Now() => (Stopwatch.GetTimestamp() - _t0) * 1000.0 / Stopwatch.Frequency;
+
+            /// <summary>A toggle was issued (a row with presented = -1): the start latency is measured from it.</summary>
+            public void Mark(AppHost host) => _rows.Add((Now(), -1f, 0f, host.PresentedSequence));
+
+            public void Sample(AppHost host)
+            {
+                if (BenchHooks.TrackDrawerNode is { } drawer && keyPart == "drawer")
+                {
+                    // the drawer's clip box: its shown height (layout + the reveal's FlowDelta), 0 when it is not realized
+                    var h = drawer();
+                    float shown = !h.IsNull && host.Scene.IsLive(h) ? host.Scene.Bounds(h).H + host.Scene.Paint(h).FlowDelta : 0f;
+                    _rows.Add((Now(), MathF.Max(0f, shown), 0f, host.PresentedSequence));
+                    return;
+                }
+                _vps.Clear();
+                host.CopyViewports(_vps);
+                foreach (var v in _vps)
+                {
+                    if (v.Horizontal || v.ScrollKey is not { } key || !key.Contains(keyPart, StringComparison.Ordinal)) continue;
+                    var content = host.Scene.FirstChild(host.Scene.HandleAt(v.NodeIndex));
+                    if (!host.Scene.TryGetRevealBands(content, out var bands, out byte mask, out _, out _))
+                    {
+                        if (keyPart.Length == 0) continue;   // any viewport: keep looking for the one with bands
+                        return;
+                    }
+                    for (int slot = 0; slot < FluentGpu.Scene.RevealBands.Capacity; slot++)
+                    {
+                        if ((mask & (1 << slot)) == 0) continue;
+                        var b = bands.Get(slot);
+                        _rows.Add((Now(), b.Presented, b.Extent, host.PresentedSequence));
+                        return;
+                    }
+                    return;
+                }
+            }
+
+            public void Write(string path)
+            {
+                var sb = new StringBuilder(64 * _rows.Count + 64).AppendLine("ms,presented,extent,presents");
+                foreach (var r in _rows)
+                    sb.Append(r.Ms.ToString("0.000", CultureInfo.InvariantCulture)).Append(',')
+                      .Append(r.Presented.ToString("0.000", CultureInfo.InvariantCulture)).Append(',')
+                      .Append(r.Extent.ToString("0.0", CultureInfo.InvariantCulture)).Append(',').Append(r.Presents).AppendLine();
+                try { File.WriteAllText(path, sb.ToString()); }
+                catch (IOException ex) { Log.Warn("probe", "[frame-bench] could not write " + path, ex); }
             }
         }
 
@@ -558,6 +685,7 @@ public static partial class Diagnostics
                 long f0 = Stopwatch.GetTimestamp();
                 host.RunFrame();
                 frameTicks += Stopwatch.GetTimestamp() - f0;
+                s_poseProbe?.Sample(host);
                 host.TickDetachedHosts();
                 n++;
                 var wait = host.WaitRequestWithDetached();

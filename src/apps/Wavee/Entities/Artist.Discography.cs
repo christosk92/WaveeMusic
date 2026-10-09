@@ -802,19 +802,6 @@ public readonly partial struct Artist
         return b.Finish(PathContentEpoch.Mint(), FillRule.NonZero);
     }
 
-    /// <summary>Outer drawer slot: SIZE only, Reflow, 200 in / 150 out, descendants suppressed (one wave per click).</summary>
-    static readonly LayoutTransition s_drawerResize = new(
-        TransitionChannels.Size, TransitionDynamics.Tween(200f, Easing.SmoothOut),
-        Enter: new EnterExit(Active: true), Exit: new EnterExit(Active: true),
-        ExitDynamics: TransitionDynamics.Tween(150f, Easing.SmoothOut),
-        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, SuppressDescendantTransitions: true);
-
-    /// <summary>Inner panel: OPACITY only, 150 in / 100 out — an album switch cross-fades under the same slot.</summary>
-    static readonly LayoutTransition s_drawerPresence = new(
-        TransitionChannels.Opacity, TransitionDynamics.Tween(150f, Easing.EaseInOut),
-        Enter: new EnterExit(Opacity: 0f, Active: true), Exit: new EnterExit(Opacity: 0f, Active: true),
-        ExitDynamics: TransitionDynamics.Tween(100f, Easing.EaseInOut));
-
     /// <summary>The facet's virtualized grid + inline drawer, shared by the facet section and the disco page.
     /// <paramref name="priority"/> is the paging priority for pages beyond the first (see
     /// <see cref="DemandNextPage"/>), defaulting to <see cref="FetchPriority.Visible"/> — the artist page's three
@@ -987,12 +974,12 @@ public readonly partial struct Artist
             float caretY = DrawerVerdict.TopGap - CaretH + CaretOverlap;   // sinks 1 DIP to hide the panel's top stroke
             return new BoxEl
             {
-                Key = "disco-drawer", Direction = 1, Height = _verdict.SlotHeight, ClipToBounds = true, Animate = s_drawerResize,
+                Key = "disco-drawer", Direction = 1, Height = _verdict.SlotHeight, ClipToBounds = true, Animate = Design.Reveal.Drawer,
                 Children =
                 [
                     new BoxEl
                     {
-                        ZStack = true, Animate = s_drawerPresence,
+                        ZStack = true,
                         Children =
                         [
                             new BoxEl { Direction = 1, Children = [new BoxEl { Height = DrawerVerdict.TopGap, HitTestVisible = false }, panel] },

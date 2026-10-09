@@ -334,16 +334,10 @@ public static partial class Sidebar
         Func<int, string?>? _rowRouteOf;
 
         // ── disclosure ──
-        string? _activeDisclosureKey;
-        string? _activeDisclosureId;
-        bool _activeDisclosureIsFolder;
-        bool _activeDisclosureOpen;
-        string? _pendingExpandSection;
-        string? _pendingExpandFolder;
-        ItemDisclosureRange? _activeDisclosureBand;
+        readonly SidebarDisclosures _disclosures = new();
+        Func<string, ItemDisclosureRange?>? _resolveDisclosure;
         Action<Action>? _post;
         Action? _flushPrefsCommit;
-        Action? _queuedDisclosure;
         Action<ItemDisclosureDiagnostic>? _disclosureLog;
 
         readonly ItemsViewController _listController = new();
@@ -485,30 +479,17 @@ public static partial class Sidebar
             // AFTER the publish: the travel direction needs the plan the rows are about to render from. This read also
             // subscribes the pane to the route, so a navigation re-renders it without re-planning.
             TrackSelection(SelectedRoute);
+            UseEffect(InstallBenchHook, DepKey.Empty);
             UseSignalEffect(RefreshPlayState);
             UseSignalEffect(RefreshSelection);
             UseLayoutEffect(RunSelectionTransaction, _selEpoch);
-            // THE COUNT, never the plan version (W3-A2). This render decides two things off the published plan — empty
-            // pane vs list, and whether a pending expansion has its rows yet — and both are functions of the COUNT. The
-            // 0.3 first cut read `_planVersion` here, so every publish (each one a re-plan the binder's content gates had
-            // let through: a cover landing on a saved album, a playlist learning its track count) rendered this pane a
-            // SECOND time, and that render's rail memo rebuilt ~26 tooltip-wrapped tiles — the `PaneView×1 a=324K` +
-            // `ToolTip×33` lines of the scroll census. The seed lands in PublishStage's synchronous first publish, above,
-            // before this read, so the first render already sees the real count.
+            // THE COUNT, never the plan version (W3-A2). This render decides empty pane vs list off the published plan, which
+            // is a function of the COUNT. The 0.3 first cut read `_planVersion` here, so every publish (each one a re-plan the
+            // binder's content gates had let through: a cover landing on a saved album, a playlist learning its track count)
+            // rendered this pane a SECOND time, and that render's rail memo rebuilt ~26 tooltip-wrapped tiles — the
+            // `PaneView×1 a=324K` + `ToolTip×33` lines of the scroll census. The seed lands in PublishStage's synchronous
+            // first publish, above, before this read, so the first render already sees the real count.
             int rows = _rowCount.Value;
-            UseLayoutEffect(() =>
-            {
-                if (_activeDisclosureKey is { } active && _activeDisclosureOpen
-                    && (_pendingExpandSection is not null || _pendingExpandFolder is not null)
-                    && PendingExpandRange() is null)
-                {
-                    DisclosureSettled(active);
-                    return;
-                }
-                if (_activeDisclosureKey is not null || _queuedDisclosure is not { } queued) return;
-                _queuedDisclosure = null;
-                queued();
-            }, DepKey.From(HashCode.Combine(disclosureUiVersion, rows)));
             ConfigureReorder();
 
             // EDIT MODE (§P4.5). The list is unmounted while editing, so the keyboard-current row is captured by KEY on the
@@ -658,9 +639,7 @@ public static partial class Sidebar
                 Disclosure = new DisclosureOptions
                 {
                     Version = _planVersion,
-                    PendingExpand = PendingExpandRange,
-                    OnExpandStarted = OnExpandStarted,
-                    OnExpandSettled = OnExpandSettled,
+                    ResolveRange = _resolveDisclosure ??= ResolveDisclosureRange,
                     Diagnostic = _disclosureLog ??= LogDisclosure,
                 },
                 IsItemEnabled = IsRowFocusStop,
@@ -993,17 +972,14 @@ public static partial class Sidebar
 
         void TryPublishStage(PlanStage stage)
         {
-            // A collapse keeps the expanded model presented until it reaches zero; a prepared expansion must publish
-            // first so ItemsView can arm the opening band.
-            bool preparedExpansion = _activeDisclosureOpen
-                && (_pendingExpandSection is not null || _pendingExpandFolder is not null);
-            if (_activeDisclosureKey is not null && !preparedExpansion) return;
+            // A collapse's rows stay in the DOCUMENT until its commit, so a publish mid-collapse still carries them; each band
+            // re-finds its rows by key, so a publish never has to wait for a disclosure to settle.
             if (_planPublished && stage.UsesA == _presentedUsesA && stage.Compact == CompactPlan
                 && ReferenceEquals(stage.Pane.Rows, Plan.Rows)) return;
-            // THE MID-DRAG FREEZE — exempt for a disclosure in flight (spring-loading a folder exists to reveal its
+            // THE MID-DRAG FREEZE — exempt while any disclosure is in flight (spring-loading a folder exists to reveal its
             // children) and for this gesture's own commit. Track drags are not frozen: they aim at identity, not position.
             if (_publishThroughFreeze) _publishThroughFreeze = false;
-            else if (_activeDisclosureKey is null && _deferredStage.TryHold(Drag.LiveRootlistDrag(), stage)) return;
+            else if (_disclosures.Count == 0 && _deferredStage.TryHold(Drag.LiveRootlistDrag(), stage)) return;
             PublishStage(stage, notify: true);
         }
 
@@ -1150,33 +1126,13 @@ public static partial class Sidebar
             is SidebarRowKind.EntityRow or SidebarRowKind.IconRow or SidebarRowKind.FolderHeader;
 
         // ── disclosure choreography ────────────────────────────────────────────────────────────────────────────────
-        // Expand: the inserted band fades/rises while survivors FLIP; collapse: departing rows stay alive while
-        // survivors glide up, and the preference write is deferred to the settle. Reduced motion is the engine's
-        // (seeded under named tokens) — never branched on here.
+        // Every section/folder opens and closes on the engine's reveal band (fluent-gpu smooth-reveal plan §10): the
+        // presented height springs under MotionTok.Reveal while the rows below ride it, any number at once, and a click on
+        // a key already in flight REVERSES it from where it stands. Expand: the rows enter the document and the plan first
+        // (published on the click frame), then the band reveals them. Collapse: the rows stay until the band rests, then
+        // the preference write commits. Reduced motion is the engine's (a value at the seed) — never branched on here.
 
-        ItemDisclosureRange? PendingExpandRange()
-        {
-            if (_pendingExpandSection is { } section && TrySectionBodyRange(section, out var sectionRange)) return sectionRange;
-            if (_pendingExpandFolder is { } folder && TryFolderDescendantRange(folder, out var folderRange)) return folderRange;
-            return null;
-        }
-
-        void OnExpandStarted(ItemDisclosureRange range)
-        {
-            if (!string.Equals(_activeDisclosureKey, range.Key, StringComparison.Ordinal)) return;
-            _activeDisclosureBand = range;
-            _pendingExpandSection = null;
-            _pendingExpandFolder = null;
-        }
-
-        void OnExpandSettled(ItemDisclosureRange range) => DisclosureSettled(range.Key);
-
-        internal bool DisclosureOpen(string id, bool folder, bool fallback)
-            => _activeDisclosureKey is not null
-               && _activeDisclosureIsFolder == folder
-               && string.Equals(_activeDisclosureId, id, StringComparison.Ordinal)
-                ? _activeDisclosureOpen
-                : fallback;
+        internal bool DisclosureOpen(string id, bool folder, bool fallback) => _disclosures.IsOpen(id, folder, fallback);
 
         bool TrySectionBodyRange(string sectionId, out ItemDisclosureRange range)
         {
@@ -1200,75 +1156,69 @@ public static partial class Sidebar
             return true;
         }
 
+        bool TryRange(string id, bool folder, out ItemDisclosureRange range)
+            => folder ? TryFolderDescendantRange(id, out range) : TrySectionBodyRange(id, out range);
+
+        /// <summary>The band's rows in the PUBLISHED plan, by key — null once a committed collapse removed them.</summary>
+        ItemDisclosureRange? ResolveDisclosureRange(string key)
+        {
+            if (key.StartsWith("section:", StringComparison.Ordinal))
+                return TrySectionBodyRange(key.Substring("section:".Length), out var s) ? s : null;
+            if (key.StartsWith("folder:", StringComparison.Ordinal))
+                return TryFolderDescendantRange(key.Substring("folder:".Length), out var f) ? f : null;
+            return null;
+        }
+
         void StartDisclosure(string key, string id, bool folder, bool open, Action commit)
         {
-            if (_activeDisclosureKey is not null && !string.Equals(_activeDisclosureKey, key, StringComparison.Ordinal))
+            var toggle = _disclosures.Start(key, id, folder, open);
+            if (toggle == SidebarDisclosures.Toggle.Ignore) return;
+            if (toggle == SidebarDisclosures.Toggle.Reverse)
             {
-                _queuedDisclosure = () => StartDisclosure(key, id, folder, open, commit);
-                if (_pendingExpandSection is not null || _pendingExpandFolder is not null)
+                // Mid-flight reversal. Reopening a closing band: its collapse never committed (the document still holds the
+                // rows), so it springs back open with no commit. Closing an opening band: the open already committed, so
+                // the close carries the commit like any collapse.
+                if (TryRange(id, folder, out var live))
+                    _listController.BeginDisclosure(live, open ? ItemDisclosureDirection.Expand : ItemDisclosureDirection.Collapse,
+                        collapseCommit: open ? null : WithPrefsCommit(commit), settled: () => DisclosureSettled(key));
+                else
                 {
-                    string completed = _activeDisclosureKey;
-                    _pendingExpandSection = null;
-                    _pendingExpandFolder = null;
-                    DisclosureSettled(completed);
+                    if (!open) { commit(); SchedulePrefsCommit(); }
+                    DisclosureSettled(key);
                 }
-                else _listController.CompleteDisclosure();
-                return;
             }
-            if (_activeDisclosureKey is not null && _activeDisclosureOpen == open) return;
-
-            _activeDisclosureKey = key;
-            _activeDisclosureId = id;
-            _activeDisclosureIsFolder = folder;
-            _activeDisclosureOpen = open;
-
-            ItemDisclosureRange range;
-            bool hasRange = folder ? TryFolderDescendantRange(id, out range) : TrySectionBodyRange(id, out range);
-            if (open && !hasRange)
+            else if (open)
             {
-                if (folder) _pendingExpandFolder = id; else _pendingExpandSection = id;
+                // PUBLISH ON THE CLICK FRAME (input phase ⇒ a forward write), through any drag freeze: the band arms against
+                // the inserted rows before the first expanded paint — the chevron and the rows move together.
                 commit();
                 SchedulePrefsCommit();
-                // PUBLISH ON THE CLICK FRAME (input phase ⇒ a forward write): otherwise the chevron rotates two frames
-                // before any row moves.
+                _publishThroughFreeze = true;
                 RepublishNow();
-                _activeDisclosureBand = PendingExpandRange();
-                _disclosureVersion.Value = _disclosureVersion.Peek() + 1;
-                BumpDisclosureEpochs(id, folder, _activeDisclosureBand);
-                return;
+                _publishThroughFreeze = false;   // an unchanged stage returns before consuming it; never let it leak to the next drag
+                if (TryRange(id, folder, out var opened))
+                    _listController.BeginDisclosure(opened, ItemDisclosureDirection.Expand, settled: () => DisclosureSettled(key));
+                else DisclosureSettled(key);   // nothing to disclose (an empty section)
             }
-            if (!hasRange)
+            else if (TryRange(id, folder, out var closing))
+                _listController.BeginDisclosure(closing, ItemDisclosureDirection.Collapse,
+                    collapseCommit: WithPrefsCommit(commit), settled: () => DisclosureSettled(key));
+            else
             {
                 commit();
                 SchedulePrefsCommit();
                 DisclosureSettled(key);
-                return;
             }
-
-            _pendingExpandSection = null;
-            _pendingExpandFolder = null;
-            _activeDisclosureBand = range;
-            _listController.BeginDisclosure(range,
-                open ? ItemDisclosureDirection.Expand : ItemDisclosureDirection.Collapse,
-                collapseCommit: open ? null : WithPrefsCommit(commit),
-                settled: () => DisclosureSettled(key));
             _disclosureVersion.Value = _disclosureVersion.Peek() + 1;
-            BumpDisclosureEpochs(id, folder, range);
+            BumpDisclosureEpochs(id, folder, TryRange(id, folder, out var bumped) ? bumped : null);
         }
 
         void DisclosureSettled(string key)
         {
-            if (!string.Equals(_activeDisclosureKey, key, StringComparison.Ordinal)) return;
-            string? id = _activeDisclosureId;
-            bool folder = _activeDisclosureIsFolder;
-            var band = _activeDisclosureBand;
-            _activeDisclosureKey = null;
-            _activeDisclosureId = null;
-            _activeDisclosureBand = null;
-            _pendingExpandSection = null;
-            _pendingExpandFolder = null;
+            if (!_disclosures.TryGet(key, out var entry)) return;
+            _disclosures.Settled(key);
             _disclosureVersion.Value = _disclosureVersion.Peek() + 1;
-            if (id is not null) BumpDisclosureEpochs(id, folder, band);
+            BumpDisclosureEpochs(entry.Id, entry.Folder, TryRange(entry.Id, entry.Folder, out var band) ? band : null);
         }
 
         /// <summary>A disclosure edge re-skins the header (its chevron) and the disclosed band — nothing else.</summary>
@@ -1311,7 +1261,6 @@ public static partial class Sidebar
         /// <summary>Always-on disclosure lifecycle log (0.2.9's env-gated trace, re-homed per CLAUDE.md).</summary>
         static void LogDisclosure(ItemDisclosureDiagnostic d)
         {
-            if (d.Kind is ItemDisclosureDiagnosticKind.Progress) return;   // per-frame: too chatty for an always-on log
             Log.Info("sidebar", "disclosure." + d.Kind + " key=" + d.Range.Key + " dir=" + d.Direction
                                 + " first=" + d.Range.FirstIndex + " count=" + d.Range.Count);
         }
@@ -1958,10 +1907,23 @@ public static partial class Sidebar
 
         // ── commands the rows raise ────────────────────────────────────────────────────────────────────────────────
 
+        Action<string, bool>? _benchToggle;
+
+        /// <summary>The frame bench's section handle (Diagnostics.BenchHooks): this pane's, while it is mounted.</summary>
+        Action? InstallBenchHook()
+        {
+            var toggle = _benchToggle ??= ToggleSection;
+            Diagnostics.BenchHooks.ToggleSidebarSection = toggle;
+            return () => { if (ReferenceEquals(Diagnostics.BenchHooks.ToggleSidebarSection, toggle)) Diagnostics.BenchHooks.ToggleSidebarSection = null; };
+        }
+
         /// <summary>Collapse/expand through the disclosure channel, which choreographs it and then commits the layout's one
         /// command. A New releases section that opens is seen (its badge clears).</summary>
         internal void ToggleSection(string sectionId, bool collapsed)
         {
+            // A collapse writes the persisted bit only at rest, so the header's `open` is stale mid-flight: a click on a
+            // section in flight flips ITS direction (a reverse), whatever the persisted state says.
+            if (_disclosures.TryGet("section:" + sectionId, out var live)) collapsed = live.Open;
             StartDisclosure("section:" + sectionId, sectionId, folder: false, open: !collapsed, () =>
             {
                 Sidebar.Dispatch(new SetSectionCollapsed(Config.Layout, sectionId, collapsed));
@@ -1978,7 +1940,9 @@ public static partial class Sidebar
                 : () => ToggleFolder(folderId);
             if (!(Config.DisclosesFoldersInline?.Invoke() ?? true)) { commit(); return; }
             _ = planIndex;
-            StartDisclosure("folder:" + folderId, folderId, folder: true, open: !IsFolderExpanded(folderId), commit);
+            // A folder in flight reverses from the disclosure's own direction: its saved state moves only at rest.
+            bool open = _disclosures.TryGet("folder:" + folderId, out var live) ? !live.Open : !IsFolderExpanded(folderId);
+            StartDisclosure("folder:" + folderId, folderId, folder: true, open, commit);
         }
 
         /// <summary>The folder menu's Expand verb from a compact tile's flyout or a row menu: show the full pane (the overlay

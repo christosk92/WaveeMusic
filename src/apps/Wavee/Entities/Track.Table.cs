@@ -1,7 +1,7 @@
 // ── Entities/Track.Table.cs ───────────────────────────────────────────────────────────────────────────────────────
 // the detail track TABLE: the source, the view state, tier + relief plumbing, the row shape + snapshot memos, the bound
 // list and its three arms (flat / recommendations / vertical-hero), the three-component row stack (slot → skin →
-// content), the reveal ramp, membership choreography, selection, drag insertion, the drawer's mount/keying/reflow and
+// content), the reveal ramp, membership choreography, selection, drag insertion, the drawer's mount/keying/reveal and
 // the trailing-body arm. Owner O configures it through TableProfile and never edits it. The chrome (command bar,
 // search, header, flyouts) is the named partial Track.Table.Chrome.cs
 //
@@ -471,6 +471,15 @@ public readonly partial struct Track
         readonly Signal<int> _visible = new(0);
         readonly Signal<int> _listCount = new(0);
         readonly Signal<string> _expanded = new("");   // MembershipDiff.RowKey of the ONE open drawer, "" = none
+        // The rows whose drawer is CLOSING (still presented under them while their exit reveal runs) — their bottom corners
+        // stay square until the engine reports the orphan at rest. A set, not one key: a rapid A→B→close-B sequence holds A
+        // and B at once. `_tailEpoch` bumps on every change so the row computeds that read the set re-run. Plus the open
+        // drawer's node (captured at realize).
+        readonly Signal<int> _tailEpoch = new(0);
+        readonly HashSet<string> _tails = new(StringComparer.Ordinal);
+        NodeHandle _drawerNode;
+        Func<NodeHandle>? _benchDrawerNode;
+        string _drawerNodeKey = "";
         readonly Signal<int> _videoDropRow = new(-1);
         InsertionOptions? _insertion;
         IOverlayService? _overlay;
@@ -806,6 +815,26 @@ public readonly partial struct Track
             return (uint)display < (uint)v.Length ? v[display] : -1;
         }
 
+        Action<int>? _benchToggle;
+
+        /// <summary>The frame bench's drawer handle (Diagnostics.BenchHooks): the last mounted table's, while it is mounted.</summary>
+        Action? InstallBenchHook()
+        {
+            var toggle = _benchToggle ??= display =>
+            {
+                var t = DisplayTrack(display);
+                if (t.IsValid) ToggleExpanded(MembershipDiff.RowKey(t, ItemIdAt(display), display), t);
+            };
+            var node = _benchDrawerNode ??= () => _drawerNode;
+            Diagnostics.BenchHooks.ToggleTrackDrawer = toggle;
+            Diagnostics.BenchHooks.TrackDrawerNode = node;
+            return () =>
+            {
+                if (ReferenceEquals(Diagnostics.BenchHooks.ToggleTrackDrawer, toggle)) Diagnostics.BenchHooks.ToggleTrackDrawer = null;
+                if (ReferenceEquals(Diagnostics.BenchHooks.TrackDrawerNode, node)) Diagnostics.BenchHooks.TrackDrawerNode = null;
+            };
+        }
+
         Track DisplayTrack(int display)
         {
             int orig = OriginalOf(display);
@@ -1004,6 +1033,7 @@ public readonly partial struct Track
                 _verticalItemCount.Value = Detail.VerticalLayout.ItemCount(visible, hasFacts);
             }, DepKey.From(visible, listTotal, hasFacts ? 1 : 0, 0));
             UseEffect(PublishHeroHeight);
+            UseEffect(InstallBenchHook, DepKey.Empty);
 
             float rowH = shape.RowH;
             // An episode-capable source has rows of more than one height, so the fixed `MeasuredStackVirtualLayout`
@@ -1721,9 +1751,62 @@ public readonly partial struct Track
 
         internal void ToggleExpanded(string rowKey, Track t)
         {
-            bool opening = !string.Equals(_expanded.Peek(), rowKey, StringComparison.Ordinal);
+            string previous = _expanded.Peek();
+            bool opening = !string.Equals(previous, rowKey, StringComparison.Ordinal);
             _expanded.Value = opening ? rowKey : "";
             if (opening && t.IsValid) Entities.Ensure(t, TrackFields.All);   // the drawer states EVERY fact
+            if (previous.Length > 0) HoldDrawerTail(previous);
+            CorrectDrawerExtents(previous, opening ? rowKey : "");
+        }
+
+        // A closing drawer is still PRESENTED under its row while its exit reveal runs, so the row keeps square bottom
+        // corners until the engine reports the orphan at rest (WhenSettled on the node captured at realize). The engine
+        // also fires it when that node dies (a recycle onto another track, a reopen reclaiming the orphan), so the tail
+        // never sticks and the registration never leaks.
+        void HoldDrawerTail(string key)
+        {
+            var node = _drawerNode;
+            if (Context.Anim is not { } anim || Context.Scene is not { } scene || node.IsNull || !scene.IsLive(node)
+                || !string.Equals(_drawerNodeKey, key, StringComparison.Ordinal)) return;
+            if (_tails.Add(key)) _tailEpoch.Value = _tailEpoch.Peek() + 1;
+            anim.WhenSettled(node, AnimChannel.RevealExtent, () =>
+            {
+                anim.WhenSettled(node, AnimChannel.RevealExtent, null);
+                if (!_tails.Remove(key)) return;
+                _tailEpoch.Value = _tailEpoch.Peek() + 1;
+            });
+        }
+
+        // Item 9 (DrawerExtentRule): a toggle changes its row's real extent, but the measured table only learns a REALIZED
+        // row's new height from layout — a closing row scrolled out of the window would keep its open height. Write the
+        // closing leg here; the opening row is realized (the user just clicked it) and measures itself.
+        void CorrectDrawerExtents(string previous, string next)
+        {
+            Span<DrawerExtentWrite> writes = stackalloc DrawerExtentWrite[2];
+            int n = DrawerExtentRule.For(previous, next, DisplayOfKey, ShapeValue.RowH, 0f, writes);
+            for (int i = 0; i < n; i++)
+            {
+                int index = TrackStart + writes[i].Index;
+                if (!_listCtl.IsItemRealized(index)) _listCtl.CorrectMeasuredExtent(index, writes[i].Extent);
+            }
+        }
+
+        int DisplayOfKey(string key)
+        {
+            int count = _visible.Peek();
+            for (int d = 0; d < count; d++)
+                if (MembershipDiff.RowKeyMatches(key, DisplayTrack(d), ItemIdAt(d), d)) return d;
+            return -1;
+        }
+
+        internal bool DrawerTail(Track t, int display)
+        {
+            _ = _tailEpoch.Value;   // subscribe: a hold or settle re-runs the row
+            if (_tails.Count == 0 || !t.IsValid) return false;
+            StringId itemId = ItemIdAt(display);
+            foreach (string key in _tails)
+                if (MembershipDiff.RowKeyMatches(key, t, itemId, display)) return true;
+            return false;
         }
 
         internal bool IsOpen(Track t, int display)
@@ -1966,20 +2049,7 @@ public readonly partial struct Track
             TransitionDynamics.Tween(280f, Easing.FluentDecelerate), Enter: new EnterExit(Opacity: 0f, Active: true));
 
         static readonly LayoutTransition s_checkShift = new(TransitionChannels.Position,
-            TransitionDynamics.Tween(MotionTok.DisclosureExpand.DurationMs, Easing.FluentDecelerate));
-
-        // TWO specs on TWO nodes (DetailTracks.cs:3279-3294): the clip box eases its HEIGHT only (a position terminal there
-        // would move the window itself); the presence box inside it fades and drops the content under a stationary window.
-        // Enter/Exit Active + Reflow is the mount-reflow opt-in.
-        static readonly LayoutTransition s_drawerReveal = new(TransitionChannels.Size, MotionTok.ControlNormal.ToDynamics(),
-            Enter: new EnterExit(Active: true), Exit: new EnterExit(Active: true), ExitDynamics: MotionTok.ControlFast.ToDynamics(),
-            Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, SuppressDescendantTransitions: true);
-
-        static readonly LayoutTransition s_drawerPresence = new(TransitionChannels.Opacity | TransitionChannels.Position,
-            MotionTok.ControlNormal.ToDynamics(),
-            Enter: new EnterExit(Dy: -Spacing.S, Opacity: 0f, Active: true),
-            Exit: new EnterExit(Dy: -Spacing.XS, Opacity: 0f, Active: true),
-            ExitDynamics: MotionTok.ControlFast.ToDynamics());
+            TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
 
         /// <summary>The bound, shape-stable row container for a TRACK row. Zebra is DISPLAY-index parity; selection never
         /// changes the fill except in Classic (RowHover); the 3×16 pill is the highlight cue and hands over to the check
@@ -1988,7 +2058,7 @@ public readonly partial struct Track
         /// allocates nothing.
         /// <para>An episode row is never wrapped here — <see cref="TableSlot"/> hands it straight to
         /// <see cref="Episode.ReaderRow"/>, which is fully self-contained (its own click, hover, check lane, "…").</para></summary>
-        internal BoxEl Skin(RowScope scope, Element content, in Shape shape, bool rowFlow, bool open, int start,
+        internal BoxEl Skin(RowScope scope, Element content, in Shape shape, bool rowFlow, bool squared, int start,
                             Signal<bool> hovered, bool entrance)
         {
             var index = scope.Index;
@@ -2005,9 +2075,10 @@ public readonly partial struct Track
             {
                 ZStack = true, MinHeight = shape.RowH, ClipToBounds = true,
                 Margin = classic || plain ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
-                // Bottom corners square while THIS row's drawer is open, so the row and its drawer read as one plate.
+                // Bottom corners square while THIS row's drawer is open or still closing under it, so the row and its drawer
+                // read as one plate.
                 Corners = classic || plain ? CornerRadius4.All(0f)
-                    : open ? new CornerRadius4(6f, 6f, 0f, 0f) : CornerRadius4.All(6f),
+                    : squared ? new CornerRadius4(6f, 6f, 0f, 0f) : CornerRadius4.All(6f),
                 Animate = entrance ? s_mountEntrance : null,
                 DropTarget = drop,
                 Fill = classic ? Prop.Of(() => cue() || isSel() ? Design.Colors.RowHover : ColorF.Transparent)
@@ -2079,8 +2150,10 @@ public readonly partial struct Track
             return skin.WithContextMenu(overlay, () => RowMenuFor(index.Peek(), start, expandLane));
         }
 
-        /// <summary>The drawer's mount, keying and reflow — its BODY is the profile's. One drawer at a time, keyed by ROW
-        /// identity (item id, else uri#@display), continuing the row's zebra parity with square top corners.</summary>
+        /// <summary>The drawer's mount, keying and reveal — its BODY is the profile's. One drawer at a time, keyed by ROW
+        /// identity (item id, else uri#@display), continuing the row's zebra parity with square top corners. ONE spec on the
+        /// clip box (Design.Reveal.Drawer): the presented height springs, the rows below ride it; the presence box is plain
+        /// padding.</summary>
         internal Element DrawerBox(Track t, int display, in Shape shape, IReadSignal<int> index, int start)
         {
             string rowKey = MembershipDiff.RowKey(t, ItemIdAt(display), display);
@@ -2088,7 +2161,8 @@ public readonly partial struct Track
             Element body = P.Drawer?.Invoke(t, display) ?? new BoxEl();
             return new BoxEl
             {
-                Key = "drawer:" + rowKey, Direction = 1, MinWidth = 0f, ClipToBounds = true, Animate = s_drawerReveal,
+                Key = "drawer:" + rowKey, Direction = 1, MinWidth = 0f, ClipToBounds = true, Animate = Design.Reveal.Drawer,
+                OnRealized = h => { _drawerNode = h; _drawerNodeKey = rowKey; },
                 Fill = classic ? (Prop<ColorF>)ColorF.Transparent
                     : Prop.Of(() => Math.Max(0, index.Value - start) % 2 != 0 ? Design.Colors.RowZebra : ColorF.Transparent),
                 Margin = classic ? default : new Edges4(RowMetrics.RowInset, 0f, RowMetrics.RowInset, 0f),
@@ -2097,7 +2171,7 @@ public readonly partial struct Track
                 [
                     new BoxEl
                     {
-                        Key = "drawer-presence:" + rowKey, Direction = 1, MinWidth = 0f, Animate = s_drawerPresence,
+                        Key = "drawer-presence:" + rowKey, Direction = 1, MinWidth = 0f,
                         // The rail lands on the ROW'S ARTWORK CENTRE: indent = ArtCentreIndent − the rail's own offset.
                         Padding = new Edges4(RowMetrics.DrawerIndent(shape.Set, shape.Art), 0f, Spacing.L, Spacing.S),
                         Children = [body with { Key = "drawer-body:" + rowKey }],
@@ -2319,12 +2393,13 @@ public readonly partial struct Track
             // drawer opening under the wrong row after a scroll). Same rule the sibling sites below already follow.
             var open = UseComputed(() => _host.IsOpen(_trackItem!.Value, _scope.Index.Value - _start));
             bool isOpen = open.Value;
+            var tail = UseComputed(() => _host.DrawerTail(_trackItem!.Value, _scope.Index.Value - _start));
             var thost = _host;
             var tscope = _scope;
             var titem = _trackItem!;
             int tstart = _start;
             Element content = Embed.Comp(() => new TableRowContent(thost, tscope, titem, tstart, hovered));
-            Element row = _host.Skin(_scope, content, in shape, flow, isOpen, _start, hovered, _narrate) with { Key = "row" };
+            Element row = _host.Skin(_scope, content, in shape, flow, isOpen || tail.Value, _start, hovered, _narrate) with { Key = "row" };
             if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [row] };
             var t = _trackItem!.Peek();
             int display = _scope.Index.Peek() - _start;

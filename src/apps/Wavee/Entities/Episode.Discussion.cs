@@ -84,6 +84,7 @@ internal static partial class PodcastReaderUI
 
     static Element ReplyThread(Element content) => new BoxEl
     {
+        Key = "replies", Animate = Design.Reveal.Drawer,
         Direction = 0, MinWidth = 0, Gap = Spacing.M, Margin = new Edges4(0, Spacing.S, 0, 0), Children =
         [
             new BoxEl { Width = 1, Shrink = 0, AlignSelf = FlexAlign.Stretch, Fill = Tok.StrokeDividerDefault },
@@ -139,7 +140,6 @@ internal static partial class PodcastReaderUI
     /// The stack is skipped entirely when the answer carried no replier avatars, rather than inventing faces.</summary>
     static Element RepliesDisclosure(Spotify.Podcasts.Comment c, Signal<bool> expanded)
     {
-        bool open = expanded.Value;
         int faces = DiscussionLayout.ReplyAvatarCount(c.ReplyAvatars.Length, c.Replies);
         var row = new List<Element>(3);
         if (faces > 0)
@@ -152,7 +152,7 @@ internal static partial class PodcastReaderUI
         }
         row.Add(new TextEl(Strings.Podcast.RepliesCount(c.Replies))
             { Size = 13, LineHeight = 18, Weight = 600, Shrink = 0, Color = Tok.TextSecondary });
-        row.Add(Icon(open ? Icons.ChevronUp : Icons.ChevronDown, 12, Tok.TextTertiary));
+        row.Add(Sidebar.Chevron.Section(() => expanded.Value, size: 12f));   // rotates with the thread's reveal
         return new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Start, MinWidth = 0,

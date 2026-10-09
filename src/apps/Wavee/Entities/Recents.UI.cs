@@ -302,23 +302,8 @@ public readonly partial struct Recents
 
     // ══ 6. THE DRAWER (W6, §5 rows 10-13, §9.1 #5-#6) ════════════════════════════════════════════════════════════════
 
-    // TWO specs on TWO nodes. The OUTER clip box animates SIZE only and is a COLUMN, so the host measures the drawer's
-    // true height (one spec on the clipping row stalled 333 ms and snapped); the INNER presence node fades and drops
-    // INSIDE the stationary clip. SuppressDescendantTransitions stops late-landing rows starting a second geometry wave.
-    static readonly LayoutTransition DrawerReveal = new(TransitionChannels.Size, MotionTok.DisclosureExpand.ToDynamics(),
-        Size: SizeMode.Reflow, Enter: new EnterExit(Active: true), Exit: new EnterExit(Active: true),
-        ExitDynamics: MotionTok.DisclosureCollapse.ToDynamics(), Anchor: SizeAnchor.Leading, SuppressDescendantTransitions: true);
-
-    static readonly LayoutTransition DrawerPresence = new(TransitionChannels.Opacity | TransitionChannels.Position,
-        MotionTok.DisclosureExpand.ToDynamics(),
-        Enter: new EnterExit(Dy: -Spacing.S, Opacity: 0f, Active: true),
-        Exit: new EnterExit(Dy: -Spacing.XS, Opacity: 0f, Active: true),
-        ExitDynamics: MotionTok.DisclosureCollapse.ToDynamics());
-
-    /// <summary>One child's entrance, delayed by <c>Design.Entrance.DelayMs</c> — capped at 8 × 40, 0 under reduced
-    /// motion — never <c>Element.Stagger</c>, which has no ceiling (§9.1 #6).</summary>
-    static readonly LayoutTransition ChildReveal = new(TransitionChannels.Opacity, MotionTok.DisclosureExpand.ToDynamics(),
-        Enter: new EnterExit(Dy: -Spacing.XS, Opacity: 0f, Active: true));
+    // ONE spec on the clip box (Design.Reveal.Drawer): the presented height springs, the rows below ride it; the inner box
+    // is plain structure.
 
     /// <summary>The accordion's body: a 1-DIP accent spine 32 in, the children a further 24. A member with no target is
     /// skipped, so the RENDERED ordinal (the # cell) and the wire index (the key) differ on purpose (§9.2).</summary>
@@ -337,7 +322,6 @@ public readonly partial struct Recents
             rendered.Add(new BoxEl
             {
                 Key = "child:" + key + ":" + FormatCache.Int(i), Direction = 1,
-                Animate = ChildReveal with { DelayMs = Design.Entrance.DelayMs(ordinal) },
                 Children = [ChildRow(page, targets[i], ordinal, entries[i].PlayedAtMs, art)],
             });
         }
@@ -364,8 +348,8 @@ public readonly partial struct Recents
         {
             Key = "drawer:" + key, Direction = 1, MinWidth = 0f, Shrink = 0f, ClipToBounds = true,
             Margin = new Edges4(Spacing.XXL + Spacing.S, Spacing.XXS, 0f, Spacing.S),
-            Animate = DrawerReveal,
-            Children = [new BoxEl { Key = "drawer-presence:" + key, Direction = 1, MinWidth = 0f, Animate = DrawerPresence, Children = [body] }],
+            Animate = Design.Reveal.Drawer,
+            Children = [new BoxEl { Key = "drawer-presence:" + key, Direction = 1, MinWidth = 0f, Children = [body] }],
         };
     }
 

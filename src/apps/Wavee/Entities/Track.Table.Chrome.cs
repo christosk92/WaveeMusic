@@ -101,7 +101,7 @@ public readonly partial struct Track
             ExitDynamics: TransitionDynamics.Tween(SearchCollapseMs, Easing.FluentAccelerate));
 
         static readonly LayoutTransition s_headerShift = new(TransitionChannels.Position,
-            TransitionDynamics.Tween(MotionTok.DisclosureExpand.DurationMs, Easing.FluentDecelerate));
+            TransitionDynamics.Tween(Design.Motion.Slow, Easing.FluentDecelerate));
 
         internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
         static PopupOptions RichPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
