@@ -71,7 +71,7 @@ public static partial class Sidebar
     /// everything, the account included.</summary>
     public static void Boot()
     {
-        s_profileDir = s_profileDirOverride ?? Path.Combine(Platform.LocalFolder, "WaveeMusic");
+        s_profileDir = s_profileDirOverride ?? DefaultProfileDir();
         SidebarMigrationHost.RunIfNeeded(Platform.Settings, s_profileDir, Entities.Current.Key);
 
         var s = Platform.Settings;
@@ -92,6 +92,17 @@ public static partial class Sidebar
         Pins.OnChanged = CommitAccount;                                   // every pin mutation is a commit point
         Log.Info("sidebar", "boot layout=" + Layout.Peek() + " fault=" + LayoutFileFault);
     }
+
+    /// <summary>The real <c>%LOCALAPPDATA%\Wavee\WaveeMusic</c>, except under `--fake`: a demo never persists (its settings
+    /// are in memory, so the migration latch never sticks), and without its own folder every demo start would migrate the
+    /// v2 file over the real profile's sidebar.json and write the fake account's pins next to it. The demo folder is
+    /// per process and <see cref="Shutdown"/> deletes it.</summary>
+    static string DefaultProfileDir()
+        => Platform.Args.Fake
+            ? (s_demoDir = Path.Combine(Path.GetTempPath(), "Wavee-demo-sidebar", Environment.ProcessId.ToString(CultureInfo.InvariantCulture)))
+            : Path.Combine(Platform.LocalFolder, "WaveeMusic");
+
+    static string? s_demoDir;
 
     static void LoadDeviceFile()
     {
@@ -757,6 +768,10 @@ public static partial class Sidebar
         bool deviceLanded = device?.WaitForWrites(timeoutMs) ?? true;
         bool accountLanded = account?.WaitForWrites(timeoutMs) ?? true;
         if (!deviceLanded || !accountLanded) Log.Warn("sidebar", "sidebar.shutdown_flush_timeout ms=" + timeoutMs);
+        if (s_demoDir is { } demo)
+        {
+            try { Directory.Delete(demo, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
         return deviceLanded && accountLanded;
     }
 
