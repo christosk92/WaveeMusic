@@ -28,8 +28,8 @@
 // `TryBuildMove`/`TryBuildMoves`/`PlaylistDiffApplier` write seam, and every 0.2.9 fact that asserted the resulting
 // rootlist ORDER after a drop (most of `RootlistDropScenarioTests.cs`, half of `RootlistSlotToOpTests.cs`), has no
 // reachable 0.3 equivalent — inventing one would test something Sidebar.cs does not do. `SidebarDragClampTests.cs`'s
-// `LibraryV3View`/`SidebarRailDropRules` facts also stay out: those types live in `Sidebar.Modes.cs`/
-// `Platform/Drag.cs`, not Sidebar.cs, and are another file's gate.
+// `LibraryV3View`/`SidebarRailDropRules` facts also stay out: both types are gone (the list shaper is
+// `SidebarLibraryShaper`, Sidebar.Library.cs), and the drag gate lives in `Platform/Drag.cs`, not Sidebar.cs.
 
 using System;
 using System.Collections.Generic;
@@ -1546,8 +1546,8 @@ public class SidebarFolderFlyoutNavTests
 // ── SidebarReorderClamp: the reorder-clamp displacement offset, restored ───────────────────────────────────────────
 //
 // Only the SidebarReorderClamp.Offset facts from SidebarDragClampTests.cs — restored now that the type is public.
-// The rest of that old file (LibraryV3View.ClampToSiblingRun, SidebarRailDropRules) is left out on purpose: those
-// types live in Sidebar.Modes.cs and Platform/Drag.cs, not Sidebar.cs, and are a different file's gate.
+// The rest of that old file (LibraryV3View.ClampToSiblingRun, SidebarRailDropRules) is left out on purpose: both types
+// are gone (the list shaper is SidebarLibraryShaper, Sidebar.Library.cs), and the drag gate lives in Platform/Drag.cs.
 public class SidebarDragClampTests
 {
     [Fact]

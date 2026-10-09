@@ -14,9 +14,9 @@
 // `Features/Concerts/ConcertDateFlyout.cs` (the when + where flyouts). The dead 0.2.9 compositions (ch 17 §9: Hero,
 // HeroStatsLine, SpotlightCard, BigDateBlock, ScheduleRow, TimeMeta, StatusPill-for-rows, CityLine) are not ported.
 //
-// THE SEGMENTED-PILL GRAMMAR IS PUBLIC (`FusedPill` + `SegmentedPillStyle`): the Home strip and the sidebar speak it at
-// their own registers. Both re-derived it privately in 0.3 (`Home.UI.cs` FusedPill, `Shell/Sidebar.UI.LibraryV3.cs`
-// FusedMotion/SegmentDock/FusedPill) — reported as a duplication, not edited here.
+// THE SEGMENTED-PILL GRAMMAR IS PUBLIC (`FusedPill` + `SegmentedPillStyle`). Concert's when-pill is its one user today;
+// `Strip` waits for Home's fused facet pill (ch 10 §3). The sidebar's register went with the 0.3 Your Library rewrite
+// (`Shell/Sidebar.UI.Library.cs`'s chips are plain chips).
 
 using System.Globalization;
 using FluentGpu.Controls;
@@ -60,14 +60,6 @@ public sealed record SegmentedPillStyle(
         SegmentFill: Tok.AccentDefault, SegmentShadow: Elevation.Card, SegmentInk: Tok.OnAccent,
         ValueInk: Tok.TextPrimary, TrailingInk: Tok.TextSecondary, TrailingGlyph: Icons.Cancel,
         BorderWidth: 1f, BorderColor: Tok.StrokeControlDefault);
-
-    /// <summary>The sidebar register: the Accent capsule at the rail's 28-DIP scale; an ✕ clears the qualifier.</summary>
-    public static SegmentedPillStyle Sidebar => new(
-        Height: 28f, SegmentHeight: 22f, Padding: new Edges4(3f, 3f, 9f, 3f), SegmentPadding: new Edges4(8f, 0f, 8f, 0f),
-        Gap: 6f, SegmentGap: 4f, TextSize: 12f, CheckSize: 10f, TrailingSize: 9f,
-        Fill: Tok.AccentDefault, HoverFill: Tok.AccentSecondary, PressedFill: Tok.AccentTertiary,
-        SegmentFill: Tok.FillControlSolid, SegmentShadow: Elevation.Card, SegmentInk: Tok.AccentTextPrimary,
-        ValueInk: Tok.OnAccent, TrailingInk: Tok.OnAccent, TrailingGlyph: Icons.Cancel);
 }
 
 public readonly partial struct Concert

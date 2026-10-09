@@ -95,10 +95,9 @@ Read [wiring-discipline.md](wiring-discipline.md) before any seam/composition-ro
 - [probes.md](probes.md) — the windowless CLI probe arms (`--log-sessions` and the others `Probe.TryRunCliArm`
   dispatches), how to build/run one against the live profile, and the credential-store caveat. Read before running
   or adding a probe.
-- **`wavee-sidebar` skill** (`.claude/skills/wavee-sidebar/`) — the left sidebar: the three designs as documents
-  over ONE `SidebarPane` renderer, the layout document/reducer/persistence, the projection→binder→planner
-  pipeline, the customizer, and the extension registries. Read it before touching `Features/Sidebar/**`,
-  `Wavee.Core/Sidebar/**` or `Actions/Extensibility/**`.
+- **`wavee-sidebar` skill** (`.claude/skills/wavee-sidebar/`) — the left sidebar: Classic and Library layouts, one
+  renderer, pane modes, Edit mode, per-account pins. Read it before touching `Shell/Sidebar*.cs`, the
+  `Sidebar*Tests.cs` files or `docs/guide/sidebar.md`'s subjects.
 - **`dnd` skill** (`.claude/skills/dnd/`) — **drag & drop**, engine and app. Read it before touching
   `Features/DragDrop/**` (`WaveeResourceDrag` payloads/commit seams, the engine-free `WaveeDragRules` /
   `TabDropRules` decision tables, the chip model, the insertion preview) or any surface that declares a

@@ -110,7 +110,7 @@ public static class SidebarCatalogue
         SidebarSectionKind.Playlists => "sidebar.playlists",
         SidebarSectionKind.Library => "sidebar.yourLibrary",
         SidebarSectionKind.Recent => "sidebar.recentlyPlayed",
-        SidebarSectionKind.NewReleases => "sidebar.newReleases",
+        SidebarSectionKind.NewReleases => "sidebar.section.title.newReleases",
         _ => null,
     };
 

@@ -926,9 +926,10 @@ public static partial class Sidebar
             int binderEpoch = s_binderEpoch.Value;
             int revision = Binder?.Revision ?? 0;
             int mode = Config.ModeEpoch?.Invoke() ?? 0;
-            // The planner options the mode decided: the drop band's arming, Library's chip, grid columns and folder shape.
-            int optionsFold = HashCode.Combine(options.PinDropArmed, (int)options.Filter, options.GridColumns,
-                options.FoldersInline, options.Drilled);
+            // The planner options the mode decided: Library's chip, grid columns and folder shape. The drop band's arming
+            // is its own fold (PinDrop), so a drag that starts or ends names that cause instead of Mode.
+            int pinDrop = options.PinDropArmed ? 1 : 0;
+            int optionsFold = HashCode.Combine((int)options.Filter, options.GridColumns, options.FoldersInline, options.Drilled);
             // The re-plan census (Sidebar.Census.cs): which of these inputs moved since the LAST BUILD. Accumulated here
             // (every render folds the key) and claimed by BuildStage, which runs only when the key actually moved.
             var moved = Shell.SidebarReplanCause.None;
@@ -941,19 +942,21 @@ public static partial class Sidebar
             if (revision != _depRevision) moved |= Shell.SidebarReplanCause.Revision;
             if (mode != _depMode) moved |= Shell.SidebarReplanCause.Mode;
             if (optionsFold != _depOptions) moved |= Shell.SidebarReplanCause.Mode;
+            if (pinDrop != _depPinDrop) moved |= Shell.SidebarReplanCause.PinDrop;
             if (!string.Equals(search, _depSearch, StringComparison.Ordinal)) moved |= Shell.SidebarReplanCause.Search;
             _depLayout = layoutVer; _depEntries = entriesVer; _depInput = inputVer; _depPins = pinsVer; _depFolder = folderVer;
-            _depBinder = binderEpoch; _depRevision = revision; _depMode = mode; _depOptions = optionsFold; _depSearch = search;
+            _depBinder = binderEpoch; _depRevision = revision; _depMode = mode; _depOptions = optionsFold; _depPinDrop = pinDrop;
+            _depSearch = search;
             _pendingReplanCauses |= moved;
             return DepKey.Combine(DepKey.From(layoutVer, entriesVer, pinsVer, folderVer),
                 DepKey.Combine(DepKey.From(revision, mode, optionsFold, binderEpoch),
-                    DepKey.Combine(DepKey.Combine(DepKey.From(inputVer), DepKey.From(compact ? 1 : 0)), search)));
+                    DepKey.Combine(DepKey.Combine(DepKey.From(inputVer), DepKey.From(compact ? 1 : 0, pinDrop)), search)));
         }
 
         // The last PlanDep inputs + the causes accumulated since the last build (Sidebar.Census.cs).
         int _depLayout = int.MinValue, _depEntries = int.MinValue, _depInput = int.MinValue, _depPins = int.MinValue,
             _depFolder = int.MinValue, _depBinder = int.MinValue, _depRevision = int.MinValue, _depMode = int.MinValue,
-            _depOptions = int.MinValue;
+            _depOptions = int.MinValue, _depPinDrop = int.MinValue;
         string? _depSearch;
         Shell.SidebarReplanCause _pendingReplanCauses;
 
@@ -1047,8 +1050,7 @@ public static partial class Sidebar
                 return;
             }
 
-            // The rail re-render edge is gone with the second list (P2); P6.6 drops the parameter from the census.
-            Shell.SidebarReplanCensus.NotePublish(railChanged: false, wholesale);
+            Shell.SidebarReplanCensus.NotePublish(wholesale);
             void PublishSignals()
             {
                 _rowCount.Value = Plan.Rows.Count;

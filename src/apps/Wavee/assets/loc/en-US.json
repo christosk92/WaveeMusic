@@ -1,7 +1,13 @@
 {
   "$culture": "en-US",
   "$unusedAllow": [
-    "modulePage.openOn"
+    "modulePage.openOn",
+    "sidebar.item.albums", "sidebar.item.artists", "sidebar.item.audiobooks", "sidebar.item.liked", "sidebar.item.podcasts",
+    "sidebar.section.title.collections", "sidebar.section.title.home", "sidebar.section.title.newReleases",
+    "sidebar.section.title.pinned", "sidebar.section.title.playlists", "sidebar.section.title.recent",
+    "sidebar.section.title.settings",
+    "sidebar.sort.alphabetical", "sidebar.sort.creator", "sidebar.sort.customOrder", "sidebar.sort.recentlyAdded",
+    "sidebar.sort.recents"
   ],
   "$comment": "Wavee base culture — every user-facing UI string. Other cultures override per-key and fall back here. Keys flatten to a `Wavee.Strings` class via FluentGpu.SourceGen (Strings.Detail.Play == \"detail.play\"); parameterized keys expose a typed format method. `$unusedAllow` is analyzer-only (FLLOC005 keepers).",
   "drag": {
@@ -2285,13 +2291,9 @@
       "useLayout": "Use {layout} layout"
     },
     "active": "Active",
-    "layout": {
-      "menuTitle": "Sidebar layout"
-    },
     "pinned": "Pinned",
     "yourLibrary": "Your Library",
     "playlists": "Playlists",
-    "dropToPin": "Drop items here to pin",
     "songCount": "{count, plural, one {# song} other {# songs}}",
     "createPlaylistTooltip": "Create playlist",
     "createTooltip": "Create playlist or folder",
@@ -2308,7 +2310,6 @@
     "deleteFolder": "Delete folder",
     "newFolderInside": "New folder inside",
     "newPlaylistHere": "New playlist in this folder",
-    "deleteFolderConfirm": "Delete “{name}”? {count, plural, one {The playlist inside} other {The # playlists inside}} will move up a level. Playlists are not deleted.",
     "folderCreated": "Folder created",
     "folderRenamed": "Folder renamed",
     "folderDeleted": "Folder deleted",
@@ -2338,15 +2339,11 @@
       "filters": "Filters",
       "showLiked": "Show Liked Songs",
       "hidePinned": "Hide pinned",
-      "customize": "Customize sidebar…",
       "resetLayout": "Reset this layout",
       "expand": "Expand",
       "collapse": "Collapse"
     },
     "paneEmpty": "Your sidebar is empty",
-    "layoutFault": {
-      "discard": "Start fresh"
-    },
     "pin": {
       "pinnedShownAgain": "Pinned shortcuts are shown again",
       "pinnedNamed": "Pinned {name}",
@@ -2355,7 +2352,6 @@
       "unpin": "Unpin from sidebar",
       "undo": "Undo",
       "emptyHint": "Or use the pin action on any library item.",
-      "position": "{index} of {count}",
       "folderMissing": "Not in your library on this device yet",
       "unavailable": "Unavailable",
       "dropHere": "Drop here to pin",
@@ -2396,46 +2392,10 @@
         "newReleases": "New releases",
         "settings": "Settings"
       },
-      "pinned": "Pinned",
-      "pinnedSub": "The items you pinned, in your order",
-      "jumpBackIn": "Jump back in",
-      "jumpBackInSub": "What you opened most recently",
       "recentlyPlayed": "Recently played",
-      "recentlyPlayedSub": "What you actually listened to, most recent first",
-      "shortcuts": "Library shortcuts",
-      "shortcutsSub": "Liked Songs, Albums, Artists, Podcasts, Local files",
-      "playlistTree": "Playlists",
-      "playlistTreeSub": "Your playlists, with folders",
-      "entityList": "Library list",
-      "entityListSub": "A filtered, sorted slice of your library",
-      "entityEmbed": "Spotlight",
-      "entityEmbedSub": "Put one playlist, album, artist or track front and centre",
-      "newReleases": "New releases",
-      "newReleasesSub": "Fresh music from the artists you follow",
-      "concerts": "Concerts near you",
-      "concertsSub": "Upcoming shows for the artists you listen to",
-      "staticLinks": "Links",
-      "staticLinksSub": "Shortcuts to pages like Home or Search",
-      "group": "Group",
-      "groupSub": "Your own named group of items",
-      "header": "Heading",
-      "headerSub": "A text label between sections",
-      "divider": "Divider",
-      "dividerSub": "A thin rule between sections",
-      "artistTopTracks": "Artist top tracks",
-      "artistTopTracksSub": "The most-played tracks of one artist",
-      "queue": "Queue",
-      "queueSub": "What's playing next",
       "nowPlaying": "Now playing",
-      "nowPlayingSub": "The current track at a glance",
-      "extension": "Extension",
-      "extensionSub": "A section contributed by an extension",
       "empty": "Nothing here yet",
       "emptyRecents": "Play something and it'll show up here"
-    },
-    "recents": {
-      "sourceVisited": "Recently visited",
-      "sourcePlayed": "Recently played"
     },
     "item": {
       "liked": "Liked Songs",
@@ -2449,11 +2409,6 @@
     },
     "newReleases": {
       "empty": "No new releases from the artists you follow."
-    },
-    "concerts": {
-      "locationPrompt": "Set your location to see concerts",
-      "setLocation": "Set your location",
-      "empty": "No upcoming concerts near you."
     },
     "extension": {
       "manage": "Manage extension"
@@ -2471,27 +2426,11 @@
     },
     "v3": {
       "title": "Your Library",
-      "searchTooltip": "Search your library",
       "searchPlaceholder": "Search in Your Library",
       "clearSearch": "Clear search",
       "clearFilter": "Clear filter",
-      "clearFilters": "Clear filters",
-      "collapse": "Collapse Your Library",
-      "expand": "Expand Your Library",
-      "filter": {
-        "playlists": "Playlists",
-        "podcasts": "Podcasts",
-        "albums": "Albums",
-        "artists": "Artists"
-      },
-      "qualifier": {
-        "byYou": "By you",
-        "bySpotify": "By Spotify",
-        "mixed": "Mixed"
-      },
       "sort": {
-        "custom": "Custom order",
-        "reversed": "Reversed"
+        "custom": "Custom order"
       },
       "kind": {
         "playlist": "Playlist",
@@ -2508,10 +2447,6 @@
         "search": "No results for “{query}”",
         "searchSub": "Try a different spelling, or clear the filter."
       }
-    },
-    "a11y": {
-      "filterGroup": "Filter Your Library",
-      "sortView": "Sort and view options"
     },
     "collections": "Collections",
     "recentlyPlayed": "Recently played",

@@ -573,14 +573,10 @@
     "audiobooks": "오디오북"
   },
   "sidebar": {
-    "layout": {
-      "menuTitle": "사이드바 레이아웃"
-    },
     "active": "활성",
     "pinned": "고정됨",
     "yourLibrary": "내 라이브러리",
     "playlists": "플레이리스트",
-    "dropToPin": "고정하려면 여기에 놓으세요",
     "songCount": "{count, plural, other {#곡}}",
     "createPlaylistTooltip": "플레이리스트 만들기",
     "createTooltip": "플레이리스트 또는 폴더 만들기",
@@ -591,63 +587,20 @@
       "playlists": "아직 플레이리스트가 없습니다 — +를 눌러 만드세요"
     },
     "newPlaylist": "내 플레이리스트",
-    "menu": {
-      "customize": "사이드바 사용자 지정…"
-    },
     "seam": {
       "announceWidth": "사이드바 너비 {width}"
-    },
-    "layoutFault": {
-      "discard": "새로 시작"
     },
     "pin": {
       "pinTo": "사이드바에 고정",
       "unpin": "사이드바에서 고정 해제",
       "undo": "실행 취소",
-      "emptyHint": "또는 라이브러리 항목의 고정 동작을 사용하세요.",
-      "position": "{count}개 중 {index}번째"
+      "emptyHint": "또는 라이브러리 항목의 고정 동작을 사용하세요."
     },
     "section": {
-      "pinned": "고정됨",
-      "pinnedSub": "내가 고정한 항목을 내 순서대로 표시합니다",
-      "jumpBackIn": "다시 이어서",
-      "jumpBackInSub": "가장 최근에 열어 본 항목입니다",
       "recentlyPlayed": "최근 재생한 항목",
-      "recentlyPlayedSub": "실제로 들은 항목을 최신순으로 표시합니다",
-      "shortcuts": "라이브러리 바로가기",
-      "shortcutsSub": "좋아요 표시한 곡, 앨범, 아티스트, 팟캐스트, 로컬 파일",
-      "playlistTree": "플레이리스트",
-      "playlistTreeSub": "폴더를 포함한 내 플레이리스트입니다",
-      "entityList": "라이브러리 목록",
-      "entityListSub": "라이브러리를 필터링하고 정렬한 목록입니다",
-      "entityEmbed": "스포트라이트",
-      "entityEmbedSub": "플레이리스트, 앨범, 아티스트 또는 트랙 하나를 가장 눈에 띄게 배치합니다",
-      "newReleases": "새 앨범 및 싱글",
-      "newReleasesSub": "팔로우하는 아티스트의 새 음악입니다",
-      "concerts": "내 주변 콘서트",
-      "concertsSub": "자주 듣는 아티스트의 공연 일정입니다",
-      "staticLinks": "링크",
-      "staticLinksSub": "홈이나 검색 같은 페이지로 이동하는 바로가기입니다",
-      "group": "그룹",
-      "groupSub": "이름을 직접 정한 항목 그룹입니다",
-      "header": "머리글",
-      "headerSub": "섹션 사이에 표시되는 텍스트 레이블입니다",
-      "divider": "구분선",
-      "dividerSub": "섹션 사이에 표시되는 얇은 선입니다",
-      "artistTopTracks": "아티스트 인기 트랙",
-      "artistTopTracksSub": "한 아티스트의 가장 많이 재생된 트랙입니다",
-      "queue": "대기열",
-      "queueSub": "다음에 재생할 항목입니다",
       "nowPlaying": "재생 중",
-      "nowPlayingSub": "현재 트랙을 한눈에 보여줍니다",
-      "extension": "확장 프로그램",
-      "extensionSub": "확장 프로그램이 제공하는 섹션입니다",
       "empty": "아직 아무것도 없습니다",
       "emptyRecents": "음악을 재생하면 여기에 표시됩니다"
-    },
-    "recents": {
-      "sourceVisited": "최근 방문한 항목",
-      "sourcePlayed": "최근 재생한 항목"
     },
     "item": {
       "playTrack": "트랙 재생",
@@ -656,11 +609,6 @@
     },
     "newReleases": {
       "empty": "팔로우하는 아티스트의 새 앨범이나 싱글이 없습니다."
-    },
-    "concerts": {
-      "locationPrompt": "콘서트를 보려면 위치를 설정하세요",
-      "setLocation": "위치 설정",
-      "empty": "내 주변에 예정된 콘서트가 없습니다."
     },
     "extension": {
       "manage": "확장 프로그램 관리"
@@ -678,27 +626,11 @@
     },
     "v3": {
       "title": "내 라이브러리",
-      "searchTooltip": "라이브러리 검색",
       "searchPlaceholder": "내 라이브러리에서 검색",
       "clearSearch": "검색어 지우기",
       "clearFilter": "필터 지우기",
-      "clearFilters": "필터 모두 지우기",
-      "collapse": "내 라이브러리 접기",
-      "expand": "내 라이브러리 펼치기",
-      "filter": {
-        "playlists": "플레이리스트",
-        "podcasts": "팟캐스트",
-        "albums": "앨범",
-        "artists": "아티스트"
-      },
-      "qualifier": {
-        "byYou": "내가 만든 항목",
-        "bySpotify": "Spotify가 만든 항목",
-        "mixed": "혼합"
-      },
       "sort": {
-        "custom": "사용자 지정 순서",
-        "reversed": "역순"
+        "custom": "사용자 지정 순서"
       },
       "kind": {
         "playlist": "플레이리스트",
@@ -715,10 +647,6 @@
         "search": "“{query}”에 대한 결과가 없습니다",
         "searchSub": "다르게 입력해 보거나 필터를 지워 보세요."
       }
-    },
-    "a11y": {
-      "filterGroup": "내 라이브러리 필터",
-      "sortView": "정렬 및 보기 옵션"
     },
     "customizer": {
       "itemAdd": "추가…",

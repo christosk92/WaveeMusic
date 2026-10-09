@@ -11,10 +11,10 @@
 // capture levels are `LogCapturePolicy`, the strip's labels / the picker's caption / where a selection lands after a
 // re-list are `LogsPage.Rules` (`LogsPage.cs`, tested); the disk walk is `WaveeLogSessions` (`Diagnostics.Host.cs`).
 //
-// FRAME: the sidebar customizer's page frame (`Shell/Sidebar.Customizer.UI.cs`): a 64-DIP header (Back, eyebrow + title),
-// Esc → back, `Shell.GoBack()` when there is a back stack, else the Privacy & diagnostics tab. The capture level and file
-// level combos left the viewer (they are Settings › Privacy & diagnostics › Logs › Detail level); Verbose stays here as a
-// checkable item of the "…" menu.
+// FRAME: the page frame the old sidebar customizer used (deleted in the sidebar rework): a 64-DIP header (Back,
+// eyebrow + title), Esc → back, `Shell.GoBack()` when there is a back stack, else the Privacy & diagnostics tab. The
+// capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs › Detail
+// level); Verbose stays here as a checkable item of the "…" menu.
 //
 // NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the live tail polls at 750 ms and bumps only when `Log.Version` moved
 // (and not at all on a past session). The sessions are re-listed once on mount and once per page activation (a keep-alive

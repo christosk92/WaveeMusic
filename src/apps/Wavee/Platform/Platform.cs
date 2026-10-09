@@ -70,10 +70,10 @@ public static partial class Platform
     // PARTIAL: the Wave-6 keys (`diag.stageRects`, and any a Wave-6 owner adds with a writer) are in Platform.Settings.cs.
     public static partial class Keys
     {
-        // ── sidebar: legacy (v0) global pane keys — read only by the v0→v1 migration. Deliberately NOT deleted: a
-        //    downgrade to an older build must still find a sane pane width. The pane state is one value for both layouts
-        //    (SidebarPaneWidth below) since v3.
-        public static readonly SettingKey<float> SidebarWidthLegacy = new("sidebar.width", 300f);
+        // ── sidebar: legacy (v0) global pane keys, read only by the first-run probe
+        //    (`Setup.Bootstrap.IsFreshInstall`): a pane preference written by a build that predates the sidebar designs is
+        //    a witness that this is not a fresh install. The pane state is one value for both layouts (SidebarPaneWidth
+        //    below) since v3.
         public static readonly SettingKey<bool> SidebarWidthUserSetLegacy = new("sidebar.width.userSet", false);
         public static readonly SettingKey<bool> SidebarCollapsedLegacy = new("sidebar.collapsed", false);
         /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). There

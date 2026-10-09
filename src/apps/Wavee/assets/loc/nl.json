@@ -573,14 +573,10 @@
     "audiobooks": "Luisterboeken"
   },
   "sidebar": {
-    "layout": {
-      "menuTitle": "Indeling van zijbalk"
-    },
     "active": "Actief",
     "pinned": "Vastgemaakt",
     "yourLibrary": "Jouw bibliotheek",
     "playlists": "Playlists",
-    "dropToPin": "Sleep items hierheen om ze vast te maken",
     "songCount": "{count, plural, one {# nummer} other {# nummers}}",
     "createPlaylistTooltip": "Playlist maken",
     "createTooltip": "Playlist of map maken",
@@ -591,63 +587,20 @@
       "playlists": "Nog geen playlists — gebruik + om er een te maken"
     },
     "newPlaylist": "Mijn playlist",
-    "menu": {
-      "customize": "Zijbalk aanpassen…"
-    },
     "seam": {
       "announceWidth": "Breedte zijbalk {width}"
-    },
-    "layoutFault": {
-      "discard": "Opnieuw beginnen"
     },
     "pin": {
       "pinTo": "Vastmaken aan zijbalk",
       "unpin": "Losmaken van zijbalk",
       "undo": "Ongedaan maken",
-      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem.",
-      "position": "{index} van {count}"
+      "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem."
     },
     "section": {
-      "pinned": "Vastgemaakt",
-      "pinnedSub": "De items die je hebt vastgemaakt, in jouw volgorde",
-      "jumpBackIn": "Verder waar je was",
-      "jumpBackInSub": "Wat je het laatst hebt geopend",
       "recentlyPlayed": "Onlangs afgespeeld",
-      "recentlyPlayedSub": "Wat je echt hebt beluisterd, het meest recente eerst",
-      "shortcuts": "Snelkoppelingen naar bibliotheek",
-      "shortcutsSub": "Nummers die je leuk vindt, Albums, Artiesten, Podcasts, Lokale bestanden",
-      "playlistTree": "Playlists",
-      "playlistTreeSub": "Jouw playlists, met mappen",
-      "entityList": "Bibliotheeklijst",
-      "entityListSub": "Een gefilterd, gesorteerd deel van je bibliotheek",
-      "entityEmbed": "Uitgelicht",
-      "entityEmbedSub": "Zet één playlist, album, artiest of nummer helemaal vooraan",
-      "newReleases": "Nieuwe releases",
-      "newReleasesSub": "Nieuwe muziek van de artiesten die je volgt",
-      "concerts": "Concerten bij jou in de buurt",
-      "concertsSub": "Aankomende shows van de artiesten naar wie je luistert",
-      "staticLinks": "Koppelingen",
-      "staticLinksSub": "Snelkoppelingen naar pagina's zoals Start of Zoeken",
-      "group": "Groep",
-      "groupSub": "Je eigen groep met een naam",
-      "header": "Kop",
-      "headerSub": "Een tekstlabel tussen secties",
-      "divider": "Scheidingslijn",
-      "dividerSub": "Een dunne lijn tussen secties",
-      "artistTopTracks": "Populairste nummers van artiest",
-      "artistTopTracksSub": "De meest beluisterde nummers van één artiest",
-      "queue": "Wachtrij",
-      "queueSub": "Wat er hierna wordt afgespeeld",
       "nowPlaying": "Nu speelt",
-      "nowPlayingSub": "Het huidige nummer in één oogopslag",
-      "extension": "Extensie",
-      "extensionSub": "Een sectie die door een extensie wordt geleverd",
       "empty": "Nog niets hier",
       "emptyRecents": "Speel iets af en het verschijnt hier"
-    },
-    "recents": {
-      "sourceVisited": "Onlangs bezocht",
-      "sourcePlayed": "Onlangs afgespeeld"
     },
     "item": {
       "playTrack": "Nummer afspelen",
@@ -656,11 +609,6 @@
     },
     "newReleases": {
       "empty": "Geen nieuwe releases van de artiesten die je volgt."
-    },
-    "concerts": {
-      "locationPrompt": "Stel je locatie in om concerten te zien",
-      "setLocation": "Je locatie instellen",
-      "empty": "Geen aankomende concerten bij jou in de buurt."
     },
     "extension": {
       "manage": "Extensie beheren"
@@ -678,27 +626,11 @@
     },
     "v3": {
       "title": "Jouw bibliotheek",
-      "searchTooltip": "Zoek in je bibliotheek",
       "searchPlaceholder": "Zoeken in Jouw bibliotheek",
       "clearSearch": "Zoekopdracht wissen",
       "clearFilter": "Filter wissen",
-      "clearFilters": "Filters wissen",
-      "collapse": "Jouw bibliotheek samenvouwen",
-      "expand": "Jouw bibliotheek uitvouwen",
-      "filter": {
-        "playlists": "Playlists",
-        "podcasts": "Podcasts",
-        "albums": "Albums",
-        "artists": "Artiesten"
-      },
-      "qualifier": {
-        "byYou": "Door jou",
-        "bySpotify": "Door Spotify",
-        "mixed": "Gemengd"
-      },
       "sort": {
-        "custom": "Eigen volgorde",
-        "reversed": "Omgekeerd"
+        "custom": "Eigen volgorde"
       },
       "kind": {
         "playlist": "Playlist",
@@ -715,10 +647,6 @@
         "search": "Geen resultaten voor “{query}”",
         "searchSub": "Probeer een andere spelling, of wis het filter."
       }
-    },
-    "a11y": {
-      "filterGroup": "Jouw bibliotheek filteren",
-      "sortView": "Sorteer- en weergaveopties"
     },
     "customizer": {
       "itemAdd": "Toevoegen…",
