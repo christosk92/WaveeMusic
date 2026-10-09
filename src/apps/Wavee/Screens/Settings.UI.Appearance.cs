@@ -604,12 +604,14 @@ public static partial class Settings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>Settings › Sidebar (design C.2 entry 3): the navigation style (cards), the style's own rows (Classic: Show covers; Library: View, Density, Show Liked Songs), Edit sidebar (P4), reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
+    /// <summary>Settings › Sidebar (design C.2 entry 3): the navigation style (cards), the style's own rows (Classic: Show covers; Library: View, Density, Show Liked Songs; Zune: Pins in the title bar), Edit sidebar (P4) and Reset this layout (both left out under Zune, where the pane is hidden), reset everything; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
     /// signals, so a change made on the sidebar itself shows here live.</summary>
     sealed class SidebarLayoutCard : Component
     {
         public override Element Render()
         {
+            var style = Sidebar.NavStyle.Value;
+            bool zune = style == ShellNavStyle.Zune;
             var layout = Sidebar.Layout.Value;
             _ = Sidebar.LayoutVersion.Value;
             var density = Sidebar.Density.Value;
@@ -618,14 +620,15 @@ public static partial class Settings
             // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
             string finish = Loc.Get("sidebar.pane.finishEditing");
             var items = new List<Element>(7);
-            // The style's own rows come first: Classic shows its covers toggle, Library its view, Density and Liked Songs (the same ops as the toolbar and ⋯ menu).
-            if (layout == SidebarLayoutId.Classic)
+            // The style's own rows come first: Classic shows its covers toggle, Library its view, Density and Liked Songs (the same ops as the toolbar and ⋯ menu),
+            // Zune its pins-in-the-title-bar toggle (the pane is hidden, so the layout rows below do not apply).
+            if (!zune && layout == SidebarLayoutId.Classic)
             {
                 items.Add(Item(Loc.Get("settings.sidebar.showCovers"), Loc.Get("settings.sidebar.showCoversSub"),
                     ToggleSwitch.Create(new Signal<bool>(covers), onChange: static on => Sidebar.SetClassicCovers(on),
                         style: SettingsCard.CompactToggleStyle()), icon: Icons.Picture));
             }
-            if (layout == SidebarLayoutId.Library)
+            if (!zune && layout == SidebarLayoutId.Library)
             {
                 items.Add(Item(Loc.Get("settings.sidebar.view"), Loc.Get("settings.sidebar.viewSub"),
                     Embed.Comp(() => new SidebarViewPicker()) with { Key = "sidebar.view:" + (int)Sidebar.Doc.Library.View }, icon: Icons.ViewGrid));
@@ -635,11 +638,21 @@ public static partial class Settings
                     ToggleSwitch.Create(new Signal<bool>(Sidebar.Doc.Library.ShowLiked), onChange: static on => Sidebar.Dispatch(new SetShowLiked(on)),
                         style: SettingsCard.CompactToggleStyle()), icon: Icons.Heart));
             }
-            items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
-                isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
-                onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo));
-            items.Add(Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
-                isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit));
+            if (zune)
+            {
+                items.Add(Item(Loc.Get("settings.sidebar.zunePins"), Loc.Get("settings.sidebar.zunePinsSub"),
+                    ToggleSwitch.Create(new Signal<bool>(Sidebar.ZunePins.Value), onChange: static on => Sidebar.SetZunePins(on),
+                        style: SettingsCard.CompactToggleStyle()), icon: Icons.Pin));
+            }
+            // The pane is hidden under Zune, so its layout-only rows (reset this layout, edit sidebar) are left out there.
+            if (!zune)
+            {
+                items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
+                    isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
+                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo));
+                items.Add(Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
+                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit));
+            }
             items.Add(Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
                 isClickEnabled: !editing,
                 // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
@@ -656,8 +669,8 @@ public static partial class Settings
                 Header = Loc.Get(Strings.Settings.Sidebar.Layout),
                 Description = Loc.Get(Strings.Settings.Sidebar.LayoutSub),
                 HeaderIcon = RowGlyph(Tab.Appearance, "sidebarDesign"),
-                Content = ValueTag(Sidebar.LayoutName(layout)),
-                ItemsHeader = ExpanderPanel(SidebarLayoutCards(layout, editing)),
+                Content = ValueTag(Sidebar.NavStyleName(style)),
+                ItemsHeader = ExpanderPanel(SidebarLayoutCards(style, editing)),
                 Items = [.. items],
             }) with { Key = "appearance.sidebar.layout" };
         }
@@ -689,13 +702,13 @@ public static partial class Settings
         }
     }
 
-    /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
-    /// (design Q7). Public: the setup wizard's Layout step reuses them (P4).</summary>
-    public static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
+    /// <summary>The three navigation-style cards (Classic · Library · Zune), applied at once; disabled while the sidebar is being edited
+    /// (design Q7). Public: the setup wizard's Layout step reuses them (P4, P12).</summary>
+    public static Element SidebarLayoutCards(ShellNavStyle active, bool editing)
     {
-        var strip = Controls.PickerStrip(2, (int)active,
-            static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
-            editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
+        var strip = Controls.PickerStrip(3, (int)active,
+            static (i, on) => SidebarLayoutCardFace((ShellNavStyle)i, on),
+            editing ? static _ => { } : static i => Sidebar.SwitchNavStyle((ShellNavStyle)i));
         if (!editing) return strip;
         // Q7: never a silent dead control — the cards say why they do not switch.
         return new BoxEl
@@ -705,10 +718,9 @@ public static partial class Settings
         };
     }
 
-    static Element SidebarLayoutCardFace(SidebarLayoutId layout, bool on)
+    static Element SidebarLayoutCardFace(ShellNavStyle style, bool on)
     {
         var ink = Controls.PickerInk.For(on);
-        bool library = layout == SidebarLayoutId.Library;
         Element preview = new BoxEl
         {
             Height = 96f, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Direction = 1, Gap = 3f, ClipToBounds = true,
@@ -716,21 +728,28 @@ public static partial class Settings
             Corners = CornerRadius4.All(6f),
             Fill = on ? Tok.AccentSubtle : Tok.FillLayerDefault,
             BorderWidth = 1f, BorderColor = on ? Tok.AccentDefault : Tok.StrokeCardDefault,
-            Children = SidebarPreview(layout, ink),
+            Children = SidebarPreview(style, ink),
         };
-        var title = Controls.PickerLabel(Sidebar.LayoutName(layout), on);
+        var title = Controls.PickerLabel(Sidebar.NavStyleName(style), on);
         Element titleRow = new BoxEl
         {
             Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
             // The "Active" tag makes the selection survive a colour-blind read.
             Children = on ? [title with { Shrink = 1f }, ActiveTag()] : [title],
         };
+        string sub = style switch
+        {
+            ShellNavStyle.Library => "sidebar.layoutName.librarySub",
+            ShellNavStyle.Zune => "sidebar.layoutName.zuneSub",
+            _ => "sidebar.layoutName.classicSub",
+        };
+        string key = style switch { ShellNavStyle.Library => "library", ShellNavStyle.Zune => "zune", _ => "classic" };
         return Controls.PickerCard(on, Controls.PickerPaneCompact, preview, titleRow,
-            Design.Type.MicroMeta(Loc.Get(library ? "sidebar.layoutName.librarySub" : "sidebar.layoutName.classicSub")) with
+            Design.Type.MicroMeta(Loc.Get(sub)) with
             {
                 Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
                 AlignSelf = FlexAlign.Stretch,
-            }) with { Key = library ? "library" : "classic" };
+            }) with { Key = key };
     }
 
     static Element ActiveTag() => new BoxEl
@@ -741,10 +760,25 @@ public static partial class Settings
     };
 
     /// <summary>Static semantic geometry at quarter scale (the compact counts) — never a mounted sidebar, never text.</summary>
-    static Element[] SidebarPreview(SidebarLayoutId layout, Controls.PickerInk ink)
+    static Element[] SidebarPreview(ShellNavStyle style, Controls.PickerInk ink)
     {
         var kids = new List<Element>(9);
-        if (layout == SidebarLayoutId.Library)   // the filter chip strip, the sort pill, then the unified list
+        if (style == ShellNavStyle.Zune)         // the pivot row over the title bar, the smaller sub-pivots, then the pin tiles
+        {
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = 5f, Shrink = 0f,
+                Children = [MiniBar(30f, 10f, ink.Block), MiniBar(24f, 10f, ink.Faint), MiniBar(26f, 10f, ink.Faint)],
+            });
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = 4f, Shrink = 0f,
+                Children = [MiniBar(16f, 5f, ink.Faint), MiniBar(16f, 5f, ink.Faint), MiniBar(16f, 5f, ink.Faint)],
+            });
+            kids.Add(MiniArtRow(ink));
+            kids.Add(MiniArtRow(ink));
+        }
+        else if (style == ShellNavStyle.Library)   // the filter chip strip, the sort pill, then the unified list
         {
             kids.Add(new BoxEl
             {

@@ -440,12 +440,13 @@ public class RootlistSlotResolverTests
     {
         var f = Leaf(depth: 2, nextDepth: 0);
         var previous = new SidebarDropSlot(3, SidebarDropKind.After, 1, SidebarDropRefusal.None);
-        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 48. Inside 4 DIP of it the previous holds…
+        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 48. Inside 4 DIP of it (44…52) the previous holds…
         Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, in previous).Depth);
-        // …and past it the pick commits.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 51f, 44f, in f, in previous).Depth);
-        // With no previous slot there is nothing to hold: the raw pick wins.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None).Depth);
+        // …and past the band (54 > 52) the pick commits.
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 54f, 44f, in f, in previous).Depth);
+        // With no previous slot there is nothing to hold: the raw pick wins, and 47 is still short of the 48 boundary.
+        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 54f, 44f, in f, SidebarDropSlot.None).Depth);
     }
 
     [Fact]

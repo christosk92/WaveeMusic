@@ -10,23 +10,38 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.5] - unreleased
 
+### Added
+
+- **A third navigation style, Zune.** No sidebar: big pivots across the top for Home, Browse, Your Library and Recently
+  played, smaller ones under Your Library for Liked Songs, Albums, Artists, Podcasts and Audiobooks, and up to six of
+  your pins beside them. Pick it in Settings › Appearance › Navigation style or the sidebar's ⋯ › Layout.
+- **Show covers for the Classic sidebar.** Off by default for Spotify's classic text-only list; on shows a small cover
+  on each row.
+
 ### Changed
 
 - **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
   bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
-  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in
-  Settings › Appearance or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists, and optional
-  Recently played and New releases sections) or Library (one list with filters, like Spotify's Your Library). In
-  Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips and the
-  toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
+  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick a layout in
+  Settings › Appearance › Navigation style or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists,
+  and optional Recently played and New releases sections) or Library (one list with filters, like Spotify's Your
+  Library). In Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips
+  and the toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
   in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
   current sidebar carries over.
+- **Color washes are now three settings**: Tinted surfaces (Off, Subtle, Rich), Accent from artwork and Now playing
+  colors. If Color washes was off, all three start off.
+- Sidebar rows, headers, chips and the Your Library toolbar now line up on one grid.
 
 ### Removed
 
 - **The Custom sidebar layout and its full-page customizer.** Its sections are mapped onto the closest Classic or
   Library setup the first time this version starts (a toast says which ones could not be kept); everything it offered
   is now in the sidebar's Edit mode.
+
+### Fixed
+
+- **Home kept its color wash with color washes turned off.**
 
 ## [0.3.4] - 2026-10-06
 

@@ -745,15 +745,15 @@ public static partial class Setup
         ],
     };
 
-    /// <summary>Pick a sidebar layout (design C.2 entry 5): the two Settings cards, applied at once.</summary>
+    /// <summary>Pick a navigation style (design C.2 entry 5): the three Settings cards, applied at once.</summary>
     sealed class LayoutPage : Component
     {
         public override Element Render()
         {
-            var layout = Sidebar.Layout.Value;
+            var style = Sidebar.NavStyle.Value;
             var body = SetupText.Stack(
                 SetupText.Body(Loc.Get("setup.layout.body")),
-                Settings.SidebarLayoutCards(layout, editing: false));
+                Settings.SidebarLayoutCards(style, editing: false));
             return WizardFrame(WizardPage.Layout, Loc.Get("setup.layout.title"), body);
         }
     }

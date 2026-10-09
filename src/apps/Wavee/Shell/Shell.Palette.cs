@@ -72,7 +72,7 @@ public static partial class Shell
         public const int MaxResults = 8;
 
         /// <summary>Builtin rows; registry rows are appended after them.</summary>
-        public const int BuiltinCount = 29;
+        public const int BuiltinCount = 30;
 
         public const string CatalogId = "search.query";
 
