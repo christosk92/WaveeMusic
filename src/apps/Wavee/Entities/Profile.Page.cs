@@ -677,7 +677,7 @@ public static partial class Profile
             if (tone.PaletteUrl is { Length: > 0 } url) _ = Palette.Watch(url).Value;
             var accent = Detail.AccentFor(tone.PaletteUrl, tone.PayloadArgb);
             _accent.SetIfChanged(accent);
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, routeKey));
+            _pageAccent.SetIfChanged(Detail.PageAccentOf(accent, routeKey));
         }
 
         // ── the derived shimmer ────────────────────────────────────────────────────────────────────────────────────────

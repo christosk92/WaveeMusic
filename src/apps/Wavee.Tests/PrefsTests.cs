@@ -7,6 +7,8 @@
 // `Platform.Settings` is process state, so this class joins the platform collection and every fact installs its own
 // in-memory store and puts the defaults-only facade back when it is done.
 
+using FluentGpu.Dsl;          // Tok — the system accent pair a page falls back to
+using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
 
@@ -347,5 +349,23 @@ public sealed class PrefsTests : IDisposable
         Prefs.PlayerBar.ToggleRemaining();
         Assert.Equal(!before, Prefs.PlayerBar.ShowRemaining());
         Assert.Equal(epoch + 1, Prefs.PlayerBar.Epoch.Peek());
+    }
+
+    // ── the page accent gate ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Page_accent_falls_to_the_system_pair_with_artwork_accent_off()
+    {
+        var red = ColorF.FromRgba(255, 0, 0);
+
+        _store.Set(Platform.Keys.WashAccent, 0);
+        var off = Detail.PageAccentOf(red, "k");
+        Assert.Equal(Tok.AccentTextPrimary, off.Ink);
+        Assert.Equal(Tok.AccentDefault, off.Fill);
+
+        _store.Set(Platform.Keys.WashAccent, 1);
+        var on = Detail.PageAccentOf(red, "k");
+        Assert.Equal(red, on.Ink);
+        Assert.Equal(red, on.Fill);
     }
 }

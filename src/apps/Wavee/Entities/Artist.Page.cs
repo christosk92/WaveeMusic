@@ -512,7 +512,8 @@ public readonly partial struct Artist
                 .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: _compact);
 
             // The blend wash, from the RESOLVED metrics (ch 08 §9 inconsistency #1); a cover-keyed leaf, so a grading
-            // re-renders only the wash. Colour washes off ⇒ it renders nothing (the veil and the Play colour stay, §4).
+            // re-renders only the wash. Tinted surfaces Off ⇒ it renders nothing; the veil falls to its neutral rung and
+            // the Play colour follows 'Accent from artwork' (Detail.AccentFor).
             Element wash = Palette.ArtistBlendWash(paletteUrl, ArtistHeroLayout.BlendBackdropHeightFor(in m),
                 ArtistHeroLayout.BlendBoundaryFor(in m), disabled: !washes, key: "artist-wash:" + uri,
                 payloadAccent: a.HeaderAccent);
@@ -1029,7 +1030,7 @@ public readonly partial struct Artist
         {
             var accent = AccentFor(a);
             _accent.SetIfChanged(accent);
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, routeKey));
+            _pageAccent.SetIfChanged(Detail.PageAccentOf(accent, routeKey));
         }
 
         /// <summary>The header's chrome grading, else the avatar's, else the header payload colour, else the ladder's

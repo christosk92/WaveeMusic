@@ -1087,7 +1087,7 @@ public static partial class Detail
         {
             var accent = ComputeAccent(spec);
             _accent.Value = accent;
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, spec.RouteKey));
+            _pageAccent.SetIfChanged(PageAccentOf(accent, spec.RouteKey));
         }
 
         int ComputeHeightRungs()
@@ -1159,9 +1159,11 @@ public static partial class Detail
     /// <summary>The one accent ladder (<see cref="AccentLadder"/>): the cover's chrome grading (else the fallback
     /// url's), else the payload hex, else the last remembered page accent while this page's grading is still pending,
     /// else the system accent. Never the now-playing track. Cached probes only — a miss enqueues elsewhere and the
-    /// caller's tracked effect re-runs when it lands.</summary>
+    /// caller's tracked effect re-runs when it lands. Accent from artwork off ⇒ the system accent; the read subscribes
+    /// the caller's tracked effect, so the toggle re-publishes live.</summary>
     public static ColorF AccentFor(string? paletteUrl, uint payloadAccent, string? fallbackUrl = null)
     {
+        if (!Prefs.Appearance.AccentFromArtwork()) return Tok.AccentDefault;
         var scheme = Design.ChromeSchemeFor(paletteUrl) ?? Design.ChromeSchemeFor(fallbackUrl);
         ColorF? graded = scheme is { } cp ? Design.Palette.ChromeAccent(cp) : null;
         // Nothing better can arrive: no payload and a url the endpoint cannot grade (or has already refused).
@@ -1172,6 +1174,13 @@ public static partial class Detail
         AccentHold.Remember(result);
         return result.Color;
     }
+
+    /// <summary>The page-scoped accent pair for a resolved accent. Accent from artwork on ⇒ the art colour drives both
+    /// the ink and the fill; off ⇒ the system pair, the same one Recents' <c>PageView.Fallback</c> publishes.</summary>
+    public static Design.PageAccent PageAccentOf(ColorF accent, string routeKey)
+        => Prefs.Appearance.AccentFromArtwork()
+            ? new(accent, accent, routeKey)
+            : new(Tok.AccentTextPrimary, Tok.AccentDefault, routeKey);
 
     static ColorF ComputeAccent(FrameSpec spec)
     {
