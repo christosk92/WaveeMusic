@@ -1554,6 +1554,7 @@ public readonly record struct HomeCard(EntityRef Target, int SectionSlot = Table
                 PlaylistFormat.Editorial => "editorial",
                 PlaylistFormat.Chart => "chart",
                 PlaylistFormat.Radio => "radio",
+                PlaylistFormat.ListenLater => "listen-later",
                 _ => null,
             };
         }

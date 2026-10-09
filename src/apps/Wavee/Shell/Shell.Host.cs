@@ -840,7 +840,7 @@ public static partial class Shell
     /// here, or opening History in a new tab would open another new tab, forever.</summary>
     static void Commit(in Route route, NavOrigin? origin, NavTransitionKind motion)
     {
-        var normalized = route with { Tab = Tabs.ActiveId };
+        var normalized = Redirected(route) with { Tab = Tabs.ActiveId };
         if (!Go(ref s_nav, normalized)) return;
 
         Motion.Value = motion;                    // BEFORE the route, in the same flush
@@ -862,9 +862,41 @@ public static partial class Shell
     /// 2026-09-16: a discography drawer's "Go to album" tip parked over the album page it had just opened).</summary>
     static void RouteCommitted() => ToolTip.CloseOpen();
 
+    /// <summary>A route that is really ANOTHER page (Spotify's listen-later playlist is the Podcasts library's Your
+    /// Episodes view): returns the page to show instead, or null to keep the route. Consulted by every commit and every
+    /// back/forward/tab step, so no path lands on the stand-in. Installed by <c>Playlist.InstallPages</c>.</summary>
+    public static Func<Route, Route?>? Redirect;
+
+    static Route Redirected(in Route route) => Redirect?.Invoke(route) is { } to ? to with { Tab = route.Tab } : route;
+
+    /// <summary>A back/forward/tab step that landed on a redirected route swaps it in place (no extra history step).</summary>
+    static void RedirectCurrent()
+    {
+        var to = Redirected(s_nav.Current);
+        if (!SameSlot(to, s_nav.Current)) Restore(ref s_nav, to);
+    }
+
+    /// <summary>Swap the page showing for another WITHOUT a history step: a route that turned out to be another page
+    /// only once its own data landed (a cold-opened Your Episodes playlist, <see cref="Redirect"/>'s late half). Neutral
+    /// motion; Back still leaves to wherever it led before.</summary>
+    public static void ReplaceCurrent(in Route route)
+    {
+        var normalized = route with { Tab = Tabs.ActiveId };
+        if (SameSlot(normalized, s_nav.Current)) return;
+        Restore(ref s_nav, normalized);
+        Motion.Value = NavTransitionKind.Neutral;
+        Current.Value = normalized;
+        RouteCommitted();
+        History.Store.Add(normalized);
+        SyncActiveTab(normalized);
+        SyncOmnibar(normalized);
+        Session.CaptureNav();
+    }
+
     public static void GoBack()
     {
         if (!BackStep(ref s_nav)) return;
+        RedirectCurrent();
         Motion.Value = NavTransitionKind.Back;
         Current.Value = s_nav.Current;
         RouteCommitted();
@@ -879,6 +911,7 @@ public static partial class Shell
     public static void GoForward()
     {
         if (!ForwardStep(ref s_nav)) return;
+        RedirectCurrent();
         Motion.Value = NavTransitionKind.Forward;
         Current.Value = s_nav.Current;
         RouteCommitted();
@@ -893,10 +926,12 @@ public static partial class Shell
     /// <summary>A tab SWITCH. Neutral motion, no stack push, no origin write, no history record.</summary>
     static void RestoreTo(in Route route)
     {
-        Restore(ref s_nav, route);
+        var to = Redirected(route);
+        Restore(ref s_nav, to);
         Motion.Value = NavTransitionKind.Neutral;
-        Current.Value = route;
-        SyncOmnibar(route);
+        Current.Value = to;
+        if (!SameSlot(to, route)) SyncActiveTab(to);   // the tab's stored route follows the redirect
+        SyncOmnibar(to);
         Session.CaptureNav();
     }
 

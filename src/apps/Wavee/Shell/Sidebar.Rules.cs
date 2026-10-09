@@ -84,14 +84,15 @@ public static class SidebarPillMotionRules
 }
 
 /// <summary>What a row's second line says, as data (formatting is the UI's: it owns the loc table).</summary>
-public enum SidebarSubtitleKind : byte { None = 0, Songs = 1, Items = 2, Album = 3, Podcast = 4, Artist = 5, Text = 6 }
+public enum SidebarSubtitleKind : byte { None = 0, Songs = 1, Items = 2, Album = 3, Podcast = 4, Artist = 5, Text = 6, Episodes = 7 }
 
 public readonly record struct SidebarSubtitle(SidebarSubtitleKind Kind, int Count, string Detail)
 {
     public static readonly SidebarSubtitle None = new(SidebarSubtitleKind.None, 0, "");
 }
 
-/// <summary>The subtitle grammar (design P.1): a playlist with an episode counts "items", any other playlist "songs";
+/// <summary>The subtitle grammar (design P.1): Your Episodes counts "episodes", a playlist with an episode "items", any other
+/// playlist "songs";
 /// an album is "Album · first artist"; a show "Podcast · publisher"; an artist "Artist"; a folder "N items"; a track or
 /// route its creator. An UNKNOWN count shows no subtitle — never "0 songs" (bug A1: gate on CountKnown).</summary>
 public static class SidebarSubtitleRules
@@ -99,7 +100,8 @@ public static class SidebarSubtitleRules
     public static SidebarSubtitle Of(in SidebarLibraryEntry e) => e.Kind switch
     {
         SidebarEntryKind.Playlist => !e.CountKnown ? SidebarSubtitle.None
-            : new SidebarSubtitle(e.HasEpisodes ? SidebarSubtitleKind.Items : SidebarSubtitleKind.Songs, e.TrackCount, ""),
+            : new SidebarSubtitle(e.Episodes ? SidebarSubtitleKind.Episodes
+                : e.HasEpisodes ? SidebarSubtitleKind.Items : SidebarSubtitleKind.Songs, e.TrackCount, ""),
         SidebarEntryKind.Album => new SidebarSubtitle(SidebarSubtitleKind.Album, 0,
             e.FirstArtistName.Length > 0 ? e.FirstArtistName : e.Creator),
         SidebarEntryKind.Show => new SidebarSubtitle(SidebarSubtitleKind.Podcast, 0, e.Publisher),

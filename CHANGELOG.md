@@ -37,6 +37,13 @@ versions separately under `v*` and is not tracked in this file.)
   Library setup the first time this version starts (a toast says which ones could not be kept); everything it offered
   is now in the sidebar's Edit mode.
 
+### Fixed
+
+- **A pinned Your Episodes opens Your Episodes.** It used to open a playlist page with recommended songs, "2
+  collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts
+  episodes instead of songs. On the Podcasts page, the "Followed shows | Your Episodes" switch now has its own row, so
+  "Your Episodes" no longer slides off the edge of a narrow column. (#200)
+
 ## [0.3.4] - 2026-10-06
 
 ### Added
