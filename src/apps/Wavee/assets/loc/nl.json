@@ -591,11 +591,8 @@
       "playlists": "Nog geen playlists — gebruik + om er een te maken"
     },
     "newPlaylist": "Mijn playlist",
-    "pinnedToast": "“{name}” vastgemaakt",
-    "unpinnedToast": "“{name}” losgemaakt",
     "menu": {
-      "customize": "Zijbalk aanpassen…",
-      "resetWidth": "Breedte herstellen"
+      "customize": "Zijbalk aanpassen…"
     },
     "seam": {
       "announceWidth": "Breedte zijbalk {width}"
@@ -606,8 +603,6 @@
     "pin": {
       "pinTo": "Vastmaken aan zijbalk",
       "unpin": "Losmaken van zijbalk",
-      "pinned": "Vastgemaakt aan zijbalk",
-      "unpinned": "Verwijderd uit Vastgemaakt",
       "undo": "Ongedaan maken",
       "emptyHint": "Of gebruik de pin-actie op elk bibliotheekitem.",
       "position": "{index} van {count}"

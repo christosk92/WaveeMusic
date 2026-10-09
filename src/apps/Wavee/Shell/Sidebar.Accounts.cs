@@ -25,9 +25,6 @@ public static partial class Sidebar
         static () => s_account.MigratedToServer,
         SetMigrated);
 
-    /// <summary>Raised after an account swap, on the UI thread (P4: the undo ring clears and closes its toasts).</summary>
-    internal static event Action? AccountSwapped;
-
     /// <summary>THE ONE ACCOUNT EDGE. Idempotent and cheap: a scope change that keeps the account (market, locale, tier)
     /// returns false at the key compare. Called by <see cref="Boot"/>, by the pane's ScopeEpoch effect, and — synchronously,
     /// before any pin of the new scope is converged — by <c>Spotify.Library.AfterPublish</c>'s scope-change branch.
@@ -49,11 +46,12 @@ public static partial class Sidebar
             CommitAccount();
             s_accountFile?.FlushNow();
         }
-        // 2 — Edit mode and the undo ring never span accounts; the Library search is per session and per account.
-        Editing.SetIfChanged(false);
+        // 2 — Edit mode and the undo ring never span accounts; the Library search is per session and per account. An
+        //     account switch never moves focus: the user is not in the sidebar.
+        ExitEditCore(restoreFocus: false);
+        ClearRing();
         LibrarySearch.SetIfChanged("");
         LibrarySearchOpen.SetIfChanged(false);
-        AccountSwapped?.Invoke();
         // 3 — load the incoming account (adopting a migration's pending pins on the first sign-in).
         s_accountFile = SidebarAccountKey.IsSignedOut(key) ? null : new SidebarFileStore(Path.Combine(s_profileDir, SidebarAccountStore.FileNameOf(key))) { WriteCompleted = OnWriteCompleted };
         s_account = LoadAccount(key, s_accountFile);

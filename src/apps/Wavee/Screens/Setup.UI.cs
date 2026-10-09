@@ -514,6 +514,7 @@ public static partial class Setup
         public readonly Signal<Design.NavTransitionKind> Dir = new(Design.NavTransitionKind.Neutral);
         public readonly WizardEntry Entry;
         public readonly bool SkipSignIn;
+        public readonly bool SkipLayout;
         public Action? RequestClose;
         readonly Action<Action> _post;
 
@@ -525,6 +526,7 @@ public static partial class Setup
         {
             Entry = entry;
             SkipSignIn = Gating.SkipSignIn(signedIn);
+            SkipLayout = !Gating.ShowsLayout(entry);
             _post = post;
             Page = new(WizardRules.StartPage(entry));
         }
@@ -548,7 +550,7 @@ public static partial class Setup
             Page.Value = to;
         }
 
-        public void Back() => Advance(Gating.PrevPage(Page.Peek(), SkipSignIn));
+        public void Back() => Advance(Gating.PrevPage(Page.Peek(), SkipSignIn, SkipLayout));
 
         /// <summary>Ends the runtime session and the sign-in flows (ClosedAction).</summary>
         public void End()
@@ -579,7 +581,10 @@ public static partial class Setup
                     Platform.Settings.Set(Platform.Keys.TermsAcceptedVersion, Gating.TermsVersion);
                     WizardRules.MarkConsentAsked(Platform.Settings, Entry);   // crash-diagnostics §F: consent asked iff the card was shown
                     if (Entry == WizardEntry.TermsRearm) Finish();
-                    else Advance(Gating.NextPage(WizardPage.Terms, SkipSignIn));
+                    else Advance(Gating.NextPage(WizardPage.Terms, SkipSignIn, SkipLayout));
+                    break;
+                case WizardPage.Layout:   // the two sidebar layouts apply at once; Next only moves on
+                    Advance(Gating.NextPage(WizardPage.Layout, SkipSignIn, SkipLayout));
                     break;
                 case WizardPage.SignIn:
                     Spotify.SignInState st = Spotify.SignIn.State.Peek();
@@ -588,7 +593,7 @@ public static partial class Setup
                         case SignInFacet.Idle: StartBrowser(); break;
                         case SignInFacet.Done:   // "Is this you?" — moving on is the user's own click, never automatic
                             if (Gating.SkipsLocalPlayback(Entry, Runtime.Status.Peek().IsReady)) Finish();
-                            else Advance(WizardPage.LocalPlayback);
+                            else Advance(Gating.NextPage(WizardPage.SignIn, SkipSignIn, SkipLayout));
                             break;
                         case SignInFacet.Failed: RetryFor(in st)(); break;
                         case SignInFacet.Expired: StartPairing(); break;
@@ -734,10 +739,24 @@ public static partial class Setup
             {
                 WizardPage.Terms => Embed.Comp(() => new TermsPage(session)) with { Key = "setup:page:terms" },
                 WizardPage.SignIn => Embed.Comp(() => new SignInPage(session)) with { Key = "setup:page:sign-in" },
+                WizardPage.Layout => Embed.Comp(() => new LayoutPage()) with { Key = "setup:page:layout" },
                 _ => Embed.Comp(() => new LocalPlaybackPage(session)) with { Key = "setup:page:local-playback" },
             },
         ],
     };
+
+    /// <summary>Pick a sidebar layout (design C.2 entry 5): the two Settings cards, applied at once.</summary>
+    sealed class LayoutPage : Component
+    {
+        public override Element Render()
+        {
+            var layout = Sidebar.Layout.Value;
+            var body = SetupText.Stack(
+                SetupText.Body(Loc.Get("setup.layout.body")),
+                Settings.SidebarLayoutCards(layout, editing: false));
+            return WizardFrame(WizardPage.Layout, Loc.Get("setup.layout.title"), body);
+        }
+    }
 
     // ── the footer (Rise's ControlGrid: primary LEFT, secondary RIGHT) ──────────────────────────────────────────────
 
@@ -754,7 +773,7 @@ public static partial class Setup
             var kids = new List<Element>(3);
             if (large)
             {
-                var step = Gating.StepNumber(page);
+                var step = Gating.StepNumber(page, session.SkipLayout);
                 kids.Add(new BoxEl
                 {
                     // Pinned to the button lane; the 48 is a RIGHT pad (Edges4 is L, T, R, B — the shipped footer-band bug).
@@ -767,7 +786,7 @@ public static partial class Setup
                         {
                             Size = 14f, Weight = 600, Color = Tok.TextSecondary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
                         },
-                        ProgressBar.Determinate(Gating.Progress(page), Layout.ProgressWidth),
+                        ProgressBar.Determinate(Gating.Progress(page, session.SkipLayout), Layout.ProgressWidth),
                     ],
                 });
             }
@@ -853,6 +872,7 @@ public static partial class Setup
     [
         new(static () => LoadHero(WizardPage.Terms)),
         new(static () => LoadHero(WizardPage.SignIn)),
+        new(static () => LoadHero(WizardPage.Layout)),
         new(static () => LoadHero(WizardPage.LocalPlayback)),
     ];
 

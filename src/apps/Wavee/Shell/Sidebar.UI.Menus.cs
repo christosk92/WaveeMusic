@@ -1,7 +1,8 @@
 // ── Shell/Sidebar.UI.Menus.cs ──────────────────────────────────────────────────────────────────────────────────────
-// NAMED PARTIAL of Sidebar.UI.cs (J1): every row menu the pane opens, the navbar extras (Move up/down · Move to folder…
-// · Select), the "+" create flyouts, the quick layout menu, the "Move to folder…" destination picker — composed from
-// owner I's menu vocabulary (Platform/Actions.UI.cs)
+// NAMED PARTIAL of Sidebar.UI.cs (J1): every menu the pane opens — the one mapper for the sidebar's data menus
+// (`SidebarMenus`, §P4.6: pane, header ⋯, row verbs), every row menu (the entity verbs + the sidebar's own rows), the
+// navbar extras (Move to folder… · Select), the "+" create flyouts and the "Move to folder…" destination picker —
+// composed from owner I's menu vocabulary (Platform/Actions.UI.cs)
 //
 // Role: UI
 // Owner: J
@@ -22,6 +23,7 @@ using FluentGpu.Hooks;
 using FluentGpu.Localization;
 using FluentGpu.Scene;
 using FluentGpu.Signals;
+using System.Globalization;
 using static FluentGpu.Dsl.Ui;
 
 namespace Wavee;
@@ -53,32 +55,179 @@ public static partial class Sidebar
         return SidebarLayoutRules.IsModified(State.Of(layout)) ? Loc.Format("sidebar.layoutName.modified", ("layout", name)) : name;
     }
 
-    // ══ THE QUICK LAYOUT MENU ══════════════════════════════════════════════════════════════════════════════════════════
+    // ══ THE MENU MAPPER (§P4.6) ════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The pane's layout menu: ◉ Classic · ◉ Library · ─ · Reset layout · ─ · Reset width. Built at open time, so
-    /// the rows read the live layout and width without subscribing.</summary>
-    internal static class LayoutMenu
+    /// <summary>Data menu rows → engine menu items; actions → service calls. ONE mapper for every sidebar menu (the pane
+    /// menu, the header ⋯, the row verbs). Every label resolves here, at open time.</summary>
+    internal static class SidebarMenus
     {
-        public static IReadOnlyList<MenuFlyoutItem> Rows()
+        /// <summary>The overlay host the last sidebar menu opened on (every sidebar menu opener sets it right before it opens:
+        /// the pane menu, the seam, a header ⋯, the footer's Settings row, the V3 overflow, the edit bar's Reset ▾) — the
+        /// confirm dialog of a menu verb opens on the same host.</summary>
+        internal static IOverlayService? Overlay;
+
+        static readonly List<string> s_lockingNames = new(2);
+
+        /// <summary>The names of the pins that lock Pinned (route and module pins, §P3.2), for the reason lines.</summary>
+        internal static IReadOnlyList<string> LockingNames()
         {
-            var layout = Sidebar.Layout.Peek();   // open time: never subscribe
-            bool editing = Sidebar.Editing.Peek();
-            return new List<MenuFlyoutItem>(5)
-            {
-                MenuFlyoutItem.RadioItem(LayoutName(SidebarLayoutId.Classic), layout == SidebarLayoutId.Classic,
-                    static () => SwitchLayout(SidebarLayoutId.Classic)) with { Enabled = !editing },
-                MenuFlyoutItem.RadioItem(LayoutName(SidebarLayoutId.Library), layout == SidebarLayoutId.Library,
-                    static () => SwitchLayout(SidebarLayoutId.Library)) with { Enabled = !editing },
-                MenuFlyoutItem.Separator,
-                new(Loc.Get("sidebar.menu.resetLayout"), default, SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
-                    static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()))),
-                new(Loc.Get("sidebar.menu.resetWidth"), default,
-                    MathF.Abs(Width.Peek() - SidebarPaneBounds.DefaultWidth) > 0.5f, ResetWidth),
-            };
+            SidebarVisibilityRules.LockingPins(Pins.Items, s_lockingNames);
+            return s_lockingNames;
         }
 
-        public static ContextMenuModel? Model()
-            => new ContextMenuModel(Rows(), new ContextMenuHeader(null, Loc.Get("sidebar.layout.menuTitle"), null));
+        /// <summary>A section's title, as every menu, toast and Outline row names it.</summary>
+        internal static string SectionTitle(string id) => Loc.Get("sidebar.section.title." + id);
+
+        /// <summary>A pin's name for its toast: the stored name, else the route's title.</summary>
+        internal static string PinName(string id)
+        {
+            int at = Pins.IndexOf(id);
+            if (at >= 0 && Pins[at].Name.Length > 0) return Pins[at].Name;
+            return SidebarPinId.RouteOf(id) is { } route ? Shell.Dest(Shell.Parse(route)).Title : "";
+        }
+
+        /// <summary>"Reset everything…" (design C.3): confirm, then ONE recorded batch (§P4.4).</summary>
+        internal static void ConfirmResetEverything(IOverlayService overlay)
+            => ContentDialog.Show(overlay, d =>
+            {
+                d.Title = Loc.Get("sidebar.edit.resetAllTitle");
+                d.Message = Loc.Get("sidebar.edit.resetAllBody");
+                d.PrimaryText = Loc.Get("sidebar.edit.resetAllConfirm");
+                d.CloseText = Loc.Get(Strings.Auth.Cancel);
+                d.PrimaryClick = ResetEverythingRecorded;
+            });
+
+        public static IReadOnlyList<MenuFlyoutItem> Map(IReadOnlyList<SidebarMenuRow> rows, string? sectionId = null, PaneView? pane = null)
+        {
+            var items = new List<MenuFlyoutItem>(rows.Count);
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                if (r.Separator) { items.Add(MenuFlyoutItem.Separator); continue; }
+                string label = LabelOf(r);
+                if (r.Children is { } kids) { items.Add(MenuFlyoutItem.SubMenu(label, Map(kids, sectionId, pane)) with { Enabled = r.Enabled }); continue; }
+                var row = r;
+                Action invoke = () => Run(row, sectionId, pane);
+                var item = r.Radio ? MenuFlyoutItem.RadioItem(label, r.Checked, invoke)
+                    : r.Action is SidebarMenuAction.ToggleLiked or SidebarMenuAction.ToggleKind ? MenuFlyoutItem.Toggle(label, r.Checked, invoke)
+                    : new MenuFlyoutItem(label, default, r.Enabled, invoke);
+                // A disabled verb says why on its trailing line (Q7: "Finish editing the sidebar first"); HideSection
+                // already carries its reason in the label.
+                if (!r.Enabled && r.ReasonKey is { } why && r.Action != SidebarMenuAction.HideSection)
+                    item = item with { AcceleratorText = Loc.Get(why) };
+                items.Add(item with { Enabled = r.Enabled });
+            }
+            return items;
+        }
+
+        static string LabelOf(SidebarMenuRow r) => r.Action switch
+        {
+            SidebarMenuAction.SwitchLayout => LayoutName(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic),
+            SidebarMenuAction.SetLimit => Loc.Format(r.LabelKey, ("count", r.Arg)),
+            SidebarMenuAction.HideSection when r.ReasonKey is { } reason => Loc.Format(reason, ("names", string.Join(", ", LockingNames()))),
+            _ => Loc.Get(r.LabelKey),
+        };
+
+        static void Run(SidebarMenuRow r, string? sectionId, PaneView? pane)
+        {
+            var layout = Sidebar.Layout.Peek();
+            switch (r.Action)
+            {
+                case SidebarMenuAction.SwitchLayout: SwitchLayout(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic); break;
+                case SidebarMenuAction.ResetLayout: Dispatch(new ResetLayout(layout), Loc.Format("sidebar.toast.reset", ("name", LayoutName(layout)))); break;
+                case SidebarMenuAction.ShowSection: Dispatch(new SetSectionShown(layout, r.Arg, true)); break;
+                case SidebarMenuAction.SetDensity: SetDensity(r.Arg == "compact" ? SidebarDensity.Compact : SidebarDensity.Default); break;
+                case SidebarMenuAction.EditSidebar: EnterEdit(); break;
+                case SidebarMenuAction.ResetEverything when Overlay is { } overlay: ConfirmResetEverything(overlay); break;
+                case SidebarMenuAction.SetSort:
+                    SidebarStoreV3.TryParseSort(r.Arg, out var sort);
+                    Dispatch(new SetLibrarySort(sort, Doc.Library.Descending));
+                    break;
+                case SidebarMenuAction.SetView: Dispatch(new SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List)); break;
+                case SidebarMenuAction.ToggleLiked: Dispatch(new SetShowLiked(!Doc.Library.ShowLiked)); break;
+                case SidebarMenuAction.ToggleKind: ToggleKind(r.Arg); break;
+                case SidebarMenuAction.SetLimit when sectionId is not null:
+                    Dispatch(new SetSectionLimit(layout, sectionId, int.Parse(r.Arg, CultureInfo.InvariantCulture)));
+                    break;
+                case SidebarMenuAction.ShowItem when sectionId is not null: Dispatch(new SetItemShown(layout, sectionId, r.Arg, true)); break;
+                case SidebarMenuAction.Collapse when sectionId is not null: Dispatch(new SetSectionCollapsed(layout, sectionId, true)); break;
+                case SidebarMenuAction.Expand when sectionId is not null: Dispatch(new SetSectionCollapsed(layout, sectionId, false)); break;
+                case SidebarMenuAction.MoveUp when sectionId is not null: MoveBy(layout, sectionId, r.Arg, -1); break;
+                case SidebarMenuAction.MoveDown when sectionId is not null: MoveBy(layout, sectionId, r.Arg, +1); break;
+                case SidebarMenuAction.HideSection when (r.Arg.Length > 0 ? r.Arg : sectionId) is { } hideId:
+                    // The pane menu's "Hide pinned" carries its section in Arg; a header's Hide uses the header's id.
+                    Dispatch(new SetSectionShown(layout, hideId, false), Loc.Format("sidebar.toast.hidden", ("name", SectionTitle(hideId))));
+                    break;
+                case SidebarMenuAction.UnpinAllShortcuts: UnpinAllShortcutsRecorded(); break;
+                case SidebarMenuAction.Unpin: UnpinRecorded(r.Arg, PinName(r.Arg)); break;
+                case SidebarMenuAction.MovePinUp: MovePinRecorded(Pins.IndexOf(r.Arg), Pins.IndexOf(r.Arg) - 1); break;
+                case SidebarMenuAction.MovePinDown: MovePinRecorded(Pins.IndexOf(r.Arg), Pins.IndexOf(r.Arg) + 1); break;
+                case SidebarMenuAction.HideItem: HideItem(layout, sectionId, r.Arg); break;
+                // One sibling step through WaveeResourceDrop.MoveRootlist: legality, undo anchors and the refusal toast are
+                // the drop's own (PaneView.MoveSibling → CommitMove).
+                case SidebarMenuAction.MoveRootlistUp when pane is not null: pane.MoveSibling(r.Arg, -1); break;
+                case SidebarMenuAction.MoveRootlistDown when pane is not null: pane.MoveSibling(r.Arg, 1); break;
+            }
+        }
+
+        /// <summary>A Library kind's Filters row. Showing a kind back is quiet (its chip reappears); hiding one toasts
+        /// "{name} hidden · Undo" (C.5 / Q14) and steps the filter off a kind that just vanished.</summary>
+        static void ToggleKind(string kind)
+        {
+            bool wasHidden = (Doc.Library.HiddenKinds & SidebarCatalogue.KindFlagOf(kind)) != 0;
+            Dispatch(new SetItemShown(SidebarLayoutId.Library, "library", kind, wasHidden),
+                     wasHidden ? null : Loc.Format("sidebar.toast.hidden", ("name", Loc.Get("sidebar.item." + kind))));
+            if (!wasHidden) SetLibraryFilter(SidebarLibraryFilters.Effective((int)LibraryFilter.Peek(), Doc.Library.HiddenKinds));
+        }
+
+        /// <summary>Move up / Move down on a row: an item arg moves a Collections page inside its effective order (±1, the
+        /// reducer rejects an out-of-range step); an empty arg moves the section one band slot.</summary>
+        static void MoveBy(SidebarLayoutId layout, string sectionId, string itemArg, int delta)
+        {
+            if (itemArg.Length > 0)
+            {
+                if (!SidebarCatalogue.TryKindOf(sectionId, out var kind) || State.Of(layout).Find(sectionId) is not { } section) return;
+                int at = IndexOfItem(SidebarLayoutRules.EffectiveItemOrder(layout, kind, section), itemArg);
+                if (at >= 0) Dispatch(new MoveItem(layout, sectionId, itemArg, at + delta));
+                return;
+            }
+            var band = new List<string>(8);
+            SidebarEditRules.Band(State.Of(layout), band);
+            int slot = band.IndexOf(sectionId);
+            if (slot >= 0) Dispatch(new MoveSection(layout, sectionId, slot + delta));
+        }
+
+        /// <summary>Hide a row's item (§P4.6): a Collections page; the Library's Liked row; the footer's Settings. Decided by
+        /// the row's SECTION, not the item id: Classic's Collections "Liked Songs" is a page like any other. Hiding the last
+        /// visible page hides Collections itself, so its toast names the SECTION (design C.4 corner case).</summary>
+        static void HideItem(SidebarLayoutId layout, string? sectionId, string item)
+        {
+            string settings = SidebarCatalogue.IdOf(SidebarSectionKind.Settings);
+            if (string.Equals(item, settings, StringComparison.Ordinal))
+            {
+                // The toast says where Settings went: the profile menu keeps it (§P4.6).
+                Dispatch(new SetSectionShown(layout, settings, false), Loc.Get("sidebar.toast.settingsHidden"));
+                return;
+            }
+            if (sectionId is null || !SidebarCatalogue.TryKindOf(sectionId, out var kind)) return;
+            if (kind == SidebarSectionKind.Library)
+            {
+                // Your Library's Liked row: the Library layout's ShowLiked flag.
+                if (string.Equals(item, SidebarCatalogue.LikedRoute, StringComparison.Ordinal))
+                    Dispatch(new SetShowLiked(false), Loc.Format("sidebar.toast.hidden", ("name", Loc.Get("sidebar.item." + item))));
+                return;
+            }
+            // A Collections page (Liked included in Classic).
+            bool last = Doc.Find(SidebarSectionKind.Collections) is { Items.Count: 1 };
+            string name = last ? SectionTitle(SidebarCatalogue.IdOf(SidebarSectionKind.Collections)) : Loc.Get("sidebar.item." + item);
+            Dispatch(new SetItemShown(layout, sectionId, item, false), Loc.Format("sidebar.toast.hidden", ("name", name)));
+        }
+
+        static int IndexOfItem(IReadOnlyList<string> list, string id)
+        {
+            for (int i = 0; i < list.Count; i++) if (string.Equals(list[i], id, StringComparison.Ordinal)) return i;
+            return -1;
+        }
     }
 
     internal sealed partial class PaneView
@@ -90,9 +239,14 @@ public static partial class Sidebar
 
         // ══ THE PANE MENU ══════════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The global pane menu (the footer ⋯, the seam's and the background's right-click). P2: today's layout
-        /// menu minus the rail-size rows; P4: <c>SidebarMenuModel.Pane</c>.</summary>
-        internal ContextMenuModel? PaneMenu() => LayoutMenu.Model();
+        /// <summary>The global pane menu (the footer ⋯, the seam's and the background's right-click): Layout ▸ · Show section ▸
+        /// · [Library: Hide pinned · Unpin all shortcuts] · Density ▸ · Edit sidebar… · ─ · Reset everything….</summary>
+        internal ContextMenuModel? PaneMenu()
+        {
+            SidebarMenus.Overlay = MenuOverlay;
+            return new ContextMenuModel(SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
+                Sidebar.Editing.Peek(), SidebarMenus.LockingNames())));
+        }
 
         OverlayHandle? _paneMenu;
 
@@ -112,22 +266,25 @@ public static partial class Sidebar
         // ══ ROW MENUS ══════════════════════════════════════════════════════════════════════════════════════════════
 
         /// <summary>A projected entry's menu (playlist / album / artist / show / route / track) + the pane's extras.</summary>
-        internal Func<ContextMenuModel?>? EntryMenu(SidebarSection section, int planIndex, in SidebarLibraryEntry entry, string rowKey)
+        internal Func<ContextMenuModel?>? EntryMenu(SidebarSection section, int planIndex, in SidebarLibraryEntry entry, string rowKey,
+                                                     bool unavailable = false)
         {
             if (!HasMenus) return null;
             var snapshot = entry;
-            return () => EntryModel(in snapshot, null, false, NavExtras(section, planIndex, rowKey));
+            return () => Actions.Menu.WithLayoutExtras(EntryModel(in snapshot, null, false, NavExtras(section, planIndex)),
+                                                       SidebarRowItems(section, planIndex, rowKey, unavailable));
         }
 
         /// <summary>A folder row's menu: Expand/Collapse · New playlist in this folder · New folder inside · ─ ·
-        /// Organize ▸ · Rename folder · ─ · Delete folder.</summary>
+        /// Organize ▸ · Rename folder · ─ · Delete folder, then the sidebar's own row verbs.</summary>
         internal Func<ContextMenuModel?>? FolderMenu(SidebarSection section, int planIndex, in SidebarLibraryEntry folder,
                                                       Action activate, bool expanded, string rowKey)
         {
             if (!HasMenus) return null;
             var snapshot = folder;
-            return () => EntryModel(in snapshot, activate, IsFolderExpanded(snapshot.FolderId),
-                                    NavExtras(section, planIndex, rowKey));
+            return () => Actions.Menu.WithLayoutExtras(EntryModel(in snapshot, activate, IsFolderExpanded(snapshot.FolderId),
+                                                                  NavExtras(section, planIndex)),
+                                                       SidebarRowItems(section, planIndex, rowKey));
         }
 
         /// <summary>A hand-placed route row: Open · Pin + the extras.</summary>
@@ -137,7 +294,8 @@ public static partial class Sidebar
             return () =>
             {
                 var entry = SidebarLibraryEntry.ForRoute(routeKey, Shell.Dest(Shell.Parse(routeKey)).Title);
-                return EntryModel(in entry, null, false, NavExtras(section, planIndex, routeKey));
+                return Actions.Menu.WithLayoutExtras(EntryModel(in entry, null, false, NavExtras(section, planIndex)),
+                                                     SidebarRowItems(section, planIndex, routeKey));
             };
         }
 
@@ -316,54 +474,81 @@ public static partial class Sidebar
 
         // ══ THE NAVBAR EXTRAS ══════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Move up · Move down (band or pin store) · the ROOTLIST Move up/down · Move to folder… (or "Move N to
-        /// folder…" for a row inside a ≥2 selection) · Select. Built at open time from the live plan index.</summary>
-        Actions.Menu.Extras NavExtras(SidebarSection section, int planIndex, string key)
+        /// <summary>Move to folder… (or "Move N to folder…" for a row inside a ≥2 selection) · Select: the rootlist verbs the
+        /// menu holds nothing else for. The Move up/down rows are the sidebar's own (<see cref="SidebarRowItems"/>), one per
+        /// menu. Built at open time from the live tree.</summary>
+        Actions.Menu.Extras NavExtras(SidebarSection section, int planIndex)
         {
-            int at = -1, count = 0;
-            if (TryBandOf(planIndex, out var band) && string.Equals(band.SectionId, section.Id, StringComparison.Ordinal))
-            {
-                at = planIndex - band.Start;
-                count = band.Count;
-            }
-            else if (section.Kind == SidebarSectionKind.Pinned)
-            {
-                string id = SidebarPinId.Canonical(key) ?? key;
-                at = Pins.IndexOf(id);
-                count = Pins.Count;
-            }
-            var layout = SidebarNavLayout.Decide(at, count, removable: false);
             var (tree, entryId) = TreeMoves(section, planIndex);
-            if (layout.IsEmpty && tree.IsEmpty && entryId.Length == 0) return default;
+            if (entryId.Length == 0) return default;
 
-            var rows = new List<MenuFlyoutItem>(4);
-            string sectionId = section.Id;
-            Actions.Menu.AddMoveRows(rows,
-                layout.MoveUp ? () => MoveRowByKey(sectionId, key, -1) : null,
-                layout.MoveDown ? () => MoveRowByKey(sectionId, key, 1) : null);
+            var rows = new List<MenuFlyoutItem>(2);
             // A row INSIDE a multi-selection addresses the selection: the positional verbs mean nothing for N rows.
-            bool batch = entryId.Length > 0 && TreeSelection.Count >= 2 && TreeSelection.Contains(entryId);
-            if (!batch)
-            {
-                Actions.Menu.AddMoveRows(rows,
-                    tree.MoveUp ? () => MoveSibling(entryId, -1) : null,
-                    tree.MoveDown ? () => MoveSibling(entryId, 1) : null);
-                if (tree.MoveToFolder)
-                    rows.Add(new MenuFlyoutItem(Loc.Get("menu.moveToFolder"), ActionIcons.Resolve(ActionIcons.Folder), true,
-                        () => OpenFolderPicker([entryId])));
-            }
-            else
+            if (TreeSelection.Count >= 2 && TreeSelection.Contains(entryId))
             {
                 int n = TreeSelection.Count;
                 rows.Add(new MenuFlyoutItem(Loc.Format("menu.moveManyToFolder", ("count", n)), ActionIcons.Resolve(ActionIcons.Folder),
                     true, () => OpenFolderPicker(OrderedTreeSelection())));
             }
+            else if (tree.MoveToFolder)
+                rows.Add(new MenuFlyoutItem(Loc.Get("menu.moveToFolder"), ActionIcons.Resolve(ActionIcons.Folder), true,
+                    () => OpenFolderPicker([entryId])));
             // SELECT — the one pointer entry into check mode (a permanent lane would cost every row 24 DIP).
-            if (entryId.Length > 0 && !TreeSelection.CheckLaneVisible)
+            if (!TreeSelection.CheckLaneVisible)
                 rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.select"),
                     new IconRef { Glyph = Icons.Check, Font = Theme.IconFont }, true, () => BeginTreeCheckMode(entryId)));
 
             return new Actions.Menu.Extras(rows.Count > 0 ? rows : null, null);
+        }
+
+        /// <summary>The sidebar's own verbs for one row (§P4.2 <c>SidebarMenuModel.Item</c>), mapped: a pin's Move up/down (its
+        /// Unpin is the entity menu's PinRow); a Collections page's Move up/down + Hide from sidebar; the Liked row's and
+        /// Settings' Hide; a rootlist row's Move up/down. Null when the row offers none. Appended to the row's menu by <c>Actions.Menu.WithLayoutExtras</c>.</summary>
+        IReadOnlyList<MenuFlyoutItem>? SidebarRowItems(SidebarSection section, int planIndex, string key, bool unavailable = false)
+        {
+            var (_, entryId) = TreeMoves(section, planIndex);
+            string arg = entryId.Length > 0 ? entryId : key;   // a rootlist verb addresses the entry, every other verb its key
+            int index = 0, count = 0;
+            switch (section.Kind)
+            {
+                case SidebarSectionKind.Pinned:
+                    arg = SidebarPinId.Canonical(key) ?? key;
+                    index = Pins.IndexOf(arg);
+                    count = Pins.Count;
+                    if (index < 0) return null;
+                    break;
+                case SidebarSectionKind.Collections:
+                    index = IndexOfPage(section.Items, key);
+                    count = section.Items.Count;
+                    if (index < 0) return null;
+                    break;
+            }
+            var rows = SidebarMenuModel.Item(section.Kind, arg, index, count, unavailable, RootlistStepOf(section, planIndex));
+            // The entity menu already carries the pin pair (PinRow); the model's Unpin would be a second "Unpin from sidebar".
+            if (section.Kind == SidebarSectionKind.Pinned)
+            {
+                var kept = new List<SidebarMenuRow>(rows.Count);
+                for (int i = 0; i < rows.Count; i++) if (rows[i].Action != SidebarMenuAction.Unpin) kept.Add(rows[i]);
+                rows = kept;
+            }
+            return rows.Count > 0 ? SidebarMenus.Map(rows, section.Id, this) : null;
+        }
+
+        static int IndexOfPage(IReadOnlyList<string> items, string key)
+        {
+            for (int i = 0; i < items.Count; i++) if (string.Equals(items[i], key, StringComparison.Ordinal)) return i;
+            return -1;
+        }
+
+        /// <summary>The row menu's rootlist step (§P4.2): TreeMoves' sibling verbs — whose gate already limits them to Classic
+        /// Playlists and to Your Library under Playlists · Custom order — unless the row sits inside a ≥2 selection (the
+        /// positional verbs mean nothing for N rows; "Move N to folder…" covers it).</summary>
+        internal SidebarRootlistStep RootlistStepOf(SidebarSection section, int planIndex)
+        {
+            var (tree, entryId) = TreeMoves(section, planIndex);
+            if (entryId.Length == 0) return default;
+            if (TreeSelection.Count >= 2 && TreeSelection.Contains(entryId)) return default;
+            return new SidebarRootlistStep(true, tree.MoveUp, tree.MoveDown);
         }
 
         /// <summary>Which ROOTLIST verbs a tree row offers (structure from the full tree, legality from the marker
@@ -390,7 +575,7 @@ public static partial class Sidebar
 
         /// <summary>One signed step through the SIBLING run (Move up lands before the previous sibling; Move down after the
         /// next, stepping OVER a folder rather than into it) — the menu rows and Alt+↑/↓ share it.</summary>
-        void MoveSibling(string entryId, int delta)
+        internal void MoveSibling(string entryId, int delta)
         {
             var tree = RootlistTree;
             if (!RootlistTreeNav.TryEntry(tree, entryId, out var entry)) return;

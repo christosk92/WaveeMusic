@@ -98,7 +98,7 @@ public static partial class Setup
         public static string HeroAsset(WizardPage page) => page switch
         {
             WizardPage.Terms => "eula",
-            WizardPage.SignIn => "connect",
+            WizardPage.SignIn or WizardPage.Layout => "connect",
             _ => "patch",
         };
     }
@@ -126,6 +126,7 @@ public static partial class Setup
             {
                 WizardPage.Terms => new CommandRow(Strings.Setup.Accept, Strings.Setup.Decline, ButtonKind.Accent, true, true, false, false),
                 WizardPage.SignIn => SignInRow(ctx.SignIn),
+                WizardPage.Layout => new CommandRow(Strings.Setup.Next, null, ButtonKind.Accent, true, false, false, false),
                 _ => LocalPlaybackRow(ctx.Runtime),
             };
             return row with { ShowBack = Gating.ShowsBack(ctx.Page) };
@@ -571,9 +572,9 @@ public static partial class Setup
     // surface's facet fold and door rules (0.2.9 `SetupCommands.Project` + `SetupSignInPresentation`), and the QR encoder
     // the pairing code renders through (0.2.9 `Features/Auth/Qr.cs` + `QrPlate.cs`, verbatim in behaviour).
 
-    /// <summary>The wizard's pages in display order: Terms is "pre-setup", then Sign in (step 1 of 2), then Local playback
-    /// (step 2 of 2). Not persisted, so renumbering is safe.</summary>
-    public enum WizardPage : byte { Terms = 0, SignIn = 1, LocalPlayback = 2 }
+    /// <summary>The wizard's pages in display order: Terms is "pre-setup", then Sign in (step 1 of 3), then Layout (step 2
+    /// of 3, first runs only), then Local playback (step 3 of 3). Not persisted, so renumbering is safe.</summary>
+    public enum WizardPage : byte { Terms = 0, SignIn = 1, Layout = 2, LocalPlayback = 3 }
 
     /// <summary>Why the wizard is open: a fresh install, a signed-out install that needs its account back, or a completed
     /// install re-armed because the terms changed.</summary>
@@ -587,8 +588,8 @@ public static partial class Setup
         /// <summary>The terms revision this build requires; a completed install that accepted an older one is re-armed.</summary>
         public const int TermsVersion = 1;
 
-        /// <summary>Rise counts only Sign in and Local playback ("Step N of 2").</summary>
-        public const int StepTotal = 2;
+        /// <summary>Sign in, Layout and Local playback ("Step N of 3"); Layout is skipped off a first run.</summary>
+        public const int StepTotal = 3;
 
         /// <summary>Armed and not yet completed or deferred. No settings store ⇒ never (nothing could remember its exit).</summary>
         public static bool IsPending(IAppSettings? settings) => settings is not null && settings.Get(Platform.Keys.SetupPending);
@@ -630,30 +631,37 @@ public static partial class Setup
         /// <summary>The data folder is gone but the settings still remember a finished wizard: treat it as a fresh install.</summary>
         public static bool NeedsFreshInstallReset(bool fresh, bool completed, int termsAccepted) => fresh && (completed || termsAccepted > 0);
 
-        /// <summary>The next page, skipping Sign in when asked, clamped at Local playback.</summary>
-        public static WizardPage NextPage(WizardPage page, bool skipSignIn)
+        /// <summary>Layout is offered on a first run only: a re-auth or a terms re-arm never shows it.</summary>
+        public static bool ShowsLayout(WizardEntry entry) => entry == WizardEntry.FirstRun;
+
+        /// <summary>The next page, skipping Sign in and Layout when asked, clamped at Local playback.</summary>
+        public static WizardPage NextPage(WizardPage page, bool skipSignIn, bool skipLayout)
         {
             var next = (WizardPage)Math.Min((int)page + 1, (int)WizardPage.LocalPlayback);
-            if (skipSignIn && next == WizardPage.SignIn) next = WizardPage.LocalPlayback;
+            if (skipSignIn && next == WizardPage.SignIn) next = WizardPage.Layout;
+            if (skipLayout && next == WizardPage.Layout) next = WizardPage.LocalPlayback;
             return next;
         }
 
-        /// <summary>The previous page, skipping Sign in when asked, clamped at Terms.</summary>
-        public static WizardPage PrevPage(WizardPage page, bool skipSignIn)
+        /// <summary>The previous page, skipping Layout and Sign in when asked, clamped at Terms.</summary>
+        public static WizardPage PrevPage(WizardPage page, bool skipSignIn, bool skipLayout)
         {
             var prev = (WizardPage)Math.Max((int)page - 1, (int)WizardPage.Terms);
+            if (skipLayout && prev == WizardPage.Layout) prev = WizardPage.SignIn;
             if (skipSignIn && prev == WizardPage.SignIn) prev = WizardPage.Terms;
             return prev;
         }
 
-        /// <summary>"Step N of 2", or null for Terms ("Pre-setup").</summary>
-        public static (int Step, int Total)? StepNumber(WizardPage page) => page == WizardPage.Terms ? null : ((int)page, StepTotal);
+        /// <summary>"Step N of 3" (of 2 when Layout is skipped, so Local playback is step 2), or null for Terms ("Pre-setup").</summary>
+        public static (int Step, int Total)? StepNumber(WizardPage page, bool skipLayout)
+            => page == WizardPage.Terms ? null : (skipLayout && page == WizardPage.LocalPlayback ? 2 : (int)page, skipLayout ? 2 : StepTotal);
 
-        /// <summary>The footer's progress: Terms 0, Sign in .5, Local playback 1.</summary>
-        public static float Progress(WizardPage page) => (int)page / (float)StepTotal;
+        /// <summary>The footer's progress over the pages this session shows: Terms 0, Local playback 1, the steps between evenly.</summary>
+        public static float Progress(WizardPage page, bool skipLayout)
+            => StepNumber(page, skipLayout) is { } step ? step.Step / (float)step.Total : 0f;
 
-        /// <summary>Back shows on the last page only; there is no Done page.</summary>
-        public static bool ShowsBack(WizardPage page) => page == WizardPage.LocalPlayback;
+        /// <summary>Back shows on Layout and Local playback; Terms and Sign in have none, and there is no Done page.</summary>
+        public static bool ShowsBack(WizardPage page) => page is WizardPage.Layout or WizardPage.LocalPlayback;
 
         /// <summary>A re-auth on an install whose runtime is already Ready has nothing left to do after Sign in.</summary>
         public static bool SkipsLocalPlayback(WizardEntry entry, bool runtimeReady) => entry == WizardEntry.Reauth && runtimeReady;

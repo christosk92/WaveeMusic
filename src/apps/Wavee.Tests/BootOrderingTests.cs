@@ -179,11 +179,11 @@ public sealed class BootOrderingTests : IDisposable
 
         // ...and the SAME seam reflects a pin the moment the store it depends on carries one, proving the seam reads
         // Sidebar's LIVE state rather than a snapshot taken before Boot() ran.
-        Assert.True(Sidebar.Pin(new SidebarPin("search", SidebarEntryKind.AppRoute, "", "Search", AddedAtMs: 1)));
+        Assert.True(Sidebar.Pins.Pin(new SidebarPin("search", SidebarEntryKind.AppRoute, "", "Search", AddedAtMs: 1)));
         Assert.True(Actions.Services.IsPinned!(search));
 
         // Liked Songs has a fixed home and is never a pin (Q1a): the store refuses it whoever asks.
-        Assert.False(Sidebar.Pin(new SidebarPin("liked", SidebarEntryKind.AppRoute, "", "Liked Songs", AddedAtMs: 1)));
+        Assert.False(Sidebar.Pins.Pin(new SidebarPin("liked", SidebarEntryKind.AppRoute, "", "Liked Songs", AddedAtMs: 1)));
         Assert.False(Actions.Services.IsPinned!(new Shell.Route(Shell.RouteKind.Liked)));
 
         // Land the device file now, while the temp folder still exists — Dispose deletes it right after this fact.

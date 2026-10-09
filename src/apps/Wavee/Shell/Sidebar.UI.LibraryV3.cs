@@ -855,16 +855,19 @@ public static partial class Sidebar
             };
         }
 
-        /// <summary>§6's V3 overflow, in order: <c>Sidebar layout ▸</c> (<see cref="LayoutMenu.Rows"/> embedded, so the
-        /// three design radios are never re-declared) · ─── · Clear filters · Collapse Your Library (not in the drawer).
-        /// The dev-mode "API Console" item is deleted (plan §9.6 Q7).</summary>
+        /// <summary>§6's V3 overflow, in order: <c>Sidebar layout ▸</c> (the global pane menu's rows, mapped by the one
+        /// <see cref="SidebarMenus"/> mapper, so the layout radios and Reset everything are never re-declared) · ───
+        /// · Clear filters · Collapse Your Library (not in the drawer). The dev-mode "API Console" item is deleted
+        /// (plan §9.6 Q7).</summary>
         List<MenuFlyoutItem> BuildOverflow()
         {
             var rows = new List<MenuFlyoutItem>(4);
-            var layoutRows = LayoutMenu.Rows();
-            if (layoutRows.Count > 0)
+            SidebarMenus.Overlay = _s.PaneRef?.MenuOverlay;
+            var paneRows = SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
+                Sidebar.Editing.Peek(), SidebarMenus.LockingNames()));
+            if (paneRows.Count > 0)
             {
-                rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Sidebar.Layout.MenuTitle), layoutRows, Icons.SplitView));
+                rows.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Sidebar.Layout.MenuTitle), paneRows, Icons.SplitView));
                 rows.Add(MenuFlyoutItem.Separator);
             }
             rows.Add(new MenuFlyoutItem(Loc.Get(Strings.Sidebar.V3.ClearFilters), Icons.Cancel,

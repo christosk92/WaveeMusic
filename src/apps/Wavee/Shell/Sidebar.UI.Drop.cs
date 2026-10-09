@@ -488,11 +488,12 @@ public static partial class Sidebar
         /// <summary>The "+" plate lights only for a drop that will actually create something.</summary>
         static bool CreateArmed(SidebarCreateDrop outcome) => outcome is SidebarCreateDrop.NewFolder or SidebarCreateDrop.NewPlaylist;
 
-        // ── pins (the drop and the menus share these two mutations and their toasts) ───────────────────────────────
+        // ── pins (the drop and the menus share these two mutations; both are recorded in the undo ring, §P4.4) ─────────
 
-        /// <summary>Append a pin + the Success toast whose Undo unpins. Already pinned ⇒ a SILENT no-op (the store is
-        /// idempotent; a double invoke must never claim it did something).</summary>
-        internal static void PinWithToast(string pinId, SidebarEntryKind kind, string? uri, string? name)
+        /// <summary>Pin through the ring (appended, or at a drop's <paramref name="slot"/>): its "Pinned … · Undo" toast (or
+        /// the batch that re-shows a hidden Pinned) is the ring's. Already pinned ⇒ a SILENT no-op (the store is idempotent;
+        /// a double invoke must never claim it did something).</summary>
+        internal static void PinWithToast(string pinId, SidebarEntryKind kind, string? uri, string? name, int slot = -1)
         {
             if (string.IsNullOrEmpty(pinId) || SidebarPinRules.IsFixedRoute(pinId)) return;
             if (SidebarAccountKey.IsSignedOut(AccountKey))
@@ -501,22 +502,14 @@ public static partial class Sidebar
                 return;
             }
             var pin = new SidebarPin(pinId, kind, uri ?? "", name ?? "", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            if (!Pin(pin)) return;
-            Notify.Say(name is { Length: > 0 } n ? Loc.Format("sidebar.pinnedToast", ("name", n)) : Loc.Get("sidebar.pin.pinned"),
-                InfoBarSeverity.Success, Loc.Get("sidebar.pin.undo"), () => Unpin(pinId));
+            PinRecorded(pin, name is { Length: > 0 } n ? n : SidebarMenus.PinName(pinId), slot);
         }
 
-        /// <summary>Remove a pin + the toast whose Undo restores it at its FORMER index (snapshotted before removal).</summary>
+        /// <summary>Remove a pin through the ring: undo restores it at its FORMER index (the ring snapshots it before removal).</summary>
         internal static void UnpinWithToast(string pinId, string? nameHint = null)
         {
             if (string.IsNullOrEmpty(pinId)) return;
-            int at = Pins.IndexOf(pinId);
-            if (at < 0) return;
-            var removed = Pins[at];
-            if (Unpin(pinId) < 0) return;
-            string name = nameHint is { Length: > 0 } ? nameHint : removed.Name;
-            Notify.Say(name.Length > 0 ? Loc.Format("sidebar.unpinnedToast", ("name", name)) : Loc.Get("sidebar.pin.unpinned"),
-                InfoBarSeverity.Informational, Loc.Get("sidebar.pin.undo"), () => InsertPin(removed, at));
+            UnpinRecorded(pinId, nameHint is { Length: > 0 } n ? n : SidebarMenus.PinName(pinId));
         }
     }
 }

@@ -112,7 +112,8 @@ public static partial class Sidebar
         string text = r.Dropped.Count == 0
             ? Loc.Format("sidebar.migration.toast", ("layout", layout))
             : Loc.Format("sidebar.migration.toastDropped", ("layout", layout), ("names", DroppedNames(r.Dropped)));
-        Notify.Say(text, InfoBarSeverity.Informational, dedupeKey: "sidebar.migration", durationMs: 8000f);   // P4 adds the "Edit sidebar" action
+        Notify.Say(text, InfoBarSeverity.Informational, actionLabel: Loc.Get("sidebar.menu.edit"), onAction: EnterEdit,
+                   dedupeKey: "sidebar.migration", durationMs: 8000f);
     }
 
     internal static string DroppedNames(IReadOnlyList<string> keys)
@@ -232,15 +233,15 @@ public static partial class Sidebar
     internal readonly record struct PaneReorder(SidebarSection Section, int FromSlot, int ToSlot, int SlotCount,
                                                 Func<int, string> KeyAt);
 
-    /// <summary>The built-in commit: Pinned through the shared pin store, mapped through pin ids (a band position can drift
-    /// from the store). Library's list reorders only as a rootlist move, so its mode supplies its own commit.</summary>
+    /// <summary>The shared commit: Pinned through the pin store (mapped by pin id — a band position can drift from it),
+    /// RECORDED in the undo ring (design C.5 / Q14; never toasted).</summary>
     internal static void DefaultReorderCommit(in PaneReorder r)
     {
         if (r.FromSlot == r.ToSlot || r.Section.Kind != SidebarSectionKind.Pinned) return;
         int pf = Pins.IndexOf(r.KeyAt(r.FromSlot));
         int pt = Pins.IndexOf(r.KeyAt(r.ToSlot));
-        if (pf < 0 || pt < 0) MovePin(r.FromSlot, r.ToSlot);
-        else MovePin(pf, pt);
+        if (pf < 0 || pt < 0) MovePinRecorded(r.FromSlot, r.ToSlot);
+        else MovePinRecorded(pf, pt);
     }
 
     /// <summary>One contiguous run of reorderable plan rows owned by one section, at that section's ONE row height.</summary>
@@ -347,6 +348,17 @@ public static partial class Sidebar
         internal readonly Signal<int> SelectionVersion = new(0);
         internal readonly Signal<bool> ChecksVisible = new(false);
         readonly List<string> _treeVisibleOrder = new();
+
+        // ── edit mode (§P4.5) ──
+        /// <summary>Edit mode's pane (the edit bar and the Outline), mount-stable: built once and swapped in for the head, list
+        /// and footer while <see cref="Sidebar.Editing"/> is set.</summary>
+        Element? _editPane;
+        bool _wasEditing;
+        /// <summary>The keyboard-current row's key, captured on the edit edge while the list is still mounted.</summary>
+        string? _editReturnKey;
+        bool _restoreAfterEdit;
+        /// <summary>The footer's ⋯ node (<c>PaneFooter</c> registers it), the focus fallback after Edit.</summary>
+        internal NodeHandle _footerMore;
         readonly HashSet<string> _selBefore = new(StringComparer.Ordinal);
 
         /// <summary>DRAG PEEK — a transient expansion of a collapsed pane for one drag (never a write to Collapsed).</summary>
@@ -487,15 +499,44 @@ public static partial class Sidebar
             }, DepKey.From(HashCode.Combine(disclosureUiVersion, rows)));
             ConfigureReorder();
 
+            // EDIT MODE (§P4.5). The list is unmounted while editing, so the keyboard-current row is captured by KEY on the
+            // false → true edge (the old list is still mounted here) and restored by key after the true → false edge. An
+            // account switch leaves focus where it is (ExitEditCore(false) clears EditExitRestoresFocus).
+            bool editing = Sidebar.Editing.Value;
+            if (editing && !_wasEditing)
+            {
+                int current = _listController.CurrentItemIndex;
+                var planRows = Plan.Rows;
+                _editReturnKey = (uint)current < (uint)planRows.Count ? planRows[current].Key : null;
+            }
+            else if (!editing && _wasEditing)
+                _restoreAfterEdit = Sidebar.EditExitRestoresFocus;
+            _wasEditing = editing;
+            UseLayoutEffect(() =>
+            {
+                if (!_restoreAfterEdit) return;
+                _restoreAfterEdit = false;
+                string? key = _editReturnKey;
+                _editReturnKey = null;
+                _post?.Invoke(() =>
+                {
+                    int at = key is null ? -1 : IndexOfRowKey(key);
+                    if (at >= 0) _listController.FocusItem(at);   // current + into view + keyboard focus
+                    else FocusFooterMore();                       // the row is gone (or focus was never in the list)
+                });
+            }, DepKey.From(editing ? 1 : 0));
+
             // ONE layer: the rail is the SAME list planned compact (design V.9), clipped to the frame's presented column. The
             // layer is measured at the OPEN width even while presented compact, so text never reflows through the rail width.
             var layer = new BoxEl
             {
                 Key = "pane-layer", Direction = 1, Grow = 1f, Shrink = 0f, ClipToBounds = true,
                 Width = _expandedWidth,
+                // The docked rail is inert behind a pinned overlay (design C.3); the drawer IS that overlay, so it stays live.
+                HitTestVisible = InDrawer || !SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, editing),
                 // DRAG PEEK: a spring-load waypoint over the whole rail (never a destination).
                 DropTarget = compact ? RailPeekDropSpec() : null,
-                Children = PaneChildren(rows, compact),
+                Children = PaneChildren(rows, compact, editing),
             };
 
             var children = new List<Element>(2) { layer };
@@ -538,8 +579,11 @@ public static partial class Sidebar
 
         /// <summary>The layer's children, top to bottom: the mode head, the body (the padded list or the empty hint) and the
         /// footer, which sits outside the scroller. Nulls are skipped.</summary>
-        Element[] PaneChildren(int rows, bool compact)
+        Element[] PaneChildren(int rows, bool compact, bool editing)
         {
+            // Edit mode (expanded only) swaps the head, the list and the footer for the Outline; the list is unmounted and its
+            // state stays with its element (§P4.5).
+            if (editing && !compact) return [_editPane ??= Embed.Comp(() => new EditPane(this)) with { Key = "edit-pane" }];
             Element? modeHead = Config.Head?.Invoke();
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
@@ -553,6 +597,20 @@ public static partial class Sidebar
             kids[k++] = body;
             kids[k] = footer;
             return kids;
+        }
+
+        /// <summary>The plan row whose key is <paramref name="key"/>, or −1.</summary>
+        int IndexOfRowKey(string key)
+        {
+            var rows = Plan.Rows;
+            for (int i = 0; i < rows.Count; i++) if (string.Equals(rows[i].Key, key, StringComparison.Ordinal)) return i;
+            return -1;
+        }
+
+        /// <summary>The footer's ⋯ (the Edit entry most pointer users came from). <c>PaneFooter</c> registers its node here.</summary>
+        internal void FocusFooterMore()
+        {
+            if (!_footerMore.IsNull) _hooks?.FocusNode?.Invoke(_footerMore, true);
         }
 
         /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>
@@ -685,7 +743,20 @@ public static partial class Sidebar
         /// <summary>Ctrl+F on the pane opens the filter under the Playlists header; a second press re-focuses it.</summary>
         void OnPaneKey(KeyEventArgs e)
         {
-            if (e.Handled || e.KeyCode != Keys.F || e.Mods != KeyModifiers.Ctrl) return;
+            if (e.Handled) return;
+            // Ctrl+Z / Ctrl+Y with focus IN the sidebar (this handler only sees keys routed through the pane): the ring's
+            // undo/redo, while editing or while a sidebar toast is open (Q6). A focused TextBox consumed its own Ctrl+Z
+            // first; FocusedIsTextEditor covers its empty-stack fall-through (TextEditCore.cs:349-352).
+            if (e.Mods == KeyModifiers.Ctrl && (e.KeyCode == Keys.Z || e.KeyCode == Keys.Y))
+            {
+                if (SidebarUndoRing.KeyAllowed(Sidebar.Editing.Peek(), Sidebar.SidebarToastOpen, Shell.FocusedIsTextEditor()))
+                {
+                    if (e.KeyCode == Keys.Z) Sidebar.Undo(); else Sidebar.Redo();
+                    e.Handled = true;
+                }
+                return;
+            }
+            if (e.KeyCode != Keys.F || e.Mods != KeyModifiers.Ctrl) return;
             string? tree = FirstVisibleSectionId(SidebarSectionKind.Playlists);
             if (tree is null) return;
             if (!HasHeaderRow(tree)) return;   // a title-less section has nowhere to host the box
@@ -781,18 +852,17 @@ public static partial class Sidebar
 
         // ── the section header's ⋯ menu ──
 
-        /// <summary>A section header's ⋯ menu: Collapse or Expand. Null for a section that has no collapsible header.</summary>
+        /// <summary>A section header's ⋯ menu (design C.4): the header model — limits, Show, Collapse/Expand, Move, Hide section —
+        /// mapped by the one mapper. The lock reasons come from <see cref="SidebarMenus.LockingNames"/>. The kinds with no header
+        /// menu are ruled out from the catalogue; the model itself is built only when the menu opens.</summary>
         internal Func<ContextMenuModel?>? HeaderMenu(string sectionId)
         {
-            if (SectionOf(sectionId) is not { } header || !SidebarCatalogue.Collapsible(header.Kind)) return null;
+            if (!SidebarCatalogue.TryKindOf(sectionId, out var kind) || kind is SidebarSectionKind.Library or SidebarSectionKind.Home or SidebarSectionKind.Settings) return null;
             return () =>
             {
-                if (SectionOf(sectionId) is not { } section) return null;
-                string text = Loc.Get(section.Collapsed ? "sidebar.menu.expand" : "sidebar.menu.collapse");
-                return new ContextMenuModel(new List<MenuFlyoutItem>(1)
-                {
-                    new(text, default, true, () => ToggleSection(sectionId, !section.Collapsed)),
-                });
+                SidebarMenus.Overlay = MenuOverlay;
+                var rows = SidebarMenuModel.Header(Sidebar.Layout.Peek(), Sidebar.State, sectionId, SidebarMenus.LockingNames());
+                return rows.Count == 0 ? null : new ContextMenuModel(SidebarMenus.Map(rows, sectionId));
             };
         }
 
@@ -1639,33 +1709,6 @@ public static partial class Sidebar
             return default;
         }
 
-        /// <summary>Menu Move up / Move down: the band's own commit when armed; the pin store when a Pinned band is
-        /// disarmed (an expanded folder) — drag is one way, never the only way.</summary>
-        internal void MoveRowByKey(string sectionId, string key, int delta)
-        {
-            if (delta == 0 || key.Length == 0) return;
-            var section = SectionOf(sectionId);
-            if (section is null) return;
-            var band = BandFor(sectionId);
-            if (band.Count > 0)
-            {
-                int from = -1;
-                for (int s = 0; s < band.Count; s++)
-                    if (string.Equals(KeyAt(sectionId, s), key, StringComparison.Ordinal)) { from = s; break; }
-                if (from < 0) return;
-                int to = from + delta;
-                if ((uint)to >= (uint)band.Count) return;
-                CommitReorder(sectionId, from, to);
-                return;
-            }
-            if (section.Kind != SidebarSectionKind.Pinned) return;
-            string id = SidebarPinId.Canonical(key) ?? key;
-            int pinFrom = Pins.IndexOf(id);
-            int pinTo = pinFrom + delta;
-            if (pinFrom < 0 || (uint)pinTo >= (uint)Pins.Count) return;
-            MovePin(pinFrom, pinTo);
-        }
-
         void CommitReorder(string sectionId, int from, int to)
         {
             var section = SectionOf(sectionId);
@@ -1704,12 +1747,10 @@ public static partial class Sidebar
             int at = Pins.IndexOf(pinId);
             if (at >= 0)
             {
-                MovePin(at, slot > at ? slot - 1 : slot);   // remove-then-insert shifts later indices down by one
+                MovePinRecorded(at, slot > at ? slot - 1 : slot);   // remove-then-insert shifts later indices down by one
                 return;
             }
-            PinWithToast(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), p.Name);
-            int now = Pins.IndexOf(pinId);
-            if (now > slot && slot >= 0) MovePin(now, slot);
+            PinWithToast(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), p.Name, slot);
         }
 
         // ── the tree multi-selection ───────────────────────────────────────────────────────────────────────────────

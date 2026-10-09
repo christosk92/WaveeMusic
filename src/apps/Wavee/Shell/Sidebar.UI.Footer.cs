@@ -34,7 +34,7 @@ public static partial class Sidebar
         Action<NodeHandle>? _realize;
         Func<NodeHandle>? _anchor;
         Action? _open, _settings;
-        Func<ContextMenuModel?>? _menu;
+        Func<ContextMenuModel?>? _menu, _settingsMenu;
 
         public override Element Render()
         {
@@ -44,7 +44,7 @@ public static partial class Sidebar
             var dest = Shell.Dest(new Shell.Route(Shell.RouteKind.Settings));
             Func<ContextMenuModel?> menu = _menu ??= owner.PaneMenu;
             var svc = owner.MenuOverlay;
-            _realize ??= h => _more = h;
+            _realize ??= h => { _more = h; owner._footerMore = h; };
             _anchor ??= () => _more;
             _open ??= () => owner.OpenPaneMenu(_anchor);
             _settings ??= () => owner.Navigate("settings", null);
@@ -68,6 +68,7 @@ public static partial class Sidebar
                     Key = "footer-settings", Label = dest.Title, Shape = SidebarRowShape.Glyph, Glyph = dest.Glyph,
                     Selected = selected, Tile = compact,
                     Focusable = true, OnClick = _settings,
+                    MenuOverlay = svc, Menu = _settingsMenu ??= SettingsMenu,
                 };
                 settings = EntityRow.Create(in spec);
                 if (compact) settings = ToolTip.Wrap(settings, dest.Title);
@@ -111,6 +112,14 @@ public static partial class Sidebar
                 // The pane background's own menu answers a right-click on the footer's dead space too.
                 Children = [body],
             };
+        }
+
+        /// <summary>The Settings row's menu (§P4.6): the item model for Settings, with its own Hide.</summary>
+        ContextMenuModel? SettingsMenu()
+        {
+            SidebarMenus.Overlay = owner.MenuOverlay;
+            return new ContextMenuModel(SidebarMenus.Map(SidebarMenuModel.Item(SidebarSectionKind.Settings, "settings", 0, 1, false),
+                                                         "settings"));
         }
     }
 }

@@ -591,11 +591,8 @@
       "playlists": "아직 플레이리스트가 없습니다 — +를 눌러 만드세요"
     },
     "newPlaylist": "내 플레이리스트",
-    "pinnedToast": "“{name}”을(를) 고정했습니다",
-    "unpinnedToast": "“{name}”의 고정을 해제했습니다",
     "menu": {
-      "customize": "사이드바 사용자 지정…",
-      "resetWidth": "너비 초기화"
+      "customize": "사이드바 사용자 지정…"
     },
     "seam": {
       "announceWidth": "사이드바 너비 {width}"
@@ -606,8 +603,6 @@
     "pin": {
       "pinTo": "사이드바에 고정",
       "unpin": "사이드바에서 고정 해제",
-      "pinned": "사이드바에 고정했습니다",
-      "unpinned": "고정됨에서 제거했습니다",
       "undo": "실행 취소",
       "emptyHint": "또는 라이브러리 항목의 고정 동작을 사용하세요.",
       "position": "{count}개 중 {index}번째"

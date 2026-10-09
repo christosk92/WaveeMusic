@@ -24,7 +24,10 @@
 //
 // No environment-variable switches (CLAUDE.md): every diagnostic is an always-on `Log` event.
 
+using System.Globalization;
+using FluentGpu.Controls;
 using FluentGpu.Foundation;
+using FluentGpu.Localization;
 using FluentGpu.Signals;
 
 namespace Wavee;
@@ -188,23 +191,55 @@ public static partial class Sidebar
         }
     }
 
-    /// <summary>THE ONE MUTATION PATH (design A.3): rules → signal → coalesced write. A refused op changes nothing and
-    /// returns why. (P4 adds the undo push.)</summary>
-    public static SidebarOpReject Dispatch(SidebarOp op)
+    /// <summary>THE ONE MUTATION PATH (design A.3): rules → signal → coalesced write, then the undo ring (design C.5). A
+    /// refused op changes nothing and returns why. <paramref name="toastText"/> is the "… · Undo" toast an edit outside
+    /// Edit raises; null for an edit that is silent (a move, a bridge write).</summary>
+    public static SidebarOpReject Dispatch(SidebarOp op, string? toastText = null)
+    {
+        var before = s_state.Of(op.Layout);
+        var r = ApplyUnrecorded(op);
+        if (!r.Changed) return r.Reject;
+        if (SidebarUndoRing.Records(op))
+            Record(new SidebarUndoEntry(0, SidebarUndoKind.Layout, op.Layout, LabelOf(op), Before: before, After: s_state.Of(op.Layout)), toastText);
+        return SidebarOpReject.None;
+    }
+
+    /// <summary>The op's rules and signal writes WITHOUT the undo record: the body of <see cref="Dispatch"/>, and the
+    /// path an undo or redo takes (an inverse is never recorded itself).</summary>
+    static SidebarOpResult ApplyUnrecorded(SidebarOp op)
     {
         var r = SidebarLayoutRules.Apply(s_state, op, PinnedLocked());
         if (!r.Changed)
         {
             if (r.Reject is not (SidebarOpReject.None or SidebarOpReject.NoChange))
                 Log.Info("sidebar", "op.refused op=" + op.GetType().Name + " reason=" + r.Reject);
-            return r.Reject;
+            return r;
         }
         s_state = r.State;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
         if (op is SetLibrarySort or SetLibraryView) SyncV3Mirrors();
         CommitLayout();
-        return SidebarOpReject.None;
+        return r;
     }
+
+    /// <summary>The ring label of a layout op (design C.5): "Hide Recent", "Move Playlists", "Sort: Recents"… built from
+    /// the loc keys the toast and the edit bar's Undo read.</summary>
+    static string LabelOf(SidebarOp op) => op switch
+    {
+        SetSectionShown s => Loc.Format(s.Shown ? "sidebar.undo.label.show" : "sidebar.undo.label.hide", ("name", SectionName(s.SectionId))),
+        MoveSection m => Loc.Format("sidebar.undo.label.move", ("name", SectionName(m.SectionId))),
+        SetSectionLimit l => Loc.Format("sidebar.undo.label.limit", ("count", l.Limit.ToString(CultureInfo.InvariantCulture))),
+        SetItemShown s => Loc.Format(s.Shown ? "sidebar.undo.label.show" : "sidebar.undo.label.hide", ("name", ItemName(s.ItemId))),
+        MoveItem m => Loc.Format("sidebar.undo.label.move", ("name", ItemName(m.ItemId))),
+        SetLibrarySort s => Loc.Format("sidebar.undo.label.sort", ("name", Loc.Get("sidebar.sort." + SidebarStoreV3.SortName(s.Sort)))),
+        SetLibraryView v => Loc.Format("sidebar.undo.label.view", ("name", Loc.Get(v.View == SidebarLibraryView.Grid ? "sidebar.view.grid" : "sidebar.view.list"))),
+        SetShowLiked => Loc.Get("sidebar.undo.label.liked"),
+        ResetLayout r => Loc.Format("sidebar.undo.label.reset", ("name", LayoutName(r.Layout))),
+        _ => Loc.Format("sidebar.undo.label.reset", ("name", LayoutName(op.Layout))),
+    };
+
+    static string SectionName(string id) => Loc.Get("sidebar.section.title." + id);
+    static string ItemName(string id) => Loc.Get("sidebar.item." + id);
 
     /// <summary>Pinned holds a route or module pin and may not be hidden.</summary>
     public static bool PinnedLocked()
@@ -221,11 +256,22 @@ public static partial class Sidebar
         LibrarySearchOpen.SetIfChanged(false);
         Layout.Value = next;
         s_layoutVersion.Value = s_layoutVersion.Peek() + 1;
+        ClearRing();                                                  // the ring is per layout switch (design C.5)
         Platform.Settings.Set(Platform.Keys.SidebarLayoutId, (int)next);
         Log.Info("sidebar", "layout.changed to=" + next);
     }
 
+    /// <summary>Density (Settings, the pane menu, the V3 view bridge): recorded in the ring, never toasted.</summary>
     public static void SetDensity(SidebarDensity density)
+    {
+        var before = Density.Peek();
+        if (before == density) return;
+        SetDensityUnrecorded(density);
+        Record(new SidebarUndoEntry(0, SidebarUndoKind.Density, Layout.Peek(), Loc.Get("sidebar.undo.label.density"),
+            DensityBefore: before, DensityAfter: density), null);
+    }
+
+    static void SetDensityUnrecorded(SidebarDensity density)
     {
         if (Density.Peek() == density) return;
         Density.Value = density;
@@ -241,14 +287,192 @@ public static partial class Sidebar
         SyncV3Mirrors();
     }
 
-    /// <summary>"Reset everything" (design C.3): both layouts, density and width back to their defaults; pins untouched.</summary>
-    public static void ResetEverything()
+    /// <summary>"Reset everything" (design C.3): both layouts and the density back to their defaults (the width too, which
+    /// is a preference, not a ring edit) — ONE batch under ONE toast "Sidebar reset · Undo". Pins untouched.</summary>
+    public static void ResetEverythingRecorded()
     {
-        Dispatch(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Classic)));
-        Dispatch(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library)));
-        SetDensity(SidebarDensity.Default);
+        var classicBefore = State.Of(SidebarLayoutId.Classic);
+        var libraryBefore = State.Of(SidebarLayoutId.Library);
+        var densityBefore = Density.Peek();
+        ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Classic)));
+        ApplyUnrecorded(new ReplaceOverlay(SidebarCatalogue.DefaultOverlay(SidebarLayoutId.Library)));
+        SetDensityUnrecorded(SidebarDensity.Default);
         SetExpandedWidth(SidebarPaneBounds.DefaultWidth);
+        string label = Loc.Get("sidebar.undo.label.resetEverything");
+        Record(SidebarUndoEntry.Batch(Layout.Peek(), label,
+        [
+            new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Classic, label, Before: classicBefore, After: State.Of(SidebarLayoutId.Classic)),
+            new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Library, label, Before: libraryBefore, After: State.Of(SidebarLayoutId.Library)),
+            new SidebarUndoEntry(0, SidebarUndoKind.Density, Layout.Peek(), label, DensityBefore: densityBefore, DensityAfter: SidebarDensity.Default),
+        ]), Loc.Get("sidebar.toast.resetEverything"));
     }
+
+    // ── the undo ring (design C.5) ──────────────────────────────────────────────────────────────────────────────────────
+
+    static readonly SidebarUndoRing s_ring = new();
+    static readonly Signal<int> s_ringVersion = new(0);
+    static readonly Dictionary<int, ToastHandle> s_toasts = new();
+    static readonly List<SidebarUndoEntry> s_leaves = new(8);
+    static readonly List<int> s_closedToasts = new(4);
+
+    /// <summary>The ring (the edit bar's Undo/Redo read <see cref="RingVersion"/> to re-render).</summary>
+    public static SidebarUndoRing Ring => s_ring;
+    public static IReadSignal<int> RingVersion => s_ringVersion;
+
+    /// <summary>Is a sidebar toast open (Q6: outside Edit, Ctrl+Z needs one)?</summary>
+    public static bool SidebarToastOpen
+    {
+        get
+        {
+            foreach (var h in s_toasts.Values) if (h.IsOpen) return true;
+            return false;
+        }
+    }
+
+    static void Record(SidebarUndoEntry entry, string? toastText)
+    {
+        var e = s_ring.Push(entry);
+        s_ringVersion.Value = s_ringVersion.Peek() + 1;
+        // Outside Edit every STRUCTURAL change toasts with Undo (hide, unpin, reset); moves never do (Q14).
+        if (toastText is not null && !Editing.Peek()) ShowUndoToast(e.Id, toastText);
+    }
+
+    static void ShowUndoToast(int entryId, string text)
+        => ShowRingToast(entryId, text, "sidebar.undo.undoAction", () => { if (s_ring.IsTop(entryId)) Undo(); }, 6000f);
+
+    /// <summary>EVERY ring toast — an edit's "… · Undo", an undo's "Undid … · Redo", a redo's "Redid … · Undo" — is
+    /// registered under its entry id, so <see cref="SidebarToastOpen"/> (Q6: Ctrl+Z/Y outside Edit need an open sidebar
+    /// toast) sees it and <see cref="ClearRing"/> closes it. A newer toast for the same entry replaces the older one.</summary>
+    static void ShowRingToast(int entryId, string text, string actionKey, Action action, float durationMs)
+    {
+        if (s_toasts.Remove(entryId, out var previous) && previous.IsOpen) previous.Close();
+        PruneClosedToasts();
+        s_toasts[entryId] = Notify.Say(text, InfoBarSeverity.Informational, Loc.Get(actionKey), action,
+            dedupeKey: "sidebar.undo." + entryId, durationMs: durationMs);
+    }
+
+    /// <summary>Forget the handles whose toast already closed: the map holds the open ones.</summary>
+    static void PruneClosedToasts()
+    {
+        s_closedToasts.Clear();
+        foreach (var (id, h) in s_toasts) if (!h.IsOpen) s_closedToasts.Add(id);
+        for (int i = 0; i < s_closedToasts.Count; i++) s_toasts.Remove(s_closedToasts[i]);
+    }
+
+    static void ClearRing()
+    {
+        s_ring.Clear();
+        foreach (var h in s_toasts.Values) if (h.IsOpen) h.Close();
+        s_toasts.Clear();
+        s_ringVersion.Value = s_ringVersion.Peek() + 1;
+    }
+
+    /// <summary>Ctrl+Z (design C.5): the newest entry comes back out. Outside Edit it says what it undid, with Redo.</summary>
+    public static void Undo()
+    {
+        if (!s_ring.TryUndo(out var e)) return;
+        ApplyInverse(e, undo: true);
+        s_ringVersion.Value = s_ringVersion.Peek() + 1;
+        // Q6: every undo says what it undid, with Redo — an invisible, synced undo is the surprise this ring must not cause.
+        int id = e.Id;
+        if (!Editing.Peek())
+            ShowRingToast(id, Loc.Format("sidebar.undo.undid", ("what", e.Label)), "sidebar.undo.redo",
+                () => { if (s_ring.IsRedoTop(id)) Redo(); }, 5000f);
+    }
+
+    /// <summary>Ctrl+Y: the newest undone entry goes forward again. Outside Edit it says so, with Undo.</summary>
+    public static void Redo()
+    {
+        if (!s_ring.TryRedo(out var e)) return;
+        ApplyInverse(e, undo: false);
+        s_ringVersion.Value = s_ringVersion.Peek() + 1;
+        // Q6: a redo is announced too, with Undo — the edit is live again and synced.
+        int id = e.Id;
+        if (!Editing.Peek())
+            ShowRingToast(id, Loc.Format("sidebar.undo.redid", ("what", e.Label)), "sidebar.undo.undoAction",
+                () => { if (s_ring.IsTop(id)) Undo(); }, 5000f);
+    }
+
+    /// <summary>Apply an entry backwards (undo) or forwards (redo) WITHOUT recording — a batch as its leaves, in
+    /// <see cref="SidebarUndoEntry.Flatten"/>'s order. Pin inverses re-enter the store's user-intent path (the store's
+    /// Pin / Insert / Unpin), so <c>OnLocalPinChanged</c> syncs them to Spotify like any edit.</summary>
+    static void ApplyInverse(SidebarUndoEntry e, bool undo)
+    {
+        s_leaves.Clear();
+        SidebarUndoEntry.Flatten(e, undo, s_leaves);
+        for (int i = 0; i < s_leaves.Count; i++) ApplyLeaf(s_leaves[i], undo);
+        s_leaves.Clear();
+    }
+
+    static void ApplyLeaf(SidebarUndoEntry e, bool undo)
+    {
+        switch (e.Kind)
+        {
+            case SidebarUndoKind.Layout when (undo ? e.Before : e.After) is { } overlay:
+                ApplyUnrecorded(new ReplaceOverlay(overlay));
+                break;
+            case SidebarUndoKind.Density:
+                SetDensityUnrecorded(undo ? e.DensityBefore : e.DensityAfter);
+                break;
+            case SidebarUndoKind.Pin when e.Pin is { } pin:
+                switch (e.PinChange)
+                {
+                    case SidebarPinChange.Pinned when undo: Pins.Unpin(pin.Id); break;
+                    case SidebarPinChange.Pinned: Pins.Insert(pin, e.PinFrom); break;
+                    case SidebarPinChange.Unpinned when undo: Pins.Insert(pin, e.PinFrom); break;
+                    case SidebarPinChange.Unpinned: Pins.Unpin(pin.Id); break;
+                    case SidebarPinChange.Moved:
+                    {
+                        int now = Pins.IndexOf(pin.Id);
+                        if (now >= 0) Pins.Move(now, undo ? e.PinFrom : e.PinTo);
+                        break;
+                    }
+                }
+                break;
+        }
+    }
+
+    // ── edit mode (design C.3) ──────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Enter Edit mode (design C.3): the pane presents Expanded (the presentation effect reads
+    /// <see cref="Editing"/>); <c>userCollapsed</c> is never written; the route does not change.
+    /// <para>Design corner case "Entering Edit cancels a live drag": the palette's chord CAN run while the pointer holds a
+    /// drag, and the app has no seam to cancel the engine's drag (<c>DragController.Cancel</c> is not exposed through
+    /// <c>InputHooks</c>). So Edit is REFUSED while a drag is live — the toast "Finish dragging first", nothing changes —
+    /// and the user drops (or presses Esc) and enters again. A drag can never straddle the Outline swap.</para></summary>
+    public static void EnterEdit()
+    {
+        if (Editing.Peek()) return;
+        if (Drag.IsLive())
+        {
+            Notify.Say(Loc.Get("sidebar.edit.finishDrag"), InfoBarSeverity.Informational, dedupeKey: "sidebar.edit.finish-drag");
+            return;
+        }
+        Editing.Value = true;
+    }
+
+    /// <summary>Done / Esc: back to the sidebar, focus restored to the row that had it before Edit (§P4.5). The ring is
+    /// KEPT (Q6: the edit bar's Undo after Done is the toast's).</summary>
+    public static void ExitEdit() => ExitEditCore(restoreFocus: true);
+
+    /// <param name="restoreFocus">False for an account switch: the user is not in the sidebar, so focus stays where it is
+    /// and no "{name} is empty" toast is raised.</param>
+    internal static void ExitEditCore(bool restoreFocus)
+    {
+        if (!Editing.Peek()) return;
+        EditExitRestoresFocus = restoreFocus;
+        Editing.Value = false;
+        if (restoreFocus && s_enabledEmptySection is { } name)
+            Notify.Say(Loc.Format("sidebar.edit.emptyOnDone", ("name", name)));
+        s_enabledEmptySection = null;
+    }
+
+    /// <summary>How the LAST exit from Edit ended: the pane restores focus on the editing true → false edge only when this
+    /// is true (Done / Esc), never for an account switch.</summary>
+    internal static bool EditExitRestoresFocus { get; private set; }
+
+    /// <summary>The name of a section the user showed in Edit while it had nothing to show (one toast on Done).</summary>
+    internal static string? s_enabledEmptySection;
 
     static void CommitLayout() => s_deviceFile?.Commit(SidebarStoreV3.Serialize(s_state));
 
@@ -334,9 +558,6 @@ public static partial class Sidebar
         Apply(new SidebarResizeRules.Settle(false, w, w));
     }
 
-    /// <summary>"Reset width": the default width, expanded.</summary>
-    public static void ResetWidth() => SetExpandedWidth(SidebarPaneBounds.DefaultWidth);
-
     static void Apply(in SidebarResizeRules.Settle s)
     {
         Width.SetIfChanged(s.ExpandedWidth);
@@ -387,10 +608,24 @@ public static partial class Sidebar
     public static void SetV3Qualifier(int v) { V3Qualifier.SetIfChanged(v); Platform.Settings.Set(Platform.Keys.V3Qualifier, v); }
     public static void SetV3Sort(int sort, bool desc)
         => Dispatch(new SetLibrarySort((uint)sort <= 4 ? (SidebarLibrarySort)sort : SidebarLibrarySort.Recents, desc));
+    /// <summary>One V3 view pick is a view AND a density change: ONE ring entry (a batch when both moved), so one Ctrl+Z
+    /// undoes the whole pick.</summary>
     public static void SetV3View(int view)
     {
-        Dispatch(new SetLibraryView(view >= (int)SidebarV3View.CompactGrid ? SidebarLibraryView.Grid : SidebarLibraryView.List));
-        SetDensity(view is (int)SidebarV3View.CompactList or (int)SidebarV3View.CompactGrid ? SidebarDensity.Compact : SidebarDensity.Default);
+        var op = new SetLibraryView(view >= (int)SidebarV3View.CompactGrid ? SidebarLibraryView.Grid : SidebarLibraryView.List);
+        var density = view is (int)SidebarV3View.CompactList or (int)SidebarV3View.CompactGrid ? SidebarDensity.Compact : SidebarDensity.Default;
+        var layout = Layout.Peek();
+        var before = State.Of(SidebarLayoutId.Library);
+        var densityBefore = Density.Peek();
+        bool viewChanged = ApplyUnrecorded(op).Changed;
+        SetDensityUnrecorded(density);
+        bool densityChanged = densityBefore != density;
+        if (!viewChanged && !densityChanged) return;
+        string label = viewChanged ? LabelOf(op) : Loc.Get("sidebar.undo.label.density");
+        var viewPart = new SidebarUndoEntry(0, SidebarUndoKind.Layout, SidebarLayoutId.Library, label, Before: before, After: State.Of(SidebarLayoutId.Library));
+        var densityPart = new SidebarUndoEntry(0, SidebarUndoKind.Density, layout, label, DensityBefore: densityBefore, DensityAfter: density);
+        Record(viewChanged && densityChanged ? SidebarUndoEntry.Batch(layout, label, [viewPart, densityPart])
+            : viewChanged ? viewPart : densityPart, null);
     }
     public static void SetV3GridSize(int size) => V3GridSize.SetIfChanged(size);
 
@@ -450,15 +685,6 @@ public static partial class Sidebar
     public static IReadSignal<int> PinsVersion => Pins.Version;
     public static bool IsPinned(string? pinId) => Pins.IsPinned(pinId);
 
-    /// <summary>Append a pin. False when already pinned (idempotent — the menu shows Unpin in that state).</summary>
-    public static bool Pin(SidebarPin pin) => Pins.Pin(pin);
-
-    /// <summary>Remove by id. Returns the removed index (for the undo toast) or -1 when absent.</summary>
-    public static int Unpin(string? pinId) => Pins.Unpin(pinId);
-
-    /// <summary>Undo path for <see cref="Unpin"/>: reinsert at its former index (clamped).</summary>
-    public static void InsertPin(SidebarPin pin, int index) => Pins.Insert(pin, index);
-
     public static void MovePin(int fromIndex, int toIndex) => Pins.Move(fromIndex, toIndex);
 
     /// <summary>Refresh a pin's cached display name from live library data. No-op when unchanged; coalesced into the
@@ -468,6 +694,72 @@ public static partial class Sidebar
     public static void TouchPin(string? pinId, string? name)
     {
         if (Pins.Touch(pinId, name)) s_pinNamesDirty = true;
+    }
+
+    /// <summary>Pin with undo (appended, or at a drop's <paramref name="slot"/>). Q4: pinning while Pinned is hidden shows
+    /// Pinned again — ONE batch (the pin, then the show) under ONE toast "Pinned is shown again · Undo", whose Undo unpins
+    /// AND re-hides.</summary>
+    public static bool PinRecorded(SidebarPin pin, string name, int slot = -1)
+    {
+        var layout = Layout.Peek();
+        bool reshow = State.Of(layout).Find("pinned") is { Hidden: true };
+        if (!(slot >= 0 ? Pins.Insert(pin, slot) : Pins.Pin(pin))) return false;
+        int at = Pins.IndexOf(pin.Id);
+        string label = Loc.Format("sidebar.undo.label.pin", ("name", name));
+        var pinned = new SidebarUndoEntry(0, SidebarUndoKind.Pin, layout, label,
+            PinChange: SidebarPinChange.Pinned, Pin: Pins[at], PinFrom: at);
+        if (!reshow)
+        {
+            Record(pinned, Loc.Format("sidebar.pin.pinnedNamed", ("name", name)));
+            return true;
+        }
+        var before = State.Of(layout);
+        ApplyUnrecorded(new SetSectionShown(layout, "pinned", true));
+        var shown = new SidebarUndoEntry(0, SidebarUndoKind.Layout, layout, label, Before: before, After: State.Of(layout));
+        Record(SidebarUndoEntry.Batch(layout, label, [pinned, shown]), Loc.Get("sidebar.pin.pinnedShownAgain"));
+        return true;
+    }
+
+    /// <summary>"Unpin all shortcuts" (Q17): every route/module pin, as ONE batch under ONE toast "Shortcuts unpinned · Undo".
+    /// Unpinned from the LAST index down, so each part's <c>PinFrom</c> is still right when the undo re-inserts them in
+    /// reverse (lowest index first).</summary>
+    public static void UnpinAllShortcutsRecorded()
+    {
+        var layout = Layout.Peek();
+        var parts = new List<SidebarUndoEntry>(4);
+        for (int i = Pins.Count - 1; i >= 0; i--)
+        {
+            var pin = Pins[i];
+            if (pin.Kind != SidebarEntryKind.AppRoute) continue;
+            Pins.Unpin(pin.Id);
+            parts.Add(new SidebarUndoEntry(0, SidebarUndoKind.Pin, layout, pin.Name,
+                PinChange: SidebarPinChange.Unpinned, Pin: pin, PinFrom: i));
+        }
+        if (parts.Count == 0) return;
+        Record(SidebarUndoEntry.Batch(layout, Loc.Get("sidebar.undo.label.unpinShortcuts"), parts), Loc.Get("sidebar.toast.shortcutsUnpinned"));
+    }
+
+    public static bool UnpinRecorded(string pinId, string name)
+    {
+        int at = Pins.IndexOf(pinId);
+        if (at < 0) return false;
+        var pin = Pins[at];
+        Pins.Unpin(pinId);
+        Record(new SidebarUndoEntry(0, SidebarUndoKind.Pin, Layout.Peek(), Loc.Format("sidebar.undo.label.unpin", ("name", name)),
+            PinChange: SidebarPinChange.Unpinned, Pin: pin, PinFrom: at), Loc.Format("sidebar.pin.unpinnedNamed", ("name", name)));
+        return true;
+    }
+
+    /// <summary>Move a pin (a band drop, Alt+↑/↓, Move up/down). Recorded, never toasted (Q14).</summary>
+    public static void MovePinRecorded(int from, int to)
+    {
+        if ((uint)from >= (uint)Pins.Count) return;
+        int target = Math.Clamp(to, 0, Pins.Count - 1);                 // the store clamps the same way: record what happened
+        if (from == target) return;
+        var pin = Pins[from];
+        Pins.Move(from, target);
+        Record(new SidebarUndoEntry(0, SidebarUndoKind.Pin, Layout.Peek(), Loc.Format("sidebar.undo.label.move", ("name", pin.Name)),
+            PinChange: SidebarPinChange.Moved, Pin: pin, PinFrom: from, PinTo: target), null);
     }
 
     // ── the entry projection cell (owned here; not this section — see SidebarEntries) ───────────────────────────────────

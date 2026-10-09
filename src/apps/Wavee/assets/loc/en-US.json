@@ -1075,6 +1075,8 @@
   "settings": {
     "title": "Settings",
     "sidebar": {
+      "editSub": "Show, hide and reorder sections and pins in place",
+      "resetEverythingSub": "Both layouts and the density back to their defaults. Pins stay.",
       "title": "Sidebar",
       "subtitle": "Saved on this PC",
       "layout": "Layout",
@@ -2197,6 +2199,76 @@
     "audiobooks": "Audiobooks"
   },
   "sidebar": {
+    "sort": {
+      "recents": "Recently played",
+      "recentlyAdded": "Recently added",
+      "alphabetical": "Alphabetical",
+      "creator": "Creator",
+      "customOrder": "Custom order",
+      "customOnlyPlaylists": "Custom order works for playlists only"
+    },
+    "view": {
+      "list": "List",
+      "grid": "Grid"
+    },
+    "undo": {
+      "undoAction": "Undo",
+      "redo": "Redo",
+      "undid": "Undid: {what}",
+      "redid": "Redid: {what}",
+      "label": {
+        "hide": "Hide {name}",
+        "show": "Show {name}",
+        "move": "Move {name}",
+        "reset": "Reset {name}",
+        "density": "Change density",
+        "limit": "Show {count}",
+        "sort": "Sort by {name}",
+        "view": "View as {name}",
+        "liked": "Liked Songs",
+        "pin": "Pin {name}",
+        "unpin": "Unpin {name}",
+        "unpinShortcuts": "Unpin all shortcuts",
+        "resetEverything": "Reset everything"
+      }
+    },
+    "edit": {
+      "title": "Edit sidebar",
+      "reset": "Reset",
+      "done": "Done",
+      "resetAllTitle": "Reset everything?",
+      "resetAllBody": "Both layouts and the density go back to their defaults. Pins stay.",
+      "resetAllConfirm": "Reset everything",
+      "emptyOnDone": "{name} has nothing to show yet.",
+      "announceGrabbed": "Grabbed {name}, position {pos} of {count}",
+      "announceMoved": "{name}, position {pos} of {count}",
+      "announceDropped": "Dropped {name} at position {pos} of {count}",
+      "announceCancelled": "Move cancelled",
+      "footClassic": "Drag sections by their header or grip. Changes apply at once.",
+      "footLibrary": "Library keeps a fixed order. Changes apply at once.",
+      "stillInProfile": "Still in the profile menu",
+      "pinsSummary": "{count} pinned",
+      "showAllPins": "Show all {count} pins",
+      "playlistsSummary": "{count} playlists",
+      "recentHint": "Filled from what you play",
+      "newReleasesHint": "Fresh releases from the artists you follow",
+      "libraryHint": "Search, filters and everything you saved",
+      "filters": "Filters",
+      "collectionsSummary": "{count} of {total} pages · hiding all hides Collections",
+      "collectionsLastSummary": "Last page · hiding it hides Collections",
+      "showInSidebar": "Show {name} in sidebar",
+      "finishDrag": "Finish dragging first"
+    },
+    "toast": {
+      "reset": "{name} reset to its defaults",
+      "hidden": "{name} hidden",
+      "shortcutsUnpinned": "Shortcuts unpinned",
+      "resetEverything": "Sidebar reset",
+      "settingsHidden": "Settings hidden. It stays in the profile menu"
+    },
+    "palette": {
+      "useLayout": "Use {layout} layout"
+    },
     "active": "Active",
     "layout": {
       "menuTitle": "Sidebar layout"
@@ -2230,11 +2302,28 @@
     "moveToFolderBody": "Choose where “{name}” should live.",
     "findFolder": "Find a folder",
     "noFolders": "No folders yet",
-    "pinnedToast": "Pinned “{name}”",
-    "unpinnedToast": "Unpinned “{name}”",
     "menu": {
+      "layout": "Layout",
+      "showSection": "Show section",
+      "nothingHidden": "Nothing is hidden",
+      "density": "Density",
+      "edit": "Edit sidebar…",
+      "resetEverything": "Reset everything…",
+      "show": "Show",
+      "showCount": "Show {count}",
+      "showHidden": "Show hidden",
+      "unpinShortcuts": "Unpin all shortcuts",
+      "moveUp": "Move up",
+      "moveDown": "Move down",
+      "hideSection": "Hide section",
+      "unpinFirst": "Unpin {names} first",
+      "hideFromSidebar": "Hide from sidebar",
+      "sort": "Sort",
+      "view": "View",
+      "filters": "Filters",
+      "showLiked": "Show Liked Songs",
+      "hidePinned": "Hide pinned",
       "customize": "Customize sidebar…",
-      "resetWidth": "Reset width",
       "resetLayout": "Reset this layout",
       "expand": "Expand",
       "collapse": "Collapse"
@@ -2244,10 +2333,11 @@
       "discard": "Start fresh"
     },
     "pin": {
+      "pinnedShownAgain": "Pinned shortcuts are shown again",
+      "pinnedNamed": "Pinned {name}",
+      "unpinnedNamed": "Unpinned {name}",
       "pinTo": "Pin to sidebar",
       "unpin": "Unpin from sidebar",
-      "pinned": "Pinned to sidebar",
-      "unpinned": "Removed from Pinned",
       "undo": "Undo",
       "emptyHint": "Or use the pin action on any library item.",
       "position": "{index} of {count}",
@@ -2281,6 +2371,16 @@
       "options": "Section options"
     },
     "section": {
+      "title": {
+        "home": "Home",
+        "pinned": "Pinned",
+        "collections": "Collections",
+        "playlists": "Playlists",
+        "library": "Your Library",
+        "recent": "Recently played",
+        "newReleases": "New releases",
+        "settings": "Settings"
+      },
       "pinned": "Pinned",
       "pinnedSub": "The items you pinned, in your order",
       "jumpBackIn": "Jump back in",
@@ -2323,6 +2423,11 @@
       "sourcePlayed": "Recently played"
     },
     "item": {
+      "liked": "Liked Songs",
+      "albums": "Albums",
+      "artists": "Artists",
+      "podcasts": "Podcasts",
+      "audiobooks": "Audiobooks",
       "playTrack": "Play track",
       "expandFolder": "Expand folder",
       "collapseFolder": "Collapse folder"
@@ -2596,6 +2701,11 @@
     "homeSubtitle": "Genres, moods and charts — everything Spotify is featuring right now."
   },
   "setup": {
+    "layout": {
+      "title": "Choose your sidebar",
+      "body": "Classic shows sections you can arrange. Library is one list with filters. You can switch any time in Settings."
+    },
+    "next": "Next",
     "stepOf": "Step {n} of {total}",
     "preSetup": "Pre-setup",
     "accept": "Accept",

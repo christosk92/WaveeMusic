@@ -259,7 +259,7 @@ public static partial class Sidebar
             if (track) click = () => _o.Play(snapshot.Uri, asTrack: true);
             else if (route is { Length: > 0 } navRoute) click = () => _o.Navigate(navRoute, snapshot.Name, in snapshot);
 
-            var menu = _o.EntryMenu(section, index, in snapshot, row.Key);
+            var menu = _o.EntryMenu(section, index, in snapshot, row.Key, unavailable);
             // F2: only a row that can really be renamed takes it (and so becomes a focus stop); never a banded row.
             Action? rename = reordering ? null : _o.RenameAction(in snapshot);
 

@@ -448,7 +448,7 @@ public sealed class SidebarBinderWiringTests : IDisposable
         try
         {
             Assert.Equal("spotify:wiring", Sidebar.AccountKey);
-            Assert.True(Sidebar.Pin(new SidebarPin("pl:spotify:playlist:keep", SidebarEntryKind.Playlist,
+            Assert.True(Sidebar.Pins.Pin(new SidebarPin("pl:spotify:playlist:keep", SidebarEntryKind.Playlist,
                 "spotify:playlist:keep", "Keep", AddedAtMs: 1)));
 
             // The pin armed the 300 ms coalesced commit; Shutdown fires it and waits for the pool write.

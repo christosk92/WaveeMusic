@@ -552,13 +552,22 @@ public static partial class Settings
             _ = Sidebar.LayoutVersion.Value;
             var density = Sidebar.Density.Value;
             bool editing = Sidebar.Editing.Value;
+            // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
+            string finish = Loc.Get("sidebar.pane.finishEditing");
             var items = new List<Element>(4)
             {
                 Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
                     Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList),
-                Item(Loc.Get(Strings.Settings.Sidebar.Reset), Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
+                Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
                     isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
-                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek())), icon: Icons.Undo),
+                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo),
+                Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
+                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit),
+                Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
+                    isClickEnabled: !editing,
+                    // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
+                    onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
+                    icon: Icons.Undo),
             };
             if (Sidebar.LayoutFileFault)
                 items.Insert(0, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning));
@@ -594,9 +603,18 @@ public static partial class Settings
     /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
     /// (design Q7). Public: the setup wizard's Layout step reuses them (P4).</summary>
     public static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
-        => Controls.PickerStrip(2, (int)active,
+    {
+        var strip = Controls.PickerStrip(2, (int)active,
             static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
             editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
+        if (!editing) return strip;
+        // Q7: never a silent dead control — the cards say why they do not switch.
+        return new BoxEl
+        {
+            Direction = 1, Gap = 6f,
+            Children = [strip, Ui.Caption(Loc.Get("sidebar.pane.finishEditing")) with { Color = Tok.TextSecondary }],
+        };
+    }
 
     static Element SidebarLayoutCardFace(SidebarLayoutId layout, bool on)
     {

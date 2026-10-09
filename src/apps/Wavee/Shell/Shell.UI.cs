@@ -720,8 +720,18 @@ public static partial class Shell
             Focusable = true, TabStop = true, AllowFocusOnInteraction = false, Role = AutomationRole.Slider,
             OnKeyDown = OnSeamKey,
             OnPointerPressed = static e => { if (e.ClickCount == 2) Sidebar.TogglePane(); },
-        }).WithContextMenu(overlay, Sidebar.LayoutMenu.Model);
+        }).WithContextMenu(overlay, () => SeamPaneMenu(overlay));
         return parts;
+    }
+
+    /// <summary>The seam's right-click is the sidebar's pane menu (§P4.6): the rows the footer ⋯ opens, on the same
+    /// overlay host. Built here rather than through <c>PaneView.PaneMenu</c>, which is per-pane and not reachable from the
+    /// seam's static parts.</summary>
+    static ContextMenuModel? SeamPaneMenu(IOverlayService overlay)
+    {
+        Sidebar.SidebarMenus.Overlay = overlay;
+        return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down
@@ -807,7 +817,8 @@ public static partial class Shell
         }
     }
 
-    static bool FocusedIsTextEditor()
+    /// <summary>Is a text editor focused? The sidebar's own Ctrl+Z/Ctrl+Y handler asks it (§P4.6); there is no frame chord.</summary>
+    internal static bool FocusedIsTextEditor()
     {
         var focused = s_hooks?.GetFocus?.Invoke() ?? default;
         if (focused.IsNull || s_scene is not { } scene || !scene.IsLive(focused)) return false;
@@ -1251,20 +1262,10 @@ public static partial class Shell
     {
         var pin = new SidebarPin(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), title,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-        if (!Sidebar.Pin(pin)) return;   // already pinned: a silent no-op, never a claim it did something
-        Notify.Say(title.Length > 0 ? Strings.Sidebar.PinnedToast(title) : Loc.Get(Strings.Sidebar.Pin.Pinned),
-            InfoBarSeverity.Success, Loc.Get(Strings.Sidebar.Pin.Undo), () => Sidebar.Unpin(pinId));
+        Sidebar.PinRecorded(pin, title.Length > 0 ? title : Sidebar.SidebarMenus.PinName(pinId));
     }
 
-    static void UnpinDestination(string pinId)
-    {
-        int at = Sidebar.Pins.IndexOf(pinId);
-        if (at < 0) return;
-        var removed = Sidebar.Pins[at];
-        if (Sidebar.Unpin(pinId) < 0) return;
-        Notify.Say(Loc.Get(Strings.Sidebar.Pin.Unpinned), InfoBarSeverity.Informational,
-            Loc.Get(Strings.Sidebar.Pin.Undo), () => Sidebar.InsertPin(removed, at));
-    }
+    static void UnpinDestination(string pinId) => Sidebar.UnpinRecorded(pinId, Sidebar.SidebarMenus.PinName(pinId));
 
     static Element ChromeButton(string glyph, Action onClick, string tooltip, string key)
         => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
@@ -1510,7 +1511,8 @@ public static partial class Shell
 
         public override Element Render()
         {
-            // Pinned (editing in a forced band) keeps the pane open and the scrim non-dismissing; P4 gives it a 0.2 fill.
+            // Pinned (editing in a forced band) keeps the pane open behind a non-dismissing 0.2 scrim that lets the page
+            // behind it stay usable (Q16): no hit test, no click-to-close.
             bool pinned = SidebarPaneModeRules.OverlayPinned(Sidebar.Band.Value, Sidebar.Editing.Value);
             bool open = Sidebar.OverlayOpen.Value || pinned;
             float ms = Design.Reduced ? 0f : Design.Motion.Fast;
@@ -1519,8 +1521,10 @@ public static partial class Shell
             _mounted = true;
             return new BoxEl
             {
-                Grow = 1f, Fill = ColorF.FromRgba(0, 0, 0, 0x33), Opacity = target,
-                HitTestVisible = open, OnClick = pinned ? null : static () => Sidebar.OverlayOpen.Value = false,
+                Grow = 1f,
+                Fill = pinned ? new ColorF(0f, 0f, 0f, 0.2f) : ColorF.FromRgba(0, 0, 0, 0x33),
+                Opacity = pinned ? 1f : target,
+                HitTestVisible = open && !pinned, OnClick = pinned ? null : static () => Sidebar.OverlayOpen.Value = false,
             };
         }
     }
