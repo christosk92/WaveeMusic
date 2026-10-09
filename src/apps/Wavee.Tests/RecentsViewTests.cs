@@ -167,6 +167,28 @@ public class RecentsViewTests
     }
 
     [Fact]
+    public void PivotIndexOf_MapsTokensCaseInsensitively_AndFallsBackToAll()
+    {
+        Assert.Equal(0, RecentsView.PivotIndexOf(null));
+        Assert.Equal(1, RecentsView.PivotIndexOf(RecentsView.PivotMusic));
+        Assert.Equal(1, RecentsView.PivotIndexOf("MUSIC"));
+        Assert.Equal(2, RecentsView.PivotIndexOf(RecentsView.PivotPodcasts));
+        Assert.Equal(3, RecentsView.PivotIndexOf("KIND:ARTIST"));
+        Assert.Equal(0, RecentsView.PivotIndexOf("bogus"));
+    }
+
+    [Fact]
+    public void PivotTokenAt_RoundTripsTheViewsOrder_AndIsNullOutOfRange()
+    {
+        Assert.Equal(4, RecentsView.PivotOrder.Length);
+        for (int i = 0; i < RecentsView.PivotOrder.Length; i++)
+            Assert.Equal(i, RecentsView.PivotIndexOf(RecentsView.PivotTokenAt(i)));
+        Assert.Null(RecentsView.PivotTokenAt(0));
+        Assert.Null(RecentsView.PivotTokenAt(-1));
+        Assert.Null(RecentsView.PivotTokenAt(4));
+    }
+
+    [Fact]
     public void Matches_KindArtistToken_IsDecidedFromTheHydrationUri_NotContentType()
     {
         // A headless header (no target of its own) resolves "kind:artist" the same way EntitySlotOf does — from the

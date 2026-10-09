@@ -326,6 +326,19 @@ public static class RecentsView
 {
     /// <summary><c>kind:artist</c> is the one pivot with no wire <c>content_type_*</c> — decided from the hydration target.</summary>
     public const string PivotMusic = "music", PivotPodcasts = "podcasts", PivotArtists = "kind:artist";
+    /// <summary>The views' order: All, Music, Podcasts, Artists. The page's views bar index IS an index into this list, so
+    /// the bar, the Zune band and the page's chip never disagree about which word is which.</summary>
+    public static readonly string?[] PivotOrder = [null, PivotMusic, PivotPodcasts, PivotArtists];
+    /// <summary>The views index of a pivot token (case-insensitive); null or an unknown token is All (0).</summary>
+    public static int PivotIndexOf(string? token)
+    {
+        if (token is null) return 0;
+        for (int i = 1; i < PivotOrder.Length; i++)
+            if (string.Equals(PivotOrder[i], token, StringComparison.OrdinalIgnoreCase)) return i;
+        return 0;
+    }
+    /// <summary>The pivot token at a views index; out of range is null (All).</summary>
+    public static string? PivotTokenAt(int index) => (uint)index < (uint)PivotOrder.Length ? PivotOrder[index] : null;
     /// <summary>The stored content-type token of an axis (the mapper strips <c>content_type_</c>).</summary>
     public static string? TokenOf(RecentsContentType axis)
         => axis == RecentsContentType.Music ? PivotMusic : axis == RecentsContentType.Podcasts ? PivotPodcasts : null;
@@ -718,6 +731,8 @@ public static class RecentsLayout
     public const float CalCellW = 38f, CalCellH = 32f, CalHeaderH = 20f, CalGap = 4f, CalTitleH = 28f, CalCardGap = 8f;
     /// <summary>A month card's exact width: 7 cells + 6 gutters = 290 (the card width AND the grid's min cell).</summary>
     public const float CalGridW = 7f * CalCellW + 6f * CalGap;
+    /// <summary>The gap between the overview's month cards (36): a GAP between cells, not the page gutter.</summary>
+    public const float CalGridGap = 36f;
     /// <summary>The sticky push is quantized to <c>Spacing.XXS</c>.</summary>
     public const float PushQuantum = 2f;
     /// <summary><c>56 + 36·weeks</c> — derived from the same consts the card lays out with (200 / 236 / 272).</summary>
