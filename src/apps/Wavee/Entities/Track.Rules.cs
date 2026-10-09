@@ -368,9 +368,27 @@ public readonly partial struct Track
         public const float RowHeight = 48f;
         public const float HeaderHeight = 36f;
         public const float ColGap = Spacing.M;
-        public const float PadX = Spacing.L;
+        /// <summary>The pane's side inset: the one number every pane leads with (<see cref="PageGeometry.PaneInset"/>).</summary>
+        public const float PadX = PageGeometry.PaneInset;
         /// <summary>The rounded row-highlight inset (rows pad PadX − RowInset so columns stay header-aligned).</summary>
         public const float RowInset = Spacing.S;
+
+        /// <summary>Where a row's hover/selection plate starts inside the table, from the table's own edge: the Modern skin's plate
+        /// is inset by <see cref="RowInset"/>, the Classic skin's fill is full-bleed (0).</summary>
+        public static float PlateX(bool classic) => classic ? 0f : RowInset;
+
+        /// <summary>How far a table's host reaches LEFT over the gap before it. A two-column page's Modern table has a plate lead of
+        /// 0: its row plates abut the rail's 8-DIP gap and its header text, first toolbar command and row content sit at the
+        /// plate's inner padding (<see cref="RowInset"/>), so the host overhangs by that much and the rail, composed that much
+        /// wider (<c>Detail.RailPolicy.ComposedExtraWidth</c>), gives it back. A Classic table's fill is already flush with the
+        /// host, so it needs no overhang (the rail is composed by the same 0). Every other table starts on its own edge.</summary>
+        public static float LeadFor(bool twoColumn, bool classic) => twoColumn ? PlateX(classic) : 0f;
+
+        /// <summary>The toolbar's left shift inside the chrome (a positive number to subtract), so its first plate sits on the row
+        /// plates' edge (<see cref="PlateX"/>) at EVERY tier: the chrome pads <see cref="PadXFor"/>, the command surface pads
+        /// its own <see cref="Detail.VerticalLayout.ToolbarSurfacePadX"/>.</summary>
+        public static float ToolbarLead(int tier, bool classic)
+            => PadXFor(tier) - PlateX(classic) + Detail.VerticalLayout.ToolbarSurfacePadX;
         /// <summary>36 sat between two ladder rungs and broke DOWNWARD: the Compact row is 40 tall.</summary>
         public const float ThumbSize = Design.Size.Thumb32;
         public const float HeartCol = Lane.Heart;
@@ -697,6 +715,14 @@ public readonly partial struct Track
         public const float SearchGap = 8f;
         public const float GroupSeparatorWidth = 17f;
         public const float PromotionHysteresis = 16f;
+
+        /// <summary>The slack the fit keeps from the measured slot (the surface's own padding and the search's edge).</summary>
+        public const float FitSlack = 12f;
+
+        /// <summary>The width <see cref="Resolve"/> is handed for a measured slot. The toolbar's left shift
+        /// (<c>RowMetrics.ToolbarLead</c>) moves the command surface but never the box that measures it, so the fit is the same
+        /// at every pane width: a resize cannot newly overflow a command into "…".</summary>
+        public static float PaneWidth(float available) => MathF.Max(0f, available - FitSlack);
 
         /// <summary>Hysteresis applies in EVERY mode — it used to be skipped while search was open, exactly when evicted
         /// commands re-measure mid-animation and the promoted set oscillated. Narrowing stays immediate.</summary>

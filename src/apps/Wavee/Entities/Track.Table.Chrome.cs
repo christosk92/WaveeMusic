@@ -38,7 +38,6 @@ public readonly partial struct Track
         /// <summary>The ONE search-disclosure duration: the width tween, the icon↔field cross-fade, the chrome brush fade
         /// and the underline all run on it, so the box growing and its styling resolving read as one motion.</summary>
         const float SearchExpandMs = 260f, SearchCollapseMs = 180f;
-        const float ToolbarPaneInset = 12f;
 
         Action<Action>? _post;
         InputHooks? _hooks;
@@ -57,7 +56,9 @@ public readonly partial struct Track
         (float Available, CommandBarFit Fit)? _searchOpenFit;
         int _selectionPrevCount;
 
-        Func<float, Element> _buildToolbar = null!;
+        // BuildToolbar's (lead, width) builder, cached: the toolbar's left shift (RowMetrics.ToolbarLead) is the Responsive box's STATE,
+        // so a tier crossing re-pads the chrome and re-shifts the command surface in the same commit.
+        Func<float, float, Element> _buildToolbar = null!;
         Func<int, Element> _selectionCommands = null!;
         Action _openSearch = null!, _toggleFind = null!, _exitSelection = null!, _selectAllTracks = null!;
         Action<NodeHandle> _captureSearchButton = null!;
@@ -68,7 +69,7 @@ public readonly partial struct Track
 
         void InitChrome()
         {
-            _buildToolbar = BuildToolbar;
+            _buildToolbar = (lead, available) => BuildToolbar(available, lead);
             _selectionCommands = SelectionCommands;
             _openSearch = () => _searchExpanded.Value = true;
             _toggleFind = () => { if (_searchExpanded.Peek()) CollapseSearch(restoreFocus: false); else _searchExpanded.Value = true; };
@@ -117,9 +118,13 @@ public readonly partial struct Track
         {
             float padX = RowMetrics.PadXFor(shape.Set.Tier);
             bool vertical = VerticalArm;
+            // The first toolbar plate lines up with the row hover plates (PlateX: RowInset Modern, 0 Classic), its text with the header
+            // and the row content. The hero's toolbar (vertical arm) keeps lead 0: it sits in the hero's identity column, which the
+            // hero (not this chrome) aligns with its title.
+            float toolbarLead = vertical ? 0f : RowMetrics.ToolbarLead(shape.Set.Tier, shape.Set.Classic);
             Element header = Embed.Comp(() => new TableHeader(this)) with { Key = "header" };
             var stack = new List<Element>(4);
-            if (!vertical && _latest.ShowToolbar) stack.Add(Toolbar());
+            if (!vertical && _latest.ShowToolbar) stack.Add(Toolbar(toolbarLead));
             if (chips is not null && (vertical || _latest.ShowToolbar)) stack.Add(chips);
             if (lens is not null) stack.Add(lens);
             stack.Add(header);
@@ -137,11 +142,13 @@ public readonly partial struct Track
             };
         }
 
-        Element Toolbar() => Responsive.Of(_buildToolbar, fallback: _lastW > 0f ? _lastW : 760f) with { Key = "detail-track-commandbar" };
+        // The lead is the box's gate state (equal by value): it re-shifts the surface in the same commit as the chrome's padding, and
+        // the measuring box itself never moves, so CommandBarLayout.Resolve keeps receiving the width it always did.
+        Element Toolbar(float lead) => Responsive.Of(lead, _buildToolbar, fallback: _lastW > 0f ? _lastW : 760f) with { Key = "detail-track-commandbar" };
 
         // ══ 2. THE COMMAND BAR ══════════════════════════════════════════════════════════════════════════════════════
 
-        Element BuildToolbar(float available)
+        Element BuildToolbar(float available, float lead)
         {
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
             bool vertical = VerticalArm;
@@ -149,14 +156,14 @@ public readonly partial struct Track
             // hero's copy) then keeps its normal commands and its search ICON (a click opens row 2's field), so one Find or one
             // selection never shows twice. Read through the signal so the latched flip rebuilds the bar.
             bool ownsSwaps = Detail.VerticalLayout.ToolbarOwnsSwaps(vertical && _floorInRow2.Value);
-            if (ownsSwaps && _selectionVisible?.Value == true) return SelectionSurface("selection");
+            if (ownsSwaps && _selectionVisible?.Value == true) return SelectionSurface("selection", lead);
 
             bool hasTune = P.Tune is not null;
             bool hasSelect = Cfg.Selection != ItemsSelectionMode.None;
             bool explicitSearch = ownsSwaps && _searchExpanded.Value;
             var w = _toolbarWidths;
             var widths = new CommandWidths(w[0], w[1], w[2], w[3], w[4], w[5]);
-            float pane = MathF.Max(0f, available - ToolbarPaneInset);
+            float pane = CommandBarLayout.PaneWidth(available);
             var fit = CommandBarLayout.Resolve(pane, in widths, vertical, hasTune, hasSelect, explicitSearch, _toolbarFit);
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
@@ -217,13 +224,14 @@ public readonly partial struct Track
                     search,
                 ],
             };
-            return CommandSurface("normal", normal);
+            return CommandSurface("normal", normal, lead);
         }
 
         /// <summary>The chromeless 44-DIP lane both modes share; the keyed mode box is what animates browse ↔ selection.</summary>
-        static Element CommandSurface(string mode, Element content) => new BoxEl
+        static Element CommandSurface(string mode, Element content, float lead = 0f) => new BoxEl
         {
             Direction = 1, Height = Detail.VerticalLayout.ToolbarRowHeight, MinWidth = 0f, ClipToBounds = true,
+            Margin = new Edges4(-lead, 0f, 0f, 0f),
             Padding = new Edges4(Detail.VerticalLayout.ToolbarSurfacePadX, Detail.VerticalLayout.ToolbarSurfacePadY,
                                  Detail.VerticalLayout.ToolbarSurfacePadX, Detail.VerticalLayout.ToolbarSurfacePadY),
             Children =
@@ -1226,8 +1234,8 @@ public readonly partial struct Track
 
         /// <summary>The selection mode of the command lane. Count 0 + minCount 0: the bar's props never change, and its
         /// commands read the live selection themselves — so "1 selected" can never sit beside "Play 4 next".</summary>
-        Element SelectionSurface(string mode)
-            => CommandSurface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0));
+        Element SelectionSurface(string mode, float lead = 0f)
+            => CommandSurface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0), lead);
 
         /// <summary>The selection arm in the Zune band's row 2 (32 tall): the bare lane, without the 44-DIP surface's padding, so the
         /// command row sits on the row's centre line. The same commands and the same fit measure as the in-page surface.</summary>

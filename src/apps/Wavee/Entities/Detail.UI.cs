@@ -378,7 +378,7 @@ public static partial class Detail
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
-    const float RailSidePadL = Spacing.L, RailSidePadR = Spacing.S;   // 16 / 8
+    const float RailSidePadL = RailPolicy.SidePadL, RailSidePadR = RailPolicy.SidePadR;   // 16 (the one pane inset) / 8 (the frame gap)
     const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = 256;                                // the shelf card's bucket — a warm texture on arrival
@@ -390,7 +390,7 @@ public static partial class Detail
     static float RailWidthForMode(int mode, in Config cfg) => mode switch { 0 => cfg.RailWidth, 1 => RailMidW, _ => RailNarrowW };
 
     /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the column less its side padding, floored at 80.</summary>
-    static float RailCoverEdge(float railW) => MathF.Max(80f, railW - RailSidePadL - RailSidePadR);
+    static float RailCoverEdge(float railW) => RailPolicy.CoverEdge(railW);
 
     /// <summary>One persisted rail pair (width + collapsed), live. TWO widths, deliberately: <see cref="Width"/> is the
     /// LIVE column (what the row lays out and the grip drags — always inside the page-aware bounds), <c>_stored</c> is
@@ -764,7 +764,7 @@ public static partial class Detail
 
             // ── the right column ──
             float rightMin = Breakpoints.ContentMinWidthForMode(mode);
-            Element right = cfg.Content == DetailContent.Episodes
+            BoxEl right = cfg.Content == DetailContent.Episodes
                 ? new BoxEl
                 {
                     Key = "right:eps", Grow = 1f, Shrink = 1f, MinWidth = rightMin, MinHeight = 0f, Direction = 1,
@@ -811,7 +811,7 @@ public static partial class Detail
                 });
             }
 
-            // ── modes 0/1/2: the centred two-column row [rail | grip | right] ──
+            // ── modes 0/1/2: the centred two-column row [rail | right], the grip an overlay strip on the gap between them ──
             var rail = _rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
             bool resizable = RailPolicy.ResizableFor(cfg.RailResizable, mode);
             // Read unconditionally (a stable subscription) but honoured only where the grip that can undo it exists.
@@ -824,13 +824,23 @@ public static partial class Detail
             // "full title for 1-2 frames" flicker, 2026-09-30).
             float railMaxLive = _railMax.Value;
             float railMax = _measuredW > 0f ? railMaxLive : RailPolicy.MaxWidthForPage(pageWidthEstimate, mode);
-            float railW = resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg);
+            // The COMPOSED width: the resting width plus what the grip's strip and the table's plate lead used to take out of the
+            // row (RailPolicy.ComposedExtraWidth). The stored width and every clamp stay in the resting width's own units.
+            // The Classic skin's fill is full-bleed, so it needs no plate lead (the row skin and the toolbar read the same pref).
+            bool classicRows = Prefs.Appearance.TrackRowStyle() == 1;
+            float railW = (resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg))
+                          + RailPolicy.ComposedExtraWidth(resizable, classicRows);
+            // The table has no plate lead of its own in this arm: its host overhangs the rail's trailing gap by the plate lead
+            // (LeadFor: RowInset for Modern, 0 for Classic), which the composed rail gave back, so the table's plates, header text
+            // and rows stay exactly where they were.
+            float plateLead = Track.RowMetrics.LeadFor(twoColumn: true, classicRows);
+            BoxEl tableColumn = right with { Margin = new Edges4(-plateLead, 0f, 0f, 0f) };
 
             Element[] rowKids;
             if (collapsed)
             {
                 // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll.
-                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), Grip(rail, railMax, collapsedNow: true), right];
+                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), GripSpacer(plateLead), tableColumn];
             }
             else
             {
@@ -860,7 +870,7 @@ public static partial class Detail
                     Children = [RailRegion(spec, acts, railW, titleSize, descLines,
                         InsightsSheet.ToggleSlotReserved(id.Kind, cfg.Content) ? _insights : null, factsSettled)],
                 };
-                rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
+                rowKids = [railFaded, tableColumn];
             }
 
             var row = new BoxEl
@@ -873,6 +883,18 @@ public static partial class Detail
                 DropTarget = drop,
                 Children = rowKids,
             };
+            // The resizable rail's grip is an overlay strip centred on the 8-DIP gap between the cover and the first plate: it takes
+            // no row width. Its hit area overlaps the cover and the plate by (StripW - FrameGap) / 2 DIP each. The collapsed arm's
+            // re-open strip is the SAME node on the 20-DIP slot after the identity strip, so a drag that collapses the rail keeps
+            // its pointer capture. It is the topmost child so it wins hit-testing over the cover and the plate; the cost is that it
+            // follows the table in Tab / automation order (the engine has no focus-order hint), and it stays reachable by pointer.
+            Element rowHost = resizable
+                ? new BoxEl
+                {
+                    ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
+                    Children = [row, GripOverlay(rail, railMax, collapsed, railW)],
+                }
+                : row;
             var twoColumnPage = new BoxEl
             {
                 Key = "detail:two-column",
@@ -883,7 +905,7 @@ public static partial class Detail
                     new BoxEl
                     {
                         Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.Center,
-                        Children = [row],
+                        Children = [rowHost],
                     },
                 ],
             };
@@ -1052,15 +1074,27 @@ public static partial class Detail
 
         // ── the grip ──
 
-        Element Grip(RailCell rail, float max, bool collapsedNow) => new BoxEl
+        /// <summary>The collapsed arm's reserved slot after the identity strip: the re-open grip's 20 DIP (an overlay, see
+        /// <see cref="GripOverlay"/>) plus the table's plate lead (its host overhangs the slot by <c>RowMetrics.LeadFor</c>), so the
+        /// collapsed table sits where it always did.</summary>
+        static Element GripSpacer(float plateLead) => new BoxEl
+        {
+            Key = "detail-rail-grip-slot", Width = GripStripCollapsedW + plateLead, Shrink = 0f,
+        };
+
+        /// <summary>The grip: one strip, one key, never in the row's flow. Expanded, it is centred on the 8-DIP gap between the
+        /// rail's cover and the table's first plate; collapsed, it is the 20-DIP re-open slot after the identity strip. Translated
+        /// like the shell's sidebar seam, so it neither takes row width nor moves the table. Width writes are direct during the
+        /// drag (bounded by the page-aware Max, so a drag can never squeeze the content column out); RELEASE commits width +
+        /// collapsed to THIS scope's pair.</summary>
+        Element GripOverlay(RailCell rail, float max, bool collapsedNow, float composedRailW) => new BoxEl
         {
             Key = "detail-rail-grip-strip",
             Width = collapsedNow ? GripStripCollapsedW : Splitter.StripW,
             Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,
+            Transform = Affine2D.Translation(collapsedNow ? RailCompactW : RailPolicy.GripOverlayX(composedRailW), 0f),
             Children =
             [
-                // Width writes are direct during the drag (bounded by the page-aware Max, so a drag can never squeeze the
-                // content column out); RELEASE commits width + collapsed to THIS scope's pair.
                 Splitter.Create(rail.Width, rail.Commit, rail.OptionsFor(max), collapsed: rail.Collapsed, fade: _railFade)
                     with { Key = rail.GripKey },
             ],

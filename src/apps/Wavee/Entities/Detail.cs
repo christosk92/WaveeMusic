@@ -669,10 +669,31 @@ public static partial class Detail
         /// <see cref="MaxWidth"/> is the ABSOLUTE ceiling; the live one is <see cref="MaxWidthForPage"/>.</summary>
         public const float MinWidth = 180f, MaxWidth = 480f;
 
-        /// <summary>The seam the row always pays between rail and content (<see cref="Splitter.StripW"/>), and the two
-        /// widths the COLLAPSED arm composes instead (the 96-DIP identity strip + its 20-DIP re-open grip).</summary>
+        /// <summary>The grip's strip width (<see cref="Splitter.StripW"/>). The grip is a translated overlay on the 8-DIP gap and takes
+        /// no row width; a resizable rail is composed that much wider instead (<see cref="ComposedExtraWidth"/>). Also the two
+        /// widths the COLLAPSED arm composes (the 96-DIP identity strip + its 20-DIP re-open grip).</summary>
         public const float GripStripW = Splitter.StripW;
         public const float CompactStripW = 96f, CollapsedGripW = 20f;
+
+        /// <summary>What the rail's COMPOSED width adds to its resting (persisted) width, so the table's text does not move when
+        /// the grip stops taking row width: the grip's 16-DIP strip (a resizable rail only; the grip is now a translated overlay
+        /// on the 8-DIP gap) plus the table's plate lead (<see cref="Track.RowMetrics.LeadFor"/>: <c>RowInset</c> for the Modern
+        /// skin, which the table gives back by overhanging its host; 0 for Classic, whose full-bleed fill needs no overhang).
+        /// Applied at composition, never to the stored width, so persisted widths keep their meaning.</summary>
+        public static float ComposedExtraWidth(bool resizable, bool classic)
+            => (resizable ? GripStripW : 0f) + Track.RowMetrics.LeadFor(twoColumn: true, classic);
+
+        /// <summary>The rail column's side padding: the left is the one pane inset, the right is the frame gap the rail pays
+        /// between its cover and the table's first plate.</summary>
+        public const float SidePadL = PageGeometry.PaneInset, SidePadR = Shell.FrameRules.FrameGap;
+
+        /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the (composed) column less its side padding, floored at 80.</summary>
+        public static float CoverEdge(float composedRailW) => MathF.Max(80f, composedRailW - SidePadL - SidePadR);
+
+        /// <summary>The x of the grip's strip inside the two-column row: centred on the 8-DIP gap that the rail's trailing
+        /// padding forms with the table's first plate. Its hit area overlaps the cover and the first plate by
+        /// <c>(StripW - FrameGap) / 2</c> DIP each.</summary>
+        public static float GripOverlayX(float composedRailW) => composedRailW - (Shell.FrameRules.FrameGap + GripStripW) / 2f;
 
         /// <summary>The live maximum moves in 8-DIP steps, so a per-pixel window resize cannot churn the frame's render
         /// (and the floor never rounds the cap UP past what the page can actually give).</summary>
@@ -1365,8 +1386,9 @@ public static partial class Detail
     /// so a slot body shorter than its row never pulls the rows under it up on reveal.</summary>
     public static class RailLayout
     {
-        /// <summary>Between rows, and the column's own padding above and below.</summary>
-        public const float Gap = 14f, PadTop = 24f, PadBottom = 24f;
+        /// <summary>Between rows, and the column's own padding above and below. The top is the one pane inset, so the cover
+        /// starts as far below the card's edge as it does from the left.</summary>
+        public const float Gap = 14f, PadTop = PageGeometry.PaneInset, PadBottom = 24f;
         /// <summary>The CTA cluster sits 4 DIP lower than the gap alone would put it.</summary>
         public const float CtaTopMargin = 4f;
         /// <summary>The fixed group: [primary] 12 [heart · Share · ⋯], the group 8 apart, standard 32/r4 icon buttons

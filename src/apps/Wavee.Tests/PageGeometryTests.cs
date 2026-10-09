@@ -137,4 +137,20 @@ public class PageGeometryRhythmTests
             Assert.Equal(FluentGpu.Foundation.TextTrim.CharacterEllipsis, el.Trim);
         }
     }
+
+    [Fact]
+    public void The_track_table_leads_with_the_one_pane_inset()
+    {
+        Assert.Equal(PageGeometry.PaneInset, Track.RowMetrics.PadX);
+        Assert.Equal(PageGeometry.PaneInset, Track.RowMetrics.PadXFor(0));
+        Assert.True(PageGeometry.PaneInset - Track.RowMetrics.RowInset >= 0f);
+    }
+
+    [Fact]
+    public void The_detail_rail_leads_with_the_one_pane_inset()
+    {
+        Assert.Equal(PageGeometry.PaneInset, Detail.RailPolicy.SidePadL);
+        Assert.Equal(PageGeometry.PaneInset, Detail.RailLayout.PadTop);
+        Assert.Equal(Shell.FrameRules.FrameGap, Detail.RailPolicy.SidePadR);
+    }
 }

@@ -96,4 +96,47 @@ public class DetailTrackCommandBarLayoutTests
         Assert.True(narrow.Richness < wide.Richness);
         Assert.True(narrow.SearchExpanded);
     }
+
+    // ── the toolbar's plate lines up with the row plates; the fit does not change ────────────────────────────────
+
+    /// <summary>The left shift moves the command surface, never the box that measures it, so Resolve receives the width it
+    /// always did (the measured slot less the 12-DIP inset) at every pane width.</summary>
+    [Theory]
+    [InlineData(360f)]
+    [InlineData(640f)]
+    [InlineData(960f)]
+    public void ResolverWidth_IsUnchangedByTheToolbarLead(float paneWidth)
+    {
+        float before = MathF.Max(0f, paneWidth - 12f);   // the pre-change formula
+        Assert.Equal(before, Layout.PaneWidth(paneWidth));
+
+        // …and the fit it produces is the same one.
+        var was = Layout.Resolve(before, Widths, vertical: false, hasTune: true, hasSelect: true, explicitSearch: false);
+        var now = Layout.Resolve(Layout.PaneWidth(paneWidth), Widths, vertical: false, hasTune: true, hasSelect: true, explicitSearch: false);
+        Assert.Equal(was.Inline, now.Inline);
+        Assert.Equal(was.SearchWidth, now.SearchWidth);
+    }
+
+    /// <summary>At every tier the first toolbar plate lands on the row plates' edge (RowInset Modern, 0 Classic): the chrome pads
+    /// PadXFor(tier), the surface its own 6, and the lead takes the difference.</summary>
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    [InlineData(5, false)]
+    [InlineData(6, false)]
+    [InlineData(7, false)]
+    [InlineData(0, true)]
+    [InlineData(3, true)]
+    [InlineData(4, true)]
+    [InlineData(5, true)]
+    [InlineData(6, true)]
+    [InlineData(7, true)]
+    public void ToolbarPlate_SitsOnTheRowPlateEdge(int tier, bool classic)
+    {
+        float lead = Track.RowMetrics.ToolbarLead(tier, classic);
+        float plate = Track.RowMetrics.PadXFor(tier) - lead + Detail.VerticalLayout.ToolbarSurfacePadX;
+        Assert.Equal(Track.RowMetrics.PlateX(classic), plate);
+        Assert.True(lead > 0f);
+    }
 }

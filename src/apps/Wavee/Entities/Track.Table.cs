@@ -1421,7 +1421,7 @@ public readonly partial struct Track
             //    the band is transparent and owns no input.
             var insights = spec.Insights;
             return new Detail.HeroParts(
-                Toolbar: toolbar ? Toolbar() : null,
+                Toolbar: toolbar ? Toolbar(lead: 0f) : null,
                 BandActions: BandActions(insights, spec.InsightsLive),
                 SelectionBar: Cfg.Selection == ItemsSelectionMode.None ? null : SelectionSurface("compact-selection"),
                 SelectionVisible: _selectionVisible!,

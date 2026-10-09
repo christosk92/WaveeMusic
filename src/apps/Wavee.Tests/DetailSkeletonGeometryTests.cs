@@ -120,15 +120,16 @@ public class DetailSkeletonGeometryTests
     [Fact]
     public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
     {
+        // The column pads the one pane inset above (RailLayout.PadTop = 16) and 24 below.
         // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 (PlayButton
         // 120 + 12 + [heart · Share] 72 = 204 ≤ 256: one line, max(PillHeight 32, FabSize 32) = 32). Five rows, four gaps.
         var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 256f + 16f + 72f + 16f + 36f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        Assert.Equal(RailLayout.PadTop + 256f + 16f + 72f + 16f + 36f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
 
         // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (120 + 12 + 112 > 216):
         // 4 + 32 + 12 + 32 · blurb 3 × 18. Six rows, five gaps.
         var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+        Assert.Equal(RailLayout.PadTop + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
     }
 
     const int PodcastDescMax = 3;
