@@ -13,6 +13,18 @@ using System.Collections.Generic;
 
 namespace Wavee;
 
+/// <summary>What the Zune band's second row carries for a route. ROUTE-ONLY: no data decides it, so the row never pops
+/// in or out as a page loads.</summary>
+public enum ZuneSubRow : byte
+{
+    /// <summary>The row holds nothing for this route (it is still laid out: see <see cref="ZuneNavRules.BandHeight"/>).</summary>
+    None,
+    /// <summary>Library's sub-pivots.</summary>
+    Library,
+    /// <summary>The page's own views, published through <c>Shell.PageViews</c> (Home, Recents).</summary>
+    PageViews,
+}
+
 /// <summary>The Zune style's pivot rules: which pivot a route sits under, where a pivot lands, which pins show.</summary>
 public static class ZuneNavRules
 {
@@ -51,6 +63,28 @@ public static class ZuneNavRules
 
     /// <summary>The route a pivot lands on: Library lands on Liked Songs, every other pivot is its own route.</summary>
     public static string LandingOf(string pivot) => pivot == LibraryPivot ? LibraryPages[0] : pivot;
+
+    /// <summary>A PIVOT DESTINATION: a route the Zune pivots land on, whose page head hoists into the band while Zune is
+    /// presented. Home, Browse's ROOT, Recents and every Library page; Local, the Home and Browse sections, nested Browse
+    /// routes and Search are not (they keep their own head).</summary>
+    public static bool IsPivotDestination(string routeName)
+    {
+        if (routeName is "home" or "browse" or "recents") return true;
+        for (int i = 0; i < LibraryPages.Length; i++) if (routeName == LibraryPages[i]) return true;
+        return false;
+    }
+
+    /// <summary>What the band's second row carries for a route: Library's sub-pivots under Library, the page's own views
+    /// for Home and Recents, else nothing. ROUTE-ONLY (no data parameter), so the row is decided on the first frame.</summary>
+    public static ZuneSubRow SubRowOf(string routeName)
+        => TopOf(routeName) == LibraryPivot ? ZuneSubRow.Library
+         : routeName is "home" or "recents" ? ZuneSubRow.PageViews
+         : ZuneSubRow.None;
+
+    /// <summary>The band's whole height for a nav style: both rows under Zune, nothing otherwise. Row 2 is ALWAYS laid out
+    /// under Zune (empty for a route with no sub row), so the band is the same height on every route and a navigation
+    /// never moves the content card.</summary>
+    public static float BandHeight(ShellNavStyle style) => style == ShellNavStyle.Zune ? PivotRowHeight + SubRowHeight : 0f;
 
     /// <summary>The sub-pivots show only under Library.</summary>
     public static bool ShowsSub(string routeName) => TopOf(routeName) == LibraryPivot;

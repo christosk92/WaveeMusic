@@ -9,6 +9,7 @@
 //   THE AUTO-ZOOM LOOP DETECTS A MANUAL MOVE AGAINST ITS OWN LAST PICK. Comparing the live zoom against the suggestion
 //   instead makes every Ctrl+± silently undone on the next resize tick.
 
+using FluentGpu.Animation;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -355,5 +356,19 @@ public class ShellChromeSearchFieldWidthTests
             else
                 Assert.InRange(c.SearchWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
         }
+    }
+}
+
+public class ShellHoistSettleTests
+{
+    [Fact]
+    public void The_hoist_lands_after_the_card_tween()
+        => Assert.True(Shell.FrameRules.HoistSettleMs > Shell.FrameRules.CardMotionMs);
+
+    [Fact]
+    public void The_hoist_never_lands_while_a_frame_motion_is_in_flight()
+    {
+        Assert.True(Shell.FrameRules.HoistSettleMs >= MotionTok.PaneOpen.DurationMs);
+        Assert.True(Shell.FrameRules.HoistSettleMs >= MotionTok.PaneClose.DurationMs);
     }
 }

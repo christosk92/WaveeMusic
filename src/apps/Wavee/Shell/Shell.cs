@@ -1071,6 +1071,12 @@ public static partial class Shell
         /// the first frame is right; pages read it in Render.</summary>
         public static readonly Signal<float> PageGutter = new(PageGeometry.GutterWide);
 
+        /// <summary>The nav style the PAGE HEADS present. It follows <c>Sidebar.NavStyle</c> after
+        /// <see cref="FrameRules.HoistSettleMs"/>, so a head's hoist (its height change) lands in a commit where the content
+        /// card's rect does not move; written ONLY by <c>NavStylePresenter</c> (and the boot seed in <c>FrameRoot</c>). The
+        /// frame (pane, band, lead gap, gutter) follows <c>NavStyle</c> at once.</summary>
+        public static readonly Signal<ShellNavStyle> PresentedNavStyle = new(ShellNavStyle.Classic);
+
         /// <summary>The rail is open. When false the rail slot animates its width to 0.</summary>
         public static readonly Signal<bool> RailOpen = new(false);
 
@@ -1874,6 +1880,12 @@ public static partial class Shell
         /// this many milliseconds on the same spline, so they land together. <c>Shell.UI.cs</c>'s PaneMs reads it.</summary>
         public const float CardMotionMs = 300f;
 
+        /// <summary>When the page heads follow a nav-style switch: the card's tween plus two 60-Hz frames. A head hoist
+        /// (<c>PageHead.Reflow</c>) changes height inside the content card, and the engine snaps every bounds-animated node
+        /// inside a card whose rect changes in the same commit (the card is a suppression root), so the hoist lands only
+        /// after the frame motion has settled: its Reflow then runs in a quiet commit.</summary>
+        public const float HoistSettleMs = CardMotionMs + 32f;
+
         /// <summary>The content card's width: the viewport less the sidebar column, the content lead gap, the rail's
         /// inline gap and the rail's inline reservation. The seam strips are translated overlays and take no width. The
         /// page gutter is decided from THIS, so it steps in the same commit as the card does.</summary>
@@ -2112,6 +2124,76 @@ public static partial class Shell
         public static MastheadPublication? Peek(in Route route) => s_map.TryGetValue(KeyOf(route), out var p) ? p : null;
 
         internal static void Clear()
+        {
+            s_map.Clear();
+            s_lru.Clear();
+        }
+    }
+
+    // ══ 13b. THE PAGE VIEWS PUBLICATIONS ══════════════════════════════════════════════════════════════════════════════
+    //
+    // Under the Zune style a pivot destination's views (Songs · Albums · Playlists) move from the page head into the
+    // band's second row. The page publishes what the band needs to draw them under its ROUTE NAME; the band reads it.
+    // Same idiom as the mastheads: UI state, an LRU, a Version bumped only when the visible data changes.
+
+    /// <summary>What a page hands the Zune band for its views. <see cref="Selected"/> is the page's own signal (the band's
+    /// bar writes it and the page reads it, so the two bars never disagree); <see cref="OnSelect"/> is BEHAVIOUR.
+    /// <see cref="Trailing"/> is a FACTORY, so the band builds the page's control (Home's Following) itself: the page and
+    /// the band switch on the same <c>PresentedNavStyle</c> read, so it renders in exactly one place per commit.</summary>
+    public sealed record PageViewsPublication(IReadOnlyList<string> Labels, Signal<int> Selected, Action<int> OnSelect,
+        Func<Element>? Trailing = null);
+
+    public static class PageViews
+    {
+        public const int Capacity = 16;
+
+        /// <summary>Bumped only when a publication's DATA changes (its labels or its selected signal), so the band
+        /// re-renders at navigation rate. A new delegate or trailing factory alone updates silently.</summary>
+        public static readonly Signal<int> Version = new(0);
+
+        static readonly Dictionary<string, PageViewsPublication> s_map = new(StringComparer.Ordinal);
+        static readonly List<string> s_lru = [];
+
+        /// <summary>Publish (or re-publish) a route's views. Returns whether the band must re-render.</summary>
+        public static bool Publish(string routeName, PageViewsPublication publication)
+        {
+            bool changed = !s_map.TryGetValue(routeName, out var old)
+                || !ReferenceEquals(old.Selected, publication.Selected)
+                || !SameLabels(old.Labels, publication.Labels);
+            s_lru.Remove(routeName);
+            s_lru.Add(routeName);
+            s_map[routeName] = publication;
+            while (s_map.Count > Capacity && s_lru.Count > 0)
+            {
+                s_map.Remove(s_lru[0]);
+                s_lru.RemoveAt(0);
+            }
+            if (changed) Version.Value = Version.Peek() + 1;
+            return changed;
+        }
+
+        static bool SameLabels(IReadOnlyList<string> a, IReadOnlyList<string> b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        /// <summary>Subscribing read (the band).</summary>
+        public static PageViewsPublication? For(string routeName)
+        {
+            _ = Version.Value;
+            return s_map.TryGetValue(routeName, out var p) ? p : null;
+        }
+
+        /// <summary>Non-subscribing read: a click resolves the LATEST delegate here.</summary>
+        public static PageViewsPublication? Peek(string routeName) => s_map.TryGetValue(routeName, out var p) ? p : null;
+
+        /// <summary>Drops every publication. Public, not internal: this assembly has no <c>InternalsVisibleTo</c>, so the
+        /// tests reset the store through it.</summary>
+        public static void Clear()
         {
             s_map.Clear();
             s_lru.Clear();

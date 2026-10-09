@@ -90,4 +90,39 @@ public sealed class ShellNavStyleTests
         ZuneNavRules.PinTiles(pins, tiles);
         Assert.Equal(new[] { "home", "albums", "artists", "podcasts", "audiobooks", "recents" }, tiles.ConvertAll(p => p.Id).ToArray());
     }
+
+    [Theory]
+    [InlineData("albums", ZuneSubRow.Library)]
+    [InlineData("local", ZuneSubRow.Library)]
+    [InlineData("home", ZuneSubRow.PageViews)]
+    [InlineData("recents", ZuneSubRow.PageViews)]
+    [InlineData("browse", ZuneSubRow.None)]
+    [InlineData("settings", ZuneSubRow.None)]
+    [InlineData("album:x", ZuneSubRow.None)]
+    public void SubRowOf_IsRouteOnly(string route, ZuneSubRow expected)
+        => Assert.Equal(expected, ZuneNavRules.SubRowOf(route));
+
+    [Theory]
+    [InlineData("home")] [InlineData("browse")] [InlineData("recents")] [InlineData("liked")] [InlineData("albums")]
+    [InlineData("artists")] [InlineData("podcasts")] [InlineData("audiobooks")]
+    public void IsPivotDestination_TrueForPivotRoutes(string route) => Assert.True(ZuneNavRules.IsPivotDestination(route));
+
+    [Theory]
+    [InlineData("local")] [InlineData("home-section:x")] [InlineData("browse:pop")] [InlineData("browse-section:x")]
+    [InlineData("search")] [InlineData("settings")] [InlineData("album:x")]
+    public void IsPivotDestination_FalseForTheRest(string route) => Assert.False(ZuneNavRules.IsPivotDestination(route));
+
+    [Fact] public void BandHeight_IsTheSameOnEveryRoute_AndZeroOutsideZune()
+    {
+        var routes = new List<string>(ZuneNavRules.Top);
+        routes.AddRange(ZuneNavRules.LibraryPages);
+        routes.AddRange(["settings", "album:x", "artist:x", "search", "browse:pop", "local", "home-section:x"]);
+        foreach (var _ in routes)
+        {
+            Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+            Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic));
+            Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library));
+        }
+        Assert.Equal(ZuneNavRules.PivotRowHeight + ZuneNavRules.SubRowHeight, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+    }
 }

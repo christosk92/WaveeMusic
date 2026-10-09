@@ -246,6 +246,8 @@ public static partial class Shell
                     paneHidden: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune);
                 Sidebar.Mode.SetIfChanged(mode0);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode0, Sidebar.Width.Peek(), w0));
+                // The heads present the launch style from frame one: a Zune launch is hoisted without a Reflow.
+                Ui.PresentedNavStyle.SetIfChanged(Sidebar.NavStyle.Peek());
                 // The page gutter is right on frame one: a narrow launch must not mount at 36 and step a frame later.
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(FrameRules.CardWidth(w0, Sidebar.PresentedWidth.Peek(),
                     FrameRules.ContentLeadGap(Sidebar.NavStyle.Peek()),
@@ -481,6 +483,7 @@ public static partial class Shell
                     Chord(ZoomOutPadChord, static () => ZoomStep(-1)),
                     Chord(ZoomResetChord, static () => ZoomStep(0)),
                     Chord(ZoomResetPadChord, static () => ZoomStep(0)),
+                    Embed.Comp(static () => new NavStylePresenter()) with { Key = "shell:navstyle-presenter" },
                     // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
                     // costs GPU, and the docked bar is what stacked a second transport under the video's own, but a
                     // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
@@ -903,6 +906,31 @@ public static partial class Shell
             UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(dim));
             _mounted = true;
             return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke, Opacity = target, HitTestVisible = dim };
+        }
+    }
+
+    // ══ 2b. THE NAV-STYLE PRESENTER ═══════════════════════════════════════════════════════════════════════════════════
+    //
+    // A nav-style switch is TWO commits by construction. Commit 1 (Sidebar.NavStyle) moves only the frame: the pane, the
+    // Zune band, the lead gap and the gutter, and the content card FLIPs once. Commit 2, FrameRules.HoistSettleMs later
+    // (Ui.PresentedNavStyle), changes only what is INSIDE the card: the page heads' heights (which Reflow) and the Zune
+    // band's row-2 words. The card's rect does not change there, so the engine's descendant suppression (the card is a
+    // suppression root whenever its rect changes) cannot snap the heads' Reflow.
+
+    /// <summary>Follows <see cref="Sidebar.NavStyle"/> into <see cref="Ui.PresentedNavStyle"/> once the frame has settled. The
+    /// only writer besides the boot seed. Renders an empty, zero-size box; a double switch re-arms the timer, so only the
+    /// last style presents.</summary>
+    sealed class NavStylePresenter : Component
+    {
+        readonly Action _present = static () => Ui.PresentedNavStyle.SetIfChanged(Sidebar.NavStyle.Peek());
+
+        public override Element Render()
+        {
+            var s = Sidebar.NavStyle.Value;
+            // The frame-clock idiom (Album.Page.cs, Artist.UI.cs): UseTimeout arms from mount and re-arms when its deps
+            // change. The mount-time fire is a no-op because the value is already seeded.
+            UseTimeout(_present, FrameRules.HoistSettleMs, DepKey.From((int)s));
+            return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
         }
     }
 

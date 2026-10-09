@@ -147,3 +147,60 @@ public static class PageGeometry
     /// <summary>The inset of a pane's own content from its edge (<c>Spacing.L</c>, 16).</summary>
     public const float PaneInset = Spacing.L;
 }
+
+/// <summary>The five heads a page can have. A page's kind is decided by three ROUTE-STATIC facts (is it hoisted into the
+/// Zune band, does it have a breadcrumb row above the title, does it have a views row) and by nothing that arrives later.</summary>
+public enum PageHeadKind : byte
+{
+    /// <summary>Title and meta line.</summary>
+    Title,
+    /// <summary>Title, meta line and the views row.</summary>
+    TitleViews,
+    /// <summary>Breadcrumb row, title and meta line.</summary>
+    CrumbTitle,
+    /// <summary>Breadcrumb row, title, meta line and the views row.</summary>
+    CrumbTitleViews,
+    /// <summary>The one 72-DIP strip a pivot destination keeps under the Zune band.</summary>
+    Hoisted,
+}
+
+/// <summary>The page head's height: a pure function of its <see cref="PageHeadKind"/>.
+/// <para>Meta, actions, the views' labels and the trailing control are NOT inputs. The meta line is always reserved, the
+/// views row is reserved whenever the route has views (even while its labels are still empty), and actions and trailing
+/// controls live inside rows that already have the height. So a head is the same height on the first frame and on the
+/// last, and the body's top edge lands at the same y on every page of the same kind.</para></summary>
+public static class PageHeadRules
+{
+    /// <summary>Whether a route's head hoists into the Zune band: the PRESENTED nav style is Zune and the route is a pivot
+    /// destination. <paramref name="presented"/> is <c>Shell.Ui.PresentedNavStyle</c>, which lags a switch by the card's
+    /// tween (see <c>Shell.FrameRules.HoistSettleMs</c>), never the live <c>Sidebar.NavStyle</c>.</summary>
+    public static bool Hoisted(ShellNavStyle presented, string routeName)
+        => presented == ShellNavStyle.Zune && ZuneNavRules.IsPivotDestination(routeName);
+
+    /// <summary>The head kind for three route-static facts. A hoisted head ignores the other two.</summary>
+    public static PageHeadKind KindOf(bool hoisted, bool hasAbove, bool hasViews)
+        => hoisted ? PageHeadKind.Hoisted
+         : hasAbove ? (hasViews ? PageHeadKind.CrumbTitleViews : PageHeadKind.CrumbTitle)
+         : hasViews ? PageHeadKind.TitleViews
+         : PageHeadKind.Title;
+
+    /// <summary>The head's height above the views row (or above the body, with none): the top air, the optional breadcrumb
+    /// row, the title line and the always-reserved meta line. A hoisted head has only <see cref="PageGeometry.HoistedTop"/>.</summary>
+    public static float Lead(PageHeadKind k) => k switch
+    {
+        PageHeadKind.Hoisted => PageGeometry.HoistedTop,
+        PageHeadKind.CrumbTitle or PageHeadKind.CrumbTitleViews
+            => PageGeometry.HeadTop + PageGeometry.AboveLine + PageGeometry.AboveToTitle + PageGeometry.TitleLine
+               + PageGeometry.TitleToMeta + PageGeometry.MetaLine,
+        _ => PageGeometry.HeadTop + PageGeometry.TitleLine + PageGeometry.TitleToMeta + PageGeometry.MetaLine,
+    };
+
+    /// <summary>The head's whole height. Title 120, TitleViews 164, CrumbTitle 156, CrumbTitleViews 200, Hoisted 72.</summary>
+    public static float Extent(PageHeadKind k) => k switch
+    {
+        PageHeadKind.Hoisted => PageGeometry.HoistedTop + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap,
+        PageHeadKind.TitleViews or PageHeadKind.CrumbTitleViews
+            => Lead(k) + PageGeometry.HeadToViewsGap + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap,
+        _ => Lead(k) + PageGeometry.HeadToBody,
+    };
+}
