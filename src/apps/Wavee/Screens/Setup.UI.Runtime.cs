@@ -883,13 +883,20 @@ public static partial class Setup
             Button.Accent(text, onClick, isEnabled: enabled) with
             { MinWidth = BtnMinW, Height = BtnH, MinHeight = BtnH, Justify = FlexJustify.Center, TabIndex = 1 };
 
+        /// <summary>A WRAPPING command row: [links?][buttons group, Grow 1, Justify End]. The group takes the line's leftover
+        /// and right-aligns its buttons, so a footer that fits (Offer, Ready) is one line exactly as before; the Failed
+        /// footer (2 links + 2 buttons, wider than the 412 slot: <see cref="RuntimeRules.FooterWraps"/>) drops the buttons
+        /// onto a second, right-aligned line instead of clipping "Try again". The engine's wrap line gap is the row's Gap.</summary>
         static Element Row(Element? left, params Element[] right)
         {
-            var kids = new List<Element>(right.Length + 2);
+            var kids = new List<Element>(2);
             if (left is not null) kids.Add(left);
-            kids.Add(new BoxEl { Grow = 1f, HitTestVisible = false });
-            kids.AddRange(right);
-            return new BoxEl { Direction = 0, Grow = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Children = kids.ToArray() };
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Grow = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Children = right,
+            });
+            return new BoxEl { Direction = 0, Grow = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center, Wrap = true, Children = kids.ToArray() };
         }
     }
 }

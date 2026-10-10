@@ -93,4 +93,14 @@ public sealed class PageHeadPlanTests
         var bare = (BoxEl)PageHead.Create(Base());
         Assert.Equal(head.Height.Value, bare.Height.Value);
     }
+
+    [Fact] public void Create_WithoutAMetaLine_ReservesNoMetaRow()
+    {
+        var withMeta = (BoxEl)PageHead.Create(Base());
+        var noMeta = (BoxEl)PageHead.Create(Base() with { HasMeta = false, Meta = "ignored" });
+        Assert.Equal(PageHeadRules.Extent(PageHeadKind.TitleViews, hasMeta: false), noMeta.Height.Value);
+        Assert.Equal(withMeta.Height.Value - 20f, noMeta.Height.Value);
+        // the head-top spacer, the title row and the views gap + row are all that is left (no meta spacer, no meta slot)
+        Assert.Equal(withMeta.Children.Length - 2, noMeta.Children.Length);
+    }
 }

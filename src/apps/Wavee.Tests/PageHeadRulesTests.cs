@@ -18,6 +18,27 @@ public sealed class PageHeadRulesTests
     public void Extent_IsTheDocumentedHeight(PageHeadKind kind, float expected)
         => Assert.Equal(expected, PageHeadRules.Extent(kind));
 
+    [Theory]
+    [InlineData(PageHeadKind.Title, 100f)]
+    [InlineData(PageHeadKind.TitleViews, 144f)]
+    [InlineData(PageHeadKind.CrumbTitle, 136f)]
+    [InlineData(PageHeadKind.CrumbTitleViews, 180f)]
+    [InlineData(PageHeadKind.Hoisted, 24f)]
+    public void Extent_WithoutAMetaLine_IsTwentyShorter(PageHeadKind kind, float expected)
+    {
+        Assert.Equal(expected, PageHeadRules.Extent(kind, hasMeta: false));
+        Assert.Equal(PageHeadRules.Extent(kind, hasMeta: true) - (kind == PageHeadKind.Hoisted ? 0f : 20f), expected);
+    }
+
+    [Fact] public void Lead_WithoutAMetaLine_DropsTheReservedMetaBlock()
+    {
+        Assert.Equal(76f, PageHeadRules.Lead(PageHeadKind.Title, hasMeta: false));
+        Assert.Equal(112f, PageHeadRules.Lead(PageHeadKind.CrumbTitleViews, hasMeta: false));
+        Assert.Equal(PageGeometry.HeadTop, PageHeadRules.Lead(PageHeadKind.Hoisted, hasMeta: false));
+        Assert.Equal(PageGeometry.TitleToMeta + PageGeometry.MetaLine, PageHeadRules.MetaBlock(true));
+        Assert.Equal(0f, PageHeadRules.MetaBlock(false));
+    }
+
     [Fact] public void Lead_IsTheHeightAboveTheViewsRow()
     {
         Assert.Equal(96f, PageHeadRules.Lead(PageHeadKind.Title));
@@ -118,5 +139,8 @@ public sealed class PageHeadRulesTests
         // A breadcrumb page (people lists, discography) loses the same 44 DIP.
         Assert.Equal(156f, PageHeadRules.Extent(PageHeadRules.KindOf(false, true, false)));
         Assert.Equal(200f, PageHeadRules.Extent(PageHeadRules.KindOf(false, true, true)));
+        // Settings has no meta line at all (PageHeadSpec.HasMeta false): TitleViews 144 outside Zune, Title 100 inside it.
+        Assert.Equal(144f, PageHeadRules.Extent(PageHeadRules.KindOf(false, false, true), hasMeta: false));
+        Assert.Equal(100f, PageHeadRules.Extent(PageHeadRules.KindOf(false, false, false), hasMeta: false));
     }
 }

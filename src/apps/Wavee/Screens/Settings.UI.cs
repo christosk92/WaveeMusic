@@ -77,6 +77,10 @@ public static partial class Settings
     const float CardSpacing = 4f;
     static readonly Edges4 SectionHeaderMargin = new(0f, Spacing.XXXL, 0f, Spacing.S);
 
+    /// <summary>The tab's FIRST section header: no top margin: the head's own <c>PageGeometry.HeadToBody</c> (24) is
+    /// the whole gap above the first card; the 32 only separates one group from the previous.</summary>
+    static readonly Edges4 FirstSectionHeaderMargin = SectionHeaderMargin with { Top = 0f };
+
     static readonly Signal<int> s_tab = new(0);
     static readonly Signal<int> s_epoch = new(0);
 
@@ -179,8 +183,8 @@ public static partial class Settings
             }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
 
             // W28: the head (title + the tab views) is a SIBLING of the scroller — nothing compacts, sticks or gains a
-            // shadow. The head is TitleViews (164) on every tab (Title, 120, while the PRESENTED nav style is Zune: the views
-            // then live in the band's row 2) and the bar is one stable key on s_tab, so a tab switch moves only the pill; the
+            // shadow. The head has no meta line (HasMeta false) and is TitleViews (144) on every tab (Title, 100, while the
+            // PRESENTED nav style is Zune: the views then live in the band's row 2) and the bar is one stable key on s_tab, so a tab switch moves only the pill; the
             // body's top edge never moves.
             return new BoxEl
             {
@@ -189,7 +193,7 @@ public static partial class Settings
                 [
                     PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Settings.Title))
                     {
-                        Views = TabLabels(), ViewsSelected = s_tab, Gutter = g, Key = "settings:head",
+                        Views = TabLabels(), ViewsSelected = s_tab, Gutter = g, Key = "settings:head", HasMeta = false,
                         ViewsInBand = PageHead.ViewsInBandFor(s_route),
                     }),
                     content,
@@ -221,10 +225,13 @@ public static partial class Settings
     };
 
     /// <summary>N2: cards 4 DIP apart.</summary>
-    static Element TabStack(params Element[] children) => new BoxEl
+    static Element TabStack(params Element[] children)
     {
-        Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children,
-    };
+        // The first group eyebrow has nothing above it to separate from: drop its 32 so the body starts at HeadToBody.
+        if (children.Length > 0 && children[0] is BoxEl { Margin: var m } first && m == SectionHeaderMargin)
+            children[0] = first with { Margin = FirstSectionHeaderMargin };
+        return new BoxEl { Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children };
+    }
 
     /// <summary>A group eyebrow: 16-DIP glyph + BodyStrong title, optionally a ≤ 2-line caption in the SAME column as
     /// the title; margin (0, 32, 0, 8). One line centres on the glyph; two lines hang from the top.</summary>

@@ -13,6 +13,7 @@
 //
 // (a) A head's height is PageHeadRules.Extent(kind), and the kind is ROUTE-STATIC: hoisted, has-breadcrumb, has-views.
 //     Meta, actions, the views' labels and the trailing control are not inputs, so no data arriving later changes it.
+//     (HasMeta is the one route-static opt-out of the meta line: Settings never has one, so its head is 20 shorter.)
 // (b) Data fills slots that were reserved from the first frame and FADES in place: the meta line is always reserved, a
 //     page with views reserves the 48-DIP row while its labels are still empty (a same-size placeholder cross-fades with
 //     the words).
@@ -40,6 +41,10 @@ public sealed record PageHeadSpec(string Title)
 {
     /// <summary>The meta line ("42 songs · 3 hr"). Null or empty is reserved either way, so it can arrive late.</summary>
     public string? Meta { get; init; }
+
+    /// <summary>Whether the route's head EVER has a meta line (route-static, default true). False reserves no meta row at
+    /// all (<see cref="PageHeadRules.MetaBlock"/>): Settings, whose head is the title and its views. It must never follow data.</summary>
+    public bool HasMeta { get; init; } = true;
 
     /// <summary>The breadcrumb row above the title. Presence changes the head's kind, so it must be route-static.</summary>
     public Element? Above { get; init; }
@@ -219,8 +224,11 @@ public static class PageHead
             {
                 Key = s.Key + ":title", Enter = FadeIn, Exit = FadeOut, Transition = FadeMotion,
             });
-            list.Add(Spacer(PageGeometry.TitleToMeta));
-            list.Add(MetaSlot(s.Meta));
+            if (s.HasMeta)
+            {
+                list.Add(Spacer(PageGeometry.TitleToMeta));
+                list.Add(MetaSlot(s.Meta));
+            }
             if (s.Views is { } views && !s.ViewsInBand)
             {
                 list.Add(Spacer(PageGeometry.HeadToViewsGap));
@@ -231,7 +239,7 @@ public static class PageHead
         }
         return new BoxEl
         {
-            Key = s.Key, Direction = 1, Shrink = 0f, MinWidth = 0f, Height = PageHeadRules.Extent(kind), ClipToBounds = true,
+            Key = s.Key, Direction = 1, Shrink = 0f, MinWidth = 0f, Height = PageHeadRules.Extent(kind, s.HasMeta), ClipToBounds = true,
             Animate = Reflow, Padding = new Edges4(s.Gutter, 0f, s.Gutter, 0f), Children = kids,
         };
     }

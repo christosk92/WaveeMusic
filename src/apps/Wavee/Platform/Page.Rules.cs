@@ -92,8 +92,9 @@ public static class PageGeometry
     /// <summary>Gap between the title and the meta line (<c>Spacing.XS</c>, 4).</summary>
     public const float TitleToMeta = Spacing.XS;
 
-    /// <summary>The meta line: <see cref="Design.Type.PageMeta"/>'s 16 line height. ALWAYS reserved in a non-hoisted
-    /// head, so meta arriving (or being absent) never moves the body.</summary>
+    /// <summary>The meta line: <see cref="Design.Type.PageMeta"/>'s 16 line height. Reserved in every non-hoisted head
+    /// whose route can have meta, so meta arriving (or being absent) never moves the body. A route that NEVER has one
+    /// (Settings) says so statically with <see cref="PageHeadSpec.HasMeta"/> and reserves nothing.</summary>
     public const float MetaLine = 16f;
 
     /// <summary>Head to the views bar's plate (<c>Spacing.M</c>, 12). Under the bar's own padding it is
@@ -164,7 +165,7 @@ public enum PageHeadKind : byte
 }
 
 /// <summary>The page head's height: a pure function of its <see cref="PageHeadKind"/>.
-/// <para>Meta, actions, the views' labels and the trailing control are NOT inputs. The meta line is always reserved, the
+/// <para>Meta, actions, the views' labels and the trailing control are NOT inputs. The meta line is always reserved (unless the route opts out with <see cref="PageHeadSpec.HasMeta"/>), the
 /// views row is reserved whenever the route has views (even while its labels are still empty), and actions and trailing
 /// controls live inside rows that already have the height. So a head is the same height on the first frame and on the
 /// last, and the body's top edge lands at the same y on every page of the same kind.</para></summary>
@@ -195,21 +196,27 @@ public static class PageHeadRules
 
     /// <summary>The head's height above the views row (or above the body, with none): the top air, the optional breadcrumb
     /// row, the title line and the always-reserved meta line. A hoisted head has only <see cref="PageGeometry.HeadTop"/>.</summary>
-    public static float Lead(PageHeadKind k) => k switch
+    public static float Lead(PageHeadKind k, bool hasMeta = true) => k switch
     {
         PageHeadKind.Hoisted => PageGeometry.HeadTop,
         PageHeadKind.CrumbTitle or PageHeadKind.CrumbTitleViews
             => PageGeometry.HeadTop + PageGeometry.AboveLine + PageGeometry.AboveToTitle + PageGeometry.TitleLine
-               + PageGeometry.TitleToMeta + PageGeometry.MetaLine,
-        _ => PageGeometry.HeadTop + PageGeometry.TitleLine + PageGeometry.TitleToMeta + PageGeometry.MetaLine,
+               + MetaBlock(hasMeta),
+        _ => PageGeometry.HeadTop + PageGeometry.TitleLine + MetaBlock(hasMeta),
     };
 
-    /// <summary>The head's whole height. Title 120, TitleViews 164, CrumbTitle 156, CrumbTitleViews 200, Hoisted 24.</summary>
-    public static float Extent(PageHeadKind k) => k switch
+    /// <summary>The meta line's reserved block (the gap above it + its line, 20), or 0 for a route whose head never has
+    /// one (<see cref="PageHeadSpec.HasMeta"/> false: Settings).</summary>
+    public static float MetaBlock(bool hasMeta) => hasMeta ? PageGeometry.TitleToMeta + PageGeometry.MetaLine : 0f;
+
+    /// <summary>The head's whole height. Title 120, TitleViews 164, CrumbTitle 156, CrumbTitleViews 200, Hoisted 24; a head
+    /// with no meta line (<paramref name="hasMeta"/> false) is 20 shorter: Title 100, TitleViews 144, CrumbTitle 136,
+    /// CrumbTitleViews 180.</summary>
+    public static float Extent(PageHeadKind k, bool hasMeta = true) => k switch
     {
         PageHeadKind.Hoisted => PageGeometry.HeadTop,
         PageHeadKind.TitleViews or PageHeadKind.CrumbTitleViews
-            => Lead(k) + PageGeometry.HeadToViewsGap + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap,
-        _ => Lead(k) + PageGeometry.HeadToBody,
+            => Lead(k, hasMeta) + PageGeometry.HeadToViewsGap + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap,
+        _ => Lead(k, hasMeta) + PageGeometry.HeadToBody,
     };
 }

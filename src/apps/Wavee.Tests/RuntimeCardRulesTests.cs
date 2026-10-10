@@ -5,6 +5,7 @@
 // PlaybackRuntimeBanner: the footer table, the three Cancel destinations, the banner gate and message, the Advanced
 // arm, the already-current guard and the signature ladder.
 
+using FluentGpu.Dsl;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -134,6 +135,24 @@ public class RuntimeCardRulesTests
             Setup.RuntimeRules.FooterFor(RuntimePhase.Failed, Setup.RuntimeCatalog.Failed, 0, canNavigate: true).Link2);
         Assert.Equal(Setup.RuntimeVerb.None,
             Setup.RuntimeRules.FooterFor(RuntimePhase.Failed, Setup.RuntimeCatalog.Failed, 0, canNavigate: false).Link2);
+    }
+
+    [Fact]
+    public void The_failed_footer_wraps_and_a_single_row_footer_does_not()
+    {
+        float btn = 96f, buttons = 2f * btn + Spacing.S;                    // [Not now][Try again] at their 96 minimum
+        // Failed: two hyperlinks (text + the 11-DIP pad each side, ~125 each) + two buttons > the 412 slot -> wraps.
+        Assert.True(Setup.RuntimeRules.FooterWraps(2f * 125f, buttons));
+        // Offer: one link and two buttons fit one line; Ready/Advanced: one link, one button.
+        Assert.False(Setup.RuntimeRules.FooterWraps(125f, buttons));
+        Assert.False(Setup.RuntimeRules.FooterWraps(125f, btn));
+        // A footer with no links (or no buttons) never wraps, whatever the other group measures.
+        Assert.False(Setup.RuntimeRules.FooterWraps(0f, 500f));
+        Assert.False(Setup.RuntimeRules.FooterWraps(500f, 0f));
+        // Exactly full is one line (the engine's 0.01 slack); one DIP over wraps.
+        float room = Setup.RuntimeRules.ProgressWidth - Spacing.S;
+        Assert.False(Setup.RuntimeRules.FooterWraps(room - buttons, buttons));
+        Assert.True(Setup.RuntimeRules.FooterWraps(room - buttons + 1f, buttons));
     }
 
     [Fact]
