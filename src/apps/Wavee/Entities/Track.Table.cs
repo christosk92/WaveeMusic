@@ -678,7 +678,7 @@ public readonly partial struct Track
             var identity = TableRules.IdentityColumns(s.Classic, cfg.ShowArtThumb, s.ArtHidden, cfg.ShowTrackArtist, tier);
             // A null Drawer seam is "no chevron lane" (the contract), so it folds into ShowVersions before the tier gate.
             var trailing = TableRules.TrailingColumns(s.Classic, src.HasVideo, cfg.ShowVersions && args.Profile.Drawer is not null, tier);
-            return new ColumnSet(
+            var set = new ColumnSet(
                 Album: cfg.ShowAlbumColumn && tier < 2,
                 By: src.HasAddedBy && tier < 1,
                 Date: src.HasDateAdded && tier < 3,
@@ -692,6 +692,9 @@ public readonly partial struct Track
                 Expand: trailing.Expand,
                 Artist: identity.Artist,
                 Classic: s.Classic);
+            // Liked (HoverHeart): no leading heart lane, the heart is a hover/focus reveal in the trailing lane, and neither
+            // BPM·Key nor Plays is on offer. A null Drawer above already left it with no expand lane.
+            return TableRules.ForHoverHeart(in set, cfg.HoverHeart);
         }
 
         /// <summary>Self-heal: never RENDER a tier wider than the last measured width supports; before the first measure the
@@ -831,6 +834,154 @@ public readonly partial struct Track
                 if (_sort.Descending) c = -c;
                 return c != 0 ? c : a.CompareTo(b);
             }
+        }
+
+        // ── Liked's date groups ──────────────────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>The group plan of ONE displayed order: a key per row, the strip text of every row that starts a group, and
+        /// the number of strips above each row. Immutable once built, so a slot, the layout and the choreography each hold
+        /// the plan that matches the order they were built for; <see cref="Stamp"/> names it.</summary>
+        internal sealed class GroupPlan(int stamp, LikedGroups.Key[] keys, string?[] labels, string?[] counts, int[] before)
+        {
+            public readonly int Stamp = stamp;
+            public readonly LikedGroups.Key[] Keys = keys;
+            public readonly string?[] Labels = labels, Counts = counts;
+            readonly int[] _before = before;   // [d] = strips in the slots ABOVE slot d (row d's own strip is inside its slot); Len + 1 entries
+
+            public int Len => Keys.Length;
+
+            public bool Starts(int display) => (uint)display < (uint)Keys.Length && LikedGroups.StartsGroup(Keys, display);
+
+            /// <summary>Where row <paramref name="display"/>'s SLOT starts: every row above it, plus every strip above it.</summary>
+            public float TopOf(int display, float rowH)
+                => display * rowH + _before[Math.Clamp(display, 0, Keys.Length)] * LikedGroups.HeaderH;
+
+            public static GroupPlan Build(int stamp, ReadOnlySpan<int> view, TableSource src, long now)
+            {
+                int n = view.Length;
+                var keys = new LikedGroups.Key[n];
+                var first = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+                for (int i = 0; i < n; i++)
+                    keys[i] = LikedGroups.KeyOf(view[i] >= 0 ? src.AddedAt(view[i]) : 0, now, first);
+                var sizes = new int[n];
+                LikedGroups.Counts(keys, sizes);
+                var labels = new string?[n];
+                var counts = new string?[n];
+                var before = new int[n + 1];
+                int nowYear = DateTimeOffset.FromUnixTimeSeconds(now).ToLocalTime().Year;
+                var culture = System.Globalization.CultureInfo.CurrentCulture;
+                for (int i = 0; i < n; i++)
+                {
+                    bool starts = LikedGroups.StartsGroup(keys, i);
+                    before[i + 1] = before[i] + (starts ? 1 : 0);
+                    if (!starts) continue;
+                    labels[i] = LikedGroups.Label(keys[i], nowYear);
+                    counts[i] = sizes[i].ToString("N0", culture);
+                }
+                return new GroupPlan(stamp, keys, labels, counts, before);
+            }
+        }
+
+        GroupPlan? _plan;
+        int _planStamp;
+        bool _planKeyValid;
+        (uint Version, int Count, SortSpec Sort, string Query, FilterState Filters, uint Data, uint Likes, int Day, int Culture) _planKey;
+        /// <summary>The plan's stamp as a signal, written from a layout effect: a slot recomputes whether its row opens a
+        /// group when the plan moves (a sort, a membership change, a new day) and not otherwise.</summary>
+        readonly Signal<int> _groupStamp = new(0);
+
+        internal IReadSignal<int> GroupStamp => _groupStamp;
+
+        /// <summary>Liked's row treatment (<see cref="Detail.Config.HoverHeart"/> / <see cref="Detail.Config.PlainRows"/>): static per page.</summary>
+        internal bool HoverHeartRows => Cfg.HoverHeart;
+        internal bool PlainRowsConfig => Cfg.PlainRows;
+
+        /// <summary>Does this table carry date groups at all (the page asked for them)? Static per page.</summary>
+        internal bool GroupsCapable => _latest.Profile.Config.HoverHeart;
+
+        /// <summary>The plan for this snapshot, or null while groups are off (another sort, an empty list). Rebuilt once per
+        /// (membership version, count, sort, filter, local day, culture) and never per recycle.</summary>
+        GroupPlan? EnsureGroups(in Snapshot snap)
+        {
+            if (!LikedGroups.Applies(snap.Config.HoverHeart, snap.Sort))
+            {
+                if (_plan is not null) { _plan = null; _planStamp++; }
+                _planKeyValid = false;
+                return null;
+            }
+            long now = Store.ToUnix(Entities.Now);
+            var key = (snap.Version, snap.Count, snap.Sort, snap.Query, snap.Filters,
+                snap.Query.Length > 0 || !snap.Filters.IsDefault ? snap.DataPublication : 0u, snap.LikesPublication,
+                LikedGroups.DayOf(now), Localization.CultureEpoch.Value);
+            if (_planKeyValid && _planKey == key) return _plan;
+            _planKey = key;
+            _planKeyValid = true;
+            var view = ViewOf(in snap);
+            _planStamp++;
+            return _plan = view.Length == 0 ? null : GroupPlan.Build(_planStamp, view, _latest.Source, now);
+        }
+
+        /// <summary>Re-seed the analytic extents for a new plan and ask the list to re-plan its window against them (the same
+        /// <c>LayoutDirty | VirtualRangeDirty</c> mark the controller's own extent corrections make). Anchored, so the rows on
+        /// screen stay where the user sees them.</summary>
+        void ReseedGroups(MeasuredStackVirtualLayout layout, int items)
+        {
+            layout.Reseed(items);
+            if (Context.Scene is not { } scene) return;
+            var viewport = _listCtl.Viewport;
+            if (viewport.IsNull || !scene.IsLive(viewport) || !scene.HasScroll(viewport)) return;
+            scene.Mark(viewport, NodeFlags.LayoutDirty | NodeFlags.VirtualRangeDirty);
+            (Context.RequestFrame ?? Context.RequestRerender)();
+        }
+
+        /// <summary>The analytic seed of Liked's list: a track row is <see cref="LikedGroups.Extent"/> under the CURRENT plan; a
+        /// hero, chrome, footer or placeholder item (not a track row) keeps what the measure said, or the estimate.</summary>
+        MeasuredStackVirtualLayout NewGroupLayout(float rowH, int prefix)
+        {
+            MeasuredStackVirtualLayout? self = null;
+            self = new MeasuredStackVirtualLayout(rowH, false, i =>
+            {
+                int d = i - prefix;
+                if (d < 0 || d >= ViewNow().Length) return self!.ItemRect(i, 0f).H;
+                return LikedGroups.Extent(rowH, _plan is { } p && p.Starts(d));
+            });
+            return self;
+        }
+
+        /// <summary>Does the row at this DISPLAY index open a group (draw a strip above it)? The one answer the layout's
+        /// extents, the recycle pool and the slot's strip all read.</summary>
+        internal bool HeaderAtDisplay(int display) => _plan is { } p && p.Starts(display);
+
+        /// <summary>The strip's text for the row at this display index; "" off a group start (a recycle in flight).</summary>
+        internal string GroupLabelAt(int display)
+            => _plan is { } p && (uint)display < (uint)p.Len ? p.Labels[display] ?? "" : "";
+
+        internal string GroupCountAt(int display)
+            => _plan is { } p && (uint)display < (uint)p.Len ? p.Counts[display] ?? "" : "";
+
+        /// <summary>The group strip: a fixed 40-DIP band ABOVE the row's skin, inside the slot, gutter-aligned with the
+        /// title and outside the hover plate. Not hit-testable. Its texts also read the plan stamp: a slot that stays a
+        /// group start at the same index (a like removed from "This week 26") must still re-read the label and count.</summary>
+        internal Element GroupStrip(IReadSignal<int> index, int start, int tier)
+        {
+            float padX = RowMetrics.PadXFor(tier);
+            return new BoxEl
+            {
+                Key = "grp", Direction = 0, Height = LikedGroups.HeaderH, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                AlignItems = FlexAlign.End, Gap = Spacing.S, Padding = new Edges4(padX, 0f, padX, 6f), HitTestVisible = false,
+                Children =
+                [
+                    new TextEl(Prop.Of(() => { _ = _groupStamp.Value; return GroupLabelAt(index.Value - start); }))
+                    {
+                        Size = 13f, LineHeight = 18f, Weight = 600, Color = Tok.TextPrimary,
+                        Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                    },
+                    new TextEl(Prop.Of(() => { _ = _groupStamp.Value; return GroupCountAt(index.Value - start); }))
+                    {
+                        Size = 13f, LineHeight = 18f, Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Shrink = 0f,
+                    },
+                ],
+            };
         }
 
         int OriginalOf(int display)
@@ -1011,7 +1162,9 @@ public readonly partial struct Track
 
             // ── membership choreography (§4.6) + the breakpoint re-deal, seeded in the render that commits the order ──
             int resetBefore = _resetEpoch;
-            TrackOrder(in snap, shape.RowH);
+            var oldPlan = _plan;
+            var plan = EnsureGroups(in snap);
+            TrackOrder(in snap, shape.RowH, oldPlan, plan);
             ReDeal(shape.Set.Tier, shape.RowH);
             _dealtThisFrame = false;
             UseLayoutEffect(BumpDisplacement, DepKey.From(_dealEpoch));
@@ -1044,10 +1197,24 @@ public readonly partial struct Track
             // (every row = `rowH`) gives way to `RepeatLayout.VariableList` (an estimate, then measured per realized
             // slot); a pure track list keeps the fixed layout untouched.
             bool variableRows = _latest.Source.HasEpisodes;
-            var layout = UseMemo(() => variableRows
-                    ? RepeatLayout.VariableList(shape.EpisodeRowH > 0f ? shape.EpisodeRowH : rowH)
-                    : RepeatLayout.Measured(new MeasuredStackVirtualLayout(rowH)),
-                DepKey.From(variableRows ? 1f : 0f, rowH, shape.EpisodeRowH, 0f));
+            // Liked: ANALYTIC extents (LikedGroups.Extent), so a row that starts a group seeds at the height its slot realizes
+            // (the row + the 40-DIP strip) and nothing corrects after the measure. ONE layout instance per density: an
+            // ItemsView freezes its layout at mount, so a new plan (a sort, a like, a new day) re-seeds THIS instance
+            // (`Reseed`, anchored - the rows on screen do not move) from the layout effect below, never swaps it.
+            int groupPrefix = TrackStart;
+            var groupLayout = UseMemo(() => cfg.HoverHeart ? NewGroupLayout(rowH, groupPrefix) : null,
+                DepKey.From(rowH, (float)groupPrefix, cfg.HoverHeart ? 1f : 0f, 0f));
+            var layout = UseMemo(() => groupLayout is not null ? RepeatLayout.Measured(groupLayout)
+                    : variableRows
+                        ? RepeatLayout.VariableList(shape.EpisodeRowH > 0f ? shape.EpisodeRowH : rowH)
+                        : RepeatLayout.Measured(new MeasuredStackVirtualLayout(rowH)),
+                DepKey.From(variableRows ? 1f : 0f, rowH, shape.EpisodeRowH, groupLayout is null ? 0f : 1f));
+            int groupItems = vertical && !trailing ? Detail.VerticalLayout.ItemCount(visible, hasFacts) : visible;
+            UseLayoutEffect(() =>
+            {
+                _groupStamp.Value = _planStamp;
+                if (groupLayout is not null) ReseedGroups(groupLayout, groupItems);
+            }, DepKey.From(_planStamp));
 
             Element realList =
                 vertical && !trailing ? VerticalList(visible, layout, stickyInset, hasFacts, narrate)
@@ -1196,7 +1363,7 @@ public readonly partial struct Track
                     Selection = _selection,
                     IsItemInvokedEnabled = true,
                     OnInvokedTyped = (i, _) => PlayRow(i),
-                    ContentType = i => (int)RowKindAt(i),
+                    ContentType = i => LikedGroups.PoolOf((int)RowKindAt(i), HeaderAtDisplay(i)),
                     Grow = trailing ? 0f : 1f,
                     Controller = _listCtl,
                     // Alpha-mask edge fade: the page floats over a tone plane with no opaque plate. Nested in the album
@@ -1262,7 +1429,7 @@ public readonly partial struct Track
                     OnInvoked = i => { if (_rowItems!.TryPeek(i, out _, prefix)) PlayRow(i - prefix); },
                     ItemText = i => _rowItems!.TryPeek(i, out var t, prefix) ? t.Title : "",
                     IsItemEnabled = i => _rowItems!.TryPeek(i, out _, prefix),
-                    ContentType = i => i < prefix ? -1 - i : (int)RowKindAt(i - prefix),
+                    ContentType = i => i < prefix ? -1 - i : LikedGroups.PoolOf((int)RowKindAt(i - prefix), HeaderAtDisplay(i - prefix)),
                     PersistentPrefixCount = prefix,
                     Grow = 1f,
                     Controller = _listCtl,
@@ -2036,7 +2203,9 @@ public readonly partial struct Track
             var isSel = scope.IsSelected;
             var interact = scope.OnInteraction;
             bool classic = shape.Set.Classic;
-            bool plain = !classic && VerticalArm && !rowFlow;   // the hero system's STACKED flow: plain full-bleed rows
+            // The hero system's STACKED flow: plain full-bleed rows; Liked's rows are plain in every flow (no plate or zebra
+            // at rest, a hover highlight only).
+            bool plain = (!classic && VerticalArm && !rowFlow) || Cfg.PlainRows;
             float pad = RowMetrics.PadXFor(shape.Set.Tier);
             var drop = Video.Overrides.Present ? VideoDrop(index, start) : null;
             Func<bool> cue = drop is null ? _false : () => _videoDropRow.Value == index.Value;
@@ -2194,7 +2363,7 @@ public readonly partial struct Track
         /// <summary>Track the displayed order and narrate a LIVE membership change. The FIRST complete landing of a context is
         /// a load and never choreographs (`_settled`); paging (Partial) never narrates either — a 300-row page would read as
         /// a re-cut and remount at the top.</summary>
-        void TrackOrder(in Snapshot snap, float rowH)
+        void TrackOrder(in Snapshot snap, float rowH, GroupPlan? oldPlan, GroupPlan? newPlan)
         {
             if (_orderSeeded && _orderSeen.Equals(snap)) return;
             bool membershipChanged = _orderSeeded && snap.Version != _orderSeen.Version;
@@ -2223,14 +2392,20 @@ public readonly partial struct Track
             if (src.HasEpisodes) { _settled = true; return; }
             if (_prevLen > 0 && _settled)
                 Choreograph(new ReadOnlySpan<Track>(_prevTracks, 0, _prevLen), new ReadOnlySpan<StringId>(_prevIds, 0, _prevLen),
-                            new ReadOnlySpan<Track>(_curTracks, 0, _curLen), new ReadOnlySpan<StringId>(_curIds, 0, _curLen), rowH);
+                            new ReadOnlySpan<Track>(_curTracks, 0, _curLen), new ReadOnlySpan<StringId>(_curIds, 0, _curLen), rowH,
+                            oldPlan, newPlan);
             _settled = true;
             _dealtThisFrame = true;   // a membership narration outranks a breakpoint re-deal
         }
 
         void Choreograph(ReadOnlySpan<Track> oldTracks, ReadOnlySpan<StringId> oldIds,
-                         ReadOnlySpan<Track> newTracks, ReadOnlySpan<StringId> newIds, float rowH)
+                         ReadOnlySpan<Track> newTracks, ReadOnlySpan<StringId> newIds, float rowH,
+                         GroupPlan? oldPlan, GroupPlan? newPlan)
         {
+            // A slot's top in each order: rows alone, or rows + the group strips above them (Liked, Date added). The anchor
+            // shift and the FLIP residual are DISTANCES, so they read the same rule the list's extents do.
+            float OldTop(int i) => oldPlan is null ? i * rowH : oldPlan.TopOf(i, rowH);
+            float NewTop(int i) => newPlan is null ? i * rowH : newPlan.TopOf(i, rowH);
             var oldKeys = MembershipDiff.Keys(oldTracks, oldIds);
             var newKeys = MembershipDiff.Keys(newTracks, newIds);
             var delta = MembershipDiff.Diff(oldKeys, newKeys);
@@ -2248,10 +2423,10 @@ public readonly partial struct Track
             // (1) Anchor: the first visible SURVIVOR keeps its screen Y; at the start edge the engine declines.
             _keyIndex.Clear();
             for (int i = 0; i < newKeys.Length; i++) _keyIndex[newKeys[i]] = i;
-            int shift = 0;
+            float shift = 0f;
             for (int i = Math.Clamp(firstVisible, 0, Math.Max(0, oldKeys.Length - 1)); i < oldKeys.Length; i++)
-                if (_keyIndex.TryGetValue(oldKeys[i], out int ni)) { shift = ni - i; break; }
-            if (shift != 0 && !_listCtl.PreserveAnchor(shift * rowH)) shift = 0;
+                if (_keyIndex.TryGetValue(oldKeys[i], out int ni)) { shift = NewTop(ni) - OldTop(i); break; }
+            if (shift != 0f && !_listCtl.PreserveAnchor(shift)) shift = 0f;
 
             // (2) FLIP residuals for every survivor, and a rise + fade for adds, 20 ms/row capped at 8.
             _flip.Clear(); _fade.Clear();
@@ -2260,7 +2435,7 @@ public readonly partial struct Track
             for (int n = 0; n < newKeys.Length; n++)
                 if (_keyIndex.TryGetValue(newKeys[n], out int o))
                 {
-                    float residual = (o - n + shift) * rowH;
+                    float residual = OldTop(o) - NewTop(n) + shift;
                     if (MathF.Abs(residual) > 0.5f) _flip[n] = (0f, residual);
                 }
             int ord = 0;
@@ -2324,6 +2499,36 @@ public readonly partial struct Track
         readonly bool _narrate = narrate;
         IReadSignal<Track>? _trackItem;
         IReadSignal<Episode.RowItem>? _episodeItem;
+        bool _insetApplied;
+
+        /// <summary>The node ItemsView focuses for a slot: the ancestor (or this node) whose parent is the list's content
+        /// node. ItemsView focuses THAT node (its roving tab stop), so its ring follows the whole slot, strip included.</summary>
+        static NodeHandle SlotRootOf(SceneStore scene, NodeHandle n)
+        {
+            for (var p = scene.Parent(n); !p.IsNull; n = p, p = scene.Parent(n))
+            {
+                var viewport = scene.Parent(p);
+                if (!viewport.IsNull && scene.HasScroll(viewport) && scene.TryGetScroll(viewport, out var sc) && sc.ContentNode == p)
+                    return n;
+            }
+            return NodeHandle.Null;
+        }
+
+        /// <summary>A group-starting row's focus ring must wrap the ROW, not the strip above it: ItemsView draws the ring on
+        /// the slot root with the root's own FocusVisualMargin (zero today), and a positive top margin moves the ring inside
+        /// the bounds. Written to the live node (no engine change), only when the slot's shape actually moved.</summary>
+        void ApplyFocusInset(bool header)
+        {
+            if (!header && !_insetApplied) return;
+            if (Context.Scene is not { } scene) return;
+            var anchor = Context.AnchorNode;
+            if (anchor.IsNull || !scene.IsLive(anchor)) return;
+            var root = SlotRootOf(scene, anchor);
+            if (root.IsNull) return;
+            scene.Interaction(root).FocusVisualMargin = header ? new Edges4(0f, LikedGroups.HeaderH, 0f, 0f) : default;
+            scene.Mark(root, NodeFlags.PaintDirty);
+            _insetApplied = header;
+        }
 
         public override Element Render()
         {
@@ -2353,6 +2558,20 @@ public readonly partial struct Track
             var shape = _host.ShapeValue;
             bool flow = _host.RowFlowValue;
 
+            // Liked's date groups: does THIS slot's row open a group? The answer moves only with the plan (a sort, a membership
+            // change, a new day) - a recycle stays inside its pool (ContentType), so it never flips it and never re-renders.
+            bool header = false;
+            if (_host.GroupsCapable)
+            {
+                var opens = UseComputed(() =>
+                {
+                    _ = _host.GroupStamp.Value;
+                    return _host.HeaderAtDisplay(_scope.Index.Value - _start);
+                });
+                header = opens.Value;
+                UseLayoutEffect(() => ApplyFocusInset(header), DepKey.From(header ? 1 : 0));
+            }
+
             _trackItem ??= _host.BindItemFor(_scope, _start);
             // The DISPLAY index is resolved INSIDE the computation, never captured. `UseComputed` keeps the delegate from
             // this slot's FIRST mount and a slot is recycled onto other positions by a write to `_scope.Index`, so a
@@ -2366,14 +2585,18 @@ public readonly partial struct Track
             int tstart = _start;
             Element content = Embed.Comp(() => new TableRowContent(thost, tscope, titem, tstart, hovered));
             Element row = _host.Skin(_scope, content, in shape, flow, isOpen, _start, hovered, _narrate) with { Key = "row" };
-            if (!isOpen) return new BoxEl { Direction = 1, MinWidth = 0f, Children = [row] };
+            // The group strip sits ABOVE the skin, inside the slot: the slot is the strip (40) + the row (rowH), exactly
+            // LikedGroups.Extent(rowH, true), and the hover plate (the skin) never includes it.
+            if (!isOpen)
+            {
+                Element[] kids = header ? [_host.GroupStrip(_scope.Index, _start, shape.Set.Tier), row] : [row];
+                return new BoxEl { Direction = 1, MinWidth = 0f, Children = kids };
+            }
             var t = _trackItem!.Peek();
             int display = _scope.Index.Peek() - _start;
-            return new BoxEl
-            {
-                Direction = 1, MinWidth = 0f,
-                Children = [row, _host.DrawerBox(t, display, in shape, _scope.Index, _start)],
-            };
+            Element drawer = _host.DrawerBox(t, display, in shape, _scope.Index, _start);
+            Element[] stack = header ? [_host.GroupStrip(_scope.Index, _start, shape.Set.Tier), row, drawer] : [row, drawer];
+            return new BoxEl { Direction = 1, MinWidth = 0f, Children = stack };
         }
     }
 
@@ -2428,9 +2651,10 @@ public readonly partial struct Track
             if (_latch == 0) _latch = real ? (byte)2 : (byte)1;
             if (!real) return Track.ShimmerRow(in set, shape.Tracks, shape.RowH, RowMetrics.PadXFor(set.Tier)) with { Key = "row:shim" };
 
-            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _host.AccentRead, _host.InkRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent);
+            _row ??= new Track.BoundRow(presentation, likePop, _hovered, _host.AccentRead, _host.InkRead, PlayCurrent, LikeCurrent, ToggleExpandCurrent,
+                                        _scope.IsCurrent);
             var row = _row;
-            Element grid = Track.BoundGrid(row, in set, shape.Tracks, shape.RowH, shape.Art);
+            Element grid = Track.BoundGrid(row, in set, shape.Tracks, shape.RowH, shape.Art, _host.HoverHeartRows, _host.PlainRowsConfig);
             // The tracklist EDGE answers with row ids first and the rows' own fields land in a later fetch, so a slot can be
             // valid while its row has no data. The table's reveal gate holds the whole region until the first page knows its
             // face (TableRules.RowsPending), so this branch is for the rows PAST that band — a later batch's rows, a row

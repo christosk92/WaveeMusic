@@ -152,10 +152,10 @@ public readonly partial struct Track
     /// <summary>How many cells (and width tracks) a set produces. ONE count for both, so a row always emits exactly one
     /// cell per track.
     /// <para>THREE builders size themselves from this: <see cref="Grid"/>, the bound twin <c>BoundGrid</c>
-    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). Only <see cref="Grid"/> emits the
-    /// TRAILING ♥ cell today, because only the eager reader row sets <see cref="ColumnSet.HeartTrailing"/> — a bound
-    /// TABLE that sets it must gain the matching cell in <c>BoundGrid</c> and an empty header cell in the same
-    /// position first, or its cells and its tracks fall out of step by one.</para></summary>
+    /// (Track.UI.Bound.cs) and the table's column header (Track.Table.Chrome.cs). All three emit the TRAILING ♥ cell
+    /// (<see cref="ColumnSet.HeartTrailing"/>): the eager reader row, and the bound table through Liked's hover heart.
+    /// A new surface that sets the flag needs no extra work; a new BUILDER must emit the cell in the same position, or its
+    /// cells and its tracks fall out of step by one.</para></summary>
     static int CellCount(in ColumnSet set)
         => 3 + (set.Heart ? 1 : 0) + (set.Thumb ? 1 : 0) + (set.Artist ? 1 : 0) + (set.Album ? 1 : 0)
            + (set.By ? 1 : 0) + (set.Date ? 1 : 0) + (set.Plays ? 1 : 0) + (RowMetrics.ShowTempo(in set) ? 1 : 0)
@@ -608,7 +608,7 @@ public readonly partial struct Track
     /// a square with no scale (Classic, ch 01 W8). The rest opacity rides a NON-interactive wrapper so it follows the ROW's
     /// hover: 0.45 Modern, 0 Classic. <paramref name="enabled"/> false is an invisible, inert placeholder that reserves the
     /// lane (a skeleton / overscan row). Not a tab stop — the list owns the one roving stop.</summary>
-    public static Element MoreCell(bool enabled, bool classic, string? key = null)
+    public static Element MoreCell(bool enabled, bool classic, string? key = null, Func<bool>? revealWhen = null)
     {
         var button = Controls.MoreButton(null, requestsContext: enabled) with
         {
@@ -628,9 +628,12 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Opacity = enabled ? (classic ? 0f : Controls.MoreRestOpacity) : 0f,
+                    // `revealWhen` (Liked): absent at rest, shown on row hover and while the thunk holds (the keyboard-current row).
+                    Opacity = enabled && revealWhen is not null ? Prop.Of(() => revealWhen() ? 1f : 0f)
+                        : enabled ? (classic ? 0f : Controls.MoreRestOpacity) : 0f,
                     HoverOpacity = enabled ? 1f : 0f,
-                    Children = [button],
+                    // Liked's "…" is hover-only, so it names itself: the tooltip is the accessible name.
+                    Children = [revealWhen is not null ? ToolTip.Wrap(button, Prop.Of<string?>(() => Loc.Get(Strings.Common.More))) : button],
                 },
             ],
         };

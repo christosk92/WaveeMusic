@@ -108,7 +108,8 @@ public readonly partial struct Track
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
     /// memo, the row hover signal, the page accent and the three handlers (each resolves the current item itself).</summary>
     sealed class BoundRow(IReadSignal<TableHost.RowPresentation> presentation, IReadSignal<bool> likePop,
-                          IReadSignal<bool> hovered, Func<ColorF> accent, Func<ColorF> ink, Action play, Action like, Action toggleExpand)
+                          IReadSignal<bool> hovered, Func<ColorF> accent, Func<ColorF> ink, Action play, Action like, Action toggleExpand,
+                          Func<bool> isCurrent)
     {
         public readonly IReadSignal<TableHost.RowPresentation> Presentation = presentation;
         public readonly IReadSignal<bool> LikePop = likePop;
@@ -120,6 +121,9 @@ public readonly partial struct Track
         /// <summary>The now-playing row's marquee: the shared style wearing THIS table's page ink.</summary>
         public readonly Marquee.Style MarqueeStyle = s_rowMarqueeStyle with { Foreground = Prop.Of(ink) };
         public readonly Action Play = play, Like = like, ToggleExpand = toggleExpand;
+        /// <summary>Is this slot the ItemsView's keyboard-current item (<c>RowScope.IsCurrent</c>)? A subscribing read, for bind
+        /// thunks only: Liked's hover-revealed heart and "…" stay shown on the row the keyboard is on.</summary>
+        public readonly Func<bool> IsCurrent = isCurrent;
 
         /// <summary>The current presentation — a subscribing read, for bind thunks only.</summary>
         public TableHost.RowPresentation P => Presentation.Value;
@@ -177,7 +181,8 @@ public readonly partial struct Track
 
     /// <summary>The bound twin of <see cref="Grid"/>: same lanes, same keys, same wrappers, every per-item value bound.
     /// Built once per slot per shape; the shape (column set, tracks, row height, art) is the only thing read here.</summary>
-    static Element BoundGrid(BoundRow r, in ColumnSet set, TrackSize[] tracks, float rowH, float art)
+    static Element BoundGrid(BoundRow r, in ColumnSet set, TrackSize[] tracks, float rowH, float art, bool hoverHeart = false,
+                             bool flush = false)
     {
         bool classic = set.Classic;
         float artSize = art > 0f ? art : RowMetrics.ThumbSize;
@@ -187,20 +192,22 @@ public readonly partial struct Track
         cells[i++] = BoundNumberCell(r, classic);
         if (set.Heart) cells[i++] = RowCenterCell(BoundHeart(r, classic), CellKey.Heart);
         if (set.Thumb) cells[i++] = RowCenterCell(BoundArtwork(r, artSize), CellKey.Art);
-        cells[i++] = BoundTitleCell(r, in set);
+        cells[i++] = BoundTitleCell(r, in set, regular: hoverHeart);
         if (set.Artist) cells[i++] = RowLeftCell(BoundArtistLinks(r, classic), CellKey.Artist);
         if (set.Album) cells[i++] = RowLeftCell(BoundAlbumLink(r, classic), CellKey.Album);
         if (set.By) cells[i++] = BoundAddedByCell(r, classic);
-        if (set.Date) cells[i++] = RowLeftCell(BoundDateCell(r, classic), CellKey.Date);
+        if (set.Date) cells[i++] = RowLeftCell(BoundDateCell(r, classic, relative: hoverHeart), CellKey.Date);
         if (set.Plays) cells[i++] = RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = RowCenterCell(BoundTrailingHeart(r, classic), CellKey.HeartTrailing);
         cells[i++] = RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
-        if (set.Video) cells[i++] = RowCenterCell(BoundVideoMoreCell(r), CellKey.Video);
-        if (set.Actions) cells[i++] = MoreCell(true, classic, CellKey.More);
+        if (set.Video) cells[i++] = RowCenterCell(BoundVideoMoreCell(r, hoverHeart), CellKey.Video);
+        if (set.Actions) cells[i++] = MoreCell(true, classic, CellKey.More, hoverHeart ? r.IsCurrent : null);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
         float padX = RowMetrics.PadXFor(set.Tier);
-        float inner = classic ? padX : padX - RowMetrics.RowInset;
+        // A flush row (Classic, or a page whose rows are plain) has no skin margin, so its grid pays the full padding.
+        float inner = classic || flush ? padX : padX - RowMetrics.RowInset;
         return new GridEl
         {
             Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
@@ -371,6 +378,30 @@ public readonly partial struct Track
         }.Interactive(Interaction.Subtle);
     }
 
+    /// <summary>The TRAILING heart of a page whose every row is liked (Liked Songs): a filled heart that REMOVES the row from
+    /// the collection, absent at rest and revealed on row hover (the engine's own hover progress, so it fades) and while the
+    /// row is the keyboard-current item. The reveal rides a non-interactive wrapper so it follows the ROW's hover, not the
+    /// button's. Named and tooltipped "Remove from Liked Songs" - the tooltip is the accessible name here.</summary>
+    static Element BoundTrailingHeart(BoundRow r, bool classic)
+    {
+        Prop<ColorF> onInk = classic ? Tok.TextPrimary : Prop.Of(r.Ink);
+        Element button = new BoxEl
+        {
+            Width = RowMetrics.HeartCol, Height = RowMetrics.HeartCol,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = Radii.Circle(RowMetrics.HeartCol),
+            Cursor = CursorId.Hand, OnClick = r.Like, Role = AutomationRole.Button,
+            BlocksDragArm = true,
+            Children = [Icon(Icons.HeartFill, 14f) with { Color = onInk }],
+        }.Interactive(Interaction.Subtle);
+        return new BoxEl
+        {
+            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Opacity = Prop.Of(() => r.IsCurrent() ? 1f : 0f), HoverOpacity = 1f,
+            Children = [ToolTip.Wrap(button, Prop.Of<string?>(() => Loc.Get(Strings.Detail.RemoveFromLiked)))],
+        };
+    }
+
     /// <summary>The thumb as <c>Controls.Artwork</c> lays it out (a square decode at the ONE shared
     /// <see cref="RowArtDecodePx"/> — see its doc for why it is not <c>art * 2</c> — with the small-edge placeholder tile
     /// beneath), with the url bound: the row's own cover, or its album's when it has none (<see cref="RowArtUrl"/>). The
@@ -408,12 +439,13 @@ public readonly partial struct Track
 
     /// <summary>The plain ellipsis title and, on the now-playing row when the setting allows, the marquee — swapped by a
     /// real mount so the marquee host only exists on that one row.</summary>
-    static Element[] BoundTitleRuns(BoundRow r)
+    static Element[] BoundTitleRuns(BoundRow r, bool regular = false)
     {
-        // Design.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
+        // Design.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds - Liked's plain rows
+        // set the title at regular weight (400) and let the playing row's ink carry the emphasis.
         var plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
         {
-            Size = 14f, LineHeight = 20f, Weight = 600,
+            Size = 14f, LineHeight = 20f, Weight = regular ? (ushort)400 : (ushort)600,
             Color = Prop.Of(() => r.P.State.IsNow ? r.Ink() : Tok.TextPrimary),
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Visible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee)),
@@ -423,12 +455,12 @@ public readonly partial struct Track
         return [plain, marquee];
     }
 
-    static Element BoundTitleCell(BoundRow r, in ColumnSet set)
+    static Element BoundTitleCell(BoundRow r, in ColumnSet set, bool regular = false)
     {
         bool classic = set.Classic;
         bool setArtist = set.Artist, setAlbum = set.Album;
         int tier = set.Tier;
-        var runs = BoundTitleRuns(r);
+        var runs = BoundTitleRuns(r, regular);
         Element[] column;
         if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, tier)];
         else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum)];
@@ -673,8 +705,12 @@ public readonly partial struct Track
         };
     }
 
-    static Element BoundDateCell(BoundRow r, bool classic)
-        => FactualFill(classic, Prop.Of(() => Format.DateAddedLabel(r.P.AddedAt, NowUnix)),
+    /// <summary>The Added lane. <paramref name="relative"/> is Liked's: Today / Yesterday / N days ago / Last week, then a date
+    /// (<see cref="Format.RelativeAddedLabel"/>); every other table keeps the playlist ladder.</summary>
+    static Element BoundDateCell(BoundRow r, bool classic, bool relative = false)
+        => FactualFill(classic,
+                       relative ? Prop.Of(() => Format.RelativeAddedLabel(r.P.AddedAt, NowUnix))
+                                : Prop.Of(() => Format.DateAddedLabel(r.P.AddedAt, NowUnix)),
                        LaneInk(r, classic, static () => Tok.TextSecondary));
 
     /// <summary>A count of 0 is "not known yet", and a withheld row states the absence rather than a real-looking number.</summary>
@@ -738,7 +774,7 @@ public readonly partial struct Track
 
     /// <summary><see cref="VideoMoreCell"/> bound: the film glyph at rest on a row with a video, the quiet "…" on one
     /// without; the full-strength "…" on row hover either way.</summary>
-    static Element BoundVideoMoreCell(BoundRow r)
+    static Element BoundVideoMoreCell(BoundRow r, bool hoverHeart = false)
         => new BoxEl
         {
             ZStack = true, MinWidth = 0f,
@@ -752,21 +788,31 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    Opacity = Prop.Of(() => r.P.Track.HasVideo ? 0f : Controls.MoreRestOpacity),
+                    // Liked's "…" is absent at rest like its heart: shown on hover and on the keyboard-current row.
+                    Opacity = hoverHeart
+                        ? Prop.Of(() => !r.P.Track.HasVideo && r.IsCurrent() ? 1f : 0f)
+                        : Prop.Of(() => r.P.Track.HasVideo ? 0f : Controls.MoreRestOpacity),
                     HoverOpacity = 1f,
                     Children =
                     [
-                        new BoxEl
-                        {
-                            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                            Cursor = CursorId.Hand, ClickRequestsContext = true, HitTestVisible = true,
-                            Role = AutomationRole.Button, BlocksDragArm = true,
-                            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
-                        },
+                        MoreHit(hoverHeart),
                     ],
                 },
             ],
         };
+
+    /// <summary>The video lane's "…" hit target; Liked's (hover-revealed) names itself with a tooltip.</summary>
+    static Element MoreHit(bool named)
+    {
+        Element hit = new BoxEl
+        {
+            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Cursor = CursorId.Hand, ClickRequestsContext = true, HitTestVisible = true,
+            Role = AutomationRole.Button, BlocksDragArm = true,
+            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
+        };
+        return named ? ToolTip.Wrap(hit, Prop.Of<string?>(() => Loc.Get(Strings.Common.More)), grow: 1f) : hit;
+    }
 
     /// <summary><see cref="ExpandCell"/> bound: the glyph swaps ChevronRight secondary ↔ ChevronDown accent with the open
     /// state; an episode row (no versions) collapses the chevron.</summary>

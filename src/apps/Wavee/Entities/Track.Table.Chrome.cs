@@ -389,7 +389,8 @@ public readonly partial struct Track
             Field(SortColumn.Artist);
             if (cfg.ShowAlbumColumn) Field(SortColumn.Album);
             if (_latest.Source.HasDateAdded) Field(SortColumn.DateAdded);
-            if (cfg.ShowPlays || (cfg.PlaysColumnOptIn && Platform.Settings.Get(Platform.Keys.PlaysColumn))) Field(SortColumn.Plays);
+            // Liked's column list is fixed (no BPM · Key, no Plays), so it offers neither the lane nor a sort on it.
+            if (TableRules.OffersPlaysSort(in cfg, Platform.Settings.Get(Platform.Keys.PlaysColumn))) Field(SortColumn.Plays);
             Field(SortColumn.Duration);
             // Direction applies to custom order too: descending is the explicit "invert this list".
             items.Add(MenuFlyoutItem.Separator);
@@ -657,6 +658,7 @@ public readonly partial struct Track
                         SortColumn.Plays, sort, FlexJustify.End));
                 // BPM · Key is not sortable: tempo lands asynchronously per row, a sort would reorder under the cursor.
                 if (RowMetrics.ShowTempo(in set)) Add(CellKey.Tempo, PlainHeader(Loc.Get(Strings.Detail.Column.Tempo), FlexJustify.End, classic));
+                if (RowMetrics.ShowHeartTrailing(in set)) Add(CellKey.HeartTrailing, new BoxEl());
                 Add(CellKey.Duration, SortCell(h, vertical
                         ? HLabel(Loc.Get(Strings.Detail.Column.Time), SortColumn.Duration, sort, classic)
                         : Icon(Icons.Clock, 14f, sort.Column == SortColumn.Duration ? Tok.TextSecondary : Tok.TextTertiary),
@@ -866,7 +868,7 @@ public readonly partial struct Track
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.Select), selecting, () => h.SetMultiSelect(!selecting)));
                     }
                     items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), DensityItems(), Icons.List));
-                    if (cfg.ShowTempo || cfg.PlaysColumnOptIn)
+                    if (TableRules.OffersColumnsMenu(in cfg))
                     {
                         var columns = new List<MenuFlyoutItem>(2);
                         if (cfg.ShowTempo)

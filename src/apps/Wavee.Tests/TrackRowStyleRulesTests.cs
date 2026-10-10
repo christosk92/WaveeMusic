@@ -238,6 +238,58 @@ public sealed class TrackRowStyleRulesTests
         Assert.DoesNotContain(TrackSize.Px(Track.Lane.HeartTrailing), tracks);
     }
 
+    /// <summary>Liked's approved column list: with HoverHeart the leading heart goes, the trailing hover heart comes, and
+    /// BPM·Key and Plays are not offered; everything else (Album, Added, art, the "…" lane) is as the tier admitted it. A
+    /// page without HoverHeart is untouched. A header row and a plain row of the same kind recycle from separate pools.</summary>
+    [Fact]
+    public void ForHoverHeart_DropsTheLeadingHeartTempoAndPlays_AndAddsTheTrailingHeart()
+    {
+        var admitted = new Track.ColumnSet(Album: true, By: false, Date: true, Video: false, Plays: true, Heart: true,
+                                           Thumb: true, Actions: true, Tier: 0, Tempo: true);
+
+        var liked = TableRules.ForHoverHeart(in admitted, hoverHeart: true);
+
+        Assert.False(liked.Heart);
+        Assert.True(liked.HeartTrailing);
+        Assert.True(RowMetrics.ShowHeartTrailing(in liked));
+        Assert.False(liked.Tempo);
+        Assert.False(liked.Plays);
+        Assert.False(RowMetrics.ShowTempo(in liked));
+        Assert.True(liked.Album && liked.Date && liked.Thumb && liked.Actions);
+        Assert.False(liked.Expand);                       // no Drawer seam, so no expand lane
+        // # · art · Title* · Album* · Added · ♥ (trailing) · duration · "…"
+        var tracks = Track.TracksFor(in liked, Design.Size.Thumb32);
+        Assert.Equal(8, tracks.Length);
+        Assert.Equal(TrackSize.Px(Track.Lane.HeartTrailing), tracks[^3]);
+
+        Assert.Equal(admitted, TableRules.ForHoverHeart(in admitted, hoverHeart: false));
+    }
+
+    /// <summary>Liked's "…" offers no Columns ▸ and its sort no Plays (the lanes are not offered there); playlists keep both.</summary>
+    [Fact]
+    public void LikedMore_OffersNoColumnsMenuAndNoPlaysSort()
+    {
+        var liked = Detail.Config.Liked;
+        Assert.True(liked.ShowTempo && liked.PlaysColumnOptIn);   // the opt-ins exist on the config, the page just never offers them
+        Assert.False(TableRules.OffersColumnsMenu(in liked));
+        Assert.False(TableRules.OffersPlaysSort(in liked, playsPreference: true));
+
+        var playlist = Detail.Config.Playlist;
+        Assert.Equal(playlist.ShowTempo || playlist.PlaysColumnOptIn, TableRules.OffersColumnsMenu(in playlist));
+        Assert.Equal(playlist.ShowPlays || playlist.PlaysColumnOptIn, TableRules.OffersPlaysSort(in playlist, playsPreference: true));
+    }
+
+    [Fact]
+    public void LikedGroups_HeaderRowsRecycleFromTheirOwnPool()
+    {
+        int track = (int)RowTemplate.Track, episode = (int)RowTemplate.Episode;
+
+        Assert.NotEqual(Track.LikedGroups.PoolOf(track, startsGroup: true), Track.LikedGroups.PoolOf(track, startsGroup: false));
+        Assert.NotEqual(Track.LikedGroups.PoolOf(track, startsGroup: true), Track.LikedGroups.PoolOf(episode, startsGroup: true));
+        Assert.Equal(track, Track.LikedGroups.PoolOf(track, startsGroup: false));          // plain rows keep today's content type
+        Assert.True(Track.LikedGroups.PoolOf(episode, startsGroup: true) > Track.LikedGroups.PoolBit);
+    }
+
     /// <summary>The trailing lane forks the width-track CACHE: the key is the whole ColumnSet, so the reader's set and
     /// the same set without the heart never share one array (the header/rows "same instance" rule cuts both ways).</summary>
     [Fact]

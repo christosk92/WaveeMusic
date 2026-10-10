@@ -187,6 +187,36 @@ public class TrackFormatTests
         Assert.Equal("Dec 30, 2025", Format.DateAddedLabel((int)LocalNoon(2025, 12, 30), now));
     }
 
+    /// <summary>Liked's Added lane: the playlist ladder plus "Last week" for 7..13 local days, then a date (the year only
+    /// across one). The playlist lane's own ladder is untouched for the same days.</summary>
+    [Fact]
+    public void RelativeAddedLabel_adds_a_last_week_rung_before_the_absolute_date()
+    {
+        using var _ = new InvariantCultureScope();
+        long now = LocalNoon(2026, 9, 13);
+
+        Assert.Equal("", Format.RelativeAddedLabel(0, now));
+        Assert.Equal(Loc.Get(Strings.Detail.Today), Format.RelativeAddedLabel((int)now, now));
+        Assert.Equal(Loc.Get(Strings.Detail.Yesterday), Format.RelativeAddedLabel((int)LocalNoon(2026, 9, 12), now));
+        Assert.Equal(Strings.Detail.DaysAgo(3), Format.RelativeAddedLabel((int)LocalNoon(2026, 9, 10), now));
+        Assert.Equal(Strings.Detail.DaysAgo(6), Format.RelativeAddedLabel((int)LocalNoon(2026, 9, 7), now));
+        Assert.Equal(Loc.Get(Strings.Detail.LastWeek), Format.RelativeAddedLabel((int)LocalNoon(2026, 9, 6), now));    // 7 days
+        Assert.Equal(Loc.Get(Strings.Detail.LastWeek), Format.RelativeAddedLabel((int)LocalNoon(2026, 8, 31), now));   // 13 days
+        Assert.Equal("Aug 30", Format.RelativeAddedLabel((int)LocalNoon(2026, 8, 30), now));                           // 14 days
+        Assert.Equal("Dec 30, 2025", Format.RelativeAddedLabel((int)LocalNoon(2025, 12, 30), now));
+    }
+
+    /// <summary>The playlist lane keeps the plain absolute date for 7..13 days: "Last week" is Liked's rung alone.</summary>
+    [Fact]
+    public void DateAddedLabel_is_unchanged_for_seven_to_thirteen_days()
+    {
+        using var _ = new InvariantCultureScope();
+        long now = LocalNoon(2026, 9, 13);
+
+        Assert.Equal("Sep 6", Format.DateAddedLabel((int)LocalNoon(2026, 9, 6), now));
+        Assert.Equal("Aug 31", Format.DateAddedLabel((int)LocalNoon(2026, 8, 31), now));
+    }
+
     // ── the three hot formats are cached (fluentgpu rule 13: never format a number/duration/date per recycle) ────────
 
     /// <summary>Pins an arbitrary culture for one fact — a CLONE of invariant with a comma decimal, so the fact holds

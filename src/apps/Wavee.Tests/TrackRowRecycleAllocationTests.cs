@@ -37,7 +37,14 @@ public class TrackRowRecycleAllocationTests
     /// it (comps 10 vs 151 over the same 10 steps). 7 KB keeps ~30 % headroom and fails the re-render class 3× over.</summary>
     const long BudgetBytesPerRecycledRow = 7 * 1024;
 
-    sealed class LikedTable : Component
+    /// <summary>What a step may mount on top of the recycle rule once the date groups are on. A header row and a plain row
+    /// recycle from separate pools (<c>LikedGroups.PoolOf</c>), so a window whose header count differs from the last one
+    /// builds a header slot (TableSlot + row content + tooltip, ~3 components) in place of an incompatible leaver - at most a
+    /// couple per step on this list (a group every ~14 rows). Four per step still fails the re-render class (15 per step)
+    /// by a factor of ~4.</summary>
+    const int GroupedCompsPerStep = 4;
+
+    sealed class LikedTable(Detail.Config config) : Component
     {
         public override Element Render()
             => new BoxEl
@@ -48,7 +55,7 @@ public class TrackRowRecycleAllocationTests
                     Track.Table(new Track.TableArgs
                     {
                         Source = Track.TableSource.ForLiked(new User(Entities.Current.MeSlot)),
-                        Profile = Track.TableProfile.From(Detail.Config.Liked),
+                        Profile = Track.TableProfile.From(config),
                         ShowToolbar = false, Embedded = true, ScrollKey = "recycle-alloc",
                     }),
                 ],
@@ -67,8 +74,20 @@ public class TrackRowRecycleAllocationTests
         return NodeHandle.Null;
     }
 
+    /// <summary>The recycle rule on the plain list: Liked's data and defaults with the date groups OFF (no HoverHeart), so
+    /// every row has one shape and a recycle re-renders nothing.</summary>
     [Fact]
     public void Scrolling_recycles_track_rows_without_re_rendering_or_allocating_them()
+        => Run(Detail.Config.Liked with { HoverHeart = false, PlainRows = false }, compsPerStep: 1);
+
+    /// <summary>The same sweep on the real Liked list, groups ON (Date added, the default): rows still allocate within the
+    /// per-row budget, and no row re-renders on a recycle - the only extra components are the header slots a window mounts
+    /// when it holds more group starts than the window before it (<see cref="GroupedCompsPerStep"/>).</summary>
+    [Fact]
+    public void Scrolling_the_grouped_liked_list_recycles_rows_within_the_same_budget()
+        => Run(Detail.Config.Liked, GroupedCompsPerStep);
+
+    static void Run(Detail.Config config, int compsPerStep)
     {
         Entities.Boot(CatalogScope.Fake());
         Entities.SeedFake(1_790_000_000);
@@ -78,7 +97,7 @@ public class TrackRowRecycleAllocationTests
         window.Show();
         var dev = new HeadlessGpuDevice();
         var strings = Entities.Strings;
-        using var host = new AppHost(app, window, dev, new HeadlessFontSystem(strings), strings, new LikedTable());
+        using var host = new AppHost(app, window, dev, new HeadlessFontSystem(strings), strings, new LikedTable(config));
         for (int i = 0; i < 30; i++) host.RunFrame();
 
         var list = FindList(host.Scene, host.Scene.Root);
@@ -105,7 +124,7 @@ public class TrackRowRecycleAllocationTests
         long recycles = (long)steps * realized;
         long perRow = bytes / Math.Max(1, recycles);
         string facts = $"comps={comps} over {steps} steps ({recycles} recycles), {perRow} B per recycled row ({bytes} B)";
-        Assert.True(comps <= steps, "row components re-rendered on recycle: " + facts);
+        Assert.True(comps <= steps * compsPerStep, "row components re-rendered on recycle: " + facts);
         Assert.True(perRow <= BudgetBytesPerRecycledRow, $"over the {BudgetBytesPerRecycledRow} B budget: " + facts);
     }
 

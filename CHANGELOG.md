@@ -28,6 +28,10 @@ versions separately under `v*` and is not tracked in this file.)
   theme's colours as the photo scrolls away or you leave the page.
 - **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the hero, and it
   follows the page when you open or close the sidebar or the right rail or switch the navigation style.
+- **A Play menu on album, playlist and Liked Songs pages**: Add to queue, Play next and Start radio, right beside Play.
+  Start radio on an album or a playlist builds a radio from it; on Liked Songs it starts from the first song in your list.
+- **Liked Songs groups your songs by date** while it is sorted by Date added: This week, Last week, then each month,
+  with a count on every group.
 
 ### Changed
 
@@ -49,8 +53,8 @@ versions separately under `v*` and is not tracked in this file.)
 - Pages no longer jump while they load or when you switch navigation style: titles, counts and view switchers keep
   their place, and layout changes slide.
 - Home shows a "Home" title above All / Music / Podcasts / Audiobooks.
-- Zune: the second row under the pivots is never empty and is filled the moment you navigate: views, categories, or
-  the page's title, sections and actions.
+- Zune: the second row under the pivots is filled the moment you navigate: views, categories, or the page's
+  sections and actions.
 - Artist, profile and episode bands: the title, sections and actions now sit on one line.
 - Insights for playlists and Liked Songs open from the Insights button in every layout.
 - Library: one sort menu instead of a row of sort words; counts read like "20 albums".
@@ -61,6 +65,7 @@ versions separately under `v*` and is not tracked in this file.)
 - Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle, Save, Share and More).
 - Album and playlist song lists: the toolbar holds only list tools (sort, find, Insights and More, which now has Select, Row size and Columns).
 - Liked Songs has a new, simpler page: one toolbar with Play, Shuffle, genre filters, sort, find and Insights, and no side column.
+- Liked Songs rows are quieter: no heart column (the heart and More show when you hover a row or move to it with the keyboard), no striping, regular-weight titles, and Added reads Today, Yesterday, 3 days ago or Last week.
 
 ### Removed
 
@@ -81,6 +86,8 @@ versions separately under `v*` and is not tracked in this file.)
 - Zune: Browse no longer lists Music, Podcasts, Audiobooks and Live events twice.
 - The search suggestions now line up with the search box, which widens while you type.
 - Library: Podcasts' Followed shows and Your Episodes both fit at the narrowest pane width.
+- Library: the focus ring on the views row is no longer cut off.
+- Concerts: the hub and tour headers use the same title size as every other page.
 
 ## [0.3.4] - 2026-10-06
 

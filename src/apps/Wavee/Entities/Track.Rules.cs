@@ -109,7 +109,8 @@ public readonly partial struct Track
     /// <paramref name="Heart"/> — a row states its like once — and the gate both the width track and the cell read is
     /// <see cref="RowMetrics.ShowHeartTrailing"/>, which normalizes a set that asks for both by keeping the LEADING
     /// heart (the lane every existing surface already reserves). It is NOT on the relief ladder: the ladder yields
-    /// trailing lanes for the tiered TABLE, and the only surface that sets this builds one fixed set at one width.</para></summary>
+    /// trailing lanes for the tiered TABLE, and a trailing heart never yields (the reader builds one fixed set at one width;
+    /// Liked's hover heart, <see cref="TableRules.ForHoverHeart"/>, keeps its 32 DIP at every tier).</para></summary>
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Video, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false);
@@ -262,6 +263,15 @@ public readonly partial struct Track
         public static bool MoreCarriesListVerbs(DetailKind kind, bool vertical)
             => !vertical && !Detail.Skeleton.HasLabelledShuffle(kind);
 
+        /// <summary>Does "…" offer Columns ▸ (the BPM · Key / Plays opt-ins)? Never on a hover-heart page (Liked): its column
+        /// list is fixed, so a toggle there would do nothing.</summary>
+        public static bool OffersColumnsMenu(in Detail.Config cfg)
+            => !cfg.HoverHeart && (cfg.ShowTempo || cfg.PlaysColumnOptIn);
+
+        /// <summary>Does the sort menu offer Plays? Only where the Plays lane can exist (never on a hover-heart page).</summary>
+        public static bool OffersPlaysSort(in Detail.Config cfg, bool playsPreference)
+            => !cfg.HoverHeart && (cfg.ShowPlays || (cfg.PlaysColumnOptIn && playsPreference));
+
         /// <summary>The header-click cycle. # flips while on Index, else resets; a dedicated Artist lane gets its own
         /// asc → desc → default; without it Title runs Title↑ → Title↓ → Artist↑ → Artist↓ → default.</summary>
         public static SortSpec NextSort(SortSpec cur, SortColumn clicked, bool artistColumn)
@@ -366,6 +376,13 @@ public readonly partial struct Track
                 Plays = r.Plays, Tempo = s.Tempo && (r.Tempo || !RowMetrics.ShowTempo(in s)),
             };
         }
+
+        /// <summary>Liked Songs' approved column list (<see cref="Detail.Config.HoverHeart"/>): # · cover + title/artist ·
+        /// Album · Added · duration, with NO leading heart lane (every row is liked, so the heart is a hover/focus reveal in
+        /// the trailing lane) and neither BPM·Key nor Plays on offer. Applied to the tier-admitted set before the relief
+        /// ladder, so the header, the rows and the width tracks all read the one set.</summary>
+        public static ColumnSet ForHoverHeart(in ColumnSet s, bool hoverHeart)
+            => hoverHeart ? s with { Heart = false, HeartTrailing = true, Tempo = false, Plays = false } : s;
     }
 
     // ══ 3. ROW METRICS — the alignment invariant ═════════════════════════════════════════════════════════════════════
@@ -480,11 +497,13 @@ public readonly partial struct Track
         // handed a "1,85B" formatted under nl-NL a moment earlier, and a language change must not keep "Today" in English.
         static FormatCache<long> s_plays = FormatCache.Create<long>();
         static FormatCache<(int Added, int NowDay)> s_dateAdded = FormatCache.Create<(int Added, int NowDay)>();
+        static FormatCache<(int Added, int NowDay)> s_relativeAdded = FormatCache.Create<(int Added, int NowDay)>();
         static FormatCache<(int At, int NowYear)> s_releaseDate = FormatCache.Create<(int At, int NowYear)>();
         static CultureInfo? s_cachesCulture;
         static int s_cachesEpoch;
         static readonly Func<long, string> s_playsFormat = FormatPlays;
         static readonly Func<(int Added, int NowDay), string> s_dateAddedFormat = FormatDateAdded;
+        static readonly Func<(int Added, int NowDay), string> s_relativeAddedFormat = FormatRelativeAdded;
         static readonly Func<(int At, int NowYear), string> s_releaseDateFormat = FormatReleaseDate;
         // `now` arrives as live unix seconds and changes once a second while thirteen rows share it inside one frame;
         // one memo of its local calendar day spares twelve of the thirteen zone conversions.
@@ -510,6 +529,7 @@ public readonly partial struct Track
             s_cachesEpoch = epoch;
             s_plays = FormatCache.Create<long>();
             s_dateAdded = FormatCache.Create<(int Added, int NowDay)>();
+            s_relativeAdded = FormatCache.Create<(int Added, int NowDay)>();
             s_releaseDate = FormatCache.Create<(int At, int NowYear)>();
             s_nowMemoSeconds = long.MinValue;
         }
@@ -609,9 +629,40 @@ public readonly partial struct Track
             if (days <= 0) return Loc.Get(Strings.Detail.Today);
             if (days == 1) return Loc.Get(Strings.Detail.Yesterday);
             if (days < 7) return Strings.Detail.DaysAgo(days);
-            return d.Year == now.Year
+            return AbsoluteAdded(d, now);
+        }
+
+        static string AbsoluteAdded(DateTimeOffset d, DateTime now)
+            => d.Year == now.Year
                 ? d.ToString("MMM d", CultureInfo.CurrentCulture)
                 : d.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+
+        /// <summary>Liked Songs' Added lane: the <see cref="DateAddedLabel"/> ladder with ONE more rung - "Last week" for
+        /// 7..13 days - before the absolute date. The ladder counts days while the group strips above it count LOCAL
+        /// calendar weeks, so near a week boundary a row's label and its strip can differ. Its own cache (the same stamp
+        /// prints differently here), keyed and dropped exactly like the playlist lane's.</summary>
+        public static string RelativeAddedLabel(int unixSeconds, long nowUnixSeconds)
+        {
+            if (unixSeconds == 0) return "";
+            FreshenCultureCaches();
+            if (nowUnixSeconds != s_nowMemoSeconds)
+            {
+                s_nowMemoDay = LocalDay(nowUnixSeconds);
+                s_nowMemoSeconds = nowUnixSeconds;
+            }
+            return s_relativeAdded.Get((unixSeconds, s_nowMemoDay), s_relativeAddedFormat);
+        }
+
+        static string FormatRelativeAdded((int Added, int NowDay) key)
+        {
+            var d = DateTimeOffset.FromUnixTimeSeconds(key.Added).ToLocalTime();
+            var now = DateTime.SpecifyKind(new DateTime(key.NowDay * TimeSpan.TicksPerDay), DateTimeKind.Local);
+            int days = (int)(now - d.Date).TotalDays;
+            if (days <= 0) return Loc.Get(Strings.Detail.Today);
+            if (days == 1) return Loc.Get(Strings.Detail.Yesterday);
+            if (days < 7) return Strings.Detail.DaysAgo(days);
+            if (days < 14) return Loc.Get(Strings.Detail.LastWeek);
+            return AbsoluteAdded(d, now);
         }
 
         /// <summary>The LOCAL calendar day of a unix instant as a day number (ticks / day) — the date-added cache key.</summary>
@@ -629,6 +680,84 @@ public readonly partial struct Track
         }
 
         static int LocalYear(long unixSeconds) => DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime().Year;
+    }
+
+    /// <summary>Liked Songs' date groups, as pure rules: which group an Added stamp falls in (LOCAL calendar weeks starting
+    /// on the culture's first day), where a group starts in the displayed order, its label, and the ONE height formula a
+    /// row's slot has - <see cref="Extent"/> - that the list's analytic layout, the slot's strip and the focus-ring inset
+    /// all read, so the extent the list SEEDS is the extent the slot REALIZES (no measure-correct jump).</summary>
+    public static class LikedGroups
+    {
+        /// <summary>Kind 0 = this week, 1 = last week, 2 = a month (Year/Month name it; the others carry 0).</summary>
+        public readonly record struct Key(byte Kind, int Year, int Month);
+
+        public const byte ThisWeek = 0, LastWeek = 1, MonthKind = 2;
+
+        /// <summary>Groups show only on a page that asked for them AND only while the list is in Date-added order (either
+        /// direction) - under any other sort a date strip would sit over rows that are not in date order.</summary>
+        public static bool Applies(bool hoverHeart, SortSpec sort) => hoverHeart && sort.Column == SortColumn.DateAdded;
+
+        /// <summary>The group strip's fixed height: quiet, never data-dependent.</summary>
+        public const float HeaderH = 40f;
+
+        /// <summary>The recycle-pool bit a group-starting row adds to its <c>ContentType</c>: a header row and a plain row of
+        /// the same kind recycle from separate pools, so a recycled slot never changes shape (and never re-renders).</summary>
+        public const int PoolBit = 1 << 8;
+
+        /// <summary>The <c>ContentType</c> of a track-list row: its template kind, plus <see cref="PoolBit"/> when it starts a group.</summary>
+        public static int PoolOf(int rowKind, bool startsGroup) => rowKind | (startsGroup ? PoolBit : 0);
+
+        /// <summary>A row's slot height: the row, plus the strip above it when it starts a group.</summary>
+        public static float Extent(float rowH, bool startsGroup) => rowH + (startsGroup ? HeaderH : 0f);
+
+        /// <summary>The row at <paramref name="i"/> opens a group: the first row, or one whose key differs from its
+        /// predecessor's. Groups are runs of the DISPLAYED order, so the same rule serves either sort direction.</summary>
+        public static bool StartsGroup(ReadOnlySpan<Key> keys, int i) => i == 0 || keys[i] != keys[i - 1];
+
+        /// <summary>The LOCAL calendar day of a unix instant as a day number (ticks / day) - the plan's day key.</summary>
+        public static int DayOf(long unixSeconds)
+            => (int)(DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime().Date.Ticks / TimeSpan.TicksPerDay);
+
+        /// <summary>The group of an Added stamp: this local calendar week (a week starts on <paramref name="firstDay"/>),
+        /// the week before it, else its calendar month. A stamp from the future (clock skew) is this week; no stamp at all
+        /// is the year-0 month, which <see cref="Label"/> prints as a dash.</summary>
+        public static Key KeyOf(long addedUnix, long nowUnix, DayOfWeek firstDay)
+        {
+            if (addedUnix <= 0) return new Key(MonthKind, 0, 0);
+            var added = DateTimeOffset.FromUnixTimeSeconds(addedUnix).ToLocalTime().Date;
+            var nowWeek = WeekStart(DateTimeOffset.FromUnixTimeSeconds(nowUnix).ToLocalTime().Date, firstDay);
+            var addedWeek = WeekStart(added, firstDay);
+            if (addedWeek >= nowWeek) return new Key(ThisWeek, 0, 0);
+            if (addedWeek == nowWeek.AddDays(-7)) return new Key(LastWeek, 0, 0);
+            return new Key(MonthKind, added.Year, added.Month);
+        }
+
+        static DateTime WeekStart(DateTime day, DayOfWeek firstDay)
+            => day.AddDays(-(((int)day.DayOfWeek - (int)firstDay + 7) % 7));
+
+        /// <summary>The strip's title: "This week", "Last week", "September", or "September 2025" for another year.</summary>
+        public static string Label(Key k, int nowYear)
+        {
+            if (k.Kind == ThisWeek) return Loc.Get(Strings.Detail.ThisWeek);
+            if (k.Kind == LastWeek) return Loc.Get(Strings.Detail.LastWeek);
+            if (k.Year <= 0 || k.Month is < 1 or > 12) return Format.Dash;
+            var culture = CultureInfo.CurrentCulture;
+            string month = culture.DateTimeFormat.GetMonthName(k.Month);
+            return k.Year == nowYear ? month : month + " " + k.Year.ToString(culture);
+        }
+
+        /// <summary>Fills <paramref name="counts"/>[i] with the size of the group that STARTS at row i (0 on every other
+        /// row), so the strip prints its count without a second pass.</summary>
+        public static void Counts(ReadOnlySpan<Key> keys, Span<int> counts)
+        {
+            int start = 0;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                counts[i] = 0;
+                if (i > 0 && keys[i] != keys[i - 1]) { counts[start] = i - start; start = i; }
+            }
+            if (keys.Length > 0) counts[start] = keys.Length - start;
+        }
     }
 
     /// <summary>The row's credit-line discriminator: ONE 64-bit stamp over exactly what the row prints per billed artist —
