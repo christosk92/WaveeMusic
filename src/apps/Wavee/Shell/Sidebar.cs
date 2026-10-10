@@ -355,10 +355,16 @@ public static class SidebarRowGeometry
     // ── rows ──
     public const float RowHeight = 36f;
     public const float TwoLineRowHeight = 40f;
-    public const float IconColumn = 40f;
+    /// <summary>The leading visual's box: the widest art (32); a glyph or the compact 24 art is centred in it.</summary>
+    public const float ArtSlot = 32f;
+    /// <summary>Slot x of the art's left edge: 7 clear of the 3-px selection pill, and the x the section headers' titles
+    /// share, so a header, a cover and a glyph's column start on one line.</summary>
+    public const float LeadInset = 10f;
+    public const float IconColumn = LeadInset + ArtSlot;                         // 42
     public const float GlyphSize = 16f;
-    /// <summary>The ContentPresenter's 4-px left margin between the icon column and the label (TR:251).</summary>
-    public const float LabelGap = 4f;
+    /// <summary>Between the icon column and the label: 8, so a glyph's label sits 16 past the glyph (as WinUI's 48-column
+    /// item) and a cover's 8 past the cover.</summary>
+    public const float LabelGap = 8f;
     /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
     public const float TrailingPad = 14f;
     /// <summary>The chevron column (TR:617): its −14 margin cancels <see cref="TrailingPad"/>.</summary>
@@ -370,8 +376,8 @@ public static class SidebarRowGeometry
 
     // ── chrome rows ──
     public const float HeaderHeight = 40f;
-    /// <summary>The header title's x: pane 16 (TR:229's 16,0) less <see cref="PaneEdge"/>.</summary>
-    public const float HeaderTextX = 12f;
+    /// <summary>The header title's x: the rows' <see cref="LeadInset"/> (pane 14), so a title starts where the covers do.</summary>
+    public const float HeaderTextX = LeadInset;
     /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
     public const float HeaderButton = 24f;
     /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
@@ -417,8 +423,8 @@ public static class SidebarRowGeometry
     public static float TreeContentX(int depth) => IndentFor(depth);
 
     /// <summary>Pane-space rulers (diagnostics, tests).</summary>
-    public const float IconCentreX = PaneEdge + IconColumn * 0.5f;              // 24
-    public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 48
+    public const float IconCentreX = PaneEdge + LeadInset + ArtSlot * 0.5f;     // 30
+    public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 54
     public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
     public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
 

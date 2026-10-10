@@ -146,12 +146,9 @@ public static partial class Sidebar
 
     internal static class EntityRow
     {
-        /// <summary>The hover "…" box — also the trailing cluster's reserve, so a chevron or a count never sits under it.</summary>
+        /// <summary>The hover "…" box. It overlays the row and costs the label nothing: a trailing count or pin mark fades out
+        /// under it on hover.</summary>
         const float OverflowWidth = 26f;
-
-        /// <summary>The width a row's label gives up to the hover "…" reserve: only a row with a menu AND trailing content
-        /// (a count, a pin mark, a chevron) keeps one.</summary>
-        public static float OverflowReserve(bool menu, bool trailing) => menu && trailing ? OverflowWidth : 0f;
 
         /// <summary>The height <paramref name="spec"/> renders at, for a host that sizes a slot before building the row.</summary>
         public static float HeightOf(in RowSpec spec)
@@ -184,13 +181,14 @@ public static partial class Sidebar
             // Icon colour = label colour in every state (NVX:425-427): TextPrimary, a disabled row fades as a whole.
             var ink = spec.Ink ?? Tok.TextPrimary;
 
-            // ── the icon column: 40 wide, the glyph (16) or art centred at slot x 20 ──
+            // ── the icon column: the glyph (16) or art centred in the 32 art slot at slot x 10 (a rail tile: centred in 40) ──
             Element visual = spec.Leading
                 ?? (spec.Glyph is { Length: > 0 } g ? Icon(g, SidebarRowGeometry.GlyphSize, ink) : new BoxEl { Width = art, Height = art });
             if (spec.Track && spec.Leading is not null) visual = TrackArt(visual, art, spec.Shape);
             Element iconColumn = new BoxEl
             {
-                Width = SidebarRowGeometry.IconColumn, Height = height, Shrink = 0f,
+                Width = spec.Tile ? SidebarRowGeometry.TileWidth : SidebarRowGeometry.IconColumn, Height = height, Shrink = 0f,
+                Padding = new Edges4(spec.Tile ? 0f : SidebarRowGeometry.LeadInset, 0f, 0f, 0f),
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 Children = [visual],
             };
@@ -251,16 +249,16 @@ public static partial class Sidebar
                 if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
                 if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
                 if (spec.Trailing is { } trailingContent) parts[t] = trailingContent;
+                // With a hover "…" the cluster hands its place over: it fades out as the button fades in over it, so the
+                // count ends at W − 18 at rest instead of leaving a button-wide hole beside it.
                 kids.Add(new BoxEl
                 {
                     Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.TrailingGap,
                     Margin = new Edges4(SidebarRowGeometry.TrailingGap, 0f, 0f, 0f), Children = parts,
+                    HoverOpacity = overflow ? 0f : float.NaN,
                 });
             }
             bool chevron = spec.DisclosureChevron is not null;
-            // The hover "…" never covers the count, the pin mark or the chevron: a row with trailing content reserves its
-            // width in the flow, and on a folder the button parks in that reserve just left of the chevron column.
-            if (overflow && (trailingCount > 0 || chevron)) kids.Add(new BoxEl { Width = OverflowWidth, Shrink = 0f });
             if (spec.DisclosureChevron is { } chev)
                 kids.Add(new BoxEl
                 {
@@ -819,8 +817,8 @@ public static partial class Sidebar
     /// tiles are not here: they are the media surface's own seed face — <c>Rail.SeedStack</c>.)</summary>
     internal static class Skeletons
     {
-        /// <summary>One pending row in the row's own ladder: the 40-px icon column with the art centred at slot x 20, the
-        /// label at slot x 44, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4. Uniform by design
+        /// <summary>One pending row in the row's own ladder: the row's icon column (the art centred in its 32 slot at slot
+        /// x 10), the label at slot x 50, bars 140×12 (+ 80×10 at gap 4 in a two-line row), r4. Uniform by design
         /// (<paramref name="index"/> is position-independent).</summary>
         public static Element Row(int index, SidebarRowShape shape, float heightOverride = float.NaN,
                                   float artOverride = float.NaN)
@@ -841,6 +839,7 @@ public static partial class Sidebar
                     new BoxEl
                     {
                         Width = SidebarRowGeometry.IconColumn, Height = height, Shrink = 0f,
+                        Padding = new Edges4(SidebarRowGeometry.LeadInset, 0f, 0f, 0f),
                         AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                         Children =
                         [
@@ -862,9 +861,9 @@ public static partial class Sidebar
         };
     }
 
-    /// <summary>The 40-px section header (design V.6): the title at slot x 12 (pane 16), 14 SemiBold TextSecondary, brightening
-    /// to TextPrimary on hover (no plate); then the "+" (always, Playlists / Your Library), the ⋯ (revealed on hover, permanent
-    /// after a touch), and the chevron (24×24, always visible, ending at pane W − 4). A click anywhere collapses; the slot root
+    /// <summary>The 40-px section header (design V.6): the title at slot x 10 (pane 14, the covers' left edge), 14 SemiBold TextSecondary, brightening
+    /// to TextPrimary on hover (no plate); then the ⋯ (revealed on hover, permanent after a touch), the "+" (always, Playlists /
+    /// Your Library), and the chevron (24×24, always visible, ending at pane W − 4). A click anywhere collapses; the slot root
     /// is the roving focus stop (ToggleButton). <paramref name="onToggle"/> null ⇒ a heading with no chevron.</summary>
     internal static class SectionHeader
     {
@@ -882,8 +881,9 @@ public static partial class Sidebar
                 },
                 new BoxEl { Grow = 1f },
             };
-            if (create is not null) kids.Add(create);
+            // The hover-revealed ⋯ goes BEFORE the "+": at rest an invisible ⋯ between them read as a hole beside the chevron.
             if (more is not null) kids.Add(more);
+            if (create is not null) kids.Add(create);
             if (onToggle is not null) kids.Add(chevron ?? Icon(open ? Icons.ChevronUp : Icons.ChevronDown, 12f, Tok.TextSecondary));
             Action? click = null;
             if (onToggle is { } toggle) click = () => toggle(!open);

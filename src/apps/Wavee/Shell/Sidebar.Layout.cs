@@ -626,9 +626,6 @@ public sealed record SidebarLayoutDoc(
     public SidebarSection? Find(string? id)
         => SidebarCatalogue.TryKindOf(id, out var kind) ? Find(kind) : null;
 
-    /// <summary>The footer's Settings row is shown.</summary>
-    public bool ShowsSettings => Find(SidebarSectionKind.Settings) is { Hidden: false };
-
     /// <summary>True when <paramref name="other"/> is this document with only sections' <see cref="SidebarSection.Collapsed"/>
     /// changed: a collapse adds or removes a section's rows, which the plan's row diff sees, but changes nothing a row that
     /// is still there draws (its header's chevron aside, which the caller re-skins).</summary>

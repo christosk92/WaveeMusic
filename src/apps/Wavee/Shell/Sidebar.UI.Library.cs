@@ -71,7 +71,6 @@ public static partial class Sidebar
                 CommitReorder = s.CommitReorder,
                 ActivateFolder = s.ActivateFolder,
                 DisclosesFoldersInline = s.DisclosesFoldersInline,
-                ShowsSettings = static () => Doc.ShowsSettings,
                 OnEdgeNavigate = s.OnListEdge,
                 PillOnRowChanged = s.NotePillOnRow,
                 OpenSearch = s.OpenSearch,

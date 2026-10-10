@@ -189,7 +189,6 @@ public static partial class Sidebar
                 ScrollKeyPrefix = "sidebar.classic",
                 Document = static () => { _ = LayoutVersion.Value; return Doc; },
                 OnCreatePlaylist = PaneView.CreatePlaylistFlow,
-                ShowsSettings = static () => Doc.ShowsSettings,
             }, DepKey.Empty);
             return Embed.Comp(() => new PaneView(config, _inDrawer));
         }
@@ -223,8 +222,6 @@ public static partial class Sidebar
         public Func<SidebarSectionKind, int, int, int>? ClampReorderSlot { get; init; }
         public Action<PaneReorder>? CommitReorder { get; init; }
         public Action? OnCreatePlaylist { get; init; }
-        /// <summary>Whether the pane footer shows the Settings row (null ⇒ shown). The ⋯ is always there.</summary>
-        public Func<bool>? ShowsSettings { get; init; }
         /// <summary>Arrow navigation ran off an END of the list (−1 above the first row, +1 below the last). Return true when
         /// the mode took focus (Library: Up from the first row lands on the page dropdown, design V.11).</summary>
         public Func<int, bool>? OnEdgeNavigate { get; init; }
@@ -264,7 +261,7 @@ public static partial class Sidebar
     {
         public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f);
         public const float PaneInsetH = SidebarRowGeometry.PaneEdge * 2f;
-        /// <summary>A band above the list whose content starts at the header text's x (pane 16).</summary>
+        /// <summary>A band above the list whose content starts at the header text's x (pane 14).</summary>
         public static readonly Edges4 HeadBandInset = new(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX, 0f,
                                                           SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TrailingPad, 0f);
         public const float EmptyHintHeight = SidebarRowGeometry.EmptyHintHeight;
@@ -322,7 +319,6 @@ public static partial class Sidebar
         // reads only fields that never change after mount (the layout, the count signal, the controller, `this`).
         Element? _paddedList;
         Element? _dragPeekWatcher;
-        Element? _footer;
         /// <summary>The pane's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
         readonly Prop<float> _expandedWidth = Prop.Of(static () => Sidebar.Width.Value);
 
@@ -372,8 +368,6 @@ public static partial class Sidebar
         /// <summary>The keyboard-current row's key, captured on the edit edge while the list is still mounted.</summary>
         string? _editReturnKey;
         bool _restoreAfterEdit;
-        /// <summary>The footer's ⋯ node (<c>PaneFooter</c> registers it), the focus fallback after Edit.</summary>
-        internal NodeHandle _footerMore;
         readonly HashSet<string> _selBefore = new(StringComparer.Ordinal);
 
         /// <summary>DRAG PEEK — a transient expansion of a collapsed pane for one drag (never a write to Collapsed).</summary>
@@ -525,7 +519,7 @@ public static partial class Sidebar
                 {
                     int at = key is null ? -1 : IndexOfRowKey(key);
                     if (at >= 0) _listController.FocusItem(at);   // current + into view + keyboard focus
-                    else FocusFooterMore();                       // the row is gone (or focus was never in the list)
+                    else if (Plan.Rows.Count > 0) _listController.FocusItem(0);   // the row is gone: the first row
                 });
             }, DepKey.From(editing ? 1 : 0));
 
@@ -577,29 +571,23 @@ public static partial class Sidebar
 
         // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head and footer.</summary>
+        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head.</summary>
         static readonly BoxEl s_railSpacer = new() { Key = "empty", Grow = 1f };
 
-        /// <summary>The layer's children, top to bottom: the mode head, the body (the padded list or the empty hint) and the
-        /// footer, which sits outside the scroller. Nulls are skipped.</summary>
+        /// <summary>The layer's children, top to bottom: the mode head and the body (the padded list or the empty hint). There
+        /// is no footer: Settings lives in the profile menu and the palette, the pane menu on the pane's right-click.</summary>
         Element[] PaneChildren(int rows, bool compact, bool editing)
         {
-            // Edit mode (expanded only) swaps the head, the list and the footer for the Outline; the list is unmounted and its
-            // state stays with its element (§P4.5).
+            // Edit mode (expanded only) swaps the head and the list for the Outline; the list is unmounted and its state stays
+            // with its element (§P4.5).
             if (editing && !compact) return [_editPane ??= Embed.Comp(() => new EditPane(this)) with { Key = "edit-pane" }];
             Element? modeHead = Config.Head?.Invoke();
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
             // its CountSignal — so a re-render hands the reconciler the same element and it writes nothing.
-            // The rail has no room for the empty hint: an empty rail is just its head and footer.
+            // The rail has no room for the empty hint: an empty rail is just its head.
             Element body = rows == 0 ? (compact ? s_railSpacer : EmptyPane()) : (_paddedList ??= PaddedList());
-            Element footer = _footer ??= Embed.Comp(() => new PaneFooter(this)) with { Key = "pane-footer" };
-            var kids = new Element[modeHead is null ? 2 : 3];
-            int k = 0;
-            if (modeHead is { } mh) kids[k++] = mh;
-            kids[k++] = body;
-            kids[k] = footer;
-            return kids;
+            return modeHead is { } mh ? [mh, body] : [body];
         }
 
         /// <summary>The plan row whose key is <paramref name="key"/>, or −1.</summary>
@@ -608,12 +596,6 @@ public static partial class Sidebar
             var rows = Plan.Rows;
             for (int i = 0; i < rows.Count; i++) if (string.Equals(rows[i].Key, key, StringComparison.Ordinal)) return i;
             return -1;
-        }
-
-        /// <summary>The footer's ⋯ (the Edit entry most pointer users came from). <c>PaneFooter</c> registers its node here.</summary>
-        internal void FocusFooterMore()
-        {
-            if (!_footerMore.IsNull) _hooks?.FocusNode?.Invoke(_footerMore, true);
         }
 
         /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>

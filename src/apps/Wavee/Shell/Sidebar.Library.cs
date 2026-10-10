@@ -38,8 +38,8 @@ public static class SidebarLibraryHeadRules
     public const float ToolbarHeight = 40f;
     public const float ToolbarControl = 32f;
     public const float RuleHeight = 1f;
-    /// <summary>The dropdown title's x in pane space (design P.2a: "at the header's x = 16") and its 8-px hit inset.</summary>
-    public const float TitleX = 16f;
+    /// <summary>The dropdown title's x in pane space (design P.2a: "at the header's x", pane 14) and its 8-px hit inset.</summary>
+    public const float TitleX = SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX;
     public const float TitleHitInset = 8f;
     public const float TitleChevron = 10f;
     /// <summary>The chip row's and the toolbar's lead/trail inset in pane space (the chips' first edge sits under the title).</summary>
