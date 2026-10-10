@@ -20,6 +20,30 @@ public sealed class SidebarDisclosuresTests
     }
 
     [Fact]
+    public void AnyFolder_sees_only_folder_disclosures()
+    {
+        var d = new SidebarDisclosures();
+        Assert.False(d.AnyFolder());
+        d.Start("section:pinned", "pinned", folder: false, open: false);
+        Assert.False(d.AnyFolder());
+        d.Start("folder:f1", "f1", folder: true, open: true);
+        Assert.True(d.AnyFolder());
+        d.Settled("folder:f1");
+        Assert.False(d.AnyFolder());
+    }
+
+    [Fact]
+    public void SectionIds_lists_the_section_disclosures_in_flight()
+    {
+        var d = new SidebarDisclosures();
+        Assert.Empty(d.SectionIds());
+        d.Start("section:pinned", "pinned", folder: false, open: false);
+        d.Start("folder:f1", "f1", folder: true, open: true);
+        d.Start("section:playlists", "playlists", folder: false, open: true);
+        Assert.Equal(new[] { "pinned", "playlists" }, d.SectionIds());
+    }
+
+    [Fact]
     public void TheSameDirectionAgainIsIgnored()
     {
         var d = new SidebarDisclosures();

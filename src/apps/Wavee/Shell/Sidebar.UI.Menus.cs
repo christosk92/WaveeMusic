@@ -171,8 +171,15 @@ public static partial class Sidebar
                     Dispatch(new SetSectionLimit(layout, sectionId, int.Parse(r.Arg, CultureInfo.InvariantCulture)));
                     break;
                 case SidebarMenuAction.ShowItem when sectionId is not null: Dispatch(new SetItemShown(layout, sectionId, r.Arg, true)); break;
-                case SidebarMenuAction.Collapse when sectionId is not null: Dispatch(new SetSectionCollapsed(layout, sectionId, true)); break;
-                case SidebarMenuAction.Expand when sectionId is not null: Dispatch(new SetSectionCollapsed(layout, sectionId, false)); break;
+                // From a header menu the pane is at hand: the toggle runs the same choreography as a click.
+                case SidebarMenuAction.Collapse when sectionId is not null:
+                    if (pane is not null) pane.SetSectionDirection(sectionId, true);
+                    else Dispatch(new SetSectionCollapsed(layout, sectionId, true));
+                    break;
+                case SidebarMenuAction.Expand when sectionId is not null:
+                    if (pane is not null) pane.SetSectionDirection(sectionId, false);
+                    else Dispatch(new SetSectionCollapsed(layout, sectionId, false));
+                    break;
                 case SidebarMenuAction.MoveUp when sectionId is not null: MoveBy(layout, sectionId, r.Arg, -1); break;
                 case SidebarMenuAction.MoveDown when sectionId is not null: MoveBy(layout, sectionId, r.Arg, +1); break;
                 case SidebarMenuAction.HideSection when (r.Arg.Length > 0 ? r.Arg : sectionId) is { } hideId:

@@ -7,6 +7,7 @@
 //
 // Engine-free; it allocates only per user edit (never per frame), so Wavee.Tests pins every decision here.
 
+using System;
 using System.Collections.Generic;
 
 namespace Wavee;
@@ -770,4 +771,144 @@ public static class SidebarPinStateRules
         SidebarEntryKind.Show => "nav.show",          // "Podcast": IsAudiobook is not known before hydration either
         _ => null,
     };
+}
+
+/// <summary>The key-matched MOTION a section toggle or a pin move owes the rows it displaces (S2d, S3, J2). A collapse
+/// commits its rows' removal and the planner's dedupe (a pin returning to Playlists, or leaving it) edits rows OUTSIDE the
+/// band in the same publish; the reveal band animates only its own rows, so every other edit would snap. This turns the
+/// publish into the ordered edit script (<see cref="Sidebar.PlanDiff.Splices"/>) plus one seed per row: an inserted row
+/// outside the bands fades in, and a surviving row glides from where the user saw it (a FLIP start of
+/// <c>removed extents above it - inserted extents above it</c>). Rows INSIDE a band are never seeded - the band presents
+/// them - and band extents are never part of a glide, for the same reason.
+/// <para>Scroll: a header-driven toggle or a row-driven pin has its trigger on screen (section headers are not sticky), so
+/// every edit it makes lies at or below the trigger - below the scroll anchor - and needs no offset correction. A pin from
+/// a scrolled Playlists row inserts above the viewport; the seeds then move only the rows the user saw move.</para>
+/// Pure: Wavee.Tests pins it over planner-built rows (<c>SidebarDedupeMotionTests</c>).</summary>
+public static class SidebarDedupeMotion
+{
+    /// <summary>One row's start: the FLIP translate (DIP, y) it begins at, and whether it fades in.</summary>
+    public readonly record struct Seed(float Dy, bool Fade);
+
+    /// <summary>The ids of the sections whose Collapsed flag differs between the documents, by index (the same rule the
+    /// pane's header re-skin uses). Empty when none flipped.</summary>
+    public static List<string> FlippedSections(SidebarLayoutDoc oldDoc, SidebarLayoutDoc newDoc)
+    {
+        var flipped = new List<string>(2);
+        var a = oldDoc.Sections;
+        var b = newDoc.Sections;
+        for (int i = 0; i < b.Count && i < a.Count; i++)
+            if (a[i].Collapsed != b[i].Collapsed) flipped.Add(b[i].Id);
+        return flipped;
+    }
+
+    /// <summary>Did the PINNED section's rows gain or lose a key - a pin or an unpin? A pure reorder (the same keys in a
+    /// new order) is not one: the drag's own displacement choreography owns it.</summary>
+    public static bool PinnedKeysChanged(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarRow> newRows)
+    {
+        string pinned = SidebarCatalogue.IdOf(SidebarSectionKind.Pinned);
+        var oldKeys = new List<string>(8);
+        var newKeys = new List<string>(8);
+        for (int i = 0; i < oldRows.Count; i++)
+            if (string.Equals(oldRows[i].SectionId, pinned, StringComparison.Ordinal)) oldKeys.Add(oldRows[i].Key);
+        for (int i = 0; i < newRows.Count; i++)
+            if (string.Equals(newRows[i].SectionId, pinned, StringComparison.Ordinal)) newKeys.Add(newRows[i].Key);
+        if (oldKeys.Count != newKeys.Count) return true;
+        var set = new HashSet<string>(oldKeys, StringComparer.Ordinal);
+        for (int i = 0; i < newKeys.Count; i++)
+            if (!set.Contains(newKeys[i])) return true;
+        return false;   // the same keys (in whatever order): nothing was pinned or unpinned
+    }
+
+    /// <summary>Every section the publish flipped was toggled through the pane's disclosure channel (and at least one
+    /// flipped): only then does a collapse-only publish take the key-matched path.</summary>
+    public static bool FlippedSectionsAll(SidebarLayoutDoc oldDoc, SidebarLayoutDoc newDoc, HashSet<string> choreographed)
+    {
+        var flipped = FlippedSections(oldDoc, newDoc);
+        if (flipped.Count == 0) return false;
+        for (int i = 0; i < flipped.Count; i++)
+            if (!choreographed.Contains(flipped[i])) return false;
+        return true;
+    }
+
+    /// <summary>The whole job of a keyed publish: the edit script from <paramref name="oldRows"/> to
+    /// <paramref name="newRows"/> and the seeds. The bands are the flipped sections' body ranges (the old range read from
+    /// the OLD rows, the new from the new ones) plus every section disclosure still in flight (<paramref name="inFlightSections"/>).
+    /// <paramref name="oldExtentOf"/> reads the pre-swap layout (index in the OLD rows), <paramref name="newExtentOf"/> the
+    /// analytic extent of a new row.</summary>
+    public static Dictionary<int, Seed> ForPublish(
+        SidebarLayoutDoc oldDoc, SidebarLayoutDoc newDoc,
+        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarRow> newRows,
+        IReadOnlyList<string> inFlightSections,
+        Func<int, float> oldExtentOf, Func<int, float> newExtentOf,
+        out List<(int At, int Removed, int Inserted)> splices)
+    {
+        splices = Sidebar.PlanDiff.Splices(oldRows, newRows);
+        var ids = FlippedSections(oldDoc, newDoc);
+        for (int i = 0; i < inFlightSections.Count; i++)
+            if (!ids.Contains(inFlightSections[i])) ids.Add(inFlightSections[i]);
+        var oldBands = new List<(int First, int Count)>(ids.Count);
+        var newBands = new List<(int First, int Count)>(ids.Count);
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (SidebarRowGeometry.TrySectionBodyRange(oldRows, ids[i], out int of, out int oc)) oldBands.Add((of, oc));
+            if (SidebarRowGeometry.TrySectionBodyRange(newRows, ids[i], out int nf, out int nc)) newBands.Add((nf, nc));
+        }
+        return Seeds(splices, oldBands, newBands, oldExtentOf, newExtentOf, newRows.Count);
+    }
+
+    /// <summary>One walk over the splices with two running sums: the old extents of the rows REMOVED above, and the new
+    /// extents of the rows INSERTED above, both outside the bands. A row inserted outside the bands fades in; a survivor
+    /// outside them starts <c>removedAbove - insertedAbove</c> from where it now lies (when at least half a DIP). A
+    /// non-finite extent for an inserted row answers an empty map: no motion, never a wrong one.</summary>
+    public static Dictionary<int, Seed> Seeds(
+        IReadOnlyList<(int At, int Removed, int Inserted)> splices,
+        IReadOnlyList<(int First, int Count)> oldBands, IReadOnlyList<(int First, int Count)> newBands,
+        Func<int, float> oldExtentOf, Func<int, float> newExtentOf, int newCount)
+    {
+        var seeds = new Dictionary<int, Seed>();
+        double removedAbove = 0.0, insertedAbove = 0.0;
+        int next = 0, sumRemoved = 0, sumInserted = 0;
+        void Survivors(int end)
+        {
+            end = Math.Min(end, newCount);
+            float dy = (float)(removedAbove - insertedAbove);
+            if (MathF.Abs(dy) < 0.5f) return;
+            for (int i = next; i < end; i++)
+                if (!InBands(newBands, i)) seeds[i] = new Seed(dy, false);
+        }
+        for (int s = 0; s < splices.Count; s++)
+        {
+            var (at, removed, inserted) = splices[s];
+            Survivors(at);
+            int oldStart = at - sumInserted + sumRemoved;
+            for (int r = 0; r < removed; r++)
+            {
+                int oldIndex = oldStart + r;
+                if (InBands(oldBands, oldIndex)) continue;
+                float e = oldExtentOf(oldIndex);
+                if (float.IsFinite(e)) removedAbove += e;
+            }
+            for (int k = 0; k < inserted; k++)
+            {
+                int newIndex = at + k;
+                if (InBands(newBands, newIndex)) continue;
+                float e = newExtentOf(newIndex);
+                if (!float.IsFinite(e)) return new Dictionary<int, Seed>();
+                insertedAbove += e;
+                seeds[newIndex] = new Seed(0f, true);
+            }
+            next = at + inserted;
+            sumRemoved += removed;
+            sumInserted += inserted;
+        }
+        Survivors(newCount);
+        return seeds;
+    }
+
+    static bool InBands(IReadOnlyList<(int First, int Count)> bands, int index)
+    {
+        for (int i = 0; i < bands.Count; i++)
+            if (index >= bands[i].First && index < bands[i].First + bands[i].Count) return true;
+        return false;
+    }
 }
