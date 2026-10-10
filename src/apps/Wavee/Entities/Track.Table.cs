@@ -306,6 +306,14 @@ public readonly partial struct Track
         public Func<Element?>? ContentFilterBar { get; init; }
         /// <summary>48 when present.</summary>
         public float ContentFilterExtent { get; init; }
+        /// <summary>The chip rail lives INSIDE the command bar (Liked Songs' one bar) instead of stacking as its own row: the
+        /// chrome and the shimmer treat the stacked extent as 0 and the bar mounts <see cref="ContentFilterBar"/> in its chip
+        /// slot (or in "…" as "Genre ▸" when the width evicts it). The bar shows the slot only while
+        /// <see cref="ContentFilterBar"/> is non-null.</summary>
+        public bool ContentFilterInBar { get; init; }
+        /// <summary>The chip set as plain data (titles in order, and how many of them have evidence - the rest are disabled): what
+        /// the bar's "…" lists as "Genre ▸" when the width evicts the rail. Late-bound, like every seam; not part of equality.</summary>
+        public Func<(string[] Titles, int Evidenced)>? ContentFilterSet { get; init; }
         /// <summary>Liked lens header.</summary>
         public Func<Element?>? LensHeader { get; init; }
         /// <summary>36 when present.</summary>
@@ -341,9 +349,9 @@ public readonly partial struct Track
             => other is not null && (ReferenceEquals(this, other)
                || (Config.Equals(other.Config) && DefaultSort.Equals(other.DefaultSort)
                    && ContentFilterExtent == other.ContentFilterExtent && LensExtent == other.LensExtent
-                   && Seams == other.Seams));
+                   && ContentFilterInBar == other.ContentFilterInBar && Seams == other.Seams));
 
-        public override int GetHashCode() => HashCode.Combine(Config, DefaultSort, ContentFilterExtent, LensExtent, Seams);
+        public override int GetHashCode() => HashCode.Combine(Config, DefaultSort, ContentFilterExtent, LensExtent, Seams, ContentFilterInBar);
     }
 
     public sealed record TableArgs
@@ -422,6 +430,7 @@ public readonly partial struct Track
         {
             _latest = (TableArgs)props;
             _insightsLive.SetIfChanged(_latest.InsightsLive);
+            _chipsInBar.SetIfChanged(_latest.Profile.ContentFilterInBar && _latest.Profile.ContentFilterBar is not null);
             _args.SetIfChanged(_latest);
         }
 
@@ -1010,7 +1019,7 @@ public readonly partial struct Track
 
             if (args.PlayAllCell is { Length: > 0 } cell) cell[0] = _playAll;
 
-            Element? chips = P.ContentFilterBar?.Invoke();
+            Element? chips = P.ContentFilterInBar ? null : P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
             float extent = (chips is not null ? P.ContentFilterExtent : 0f) + (lens is not null ? P.LensExtent : 0f);
             float stickyInset = Detail.VerticalLayout.StickyClipInset(extent, TableRules.HeaderHeightFor(shape.Set.Classic));
@@ -1443,7 +1452,7 @@ public readonly partial struct Track
         {
             _ = _args.Value;   // a recycled bound item: subscribe to the props its chips/lens builders read (see HeroItem)
             var shape = _shape!.Value;
-            Element? chips = P.ContentFilterBar?.Invoke();
+            Element? chips = P.ContentFilterInBar ? null : P.ContentFilterBar?.Invoke();
             Element? lens = P.LensHeader?.Invoke();
             float floor = Detail.VerticalLayout.BandFloor;
             return Chrome(in shape, chips, lens).Sticky(floor, TableScope, engaged: _compactInteractive);

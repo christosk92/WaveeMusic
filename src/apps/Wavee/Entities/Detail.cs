@@ -104,6 +104,13 @@ public static partial class Detail
             return dipped < prev ? dipped : prev;
         }
 
+        /// <summary>Whether a TRACK page always renders the vertical (hero-system) arm whatever the width: the Hero page layout
+        /// forces it for every track page, and a page with a <see cref="Config.SlimHead"/> (Liked Songs) forces it always -
+        /// it has one layout and no rail. Pure: album and playlist still honour <paramref name="pageLayout"/>
+        /// (<see cref="VerticalLayout.PageAuto"/> / <see cref="VerticalLayout.PageHero"/>).</summary>
+        public static bool ForcesVertical(in Config cfg, int pageLayout)
+            => cfg.Content == DetailContent.Tracks && (pageLayout == VerticalLayout.PageHero || cfg.SlimHead);
+
         public const int VerticalMode = 3;
         public const float VerticalEnterW = 540f;
         public const float VerticalExitW = 580f;
@@ -614,6 +621,15 @@ public static partial class Detail
             => HeroBandHeight(colW, rowFlow,
                 TitleTypeFor(colW, rowFlow, title, eyebrow, attribution, meta, pulse, chart, actionLines),
                 eyebrow, attribution, meta, description, pulse, chart, actionLines);
+
+        /// <summary>The SLIM head's whole expanded band (<see cref="Config.SlimHead"/>, Liked Songs): the head-top strip, the title
+        /// line and its gap to the meta (outside Zune only - under Zune the Library pivot names the page), the meta line, the
+        /// gap to the bar, the 44-DIP bar and its bottom pad. It depends on the route kind and the PRESENTED nav style only,
+        /// never on the width or on data: the meta line is reserved from the first frame (its shimmer is the same height) and
+        /// the bar is a constant 44 at every width, so nothing arriving later moves the rows below.</summary>
+        public static float SlimHeadHeight(bool zune)
+            => PageGeometry.HeadTop + (zune ? 0f : PageGeometry.TitleLine + PageGeometry.TitleToMeta)
+             + PageGeometry.MetaLine + PageGeometry.HeadToViews + ToolbarRowHeight + ExpandedToolbarBottomPad;
 
         /// <summary>Scroll distance over which the expanded hero becomes the 56-DIP band.</summary>
         public static float CollapseDistance(float expandedHeight)
@@ -1585,7 +1601,10 @@ public static partial class Detail
         bool ShowVersions = false,      // the expand chevron + versions drawer
         bool PlaysColumnOptIn = false,  // the Plays column is a user opt-in here (NOT album semantics)
         RailScope RailScope = RailScope.Album,
-        bool RailResizable = true)
+        bool RailResizable = true,
+        bool SlimHead = false,          // Liked: ONE layout (always the vertical arm, no rail) under a slim head: title, meta, one bar
+        bool HoverHeart = false,        // the row's heart is revealed on hover (read in P14)
+        bool PlainRows = false)         // rows carry no extra lanes beyond the approved list (read in P14)
     {
         public static Config Playlist => new(
             Kind: DetailKind.Playlist, TwoColumn: true, RailWidth: Design.Size.RailPlaylist, Badges: BadgeStyle.OwnerRow,
@@ -1612,7 +1631,7 @@ public static partial class Detail
             ShowArtThumb: true, ShowAlbumColumn: true,
             Selection: ItemsSelectionMode.Extended, HasTrailing: false, Heart: HeartMode.None, ShowTrackArtist: true,
             ShowTempo: true, ShowVersions: true, PlaysColumnOptIn: true,
-            RailScope: RailScope.Liked);
+            RailScope: RailScope.Liked, SlimHead: true, HoverHeart: true, PlainRows: true);
 
         /// <summary>A podcast show: the album-style rail with EPISODES in the right column.</summary>
         public static Config Show => new(

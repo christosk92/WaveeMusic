@@ -60,6 +60,7 @@ versions separately under `v*` and is not tracked in this file.)
 - Zune: lyrics, the queue and now playing open as a full-height panel beside the page; the navigation band stays with the page.
 - Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle, Save, Share and More).
 - Album and playlist song lists: the toolbar holds only list tools (sort, find, Insights and More, which now has Select, Row size and Columns).
+- Liked Songs has a new, simpler page: one toolbar with Play, Shuffle, genre filters, sort, find and Insights, and no side column.
 
 ### Removed
 

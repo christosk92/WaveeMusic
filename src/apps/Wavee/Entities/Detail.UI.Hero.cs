@@ -127,6 +127,9 @@ public static partial class Detail
     /// null-title plan (a one-line title at the fluid cap).</summary>
     public static float HeroBandHeight(VerticalSpec spec, float columnWidth)
     {
+        // The slim head's band is a function of the PRESENTED nav style alone (VerticalLayout.SlimHeadHeight), never of the
+        // width or the data.
+        if (spec.Config.SlimHead) return VerticalLayout.SlimHeadHeight(Shell.Ui.PresentedNavStyle.Peek() == ShellNavStyle.Zune);
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
         bool rowFlow = VerticalLayout.RowFlow(w);
         float bw = VerticalLayout.BucketW(w);
@@ -218,126 +221,135 @@ public static partial class Detail
 
             bool compactCanHit = parts.CompactInteractive.Value;   // subscribe: the stuck edge moves input ownership
 
-            // ── geometry: the flow off the raw width (hysteretic), everything else off ONE bucketed width ──
             float availW = parts.ColumnWidth > 0f ? parts.ColumnWidth : VerticalLayout.FallbackW;
-            _rowFlow = VerticalLayout.RowFlow(availW, _rowFlow, _flowInit);
-            if (parts.ColumnWidth > 0f) _flowInit = true;
-            bool rowFlow = _rowFlow;
-            float bw = VerticalLayout.BucketW(availW);
-            float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
-            float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
-            float art = VerticalLayout.ArtworkFor(bw, rowFlow);
-            float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
-            int descLines = VerticalLayout.DescriptionMaxLines(rowFlow);
-            float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
-            // Unmeasured asks the 256 bucket the preview/skeleton already resolved (a cache hit, not a guess).
-            int decodePx = VerticalLayout.ArtworkDecodePx(art, _boundsSeen);
-            ColorF accent = spec.Accent();
-            var f = FlagsOf(spec);
+            Element expanded;
+            if (cfg.SlimHead)
+            {
+                // Liked Songs: the slim head - title (outside Zune), meta, ONE bar. No artwork, rule, description or flow.
+                expanded = SlimExpanded(id, parts, Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune, _measure);
+            }
+            else
+            {
+                // ── geometry: the flow off the raw width (hysteretic), everything else off ONE bucketed width ──
+                _rowFlow = VerticalLayout.RowFlow(availW, _rowFlow, _flowInit);
+                if (parts.ColumnWidth > 0f) _flowInit = true;
+                bool rowFlow = _rowFlow;
+                float bw = VerticalLayout.BucketW(availW);
+                float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
+                float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
+                float art = VerticalLayout.ArtworkFor(bw, rowFlow);
+                float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
+                int descLines = VerticalLayout.DescriptionMaxLines(rowFlow);
+                float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
+                // Unmeasured asks the 256 bucket the preview/skeleton already resolved (a cache hit, not a guess).
+                int decodePx = VerticalLayout.ArtworkDecodePx(art, _boundsSeen);
+                ColorF accent = spec.Accent();
+                var f = FlagsOf(spec);
 
-            // The action row's LINES at this width: the one rule the skeleton and the pre-measure band read too, so the
-            // title budget, the identity gap and the reserved height all charge the row the hero actually draws.
-            int actionLines = VerticalLayout.ActionRowLinesFor(bw, rowFlow, acts.HasPlaySplit);
+                // The action row's LINES at this width: the one rule the skeleton and the pre-measure band read too, so the
+                // title budget, the identity gap and the reserved height all charge the row the hero actually draws.
+                int actionLines = VerticalLayout.ActionRowLinesFor(bw, rowFlow, acts.HasPlaySplit);
 
-            // ── the title TYPE PLAN: ONE size per (bucketed width, title), drawn exactly (no auto-fit, no hysteresis) ──
-            var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
-                eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart,
-                actionLines: actionLines);
+                // ── the title TYPE PLAN: ONE size per (bucketed width, title), drawn exactly (no auto-fit, no hysteresis) ──
+                var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
+                    eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart,
+                    actionLines: actionLines);
 
-            // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
-            var blocks = new List<Element>(10);
-            if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", EyebrowRun(id.Eyebrow), late: true));
-            blocks.Add(Block("hero-title", slots.Title is { } editTitle
-                ? editTitle(plan.Size, float.NaN)
-                : Design.Type.DetailHero(id.Title) with
+                // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
+                var blocks = new List<Element>(10);
+                if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", EyebrowRun(id.Eyebrow), late: true));
+                blocks.Add(Block("hero-title", slots.Title is { } editTitle
+                    ? editTitle(plan.Size, float.NaN)
+                    : Design.Type.DetailHero(id.Title) with
+                    {
+                        Size = plan.Size, Weight = 600,
+                        // CLEARED: the natural line box of the size drawn (the plan's LineHeight is that same number).
+                        LineHeight = float.NaN,
+                        Width = plan.WrapWidth, MaxWidth = plan.WrapWidth,
+                        // WRAPS freely: the cap is the pathological-length guard, never the plan's line count.
+                        Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap,
+                        Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary,
+                    }));
+                blocks.Add(Block("hero-rule", Controls.AccentRule(accent)));
+                if (f.Attribution) blocks.Add(Block("hero-attribution", HeroAttribution(id, slots, contentW, accent), late: true));
+                if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
+                if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
+                if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
+                blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, VerticalLayout.LabelledShuffleFits(bw, rowFlow))));
+
+                // The description is no longer a row of the identity column: it is the padded box's second child, after
+                // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
+                Element? description = null;
+                if (id.EditableMetadata && slots.Description is { } editDescription)
+                    description = editDescription(descW);
+                else if (id.DescriptionHtml is { Length: > 0 } html)
+                    // Clamped with the inline "… More" the engine shows only when the body overflows, and the whole text on
+                    // hover while collapsed (fullTextTip).
+                    description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, descW, descLines,
+                                                              id.Subject.Text, s_navRoute, fullTextTip: true);
+
+                float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
+                    f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines);
+
+                // AlignItems Stretch (+ a definite width when stacked) is load-bearing: the action row WRAPS, and a wrap
+                // needs a definite width to wrap against.
+                Element identity = new BoxEl
                 {
-                    Size = plan.Size, Weight = 600,
-                    // CLEARED: the natural line box of the size drawn (the plan's LineHeight is that same number).
-                    LineHeight = float.NaN,
-                    Width = plan.WrapWidth, MaxWidth = plan.WrapWidth,
-                    // WRAPS freely: the cap is the pathological-length guard, never the plan's line count.
-                    Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap,
-                    Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary,
-                }));
-            blocks.Add(Block("hero-rule", Controls.AccentRule(accent)));
-            if (f.Attribution) blocks.Add(Block("hero-attribution", HeroAttribution(id, slots, contentW, accent), late: true));
-            if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
-            if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
-            if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
-            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, VerticalLayout.LabelledShuffleFits(bw, rowFlow))));
+                    Direction = 1, Gap = identityGap, AlignItems = FlexAlign.Stretch,
+                    Width = rowFlow ? float.NaN : contentW,
+                    Grow = rowFlow ? 1f : 0f, Basis = rowFlow ? 0f : float.NaN, MinWidth = 0f,
+                    MinHeight = VerticalLayout.IdentityMinHeightFor(bw, rowFlow),
+                    Children = blocks.ToArray(),
+                };
 
-            // The description is no longer a row of the identity column: it is the padded box's second child, after
-            // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
-            Element? description = null;
-            if (id.EditableMetadata && slots.Description is { } editDescription)
-                description = editDescription(descW);
-            else if (id.DescriptionHtml is { Length: > 0 } html)
-                // Clamped with the inline "… More" the engine shows only when the body overflows, and the whole text on
-                // hover while collapsed (fullTextTip).
-                description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, descW, descLines,
-                                                          id.Subject.Text, s_navRoute, fullTextTip: true);
+                // The page's ANCHOR: no entrance, no morph. The bounds tween grows from the top-left so the cover's corner
+                // stays pinned to the title's top across a resize.
+                Element artwork = ClickableCover(new BoxEl
+                {
+                    Width = art, Height = art, Shrink = 0f,
+                    Corners = CornerRadius4.All(Radii.Card), Shadow = Elevation.Card, ClipToBounds = true,
+                    Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
+                    Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
+                    Children = [slots.Cover?.Invoke(art)
+                        ?? Controls.Artwork(id.CoverUrl, art, art, Radii.Card, decodePx: decodePx, saturation: 1.18f)],
+                }, acts.CoverClick);
 
-            float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines);
+                // Stacked ↔ row is the SAME two children in the same order: the reflow animates as one gesture.
+                Element hero = new BoxEl
+                {
+                    Direction = rowFlow ? (byte)0 : (byte)1, Gap = gap, AlignItems = FlexAlign.Start,
+                    Animate = HeroReflowMotion,
+                    Children = [artwork, identity],
+                };
 
-            // AlignItems Stretch (+ a definite width when stacked) is load-bearing: the action row WRAPS, and a wrap
-            // needs a definite width to wrap against.
-            Element identity = new BoxEl
-            {
-                Direction = 1, Gap = identityGap, AlignItems = FlexAlign.Stretch,
-                Width = rowFlow ? float.NaN : contentW,
-                Grow = rowFlow ? 1f : 0f, Basis = rowFlow ? 0f : float.NaN, MinWidth = 0f,
-                MinHeight = VerticalLayout.IdentityMinHeightFor(bw, rowFlow),
-                Children = blocks.ToArray(),
-            };
-
-            // The page's ANCHOR: no entrance, no morph. The bounds tween grows from the top-left so the cover's corner
-            // stays pinned to the title's top across a resize.
-            Element artwork = ClickableCover(new BoxEl
-            {
-                Width = art, Height = art, Shrink = 0f,
-                Corners = CornerRadius4.All(Radii.Card), Shadow = Elevation.Card, ClipToBounds = true,
-                Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
-                Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-                Children = [slots.Cover?.Invoke(art)
-                    ?? Controls.Artwork(id.CoverUrl, art, art, Radii.Card, decodePx: decodePx, saturation: 1.18f)],
-            }, acts.CoverClick);
-
-            // Stacked ↔ row is the SAME two children in the same order: the reflow animates as one gesture.
-            Element hero = new BoxEl
-            {
-                Direction = rowFlow ? (byte)0 : (byte)1, Gap = gap, AlignItems = FlexAlign.Start,
-                Animate = HeroReflowMotion,
-                Children = [artwork, identity],
-            };
-
-            Element expanded = new BoxEl
-            {
-                Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = _measure,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Animate = HeroReflowMotion,
-                        Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
-                        Children = description is null
-                            ? [hero]
-                            : [hero, Block("hero-description", description, late: true) with
-                                  { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }],
-                    },
-                    new BoxEl
-                    {
-                        Direction = 1,
-                        Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
-                                             parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                        // ── INSIGHTS SHEET (additive) ── the toolbar row IS the table's command bar: the sheet's toggle
-                        //    is one of its members (between the search and "…") when this page has facts
-                        //    (Detail.Insights.cs §6). This is the PRE-STUCK half of the control: once the hero collapses
-                        //    the pinned band's word (§7) is the reachable one.
-                        Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
-                    },
-                ],
-            };
+                expanded = new BoxEl
+                {
+                    Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = _measure,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Animate = HeroReflowMotion,
+                            Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
+                            Children = description is null
+                                ? [hero]
+                                : [hero, Block("hero-description", description, late: true) with
+                                      { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }],
+                        },
+                        new BoxEl
+                        {
+                            Direction = 1,
+                            Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
+                                                 parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+                            // ── INSIGHTS SHEET (additive) ── the toolbar row IS the table's command bar: the sheet's toggle
+                            //    is one of its members (between the search and "…") when this page has facts
+                            //    (Detail.Insights.cs §6). This is the PRE-STUCK half of the control: once the hero collapses
+                            //    the pinned band's word (§7) is the reachable one.
+                            Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
+                        },
+                    ],
+                };
+            }
 
             // ── the STUCK BAND: typography only, NO fill (the offset model — the rows are clipped under it) ──
             float heroH = parts.HeroHeight > 1f ? parts.HeroHeight : HeroBandHeight(spec, availW);
@@ -410,6 +422,48 @@ public static partial class Detail
                 .Fade(VerticalLayout.ExpandedFadeStart(cd), cd, 1f, 0f);
             return ZStack(presentation, compact) with { Direction = 1 };
         }
+    }
+
+    /// <summary>The SLIM head's expanded presentation (<see cref="Config.SlimHead"/>): the head-top strip, then
+    /// <c>[title row · gap]</c> outside Zune, the meta line, the gap to the bar, the bar - exactly
+    /// <see cref="VerticalLayout.SlimHeadHeight"/>. The title block is ALWAYS mounted at its route-static height (56, or 0
+    /// under the presented Zune style), so the nav-style change animates its height (<see cref="PageHead.Reflow"/>, a real
+    /// layout tween the bar and rows below ride) while the title fades in place; the meta line is reserved (its shimmer is
+    /// the same 16), so data arriving later fills the slot instead of moving anything.</summary>
+    static Element SlimExpanded(Identity id, in HeroParts parts, bool zune, Action<RectF> measure)
+    {
+        Element titleBlock = new BoxEl
+        {
+            Key = "slim:title", Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true, Animate = PageHead.Reflow,
+            Height = zune ? 0f : PageGeometry.TitleLine + PageGeometry.TitleToMeta,
+            Children = zune
+                ? Array.Empty<Element>()
+                : new Element[]
+                {
+                    PageHead.TitleRow(id.Title, null) with
+                        { Key = "slim:title-row", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = PageHead.FadeMotion },
+                    Spacer(PageGeometry.TitleToMeta),
+                },
+        };
+        Element meta = (id.MetaLoading || id.Meta is not { Length: > 0 }
+            ? new BoxEl
+            {
+                Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                Children = [MetaLine(id, width: float.NaN, maxWidth: float.NaN, maxLines: 1)],
+            }
+            : PageHead.MetaSlot(id.Meta)) with { Key = "slim:meta" };
+        return new BoxEl
+        {
+            Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = measure,
+            Padding = new Edges4(parts.CompactLeft, PageGeometry.HeadTop, parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+            Children =
+            [
+                titleBlock,
+                meta,
+                Spacer(PageGeometry.HeadToViews),
+                parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight },
+            ],
+        };
     }
 
     /// <summary>A keyed identity block: a position-only FLIP always, a fade-up entrance when it can arrive late.</summary>
@@ -520,6 +574,7 @@ public static partial class Detail
     /// the engine's deriver paints the bars; a usable preview cover is painted for real (exempt from the deriver).</summary>
     public static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft)
     {
+        if (spec.Config.SlimHead) return SlimHeroSkeleton(compactLeft);
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
         bool rowFlow = VerticalLayout.RowFlow(w);
         float bw = VerticalLayout.BucketW(w);
@@ -598,6 +653,55 @@ public static partial class Detail
                     Children = [SkeletonToolbarRow()],
                 },
             ],
+        };
+    }
+
+    /// <summary>The slim head's reserved band: the title bar (outside Zune), the meta bar and the bar's pills, at the heights
+    /// <see cref="VerticalLayout.SlimHeadHeight"/> sums - so the swap to the loaded head moves nothing.</summary>
+    static Element SlimHeroSkeleton(float compactLeft)
+    {
+        bool zune = Shell.Ui.PresentedNavStyle.Peek() == ShellNavStyle.Zune;
+        var kids = new List<Element>(5);
+        if (!zune)
+        {
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Height = PageGeometry.TitleLine, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children = [Bar(200f, 32f)],
+            });
+            kids.Add(Spacer(PageGeometry.TitleToMeta));
+        }
+        kids.Add(new BoxEl
+        {
+            Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Children = [Bar(150f, 12f)],
+        });
+        kids.Add(Spacer(PageGeometry.HeadToViews));
+        kids.Add(new BoxEl
+        {
+            Direction = 1, Height = VerticalLayout.ToolbarRowHeight,
+            Padding = new Edges4(VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY,
+                                 VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
+                    Children =
+                    [
+                        ToolbarPill(ButtonRules.PlaySplitWidthNominal), ToolbarPill(Skeleton.ShuffleButtonWidth),
+                        new BoxEl { Grow = 1f, Height = 1f },
+                        ToolbarPill(Track.CommandBarLayout.SearchIconWidth),
+                    ],
+                },
+            ],
+        });
+        return new BoxEl
+        {
+            Key = "detail-skeleton:hero", Direction = 1,
+            MinHeight = VerticalLayout.SlimHeadHeight(zune),
+            Padding = new Edges4(compactLeft, PageGeometry.HeadTop, compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+            Children = kids.ToArray(),
         };
     }
 

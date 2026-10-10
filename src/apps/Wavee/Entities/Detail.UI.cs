@@ -715,7 +715,7 @@ public static partial class Detail
                 if (fit > mode) mode = fit;
             }
             // The Hero page layout forces the vertical SYSTEM for track pages only; _mode keeps tracking the real width.
-            if (cfg.Content == DetailContent.Tracks && pageLayout == Prefs.DetailHero.Hero)
+            if (Breakpoints.ForcesVertical(in cfg, pageLayout))
                 mode = Breakpoints.VerticalMode;
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
@@ -1940,7 +1940,7 @@ public static partial class Detail
     static EntityUri SaveTargetOf(Identity id) => id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
 
     /// <summary>Copy the page's web link with the confirmation toast — only when a clipboard seam exists.</summary>
-    static Action? ShareActionFor(Identity id)
+    internal static Action? ShareActionFor(Identity id)
     {
         if (id.ShareUrl is not { Length: > 0 } url) return null;
         return () =>

@@ -366,6 +366,50 @@ public class ControlsCtaTests
     }
 }
 
+public class ControlsChipToneTests
+{
+    [Fact]
+    public void The_neutral_chip_fills_with_primary_ink_and_picks_a_contrast_label()
+    {
+        var neutral = Controls.ChipStyle(Controls.ChipTone.Neutral);
+        Assert.Equal(Tok.TextPrimary, neutral.OnBackground);
+        Assert.Equal(ColorContrast.PickContrast(Tok.TextPrimary), neutral.OnForeground);
+    }
+
+    [Fact]
+    public void The_neutral_chip_outlines_its_off_state_and_never_wears_the_accent()
+    {
+        var neutral = Controls.ChipStyle(Controls.ChipTone.Neutral);
+        Assert.Equal(ColorF.Transparent, neutral.OffBackground);
+        Assert.Equal(Tok.StrokeControlDefault, neutral.OffBorder!.Value.Stops[0].Color);
+        Assert.NotEqual(Tok.AccentDefault, neutral.OnBackground);
+    }
+
+    [Fact]
+    public void The_accent_chip_is_unchanged()
+    {
+        var accent = Controls.ChipStyle(Controls.ChipTone.Accent);
+        var stock = Controls.AccentToggleStyle(Tok.AccentDefault);
+        Assert.Equal(Tok.AccentDefault, accent.OnBackground);
+        Assert.Equal(stock.OnForeground, accent.OnForeground);
+        Assert.Equal(stock.OffBackground, accent.OffBackground);
+        Assert.Equal(stock.OffBorder, accent.OffBorder);   // the stock ramp object, untouched
+        Assert.Equal(Radii.Full, accent.CornerRadius);
+        Assert.Equal(Controls.ChipHeight, accent.MinHeight);
+    }
+
+    [Fact]
+    public void Both_tones_share_the_capsule_geometry()
+    {
+        var a = Controls.ChipStyle(Controls.ChipTone.Accent);
+        var n = Controls.ChipStyle(Controls.ChipTone.Neutral);
+        Assert.Equal(a.CornerRadius, n.CornerRadius);
+        Assert.Equal(a.MinHeight, n.MinHeight);
+        Assert.Equal(a.Padding, n.Padding);
+        Assert.Equal(a.FontSize, n.FontSize);
+    }
+}
+
 [Collection(EntitiesCollection.Name)]
 public class ControlsArtUrlTests
 {

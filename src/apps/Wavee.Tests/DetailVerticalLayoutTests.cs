@@ -687,4 +687,25 @@ public class DetailVerticalLayoutTests
         Assert.Equal(56f, VerticalLayout.CollapseDistance(preMeasure, 0f) - VerticalLayout.CollapseDistance(preMeasure, 56f));
     }
 
+
+    // ── the slim head (Liked Songs) ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SlimHeadHeight_IsTheStripTheTitleTheMetaTheGapAndTheBar_AndTheTitleIsFiftySixOfIt()
+    {
+        float expected = 24f + 52f + 4f + 16f + 12f + VerticalLayout.ToolbarRowHeight + VerticalLayout.ExpandedToolbarBottomPad;
+        Assert.Equal(expected, VerticalLayout.SlimHeadHeight(zune: false));
+        // Under Zune the Library pivot names the page: the title line and its gap (52 + 4) are gone.
+        Assert.Equal(VerticalLayout.SlimHeadHeight(zune: false) - 56f, VerticalLayout.SlimHeadHeight(zune: true));
+        Assert.Equal(24f + 16f + 12f + VerticalLayout.ToolbarRowHeight + VerticalLayout.ExpandedToolbarBottomPad,
+                     VerticalLayout.SlimHeadHeight(zune: true));
+    }
+
+    [Fact]
+    public void SlimHeadHeight_DependsOnTheNavStyleOnly_AndStaysAboveTheBandFloor()
+    {
+        // No width and no data parameter exists: a head cannot jump when the meta lands or the pane resizes.
+        Assert.True(VerticalLayout.SlimHeadHeight(zune: true) > VerticalLayout.BandFloor);
+        Assert.True(VerticalLayout.CollapseDistance(VerticalLayout.SlimHeadHeight(zune: true), VerticalLayout.BandFloor) >= 1f);
+    }
 }

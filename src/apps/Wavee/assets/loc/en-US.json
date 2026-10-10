@@ -188,6 +188,7 @@
       "local": "Local files",
       "allTracks": "All tracks",
       "allChip": "All",
+      "genre": "Genre",
       "activeCount": "{count} active filters",
       "noFiltersApplied": "No filters applied",
       "clearFilters": "Clear all filters",

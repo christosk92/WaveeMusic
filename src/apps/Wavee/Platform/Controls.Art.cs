@@ -567,22 +567,46 @@ public static partial class Controls
     /// <para>The selected value is entirely CALLER-owned (the live filter state), so this is <c>Controlled</c>: a click
     /// only invokes <paramref name="onClick"/> — the re-render that follows is what actually flips <paramref
     /// name="selected"/>.</para></summary>
-    public static Element Chip(string label, bool selected, bool available, Action? onClick)
+    public static Element Chip(string label, bool selected, bool available, Action? onClick, ChipTone tone = ChipTone.Accent)
         => ToggleButton.Controlled(label, selected, _ => onClick?.Invoke(),
-            style: AccentToggleStyle(Tok.AccentDefault) with
-            {
-                // The chip keeps its own capsule geometry — the 32/r4 ladder is for the labeled/icon button grammar,
-                // not this scrolling rail, which has always read as pills.
-                CornerRadius = Radii.Full,
-                MinHeight = ChipHeight,
-                Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
-                FontSize = ChipFontSize,
-                FocusVisualMargin = Design.FocusInsetBordered,
-            },
+            style: ChipStyle(tone),
             isEnabled: available, parts: RootNoShrink);
             // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
             // flex compresses every pill to fit the viewport and the labels ellipsise instead of the rail
             // overflowing, which is the opposite of what the scroller is for.
+
+    /// <summary>Which fill a SELECTED <see cref="Chip"/> wears. <see cref="Accent"/> is the stock checked = accent capsule;
+    /// <see cref="Neutral"/> is the primary-ink fill (<see cref="Tok.TextPrimary"/>, with the contrast-picked label) over an
+    /// OUTLINED off state, for a bar whose Play button is the page's only accent (Liked Songs' genre chips).</summary>
+    public enum ChipTone : byte { Accent, Neutral }
+
+    /// <summary>The chip capsule's <see cref="ToggleButton.Style"/> for a tone: the shared geometry (the chip keeps its own
+    /// capsule — the 32/r4 ladder is for the labeled/icon button grammar, not this scrolling rail, which has always read as
+    /// pills) over <see cref="AccentToggleStyle"/>'s checked arm. <see cref="ChipTone.Neutral"/> fills with
+    /// <see cref="Tok.TextPrimary"/> (the ink is the contrast pick, so it flips with the theme), draws no accent hairline on
+    /// the fill, and OUTLINES the off state (transparent plate, <see cref="Tok.StrokeControlDefault"/> border); its rest and
+    /// hover ramps are otherwise the stock ToggleButton's.</summary>
+    public static ToggleButton.Style ChipStyle(ChipTone tone)
+    {
+        var style = tone == ChipTone.Neutral
+            ? AccentToggleStyle(Tok.TextPrimary) with
+            {
+                OnBorder = GradientSpec.Solid(ColorF.Transparent),
+                OnHoverBorder = GradientSpec.Solid(ColorF.Transparent),
+                OffBackground = ColorF.Transparent,
+                OffBorder = GradientSpec.Solid(Tok.StrokeControlDefault),
+                OffHoverBorder = GradientSpec.Solid(Tok.StrokeControlDefault),
+            }
+            : AccentToggleStyle(Tok.AccentDefault);
+        return style with
+        {
+            CornerRadius = Radii.Full,
+            MinHeight = ChipHeight,
+            Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
+            FontSize = ChipFontSize,
+            FocusVisualMargin = Design.FocusInsetBordered,
+        };
+    }
 
     /// <summary>A destination chip: a stock standard <see cref="Button"/> in the chip capsule (<see cref="Chip"/>'s geometry),
     /// announced as a link. For a row of pills that NAVIGATE (Browse's Top and For-you bands), where
@@ -608,18 +632,23 @@ public static partial class Controls
     /// without adding chrome to a row that is already dense. <paramref name="scrollKey"/> scopes the horizontal offset
     /// so each list remembers its own position and a navigation does not inherit the previous one.</para>
     /// <para>Selection is EXCLUSIVE (All + at most one chip): these are a LENS, not accumulating constraints — two
-    /// genres ANDed almost always yields nothing, and users read a second tap as "switch", not "narrow".</para></summary>
-    public static Element ChipRail(IReadOnlyList<Element> chips, string scrollKey)
-        => ScrollView(new BoxEl
+    /// genres ANDed almost always yields nothing, and users read a second tap as "switch", not "narrow".</para>
+    /// <para><paramref name="inBar"/> is the rail as one MEMBER of a command bar (Liked Songs' slot between Shuffle and Sort): a
+    /// chip tall, no bottom gap, filling the slot its bar gives it - the same scroller and the same fade at its end.</para></summary>
+    public static Element ChipRail(IReadOnlyList<Element> chips, string scrollKey, bool inBar = false)
+    {
+        var rail = ScrollView(new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Children = [.. chips],
         }, horizontal: true) with
         {
-            Grow = 0f, Height = ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
-            Margin = new Edges4(0f, 0f, 0f, Spacing.S),
+            Grow = inBar ? 1f : 0f, Height = inBar ? ChipHeight : ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
+            Margin = inBar ? default : new Edges4(0f, 0f, 0f, Spacing.S),
             ScrollKey = scrollKey,
         };
+        return inBar ? rail with { MinWidth = 0f } : rail;
+    }
 
     // ══ 7. THE STAT TILE ═════════════════════════════════════════════════════════════════════════════════════════════
 

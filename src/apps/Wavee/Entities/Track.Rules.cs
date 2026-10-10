@@ -730,6 +730,9 @@ public readonly partial struct Track
         public const float Gap = 2f;
         public const float SearchGap = 8f;
         public const float PromotionHysteresis = 16f;
+        /// <summary>A vertical group divider between two clusters of a bar (<see cref="LikedBarLayout"/>): a 1-DIP line with 8 DIP
+        /// of air either side.</summary>
+        public const float GroupSeparatorWidth = 17f;
 
         /// <summary>The slack the fit keeps from the measured slot (the surface's own padding and the search's edge).</summary>
         public const float FitSlack = 12f;
@@ -780,6 +783,82 @@ public readonly partial struct Track
                 searchWidth = Math.Clamp(reservedSearch + spare, SearchMinExplicit, SearchMax);
             }
             return new CommandBarFit(inline, expanded, searchWidth);
+        }
+    }
+
+    /// <summary>The Liked bar's ladder answer. <see cref="ChipSlotW"/> is the chip slot's width while the chips are inline (the
+    /// slack the rung leaves, never under <see cref="LikedBarLayout.ChipSlotMinW"/>), else 0; <see cref="SearchWidth"/> grows
+    /// past the explicit minimum only when no chip slot absorbs the slack.</summary>
+    public readonly record struct LikedBarFit(LikedBarLayout.Rung Rung, float ChipSlotW, bool SearchExpanded, float SearchWidth);
+
+    /// <summary>THE LIKED SONGS BAR: one 44-DIP row, <c>[Play │ ⌄] · Shuffle · divider · genre chips · Date added ⌄ ─ find ·
+    /// Insights · ⋯</c>, and the pure ladder that decides what stays inline at a width. The ladder runs richest to poorest and
+    /// every step is a statement of what yields FIRST: the chips shrink (down to <see cref="ChipSlotMinW"/>, under their edge
+    /// fade), then Shuffle loses its label, then Sort goes into "…", then the chips go into "…" ("Genre ▸"), then Shuffle goes
+    /// into "…", then Insights goes into "…". The Play split, find and "…" always stay: they are the mandatory floor, so the
+    /// bar never overflows or clips whatever the pane. Promotion has <see cref="CommandBarLayout.PromotionHysteresis"/>
+    /// (a richer rung than the previous one must fit with that much to spare); narrowing is immediate.</summary>
+    public static class LikedBarLayout
+    {
+        public enum Rung : byte { Full, ShuffleIcon, SortInMore, ChipsInMore, ShuffleInMore, InsightsInMore }
+
+        public const float PlayW = ButtonRules.PlaySplitWidthNominal;
+        public const float ShuffleIconW = 32f;
+        public const float DividerW = CommandBarLayout.GroupSeparatorWidth;
+        public const float ChipSlotMinW = 120f;
+        public const float InsightsW = 32f;
+
+        /// <summary>The rungs, richest first.</summary>
+        public static ReadOnlySpan<Rung> Rungs => [Rung.Full, Rung.ShuffleIcon, Rung.SortInMore, Rung.ChipsInMore, Rung.ShuffleInMore, Rung.InsightsInMore];
+
+        public static bool ShuffleInline(Rung r) => r < Rung.ShuffleInMore;
+        public static bool ShuffleLabelled(Rung r) => r == Rung.Full;
+        public static bool SortInline(Rung r) => r <= Rung.ShuffleIcon;
+        public static bool ChipsInline(Rung r) => r <= Rung.SortInMore;
+        public static bool InsightsInline(Rung r) => r < Rung.InsightsInMore;
+
+        /// <summary>What a rung needs at minimum: its inline pieces summed with <see cref="CommandBarLayout.Gap"/> between them,
+        /// the search affordance (its icon pair, or the explicit field's minimum) behind <see cref="CommandBarLayout.SearchGap"/>.
+        /// Strictly decreasing from <see cref="Rung.Full"/> to <see cref="Rung.InsightsInMore"/>.</summary>
+        public static float RungWidth(Rung r, float shuffleW, float sortW, bool explicitSearch, bool chips = true)
+        {
+            float w = PlayW + CommandBarLayout.Gap + CommandBarLayout.MoreWidth
+                    + CommandBarLayout.SearchGap + (explicitSearch ? CommandBarLayout.SearchMinExplicit : CommandBarLayout.SearchIconWidth);
+            if (InsightsInline(r)) w += CommandBarLayout.Gap + InsightsW;
+            if (ShuffleInline(r)) w += CommandBarLayout.Gap + (ShuffleLabelled(r) ? shuffleW : ShuffleIconW);
+            if (SortInline(r)) w += CommandBarLayout.Gap + sortW;
+            if (chips && ChipsInline(r)) w += CommandBarLayout.Gap + DividerW + CommandBarLayout.Gap + ChipSlotMinW;
+            return w;
+        }
+
+        public static LikedBarFit Resolve(float available, float shuffleW, float sortW, bool explicitSearch, LikedBarFit? previous = null,
+                                          bool chips = true)
+        {
+            available = MathF.Max(0f, available);
+            var rung = RungFor(available, shuffleW, sortW, explicitSearch, chips);
+            if (previous is { } old && rung < old.Rung)
+            {
+                // A promotion: it must also fit with the hysteresis to spare, else the previous (poorer) rung holds. The previous
+                // rung fits `available` by construction (it is poorer than a rung that does).
+                var steady = RungFor(MathF.Max(0f, available - CommandBarLayout.PromotionHysteresis), shuffleW, sortW, explicitSearch, chips);
+                rung = steady < old.Rung ? steady : old.Rung;
+            }
+            float used = RungWidth(rung, shuffleW, sortW, explicitSearch, chips);
+            float spare = MathF.Max(0f, available - used);
+            float chipSlot = chips && ChipsInline(rung) ? ChipSlotMinW + spare : 0f;
+            float search = explicitSearch
+                ? (chips && ChipsInline(rung) ? CommandBarLayout.SearchMinExplicit
+                                     : Math.Clamp(CommandBarLayout.SearchMinExplicit + spare, CommandBarLayout.SearchMinExplicit, CommandBarLayout.SearchMax))
+                : CommandBarLayout.SearchIconWidth;
+            return new LikedBarFit(rung, chipSlot, explicitSearch, search);
+        }
+
+        /// <summary>The richest rung whose width fits, else the floor.</summary>
+        static Rung RungFor(float available, float shuffleW, float sortW, bool explicitSearch, bool chips)
+        {
+            foreach (var r in Rungs)
+                if (RungWidth(r, shuffleW, sortW, explicitSearch, chips) <= available) return r;
+            return Rung.InsightsInMore;
         }
     }
 

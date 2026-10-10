@@ -437,4 +437,38 @@ public class DetailRailPolicyTests
         Assert.Equal(0f, Track.RowMetrics.LeadFor(twoColumn: false, classic: false));
         Assert.Equal(0f, Track.RowMetrics.LeadFor(twoColumn: false, classic: true));
     }
+
+    // ── one layout for Liked Songs ───────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void LikedSongs_AlwaysForcesTheVerticalArm_WhateverThePageLayoutSays()
+    {
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Liked, Detail.VerticalLayout.PageAuto));
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Liked, Detail.VerticalLayout.PageHero));
+    }
+
+    [Fact]
+    public void AlbumAndPlaylist_StillHonourThePageLayout()
+    {
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Playlist, Detail.VerticalLayout.PageAuto));
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Playlist, Detail.VerticalLayout.PageHero));
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Album, Detail.VerticalLayout.PageAuto));
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Album, Detail.VerticalLayout.PageHero));
+    }
+
+    [Fact]
+    public void ShowAndEpisode_NeverForceTheVerticalArm_BecauseTheyAreNotTrackPages()
+    {
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Show, Detail.VerticalLayout.PageHero));
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Episode, Detail.VerticalLayout.PageHero));
+    }
+
+    [Fact]
+    public void OnlyLikedCarriesTheSlimHead()
+    {
+        Assert.True(Detail.Config.Liked.SlimHead);
+        Assert.False(Detail.Config.Playlist.SlimHead);
+        Assert.False(Detail.Config.Album.SlimHead);
+        Assert.False(Detail.Config.Show.SlimHead);
+    }
 }

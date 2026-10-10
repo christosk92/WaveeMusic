@@ -1,7 +1,8 @@
 // ── Entities/Track.Table.Chrome.cs ────────────────────────────────────────────────────────────────────────────────
 // the detail track table's CHROME: the command bar (LIST TOOLS only: Sort · Tune ─ search · Insights · "…"; Sort is promoted
 // into the measured pane or evicted into "…" with 16-DIP promotion hysteresis and a fit latch while search is open; "…" holds
-// Select, Row size ▸ and Columns ▸), the in-list search disclosure
+// Select, Row size ▸ and Columns ▸; Liked Songs' SlimHead page builds its own one-bar variant, BuildLikedBar: Play split · Shuffle ·
+// divider · genre chips · Sort ─ find · Insights · ⋯, on LikedBarLayout's ladder), the in-list search disclosure
 // (66 → 160…280 over 260 ms, Reflow), the context band's words Find · Filter · Play, the column header (one ColumnSet +
 // one TrackSize[] with the rows, keyed cells, sort carets), the Sort / More flyouts, the 368-wide filter card
 // and the selection command bar's commands. The TableHost partial of Track.Table.cs.
@@ -50,11 +51,17 @@ public readonly partial struct Track
         // Conservative first-frame LABELED widths (Tune · Sort), refined by the measured commands; the fit resolves against
         // these and the pane.
         readonly Signal<int> _toolbarEpoch = new(0);
-        readonly float[] _toolbarWidths = [92f, 156f];
+        // [0] Tune, [1] Sort, [2] the LABELLED Shuffle (the Liked bar; measured only while it is labelled).
+        readonly float[] _toolbarWidths = [92f, 156f, 96f];
         // The Insights toggle's LIVE state (the facts have settled), mirrored from the args: the bar is a cached builder that a
         // host render does not re-run, so the slot's fade-in rides this signal.
         readonly Signal<bool> _insightsLive = new(false);
+        // The Liked bar's chip slot exists (the page has a chip set), mirrored from the profile for the same reason.
+        readonly Signal<bool> _chipsInBar = new(false);
         CommandBarFit? _toolbarFit;
+        // The Liked bar's rung (LikedBarLayout), latched while search is open exactly like the list-tools fit below.
+        LikedBarFit? _likedFit;
+        (float Available, LikedBarFit Fit)? _likedOpenFit;
         // The fit LATCHED when search opened, with the pane it resolved against: promoting/evicting mid-flight re-measures,
         // bumps the epoch and would hand the width tween a new target. A genuine pane resize drops the latch.
         (float Available, CommandBarFit Fit)? _searchOpenFit;
@@ -160,6 +167,8 @@ public readonly partial struct Track
                 return SelectionSurface("selection", lead,
                     insights is null ? null : Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
 
+            if (Cfg.SlimHead && VerticalArm) return BuildLikedBar(available, lead, insights);
+
             bool hasTune = P.Tune is not null;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
@@ -204,6 +213,92 @@ public readonly partial struct Track
             return CommandSurface("normal", normal, lead);
         }
 
+        /// <summary>The LIKED SONGS bar (<see cref="Detail.Config.SlimHead"/>): <c>[Play | v] - Shuffle - divider - genre chips -
+        /// Date added v -- find - Insights - ...</c>, one 44-DIP lane at every rung. What stays inline is
+        /// <see cref="LikedBarLayout"/>'s answer for the measured pane (the labelled Shuffle and the Sort report their widths
+        /// through <see cref="MeasuredCommand"/>, so a font or locale change re-fits); everything evicted is in "..."
+        /// (<see cref="TableMoreButton"/>), and the Play split, find and "..." never leave.</summary>
+        Element BuildLikedBar(float available, float lead, Detail.InsightsToggle? insights)
+        {
+            var spec = _latest.Vertical!;
+            var acts = spec.Actions;
+            bool chipsPresent = _chipsInBar.Value && P.ContentFilterBar is not null;
+            bool explicitSearch = _searchExpanded.Value;
+            float pane = CommandBarLayout.PaneWidth(available);
+            var fit = LikedBarLayout.Resolve(pane, _toolbarWidths[2], _toolbarWidths[1], explicitSearch, _likedFit, chipsPresent);
+            if (!explicitSearch) _likedOpenFit = null;
+            else if (_likedOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
+            else _likedOpenFit = (pane, fit);
+            _likedFit = fit;
+            var rung = fit.Rung;
+
+            var left = new List<Element>(6)
+            {
+                acts.HasPlaySplit
+                    ? Controls.PlaySplitButton(spec.Identity.Subject.Text, spec.Accent, _playAll, acts.AddToQueue!, acts.PlayNext!, acts.StartRadio!)
+                    : Controls.PlayButton(spec.Accent, _playAll),
+            };
+            if (LikedBarLayout.ShuffleInline(rung))
+            {
+                bool labelled = LikedBarLayout.ShuffleLabelled(rung);
+                left.Add(MeasuredCommand(labelled ? 2 : -1, "cmd:shuffle",
+                    Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), _shuffle, labelled)));
+            }
+            if (chipsPresent && LikedBarLayout.ChipsInline(rung))
+            {
+                left.Add(GroupSeparator());
+                left.Add(new BoxEl
+                {
+                    Key = "cmd:chips", Direction = 1, Width = fit.ChipSlotW, Height = Controls.ChipHeight, Shrink = 1f, MinWidth = 0f,
+                    Justify = FlexJustify.Center, Animate = s_toolbarCommandMotion,
+                    Children = [P.ContentFilterBar!.Invoke() ?? new BoxEl()],
+                });
+            }
+            if (LikedBarLayout.SortInline(rung))
+                left.Add(MeasuredCommand(1, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
+
+            var more = LikedMoreFor(rung, chipsPresent);
+            var tail = new List<Element>(2);
+            if (insights is not null && LikedBarLayout.InsightsInline(rung))
+                tail.Add(Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
+            tail.Add(Embed.Comp(() => new TableMoreButton(this, InlineCommand.None, more, insights))
+                with { Key = "cmd:more:liked:" + (int)more + ":" + _contextText });
+
+            Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false), () => new TableSearchHost(this))
+                with { Key = "search-host" };
+            Element normal = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 1f, MinWidth = 0f, Children = left.ToArray() },
+                    new BoxEl { Grow = 1f, MinWidth = 0f },
+                    search,
+                    .. tail,
+                ],
+            };
+            return CommandSurface("normal", normal, lead);
+        }
+
+        /// <summary>What a rung moves into "..." (the Liked bar).</summary>
+        [Flags]
+        enum LikedMore : byte { None = 0, Sort = 1, Genre = 2, Shuffle = 4, Insights = 8 }
+
+        static LikedMore LikedMoreFor(LikedBarLayout.Rung rung, bool chipsPresent)
+            => (LikedBarLayout.SortInline(rung) ? 0 : LikedMore.Sort)
+             | (chipsPresent && !LikedBarLayout.ChipsInline(rung) ? LikedMore.Genre : 0)
+             | (LikedBarLayout.ShuffleInline(rung) ? 0 : LikedMore.Shuffle)
+             | (LikedBarLayout.InsightsInline(rung) ? 0 : LikedMore.Insights);
+
+        /// <summary>The 1-DIP vertical divider between two clusters of a bar (<see cref="CommandBarLayout.GroupSeparatorWidth"/>
+        /// wide, 8 DIP of air either side).</summary>
+        static Element GroupSeparator() => new BoxEl
+        {
+            Key = "cmd:divider", Width = CommandBarLayout.GroupSeparatorWidth, Height = 20f, Shrink = 0f,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false, Animate = s_toolbarCommandMotion,
+            Children = [new BoxEl { Width = 1f, Height = 20f, Fill = Tok.StrokeDividerDefault }],
+        };
+
         /// <summary>The chromeless 44-DIP lane both modes share; the keyed mode box is what animates browse ↔ selection.</summary>
         static Element CommandSurface(string mode, Element content, float lead = 0f) => new BoxEl
         {
@@ -221,10 +316,12 @@ public readonly partial struct Track
             ],
         };
 
+        /// <summary>A bar member that animates in and out of the bar. A non-negative <paramref name="slot"/> reports its width to
+        /// the fit (the LABELLED width the budget needs); -1 is a member whose width is fixed or not the budget's.</summary>
         Element MeasuredCommand(int slot, string key, Element command) => new BoxEl
         {
             Key = key, Direction = 1, Shrink = 0f, Animate = s_toolbarCommandMotion,
-            OnBoundsChanged = r => MeasureToolbarCommand(slot, r.W),
+            OnBoundsChanged = slot < 0 ? null : r => MeasureToolbarCommand(slot, r.W),
             Children = [command],
         };
 
@@ -703,11 +800,31 @@ public readonly partial struct Track
             }
         }
 
+        /// <summary>The Liked chip set as a radio group for "..." ("Genre >" when the width evicts the rail): All first, then each
+        /// chip in the rail's order; a chip without evidence is shown disabled, exactly as in the rail. Exclusive, like the rail.</summary>
+        List<MenuFlyoutItem> GenreItems()
+        {
+            var items = new List<MenuFlyoutItem>(16);
+            if (P.ContentFilterSet?.Invoke() is not { Titles: { Length: > 0 } titles } set) return items;
+            string? selected = _filters.Peek().Tag;
+            items.Add(MenuFlyoutItem.RadioItem(Loc.Get(Strings.Detail.Filter.AllChip), selected is null,
+                () => SetFilters(_filters.Peek() with { Tag = null })));
+            for (int i = 0; i < titles.Length; i++)
+            {
+                string tag = titles[i];
+                bool on = string.Equals(tag, selected, StringComparison.OrdinalIgnoreCase);
+                items.Add(MenuFlyoutItem.RadioItem(tag, on,
+                    () => SetFilters(_filters.Peek() with { Tag = on ? null : tag }), enabled: i < set.Evidenced));
+            }
+            return items;
+        }
+
         /// <summary>"…": on Liked and Show (no Play split on the identity row) Shuffle · Play next · Add to queue first, then
         /// Sort ▸ when the bar evicted it, then Select, Row size ▸ and Columns ▸ (the BPM · Key and Plays
         /// opt-ins, when either is offered), then a separator and the playlist deposit ("Copy to playlist" on a
         /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21).</summary>
-        sealed class TableMoreButton(TableHost host, InlineCommand overflow) : Component
+        sealed class TableMoreButton(TableHost host, InlineCommand overflow, LikedMore liked = LikedMore.None,
+                                     Detail.InsightsToggle? insights = null) : Component
         {
             public override Element Render()
             {
@@ -720,6 +837,7 @@ public readonly partial struct Track
                 {
                     var cfg = h.Cfg;
                     var items = new List<MenuFlyoutItem>(12);
+                    bool likedBar = cfg.SlimHead && h.VerticalArm;
                     // Liked and Show have no [Play │ ⌄] + Shuffle on their identity row: the list verbs live here.
                     if (TableRules.MoreCarriesListVerbs(cfg.Kind, h.VerticalArm))
                     {
@@ -730,6 +848,16 @@ public readonly partial struct Track
                             () => h.RunOnContext(ActionId.AddToQueue)));
                         items.Add(MenuFlyoutItem.Separator);
                     }
+                    // The Liked bar's evictions, in the order the ladder evicts them: Sort, Genre, Shuffle, Insights.
+                    if ((liked & LikedMore.Sort) != 0)
+                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Sort.Menu), h.SortItems(), Icons.Sort));
+                    if ((liked & LikedMore.Genre) != 0 && h.GenreItems() is { Count: > 0 } genres)
+                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Filter.Genre), genres, Icons.Filter));
+                    if ((liked & LikedMore.Shuffle) != 0)
+                        items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Shuffle), Icons.Shuffle, true, h.Shuffle));
+                    if ((liked & LikedMore.Insights) != 0 && insights is not null)
+                        items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.LikedFacts.SheetOpen), insights.Open.Peek(), insights.Toggle,
+                                                        enabled: h._insightsLive.Peek()));
                     if ((overflow & InlineCommand.Sort) != 0)
                         items.Add(MenuFlyoutItem.SubMenu(Loc.Get("detail.sort.menu"), h.SortItems(), Icons.Sort));   // key from batch-loc WP-4.5-U2a.json; a literal so the build does not wait on the merge
                     if (cfg.Selection != ItemsSelectionMode.None)
@@ -756,6 +884,12 @@ public readonly partial struct Track
                         items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Columns), columns, Icons.ViewList));
                     }
                     items.Add(MenuFlyoutItem.Separator);
+                    // Liked: Share copies the collection's web link (the frame's own share verb, link + confirmation toast).
+                    if (likedBar && h._latest.Vertical is { } vertical)
+                    {
+                        var share = Detail.ShareActionFor(vertical.Identity);
+                        items.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.Share), Icons.Share, share is not null, share));
+                    }
 
                     var src = h._latest.Source;
                     var tracks = new Track[src.Count];

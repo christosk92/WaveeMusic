@@ -233,3 +233,135 @@ public class DetailTrackCommandBarLayoutTests
         Assert.True(lead > 0f);
     }
 }
+
+/// <summary>The Liked Songs bar's ladder (<c>Track.LikedBarLayout</c>): chips shrink, Shuffle loses its label, Sort goes into
+/// "...", the chips go into "...", Shuffle goes into "...", Insights goes into "...". Nominal widths: Shuffle 96, Sort 156.
+/// Pure: no scope, no engine.</summary>
+public class LikedBarLayoutTests
+{
+    const float Shuffle = 96f, Sort = 156f;
+    static readonly Track.LikedBarLayout.Rung[] Rungs = Enum.GetValues<Track.LikedBarLayout.Rung>();
+
+    static float W(Track.LikedBarLayout.Rung r, bool explicitSearch = false, bool chips = true)
+        => Track.LikedBarLayout.RungWidth(r, Shuffle, Sort, explicitSearch, chips);
+
+    static Track.LikedBarFit Fit(float available, bool explicitSearch = false, Track.LikedBarFit? previous = null, bool chips = true)
+        => Track.LikedBarLayout.Resolve(available, Shuffle, Sort, explicitSearch, previous, chips);
+
+    [Fact]
+    public void RungWidths_StrictlyDecrease_FromFullToTheFloor()
+    {
+        for (int i = 1; i < Rungs.Length; i++)
+            Assert.True(W(Rungs[i]) < W(Rungs[i - 1]), Rungs[i].ToString());
+    }
+
+    [Fact]
+    public void TheFullRung_SumsEveryInlinePiece()
+    {
+        // Play 121 + more 32 + SearchGap 8 + search pair 66, then Insights 32, Shuffle 96, Sort 156, divider 17 and the 120 chip
+        // slot, each behind one 2-DIP gap (the divider and the slot are two pieces), and one gap between Play and more.
+        float expected = 121f + 2f + 32f + 8f + 66f + (2f + 32f) + (2f + 96f) + (2f + 156f) + (2f + 17f + 2f + 120f);
+        Assert.Equal(expected, W(Track.LikedBarLayout.Rung.Full));
+    }
+
+    [Fact]
+    public void ResolveAtARungsWidth_GivesThatRung_AndOnePixelLessGivesAPoorerOne()
+    {
+        foreach (var r in Rungs)
+        {
+            Assert.Equal(r, Fit(W(r)).Rung);
+            if (r == Track.LikedBarLayout.Rung.InsightsInMore) continue;   // the floor: nothing poorer exists
+            Assert.True(Fit(W(r) - 1f).Rung > r, r.ToString());
+        }
+    }
+
+    [Fact]
+    public void AboveTheFloor_TheResultIsNeverWiderThanAvailable()
+    {
+        float floor = W(Track.LikedBarLayout.Rung.InsightsInMore);
+        Track.LikedBarFit? previous = null;
+        for (float available = 1400f; available >= floor; available -= 1f)
+        {
+            var fit = Fit(available, previous: previous);
+            Assert.True(W(fit.Rung) <= available, available.ToString());
+            previous = fit;
+        }
+        previous = null;
+        for (float available = floor; available <= 1400f; available += 1f)
+        {
+            var fit = Fit(available, previous: previous);
+            Assert.True(W(fit.Rung) <= available, available.ToString());
+            previous = fit;
+        }
+    }
+
+    [Fact]
+    public void BelowTheFloor_TheBarKeepsTheMandatoryFloor()
+    {
+        var fit = Fit(0f);
+        Assert.Equal(Track.LikedBarLayout.Rung.InsightsInMore, fit.Rung);
+        Assert.False(Track.LikedBarLayout.ChipsInline(fit.Rung));
+        Assert.False(Track.LikedBarLayout.ShuffleInline(fit.Rung));
+        Assert.False(Track.LikedBarLayout.InsightsInline(fit.Rung));
+    }
+
+    [Fact]
+    public void APromotionWithinTheHysteresisHoldsThePreviousRung_AndOneBeyondItTakesTheRicherRung()
+    {
+        var shuffleIcon = Track.LikedBarLayout.Rung.ShuffleIcon;
+        var full = Track.LikedBarLayout.Rung.Full;
+        var previous = Fit(W(shuffleIcon));
+        Assert.Equal(shuffleIcon, previous.Rung);
+
+        Assert.Equal(shuffleIcon, Fit(W(full) + Track.CommandBarLayout.PromotionHysteresis - 1f, previous: previous).Rung);
+        Assert.Equal(full, Fit(W(full) + Track.CommandBarLayout.PromotionHysteresis, previous: previous).Rung);
+        // Narrowing is immediate.
+        Assert.Equal(Track.LikedBarLayout.Rung.SortInMore, Fit(W(shuffleIcon) - 1f, previous: Fit(W(full))).Rung);
+    }
+
+    [Fact]
+    public void ExplicitSearch_MovesTheBarDownARung_ExactlyWhenTheExtraWidthDoesNotFit()
+    {
+        foreach (var r in Rungs)
+        {
+            float available = W(r);   // the rung fits with the search pair, exactly
+            var open = Fit(available, explicitSearch: true);
+            var expected = Rungs.FirstOrDefault(k => W(k, explicitSearch: true) <= available, Track.LikedBarLayout.Rung.InsightsInMore);
+            Assert.Equal(expected, open.Rung);
+            if (r != Track.LikedBarLayout.Rung.InsightsInMore)   // the floor holds whatever the search asks for
+                Assert.NotEqual(r, open.Rung);
+            Assert.True(open.SearchExpanded);
+        }
+    }
+
+    [Fact]
+    public void TheChipSlot_TakesTheSlack_AndNeverGoesUnderItsMinimumWhileInline()
+    {
+        var full = Fit(W(Track.LikedBarLayout.Rung.Full) + 50f);
+        Assert.Equal(Track.LikedBarLayout.Rung.Full, full.Rung);
+        Assert.Equal(Track.LikedBarLayout.ChipSlotMinW + 50f, full.ChipSlotW, 3);
+        foreach (var r in Rungs)
+        {
+            var fit = Fit(W(r));
+            if (Track.LikedBarLayout.ChipsInline(fit.Rung)) Assert.True(fit.ChipSlotW >= Track.LikedBarLayout.ChipSlotMinW);
+            else Assert.Equal(0f, fit.ChipSlotW);
+        }
+    }
+
+    [Fact]
+    public void WithoutAChipSet_NoRungReservesTheDividerOrTheSlot()
+    {
+        Assert.Equal(W(Track.LikedBarLayout.Rung.ChipsInMore), W(Track.LikedBarLayout.Rung.SortInMore, chips: false));
+        var fit = Fit(W(Track.LikedBarLayout.Rung.ShuffleIcon, chips: false), chips: false);
+        Assert.True(fit.Rung <= Track.LikedBarLayout.Rung.ShuffleIcon);
+        Assert.Equal(0f, fit.ChipSlotW);
+    }
+
+    [Fact]
+    public void ThePlaySplitFindAndMoreAreInEveryRungsWidth()
+    {
+        float floor = W(Track.LikedBarLayout.Rung.InsightsInMore);
+        Assert.Equal(Track.LikedBarLayout.PlayW + Track.CommandBarLayout.Gap + Track.CommandBarLayout.MoreWidth
+                     + Track.CommandBarLayout.SearchGap + Track.CommandBarLayout.SearchIconWidth, floor);
+    }
+}
