@@ -1340,10 +1340,16 @@ public static partial class Shell
         if (s_scene is not { } scene || s_contentRegion.IsNull || !scene.IsLive(s_contentRegion)) return;
         RectF r = scene.AbsoluteRect(s_contentRegion);
         // The region's page column holds the Zune band, and chrome stays lit: the scrim starts at the card stack's (laid-out) top.
-        // The clip is ONE rect across the region's width, so under Zune the inline rail's top (its header, tabs and gear, level
-        // with the band) stays lit while the rest of the rail dims: the rail's header is chrome too.
+        // The clip is ONE rect, so under Zune the inline rail (a full-height column whose header level with the band is chrome too)
+        // is left out of it whole: the rail stays lit instead of dimming from the band's bottom edge, which would cut across it.
+        // The region is not animated, so its presented rect and the card's laid-out top share one coordinate space.
         float top = MathF.Max(r.Y, Ui.CardRect.Peek().Y);
         if (top > r.Y && top < r.Y + r.H) r = new RectF(r.X, top, r.W, r.H - (top - r.Y));
+        if (Sidebar.NavStyle.Peek() == ShellNavStyle.Zune)
+        {
+            float rail = FrameRules.RailReservedWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek(), Ui.RailWidth.Peek());
+            if (rail > 0f && rail < r.W) r = new RectF(r.X, r.Y, r.W - rail, r.H);
+        }
         scene.SpotlightScrimClip = r.IsEmpty ? null : r;
     }
 

@@ -1990,7 +1990,8 @@ public static partial class Shell
 
         /// <summary>The content card's left edge: the sidebar column's width, nothing more. With no pane docked (Zune always;
         /// Classic and Library when the pane is hidden or in the Minimal overlay band) the column is 0 wide and the card is
-        /// flush with the window edge.</summary>
+        /// flush with the window edge. The layout derives this from the column itself; the rule is kept as the documented identity the
+        /// frame-rules tests pin (the page title's x is this plus the gutter), not as a runtime call.</summary>
         public static float ContentCardX(float sidebarW) => sidebarW;
 
         /// <summary>Is a pane docked beside the content card? Expanded and the Compact rail are; Minimal (the Tiny band's

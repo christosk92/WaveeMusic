@@ -300,7 +300,9 @@ public static partial class Shell
             // Enter/Exit, so the ink and the field are one clock. Zero-width when the card is flush (Zune, no rail). The RIGHT field
             // stops at the title bar's bottom (ArtistBleed.SideFieldHeight): under Zune the inline rail runs from there to the dock
             // and the Zune band lives in the page column, so a field as tall as the card's top would show through the rail gap and
-            // behind the rail coat's rounded corner. The left field keeps the card's top (Zune has no pane, so it is zero-wide there).
+            // behind the rail coat's rounded corner. "The title bar's bottom" is TitleBar.ExpandedHeight because the chrome row is pinned at
+            // y=0 and is exactly that tall; CardPose.Y is a layout coordinate from the same origin, so the two compare directly. The
+            // left field keeps the card's top (Zune has no pane, so it is zero-wide there).
             Element Side(string key, Func<float> left, Func<float> width, Func<float> height) => new BoxEl
             {
                 Key = key + b.Key,
