@@ -191,7 +191,7 @@ public readonly partial struct Track
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
             var widths = new CommandWidths(w[0], w[1], w[3]);
-            float pane = CommandBarLayout.PaneWidth(available);
+            float pane = HeldPane(CommandBarLayout.PaneWidth(available));
             var fit = CommandBarLayout.Resolve(pane, in widths, hasTune, insights is not null, explicitSearch, _toolbarFit);
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
@@ -290,7 +290,7 @@ public readonly partial struct Track
             var acts = spec.Actions;
             bool chipsPresent = _chipsInBar.Value && P.ContentFilterBar is not null;
             bool explicitSearch = _searchExpanded.Value;
-            float pane = CommandBarLayout.PaneWidth(available);
+            float pane = HeldPane(CommandBarLayout.PaneWidth(available));
             // D2: the find collapsing under the pointer holds the rung (see _likedHoldPane); a set hold ends on a real pane change,
             // the pointer leaving or the find reopening, and the release re-fits on the bar's normal motion.
             if (_likedHoldPane is null)
@@ -429,6 +429,34 @@ public readonly partial struct Track
 
         /// <summary>The inline Filter command of either bar. Its props carry the label, so a rung that drops the word re-renders the SAME
         /// button (an open card keeps its anchor and handle); only the labelled form reports its width to the fit.</summary>
+        /// <summary>The pane the bar's fit last resolved against, and the hold that pins it while the filter card is open: a resize that
+        /// would evict the Filter button (the card's anchor) re-fits only after the card closes, so the card is never closed by its own
+        /// bar. <see cref="Overlay"/>'s PinsAnchor is the auto-hide scope's contract, not this one.</summary>
+        float _barPane;
+        float? _filterHoldPane;
+
+        float HeldPane(float pane)
+        {
+            _barPane = pane;
+            return _filterHoldPane ?? pane;
+        }
+
+        /// <summary>The filter card opened (holds the bar's rung) or closed (releases it and re-fits to the pane as it is now).</summary>
+        void HoldBarForFilterCard(bool open)
+        {
+            if (open) { _filterHoldPane = _barPane > 0f ? _barPane : null; return; }
+            if (_filterHoldPane is null) return;
+            _filterHoldPane = null;
+            _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
+        }
+
+        /// <summary>Open or close the filter card under <paramref name="anchor"/>, holding the bar's rung while it is open.</summary>
+        void ToggleFilterCard(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle)
+        {
+            ToggleOverlay(overlay, anchor, handle, () => Embed.Comp(() => new TableFilterFlyout(this)), FilterPopup, () => HoldBarForFilterCard(false));
+            if (handle.Value is { IsOpen: true }) HoldBarForFilterCard(true);
+        }
+
         Element FilterCommandSlot(bool labelled)
             => MeasuredCommand(labelled ? 3 : -1, "cmd:filter",
                 Embed.Comp(new FilterCommandProps(labelled), () => new TableFilterButton(this, textMode: false, command: true)));
@@ -986,10 +1014,9 @@ public readonly partial struct Track
                 var post = UsePost();
                 // The count rides "…" only while the Filter button is not on the bar (the button wears it otherwise).
                 bool filterInMore = (overflow & InlineCommand.Filter) != 0 || (liked & LikedMore.Filter) != 0;
-                int activeFilters = filterInMore ? h._filters.Value.ActiveCount : 0;
+                int activeFilters = filterInMore ? h._filters.Value.ActiveCountFor(h._query.Value.Length > 0) : 0;
                 // Next tick, so the menu is already gone and the card anchors to "…" alone.
-                void OpenFilter() => post(() => ToggleOverlay(overlay, anchor, filterHandle,
-                    () => Embed.Comp(() => new TableFilterFlyout(h)), FilterPopup));
+                void OpenFilter() => post(() => h.ToggleFilterCard(overlay, anchor, filterHandle));
 
                 List<MenuFlyoutItem> Items()
                 {
@@ -1088,12 +1115,14 @@ public readonly partial struct Track
         bool _capsSeeded;
 
         /// <summary>What the list shows against what it has, for the filter card's header: the live (filtered, searched) view's length and
-        /// the membership total (what <see cref="ListFactsText"/> states). Reading it subscribes the caller to the snapshot.</summary>
-        (int Shown, int Total) VisibleCounts()
+        /// the membership total (what <see cref="ListFactsText"/> states), whether a find or filter narrows it, and whether it lists episodes. Reading it subscribes the caller to the snapshot.</summary>
+        (int Shown, int Total, bool Filtered, bool Episodes) VisibleCounts()
         {
             var snap = _snapshot!.Value;
             var src = _latest.Source;
-            return (ViewOf(in snap).Length, Math.Max(src.Total, src.Count));
+            // Filtered is ListFactsText's rule: a find or any non-default filter narrows the list.
+            return (ViewOf(in snap).Length, Math.Max(src.Total, src.Count), snap.Query.Length > 0 || !snap.Filters.IsDefault,
+                    Cfg.Content == DetailContent.Episodes);
         }
 
         FilterCaps CapsNow()
@@ -1153,14 +1182,14 @@ public readonly partial struct Track
             },
         };
 
-        /// <summary>The same 18-DIP badge on the icon-only button's top-right corner, ringed in the page's base, nudged out by 4 DIP.</summary>
+        /// <summary>The same 18-DIP badge on the icon-only button's top-right corner, ringed in the page's base, nudged out by 4 DIP (never past the bar's gap to the next button).</summary>
         static readonly TemplateParts s_badgeCommandCorner = new()
         {
             [InfoBadge.PartRoot] = static b => b with
             {
                 Width = 18f, MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
-                OffsetX = 4f, OffsetY = -4f, HitTestVisible = false,
+                OffsetX = MathF.Min(4f, CommandBarLayout.Gap), OffsetY = -4f, HitTestVisible = false,
             },
         };
 
@@ -1229,9 +1258,9 @@ public readonly partial struct Track
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
                 var props = UsePropsOrDefault<FilterCommandProps>();
-                int activeCount = h._filters.Value.ActiveCount;
+                int activeCount = h._filters.Value.ActiveCountFor(h._query.Value.Length > 0);
                 bool active = activeCount > 0;
-                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => Embed.Comp(() => new TableFilterFlyout(h)), FilterPopup);
+                void Toggle() => h.ToggleFilterCard(overlay, anchor, handle);
 
                 if (command)
                 {
@@ -1290,9 +1319,33 @@ public readonly partial struct Track
                 _liked = new(f.LikedOnly);
                 _playable = new(f.PlayableOnly);
                 _duration = new((int)f.Duration);
-                _added = new((int)f.Added);
+                _added = new(AddedIndex(f));
                 _tempo = new((int)f.Tempo);
                 _origin = new((int)f.Origin);
+            }
+
+            /// <summary>The Date added combo's index: the preset, or -1 (the "Custom range" placeholder) while the rail's explicit window is set.</summary>
+            static int AddedIndex(FilterState f) => f.AddedAfterMs != 0L || f.AddedBeforeMs != 0L ? -1 : (int)f.Added;
+
+            /// <summary>Write every local signal from <paramref name="f"/>. A signal write fires no onChange (ComboBox and ToggleSwitch call it
+            /// only on a user commit), so syncing from an external filter write (a view load, the rail) cannot loop back into the filters.</summary>
+            void Sync(FilterState f)
+            {
+                _scope.Value = (int)f.SearchScope; _explicit.Value = (int)f.ExplicitMode; _video.Value = (int)f.VideoMode;
+                _liked.Value = f.LikedOnly; _playable.Value = f.PlayableOnly; _duration.Value = (int)f.Duration;
+                _added.Value = AddedIndex(f); _tempo.Value = (int)f.Tempo; _origin.Value = (int)f.Origin;
+            }
+
+            /// <summary>What the card cannot show a row for, named in the header so the badge's number can be explained.</summary>
+            static string? HiddenFacets(FilterState f)
+            {
+                var names = new List<string>(5);
+                if (!string.IsNullOrEmpty(f.Tag)) names.Add(Loc.Get(Strings.Detail.Filter.FacetGenre));
+                if (f.ArtistSlot != 0) names.Add(Loc.Get(Strings.Detail.Filter.FacetArtist));
+                if (f.Camelot != 0) names.Add(Loc.Get(Strings.Detail.Filter.FacetKey));
+                if (f.ReleaseYearMin != 0 || f.ReleaseYearMax != 0) names.Add(Loc.Get(Strings.Detail.Filter.FacetYear));
+                if (f.AddedAfterMs != 0L || f.AddedBeforeMs != 0L) names.Add(Loc.Get(Strings.Detail.Filter.FacetDates));
+                return names.Count == 0 ? null : string.Join(", ", names);
             }
 
             void Set(FilterState next) => _h.SetFilters(next);
@@ -1302,11 +1355,15 @@ public readonly partial struct Track
             {
                 var current = _h._filters.Value;
                 var caps = _h.CapsNow();
-                var (shown, total) = _h.VisibleCounts();
+                var (shown, total, filtered, episodes) = _h.VisibleCounts();
+                // External writes (a view load, the rail) while the card is open: the local signals follow the filters, never the reverse.
+                UseEffect(() => Sync(_h._filters.Value));
                 string status = total <= 0 ? ""
-                    : current.ActiveCount == 0
-                        ? Strings.Detail.Filter.AllSongs(total)
-                        : Strings.Detail.SongCountOf(shown.ToString("N0", CultureInfo.CurrentCulture), total);
+                    : !filtered
+                        ? (episodes ? Strings.Detail.Filter.AllEpisodes(total) : Strings.Detail.Filter.AllSongs(total))
+                        : (episodes ? Strings.Detail.EpisodeCountOf(shown.ToString("N0", CultureInfo.CurrentCulture), total)
+                                    : Strings.Detail.SongCountOf(shown.ToString("N0", CultureInfo.CurrentCulture), total));
+                if (HiddenFacets(current) is { } hidden && total > 0) status = Strings.Detail.MetaLine(status, hidden);
 
                 Element Label(string text, bool on) => new TextEl(text)
                 {
@@ -1322,18 +1379,18 @@ public readonly partial struct Track
                 // One facet: the label and a combo whose tint (accent 14% fill + accent border, laid over the stock field, which has no
                 // style seam) reads "this row is filtering". The overlay is always there (transparent at rest), so a value change
                 // never restructures the row and the combo keeps its focus.
-                Element Pick(string key, string label, Signal<int> signal, string[] options, Action<int> changed)
+                Element Pick(string key, string label, Signal<int> signal, string[] options, Action<int> changed, string placeholder = "")
                 {
                     bool on = signal.Value != 0;
                     return Row(key, on, label, new BoxEl
                     {
-                        ZStack = true, Width = ComboWidth, Height = ComboBox.MinHeight, Shrink = 0f,
+                        ZStack = true, Width = ComboWidth, Shrink = 0f,
                         Children =
                         [
-                            ComboBox.Create(options, signal, width: ComboWidth, onChange: changed) with { Key = key + ":combo" },
+                            ComboBox.Create(options, signal, width: ComboWidth, placeholder: placeholder, onChange: changed) with { Key = key + ":combo" },
                             new BoxEl
                             {
-                                Width = ComboWidth, Height = ComboBox.MinHeight, Corners = Radii.ControlAll, HitTestVisible = false, BorderWidth = 1f,
+                                Width = ComboWidth, AlignSelf = FlexAlign.Stretch, Corners = Radii.ControlAll, HitTestVisible = false, BorderWidth = 1f,
                                 Fill = on ? Prop.Of(static () => Tok.AccentDefault with { A = 0.14f }) : (Prop<ColorF>)ColorF.Transparent,
                                 BorderColor = on ? Prop.Of(static () => Tok.AccentDefault) : (Prop<ColorF>)ColorF.Transparent,
                             },
@@ -1346,7 +1403,7 @@ public readonly partial struct Track
                     {
                         var f = Current;
                         Set(f with { Flags = on ? f.Flags | flag : f.Flags & ~flag });
-                    }) with { Key = key + ":switch" });
+                    }, style: ToggleSwitch.DefaultStyle with { MinWidth = 0f }) with { Key = key + ":switch" });
 
                 void ClearAll()
                 {
@@ -1356,12 +1413,15 @@ public readonly partial struct Track
                 }
 
                 var rows = new List<Element>(7);
-                if (caps.HasDateAdded || current.Added != AddedRange.Any)
+                if (caps.HasDateAdded || current.Added != AddedRange.Any || current.AddedAfterMs != 0L || current.AddedBeforeMs != 0L)
                     rows.Add(Pick("filter:added", Loc.Get(Strings.Detail.Filter.DateAdded), _added,
                         [Loc.Get(Strings.Detail.Filter.AnyTime), Loc.Get(Strings.Detail.Filter.LastSevenDays), Loc.Get(Strings.Detail.Filter.LastThirtyDays),
                          Loc.Get(Strings.Detail.Filter.LastSixMonths), Loc.Get(Strings.Detail.Filter.LastYear)],
                         // WithAddedRange, never a bare `with`: a preset must retire the rail's explicit window.
-                        v => Set(Current.WithAddedRange((AddedRange)v))));
+                        v => Set(Current.WithAddedRange((AddedRange)v)),
+                        // The rail's explicit window seeds the combo with -1: no preset names it, and "Any time" (index 0) then differs from the
+                        // selection, so choosing it commits and clears the window (ComboBox.Commit ignores the same index).
+                        placeholder: Loc.Get(Strings.Detail.Filter.CustomRange)));
                 rows.Add(Pick("filter:length", Loc.Get(Strings.Detail.Filter.Length), _duration,
                     [Loc.Get(Strings.Detail.Filter.AnyDuration), Loc.Get(Strings.Detail.Filter.UnderThree),
                      Loc.Get(Strings.Detail.Filter.ThreeToFive), Loc.Get(Strings.Detail.Filter.OverFive)],

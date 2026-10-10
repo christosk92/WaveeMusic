@@ -1102,26 +1102,27 @@ public readonly partial struct Track
 
         /// <summary>The number on the Filter affordance: each toggle and each non-default facet counts once; a window is ONE
         /// facet however many endpoints it names.</summary>
-        public int ActiveCount
+        public int ActiveCount => ActiveCountFor(searching: true);
+
+        /// <summary><see cref="ActiveCount"/> as the badge states it: the search scope is the QUERY's, so it counts only while a query
+        /// is typed (<paramref name="searching"/>); an empty find leaves the scope uncounted, as nothing on the card is then narrowing.</summary>
+        public int ActiveCountFor(bool searching)
         {
-            get
-            {
-                int n = SearchScope == SearchScope.Everything ? 0 : 1;
-                if (ExplicitMode != TraitMode.All) n++;
-                if (VideoMode != TraitMode.All) n++;
-                if (LikedOnly) n++;
-                if (PlayableOnly) n++;
-                if (Duration != DurationRange.Any) n++;
-                if (Added != AddedRange.Any) n++;
-                if (Origin != OriginFilter.Any) n++;
-                if (Tempo != TempoBand.Any) n++;
-                if (Camelot != 0) n++;
-                if (!string.IsNullOrEmpty(Tag)) n++;
-                if (AddedAfterMs != 0L || AddedBeforeMs != 0L) n++;
-                if (ArtistSlot != 0) n++;
-                if (ReleaseYearMin != 0 || ReleaseYearMax != 0) n++;
-                return n;
-            }
+            int n = SearchScope == SearchScope.Everything || !searching ? 0 : 1;
+            if (ExplicitMode != TraitMode.All) n++;
+            if (VideoMode != TraitMode.All) n++;
+            if (LikedOnly) n++;
+            if (PlayableOnly) n++;
+            if (Duration != DurationRange.Any) n++;
+            if (Added != AddedRange.Any) n++;
+            if (Origin != OriginFilter.Any) n++;
+            if (Tempo != TempoBand.Any) n++;
+            if (Camelot != 0) n++;
+            if (!string.IsNullOrEmpty(Tag)) n++;
+            if (AddedAfterMs != 0L || AddedBeforeMs != 0L) n++;
+            if (ArtistSlot != 0) n++;
+            if (ReleaseYearMin != 0 || ReleaseYearMax != 0) n++;
+            return n;
         }
 
         /// <summary>Set the coarse preset, clearing any window: ANDing both would return fewer rows than either promised.</summary>
