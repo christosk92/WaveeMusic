@@ -43,19 +43,18 @@ public static class ArtistBleed
            ?? (payloadAccent != 0 ? Design.Palette.PageToneFromHue(Design.Palette.ToColor(payloadAccent), theme) : null)
            ?? (theme == ThemeKind.Dark ? Design.Palette.PageToneNeutralDark : Design.Palette.PageToneNeutralLight);
 
-    /// <summary>The scrim's strongest alpha, at the window top (over <see cref="FieldBase"/>, the page's hero-tinted tone in the theme's
-    /// polarity), the same in both themes.</summary>
-    public const float ScrimTop = 0.55f;
+    /// <summary>The light theme's scrim: (offset down the chrome's height, alpha over <see cref="FieldBase"/>). Four stops, the
+    /// recorder's ceiling: a straight two-stop ramp read as a hard lid with a visible knee where it ended, so the alpha eases out
+    /// (0.75, 0.55 at 40%, 0.2 at 80%, 0) and the scrim fades into the photo instead of ending on it. It is the stronger of the two
+    /// because a light veil has to hold the theme's dark ink over a photo.</summary>
+    public static readonly (float Offset, float Alpha)[] ScrimStopsLight = [(0f, 0.75f), (0.4f, 0.55f), (0.8f, 0.2f), (1f, 0f)];
 
-    /// <summary>The scrim's eased falloff: (offset down the chrome's height, alpha over <see cref="FieldBase"/>). Four stops, the
-    /// recorder's ceiling: a straight two-stop ramp read as a hard dark lid with a visible knee where it ended, so the alpha
-    /// eases out (0.55, 0.38 at 40%, 0.12 at 80%, 0) and the scrim fades into the photo instead of ending on it.</summary>
-    public static readonly (float Offset, float Alpha)[] ScrimStops = [(0f, ScrimTop), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)];
+    /// <summary>The dark theme's scrim, the same eased falloff over the dark <see cref="FieldBase"/> (0.55, 0.38 at 40%, 0.12 at 80%,
+    /// 0): the theme's light ink already reads over a photo, so it only has to calm it.</summary>
+    public static readonly (float Offset, float Alpha)[] ScrimStopsDark = [(0f, 0.55f), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)];
 
-    /// <summary>The side field's alpha: the flat ground under the chrome columns the photo does not reach (above the
-    /// Classic/Library pane and above the rail). Heavier than <see cref="ScrimTop"/>, which only has to calm a photo: here the ground
-    /// has to match the field the photo sits on, down to the hold line.</summary>
-    public const float SideFieldAlpha = 0.86f;
+    /// <summary>The scrim's stops for the theme.</summary>
+    public static (float Offset, float Alpha)[] ScrimStopsFor(ThemeKind theme) => theme == ThemeKind.Dark ? ScrimStopsDark : ScrimStopsLight;
 
     /// <summary>The bleed applies: the experiment is on, tinted surfaces are on (the photo is part of the tinted material), the
     /// artist has a header photo (an avatar-only artist keeps today's hero), the nav style is Zune and the tier is not stacked.
@@ -66,7 +65,7 @@ public static class ArtistBleed
     public static bool Applies(bool enabled, WashLevel surfaces, string? headerUrl, bool zune, bool stacked)
         => enabled && zune && !stacked && surfaces != WashLevel.Off && headerUrl is { Length: > 0 };
 
-    /// <summary>The right edge of the shell's photo, scrim and side field, in window coordinates. Under Zune a FLOATING rail (open
+    /// <summary>The right edge of the shell's photo, in window coordinates. Under Zune a FLOATING rail (open
     /// and not fitting) overlays the page: its panel's left edge is <c>viewportW - railW - railMargin</c> (the overlay is
     /// right-aligned at its final width), and the photo stops there instead of running under the panel (below the card's top: the
     /// chrome above the panel keeps the photo through <see cref="BandExtensionWidth"/>). Every other case is the
@@ -129,17 +128,11 @@ public static class ArtistBleed
     /// band behind the chrome.</summary>
     public static float ParallaxY(double offset) => -(float)Math.Max(0.0, offset) * (1f - ArtistHeroLayout.PhotoParallaxFraction);
 
-    /// <summary>The scrim's alpha at the window top; it falls to 0 by the card's top edge.</summary>
-    public static float ScrimTopAlpha() => ScrimStops[0].Alpha;
+    /// <summary>The scrim's alpha at the window top for the theme; it falls to 0 by the card's top edge.</summary>
+    public static float ScrimTopAlpha(ThemeKind theme) => ScrimStopsFor(theme)[0].Alpha;
 
     /// <summary>The scrim's height: the chrome's whole extent above the card (the title bar, plus the Zune band when present).</summary>
     public static float ScrimHeight(float chromeBottom) => MathF.Max(0f, chromeBottom);
-
-    /// <summary>The right side field's height: the card's top, but never below the title bar's bottom. Under Zune the card's top
-    /// is the title bar plus the band, and the inline right panel runs from the title bar's bottom, so the field must not reach
-    /// into the panel's column below the title bar (it would show through the rail gap and behind the panel's rounded corner).
-    /// Outside Zune the card's top is the title bar's bottom and this is <see cref="ScrimHeight"/>.</summary>
-    public static float SideFieldHeight(float cardTop, float titleBarBottom) => ScrimHeight(MathF.Min(cardTop, titleBarBottom));
 
     // ── THE SHARED PHOTO FRAME ───────────────────────────────────────────────────────────────────────────────────────
 

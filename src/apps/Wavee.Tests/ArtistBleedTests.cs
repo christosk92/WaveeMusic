@@ -182,11 +182,14 @@ public class ArtistBleedGeometryTests
     }
 
     [Fact]
-    public void The_scrim_is_one_partial_veil_in_both_themes_and_as_tall_as_the_chrome()
+    public void The_scrim_takes_the_themes_strength_and_is_as_tall_as_the_chrome()
     {
-        // The field is dark in both themes, so the scrim is a single constant, not a per-theme pair.
-        Assert.Equal(ArtistBleed.ScrimTop, ArtistBleed.ScrimTopAlpha());
-        Assert.InRange(ArtistBleed.ScrimTopAlpha(), 0.01f, 0.99f);
+        // A light veil has to hold the theme's dark ink over a photo, so the light scrim is the stronger of the two.
+        Assert.Equal(0.75f, ArtistBleed.ScrimTopAlpha(ThemeKind.Light));
+        Assert.Equal(0.55f, ArtistBleed.ScrimTopAlpha(ThemeKind.Dark));
+        Assert.True(ArtistBleed.ScrimTopAlpha(ThemeKind.Light) > ArtistBleed.ScrimTopAlpha(ThemeKind.Dark));
+        foreach (var theme in new[] { ThemeKind.Light, ThemeKind.Dark })
+            Assert.InRange(ArtistBleed.ScrimTopAlpha(theme), 0.01f, 0.99f);
         Assert.Equal(132f, ArtistBleed.ScrimHeight(132f));
         Assert.Equal(0f, ArtistBleed.ScrimHeight(-4f));
     }
@@ -194,19 +197,25 @@ public class ArtistBleedGeometryTests
     [Fact]
     public void The_scrim_is_an_eased_four_stop_falloff_that_ends_clear()
     {
-        var s = ArtistBleed.ScrimStops;
-        Assert.Equal(GradientSpec.MaxStops, s.Length);               // the recorder's ceiling, no more
-        Assert.Equal((0f, 0.55f), s[0]);
-        Assert.Equal((0.4f, 0.38f), s[1]);
-        Assert.Equal((0.8f, 0.12f), s[2]);
-        Assert.Equal((1f, 0f), s[3]);
-        for (int i = 1; i < s.Length; i++)
+        var expected = new Dictionary<ThemeKind, (float Offset, float Alpha)[]>
         {
-            Assert.True(s[i].Offset > s[i - 1].Offset);              // strictly increasing offsets
-            Assert.True(s[i].Alpha < s[i - 1].Alpha);                // and a strictly falling alpha
+            [ThemeKind.Light] = [(0f, 0.75f), (0.4f, 0.55f), (0.8f, 0.2f), (1f, 0f)],
+            [ThemeKind.Dark] = [(0f, 0.55f), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)],
+        };
+        foreach (var (theme, want) in expected)
+        {
+            var s = ArtistBleed.ScrimStopsFor(theme);
+            Assert.Equal(GradientSpec.MaxStops, s.Length);               // the recorder's ceiling, no more
+            Assert.Equal(want, s);
+            for (int i = 1; i < s.Length; i++)
+            {
+                Assert.True(s[i].Offset > s[i - 1].Offset);              // strictly increasing offsets
+                Assert.True(s[i].Alpha < s[i - 1].Alpha);                // and a strictly falling alpha
+            }
+            Assert.Equal(0f, s[^1].Alpha);                               // it ends clear
+            // Eased, not linear: the first leg falls slower than a straight ramp would.
+            Assert.True(s[1].Alpha > s[0].Alpha * (1f - s[1].Offset));
         }
-        // Eased, not linear: the first leg falls slower than a straight ramp would (0.55 to 0 over 0..1 is 0.33 at 0.4).
-        Assert.True(s[1].Alpha > ArtistBleed.ScrimTop * (1f - s[1].Offset));
     }
 
     [Fact]
@@ -260,14 +269,6 @@ public class ArtistBleedGeometryTests
             Assert.NotEqual(ArtistBleed.FieldBase(theme, null, 0xFFC82828), graded);
         }
     }
-
-    [Theory]
-    [InlineData(48f, 48f, 48f)]     // Classic / Library: the card's top is the title bar's bottom
-    [InlineData(132f, 48f, 48f)]    // Zune with a row 2: the inline right panel starts at the title bar's bottom, not under the band
-    [InlineData(100f, 48f, 48f)]    // Zune with no row 2, mid-FLIP
-    [InlineData(20f, 48f, 20f)]     // never taller than the card's presented top
-    public void The_right_side_field_stops_at_the_title_bar_so_it_never_shows_through_the_rail_gap(float cardTop, float titleBar, float expected)
-        => Assert.Equal(expected, ArtistBleed.SideFieldHeight(cardTop, titleBar));
 }
 
 public class ArtistBleedFrameTests
@@ -494,14 +495,6 @@ public class ArtistBleedHandOverTests
         Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeInkSecondary());   // mix 0: the rest ink is the theme's, bound
         var plain = Controls.TextAction("Share", null, ink: new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary, Tok.TextPrimary, Tok.TextSecondary));
         Assert.True(((TextEl)plain.Children![0]).Color.IsBound);
-    }
-
-    [Fact]
-    public void The_side_field_is_heavier_than_the_photo_scrim()
-    {
-        // It has to hold light ink on the plain theme ground, where the scrim only has to calm a photo.
-        Assert.True(ArtistBleed.SideFieldAlpha > ArtistBleed.ScrimTop);
-        Assert.InRange(ArtistBleed.SideFieldAlpha, 0f, 1f);
     }
 }
 

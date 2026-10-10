@@ -222,9 +222,8 @@ public static partial class Shell
         /// (flush with the window's left edge when no pane is docked); it never sits under the right rail or the Classic/Library
         /// pane. Under Zune a FLOATING rail's panel starts under the band, so below the card's top the photo stops at the panel's
         /// left edge (<see cref="ArtistBleed.PhotoRight"/>) while a band extension keeps the photo across the chrome above the panel.
-        /// The CHROME INK is window-wide (<c>Ui.ChromeInkMix</c>), so the field is too: two side strips (the SIDE FIELD below)
-        /// run the title bar's height under whatever lies outside the photo's span, so the island above the pane column and the one
-        /// above the rail sit on the same field and keep the theme's ink.
+        /// The CHROME INK keeps the theme's own ink (<c>Ui.ChromeInkMix</c> is 0), so the columns outside the photo's span (above the
+        /// Classic/Library pane, above the rail) keep the plain chrome and need no field: nothing is drawn outside the card's span.
         /// <para>THE PHOTO FOLLOWS THE CARD'S PRESENTED POSE. A pane toggle or a nav-style switch FLIPs the card (Reveal: its
         /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
         /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
@@ -356,48 +355,16 @@ public static partial class Shell
                 Transform = Prop.Of(() => Affine2D.Translation(Left(), 0f)),
                 Opacity = Prop.Of(Strength),
                 // Straight-alpha stops: the transparent stop carries the ground's own RGB (Design.Wash.Vanish).
-                Gradient = new GradientSpec(GradientShape.Linear, 90f, ScrimStops(ground)),
+                Gradient = new GradientSpec(GradientShape.Linear, 90f, ScrimStops(ground, ArtistBleed.ScrimStopsFor(Tok.Theme))),
                 Enter = WashFade, Exit = WashFade,
             };
-            // THE SIDE FIELD: the same ground, flat across the chrome's height, under the title bar's columns the photo does not
-            // reach (above the Classic/Library pane on the left, above the rail on the right). It rides the photo's strength and
-            // Enter/Exit, so the ink and the field are one clock. Zero-width when the card is flush (Zune, no rail). The RIGHT field
-            // stops at the title bar's bottom (ArtistBleed.SideFieldHeight): under Zune the inline rail runs from there to the dock
-            // and the Zune band lives in the page column, so a field as tall as the card's top would show through the rail gap and
-            // behind the rail coat's rounded corner. "The title bar's bottom" is TitleBar.ExpandedHeight because the chrome row is pinned at
-            // y=0 and is exactly that tall; CardPose.Y is a layout coordinate from the same origin, so the two compare directly. The
-            // left field keeps the card's top (Zune has no pane, so it is zero-wide there).
-            Element Side(string key, Func<float> left, Func<float> width, Func<float> height) => new BoxEl
-            {
-                Key = key + b.Key,
-                HitTestVisible = false,
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                Width = Prop.Of(width),
-                Height = Prop.Of(height),
-                Transform = Prop.Of(() => Affine2D.Translation(left(), 0f)),
-                Opacity = Prop.Of(Strength),
-                Gradient = new GradientSpec(GradientShape.Linear, 90f,
-                [
-                    new GradientStop(0f, ground with { A = ArtistBleed.SideFieldAlpha }),
-                    new GradientStop(0.7f, ground with { A = ArtistBleed.SideFieldAlpha }),
-                    new GradientStop(1f, Design.Wash.Vanish(ground)),
-                ]),
-                Enter = WashFade, Exit = WashFade,
-            };
-            return
-            [
-                photo, photoBand, scrim,
-                Side("shell.bleed.side.l:", static () => 0f, static () => MathF.Max(0f, Left()), static () => ArtistBleed.ScrimHeight(Ui.CardPose.Value.Y)),
-                Side("shell.bleed.side.r:", static () => CardRight(), () => MathF.Max(0f, vp.Value.Width - CardRight()),
-                    static () => ArtistBleed.SideFieldHeight(Ui.CardPose.Value.Y, TitleBar.ExpandedHeight)),
-            ];
+            return [photo, photoBand, scrim];
         }
 
-        /// <summary>The scrim's gradient stops (<see cref="ArtistBleed.ScrimStops"/>) over <paramref name="ground"/>: straight-alpha, the
-        /// last (alpha 0) stop carrying the ground's own RGB.</summary>
-        static GradientStop[] ScrimStops(ColorF ground)
+        /// <summary>The scrim's gradient <paramref name="stops"/> (<see cref="ArtistBleed.ScrimStopsFor"/>) over <paramref name="ground"/>:
+        /// straight-alpha, the last (alpha 0) stop carrying the ground's own RGB.</summary>
+        static GradientStop[] ScrimStops(ColorF ground, (float Offset, float Alpha)[] stops)
         {
-            var stops = ArtistBleed.ScrimStops;
             var result = new GradientStop[stops.Length];
             for (int i = 0; i < stops.Length; i++)
                 result[i] = new GradientStop(stops[i].Offset, stops[i].Alpha > 0f ? ground with { A = stops[i].Alpha } : Design.Wash.Vanish(ground));
