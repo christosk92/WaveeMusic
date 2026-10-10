@@ -273,6 +273,9 @@ public static partial class Shell
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode0, Sidebar.Width.Peek(), w0));
                 // The heads present the launch style from frame one: a Zune launch is hoisted without a Reflow.
                 Ui.PresentedNavStyle.SetIfChanged(Sidebar.NavStyle.Peek());
+                // The band's row 2 is right on frame one: Home opens at 84, never animating from 52.
+                var boot = Current.Peek();
+                Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in boot));
                 // The page gutter is right on frame one: a narrow launch must not mount at 36 and step a frame later.
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(FrameRules.CardWidth(w0, Sidebar.PresentedWidth.Peek(),
                     FrameRules.RailGapWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek()),
@@ -524,6 +527,7 @@ public static partial class Shell
                     Chord(ZoomResetChord, static () => ZoomStep(0)),
                     Chord(ZoomResetPadChord, static () => ZoomStep(0)),
                     Embed.Comp(static () => new NavStylePresenter()) with { Key = "shell:navstyle-presenter" },
+                    Embed.Comp(static () => new SubRowPresenter()) with { Key = "shell:subrow-presenter" },
                     Embed.Comp(static () => new BleedPresenter()) with { Key = "shell:bleed-presenter" },
                     Embed.Comp(static () => new CardPoseTracker()) with { Key = "shell:card-pose-tracker" },
                     // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
@@ -920,12 +924,13 @@ public static partial class Shell
     /// (<see cref="Ui.CardSettle"/> re-arms it on every change of the final rect), then lands on the settled pose. The ticker is
     /// mounted only inside that window, so an idle window pays nothing. Renders an empty, zero-size box.
     /// <para>TWO SOURCES. Under the Async host, sampling <c>AbsoluteRect</c> reads the PREVIOUS frame's layout, so the photo would
-    /// trail the card. A pane, rail or nav-style toggle runs a known tween (the card's FLIP: <see cref="PaneMs"/> /
+    /// trail the card. A pane, rail or nav-style toggle, and a change of the band's row 2 (<see cref="Ui.PresentedSubRow"/>, which
+    /// eases the band's height under a navigation), run a known tween (the card's FLIP: <see cref="PaneMs"/> /
     /// <see cref="PaneEase"/>), so a settle ARMED by a live toggle plays that tween analytically
     /// (<see cref="ArtistBleed.PoseAt"/>) and the photo follows the card in the same frame. Everything else (a window resize, the
     /// sidebar drag peek, the rail drag commit, a snap) has no known curve and samples the real pose per tick. Every run lands on
     /// the sample.</para>
-    /// <para>THE ARM is recorded in Render, not in an effect: the toggle's own commit re-renders this tracker (it reads the three
+    /// <para>THE ARM is recorded in Render, not in an effect: the toggle's own commit re-renders this tracker (it reads the
     /// toggles) BEFORE the layout pass that bumps <see cref="Ui.CardSettle"/> and re-renders it again, so the arm is always
     /// recorded first. It reads the LIVE nav style, not <c>PresentedNavStyle</c>: the card's nav-style FLIP runs in the NavStyle
     /// commit, while PresentedNavStyle flips <c>HoistSettleMs</c> later. A settle consumes the arm.</para></summary>
@@ -938,6 +943,7 @@ public static partial class Shell
         SidebarPaneMode _mode;
         bool _railOpen;
         ShellNavStyle _navStyle;
+        ZuneSubRow _subRow;
         SidebarWindowBand _band;
         long _bandT;               // when the window band last crossed (0: never)
         long _armT;               // when a live toggle last changed (0: none, or consumed by a settle)
@@ -971,16 +977,17 @@ public static partial class Shell
             var mode = Sidebar.Mode.Value;
             bool railOpen = Ui.RailOpen.Value;
             var navStyle = Sidebar.NavStyle.Value;
+            var subRow = Ui.PresentedSubRow.Value;
             var band = Sidebar.Band.Value;
             long now = Design.FrameTime.NowMs;
             // A window-band cross (a resize) also flips the mode, and the resize cancels the card's FLIP; the mode can trail the band
             // by a render, so the cross shadows arming for the arm window. A drag (or the chrome-edge latch) holds the layout
             // suppression, so the card snaps 1:1 and the sample is right. Neither is a toggle.
             if (_seen && band != _band) _bandT = now;
-            bool toggled = _seen && (mode != _mode || railOpen != _railOpen || navStyle != _navStyle);
+            bool toggled = _seen && (mode != _mode || railOpen != _railOpen || navStyle != _navStyle || subRow != _subRow);
             if (toggled && ArtistBleed.ArmsPose(FgMotion.LayoutTransitionsSuppressed, _bandT > 0 && now - _bandT <= ArtistBleed.ToggleArmWindowMs))
                 _armT = now;
-            (_seen, _mode, _railOpen, _navStyle, _band) = (true, mode, railOpen, navStyle, band);
+            (_seen, _mode, _railOpen, _navStyle, _subRow, _band) = (true, mode, railOpen, navStyle, subRow, band);
             if (settle != _lastSettle)
             {
                 _lastSettle = settle;
@@ -1312,6 +1319,36 @@ public static partial class Shell
             // The frame-clock idiom (Album.Page.cs, Artist.UI.cs): UseTimeout arms from mount and re-arms when its deps
             // change. The mount-time fire is a no-op because the value is already seeded.
             UseTimeout(_present, FrameRules.HoistSettleMs, DepKey.From((int)s));
+            return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+        }
+    }
+
+    /// <summary>Follows the route (and the nav style) into <see cref="Ui.PresentedSubRow"/>, the band's row-2 kind. On a route
+    /// change it POSTS the write (<c>UsePost</c> runs after the commit in which the incoming page mounted), so the band's height
+    /// change and the card's move never share a commit with the page's own mount, its entrance or its head's Reflow. On a style
+    /// change it writes at once. The boot value is seeded by <c>FrameRoot</c>. Renders an empty, zero-size box.</summary>
+    sealed class SubRowPresenter : Component
+    {
+        public override Element Render()
+        {
+            var post = UsePost();
+            // A style change writes at once (a signal write belongs in an effect, never in a render).
+            UseSignalEffect(static () =>
+            {
+                _ = Sidebar.NavStyle.Value;
+                var now = Current.Peek();
+                Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in now));
+            });
+            var route = Current.Value;
+            if (ZuneNavRules.SubRowOf(in route) != Ui.PresentedSubRow.Peek())
+            {
+                // Resolve the row again at fire time: a second navigation before the post lands presents the LAST route's row.
+                post(static () =>
+                {
+                    var now = Current.Peek();
+                    Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in now));
+                });
+            }
             return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
         }
     }

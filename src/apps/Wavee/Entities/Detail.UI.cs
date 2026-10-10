@@ -527,11 +527,6 @@ public static partial class Detail
         InputHooks? _inputHooks;
         string _sheetRoute = "\0";
         bool _sheetHosts;
-        // ── the Zune row 2, two-column arm (A3) ── an album or a playlist in a two-column arm publishes its TITLE ONLY (the vertical
-        //    arm's table publishes the whole band); only while this page is the active one.
-        IReadSignal<bool>? _isActive;
-        bool _verticalNow;
-        readonly Action _publishBandTitle;
         //    The FACTS LATCH (InsightsSheet.FactsSettled): the page's bento slot is derived from a scan of the live row
         //    source, which reads empty while the list's open holds its reveal — so an absent slot is "not answered yet",
         //    not "no facts". Latched per ROUTE and dropped with it, beside the open state.
@@ -624,18 +619,6 @@ public static partial class Detail
             _closeInsights = _insights.Close;
             _returnInsightsFocus = ReturnInsightsFocus;
             _syncInsightsArm = () => { if (!_sheetHosts) _insights.Close(); };
-            _publishBandTitle = PublishBandTitle;
-        }
-
-        /// <summary>Hands the two-column album / playlist title to the Zune band's row 2 (see <c>Shell.PageBands</c>). The vertical
-        /// arm's table publishes the whole band, so this is a no-op there. Safe any time and any number of times.</summary>
-        void PublishBandTitle()
-        {
-            if (_isActive is { } act && !act.Peek()) return;
-            if (_verticalNow || _latest is not { } spec) return;
-            if (spec.Config.Content != DetailContent.Tracks || spec.Identity.Title.Length == 0) return;
-            if (!BandLayout.PublishesToRow2(spec.RouteKey)) return;
-            PageHead.PublishBand(spec.RouteKey, spec.Identity.Title, Array.Empty<string>(), BandNoActive, BandNoPivot);
         }
 
         /// <summary>── INSIGHTS SHEET (additive) ── Focus returns to the toolbar toggle when the sheet closes. The
@@ -739,11 +722,6 @@ public static partial class Detail
             _sheetHosts = InsightsSheet.ShowsToggle(id.Kind, factsSettled, cfg.Content);
             // Losing the facts CLOSES the sheet — a signal write belongs in an effect, never in a render (rule 6).
             UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
-            // The Zune row 2's title for the two-column arm (A3); the vertical arm's table publishes the whole band.
-            _verticalNow = vertical;
-            _isActive = UseIsActive();
-            UseEffect(_publishBandTitle, DepKey.From(vertical ? 1 : 0, HashCode.Combine(id.Title, routeKey)));
-            UseActivation(onActivated: _publishBandTitle);
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
             Element tint = Palette.ShellTint(paletteSource.Url, ready: true, disabled: !washes, apply: cfg.TwoColumn,

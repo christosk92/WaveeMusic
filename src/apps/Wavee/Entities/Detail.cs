@@ -566,20 +566,15 @@ public static partial class Detail
         public static float CollapseDistance(float expandedHeight)
             => CollapseDistance(expandedHeight, CompactIdentityHeight);
 
-        /// <summary>The collapse distance to an explicit <paramref name="floor"/>: <see cref="BandFloor"/> (56 with the band in the
-        /// page, 0 with the band in the Zune band's row 2). The engine's Collapse pairing is <c>over = H − floor</c> with
-        /// <c>minH = floor</c>, so the hero's presented bottom is <c>max(floor, H − offset)</c> at either floor.</summary>
+        /// <summary>The collapse distance to an explicit <paramref name="floor"/> (<see cref="BandFloor"/>). The engine's
+        /// Collapse pairing is <c>over = H − floor</c> with <c>minH = floor</c>, so the hero's presented bottom is
+        /// <c>max(floor, H − offset)</c>.</summary>
         public static float CollapseDistance(float expandedHeight, float floor)
             => MathF.Max(1f, expandedHeight - floor);
 
-        /// <summary>THE FLOOR the hero collapses to and the chrome sticks at: the band's 56 while the stuck band is drawn in the
-        /// page, 0 once its contents live in the Zune band's second row (the card top is then the stick line).</summary>
-        public static float BandFloor(bool inRow2) => inRow2 ? 0f : CompactIdentityHeight;
-
-        /// <summary>Who draws the band's search and selection swaps while the band's contents live in row 2: row 2 alone. The hero's
-        /// own toolbar (visible until the hero collapses) keeps its search ICON and its normal commands then, so one Find never
-        /// opens two text editors (they would fight over focus) and one selection never shows two bars.</summary>
-        public static bool ToolbarOwnsSwaps(bool inRow2) => !inRow2;
+        /// <summary>THE FLOOR the hero collapses to and the chrome sticks at: the band's 56. The album, prerelease and playlist band
+        /// is always drawn in the page, in every nav style (they have no Zune row 2).</summary>
+        public static float BandFloor => CompactIdentityHeight;
 
         /// <summary>The pinned list-chrome extent: the table's REAL column-header height (Modern 36 / Classic 32 —
         /// <c>Track.TableRules.HeaderHeightFor</c>), its divider, and the optional Liked filter rail.</summary>
@@ -590,20 +585,11 @@ public static partial class Detail
         public static float StickyClipInset(float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight)
             => CompactIdentityHeight + ChromeExtent(contentFilterExtent, headerHeight);
 
-        /// <summary><see cref="StickyClipInset"/> at the latched floor placement: the 56 the constant carries is the band, so it is
-        /// subtracted once the band lives in row 2.</summary>
-        public static float StickyClipInsetFor(bool inRow2, float contentFilterExtent = 0f, float headerHeight = ChromeHeaderHeight)
-            => StickyClipInset(contentFilterExtent, headerHeight) - (inRow2 ? CompactIdentityHeight : 0f);
-
         /// <summary>The trailing shelves' own clip inset (the album "Also by" / release-panel band under the rows,
         /// Track.Table.cs's <c>TrailingBody</c>): the same line the hero collapses to, so a shelf cannot show through
         /// the compact band while still riding under it. Equal to <see cref="CompactIdentityHeight"/> by construction —
         /// named separately so a caller states what it means, not <see cref="StickyClipInset"/>'s.</summary>
         public static float TrailingClipInset => CompactIdentityHeight;
-
-        /// <summary><see cref="TrailingClipInset"/> at the latched floor placement: the same line the hero collapses to
-        /// (<see cref="BandFloor"/>), so 0 once the band lives in row 2.</summary>
-        public static float TrailingClipInsetFor(bool inRow2) => BandFloor(inRow2);
 
         // ── the vertical viewport's slot map: hero, pinned chrome, the recycled rows, then (hero system only) the facts
         //    FOOTER — a slot, not a block in the identity column, so the page opens on its songs, not on charts.
@@ -861,7 +847,7 @@ public static partial class Detail
 
         /// <summary>Is the toggle composed at all? On a facts-bearing page whose facts have actually arrived, and only on a
         /// TRACK page (an episode list has no bento), in every arm.
-        /// <para>ONE predicate, FOUR readers: the hero's toolbar button, the pinned band's word (page or Zune row 2), the rail's
+        /// <para>ONE predicate, FOUR readers: the hero's toolbar button, the pinned band's word, the rail's
         /// CTA button and the sheet itself. The band does not re-derive it: the frame threads the answer down as the presence
         /// of the toggle object (<c>VerticalSpec.Insights</c>), so the entry points cannot disagree about whether they
         /// exist.</para></summary>
@@ -888,12 +874,10 @@ public static partial class Detail
         public static bool FactsSettled(bool everSeen, bool slotNow) => everSeen || slotNow;
 
         /// <summary>Which entry point owns INPUT at this scroll position. The pinned band takes hits only once its
-        /// chrome is stuck; the collapsing hero's presentation stops taking them at the same edge. With the band in the page,
-        /// exactly one of the two answers true for any <paramref name="bandStuck"/> - which is why BOTH are composed: neither
-        /// alone covers the whole scroll range, the pair does, and there is no position at which both are live. Under Zune
-        /// (<paramref name="inRow2"/>) the band's word lives in the Zune band's row 2, which never scrolls away, so it is ALWAYS
-        /// live and both entry points are visible and live while the hero is expanded.</summary>
-        public static bool BandToggleTakesInput(bool bandStuck, bool inRow2) => inRow2 || bandStuck;
+        /// chrome is stuck; the collapsing hero's presentation stops taking them at the same edge. Exactly one of
+        /// the two answers true for any <paramref name="bandStuck"/> - which is why BOTH are composed: neither alone covers the
+        /// whole scroll range, the pair does, and there is no position at which both are live.</summary>
+        public static bool BandToggleTakesInput(bool bandStuck) => bandStuck;
 
         /// <summary>The hero toolbar's toggle owns input exactly while the band is not stuck (the collapsing hero stops taking
         /// hits at the stuck edge), wherever the band lives.</summary>
@@ -1041,21 +1025,14 @@ public static partial class Detail
         public const float DividerGap = ClusterGap * 0.5f;
 
         // ── THE FLOOR ──
-        // Under Zune an entity page (artist, profile, episode, show) publishes its band into the Zune band's second row, so its
+        // Under Zune an entity page with its own row 2 (artist, profile, episode, show) publishes its band there, so its
         // in-page band is not composed and its sticky floor is 0 instead of the band's 56. The hero collapses to that floor
-        // itself (its Collapse floor is the same number), so no hero remnant stays pinned at the card top.
+        // itself (its Collapse floor is the same number), so no hero remnant stays pinned at the card top. Album, prerelease and
+        // playlist have no row 2 (ZuneSubRow.None): they keep the in-page band (floor 56) in every nav style.
 
         /// <summary>The WANTED placement: the band lives in the Zune band's row 2 while Zune is the PRESENTED style (the page
         /// reads <c>Shell.Ui.PresentedNavStyle</c>, never the live one, so the change lands in the quiet commit).</summary>
         public static bool InRow2(ShellNavStyle presented) => presented == ShellNavStyle.Zune;
-
-        /// <summary>Does this route's Zune row 2 carry the page's band? The album, prerelease and playlist routes do (their row 2
-        /// is the Context kind, <c>ZuneNavRules.SubRowOf</c>). Liked Songs does NOT: it is a Library page, so its row 2 is Library's
-        /// sub-pivots, and the local-files route shows its page title. Both keep their in-page band (floor 56) under Zune.</summary>
-        public static bool PublishesToRow2(string routeName)
-            => routeName.StartsWith(SidebarPinId.AlbumPrefix, StringComparison.Ordinal)
-            || routeName.StartsWith("prerelease:", StringComparison.Ordinal)   // the Prerelease route's table prefix (Shell.cs)
-            || routeName.StartsWith(SidebarPinId.PlaylistPrefix, StringComparison.Ordinal);
 
         /// <summary>The stuck height: the band's 56 in the page, 0 once the band lives in row 2.</summary>
         public static float StuckHeight(bool inRow2) => inRow2 ? 0f : Height;

@@ -16,12 +16,12 @@
 // overlay, so opening it moves neither the rail nor the list.
 //
 // ENTRY POINTS, ONE CONTROL: in the vertical arm the hero's toolbar row (§6) carries it while the reader is at the top of the
-// page, and the pinned 56-DIP context band (§7) carries it for the whole of the rest of the page (under Zune that band lives in
-// the Zune band's row 2, which never scrolls away) — because the hero COLLAPSES, and a sheet meant to be read ALONGSIDE the list
-// cannot be opened from chrome that scrolls away. In the two-column arms the rail's CTA group carries it (Detail.UI.cs
-// RailFabs, `InsightsToggleSlot`), in a slot reserved by kind (InsightsSheet.ToggleSlotReserved) that fades in when the facts settle. In
-// the vertical arm they are never both legible (the band crossfades in exactly as the hero fades out) and never both
-// interactive (input crosses with the pin, not with the paint). §7 carries the whole argument.
+// page, and the pinned 56-DIP context band (§7) carries it for the whole of the rest of the page — because the hero
+// COLLAPSES, and a sheet meant to be read ALONGSIDE the list cannot be opened from chrome that scrolls away. In the
+// two-column arms the rail's CTA group carries it (Detail.UI.cs RailFabs, `InsightsToggleSlot`), in a slot reserved by kind
+// (InsightsSheet.ToggleSlotReserved) that fades in when the facts settle. In the vertical arm they are never both legible
+// (the band crossfades in exactly as the hero fades out) and never both interactive (input crosses with the pin, not with
+// the paint). §7 carries the whole argument.
 //
 // ── WHAT IS ENGINE, AND WHAT IS OURS ─────────────────────────────────────────────────────────────────────────────────
 //
@@ -383,14 +383,10 @@ public static partial class Detail
     //     is the handoff, not two buttons competing for the same glance;
     //   · INPUT is exclusive by construction and follows the pin, not the paint: the band takes hits only once its
     //     chrome is stuck (the chrome sticky's engaged edge → `TableHost._compactInteractive` → the band's HitTestVisible)
-    //     and the hero's
-    //     presentation stops taking them at the same edge. InsightsSheet.BandToggleTakesInput / HeroToggleTakesInput
-    //     state that invariant, and DetailInsightsSheetTests pins it: with the band in the page, at every scroll position
-    //     EXACTLY ONE of the two is reachable. Dropping the hero one would therefore leave the whole pre-stuck range — the
-    //     top of the page, where a reader most naturally reaches for the facts — with no way to open the sheet at all.
-    //     UNDER ZUNE the band's cluster lives in the Zune band's row 2 (Shell.PageBands), which never scrolls away: that
-    //     word is ALWAYS live (BandToggleTakesInput(bandStuck, inRow2: true)), so both entry points are visible and live
-    //     while the hero is expanded, and exactly the row-2 one once it has collapsed.
+    //     and the hero's presentation stops taking them at the same edge. InsightsSheet.BandToggleTakesInput /
+    //     HeroToggleTakesInput state that invariant, and DetailInsightsSheetTests pins it: at every scroll position EXACTLY ONE
+    //     of the two is reachable. Dropping the hero one would therefore leave the whole pre-stuck range — the top of the page, where a
+    //     reader most naturally reaches for the facts — with no way to open the sheet at all.
     //
     // Position in the cluster: Find · Filter · Insights · Play. The three verbs that shape WHAT YOU SEE sit together
     // and the one primary verb stays terminal.

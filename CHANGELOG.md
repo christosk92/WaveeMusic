@@ -56,6 +56,7 @@ versions separately under `v*` and is not tracked in this file.)
 - Library: one sort menu instead of a row of sort words; counts read like "20 albums".
 - The title bar is simpler: the theme switch moved into the profile menu, and the search box is a compact pill.
 - Album and playlist pages: a tighter side column and less space before the songs.
+- Zune: album, playlist and other pages without their own sections show only the top pivot row, so the page title is no longer repeated above the page.
 
 ### Removed
 

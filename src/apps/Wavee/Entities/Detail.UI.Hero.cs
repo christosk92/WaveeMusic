@@ -25,16 +25,13 @@
 // the identity's title — pure, so all three agree whenever the title is known): every block the hero adds has its flag,
 // and the flow decision is read off the raw column width in all three (424 enter / 400 leave).
 //
-// THE COLLAPSE FLOOR (A3). D49's three numbers are the EXPANDED hero's height and are floor-independent: the floor
-// (VerticalLayout.BandFloor) only changes where the collapse ENDS. Under Zune an album or a playlist publishes its band into the
-// Zune band's second row (Shell.PageBands, Detail.BandLayout.PublishesToRow2), so the in-page band is not drawn, the hero
-// collapses to the latched floor 0 over H (its presented bottom stays glued to the stuck column header, no gap opens above it)
-// and the chrome sticks at the card top. The floor is Detail.BandLayout.FloorLatch over Shell.Ui.PresentedNavStyle, held by the
-// table (parts.InRow2). NO scroll compensation is needed or written (fluent-gpu ScrollEffect.cs:153-172): Collapse and Sticky are
-// PAINT channels (PresentedH / ClipBottom / TransY), so the rows never move when the floor changes; the pairing over = H - floor
-// with minH = floor keeps the hero's presented bottom at H - offset (clamped at the floor), so it rides the column header exactly
-// at either floor; and the floor flips only below BandLayout.FlipLine, where both pairings are identical. While the floor is
-// latched at 56 under Zune the band keeps drawing, so the stuck strip is never empty.
+// THE COLLAPSE FLOOR. D49's three numbers are the EXPANDED hero's height and are floor-independent: the floor
+// (VerticalLayout.BandFloor, the band's 56) only changes where the collapse ENDS. An album, a prerelease or a playlist has
+// no Zune row 2 (ZuneSubRow.None): it keeps its own sticky band in every nav style, so its hero collapses to the band's 56
+// and the chrome sticks below it. NO scroll compensation is needed or written (fluent-gpu ScrollEffect.cs:153-172):
+// Collapse and Sticky are PAINT channels (PresentedH / ClipBottom / TransY), so the rows never move; the pairing
+// over = H - floor with minH = floor keeps the hero's presented bottom at H - offset (clamped at the floor), so it rides
+// the column header exactly. The band keeps drawing the whole time, so the stuck strip is never empty.
 //
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested Detail classes here — text runs are `new TextEl`/`Ui.*`.
 
@@ -101,8 +98,7 @@ public static partial class Detail
         float ColumnWidth,                        // measured (or seeded) list width — bucketed ONCE inside (BucketW)
         float CompactLeft,                        // gutter: RowMetrics.PadXFor(tier) (+48 chips, +36 lens)
         float HeroHeight,                         // the band height the table's Collapse bind uses (measured, else HeroBandHeight)
-        Action<float>? OnHeroMeasured,
-        bool InRow2 = false);                     // the LATCHED floor placement: the band lives in the Zune band's row 2 (floor 0)
+        Action<float>? OnHeroMeasured);
 
     // ══ 2. THE PRESENCE FLAGS — one set for the hero, its skeleton and its reserved height ═══════════════════════════
 
@@ -174,7 +170,6 @@ public static partial class Detail
                 && ReferenceEquals(a.SelectionVisible, b.SelectionVisible)
                 && ReferenceEquals(a.CompactInteractive, b.CompactInteractive)
                 && ReferenceEquals(a.SearchExpanded, b.SearchExpanded)
-                && a.InRow2 == b.InRow2
                 && (a.OnHeroMeasured is null) == (b.OnHeroMeasured is null);
         }
 
@@ -341,8 +336,7 @@ public static partial class Detail
 
             // ── the STUCK BAND: typography only, NO fill (the offset model — the rows are clipped under it) ──
             float heroH = parts.HeroHeight > 1f ? parts.HeroHeight : HeroBandHeight(spec, availW);
-            bool inRow2 = parts.InRow2;
-            float cd = VerticalLayout.CollapseDistance(heroH, VerticalLayout.BandFloor(inRow2));
+            float cd = VerticalLayout.CollapseDistance(heroH, VerticalLayout.BandFloor);
 
             string? byline = Text.Byline(id.OwnerName, id.Meta, id.Eyebrow);
             Element identityBlock = new BoxEl
@@ -353,7 +347,7 @@ public static partial class Detail
             // The expanded search field takes the TITLE's place, never the actions' — one zero-gap slot, so the hidden
             // arm cannot leave a cluster gap behind.
             Element lead = identityBlock;
-            if (!inRow2 && parts.SearchField is { } searchField)
+            if (parts.SearchField is { } searchField)
             {
                 var searchExpanded = parts.SearchExpanded;
                 lead = new BoxEl
@@ -366,12 +360,11 @@ public static partial class Detail
                     ],
                 };
             }
-            // Under Zune (the LATCHED floor placement) the band's contents live in the Zune band's row 2: nothing is drawn here.
-            Element normalBand = inRow2 ? new BoxEl() : Band(availW, parts.CompactLeft, lead, parts.BandActions);
+            Element normalBand = Band(availW, parts.CompactLeft, lead, parts.BandActions);
 
             // The selection arm swaps the band's CONTENT at the same 56 — the same band in another mode, not a plate.
             Element bandContent = normalBand;
-            if (!inRow2 && parts.SelectionBar is { } selectionBar)
+            if (parts.SelectionBar is { } selectionBar)
             {
                 var selectionVisible = parts.SelectionVisible;
                 Element selectionBand = new BoxEl
@@ -398,13 +391,11 @@ public static partial class Detail
             //    live exactly when `compactCanHit` is true, while the hero's own toolbar toggle (inside `expanded`,
             //    under `presentation` below) is live exactly when it is false. Never both, never neither — stated as
             //    Detail.InsightsSheet.BandToggleTakesInput / HeroToggleTakesInput, pinned by DetailInsightsSheetTests.
-            //    Under Zune the same outer box stays (the hero's tree shape never changes) with no children and no input: the
-            //    word that stays reachable is row 2's (BandToggleTakesInput(bandStuck, inRow2) is always true there).
             Element compact = new BoxEl
             {
                 ZStack = true, Width = availW, Height = BandLayout.Height,
-                HitTestVisible = compactCanHit && !inRow2, HitTestPassThrough = true,
-                Children = inRow2 ? [] : [bandContent],
+                HitTestVisible = compactCanHit, HitTestPassThrough = true,
+                Children = [bandContent],
             }.Reveal(VerticalLayout.CompactRevealStart(cd), cd - VerticalLayout.CompactRevealStart(cd), Design.Reduced ? 0f : Spacing.XS);
 
             // …and the scrolled-away hero stops eating clicks at the same edge.
@@ -748,12 +739,6 @@ public static partial class Detail
             },
         ],
     };
-
-    /// <summary>What a detail page hands row 2 in place of tabs: no section is lit and a tab click does nothing (it has no tabs).</summary>
-    internal static readonly IReadSignal<int> BandNoActive = new Signal<int>(BandLayout.NoSection);
-
-    /// <inheritdoc cref="BandNoActive"/>
-    internal static readonly Action<int> BandNoPivot = static _ => { };
 
     /// <summary>The band's ONE lower edge, as a real laid-out row child — placed on the LAST stuck stratum only.</summary>
     public static Element BandHairline() => new BoxEl

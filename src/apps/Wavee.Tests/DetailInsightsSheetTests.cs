@@ -4,7 +4,7 @@
 // laid OVER the content, closed on arrival and never opened by anything but the toggle's own click. `Detail.InsightsSheet` is
 // the whole decision, extracted so it can be tested without an engine: WHETHER a toggle exists (mode-free), whether its slot is
 // reserved in the rail's CTA group (route-static), WHICH of the vertical arm's two entry points owns input at a given scroll
-// position (and that under Zune the band's word is always live), what the sheet's resolved width is for a page of a given
+// position, what the sheet's resolved width is for a page of a given
 // width, what the band's action cluster then claims, and what happens to an open sheet when the page stops being able to show it.
 //
 // The facts that must not regress:
@@ -12,8 +12,8 @@
 //   . the toggle is gated on the facts actually being there, so a page with none shows no button, and it is the same in every
 //     mode (a window resize never moves the bento between hosts);
 //   . the rail's toggle SLOT is reserved by kind and content, never by data, so a late fact adds no button and no wrap;
-//   . in the vertical arm the hero toolbar and the pinned band each carry that one toggle, and with the band in the page EXACTLY
-//     ONE of them is live at any scroll position; with the band in the Zune row 2 the band's word is always live;
+//   . in the vertical arm the hero toolbar and the pinned band each carry that one toggle, and EXACTLY ONE of them is live at
+//     any scroll position;
 //   . an absent facts slot means "not answered yet", not "no facts": the frame latches it for the route.
 
 using Xunit;
@@ -198,30 +198,19 @@ public class DetailInsightsSheetTests
     [InlineData(true)]
     public void ExactlyOneEntryPointOwnsInputAtEveryScrollPosition(bool bandStuck)
     {
-        bool band = InsightsSheet.BandToggleTakesInput(bandStuck, inRow2: false);
+        bool band = InsightsSheet.BandToggleTakesInput(bandStuck);
         bool hero = InsightsSheet.HeroToggleTakesInput(bandStuck);
         Assert.NotEqual(band, hero);                                   // never both, never neither
         Assert.Equal(bandStuck, band);                                 // the band is live exactly once it is stuck…
         Assert.True(hero || bandStuck, "the hero must own input for the whole pre-stuck range");
     }
 
-    /// <summary>Under Zune the band's word lives in the Zune band's row 2, which never scrolls away: it is ALWAYS live, so both
-    /// entry points are visible and live while the hero is expanded, and the row-2 one alone once it has collapsed.</summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void UnderZuneTheBandsWordIsAlwaysLive(bool bandStuck)
-    {
-        Assert.True(InsightsSheet.BandToggleTakesInput(bandStuck, inRow2: true));
-        Assert.Equal(!bandStuck, InsightsSheet.HeroToggleTakesInput(bandStuck));
-    }
-
-    /// <summary>The one case the rule leaves the band's word dead: the band in the page, not yet stuck.</summary>
+    /// <summary>The one case the rule leaves the band's word dead: not yet stuck.</summary>
     [Fact]
     public void TheBandsWordIsDeadOnlyInThePageBeforeItSticks()
     {
-        Assert.False(InsightsSheet.BandToggleTakesInput(bandStuck: false, inRow2: false));
-        Assert.True(InsightsSheet.BandToggleTakesInput(bandStuck: true, inRow2: false));
+        Assert.False(InsightsSheet.BandToggleTakesInput(bandStuck: false));
+        Assert.True(InsightsSheet.BandToggleTakesInput(bandStuck: true));
     }
 
     /// <summary>Dropping the hero's toggle would leave the top of the page — where the band is transparent and owns no

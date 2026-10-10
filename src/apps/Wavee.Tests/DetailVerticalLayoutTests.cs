@@ -600,21 +600,13 @@ public class DetailVerticalLayoutTests
         Assert.Equal(0f, b % 8f);
     }
 
-    // ── the collapse floor (A3): 56 with the band in the page, 0 once it lives in the Zune band's row 2 ───────────────────
+    // ── the collapse floor: the band's 56, in every nav style ────────────────────────────────────────────────────
 
     [Fact]
-    public void ToolbarOwnsSwaps_OnlyWhileTheBandIsInThePage()
+    public void BandFloor_IsTheBandInThePage()
     {
-        Assert.True(VerticalLayout.ToolbarOwnsSwaps(false));
-        Assert.False(VerticalLayout.ToolbarOwnsSwaps(true));
-    }
-
-    [Fact]
-    public void BandFloor_IsTheBandInThePageAndZeroInRow2()
-    {
-        Assert.Equal(56f, VerticalLayout.BandFloor(false));
-        Assert.Equal(0f, VerticalLayout.BandFloor(true));
-        Assert.Equal(VerticalLayout.CompactIdentityHeight, VerticalLayout.BandFloor(false));
+        Assert.Equal(56f, VerticalLayout.BandFloor);
+        Assert.Equal(VerticalLayout.CompactIdentityHeight, VerticalLayout.BandFloor);
     }
 
     [Theory]
@@ -678,25 +670,6 @@ public class DetailVerticalLayoutTests
         Assert.False(BandLayout.FloorLatch(latched: true, wanted: false, offset: 0f, H));
     }
 
-    // ── the clips follow the floor ──
-
-    [Fact]
-    public void TheStickyClipDropsTheBandsFiftySixInRow2()
-    {
-        Assert.Equal(VerticalLayout.StickyClipInset() - 56f, VerticalLayout.StickyClipInsetFor(true));
-        Assert.Equal(VerticalLayout.StickyClipInset(), VerticalLayout.StickyClipInsetFor(false));
-        Assert.Equal(VerticalLayout.StickyClipInset(48f, 32f) - 56f, VerticalLayout.StickyClipInsetFor(true, 48f, 32f));
-        Assert.Equal(VerticalLayout.ChromeExtent(), VerticalLayout.StickyClipInsetFor(true));           // the chrome alone
-    }
-
-    [Fact]
-    public void TheTrailingClipIsTheFloor()
-    {
-        Assert.Equal(VerticalLayout.TrailingClipInset, VerticalLayout.TrailingClipInsetFor(false));
-        Assert.Equal(0f, VerticalLayout.TrailingClipInsetFor(true));
-        Assert.Equal(VerticalLayout.BandFloor(true), VerticalLayout.TrailingClipInsetFor(true));
-    }
-
     /// <summary>D49: the skeleton, the pre-measure collapse height and the loaded hero all derive the EXPANDED height from one
     /// bucketed width, one flag set and one title plan. None of them takes the floor, so a floor flip can never change them; the
     /// floor only changes where the collapse ends (and so its distance).</summary>
@@ -714,16 +687,4 @@ public class DetailVerticalLayoutTests
         Assert.Equal(56f, VerticalLayout.CollapseDistance(preMeasure, 0f) - VerticalLayout.CollapseDistance(preMeasure, 56f));
     }
 
-    // ── which routes publish their band into row 2 ──
-
-    [Theory]
-    [InlineData("album:spotify:album:abc", true)]
-    [InlineData("prerelease:spotify:prerelease:abc", true)]
-    [InlineData("pl:spotify:playlist:abc", true)]
-    [InlineData("liked", false)]       // a Library page: its row 2 is Library's sub-pivots
-    [InlineData("local", false)]       // shows its page title
-    [InlineData("artist:spotify:artist:abc", false)]
-    [InlineData("home", false)]
-    public void OnlyAlbumPrereleaseAndPlaylistRoutesPublishToRow2(string route, bool expected)
-        => Assert.Equal(expected, BandLayout.PublishesToRow2(route));
 }

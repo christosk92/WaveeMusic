@@ -152,15 +152,11 @@ public readonly partial struct Track
         {
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
             bool vertical = VerticalArm;
-            // Under Zune the band's search and selection swaps live in row 2, which is ALWAYS on screen: this toolbar (the expanded
-            // hero's copy) then keeps its normal commands and its search ICON (a click opens row 2's field), so one Find or one
-            // selection never shows twice. Read through the signal so the latched flip rebuilds the bar.
-            bool ownsSwaps = Detail.VerticalLayout.ToolbarOwnsSwaps(vertical && _floorInRow2.Value);
-            if (ownsSwaps && _selectionVisible?.Value == true) return SelectionSurface("selection", lead);
+            if (_selectionVisible?.Value == true) return SelectionSurface("selection", lead);
 
             bool hasTune = P.Tune is not null;
             bool hasSelect = Cfg.Selection != ItemsSelectionMode.None;
-            bool explicitSearch = ownsSwaps && _searchExpanded.Value;
+            bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
             var widths = new CommandWidths(w[0], w[1], w[2], w[3], w[4], w[5]);
             float pane = CommandBarLayout.PaneWidth(available);
@@ -1236,14 +1232,6 @@ public readonly partial struct Track
         /// commands read the live selection themselves — so "1 selected" can never sit beside "Play 4 next".</summary>
         Element SelectionSurface(string mode, float lead = 0f)
             => CommandSurface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0), lead);
-
-        /// <summary>The selection arm in the Zune band's row 2 (32 tall): the bare lane, without the 44-DIP surface's padding, so the
-        /// command row sits on the row's centre line. The same commands and the same fit measure as the in-page surface.</summary>
-        Element SelectionRowSurface() => new BoxEl
-        {
-            Key = "commandbar-mode:row2-selection", Direction = 1, MinWidth = 0f, Animate = s_toolbarModeMotion,
-            Children = [Controls.SelectionBar(0, _selectionCommands, minCount: 0)],
-        };
 
         /// <summary>The table's host for the shared lane (<see cref="Track.SelectionLane"/>): the live selection picks the
         /// variant (an episode-capable source may select episode rows, track rows, or both), plus the table's exit and

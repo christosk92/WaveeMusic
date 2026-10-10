@@ -10,17 +10,18 @@
 // caller's list), so Wavee.Tests pins every decision here. The Zune band (Sidebar.UI.Zune.cs) only draws what these rules
 // decide.
 //
-// The band is ALWAYS BandHeight tall under Zune (both rows, on every route), and its height change on a nav-style switch
+// The band is BandHeight tall under Zune: 84 with row 2, 52 when the route has nothing for it (ZuneSubRow.None). Its height
+// follows the PRESENTED row kind (Shell.Ui.PresentedSubRow), and its change on a nav-style switch or a navigation
 // is a Size Reveal on the content card's own tween (Shell.ZuneBandAnim) while the content region FLIPs down and relayouts
 // its height in the same tween (Shell.ContentRegionAnim): the column lays out once, the card moves once and its bottom
 // edge stays on the dock. Every vertical DIP of the band is a named rhythm term (PivotTop, PivotLine, PivotToSub,
 // SubRowHeight, SubToCard), so no literal height can drift from the two Zune type roles.
 //
-// ROW 2 IS ROUTE-DECIDED AND NEVER EMPTY. SubRowOf(route) picks what the second row carries from the ROUTE alone (no data
-// input): Library's sub-pivots, the page's views (seeded from loc keys here, replaced in place when the page publishes
-// through Shell.PageViews), the Browse categories, an entity's title row (seeded from the route's display name, replaced by
-// Shell.PageBands once the page publishes) or the page title as one primary word. Seeds are loc KEYS, so these rules stay
-// pure and the UI resolves them.
+// ROW 2 IS ROUTE-DECIDED AND NEVER AN EMPTY STRIP. SubRowOf(route) picks what the second row carries from the ROUTE alone (no
+// data input): Library's sub-pivots, the page's views (seeded from loc keys here, replaced in place when the page publishes
+// through Shell.PageViews), the Browse categories or an entity's title row (seeded from the route's display name, replaced by
+// Shell.PageBands once the page publishes). A route with nothing of its own to say gets no row 2 at all (None): row 2 never
+// just repeats the page title. Seeds are loc KEYS, so these rules stay pure and the UI resolves them.
 
 using System;
 using System.Collections.Generic;
@@ -28,8 +29,8 @@ using FluentGpu.Dsl;
 
 namespace Wavee;
 
-/// <summary>What the Zune band's second row carries for a route. ROUTE-ONLY: no data decides it, so the row is never empty
-/// and never pops in or out as a page loads. The row is always laid out (<see cref="ZuneNavRules.SubRowHeight"/>).</summary>
+/// <summary>What the Zune band's second row carries for a route. ROUTE-ONLY: no data decides it, so the row never pops in or
+/// out as a page loads. When it has content it is <see cref="ZuneNavRules.SubRowHeight"/> tall.</summary>
 public enum ZuneSubRow : byte
 {
     /// <summary>Library's sub-pivots (liked · albums · artists · podcasts · audiobooks).</summary>
@@ -41,10 +42,12 @@ public enum ZuneSubRow : byte
     /// four top category pages.</summary>
     Categories,
     /// <summary>An entity's title row: the title from the route's display name, then same-size skeleton pivots and actions
-    /// until the page publishes its band (<c>Shell.PageBands</c>). Artist, profile, episode, show, album, playlist.</summary>
+    /// until the page publishes its band (<c>Shell.PageBands</c>). Artist, profile, episode and show.</summary>
     Context,
-    /// <summary>The page title as one primary word. Every other route.</summary>
-    Title,
+    /// <summary>Row 2 is collapsed: the route has nothing to say but its own title, which its head already shows. The band is
+    /// the pivot row alone (<see cref="ZuneNavRules.PivotRowHeight"/> + <see cref="ZuneNavRules.SubToCard"/>). Album, prerelease,
+    /// playlist and every other route without row-2 content.</summary>
+    None,
 }
 
 /// <summary>The Zune style's pivot rules: which pivot a route sits under, where a pivot lands, which pins show.</summary>
@@ -62,7 +65,7 @@ public static class ZuneNavRules
     public const float PinDot = 4f, PinDotGap = 2f;
 
     // THE BAND'S RHYTHM. Row 1 is PivotTop + PivotLine + PivotToSub = 44; row 2 is SubRowHeight = 32; SubToCard = 8 closes
-    // the band above the card. 44 + 32 + 8 = 84.
+    // the band above the card. 44 + 32 + 8 = 84, or 44 + 8 = 52 with row 2 collapsed.
 
     /// <summary>Air above the pivot line (<c>Spacing.XS</c>, 4).</summary>
     public const float PivotTop = Spacing.XS;
@@ -121,7 +124,7 @@ public static class ZuneNavRules
     /// <summary>What the band's second row carries for a route. ROUTE-ONLY (no data parameter), so the row is decided on the
     /// first frame of a navigation: the library pages carry Library's sub-pivots; Home, Recents, Settings, Search, the people
     /// lists and the discography carry their views; the Browse root and its four top categories carry the category words; an
-    /// entity route carries its title; everything else carries its page title.</summary>
+    /// entity route carries its title; everything else has no row 2 (<see cref="ZuneSubRow.None"/>).</summary>
     public static ZuneSubRow SubRowOf(in Shell.Route route)
     {
         if (TopOf(Shell.NameOf(route)) == LibraryPivot) return ZuneSubRow.Library;
@@ -137,17 +140,14 @@ public static class ZuneNavRules
             case Shell.RouteKind.Browse:
                 return ZuneSubRow.Categories;
             case Shell.RouteKind.BrowseCategory:
-                return IsTopCategory(route.Subject.Text) ? ZuneSubRow.Categories : ZuneSubRow.Title;
+                return IsTopCategory(route.Subject.Text) ? ZuneSubRow.Categories : ZuneSubRow.None;
             case Shell.RouteKind.Artist:
             case Shell.RouteKind.User:
             case Shell.RouteKind.Episode:
             case Shell.RouteKind.Show:
-            case Shell.RouteKind.Album:
-            case Shell.RouteKind.Prerelease:
-            case Shell.RouteKind.Playlist:
                 return ZuneSubRow.Context;
             default:
-                return ZuneSubRow.Title;
+                return ZuneSubRow.None;
         }
     }
 
@@ -159,10 +159,12 @@ public static class ZuneNavRules
         return false;
     }
 
-    /// <summary>The band's whole height for a nav style: both rows under Zune, nothing otherwise. Row 2 is ALWAYS laid out
-    /// under Zune (every route has content in it), so the band is the same height on every route and a navigation never
-    /// moves the content card.</summary>
-    public static float BandHeight(ShellNavStyle style) => style == ShellNavStyle.Zune ? PivotRowHeight + SubRowHeight + SubToCard : 0f;
+    /// <summary>The band's whole height for a nav style and the PRESENTED row-2 kind: both rows under Zune (44 + 32 + 8 = 84), the
+    /// pivot row alone when row 2 is collapsed (<see cref="ZuneSubRow.None"/>, 44 + 8 = 52), nothing otherwise. The row kind is
+    /// <c>Shell.Ui.PresentedSubRow</c>, which lands one commit after a navigation, so the card moves on its own tween and never
+    /// in the commit in which the incoming page mounts.</summary>
+    public static float BandHeight(ShellNavStyle style, ZuneSubRow row)
+        => style == ShellNavStyle.Zune ? PivotRowHeight + (row == ZuneSubRow.None ? 0f : SubRowHeight) + SubToCard : 0f;
 
     // ══ SEEDS ═════════════════════════════════════════════════════════════════════════════════════════════════════════
     //
@@ -239,13 +241,12 @@ public static class ZuneNavRules
     }
 
     /// <summary>The skeleton word counts an entity's title row shows before its page publishes the band: the pivots and the
-    /// action pills. Artist (3, 2), profile (2, 1), episode (4, 0), show (0, 0), album, prerelease and playlist (0, 1).</summary>
+    /// action pills. Artist (3, 2), profile (2, 1), episode (4, 0), show (0, 0).</summary>
     public static (int Pivots, int Actions) ContextSeed(Shell.RouteKind kind) => kind switch
     {
         Shell.RouteKind.Artist => (3, 2),
         Shell.RouteKind.User => (2, 1),
         Shell.RouteKind.Episode => (4, 0),
-        Shell.RouteKind.Album or Shell.RouteKind.Prerelease or Shell.RouteKind.Playlist => (0, 1),
         _ => (0, 0),
     };
 

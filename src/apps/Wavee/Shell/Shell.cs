@@ -1077,6 +1077,12 @@ public static partial class Shell
         /// frame (pane, band, gutter) follows <c>NavStyle</c> at once.</summary>
         public static readonly Signal<ShellNavStyle> PresentedNavStyle = new(ShellNavStyle.Classic);
 
+        /// <summary>The Zune band's row-2 kind as PRESENTED: what <c>ZuneNavRules.BandHeight</c> reads, so the band eases 84 to 52
+        /// (and back) on the card's own tween. It is written one commit AFTER a navigation lands (<c>SubRowPresenter</c> posts it),
+        /// so the incoming page's mount, its own entrance and <c>PageHead.Reflow</c> never share a commit with the card move.
+        /// Seeded from the boot route in <c>FrameRoot</c>, so Home opens at 84 and never animates from 52.</summary>
+        public static readonly Signal<ZuneSubRow> PresentedSubRow = new(ZuneSubRow.None);
+
         /// <summary>EXPERIMENTAL (artist bleed): the content card's LAID-OUT rect in window coordinates (final, never the FLIP's
         /// in-flight pose), value-gated, written by the card host's bounds callback. The material layer derives the backdrop's
         /// span and the chrome scrim from it; it changes only on a resize, a pane or rail change or a nav-style switch.</summary>
@@ -2344,24 +2350,18 @@ public static partial class Shell
 
     // ══ 13c. THE ENTITY BAND PUBLICATIONS ═════════════════════════════════════════════════════════════════════════════
     //
-    // An entity page (artist, profile, episode, show, album, playlist) keeps its own sticky band in Classic and Library. Under
-    // Zune that band is suppressed and the page publishes the same words here, under its route name, for the Zune band's row
-    // 2 (the A2 and A3 pages publish; until then the row shows the route's seed). Same idiom as the page views: UI state, an
-    // LRU, a Version bumped only when the visible data changes.
+    // An entity page (artist, profile, episode, show) keeps its own sticky band in Classic and Library. Under Zune that band
+    // is suppressed and the page publishes the same words here, under its route name, for the Zune band's row 2 (the A2 pages
+    // publish; until then the row shows the route's seed). Album, prerelease and playlist publish nothing: they keep their
+    // in-page band in every nav style. Same idiom as the page views: UI state, an LRU, a Version bumped only when the
+    // visible data changes.
 
     /// <summary>What an entity page hands the Zune band: its title, its pivot words, the selected pivot and the action cluster.
     /// <see cref="Active"/> is the page's own signal; <see cref="OnPivot"/>, <see cref="Actions"/> and <see cref="OnTitle"/>
     /// are BEHAVIOUR, so a re-publish that changes only them updates silently. <see cref="Accent"/> is the page's accent for
-    /// the active tab's underline (the band falls back to the app accent).
-    /// <para>The detail pages (album, playlist) add: <see cref="Byline"/> (caption beside the title), the selection arm
-    /// (<see cref="SelectionVisible"/> + <see cref="SelectionBar"/>, which cross-fades over the row while rows are selected) and
-    /// the search swap (<see cref="SearchExpanded"/> + <see cref="SearchField"/>, which takes the title's slot while open). The
-    /// signals are the page's own (compared by reference); the factories are behaviour. <see cref="ActionsEpoch"/> is a page-owned
-    /// revision of what <see cref="Actions"/> builds (the Insights word joining the cluster): bumping it repaints the row.</para></summary>
+    /// the active tab's underline (the band falls back to the app accent).</summary>
     public sealed record PageBandPublication(string Title, IReadOnlyList<string> Pivots, IReadSignal<int> Active, Action<int> OnPivot,
-        Func<Element>? Actions = null, Action? OnTitle = null, Func<ColorF>? Accent = null,
-        string? Byline = null, IReadSignal<bool>? SelectionVisible = null, Func<Element>? SelectionBar = null,
-        IReadSignal<bool>? SearchExpanded = null, Func<Element>? SearchField = null, int ActionsEpoch = 0);
+        Func<Element>? Actions = null, Action? OnTitle = null, Func<ColorF>? Accent = null);
 
     public static class PageBands
     {
@@ -2380,10 +2380,6 @@ public static partial class Shell
             bool changed = !s_map.TryGetValue(routeName, out var old)
                 || !ReferenceEquals(old.Active, publication.Active)
                 || !string.Equals(old.Title, publication.Title, StringComparison.Ordinal)
-                || !string.Equals(old.Byline, publication.Byline, StringComparison.Ordinal)
-                || !ReferenceEquals(old.SelectionVisible, publication.SelectionVisible)
-                || !ReferenceEquals(old.SearchExpanded, publication.SearchExpanded)
-                || old.ActionsEpoch != publication.ActionsEpoch
                 || !SameLabels(old.Pivots, publication.Pivots);
             s_lru.Remove(routeName);
             s_lru.Add(routeName);

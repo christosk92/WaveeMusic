@@ -120,18 +120,19 @@ public sealed class ShellNavStyleTests
     [InlineData("browse:spotify:page:0JQ5DAqbMKFSi39LMRT0Cy", ZuneSubRow.Categories)]
     [InlineData("browse:spotify:page:0JQ5DArNBzkmxXHCqFLx2J", ZuneSubRow.Categories)]
     [InlineData("browse:spotify:page:0JQ5DAqbMKFETqK4t8f1n3", ZuneSubRow.Categories)]
-    [InlineData("browse:spotify:page:0JQ5DAqbMKFEC4WFtoNRpw", ZuneSubRow.Title)]        // a genre: not a top category
+    [InlineData("browse:spotify:page:0JQ5DAqbMKFEC4WFtoNRpw", ZuneSubRow.None)]         // a genre: not a top category
     [InlineData("artist:spotify:artist:abc", ZuneSubRow.Context)]
     [InlineData("user:spotify:user:abc", ZuneSubRow.Context)]
     [InlineData("episode:spotify:episode:abc", ZuneSubRow.Context)]
     [InlineData("show:spotify:show:abc", ZuneSubRow.Context)]
-    [InlineData("album:spotify:album:abc", ZuneSubRow.Context)]
-    [InlineData("pl:spotify:playlist:abc", ZuneSubRow.Context)]
-    [InlineData("history", ZuneSubRow.Title)]
-    [InlineData("logs", ZuneSubRow.Title)]
-    [InlineData("concerts", ZuneSubRow.Title)]
-    [InlineData("whatsnew", ZuneSubRow.Title)]
-    [InlineData("home-section:spotify:section:abc", ZuneSubRow.Title)]
+    [InlineData("album:spotify:album:abc", ZuneSubRow.None)]          // keeps its in-page band: row 2 would only repeat the title
+    [InlineData("prerelease:spotify:prerelease:abc", ZuneSubRow.None)]
+    [InlineData("pl:spotify:playlist:abc", ZuneSubRow.None)]
+    [InlineData("history", ZuneSubRow.None)]
+    [InlineData("logs", ZuneSubRow.None)]
+    [InlineData("concerts", ZuneSubRow.None)]
+    [InlineData("whatsnew", ZuneSubRow.None)]
+    [InlineData("home-section:spotify:section:abc", ZuneSubRow.None)]
     public void SubRowOf_IsRouteOnly(string name, ZuneSubRow expected)
         => Assert.Equal(expected, ZuneNavRules.SubRowOf(Shell.Parse(name)));
 
@@ -211,8 +212,9 @@ public sealed class ShellNavStyleTests
         Assert.Equal((2, 1), ZuneNavRules.ContextSeed(Shell.RouteKind.User));
         Assert.Equal((4, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Episode));
         Assert.Equal((0, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Show));
-        Assert.Equal((0, 1), ZuneNavRules.ContextSeed(Shell.RouteKind.Album));
-        Assert.Equal((0, 1), ZuneNavRules.ContextSeed(Shell.RouteKind.Playlist));
+        Assert.Equal((0, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Album));        // no row 2 to seed
+        Assert.Equal((0, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Prerelease));
+        Assert.Equal((0, 0), ZuneNavRules.ContextSeed(Shell.RouteKind.Playlist));
     }
 
     // ── the band's rhythm and the two Zune type roles ──
@@ -220,11 +222,17 @@ public sealed class ShellNavStyleTests
     [Fact] public void BandHeight_IsBuiltFromTheNamedRhythmTerms()
     {
         Assert.Equal(ZuneNavRules.PivotTop + ZuneNavRules.PivotLine + ZuneNavRules.PivotToSub
-                     + ZuneNavRules.SubRowHeight + ZuneNavRules.SubToCard, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
-        Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+                     + ZuneNavRules.SubRowHeight + ZuneNavRules.SubToCard, ZuneNavRules.BandHeight(ShellNavStyle.Zune, ZuneSubRow.Views));
+        Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune, ZuneSubRow.Views));
         Assert.Equal(44f, ZuneNavRules.PivotRowHeight);
-        Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic));
-        Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library));
+        // Row 2 collapsed: the pivot row and the gap above the card only (44 + 8).
+        Assert.Equal(ZuneNavRules.PivotRowHeight + ZuneNavRules.SubToCard, ZuneNavRules.BandHeight(ShellNavStyle.Zune, ZuneSubRow.None));
+        Assert.Equal(52f, ZuneNavRules.BandHeight(ShellNavStyle.Zune, ZuneSubRow.None));
+        foreach (var row in Enum.GetValues<ZuneSubRow>())
+        {
+            Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic, row));
+            Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library, row));
+        }
     }
 
     [Fact] public void ThePinColumnFitsInsideThePivotRow()
@@ -279,17 +287,43 @@ public sealed class ShellNavStyleTests
             Assert.True(Enum.IsDefined(ZuneNavRules.SubRowOf(Shell.Parse(ZuneNavRules.LandingOf(pivot)))));
     }
 
-    [Fact] public void BandHeight_IsTheSameOnEveryRoute_AndZeroOutsideZune()
+    [Theory]
+    [InlineData("home", 84f)]
+    [InlineData("recents", 84f)]
+    [InlineData("liked", 84f)]                  // Liked Songs keeps Library's sub-pivots
+    [InlineData("albums", 84f)]
+    [InlineData("local", 84f)]
+    [InlineData("settings", 84f)]
+    [InlineData("search", 84f)]
+    [InlineData("people:0:spotify:user:abc", 84f)]
+    [InlineData("disco:0:spotify:artist:abc", 84f)]
+    [InlineData("browse", 84f)]
+    [InlineData("browse:spotify:page:0JQ5DAqbMKFSi39LMRT0Cy", 84f)]
+    [InlineData("artist:spotify:artist:abc", 84f)]
+    [InlineData("user:spotify:user:abc", 84f)]
+    [InlineData("show:spotify:show:abc", 84f)]
+    [InlineData("episode:spotify:episode:abc", 84f)]
+    [InlineData("album:spotify:album:abc", 52f)]
+    [InlineData("prerelease:spotify:prerelease:abc", 52f)]
+    [InlineData("pl:spotify:playlist:abc", 52f)]
+    [InlineData("concerts", 52f)]
+    [InlineData("history", 52f)]
+    [InlineData("logs", 52f)]
+    [InlineData("home-section:spotify:section:abc", 52f)]
+    [InlineData("browse:spotify:page:0JQ5DAqbMKFEC4WFtoNRpw", 52f)]   // a genre page
+    public void BandHeight_FollowsTheRoutesRowKind_AndIsZeroOutsideZune(string name, float zuneExpected)
     {
-        var routes = new List<string>(ZuneNavRules.Top);
-        routes.AddRange(ZuneNavRules.LibraryPages);
-        routes.AddRange(["settings", "album:x", "artist:x", "search", "browse:pop", "local", "home-section:x"]);
-        foreach (var _ in routes)
-        {
-            Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
-            Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic));
-            Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library));
-        }
-        Assert.Equal(ZuneNavRules.PivotRowHeight + ZuneNavRules.SubRowHeight + ZuneNavRules.SubToCard, ZuneNavRules.BandHeight(ShellNavStyle.Zune));
+        var row = ZuneNavRules.SubRowOf(Shell.Parse(name));
+        Assert.Equal(zuneExpected, ZuneNavRules.BandHeight(ShellNavStyle.Zune, row));
+        Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Classic, row));
+        Assert.Equal(0f, ZuneNavRules.BandHeight(ShellNavStyle.Library, row));
+    }
+
+    [Fact] public void TheBootRoute_SeedsHomeAtTheFullBand()
+    {
+        // FrameRoot seeds Shell.Ui.PresentedSubRow from the boot route: Home carries its views, so it opens at 84, never animating from 52.
+        var row = ZuneNavRules.SubRowOf(Shell.Parse("home"));
+        Assert.Equal(ZuneSubRow.Views, row);
+        Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune, row));
     }
 }

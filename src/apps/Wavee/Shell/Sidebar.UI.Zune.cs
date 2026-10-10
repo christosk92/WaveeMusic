@@ -1,18 +1,20 @@
 // ── Shell/Sidebar.UI.Zune.cs ───────────────────────────────────────────────────────────────────────────────────────
 // The Zune navigation style's band (design NAV 3): the big pivots across the top, row 2 under them (Library's sub-pivots,
-// the page's views, the Browse categories, an entity's title row or the page title), the pin tiles beside the pivots, and
-// the band's right-click menu (Layout ▸ · Pins in the title bar · Reset everything)
+// the page's views, the Browse categories or an entity's title row; none for a route with nothing of its own), the pin
+// tiles beside the pivots, and the band's right-click menu (Layout ▸ · Pins in the title bar · Reset everything)
 //
 // Role: UI · Spec: sidebar-rework-implementation.md §P11 (NAV 3 UI) · the rules are Sidebar.Zune.cs (ZuneNavRules)
 //
-// LAYOUT STABILITY. The band root is ONE keyed node in every nav style. Its Height is ZuneNavRules.BandHeight(NavStyle)
-// (84 under Zune on every route, 0 otherwise: PivotTop + PivotLine + PivotToSub + SubRowHeight + SubToCard, every term a
-// named constant) and it carries Shell.ZuneBandAnim: a Size REVEAL on the content card's own tween, never a Reflow. The
-// column therefore lays out once at the final height. The whole content region (Shell.ContentRegionAnim: a Position FLIP
-// relative to the frame column plus a Height Relayout) eases down in the same tween, so the card's top travels with the
-// band's revealed bottom edge, its bottom edge stays on the dock, and a nav-style switch moves the card one time. Row 2 is
-// ALWAYS laid out at SubRowHeight and ALWAYS filled (ZuneNavRules.SubRowOf decides from the ROUTE what it carries), so a
-// navigation never moves the card, and a skeleton-to-words swap is an opacity cross-fade inside slots of the final size.
+// LAYOUT STABILITY. The band root is ONE keyed node in every nav style. Its Height is ZuneNavRules.BandHeight(NavStyle,
+// Shell.Ui.PresentedSubRow) (84 under Zune with a row 2, 52 without one, 0 otherwise: PivotTop + PivotLine + PivotToSub +
+// SubRowHeight + SubToCard, every term a named constant) and it carries Shell.ZuneBandAnim: a Size REVEAL on the content
+// card's own tween, never a Reflow. The column therefore lays out once at the final height. The whole content region
+// (Shell.ContentRegionAnim: a Position FLIP relative to the frame column plus a Height Relayout) eases down in the same
+// tween, so the card's top travels with the band's revealed bottom edge, its bottom edge stays on the dock, and a nav-style
+// switch moves the card one time. Row 2 is ALWAYS mounted at SubRowHeight (the band's clip decides how much of it shows) and
+// never an empty strip (ZuneNavRules.SubRowOf decides from the ROUTE what it carries), and a skeleton-to-words swap is an
+// opacity cross-fade inside slots of the final size. A navigation between a route with a row 2 and one without moves the
+// card ONCE, on its own tween, one commit after the page mounted (see ROW 2 MOTION).
 // The inset is DERIVED (FrameRules.ZuneBandInset: the card's x, 0 under Zune where the page bleeds to the window edge,
 // plus the page gutter the pages read), so the first pivot word and the page title share an x.
 //
@@ -20,13 +22,21 @@
 // word's weight changes). Views: the words Shell.PageViews holds for the route, else the route's SEED (the loc keys of
 // ZuneNavRules.ViewSeedKeys, selected by SeedSelected); Search, whose facets depend on its results, seeds skeleton words.
 // Categories: the four top Browse categories, which navigate. Context: the entity's title, then same-size skeleton pivots
-// and action pills until the page publishes its band (Shell.PageBands). Title: the page title as one primary word.
+// and action pills until the page publishes its band (Shell.PageBands). None: nothing (album, playlist, concerts, history,
+// the Browse sections and every other route whose head already shows its title), so row 2 never just repeats the page title.
+//
+// ROW 2 MOTION. The band's height reads Shell.Ui.PresentedSubRow, which Shell's SubRowPresenter POSTS after a navigation (the
+// boot route seeds it synchronously, so Home opens at 84). The incoming page therefore mounts in one commit and the band and
+// the card ease in the next. The row-2 host (Row2HostView) stays MOUNTED: it latches the last non-None content and, while the
+// presented row is None, keeps drawing it with its opacity eased to 0 (an opacity Transition on a live node, not an Exit, so
+// ZuneBandAnim's SuppressDescendantTransitions cannot cull it) while the band's clip closes over it. The latch clears once the
+// band and the fade are done. When a row enters (52 to 84) the new content draws at opacity 0 and fades in as the band opens.
 //
 // TIMING. Band HEIGHT follows NavStyle (the frame commit). The Views kind follows Shell.Ui.PresentedNavStyle (the later,
 // quiet hoist commit): until then the page head still draws its views, and they would otherwise show twice. Library,
-// Categories, Context and Title have no in-page twin before the floor latches (the A2/A3 entity pages' own sticky band),
+// Categories and Context have no in-page twin before the floor latches (the A2 entity pages' own sticky band),
 // so they render from the frame commit and reveal with the band. On a navigation row 2 is never empty; on a style switch it
-// is never doubled, except for A2/A3's documented latch window.
+// is never doubled, except for A2's documented latch window.
 //
 // THE CONTEXT ROW IS THE PAGE'S BAND (A2). Row 2 of an entity route is Detail.BandCluster at the row's 32 (= BandLayout.ItemHeight): the
 // title (ZuneSubPivot selected, primary), a 1x16 divider, the page's scroll-spy tabs (ZuneSubPivot at a constant 400, ink plus the
@@ -35,12 +45,8 @@
 // in-page band (the hero collapses to the latched floor, Detail.BandLayout.FloorLatch). A tab click calls the publication's
 // OnPivot, which scrolls the page exactly as the band's own tab does.
 //
-// THE DETAIL PAGES' ROW (A3). An album or a playlist (vertical arm) publishes the same band with no tabs: the title with its
-// byline, then Find, Filter, Insights and Play. Two arms share the row in place, both always mounted so the tree shape never
-// changes when a page publishes: the SELECTION arm (Flow.Show on the page's SelectionVisible signal) cross-fades over the whole
-// cluster while rows are selected, and the SEARCH swap (Flow.Show on SearchExpanded) puts the field in the title's slot. The
-// two-column arm publishes the title only. Liked Songs is a Library page (its row 2 is Library's sub-pivots) and keeps its
-// in-page band, so it never publishes (Detail.BandLayout.PublishesToRow2).
+// Album, prerelease and playlist have no row 2 (None): they keep their own in-page sticky band (title + Play), their
+// search and selection swaps and their crumbs, and publish nothing here.
 //
 // ROLES. The pivots carry Role Tab, like the stock SelectorBar items (it was NavigationItem). They stay a band-private item
 // builder rather than an engine SelectorBar because SelectorBar auto-selects on focus entry with no selection, which
@@ -118,14 +124,15 @@ public static partial class Sidebar
             {
                 var route = Shell.Current.Value;
                 string name = Shell.NameOf(route);
-                rows = [TopRow(name, pinsShown), SubRowFor(in route, name), Spacer(ZuneNavRules.SubToCard)];
+                rows = [TopRow(name, pinsShown), Row2Host(in route, name), Spacer(ZuneNavRules.SubToCard)];
             }
 
-            // Band HEIGHT follows the live style (the frame commit) and reveals on the card's own tween.
+            // Band HEIGHT follows the live style (the frame commit) and the PRESENTED row-2 kind (posted after a navigation's
+            // commit), and reveals on the card's own tween.
             return new BoxEl
             {
                 Key = "zune:band", Direction = 1, Shrink = 0f, ClipToBounds = true,
-                Height = ZuneNavRules.BandHeight(style), Animate = Shell.ZuneBandAnim,
+                Height = ZuneNavRules.BandHeight(style, Shell.Ui.PresentedSubRow.Value), Animate = Shell.ZuneBandAnim,
                 Padding = new Edges4(Shell.FrameRules.ZuneBandInset(cardX, gutter), 0f, Spacing.L, 0f), Children = rows,
             }.WithContextMenu(overlay, () => ZuneMenu(overlay));
         }
@@ -189,26 +196,68 @@ public static partial class Sidebar
 
         // ══ ROW 2 ═════════════════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Row 2: ALWAYS a <see cref="ZuneNavRules.SubRowHeight"/> box, whatever the route carries, so a navigation or a
-        /// page publishing never moves the content card. Its content is chosen from the ROUTE (<see cref="ZuneNavRules.SubRowOf"/>)
-        /// and keyed by kind, so pivoting cross-fades the words while the row's height never changes. A ZStack, so an outgoing
-        /// and an incoming content share the row rather than sit side by side.</summary>
-        static Element SubRowFor(in Shell.Route route, string name)
+        /// <summary>Row 2: ALWAYS mounted (key <c>zune:row2</c>) as a <see cref="ZuneNavRules.SubRowHeight"/> box, whatever the route
+        /// carries, so a page publishing never moves the content card. Its content is chosen from the ROUTE
+        /// (<see cref="ZuneNavRules.SubRowOf"/>) and keyed by kind, so pivoting cross-fades the words while the row's height never
+        /// changes. A route without a row 2 collapses the BAND (<see cref="Shell.Ui.PresentedSubRow"/>), not this host.</summary>
+        static Element Row2Host(in Shell.Route route, string name)
+            => Embed.Comp(new RowProps(route, name), static () => new Row2HostView()) with { Key = "zune:row2" };
+
+        /// <summary>The row-2 host. It LATCHES the last non-None content (the row kind plus the route it was built for). While the
+        /// route has a row 2 it renders that content; when the route has none it keeps rendering the latched content, inert, with
+        /// its opacity eased to 0 as <see cref="Shell.Ui.PresentedSubRow"/> catches up, while the band's height closes under the
+        /// Reveal clip. That is an opacity Transition on a node that stays mounted, not an Exit, so ZuneBandAnim's descendant
+        /// suppression (which snaps geometry tracks only) cannot cull it. The latch clears after the band has closed, so an empty
+        /// strip is never visible: in the one commit before the presented row catches up, the old content is still at full opacity.
+        /// When a row enters (52 to 84) the new content draws at opacity 0 and fades in when the presented row flips.</summary>
+        sealed class Row2HostView : Component
         {
-            Element content = ZuneNavRules.SubRowOf(route) switch
+            /// <summary>The band's close (<see cref="Shell.FrameRules.CardMotionMs"/>) plus the fade's tail.</summary>
+            const float LatchClearMs = Shell.FrameRules.CardMotionMs + 120f;
+
+            (ZuneSubRow Kind, Shell.Route Route, string Name)? _shown;
+            readonly Signal<int> _cleared = new(0);
+            readonly Action _clear;
+
+            public Row2HostView() => _clear = Clear;
+
+            void Clear()
             {
-                ZuneSubRow.Library => LibraryRow(name),
-                ZuneSubRow.Views => ViewsRow(in route, name),
-                ZuneSubRow.Categories => CategoriesRow(in route),
-                ZuneSubRow.Context => ContextRow(in route, name),
-                _ => TitleRow(in route, name),
-            };
-            return new BoxEl
+                if (Shell.Ui.PresentedSubRow.Peek() != ZuneSubRow.None || _shown is null) return;
+                _shown = null;
+                _cleared.Value++;
+            }
+
+            public override Element Render()
             {
-                Key = "zune:sub", Direction = 0, ZStack = true, Height = ZuneNavRules.SubRowHeight, Shrink = 0f, MinWidth = 0f,
-                Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
-                Children = [content],
-            };
+                var p = UseProps<RowProps>();
+                _ = _cleared.Value;
+                var presented = Shell.Ui.PresentedSubRow.Value;
+                var kind = ZuneNavRules.SubRowOf(p.Route);
+                UseTimeout(_clear, LatchClearMs, DepKey.From(presented == ZuneSubRow.None ? 1 : 0));
+                if (kind != ZuneSubRow.None) _shown = (kind, p.Route, p.Name);
+
+                bool live = kind != ZuneSubRow.None && presented != ZuneSubRow.None;
+                Element[] kids = [];
+                if (_shown is { } held)
+                {
+                    var r = held.Route;
+                    kids = [held.Kind switch
+                    {
+                        ZuneSubRow.Library => LibraryRow(held.Name),
+                        ZuneSubRow.Views => ViewsRow(in r, held.Name),
+                        ZuneSubRow.Categories => CategoriesRow(in r),
+                        _ => ContextRow(in r, held.Name),
+                    }];
+                }
+                return new BoxEl
+                {
+                    Key = "zune:sub", Direction = 0, ZStack = true, Height = ZuneNavRules.SubRowHeight, Shrink = 0f, MinWidth = 0f,
+                    Opacity = presented != ZuneSubRow.None ? 1f : 0f, HitTestVisible = live,
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = PageHead.FadeMotion,
+                    Children = kids,
+                };
+            }
         }
 
         /// <summary>A horizontal strip of row-2 words, scrolling rather than wrapping or clipping a long set.</summary>
@@ -276,22 +325,6 @@ public static partial class Sidebar
             };
         }
 
-        // ── Title ──
-
-        /// <summary>The page title as one primary word, for every route with nothing else to say. Not interactive.</summary>
-        static Element TitleRow(in Shell.Route route, string name) => new BoxEl
-        {
-            Key = "zune:sub:title:" + name, Direction = 0, Grow = 1f, Height = ZuneNavRules.SubRowHeight, AlignItems = FlexAlign.Center,
-            MinWidth = 0f, HitTestVisible = false, Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
-            Children =
-            [
-                Design.Type.ZuneSubPivot(Shell.Dest(in route).Title.ToLower(CultureInfo.CurrentCulture), selected: true) with
-                {
-                    Color = Shell.Ui.ChromePrimary, Shrink = 1f, MinWidth = 0f,   // ink: see Shell.Ui.ChromeInkMix
-                },
-            ],
-        };
-
         // ── Views ──
 
         /// <summary>What a row-2 component needs from the route: the route itself (its facet, its display name) and its name,
@@ -315,7 +348,7 @@ public static partial class Sidebar
 
         static Element ViewsContent(in Shell.Route route, string name)
         {
-            // Seeded from the first frame of the reveal, like LibraryRow and TitleRow: row 2 is never an empty strip. The words
+            // Seeded from the first frame of the reveal, like LibraryRow: row 2 is never an empty strip. The words
             // are drawn at opacity 0 until the style is PRESENTED (the page's own words are still on screen until then), so
             // they show in exactly one place per commit and fade in with the head's reflow instead of mounting late.
             bool presented = Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune;
@@ -408,28 +441,11 @@ public static partial class Sidebar
                 ? SkeletonSlot(Detail.BandLayout.EstimateLabelWidth(12, 0f), 12f) with { Key = "zune:ctx:title" }
                 : TitleWord(title, pub?.OnTitle);
 
-            // The title group (title, then the byline when the page has one) and the search swap: the expanded field takes the
-            // TITLE's slot, never the actions'. The field is sized from the page column, not this row, so the slot shrinks and clips
-            // it rather than letting a narrow window push the actions out. Both layers are ALWAYS composed, so a page publishing its search changes nothing.
-            Element titleGroup = new BoxEl
-            {
-                Key = "zune:ctx:lead", Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-                Children = pub?.Byline is { Length: > 0 } byline
-                    ? [titleEl, Detail.BandByline(byline, Shell.Ui.ChromeOnMedia ? Shell.Ui.ChromeInkTertiary : null) with { Key = "zune:ctx:byline" }]
-                    : [titleEl],
-            };
-            var searchOpen = pub?.SearchExpanded ?? s_never;
+            // The title: the cluster's lead slot (the live band's search swap is the table toolbar's now, not row 2's).
             Element lead = new BoxEl
             {
-                Key = "zune:ctx:leadslot", Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = 0f, AlignItems = FlexAlign.Center,
-                Children =
-                [
-                    Flow.Show(() => !searchOpen.Value, titleGroup),
-                    Flow.Show(() => searchOpen.Value, new BoxEl
-                    {
-                        Key = "zune:ctx:search", Shrink = 1f, MinWidth = 0f, ClipToBounds = true, Children = [pub?.SearchField?.Invoke() ?? new BoxEl()],
-                    }),
-                ],
+                Key = "zune:ctx:lead", Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
+                Children = [titleEl],
             };
 
             // The pivots: a skeleton layer and the live tabs share one lane and cross-fade in place. The divider is part of the
@@ -498,30 +514,14 @@ public static partial class Sidebar
                 };
             }
 
-            // The cluster and the selection arm share the row: a ZStack of the row's height whose two layers swap on the page's own
-            // SelectionVisible signal (the Hero idiom), so a selection never changes the row's size, only what it shows.
-            var selectionOn = pub?.SelectionVisible ?? s_never;
             Element cluster = new BoxEl
             {
-                Key = "zune:ctx:cluster", Direction = 0, Height = rowH, MinWidth = 0f, AlignItems = FlexAlign.Center,
+                Key = "zune:sub:context:" + name, Direction = 0, Grow = 1f, Height = rowH, MinWidth = 0f, AlignItems = FlexAlign.Center,
                 Children = Detail.BandCluster(lead, pivotsEl, actionsEl, rowH, dividerInk: Shell.Ui.ChromeOnMedia ? s_dividerOnMedia : (Prop<ColorF>?)null),
-            };
-            Element selection = new BoxEl
-            {
-                Key = "zune:ctx:selection", Direction = 1, Height = rowH, MinWidth = 0f, Justify = FlexJustify.Center, HitTestVisible = true,
-                Children = [pub?.SelectionBar?.Invoke() ?? new BoxEl()],
-            };
-            return new BoxEl
-            {
-                Key = "zune:sub:context:" + name, ZStack = true, Grow = 1f, Height = rowH, MinWidth = 0f,
-                Children = [Flow.Show(() => !selectionOn.Value, cluster), Flow.Show(() => selectionOn.Value, selection)],
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
+            return cluster;
         }
-
-        /// <summary>A signal that is never true: the stand-in for a page's selection / search signal before it publishes, so the
-        /// row composes the same two layers either way.</summary>
-        static readonly Signal<bool> s_never = new(false);
 
         /// <summary>Row 2's divider over the artist bleed: the theme's hairline cross-fading to the on-media one with the chrome ink mix
         /// (<c>Shell.Ui.ChromeInkMix</c>, the one source of truth).</summary>
