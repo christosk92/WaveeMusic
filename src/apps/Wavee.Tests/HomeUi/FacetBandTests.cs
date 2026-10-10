@@ -24,21 +24,28 @@ public class FacetBandTests
     public void The_pinned_bands_lower_edge_is_its_inset_plus_its_height()
         => Assert.Equal(Facet.StuckInset + Facet.FacetRowH, Facet.StuckBottom);
 
-    [Fact]
-    public void The_body_top_is_the_title_views_extent_when_not_hoisted()
-        => Assert.Equal(PageHeadRules.Extent(PageHeadKind.TitleViews),
-            Facet.LeadFor(false) + Facet.FacetRowH + Facet.BelowBarGap);
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_body_top_is_the_heads_extent_for_both_hoist_states(bool hoisted)
+        => Assert.Equal(PageHeadRules.Extent(hoisted ? PageHeadKind.Hoisted : PageHeadKind.TitleViews),
+            Facet.LeadFor(hoisted) + Facet.BandHFor(hoisted) + Facet.BelowBarGapFor(hoisted));
 
     [Fact]
-    public void The_body_top_is_the_hoisted_extent_when_hoisted()
-        => Assert.Equal(PageHeadRules.Extent(PageHeadKind.Hoisted),
-            Facet.LeadFor(true) + Facet.FacetRowH + Facet.BelowBarGap);
-
-    [Fact]
-    public void The_body_tops_are_164_and_72()
+    public void The_body_tops_are_164_and_24()
     {
-        Assert.Equal(164f, Facet.LeadFor(false) + Facet.FacetRowH + Facet.BelowBarGap);
-        Assert.Equal(72f, Facet.LeadFor(true) + Facet.FacetRowH + Facet.BelowBarGap);
+        Assert.Equal(164f, Facet.LeadFor(false) + Facet.BandHFor(false) + Facet.BelowBarGapFor(false));
+        Assert.Equal(24f, Facet.LeadFor(true) + Facet.BandHFor(true) + Facet.BelowBarGapFor(true));
+    }
+
+    [Fact]
+    public void Hoisted_the_band_and_the_gap_collapse_and_the_lead_is_the_head_top()
+    {
+        Assert.Equal(PageGeometry.HeadTop, Facet.LeadFor(true));
+        Assert.Equal(0f, Facet.BandHFor(true));
+        Assert.Equal(0f, Facet.BelowBarGapFor(true));
+        Assert.Equal(Facet.FacetRowH, Facet.BandHFor(false));
+        Assert.Equal(Facet.BelowBarGap, Facet.BelowBarGapFor(false));
     }
 
     [Fact]

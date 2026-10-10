@@ -17,7 +17,8 @@
 //           │                ScrollScope=Facet.PageScope
 //           ├─ FacetRow (Facet.UI.cs): lead (the "Home" title + reserved meta slot) → band (the facet words as the page's
 //           │     VIEWS in Design.PageViewsStyle + Following | the busy ProgressBar; sticky only when NOT hoisted) → gap →
-//           │     failure InfoBar. 164 DIP tall, or the 72-DIP hoisted strip under the Zune band.
+//           │     failure InfoBar. 164 DIP tall, or the 24-DIP hoisted strip (HeadTop; the band and the gap collapse to 0)
+//           │     under the Zune band.
 //           └─ content  `.StickyClip(Facet.ContentClipFor(hoisted))` + EdgeFade(Top, 24) { WhileStuck } when not hoisted
 //      (the ScrollView has EdgeCues None: its viewport top feather would fade the pinned rows)
 //                └─ SkelRegionEl(Content: keyed facet column → dim host (Opacity/HitTest binds only) → Zones.Column(model),

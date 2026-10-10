@@ -351,7 +351,8 @@ public static class BrowsePageLayout
 /// live measure: parked family pages must not re-pad when the overlay fades out.
 /// <para>The family's body starts where every Title-kind page head's body starts (<see cref="PageHeadRules.Extent"/> of
 /// <see cref="PageHeadKind.Title"/>, 120), so a masthead page and a <see cref="PageHead"/> title page land their first row
-/// at the same y. Under the Zune band the browse ROOT hoists to the fixed 72-DIP strip (<see cref="BodyTopFor"/>).</para></summary>
+/// at the same y. Under the Zune band the browse ROOT hoists to the fixed 24-DIP strip
+/// (<see cref="PageGeometry.HeadTop"/>, <see cref="BodyTopFor"/>).</para></summary>
 public static class BrowseMastheadMetrics
 {
     public const float TitleLine = PageGeometry.TitleLine;
@@ -364,7 +365,8 @@ public static class BrowseMastheadMetrics
     /// <summary>The feather at that cut — the band every detail surface uses.</summary>
     public const float ClipFadeBand = Detail.VerticalLayout.StickyFadeBand;
 
-    /// <summary>The browse root's body top: the fixed hoisted strip once the PRESENTED style hoists it, else
+    /// <summary>The browse root's body top: the fixed hoisted strip (<see cref="PageHeadRules.Extent"/> of
+    /// <see cref="PageHeadKind.Hoisted"/>, <see cref="PageGeometry.HeadTop"/> = 24) once the PRESENTED style hoists it, else
     /// <see cref="BodyTop"/>. <paramref name="hoisted"/> is <see cref="PageHead.HoistedFor"/>.</summary>
     public static float BodyTopFor(bool hoisted) => hoisted ? PageHeadRules.Extent(PageHeadKind.Hoisted) : BodyTop;
 

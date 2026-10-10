@@ -14,7 +14,7 @@ public sealed class PageHeadRulesTests
     [InlineData(PageHeadKind.TitleViews, 164f)]
     [InlineData(PageHeadKind.CrumbTitle, 156f)]
     [InlineData(PageHeadKind.CrumbTitleViews, 200f)]
-    [InlineData(PageHeadKind.Hoisted, 72f)]
+    [InlineData(PageHeadKind.Hoisted, 24f)]
     public void Extent_IsTheDocumentedHeight(PageHeadKind kind, float expected)
         => Assert.Equal(expected, PageHeadRules.Extent(kind));
 
@@ -24,7 +24,7 @@ public sealed class PageHeadRulesTests
         Assert.Equal(96f, PageHeadRules.Lead(PageHeadKind.TitleViews));
         Assert.Equal(132f, PageHeadRules.Lead(PageHeadKind.CrumbTitle));
         Assert.Equal(132f, PageHeadRules.Lead(PageHeadKind.CrumbTitleViews));
-        Assert.Equal(12f, PageHeadRules.Lead(PageHeadKind.Hoisted));
+        Assert.Equal(PageGeometry.HeadTop, PageHeadRules.Lead(PageHeadKind.Hoisted));
     }
 
     [Fact] public void TitleBottom_ToViewsItemTop_Is32()
@@ -35,8 +35,11 @@ public sealed class PageHeadRulesTests
         Assert.Equal(32f, itemTop - titleBottom);
     }
 
-    [Fact] public void Hoisted_IsTheTopAirTheBarAndTheBodyGap()
-        => Assert.Equal(PageGeometry.HoistedTop + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap, PageHeadRules.Extent(PageHeadKind.Hoisted));
+    [Fact] public void Hoisted_IsTheHeadTopAndNothingElse()
+    {
+        Assert.Equal(PageGeometry.HeadTop, PageHeadRules.Extent(PageHeadKind.Hoisted));
+        Assert.Equal(PageHeadRules.Lead(PageHeadKind.Hoisted), PageHeadRules.Extent(PageHeadKind.Hoisted));
+    }
 
     [Fact] public void KindOf_HoistedWinsOverTheOtherFacts()
     {

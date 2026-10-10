@@ -1004,7 +1004,8 @@ public readonly partial struct User
         /// <item><c>lib:toolbar:wide</c>: <see cref="Design.Type.PaneTitle"/> over the live count (the pane head's META line),
         /// the sort dropdown (Podcasts: the views switch too) + view toggle, the filter;</item>
         /// <item><c>lib:toolbar:hoisted</c>: the same without the title. Under the Zune nav style the band names the kind
-        /// (<see cref="PageHead.HoistedFor"/> reads the PRESENTED style), so the column opens on the count;</item>
+        /// (<see cref="PageHead.HoistedFor"/> reads the PRESENTED style), so the column opens on the count, whose first line
+        /// starts at <see cref="PageGeometry.HeadTop"/> (24) like every hoisted page's body;</item>
         /// <item><c>lib:toolbar:compact</c>: the collapsed layout, whose crumb root already names the kind (no title, no count).</item>
         /// </list>
         /// The count is a BOUND text, so a row landing re-fires one property instead of the toolbar, and its line is always
@@ -1084,7 +1085,7 @@ public readonly partial struct User
                 {
                     Key = "lib:toolbar:hoisted",
                     Direction = 1, Gap = Spacing.S, Shrink = 0f,
-                    Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
+                    Padding = new Edges4(PageGeometry.PaneInset, PageGeometry.HeadTop, PageGeometry.PaneInset, Spacing.S),
                     Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
                     Children = [CountLine(), picker, filter],
                 };

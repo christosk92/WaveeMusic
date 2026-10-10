@@ -92,8 +92,11 @@ public class PageGeometryRhythmTests
     }
 
     [Fact]
-    public void A_hoisted_strip_is_one_views_bar_between_two_equal_insets()
-        => Assert.Equal(72f, PageGeometry.HoistedTop + PageGeometry.ViewsBarH + PageGeometry.HoistedTop);
+    public void A_hoisted_strip_is_the_head_top_alone()
+    {
+        Assert.Equal(PageGeometry.HeadTop, PageHeadRules.Extent(PageHeadKind.Hoisted));
+        Assert.Equal(24f, PageHeadRules.Extent(PageHeadKind.Hoisted));
+    }
 
     [Fact]
     public void The_bottom_reserve_clears_the_dock_and_the_pane_inset_is_16()

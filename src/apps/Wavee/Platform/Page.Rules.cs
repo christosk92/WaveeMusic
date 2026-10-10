@@ -109,9 +109,8 @@ public static class PageGeometry
 
     // ══ 3. THE HOISTED STRIP ══════════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Space above a hoisted head's one row (<c>Spacing.M</c>, 12). A hoisted head is
-    /// <c>HoistedTop + ViewsBarH + HoistedTop</c> = 72 on every pivot page.</summary>
-    public const float HoistedTop = Spacing.M;
+    // A hoisted head is the card's head-top inset and nothing else: its row (meta, actions, trailing control) moved to the
+    // Zune band (row 2), so a hoisted page's body starts at PageGeometry.HeadTop on every pivot page.
 
     // ══ 4. THE VIEWS BAR ══════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -160,7 +159,7 @@ public enum PageHeadKind : byte
     CrumbTitle,
     /// <summary>Breadcrumb row, title, meta line and the views row.</summary>
     CrumbTitleViews,
-    /// <summary>The one 72-DIP strip a pivot destination keeps under the Zune band.</summary>
+    /// <summary>The one 24-DIP strip (<see cref="PageGeometry.HeadTop"/>) a pivot destination keeps under the Zune band.</summary>
     Hoisted,
 }
 
@@ -195,20 +194,20 @@ public static class PageHeadRules
          : PageHeadKind.Title;
 
     /// <summary>The head's height above the views row (or above the body, with none): the top air, the optional breadcrumb
-    /// row, the title line and the always-reserved meta line. A hoisted head has only <see cref="PageGeometry.HoistedTop"/>.</summary>
+    /// row, the title line and the always-reserved meta line. A hoisted head has only <see cref="PageGeometry.HeadTop"/>.</summary>
     public static float Lead(PageHeadKind k) => k switch
     {
-        PageHeadKind.Hoisted => PageGeometry.HoistedTop,
+        PageHeadKind.Hoisted => PageGeometry.HeadTop,
         PageHeadKind.CrumbTitle or PageHeadKind.CrumbTitleViews
             => PageGeometry.HeadTop + PageGeometry.AboveLine + PageGeometry.AboveToTitle + PageGeometry.TitleLine
                + PageGeometry.TitleToMeta + PageGeometry.MetaLine,
         _ => PageGeometry.HeadTop + PageGeometry.TitleLine + PageGeometry.TitleToMeta + PageGeometry.MetaLine,
     };
 
-    /// <summary>The head's whole height. Title 120, TitleViews 164, CrumbTitle 156, CrumbTitleViews 200, Hoisted 72.</summary>
+    /// <summary>The head's whole height. Title 120, TitleViews 164, CrumbTitle 156, CrumbTitleViews 200, Hoisted 24.</summary>
     public static float Extent(PageHeadKind k) => k switch
     {
-        PageHeadKind.Hoisted => PageGeometry.HoistedTop + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap,
+        PageHeadKind.Hoisted => PageGeometry.HeadTop,
         PageHeadKind.TitleViews or PageHeadKind.CrumbTitleViews
             => Lead(k) + PageGeometry.HeadToViewsGap + PageGeometry.ViewsBarH + PageGeometry.ViewsToBodyGap,
         _ => Lead(k) + PageGeometry.HeadToBody,

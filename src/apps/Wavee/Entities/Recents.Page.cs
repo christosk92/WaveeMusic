@@ -29,9 +29,11 @@
 // THE HEAD IS THE SHARED PageHead (Platform/Page.UI.cs). Title, the summary in the RESERVED meta slot, Overview as the
 // title row's action, and All / Music / Podcasts / Artists as its views bar on ONE stable signal (`_viewIndex`). The head is
 // PageHeadRules.Extent(TitleViews) (164) before the shape loads and after it (the summary fades into its slot), and
-// Extent(Hoisted) (72) under Zune, where the views are published to the band (`PageHead.Publish("recents", ...)`) and the
-// summary + Overview keep the strip. `PageHead.HoistedFor` reads the PRESENTED nav style, so the hoist's height change lands
-// in a quiet commit, never in the one that moves the content card. The page publishes nothing to `Shell.Mastheads`.
+// Extent(Hoisted) (24, the head-top strip alone) under Zune, where the views are published to the band
+// (`PageHead.Publish("recents", ...)`) and the summary + Overview ride the band's row 2 trailing slot (`RecentsTrailing`,
+// a keyed leaf that reads the shape signal, so the summary fades in there through `PageHead.MetaSlot`).
+// `PageHead.HoistedFor` reads the PRESENTED nav style, so the hoist's height change lands in a quiet commit, never in
+// the one that moves the content card. The page publishes nothing to `Shell.Mastheads`.
 //
 // ZERO ALLOCATION ON THE SCROLL PATH. The sticky watch over the list's scroll handle (`WatchSticky`/`UpdateSticky`) is
 // arithmetic, three change-gated signal writes and one pre-created posted delegate; per-row strings (when, uri, morph key, the
@@ -183,6 +185,8 @@ public readonly partial struct Recents
         readonly Func<bool> _pending, _failed;
         readonly Func<Element> _content, _shimmer, _failedPanel;
         readonly Func<AccentBinder> _binder;
+        /// <summary>The band's row 2 trailing builder (cached: the store keeps ONE delegate, so a re-publish is silent).</summary>
+        readonly Func<Element> _recentsTrailing;
         readonly Func<OwnerDemand> _owners;
 
         public PageView()
@@ -255,7 +259,12 @@ public readonly partial struct Recents
             _publishViews = PublishViews;
             _binder = () => new AccentBinder(this);
             _owners = () => new OwnerDemand(this);
+            _recentsTrailing = () => Embed.Comp(this, static () => new RecentsTrailing()) with { Key = "recents-trailing" };
         }
+
+        /// <summary>The Overview button: the head's title-row action, and the Zune band's trailing control.</summary>
+        internal Element OverviewButton() => Button.Create(Loc.Get(Strings.Recents.Overview), _openOverview, ButtonAppearance.Subtle,
+            ControlSize.Small, glyph: Icons.Calendar);
 
         /// <summary>The accent before any cover grades, with accent from artwork off, or with no source row: byte-identical to what
         /// every consumer painted before the page had a dynamic accent (§4.1).</summary>
@@ -300,8 +309,7 @@ public readonly partial struct Recents
                 {
                     // The summary fills the reserved meta slot (it fades in; the head's height never depends on it).
                     Meta = shape.Summary,
-                    Actions = Button.Create(Loc.Get(Strings.Recents.Overview), _openOverview, ButtonAppearance.Subtle,
-                        ControlSize.Small, glyph: Icons.Calendar),
+                    Actions = OverviewButton(),
                     Views = labels, ViewsSelected = _viewIndex, OnView = _onView,
                     Hoisted = PageHead.HoistedFor("recents"), Gutter = g, Key = "recents:head",
                 }),
@@ -376,7 +384,7 @@ public readonly partial struct Recents
         void PublishViews()
         {
             if (_active is { } a && !a.Peek()) return;
-            PageHead.Publish("recents", ViewLabels(), _viewIndex, _onView);
+            PageHead.Publish("recents", ViewLabels(), _viewIndex, _onView, _recentsTrailing);
         }
 
         // ── the body arms ────────────────────────────────────────────────────────────────────────────────────────────
@@ -1187,6 +1195,34 @@ public readonly partial struct Recents
             UseActivation(onActivated: () => ShellMaterial.Publish(slot, page.WashOwner, isClaim: true,
                 definite: Prefs.Appearance.SurfaceWash() == WashLevel.Off, tint: null, page.LastWash));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+    }
+
+    /// <summary>The summary and the Overview button as the Zune band's row 2 trailing slot (hoisted, the page's head is the
+    /// empty 24-DIP strip). A leaf that reads the page's shape signal, so a summary that lands or relabels re-renders only
+    /// this and not the shell band. The summary fades in through the head's meta slot; the Overview button is the head's own
+    /// (<c>OverviewButton</c>).</summary>
+    internal sealed class RecentsTrailing : Component
+    {
+        /// <summary>The summary's cap: the band wraps the trailing in a no-shrink box, so the text ellipsizes here and the
+        /// view words keep their room at narrow widths.</summary>
+        const float SummaryMaxWidth = 240f;
+
+        public override Element Render()
+        {
+            // The page arrives as re-pushed props (a different Recents publishing into the same band row is followed live).
+            var page = UseProps<PageView>();
+            string summary = page.ShapeSignal.Value.Summary;
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                Children =
+                [
+                    // The head's own meta slot: a late summary mounts and fades in place.
+                    PageHead.MetaSlot(summary) with { MaxWidth = SummaryMaxWidth },
+                    page.OverviewButton(),
+                ],
+            };
         }
     }
 

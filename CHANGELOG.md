@@ -72,6 +72,7 @@ versions separately under `v*` and is not tracked in this file.)
   full-screen art placeholder.
 - Zune pins show their covers instead of the same library icon.
 - Album and playlist pages use one accent colour for the playing song, the heart and Play.
+- Zune: Home, Browse, Recently played and your Library pages no longer open with an empty strip under the navigation band.
 
 ## [0.3.4] - 2026-10-06
 

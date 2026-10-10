@@ -184,7 +184,7 @@ public readonly partial struct Browse
             {
                 Direction = 1, MinWidth = 0f,
                 // The reserve is a SPACER above the clipped node, not padding inside it: the cut engages exactly when the
-                // content reaches the band. Route-static height (Extent(Title) 120, or the hoisted strip 72) that eases on
+                // content reaches the band. Route-static height (Extent(Title) 120, or the hoisted strip 24) that eases on
                 // PageHead.Reflow.
                 Children =
                 [

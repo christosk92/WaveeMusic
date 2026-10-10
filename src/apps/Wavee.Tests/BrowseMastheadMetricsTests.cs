@@ -69,12 +69,12 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(BrowseMastheadMetrics.FamilyBodyPad(32f, 24f).Top, BrowseMastheadMetrics.BodyTop + pad.Top);
     }
 
-    // The browse root under the Zune band hoists to the fixed 72-DIP strip; the clip is off because the band paints nothing.
+    // The browse root under the Zune band hoists to the fixed 24-DIP strip; the clip is off because the band paints nothing.
     [Fact]
     public void Hoisted_BodyTopIsTheFixedStrip_AndTheClipIsOff()
     {
         Assert.Equal(PageHeadRules.Extent(PageHeadKind.Hoisted), BrowseMastheadMetrics.BodyTopFor(true));
-        Assert.Equal(72f, BrowseMastheadMetrics.BodyTopFor(true));
+        Assert.Equal(24f, BrowseMastheadMetrics.BodyTopFor(true));
         Assert.Equal(BrowseMastheadMetrics.BodyTop, BrowseMastheadMetrics.BodyTopFor(false));
         Assert.Equal(0f, BrowseMastheadMetrics.ClipInsetFor(true));
         Assert.Equal(BrowseMastheadMetrics.ClipInset, BrowseMastheadMetrics.ClipInsetFor(false));

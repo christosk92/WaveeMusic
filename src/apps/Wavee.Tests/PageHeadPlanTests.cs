@@ -75,6 +75,14 @@ public sealed class PageHeadPlanTests
         Assert.Equal(PageHeadKind.Hoisted, PageHead.PlanOf(Base() with { Hoisted = true, Above = new BoxEl() }));
     }
 
+    [Fact] public void Hoisted_IsTheEmptyHeadTopStrip()
+    {
+        var head = (BoxEl)PageHead.Create(Base() with { Hoisted = true, Meta = "42 songs", Actions = new BoxEl(), ViewsTrailing = new BoxEl() });
+        Assert.Equal(PageGeometry.HeadTop, head.Height.Value);
+        Assert.Equal(PageHead.Reflow, head.Animate);
+        Assert.Empty(head.Children);
+    }
+
     [Fact] public void Create_SetsTheKindsHeightAndTheReflow()
     {
         var spec = Base() with { Meta = "42 songs", Gutter = 32f };

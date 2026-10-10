@@ -1,6 +1,6 @@
 // ── Platform/Page.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
 // THE PAGE HEAD: one builder for the title row, the meta line, the optional breadcrumb row above, the optional views bar
-// and the hoisted strip a pivot destination keeps under the Zune band, plus the helpers that read the presented nav style
+// and the empty head-top strip a pivot destination keeps under the Zune band, plus the helpers that read the presented nav style
 // and publish a page's views to the band.
 //
 // Role: UI
@@ -21,7 +21,8 @@
 //     descendant suppression (AppHost.cs:7392-7437). The body below is reflow-shoved: the engine lands its position on the
 //     reflow's per-tick re-solve (AppHost.cs:7405-7418, 7454-7465). A page whose views moved to the Zune band's row 2
 //     (ViewsInBand: Settings, Search, the people lists, the discography) changes height the same way, only on
-//     PresentedNavStyle: TitleViews 164 to Title 120, CrumbTitleViews 200 to CrumbTitle 156.
+//     PresentedNavStyle: TitleViews 164 to Title 120, CrumbTitleViews 200 to CrumbTitle 156. A hoisted head is the
+//     24-DIP head-top strip and holds nothing (its row moved to the band), so a hoist is a pure height change.
 // (d) A mount never animates: the engine skips FLIP capture on first layout (AppHost.cs:6024).
 
 using FluentGpu.Animation;
@@ -65,7 +66,9 @@ public sealed record PageHeadSpec(string Title)
     /// <summary>Hosts the bar in a horizontal ScrollView so a long set never wraps or overflows.</summary>
     public bool ViewsScroll { get; init; }
 
-    /// <summary>The head is hoisted into the Zune band (<see cref="PageHead.HoistedFor"/>).</summary>
+    /// <summary>The head is hoisted into the Zune band (<see cref="PageHead.HoistedFor"/>): it is the empty
+    /// <see cref="PageGeometry.HeadTop"/> strip, and <see cref="Meta"/>, <see cref="Actions"/> and <see cref="ViewsTrailing"/>
+    /// are not drawn (the page publishes them to the band's row 2 instead).</summary>
     public bool Hoisted { get; init; }
 
     /// <summary>The views live in the Zune band's row 2 (<see cref="PageHead.ViewsInBandFor"/>), and the head keeps its title
@@ -136,7 +139,7 @@ public static class PageHead
     };
 
     /// <summary>The meta line: a box of exactly <see cref="PageGeometry.MetaLine"/>. A late text mounts and fades in place.</summary>
-    public static Element MetaSlot(string? text) => new BoxEl
+    public static BoxEl MetaSlot(string? text) => new()
     {
         Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, MinWidth = 0f,
         Children =
@@ -192,19 +195,6 @@ public static class PageHead
         };
     }
 
-    /// <summary>The hoisted head's one row: the meta line at the start, the actions and the trailing control at the end.</summary>
-    public static Element HoistedRow(string? meta, Element? actions, Element? trailing)
-    {
-        var kids = new List<Element>(4) { Design.Type.PageMeta(meta ?? ""), new BoxEl { Grow = 1f } };
-        if (actions is not null) kids.Add(Fixed(actions));
-        if (trailing is not null) kids.Add(Fixed(trailing));
-        return new BoxEl
-        {
-            Direction = 0, Height = PageGeometry.ViewsBarH, Shrink = 0f, AlignItems = FlexAlign.Center, MinWidth = 0f,
-            Gap = Spacing.M, Children = kids.ToArray(),
-        };
-    }
-
     /// <summary>The head. Its height is <see cref="PageHeadRules.Extent"/> of its kind and nothing else.</summary>
     public static Element Create(PageHeadSpec s)
     {
@@ -212,14 +202,8 @@ public static class PageHead
         Element[] kids;
         if (kind == PageHeadKind.Hoisted)
         {
-            kids =
-            [
-                Spacer(PageGeometry.HoistedTop),
-                HoistedRow(s.Meta, s.Actions, s.ViewsTrailing) with
-                {
-                    Key = s.Key + ":hoisted", Enter = FadeIn, Exit = FadeOut, Transition = s_fade,
-                },
-            ];
+            // The whole head is the HeadTop strip: the meta, actions and trailing control moved to the Zune band's row 2.
+            kids = [];
         }
         else
         {

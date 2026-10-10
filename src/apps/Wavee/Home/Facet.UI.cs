@@ -10,19 +10,21 @@
 //   FacetRow (props re-pushed: Embed.Comp(props, factory))
 //   └─ column  (hoisted = PageHead.HoistedFor("home"), which reads Shell.Ui.PresentedNavStyle)
 //      ├─ LEAD  h = Facet.LeadFor(hoisted)  ClipToBounds  Animate = PageHead.Reflow
-//      │    non-hoisted: [HeadTop · "Home" title · TitleToMeta · reserved meta slot · HeadToViewsGap]; hoisted: 12, empty
-//      ├─ BAND  h = FacetRowH (51)
-//      │    ├─ row  h = SelectorH (48) [ PageHead.Views(labels, Index, onChange, trailing: Following) ]  (empty when hoisted)
+//      │    non-hoisted: [HeadTop · "Home" title · TitleToMeta · reserved meta slot · HeadToViewsGap]
+//      │    hoisted: 24 (HeadTop), the busy bar alone, top-aligned in the strip
+//      ├─ BAND  h = Facet.BandHFor(hoisted) (51, or 0 hoisted)  ClipToBounds  Animate = PageHead.Reflow
+//      │    ├─ row  h = SelectorH (48) [ PageHead.Views(labels, Index, onChange, trailing: Following) ]  (not hoisted only)
 //      │    └─ 3-px box { ProgressBar.Indeterminate(width: NaN) }   Opacity ← Switch.Bar (compositor bind, no re-render)
-//      ├─ BelowBarGap spacer (9)
+//      │         (not hoisted only; hoisted it is the lead's child, same key)
+//      ├─ gap box  h = Facet.BelowBarGapFor(hoisted) (9, or 0 hoisted)  Animate = PageHead.Reflow
 //      └─ Flow.Show(Phase == Failed, InfoBar.Create(Error, "Couldn't load <facet>", …, Retry))
 //
-// The body therefore starts at LeadFor + FacetRowH + BelowBarGap: 164 (PageHeadRules.Extent(TitleViews)), or 72 when hoisted
-// (Extent(Hoisted)). The band is pinned with `.Sticky(Facet.StuckInset, scope: Facet.PageScope)` ONLY when not hoisted
-// (transparent, no acrylic — the page column names itself `Facet.PageScope`, so the pin holds for the whole page and not
-// just this component's own column). Hoisted, the words and Following live in the Zune band's second row (published
-// through `PageHead.Publish`), the band is a plain 51-DIP spacer holding only the busy bar, and nothing in Home is sticky
-// but the chapter headers. `HomeScreen` cuts the content column under the pinned band with
+// The body therefore starts at LeadFor + BandHFor + BelowBarGapFor: 164 (PageHeadRules.Extent(TitleViews)), or 24 when
+// hoisted (Extent(Hoisted) = HeadTop: the lead strip alone, the band and the gap collapse to 0). The band is pinned with
+// `.Sticky(Facet.StuckInset, scope: Facet.PageScope)` ONLY when not hoisted (transparent, no acrylic — the page column
+// names itself `Facet.PageScope`, so the pin holds for the whole page and not just this component's own column). Hoisted, the words and Following live in the Zune band's second row (published
+// through `PageHead.Publish`), the band and the gap are 0 tall, the busy bar sits at the top of the 24-DIP lead strip, and
+// nothing in Home is sticky but the chapter headers. `HomeScreen` cuts the content column under the pinned band with
 // `.StickyClip(Facet.ContentClipFor(hoisted))` + a `WhileStuck` top feather; `Zones.UI.cs` reads `Facet.StuckBottomFor` for
 // its chapter headers' stick inset. The InfoBar sits BELOW the gap, unpinned — it scrolls with the page's flow and, when it
 // grows, pushes the content (never overlays it).
@@ -30,8 +32,9 @@
 // ── LAYOUT STABILITY ─────────────────────────────────────────────────────────────────────────────────────────────────
 // (a) Every height is a pure function of `hoisted`; no data input. The row keeps its 48 DIP before the words arrive and
 //     the words fade in place (PageHead.Views), so the body top is the same y in every data state.
-// (b) `hoisted` is the PRESENTED nav style, so the hoist (lead 104 -> 12, words leaving the page) lands in the quiet commit
-//     HoistSettleMs after the frame moved, where PageHead.Reflow is not snapped by the card's descendant suppression.
+// (b) `hoisted` is the PRESENTED nav style, so the hoist (lead 104 -> 24, band 51 -> 0, gap 9 -> 0, words leaving the
+//     page) lands in the quiet commit HoistSettleMs after the frame moved, where PageHead.Reflow is not snapped by the
+//     card's descendant suppression.
 // (c) The facet bar has one data-free key and the stable `Index` signal, so the pill slides on a facet switch.
 //
 // Selection: the SelectorBar OWNS `Index` (the caller's `Signal<int>`, written on click/roving before OnChange fires);
@@ -107,11 +110,18 @@ public static class Facet
     /// and not for <see cref="FacetRow"/>'s own column, which is where a scope-less <c>.Sticky</c> would release).</summary>
     public const string PageScope = "home:page";
 
-    /// <summary>The lead box's height above the band: the hoisted strip's top air (12), else the title head down to the
-    /// views row (<c>PageHeadRules.Lead(TitleViews)</c> + <see cref="PageGeometry.HeadToViewsGap"/> = 104). Depends on
-    /// <paramref name="hoisted"/> only, never on data.</summary>
+    /// <summary>The lead box's height above the band: the hoisted strip (<see cref="PageGeometry.HeadTop"/>, 24), else the
+    /// title head down to the views row (<c>PageHeadRules.Lead(TitleViews)</c> + <see cref="PageGeometry.HeadToViewsGap"/> =
+    /// 104). Depends on <paramref name="hoisted"/> only, never on data.</summary>
     public static float LeadFor(bool hoisted)
-        => hoisted ? PageGeometry.HoistedTop : PageHeadRules.Lead(PageHeadKind.TitleViews) + PageGeometry.HeadToViewsGap;
+        => hoisted ? PageGeometry.HeadTop : PageHeadRules.Lead(PageHeadKind.TitleViews) + PageGeometry.HeadToViewsGap;
+
+    /// <summary>The band's height: the views row + busy bar (<see cref="FacetRowH"/>), or 0 hoisted (the words moved to the
+    /// Zune band and the busy bar moved into the lead strip).</summary>
+    public static float BandHFor(bool hoisted) => hoisted ? 0f : FacetRowH;
+
+    /// <summary>The gap under the band: <see cref="BelowBarGap"/>, or 0 hoisted (the body starts at the strip's end).</summary>
+    public static float BelowBarGapFor(bool hoisted) => hoisted ? 0f : BelowBarGap;
 
     /// <summary>The viewport line the chapter headers pin at. With nothing pinned above them (hoisted) they pin where the
     /// band would, at <see cref="StuckInset"/>; otherwise just under the pinned band.</summary>
@@ -178,10 +188,22 @@ public sealed class FacetRow : Component
             p.Select(FacetPivot.Target(ws[i], p.FollowingMemory(ws[i].Id)));
         }
 
-        // The LEAD: the page title and its reserved meta slot above the views, 104 tall, or the hoisted strip's 12 empty
-        // DIP. Its height depends on `hoisted` alone and Reflows (a quiet commit), so the band and body ease with it.
+        // The busy bar: stretched indeterminate, always mounted, its opacity a compositor bind on Switch.Bar so the fade
+        // plays both ways without a re-render. Not hoisted it ends the band; hoisted it is the 24-DIP lead strip's only
+        // child, top-aligned (same key either way).
+        var busy = new BoxEl
+        {
+            Key = "home:facet:busy",
+            Height = Facet.BarH, MinWidth = 0f, HitTestVisible = false,
+            Opacity = Prop.Of(() => p.Switch.Value.Bar ? 1f : 0f),
+            Transition = Facet.s_fade,
+            Children = [ProgressBar.Indeterminate(width: float.NaN)],
+        };
+
+        // The LEAD: the page title and its reserved meta slot above the views, 104 tall, or the hoisted 24-DIP strip holding
+        // the busy bar. Its height depends on `hoisted` alone and Reflows (a quiet commit), so the band and body ease with it.
         Element[] leadKids = hoisted
-            ? Array.Empty<Element>()
+            ? new Element[] { busy }
             : new Element[]
             {
                 Spacer(PageGeometry.HeadTop),
@@ -199,9 +221,9 @@ public sealed class FacetRow : Component
             ClipToBounds = true, Animate = PageHead.Reflow, Children = leadKids,
         };
 
-        // The views row: always 48 tall. The words sit in PageHead's shared views row (one data-free bar key, so the pill
+        // The views row: 48 tall. The words sit in PageHead's shared views row (one data-free bar key, so the pill
         // slides; empty labels keep the row and fade the words in place); Following ends the row. Hoisted, the row is
-        // empty — the words moved to the Zune band — and the views fade out in place.
+        // empty — the words moved to the Zune band — and the band it sits in collapses to 0.
         Element[] rowKids = hoisted
             ? Array.Empty<Element>()
             : new Element[]
@@ -215,17 +237,6 @@ public sealed class FacetRow : Component
         {
             Key = "home:facet:row", Direction = 0, AlignItems = FlexAlign.Center, Height = Facet.SelectorH, Shrink = 0f,
             MinWidth = 0f, Children = rowKids,
-        };
-
-        // The stretched indeterminate bar, always mounted: its opacity is a compositor bind on Switch.Bar so the fade
-        // plays both ways without a re-render.
-        var busy = new BoxEl
-        {
-            Key = "home:facet:busy",
-            Height = Facet.BarH, MinWidth = 0f, HitTestVisible = false,
-            Opacity = Prop.Of(() => p.Switch.Value.Bar ? 1f : 0f),
-            Transition = Facet.s_fade,
-            Children = [ProgressBar.Indeterminate(width: float.NaN)],
         };
 
         string failedLabel = state.FailedTarget is { } ft ? LabelOf(words, ft) ?? ft : "";
@@ -247,21 +258,28 @@ public sealed class FacetRow : Component
             ],
         });
 
-        // The band: views row + busy bar, exactly FacetRowH tall, transparent. Pinned against the PAGE column
+        // The band: views row + busy bar, exactly FacetRowH tall (0 hoisted), transparent. Pinned against the PAGE column
         // (Facet.PageScope), which HomeScreen names — a scope-less Sticky would clamp to this component's own column — but
-        // only while not hoisted: hoisted, it is a plain spacer (the 72-DIP strip) and nothing in Home sticks but the chapters.
+        // only while not hoisted: hoisted, it is an empty 0-tall box and nothing in Home sticks but the chapters.
         var band = new BoxEl
         {
             Key = "home:facet:band",
-            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = Facet.FacetRowH, Shrink = 0f,
-            Children = [row, busy],
+            Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch, Height = Facet.BandHFor(hoisted), Shrink = 0f,
+            ClipToBounds = true, Animate = PageHead.Reflow,
+            Children = hoisted ? Array.Empty<Element>() : [row, busy],
+        };
+
+        // The gap under the band, a box so its 9 -> 0 follows the hoist with the rest of the head.
+        var gap = new BoxEl
+        {
+            Key = "home:facet:gap", Height = Facet.BelowBarGapFor(hoisted), Shrink = 0f, MinWidth = 0f, Animate = PageHead.Reflow,
         };
 
         return new BoxEl
         {
             Key = "home:facet",
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
-            Children = [lead, hoisted ? band : band.Sticky(Facet.StuckInset, scope: Facet.PageScope), Spacer(Facet.BelowBarGap), failure],
+            Children = [lead, hoisted ? band : band.Sticky(Facet.StuckInset, scope: Facet.PageScope), gap, failure],
         };
     }
 
