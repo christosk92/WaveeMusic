@@ -1044,9 +1044,8 @@ public static partial class Shell
 
         void Tick()
         {
-            // Layout-transition suppression (a scroll starts it) cancels the in-flight FLIP and snaps the card without a rect
-            // change, so the analytic pose would run on alone: fall through to the real pose.
-            if (_tween && FgMotion.LayoutTransitionsSuppressed) _tween = false;
+            // The analytic pose keeps running through a scroll: the engine snaps only the nodes whose rect changes in a suppressed
+            // commit, so the card keeps easing and the settle path (a rect that does not continue the tween) ends the run.
             if (_tween) Ui.CardPose.SetIfChanged(TweenPose());
             else SampleCardPose();
         }
@@ -1091,12 +1090,10 @@ public static partial class Shell
                 else _tween = false;
             }
             bool running = _running.Value;
-            // The ticker mounts on the render AFTER this effect: write the run's first analytic pose here, so the photo does not
-            // trail the card's first (front-loaded) frames.
+            // The ticker mounts on the render AFTER this effect (the run's first pose is the one the settle sampled).
             UseEffect(() =>
             {
                 if (settle <= 0) return;
-                if (_tween) Ui.CardPose.SetIfChanged(TweenPose());
                 _running.Value = true;
             }, DepKey.From(settle));
             UseTimeout(_stop, PaneMs + 120f, DepKey.From(settle));
