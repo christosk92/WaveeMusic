@@ -595,7 +595,7 @@ public readonly partial struct Track
                     ? new BoxEl
                     {
                         Key = "search:field", Direction = 1, Height = 32f, Animate = s_searchSwap,
-                        Children = [Embed.Comp(() => new TableSearchField(h))],
+                        Children = [Embed.Comp(() => new TableSearchField(h, band: p.Compact))],
                     }
                     : new BoxEl
                     {
@@ -646,8 +646,11 @@ public readonly partial struct Track
         }
 
         /// <summary>The chromeless editor on the host's query signal. It collapses itself on the query-EMPTY edge (✕ or
-        /// backspacing out) and on Esc — both handing focus back — and on a blur while empty, without restoring focus.</summary>
-        sealed class TableSearchField(TableHost host) : Component
+        /// backspacing out) and on Esc — both handing focus back — and on a blur while empty, without restoring focus.
+        /// <para><paramref name="band"/>: this is the vertical arm's sticky-band copy. The hero bar and the band both mount a
+        /// field on the same expand, so only the one that owns input (<c>_compactInteractive</c>) takes focus on realize:
+        /// two focus requests made the loser blur while empty, and that blur collapsed the find the moment it opened.</para></summary>
+        sealed class TableSearchField(TableHost host, bool band = false) : Component
         {
             public override Element Render()
             {
@@ -664,7 +667,13 @@ public readonly partial struct Track
                 }, DepKey.From(hasQuery));
                 var parts = UseMemo(() => new TemplateParts
                 {
-                    [EditableText.PartRoot] = b => b with { OnRealized = n => post(() => hooks.FocusNode?.Invoke(n, false)) },
+                    [EditableText.PartRoot] = b => b with
+                    {
+                        OnRealized = n =>
+                        {
+                            if (!h.VerticalArm || band == h._compactInteractive.Peek()) post(() => hooks.FocusNode?.Invoke(n, false));
+                        },
+                    },
                 }, DepKey.Empty);
                 // The field mounts once (its props freeze): the clear affix is a live component of its own, not a field.
                 return Embed.Comp(() => new EditableText
