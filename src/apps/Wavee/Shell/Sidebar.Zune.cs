@@ -263,11 +263,16 @@ public static class ZuneNavRules
 
     /// <summary>Whether the pin group is MOUNTED in the band's row while the page column's width is still easing (a rail toggle).
     /// <see cref="ShowsPins"/> reads the FINAL column width, the band tweens to it, so the group must not change the row's layout
-    /// at the target's flip: it mounts only once the band has settled (<paramref name="settled"/>, so the pivot strip is never solved
-    /// narrower than its final width), and a group that is going away stays mounted, faded out by opacity, until the band has settled
-    /// too. The group's VISIBILITY is the target itself.</summary>
+    /// at the target's flip: it mounts only once the band has settled (<paramref name="settled"/>), and a group that is going
+    /// away stays mounted, faded out by opacity, until the band has settled too. The group's VISIBILITY is the target itself.</summary>
     public static bool PinsMounted(bool target, bool mounted, bool settled)
         => target ? mounted || settled : mounted && !settled;
+
+    /// <summary>Whether the mounted pin group takes width in the pivot row. Only a group that is staying (the target) does: a group
+    /// that is fading out is laid out as a 0-wide end-aligned layer, so while the band narrows or widens on a rail toggle the
+    /// pivot strip is never solved narrower than its final width (a group still in flow would crush the trailing pivots for the
+    /// whole fade and they would pop back when it unmounts).</summary>
+    public static bool PinsTakeRowWidth(bool target, bool mounted) => target && mounted;
 
     /// <summary>The pin tiles: the first <see cref="MaxPins"/> pins that have a route, in order. A folder has no route and is
     /// skipped. <paramref name="into"/> is cleared and refilled, so the caller's list is reused between renders.</summary>

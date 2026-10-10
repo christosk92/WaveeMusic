@@ -92,6 +92,14 @@ public sealed class ShellNavStyleTests
         Assert.True(ZuneNavRules.ShowsPins(true, Shell.FrameRules.CardWidth(1200f, 0f, 8f, 360f)));
     }
 
+    [Fact] public void PinsTakeRowWidth_OnlyAGroupThatIsStayingTakesWidth()
+    {
+        Assert.True(ZuneNavRules.PinsTakeRowWidth(target: true, mounted: true));
+        Assert.False(ZuneNavRules.PinsTakeRowWidth(target: false, mounted: true));   // fading out: out of flow, the strip keeps the whole band
+        Assert.False(ZuneNavRules.PinsTakeRowWidth(target: true, mounted: false));
+        Assert.False(ZuneNavRules.PinsTakeRowWidth(target: false, mounted: false));
+    }
+
     [Fact] public void PinsMounted_WaitsForTheBandToSettleBeforeMountingAndBeforeDropping()
     {
         // Widening (target on): not mounted yet while the band still eases; mounted once it has settled; stays mounted after.

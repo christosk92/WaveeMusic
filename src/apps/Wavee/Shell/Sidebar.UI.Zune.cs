@@ -206,18 +206,32 @@ public static partial class Sidebar
                         Design.Type.MicroMeta(Loc.Get("sidebar.zune.pinned")) with { Color = Shell.Ui.ChromeTertiary, Shrink = 0f },   // ink: see Shell.Ui.ChromeInkMix
                     };
                     for (int i = 0; i < _tiles.Count; i++) items.Add(PinColumn(_tiles[i]));
+                    // A group that is going away fades OUT OF FLOW: its slot is 0 wide (and has no leading gap), so the pivot strip is
+                    // solved at the band's whole width from the first tick of a rail toggle, and the group, end-aligned and measured
+                    // at its natural width, hangs left off the row's end while it fades. The slot is always the group's parent, so
+                    // the flip never remounts it.
+                    bool inFlow = ZuneNavRules.PinsTakeRowWidth(pinsVisible, pinsMounted);
                     row.Add(new BoxEl
                     {
-                        Key = "zune:pins", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PinGap, Shrink = 0f, Children = [.. items],
-                        Opacity = pinsVisible ? 1f : 0f, HitTestVisible = pinsVisible,
-                        Enter = PageHead.FadeIn, Transition = PageHead.FadeMotion,
+                        Key = "zune:pins-slot", ZStack = true, Shrink = 0f, AlignSelf = FlexAlign.Center,
+                        Width = inFlow ? float.NaN : 0f, Margin = new Edges4(inFlow ? Spacing.M : 0f, 0f, 0f, 0f),
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = "zune:pins", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PinGap, Shrink = 0f, Children = [.. items],
+                                JustifySelf = FlexAlign.End, MeasureUnboundedWidth = true,
+                                Opacity = pinsVisible ? 1f : 0f, HitTestVisible = pinsVisible,
+                                Enter = PageHead.FadeIn, Transition = PageHead.FadeMotion,
+                            },
+                        ],
                     });
                 }
             }
 
             return new BoxEl
             {
-                Key = "zune:top", Direction = 0, Height = ZuneNavRules.PivotRowHeight, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f,
+                Key = "zune:top", Direction = 0, Height = ZuneNavRules.PivotRowHeight, AlignItems = FlexAlign.Center, Shrink = 0f,
                 Children = [.. row], Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
         }
