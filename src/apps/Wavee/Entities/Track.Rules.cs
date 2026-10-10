@@ -845,7 +845,8 @@ public readonly partial struct Track
             + (Has(InlineCommand.Sort) ? 2 : 0);
     }
 
-    /// <summary>The command bar holds only LIST TOOLS: [Sort] · [Tune] ─ search · [Insights] · ⋯. Sort is the one command
+    /// <summary>The command bar holds only LIST TOOLS: [Tune] ─ [Sort] · search · [Insights] · ⋯ (Sort leads the right-aligned
+    /// cluster, one gap rhythm). Sort is the one command
     /// that is placed by width: it stays inline while it fits after the search affordance's reservation and is
     /// evicted into "…" otherwise. Tune, the Insights toggle slot and "…" are mandatory (they are the same width at
     /// every pane width, so the bar never reflows when the facts arrive). The bar PROMOTES, it does not shrink: an
@@ -856,8 +857,9 @@ public readonly partial struct Track
         /// <summary>The Insights toggle's slot (the button's 32-DIP edge): reserved by kind, so it is in the budget from
         /// the first frame whether or not the facts have settled.</summary>
         public const float InsightsWidth = 32f;
-        /// <summary>At rest the search affordance is TWO adjacent buttons (query + filter); the field opens only when invoked.</summary>
-        public const float SearchIconWidth = 66f;
+        /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The filter funnel left the
+        /// bar: "Filter…" lives in "…" (and an active filter badges it).</summary>
+        public const float SearchIconWidth = 32f;
         public const float SearchMinExplicit = 160f;
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
@@ -925,7 +927,7 @@ public readonly partial struct Track
     /// past the explicit minimum only when no chip slot absorbs the slack.</summary>
     public readonly record struct LikedBarFit(LikedBarLayout.Rung Rung, float ChipSlotW, bool SearchExpanded, float SearchWidth);
 
-    /// <summary>THE LIKED SONGS BAR: one 44-DIP row, <c>[Play │ ⌄] · Shuffle · divider · genre chips · Date added ⌄ ─ find ·
+    /// <summary>THE LIKED SONGS BAR: one 44-DIP row, <c>[Play │ ⌄] · Shuffle · divider · genre chips ─ Date added ⌄ · find ·
     /// Insights · ⋯</c>, and the pure ladder that decides what stays inline at a width. The ladder runs richest to poorest and
     /// every step is a statement of what yields FIRST: the chips shrink (down to <see cref="ChipSlotMinW"/>, under their edge
     /// fade), then Shuffle loses its label, then Sort goes into "…", then the chips go into "…" ("Genre ▸"), then Shuffle goes

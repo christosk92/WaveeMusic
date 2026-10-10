@@ -180,25 +180,25 @@ public readonly partial struct Track
             else _searchOpenFit = (pane, fit);
             _toolbarFit = fit;
 
-            var kids = new List<Element>(3);
-            if (fit.Has(InlineCommand.Sort))
-                kids.Add(MeasuredCommand(1, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
+            var kids = new List<Element>(1);
             if (hasTune)
                 kids.Add(MeasuredCommand(0, "cmd:tune", ToolTip.Wrap(
                     LabeledButton(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
                     Loc.Get(Strings.Detail.Tuning.Tooltip))));
 
             var overflow = InlineCommand.Sort & ~fit.Inline;
-            // The right end: search, then the Insights toggle (a slot reserved by kind, faded in once the facts settle), then "…".
-            // Insights sits BEFORE "…" in both arms, so the bar reads find · Insights · ⋯.
-            var tail = new List<Element>(2);
+            // The right end, one gap rhythm: Sort, search, then the Insights toggle (a slot reserved by kind, faded in once the facts
+            // settle), then "…". Insights sits BEFORE "…" in both arms, so the bar reads [Sort] · find · Insights · ⋯.
+            var tail = new List<Element>(4);
+            if (fit.Has(InlineCommand.Sort))
+                tail.Add(MeasuredCommand(1, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
+            tail.Add(Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
+                with { Key = "search-host" });
             if (insights is not null)
                 tail.Add(Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
             tail.Add(Embed.Comp(() => new TableMoreButton(this, overflow))
                 with { Key = "cmd:more:" + (int)overflow + ":" + _contextText });
 
-            Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false), () => new TableSearchHost(this))
-                with { Key = "search-host" };
             Element normal = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
@@ -206,15 +206,14 @@ public readonly partial struct Track
                 [
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = kids.ToArray() },
                     new BoxEl { Grow = 1f, MinWidth = 0f },
-                    search,
                     .. tail,
                 ],
             };
             return CommandSurface("normal", normal, lead);
         }
 
-        /// <summary>The LIKED SONGS bar (<see cref="Detail.Config.SlimHead"/>): <c>[Play | v] - Shuffle - divider - genre chips -
-        /// Date added v -- find - Insights - ...</c>, one 44-DIP lane at every rung. What stays inline is
+        /// <summary>The LIKED SONGS bar (<see cref="Detail.Config.SlimHead"/>): <c>[Play | v] - Shuffle - divider - genre chips
+        /// -- Date added v - find - Insights - ...</c>, one 44-DIP lane at every rung. What stays inline is
         /// <see cref="LikedBarLayout"/>'s answer for the measured pane (the labelled Shuffle and the Sort report their widths
         /// through <see cref="MeasuredCommand"/>, so a font or locale change re-fits); everything evicted is in "..."
         /// (<see cref="TableMoreButton"/>), and the Play split, find and "..." never leave.</summary>
@@ -256,18 +255,19 @@ public readonly partial struct Track
                     Children = [P.ContentFilterBar!.Invoke() ?? new BoxEl()],
                 });
             }
-            if (LikedBarLayout.SortInline(rung))
-                left.Add(MeasuredCommand(1, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
 
+            // The right cluster, one gap rhythm: [Sort] · find · Insights · ⋯.
             var more = LikedMoreFor(rung, chipsPresent);
-            var tail = new List<Element>(2);
+            var tail = new List<Element>(4);
+            if (LikedBarLayout.SortInline(rung))
+                tail.Add(MeasuredCommand(1, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
+            tail.Add(Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false, Funnel: false), () => new TableSearchHost(this))
+                with { Key = "search-host" });
             if (insights is not null && LikedBarLayout.InsightsInline(rung))
                 tail.Add(Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
             tail.Add(Embed.Comp(() => new TableMoreButton(this, InlineCommand.None, more, insights))
                 with { Key = "cmd:more:liked:" + (int)more + ":" + _contextText });
 
-            Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false), () => new TableSearchHost(this))
-                with { Key = "search-host" };
             Element normal = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
@@ -275,7 +275,6 @@ public readonly partial struct Track
                 [
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 1f, MinWidth = 0f, Children = left.ToArray() },
                     new BoxEl { Grow = 1f, MinWidth = 0f },
-                    search,
                     .. tail,
                 ],
             };
@@ -417,7 +416,9 @@ public readonly partial struct Track
 
         // ══ 3. SEARCH ═══════════════════════════════════════════════════════════════════════════════════════════════
 
-        sealed record SearchProps(bool Expanded, float Width, bool Compact);
+        /// <summary><paramref name="Funnel"/>: mount the filter funnel beside the field. No bar sets it (the funnel folded into "…" as
+        /// "Filter…", D5); the flag keeps the host able to carry one.</summary>
+        sealed record SearchProps(bool Expanded, float Width, bool Compact, bool Funnel = false);
 
         /// <summary>The context band's search field. Its width is DERIVED: the band is <paramref name="availW"/> wide with
         /// the gutter either side, and the right cluster is its words plus one cluster gap — the identity block is
@@ -431,7 +432,7 @@ public readonly partial struct Track
                                                   Loc.Get(Strings.Detail.Play), insights);
             float room = availW - left * 2f - claim - Detail.BandLayout.ClusterGap;
             float width = MathF.Max(CommandBarLayout.SearchIconWidth, MathF.Min(room, CommandBarLayout.SearchMax));
-            return Embed.Comp(new SearchProps(false, width, true), () => new TableSearchHost(this)) with { Key = "compact-search-host" };
+            return Embed.Comp(new SearchProps(false, width, true, Funnel: false), () => new TableSearchHost(this)) with { Key = "compact-search-host" };
         }
 
         /// <summary>The band's RIGHT cluster: Find · Filter · [Insights ·] Play as plateless words — the same handlers the
@@ -507,19 +508,22 @@ public readonly partial struct Track
                         Children = [ToolTip.Wrap(IconButton(Icons.Search, queryActive, h._openSearch, h._captureSearchButton),
                                                  Loc.Get(Strings.Detail.Filter.SearchThisList))],
                     };
-                // No explicit row width: it fills the host whose width is the tween, so the funnel rides the right edge
-                // for the whole flight instead of hanging past a narrower clip. The query region SHRINKS (G-254): a ZStack
+                // No explicit row width: it fills the host whose width is the tween, so a funnel (when the host carries one) rides the
+                // right edge for the whole flight instead of hanging past a narrower clip. The query region SHRINKS (G-254): a ZStack
                 // measures its widest layer and the engine's flex items do not shrink by default (MinWidth 0 is no stand-in),
-                // so without it a long query, or the 66-DIP start of the expand tween, pushes the fixed 32-DIP funnel out.
+                // so without it a long query pushes the fixed 32-DIP funnel out.
+                var region = new BoxEl { Key = "search-query-region", ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = 32f, ClipToBounds = true, Children = [query] };
                 var row = new BoxEl
                 {
                     Direction = 0, Gap = expanded ? 0f : CommandBarLayout.Gap, Height = 32f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        new BoxEl { Key = "search-query-region", ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, Height = 32f, ClipToBounds = true, Children = [query] },
-                        // STABLE key: keying on capabilities would remount the funnel and orphan an open flyout.
-                        Embed.Comp(() => new TableFilterButton(h, textMode: false)) with { Key = "search-filter" },
-                    ],
+                    Children = p.Funnel
+                        ?
+                        [
+                            region,
+                            // STABLE key: keying on capabilities would remount the funnel and orphan an open flyout.
+                            Embed.Comp(() => new TableFilterButton(h, textMode: false)) with { Key = "search-filter" },
+                        ]
+                        : [region],
                 };
                 Element[] layers = focused
                     ?
@@ -825,7 +829,8 @@ public readonly partial struct Track
         }
 
         /// <summary>"…": on Liked and Show (no Play split on the identity row) Shuffle · Play next · Add to queue first, then
-        /// Sort ▸ when the bar evicted it, then Select, Row size ▸ and Columns ▸ (the BPM · Key and Plays
+        /// Sort ▸ when the bar evicted it, then Filter… (the funnel's home: it opens the filter card under "…", and an active
+        /// filter badges this button), Select, Row size ▸ and Columns ▸ (the BPM · Key and Plays
         /// opt-ins, when either is offered), then a separator and the playlist deposit ("Copy to playlist" on a
         /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21).</summary>
         sealed class TableMoreButton(TableHost host, InlineCommand overflow, LikedMore liked = LikedMore.None,
@@ -837,6 +842,13 @@ public readonly partial struct Track
                 var overlay = UseContext(Overlay.Service);
                 var anchor = UseRef<NodeHandle>(default);
                 var handle = UseRef<OverlayHandle?>(null);
+                // The filter card has its own handle: the menu's invoke runs BEFORE the menu closes, and the close must not take the card with it.
+                var filterHandle = UseRef<OverlayHandle?>(null);
+                var post = UsePost();
+                int activeFilters = h._filters.Value.ActiveCount;
+                // Next tick, so the menu is already gone and the card anchors to "…" alone.
+                void OpenFilter() => post(() => ToggleOverlay(overlay, anchor, filterHandle,
+                    () => Embed.Comp(() => new TableFilterFlyout(h)), FilterPopup));
 
                 List<MenuFlyoutItem> Items()
                 {
@@ -865,6 +877,7 @@ public readonly partial struct Track
                                                         enabled: h._insightsLive.Peek()));
                     if ((overflow & InlineCommand.Sort) != 0)
                         items.Add(MenuFlyoutItem.SubMenu(Loc.Get("detail.sort.menu"), h.SortItems(), Icons.Sort));   // key from batch-loc WP-4.5-U2a.json; a literal so the build does not wait on the merge
+                    items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Filter.MenuItem), Icons.Filter, true, OpenFilter));
                     if (cfg.Selection != ItemsSelectionMode.None)
                     {
                         bool selecting = h._multi.Peek();
@@ -909,7 +922,15 @@ public readonly partial struct Track
                 }
 
                 void Toggle() => ToggleOverlay(overlay, anchor, handle, () => MenuFlyout.Create(Items(), () => handle.Value?.Close()), MenuPopup);
-                return ToolTip.Wrap(IconButton(Icons.More, false, Toggle, n => anchor.Value = n), Loc.Get(Strings.Common.More));
+                Element more = IconButton(Icons.More, false, Toggle, n => anchor.Value = n);
+                // The button's slot never changes size: the badge is an overlay on a fixed 32-DIP box, so a filter turning on moves nothing.
+                return ToolTip.Wrap(new BoxEl
+                {
+                    ZStack = true, Width = 32f, Height = 32f, Shrink = 0f, AlignSelf = FlexAlign.Center,
+                    Children = activeFilters > 0
+                        ? [more, InfoBadge.Count(activeFilters, parts: s_badgeCornerMore) with { HitTestVisible = false, Key = "more:filter-badge" }]
+                        : [more],
+                }, Loc.Get(Strings.Common.More));
             }
         }
 
@@ -945,18 +966,34 @@ public readonly partial struct Track
             return _caps;
         }
 
+        /// <summary>The filter card's popup: focus-trapped, light-dismiss, kept inside the root.</summary>
+        static PopupOptions FilterPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
+        { ConstrainToRootBounds = true };
+
+        /// <summary>The count badge's corner placement: top-right of a 32×32 button, ringed in the page's base so it reads over a plate.
+        /// Shared by the funnel and by "…" (an active filter badges the button that now owns "Filter…").</summary>
+        static readonly TemplateParts s_badgeCorner = new()
+        {
+            [InfoBadge.PartRoot] = static b => b with
+            {
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
+            },
+        };
+
+        /// <summary>The same corner badge nudged out by 3 DIP, so on "…" (a centred row of dots) it clears the glyph.</summary>
+        static readonly TemplateParts s_badgeCornerMore = new()
+        {
+            [InfoBadge.PartRoot] = static b => b with
+            {
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
+                OffsetX = 3f, OffsetY = -3f,
+            },
+        };
+
         /// <summary>The funnel (32×32, accent plate + corner count badge while any facet is on), or — in the context band —
         /// the plateless word whose accent ink stands in for plate and badge. Same flyout either way.</summary>
         sealed class TableFilterButton(TableHost host, bool textMode) : Component
         {
-            static readonly TemplateParts s_badgeCorner = new()
-            {
-                [InfoBadge.PartRoot] = static b => b with
-                {
-                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
-                },
-            };
-
             public override Element Render()
             {
                 var h = host;
@@ -965,9 +1002,7 @@ public readonly partial struct Track
                 var handle = UseRef<OverlayHandle?>(null);
                 int activeCount = h._filters.Value.ActiveCount;
                 bool active = activeCount > 0;
-                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => Embed.Comp(() => new TableFilterFlyout(h)),
-                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-                    { ConstrainToRootBounds = true });
+                void Toggle() => ToggleOverlay(overlay, anchor, handle, () => Embed.Comp(() => new TableFilterFlyout(h)), FilterPopup);
 
                 if (textMode)
                     return ToolTip.Wrap(Controls.TextAction(Loc.Get(Strings.Detail.Filter.Short), Toggle, toggledOn: active,
