@@ -163,9 +163,14 @@ public static class SidebarLabelFit
     /// <paramref name="trailing"/> DIP of trailing content. A text-only row (<paramref name="iconColumn"/> false) has no icon
     /// column: its label starts at <see cref="SidebarRowGeometry.TextLabelX"/> instead.</summary>
     public static float LabelWidth(float paneWidth, int depth, float trailing, bool iconColumn = true)
+        => LabelWidth(paneWidth, depth, trailing, SidebarRowGeometry.LabelStartOf(iconColumn, textGlyph: false));
+
+    /// <summary>The same column for a row whose label starts at <paramref name="labelStart"/> (slot space, before the depth
+    /// indent): <see cref="SidebarRowGeometry.LabelStartOf"/> covers the icon column, the Text-shape folder mark and the bare
+    /// Text row.</summary>
+    public static float LabelWidth(float paneWidth, int depth, float trailing, float labelStart)
         => paneWidth - 2f * SidebarRowGeometry.PaneEdge - SidebarRowGeometry.IndentFor(depth)
-           - (iconColumn ? SidebarRowGeometry.IconColumn + SidebarRowGeometry.LabelGap : SidebarRowGeometry.TextLabelX)
-           - SidebarRowGeometry.TrailingPad - trailing;
+           - labelStart - SidebarRowGeometry.TrailingPad - trailing;
 
     public static bool Overflows(string? label, float labelWidth)
         => label is { Length: > 0 } && label.Length * AverageCharWidth > labelWidth;

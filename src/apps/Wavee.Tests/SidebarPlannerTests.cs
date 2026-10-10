@@ -578,7 +578,7 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(SidebarRowShape.Glyph, 36f, 40f)]
     [InlineData(SidebarRowShape.EntityOneLine, 36f, 40f)]
     [InlineData(SidebarRowShape.EntityTwoLine, 40f, 44f)]
-    [InlineData(SidebarRowShape.Text, 28f, 32f)]
+    [InlineData(SidebarRowShape.Text, 36f, 40f)]
     public void HeightAndPitch_AreTheRowShapes(SidebarRowShape shape, float height, float pitch)
     {
         Assert.Equal(height, SidebarRowGeometry.HeightOf(shape));

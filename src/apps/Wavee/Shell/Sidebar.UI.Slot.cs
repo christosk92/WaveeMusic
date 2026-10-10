@@ -287,6 +287,7 @@ public static partial class Sidebar
                     isPlaylistRow: playlistRow, rootFacts: TreeRowFacts(index, in snapshot))
                 : PinSpec(section, row.SectionId, index);
 
+            bool markPinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, snapshot.IsPinned, track);
             var spec = new RowSpec
             {
                 Key = row.Key,
@@ -308,7 +309,8 @@ public static partial class Sidebar
                 Glyph = routeGlyph && !textOnly ? Shell.Dest(Shell.Parse(entry.Id)).Glyph : null,
                 // The warning mark is the unavailable pin's trailing mark, so it shows in every row shape.
                 Trailing = unavailable ? Icon(Icons.Warning, 12f, Tok.TextTertiary) : TrailingBadge(section, in snapshot),
-                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
+                Pinned = markPinned,   // #85
+                OnUnpin = UnpinOf(markPinned, in snapshot),
                 Playing = playing,
                 PlayingAnimated = animated,
                 Track = track,
@@ -322,9 +324,7 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
-            spec.LabelTooltip = LabelOverflows(label, row.Depth, (spec.Trailing is null ? 0f : CountTrail)
-                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null || spec.Pinned || playing),
-                HasIconColumn(in spec));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, RowTrailing(in spec, menu is not null, playing), LabelStartOf(in spec));
             Element built = EntityRow.Create(in spec);
             if (track) built = EntityRow.WithPlayTrackHint(built);
             // The pill stays in the row's own indent (32 per depth level), never the drop caret's gutter.
@@ -379,6 +379,7 @@ public static partial class Sidebar
                     rootFacts: TreeRowFacts(index, in snapshot))
                 : PinSpec(section, row.SectionId, index, springLoad);
 
+            bool folderPinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false);
             var spec = new RowSpec
             {
                 Key = row.Key,
@@ -397,7 +398,8 @@ public static partial class Sidebar
                 Glyph = shape == SidebarRowShape.Text ? (expanded ? Icons.FolderOpen : Icons.Folder) : null,
                 // A pinned folder shows the mark LEFT of its chevron (Library's depth-0 pins; §P5.6). Its IsPinned is not a
                 // rootlist fact, so the folder's own state never enters the rule.
-                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
+                Pinned = folderPinned,
+                OnUnpin = UnpinOf(folderPinned, in snapshot),
                 DisclosureChevron = Chevron.Disclosure(_folderOpen ??= FolderOpenLive, identity: _folderIdentity ??= FolderIdentity),
                 Trailing = FolderTrailing(section, in snapshot, folderId, rootlistItem),
                 Tile = compact,
@@ -412,7 +414,7 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
-            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail + EntityRow.OverflowReserve(menu is not null, trailing: true));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail + SidebarRowGeometry.OverflowReserve(menu is not null, chevron: true), LabelStartOf(in spec));
             // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
             // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
             // happens on folder rows.
@@ -453,15 +455,37 @@ public static partial class Sidebar
         /// what the row keeps for itself.</summary>
         const float CountTrail = 28f, FolderTrail = SidebarRowGeometry.ChevronColumn - SidebarRowGeometry.TrailingPad;
 
+        /// <summary>The trailing width a non-chevron row's label gives up: the pin mark (12, or the 24 Unpin button) plus the
+        /// count slot, which the hover "…" shares (<see cref="SidebarRowGeometry.CountSlotWidth"/>), so rest and hover agree.</summary>
+        static float RowTrailing(in RowSpec spec, bool menu, bool playing)
+            => SidebarRowGeometry.PinWidth(spec.Pinned, spec.OnUnpin is not null)
+               + SidebarRowGeometry.CountSlotWidth(menu, spec.Trailing is not null, spec.Pinned || playing, CountTrail - SidebarRowGeometry.TrailingGap);
+
+        /// <summary>The pin mark's action (J1): "Unpin" when the row is a pin the rule offers an Unpin for, else null (the bare
+        /// mark). The same rule and the same ring-recorded verb as the row's context menu.</summary>
+        static Action? UnpinOf(bool pinned, in SidebarLibraryEntry entry)
+        {
+            if (!pinned) return null;
+            string? id = SidebarPinId.FromEntry(in entry);
+            if (PinRowRule.Decide(true, id, id is not null && Sidebar.IsPinned(id)) != PinRowKind.Unpin) return null;
+            string pinId = id!, name = entry.Name;
+            return () => PaneView.UnpinWithToast(pinId, name);
+        }
+
         /// <summary>Does the one-line label truncate in this row? The pane's CURRENT width (peeked: a tooltip decision, not a
         /// subscription) minus the row's own ladder, through the one estimate <see cref="SidebarLabelFit"/> owns.</summary>
-        static bool LabelOverflows(string label, int depth, float trailing, bool iconColumn = true)
-            => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(Sidebar.Width.Peek(), depth, trailing, iconColumn));
+        static bool LabelOverflows(string label, int depth, float trailing, float labelStart)
+            => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(Sidebar.Width.Peek(), depth, trailing, labelStart));
 
-        /// <summary>Does the row draw an icon column? Only a Text-shape row with no glyph and no leading visual does not
-        /// (the same rule <see cref="EntityRow.Create"/> applies), so its label starts at the header's x.</summary>
-        static bool HasIconColumn(in RowSpec spec)
-            => spec.Shape != SidebarRowShape.Text || spec.Leading is not null || spec.Glyph is not null;
+        /// <summary>Where the row's label starts (slot space, before the depth indent): the same three cases
+        /// <see cref="EntityRow.Create"/> lays out. A Text-shape row with no glyph and no leading visual has no icon column (label
+        /// at the header's x); one with a glyph and no leading visual is a folder (mark at the header's x, 8 gap, label at pane
+        /// 40); every other row has the 40-px icon column and its 4 gap.</summary>
+        static float LabelStartOf(in RowSpec spec)
+        {
+            bool text = spec.Shape == SidebarRowShape.Text && spec.Leading is null;
+            return SidebarRowGeometry.LabelStartOf(iconColumn: !text || spec.Glyph is not null, textGlyph: text && spec.Glyph is { Length: > 0 });
+        }
 
         /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
         /// row's wrapper and a sibling of the drop cues, never a child of the row. A compact TILE always wears its label (the
@@ -533,8 +557,7 @@ public static partial class Sidebar
                 Drag = drag,
                 DropTarget = PinSpec(section, section.Id, index),
             };
-            spec.LabelTooltip = LabelOverflows(title, 0, (spec.Trailing is null ? 0f : CountTrail)
-                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null), HasIconColumn(in spec));
+            spec.LabelTooltip = LabelOverflows(title, 0, RowTrailing(in spec, menu is not null, playing: false), LabelStartOf(in spec));
             return Indicator(Tipped(EntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
         }
 

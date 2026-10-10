@@ -330,9 +330,9 @@ public enum SidebarRowShape : byte
     EntityTwoLine = 1,
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
-    /// <summary>Classic with Show covers off: 28 tall, one line. A row with no leading visual has no icon column and its
-    /// label at the header's x (pane 16); a FOLDER row still carries its 16-DIP folder mark in the icon column (label at
-    /// pane 48), so the tree reads as a tree without covers.</summary>
+    /// <summary>Classic with Show covers off: 36 tall (pitch 40, the Collections rows' pitch), one line. A row with no leading
+    /// visual has no icon column and its label at the header's x (pane 16); a FOLDER row carries its 16-DIP folder mark at
+    /// pane 16 with an 8 gap (label at pane 40), so the tree reads as a tree without covers.</summary>
     Text = 3,
 }
 
@@ -360,13 +360,23 @@ public static class SidebarRowGeometry
     // ── rows ──
     public const float RowHeight = 36f;
     public const float TwoLineRowHeight = 40f;
-    /// <summary>A Classic text row (Show covers off): 28 tall, the label only.</summary>
-    public const float TextRowHeight = 28f;
+    /// <summary>A Classic text row (Show covers off): 36 tall (pitch 40), the label only. P7 had it at 28 (pitch 32), which read
+    /// as cramped beside the 40-pitch Collections rows. This is the Text SHAPE's own height, not a Zune compaction that leaked:
+    /// Zune hides the pane (<c>ShellNavStyle.HidesPane</c>) and no Zune rule touches a row height. The pitch is derived from
+    /// the shape everywhere (the extent table, the band pitch, the skeleton), so the virtual list sees one pitch per section.</summary>
+    public const float TextRowHeight = 36f;
     public const float IconColumn = 40f;
     public const float GlyphSize = 16f;
     /// <summary>A Classic text row's label x when it has NO icon column (no glyph, no leading): the header's text x in
     /// slot space (pane 16). A Text row that carries a glyph (a folder) uses the icon column and <see cref="LabelGap"/> instead.</summary>
     public const float TextLabelX = HeaderTextX;
+    /// <summary>The gap between a Text-shape folder's mark and its label (Spacing.S; this file is engine-free).</summary>
+    public const float TextGlyphGap = 8f;
+    /// <summary>The right edge (slot space) of a Text-shape folder's mark: it sits at <see cref="TextLabelX"/> (pane 16) and is
+    /// <see cref="GlyphSize"/> wide.</summary>
+    public const float TextGlyphColumn = TextLabelX + GlyphSize;
+    /// <summary>A Text-shape folder's label x in slot space: the mark's column plus <see cref="TextGlyphGap"/> (pane 40).</summary>
+    public const float TextGlyphLabelX = TextGlyphColumn + TextGlyphGap;
     /// <summary>The ContentPresenter's 4-px left margin between the icon column and the label (TR:251).</summary>
     public const float LabelGap = 4f;
     /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
@@ -377,6 +387,27 @@ public static class SidebarRowGeometry
     public const int MaxIndentDepth = 3;
     /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
     public const float TrailingGap = 6f;
+    /// <summary>The hover "…" box, and the count slot's minimum width, so the "…" lands exactly where the count sits.</summary>
+    public const float OverflowBox = 26f;
+
+    /// <summary>The width a row's label gives up to a SEPARATE hover "…" reserve. Only a chevron row keeps one (the "…" parks
+    /// just left of the chevron column, next to the folder's "+"). A count row has none: the count and the "…" share the
+    /// <see cref="CountSlotWidth"/> slot and cross-fade in place.</summary>
+    public static float OverflowReserve(bool menu, bool chevron) => menu && chevron ? OverflowBox : 0f;
+
+    /// <summary>The flow width of a non-chevron row's count slot (its 6 gap included), 0 when the row has none. The slot exists
+    /// for a count, and for a menu row whose pin / equalizer would otherwise sit under the "…"; it is
+    /// <see cref="OverflowBox"/> wide at least when the row has a menu, so a count and the "…" never change the label's width
+    /// between rest and hover.</summary>
+    public static float CountSlotWidth(bool menu, bool count, bool lead, float countWidth)
+        => count || (menu && lead)
+            ? TrailingGap + (menu ? MathF.Max(OverflowBox, count ? countWidth : 0f) : countWidth)
+            : 0f;
+
+    /// <summary>The flow width of the pin mark left of the count slot (its 6 gap included): 12 for the bare mark, the 24
+    /// <see cref="RowButton"/> box of the Unpin button otherwise.</summary>
+    public static float PinWidth(bool pinned, bool button)
+        => pinned ? TrailingGap + (button ? RowButton : 12f) : 0f;
 
     // ── chrome rows ──
     public const float HeaderHeight = 40f;
@@ -454,6 +485,12 @@ public static class SidebarRowGeometry
     public static float TreeGuidePaneX(int level) => PaneEdge + TreeGuideX(level);
     /// <summary>A glyph-less Text row's label x in pane space: the header's x (16) plus the depth indent.</summary>
     public static float TextLabelPaneX(int depth) => PaneEdge + IndentFor(depth) + TextLabelX;
+    /// <summary>A Text-shape folder's label x in pane space: mark at 16, 8 gap, label at 40 (plus the depth indent).</summary>
+    public static float TextGlyphLabelPaneX(int depth) => PaneEdge + IndentFor(depth) + TextGlyphLabelX;
+    /// <summary>Where a row's label starts in slot space before the depth indent: after the 40-px icon column and its gap, after a
+    /// Text-shape folder's mark and its 8 gap, or at the header's x for a glyph-less Text row.</summary>
+    public static float LabelStartOf(bool iconColumn, bool textGlyph)
+        => textGlyph ? TextGlyphLabelX : iconColumn ? IconColumn + LabelGap : TextLabelX;
     /// <summary>An icon-column row's label x in pane space: 48 plus the depth indent.</summary>
     public static float LabelPaneX(int depth) => LabelX + IndentFor(depth);
     public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
