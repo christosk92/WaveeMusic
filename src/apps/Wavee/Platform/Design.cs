@@ -2296,11 +2296,11 @@ public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, Ho
 /// <paramref name="CollapseDistance"/> the scroll distance over which the hero collapses to it, and <paramref name="DecodeW"/> and
 /// <paramref name="DecodeH"/> the page's own latched decode size (so the shell's decode is the page's, a cache hit), and
 /// <paramref name="Key"/> the identity of the photo (the layer remounts, and so cross-fades, when it changes).
-/// <paramref name="PaletteUrl"/> and <paramref name="PayloadAccent"/> key the hero's horizontal veil the shell draws over the photo
-/// when <paramref name="Veil"/> is set (the horizontal tiers), so the chrome and the hero are ONE field.</summary>
+/// <paramref name="PaletteUrl"/> and <paramref name="PayloadAccent"/> key the hero's horizontal veil the shell draws over the photo,
+/// so the chrome and the hero are ONE field.</summary>
 public sealed record ShellBackdrop(string Url, float PhotoHeight, float HeroHeight, float Floor,
                                    IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key,
-                                   string? PaletteUrl = null, uint PayloadAccent = 0, bool Veil = false);
+                                   string? PaletteUrl = null, uint PayloadAccent = 0);
 
 /// <summary>The shell-owned, page-scoped MATERIAL channel. The shell publishes one signal at the root and paints it as
 /// the layer directly above the ground that backs ALL chrome — title bar, toolbar, sidebar, player dock. The active page

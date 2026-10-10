@@ -406,9 +406,10 @@ public readonly partial struct Artist
             // EXPERIMENTAL (artist bleed; Artist.Bleed.cs): the photo runs from the window top behind the chrome. The ONE read of
             // `ArtistBleed.Enabled`. Only once the body is up, so the skeleton never draws over a photo it does not show. The
             // tint's publish carries the backdrop as data; the shell draws it. `floor` and the collapse distance are the hero's own
-            // (A2's latched floor), so the shell's ground and fade track the hero 1:1. For a stacked tier the bleed ends where the
-            // PHOTO ends (the identity column below it stays on the solid ground), so the hero height it rides is the photo's.
-            bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), _bodyReady ? heroUrl : null);
+            // (A2's latched floor), so the shell's ground and fade track the hero 1:1. Zune only and never on a stacked tier (the
+            // decision reads the LIVE nav style, so a switch re-renders the page and the card's layers fade with the shell's).
+            bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), _bodyReady ? heroUrl : null,
+                zune: Sidebar.NavStyle.Value == ShellNavStyle.Zune, stacked: _metrics.Stacked);
             ShellBackdrop? backdrop = null;
             if (bleed)
             {
@@ -416,7 +417,7 @@ public readonly partial struct Artist
                 float bleedPhotoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
                 backdrop = new ShellBackdrop(heroUrl!, bleedPhotoH, bleedPhotoH, bleedFloor, _scroll.Offset,
                     ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text,
-                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent, Veil: !_metrics.Stacked);
+                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent);
             }
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
@@ -616,8 +617,16 @@ public readonly partial struct Artist
                 ZStack = true,
                 Children =
                 [
-                    new BoxEl { Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash] }
-                        .StickyClip(Detail.BandLayout.ClipInsetFor(inRow2)),
+                    // H2: while the shell draws the photo, the wash yields with the card's photo (same hand-over) instead of starting
+                    // abruptly at the card top over the shell's photo. ALWAYS bound (a thunk that reads the field live and returns 1
+                    // when not bleeding): a bind is only created at mount, and this node stays mounted across a nav-style switch.
+                    new BoxEl
+                    {
+                        Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash],
+                        Opacity = Prop.Of(() => _bleedDrawn is { } drawn
+                            ? ArtistBleed.CardLayerOpacity(drawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)
+                            : 1f),
+                    }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2)),
                     new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
                 ],
             };

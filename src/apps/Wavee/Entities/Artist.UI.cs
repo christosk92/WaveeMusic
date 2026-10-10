@@ -421,7 +421,8 @@ public readonly partial struct Artist
             // shell's identical photo is fully present. The media's bottom EdgeFade and the shell photo's are the same PhotoFadeBandFor band at the riser line, so at scroll 0 the
             // photo's end matches. Only in that band do the card's feather and the shell's differ (two feathers over each other), so the
             // ease, not a step, is what merges them.
-            Opacity = bleedDrawn is null ? 1f : Prop.Of(() => ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
+            // ALWAYS bound (1 when not bleeding): a bind is only created at mount, and a nav-style switch flips the decision on this mounted node.
+            Opacity = Prop.Of(() => bleedDrawn is null ? 1f : ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
             Children = [art],
         }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 
@@ -432,9 +433,9 @@ public readonly partial struct Artist
             new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
         ];
 
-        // The stacked identity sits on the solid ground and stays on theme tokens; the horizontal copy is light-on-dark for the whole
-        // mount while the bleed applies (a static choice: the hero is the dark field from its first frame).
-        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio, onMedia: bleed && !m.Stacked);
+        // The copy is light-on-dark while the bleed applies (the decision is Zune-only and never stacked, so a stacked identity stays
+        // on theme tokens). The ink is a plain prop, re-pushed on a switch; the Follow toggle is keyed on it (a mount-frozen field).
+        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio, onMedia: bleed);
         Element expanded;
         if (m.Stacked)
         {
@@ -472,35 +473,33 @@ public readonly partial struct Artist
             // over a growing photo left an unveiled band above the hero's top edge.
             // Under the bleed the veil is the dark onMedia arm over the shell's frame width (the same columns as the shell's veil), it
             // feathers out over the same bottom band as the photo (the shell's veil does, through its photo box's own EdgeFade, so an
-            // unfaded veil would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity).
+            // unfaded veil would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity). ONE box shape
+            // for both arms (the decision flips on a mounted page at a nav-style switch): Width and Opacity are always bound, the veil
+            // component below takes the arm as live props, and the arm's EdgeFade is a plain prop.
             Element veil = play is null
                 ? new BoxEl()
-                : bleed
-                    ? new BoxEl
-                    {
-                        Width = Prop.Of(() => ArtistBleed.FrameFor(Shell.Ui.CardRect.Value.W, Shell.Ui.CardPose.Value.Y, Shell.Ui.CardRect.Value.Y, photoH).Width),
-                        Height = height, ZStack = true, HitTestVisible = false,
-                        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                        TransformOriginX = 0.5f, TransformOriginY = 0f,
-                        EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
-                        Opacity = Prop.Of(() => ArtistBleed.CardLayerOpacity(bleedDrawn!(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
-                        Children =
-                        [
-                            Palette.ArtistHeroVeil(paletteUrl, vertical: false, float.NaN, float.NaN, key: "artist-veil:" + uri,
-                                                   payloadAccent: headerAccent, onMedia: true),
-                        ],
-                    }.StretchFromTop()
-                    : new BoxEl
-                    {
-                        Width = w, Height = height, ZStack = true, HitTestVisible = false,
-                        TransformOriginX = 0.5f, TransformOriginY = 0f,
-                        Children =
-                        [
-                            Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                                   payloadAccent: headerAccent,
-                                                   disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
-                        ],
-                    }.StretchFromTop();
+                : new BoxEl
+                {
+                    Width = Prop.Of(() => bleed
+                        ? ArtistBleed.FrameFor(Shell.Ui.CardRect.Value.W, Shell.Ui.CardPose.Value.Y, Shell.Ui.CardRect.Value.Y, photoH).Width
+                        : w),
+                    Height = height, ZStack = true, HitTestVisible = false,
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                    TransformOriginX = 0.5f, TransformOriginY = 0f,
+                    EdgeFade = bleed ? new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)) : null,
+                    Opacity = Prop.Of(() => bleed
+                        ? ArtistBleed.CardLayerOpacity(bleedDrawn!(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)
+                        : 1f),
+                    Children =
+                    [
+                        bleed
+                            ? Palette.ArtistHeroVeil(paletteUrl, vertical: false, float.NaN, float.NaN, key: "artist-veil:" + uri,
+                                                     payloadAccent: headerAccent, onMedia: true)
+                            : Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
+                                                     payloadAccent: headerAccent,
+                                                     disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
+                    ],
+                }.StretchFromTop();
             expanded = new BoxEl
             {
                 Width = w, Height = height, ZStack = true,
@@ -524,7 +523,7 @@ public readonly partial struct Artist
     static Element HeroIdentity(in HeroText text, string uri, float w, in ArtistHeroMetrics m, ColorF accent,
                                 Action? play, Action? shuffle, Action? radio, bool onMedia = false)
     {
-        // onMedia (the artist bleed's dark field, static per mount): the copy is light-on-dark in both themes.
+        // onMedia (the artist bleed's dark field; re-pushed as a prop when the nav style switches): the copy is light-on-dark in both themes.
         ColorF inkPrimary = onMedia ? Design.OnMedia.Ink : Tok.TextPrimary;
         ColorF inkSecondary = onMedia ? Design.OnMedia.InkSecondary : Tok.TextSecondary;
         Element verified = text.Verified
@@ -607,11 +606,11 @@ public readonly partial struct Artist
                                ArtistHeroTier tier, bool onMedia = false)
     {
         Element playButton = Controls.PlayButton(accent, play ?? s_noop, Loc.Get(Strings.Artist.Play));
-        // Keyed on the uri: FollowToggle carries its uri as a mount-frozen field.
+        // Keyed on the uri and the ink: FollowToggle carries both as mount-frozen fields (a nav-style switch remounts it in place).
         Element follow = uri.Length == 0
             ? Controls.FollowToggle.SkeletonShape()
             : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, OnMedia = onMedia })
-                with { Key = "artist-follow:" + uri, SkeletonProxy = s_followShape };
+                with { Key = onMedia ? "artist-follow-media:" + uri : "artist-follow:" + uri, SkeletonProxy = s_followShape };
         Element shuffleButton = Button.Create(Loc.Get(Strings.Detail.Shuffle), shuffle ?? s_noop,
             ButtonAppearance.Standard, glyph: Icons.Shuffle);
         Element radioButton = Controls.Named(
@@ -715,6 +714,9 @@ public readonly partial struct Artist
                     [
                         new BoxEl
                         {
+                            // Distinct keys per arm: Width/Height/Transform are bound here and static in the rest arm, and a bind is only
+                            // created at mount, so a nav-style switch must remount the box (the decode is warm) instead of reusing it.
+                            Key = "heroart-bleed",
                             ZStack = true, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                             ScaleX = ArtistBleed.PhotoScale, ScaleY = ArtistBleed.PhotoScale,
                             Width = Prop.Of(() => Frame(height).Width),
@@ -739,6 +741,7 @@ public readonly partial struct Artist
                 [
                     new BoxEl
                     {
+                        Key = "heroart-rest",
                         ZStack = true, ScaleX = FrameScale, ScaleY = FrameScale, OffsetY = -height * FrameLiftFraction,
                         Children =
                         [

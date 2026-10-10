@@ -17,19 +17,70 @@ namespace Wavee.Tests;
 public class ArtistBleedGateTests
 {
     [Fact]
-    public void It_applies_with_the_switch_on_tinted_surfaces_and_a_header_photo()
+    public void It_applies_in_zune_with_the_switch_on_tinted_surfaces_and_a_header_photo()
     {
-        Assert.True(ArtistBleed.Applies(true, WashLevel.Subtle, "u"));
-        Assert.True(ArtistBleed.Applies(true, WashLevel.Rich, "u"));
+        Assert.True(ArtistBleed.Applies(true, WashLevel.Subtle, "u", zune: true, stacked: false));
+        Assert.True(ArtistBleed.Applies(true, WashLevel.Rich, "u", zune: true, stacked: false));
     }
 
     [Fact]
     public void It_does_not_apply_without_the_switch_the_tint_or_a_photo()
     {
-        Assert.False(ArtistBleed.Applies(false, WashLevel.Rich, "u"));
-        Assert.False(ArtistBleed.Applies(true, WashLevel.Off, "u"));
-        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, null));
-        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, ""));
+        Assert.False(ArtistBleed.Applies(false, WashLevel.Rich, "u", true, false));
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Off, "u", true, false));
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, null, true, false));
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, "", true, false));
+    }
+
+    [Fact]
+    public void It_does_not_apply_outside_zune()
+    {
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, "u", zune: false, stacked: false));
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Subtle, "u", zune: false, stacked: true));
+    }
+
+    [Fact]
+    public void It_does_not_apply_on_a_stacked_tier()
+    {
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, "u", zune: true, stacked: true));
+    }
+}
+
+public class ArtistBleedPhotoRightTests
+{
+    [Fact]
+    public void Without_a_floating_rail_the_photo_runs_to_the_cards_right_edge()
+    {
+        Assert.Equal(1000f, ArtistBleed.PhotoRight(1000f, zune: true, railFloats: false, 1000f, 320f, 0f));
+    }
+
+    [Fact]
+    public void A_floating_zune_rail_stops_the_photo_at_the_panels_left_edge()
+    {
+        Assert.Equal(680f, ArtistBleed.PhotoRight(1000f, zune: true, railFloats: true, 1000f, 320f, 0f));
+        Assert.Equal(672f, ArtistBleed.PhotoRight(1000f, zune: true, railFloats: true, 1000f, 320f, 8f));
+    }
+
+    [Fact]
+    public void Outside_zune_the_card_edge_stands()
+    {
+        Assert.Equal(1000f, ArtistBleed.PhotoRight(1000f, zune: false, railFloats: true, 1000f, 320f, 0f));
+    }
+
+    [Fact]
+    public void The_edge_never_passes_the_card_or_goes_negative()
+    {
+        Assert.Equal(600f, ArtistBleed.PhotoRight(600f, zune: true, railFloats: true, 1000f, 320f, 0f));
+        Assert.Equal(0f, ArtistBleed.PhotoRight(600f, zune: true, railFloats: true, 300f, 320f, 0f));
+    }
+
+    [Fact]
+    public void The_band_above_a_floating_panel_keeps_the_photo_through_the_extension()
+    {
+        float right = ArtistBleed.PhotoRight(1000f, zune: true, railFloats: true, 1000f, 320f, 0f);
+        Assert.Equal(320f, ArtistBleed.BandExtensionWidth(1000f, right));
+        Assert.Equal(0f, ArtistBleed.BandExtensionWidth(1000f, 1000f));
+        Assert.Equal(0f, ArtistBleed.BandExtensionWidth(600f, 700f));
     }
 }
 

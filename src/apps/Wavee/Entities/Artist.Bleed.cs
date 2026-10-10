@@ -5,10 +5,10 @@
 // EXPERIMENTAL: the experiment is ON. Revert = set `ArtistBleed.Enabled = false` (the ONE switch; its one read, in Artist.Page.cs,
 //       then publishes nothing, so the strip and the clip in the shell have height 0 and the page is today's page).
 //
-// WHAT THIS IS. On an artist page with a header photo and tinted surfaces on, the photo runs from the window top, behind the
-// title bar and the Zune pivots and row 2 (or the Classic/Library title bar), down to the hero's end. The page publishes it
-// as DATA through the shell material channel (`ShellBackdrop`, carried by `ShellMaterial.Publish` on the tint's ownership
-// outcome, so a successor's claim always drops it). Only the card's TOP region changes: its fill and its top/left stroke over
+// WHAT THIS IS. On a Zune, non-stacked artist page with a header photo and tinted surfaces on, the photo runs from the window
+// top, behind the title bar and the Zune pivots and row 2, down to the hero's end (Classic, Library and stacked tiers keep the
+// pre-bleed header). The page publishes it as DATA through the shell material channel (`ShellBackdrop`, carried by
+// `ShellMaterial.Publish` on the tint's ownership outcome, so a successor's claim always drops it). Only the card's TOP region changes: its fill and its top/left stroke over
 // the hero fade out and return as the hero scrolls away; the solid fill below the hero stays, its top edge riding the hero's
 // bottom through a paint-only translation. The card rect never changes; per scroll only the shell photo clip's height (one leaf) is re-solved, everything else is paint.
 //
@@ -39,10 +39,27 @@ public static class ArtistBleed
     /// has to hold the chrome's light ink on the plain theme ground, a white one in the light theme, down to the hold line.</summary>
     public const float SideFieldAlpha = 0.86f;
 
-    /// <summary>The bleed applies: the experiment is on, tinted surfaces are on (the photo is part of the tinted material), and
-    /// the artist has a header photo (an avatar-only artist keeps today's hero).</summary>
-    public static bool Applies(bool enabled, WashLevel surfaces, string? headerUrl)
-        => enabled && surfaces != WashLevel.Off && headerUrl is { Length: > 0 };
+    /// <summary>The bleed applies: the experiment is on, tinted surfaces are on (the photo is part of the tinted material), the
+    /// artist has a header photo (an avatar-only artist keeps today's hero), the nav style is Zune and the tier is not stacked.
+    /// OWNER DECISION: the full bleed is Zune-only. Classic and Library keep the artist header exactly as it was before the bleed (no
+    /// photo under the title bar, normal chrome ink), and a stacked (narrow) tier keeps its solid-ground identity column in every
+    /// style. <paramref name="zune"/> is the LIVE nav style (<c>Sidebar.NavStyle</c>, not the presented one), so the photo's fade
+    /// starts with the card's slide on a style switch.</summary>
+    public static bool Applies(bool enabled, WashLevel surfaces, string? headerUrl, bool zune, bool stacked)
+        => enabled && zune && !stacked && surfaces != WashLevel.Off && headerUrl is { Length: > 0 };
+
+    /// <summary>The right edge of the shell's photo, scrim and side field, in window coordinates. Under Zune a FLOATING rail (open
+    /// and not fitting) overlays the page: its panel's left edge is <c>viewportW - railW - railMargin</c> (the overlay is
+    /// right-aligned at its final width), and the photo stops there instead of running under the panel (below the card's top: the
+    /// chrome above the panel keeps the photo through <see cref="BandExtensionWidth"/>). Every other case is the
+    /// card's own right edge (<paramref name="cardRight"/>). Never past the card's edge, never negative.</summary>
+    public static float PhotoRight(float cardRight, bool zune, bool railFloats, float viewportW, float railW, float railMargin)
+        => zune && railFloats ? MathF.Min(cardRight, MathF.Max(0f, viewportW - railW - railMargin)) : cardRight;
+
+    /// <summary>The width of the photo's BAND EXTENSION: a floating panel starts under the Zune band, so the chrome above it (the
+    /// title bar and the band, over the rail column) keeps the photo between <paramref name="photoRight"/> and the card's edge.
+    /// Zero whenever the photo already reaches the card's edge.</summary>
+    public static float BandExtensionWidth(float cardRight, float photoRight) => MathF.Max(0f, cardRight - photoRight);
 
     /// <summary>How much of the photo (and how little of the card's top fill) shows at <paramref name="offset"/>: 1 until the
     /// hero's own expanded fade starts (<see cref="ArtistHeroLayout.ExpandedFadeStart"/>, the same number the hero's Fade
