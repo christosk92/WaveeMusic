@@ -968,6 +968,21 @@ public static partial class Detail
         public const float UnderlineGap = 4f;
         /// <summary>The widest slot the title claims; the surplus goes to the pivot.</summary>
         public const float TitleCap = 280f;
+
+        // ── ONE BASELINE ──
+        // The title, the section tabs and the trailing text actions share ONE 20-DIP line box, vertically centred in the
+        // same 32-DIP item slot, so their baselines are the same line. The pivot used to be a text-plus-underline COLUMN
+        // centred in 32, which put its word 3 DIP above the title's; the underline is an overlay now, at a fixed y.
+
+        /// <summary>THE line box of every text in a band (<c>Controls.TextActionLineHeight</c>, 20).</summary>
+        public const float TextLine = Controls.TextActionLineHeight;
+        /// <summary>Every group's slot (title, tabs, actions): the band less its 12-DIP air above and below (32).</summary>
+        public const float ItemHeight = Height - 2f * FluentGpu.Dsl.Spacing.M;
+        /// <summary>The top of a <see cref="TextLine"/> centred in a box of <paramref name="box"/> DIP.</summary>
+        public static float TextTopIn(float box) => (box - TextLine) * 0.5f;
+        /// <summary>The active mark's top inside an item slot: under the text line plus <see cref="UnderlineGap"/> (30), so it sits
+        /// on the slot's bottom edge (<see cref="ItemHeight"/> - <see cref="UnderlineHeight"/>).</summary>
+        public const float UnderlineY = (ItemHeight - TextLine) * 0.5f + TextLine + UnderlineGap;
         /// <summary>Average advance at the band's 14/600 rung, deliberately generous so a localized label reserves.</summary>
         public const float AvgCharW = 7.6f;
 

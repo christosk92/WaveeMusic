@@ -789,28 +789,36 @@ public static partial class Detail
             _seeded = true;
         }
 
-        /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone.</summary>
+        /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone. A ZSTACK of
+        /// <see cref="BandLayout.ItemHeight"/>: the word centred on the band's 20-DIP line (the same line as the title and
+        /// the actions), the active mark an OVERLAY at <see cref="BandLayout.UnderlineY"/>.</summary>
         static Element PivotLink(string label, bool isActive, Func<ColorF> fill, Action go, Action<NodeHandle> realized) => new BoxEl
         {
-            Direction = 1, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Height = BandLayout.Height - 2f * Spacing.M,
+            ZStack = true, Shrink = 0f,
+            Height = BandLayout.ItemHeight,
             Padding = new Edges4(BandLayout.PivotPadX, 0f, BandLayout.PivotPadX, 0f),
             Corners = Radii.ControlAll,
             Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = go, OnRealized = realized,
             Children =
             [
-                new TextEl(label)
+                new BoxEl
                 {
-                    Size = Controls.TextActionSize, LineHeight = Controls.TextActionLineHeight, Weight = Controls.TextActionWeight,
-                    Color = isActive ? Tok.TextPrimary : Tok.TextSecondary,
-                    HoverColor = Tok.TextPrimary,
-                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                    Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(label)
+                        {
+                            Size = Controls.TextActionSize, LineHeight = BandLayout.TextLine, Weight = Controls.TextActionWeight,
+                            Color = isActive ? Tok.TextPrimary : Tok.TextSecondary,
+                            HoverColor = Tok.TextPrimary,
+                            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
                 },
                 new BoxEl
                 {
                     Height = BandLayout.UnderlineHeight, AlignSelf = FlexAlign.Stretch,
-                    Margin = new Edges4(0f, BandLayout.UnderlineGap, 0f, 0f),
+                    Margin = new Edges4(0f, BandLayout.UnderlineY, 0f, 0f),
                     Fill = fill,
                     BrushTransitionMs = AccentTransitionMs,
                     HitTestVisible = false,

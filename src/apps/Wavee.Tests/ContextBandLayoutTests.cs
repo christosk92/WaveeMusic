@@ -189,4 +189,26 @@ public class ContextBandLayoutTests
         Assert.Equal(VerticalLayout.StickyFadeBand, BandLayout.ClipFadeBand);
         Assert.True(BandLayout.ClipFadeBand > 0f);
     }
+
+    // ── ONE BASELINE ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The title, the tab and the action share ONE 20-DIP line centred in the same 32-DIP slot, so their text tops
+    /// are the same y in the 56 band (18), and the underline is the slot's bottom 2 DIP.</summary>
+    [Fact]
+    public void TitleTabAndAction_ShareOneBaseline()
+    {
+        Assert.Equal(20f, BandLayout.TextLine);
+        Assert.Equal(32f, BandLayout.ItemHeight);
+        Assert.Equal(6f, BandLayout.TextTopIn(BandLayout.ItemHeight));
+        Assert.Equal(18f, (BandLayout.Height - BandLayout.ItemHeight) / 2f + BandLayout.TextTopIn(BandLayout.ItemHeight));
+        Assert.Equal(BandLayout.TextTopIn(BandLayout.Height), (BandLayout.Height - BandLayout.ItemHeight) / 2f + BandLayout.TextTopIn(BandLayout.ItemHeight));
+    }
+
+    [Fact]
+    public void TheUnderline_SitsAtOneFixedYOnTheSlotsBottomEdge()
+    {
+        Assert.Equal(30f, BandLayout.UnderlineY);
+        Assert.Equal(BandLayout.ItemHeight, BandLayout.UnderlineY + BandLayout.UnderlineHeight);
+        Assert.Equal(BandLayout.UnderlineGap, BandLayout.UnderlineY - (BandLayout.TextTopIn(BandLayout.ItemHeight) + BandLayout.TextLine));
+    }
 }
