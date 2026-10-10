@@ -389,7 +389,7 @@ public static partial class Detail
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
-    const float RailSidePadL = RailPolicy.SidePadL, RailSidePadR = RailPolicy.SidePadR;   // 16 (the one pane inset) / 8 (the frame gap)
+    const float RailSidePadL = RailPolicy.SidePadL, RailSidePadR = RailPolicy.SidePadR;   // 16 (the one pane inset) / 24 (RailPolicy.CoverGap)
     const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = 256;                                // the shelf card's bucket — a warm texture on arrival
@@ -874,8 +874,8 @@ public static partial class Detail
                 DropTarget = drop,
                 Children = rowKids,
             };
-            // The resizable rail's grip is an overlay strip centred on the 8-DIP gap between the cover and the first plate: it takes
-            // no row width. Its hit area overlaps the cover and the plate by (StripW - FrameGap) / 2 DIP each. The collapsed arm's
+            // The resizable rail's grip is an overlay strip centred on the 24-DIP gap (RailPolicy.CoverGap) between the cover and the first plate: it takes
+            // no row width. It sits inside the gap, (CoverGap - StripW) / 2 DIP clear of the cover and the plate. The collapsed arm's
             // re-open strip is the SAME node on the 20-DIP slot after the identity strip, so a drag that collapses the rail keeps
             // its pointer capture. It is the topmost child so it wins hit-testing over the cover and the plate; the cost is that it
             // follows the table in Tab / automation order (the engine has no focus-order hint), and it stays reachable by pointer.
@@ -1078,7 +1078,7 @@ public static partial class Detail
             Key = "detail-rail-grip-slot", Width = GripStripCollapsedW + plateLead, Shrink = 0f,
         };
 
-        /// <summary>The grip: one strip, one key, never in the row's flow. Expanded, it is centred on the 8-DIP gap between the
+        /// <summary>The grip: one strip, one key, never in the row's flow. Expanded, it is centred on the 24-DIP cover gap between the
         /// rail's cover and the table's first plate; collapsed, it is the 20-DIP re-open slot after the identity strip. Translated
         /// like the shell's sidebar seam, so it neither takes row width nor moves the table. Width writes are direct during the
         /// drag (bounded by the page-aware Max, so a drag can never squeeze the content column out); RELEASE commits width +

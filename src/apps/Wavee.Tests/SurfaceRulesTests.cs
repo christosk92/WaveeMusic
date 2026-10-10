@@ -130,6 +130,9 @@ public class SurfaceRulesTests
     {
         Assert.Equal(new PlateRules(HasRootFill: true, HasStroke: true, Dashed: false, StrokeFollowsPlayback: true),
                      PlateRules.Of(PlateKind.Tile));
+        // The still tile: the tile's fill and hairline, but the hairline never turns accent with playback.
+        Assert.Equal(new PlateRules(HasRootFill: true, HasStroke: true, Dashed: false, StrokeFollowsPlayback: false),
+                     PlateRules.Of(PlateKind.TileStill));
         Assert.Equal(new PlateRules(HasRootFill: false, HasStroke: true, Dashed: true, StrokeFollowsPlayback: false),
                      PlateRules.Of(PlateKind.Outline));
         Assert.Equal(new PlateRules(false, false, false, false), PlateRules.Of(PlateKind.CardPlate));
@@ -140,6 +143,7 @@ public class SurfaceRulesTests
     [InlineData(PlateKind.CardPlate)]
     [InlineData(PlateKind.ListRow)]
     [InlineData(PlateKind.Tile)]
+    [InlineData(PlateKind.TileStill)]
     [InlineData(PlateKind.Outline)]
     public void The_fill_table_has_exactly_the_parts_its_rules_name(PlateKind kind)
     {
@@ -183,6 +187,11 @@ public class SurfaceRulesTests
         Assert.Equal(Shape.Row(48f), Shape.Row(48f));
         Assert.NotEqual(Shape.RowTile, Shape.Row(48f));
         Assert.Equal(PlateKind.Tile, Shape.RowTile.Plate);
+        Assert.Equal(PlateKind.TileStill, Shape.RowTileStill.Plate);
+        Assert.Equal(Shape.RowTile with { Plate = PlateKind.TileStill }, Shape.RowTileStill);   // only the playback follow differs
+        Assert.True(SurfacePlate.For(PlateKind.Tile).FollowsPlayback);
+        Assert.False(SurfacePlate.For(PlateKind.TileStill).FollowsPlayback);
+        Assert.True(SurfacePlate.For(PlateKind.TileStill).StrokeWidth > 0f);
         Assert.Equal(PlateKind.Outline, Shape.RowOutline.Plate);
         Assert.Equal(PlayReveal.Always, Shape.Video.Play);
         Assert.Equal(Shape.Grid, Shape.Grid with { });             // the NaN dials compare equal to themselves

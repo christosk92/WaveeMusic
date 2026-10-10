@@ -724,7 +724,7 @@ public static partial class Detail
         /// <see cref="MaxWidth"/> is the ABSOLUTE ceiling; the live one is <see cref="MaxWidthForPage"/>.</summary>
         public const float MinWidth = 180f, MaxWidth = 480f;
 
-        /// <summary>The grip's strip width (<see cref="Splitter.StripW"/>). The grip is a translated overlay on the 8-DIP gap and takes
+        /// <summary>The grip's strip width (<see cref="Splitter.StripW"/>). The grip is a translated overlay on the cover gap and takes
         /// no row width; a resizable rail is composed that much wider instead (<see cref="ComposedExtraWidth"/>). Also the two
         /// widths the COLLAPSED arm composes (the 96-DIP identity strip + its 20-DIP re-open grip).</summary>
         public const float GripStripW = Splitter.StripW;
@@ -732,23 +732,28 @@ public static partial class Detail
 
         /// <summary>What the rail's COMPOSED width adds to its resting (persisted) width, so the table's text does not move when
         /// the grip stops taking row width: the grip's 16-DIP strip (a resizable rail only; the grip is now a translated overlay
-        /// on the 8-DIP gap) plus the table's plate lead (<see cref="Track.RowMetrics.LeadFor"/>: <c>RowInset</c> for the Modern
+        /// on the cover gap) plus the table's plate lead (<see cref="Track.RowMetrics.LeadFor"/>: <c>RowInset</c> for the Modern
         /// skin, which the table gives back by overhanging its host; 0 for Classic, whose full-bleed fill needs no overhang).
         /// Applied at composition, never to the stored width, so persisted widths keep their meaning.</summary>
         public static float ComposedExtraWidth(bool resizable, bool classic)
             => (resizable ? GripStripW : 0f) + Track.RowMetrics.LeadFor(twoColumn: true, classic);
 
-        /// <summary>The rail column's side padding: the left is the one pane inset, the right is the frame gap the rail pays
-        /// between its cover and the table's first plate.</summary>
-        public const float SidePadL = PageGeometry.PaneInset, SidePadR = Shell.FrameRules.FrameGap;
+        /// <summary>The air between the rail's cover and the table's first plate: its own 24 DIP, not the 8-DIP frame gap (the
+        /// cover read as glued to the list). The cover pays it out of its own width: <see cref="ComposedExtraWidth"/> is
+        /// unchanged, so the table does not move and the cover is 16 DIP narrower than with the frame gap.</summary>
+        public const float CoverGap = FluentGpu.Dsl.Spacing.XXL;
+
+        /// <summary>The rail column's side padding: the left is the one pane inset, the right is the <see cref="CoverGap"/> the rail
+        /// pays between its cover and the table's first plate.</summary>
+        public const float SidePadL = PageGeometry.PaneInset, SidePadR = CoverGap;
 
         /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the (composed) column less its side padding, floored at 80.</summary>
         public static float CoverEdge(float composedRailW) => MathF.Max(80f, composedRailW - SidePadL - SidePadR);
 
-        /// <summary>The x of the grip's strip inside the two-column row: centred on the 8-DIP gap that the rail's trailing
-        /// padding forms with the table's first plate. Its hit area overlaps the cover and the first plate by
-        /// <c>(StripW - FrameGap) / 2</c> DIP each.</summary>
-        public static float GripOverlayX(float composedRailW) => composedRailW - (Shell.FrameRules.FrameGap + GripStripW) / 2f;
+        /// <summary>The x of the grip's strip inside the two-column row: centred on the <see cref="CoverGap"/> that the rail's
+        /// trailing padding forms with the table's first plate. The 16-DIP strip sits wholly inside that 24-DIP gap, 4 DIP clear
+        /// of the cover and of the first plate (<c>(StripW - CoverGap) / 2</c> is the overlap, negative = clearance).</summary>
+        public static float GripOverlayX(float composedRailW) => composedRailW - (CoverGap + GripStripW) / 2f;
 
         /// <summary>The live maximum moves in 8-DIP steps, so a per-pixel window resize cannot churn the frame's render
         /// (and the floor never rounds the cap UP past what the page can actually give).</summary>

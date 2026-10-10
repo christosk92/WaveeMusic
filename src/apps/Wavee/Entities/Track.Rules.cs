@@ -411,7 +411,7 @@ public readonly partial struct Track
         public static float PlateX(bool classic) => classic ? 0f : RowInset;
 
         /// <summary>How far a table's host reaches LEFT over the gap before it. A two-column page's Modern table has a plate lead of
-        /// 0: its row plates abut the rail's 8-DIP gap and its header text, first toolbar command and row content sit at the
+        /// 0: its row plates abut the composed rail (one 24-DIP cover gap past its cover) and its header text, first toolbar command and row content sit at the
         /// plate's inner padding (<see cref="RowInset"/>), so the host overhangs by that much and the rail, composed that much
         /// wider (<c>Detail.RailPolicy.ComposedExtraWidth</c>), gives it back. A Classic table's fill is already flush with the
         /// host, so it needs no overhang (the rail is composed by the same 0). Every other table starts on its own edge.</summary>

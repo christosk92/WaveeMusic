@@ -1,7 +1,7 @@
 // ── Wavee.Tests/AlbumSurfaceRulesTests.cs — the album page's and library pane's media-surface geometry ───────────────
 //
 // The album page and the library pane stopped hand-rolling their cards: the related-album rows and the music-video
-// shelf cells are `Controls.Surface(…, Shape.RowTile / Shape.Video)`, the pane's "Also by" tiles are
+// shelf cells are `Controls.Surface(…, Shape.RowTileStill / Shape.Video)`, the pane's "Also by" tiles are
 // `Controls.Surface(…, Shape.Shelf())`, and the trailing skeleton's rows are the same shape's SEED face. What is left to
 // DECIDE on those two files is a handful of numbers, and they are pinned here against the shared surface's own presets
 // and extents, so a preset moving (a row floor, the Video FAB, the shelf chrome) shows up as a failing fact instead of a
@@ -23,10 +23,10 @@ public class AlbumSurfaceRulesTests
     [Fact]
     public void SkeletonRow_is_as_tall_as_the_real_related_row()
     {
-        // The skeleton draws `Surface(Seed, Shape.RowTile)` and `PageRules.SkeletonHeight` sums `SkelRowH` per row: the
+        // The skeleton draws `Surface(Seed, Shape.RowTileStill)` and `PageRules.SkeletonHeight` sums `SkelRowH` per row: the
         // two agree only while the real rows' shape floor IS that number (48 art + 2 × 8 padding = the 64 row floor).
-        Assert.Equal(Rules.SkelRowH, Shape.RowTile.MinHeight);
-        Assert.Equal(Rules.SkelRowH, Shape.RowTile.ArtEdge + 2f * SurfaceGeometry.RowPad);
+        Assert.Equal(Rules.SkelRowH, Shape.RowTileStill.MinHeight);
+        Assert.Equal(Rules.SkelRowH, Shape.RowTileStill.ArtEdge + 2f * SurfaceGeometry.RowPad);
     }
 
     // ── the music-video section ──────────────────────────────────────────────────────────────────────────────────────

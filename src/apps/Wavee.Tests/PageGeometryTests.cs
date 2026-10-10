@@ -154,6 +154,7 @@ public class PageGeometryRhythmTests
     {
         Assert.Equal(PageGeometry.PaneInset, Detail.RailPolicy.SidePadL);
         Assert.Equal(PageGeometry.PaneInset, Detail.RailLayout.PadTop);
-        Assert.Equal(Shell.FrameRules.FrameGap, Detail.RailPolicy.SidePadR);
+        Assert.Equal(Detail.RailPolicy.CoverGap, Detail.RailPolicy.SidePadR);
+        Assert.Equal(24f, Detail.RailPolicy.CoverGap);
     }
 }

@@ -384,20 +384,20 @@ public class DetailRailPolicyTests
     [InlineData(true, true, 480f)]
     [InlineData(false, true, 188f)]
     [InlineData(false, true, 224f)]
-    public void CoverRightEdge_ToFirstPlate_IsTheFrameGap(bool resizable, bool classic, float resting)
+    public void CoverRightEdge_ToFirstPlate_IsTheCoverGap(bool resizable, bool classic, float resting)
     {
         float composed = resting + RailPolicy.ComposedExtraWidth(resizable, classic);
         float coverRight = composed - RailPolicy.SidePadR;
         float hostX = composed - Track.RowMetrics.LeadFor(twoColumn: true, classic);
         float firstPlate = hostX + Track.RowMetrics.PlateX(classic);
 
-        Assert.Equal(Shell.FrameRules.FrameGap, firstPlate - coverRight);
+        Assert.Equal(RailPolicy.CoverGap, firstPlate - coverRight);
         Assert.Equal(composed, firstPlate);   // plate lead 0: the plate (or the Classic fill) abuts the composed rail
     }
 
     /// <summary>The freed width goes to the rail and nowhere else: the table host starts where it always did (rail + the
-    /// grip's old 16-DIP strip), so its header text, toolbar and rows do not move, and the cover grows by exactly the freed
-    /// width. Classic frees only the grip's strip.</summary>
+    /// grip's old 16-DIP strip), so its header text, toolbar and rows do not move, and the cover grows by the freed width less
+    /// the 16 DIP the wider cover gap (24, was 8) takes back. Classic frees only the grip's strip.</summary>
     [Theory]
     [InlineData(true, false, 240f)]
     [InlineData(true, false, 360f)]
@@ -413,19 +413,20 @@ public class DetailRailPolicyTests
         Assert.Equal(oldHostX, newHostX);
 
         float oldCover = MathF.Max(80f, resting - RailPolicy.SidePadL - Shell.FrameRules.FrameGap);   // old pads were 16 / 8
-        Assert.Equal(freed, RailPolicy.CoverEdge(resting + freed) - oldCover);
+        float gapGrowth = RailPolicy.CoverGap - Shell.FrameRules.FrameGap;
+        Assert.Equal(freed - gapGrowth, RailPolicy.CoverEdge(resting + freed) - oldCover);
     }
 
-    /// <summary>The grip strip is centred on the 8-DIP gap; it overlaps the cover and the first plate by
-    /// (StripW - FrameGap) / 2 each, and takes no row width.</summary>
+    /// <summary>The grip strip is centred on the 24-DIP cover gap; it overlaps the cover and the first plate by
+    /// (StripW - CoverGap) / 2 each (negative: it sits inside the gap, clear of both), and takes no row width.</summary>
     [Fact]
     public void GripOverlay_IsCentredOnTheGap()
     {
         const float composed = 400f;
         float x = RailPolicy.GripOverlayX(composed);
-        float overlap = (FluentGpu.Controls.Splitter.StripW - Shell.FrameRules.FrameGap) / 2f;
+        float overlap = (FluentGpu.Controls.Splitter.StripW - RailPolicy.CoverGap) / 2f;
 
-        Assert.Equal((composed - Shell.FrameRules.FrameGap) - x, overlap);
+        Assert.Equal((composed - RailPolicy.CoverGap) - x, overlap);
         Assert.Equal(x + FluentGpu.Controls.Splitter.StripW - composed, overlap);
     }
 

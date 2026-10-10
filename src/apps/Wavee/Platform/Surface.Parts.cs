@@ -36,6 +36,7 @@ namespace Wavee;
 /// <c>FillControlTertiary</c> pressed (<c>Interaction.Tile</c>'s legs — a replacing ramp, so the rest fill lives on the
 /// plate, not the root), under a 1-DIP card hairline that the shell binds to accent@0.5 while the surface relates to
 /// playback.</item>
+/// <item>TileStill — the Tile's fills and hairline, but the hairline never follows playback.</item>
 /// <item>Outline — the ListRow ramp under a 1-DIP dashed (3/3) <c>StrokeControlSecondary</c> frame.</item>
 /// </list></summary>
 public readonly record struct SurfacePlate(ColorF Fill, ColorF HoverFill, ColorF PressedFill, float RestOpacity,

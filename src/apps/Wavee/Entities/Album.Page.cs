@@ -1118,7 +1118,7 @@ public readonly partial struct Album
 
     static int At(ReadOnlySpan<int> slots, int index) => (uint)index < (uint)slots.Length ? slots[index] : 0;
 
-    /// <summary>A related album: the shared media surface (<see cref="Shape.RowTile"/> — 48 cover, hover play FAB, the
+    /// <summary>A related album: the shared media surface (<see cref="Shape.RowTileStill"/> — 48 cover, hover play FAB, the
     /// hot-revealed "…", drag source) on the opaque card tile under its hairline. Its menu is the home card grammar
     /// (<see cref="HomeCardNav.MenuOf"/>: Play · Play next · Add to queue, Save · Add to playlist · Open · Pin · Share),
     /// built at open from the card handle — the row has no tracklist of its own to compose a track menu from.</summary>
@@ -1139,7 +1139,7 @@ public readonly partial struct Album
             OnPlay: () => Playback.PlayOrToggleContext(id),
             Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
             { Menu = HomeCardNav.MenuOf(in card) },
-            Shape.RowTile) with { Key = "album:" + slot.ToString(CultureInfo.InvariantCulture) };
+            Shape.RowTileStill) with { Key = "album:" + slot.ToString(CultureInfo.InvariantCulture) };
     }
 
     /// <summary>A playlist this album appears on: the same plated row, the owner as its subtitle, the same card menu.</summary>
@@ -1159,7 +1159,7 @@ public readonly partial struct Album
             OnPlay: () => Playback.PlayOrToggleContext(id),
             Drag: Drag.Source(() => ResourcePayload(DragKind.Playlist, EntityKind.Playlist, slot, uri, title, cover)))
             { Menu = HomeCardNav.MenuOf(in card) },
-            Shape.RowTile) with { Key = "playlist:" + slot.ToString(CultureInfo.InvariantCulture) };
+            Shape.RowTileStill) with { Key = "playlist:" + slot.ToString(CultureInfo.InvariantCulture) };
     }
 
     static Element SubtitleLine(string text)
@@ -1560,12 +1560,12 @@ public readonly partial struct Album
         return new BoxEl { Direction = 0, Gap = Spacing.S, ClipToBounds = true, Children = chips };
     }
 
-    /// <summary>The rows block: the SEED face of the real rows' own shape (<see cref="Shape.RowTile"/>), which is as tall
+    /// <summary>The rows block: the SEED face of the real rows' own shape (<see cref="Shape.RowTileStill"/>), which is as tall
     /// as the live row (its 64 floor — <c>PageRules.SkelRowH</c>, pinned by a fact) because every line keeps its box.</summary>
     static Element RowsSkeleton()
     {
         var rows = new Element[PageRules.SkelRows];
-        for (int i = 0; i < rows.Length; i++) rows[i] = Controls.Surface(Controls.CardData.Seed, Shape.RowTile);
+        for (int i = 0; i < rows.Length; i++) rows[i] = Controls.Surface(Controls.CardData.Seed, Shape.RowTileStill);
         return new BoxEl { Direction = 1, Gap = PageRules.SkelRowGap, Children = rows };
     }
 
