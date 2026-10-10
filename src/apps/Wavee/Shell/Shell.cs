@@ -1335,10 +1335,17 @@ public static partial class Shell
     /// what the row DROPS and by the spacing rungs, never by the buttons.</para>
     /// <para>The 300-DIP floor still balances: 12 row pad + 132 identity block + 6 row gaps + 36 primary + 2 cluster
     /// gap + 32 devices + 32 overflow = 252, leaving the seek bar the ~48 DIP it grows into. That is the honest trade
-    /// — a short seek line at the absolute floor, never a 26-DIP Next button.</para></summary>
+    /// — a short seek line at the absolute floor, never a 26-DIP Next button.</para>
+    /// <para>Queue survives from Compact up (since 2026-10-10); the video split does not move with it. At 440 the widest
+    /// right cluster is devices + queue + overflow (3 × 32 + 2 × RightGap 1 = 98), so the seek bar keeps 58 DIP after
+    /// the remaining-time slot (440 − 16 − 172 − 8 − 39 − (44 + 5) − 98). Compact holds down to 416 under the narrowing
+    /// hysteresis, where it keeps 34 DIP. A live broadcast pays the same: the Compact live slot is the 44-DIP
+    /// <see cref="TimeLabel.CompactLiveSlotW"/> (LIVE mark only; behind a window the mark is the GO LIVE button), so
+    /// the 104-DIP face never overruns the Queue button. Medium (760) has room to spare. Pressure is paid from the seek
+    /// bar's growth, never from the button sizes.</para></summary>
     public readonly record struct PlayerBarLayout(
         PlayerBarTier Tier,
-        bool ShowExpand, bool ShowDevices, bool ShowQueue, bool ShowVolumeSlider, bool ShowShuffleRepeat,
+        bool ShowExpand, bool ShowDevices, bool ShowQueue, bool ShowVideoSplit, bool ShowVolumeSlider, bool ShowShuffleRepeat,
         bool ShowLikeSlot, bool ShowVolumeButton, bool ShowLyrics, bool ShowRemoteDeviceLine,
         bool ShowTimesElapsed, bool ShowTimesRemaining, bool ShowPrevNext, bool ShowSubtitle,
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
@@ -1383,7 +1390,8 @@ public static partial class Shell
                 Tier: tier,
                 ShowExpand: full,
                 ShowDevices: true,          // the device picker is the only route when local playback is unavailable
-                ShowQueue: wide,
+                ShowQueue: compact,         // the Queue button survives width pressure: it is paid for by the seek bar
+                ShowVideoSplit: wide,       // the inline video split keeps its own tier (user decision 2026-09-16)
                 ShowVolumeSlider: wide,
                 ShowShuffleRepeat: comfortable,
                 ShowLikeSlot: true,         // identity-first: the heart survives down to the 300-DIP floor
