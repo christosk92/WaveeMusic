@@ -1218,9 +1218,10 @@ public readonly partial struct Album
 
         /// <summary>The face pile's <c>+N</c>. FIXED (ch 05 §0.5): with billed artists it is everything not DRAWN — 0.2.9
         /// drew <c>min(4, billed)</c> faces and subtracted all of <paramref name="billed"/>, so a 6-artist billing hid two
-        /// faces and counted neither. With none billed the pile draws the first four of all.</summary>
+        /// faces and counted neither. With none billed the pile draws the first <paramref name="drawn"/> of all (the rail
+        /// line draws three), so both arms count what is not drawn.</summary>
         public static int FaceOverflow(int billed, int allDistinct, int drawn)
-            => billed > 0 ? Math.Max(0, allDistinct - drawn) : Math.Max(0, allDistinct - Math.Min(allDistinct, 4));
+            => billed > 0 ? Math.Max(0, allDistinct - drawn) : Math.Max(0, allDistinct - Math.Min(allDistinct, drawn));
 
         /// <summary>Every distinct artist on the album — the billed ones first, then track-only contributors in row
         /// order — written into <paramref name="into"/>. Returns the count (capped by the span).</summary>
