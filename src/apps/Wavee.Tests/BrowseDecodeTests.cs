@@ -39,6 +39,31 @@ public class BrowseDecodeTests
     }
 
     [Fact]
+    public void Image_sources_that_publish_only_maxWidth_still_pick_the_640_entry()
+    {
+        // Browse and home image sources publish `maxWidth`, so every width used to read as 0 and ChooseIndex took the first
+        // (often the smallest) entry.
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        Spotify.Decode.Export("""
+        { "data": { "searchV2": { "tracksV2": { "items": [
+          { "item": { "data": {
+            "uri": "spotify:track:0TDLuuLlV54CkRRUOahJb4",
+            "name": "Titanium",
+            "albumOfTrack": { "uri": "spotify:album:1I80HwIDdWXtmA3Fqsbqnl", "coverArt": { "sources": [
+              { "url": "https://i.scdn.co/image/s64", "maxWidth": 64 },
+              { "url": "https://i.scdn.co/image/s640", "maxWidth": 640 }
+            ] } }
+          } } }
+        ] } } } }
+        """u8, s, "wavee:search:00:max-width"u8);
+        TestScope.CommitAndPublish(s);
+
+        var track = Entities.Track(EntityUri.Parse("spotify:track:0TDLuuLlV54CkRRUOahJb4".AsSpan()));
+        Assert.Equal("https://i.scdn.co/image/s640", Entities.Strings.Resolve(track.ImageId));
+    }
+
+    [Fact]
     public void A_browse_section_answer_for_any_other_uri_is_not_a_chart()
     {
         TestScope.Fresh();
