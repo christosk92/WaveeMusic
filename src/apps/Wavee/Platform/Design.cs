@@ -2309,10 +2309,57 @@ public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, Ho
 /// <paramref name="PaletteUrl"/> and <paramref name="PayloadAccent"/> key the hero's horizontal veil the shell draws over the photo,
 /// so the chrome and the hero are ONE field. <paramref name="EntranceAtMs"/> is the frame time (<c>Design.FrameTime.NowMs</c>) on which
 /// the page's photo starts its entrance (the reveal frame when the bitmap was resident, else the bitmap's ready frame): the shell's
-/// presence starts there even though the publish lands an effect later. 0 means unknown.</summary>
+/// presence starts there even though the publish lands an effect later. 0 means unknown.
+/// <paramref name="Entrance"/> is the page's ONE entrance clock (<see cref="ShellEntranceClock"/>, one instance per page, compared by
+/// reference): while it runs the shell's presence, underlay and hand-over follow it instead of stepping a clock of their own, so the
+/// page content, the card's photo field and the shell's layers are never on two clocks.</summary>
 public sealed record ShellBackdrop(string Url, float PhotoHeight, float HeroHeight, float Floor,
                                    IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key,
-                                   string? PaletteUrl = null, uint PayloadAccent = 0, long EntranceAtMs = 0);
+                                   string? PaletteUrl = null, uint PayloadAccent = 0, long EntranceAtMs = 0,
+                                   ShellEntranceClock? Entrance = null);
+
+/// <summary>Where the artist page's entrance clock is (<see cref="ShellEntranceClock.Mode"/>): <c>Idle</c> (no entrance in play, every
+/// factor reads 1), <c>Primed</c> (the reveal frame: the clock holds 0 until it is armed) or <c>Running</c> (stepping or finished).</summary>
+public enum ShellEntranceMode : byte { Idle, Primed, Running }
+
+/// <summary>EXPERIMENTAL (artist bleed): the artist page's ONE entrance clock. It steps <c>min(dt, ArtistBleed.MaxStepMs)</c> per frame
+/// and holds its seed frame like the engine's AnimClock: the reveal frame N renders it Primed (every factor reads 0), the layout effect
+/// arms it at N (<c>Elapsed</c> 0) and the first step lands on N+1. The page content, the card's photo field and the shell's layers all
+/// read <see cref="Elapsed"/>, so the entrance is never two clocks. <see cref="Mode"/> and <see cref="ContentFollows"/> are plain
+/// fields (set from Render or an effect, read in binds); only <see cref="Elapsed"/> is a signal.</summary>
+public sealed class ShellEntranceClock
+{
+    /// <summary>Milliseconds into the entrance; <c>ArtistBleed.ClockIdleMs</c> while idle.</summary>
+    public readonly FloatSignal Elapsed = new(ArtistBleed.ClockIdleMs);
+    public ShellEntranceMode Mode;
+    /// <summary>The page content fades with the clock (the first reveal, with the bitmap resident); false when the content is already
+    /// showing and only the late photo follows it.</summary>
+    public bool ContentFollows;
+    long _lastMs;
+
+    /// <summary>The reveal frame: every factor reads 0 until <see cref="Arm"/>. Plain fields, callable from Render.</summary>
+    public void Prime(bool contentFollows) { Mode = ShellEntranceMode.Primed; ContentFollows = contentFollows; }
+
+    /// <summary>Starts the clock at <paramref name="nowMs"/> with <see cref="Elapsed"/> 0 (the seed frame holds 0).</summary>
+    public void Arm(long nowMs) { Mode = ShellEntranceMode.Running; _lastMs = nowMs; Elapsed.Value = 0f; }
+
+    /// <summary>One frame: <see cref="Elapsed"/> advances by the clamped frame delta.</summary>
+    public void Step(long nowMs)
+    {
+        Elapsed.Value = ArtistBleed.StepClock(Elapsed.Peek(), nowMs - _lastMs);
+        _lastMs = nowMs;
+    }
+
+    /// <summary>Reduced motion: the clock reads as DONE (Running mode at <c>SettleMs</c>), so <c>ContentIn</c> and <c>PhotoIn</c> return
+    /// <c>EntranceAt(SettleMs)</c> = 1 and nothing stays hidden.</summary>
+    public void Finish() { Mode = ShellEntranceMode.Running; Elapsed.Value = ArtistBleed.SettleMs; }
+
+    /// <summary>Back to idle (a new subject): every factor reads 1.</summary>
+    public void Reset() { Mode = ShellEntranceMode.Idle; ContentFollows = false; Elapsed.Value = ArtistBleed.ClockIdleMs; }
+
+    /// <summary>True while the entrance and the settle are stepping.</summary>
+    public bool Running => Mode == ShellEntranceMode.Running && Elapsed.Peek() < ArtistBleed.SettleMs;
+}
 
 /// <summary>The shell-owned, page-scoped MATERIAL channel. The shell publishes one signal at the root and paints it as
 /// the layer directly above the ground that backs ALL chrome — title bar, toolbar, sidebar, player dock. The active page

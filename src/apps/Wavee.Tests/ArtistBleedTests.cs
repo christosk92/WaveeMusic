@@ -783,8 +783,11 @@ public class ArtistBleedEntranceTests
     public void The_entrance_is_one_clock()
     {
         Assert.Equal(Expressive.Fast, ArtistBleed.EntranceMs);
-        Assert.Equal(SkelReveal.FadeOnly, ArtistBleed.RevealFor(true));
-        Assert.Equal(SkelReveal.Soft, ArtistBleed.RevealFor(false));
+        // Under the bleed the page's own clock is the entrance: a resident bitmap needs no engine reveal, a late one keeps opacity-only.
+        Assert.Equal(SkelReveal.None, ArtistBleed.RevealFor(bleed: true, photoResident: true));
+        Assert.Equal(SkelReveal.FadeOnly, ArtistBleed.RevealFor(bleed: true, photoResident: false));
+        Assert.Equal(SkelReveal.Soft, ArtistBleed.RevealFor(bleed: false, photoResident: true));
+        Assert.Equal(SkelReveal.Soft, ArtistBleed.RevealFor(bleed: false, photoResident: false));
         Assert.Equal(0f, ArtistBleed.EntranceAt(0f));
         Assert.Equal(1f, ArtistBleed.EntranceAt(ArtistBleed.EntranceMs));
         Assert.Equal(Easings.Ease(Easing.SmoothOut, .4f), ArtistBleed.EntranceAt(ArtistBleed.EntranceMs * .4f), 5);
@@ -852,9 +855,105 @@ public class ArtistBleedEntranceTests
     [Fact]
     public void Under_the_bleed_the_card_photo_fades_only_when_its_bitmap_lands_late()
     {
-        Assert.False(ArtistBleed.CardPhotoFadesItself(true, true));
-        Assert.True(ArtistBleed.CardPhotoFadesItself(true, false));
-        Assert.True(ArtistBleed.CardPhotoFadesItself(false, true));
-        Assert.True(ArtistBleed.CardPhotoFadesItself(false, false));
+        // The late fade now belongs to the field group (FieldOpacity): under the bleed the photo itself never fades, off it the hero keeps
+        // today's entrance.
+        Assert.False(ArtistBleed.CardPhotoFadesItself(true));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(false));
+    }
+
+    [Fact]
+    public void The_clock_steps_like_the_engines_clamped_to_forty_ms()
+    {
+        Assert.Equal(40f, ArtistBleed.StepClock(0f, 74f));
+        Assert.Equal(26f, ArtistBleed.StepClock(10f, 16f));
+        Assert.Equal(5f, ArtistBleed.StepClock(5f, -3f));
+    }
+
+    [Fact]
+    public void The_entrance_clock_holds_its_seed_frame()
+    {
+        var clock = new ShellEntranceClock();
+        Assert.Equal(ShellEntranceMode.Idle, clock.Mode);
+        Assert.False(clock.Running);
+        // The reveal frame N: primed in render, every factor reads 0, and the ticker mounts from render.
+        clock.Prime(contentFollows: true);
+        Assert.True(ArtistBleed.TicksEntrance(clock.Mode, running: false, reduced: false));
+        Assert.Equal(0f, ArtistBleed.ContentIn(clock.Mode, clock.ContentFollows, clock.Elapsed.Peek()));
+        // The layout effect arms it at N: Elapsed 0, still nothing visible (the seed frame is held).
+        clock.Arm(1000);
+        Assert.True(clock.Running);
+        Assert.Equal(0f, clock.Elapsed.Peek());
+        Assert.Equal(0f, ArtistBleed.ContentIn(clock.Mode, clock.ContentFollows, clock.Elapsed.Peek()));
+        // The first step lands on N+1 with the clamped delta (a 74 ms frame advances 40), the next one adds its own.
+        clock.Step(1074);
+        Assert.Equal(40f, clock.Elapsed.Peek());
+        clock.Step(1090);
+        Assert.Equal(56f, clock.Elapsed.Peek());
+        Assert.True(clock.Running);
+        // Running holds until the whole settle is done, then reads as finished.
+        long now = 1090;
+        while (clock.Running) clock.Step(now += 16);
+        Assert.True(clock.Elapsed.Peek() >= ArtistBleed.SettleMs);
+        Assert.False(clock.Running);
+        Assert.False(ArtistBleed.TicksEntrance(clock.Mode, running: false, reduced: false));
+        // The ticker mounts only while primed (and not reduced) or while it runs.
+        Assert.True(ArtistBleed.TicksEntrance(ShellEntranceMode.Primed, false, false));
+        Assert.False(ArtistBleed.TicksEntrance(ShellEntranceMode.Primed, false, reduced: true));
+        Assert.False(ArtistBleed.TicksEntrance(ShellEntranceMode.Running, false, false));
+        Assert.True(ArtistBleed.TicksEntrance(ShellEntranceMode.Running, true, false));
+        Assert.False(ArtistBleed.TicksEntrance(ShellEntranceMode.Idle, false, false));
+        // A reset reads as idle: nothing hidden.
+        clock.Reset();
+        Assert.Equal(ShellEntranceMode.Idle, clock.Mode);
+        Assert.Equal(1f, ArtistBleed.ContentIn(clock.Mode, true, clock.Elapsed.Peek()));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Reduced_motion_finishes_the_clock_visible(bool contentFollows)
+    {
+        var clock = new ShellEntranceClock();
+        clock.Prime(contentFollows);
+        clock.Finish();
+        Assert.False(clock.Running);
+        Assert.Equal(1f, ArtistBleed.ContentIn(clock.Mode, clock.ContentFollows, clock.Elapsed.Peek()));
+        Assert.Equal(1f, ArtistBleed.PhotoIn(stamped: true, clock.Mode, clock.ContentFollows, clock.Elapsed.Peek()));
+    }
+
+    [Fact]
+    public void Under_the_bleed_the_content_and_the_photo_ride_one_clock()
+    {
+        float e = ArtistBleed.EntranceMs * .4f;
+        float k = ArtistBleed.EntranceAt(e);
+        Assert.True(k > 0f && k < 1f);
+        // A resident bitmap on the first reveal: the content (and the photo field inside it) follows the clock.
+        Assert.Equal(k, ArtistBleed.ContentIn(ShellEntranceMode.Running, contentFollows: true, e));
+        Assert.Equal(1f, ArtistBleed.PhotoIn(stamped: true, ShellEntranceMode.Running, contentFollows: true, e));
+        // A late bitmap: the content is already showing, the photo field alone follows the same clock.
+        Assert.Equal(1f, ArtistBleed.ContentIn(ShellEntranceMode.Running, contentFollows: false, e));
+        Assert.Equal(k, ArtistBleed.PhotoIn(stamped: true, ShellEntranceMode.Running, contentFollows: false, e));
+        // Primed holds each arm's factor at 0; the other arm is untouched.
+        Assert.Equal(0f, ArtistBleed.ContentIn(ShellEntranceMode.Primed, contentFollows: true, 0f));
+        Assert.Equal(1f, ArtistBleed.ContentIn(ShellEntranceMode.Primed, contentFollows: false, 0f));
+        Assert.Equal(0f, ArtistBleed.PhotoIn(stamped: true, ShellEntranceMode.Primed, contentFollows: false, 0f));
+        Assert.Equal(1f, ArtistBleed.PhotoIn(stamped: true, ShellEntranceMode.Primed, contentFollows: true, 0f));
+        // Idle (no entrance in play): everything reads 1; a photo that is not stamped yet stays hidden.
+        Assert.Equal(1f, ArtistBleed.ContentIn(ShellEntranceMode.Idle, contentFollows: true, ArtistBleed.ClockIdleMs));
+        Assert.Equal(1f, ArtistBleed.PhotoIn(stamped: true, ShellEntranceMode.Idle, contentFollows: false, ArtistBleed.ClockIdleMs));
+        Assert.Equal(0f, ArtistBleed.PhotoIn(stamped: false, ShellEntranceMode.Idle, contentFollows: false, ArtistBleed.ClockIdleMs));
+        Assert.Equal(0f, ArtistBleed.PhotoIn(stamped: false, ShellEntranceMode.Running, contentFollows: false, e));
+        // Past the entrance both arms read 1.
+        Assert.Equal(1f, ArtistBleed.ContentIn(ShellEntranceMode.Running, true, ArtistBleed.SettleMs));
+        Assert.Equal(1f, ArtistBleed.PhotoIn(stamped: true, ShellEntranceMode.Running, false, ArtistBleed.SettleMs));
+    }
+
+    [Fact]
+    public void The_field_has_one_opacity()
+    {
+        Assert.Equal(0.5f * 0.4f, ArtistBleed.FieldOpacity(true, 0.5f, 0.4f), 6);
+        Assert.Equal(0f, ArtistBleed.FieldOpacity(true, 1f, 0f));
+        Assert.Equal(1f, ArtistBleed.FieldOpacity(false, 0.2f, 0f));
+        Assert.Equal(1f, ArtistBleed.FieldOpacity(false, 0f, 0.7f));
     }
 }

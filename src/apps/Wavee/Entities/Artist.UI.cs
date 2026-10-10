@@ -383,7 +383,7 @@ public readonly partial struct Artist
                                        in ArtistHeroMetrics m, ColorF accent, bool compactCanHit,
                                        Action? play, Action? shuffle, Action? radio, Element? band,
                                        uint headerAccent = 0, float floor = ArtistHeroLayout.CompactIdentityHeight,
-                                       Func<bool>? bleedDrawn = null, int decodeW = 0, int decodeH = 0)
+                                       Func<bool>? bleedDrawn = null, int decodeW = 0, int decodeH = 0, Func<float>? photoIn = null)
     {
         float w = MathF.Max(1f, width);
         float height = m.MinHeight;
@@ -412,21 +412,6 @@ public readonly partial struct Artist
         Element art = photoUrl is { Length: > 0 } src
             ? Embed.Comp(new HeroArtProps(src, w, photoH, bleed, decodeW, decodeH), static () => new HeroArt()) with { Key = "heroart:" + uri }
             : new BoxEl { Width = w, Height = photoH, Fill = Design.WatchedPlaceholder(photoUrl) };
-        Element media = new BoxEl
-        {
-            Width = w, Height = photoH, ZStack = true, ClipToBounds = true,
-            TransformOriginX = 0.5f, TransformOriginY = 0f,
-            EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
-            // EXPERIMENTAL (artist bleed): while the shell draws the photo behind the chrome, the banner's own copy stays mounted (the
-            // decode is warm and the layout is unchanged, the veil and the copy stay put) and eases out (BleedHandover) once the
-            // shell's identical photo is fully present. The media's bottom EdgeFade and the shell photo's are the same PhotoFadeBandFor band at the riser line, so at scroll 0 the
-            // photo's end matches. Only in that band do the card's feather and the shell's differ (two feathers over each other), so the
-            // ease, not a step, is what merges them.
-            // ALWAYS bound (1 when not bleeding): a bind is only created at mount, and a nav-style switch flips the decision on this mounted node.
-            Opacity = Prop.Of(() => bleedDrawn is null ? 1f : ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
-            Children = [art],
-        }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
-
         // Shared by both arms: the expanded presentation slides up and fades as the band takes over.
         ScrollEffectSpec[] collapseEffects =
         [
@@ -441,7 +426,16 @@ public readonly partial struct Artist
         Element expanded;
         if (m.Stacked)
         {
-            // No veil: no type sits on the photograph on these tiers (ch 08 §0 #2).
+            // No veil: no type sits on the photograph on these tiers (ch 08 §0 #2). The stacked tier never bleeds (ArtistBleed.Applies), so the
+            // media keeps today's own bottom feather and its (always 1) card-layer opacity.
+            Element media = new BoxEl
+            {
+                Width = w, Height = photoH, ZStack = true, ClipToBounds = true,
+                TransformOriginX = 0.5f, TransformOriginY = 0f,
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
+                Opacity = Prop.Of(() => bleedDrawn is null ? 1f : ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
+                Children = [art],
+            }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
             expanded = new BoxEl
             {
                 Width = w, Height = height, Direction = 1,
@@ -468,16 +462,32 @@ public readonly partial struct Artist
                 Padding = new Edges4(m.Gutter, Spacing.XXL, m.Gutter, Spacing.XXL),
                 Children = [identity],
             };
+            // THE CARD'S PHOTO FIELD. The media and the veil are children of ONE box that carries the whole card-side fade: the hand-over
+            // (CardLayerOpacity: the card's layers stay until the shell's identical ones are fully present, then ease out) times the
+            // page clock's photo factor (a late bitmap fades in on the clock the shell's presence reads), as ONE bind. The box is a
+            // group, so photo and veil cross-fade as one opaque composite over the shell's identical one and the veil's dip (two
+            // translucent layers over each other) is gone. Under the bleed it is a HARD clip at its bounds, because at opacity >= 0.999 the
+            // engine distributes an edge fade to its children (SceneRecorder, distributeFade) and only ClipToBounds bounds them; its
+            // bottom, the hero's presented bottom, is the shell photo's PhotoClip line, and it feathers there with the same band as the
+            // shell's photo box, so the media has no EdgeFade of its own. Outside the bleed (Classic, Library) it is a plain ZStack: no clip,
+            // no feather of its own (the media keeps its bottom EdgeFade), opacity 1, today's pixels. ONE tree shape in every arm (a nav-style
+            // switch flips the decision on this mounted page): Opacity is always bound, ClipToBounds, EdgeFade and the veil's width are
+            // plain props re-pushed on a switch.
+            Element media = new BoxEl
+            {
+                Width = w, Height = photoH, ZStack = true, ClipToBounds = true,
+                TransformOriginX = 0.5f, TransformOriginY = 0f,
+                EdgeFade = bleed ? null : new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
+                Children = [art],
+            }.ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
             // A cover-keyed leaf: a late grading swaps the gradient without rebuilding the banner (ch 08 §4 row 3).
             // headerAccent (row.HeaderAccent) is the raw payload rung: the caller passes it as an optional param so
             // this stays source-compatible until Artist.Page.cs's two HeroBanner call sites are wired to pass it.
-            // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
-            // over a growing photo left an unveiled band above the hero's top edge.
-            // Under the bleed the veil is the theme's veil over the shell's frame width (the same columns as the shell's veil), it
-            // feathers out over the same bottom band as the photo (the shell's veil does, through its photo box's own EdgeFade, so an
-            // unfaded veil would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity). ONE box shape
-            // for both arms (the decision flips on a mounted page at a nav-style switch): Width and Opacity are always bound, the veil
-            // component below takes the arm as live props, and the arm's EdgeFade is a plain prop.
+            // The veil stretches WITH the photo on a top overpan: the field group is the one stretched box (StretchFromTop), so a fixed veil
+            // over a growing photo cannot leave an unveiled band above the hero's top edge.
+            // Under the bleed the veil is the theme's veil over the shell's frame width (the same columns as the shell's veil); the field
+            // feathers it out over the same bottom band as the photo (the shell's veil does, through its photo box's own EdgeFade, so an
+            // unfaded veil would end in a hard edge at the riser line). The veil takes the arm as live props.
             Element veil = play is null
                 ? new BoxEl()
                 : new BoxEl
@@ -487,11 +497,6 @@ public readonly partial struct Artist
                         : w),
                     Height = height, ZStack = true, HitTestVisible = false,
                     AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                    TransformOriginX = 0.5f, TransformOriginY = 0f,
-                    EdgeFade = bleed ? new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)) : null,
-                    Opacity = Prop.Of(() => bleed
-                        ? ArtistBleed.CardLayerOpacity(bleedDrawn!(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)
-                        : 1f),
                     Children =
                     [
                         bleed
@@ -501,12 +506,23 @@ public readonly partial struct Artist
                                                      payloadAccent: headerAccent,
                                                      disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
                     ],
-                }.StretchFromTop();
+                };
+            Element field = new BoxEl
+            {
+                Width = w, Height = height, ZStack = true, ClipToBounds = bleed, HitTestVisible = false, OpacityGroup = true,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                TransformOriginX = 0.5f, TransformOriginY = 0f,
+                EdgeFade = bleed ? new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)) : null,
+                Opacity = Prop.Of(() => ArtistBleed.FieldOpacity(bleedDrawn is not null,
+                    bleedDrawn is null ? 1f : ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value),
+                    photoIn?.Invoke() ?? 1f)),
+                Children = [media, veil],
+            }.StretchFromTop();
             expanded = new BoxEl
             {
                 Width = w, Height = height, ZStack = true,
                 HitTestVisible = !compactCanHit, ScrollEffects = collapseEffects,
-                Children = [media, veil, copy],
+                Children = [field, copy],
             };
         }
 
@@ -647,9 +663,9 @@ public readonly partial struct Artist
     /// <summary>The photograph: one gentle image-only entrance settle. The scale is owned by this keyed component and runs once
     /// per artist; it never restarts when a CDN rendition or window measurement changes. The decode size is the page's own
     /// (<see cref="HeroArtProps.DecodeW"/>), else latched at the first measured width, so a resize cannot create a visible resize flash.
-    /// Under the bleed the photo has no entrance of its own to multiply into the shell's: a bitmap resident at mount rests at 1 and
-    /// the page's FadeOnly reveal carries it; a bitmap that lands later holds at 0 until then and fades over
-    /// <see cref="ArtistBleed.EntranceMs"/> on the shell's clock.</summary>
+    /// Under the bleed the photo has no entrance of its own to multiply into the shell's: it holds at 0 until its bitmap is ready and
+    /// then rests at 1, and the card's photo field group (one bind, <see cref="ArtistBleed.FieldOpacity"/>) carries the entrance, on the
+    /// page's one clock (the content's reveal for a resident bitmap, <see cref="ArtistBleed.PhotoIn"/> for a late one).</summary>
     sealed class HeroArt : Component
     {
         const float StartScale = 1f, RestScale = 1.03f, FrameScale = 1.02f, FrameLiftFraction = 0.02f;
@@ -697,15 +713,12 @@ public readonly partial struct Artist
             // reveal and the image fade were two animations over the same pixels (stillwrong.mp4). One owner, one
             // entrance, keyed on the ready EDGE so it plays once per photo and never re-runs on a plain re-render.
             //
-            // UNDER THE BLEED the shell draws this same photo above the card's top, on the shell's clock, so the entrance is never
-            // a second FluentDecelerate fade multiplied into it (ArtistBleed.CardPhotoFadesItself): a bitmap that was resident when this
-            // mounted rests at 1 and the page's FadeOnly reveal is the entrance; a bitmap that lands later holds at 0 until its ready edge,
-            // then fades over ArtistBleed.EntranceMs with the same ease as the shell's presence. The choice is latched on the ready edge,
-            // so a nav-style switch afterwards replays nothing.
+            // UNDER THE BLEED the shell draws this same photo above the card's top, on the page's one clock, so the entrance is never
+            // a second fade multiplied into it (ArtistBleed.CardPhotoFadesItself): the photo holds at 0 until its ready edge, then rests at 1,
+            // and the card's field group (Artist.UI.cs HeroBanner) carries the entrance on that clock, resident or late. The choice is latched
+            // on the ready edge, so a nav-style switch afterwards replays nothing.
             var image = UseImage(p.Url, dw, dh, ImagePriority.Visible, blurHash: null, transition: ImageTransition.None);
             bool ready = image.State is ImageState.Ready or ImageState.Failed;
-            var resident = UseRef<bool?>(null);   // was the bitmap there on the first render (latched)
-            resident.Value ??= ready;
             var bleedAtEdge = UseRef(false);      // was the bleed on at the ready edge (latched)
             var bleedAtMount = UseRef<bool?>(null);   // was the bleed on at the first render (latched)
             bleedAtMount.Value ??= p.Bleed;
@@ -716,9 +729,9 @@ public readonly partial struct Artist
             UseKeyframes(AnimChannel.ScaleX, scaleFrames, scaleMs, loop: false, DepKey.From((zoom.Value ? 1 : 0) | (p.Bleed ? 2 : 0)));
             UseKeyframes(AnimChannel.ScaleY, scaleFrames, scaleMs, loop: false, DepKey.From((zoom.Value ? 1 : 0) | (p.Bleed ? 2 : 0)));
             // Same ready edge as the scale settle. Reduced motion is a duration of 0, never a skipped call. Under the bleed (see above)
-            // the photo rests, or fades from a late bitmap's ready edge on the shell's clock; its DepKey carries the hidden flag only
+            // the photo rests at 1 from its ready edge (the field group fades it); its DepKey carries the hidden flag only
             // before the ready edge, so a nav-style switch after it replays no fade.
-            bool selfFade = ArtistBleed.CardPhotoFadesItself(true, resident.Value == true);
+            bool selfFade = ArtistBleed.CardPhotoFadesItself(p.Bleed);
             // Hidden until the ready edge whenever the mount was under the bleed, so leaving the bleed before the edge never steps the node.
             bool hiddenUntilReady = !zoom.Value && (p.Bleed || bleedAtMount.Value == true);
             Keyframe[] opacityFrames;

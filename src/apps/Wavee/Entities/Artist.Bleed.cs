@@ -183,10 +183,14 @@ public static class ArtistBleed
     /// <summary>The presence from which the shell's layers count as fully there (<see cref="CardLayerOpacity"/>).</summary>
     public const float FullPresence = 0.999f;
 
-    /// <summary>The page's reveal: a bleeding artist page reveals opacity-only (the engine's fixed Fast/SmoothOut), because the Soft
-    /// reveal's rise and blur sit on the region's content root and cannot be lifted off the hero without an engine change, and the shell
-    /// photo above the card has neither. Every other artist page keeps Soft.</summary>
-    public static SkelReveal RevealFor(bool bleed) => bleed ? SkelReveal.FadeOnly : SkelReveal.Soft;
+    /// <summary>The page's reveal. Off the bleed the page keeps Soft. Under the bleed the page's OWN clock carries the entrance
+    /// (<see cref="ContentIn"/>, <see cref="PhotoIn"/>, <see cref="FieldOpacity"/>: one stepped clock for the content, the card's photo
+    /// field and the shell's layers), so a bitmap that was resident at the reveal needs no engine reveal at all (<c>None</c>: the region
+    /// would be a second clock on the AnimEngine's), and one that lands later keeps the engine's opacity-only <c>FadeOnly</c> for the
+    /// copy (Soft's rise and blur sit on the region's content root and cannot be lifted off the hero, and the shell photo above the
+    /// card has neither).</summary>
+    public static SkelReveal RevealFor(bool bleed, bool photoResident)
+        => !bleed ? SkelReveal.Soft : photoResident ? SkelReveal.None : SkelReveal.FadeOnly;
 
     /// <summary>Whether the page publishes its backdrop. It gates on the once-per-artist stamp (<see cref="ShellBackdrop.EntranceAtMs"/> was
     /// set, which needs a real hero and its resident bitmap), not on the bitmap's live state: a later url or rendition swap, or a scale
@@ -241,10 +245,42 @@ public static class ArtistBleed
     /// it) runs on the presence alone: a mount fade would multiply a second clock into it.</summary>
     public static bool CrossFadesOnMount(bool replacesShown, float presence) => replacesShown && presence > 0f;
 
-    /// <summary>Whether the card's photo plays an entrance of its own. Under the bleed a bitmap that was resident when the hero mounted
-    /// rests at 1 and the page's FadeOnly reveal carries it; a bitmap that lands later fades itself over <see cref="EntranceMs"/>, on
-    /// the shell's clock. Off the bleed the hero keeps today's entrance.</summary>
-    public static bool CardPhotoFadesItself(bool bleed, bool residentAtMount) => !bleed || !residentAtMount;
+    /// <summary>Whether the card's photo plays an entrance of its own: only off the bleed (today's hero entrance). Under the bleed the
+    /// card's photo and veil are ONE group (<see cref="FieldOpacity"/>) whose opacity carries the entrance, resident or late, on the
+    /// page's clock, so the photo itself rests at 1 on its ready edge.</summary>
+    public static bool CardPhotoFadesItself(bool bleed) => !bleed;
+
+    // ── THE ONE ENTRANCE CLOCK ───────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The engine's step clamp (AnimClock's): one frame never advances a clock by more than this, so a stalled frame does not
+    /// skip the entrance.</summary>
+    public const float MaxStepMs = 40f;
+
+    /// <summary>The page clock's value while it is not running (far past <see cref="SettleMs"/>, so every factor reads 1).</summary>
+    public const float ClockIdleMs = 1e9f;
+
+    /// <summary>One clock step: <paramref name="elapsed"/> advanced by the frame's delta, clamped to <c>0..<see cref="MaxStepMs"/></c>.</summary>
+    public static float StepClock(float elapsed, float dtMs) => elapsed + Math.Clamp(dtMs, 0f, MaxStepMs);
+
+    /// <summary>The page content's opacity: 1 unless the content follows the clock (the first reveal with a resident bitmap), then 0 while
+    /// the clock is primed and <see cref="EntranceAt"/> once it runs.</summary>
+    public static float ContentIn(ShellEntranceMode mode, bool contentFollows, float e)
+        => mode == ShellEntranceMode.Idle || !contentFollows ? 1f : mode == ShellEntranceMode.Primed ? 0f : EntranceAt(e);
+
+    /// <summary>The card's photo field opacity factor: 0 until the entrance is stamped (no bitmap yet), 1 when the content carries the
+    /// fade (the field sits inside it) or the clock is idle, else the late bitmap's own <see cref="EntranceAt"/> on the same clock.</summary>
+    public static float PhotoIn(bool stamped, ShellEntranceMode mode, bool contentFollows, float e)
+        => !stamped ? 0f : mode == ShellEntranceMode.Idle || contentFollows ? 1f : mode == ShellEntranceMode.Primed ? 0f : EntranceAt(e);
+
+    /// <summary>THE ONE BIND on the card's field group (photo, veil and tail): under the bleed the hand-over factor times the entrance
+    /// factor, 1 off it.</summary>
+    public static float FieldOpacity(bool bleed, float cardLayer, float photoIn) => bleed ? cardLayer * photoIn : 1f;
+
+    /// <summary>Whether the page mounts its entrance ticker: from RENDER on the reveal frame N while the clock is primed, or while it
+    /// runs. <c>FrameTicker</c>'s first run only subscribes and the layout effect arms the clock at N, so the first step lands on N+1 with
+    /// <c>min(dt, <see cref="MaxStepMs"/>)</c>, AnimClock's sequence. Under reduced motion the ticker never mounts (the clock finishes at once).</summary>
+    public static bool TicksEntrance(ShellEntranceMode mode, bool running, bool reduced)
+        => (mode == ShellEntranceMode.Primed && !reduced) || running;
 
     // ── THE HAND-OVER ────────────────────────────────────────────────────────────────────────────────────────────────
 

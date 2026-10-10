@@ -1123,6 +1123,9 @@ public static partial class Shell
     /// identical ones), each over <c>ArtistBleed.LegMs</c>. Neither leg is a step. The fade-out runs over <c>Design.Motion.Standard</c>
     /// with the underlay following the presence down. It retains the last backdrop in <see cref="Ui.BleedBackdrop"/> until the
     /// fade-out ends so the card ground keeps its geometry meanwhile. The per-frame ticker is mounted only while the tween runs.
+    /// While the publishing page's own entrance clock runs (<see cref="ShellBackdrop.Entrance"/>, under the bleed) the presenter has no
+    /// clock: it FOLLOWS that clock (<see cref="Follow"/>), so the page's content, its photo field and these layers read one signal
+    /// and never drift apart; a finished clock (reduced motion) lands at once, and every other publish steps the presenter's own clock.
     /// Renders an empty, zero-size box.</summary>
     sealed class BleedPresenter : Component
     {
@@ -1131,6 +1134,9 @@ public static partial class Shell
         float _from, _target, _underFrom;
         long _t0;
         string? _lastKey;
+        /// <summary>The page clock this presenter follows while the entrance runs (null otherwise), and the flag that mounts its follower.</summary>
+        ShellEntranceClock? _follow;
+        readonly Signal<bool> _following = new(false);
 
         public BleedPresenter() => _step = Step;
 
@@ -1139,6 +1145,7 @@ public static partial class Shell
             var backdrop = MaterialState.Value.Backdrop;   // navigation rate
             float target = backdrop is null ? 0f : 1f;
             bool running = _running.Value;
+            var follow = _following.Value ? _follow : null;
             UseEffect(() =>
             {
                 if (backdrop is not null && !ReferenceEquals(Ui.BleedBackdrop.Peek(), backdrop))
@@ -1160,14 +1167,50 @@ public static partial class Shell
                 _t0 = target == 1f && _from < ArtistBleed.FullPresence && backdrop is not null
                     ? ArtistBleed.EntranceStart(now, backdrop.EntranceAtMs) : now;
                 Ui.BleedHandover.Value = 0f;
+                // The page's entrance clock is running: follow it (it already holds this frame's value), with no ticker of our own.
+                if (target == 1f && _from < ArtistBleed.FullPresence && backdrop?.Entrance is { Running: true } clock)
+                {
+                    _running.Value = false;
+                    _follow = clock;
+                    _following.Value = true;
+                    Follow(clock, clock.Elapsed.Peek());
+                    return;
+                }
+                _follow = null;
+                _following.Value = false;
                 if (Design.Reduced) Land();
                 else { _running.Value = true; Step(); }   // seed this frame, so the shell is where the card's photo is
             }, DepKey.From(HashCode.Combine(target, backdrop)));
             return new BoxEl
             {
                 Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
-                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_step))] : [],
+                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_step))]
+                    : follow is not null ? [Embed.Comp(() => new ClockFollower(this, follow)) with { Key = "bleed-follow:" + follow.GetHashCode() }]
+                    : [],
             };
+        }
+
+        /// <summary>The entrance FOLLOWING the page's clock at <paramref name="e"/> ms: the same three curves <see cref="Step"/> reads off its own
+        /// clock, so the shell's presence, underlay and hand-over are the page content's and the card photo's factors, frame for frame.
+        /// A stale follower (another page's clock, or the presenter already moved on) is ignored.</summary>
+        void Follow(ShellEntranceClock clock, float e)
+        {
+            if (!ReferenceEquals(_follow, clock) || _target != 1f) return;
+            Ui.BleedPresence.Value = _from + (1f - _from) * ArtistBleed.EntranceAt(e);
+            Ui.BleedUnderlay.Value = MathF.Max(_underFrom, ArtistBleed.UnderlayAt(e));
+            Ui.BleedHandover.Value = ArtistBleed.HandoverAt(e);
+            if (e >= ArtistBleed.SettleMs) Land();
+        }
+
+        /// <summary>Subscribes to the page clock and forwards each step to <see cref="Follow"/>. Mounted only while the presenter follows;
+        /// its zero-size box is the whole tree.</summary>
+        sealed class ClockFollower(BleedPresenter owner, ShellEntranceClock clock) : Component
+        {
+            public override Element Render()
+            {
+                UseSignalEffect(() => owner.Follow(clock, clock.Elapsed.Value));
+                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            }
         }
 
         void Step()
@@ -1196,6 +1239,8 @@ public static partial class Shell
             Ui.BleedHandover.Value = _target;
             if (_target == 0f) Ui.BleedBackdrop.Value = null;
             _running.Value = false;
+            _follow = null;
+            _following.Value = false;
         }
     }
 

@@ -181,6 +181,13 @@ public readonly partial struct Artist
         /// <summary>The hero wait's cap, LATCHED by <see cref="_heroWaitElapsed"/> (a timeout after <see cref="_overviewAtMs"/>) and read by
         /// Render as a flag, never re-derived from frame time (<c>FrameTime.NowMs</c> is the present stamp and trails the timer).</summary>
         bool _heroCapElapsed;
+        /// <summary>The page's ONE entrance clock (<see cref="ShellEntranceClock"/>), under the bleed: the page content, the card's photo
+        /// field and the shell's layers all read its <see cref="ShellEntranceClock.Elapsed"/>. It is primed in Render on the frame the
+        /// entrance is stamped and armed by the layout effect, so the first step lands on the frame after the reveal.</summary>
+        readonly ShellEntranceClock _clock = new();
+        /// <summary>True while the entrance ticker is mounted past the reveal frame (the clock is stepping); cleared by the tick that
+        /// finds the clock done, which unmounts the ticker.</summary>
+        readonly Signal<bool> _clockRunning = new(false);
         /// <summary>DemandRows has asked for the rows of the current popular list, so the page's chart gate may read their marks.</summary>
         bool _popularAsked;
         /// <summary>The hero photo's failure as seen up to the reveal, then frozen (F2): a failure before the reveal reveals the non-bleed
@@ -218,6 +225,8 @@ public readonly partial struct Artist
         readonly Action<RectF> _measure;
         readonly Action _watchScroll;
         readonly Action _heroWaitElapsed;
+        readonly Action _stepClock, _armClock;
+        readonly Func<float> _contentIn, _photoIn;
         readonly Func<long> _stampFn;
 
         public PageHost()
@@ -287,8 +296,27 @@ public readonly partial struct Artist
                 _heroCapElapsed = true;
                 if (!_heroGateOpened) _heroWaitTick.Value = _heroWaitTick.Peek() + 1;
             };
+            _stepClock = () =>
+            {
+                if (_clock.Running) _clock.Step(Design.FrameTime.NowMs);
+                if (!_clock.Running) _clockRunning.Value = false;
+            };
+            // The layout effect of the reveal frame N: the clock starts at N (Elapsed 0) and its first step lands on N+1. Reduced motion
+            // finishes it at once, so the page is fully visible and no ticker ever mounts.
+            _armClock = () =>
+            {
+                if (_clock.Mode != ShellEntranceMode.Primed) return;
+                if (Design.Reduced) { _clock.Finish(); return; }
+                _clock.Arm(Design.FrameTime.NowMs);
+                _clockRunning.Value = true;
+            };
+            _contentIn = () => ArtistBleed.ContentIn(_clock.Mode, _clock.ContentFollows, _clock.Elapsed.Value);
+            _photoIn = () => ArtistBleed.PhotoIn(_entranceAtMs != 0, _clock.Mode, _clock.ContentFollows, _clock.Elapsed.Value);
             _stampFn = Stamp;
         }
+
+        /// <summary>The entrance clock's per-frame tick (<see cref="Controls.FrameTicker"/>), named for the <c>[wake]</c> census.</summary>
+        sealed class EntranceTicker(Action tick) : Controls.FrameTicker(tick);
 
         public void ApplyProps(object props)
         {
@@ -324,6 +352,7 @@ public readonly partial struct Artist
                 _heroUrl = null;
                 _heroGateOpened = false;
                 _entranceAtMs = 0;
+                _clock.Reset();
                 _overviewAtMs = 0; _heroCapElapsed = false; _popularAsked = false; _heroPhotoFailed = false;
                 _heroDecodeW = _heroDecodeH = 0;
                 // DemandRows' gates (ch 08 render-cost fix): forced back to default so the first pass for the NEW
@@ -448,12 +477,9 @@ public readonly partial struct Artist
             // The gate reads the popular rows' marks only for the list DemandRows has asked: before that "not asked" is not "failed".
             bool rowsAsked = _popularAsked && _popularStamp.Slot == a.Slot && _popularStamp.Version == e.ArtistPopular.Version(a.Slot);
             bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, rowsAsked));
+            bool wasRevealed = _heroGateOpened;
             _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled, heroSettled);
             if (_bodyReady) _heroGateOpened = true;
-            // The photo's entrance starts on this frame (the page's reveal, or the late bitmap's ready edge): the shell's presence is stamped
-            // with it, once per artist, and only for a real hero whose bitmap is resident (a failed photo never stamps).
-            if (ArtistBleed.StampsEntrance(_bodyReady, hasUrl, heroResident, _entranceAtMs != 0)) _entranceAtMs = Design.FrameTime.NowMs;
-
             // EXPERIMENTAL (artist bleed; Artist.Bleed.cs): the photo runs from the window top behind the chrome. The ONE read of
             // `ArtistBleed.Enabled`. Only once the body is up, so the skeleton never draws over a photo it does not show. The
             // tint's publish carries the backdrop as data; the shell draws it. `floor` and the collapse distance are the hero's own
@@ -461,6 +487,17 @@ public readonly partial struct Artist
             // decision reads the LIVE nav style, so a switch re-renders the page and the card's layers fade with the shell's).
             bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(),
                 ArtistBleed.HeaderPhotoFor(heroUrl, _bodyReady, heroFailed), zune, _metrics.Stacked);
+            // The photo's entrance starts on this frame (the page's reveal, or the late bitmap's ready edge): the shell's presence is stamped
+            // with it, once per artist, and only for a real hero whose bitmap is resident (a failed photo never stamps). Under the bleed it
+            // also primes the page's ONE clock (every entrance factor reads 0 until the layout effect below arms it on this same frame, so
+            // the first step lands on the next one): the content follows it on the first reveal, only the late photo on a later stamp.
+            if (ArtistBleed.StampsEntrance(_bodyReady, hasUrl, heroResident, _entranceAtMs != 0))
+            {
+                _entranceAtMs = Design.FrameTime.NowMs;
+                if (bleed) _clock.Prime(contentFollows: !wasRevealed);
+            }
+            UseLayoutEffect(_armClock, DepKey.From(_entranceAtMs));
+
             // The backdrop is published only once the hero bitmap has been resident (the stamp; the page's own UseImage is the card's and the
             // shell's cache entry), so until then drawn() is false, the card carries everything and the shell draws nothing. It is gated on the
             // STAMP, not the live state: a later url/rendition swap or scale change leaves Ready for a moment and must not tear the bleed down.
@@ -471,7 +508,7 @@ public readonly partial struct Artist
                 float bleedPhotoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
                 backdrop = new ShellBackdrop(heroUrl!, bleedPhotoH, bleedPhotoH, bleedFloor, _scroll.Offset,
                     ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text,
-                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent, EntranceAtMs: _entranceAtMs);
+                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent, EntranceAtMs: _entranceAtMs, Entrance: _clock);
             }
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
@@ -494,11 +531,11 @@ public readonly partial struct Artist
             // Not None, which means "the content animates its own entrance" - and this content has none, so the swap
             // landed as a hard cut with nothing moving at all (shitttt.mp4).
             //
-            // A bleeding Zune artist page reveals opacity-only instead (ArtistBleed.RevealFor): the photo is also drawn by the shell
-            // above the card's top, which has no rise and no blur, so the region fades on the shell photo's clock
-            // (ArtistBleed.EntranceMs). It publishes the backdrop only once the hero bitmap is resident, and both photos start from one
-            // stamp (EntranceAtMs); the shell's first paint trails it by about two frames (the publish and the presenter are passive
-            // effects) and catches up on the same curve.
+            // A bleeding Zune artist page has no engine reveal for a resident bitmap (ArtistBleed.RevealFor: None) and an opacity-only one
+            // for a late bitmap: the photo is also drawn by the shell above the card's top, which has no rise and no blur, and the entrance
+            // is the page's ONE clock (_clock): the content root (ContentIn), the card's photo field (PhotoIn) and the shell's presence,
+            // underlay and hand-over (BleedPresenter follows it) all read the same stepped signal, so nothing can drift. It publishes the
+            // backdrop only once the hero bitmap is resident, from the one stamp (EntranceAtMs).
             //
             // The reveal is safe to animate now in a way it was NOT before, which is the whole point of the gate
             // above: `BodyReady` has already waited for the overview, the measured width, a settled chart and, under the bleed, the
@@ -509,7 +546,7 @@ public readonly partial struct Artist
             // second wave after the page has already revealed.
             Element region = new SkelRegionEl(
                 Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: ArtistBleed.RevealFor(bleed), Style: SkeletonStyle.Default,
+                OnFailed: _failedPanelFn, Reveal: ArtistBleed.RevealFor(bleed, heroResident), Style: SkeletonStyle.Default,
                 Group: null, SmoothResize: false);
 
             Element scroll = ScrollView(new BoxEl
@@ -528,12 +565,18 @@ public readonly partial struct Artist
                 Handle = _scroll,
             };
 
+            // The entrance ticker is mounted from RENDER while the clock is primed (the reveal frame N: FrameTicker's first run only
+            // subscribes and the layout effect arms the clock at N, so the first step lands on N+1) or running. Never under reduced motion.
+            Element ticker = ArtistBleed.TicksEntrance(_clock.Mode, _clockRunning.Value, Design.Reduced)
+                ? Embed.Comp(() => new EntranceTicker(_stepClock)) with { Key = "artist-entrance-ticker" }
+                : new BoxEl { Width = 0f, Height = 0f };
+
             // The page PROVIDES its accent (Design.AccentCtx): the heart and every other ambient consumer read it.
             return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)_pageAccent,
                 Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>?)_scrollY, new BoxEl
                 {
                     Key = "artist-page:" + routeKey, Grow = 1f, Direction = 1, OnBoundsChanged = _measure,
-                    Children = [tint, scroll],
+                    Children = [tint, scroll, ticker],
                 }));
         }
 
@@ -640,7 +683,7 @@ public readonly partial struct Artist
             Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems, inRow2);
             Element hero = HeroBanner(HeroText.For(a), uri, heroUrl, paletteUrl, width, in m, accent,
                 compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor, bleedDrawn: _bleedDrawn,
-                decodeW: _heroDecodeW, decodeH: _heroDecodeH);
+                decodeW: _heroDecodeW, decodeH: _heroDecodeH, photoIn: _photoIn);
 
             // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`_compact`). The
             // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two
@@ -684,9 +727,10 @@ public readonly partial struct Artist
             float washPhotoH = ArtistHeroLayout.PhotoHeightFor(in m);
             float washInset = bleeding ? ArtistBleed.WashTopInset(washPhotoH) : 0f;
 
+            // ONE always-present root whose opacity is the page clock's content factor (1 unless the first reveal's content follows it).
             return new BoxEl
             {
-                ZStack = true,
+                ZStack = true, Opacity = Prop.Of(_contentIn),
                 Children =
                 [
                     new BoxEl
