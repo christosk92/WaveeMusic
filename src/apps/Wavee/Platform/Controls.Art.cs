@@ -557,29 +557,20 @@ public static partial class Controls
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipRailExtent = ChipRailHeight + Spacing.S;
 
-    /// <summary>One filter chip — a <see cref="ToggleButton.Controlled"/> (Workstream B: the grammar table's "Filter /
-    /// mode toggles" row, stock checked = accent). <paramref name="available"/> false renders it SHOWN AND DISABLED
+    /// <summary>One filter chip: the STOCK <see cref="ToggleButton.Controlled"/> (32/r4, WinUI's own ramp, checked =
+    /// accent) with no style of its own. Every filter chip in the app is this one control, the look the Concerts filter
+    /// bar set. <paramref name="available"/> false renders it SHOWN AND DISABLED
     /// rather than dropping it: a curated filter set is library-scoped and routinely names concepts whose rows have not
     /// been enriched yet, so dropping those hid the whole bar on a cold list. They become live as enrichment lands.
     /// <para>The selected value is entirely CALLER-owned (the live filter state), so this is <c>Controlled</c>: a click
     /// only invokes <paramref name="onClick"/> — the re-render that follows is what actually flips <paramref
     /// name="selected"/>.</para></summary>
-    public static Element Chip(string label, bool selected, bool available, Action? onClick)
+    public static Element Chip(string label, bool selected, bool available, Action? onClick, TemplateParts? parts = null)
         => ToggleButton.Controlled(label, selected, _ => onClick?.Invoke(),
-            style: AccentToggleStyle(Tok.AccentDefault) with
-            {
-                // The chip keeps its own capsule geometry — the 32/r4 ladder is for the labeled/icon button grammar,
-                // not this scrolling rail, which has always read as pills.
-                CornerRadius = Radii.Full,
-                MinHeight = ChipHeight,
-                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                FontSize = 13f,                              // DenseTitle/DenseMeta's size (13/18) — the chip rail's own rung
-                FocusVisualMargin = Design.FocusInsetBordered,
-            },
-            isEnabled: available, parts: RootNoShrink);
+            isEnabled: available, parts: parts ?? RootNoShrink);
             // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
-            // flex compresses every pill to fit the viewport and the labels ellipsise instead of the rail
-            // overflowing, which is the opposite of what the scroller is for.
+            // flex compresses every chip to fit the viewport and the labels ellipsise instead of the rail
+            // overflowing, which is the opposite of what the scroller is for. Callers passing their own parts keep it.
 
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.

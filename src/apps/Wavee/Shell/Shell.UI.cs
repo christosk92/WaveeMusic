@@ -1687,33 +1687,26 @@ public static partial class Shell
         };
     }
 
+    /// <summary>The filter chips on the shared one-line rail (it scrolls with an edge fade if the flyout is too narrow).</summary>
     static Element FilterPills(NotifyFilter current) => new BoxEl
     {
-        Direction = 0, Gap = 6f, Padding = new Edges4(12f, 2f, 12f, 8f),
+        Padding = new Edges4(12f, 2f, 12f, 0f),
         Children =
         [
-            FilterPill(Strings.Notifications.Filter.All, NotifyFilter.All, current),
-            FilterPill(Strings.Notifications.Filter.Updates, NotifyFilter.Updates, current),
-            FilterPill(Strings.Notifications.Filter.Spotify, NotifyFilter.Spotify, current),
-            FilterPill(Strings.Notifications.Filter.New, NotifyFilter.New, current),
-            FilterPill(Strings.Notifications.Filter.Activity, NotifyFilter.Activity, current),
+            Controls.ChipRail(
+            [
+                FilterPill(Strings.Notifications.Filter.All, NotifyFilter.All, current),
+                FilterPill(Strings.Notifications.Filter.Updates, NotifyFilter.Updates, current),
+                FilterPill(Strings.Notifications.Filter.Spotify, NotifyFilter.Spotify, current),
+                FilterPill(Strings.Notifications.Filter.New, NotifyFilter.New, current),
+                FilterPill(Strings.Notifications.Filter.Activity, NotifyFilter.Activity, current),
+            ], "notify.filters"),
         ],
     };
 
+    /// <summary>The app's one filter chip (<see cref="Controls.Chip"/>); exclusive, so a click on the active one is a no-op.</summary>
     static Element FilterPill(string labelKey, NotifyFilter pill, NotifyFilter current)
-    {
-        bool on = pill == current;
-        return new BoxEl
-        {
-            Shrink = 0f, MinHeight = 26f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Padding = new Edges4(11f, 3f, 11f, 3f), Corners = CornerRadius4.All(13f),
-            Fill = on ? Tok.AccentDefault : Tok.FillSubtleSecondary,
-            HoverFill = on ? Tok.AccentSecondary : Design.Colors.RowHover,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-            OnClick = () => Notify.Filter.Value = pill,
-            Children = [new TextEl(Loc.Get(labelKey)) { Size = 12f, Weight = 600, Color = on ? Tok.TextOnAccentPrimary : Tok.TextSecondary }],
-        };
-    }
+        => Controls.Chip(Loc.Get(labelKey), pill == current, true, () => Notify.Filter.Value = pill) with { Key = "notify-filter:" + (int)pill };
 
     static Element NotificationRow(Notification n, long now, Signal<string> expanded, string expandedId, IOverlayService? overlay) => n.Category switch
     {

@@ -152,6 +152,10 @@ public class ControlsGeometryTests
         => Assert.Equal(Controls.ChipRailHeight + Spacing.S, Controls.ChipRailExtent);
 
     [Fact]
+    public void A_chip_is_the_stock_32_dip_control_height()
+        => Assert.Equal(32f, Controls.ChipHeight);
+
+    [Fact]
     public void The_dialog_width_ladder_is_three_rungs_inside_the_engine_clamp()
     {
         Assert.Equal(320f, Controls.DialogWidthCompact);
