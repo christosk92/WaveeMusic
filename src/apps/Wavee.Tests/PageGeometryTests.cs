@@ -155,6 +155,7 @@ public class PageGeometryRhythmTests
         Assert.Equal(PageGeometry.PaneInset, Detail.RailPolicy.SidePadL);
         Assert.Equal(PageGeometry.PaneInset, Detail.RailLayout.PadTop);
         Assert.Equal(Detail.RailPolicy.CoverGap, Detail.RailPolicy.SidePadR);
-        Assert.Equal(24f, Detail.RailPolicy.CoverGap);
+        Assert.Equal(PageGeometry.PaneInset, Detail.RailPolicy.PanelPad);   // the cover sits centred in its panel
+        Assert.Equal(Detail.RailPolicy.PanelPad + Detail.RailPolicy.PanelGap, Detail.RailPolicy.CoverGap);
     }
 }

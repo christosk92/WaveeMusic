@@ -84,7 +84,7 @@ public readonly partial struct User
         {
             _demandModel = DemandModel;
             _demandRows = DemandRows;
-            _lensActive = () => LensActive(_lens);
+            _lensActive = () => LensActive(_lens, DetailKind.Liked);
             _computeChips = ComputeChips;
             _chipBar = () => _chips is { } chips
                 ? Embed.Comp(new LikedChipBarProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
@@ -355,13 +355,13 @@ public readonly partial struct User
             string? selected = live.View.Value.Filters.Tag;   // subscribe: the selected chip IS filter state
             var kids = new Element[model.Titles.Length + 1];
             // AllChip, not AllTracks: a chip beside "Pop" and "K-Pop", where the short word reads as one of the set.
-            kids[0] = Controls.Chip(Loc.Get(Strings.Detail.Filter.AllChip), selected is null, true, _selectAll, Controls.ChipTone.Neutral) with { Key = "chip:all" };
+            kids[0] = Controls.Chip(Loc.Get(Strings.Detail.Filter.AllChip), selected is null, true, _selectAll) with { Key = "chip:all" };
             for (int i = 0; i < model.Titles.Length; i++)
             {
                 string tag = model.Titles[i];
                 bool on = string.Equals(tag, selected, StringComparison.OrdinalIgnoreCase);
                 bool available = i < model.Evidenced;
-                kids[i + 1] = Controls.Chip(tag, on, available, available ? () => Select(on ? null : tag) : null, Controls.ChipTone.Neutral)
+                kids[i + 1] = Controls.Chip(tag, on, available, available ? () => Select(on ? null : tag) : null)
                     with { Key = "chip:" + tag };
             }
             return Controls.ChipRail(kids, p.ScrollKey, inBar: true) with { Key = "chips" };

@@ -389,7 +389,7 @@ public static partial class Detail
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
-    const float RailSidePadL = RailPolicy.SidePadL, RailSidePadR = RailPolicy.SidePadR;   // 16 (the one pane inset) / 24 (RailPolicy.CoverGap)
+    const float RailSidePadL = RailPolicy.SidePadL;   // 16, the one pane inset (the right side is RailPolicy.PanelPad inside the panel)
     const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = 256;                                // the shelf card's bucket — a warm texture on arrival
@@ -874,8 +874,8 @@ public static partial class Detail
                 DropTarget = drop,
                 Children = rowKids,
             };
-            // The resizable rail's grip is an overlay strip centred on the 24-DIP gap (RailPolicy.CoverGap) between the cover and the first plate: it takes
-            // no row width. It sits inside the gap, (CoverGap - StripW) / 2 DIP clear of the cover and the plate. The collapsed arm's
+            // The resizable rail's grip is an overlay strip centred on the gap between the rail's panel and the first plate
+            // (RailPolicy.PanelGap): it takes no row width. The collapsed arm's
             // re-open strip is the SAME node on the 20-DIP slot after the identity strip, so a drag that collapses the rail keeps
             // its pointer capture. It is the topmost child so it wins hit-testing over the cover and the plate; the cost is that it
             // follows the table in Tab / automation order (the engine has no focus-order hint), and it stays reachable by pointer.
@@ -1317,9 +1317,19 @@ public static partial class Detail
     /// boundary that swaps to it (<c>FrameHost.RailRegion</c>) — outside the boundary, so the fill never blinks.</summary>
     static Element RailFrame(DetailKind kind, float railW, Element body) => new BoxEl
     {
-        Direction = 1, Width = railW, Shrink = 0f, ClipToBounds = true,
-        Fill = kind == DetailKind.Liked ? ColorF.Transparent : Tok.FillLayerDefault,
-        Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW }],
+        // The panel stops PanelGap short of the column: that gap is the air between the panel and the list (RailPolicy.CoverGap
+        // is PanelPad inside it plus PanelGap outside it). The column keeps its full width, so the table does not move.
+        Direction = 1, Width = railW, Shrink = 0f,
+        Padding = new Edges4(0f, 0f, RailPolicy.PanelGap, 0f),
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+                Fill = kind == DetailKind.Liked ? ColorF.Transparent : Tok.FillLayerDefault,
+                Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW - RailPolicy.PanelGap }],
+            },
+        ],
     };
 
     /// <summary>The page-subject cover's gesture, from the shared surface's ownership rule (<see cref="SurfaceRules"/>). The
@@ -1464,8 +1474,8 @@ public static partial class Detail
 
     static Element RailColumnBox(float railW, Element[] rows) => new BoxEl
     {
-        Direction = 1, Gap = RailGap, Width = railW, Shrink = 0f,
-        Padding = new Edges4(RailSidePadL, RailLayout.PadTop, RailSidePadR, RailLayout.PadBottom),
+        Direction = 1, Gap = RailGap, Width = railW - RailPolicy.PanelGap, Shrink = 0f,
+        Padding = new Edges4(RailSidePadL, RailLayout.PadTop, RailPolicy.PanelPad, RailLayout.PadBottom),
         Children = rows,
     };
 

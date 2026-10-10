@@ -315,7 +315,8 @@ public readonly partial struct Track
             {
                 bool labelled = LikedBarLayout.ShuffleLabelled(rung);
                 left.Add(MeasuredCommand(labelled ? 2 : -1, "cmd:shuffle",
-                    Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), _shuffle, labelled)));
+                    Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), _shuffle, labelled))
+                    with { Margin = new Edges4(LikedBarLayout.PlayShuffleGap - CommandBarLayout.Gap, 0f, 0f, 0f) });
             }
             if (chipsPresent && LikedBarLayout.ChipsInline(rung))
             {
@@ -413,7 +414,7 @@ public readonly partial struct Track
 
         /// <summary>A bar member that animates in and out of the bar. A non-negative <paramref name="slot"/> reports its width to
         /// the fit (the LABELLED width the budget needs); -1 is a member whose width is fixed or not the budget's.</summary>
-        Element MeasuredCommand(int slot, string key, Element command) => new BoxEl
+        BoxEl MeasuredCommand(int slot, string key, Element command) => new BoxEl
         {
             Key = key, Direction = 1, Shrink = 0f, Animate = s_toolbarCommandMotion,
             OnBoundsChanged = slot < 0 ? null : r => MeasureToolbarCommand(slot, r.W),

@@ -152,12 +152,8 @@ public class ControlsGeometryTests
         => Assert.Equal(Controls.ChipRailHeight + Spacing.S, Controls.ChipRailExtent);
 
     [Fact]
-    public void The_chip_capsule_geometry_is_shared_by_the_toggle_chip_and_the_link_chip()
-    {
-        Assert.Equal(Spacing.M, Controls.ChipPadX);
-        Assert.Equal(13f, Controls.ChipFontSize);
-        Assert.Equal(32f, Controls.ChipHeight);
-    }
+    public void A_chip_is_the_stock_32_dip_control_height()
+        => Assert.Equal(32f, Controls.ChipHeight);
 
     [Fact]
     public void A_link_chip_is_a_keyed_hyperlink_that_never_shrinks()
@@ -167,8 +163,6 @@ public class ControlsGeometryTests
         Assert.Equal(AutomationRole.Hyperlink, chip.Role);
         Assert.Equal(0f, chip.Shrink);                       // a wrapping row breaks to a new line instead of ellipsising
         Assert.Equal(Controls.ChipHeight, chip.MinHeight);   // one fixed height per line
-        Assert.Equal(Controls.ChipPadX, chip.Padding.Left);
-        Assert.Equal(Controls.ChipPadX, chip.Padding.Right);
     }
 
     [Fact]
@@ -363,56 +357,6 @@ public class ControlsCtaTests
         Assert.Equal(ButtonRules.PlaySplitVerb.AddToQueue, items[0]);
         Assert.Equal(ButtonRules.PlaySplitVerb.PlayNext, items[1]);
         Assert.Equal(ButtonRules.PlaySplitVerb.StartRadio, items[2]);
-    }
-}
-
-public class ControlsChipToneTests
-{
-    [Fact]
-    public void The_neutral_chip_fills_with_primary_ink_and_picks_a_contrast_label()
-    {
-        var neutral = Controls.ChipStyle(Controls.ChipTone.Neutral);
-        Assert.Equal(Tok.TextPrimary, neutral.OnBackground);
-        Assert.Equal(ColorContrast.PickContrast(Tok.TextPrimary), neutral.OnForeground);
-    }
-
-    [Fact]
-    public void The_neutral_chip_off_state_is_the_stock_toggle_ramp_and_it_never_wears_the_accent()
-    {
-        // The off plate is the standard-button fill/border (the same look as LinkChip and Browse's pills), not an outline.
-        var neutral = Controls.ChipStyle(Controls.ChipTone.Neutral);
-        var stock = FluentGpu.Controls.ToggleButton.DefaultStyle;
-        Assert.Equal(stock.OffBackground, neutral.OffBackground);
-        Assert.Equal(stock.OffBorder, neutral.OffBorder);
-        Assert.Equal(stock.OffHoverBorder, neutral.OffHoverBorder);
-        Assert.NotEqual(ColorF.Transparent, neutral.OffBackground);
-        Assert.NotEqual(Tok.AccentDefault, neutral.OnBackground);
-        Assert.Equal(ColorF.Transparent, neutral.OnBorder!.Value.Stops[0].Color);
-        Assert.Equal(ColorF.Transparent, neutral.OnHoverBorder!.Value.Stops[0].Color);
-    }
-
-    [Fact]
-    public void The_accent_chip_is_unchanged()
-    {
-        var accent = Controls.ChipStyle(Controls.ChipTone.Accent);
-        var stock = Controls.AccentToggleStyle(Tok.AccentDefault);
-        Assert.Equal(Tok.AccentDefault, accent.OnBackground);
-        Assert.Equal(stock.OnForeground, accent.OnForeground);
-        Assert.Equal(stock.OffBackground, accent.OffBackground);
-        Assert.Equal(stock.OffBorder, accent.OffBorder);   // the stock ramp object, untouched
-        Assert.Equal(Radii.Full, accent.CornerRadius);
-        Assert.Equal(Controls.ChipHeight, accent.MinHeight);
-    }
-
-    [Fact]
-    public void Both_tones_share_the_capsule_geometry()
-    {
-        var a = Controls.ChipStyle(Controls.ChipTone.Accent);
-        var n = Controls.ChipStyle(Controls.ChipTone.Neutral);
-        Assert.Equal(a.CornerRadius, n.CornerRadius);
-        Assert.Equal(a.MinHeight, n.MinHeight);
-        Assert.Equal(a.Padding, n.Padding);
-        Assert.Equal(a.FontSize, n.FontSize);
     }
 }
 

@@ -324,7 +324,7 @@ public readonly partial struct Playlist
             _editable = () => _playlist.Editable;
             _deposit = Deposit;
             _moveRows = (rows, at) => Spotify.PlaylistEdits.MoveRows(_playlist, rows, at);
-            _lensExtent = () => User.LensExtentFor(_lens);
+            _lensExtent = () => User.LensExtentFor(_lens, DetailKind.Playlist);
             _removeRows = rows => Spotify.PlaylistEdits.RemoveRows(_playlist, rows);
             _recs = () => RecommendationsSection(_playlist);
             _lensHeader = () => User.LensHeader(_lens, DetailKind.Playlist);

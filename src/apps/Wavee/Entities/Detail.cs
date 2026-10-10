@@ -738,22 +738,29 @@ public static partial class Detail
         public static float ComposedExtraWidth(bool resizable, bool classic)
             => (resizable ? GripStripW : 0f) + Track.RowMetrics.LeadFor(twoColumn: true, classic);
 
-        /// <summary>The air between the rail's cover and the table's first plate: its own 24 DIP, not the 8-DIP frame gap (the
-        /// cover read as glued to the list). The cover pays it out of its own width: <see cref="ComposedExtraWidth"/> is
-        /// unchanged, so the table does not move and the cover is 16 DIP narrower than with the frame gap.</summary>
-        public const float CoverGap = FluentGpu.Dsl.Spacing.XXL;
+        /// <summary>The rail's layer panel pads its content by the one pane inset on BOTH sides, so the cover sits centred in
+        /// it (the panel used to run 24 DIP past the cover and then butt straight into the list).</summary>
+        public const float PanelPad = PageGeometry.PaneInset;
+
+        /// <summary>The air between the rail's panel edge and the table's first plate: the panel is a surface of its own, so
+        /// it never touches the list.</summary>
+        public const float PanelGap = FluentGpu.Dsl.Spacing.L;
+
+        /// <summary>The cover's right edge to the table's first plate: the panel's own padding plus the gap outside it. The
+        /// cover pays it out of its own width: <see cref="ComposedExtraWidth"/> is unchanged, so the table does not move.</summary>
+        public const float CoverGap = PanelPad + PanelGap;
 
         /// <summary>The rail column's side padding: the left is the one pane inset, the right is the <see cref="CoverGap"/> the rail
-        /// pays between its cover and the table's first plate.</summary>
+        /// pays between its cover and the table's first plate (<see cref="PanelPad"/> inside the panel, <see cref="PanelGap"/>
+        /// outside it).</summary>
         public const float SidePadL = PageGeometry.PaneInset, SidePadR = CoverGap;
 
         /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the (composed) column less its side padding, floored at 80.</summary>
         public static float CoverEdge(float composedRailW) => MathF.Max(80f, composedRailW - SidePadL - SidePadR);
 
-        /// <summary>The x of the grip's strip inside the two-column row: centred on the <see cref="CoverGap"/> that the rail's
-        /// trailing padding forms with the table's first plate. The 16-DIP strip sits wholly inside that 24-DIP gap, 4 DIP clear
-        /// of the cover and of the first plate (<c>(StripW - CoverGap) / 2</c> is the overlap, negative = clearance).</summary>
-        public static float GripOverlayX(float composedRailW) => composedRailW - (CoverGap + GripStripW) / 2f;
+        /// <summary>The x of the grip's strip inside the two-column row: centred on the <see cref="PanelGap"/> between the
+        /// rail's panel and the table's first plate, so a hovered grip reads as the divider between the two surfaces.</summary>
+        public static float GripOverlayX(float composedRailW) => composedRailW - (PanelGap + GripStripW) / 2f;
 
         /// <summary>The live maximum moves in 8-DIP steps, so a per-pixel window resize cannot churn the frame's render
         /// (and the floor never rounds the cap UP past what the page can actually give).</summary>

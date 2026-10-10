@@ -399,7 +399,7 @@ public class DetailRailPolicyTests
 
     /// <summary>The freed width goes to the rail and nowhere else: the table host starts where it always did (rail + the
     /// grip's old 16-DIP strip), so its header text, toolbar and rows do not move, and the cover grows by the freed width less
-    /// the 16 DIP the wider cover gap (24, was 8) takes back. Classic frees only the grip's strip.</summary>
+    /// what the wider cover gap (PanelPad + PanelGap, was 8) takes back. Classic frees only the grip's strip.</summary>
     [Theory]
     [InlineData(true, false, 240f)]
     [InlineData(true, false, 360f)]
@@ -419,17 +419,14 @@ public class DetailRailPolicyTests
         Assert.Equal(freed - gapGrowth, RailPolicy.CoverEdge(resting + freed) - oldCover);
     }
 
-    /// <summary>The grip strip is centred on the 24-DIP cover gap; it overlaps the cover and the first plate by
-    /// (StripW - CoverGap) / 2 each (negative: it sits inside the gap, clear of both), and takes no row width.</summary>
+    /// <summary>The grip strip is centred on the gap between the rail's panel and the first plate, and takes no row width.</summary>
     [Fact]
-    public void GripOverlay_IsCentredOnTheGap()
+    public void GripOverlay_IsCentredOnTheGapOutsideThePanel()
     {
         const float composed = 400f;
         float x = RailPolicy.GripOverlayX(composed);
-        float overlap = (FluentGpu.Controls.Splitter.StripW - RailPolicy.CoverGap) / 2f;
-
-        Assert.Equal((composed - RailPolicy.CoverGap) - x, overlap);
-        Assert.Equal(x + FluentGpu.Controls.Splitter.StripW - composed, overlap);
+        float panelEdge = composed - RailPolicy.PanelGap;
+        Assert.Equal(panelEdge + RailPolicy.PanelGap / 2f, x + FluentGpu.Controls.Splitter.StripW / 2f);
     }
 
     [Fact]

@@ -554,71 +554,33 @@ public static partial class Controls
     /// stacked detail chrome column, INCLUDING its bottom semantic gap — one number, so a page's layout arithmetic and
     /// the rail itself cannot disagree.</summary>
     public const float ChipHeight = 32f, ChipRailHeight = 40f;
-    /// <summary>The chip's horizontal padding and label size: the capsule geometry <see cref="Chip"/> and
-    /// <see cref="LinkChip"/> share. 13 is DenseTitle/DenseMeta's size (13/18), the chip rail's own rung.</summary>
-    public const float ChipPadX = Spacing.M, ChipFontSize = 13f;
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipRailExtent = ChipRailHeight + Spacing.S;
 
-    /// <summary>One filter chip — a <see cref="ToggleButton.Controlled"/> (Workstream B: the grammar table's "Filter /
-    /// mode toggles" row, stock checked = accent). <paramref name="available"/> false renders it SHOWN AND DISABLED
-    /// rather than dropping it: a curated filter set is library-scoped and routinely names concepts whose rows have not
-    /// been enriched yet, so dropping those hid the whole bar on a cold list. They become live as enrichment lands.
+    /// <summary>One filter chip: the STOCK <see cref="ToggleButton.Controlled"/> (32/r4, WinUI's own ramp, checked =
+    /// accent) with no style of its own. Every filter chip in the app is this one control, the look the Concerts filter
+    /// bar set; the earlier capsule and white-selected variants are gone. <paramref name="available"/> false renders it
+    /// SHOWN AND DISABLED rather than dropping it: a curated filter set is library-scoped and routinely names concepts
+    /// whose rows have not been enriched yet, so dropping those hid the whole bar on a cold list. They become live as
+    /// enrichment lands.
     /// <para>The selected value is entirely CALLER-owned (the live filter state), so this is <c>Controlled</c>: a click
     /// only invokes <paramref name="onClick"/> — the re-render that follows is what actually flips <paramref
     /// name="selected"/>.</para></summary>
-    public static Element Chip(string label, bool selected, bool available, Action? onClick, ChipTone tone = ChipTone.Accent)
+    public static Element Chip(string label, bool selected, bool available, Action? onClick, TemplateParts? parts = null)
         => ToggleButton.Controlled(label, selected, _ => onClick?.Invoke(),
-            style: ChipStyle(tone),
-            isEnabled: available, parts: RootNoShrink);
+            isEnabled: available, parts: parts ?? RootNoShrink);
             // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
             // flex compresses every pill to fit the viewport and the labels ellipsise instead of the rail
-            // overflowing, which is the opposite of what the scroller is for.
+            // overflowing, which is the opposite of what the scroller is for. Callers passing their own parts keep it.
 
-    /// <summary>Which fill a SELECTED <see cref="Chip"/> wears. <see cref="Accent"/> is the stock checked = accent capsule;
-    /// <see cref="Neutral"/> is the primary-ink fill (<see cref="Tok.TextPrimary"/>, with the contrast-picked label) over the
-    /// stock standard-button off plate, for a bar whose Play button is the page's only accent (Liked Songs' genre chips).</summary>
-    public enum ChipTone : byte { Accent, Neutral }
-
-    /// <summary>The chip capsule's <see cref="ToggleButton.Style"/> for a tone: the shared geometry (the chip keeps its own
-    /// capsule — the 32/r4 ladder is for the labeled/icon button grammar, not this scrolling rail, which has always read as
-    /// pills) over <see cref="AccentToggleStyle"/>'s checked arm. <see cref="ChipTone.Neutral"/> fills with
-    /// <see cref="Tok.TextPrimary"/> (the ink is the contrast pick, so it flips with the theme) and draws no accent hairline
-    /// on the fill; its OFF state is the stock ToggleButton ramp (the standard-button plate and border), the same look as
-    /// <see cref="LinkChip"/> and Browse's pills.</summary>
-    public static ToggleButton.Style ChipStyle(ChipTone tone)
-    {
-        var style = tone == ChipTone.Neutral
-            ? AccentToggleStyle(Tok.TextPrimary) with
-            {
-                OnBorder = GradientSpec.Solid(ColorF.Transparent),
-                OnHoverBorder = GradientSpec.Solid(ColorF.Transparent),
-            }
-            : AccentToggleStyle(Tok.AccentDefault);
-        return style with
-        {
-            CornerRadius = Radii.Full,
-            MinHeight = ChipHeight,
-            Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
-            FontSize = ChipFontSize,
-            FocusVisualMargin = Design.FocusInsetBordered,
-        };
-    }
-
-    /// <summary>A destination chip: a stock standard <see cref="Button"/> in the chip capsule (<see cref="Chip"/>'s geometry),
-    /// announced as a link. For a row of pills that NAVIGATE (Browse's Top and For-you bands), where
-    /// <see cref="Chip"/> is a toggle. Shrink 0: on a wrapping row the row breaks to a new line rather than ellipsising
-    /// every pill. Always <see cref="ChipHeight"/> tall, so a chip row is a fixed 32 per line. <paramref name="inert"/> takes it out of
+    /// <summary>A destination chip: the stock standard <see cref="Button"/> (<see cref="Chip"/>'s off look), announced as a
+    /// link. For a row of chips that NAVIGATE (Browse's Top and For-you bands), where <see cref="Chip"/> is a toggle.
+    /// Shrink 0: on a wrapping row the row breaks to a new line rather than ellipsising every chip. Always
+    /// <see cref="ChipHeight"/> tall, so a chip row is a fixed 32 per line. <paramref name="inert"/> takes it out of
     /// the Tab order (a collapsed band).</summary>
     public static Element LinkChip(string label, Action onClick, string? key = null, bool inert = false)
-        => Button.Standard(label, onClick, style: Button.StandardStyle with
-        {
-            CornerRadius = Radii.Full,
-            MinHeight = ChipHeight,
-            Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
-            FontSize = ChipFontSize,
-            FocusVisualMargin = Design.FocusInsetBordered,
-        }) with { Key = key, Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Shrink = 0f, MinWidth = 0f,
+        => Button.Standard(label, onClick, style: Button.StandardStyle with { MinHeight = ChipHeight })
+            with { Key = key, Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Shrink = 0f, MinWidth = 0f,
             // inert: a chip whose band is collapsed (Browse's Top under Zune) leaves the Tab order; the host is already at opacity 0
             // and takes no pointer hits, and the chip keeps its enabled look through the fade-out.
             Focusable = !inert };

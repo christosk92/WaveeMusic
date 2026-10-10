@@ -949,6 +949,9 @@ public readonly partial struct Track
         /// <summary>The air between the chip slot's end (where its edge fade lands) and Sort, on top of the bar's own
         /// <see cref="CommandBarLayout.Gap"/>: the slot carries it as a right margin, so every rung that shows the chips pays it.</summary>
         public const float ChipRailTrailGap = Spacing.S;
+        /// <summary>The air between Play and Shuffle: two bordered buttons sit a standard 8 DIP apart, not the bar's 2-DIP icon
+        /// rhythm (they read as glued). Shuffle carries the difference as a left margin.</summary>
+        public const float PlayShuffleGap = Spacing.S;
 
         /// <summary>The rungs, richest first.</summary>
         public static ReadOnlySpan<Rung> Rungs => [Rung.Full, Rung.ShuffleIcon, Rung.SortInMore, Rung.ChipsInMore, Rung.ShuffleInMore, Rung.InsightsInMore];
@@ -967,7 +970,7 @@ public readonly partial struct Track
             float w = PlayW + CommandBarLayout.Gap + CommandBarLayout.MoreWidth
                     + CommandBarLayout.SearchGap + (explicitSearch ? CommandBarLayout.SearchMinExplicit : CommandBarLayout.SearchIconWidth);
             if (InsightsInline(r)) w += CommandBarLayout.Gap + InsightsW;
-            if (ShuffleInline(r)) w += CommandBarLayout.Gap + (ShuffleLabelled(r) ? shuffleW : ShuffleIconW);
+            if (ShuffleInline(r)) w += PlayShuffleGap + (ShuffleLabelled(r) ? shuffleW : ShuffleIconW);
             if (SortInline(r)) w += CommandBarLayout.Gap + sortW;
             if (chips && ChipsInline(r)) w += CommandBarLayout.Gap + DividerW + CommandBarLayout.Gap + ChipSlotMinW + ChipRailTrailGap;
             return w;
