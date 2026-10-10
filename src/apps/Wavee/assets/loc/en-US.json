@@ -408,6 +408,9 @@
     "collabCount": "{n, plural, one {# collaborator} other {# collaborators}}",
     "collabView": "View collaborators",
     "queueUnavailable": "Can’t add to queue right now",
+    "rail": {
+      "artistsMenu": "Artists"
+    },
     "row": {
       "chartNew": "New",
       "playsFull": "{count} plays",

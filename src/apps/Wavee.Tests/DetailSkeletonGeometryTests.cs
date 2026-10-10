@@ -20,6 +20,7 @@
 
 using Xunit;
 using Config = Wavee.Detail.Config;
+using RailArtistLine = Wavee.Detail.RailArtistLine;
 using RailBadgeRow = Wavee.Detail.RailBadgeRow;
 using RailLayout = Wavee.Detail.RailLayout;
 using RailSlotSet = Wavee.Detail.RailSlotSet;
@@ -106,10 +107,13 @@ public class DetailSkeletonGeometryTests
             Fabs: (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 1 + 1,
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0,
             PlainPlay: kind is not (DetailKind.Album or DetailKind.Playlist));
+        // L1: an album-family artists row IS the artist line (the page's own Attribution slot paints the same look), whose
+        // reserved row is the look's height; a podcast's attribution row is the publisher line and stays a text row.
+        var faces = before with { ArtistFaces = before.Artists && kind != DetailKind.Show };
 
-        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax));
-        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
-        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
         Assert.Equal(RailBadgeRow.None, before.Badges);
         Assert.False(before.Rating || before.Ledger || before.Satellites || before.Topics);
     }
@@ -122,10 +126,19 @@ public class DetailSkeletonGeometryTests
     public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
     {
         // The column pads the one pane inset above (RailLayout.PadTop = 16) and 24 below.
-        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA wrapped
+        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 (L1: 40 below) · CTA wrapped
         // (Play split 121 + 12 + [Shuffle · heart · Share · ⋯] 152 = 285 > 256): 4 + 32 + 12 + 32 = 80. Five rows, four gaps.
         var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(RailLayout.PadTop + 256f + 16f + 72f + 16f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        // L1: the artists row is the artist line's height for the look the rail's width gives it (Wide at 256: the 32 pile
+        // frame + its 4 + 4 plate), not 16; the same plan declared with the album's own Attribution slot is the same height.
+        Assert.Equal(RailLayout.PadTop + 256f + 16f + 72f + 40f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6,
+            new RailSlotSet(Attribution: true));
+        Assert.Equal(RailLayout.HeightOf(album, 256f, 36f), RailLayout.HeightOf(albumWithSlot, 256f, 36f));
+        // A narrower rail (cover 200 is Medium) reserves the two-text-line look (48), whatever the names will be.
+        Assert.Equal(RailLayout.PadTop + 200f + 16f + 72f + 48f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 200f, 36f));
+        Assert.Equal(RailLayout.HeightOf(album with { ArtistFaces = false }, 256f, 36f) + RailArtistLine.WideHeight - RailLayout.AttributionHeight,
+            RailLayout.HeightOf(album, 256f, 36f));
 
         // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (121 + 12 + 192 > 216):
         // 4 + 32 + 12 + 32 · blurb 3 × 18. Six rows, five gaps.
