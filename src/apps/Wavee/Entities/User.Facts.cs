@@ -190,10 +190,17 @@ public static class LikedFactsRules
         return lenses;
     }
 
-    /// <summary>The lenses the lens header shows as pills: all of them, except a genre on Liked Songs, whose own chip bar
-    /// already shows the selected genre (a second "Nostalgia ✕" under it said the same thing twice).</summary>
-    public static LikedLens HeaderLenses(in Track.FilterState filter, DetailKind kind)
-        => ActiveLenses(filter) & (kind == DetailKind.Liked ? ~LikedLens.Tag : ~LikedLens.None);
+    /// <summary>The lenses the lens header shows as pills: all of them, except a genre on Liked Songs that is one of the chip
+    /// bar's own chips (case-insensitive, like <see cref="IsTagLens"/>): the lit chip already shows it, and a second
+    /// "Nostalgia ✕" under it said the same thing twice. A tag with no chip (an Insights blend or slice) keeps its pill.</summary>
+    public static LikedLens HeaderLenses(in Track.FilterState filter, DetailKind kind, string[]? chipTitles = null)
+    {
+        var lenses = ActiveLenses(filter);
+        if (kind != DetailKind.Liked || (lenses & LikedLens.Tag) == 0 || chipTitles is null) return lenses;
+        foreach (var title in chipTitles)
+            if (IsTagLens(filter, title)) return lenses & ~LikedLens.Tag;
+        return lenses;
+    }
 
     /// <summary>Retire ONE lens, leaving every other facet exactly as it was — a per-facet undo, not a reset.</summary>
     public static Track.FilterState ClearLens(in Track.FilterState filter, LikedLens lens) => lens switch

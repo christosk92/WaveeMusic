@@ -47,6 +47,10 @@ public readonly partial struct User
     public sealed class LensCell
     {
         public readonly Signal<Track.TableLive?> Live = new(null);
+        /// <summary>The Liked chip bar's current titles (the Liked page sets it once; a playlist has none): a genre lens with a
+        /// chip is shown by that chip, so the header drops its pill. A delegate over the chip memo, so reading it
+        /// SUBSCRIBES the caller and nothing is written during render.</summary>
+        public Func<string[]>? ChipTitles;
     }
 
     /// <summary>ch 07 §0.9: the lens header is a constant 36 DIP (pill 28 + its 8 gap) while a lens is on.</summary>
@@ -55,7 +59,7 @@ public readonly partial struct User
     /// <summary>Is any rail lens on in the table behind <paramref name="lens"/>? SUBSCRIBES (the bridge, then the view) —
     /// read it from a computed memo so a page re-renders only when the answer flips.</summary>
     public static bool LensActive(LensCell lens, DetailKind kind)
-        => lens.Live.Value is { } live && LikedFactsRules.HeaderLenses(live.View.Value.Filters, kind) != LikedFactsRules.LikedLens.None;
+        => lens.Live.Value is { } live && LikedFactsRules.HeaderLenses(live.View.Value.Filters, kind, lens.ChipTitles?.Invoke()) != LikedFactsRules.LikedLens.None;
 
     /// <summary>The value for <c>TableProfile.LensExtent</c>: <see cref="LensExtent"/> while a lens is on, 0 otherwise —
     /// exactly what the header paints. Subscribes like <see cref="LensActive"/>.</summary>
@@ -1600,7 +1604,7 @@ public readonly partial struct User
             if (live is null) return new BoxEl { Key = "lens-header:off", HitTestVisible = false };
             var filter = live.View.Value.Filters;
             int visible = live.Visible.Value;
-            var lenses = LikedFactsRules.HeaderLenses(filter, p.Kind);
+            var lenses = LikedFactsRules.HeaderLenses(filter, p.Kind, p.Lens.ChipTitles?.Invoke());
             if (lenses == LikedFactsRules.LikedLens.None)
                 return new BoxEl { Key = "lens-header:off", HitTestVisible = false };
 
