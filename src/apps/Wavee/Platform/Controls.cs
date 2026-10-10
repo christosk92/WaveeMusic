@@ -770,7 +770,8 @@ public static partial class Controls
     }
 
     /// <summary>One bar: a bottom-anchored rounded rect whose height is its node's <c>ScaleY</c> track (see
-    /// <see cref="EqHost"/>). The track is re-seeded only on a mode (or rest-shape) edge, never per frame.</summary>
+    /// <see cref="EqHost"/>). The track is re-seeded only on a mode (or rest-shape) edge or a keep-alive reactivation,
+    /// never per frame.</summary>
     sealed class EqBar : Component
     {
         const float LoopMs = 850f;
@@ -813,13 +814,23 @@ public static partial class Controls
             bool moving = mode != EqMode.Rest;
             // The loop is seeded ONCE per entry into motion (the three bars in the same layout pass, so they share a phase);
             // Rest settles the exact authored scale (a 1 ms constant track: it lands on its value and frees itself).
-            UseLayoutEffect(() =>
+            void Seed()
             {
                 if (Context.Anim is not { } anim || Context.HostNode.IsNull) return;
                 NodeHandle node = Context.HostNode;
                 if (moving) anim.Keyframes(node, AnimChannel.ScaleY, LoopKeys[index], LoopMs, loop: true, snapToDevicePixels: true);
                 else anim.Keyframes(node, AnimChannel.ScaleY, [new(0f, rest, Easing.Linear), new(1f, rest, Easing.Linear)], 1f);
-            }, DepKey.From(moving ? 1f : 0f, rest));
+            }
+            UseLayoutEffect(Seed, DepKey.From(moving ? 1f : 0f, rest));
+            // A keep-alive reactivation re-seeds: the render thread's loop track may have been dropped while the page was
+            // parked (the engine's structural snap now spares loop rows, so this is the belt). A park defers the render, so
+            // no DepKey can see it: the activation edge itself is the trigger. A frozen meter is re-held after the seed.
+            UseActivation(onActivated: () =>
+            {
+                Seed();
+                if (moving && Context.Anim is { } anim && !Context.HostNode.IsNull)
+                    anim.SetHeld(Context.HostNode, AnimChannel.ScaleY, mode == EqMode.Freeze);
+            });
             // Freeze HOLDS the running loop in place (AnimEngine.SetHeld): the render thread keeps the pixel it last posed —
             // the one on screen — and a release resumes at the phase the loop's clock has reached, as the per-frame ticker
             // did (its phase was the wall clock since play). No re-seed, so neither edge can step a bar back or restart it.
