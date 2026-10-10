@@ -8,6 +8,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Render;
 using FluentGpu.Signals;
 using Xunit;
@@ -573,6 +574,19 @@ public class ArtistBleedMaterialProtocolTests
     }
 
     [Fact]
+    public void A_claim_that_holds_its_colour_still_carries_the_backdrop()
+    {
+        var slot = Slot();
+        var a = new object();
+        var bd = Backdrop("a");
+        // The claim lands before the palette has graded (the hold outcome): the backdrop is data of its own and rides it.
+        ShellMaterial.Publish(slot, a, isClaim: true, definite: false, tint: null, wash: null, bd);
+        Assert.Same(bd, slot.Peek().Backdrop);
+        Assert.Same(a, slot.Peek().Owner);
+        Assert.Null(slot.Peek().Tint);
+    }
+
+    [Fact]
     public void A_stray_publish_from_a_non_owner_writes_nothing()
     {
         var slot = Slot();
@@ -676,5 +690,87 @@ public class ArtistBleedNotchAndPoseTests
         Assert.False(ArtistBleed.ContinuesTween(to, to with { X = 240f }));   // a pane/resize layout
         Assert.False(ArtistBleed.ContinuesTween(to, to with { Y = 0f }));
         Assert.False(ArtistBleed.ContinuesTween(to, to with { W = 800f }));
+    }
+}
+
+public class ArtistBleedEntranceTests
+{
+    [Fact]
+    public void The_entrance_is_one_clock()
+    {
+        Assert.Equal(Expressive.Fast, ArtistBleed.EntranceMs);
+        Assert.Equal(SkelReveal.FadeOnly, ArtistBleed.RevealFor(true));
+        Assert.Equal(SkelReveal.Soft, ArtistBleed.RevealFor(false));
+        Assert.Equal(0f, ArtistBleed.EntranceAt(0f));
+        Assert.Equal(1f, ArtistBleed.EntranceAt(ArtistBleed.EntranceMs));
+        Assert.Equal(Easings.Ease(Easing.SmoothOut, .4f), ArtistBleed.EntranceAt(ArtistBleed.EntranceMs * .4f), 5);
+        float prev = 0f;
+        for (float e = 0f; e <= ArtistBleed.EntranceMs + 50f; e += 10f)
+        {
+            float v = ArtistBleed.EntranceAt(e);
+            Assert.True(v >= prev - 1e-6f, $"not monotone at {e} ms");
+            prev = v;
+        }
+    }
+
+    [Fact]
+    public void The_entrance_starts_on_the_photos_frame_or_now()
+    {
+        Assert.Equal(1000L, ArtistBleed.EntranceStart(1100, 1000));
+        Assert.Equal(1000L + (long)ArtistBleed.EntranceMs, ArtistBleed.EntranceStart(1000L + (long)ArtistBleed.EntranceMs, 1000));   // the entrance is over: now
+        Assert.Equal(5000L, ArtistBleed.EntranceStart(5000, 1000));
+        Assert.Equal(1000L, ArtistBleed.EntranceStart(1000, 0));
+        Assert.Equal(900L, ArtistBleed.EntranceStart(900, 1000));
+    }
+
+    [Fact]
+    public void The_settle_is_two_legs_never_a_step()
+    {
+        for (float e = 0f; e <= ArtistBleed.EntranceMs; e += 5f) Assert.Equal(0f, ArtistBleed.UnderlayAt(e));
+        for (float e = 0f; e <= ArtistBleed.EntranceMs + ArtistBleed.LegMs; e += 5f) Assert.Equal(0f, ArtistBleed.HandoverAt(e));
+        Assert.Equal(1f, ArtistBleed.UnderlayAt(ArtistBleed.EntranceMs + ArtistBleed.LegMs));
+        Assert.Equal(1f, ArtistBleed.HandoverAt(ArtistBleed.SettleMs));
+        float u = 0f, h = 0f;
+        for (float e = 1f; e <= ArtistBleed.SettleMs; e += 1f)
+        {
+            float nu = ArtistBleed.UnderlayAt(e), nh = ArtistBleed.HandoverAt(e);
+            Assert.True(nu >= u && nh >= h, $"not monotone at {e} ms");
+            Assert.True(nu - u < 0.02f && nh - h < 0.02f, $"a step at {e} ms");
+            u = nu; h = nh;
+        }
+        // The card's layers hold through leg 1, while the shell's under-card layers come in beneath them.
+        Assert.Equal(1f, ArtistBleed.CardLayerOpacity(true, 1f, ArtistBleed.HandoverAt(ArtistBleed.EntranceMs + ArtistBleed.LegMs * .5f)));
+    }
+
+    [Fact]
+    public void A_stamped_page_keeps_publishing_while_its_bitmap_leaves_ready()
+    {
+        // The stamp (the once-per-artist entrance frame), not the live bitmap state, gates the backdrop: a url or rendition swap or a
+        // scale change that leaves Ready must not tear a bleed that is already up down.
+        Assert.True(ArtistBleed.PublishesBackdrop(bleed: true, stamped: true));
+        Assert.False(ArtistBleed.PublishesBackdrop(bleed: true, stamped: false));
+        Assert.False(ArtistBleed.PublishesBackdrop(bleed: false, stamped: true));
+        Assert.False(ArtistBleed.PublishesBackdrop(bleed: false, stamped: false));
+    }
+
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(.6f)]
+    [InlineData(.2f)]
+    [InlineData(0f)]
+    public void The_strip_returns_with_the_fade_out(float presence)
+    {
+        Assert.Equal(presence, ArtistBleed.ExitUnderlay(1f, presence));
+        Assert.Equal(0f, ArtistBleed.ExitUnderlay(0f, .7f));
+        foreach (float under in new[] { 0f, .3f, .8f, 1f }) Assert.True(ArtistBleed.ExitUnderlay(under, presence) <= presence);
+    }
+
+    [Fact]
+    public void Under_the_bleed_the_card_photo_fades_only_when_its_bitmap_lands_late()
+    {
+        Assert.False(ArtistBleed.CardPhotoFadesItself(true, true));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(true, false));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(false, true));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(false, false));
     }
 }

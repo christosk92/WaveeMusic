@@ -20,6 +20,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 
 namespace Wavee;
 
@@ -140,7 +141,8 @@ public static class ArtistBleed
     public const float PhotoFocusY = 0f;
 
     /// <summary>The photo's scale, shared by both renderers. While the bleed applies the card's frame scale, lift and entrance
-    /// zoom do not apply (the shell's node cannot share a component's keyframes); the photo's entrance is its opacity fade.</summary>
+    /// zoom do not apply (the shell's node cannot share a component's keyframes); the photo's entrance is the page's reveal (a
+    /// resident bitmap) or <see cref="EntranceMs"/> from a late bitmap's ready edge, on the shell photo's clock.</summary>
     public const float PhotoScale = 1f;
 
     /// <summary>The photo's box in CARD-LOCAL coordinates (the card's presented top is 0): <paramref name="Top"/> is
@@ -155,15 +157,74 @@ public static class ArtistBleed
     public static PhotoFrame FrameFor(float cardW, float poseY, float rectY, float photoH)
         => new(-poseY, MathF.Max(0f, cardW), MathF.Max(rectY, poseY) + MathF.Max(0f, photoH));
 
+    // ── THE ENTRANCE AND THE SETTLE ──────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The ONE entrance clock: <c>SkelReveal.FadeOnly</c>'s (opacity 0 to 1 over <see cref="Expressive.Fast"/> with SmoothOut, in
+    /// the engine's <c>SkeletonReveal.Play</c>). The shell's presence and a late card photo run on exactly this duration and ease, so
+    /// the photo above the card's top and the photo below it are never on two clocks.</summary>
+    public const float EntranceMs = Expressive.Fast;
+
+    /// <summary>The entrance's ease (FadeOnly's).</summary>
+    public const Easing EntranceEase = Easing.SmoothOut;
+
+    /// <summary>One leg of the settle: the underlay leg and the hand-over leg each run this long.</summary>
+    public const float LegMs = Design.Motion.Standard;
+
+    /// <summary>The whole entrance-and-settle: the entrance, then the underlay leg, then the hand-over leg.</summary>
+    public const float SettleMs = EntranceMs + 2f * LegMs;
+
+    /// <summary>The presence from which the shell's layers count as fully there (<see cref="CardLayerOpacity"/>).</summary>
+    public const float FullPresence = 0.999f;
+
+    /// <summary>The page's reveal: a bleeding artist page reveals opacity-only (the engine's fixed Fast/SmoothOut), because the Soft
+    /// reveal's rise and blur sit on the region's content root and cannot be lifted off the hero without an engine change, and the shell
+    /// photo above the card has neither. Every other artist page keeps Soft.</summary>
+    public static SkelReveal RevealFor(bool bleed) => bleed ? SkelReveal.FadeOnly : SkelReveal.Soft;
+
+    /// <summary>Whether the page publishes its backdrop. It gates on the once-per-artist stamp (<see cref="ShellBackdrop.EntranceAtMs"/> was
+    /// set, which needs a real hero and its resident bitmap), not on the bitmap's live state: a later url or rendition swap, or a scale
+    /// change, leaves Ready for a moment and must not tear a bleed that is already up down and rebuild it.</summary>
+    public static bool PublishesBackdrop(bool bleed, bool stamped) => bleed && stamped;
+
+    /// <summary>The shell presence's entrance at <paramref name="e"/> ms after its start: <see cref="EntranceEase"/> over
+    /// <see cref="EntranceMs"/>, the card photo's own clock.</summary>
+    public static float EntranceAt(float e)
+        => e <= 0f ? 0f : e >= EntranceMs ? 1f : Easings.Ease(EntranceEase, e / EntranceMs);
+
+    /// <summary>The frame the shell's entrance starts on: the frame the page's photo started (<paramref name="stampMs"/>, the backdrop's
+    /// <see cref="ShellBackdrop.EntranceAtMs"/>) while that entrance is still running, since the publish lands an effect after the
+    /// reveal; otherwise now (no stamp, a stale one, or a clock that reads earlier than the stamp).</summary>
+    public static long EntranceStart(long nowMs, long stampMs)
+        => stampMs > 0 && nowMs >= stampMs && nowMs - stampMs < EntranceMs ? stampMs : nowMs;
+
+    /// <summary>LEG 1 of the settle at <paramref name="e"/> ms: the underlay (the strip cut, the fade box, the corner and the under-card
+    /// shell photo) eases 0 to 1 over <see cref="LegMs"/> once the entrance is done, while the card's own layers are still opaque.</summary>
+    public static float UnderlayAt(float e)
+        => Easings.Ease(Easing.FluentStandard, Math.Clamp((e - EntranceMs) / LegMs, 0f, 1f));
+
+    /// <summary>LEG 2 of the settle at <paramref name="e"/> ms: the hand-over, the card's layers easing out, over <see cref="LegMs"/> after
+    /// leg 1.</summary>
+    public static float HandoverAt(float e)
+        => Easings.Ease(Easing.FluentStandard, Math.Clamp((e - EntranceMs - LegMs) / LegMs, 0f, 1f));
+
+    /// <summary>The underlay during the fade-out: never above the presence, so the strip returns with the fade instead of at once.</summary>
+    public static float ExitUnderlay(float underFrom, float presence) => MathF.Min(underFrom, presence);
+
+    /// <summary>Whether the card's photo plays an entrance of its own. Under the bleed a bitmap that was resident when the hero mounted
+    /// rests at 1 and the page's FadeOnly reveal carries it; a bitmap that lands later fades itself over <see cref="EntranceMs"/>, on
+    /// the shell's clock. Off the bleed the hero keeps today's entrance.</summary>
+    public static bool CardPhotoFadesItself(bool bleed, bool residentAtMount) => !bleed || !residentAtMount;
+
     // ── THE HAND-OVER ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The in-card photo and veil's opacity. They stay fully drawn until the shell's identical layers are fully present
-    /// (<paramref name="presence"/> 1), so a first reveal or a KeepAlive reactivation never dips; then they EASE out with
-    /// <paramref name="handover"/> (0..1, <see cref="Shell.Ui.BleedHandover"/>) instead of snapping. Over the opaque region the
-    /// shell's pixels are the same, so the ease is invisible there; in the photo's feathered bottom band, where the card's own
-    /// feather sits over the shell's, the ease is what turns the two feathers into one without a step.</summary>
+    /// <summary>The in-card photo and veil's opacity. The settle is two legs and neither is a step: leg 1 brings the shell's under-card
+    /// layers in (<see cref="UnderlayAt"/>) under the card's still-opaque photo, so this stays 1; leg 2 then EASES the card's layers out
+    /// with <paramref name="handover"/> (0..1, <see cref="Shell.Ui.BleedHandover"/>, <see cref="HandoverAt"/>). They stay fully drawn
+    /// until the shell's identical layers are fully present (<paramref name="presence"/> 1), so a first reveal or a KeepAlive
+    /// reactivation never dips. Over the opaque region the shell's pixels are the same, so the ease is invisible there; in the photo's
+    /// feathered bottom band, where the card's own feather sits over the shell's, the ease is what turns the two feathers into one.</summary>
     public static float CardLayerOpacity(bool drawn, float presence, float handover = 1f)
-        => drawn && presence >= 0.999f ? 1f - Math.Clamp(handover, 0f, 1f) : 1f;
+        => drawn && presence >= FullPresence ? 1f - Math.Clamp(handover, 0f, 1f) : 1f;
 
     /// <summary>How far the chrome's ink has moved from the theme's toward the on-media ink: the shell's presence times how
     /// much of the hero is still showing, 0..1, and only when the field's polarity differs from the theme's. With

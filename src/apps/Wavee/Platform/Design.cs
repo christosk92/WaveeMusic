@@ -2307,10 +2307,12 @@ public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, Ho
 /// <paramref name="DecodeH"/> the page's own latched decode size (so the shell's decode is the page's, a cache hit), and
 /// <paramref name="Key"/> the identity of the photo (the layer remounts, and so cross-fades, when it changes).
 /// <paramref name="PaletteUrl"/> and <paramref name="PayloadAccent"/> key the hero's horizontal veil the shell draws over the photo,
-/// so the chrome and the hero are ONE field.</summary>
+/// so the chrome and the hero are ONE field. <paramref name="EntranceAtMs"/> is the frame time (<c>Design.FrameTime.NowMs</c>) on which
+/// the page's photo starts its entrance (the reveal frame when the bitmap was resident, else the bitmap's ready frame): the shell's
+/// presence starts there even though the publish lands an effect later. 0 means unknown.</summary>
 public sealed record ShellBackdrop(string Url, float PhotoHeight, float HeroHeight, float Floor,
                                    IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key,
-                                   string? PaletteUrl = null, uint PayloadAccent = 0);
+                                   string? PaletteUrl = null, uint PayloadAccent = 0, long EntranceAtMs = 0);
 
 /// <summary>The shell-owned, page-scoped MATERIAL channel. The shell publishes one signal at the root and paints it as
 /// the layer directly above the ground that backs ALL chrome — title bar, toolbar, sidebar, player dock. The active page

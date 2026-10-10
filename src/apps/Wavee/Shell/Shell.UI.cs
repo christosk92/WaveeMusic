@@ -1113,16 +1113,19 @@ public static partial class Shell
         }
     }
 
-    /// <summary>EXPERIMENTAL (artist bleed): follows "a backdrop is published" into <see cref="Ui.BleedPresence"/> with a tween of
-    /// <c>Design.Motion.Standard</c> (a snap under reduced motion), then runs <see cref="Ui.BleedHandover"/> over a second
-    /// Standard so the page's own photo and veil ease out over the shell's identical ones, and retains the last backdrop in
-    /// <see cref="Ui.BleedBackdrop"/> until the fade-out ends so the card ground keeps its geometry meanwhile. The per-frame
-    /// ticker is mounted only while the tween runs. Renders an empty, zero-size box.</summary>
+    /// <summary>EXPERIMENTAL (artist bleed): follows "a backdrop is published" into <see cref="Ui.BleedPresence"/> on the card photo's
+    /// clock (<c>ArtistBleed.EntranceMs</c>, SmoothOut, started on the frame the backdrop's <c>EntranceAtMs</c> names; a snap under
+    /// reduced motion), then settles in two legs on the same ticker: <see cref="Ui.BleedUnderlay"/> (the shell's under-card layers in
+    /// under the card's opaque photo), then <see cref="Ui.BleedHandover"/> (the page's own photo and veil easing out over the shell's
+    /// identical ones), each over <c>ArtistBleed.LegMs</c>. Neither leg is a step. The fade-out runs over <c>Design.Motion.Standard</c>
+    /// with the underlay following the presence down. It retains the last backdrop in <see cref="Ui.BleedBackdrop"/> until the
+    /// fade-out ends so the card ground keeps its geometry meanwhile. The per-frame ticker is mounted only while the tween runs.
+    /// Renders an empty, zero-size box.</summary>
     sealed class BleedPresenter : Component
     {
         readonly Signal<bool> _running = new(false);
         readonly Action _step;
-        float _from, _target;
+        float _from, _target, _underFrom;
         long _t0;
         string? _lastKey;
 
@@ -1147,10 +1150,15 @@ public static partial class Shell
                 if (target == _target && !republished) return;
                 _from = Ui.BleedPresence.Peek();
                 _target = target;
-                _t0 = Design.FrameTime.NowMs;
+                long now = Design.FrameTime.NowMs;
+                _underFrom = Ui.BleedUnderlay.Peek();
+                // The entrance starts on the frame the page's photo started (the publish lands an effect after it); a republish while
+                // the shell is fully present, and the fade-out, start now.
+                _t0 = target == 1f && _from < ArtistBleed.FullPresence && backdrop is not null
+                    ? ArtistBleed.EntranceStart(now, backdrop.EntranceAtMs) : now;
                 Ui.BleedHandover.Value = 0f;
                 if (Design.Reduced) Land();
-                else _running.Value = true;
+                else { _running.Value = true; Step(); }   // seed this frame, so the shell is where the card's photo is
             }, DepKey.From(HashCode.Combine(target, backdrop)));
             return new BoxEl
             {
@@ -1162,22 +1170,26 @@ public static partial class Shell
         void Step()
         {
             float elapsed = Design.FrameTime.NowMs - _t0;
-            float t = Math.Clamp(elapsed / Design.Motion.Standard, 0f, 1f);
-            Ui.BleedPresence.Value = _from + (_target - _from) * Easings.Ease(Easing.FluentStandard, t);
             if (_target == 0f)
             {
+                float t = Math.Clamp(elapsed / Design.Motion.Standard, 0f, 1f);
+                float presence = _from * (1f - Easings.Ease(Easing.FluentStandard, t));
+                Ui.BleedPresence.Value = presence;
+                Ui.BleedUnderlay.Value = ArtistBleed.ExitUnderlay(_underFrom, presence);
                 if (t >= 1f) Land();
                 return;
             }
-            // The hand-over starts only once the shell's layers are fully present.
-            float h = Math.Clamp((elapsed - Design.Motion.Standard) / Design.Motion.Standard, 0f, 1f);
-            Ui.BleedHandover.Value = Easings.Ease(Easing.FluentStandard, h);
-            if (h >= 1f) Land();
+            // Entrance, then leg 1 (the underlay), then leg 2 (the hand-over); a republish while present holds the underlay.
+            Ui.BleedPresence.Value = _from + (1f - _from) * ArtistBleed.EntranceAt(elapsed);
+            Ui.BleedUnderlay.Value = MathF.Max(_underFrom, ArtistBleed.UnderlayAt(elapsed));
+            Ui.BleedHandover.Value = ArtistBleed.HandoverAt(elapsed);
+            if (elapsed >= ArtistBleed.SettleMs) Land();
         }
 
         void Land()
         {
             Ui.BleedPresence.Value = _target;
+            Ui.BleedUnderlay.Value = _target;
             Ui.BleedHandover.Value = _target;
             if (_target == 0f) Ui.BleedBackdrop.Value = null;
             _running.Value = false;

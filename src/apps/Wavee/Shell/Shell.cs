@@ -1110,12 +1110,20 @@ public static partial class Shell
         public static readonly Signal<int> CardSettle = new(0);
 
         /// <summary>EXPERIMENTAL (artist bleed): how present the page-published backdrop is, 0..1. Tweened by
-        /// <c>BleedPresenter</c> over <c>Design.Motion.Standard</c> (0 ms under reduced motion); every bleed term in the card
-        /// ground and the stroke is multiplied by it, so navigating to or from an artist cross-fades instead of snapping.</summary>
+        /// <c>BleedPresenter</c>: the entrance runs over <c>ArtistBleed.EntranceMs</c> with its SmoothOut ease from the backdrop's
+        /// <c>EntranceAtMs</c> (the card photo's own clock; 0 ms under reduced motion), the fade-out over <c>Design.Motion.Standard</c>;
+        /// every bleed term in the card ground and the stroke is multiplied by it, so navigating to or from an artist cross-fades
+        /// instead of snapping.</summary>
         public static readonly FloatSignal BleedPresence = new(0f);
 
-        /// <summary>EXPERIMENTAL (artist bleed): the card-to-shell hand-over, 0..1. It starts only once <see cref="BleedPresence"/> has
-        /// reached 1 and eases over <c>Design.Motion.Standard</c>; the page's own photo and veil fade out by it
+        /// <summary>EXPERIMENTAL (artist bleed): LEG 1 of the settle, 0..1 (<c>ArtistBleed.UnderlayAt</c>): the shell's under-card layers
+        /// (the strip cut, the fade box, the corner and the under-card photo) coming in under the card's still-opaque photo, so no
+        /// layer steps. On the fade-out it is <c>min(its value at the exit's start, presence)</c>, so the strip returns with the fade
+        /// instead of at once.</summary>
+        public static readonly FloatSignal BleedUnderlay = new(0f);
+
+        /// <summary>EXPERIMENTAL (artist bleed): the card-to-shell hand-over, 0..1, LEG 2 of the settle. It starts only once
+        /// <see cref="BleedUnderlay"/> has reached 1 and eases over <c>ArtistBleed.LegMs</c>; the page's own photo and veil fade out by it
         /// (<c>ArtistBleed.CardLayerOpacity</c>) over the shell's identical ones. Reset to 0 whenever a backdrop is (re)published.</summary>
         public static readonly FloatSignal BleedHandover = new(0f);
 
