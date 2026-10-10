@@ -302,6 +302,10 @@ public static partial class Shell
                 // The band's row 2 is right on frame one: Home opens at 84, never animating from 52.
                 var boot = Current.Peek();
                 Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in boot));
+                // Boot's route is on screen from frame one (ContentHost's first UseTimeout lands the same value): seeding Shown and
+                // PresentedRoute keeps the crumb head and row 2 up on frame one. The tab-label staging is unchanged.
+                Shown.SetIfChanged(boot);
+                Ui.PresentedRoute.SetIfChanged(boot);
                 // The page gutter is right on frame one: a narrow launch must not mount at 36 and step a frame later.
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(FrameRules.CardWidth(w0, Sidebar.PresentedWidth.Peek(),
                     FrameRules.RailGapWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek()),
@@ -1415,33 +1419,45 @@ public static partial class Shell
         }
     }
 
-    /// <summary>Follows the route (and the nav style) into <see cref="Ui.PresentedSubRow"/>, the band's row-2 kind. On a route
-    /// change it POSTS the write (<c>UsePost</c> runs after the commit in which the incoming page mounted), so the band's height
-    /// change and the card's move never share a commit with the page's own mount, its entrance or its head's Reflow. On a style
-    /// change it writes at once. The boot value is seeded by <c>FrameRoot</c>. Renders an empty, zero-size box.</summary>
+    /// <summary>Follows the page swap (and the nav style) into <see cref="Ui.PresentedRoute"/> and <see cref="Ui.PresentedSubRow"/>,
+    /// the route row 2 is built for and its kind. On a navigation it waits for <see cref="Shown"/> to LAND on the new route (the
+    /// old page's exit leg), so row 2's height and content change WITH the page swap and the masthead's crumb head, never ahead of
+    /// it; a same-page facet switch presents at once (<see cref="ZuneNavRules.PresentsNow"/>). On a style change it writes at once.
+    /// The boot value is seeded by <c>FrameRoot</c>. Renders an empty, zero-size box.</summary>
     sealed class SubRowPresenter : Component
     {
         public override Element Render()
         {
-            var post = UsePost();
-            // A style change writes at once (a signal write belongs in an effect, never in a render).
-            UseSignalEffect(static () =>
+            // A signal write belongs in an effect, never in a render. A style change presents the current route at once.
+            UseSignalEffect(() =>
             {
                 _ = Sidebar.NavStyle.Value;
                 var now = Current.Peek();
-                Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in now));
+                Present(in now);
             });
-            var route = Current.Value;
-            if (ZuneNavRules.SubRowOf(in route) != Ui.PresentedSubRow.Peek())
+            // A navigation presents when its page lands: Shown moves after the exit leg, Current at the commit. The rule is
+            // re-read against the LAST route, so a second navigation before the first lands presents the last one.
+            UseSignalEffect(() =>
             {
-                // Resolve the row again at fire time: a second navigation before the post lands presents the LAST route's row.
-                post(static () =>
-                {
-                    var now = Current.Peek();
-                    Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in now));
-                });
-            }
+                var shown = Shown.Value;
+                var current = Current.Value;
+                var presented = Ui.PresentedRoute.Peek();
+                if (!ZuneNavRules.PresentsNow(in shown, in current, in presented)) return;
+                Present(in current);
+            });
             return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+        }
+
+        /// <summary>Both writes in ONE runtime batch, so row 2's content and its height never land in separate commits.</summary>
+        void Present(in Route route)
+        {
+            var r = route;
+            void Write()
+            {
+                Ui.PresentedRoute.SetIfChanged(r);
+                Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in r));
+            }
+            if (Context.Runtime is { } rt) rt.Batch(Write); else Write();
         }
     }
 

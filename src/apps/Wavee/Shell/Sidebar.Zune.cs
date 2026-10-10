@@ -152,6 +152,23 @@ public static class ZuneNavRules
         }
     }
 
+    /// <summary>Do two routes sit on the same PAGE (same tab, same keep-alive slot)? A facet switch inside one page (Home's
+    /// views, a discography's facet) is the same page: nothing swaps, so nothing waits for a swap to land.</summary>
+    public static bool SamePage(in Shell.Route a, in Shell.Route b)
+        => a.Tab == b.Tab && string.Equals(Shell.SlotKey(in a), Shell.SlotKey(in b), StringComparison.Ordinal);
+
+    /// <summary>Does row 2 present <paramref name="current"/> NOW? Row 2 and the masthead's crumb head change WITH the page swap,
+    /// not ahead of it: while the old page is still leaving (<paramref name="shown"/> has not reached <paramref name="current"/>)
+    /// it keeps drawing the route it is on. A same-page facet switch presents at once. A None <paramref name="shown"/> is boot,
+    /// which counts as landed. A None <paramref name="current"/> presents nothing.</summary>
+    public static bool PresentsNow(in Shell.Route shown, in Shell.Route current, in Shell.Route presented)
+        => !current.IsNone && (SamePage(in presented, in current) || shown.IsNone || shown == current);
+
+    /// <summary>Has the page swap landed for the masthead's crumb head? A None <paramref name="shown"/> is boot (landed), and a
+    /// same-page switch has nothing to wait for.</summary>
+    public static bool HeadLanded(in Shell.Route shown, in Shell.Route current)
+        => shown.IsNone || shown == current || SamePage(in shown, in current);
+
     /// <summary>Is <paramref name="uri"/> one of the four top Browse categories (compared as text, never re-parsed from a name)?</summary>
     public static bool IsTopCategory(string uri)
     {

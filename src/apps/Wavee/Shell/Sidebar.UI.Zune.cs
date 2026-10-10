@@ -31,12 +31,14 @@
 // and action pills until the page publishes its band (Shell.PageBands). None: nothing (album, playlist, concerts, history,
 // the Browse sections and every other route whose head already shows its title), so row 2 never just repeats the page title.
 //
-// ROW 2 MOTION. The band's height reads Shell.Ui.PresentedSubRow, which Shell's SubRowPresenter POSTS after a navigation (the
-// boot route seeds it synchronously, so Home opens at 84). The incoming page therefore mounts in one commit and the band and
-// the card ease in the next. The row-2 host (Row2HostView) stays MOUNTED: it latches the last non-None content and, while the
-// presented row is None, keeps drawing it with its opacity eased to 0 (an opacity Transition on a live node, not an Exit, so
-// ZuneBandAnim's SuppressDescendantTransitions cannot cull it) while the band's clip closes over it. The latch clears once the
-// band and the fade are done. When a row enters (52 to 84) the new content draws at opacity 0 and fades in as the band opens.
+// ROW 2 MOTION. The band's height reads Shell.Ui.PresentedSubRow and its content Shell.Ui.PresentedRoute, which Shell's
+// SubRowPresenter writes when the page swap LANDS (Shell.Shown reaches Current, after the old page's exit leg; a same-page facet
+// switch presents at once, and the boot route seeds both synchronously, so Home opens at 84). Row 2 therefore changes WITH the
+// page and the masthead's crumb head, on one clock, never ahead of the old page. The row-2 host (Row2HostView) stays MOUNTED: it
+// latches the last non-None content and, while the presented row is None, keeps drawing it with its opacity eased to 0 (an opacity
+// Transition on a live node, not an Exit, so ZuneBandAnim's SuppressDescendantTransitions cannot cull it) while the band's clip
+// closes over it. The latch clears once the band and the fade are done. When a row enters (52 to 84) the new content draws at
+// opacity 0 and fades in as the band opens.
 //
 // TIMING. Band HEIGHT follows NavStyle (the frame commit). The Views kind follows Shell.Ui.PresentedNavStyle (the later,
 // quiet hoist commit): until then the page head still draws its views, and they would otherwise show twice. Library,
@@ -147,9 +149,14 @@ public static partial class Sidebar
             Element[] rows = [];
             if (zune)
             {
+                // Row 1 (the pivot highlight) follows the committed route; row 2 follows the PRESENTED one, which trails the
+                // page swap (Shell.Ui.PresentedRoute), so its words and its height change with the page, never ahead of it.
                 var route = Shell.Current.Value;
                 string name = Shell.NameOf(route);
-                rows = [TopRow(name, pinsMounted, pinsTarget), Row2Host(in route, name), Spacer(ZuneNavRules.SubToCard)];
+                var row2Route = Shell.Ui.PresentedRoute.Value;
+                if (row2Route.IsNone) row2Route = route;
+                string row2Name = Shell.NameOf(row2Route);
+                rows = [TopRow(name, pinsMounted, pinsTarget), Row2Host(in row2Route, row2Name), Spacer(ZuneNavRules.SubToCard)];
             }
 
             // Band HEIGHT follows the live style (the frame commit) and the PRESENTED row-2 kind (posted after a navigation's

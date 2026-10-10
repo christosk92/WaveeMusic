@@ -1078,10 +1078,16 @@ public static partial class Shell
         public static readonly Signal<ShellNavStyle> PresentedNavStyle = new(ShellNavStyle.Classic);
 
         /// <summary>The Zune band's row-2 kind as PRESENTED: what <c>ZuneNavRules.BandHeight</c> reads, so the band eases 84 to 52
-        /// (and back) on the card's own tween. It is written one commit AFTER a navigation lands (<c>SubRowPresenter</c> posts it),
-        /// so the incoming page's mount, its own entrance and <c>PageHead.Reflow</c> never share a commit with the card move.
+        /// (and back) on the card's own tween. It is written when the page swap LANDS (<c>Shell.Shown</c> reaches the route; <c>SubRowPresenter</c>),
+        /// so the card move trails the outgoing page's exit leg and never shares a commit with the old page's content.
         /// Seeded from the boot route in <c>FrameRoot</c>, so Home opens at 84 and never animates from 52.</summary>
         public static readonly Signal<ZuneSubRow> PresentedSubRow = new(ZuneSubRow.None);
+
+        /// <summary>The route the band's row 2 is BUILT for. It follows <see cref="Shown"/> (the page that is on screen), not
+        /// <c>Current</c>, so row 2's content and its height (<see cref="PresentedSubRow"/>) change WITH the page swap, on one clock
+        /// with the masthead's crumb head; a same-page facet switch presents at once (<c>ZuneNavRules.PresentsNow</c>). Written only
+        /// by <c>SubRowPresenter</c> and the boot seed in <c>FrameRoot</c>.</summary>
+        public static readonly Signal<Route> PresentedRoute = new(Route.None);
 
         /// <summary>EXPERIMENTAL (artist bleed): the content card's LAID-OUT rect in window coordinates (final, never the FLIP's
         /// in-flight pose), value-gated, written by the card host's bounds callback. The material layer derives the backdrop's

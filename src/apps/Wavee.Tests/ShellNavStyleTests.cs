@@ -357,4 +357,69 @@ public sealed class ShellNavStyleTests
         Assert.Equal(ZuneSubRow.Views, row);
         Assert.Equal(84f, ZuneNavRules.BandHeight(ShellNavStyle.Zune, row));
     }
+
+    // ── One clock: row 2 and the crumb head present WITH the page swap (A1/A2/A4) ──────────────────────────────────────────
+
+    static Shell.Route Home(string? facet = null, int tab = 0)
+        => new(Shell.RouteKind.Home, Arg: facet is null ? default : Entities.Strings.Intern(facet), Tab: tab);
+
+    [Fact] public void PresentsNow_ASwapThatHasNotLanded_IsFalse()
+    {
+        var home = Shell.Parse("home");
+        var album = Shell.Parse("liked");
+        // Current moved to Liked; the old page (Home) is still on screen, and row 2 still shows Home's.
+        Assert.False(ZuneNavRules.PresentsNow(in home, in album, in home));
+    }
+
+    [Fact] public void PresentsNow_ASwapThatHasLanded_IsTrue()
+    {
+        var home = Shell.Parse("home");
+        var liked = Shell.Parse("liked");
+        Assert.True(ZuneNavRules.PresentsNow(in liked, in liked, in home));
+    }
+
+    [Fact] public void PresentsNow_ASameSlotFacetSwitch_IsTrueBeforeShownMoves()
+    {
+        var a = Home();
+        var b = Home("facet");
+        Assert.True(Shell.SlotKey(in a) == Shell.SlotKey(in b));
+        Assert.True(ZuneNavRules.PresentsNow(in a, in b, in a));
+    }
+
+    [Fact] public void PresentsNow_ANoneCurrent_PresentsNothing()
+    {
+        var home = Shell.Parse("home");
+        var none = Shell.Route.None;
+        Assert.False(ZuneNavRules.PresentsNow(in home, in none, in home));
+        Assert.False(ZuneNavRules.PresentsNow(in none, in none, in none));
+    }
+
+    [Fact] public void PresentsNow_ANoneShown_IsBootAndPresents()
+    {
+        var none = Shell.Route.None;
+        var home = Shell.Parse("home");
+        Assert.True(ZuneNavRules.PresentsNow(in none, in home, in none));
+    }
+
+    [Fact] public void HeadLanded_BootSwapPendingAndSamePage()
+    {
+        var none = Shell.Route.None;
+        var home = Shell.Parse("home");
+        var liked = Shell.Parse("liked");
+        Assert.True(ZuneNavRules.HeadLanded(in none, in home));      // boot: the head is up from frame one
+        Assert.False(ZuneNavRules.HeadLanded(in home, in liked));    // swap pending: the head is held back
+        Assert.True(ZuneNavRules.HeadLanded(in liked, in liked));
+        var a = Home();
+        var b = Home("facet");
+        Assert.True(ZuneNavRules.HeadLanded(in a, in b));            // same page: nothing to wait for
+    }
+
+    [Fact] public void SamePage_AcrossTabs_IsFalse()
+    {
+        var a = Home(tab: 1);
+        var b = Home(tab: 2);
+        Assert.False(ZuneNavRules.SamePage(in a, in b));
+        var c = Home(tab: 1);
+        Assert.True(ZuneNavRules.SamePage(in a, in c));
+    }
 }

@@ -48,7 +48,12 @@ public static partial class Shell
 
         public override Element Render()
         {
-            var route = Current.Value;
+            var current = Current.Value;
+            var shown = Shown.Value;
+            // The crumb head changes WITH the page swap: until Shown lands on Current (the old page's exit leg) the band keeps the
+            // trail of the page that is still on screen, faded out; boot (Shown None) and a same-page switch count as landed.
+            bool landed = ZuneNavRules.HeadLanded(in shown, in current);
+            var route = landed ? current : shown;
             var published = Mastheads.For(route);
             var origin = Origins.For(route);
             // THE HOIST. The browse ROOT under the Zune band (PRESENTED style, so it lags the card's slide: Shell.UI.cs
@@ -83,9 +88,9 @@ public static partial class Shell
                 // The page's own column: the shared gutter and the page head's top air (PageGeometry), so the title sits on
                 // the same line as every PageHead title.
                 Padding = new Edges4(g, PageGeometry.HeadTop, g, 0f),
-                Opacity = live ? 1f : 0f,
-                HitTestVisible = live,
-                Transition = live ? Show : Hide,
+                Opacity = live && landed ? 1f : 0f,
+                HitTestVisible = live && landed,
+                Transition = live && landed ? Show : Hide,
                 Children = [MastheadTitleRow(_heldTrail, _heldTitle), tools],
             };
         }
