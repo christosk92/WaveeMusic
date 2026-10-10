@@ -659,6 +659,34 @@ public class ArtistBleedNotchAndPoseTests
     }
 
     [Fact]
+    public void The_two_photo_parts_tile_one_feathered_field_so_the_alpha_is_continuous_at_the_seam()
+    {
+        foreach (double o in new[] { -40.0, 0.0, 60.0, 200.0, 317.0, 344.0, 380.0, 900.0 })
+        foreach (float heroH in new[] { 280f, 440f })
+        foreach (float floor in new[] { 0f, 56f })
+        foreach (float photoH in new[] { 300f, 440f, 520f })
+        foreach (float cardTop in new[] { 0f, 48f })
+        {
+            float seam = cardTop;
+            float field = ArtistBleed.FeatherBoxHeight(cardTop, o, heroH, floor, photoH);
+            float underHeight = MathF.Max(0f, field - seam);
+            // The chrome part (0..seam) and the under-card part (seam..field) tile the field's rows, and the field ends on the riser line.
+            Assert.Equal(field, seam + underHeight, 3);
+            Assert.True(field >= cardTop);
+            Assert.True(field <= cardTop + ArtistBleed.HeroBottom(o, heroH, floor) + 0.001f);
+            // The feather is the field's alone, sampled from the window top in both parts, so just above and just below the seam it is one value.
+            float band = ArtistHeroLayout.PhotoFadeBandFor(photoH);
+            Assert.Equal(FeatherAlpha(field, band, seam - 0.01f), FeatherAlpha(field, band, seam + 0.01f), 2);
+        }
+
+        static float FeatherAlpha(float fieldHeight, float band, float y)
+        {
+            float t = Math.Clamp((fieldHeight - y) / band, 0f, 1f);
+            return t * t * (3f - 2f * t);
+        }
+    }
+
+    [Fact]
     public void The_analytic_pose_starts_at_from_and_lands_on_to()
     {
         var from = new RectF(240f, 40f, 800f, 600f);

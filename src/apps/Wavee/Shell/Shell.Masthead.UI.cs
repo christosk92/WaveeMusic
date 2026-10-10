@@ -296,6 +296,19 @@ public static partial class Shell
                     },
                 ],
             };
+            // THE ONE FEATHER: a box from the window top to the riser line that feathers the photo's bottom with the card media's
+            // PhotoFadeBandFor band. Both parts hold their frame inside one of these (the chrome part at 0, the under-card part shifted up
+            // by the split line), so both sample the same feathered field and the alpha is continuous across the seam at every offset.
+            Element Feathered(string veilKey, Func<Affine2D> shift, Func<float> top) => new BoxEl
+            {
+                ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Width = Prop.Of(() => Frame().Width),
+                Height = Prop.Of(() => ArtistBleed.FeatherBoxHeight(Ui.CardPose.Value.Y, b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight)),
+                Transform = Prop.Of(() => Affine2D.Translation(0f, top())),
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
+                Children = [FrameBox(veilKey, shift)],
+            };
             // THE CHROME PART: the card's full span from the window top to the split line (so it also covers the band above a floating
             // panel). Its fade is the presence alone: the card's own photo carries the entrance below the line.
             Element chrome = new BoxEl
@@ -308,25 +321,23 @@ public static partial class Shell
                 Transform = Prop.Of(() => Affine2D.Translation(Left(), 0f)),
                 Opacity = Prop.Of(Strength),
                 Enter = enter, Exit = WashFade,
-                Children = [FrameBox("shell.bleed.chrome.veil:", () => Affine2D.Translation(0f, ArtistBleed.ParallaxY(b.ScrollY.Value)))],
+                Children = [Feathered("shell.bleed.chrome.veil:", () => Affine2D.Translation(0f, ArtistBleed.ParallaxY(b.ScrollY.Value)), () => 0f)],
             };
             // THE UNDER-CARD PART: from the split line down to the hero's presented bottom, stopping at the photo's right edge. Its
-            // ON-SCREEN bottom lands on the riser line (no sliver below the hero) and it feathers its own bottom with the same
-            // PhotoFadeBandFor band as the card media, so its feather lands in CardGround's [line - band, line] ramp (the translucent
-            // fill fading in): the photo cross-fades into the ground and never ends in a hard horizontal edge. The frame box is shifted
-            // up by the split line, so the pixels are the chrome part's.
+            // ON-SCREEN bottom lands on the riser line (no sliver below the hero). The feather is not its own: the part clips the shared
+            // feathered field (see Feathered), whose band lands in CardGround's [line - band, line] ramp (the translucent fill fading in),
+            // so the photo cross-fades into the ground, never ends in a hard horizontal edge, and meets the chrome part with no step.
             Element under = new BoxEl
             {
                 Key = "shell.bleed:" + b.Key,
                 ZStack = true, ClipToBounds = true, HitTestVisible = false,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(ClipWidth),
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
-                Height = Prop.Of(() => MathF.Max(0f, Ui.CardPose.Value.Y + ArtistBleed.UnderCardClip(b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight) - Seam())),
+                Height = Prop.Of(() => MathF.Max(0f, ArtistBleed.FeatherBoxHeight(Ui.CardPose.Value.Y, b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight) - Seam())),
                 Transform = Prop.Of(() => Affine2D.Translation(Left(), Seam())),
                 Opacity = Prop.Of(Under),
                 Enter = enter, Exit = WashFade,
-                Children = [FrameBox("shell.bleed.veil:", () => Affine2D.Translation(0f, ArtistBleed.ParallaxY(b.ScrollY.Value) - Seam()))],
+                Children = [Feathered("shell.bleed.veil:", () => Affine2D.Translation(0f, ArtistBleed.ParallaxY(b.ScrollY.Value)), () => -Seam())],
             };
             // The field's ground is the page's own hero-tinted tone (the precedence of CoverPageTonePlane.Resolve). The grading reaches this
             // render through the tint's republish (CoverShellTintBinder's known colour changes, so MaterialState changes): no Palette.Watch

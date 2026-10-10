@@ -109,6 +109,13 @@ public static class ArtistBleed
     public static float UnderCardClip(double offset, float heroH, float floor, float photoH)
         => MathF.Max(0f, PhotoClip(offset, heroH, floor, photoH) + ParallaxY(offset));
 
+    /// <summary>The height, from the window top, of the one box that feathers the shell photo's bottom: the card's presented top plus the
+    /// under-card part's height (<see cref="UnderCardClip"/>). Both photo parts sample this ONE feathered field (the chrome part from the
+    /// window top, the under-card part shifted up by the split line), so the photo's alpha is continuous across the card's top at every
+    /// offset, even once the hero's bottom is nearer than the feather band.</summary>
+    public static float FeatherBoxHeight(float cardTop, double offset, float heroH, float floor, float photoH)
+        => MathF.Max(0f, cardTop) + UnderCardClip(offset, heroH, floor, photoH);
+
     /// <summary>The card's top-left radius while the photo bleeds through: it fades with the hero region (<paramref name="cut"/> is
     /// <c>Shell.BleedCut</c>, 0..1), so the photo meets the window edge with no notch and the radius returns as the hero scrolls away.</summary>
     public static float CornerFor(float radius, float cut) => radius * (1f - Math.Clamp(cut, 0f, 1f));
