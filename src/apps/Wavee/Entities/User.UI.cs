@@ -153,9 +153,15 @@ public readonly partial struct User
     /// <summary>The toggle beside the rail: list (1) / grid (3) glyphs, then "…" for the trimmed <see cref="ViewPanel"/>
     /// (the compact variants + S/M/L). View codes stay 0..3 and stay persisted; the list/grid glyphs keep whichever
     /// compactness the persisted code already carried.</summary>
-    public static Element ViewToggle(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size));
+    public static Element ViewToggle(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size, false));
 
-    sealed class ViewToggleHost(Signal<int> view, Signal<int> size) : Component
+    /// <summary>The one-button form for a row with no room for three cells (Podcasts' filter row at the 208-DIP pane):
+    /// ONE <see cref="Controls.IconButtonSize"/> button that shows the CURRENT view's glyph and opens the same
+    /// <see cref="ViewPanel"/> flyout as the "…" cell (the four view variants + S/M/L), so nothing the full toggle offers
+    /// is lost. Its tooltip (the accessible name) is the "View as" label.</summary>
+    public static Element ViewToggleCompact(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size, true));
+
+    sealed class ViewToggleHost(Signal<int> view, Signal<int> size, bool compact) : Component
     {
         NodeHandle _anchor;
         OverlayHandle? _handle;
@@ -177,6 +183,10 @@ public readonly partial struct User
                     { ConstrainToRootBounds = false });
                 _handle.ClosedAction = () => _handle = null;
             }
+
+            if (compact)
+                return Controls.Named(Controls.IconAction(ViewGlyph(v), Flyout) with { Key = "lib:viewpanel", OnRealized = h => _anchor = h },
+                    Loc.Get(Strings.Library.ViewAs));
 
             return new BoxEl
             {

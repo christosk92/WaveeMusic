@@ -400,7 +400,7 @@ public readonly partial struct Concert
             Children =
             [
                 SectionCaption(Loc.Get(Strings.Concerts.LiveMusic)),
-                Design.Type.PageHero(Loc.Get(Strings.Concerts.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                Design.Type.PageTitle(Loc.Get(Strings.Concerts.Title)),
                 Body(Loc.Get(Strings.Concerts.Subtitle)) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
@@ -1014,7 +1014,7 @@ public readonly partial struct Concert
             var blocks = new List<Element>(6)
             {
                 SectionCaption(Loc.Get(Strings.Concerts.Schedule.OnTour)),
-                Design.Type.PageHero(name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
+                Design.Type.PageTitle(name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
                 Body(ConcertScheduleShaping.StatsLine(stats)) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             };
             uint accent = 0;

@@ -377,6 +377,22 @@ public class RailHeaderGeometryTests
     }
 
     [Fact]
+    public void The_tabs_label_line_box_shares_the_caption_and_gear_line_box_and_the_pill_fits()
+    {
+        var style = Design.RailViewsStyle;
+        var pad = style.ItemPadding ?? throw new Xunit.Sdk.XunitException("the rail tabs set their item padding");
+        // SelectorBar centres a fixed-height item's content, so the label's line-box top is bar padding + the centring slack
+        // + item top padding. It must be the eyebrow's (36 - 20) / 2, and the pill row (3) must fit inside the item.
+        float content = pad.Top + Rail.Hero.HeaderLine + pad.Bottom + 3f;
+        Assert.True(content <= style.ItemHeight);
+        float slackTop = (style.ItemHeight - content) / 2f;
+        float lineBoxTop = PageGeometry.ViewsBarPadY + slackTop + pad.Top;
+        Assert.Equal((Rail.Hero.HeaderRowH - Rail.Hero.HeaderLine) / 2f, lineBoxTop);
+        Assert.Equal(8f, lineBoxTop);
+        Assert.Equal(0f, slackTop);
+    }
+
+    [Fact]
     public void The_header_line_is_the_shared_views_line_height()
     {
         Assert.Equal(Rail.Hero.HeaderLine, Design.PageViewsStyle.LineHeight);

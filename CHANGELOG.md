@@ -77,6 +77,7 @@ versions separately under `v*` and is not tracked in this file.)
 - Zune: Home, Browse, Recently played and your Library pages no longer open with an empty strip under the navigation band.
 - Zune: Browse no longer lists Music, Podcasts, Audiobooks and Live events twice.
 - The search suggestions now line up with the search box, which widens while you type.
+- Library: Podcasts' Followed shows and Your Episodes both fit at the narrowest pane width.
 
 ## [0.3.4] - 2026-10-06
 

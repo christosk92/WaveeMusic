@@ -1511,8 +1511,14 @@ public static partial class Design
     {
         LeadingInset = 0f,
         ItemHeight = 36f - 2f * PageGeometry.ViewsBarPadY,
-        // 3 + 20 + 0 + the 3-DIP pill row = 26 in the 28 item: the label sits on the strip's centre line and the pill stays inside.
-        ItemPadding = new Edges4(12f, 3f, 12f, 0f),
+        // SelectorBar centres the content of a fixed-height item, so any slack in it is split above and below. 4 + 20 + 1 + the
+        // 3-DIP pill row = 28 fills the 28-DIP item exactly: no slack, the pill stays inside, and the label's 20-DIP line box
+        // starts at 4 (bar padding) + 4 = 8 = (36 - 20) / 2, the line-box top of the caption and the gear in the same strip
+        // (Rail.UI.cs centres the eyebrow's `Hero.HeaderLine` box), so the three share one line box. Baselines: the engine puts
+        // the baseline at resolved line height x ascent / (ascent + descent) (TextLayoutEngine), and the 14-px label and the
+        // 12-px eyebrow both resolve to the 20-DIP line (14-px natural height is below 20) in one face, so the two baselines
+        // differ by 0 DIP: no eyebrow offset.
+        ItemPadding = new Edges4(12f, 4f, 12f, 1f),
     };
 
     /// <summary>The Library master pane's own views (Podcasts' Followed shows | Your Episodes): a 32-DIP bar

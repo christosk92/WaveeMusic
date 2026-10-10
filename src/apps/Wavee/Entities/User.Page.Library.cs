@@ -1002,7 +1002,7 @@ public readonly partial struct User
         /// <summary>The master column's head (W1). Three arms inside ONE stable outer box:
         /// <list type="bullet">
         /// <item><c>lib:toolbar:wide</c>: <see cref="Design.Type.PaneTitle"/> over the live count (the pane head's META line),
-        /// the sort dropdown (Podcasts: the views switch too) + view toggle, the filter;</item>
+        /// the sort dropdown + view toggle, the filter (Podcasts: the views switch alone on the first row; the sort and the one-button toggle sit beside the filter);</item>
         /// <item><c>lib:toolbar:hoisted</c>: the same without the title. Under the Zune nav style the band names the kind
         /// (<see cref="PageHead.HoistedFor"/> reads the PRESENTED style), so the column opens on the count, whose first line
         /// starts at <see cref="PageGeometry.HeadTop"/> (24) like every hoisted page's body;</item>
@@ -1016,11 +1016,14 @@ public readonly partial struct User
         /// and rides the card's FLIP like all card content today.</para></summary>
         Element Toolbar(bool title)
         {
-            // ONE control row for every kind (LibraryPaneRules.ControlRowH): [views (Podcasts only)][sort][Grow][view toggle].
+            // ONE control row for every kind (LibraryPaneRules.ControlRowH): [sort][Grow][view toggle], or on Podcasts [views] alone.
             // Podcasts' views ARE Followed shows / Your Episodes (A2 plan §3.5) in the shared views control. The pane is 208-308
-            // DIP of content and the views bar alone needs ~204, so on Podcasts the views get the row: the view toggle stays
-            // right-anchored behind the Grow, and the shows' sort (icon-only, the menu names the words) moves to the filter
-            // row, in a FIXED slot that fades with the views, so the filter box never changes width between the two views.
+            // DIP of content and the views bar is ~219 outer (97.7 + 85.7 label widths, 12 + 12 item padding each, minus the -12
+            // leading inset), so on Podcasts the views take the WHOLE first row with no clip: at 208 the bar overflows the content
+            // box by ~11 into the 16-DIP pane padding by design (both stay clickable, item 0's focus ring is whole). The shows'
+            // sort (icon-only, the menu names the words) and the view button (ONE 32-DIP button that opens the view panel,
+            // ViewToggleCompact) move to the filter row: [filter][sort slot][button]. The sort sits in a FIXED slot that fades
+            // with the views, so the filter box never changes width between the two views.
             bool podcasts = IsPodcasts;
             Element sort = Controls.SortButton(
                 () => Loc.Get(LibraryWordRail.MenuKey(LibraryWordRail.Clamp(_entity, Sort.Value))), SortMenu, () => false,
@@ -1032,16 +1035,21 @@ public readonly partial struct User
                 Children = podcasts
                     ? [new BoxEl
                        {
-                           Key = "lib:views", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Shrink = 1f, ClipToBounds = true,
+                           // NO ClipToBounds: item 0's focus ring sits outside the item and a clip cut it.
+                           Key = "lib:views", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Grow = 1f, Shrink = 1f,
                            Children = [SelectorBar.Create([Loc.Get(Strings.Podcast.Reader.FollowedShows), Loc.Get(Strings.Podcast.Reader.YourEpisodes)],
                                _savedEpisodes, style: Design.PaneViewsStyle)],
-                       },
-                       new BoxEl { Grow = 1f, MinWidth = 0f },
-                       ViewToggle(View, Size)]
+                       }]
                     : [sort, new BoxEl { Grow = 1f, MinWidth = 0f }, ViewToggle(View, Size)],
             };
             Element filterBox = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
                 grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
+            // The filter row's one flexible cell: grows into what the sort slot and the toggle leave, never below FilterMinW.
+            Element filterCell = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = LibraryPaneRules.FilterMinW,
+                Children = [filterBox],
+            };
             Element filter = podcasts
                 ? new BoxEl
                 {
@@ -1049,7 +1057,7 @@ public readonly partial struct User
                     Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
                     Children =
                     [
-                        filterBox,
+                        filterCell,
                         new BoxEl
                         {
                             Key = "lib:sortslot", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
@@ -1064,6 +1072,7 @@ public readonly partial struct User
                                 Children = [sort],
                             }],
                         },
+                        ViewToggleCompact(View, Size),
                     ],
                 }
                 : filterBox;

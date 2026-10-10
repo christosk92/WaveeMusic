@@ -337,3 +337,14 @@ public class LibrarySortDropdownTests
         Assert.Equal(counts.Length, counts.Distinct().Count());
     }
 }
+
+public class LibraryPaneRulesTests
+{
+    [Fact]
+    public void The_podcasts_filter_keeps_its_minimum_at_the_narrowest_pane()
+    {
+        // 240-DIP pane = 208 content: [filter][sort slot][ONE view button] with two gaps, and the views alone on row one.
+        Assert.True(LibraryPaneRules.PodcastsFilterW(208f) >= LibraryPaneRules.FilterMinW);
+        Assert.Equal(Controls.IconButtonSize, LibraryPaneRules.ToggleCompactW);
+    }
+}

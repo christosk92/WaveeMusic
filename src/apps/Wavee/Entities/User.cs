@@ -821,6 +821,19 @@ public static class LibraryPaneRules
     /// <summary>Podcasts' icon-only shows sort slot on the filter row: reserved at this width on both views, so the filter
     /// box never changes width when the views switch. Fits the icon, the direction caret and the chevron.</summary>
     public const float SortSlotW = 64f;
+
+    /// <summary>Podcasts' view toggle on the filter row: the ONE view button (<see cref="User.ViewToggleCompact"/>, which opens the view panel), not
+    /// the three-cell form, so the views can take the whole first row.</summary>
+    public const float ToggleCompactW = Controls.IconButtonSize;
+
+    /// <summary>The narrowest the Podcasts filter box may get: the filter box carries it as its <c>MinWidth</c>, and at the
+    /// narrowest pane (208 content) <see cref="PodcastsFilterW"/> is 96, so it is never reached there.</summary>
+    public const float FilterMinW = 80f;
+
+    /// <summary>The Podcasts filter box's width in a pane whose content is <paramref name="contentW"/> wide: the filter row
+    /// is [filter][sort slot][view toggle] with an <see cref="FluentGpu.Dsl.Spacing.S"/> gap between the three. The views take the whole
+    /// first row, so nothing else competes for it.</summary>
+    public static float PodcastsFilterW(float contentW) => contentW - SortSlotW - ToggleCompactW - 2f * FluentGpu.Dsl.Spacing.S;
 }
 
 /// <summary>What an order needs from a row, as a RECORD — the test fixture shape and 0.2.9's own.</summary>
