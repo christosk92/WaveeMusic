@@ -16,7 +16,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Runtime;
 using FluentGpu.Controls;
 using FluentGpu.Localization;
 using FluentGpu.Signals;
@@ -461,7 +460,7 @@ public static partial class AiLyrics
     static void CancelJob()
     {
         s_worker?.CancelJob();
-        if (s_ledger.JobRunning) s_ledger.EndJob(Environment.TickCount64);
+        if (s_ledger.JobRunning) s_ledger.EndJob();
     }
 
     static IReadOnlyList<string> LanguagesSetting()
@@ -512,14 +511,6 @@ public static partial class AiLyrics
     /// <summary>The driver's decision effect (<c>UseSignalEffect</c> in the shell root): every signal it reads re-runs it,
     /// so a track change, a lyrics arrival, battery saver, a preference change or a phase change re-evaluates.</summary>
     public static void DriverEvaluate() => Evaluate();
-
-    /// <summary>The driver's idle check (<c>UseInterval</c>, once a minute): unload the NPU sessions after 10 minutes
-    /// without a job or a load; the next song reloads them from the compiled cache in about 1.5 s.</summary>
-    public static void DriverIdleTick()
-    {
-        if (s_worker is { } w && s_ledger.ShouldUnload(w.Loaded, Environment.TickCount64))
-            w.Unload();
-    }
 
     static double PlayheadSeconds()
     {
@@ -618,7 +609,7 @@ public static partial class AiLyrics
     static void Skip(JobRequest req, SkipReason reason, string detail)
     {
         if (!s_ledger.IsCurrentJob(req.Ticket, req.TrackId)) return;
-        s_ledger.EndJob(Environment.TickCount64);
+        s_ledger.EndJob();
         if (Job.Peek() is { } j && j.TrackId == req.TrackId) Job.Value = j with { Outcome = reason == SkipReason.Failed ? "failed" : "skipped", Detail = detail };
         if (Track.Peek().TrackId == req.TrackId)
             Track.Value = Track.Peek() with { Phase = TrackPhase.Skipped, Reason = reason };
@@ -639,6 +630,7 @@ public static partial class AiLyrics
         IReadOnlyList<string> _installed = [];
         CancellationTokenSource? _jobCts;
         volatile bool _loaded;
+        long _lastUseMs;   // the worker thread's own clock: when a command last ran with the models loaded
 
         public bool Loaded => _loaded;
 
@@ -648,13 +640,24 @@ public static partial class AiLyrics
             _thread.Start();
         }
 
+        /// <summary>One command at a time, so nothing runs while it waits: the IDLE UNLOAD is timed here, on this thread,
+        /// not by a UI interval. The UI loop parks while the window is minimized and every UseInterval with it, which used
+        /// to keep the ~1.1 GB of sessions loaded for as long as Wavee sat in the taskbar.</summary>
         void Run()
         {
-            foreach (var cmd in _queue.GetConsumingEnumerable())
+            while (true)
             {
+                int wait = Rules.IdleWaitMs(_loaded, _lastUseMs, Environment.TickCount64);
+                if (!_queue.TryTake(out var cmd, wait))
+                {
+                    if (_queue.IsCompleted) break;
+                    if (_loaded && Rules.IdleWaitMs(true, _lastUseMs, Environment.TickCount64) == 0) UnloadNow();
+                    continue;
+                }
                 try { cmd(); }
                 catch (OperationCanceledException) { }
                 catch (Exception ex) { Log.Warn("ai-lyrics", "worker command failed", ex); }
+                if (_loaded) _lastUseMs = Environment.TickCount64;
             }
             DisposeModels();
         }
@@ -683,7 +686,7 @@ public static partial class AiLyrics
         void DoLoad(IReadOnlyList<string> languages, string key, bool reload, int ticket, CancellationToken ct, bool deferIfCompiled = false)
         {
             if (ct.IsCancellationRequested) return;
-            if (_models is not null && !reload && key == _installedKey) { PostLoad(ticket, () => { s_ledger.Touch(Environment.TickCount64); SetReady(); }); return; }
+            if (_models is not null && !reload && key == _installedKey) { PostLoad(ticket, SetReady); return; }
             DisposeModels();
             _installed = languages;
             _installedKey = key;
@@ -727,7 +730,6 @@ public static partial class AiLyrics
                 Log.Info("ai-lyrics", $"ai.models.loaded ms={sw.ElapsedMilliseconds} active={active} installed={key} graphs={graphs.Count} ort={_models.Ort.Version} compiled={anyUncached}");
                 PostLoad(ticket, () =>
                 {
-                    s_ledger.Touch(Environment.TickCount64);
                     bool wasPreparing = Current.Peek().Phase == SetupPhase.Preparing;
                     SetReady();
                     if (wasPreparing && Rules.ToastOnReady(SettingsCardVisible))
@@ -789,18 +791,21 @@ public static partial class AiLyrics
             return true;
         }
 
-        public void Unload() => Queue(() =>
+        public void Unload() => Queue(UnloadNow);
+
+        void UnloadNow()
         {
+            if (!_loaded && _models is null) return;
+            long before = Environment.WorkingSet;
             DisposeModels();
             _installedKey = "";
             // The jobs' buffers are large-object garbage, and an idle app runs no full GC to reclaim it: the process
-            // used to keep ~300 MB of dead LOH committed for hours after the unload. One compacting, decommitting
-            // collection hands it back; the unload only happens after 10 idle minutes, so the pause is rare.
-            long before = Environment.WorkingSet;
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            // used to keep ~300 MB of dead LOH committed for hours after the unload. A BACKGROUND gen-2 collection hands
+            // the freed regions back without stopping the UI thread: the unload now follows every song's job, and a
+            // blocking compaction there would hitch playback and the lyrics view.
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false);
             Log.Info("ai-lyrics", $"ai.models.unloaded ws={before / (1 << 20)}->{Environment.WorkingSet / (1 << 20)}MB heap={GC.GetGCMemoryInfo().HeapSizeBytes / (1 << 20)}MB");
-        });
+        }
 
         public void CancelJob()
         {
@@ -921,7 +926,7 @@ public static partial class AiLyrics
                 if (Track.Peek().TrackId != req.TrackId && Track.Peek().TrackId.Length > 0) return;
                 var phase = p.Final ? TrackPhase.Done : TrackPhase.Working;
                 Track.Value = new TrackStatus(req.TrackId, phase, SkipReason.None, req.Language, p.LinesReady, p.LineCount, p.ProcessedSeconds, fromCache);
-                if (p.Final) s_ledger.EndJob(Environment.TickCount64);
+                if (p.Final) s_ledger.EndJob();
             });
         }
 

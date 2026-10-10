@@ -1093,6 +1093,10 @@ public readonly record struct SidebarLibraryEntry(
     /// the projection from <c>Playlist.EpisodeCount</c>; false for every other kind.</summary>
     public bool HasEpisodes { get; init; }
 
+    /// <summary>A PLAYLIST row that is the account's Your Episodes (<see cref="Playlist.IsYourEpisodes"/>): its count is
+    /// episodes, not songs.</summary>
+    public bool Episodes { get; init; }
+
     /// <summary>uri -> last-played unix ms from local + server listening history, stamped by the projection for
     /// Playlist/Album/Artist/Show rows. 0 = never played. This is what the Recents sort mode sorts on — NOT
     /// <see cref="LastVisitedTicksUtc"/>, which is navigation recency and feeds only the "recently opened" feed.</summary>
@@ -3047,6 +3051,7 @@ public static class SidebarProjection
                         IdentityKnown = identityKnown,
                         CountKnown = countKnown,
                         HasEpisodes = p.EpisodeCount > 0,
+                        Episodes = p.IsYourEpisodes,
                     });
                     break;
                 }

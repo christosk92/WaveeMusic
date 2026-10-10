@@ -1757,6 +1757,7 @@ public sealed class SidebarProjectionBinder
                     // Bug A1: NOT unconditionally true past that same gate — a route can land Identity while
                     // carrying no length at all (ListMetadataV2). Read the real bit.
                     CountKnown = countKnown,
+                    Episodes = p.IsYourEpisodes,
                 };
             }
             case SidebarEntryKind.Album:

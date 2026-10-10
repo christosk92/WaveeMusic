@@ -589,13 +589,13 @@ public static partial class Sidebar
     // ══ 3. THE CHEVRON AND THE SELECTION PILL ════════════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// THE one disclosure chevron: ONE glyph whose Rotation rides <c>MotionTokenId.DisclosureChevron</c> (167 ms,
-    /// cubic-bezier(.167,.167,0,1)) through <c>SeedValue</c>, so the token owns the dynamics AND the reduced-motion policy.
-    /// Never a glyph swap — a swap teleports while the section beside it animates.
+    /// THE one disclosure chevron: ONE glyph whose Rotation rides <c>MotionTokenId.Reveal</c> — the SAME spring as the band
+    /// it discloses, so the glyph and the rows land together — through <c>SeedValue</c>, so the token owns the dynamics AND
+    /// the reduced-motion policy. Never a glyph swap — a swap teleports while the section beside it animates.
     ///
     /// <para>A Component because the rotation needs a node ref and an edge-triggered effect — hooks a recycling slot must
-    /// not grow conditionally. <c>open</c> is a Func invoked inside THIS render, so its signal reads subscribe this 10-DIP
-    /// component, never the slot.</para>
+    /// not grow conditionally. <c>open</c> and <c>identity</c> are read inside the effect, never in Render, so their signal
+    /// reads subscribe the effect alone: a recycle or an open flip re-runs the seeding and renders nothing.</para>
     ///
     /// <para>A first mount SEEDS the resting angle with no motion. <c>identity</c> (optional) extends that to a RECYCLE:
     /// when the probe's value changes (the slot's index, a section id hash) the new angle is seeded, never animated — a
@@ -607,32 +607,36 @@ public static partial class Sidebar
         readonly Func<int>? _identity;
         readonly string _glyph;
         readonly float _size, _openDeg;
+        readonly bool _accent;
 
-        Chevron(Func<bool> open, Func<int>? identity, string glyph, float size, float openDeg)
+        Chevron(Func<bool> open, Func<int>? identity, string glyph, float size, float openDeg, bool accent)
         {
-            _open = open; _identity = identity; _glyph = glyph; _size = size; _openDeg = openDeg;
+            _open = open; _identity = identity; _glyph = glyph; _size = size; _openDeg = openDeg; _accent = accent;
         }
 
         /// <summary>A SECTION header's chevron: ChevronDown at rest, rotated 180° when the section is open.</summary>
         public static Element Section(Func<bool> open, float size = 10f, Func<int>? identity = null)
-            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronDown, size, 180f));
+            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronDown, size, 180f, accent: false));
 
-        /// <summary>A DISCLOSURE chevron (a folder row / tree row): ChevronRight at rest, rotated 90° when expanded.</summary>
-        public static Element Disclosure(Func<bool> open, float size = 10f, Func<int>? identity = null)
-            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronRight, size, 90f));
+        /// <summary>A DISCLOSURE chevron (a folder row / tree row): ChevronRight at rest, rotated 90° when expanded.
+        /// <paramref name="accentWhenOpen"/> inks it with the accent while open (the track table's expand cell).</summary>
+        public static Element Disclosure(Func<bool> open, float size = 10f, Func<int>? identity = null, bool accentWhenOpen = false)
+            => Embed.Comp(() => new Chevron(open, identity, Icons.ChevronRight, size, 90f, accentWhenOpen));
 
         public override Element Render()
         {
-            bool open = _open();
-            float target = open ? _openDeg : 0f;
-            int identity = _identity?.Invoke() ?? 0;
-
             var node = UseRef<NodeHandle>(default);
             var seeded = UseRef(false);
             var seededIdentity = UseRef(0);
+            var last = UseRef(0f);
 
+            // The item is read HERE, in an auto-tracked effect, never in Render: an open flip, a recycle onto another
+            // item or any other change behind `open` re-runs this body and renders nothing (a bound row's recycle stays
+            // a rebind).
             UseEffect(() =>
             {
+                float target = _open() ? _openDeg : 0f;
+                int identity = _identity?.Invoke() ?? 0;
                 var anim = Context.Anim;
                 var scene = Context.Scene;
                 if (anim is null || scene is null || node.Value.IsNull || !scene.IsLive(node.Value)) return;
@@ -640,12 +644,15 @@ public static partial class Sidebar
                 {
                     seeded.Value = true;
                     seededIdentity.Value = identity;
-                    anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.DisclosureChevron, from: target);
+                    last.Value = target;
+                    anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.Reveal, from: target);
                     return;
                 }
+                if (last.Value == target) return;   // a change that moved neither the angle nor the item
+                last.Value = target;
                 // A mid-flight toggle retargets from the LIVE angle instead of restarting.
-                anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.DisclosureChevron);
-            }, DepKey.From(target, identity));
+                anim.SeedValue(node.Value, AnimChannel.Rotation, target, MotionTokenId.Reveal);
+            });
 
             return new BoxEl
             {
@@ -653,7 +660,7 @@ public static partial class Sidebar
                 AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
                 HitTestVisible = false,
                 OnRealized = h => node.Value = h,
-                Children = [Icon(_glyph, _size, Tok.TextTertiary)],
+                Children = [Icon(_glyph, _size) with { Color = _accent ? Prop.Of(() => _open() ? Tok.AccentTextPrimary : Tok.TextSecondary) : (Prop<ColorF>)Tok.TextTertiary }],
             };
         }
     }
@@ -1031,7 +1038,7 @@ public static partial class Sidebar
             => SidebarCatalogue.TitleKeyOf(section.Kind) is { } key ? Loc.Get(key) : "";
 
         /// <summary>The subtitle text: the grammar is <see cref="SidebarSubtitleRules.Of"/> (data), the words are the loc table's.
-        /// Playlist → "N songs" (or "N items" with an episode) · album → "Album · first artist" · artist → "Artist" · show →
+        /// Playlist → "N songs" (or "N items" with an episode, "N episodes" for Your Episodes) · album → "Album · first artist" · artist → "Artist" · show →
         /// "Podcast · publisher" · folder → "N items" · track → its artist · route → a concert's venue (its Creator). An
         /// UNKNOWN count is null, never "0 songs" (bug A1).</summary>
         public static string? SubtitleOf(in SidebarLibraryEntry e)
@@ -1041,6 +1048,7 @@ public static partial class Sidebar
             {
                 SidebarSubtitleKind.Songs => Strings.Sidebar.SongCount(s.Count),
                 SidebarSubtitleKind.Items => Strings.Sidebar.V3.ItemCount(s.Count),
+                SidebarSubtitleKind.Episodes => Strings.Podcast.EpisodeCount(s.Count),
                 SidebarSubtitleKind.Album => s.Detail.Length > 0
                     ? Loc.Get(Strings.Sidebar.V3.Kind.Album) + " · " + s.Detail
                     : Loc.Get(Strings.Sidebar.V3.Kind.Album),

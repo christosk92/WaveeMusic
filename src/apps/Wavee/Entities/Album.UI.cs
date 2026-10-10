@@ -458,7 +458,8 @@ public readonly partial struct Album
             return new BoxEl
             {
                 Direction = 1, Gap = Spacing.M, Grow = 1f, AlignSelf = FlexAlign.Stretch,
-                Children = [header, new BoxEl { Direction = 1, Gap = Spacing.XS, Children = rows }],
+                // "Show all" lengthens the box in place — the new height reveals.
+                Children = [header, new BoxEl { Direction = 1, Gap = Spacing.XS, Animate = Design.Reveal.Resize, Children = rows }],
             };
         }
     }

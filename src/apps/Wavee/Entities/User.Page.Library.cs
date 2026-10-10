@@ -153,6 +153,19 @@ public readonly partial struct User
 
     sealed record PaneProps(int Slot);
 
+    /// <summary>Podcasts row-1 words (0 Followed shows · 1 Your Episodes, A2 plan §3.5): the standard toolbar's picker
+    /// row IS the mode switch for this kind. Shared rather than per page instance so a navigation can open Your
+    /// Episodes (<see cref="YourEpisodesRoute"/>).</summary>
+    internal static readonly Signal<int> PodcastsMode = new(0);
+
+    /// <summary>Where "Your Episodes" lives: the Podcasts library with its Your Episodes word selected. Selects the
+    /// word and returns the route — the target of <c>Shell.Redirect</c> for Spotify's listen-later playlist.</summary>
+    public static Shell.Route YourEpisodesRoute()
+    {
+        PodcastsMode.Value = 1;
+        return new Shell.Route(Shell.RouteKind.LibraryPodcasts);
+    }
+
     static string PrefixOf(EntityKind kind) => kind switch
     {
         EntityKind.Artist => SidebarPinId.ArtistPrefix,
@@ -211,9 +224,6 @@ public readonly partial struct User
         readonly ItemsViewController _navCtl = new();
         readonly ScrollOptions _navScroll;
         readonly Signal<int> _sArtist = new(0), _sAlbum = new(0);   // the search drill-down, by slot, apart from browse
-        /// <summary>Podcasts row-1 words (0 Followed shows · 1 Your Episodes, A2 plan §3.5): the standard toolbar's
-        /// picker row IS the mode switch for this kind — no separate wrapper above the page any more.</summary>
-        readonly Signal<int> _savedEpisodes = new(0);
         readonly object _skelGroup = new();
         readonly Signal<bool> _collapsed = new(false);
         readonly Signal<int> _depth = new(0);
@@ -472,7 +482,7 @@ public readonly partial struct User
             // no more wrapper above the page. Selecting the word swaps the WHOLE body for the flat episode table (real
             // Spotify shows no per-show pane beside it either), but the toolbar (and so the word that switches back)
             // stays put, which is the one thing the old top-level `tabs` swap did not keep visible.
-            else if (IsPodcasts && _savedEpisodes.Value == 1)
+            else if (IsPodcasts && PodcastsMode.Value == 1)
                 inner = new BoxEl
                 {
                     Key = "lib:wide:saved",
@@ -1022,8 +1032,7 @@ public readonly partial struct User
             // leading inset), so on Podcasts the views take the WHOLE first row with no clip: at 208 the bar overflows the content
             // box by ~11 into the 16-DIP pane padding by design (both stay clickable, item 0's focus ring is whole). The shows'
             // sort (icon-only, the menu names the words) and the view button (ONE 32-DIP button that opens the view panel,
-            // ViewToggleCompact) move to the filter row: [filter][sort slot][button]. The sort sits in a FIXED slot that fades
-            // with the views, so the filter box never changes width between the two views.
+            // ViewToggleCompact) move to the filter row: [filter][sort][button], which only exists while browsing shows.
             bool podcasts = IsPodcasts;
             Element sort = Controls.SortButton(
                 () => Loc.Get(LibraryWordRail.MenuKey(LibraryWordRail.Clamp(_entity, Sort.Value))), SortMenu, () => false,
@@ -1038,7 +1047,7 @@ public readonly partial struct User
                            // NO ClipToBounds: item 0's focus ring sits outside the item and a clip cut it.
                            Key = "lib:views", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Grow = 1f, Shrink = 1f,
                            Children = [SelectorBar.Create([Loc.Get(Strings.Podcast.Reader.FollowedShows), Loc.Get(Strings.Podcast.Reader.YourEpisodes)],
-                               _savedEpisodes, style: Design.PaneViewsStyle)],
+                               PodcastsMode, style: Design.PaneViewsStyle)],
                        }]
                     : [sort, new BoxEl { Grow = 1f, MinWidth = 0f }, ViewToggle(View, Size)],
             };
@@ -1050,35 +1059,26 @@ public readonly partial struct User
                 Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = LibraryPaneRules.FilterMinW,
                 Children = [filterBox],
             };
-            Element filter = podcasts
-                ? new BoxEl
-                {
-                    Key = "lib:filterrow", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                    Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
-                    Children =
-                    [
-                        filterCell,
-                        new BoxEl
-                        {
-                            Key = "lib:sortslot", Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
-                            Width = LibraryPaneRules.SortSlotW, Shrink = 0f,
-                            Opacity = Prop.Of(() => _savedEpisodes.Value == 0 ? 1f : 0f), Transition = s_armFade,
-                            // The child collapses (not just fades + hit-test off): a collapsed node leaves the focus walk and
-                            // automation, so Tab and Enter cannot open the SHOWS sort menu while the episodes list is showing.
-                            Children = [new BoxEl
-                            {
-                                Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
-                                Visible = Prop.Of(() => _savedEpisodes.Value == 0),
-                                Children = [sort],
-                            }],
-                        },
-                        ViewToggleCompact(View, Size),
-                    ],
-                }
-                : filterBox;
+            // Your Episodes has neither a filter nor a view (main ffbfd67b): its row goes, and the toolbar's Reflow carries the
+            // height change. While browsing shows the row is [filter][sort][view button].
+            Element? filter = !podcasts
+                ? filterBox
+                : PodcastsMode.Value == 1
+                    ? null
+                    : new BoxEl
+                    {
+                        Key = "lib:filterrow", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                        Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
+                        Children = [filterCell, sort, ViewToggleCompact(View, Size)],
+                    };
             // The arms differ in CHILD COUNT and in where the bound count sits, so each carries its own key: paired by
             // ordinal they would have matched the title column against `picker` and `picker` against the filter — and
             // the count is a BOUND text (`_countText`) that only a mount wires. Distinct arm keys keep it from pairing across arms.
+            Element TitleColumn() => new BoxEl
+            {
+                Direction = 1, Gap = PageGeometry.TitleToMeta, MinWidth = 0f,
+                Children = [Design.Type.PaneTitle(Shell.Dest(new Shell.Route(_route)).Title), CountLine()],
+            };
             Element arm;
             if (!title)
                 arm = new BoxEl
@@ -1087,7 +1087,7 @@ public readonly partial struct User
                     Direction = 1, Gap = Spacing.S, Shrink = 0f,
                     Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
                     Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
-                    Children = [picker, filter],
+                    Children = filter is null ? [picker] : [picker, filter],
                 };
             else if (PageHead.HoistedFor(Shell.NameOf(new Shell.Route(_route))))
                 arm = new BoxEl
@@ -1096,7 +1096,7 @@ public readonly partial struct User
                     Direction = 1, Gap = Spacing.S, Shrink = 0f,
                     Padding = new Edges4(PageGeometry.PaneInset, PageGeometry.HeadTop, PageGeometry.PaneInset, Spacing.S),
                     Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
-                    Children = [CountLine(), picker, filter],
+                    Children = filter is null ? [CountLine(), picker] : [CountLine(), picker, filter],
                 };
             else
                 arm = new BoxEl
@@ -1105,15 +1105,7 @@ public readonly partial struct User
                     Direction = 1, Gap = Spacing.S, Shrink = 0f,
                     Padding = new Edges4(PageGeometry.PaneInset, Spacing.L, PageGeometry.PaneInset, Spacing.S),
                     Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 1, Gap = PageGeometry.TitleToMeta, MinWidth = 0f,
-                            Children = [Design.Type.PaneTitle(Shell.Dest(new Shell.Route(_route)).Title), CountLine()],
-                        },
-                        picker, filter,
-                    ],
+                    Children = filter is null ? [TitleColumn(), picker] : [TitleColumn(), picker, filter],
                 };
             return new BoxEl
             {
@@ -1401,7 +1393,7 @@ public readonly partial struct User
                 {
                     Key = "col:nav",   // keyed like its three alternatives; the "depth:N" wrapper already separates them
                     Direction = 1, Grow = 1f,
-                    Children = [Toolbar(title: false), IsPodcasts && _savedEpisodes.Value == 1
+                    Children = [Toolbar(title: false), IsPodcasts && PodcastsMode.Value == 1
                         ? Embed.Comp(() => new SavedEpisodesReader()) with { Key = "saved-episodes:" + Entities.ScopeEpoch.Value }
                         : (fullSearch ? LeftSearchBody(shimmer) : ListBody())],
                 };

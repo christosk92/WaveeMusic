@@ -571,8 +571,8 @@ public readonly partial struct Recents
             var id = shape.Rows.Rows[r].ItemId;
             if (id.IsEmpty || shape.Sections.RowToFlat[r] < 0) return;
             bool closing = ExpandedRow.Peek() == id;
-            // An OFF-SCREEN drawer has no live node to report its collapse: snap its extent first. A realized one follows
-            // the Reflow exit and eases back to 64.
+            // An OFF-SCREEN drawer has no live node to report its collapse: snap its extent first. A realized one rides
+            // the drawer's exit reveal (Design.Reveal.Drawer) back to 64.
             if (!IsFlatRealized(shape, _expandedRow)) ResetExpandedExtent(shape, _expandedRow);
             _expandedRow = closing ? -1 : r;
             ExpandedRow.Value = closing ? StringId.Empty : id;

@@ -62,6 +62,9 @@ public readonly partial struct Playlist
         Shell.SetPage(Shell.RouteKind.LibraryArtists, User.LibraryPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryPodcasts, User.LibraryPageFor);
         Shell.SetPage(Shell.RouteKind.LibraryAudiobooks, User.LibraryPageFor);
+        // Spotify's listen-later playlist is Your Episodes: every navigation to it (a pin, a menu, history) opens the
+        // Podcasts library's Your Episodes view instead of a playlist page.
+        Shell.Redirect = static route => IsYourEpisodesRoute(route) ? User.YourEpisodesRoute() : null;
 
         Fetch.ListSettled = ListOpen.Settled;   // wave D3: an unchanged /diff releases a page's reveal hold at once (Playlist.Open.cs)
         Shell.OnNewPlaylist ??= static () => Sidebar.LibraryWrites?.CreatePlaylist?.Invoke(null, true);
@@ -90,6 +93,16 @@ public readonly partial struct Playlist
     }
 
     sealed record PageProps(EntityUri Subject, bool Local, string RouteKey);
+
+    /// <summary>Is this a playlist route to the account's Your Episodes (<see cref="Playlist.IsYourEpisodes"/>)? The
+    /// row's format when this session has one, else the account's known listen-later uri.</summary>
+    static bool IsYourEpisodesRoute(in Shell.Route route)
+    {
+        if (route.Kind != Shell.RouteKind.Playlist || !route.Subject.IsValid) return false;
+        string uri = route.Subject.Text;
+        var format = Entities.Current.Playlists.TryGetSlot(uri.AsSpan(), out int slot) ? new Playlist(slot).Format : PlaylistFormat.None;
+        return YourEpisodesRules.Is(format, uri, Spotify.Podcasts.KnownSavedUri);
+    }
 
     /// <summary>0.2.9 <c>PlaylistCreateIntent</c>: a create that NAVIGATED arms its uri (the shared patch to
     /// <c>Spotify.Library.StartCreate</c>); the title editor takes it once and opens in edit mode (item 37).</summary>
@@ -282,7 +295,8 @@ public readonly partial struct Playlist
         readonly Detail.FrameActions _actions, _actionsReadOnly;
         readonly Func<ColorF> _accent;
         readonly Func<PageStamp> _stamp;
-        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired;
+        readonly Action _demand, _demandRows, _observe, _activated, _tune, _holdExpired, _toYourEpisodes;
+        string _routeKey = "";
         /// <summary>The open hold's deadline wake (<see cref="HoldExpired"/>), re-armed from its own fire while the hold
         /// still has budget — a wake that lands a frame early must not be the last one.</summary>
         TimerHandle _holdWake;
@@ -304,6 +318,7 @@ public readonly partial struct Playlist
             _demandRows = DemandRows;
             _observe = () => ListOpen.Observe(_playlist.Slot);
             _holdExpired = HoldExpired;
+            _toYourEpisodes = ToYourEpisodes;
             _activated = Activated;
             _tune = () => { if (!Controls.IsNullOverlay(_overlay)) OpenTune(_overlay, _playlist); };
             _editable = () => _playlist.Editable;
@@ -353,6 +368,7 @@ public readonly partial struct Playlist
                 _visibleCover = null;
                 _ownerAsked = Table.None;
             }
+            _routeKey = p.RouteKey;
             var pl = _playlist;
             // The source BEFORE the gate: the stamp's Facts arm scans it (User.FactsHas), so it must exist by then. It is the
             // playlist's rows with the open's hold folded into their readiness (HeldRows) — the table's reveal gate reads it.
@@ -370,6 +386,10 @@ public readonly partial struct Playlist
             UseEffect(_demandRows);
             // The open's revalidation: subscribed to the tables that publish its answer, settled when the model says how it ended.
             UseEffect(_observe);
+            // Shell.Redirect's late half: a cold open of Your Episodes (format unknown, account's listen-later uri never
+            // discovered) only learns what this list is from the page's own read — then the page hands its history
+            // entry to the Podcasts library's Your Episodes view.
+            UseEffect(_toYourEpisodes, DepKey.From(!_local && pl.IsValid && pl.IsYourEpisodes ? 1 : 0));
             // …and the OTHER way that hold ends: its budget simply running out. That edge is the wall clock's, not a
             // table's — nothing settles and nothing publishes — so this page, the only surface holding, arms it on the
             // frame clock and settles it itself (ListOpen.ExpireHold ⇒ Changed ⇒ the Stamp memo below re-runs with
@@ -611,6 +631,16 @@ public readonly partial struct Playlist
             var pl = _playlist;
             if (_local || !pl.IsValid || !ReferenceEquals(_scope, Entities.Current)) return;
             ListOpen.Open(pl, ListOpenPolicy.Surface.Revisit);
+        }
+
+        /// <summary>This list turned out to be Your Episodes while its page is the one showing: swap the history entry
+        /// for the Podcasts library's Your Episodes view. A PARKED page does nothing — <see cref="Shell.Redirect"/>
+        /// already catches the next arrival at it, now that the format is known.</summary>
+        void ToYourEpisodes()
+        {
+            if (_local || !_playlist.IsValid || !_playlist.IsYourEpisodes) return;
+            if (!string.Equals(Shell.NameOf(Shell.Current.Peek()), _routeKey, StringComparison.Ordinal)) return;
+            Shell.ReplaceCurrent(User.YourEpisodesRoute());
         }
 
         /// <summary>THE OPEN HOLD'S DEADLINE, as an event (the eternal meta-line shimmer). The timer arms from mount and

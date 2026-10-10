@@ -36,6 +36,11 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Changed
 
+- **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
+  discography, the Blend card, log rows, episode replies and an album's "Show all" now open and close with one smooth
+  motion that is the same in both directions. Everything below moves along with it instead of jumping at the start or
+  end, a second click reverses it mid-way, and several sidebar sections can open or close at once instead of the
+  earlier one snapping shut.
 - **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
   bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
   full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick a layout in
@@ -73,6 +78,10 @@ versions separately under `v*` and is not tracked in this file.)
   side column.
 - Liked Songs rows are quieter: no heart column (the heart and More show when you hover a row or move to it with the
   keyboard), no striping, regular-weight titles, and Added reads Today, Yesterday, 3 days ago or Last week.
+- **About 900 MB less memory when on-device lyrics sync is not working.** The NPU models it loads for a song are
+  released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
+  and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
+  half, while its audio downloads.
 
 ### Removed
 
@@ -82,6 +91,10 @@ versions separately under `v*` and is not tracked in this file.)
 
 ### Fixed
 
+- **A pinned Your Episodes opens Your Episodes.** It used to open a playlist page with recommended songs, "2
+  collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts
+  episodes instead of songs. On the Podcasts page, the "Followed shows | Your Episodes" switch now has its own row, so
+  "Your Episodes" no longer slides off the edge of a narrow column. (#200)
 - **Home kept its color wash with color washes turned off.**
 - Some Browse and Home images loaded at the smallest size (image sources that only state a maximum width).
 - The sidebar layout you had before switching to Zune is restored after a restart.

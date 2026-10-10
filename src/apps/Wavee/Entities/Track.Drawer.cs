@@ -10,7 +10,7 @@
 //       68 · ch 05 W14 · 0.2.9 `Components/{TrackVersionsPanel, TrackFactsStrip, FormatSplitButton}.cs`,
 //       `Actions/TrackCreditsDialog.cs`
 //
-// WHO MOUNTS WHAT. The TABLE owns the drawer's mount, keying ("drawer-body:" + rowKey), clip, zebra parity, reflow and
+// WHO MOUNTS WHAT. The TABLE owns the drawer's mount, keying ("drawer-body:" + rowKey), clip, zebra parity, reveal and
 // indent (`Track.Table.cs` DrawerBox). This file owns only the BODY a page hands the table through `TableProfile.Drawer`
 // (`DrawerSeam` for the album page): ONE component re-pushed a data-only props record, subscribed to exactly the tables it
 // paints (the track, its album, the adder, the tags/versions/waveform relations, the deck's current item).
@@ -19,7 +19,7 @@
 // TrackWaveform / TrackCredits edges, and — as versions land — Identity | Audio | Files over the version targets.
 //
 // THE RESERVED VIDEO ROW (ch 01 §9 trap 8): a track the catalogue says HAS a video reserves the 76×43 row under the key
-// "v:video" BEFORE the versions relation answers, so the reflow solves its final height on the first frame and the real
+// "v:video" BEFORE the versions relation answers, so the reveal targets its final height on the seed frame and the real
 // row PATCHES into the reserved node (`DrawerRules.VideoRowFor`; a failed relation reserves nothing, W26).
 //
 // THE FORMAT OVERRIDE (ch 01 DATA GAP 14): the radio ladder reads/writes `Playback.FormatOverrideFor` /
@@ -75,7 +75,7 @@ public readonly partial struct Track
 
     const int MaxVersionRows = 16;
     const float StatGap = Spacing.XL;
-    static readonly EnterExit s_fadeUp = new(Opacity: 0f, Active: true);
+    static readonly EnterExit? s_fadeUp = new EnterExit(Opacity: 0f, Active: true);
     static readonly LayoutTransition s_shove = new(TransitionChannels.Position,
         TransitionDynamics.Tween(Expressive.Fast, Easing.SmoothOut));
 
@@ -93,6 +93,9 @@ public readonly partial struct Track
         int _peaksParent = -1;
         uint _peaksVersion, _peaksEpoch;
         readonly Action _demand, _demandVersions;
+        // False until the first body is built: what the drawer opens WITH rides its clip reveal as part of the drawer;
+        // only a fact that lands while it is open fades up (a second motion on top of the reveal read as a fade-pop).
+        bool _opened;
 
         public DrawerHost() { _demand = Demand; _demandVersions = DemandVersions; }
 
@@ -133,7 +136,8 @@ public readonly partial struct Track
             for (int i = edgeVideo ? 1 : 0; i < ordered; i++) entries.Add((DrawerRules.AudioKind, new Track(targets[order[i]])));
 
             var body = new Element[2 + entries.Count];
-            body[0] = FactsStrip(FactsFor(t, p.Options));
+            body[0] = FactsStrip(FactsFor(t, p.Options), arriving: _opened);
+            _opened = true;
             // A whole step of top air, not a hairline: the eyebrow heads the ROWS, not the flat strip above it.
             body[1] = Design.Type.Eyebrow(Loc.Get(Strings.Detail.Versions.VersionsAndFormats)) with
             {
@@ -213,7 +217,7 @@ public readonly partial struct Track
 
     // Three lines of flat typography and no chrome: the hero figures, the middot prose line, the genre/flag line. A track
     // that states nothing yields a bare box (W26).
-    static Element FactsStrip(IReadOnlyList<Fact> facts)
+    static Element FactsStrip(IReadOnlyList<Fact> facts, bool arriving)
     {
         if (facts.Count == 0) return new BoxEl { Key = "facts" };
         var heroes = new List<Element>(4);
@@ -226,7 +230,7 @@ public readonly partial struct Track
                 for (int k = 0; k < tags.Count; k++) Join(genres, GenreRun(tags[k]));
             else if (f.Form == FactForm.Flag) Join(genres, FlagRun(f.Kind));
             else if (f.Form == FactForm.Chips) continue;
-            else if (Facts.IsHeroFact(f.Kind)) heroes.Add(Stat(in f));
+            else if (Facts.IsHeroFact(f.Kind)) heroes.Add(Stat(in f, arriving));
             else Join(prose, ProseRun(in f));
         }
         var lines = new List<Element>(3);
@@ -234,11 +238,11 @@ public readonly partial struct Track
             lines.Add(new BoxEl
             {
                 Key = "facts-hero", Direction = 0, Wrap = true, Gap = StatGap, MinWidth = 0f,
-                Stagger = Design.Reduced ? 0f : Design.Motion.MastheadStaggerMs,   // reduced motion is a VALUE
+                Stagger = Design.Reduced || !arriving ? 0f : Design.Motion.MastheadStaggerMs,   // reduced motion is a VALUE
                 Children = heroes.ToArray(),
             });
-        if (prose.Count > 0) lines.Add(FactLine("facts-prose", prose));
-        if (genres.Count > 0) lines.Add(FactLine("facts-genres", genres));
+        if (prose.Count > 0) lines.Add(FactLine("facts-prose", prose, arriving));
+        if (genres.Count > 0) lines.Add(FactLine("facts-genres", genres, arriving));
         return new BoxEl
         {
             Key = "facts", Direction = 1, Gap = Spacing.M, MinWidth = 0f, Padding = new Edges4(0f, Spacing.XS, 0f, Spacing.S),
@@ -247,20 +251,20 @@ public readonly partial struct Track
     }
 
     // A whole line fades and FLIPs as one — a middot sentence staggered word by word reads as a teleprompter.
-    static BoxEl FactLine(string key, List<Element> runs) => new()
+    static BoxEl FactLine(string key, List<Element> runs, bool arriving) => new()
     {
-        Key = key, Enter = s_fadeUp, Layout = s_shove, Direction = 0, Wrap = true, AlignItems = FlexAlign.Center,
+        Key = key, Enter = arriving ? s_fadeUp : null, Layout = s_shove, Direction = 0, Wrap = true, AlignItems = FlexAlign.Center,
         Gap = Spacing.XS, MinWidth = 0f, Children = runs.ToArray(),
     };
 
     // One hero figure over its caption, keyed by KIND. A pending fact is its own dash at 0.6.
-    static Element Stat(in Fact f)
+    static Element Stat(in Fact f, bool arriving)
     {
         bool pending = f.Form == FactForm.Pending;
         var split = pending ? new FactSplit(f.Value, null) : Facts.HeroSplit(in f);
         return new BoxEl
         {
-            Key = s_factKeys[(int)f.Kind], Enter = s_fadeUp, Layout = s_shove, Direction = 1, Gap = 0f, Shrink = 0f,
+            Key = s_factKeys[(int)f.Kind], Enter = arriving ? s_fadeUp : null, Layout = s_shove, Direction = 1, Gap = 0f, Shrink = 0f,
             MinWidth = 0f, Margin = new Edges4(0f, 0f, StatGap, 0f), Opacity = pending ? 0.6f : 1f,
             Children =
             [

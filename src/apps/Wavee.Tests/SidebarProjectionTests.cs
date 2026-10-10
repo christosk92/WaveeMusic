@@ -2002,6 +2002,21 @@ public class SidebarPaneTextSubtitleFacts
         Assert.Equal(Strings.Sidebar.SongCount(42), Sidebar.PaneText.SubtitleOf(in e));
     }
 
+    /// <summary>Your Episodes (Spotify's listen-later playlist) counts episodes: a pinned row read "3 songs".</summary>
+    [Fact]
+    public void YourEpisodes_CountsEpisodes_NotSongs()
+    {
+        var e = Playlist(trackCount: 3, identityKnown: true, countKnown: true) with { Episodes = true };
+        Assert.Equal(Strings.Podcast.EpisodeCount(3), Sidebar.PaneText.SubtitleOf(in e));
+    }
+
+    [Fact]
+    public void YourEpisodes_WithUnknownCount_StillSaysNothing()
+    {
+        var e = Playlist(trackCount: 3, identityKnown: true, countKnown: false) with { Episodes = true };
+        Assert.Null(Sidebar.PaneText.SubtitleOf(in e));
+    }
+
     /// <summary>A row whose count is unknown but that HAPPENS to carry a nonzero TrackCount (e.g. a stale value
     /// left over from a previous session) still shows nothing — the gate is the bit, never the number.</summary>
     [Fact]

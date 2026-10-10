@@ -814,8 +814,9 @@ public readonly partial struct Track
         return named ? ToolTip.Wrap(hit, Prop.Of<string?>(() => Loc.Get(Strings.Common.More)), grow: 1f) : hit;
     }
 
-    /// <summary><see cref="ExpandCell"/> bound: the glyph swaps ChevronRight secondary ↔ ChevronDown accent with the open
-    /// state; an episode row (no versions) collapses the chevron.</summary>
+    /// <summary><see cref="ExpandCell"/> bound: the chevron ROTATES (ChevronRight → down) on the reveal spring with the drawer,
+    /// inked accent while open; a recycle onto another track re-seeds it without spinning. An episode row (no versions)
+    /// collapses the chevron.</summary>
     static Element BoundExpandCell(BoundRow r)
         => RowCenterCell(new BoxEl
         {
@@ -828,8 +829,7 @@ public readonly partial struct Track
             Visible = Prop.Of(() => r.P.Track.Uri.Kind == EntityKind.Track),
             Children =
             [
-                Glyph(Prop.Of(() => r.P.Open ? Icons.ChevronDown : Icons.ChevronRight), 12f,
-                      Prop.Of(() => r.P.Open ? Tok.AccentTextPrimary : Tok.TextSecondary)),
+                Sidebar.Chevron.Disclosure(() => r.P.Open, size: 12f, identity: () => r.P.Track.Slot, accentWhenOpen: true),
             ],
         }, CellKey.Expand);
 

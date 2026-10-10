@@ -558,6 +558,8 @@ public static partial class LogsPage
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinHeight = 36f, Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
                 Grow = 1f, Fill = expanded ? Tok.FillSubtleSecondary : ColorF.Transparent,
+                // The message wraps when expanded: the taller line reveals, never snaps.
+                Animate = Design.Reveal.Resize,
                 Children =
                 [
                     Sidebar.Chevron.Disclosure(() => _expandedSeq.Value == seq, size: ChevronSlot),
@@ -573,16 +575,24 @@ public static partial class LogsPage
                     row.Repeat > 1 ? RepeatBadge(row.Repeat) : new BoxEl(),
                 ],
             }.Interactive(Interaction.ListRow);
-            if (!expanded) return line;
 
-            // The expanded row is a keyed WRAPPER: the line, Fields (only when non-empty), Exception (only when present),
-            // and the meta line, which ALWAYS renders.
-            var detail = new List<Element>(4) { line };
-            string fieldText = LogView.FieldText(e.Fields);
-            if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Logs.Fields), fieldText));
-            if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Logs.Exception), ex));
-            detail.Add(Design.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
-            return new BoxEl { Key = "logs:row:" + seq.ToString(CultureInfo.InvariantCulture), Direction = 1, Gap = 4f, Padding = new Edges4(0f, 0f, Spacing.S, Spacing.S), Children = detail.ToArray() };
+            // The row is ALWAYS the keyed column; expanding only adds the details child, a Drawer reveal (Design.Reveal.Drawer).
+            // The details: Fields (only when non-empty), Exception (only when present), and the meta line (always).
+            Element[] children = [line];
+            if (expanded)
+            {
+                var detail = new List<Element>(3);
+                string fieldText = LogView.FieldText(e.Fields);
+                if (fieldText.Length > 0) detail.Add(DetailSection(Loc.Get(Strings.Logs.Fields), fieldText));
+                if (e.Exception is { Length: > 0 } ex) detail.Add(DetailSection(Loc.Get(Strings.Logs.Exception), ex));
+                detail.Add(Design.Type.MicroMeta(LogView.MetaLine(in e)) with { Color = Tok.TextTertiary, FontFamily = "Cascadia Code", Margin = new Edges4(44f, 0f, 0f, 0f) });
+                children = [line, new BoxEl
+                {
+                    Key = "details", Direction = 1, Gap = 4f, Padding = new Edges4(0f, 4f, 0f, Spacing.S),
+                    Animate = Design.Reveal.Drawer, Children = detail.ToArray(),
+                }];
+            }
+            return new BoxEl { Key = "logs:row:" + seq.ToString(CultureInfo.InvariantCulture), Direction = 1, Children = children };
         }
 
         static Element DetailSection(string caption, string text) => new BoxEl

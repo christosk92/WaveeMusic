@@ -1601,6 +1601,26 @@ public static partial class Design
         public const float MastheadStaggerMs = 45f;
     }
 
+    /// <summary>THE disclosure motion (fluent-gpu docs/plans/smooth-reveal-implementation.md): layout lands once, the
+    /// presented height springs under <c>MotionTok.Reveal</c> — critically damped, the same both ways, interruptible from
+    /// where it stands — and everything below rides it in lockstep. A clip reveal, never a fade: nothing pops and nothing
+    /// re-lays out per frame. Use these, never SizeMode.Reflow, for anything that opens and closes.</summary>
+    public static class Reveal
+    {
+        /// <summary>An inline drawer that MOUNTS to open and unmounts to close (a list row's details, a reply thread): the
+        /// edge wipes over content that stays put. A reopen mid-close continues from where the closing copy stands.</summary>
+        public static readonly LayoutTransition Drawer = new(TransitionChannels.Size, MotionTok.Reveal.ToDynamics(),
+            Size: SizeMode.FlowReveal, Enter: new EnterExit(Active: true), Exit: new EnterExit(Active: true),
+            Anchor: SizeAnchor.Leading, SuppressDescendantTransitions: true);
+
+        /// <summary>A card body that unfolds: the content trails the moving edge by a damped share of what is still hidden.</summary>
+        public static readonly LayoutTransition Card = Drawer with { Anchor = SizeAnchor.Parallax };
+
+        /// <summary>A box whose content height changes in place ("Show all", a wrapping line): the new height reveals.</summary>
+        public static readonly LayoutTransition Resize = new(TransitionChannels.Size, MotionTok.Reveal.ToDynamics(),
+            Size: SizeMode.FlowReveal);
+    }
+
     /// <summary>The process-wide reduced-motion flag, read as a VALUE. Named here so no app file has to import the
     /// engine's <c>Motion</c> (which <see cref="Design.Motion"/> shadows inside this class) just to ask.</summary>
     public static bool Reduced => FgMotion.ReducedMotion;

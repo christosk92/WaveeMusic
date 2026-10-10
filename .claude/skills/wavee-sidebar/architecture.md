@@ -170,10 +170,11 @@ is the rootlist. Every other sort refuses a positional drop (see the rootlist se
 Sections and folders open and close through `PaneView`'s disclosure path. The disclosure motion belongs to the
 smooth-reveal work, not to this rework. The guide describes it in one paragraph, never as a WinUI-style tween.
 
-Today `PaneView.StartDisclosure` (Sidebar.UI.cs) is the one entry point and holds a single in-flight disclosure
-(`_activeDisclosureKey`): the same key reverses it, another key completes it and queues (`_queuedDisclosure`).
-feat/smooth-reveal moves this bookkeeping into `SidebarDisclosures` (Sidebar.Disclosures.cs) and runs disclosures
-concurrently on the engine's reveal bands. The motion is never a `MotionTok.Disclosure*` tween.
+`PaneView.StartDisclosure` (Sidebar.UI.cs) is the one entry point. `SidebarDisclosures` (Sidebar.Disclosures.cs) tracks
+the keys in flight: disclosures run concurrently on the engine's reveal bands, and a click on a key in flight reverses it
+from where it stands (fluent-gpu `docs/plans/smooth-reveal-implementation.md` §10/§12). An expansion publishes on the
+click frame; a collapse keeps its rows until the band rests, then commits. The chevron rides the same `MotionTok.Reveal`
+spring, so the glyph and the rows land together.
 
 ## Rootlist drag & drop
 
@@ -197,7 +198,7 @@ in it all resolve to one slot and one commit.
 - **Cue.** The row draws a line (Before, After, or EndOfList, indented to the resolved depth) or a plate (Inside). Never
   both.
 - **Freeze.** While a drag is live, the plan holds its published stage so the dropped row does not snap home. Two
-  publishes go through: a disclosure in flight (`_activeDisclosureKey is not null`; spring-loading a folder exists to
+  publishes go through: any disclosure in flight (`_disclosures.Count != 0`; spring-loading a folder exists to
   reveal its children) and the pane's own reorder commit (`_publishThroughFreeze`, a one-shot latch that ends with the
   session).
 - **Non-mouse verbs.** A drag is never the only way to move a row: Alt+↑/↓ and the menu verbs use the same mapping and
