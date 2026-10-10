@@ -517,13 +517,10 @@ public static partial class Shell
 
     /// <summary>The popup body, rendered BY the store's state. Its one sentence, "No results found", is reserved for a
     /// confirmed empty answer; pending is the always-mounted progress slot over the previous rows (or skeleton rows in the
-    /// height the previous answer took when there are none), failed is a retry offer. Idle (closing) keeps the last body
-    /// on screen.</summary>
+    /// height the previous answer took when there are none), failed is a retry offer. Idle (closing) is an empty
+    /// body.</summary>
     sealed class SuggestionsPopup(IReadSignal<float> width, Action<int> choose, Action? close, bool allowNarrow) : Component
     {
-        // The last body that was on screen: the Idle (closing) frames present it. Per mount.
-        Element? _lastBody;
-
         public override Element Render()
         {
             string typed = SearchText.Value.Trim();
@@ -564,8 +561,8 @@ public static partial class Shell
                         Button.Subtle(Loc.Get(Strings.Common.Retry), static () => s_omnibar.Query.Retry())),
                     // Pending: skeleton rows in the reserved height, so the answer fills space instead of growing it.
                     Omnibar.State.Pending => PendingBody(w),
-                    // Idle (closing): the body that was on screen; no sentence.
-                    _ => _lastBody ?? new BoxEl { Width = w, MinWidth = w, MinHeight = AutoSuggestBox.ItemMinHeight },
+                    // Idle (closing): no sentence.
+                    _ => new BoxEl { Width = w, MinWidth = w, MinHeight = AutoSuggestBox.ItemMinHeight },
                 };
             }
             else
@@ -577,10 +574,8 @@ public static partial class Shell
                 };
             }
 
-            if (state != Omnibar.State.Idle) _lastBody = body;
-
             // The progress bar's 3-DIP slot is ALWAYS the first child: it fades, it never mounts or unmounts, so a keystroke
-            // moves nothing. The popup chrome supplies the plate, border, corners, shadow and clip; the root's height eases.
+            // moves nothing; the indeterminate bar inside it runs only while a request is pending. The popup chrome supplies the plate, border, corners, shadow and clip; the root's height eases.
             return new BoxEl
             {
                 Direction = 1, Width = w, MinWidth = w, Padding = new Edges4(0f, 2f, 0f, 2f),
@@ -591,7 +586,7 @@ public static partial class Shell
                     {
                         Key = "omni-progress", Width = w, Height = ProgressSlotHeight, Shrink = 0f, ClipToBounds = true,
                         HitTestVisible = false, Opacity = state == Omnibar.State.Pending ? 1f : 0f, Transition = FluentGpu.Animation.MotionTok.ControlFast,
-                        Children = [ProgressBar.Indeterminate(w)],
+                        Children = state == Omnibar.State.Pending ? [ProgressBar.Indeterminate(w)] : [],
                     },
                     body,
                 ],
