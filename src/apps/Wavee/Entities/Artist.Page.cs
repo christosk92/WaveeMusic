@@ -175,6 +175,20 @@ public readonly partial struct Artist
         /// <summary>The frame (<c>Design.FrameTime.NowMs</c>) on which this artist's photo started its entrance, stamped once: the reveal
         /// frame when the bitmap was resident, else the frame it landed on. Rides the backdrop so the shell's presence starts there.</summary>
         long _entranceAtMs;
+        /// <summary>The frame the overview landed on a measured page (the hero request only starts then), stamped once per artist; the
+        /// hero wait's cap (<see cref="ArtistReadiness.HeroWaitCapMs"/>) is armed from it. 0 until then.</summary>
+        long _overviewAtMs;
+        /// <summary>The hero wait's cap, LATCHED by <see cref="_heroWaitElapsed"/> (a timeout after <see cref="_overviewAtMs"/>) and read by
+        /// Render as a flag, never re-derived from frame time (<c>FrameTime.NowMs</c> is the present stamp and trails the timer).</summary>
+        bool _heroCapElapsed;
+        /// <summary>DemandRows has asked for the rows of the current popular list, so the page's chart gate may read their marks.</summary>
+        bool _popularAsked;
+        /// <summary>The hero photo's failure as seen up to the reveal, then frozen (F2): a failure before the reveal reveals the non-bleed
+        /// look; one after it keeps the look already on screen, so the wash, the ink and the photo frame never snap.</summary>
+        bool _heroPhotoFailed;
+        /// <summary>Wakes Render while the page is still gated: when the cap elapses, and whenever DemandRows moves to a new popular
+        /// version (the gate reads both).</summary>
+        readonly Signal<int> _heroWaitTick = new(0);
         Element? _body;
         IOverlayService? _overlay;
 
@@ -203,6 +217,7 @@ public readonly partial struct Artist
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
         readonly Action _watchScroll;
+        readonly Action _heroWaitElapsed;
         readonly Func<long> _stampFn;
 
         public PageHost()
@@ -265,6 +280,13 @@ public readonly partial struct Artist
                 _viewportH.SetIfChanged(vh);
                 _atEnd.SetIfChanged(atEnd);
             };
+            _heroWaitElapsed = () =>
+            {
+                // A fire before the overview stamp (the timer arms at mount) counts for nothing.
+                if (_overviewAtMs == 0 || _heroCapElapsed) return;
+                _heroCapElapsed = true;
+                if (!_heroGateOpened) _heroWaitTick.Value = _heroWaitTick.Peek() + 1;
+            };
             _stampFn = Stamp;
         }
 
@@ -302,6 +324,7 @@ public readonly partial struct Artist
                 _heroUrl = null;
                 _heroGateOpened = false;
                 _entranceAtMs = 0;
+                _overviewAtMs = 0; _heroCapElapsed = false; _popularAsked = false; _heroPhotoFailed = false;
                 _heroDecodeW = _heroDecodeH = 0;
                 // DemandRows' gates (ch 08 render-cost fix): forced back to default so the first pass for the NEW
                 // artist always walks every relation once, even in the (astronomically unlikely) case a recycled slot
@@ -343,6 +366,7 @@ public readonly partial struct Artist
             _showArtwork = !Prefs.Appearance.TrackArtworkHidden();
 
             _ = _layoutEpoch.Value;
+            _ = _heroWaitTick.Value;
             _width = MathF.Max(1f, _heroWidth.Value);
             _metrics = ArtistHeroLayout.For(_width, _tier);
             _tier = _metrics.Tier;
@@ -392,8 +416,20 @@ public readonly partial struct Artist
                 dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
             }
             var heroImage = UseImage(heroBind, dw, dh, ImagePriority.Visible, blurHash: null);
-            if (heroBind.Length > 0)
+            bool hasUrl = heroBind.Length > 0;
+            if (hasUrl)
                 heroImageReady = heroImage.State is ImageState.Ready or ImageState.Failed;
+            // Only a RESIDENT bitmap stamps the entrance and publishes the backdrop; a failed photo never bleeds (F2). The failure is read
+            // only until the reveal and frozen after it: a photo that fails past the cap, or a later rendition swap that fails, keeps the
+            // look that is already up (no stamp, no backdrop) instead of snapping the wash and the ink to the non-bleed look.
+            bool heroResident = hasUrl && heroImage.State == ImageState.Ready;
+            _heroPhotoFailed = ArtistBleed.PhotoFailed(_heroGateOpened, hasUrl && heroImage.State == ImageState.Failed, _heroPhotoFailed);
+            bool heroFailed = _heroPhotoFailed;
+            // The hero wait's cap runs from the frame the overview landed on a measured page (the hero request starts then). The timeout
+            // arms at mount, re-arms when the stamp lands, and its callback ignores a fire before it; it sets a flag, Render never
+            // compares frame time against the cap.
+            if (_ready && _measured && _overviewAtMs == 0) { _overviewAtMs = Design.FrameTime.NowMs; _heroCapElapsed = false; }
+            UseTimeout(_heroWaitElapsed, ArtistReadiness.HeroWaitCapMs, DepKey.From(HashCode.Combine(a.Slot, (int)scopeEpoch), _overviewAtMs != 0 ? 1 : 0));
 
             // A 0-size leaf: the watch, the tone and the claim live there, never in this render. Gated on the incoming
             // art being USABLE (ch 08 BUG D) — never on Knows(Overview): a claim whose cover is already graded (the
@@ -401,22 +437,30 @@ public readonly partial struct Artist
             // a genuinely ungraded cover falls through to TintOwnership's hold.
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
 
-            // ONE visual swap: overview + measured width + chart settled (the body does NOT wait for the bitmap: waiting for it and then
-            // fading the whole tree from 0 hid the photo again, stillwrong.mp4). The reveal is Soft, or FadeOnly under the bleed (RevealFor).
-            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a));
-            _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
+            // ONE visual swap: overview + measured width + chart settled, and UNDER THE BLEED the decoded hero bitmap (V2: the copy and the
+            // photo are one entrance; waiting for it and then fading the whole tree from 0 hid the photo again, stillwrong.mp4, which is
+            // why the wait is capped and the reveal is FadeOnly). The cap (ArtistReadiness.HeroWaitCapMs) is a flag the timeout above
+            // sets; past it the copy reveals and the photo takes the late path. Off the bleed the body does not wait for the bitmap.
+            bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+            bool bleedEligible = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), heroUrl, zune, _metrics.Stacked)
+                && !heroFailed;
+            bool heroSettled = ArtistReadiness.HeroSettled(bleedEligible, heroImageReady, _heroCapElapsed);
+            // The gate reads the popular rows' marks only for the list DemandRows has asked: before that "not asked" is not "failed".
+            bool rowsAsked = _popularAsked && _popularStamp.Slot == a.Slot && _popularStamp.Version == e.ArtistPopular.Version(a.Slot);
+            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, rowsAsked));
+            _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled, heroSettled);
             if (_bodyReady) _heroGateOpened = true;
             // The photo's entrance starts on this frame (the page's reveal, or the late bitmap's ready edge): the shell's presence is stamped
-            // with it, once per artist, and only for a real hero (heroImageReady is true while there is no url).
-            if (_bodyReady && heroImageReady && heroBind.Length > 0 && _entranceAtMs == 0) _entranceAtMs = Design.FrameTime.NowMs;
+            // with it, once per artist, and only for a real hero whose bitmap is resident (a failed photo never stamps).
+            if (ArtistBleed.StampsEntrance(_bodyReady, hasUrl, heroResident, _entranceAtMs != 0)) _entranceAtMs = Design.FrameTime.NowMs;
 
             // EXPERIMENTAL (artist bleed; Artist.Bleed.cs): the photo runs from the window top behind the chrome. The ONE read of
             // `ArtistBleed.Enabled`. Only once the body is up, so the skeleton never draws over a photo it does not show. The
             // tint's publish carries the backdrop as data; the shell draws it. `floor` and the collapse distance are the hero's own
             // (A2's latched floor), so the shell's ground and fade track the hero 1:1. Zune only and never on a stacked tier (the
             // decision reads the LIVE nav style, so a switch re-renders the page and the card's layers fade with the shell's).
-            bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), _bodyReady ? heroUrl : null,
-                zune: Sidebar.NavStyle.Value == ShellNavStyle.Zune, stacked: _metrics.Stacked);
+            bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(),
+                ArtistBleed.HeaderPhotoFor(heroUrl, _bodyReady, heroFailed), zune, _metrics.Stacked);
             // The backdrop is published only once the hero bitmap has been resident (the stamp; the page's own UseImage is the card's and the
             // shell's cache entry), so until then drawn() is false, the card carries everything and the shell draws nothing. It is gated on the
             // STAMP, not the live state: a later url/rendition swap or scale change leaves Ready for a moment and must not tear the bleed down.
@@ -457,11 +501,12 @@ public readonly partial struct Artist
             // effects) and catches up on the same curve.
             //
             // The reveal is safe to animate now in a way it was NOT before, which is the whole point of the gate
-            // above: `BodyReady` has already waited for the overview, the measured width and a settled chart (not the bitmap, which
-            // HeroArt fades in itself), so the tree that rises is complete. What broke earlier (stillwrong.mp4) was revealing at
-            // overview-readiness and animating a tree whose photo had not landed - the header appeared, then vanished
-            // behind its own second fade. Group null, not routeKey: the chart's inner region (Artist.UI.Chart.cs) must
-            // NOT join this one, or top tracks plays a second wave after the page has already revealed.
+            // above: `BodyReady` has already waited for the overview, the measured width, a settled chart and, under the bleed, the
+            // decoded bitmap up to the cap (off the bleed HeroArt fades the bitmap in itself), so the tree that rises is complete. What
+            // broke earlier (stillwrong.mp4) was revealing at overview-readiness and animating a tree whose photo had not landed - the
+            // header appeared, then vanished behind its own second fade. Past the cap the copy reveals and the photo takes the late path.
+            // Group null, not routeKey: the chart's inner region (Artist.UI.Chart.cs) must NOT join this one, or top tracks plays a
+            // second wave after the page has already revealed.
             Element region = new SkelRegionEl(
                 Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
                 OnFailed: _failedPanelFn, Reveal: ArtistBleed.RevealFor(bleed), Style: SkeletonStyle.Default,
@@ -982,7 +1027,7 @@ public readonly partial struct Artist
         /// </list>
         ///
         /// <para><b>Kept OUT of this fold</b> (too dynamic to fold cheaply, per the render-cost fix's own escape
-        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist)"/> additionally
+        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist,bool)"/> additionally
         /// read every popular track's <c>Known</c>/<c>Asked</c>/<c>Inflight</c> bits (up to
         /// <see cref="ArtistPopularTracks.ExtendedCap"/> rows, each landing independently) to decide the chart gate —
         /// folding that is as expensive as just re-rendering on it. Render keeps a literal
@@ -1073,7 +1118,8 @@ public readonly partial struct Artist
         /// below are table-wide (any artist's shelf landing anywhere wakes every artist page that reads it), so each
         /// Ensure call is gated behind a <see cref="RowStamp"/> for the ONE relation it walks (ch 08 render-cost fix) —
         /// re-running this whole effect stays cheap, re-walking six shelves' worth of slots on someone else's drain
-        /// does not.</summary>
+        /// does not. The page's chart gate (<c>ArtistReadiness.ChartFailed(a, rowsAsked)</c>) reads the target rows' marks only for the popular
+        /// version asked here (<c>_popularAsked</c> and <c>_popularStamp</c>); before that an unasked row is pending, not failed.</summary>
         void DemandRows()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -1095,6 +1141,10 @@ public readonly partial struct Artist
             if (popularStamp.Moved(_popularStamp))
             {
                 _popularStamp = popularStamp;
+                // From here the page's chart gate may read the rows' marks (ArtistReadiness.ChartFailed(a, rowsAsked)): wake it at every
+                // new popular version until the reveal, since Render sees the new version before this effect has asked it.
+                _popularAsked = true;
+                if (!_heroGateOpened) _heroWaitTick.Value = _heroWaitTick.Peek() + 1;
                 var popular = a.PopularSlots;
                 if (popular.Length > 0)
                 {

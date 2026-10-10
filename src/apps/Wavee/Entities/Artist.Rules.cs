@@ -197,25 +197,42 @@ public static class ArtistReadiness
     public static bool MagazinePending(Artist a) => !Overview(a);
 
     /// <summary>When the page-level skeleton may swap to the real body: the overview (the data unit), a measured
-    /// page width, and the chart ready-or-failed. NOT the hero photograph - a slow download would hold an otherwise
-    /// fully-known page at a shimmer, and the photo owns its own scale-and-fade entrance when its bitmap lands
-    /// (<c>Artist.HeroArt</c>), so the page never animates a tree whose picture is still arriving.
-    /// <para>The measured width and the settled chart are both there for the same reason: without them the page
+    /// page width, the chart ready-or-failed and, UNDER THE BLEED only, the hero photograph (<see cref="HeroSettled"/>).
+    /// Off the bleed the page never waits for the bitmap: a slow download would hold an otherwise fully-known page at
+    /// a shimmer, and the photo owns its own scale-and-fade entrance when its bitmap lands (<c>Artist.HeroArt</c>).
+    /// Under the bleed the copy and the photo are one entrance (V2): the body waits for the decoded bitmap, ready or
+    /// failed, up to <see cref="HeroWaitCapMs"/>, so the copy never fades in over a plain ground and the photo pops in a few
+    /// frames behind it.
+    /// <para>The measured width and the settled chart are there for the same reason: without them the page
     /// flashes default-Wide geometry, and then plays a SECOND top-tracks wave a moment after it has revealed.</para>
     /// Once revealed, the page stays revealed for this artist so a later image/size change cannot put the skeleton
     /// back on top.</summary>
-    public static bool BodyReady(bool overviewKnown, bool measured, bool alreadyRevealed, bool chartSettled)
+    public static bool BodyReady(bool overviewKnown, bool measured, bool alreadyRevealed, bool chartSettled, bool heroSettled = true)
     {
         if (alreadyRevealed) return true;
-        return overviewKnown && measured && chartSettled;
+        return overviewKnown && measured && chartSettled && heroSettled;
     }
+
+    /// <summary>How long a bleeding page waits for its hero bitmap, from the frame the overview landed and the page was measured
+    /// (the hero request only starts then). Past it the copy reveals and the photo takes the late path.</summary>
+    public const float HeroWaitCapMs = 250f;
+
+    /// <summary>The photograph half of <see cref="BodyReady"/>: the wait applies only under the bleed
+    /// (<paramref name="bleedEligible"/>); there it ends when the bitmap is settled (decoded, or failed for good) or the cap has
+    /// elapsed. <paramref name="capElapsed"/> is LATCHED by the page's timeout callback and never re-derived from frame time:
+    /// <c>FrameTime.NowMs</c> is the present stamp and trails the timer.</summary>
+    public static bool HeroSettled(bool bleedEligible, bool imageSettled, bool capElapsed)
+        => !bleedEligible || imageSettled || capElapsed;
 
     /// <summary>The chart half of <see cref="BodyReady"/>: top tracks have answered, or they have stopped coming.</summary>
     public static bool ChartSettled(bool chartReady, bool chartFailed) => chartReady || chartFailed;
 
     /// <summary>Live-table twin of <see cref="ChartFailed(bool,uint,uint,EdgeState,ReadOnlySpan{uint},ReadOnlySpan{uint},ReadOnlySpan{uint})"/>.
-    /// Unasked is pending, not failed — the page's first paint before Demand.</summary>
-    public static bool ChartFailed(Artist a)
+    /// Unasked is pending, not failed — the page's first paint before Demand. <paramref name="rowsAsked"/> is the page's own
+    /// fact that DemandRows has asked for the rows of the current popular list (the contract at the pure overload's doc, and
+    /// the twin of <c>ChartHost</c>'s guard in Artist.UI.Chart.cs): until then a target's empty marks mean "not asked
+    /// yet" and are not read, so the chart does not fail and the page does not reveal early, which played top tracks as a second wave.</summary>
+    public static bool ChartFailed(Artist a, bool rowsAsked)
     {
         if (!a.IsValid) return false;
         var scope = Entities.Current;
@@ -232,7 +249,7 @@ public static class ArtistReadiness
         var tracks = scope.Tracks;
         var targets = edges.Targets(slot);
         int n = targets.Length;
-        if (n == 0)
+        if (n == 0 || !rowsAsked)
             return ChartFailed(knows, asked, inflight, edges.Readiness(slot), [], [], []);
         int stride = Math.Max(n, 64);
         Span<uint> marks = n <= 64 ? stackalloc uint[192] : new uint[n * 3];

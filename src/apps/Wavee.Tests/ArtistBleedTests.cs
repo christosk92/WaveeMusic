@@ -47,6 +47,41 @@ public class ArtistBleedGateTests
     }
 }
 
+public class ArtistBleedHeaderPhotoTests
+{
+    /// <summary>F2: a failed header photo keeps the non-bleed look. The decision reads the photo only once the body is up.</summary>
+    [Fact]
+    public void A_failed_header_photo_never_bleeds()
+    {
+        Assert.Equal("u", ArtistBleed.HeaderPhotoFor("u", bodyReady: true, photoFailed: false));
+        Assert.Null(ArtistBleed.HeaderPhotoFor("u", bodyReady: true, photoFailed: true));
+        Assert.Null(ArtistBleed.HeaderPhotoFor("u", bodyReady: false, photoFailed: false));
+        Assert.False(ArtistBleed.Applies(true, WashLevel.Rich, ArtistBleed.HeaderPhotoFor("u", true, photoFailed: true), zune: true, stacked: false));
+        Assert.True(ArtistBleed.Applies(true, WashLevel.Rich, ArtistBleed.HeaderPhotoFor("u", true, photoFailed: false), zune: true, stacked: false));
+    }
+
+    /// <summary>A failure counts only until the reveal; after it the look on screen stands (no snap from bleed to non-bleed).</summary>
+    [Fact]
+    public void A_photo_failure_after_the_reveal_does_not_change_the_decision()
+    {
+        Assert.True(ArtistBleed.PhotoFailed(revealed: false, failedNow: true, latched: false));    // gated: read live
+        Assert.False(ArtistBleed.PhotoFailed(revealed: false, failedNow: false, latched: true));
+        Assert.False(ArtistBleed.PhotoFailed(revealed: true, failedNow: true, latched: false));    // past the cap, then fails: bleed stays
+        Assert.True(ArtistBleed.PhotoFailed(revealed: true, failedNow: false, latched: true));     // failed before the reveal: stays non-bleed
+    }
+
+    /// <summary>Only a RESIDENT bitmap (Ready; a Failed one is not) stamps the entrance, once per artist and only for a real hero.</summary>
+    [Fact]
+    public void Only_a_resident_bitmap_stamps_the_entrance()
+    {
+        Assert.True(ArtistBleed.StampsEntrance(bodyReady: true, hasUrl: true, resident: true, stamped: false));
+        Assert.False(ArtistBleed.StampsEntrance(bodyReady: true, hasUrl: true, resident: false, stamped: false));   // loading or failed
+        Assert.False(ArtistBleed.StampsEntrance(bodyReady: true, hasUrl: false, resident: true, stamped: false));  // no hero
+        Assert.False(ArtistBleed.StampsEntrance(bodyReady: false, hasUrl: true, resident: true, stamped: false));  // body not up
+        Assert.False(ArtistBleed.StampsEntrance(bodyReady: true, hasUrl: true, resident: true, stamped: true));    // once per artist
+    }
+}
+
 public class ArtistBleedPhotoRightTests
 {
     [Fact]

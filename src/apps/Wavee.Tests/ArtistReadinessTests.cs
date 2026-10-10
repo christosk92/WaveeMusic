@@ -94,11 +94,12 @@ public class ArtistReadinessRuleTests
         Assert.False(ArtistReadiness.ChartFailed(false, Chart, Stamp, EdgeState.Partial, [identity], [Row], [Stamp]));
     }
 
-    /// <summary>The page gate is the DATA and GEOMETRY gate, and nothing else. It deliberately does NOT wait for the
-    /// hero photograph: a slow download would hold an otherwise fully-known page at a shimmer, and the photo owns its
-    /// own scale-and-fade entrance when its bitmap lands (`Artist.HeroArt`).</summary>
+    /// <summary>Off the bleed the page gate is the DATA and GEOMETRY gate, and nothing else: it does NOT wait for the
+    /// hero photograph (a slow download would hold an otherwise fully-known page at a shimmer, and the photo owns its
+    /// own scale-and-fade entrance when its bitmap lands, `Artist.HeroArt`). The photograph half is
+    /// <see cref="ArtistReadiness.HeroSettled"/>, which defaults to settled.</summary>
     [Fact]
-    public void BodyReady_waits_for_overview_and_a_measured_width_but_never_for_the_photograph()
+    public void BodyReady_waits_for_overview_and_a_measured_width_but_not_for_the_photograph_by_default()
     {
         Assert.False(ArtistReadiness.BodyReady(overviewKnown: false, measured: true, alreadyRevealed: false,
             chartSettled: true));
@@ -106,6 +107,25 @@ public class ArtistReadinessRuleTests
             chartSettled: true));
         Assert.True(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
             chartSettled: true));
+    }
+
+    /// <summary>V2: under the bleed the copy and the photo are one entrance, so the body waits for the bitmap (ready or
+    /// failed) up to the cap the page's timeout latches; off the bleed it never waits.</summary>
+    [Fact]
+    public void BodyReady_under_the_bleed_waits_for_the_photograph_up_to_the_cap()
+    {
+        Assert.Equal(250f, ArtistReadiness.HeroWaitCapMs);
+        Assert.True(ArtistReadiness.HeroSettled(bleedEligible: false, imageSettled: false, capElapsed: false));   // off the bleed: no wait
+        Assert.True(ArtistReadiness.HeroSettled(bleedEligible: true, imageSettled: true, capElapsed: false));    // bitmap settled
+        Assert.True(ArtistReadiness.HeroSettled(bleedEligible: true, imageSettled: false, capElapsed: true));    // cap elapsed
+        Assert.False(ArtistReadiness.HeroSettled(bleedEligible: true, imageSettled: false, capElapsed: false));  // waiting
+
+        Assert.False(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
+            chartSettled: true, heroSettled: false));
+        Assert.True(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
+            chartSettled: true, heroSettled: true));
+        Assert.True(ArtistReadiness.BodyReady(overviewKnown: false, measured: false, alreadyRevealed: true,
+            chartSettled: false, heroSettled: false));                                                          // a revealed page stays revealed
     }
 
     [Fact]
@@ -210,16 +230,41 @@ public class ArtistReadinessTests
         var t = Entities.Current.Artists;
         int slot = a.Slot;
 
-        Assert.False(ArtistReadiness.ChartFailed(a));                  // nothing asked at all: the first paint
+        Assert.False(ArtistReadiness.ChartFailed(a, rowsAsked: true));                  // nothing asked at all: the first paint
 
         t.Inflight[slot] |= (uint)ArtistFields.Identity;                // a card is warming the name/portrait…
-        Assert.False(ArtistReadiness.ChartFailed(a));                   // …which says NOTHING about the chart
-        Assert.False(ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a)));
+        Assert.False(ArtistReadiness.ChartFailed(a, rowsAsked: true));                   // …which says NOTHING about the chart
+        Assert.False(ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, rowsAsked: true)));
         Assert.False(ArtistReadiness.BodyReady(overviewKnown: true, measured: true, alreadyRevealed: false,
             chartSettled: false));
 
         t.Asked[slot] |= (uint)ArtistFields.Chart;                      // the page's own Demand finally runs…
         t.Inflight[slot] &= ~(uint)ArtistFields.Identity;
-        Assert.True(ArtistReadiness.ChartFailed(a));                    // …and an asked, unanswered, un-edged chart is failed
+        Assert.True(ArtistReadiness.ChartFailed(a, rowsAsked: true));                    // …and an asked, unanswered, un-edged chart is failed
+    }
+
+    /// <summary>The page's twin of ChartHost's guard: the rows' marks are read only once the page has asked the rows
+    /// (DemandRows). Before that a target's empty marks mean "not asked yet", not "nothing is coming" - reading them
+    /// failed the chart at once, revealed the page early and played top tracks as a second wave.</summary>
+    [Fact]
+    public void The_pages_chart_gate_reads_rows_only_once_the_page_asked_them()
+    {
+        TestScope.Fresh();
+        var s = Staging.Rent();
+        var artist = new StagedId(s.Text(Uri));
+        int mark = s.PopularMark;
+        s.PopularTracks.Add() = new StagedId(s.Text("spotify:track:ready-1"));
+        s.PopularTracks.Add() = new StagedId(s.Text("spotify:track:ready-2"));
+        s.EndPopular(artist, mark, extension: true);
+        s.Artists.RowFor(artist, Authority.Full, (uint)ArtistFields.Chart);
+        ref var one = ref s.Tracks.RowFor(new StagedId(s.Text("spotify:track:ready-1")), Authority.Full, (uint)TrackFields.Row);
+        one.Title = s.Text("One");
+        one.PlayCount = 10;
+        TestScope.CommitAndPublish(s);
+
+        var a = ArtistOf();
+        Assert.False(ArtistReadiness.Chart(a));                                        // ready-2 has no list fields yet
+        Assert.False(ArtistReadiness.ChartFailed(a, rowsAsked: false));                // not asked yet: pending, not failed
+        Assert.True(ArtistReadiness.ChartFailed(a, rowsAsked: true));                  // asked, nothing in flight, nothing known: failed
     }
 }

@@ -688,8 +688,8 @@ public readonly partial struct Artist
             int dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
             float aspect = (float)dw / dh;
 
-            // THE HERO OWNS ITS OWN ENTRANCE, and the page no longer waits for it (`ArtistReadiness.BodyReady`): the
-            // copy, the chart and the rails reveal as soon as THEY are ready, and the photograph scales up from its
+            // THE HERO OWNS ITS OWN ENTRANCE, and off the bleed the page does not wait for it (`ArtistReadiness.BodyReady`;
+            // under the bleed it waits, capped): the copy, the chart and the rails reveal as soon as THEY are ready, and the photograph scales up from its
             // 1.00 start to its 1.03 rest and fades 0 -> 1 when its bitmap actually lands, however long that takes.
             //
             // This is what the page-wide wait was standing in for, badly. Blocking the whole reveal on the decode

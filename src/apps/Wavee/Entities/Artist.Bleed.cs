@@ -193,6 +193,24 @@ public static class ArtistBleed
     /// change, leaves Ready for a moment and must not tear a bleed that is already up down and rebuild it.</summary>
     public static bool PublishesBackdrop(bool bleed, bool stamped) => bleed && stamped;
 
+    /// <summary>The url the bleed decision reads: the latched hero photo once the body is up, and never a photo whose decode FAILED
+    /// (F2: a failed header photo keeps the non-bleed look instead of stamping and publishing a backdrop with no bitmap behind it).
+    /// <paramref name="photoFailed"/> reads the photo's own state only; D-8's hero height is decided by route kind and nav style and
+    /// never reads it.</summary>
+    public static string? HeaderPhotoFor(string? heroUrl, bool bodyReady, bool photoFailed)
+        => bodyReady && !photoFailed ? heroUrl : null;
+
+    /// <summary>The photo-failure flag the page carries into the bleed decision: read live until the reveal, then frozen. A failure seen
+    /// before the reveal reveals the non-bleed look; one after it (a bitmap that fails past the cap, or a later rendition swap) leaves the
+    /// look already on screen alone, so the wash inset, the copy ink and the photo frame never snap. No stamp and no backdrop follow either
+    /// way (<see cref="StampsEntrance"/> needs a resident bitmap).</summary>
+    public static bool PhotoFailed(bool revealed, bool failedNow, bool latched) => revealed ? latched : failedNow;
+
+    /// <summary>Whether this frame stamps the once-per-artist entrance: the body is up, there is a real hero and its bitmap is
+    /// RESIDENT (<c>ImageState.Ready</c>; a failed one never stamps), and it was not stamped yet.</summary>
+    public static bool StampsEntrance(bool bodyReady, bool hasUrl, bool resident, bool stamped)
+        => bodyReady && hasUrl && resident && !stamped;
+
     /// <summary>The shell presence's entrance at <paramref name="e"/> ms after its start: <see cref="EntranceEase"/> over
     /// <see cref="EntranceMs"/>, the card photo's own clock.</summary>
     public static float EntranceAt(float e)
