@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FluentGpu.Dsl;
 
 namespace Wavee;
 
@@ -363,6 +364,16 @@ public static partial class Shell
             => float.IsFinite(expandW)
                 ? Math.Clamp(expandW, MathF.Max(restW, Layout.ChromeSearchMinW), Layout.ChromeSearchMaxW)
                 : Layout.ChromeSearchMinW;
+
+        /// <summary>Caps the focused pill's width so it never grows over the Zune pivot row (C3). The pill is the first child of the
+        /// right-aligned trailing island, so its RIGHT edge stays put and all of the growth goes LEFT: the room is
+        /// <c>pillRight - pivotsRight - Spacing.M</c>. Floored at <paramref name="restW"/> (the pill is never narrower than at rest)
+        /// and never above <paramref name="expandW"/>. A non-finite pill edge or pivots edge (outside Zune, or not measured)
+        /// returns <paramref name="expandW"/> unchanged.</summary>
+        public static float CapExpandForPivots(float expandW, float restW, float pillRight, float pivotsRight)
+            => float.IsFinite(pillRight) && float.IsFinite(pivotsRight) && float.IsFinite(expandW)
+                ? MathF.Max(restW, MathF.Min(expandW, pillRight - pivotsRight - Spacing.M))
+                : expandW;
 
         /// <summary>The shortcut the search pill's hint chip names, from ONE constant. Ctrl+K opens the command palette in
         /// Wavee; Ctrl+F focuses the search (<c>Shell.FindChord</c>), so that is the chord shown.</summary>

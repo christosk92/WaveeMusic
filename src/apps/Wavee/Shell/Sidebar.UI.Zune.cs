@@ -114,8 +114,20 @@ public static partial class Sidebar
         readonly Signal<int> _pinsTick = new(0);
         readonly Action _settlePins;
         bool _pinsInit, _pinsTarget, _pinsMounted, _pinsSettled;
+        NodeHandle _pivotsBox;
+        bool _zuneUp;
+        InputHooks? _hooks;
 
         public ZuneBandView() => _settlePins = SettlePins;
+
+        /// <summary>The pivot items' right edge in window coordinates, measured now; NaN outside Zune or when the strip is not live.</summary>
+        float PivotsRightNow()
+        {
+            if (!_zuneUp || _pivotsBox.IsNull || _hooks?.GetNodeRect is not { } rectOf) return float.NaN;
+            if (Context.Scene is { } sc && !sc.IsLive(_pivotsBox)) return float.NaN;
+            var r = rectOf(_pivotsBox);
+            return r.X + r.W;
+        }
 
         void SettlePins()
         {
@@ -129,6 +141,8 @@ public static partial class Sidebar
             // Every hook runs before anything that depends on the style: a Zune switch must not change the hook count between renders.
             var overlay = UseContext(Overlay.Service);
             var vp = UseContextSignal(Viewport.Size);
+            var hooks = UseContext(InputHooks.Current);
+            _hooks = hooks;
             // Decided from the PAGE COLUMN's width (the band stops at the inline rail), not the viewport's.
             bool pinsTarget = UseComputed(() => ZuneNavRules.ShowsPins(ZunePins.Value, Shell.PageColumnWidth(vp.Value.Width))).Value;
             // The target reads the FINAL column width while the band eases to it: the group mounts after the band has settled and,
@@ -145,6 +159,16 @@ public static partial class Sidebar
             var style = NavStyle.Value;
             bool zune = style == ShellNavStyle.Zune;
             float gutter = Shell.Ui.PageGutter.Value;
+            // Offer the pivots' right edge to the title-bar pill (C3). The pill samples it when it starts expanding, so the value is read
+            // live from the strip's current layout, never cached across a resize, a language change or a column settling. NaN whenever the
+            // strip is not up, so the cap only applies when the pivots exist.
+            _zuneUp = zune;
+            UseEffect(() =>
+            {
+                Func<float> probe = PivotsRightNow;
+                Shell.Ui.ZunePivotsRightProbe = probe;
+                return () => { if (ReferenceEquals(Shell.Ui.ZunePivotsRightProbe, probe)) Shell.Ui.ZunePivotsRightProbe = null; };
+            }, DepKey.Empty);
 
             Element[] rows = [];
             if (zune)
@@ -194,6 +218,7 @@ public static partial class Sidebar
                     ScrollView(new BoxEl
                     {
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PivotGap, MinWidth = 0f, Children = pivots,
+                        OnRealized = h => _pivotsBox = h,
                     }, horizontal: true) with
                     {
                         Height = ZuneNavRules.PivotLine, AlignSelf = FlexAlign.Stretch, Shrink = 0f, MinWidth = 0f, AutoEdgeFade = true,

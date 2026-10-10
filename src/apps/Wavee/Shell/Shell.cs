@@ -1094,6 +1094,11 @@ public static partial class Shell
         /// span and the chrome scrim from it; it changes only on a resize, a pane or rail change or a nav-style switch.</summary>
         public static readonly Signal<RectF> CardRect = new(default);
 
+        /// <summary>Measures the right edge (window coordinates) of the Zune pivot strip's items NOW; registered by the band, null
+        /// before it mounts. It returns NaN outside Zune or when the strip is not live. The focused title-bar pill samples it when it
+        /// expands and caps itself against it (<c>Chrome.CapExpandForPivots</c>), so it never grows over the pivots.</summary>
+        public static Func<float>? ZunePivotsRightProbe;
+
         /// <summary>EXPERIMENTAL (artist bleed): where the content card is PRESENTED right now: its left and top in window
         /// coordinates including the layout transitions' in-flight pose (the pane toggle's and the nav-style switch's FLIPs); the
         /// size is the final one. Sampled per frame by <c>CardPoseTracker</c> only while a backdrop shows and the card has just

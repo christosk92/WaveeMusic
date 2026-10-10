@@ -461,6 +461,7 @@ public static partial class Shell
         {
             var hooks = UseContext(InputHooks.Current);
             var field = UseRef<NodeHandle>(default);
+            var pill = UseRef<NodeHandle>(default);
             var parts = UseMemo(() =>
             {
                 // CHROME INK (artist bleed): see Ui.ChromeInkMix. While a backdrop shows, the plate and the hairline cross-fade toward the
@@ -526,6 +527,20 @@ public static partial class Shell
             float rest = Chrome.FieldWidthFor(l.SearchWidth, avail.Value);
             bool expand = FrameRules.SearchExpands(s_searchFocused.Value, s_suggestionsOpen.Value);
             float width = expand ? Chrome.ExpandedFieldWidth(l.SearchExpandW, rest) : rest;
+            // The focused pill never grows over the Zune pivot row (C3). The pill is right-anchored in the trailing island, so only
+            // its right edge matters: it and the pivots' right edge are read from the live layout on every expanded render (the
+            // pill's right edge does not move while its width eases, and a resize or a language change is picked up), never cached
+            // from an earlier layout. NaN (outside Zune, no probe, a dead handle) leaves the allocator's width untouched.
+            if (expand)
+            {
+                float pillRight = float.NaN;
+                if (hooks.GetNodeRect is { } rectOf && !pill.Value.IsNull)
+                {
+                    var win = rectOf(pill.Value);
+                    pillRight = win.X + win.W;
+                }
+                width = Chrome.CapExpandForPivots(width, rest, pillRight, Ui.ZunePivotsRightProbe?.Invoke() ?? float.NaN);
+            }
             // The motion belongs to the focus change. A REST-width change that is not an arm flip (a tab added in Classic's
             // tab-limited regime republishes a smaller SearchWidth while LeadClusterW widens) snaps with its cluster, so the
             // old wider pill never overruns the row for 250 ms. A frame that merely re-renders keeps the motion in flight.
@@ -535,19 +550,35 @@ public static partial class Shell
             bool flipped = lastExpand.Value != expand;
             bool chromeMoved = !flipped && (lastRest.Value != l.SearchWidth || lastLead.Value != l.LeadClusterW);
             lastExpand.Value = expand; lastRest.Value = l.SearchWidth; lastLead.Value = l.LeadClusterW;
-            // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
-            // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
-            // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
-            // a "Search" stub overflowing a tiny box that no resize undid. Justify centres it vertically instead.
+            // The pill is wrapped in a WIDTH-LESS slot (C1). A component node mirrors its root's DECLARED width into the layout
+            // (Reconciler.MirrorParticipation copies c.Width, and a Reflow's RestoreTo is the final value), so with the Width on
+            // the root the title-bar island laid out at the FINAL width at once while the pill eased inside a pinned slot. With
+            // the Width on the inner pill, the component's own root declares none: the slot hugs the pill's eased width and the
+            // reflow reaches the island row every frame.
             return new BoxEl
             {
-                Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width, Animate = Design.Reduced || chromeMoved ? null : s_searchWidthMotion,
-                OnBoundsChanged = r => OnSearchFieldBounds(r, width),
-                // The suggestions popup is exactly the pill's width and left edge (BottomStretch anchors to the pill), as in the
-                // WinUI AutoSuggestBox, instead of a 400 floor that overhung a 280 pill.
-                Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup,
-                    pillWidth: s_fieldW))],
+                Key = "chrome-search-slot", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center,
+                Children =
+                [
+                    // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
+                    // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
+                    // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
+                    // a "Search" stub overflowing a tiny box that no resize undid. Justify centres it vertically instead.
+                    new BoxEl
+                    {
+                        Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
+                        Width = width, Animate = Design.Reduced || chromeMoved ? null : s_searchWidthMotion,
+                        OnRealized = h => pill.Value = h,
+                        OnBoundsChanged = r =>
+                        {
+                            OnSearchFieldBounds(r, width);
+                        },
+                        // The suggestions popup is exactly the pill's width and left edge (BottomStretch anchors to the pill), as in the
+                        // WinUI AutoSuggestBox, instead of a 400 floor that overhung a 280 pill.
+                        Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup,
+                            pillWidth: s_fieldW))],
+                    },
+                ],
             };
         }
     }

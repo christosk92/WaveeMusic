@@ -707,6 +707,32 @@ public class ShellChromeSearchExpandTests
         Assert.Equal(420f, Shell.Chrome.ExpandedFieldWidth(10_000f, 280f));
     }
 
+    [Fact]
+    public void CapExpandForPivots_ignores_an_unmeasured_pill_edge_or_pivot_edge()
+    {
+        Assert.Equal(420f, Shell.Chrome.CapExpandForPivots(420f, 280f, float.NaN, 300f));
+        Assert.Equal(420f, Shell.Chrome.CapExpandForPivots(420f, 280f, 900f, float.NaN));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_caps_the_width_to_the_room_left_of_the_right_anchored_pill()
+    {
+        // The pill grows leftward from its right edge 800; pivots end at 400: room = 800 - 400 - 12 = 388.
+        Assert.Equal(388f, Shell.Chrome.CapExpandForPivots(420f, 280f, 800f, 400f));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_never_goes_below_the_rest_width()
+    {
+        Assert.Equal(280f, Shell.Chrome.CapExpandForPivots(420f, 280f, 700f, 500f));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_leaves_a_width_that_already_clears_the_pivots()
+    {
+        Assert.Equal(360f, Shell.Chrome.CapExpandForPivots(360f, 280f, 1000f, 400f));
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, true)]
