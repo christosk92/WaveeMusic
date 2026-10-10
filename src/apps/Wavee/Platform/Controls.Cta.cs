@@ -651,77 +651,99 @@ public static partial class Controls
         }
 
         /// <summary>The accent look, as Props over the palette's states so a late-landing cover accent re-tints the live
-        /// nodes. Each HALF swaps its own fill (rest → hover → pressed, the tiers the stock accent Button swaps) over a
-        /// transparent root, so the translucent tier shows the backdrop through and the shift is visible; hovering Play
-        /// does not light the chevron. While the menu is open the engine hands a half a non-transparent fill, which keeps
-        /// the pressed tier like the stock template's open plate. The root only rounds and clips (r4); the 1-DIP divider
-        /// carries an OPAQUE blend of ink over the rest fill so the page does not show through it. No border. The chevron
-        /// half holds the tooltip that names it (the engine has no accessible-name property on a box).</summary>
+        /// nodes, read as ONE accent control like <see cref="PrimaryButton"/>. Each HALF swaps its own fill (rest → hover →
+        /// pressed, the tiers the stock accent Button swaps), so hovering Play does not light the chevron. While the menu is
+        /// open the engine hands the primary a non-transparent fill (the pressed plate); that is read ONCE into a shared
+        /// <c>open</c> flag (the engine builds the primary first) which the divider, the chevron ink and the root border
+        /// follow, so the halves agree.
+        /// <para>The root draws the ONE border (<see cref="Tok.AccentControlElevationBorder"/>, transparent while open) over
+        /// a transparent fill, rounds (r4) and clips; a border is paint-only, so the 88 + 1 + 32 = 121 width does not move.
+        /// The 1-DIP divider is a FULL-HEIGHT column in the half's live fill (opaque, so the page never shows through it
+        /// and no notch can read as an outline) holding a centred 20-tall hairline of ink at ~20%. The chevron is a 12 px
+        /// <see cref="Icons.ChevronDown"/> that dims with the pressed ink while open or pressed; the chevron half holds the
+        /// tooltip that names it (the engine has no accessible-name property on a box).</para></summary>
         static TemplateParts PartsFor(Func<ColorF> accent)
         {
             Button.ButtonPalette Pal() => Button.ButtonPalette.ForAccent(accent());
             string optionsName = Loc.Get(Strings.Detail.PlayOptions);
+            bool open = false;
             return new TemplateParts
             {
                 [SplitButton.PartRoot] = e => e with
                 {
                     Fill = ColorF.Transparent,
-                    BorderWidth = 0f, BorderBrush = null,
-                    Corners = Radii.ControlAll, MinHeight = ButtonHeight,
+                    BorderWidth = 1f,
+                    BorderBrush = open ? GradientSpec.Solid(ColorF.Transparent) : Tok.AccentControlElevationBorder,
+                    Corners = Radii.ControlAll, MinHeight = ButtonHeight, ClipToBounds = true,
                 },
                 [SplitButton.PartPrimaryButton] = e =>
                 {
-                    bool open = e.Fill.Value.A > 0f;
+                    open = e.Fill.Value.A > 0f;
+                    bool o = open;
                     return e with
                     {
                         MinWidth = ButtonRules.PlaySplitPrimaryMinW, Height = ButtonHeight,
                         Padding = new Edges4(12f, 0f, 12f, 0f),
-                        Fill = Prop.Of(() => open ? Pal().Background.Pressed : Pal().Background.Rest),
+                        Fill = Prop.Of(() => o ? Pal().Background.Pressed : Pal().Background.Rest),
                         HoverFill = Prop.Of(() => Pal().Background.Hover),
                         PressedFill = Prop.Of(() => Pal().Background.Pressed),
                     };
                 },
                 [SplitButton.PartSecondaryButton] = e =>
                 {
-                    bool open = e.Fill.Value.A > 0f;
+                    bool o = open;
                     return e with
                     {
                         Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
                         Padding = default, Justify = FlexJustify.Center,
-                        Fill = Prop.Of(() => open ? Pal().Background.Pressed : Pal().Background.Rest),
+                        Fill = Prop.Of(() => o ? Pal().Background.Pressed : Pal().Background.Rest),
                         HoverFill = Prop.Of(() => Pal().Background.Hover),
                         PressedFill = Prop.Of(() => Pal().Background.Pressed),
                     };
                 },
-                [SplitButton.PartDivider] = e => e with
+                [SplitButton.PartDivider] = e =>
                 {
-                    Width = 1f, Height = 20f, AlignSelf = FlexAlign.Center,
-                    Fill = Prop.Of(() =>
+                    bool o = open;
+                    return e with
                     {
-                        var pal = Pal();
-                        return ColorF.Lerp(pal.Background.Rest, pal.Foreground.Rest with { A = 1f }, 0.3f);
-                    }),
+                        Width = 1f, Height = ButtonHeight, AlignSelf = FlexAlign.Center,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Fill = Prop.Of(() => o ? Pal().Background.Pressed : Pal().Background.Rest),
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Width = 1f, Height = 20f,
+                                Fill = Prop.Of(() => Pal().Foreground.Rest with { A = 0.20f }),
+                            },
+                        ],
+                    };
                 },
                 // The chevron box fills the half so the tooltip covers all of it; the glyph is the palette ink.
-                [SplitButton.PartChevron] = e => e with
+                [SplitButton.PartChevron] = e =>
                 {
-                    Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
-                    Children =
-                    [
-                        ToolTip.Wrap(new BoxEl
-                        {
-                            Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
-                            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                            Children =
-                            [
-                                new TextEl(Icons.ChevronDownSmall)
-                                {
-                                    Size = 8f, FontFamily = Theme.IconFont,
-                                    Color = Prop.Of(() => Pal().Foreground.Rest),
-                                },
-                            ],
-                        }, optionsName),
-                    ],
+                    bool o = open;
+                    return e with
+                    {
+                        Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
+                        Children =
+                        [
+                            ToolTip.Wrap(new BoxEl
+                            {
+                                Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
+                                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                                Children =
+                                [
+                                    new TextEl(Icons.ChevronDown)
+                                    {
+                                        Size = 12f, FontFamily = Theme.IconFont,
+                                        Color = Prop.Of(() => o ? Pal().Foreground.Pressed : Pal().Foreground.Rest),
+                                        PressedColor = Pal().Foreground.Pressed,   // a cold field: read when the half builds
+                                    },
+                                ],
+                            }, optionsName),
+                        ],
+                    };
                 },
             };
         }
@@ -742,15 +764,19 @@ public static partial class Controls
             bool pause = ShowsPause(_id);
             var accent = Accent;
             Prop<ColorF> ink = Prop.Of(() => Button.ButtonPalette.ForAccent(accent()).Foreground.Rest);
+            ColorF pressedInk = Button.ButtonPalette.ForAccent(accent()).Foreground.Pressed;   // PressedColor is a cold field, not a Prop
             return new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f,       // Button.Build's icon-to-label gap
                 Children =
                 [
-                    new TextEl(pause ? Icons.Pause : Icons.Play) { Size = 14f, FontFamily = Theme.IconFont, Color = ink },
+                    new TextEl(pause ? Icons.Pause : Icons.Play)
+                    {
+                        Size = 16f, FontFamily = Theme.IconFont, Color = ink, PressedColor = pressedInk,
+                    },
                     new TextEl(pause ? Loc.Get(Strings.Home.Pause) : Loc.Get(Strings.Detail.Play))
                     {
-                        Size = 14f, Weight = 600, Color = ink, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                        Size = 14f, Weight = 600, Color = ink, PressedColor = pressedInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
                     },
                 ],
             };
