@@ -2307,7 +2307,6 @@
       "announceCancelled": "Move cancelled",
       "footClassic": "Drag sections by their header or grip. Changes apply at once.",
       "footLibrary": "Library keeps a fixed order. Changes apply at once.",
-      "stillInProfile": "Still in the profile menu",
       "pinsSummary": "{count} pinned",
       "showAllPins": "Show all {count} pins",
       "playlistsSummary": "{count} playlists",
@@ -2324,8 +2323,7 @@
       "reset": "{name} reset to its defaults",
       "hidden": "{name} hidden",
       "shortcutsUnpinned": "Shortcuts unpinned",
-      "resetEverything": "Sidebar reset",
-      "settingsHidden": "Settings hidden. It stays in the profile menu"
+      "resetEverything": "Sidebar reset"
     },
     "palette": {
       "useLayout": "Use {layout} layout"

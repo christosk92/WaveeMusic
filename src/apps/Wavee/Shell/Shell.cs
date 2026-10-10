@@ -2020,6 +2020,11 @@ public static partial class Shell
         /// <summary>The card stroke's width.</summary>
         public const float StrokeW = 1f;
 
+        /// <summary>Does the content card draw its hairline ring? Classic and Library: yes (the WinUI card layer on the pane's
+        /// base). Zune: no, the photo and the flat page carry their own edge (owner decision D-1). The ring's geometry is
+        /// always laid out, so a nav-style switch only recolours it and nothing mounts or relayouts.</summary>
+        public static bool CardStrokeShows(ShellNavStyle style) => style != ShellNavStyle.Zune;
+
         /// <summary>How far the left+top stroke box is shifted left: 0 while a pane is docked, <see cref="StrokeW"/> when none
         /// is, which parks the LEFT stroke in the card's clip (invisible) and leaves the top stroke.</summary>
         public static float StrokeLeftShift(bool docked) => docked ? 0f : -StrokeW;

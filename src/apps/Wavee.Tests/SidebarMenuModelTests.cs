@@ -153,14 +153,15 @@ public sealed class SidebarMenuModelTests
     }
 
     [Fact]
-    public void Pane_ShowSection_ListsHiddenSettingsAndPinned()
+    public void Pane_ShowSection_ListsHiddenPinned_NeverSettings()
     {
         var state = SidebarLayoutState.Default;
+        // An old document with Settings hidden still loads; the Show list never offers it (G3).
         state = SidebarLayoutRules.Apply(state, new SetSectionShown(SidebarLayoutId.Classic, "settings", false), pinnedLocked: false).State;
         state = SidebarLayoutRules.Apply(state, new SetSectionShown(SidebarLayoutId.Classic, "pinned", false), pinnedLocked: false).State;
         var rows = SidebarMenuModel.Pane(SidebarLayoutId.Classic, state, SidebarDensity.Default, false, None);
         var show = rows.First(r => r.LabelKey == "sidebar.menu.showSection");
-        Assert.Contains(show.Children!, c => c.Arg == "settings");   // Q15
+        Assert.DoesNotContain(show.Children!, c => c.Arg == "settings");
         Assert.Contains(show.Children!, c => c.Arg == "pinned");
         AssertEveryLabelKeyResolves(rows);                           // no raw "sidebar.section.title.settings" on screen (D9)
     }
@@ -375,11 +376,8 @@ public sealed class SidebarMenuModelTests
     }
 
     [Fact]
-    public void Item_Settings_Hide()
-    {
-        var rows = SidebarMenuModel.Item(SidebarSectionKind.Settings, SidebarCatalogue.SettingsRoute, 0, 1, false);
-        Assert.Equal(SidebarMenuAction.HideItem, Assert.Single(rows).Action);
-    }
+    public void Item_Settings_OffersNothing()
+        => Assert.Empty(SidebarMenuModel.Item(SidebarSectionKind.Settings, SidebarCatalogue.SettingsRoute, 0, 1, false));
 
     [Fact]
     public void Item_RootlistRow_MovesOnlyWhileTheRootlistOrderIsShown()

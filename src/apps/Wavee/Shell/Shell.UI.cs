@@ -224,6 +224,9 @@ public static partial class Shell
     static readonly KeyAccelerator NewTabChord = new(Keys.T, KeyModifiers.Ctrl);
     static readonly KeyAccelerator PaletteChord = new(Keys.K, KeyModifiers.Ctrl);
     static readonly KeyAccelerator FindChord = new(Keys.F, KeyModifiers.Ctrl);
+    /// <summary>Ctrl+, opens Settings (the pane has no Settings row). The engine's <c>Keys</c> has no OemComma, so the VK is spelled here.</summary>
+    const int VkOemComma = 188;
+    static readonly KeyAccelerator SettingsChord = new(VkOemComma, KeyModifiers.Ctrl);
     static readonly KeyAccelerator BackChord = new(Keys.Left, KeyModifiers.Alt);
     static readonly KeyAccelerator ForwardChord = new(Keys.Right, KeyModifiers.Alt);
     static readonly KeyAccelerator FullscreenChord = new(Keys.F11, KeyModifiers.None);
@@ -542,6 +545,7 @@ public static partial class Shell
                     Chord(NewTabChord, static () => OpenTab(new Route(RouteKind.Home))),
                     Chord(PaletteChord, static () => PaletteOpen.Value = !PaletteOpen.Peek()),
                     Chord(FindChord, static () => SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1),
+                    Chord(SettingsChord, static () => GoTo(new Route(RouteKind.Settings))),
                     Chord(BackChord, GoBack),
                     Chord(ForwardChord, GoForward),
                     Chord(FullscreenChord, ToggleVideoFullscreen),
@@ -894,7 +898,7 @@ public static partial class Shell
         static BoxEl Ring(float top, bool bleeding = false) => new()
         {
             Margin = new Edges4(0f, top, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
-            BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
+            BorderColor = Prop.Of(static () => FrameRules.CardStrokeShows(Sidebar.NavStyle.Value) ? Tok.StrokeCardDefault : ColorF.Transparent),
             Corners = Prop.Of(bleeding ? s_bleedCorners : s_contentCorners),
             Transform = Prop.Of(s_leftShift),
         };
@@ -903,10 +907,10 @@ public static partial class Shell
         {
             float p = BleedExtent();
             if (p <= 0f)
-                return new BoxEl { ZStack = true, ClipToBounds = true, HitTestVisible = false, Children = [Ring(FrameRules.StrokeOverhangTop)] };
+                return new BoxEl { ZStack = true, Grow = 1f, ClipToBounds = true, HitTestVisible = false, Children = [Ring(FrameRules.StrokeOverhangTop)] };
             return new BoxEl
             {
-                ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                ZStack = true, Grow = 1f, ClipToBounds = true, HitTestVisible = false,
                 Children =
                 [
                     // (a) over the photo: a clip exactly the photo's extent tall holding today's ring (card-tall: it overhangs the
@@ -1709,7 +1713,9 @@ public static partial class Shell
         // Zune presents no pane, so its toggle is ABSENT (no button, no client region), not disabled. TitleBar.Render calls this
         // before it reads ShowPaneToggle for its memo key and its region deps, so setting the field HERE lands in the same
         // render that re-pushes the drag regions (no ordering dependency on a signal effect), and bit 128 below makes the
-        // bar re-render and re-push when the style flips.
+        // bar re-render and re-push when the style flips. The flip adds or removes a root child of the bar: the engine keys every
+        // root slot (tb-back, tb-pane, tb-tabs, ...) and PushRegions skips dead handles (G2), so the client regions follow their
+        // nodes and the title-bar buttons keep working after a nav-style switch.
         bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
         if (s_titleBar is { } bar) bar.ShowPaneToggle = !zune;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)

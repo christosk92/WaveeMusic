@@ -2219,6 +2219,16 @@ public static partial class Design
             ? (light ? PlaneAlphaLightRich : PlaneAlphaDarkRich)
             : (light ? CoverPageTonePlane.PlaneAlphaLight : CoverPageTonePlane.PlaneAlphaDark);
 
+        /// <summary><see cref="PlaneAlpha(bool, bool)"/> with the docked pane in the picture. In a LIGHT theme beside a docked
+        /// pane (Classic, Library) the content card is a LIFTED layer over the pane's base, and the Rich plane (0.45) darkens it
+        /// straight back to the chrome's luminance, so the card stops reading as raised. There the plane is capped at the Subtle
+        /// light value; dark themes, Subtle and the paneless Zune frame keep their pair.</summary>
+        public static float PlaneAlpha(bool light, bool rich, bool paneDocked)
+        {
+            float a = PlaneAlpha(light, rich);
+            return light && paneDocked ? MathF.Min(a, CoverPageTonePlane.PlaneAlphaLight) : a;
+        }
+
         /// <summary>The chrome tint's alpha: the Subtle pair from <see cref="CoverShellTintBinder"/>, or the Rich
         /// pair.</summary>
         public static float TintAlpha(bool light, bool rich) => rich
@@ -2487,7 +2497,7 @@ public sealed class CoverPageTonePlane : Component
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
             Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
-                ? t with { A = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich) }
+                ? t with { A = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich, Shell.FrameRules.PaneDocked(Sidebar.Mode.Value)) }
                 : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Standard,
             Children = kids,
@@ -2514,7 +2524,7 @@ public sealed class CoverPageTonePlane : Component
         float pageH = p.PageHeight > 1f ? p.PageHeight : 0f;
         if (pageH <= 1f) return null;
         if (Resolve(p) is not { } tone) return null;
-        float alpha = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich);
+        float alpha = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich, Shell.FrameRules.PaneDocked(Sidebar.Mode.Value));
         float start = Math.Clamp(p.BackdropBand / pageH, 0.12f, 0.80f);
         float end = MathF.Min(1f, start + 0.22f);
         return new BoxEl

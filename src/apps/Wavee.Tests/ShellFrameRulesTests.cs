@@ -116,6 +116,27 @@ public class ShellFrameGeometryTests
         Assert.Equal(0f, Shell.FrameRules.StrokeLeftShift(docked));
     }
 
+    [Theory]
+    [InlineData(ShellNavStyle.Classic, true)]
+    [InlineData(ShellNavStyle.Library, true)]
+    [InlineData(ShellNavStyle.Zune, false)]
+    public void The_card_hairline_shows_in_Classic_and_Library_and_never_in_Zune(ShellNavStyle style, bool shows)
+        => Assert.Equal(shows, Shell.FrameRules.CardStrokeShows(style));
+
+    [Fact]
+    public void A_light_docked_pane_caps_the_tone_plane_at_the_subtle_value_so_the_card_stays_lifted()
+    {
+        float subtle = CoverPageTonePlane.PlaneAlphaLight;
+        // Light + docked: Rich (0.45) drops to the Subtle light value; Subtle is already there.
+        Assert.Equal(subtle, Design.Wash.PlaneAlpha(light: true, rich: true, paneDocked: true));
+        Assert.Equal(subtle, Design.Wash.PlaneAlpha(light: true, rich: false, paneDocked: true));
+        // No pane (Zune, Minimal): untouched, Rich keeps its pair.
+        Assert.Equal(Design.Wash.PlaneAlpha(light: true, rich: true), Design.Wash.PlaneAlpha(light: true, rich: true, paneDocked: false));
+        // Dark never caps, docked or not.
+        Assert.Equal(Design.Wash.PlaneAlpha(light: false, rich: true), Design.Wash.PlaneAlpha(light: false, rich: true, paneDocked: true));
+        Assert.Equal(Design.Wash.PlaneAlpha(light: false, rich: false), Design.Wash.PlaneAlpha(light: false, rich: false, paneDocked: true));
+    }
+
     [Fact]
     public void The_Zune_style_presents_no_pane_so_it_is_always_undocked()
     {

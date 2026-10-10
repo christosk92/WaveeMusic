@@ -311,7 +311,7 @@ public sealed class SidebarRowPlannerTests
     [Fact]
     public void Classic_SettingsNeverPlanned()
     {
-        // Fact 16. Settings is the footer, not a planned section.
+        // Fact 16. Settings has no pane row, not a planned section.
         var plan = Plan(Classic(), OneInTree());
         Assert.DoesNotContain(plan.Rows, r => r.Key == "settings");
     }

@@ -180,7 +180,7 @@ public static partial class Sidebar
     internal static class SidebarMenus
     {
         /// <summary>The overlay host the last sidebar menu opened on (every sidebar menu opener sets it right before it opens:
-        /// the pane menu, the seam, a header ⋯, the footer's Settings row, the V3 overflow, the edit bar's Reset ▾) — the
+        /// the pane menu, the seam, a header ⋯, the V3 overflow, the edit bar's Reset ▾) — the
         /// confirm dialog of a menu verb opens on the same host.</summary>
         internal static IOverlayService? Overlay;
 
@@ -347,18 +347,11 @@ public static partial class Sidebar
             if (slot >= 0) Dispatch(new MoveSection(layout, sectionId, slot + delta));
         }
 
-        /// <summary>Hide a row's item (§P4.6): a Collections page; the Library's Liked row; the footer's Settings. Decided by
+        /// <summary>Hide a row's item (§P4.6): a Collections page; the Library's Liked row. Decided by
         /// the row's SECTION, not the item id: Classic's Collections "Liked Songs" is a page like any other. Hiding the last
         /// visible page hides Collections itself, so its toast names the SECTION (design C.4 corner case).</summary>
         static void HideItem(SidebarLayoutId layout, string? sectionId, string item)
         {
-            string settings = SidebarCatalogue.IdOf(SidebarSectionKind.Settings);
-            if (string.Equals(item, settings, StringComparison.Ordinal))
-            {
-                // The toast says where Settings went: the profile menu keeps it (§P4.6).
-                Dispatch(new SetSectionShown(layout, settings, false), Loc.Get("sidebar.toast.settingsHidden"));
-                return;
-            }
             if (sectionId is null || !SidebarCatalogue.TryKindOf(sectionId, out var kind)) return;
             if (kind == SidebarSectionKind.Library)
             {

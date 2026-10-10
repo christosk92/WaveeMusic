@@ -97,7 +97,8 @@ public static class SidebarPillRules
     }
 }
 
-/// <summary>Which container a selection pill lives in (design V.5): the list, the fixed head above it, the footer below.</summary>
+/// <summary>Which container a selection pill lives in (design V.5): the list, the fixed head above it, the footer below
+/// (the footer hosts no pill since the Settings row went; the lane stays for the cross-container rule).</summary>
 public enum SidebarPillLane : byte { List = 0, Head = 1, Footer = 2 }
 
 public static class SidebarPillMotionRules

@@ -73,7 +73,7 @@ public static class SidebarRowPlanner
     /// no rows is not rendered at all (D9), except Playlists, whose "+" is how content starts.</summary>
     static void PlanSection(SidebarSection s, in SidebarProjectionInput input, in SidebarPlanOptions o, ref PlanState st)
     {
-        if (s.Hidden || s.Kind == SidebarSectionKind.Settings) return;          // Settings is the footer
+        if (s.Hidden || s.Kind == SidebarSectionKind.Settings) return;          // Settings has no pane row (Ctrl+, , the profile menu and the palette open it)
         bool titled = s.Kind != SidebarSectionKind.Home;
         if (s.Collapsed && titled)
         {

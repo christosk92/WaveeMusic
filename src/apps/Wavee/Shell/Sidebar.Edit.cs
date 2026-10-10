@@ -29,8 +29,6 @@ public enum SidebarOutlineRowKind : byte
     ShowAllPins = 4,
     /// <summary>A data section's one-line summary or an empty section's hint.</summary>
     Hint = 5,
-    /// <summary>The footer's Settings row with its Show checkbox (the Outline replaces the footer, Q7).</summary>
-    Settings = 6,
 }
 
 public readonly record struct SidebarOutlineRow(
@@ -53,7 +51,7 @@ public static class SidebarEditRules
 
     /// <summary>The Outline's rows for <paramref name="layout"/> in display order: Home; then the BAND (Classic: every
     /// movable section, each with its body; Library: Pinned then Filters — a fixed order, design Q2); then Your Library
-    /// (Library, locked); then Settings.</summary>
+    /// (Library, locked). Settings is never offered: the pane has no Settings row (G3), Ctrl+, and the profile menu open it.</summary>
     public static void Outline(SidebarLayoutState state, SidebarLayoutId layout, IReadOnlyList<SidebarPin> pins,
                                bool pinnedLocked, bool showAllPins, int playlistCount, List<SidebarOutlineRow> into)
     {
@@ -97,8 +95,6 @@ public static class SidebarEditRules
                     break;
             }
         }
-        var settings = overlay.Find("settings");
-        into.Add(new SidebarOutlineRow(SidebarOutlineRowKind.Settings, "settings", "", settings is { Hidden: false }, false, false, 0));
     }
 
     /// <summary>The SECTION band's sections (Classic: the movable ones in display order; Library: none — its sections keep
@@ -230,7 +226,7 @@ public static class SidebarMenuModel
             ];
         var hidden = new List<SidebarMenuRow>();
         for (int i = 0; i < overlay.Sections.Count; i++)
-            if (overlay.Sections[i].Hidden)
+            if (overlay.Sections[i].Hidden && !string.Equals(overlay.Sections[i].Id, SidebarCatalogue.SettingsRoute, StringComparison.Ordinal))
                 hidden.Add(new SidebarMenuRow(SidebarMenuAction.ShowSection, "sidebar.section.title." + overlay.Sections[i].Id, overlay.Sections[i].Id));
         var pinnedRows = new List<SidebarMenuRow>(2);
         if (layout == SidebarLayoutId.Library)
@@ -366,8 +362,8 @@ public static class SidebarMenuModel
     }
 
     /// <summary>The sidebar-specific rows a row's context menu adds (the entity verbs stay the action registry's): a pin
-    /// → Move up/down + Unpin; a Collections page → Move up/down + Hide from sidebar; the Library's Liked row and the
-    /// footer's Settings → Hide from sidebar; a rootlist row (Classic Playlists always, Your Library under Playlists ·
+    /// → Move up/down + Unpin; a Collections page → Move up/down + Hide from sidebar; the Library's Liked row → Hide from
+    /// sidebar; a rootlist row (Classic Playlists always, Your Library under Playlists ·
     /// Custom order) → Move up/down through the rootlist (design C.4), each verb absent at its end of the sibling run, as
     /// every rootlist verb is (<c>SidebarTreeNavLayout</c>). An unavailable pin offers Unpin only.</summary>
     public static IReadOnlyList<SidebarMenuRow> Item(SidebarSectionKind section, string key, int index, int count, bool unavailable,
@@ -390,7 +386,6 @@ public static class SidebarMenuModel
                 rows.Add(new SidebarMenuRow(SidebarMenuAction.HideItem, "sidebar.menu.hideFromSidebar", key));
                 break;
             case SidebarSectionKind.Library when key == SidebarCatalogue.LikedRoute:
-            case SidebarSectionKind.Settings:
                 rows.Add(new SidebarMenuRow(SidebarMenuAction.HideItem, "sidebar.menu.hideFromSidebar", key));
                 break;
             case SidebarSectionKind.Playlists:

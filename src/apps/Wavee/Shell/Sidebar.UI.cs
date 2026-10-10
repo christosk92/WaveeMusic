@@ -189,7 +189,6 @@ public static partial class Sidebar
                 ScrollKeyPrefix = "sidebar.classic",
                 Document = static () => { _ = LayoutVersion.Value; return Doc; },
                 OnCreatePlaylist = PaneView.CreatePlaylistFlow,
-                ShowsSettings = static () => Doc.ShowsSettings,
             }, DepKey.Empty);
             return Embed.Comp(() => new PaneView(config, _inDrawer));
         }
@@ -223,8 +222,6 @@ public static partial class Sidebar
         public Func<SidebarSectionKind, int, int, int>? ClampReorderSlot { get; init; }
         public Action<PaneReorder>? CommitReorder { get; init; }
         public Action? OnCreatePlaylist { get; init; }
-        /// <summary>Whether the pane footer shows the Settings row (null ⇒ shown). The ⋯ is always there.</summary>
-        public Func<bool>? ShowsSettings { get; init; }
         /// <summary>Arrow navigation ran off an END of the list (−1 above the first row, +1 below the last). Return true when
         /// the mode took focus (Library: Up from the first row lands on the page dropdown, design V.11).</summary>
         public Func<int, bool>? OnEdgeNavigate { get; init; }

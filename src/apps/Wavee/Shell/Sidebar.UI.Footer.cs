@@ -1,5 +1,5 @@
 // ── Shell/Sidebar.UI.Footer.cs ─────────────────────────────────────────────────────────────────────────────────────
-// the pane footer: Settings and the ⋯ pane menu, outside the scroller, in the expanded pane and in the rail
+// the pane footer: the ⋯ pane menu, outside the scroller, in the expanded pane and in the rail
 //
 // Role: UI
 // Owner: J
@@ -24,30 +24,26 @@ namespace Wavee;
 
 public static partial class Sidebar
 {
-    /// <summary>THE PANE FOOTER (design V.2): outside the scroller, bottom-anchored, margin 0,0,0,4. Expanded: ONE 40-px
-    /// slot — the Settings row (row A) whose chevron column holds the ⋯ pane button (28×28 with a 16 glyph, tooltip "Sidebar options",
-    /// always visible); with Settings hidden only the ⋯, right-aligned. Compact: a Settings tile over a ⋯ tile. The ⋯ is
-    /// never hidden: it is the layout-independent entry to the pane menu.</summary>
+    /// <summary>THE PANE FOOTER (design V.2): outside the scroller, bottom-anchored, margin 0,0,0,4. It holds the ⋯ pane menu
+    /// and nothing else: the Settings row is gone (owner decision G3; Ctrl+, , the profile menu and the palette open Settings).
+    /// Expanded: the ⋯ pane button (28×28 with a 16 glyph, tooltip "Sidebar options", always visible) right-aligned in a
+    /// Glyph-pitch row. Compact: a ⋯ tile. The ⋯ is never hidden: it is the layout-independent entry to the pane menu.</summary>
     internal sealed class PaneFooter(PaneView owner) : Component
     {
         NodeHandle _more;
         Action<NodeHandle>? _realize;
         Func<NodeHandle>? _anchor;
-        Action? _open, _settings;
-        Func<ContextMenuModel?>? _menu, _settingsMenu;
+        Action? _open;
+        Func<ContextMenuModel?>? _menu;
 
         public override Element Render()
         {
             bool compact = !owner.InDrawer && Sidebar.Mode.Value == SidebarPaneMode.Compact && !Sidebar.DragPeek.Value;
-            bool showSettings = owner.Config.ShowsSettings?.Invoke() ?? true;
-            bool selected = string.Equals(owner.SelectedRoute, "settings", StringComparison.Ordinal);
-            var dest = Shell.Dest(new Shell.Route(Shell.RouteKind.Settings));
             Func<ContextMenuModel?> menu = _menu ??= owner.PaneMenu;
             var svc = owner.MenuOverlay;
             _realize ??= h => { _more = h; owner._footerMore = h; };
             _anchor ??= () => _more;
             _open ??= () => owner.OpenPaneMenu(_anchor);
-            _settings ??= () => owner.Navigate("settings", null);
 
             Element more = compact
                 ? EntityRow.Create(new RowSpec
@@ -60,48 +56,14 @@ public static partial class Sidebar
                     with { OnRealized = _realize, Focusable = true };
             more = ToolTip.Wrap(more, Loc.Get("sidebar.pane.options"));
 
-            Element? settings = null;
-            if (showSettings)
-            {
-                var spec = new RowSpec
-                {
-                    Key = "footer-settings", Label = dest.Title, Shape = SidebarRowShape.Glyph, Glyph = dest.Glyph,
-                    Selected = selected, Tile = compact,
-                    Focusable = true, OnClick = _settings,
-                    MenuOverlay = svc, Menu = _settingsMenu ??= SettingsMenu,
-                };
-                settings = EntityRow.Create(in spec);
-                if (compact) settings = ToolTip.Wrap(settings, dest.Title);
-            }
-
-            // A registered pill (not a static box): leaving Settings for a list row scales the pill out instead of popping it
-            // (design V.5). It exists only beside the Settings row, so it is never drawn while Settings is hidden.
-            Element pill = Embed.Comp(() => new SelectionPill(owner, () => new SidebarPillState("settings",
-                SidebarPillState.Lit("settings", owner.SelectedRoute), 0f, SidebarRowGeometry.PillTop(SidebarRowGeometry.RowHeight)),
-                SidebarPillLane.Footer)) with { Key = "footer-pill" };
-
-            Element body;
-            if (compact)
-                body = new BoxEl
-                {
-                    Direction = 1,
-                    Children = settings is null ? [more] : [ZStack(settings, pill), more],
-                };
-            else if (settings is null)
-                body = new BoxEl
+            Element body = compact
+                ? new BoxEl { Direction = 1, Children = [more] }
+                : new BoxEl
                 {
                     Direction = 0, Height = SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph), AlignItems = FlexAlign.Center,
                     Justify = FlexJustify.End, Padding = new Edges4(0f, 0f, SidebarRowGeometry.HeaderTrailingPad, 0f),
                     Children = [more],
                 };
-            else
-                body = ZStack(settings, pill, new BoxEl
-                {
-                    // The ⋯ sits centred in the Settings row's chevron column (pane W − 44..W − 4), its centre on W − 24.
-                    Width = SidebarRowGeometry.ChevronColumn, Height = SidebarRowGeometry.PitchOf(SidebarRowShape.Glyph),
-                    JustifySelf = FlexAlign.End, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                    Children = [more],
-                });
 
             return new BoxEl
             {
@@ -110,14 +72,6 @@ public static partial class Sidebar
                 // The pane background's own menu answers a right-click on the footer's dead space too.
                 Children = [body],
             };
-        }
-
-        /// <summary>The Settings row's menu (§P4.6): the item model for Settings, with its own Hide.</summary>
-        ContextMenuModel? SettingsMenu()
-        {
-            SidebarMenus.Overlay = owner.MenuOverlay;
-            return new ContextMenuModel(SidebarMenus.Map(SidebarMenuModel.Item(SidebarSectionKind.Settings, "settings", 0, 1, false),
-                                                         "settings"));
         }
     }
 }

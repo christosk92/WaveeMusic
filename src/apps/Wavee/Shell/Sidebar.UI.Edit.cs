@@ -187,7 +187,7 @@ public static partial class Sidebar
                 }
                 if (row.Kind != SidebarOutlineRowKind.Section) continue;   // the body rows are consumed by their section
                 int end = i + 1;
-                while (end < _rows.Count && _rows[end].Kind is not (SidebarOutlineRowKind.Section or SidebarOutlineRowKind.Settings)) end++;
+                while (end < _rows.Count && _rows[end].Kind != SidebarOutlineRowKind.Section) end++;
                 SidebarCatalogue.TryKindOf(row.SectionId, out var kind);
                 if (row.Movable)
                 {
@@ -218,12 +218,6 @@ public static partial class Sidebar
                 kids.Add(HintRow(Loc.Get("sidebar.edit.libraryHint")));
             }
             kids.Add(new BoxEl { Height = 1f, Shrink = 0f, Margin = new Edges4(8f, 6f, 8f, 6f), Fill = Tok.StrokeCardDefault });
-            foreach (var row in _rows)
-            {
-                if (row.Kind != SidebarOutlineRowKind.Settings) continue;
-                kids.Add(SettingsRow(layout, row));
-                break;
-            }
             kids.Add(new BoxEl
             {
                 Padding = new Edges4(8f, 8f, 8f, 4f),
@@ -451,29 +445,6 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Key = "item:" + section + ":" + item, Direction = 0, Height = SidebarEditRules.RowHeight, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Gap = 4f, Padding = new Edges4(4f, 0f, 4f, 0f),
-                Opacity = row.Shown ? 1f : 0.5f,
-                Children = [.. kids],
-            };
-        }
-
-        /// <summary>The footer's Settings row in the Outline (Q7: the Outline replaces the footer): its Show checkbox, and
-        /// "Still in the profile menu" while hidden.</summary>
-        Element SettingsRow(SidebarLayoutId layout, SidebarOutlineRow row)
-        {
-            var dest = Shell.Dest(new Shell.Route(Shell.RouteKind.Settings));
-            var kids = new List<Element>(6)
-            {
-                Check("settings", row.Shown, true, dest.Title, v => Sidebar.Dispatch(new SetSectionShown(layout, "settings", v))),
-                Icon(Icons.Settings, 16f, Tok.TextSecondary),
-                new TextEl(dest.Title) { Size = 14f, MaxLines = 1, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary },
-                new BoxEl { Grow = 1f },
-            };
-            if (!row.Shown)
-                kids.Add(Ui.Caption(Loc.Get("sidebar.edit.stillInProfile")) with { Color = Tok.TextTertiary, MaxLines = 1, Shrink = 0f });
-            return new BoxEl
-            {
-                Key = "settings-row", Direction = 0, Height = SidebarEditRules.SectionHeaderHeight, Shrink = 0f,
                 AlignItems = FlexAlign.Center, Gap = 4f, Padding = new Edges4(4f, 0f, 4f, 0f),
                 Opacity = row.Shown ? 1f : 0.5f,
                 Children = [.. kids],
