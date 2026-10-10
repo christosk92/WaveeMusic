@@ -1035,7 +1035,7 @@ public static partial class Sidebar
             // instead of re-seeding the table index by index. Any other collapse-only publish (a header-menu or remote
             // collapse) keeps the anchored Reseed with no motion. A folder disclosure in flight stands the path down: its
             // band range comes from the entries, which the seeds do not read.
-            bool flips = collapseOnly && SidebarDedupeMotion.FlippedSectionsAll(oldDoc, stage.Document, _choreographed);
+            bool flips = collapseOnly && !wholesale && SidebarDedupeMotion.FlippedSectionsAll(oldDoc, stage.Document, _choreographed);
             bool pinMove = !wholesale && !collapseOnly && SidebarDedupeMotion.PinnedKeysChanged(oldRows, stage.Pane.Rows);
             if (collapseOnly && _choreographed.Count > 0)
                 foreach (var consumed in SidebarDedupeMotion.FlippedSections(oldDoc, stage.Document)) _choreographed.Remove(consumed);   // only the ids this publish flipped
