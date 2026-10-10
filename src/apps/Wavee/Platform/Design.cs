@@ -2258,9 +2258,12 @@ public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, Ho
 /// ground rides, <paramref name="Floor"/> the collapsed hero's remnant (56 with the band in the page, 0 in row 2),
 /// <paramref name="CollapseDistance"/> the scroll distance over which the hero collapses to it, and <paramref name="DecodeW"/> and
 /// <paramref name="DecodeH"/> the page's own latched decode size (so the shell's decode is the page's, a cache hit), and
-/// <paramref name="Key"/> the identity of the photo (the layer remounts, and so cross-fades, when it changes).</summary>
+/// <paramref name="Key"/> the identity of the photo (the layer remounts, and so cross-fades, when it changes).
+/// <paramref name="PaletteUrl"/> and <paramref name="PayloadAccent"/> key the hero's horizontal veil the shell draws over the photo
+/// when <paramref name="Veil"/> is set (the horizontal tiers), so the chrome and the hero are ONE field.</summary>
 public sealed record ShellBackdrop(string Url, float PhotoHeight, float HeroHeight, float Floor,
-                                   IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key);
+                                   IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key,
+                                   string? PaletteUrl = null, uint PayloadAccent = 0, bool Veil = false);
 
 /// <summary>The shell-owned, page-scoped MATERIAL channel. The shell publishes one signal at the root and paints it as
 /// the layer directly above the ground that backs ALL chrome — title bar, toolbar, sidebar, player dock. The active page
@@ -2600,7 +2603,7 @@ public sealed class CoverKeyedVeil : Component
     /// <para>Disabled (surfaces Off) = the ladder's neutral rung: the veil still darkens the photo for the title, it just
     /// carries no hue.</para>
     public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0,
-                               bool Disabled = false);
+                               bool Disabled = false, bool OnMedia = false);
 
     static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
     bool _mounted;
@@ -2619,7 +2622,8 @@ public sealed class CoverKeyedVeil : Component
         ColorF? graded = pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null;
         bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
         var ladderIn = p.Disabled ? new AccentLadder.Input(null, 0, true) : new AccentLadder.Input(graded, p.PayloadAccent, definite);
-        var result = AccentLadder.Resolve(ladderIn, null, Tok.FillLayerDefault, s_lift);
+        // OnMedia (the artist bleed's dark field): the neutral rung is the stage colour, so no light layer colour is pulled in.
+        var result = AccentLadder.Resolve(ladderIn, null, p.OnMedia ? Tok.MediaStage : Tok.FillLayerDefault, s_lift);
         // Keyed swap: see CoverArtistBlendWash — a Gradient can't cross-fade through BrushTransitionMs, and a
         // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
         //
@@ -2628,7 +2632,7 @@ public sealed class CoverKeyedVeil : Component
         Element veil = new BoxEl
         {
             Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
-            HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical),
+            HitTestVisible = false, Gradient = Controls.ArtistHeroVeil(result.Color, p.Vertical, p.OnMedia),
             // Fade only a re-key, never the first paint - and never a PRE-SETTLEMENT re-key either: see the sibling
             // in CoverArtistBlendWash. An Enter with no Exit beneath it unveils the photo for the length of the fade.
             Enter = _mounted && exitAnimates ? new EnterExit(Opacity: 0f, Active: true) : null,

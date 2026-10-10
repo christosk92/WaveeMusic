@@ -403,8 +403,13 @@ public readonly partial struct Artist
         // cover tint" rule above still holds — Design.WatchedPlaceholder(null) resolves to the same flat neutral), but
         // it is now a live-bound Prop like every other art slot's placeholder instead of a value baked in at this
         // render, so a future caller of this arm with a real (still-ungrading) url repaints instead of staying grey.
+        // EXPERIMENTAL (artist bleed): `bleedDrawn is not null` is the page's `ArtistBleed.Applies` decision, made once per render at
+        // navigation rate and never from presence. While it applies the card and the shell draw the photo from ONE frame
+        // (ArtistBleed.FrameFor), the card's veil and the hero copy use the dark on-media arm, and the card's layers yield in one step
+        // once the shell's identical ones are fully present (ArtistBleed.CardLayerOpacity).
+        bool bleed = bleedDrawn is not null;
         Element art = photoUrl is { Length: > 0 } src
-            ? Embed.Comp(new HeroArtProps(src, w, photoH), static () => new HeroArt()) with { Key = "heroart:" + uri }
+            ? Embed.Comp(new HeroArtProps(src, w, photoH, bleed), static () => new HeroArt()) with { Key = "heroart:" + uri }
             : new BoxEl { Width = w, Height = photoH, Fill = Design.WatchedPlaceholder(photoUrl) };
         Element media = new BoxEl
         {
@@ -412,8 +417,12 @@ public readonly partial struct Artist
             TransformOriginX = 0.5f, TransformOriginY = 0f,
             EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
             // EXPERIMENTAL (artist bleed): while the shell draws the photo behind the chrome, the banner's own copy stays mounted (the
-            // decode is warm and the layout is unchanged, the veil and the copy stay put) but paints nothing.
-            Opacity = bleedDrawn is null ? 1f : Prop.Of(() => bleedDrawn() ? 0f : 1f),
+            // decode is warm and the layout is unchanged, the veil and the copy stay put) and eases out (BleedHandover) once the
+            // shell's identical photo is fully present. The media's bottom EdgeFade and the shell photo's, plus CardGround's fade box
+            // (Shell.UI.cs), are the same PhotoFadeBandFor band at the riser line, so at scroll 0 the photo's end matches. Only in
+            // that band do the card's feather and the shell's differ (two feathers over each other), so the ease, not a step, is
+            // what merges them.
+            Opacity = bleedDrawn is null ? 1f : Prop.Of(() => ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
             Children = [art],
         }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
 
@@ -424,7 +433,9 @@ public readonly partial struct Artist
             new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
         ];
 
-        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio);
+        // The stacked identity sits on the solid ground and stays on theme tokens; the horizontal copy is light-on-dark for the whole
+        // mount while the bleed applies (a static choice: the hero is the dark field from its first frame).
+        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio, onMedia: bleed && !m.Stacked);
         Element expanded;
         if (m.Stacked)
         {
@@ -460,19 +471,37 @@ public readonly partial struct Artist
             // this stays source-compatible until Artist.Page.cs's two HeroBanner call sites are wired to pass it.
             // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
             // over a growing photo left an unveiled band above the hero's top edge.
+            // Under the bleed the veil is the dark onMedia arm over the shell's frame width (the same columns as the shell's veil), it
+            // feathers out over the same bottom band as the photo (the shell's veil does, inside its photo box, so an unfaded veil
+            // would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity).
             Element veil = play is null
                 ? new BoxEl()
-                : new BoxEl
-                {
-                    Width = w, Height = height, ZStack = true, HitTestVisible = false,
-                    TransformOriginX = 0.5f, TransformOriginY = 0f,
-                    Children =
-                    [
-                        Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
-                                               payloadAccent: headerAccent,
-                                               disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
-                    ],
-                }.StretchFromTop();
+                : bleed
+                    ? new BoxEl
+                    {
+                        Width = Prop.Of(() => ArtistBleed.FrameFor(Shell.Ui.CardRect.Value.W, Shell.Ui.CardPose.Value.Y, Shell.Ui.CardRect.Value.Y, photoH).Width),
+                        Height = height, ZStack = true, HitTestVisible = false,
+                        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                        TransformOriginX = 0.5f, TransformOriginY = 0f,
+                        EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
+                        Opacity = Prop.Of(() => ArtistBleed.CardLayerOpacity(bleedDrawn!(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
+                        Children =
+                        [
+                            Palette.ArtistHeroVeil(paletteUrl, vertical: false, float.NaN, float.NaN, key: "artist-veil:" + uri,
+                                                   payloadAccent: headerAccent, onMedia: true),
+                        ],
+                    }.StretchFromTop()
+                    : new BoxEl
+                    {
+                        Width = w, Height = height, ZStack = true, HitTestVisible = false,
+                        TransformOriginX = 0.5f, TransformOriginY = 0f,
+                        Children =
+                        [
+                            Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
+                                                   payloadAccent: headerAccent,
+                                                   disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
+                        ],
+                    }.StretchFromTop();
             expanded = new BoxEl
             {
                 Width = w, Height = height, ZStack = true,
@@ -494,8 +523,11 @@ public readonly partial struct Artist
 
     /// <summary>Verified · name · first sentence · meta, then the action row (Hero.cs:34-95).</summary>
     static Element HeroIdentity(in HeroText text, string uri, float w, in ArtistHeroMetrics m, ColorF accent,
-                                Action? play, Action? shuffle, Action? radio)
+                                Action? play, Action? shuffle, Action? radio, bool onMedia = false)
     {
+        // onMedia (the artist bleed's dark field, static per mount): the copy is light-on-dark in both themes.
+        ColorF inkPrimary = onMedia ? Design.OnMedia.Ink : Tok.TextPrimary;
+        ColorF inkSecondary = onMedia ? Design.OnMedia.InkSecondary : Tok.TextSecondary;
         Element verified = text.Verified
             ? new BoxEl
             {
@@ -503,7 +535,7 @@ public readonly partial struct Artist
                 Children =
                 [
                     InfoBadge.Icon(Icons.Accept, color: accent),
-                    Caption(Loc.Get(Strings.Artist.Verified)) with { Color = Tok.TextSecondary },
+                    Caption(Loc.Get(Strings.Artist.Verified)) with { Color = inkSecondary },
                 ],
             }
             : new BoxEl();
@@ -514,14 +546,14 @@ public readonly partial struct Artist
             ArtistHeroTier.Medium => Design.Type.ArtistTitle(text.Name),
             _ => Design.Type.ArtistCompactTitle(text.Name),
         };
-        name = name with { Color = Tok.TextPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
+        name = name with { Color = inkPrimary, Wrap = TextWrap.Wrap, MaxLines = 2, MinWidth = 0f };
 
         // The lead is a COMMIT-computed column (ch 08 GAP 3): the hero never strips HTML on a render.
         Element bio = text.Lead.Length == 0
             ? new BoxEl()
             : Body(text.Lead) with
             {
-                Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
+                Color = inkSecondary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis,
                 MinWidth = 0f,
             };
 
@@ -538,26 +570,26 @@ public readonly partial struct Artist
                 {
                     Direction = 1, Gap = Spacing.S, MinWidth = 0f,
                     // Meta stays ONE horizontal row at Compact; only Narrow stacks it.
-                    Children = [verified, name, bio, HeroMeta(in text, m.Tier == ArtistHeroTier.Narrow)],
+                    Children = [verified, name, bio, HeroMeta(in text, m.Tier == ArtistHeroTier.Narrow, inkSecondary, onMedia)],
                 },
-                HeroActions(text.Name, uri, accent, play, shuffle, radio, m.Tier),
+                HeroActions(text.Name, uri, accent, play, shuffle, radio, m.Tier, onMedia),
             ],
         };
     }
 
     /// <summary>"#N in the world" (accent) · monthly listeners · followers — a zero stat drops its run (Hero.cs:236-259).</summary>
-    static Element HeroMeta(in HeroText text, bool stacked)
+    static Element HeroMeta(in HeroText text, bool stacked, ColorF ink, bool onMedia = false)
     {
         int count = (text.Rank > 0 ? 1 : 0) + (text.Monthly > 0 ? 1 : 0) + (text.Followers > 0 ? 1 : 0);
         var kids = new Element[count];
         int k = 0;
         if (text.Rank > 0)
             kids[k++] = BodyStrong(Strings.Artist.WorldRank(text.Rank.ToString(CultureInfo.CurrentCulture)))
-                with { Color = Tok.AccentTextPrimary };
+                with { Color = onMedia ? Tok.Dark.AccentTextPrimary : Tok.AccentTextPrimary };
         if (text.Monthly > 0)
-            kids[k++] = Body(CountLabel(text.Monthly) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with { Color = Tok.TextSecondary };
+            kids[k++] = Body(CountLabel(text.Monthly) + " " + Loc.Get(Strings.Artist.MetaMonthly)) with { Color = ink };
         if (text.Followers > 0)
-            kids[k++] = Body(CountLabel(text.Followers) + " " + Loc.Get(Strings.Artist.MetaFollowers)) with { Color = Tok.TextSecondary };
+            kids[k++] = Body(CountLabel(text.Followers) + " " + Loc.Get(Strings.Artist.MetaFollowers)) with { Color = ink };
         return new BoxEl
         {
             Direction = (byte)(stacked ? 1 : 0),
@@ -573,18 +605,18 @@ public readonly partial struct Artist
     /// <para>Workstream B grammar: [<see cref="Controls.PlayButton(ColorF,Action,string?,string?)"/>][Shuffle, a stock
     /// Standard <c>Button.Create</c>][<see cref="Controls.FollowToggle"/>][radio, <see cref="Controls.IconAction"/>].</para></summary>
     static Element HeroActions(string name, string uri, ColorF accent, Action? play, Action? shuffle, Action? radio,
-                               ArtistHeroTier tier)
+                               ArtistHeroTier tier, bool onMedia = false)
     {
         Element playButton = Controls.PlayButton(accent, play ?? s_noop, Loc.Get(Strings.Artist.Play));
         // Keyed on the uri: FollowToggle carries its uri as a mount-frozen field.
         Element follow = uri.Length == 0
             ? Controls.FollowToggle.SkeletonShape()
-            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name })
+            : Embed.Comp(() => new Controls.FollowToggle { Uri = uri, Name = name, OnMedia = onMedia })
                 with { Key = "artist-follow:" + uri, SkeletonProxy = s_followShape };
         Element shuffleButton = Button.Create(Loc.Get(Strings.Detail.Shuffle), shuffle ?? s_noop,
             ButtonAppearance.Standard, glyph: Icons.Shuffle);
         Element radioButton = Controls.Named(
-            Controls.IconAction(Icons.RadioTower, radio), Loc.Get(Strings.Artist.ArtistRadio));
+            Controls.IconAction(Icons.RadioTower, radio, onMedia: onMedia), Loc.Get(Strings.Artist.ArtistRadio));
 
         if (tier == ArtistHeroTier.Narrow)
             return new BoxEl
@@ -610,7 +642,7 @@ public readonly partial struct Artist
     /// <summary>A count in the current culture's grouping ("20,577,457").</summary>
     internal static string CountLabel(long n) => n.ToString("N0", CultureInfo.CurrentCulture);
 
-    sealed record HeroArtProps(string Url, float Width, float PhotoHeight);
+    sealed record HeroArtProps(string Url, float Width, float PhotoHeight, bool Bleed = false);
 
     /// <summary>The photograph: one gentle image-only entrance settle. The page keeps its shimmer until this exact
     /// image is resident, so the photo never fades over a flat hero after the rest of the page has appeared. The scale
@@ -624,6 +656,8 @@ public readonly partial struct Artist
             [new(0f, StartScale, Easing.Linear), new(1f, RestScale, Easing.FluentDecelerate)];
         static readonly Keyframe[] s_enterOpacity = [new(0f, 0f, Easing.Linear), new(1f, 1f, Easing.FluentDecelerate)];
         static readonly Keyframe[] s_restOpacity = [new(0f, 1f), new(1f, 1f)];
+        // Under the bleed the photo holds the shared scale (1): the shell's node cannot share a zoom, so the entrance is the opacity fade.
+        static readonly Keyframe[] s_holdScale = [new(0f, ArtistBleed.PhotoScale), new(1f, ArtistBleed.PhotoScale)];
 
         public override Element Render()
         {
@@ -658,17 +692,46 @@ public readonly partial struct Artist
             bool ready = image.State is ImageState.Ready or ImageState.Failed;
             var zoom = UseRef(false);
             if (!zoom.Value && ready) zoom.Value = true;
-            UseKeyframes(AnimChannel.ScaleX, zoom.Value ? s_enterScale : s_restScale,
-                zoom.Value ? MotionTok.EmphasizedEnter.DurationMs : MotionTok.ControlFaster.DurationMs,
-                loop: false, DepKey.From(zoom.Value));
-            UseKeyframes(AnimChannel.ScaleY, zoom.Value ? s_enterScale : s_restScale,
-                zoom.Value ? MotionTok.EmphasizedEnter.DurationMs : MotionTok.ControlFaster.DurationMs,
-                loop: false, DepKey.From(zoom.Value));
+            var scaleFrames = p.Bleed ? s_holdScale : zoom.Value ? s_enterScale : s_restScale;
+            float scaleMs = p.Bleed ? 0f : zoom.Value ? MotionTok.EmphasizedEnter.DurationMs : MotionTok.ControlFaster.DurationMs;
+            UseKeyframes(AnimChannel.ScaleX, scaleFrames, scaleMs, loop: false, DepKey.From((zoom.Value ? 1 : 0) | (p.Bleed ? 2 : 0)));
+            UseKeyframes(AnimChannel.ScaleY, scaleFrames, scaleMs, loop: false, DepKey.From((zoom.Value ? 1 : 0) | (p.Bleed ? 2 : 0)));
             // Same ready edge as the scale settle. Reduced motion is a duration of 0, never a skipped call.
             float enterOpacityMs = Design.Reduced ? 0f : Design.Motion.Standard;
             UseKeyframes(AnimChannel.Opacity, zoom.Value ? s_enterOpacity : s_restOpacity,
                 zoom.Value ? enterOpacityMs : MotionTok.ControlFaster.DurationMs,
                 loop: false, DepKey.From(zoom.Value));
+
+            if (p.Bleed)
+            {
+                // THE SHARED FRAME: the image box is laid out at the shell's rect (card width, the taller of the final and presented
+                // chrome plus the photo) and translated up by the card's presented top, so in window coordinates it is exactly the
+                // shell's inner photo box. The media box's ClipToBounds clips the overflow; no frame scale, lift or zoom.
+                static ArtistBleed.PhotoFrame Frame(float photoH) =>
+                    ArtistBleed.FrameFor(Shell.Ui.CardRect.Value.W, Shell.Ui.CardPose.Value.Y, Shell.Ui.CardRect.Value.Y, photoH);
+                return new BoxEl
+                {
+                    Width = width, Height = height, ZStack = true, ScaleX = 1f, ScaleY = 1f,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            ZStack = true, AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                            ScaleX = ArtistBleed.PhotoScale, ScaleY = ArtistBleed.PhotoScale,
+                            Width = Prop.Of(() => Frame(height).Width),
+                            Height = Prop.Of(() => Frame(height).Height),
+                            Transform = Prop.Of(() => Affine2D.Translation(0f, Frame(height).Top)),
+                            Children =
+                            [
+                                Ui.Image(p.Url, ImageFit.Cover, aspect: aspect, decodePx: dw, corners: 0f,
+                                         placeholder: Design.ArtworkPlaceholder, blurHash: null, transition: ImageTransition.None)
+                                    with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                                           FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = ArtistBleed.PhotoFocusY },
+                            ],
+                        },
+                    ],
+                };
+            }
 
             return new BoxEl
             {

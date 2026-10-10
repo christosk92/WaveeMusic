@@ -84,9 +84,13 @@ public static class ButtonRules
     /// <summary>The Follow/Pre-save <see cref="ToggleButton.Style"/>: the OFF arm rides <see
     /// cref="ToggleButton.DefaultStyle"/> verbatim (the plan's off row IS the stock Standard ramp — TextPrimary heart,
     /// ControlElevationBorder), and only the ON arm + glyph/motion knobs are overridden from <see cref="FollowTint"/>.
-    /// 32/r4 geometry (the new button-standardisation ladder), not the old 36/capsule Follow pill.</summary>
-    public static ToggleButton.Style FollowStyle(ColorF a, bool light)
+    /// 32/r4 geometry (the new button-standardisation ladder), not the old 36/capsule Follow pill.
+    /// <para><paramref name="onMedia"/> (the artist bleed's dark hero, either theme): the tint ramp is the dark one and the
+    /// "Following" label is the dark theme's accent rung, so it reads on the near-black field; the OFF arm keeps its
+    /// stock plate.</para></summary>
+    public static ToggleButton.Style FollowStyle(ColorF a, bool light, bool onMedia = false)
     {
+        if (onMedia) light = false;
         var t = FollowTint(a, light);
         return ToggleButton.DefaultStyle with
         {
@@ -103,9 +107,9 @@ public static class ButtonRules
             OnDisabledBorder = GradientSpec.Solid(Tok.StrokeControlDefault), // not a washed-out accent — a disabled
             OnDisabledForeground = Tok.TextDisabled,          // Follow toggle reads as the neutral disabled control.
 
-            OnForeground = Tok.AccentTextPrimary,             // "Following" label ink, rest + hover (WinUI pins hover
-                                                                // to rest — ToggleButton.Build never re-reads it)
-            OnPressedForeground = Tok.TextSecondary,          // the table's pressed-label pull-back to neutral ink
+            OnForeground = onMedia ? Tok.Dark.AccentTextPrimary : Tok.AccentTextPrimary, // "Following" label ink, rest + hover
+                                                                // (WinUI pins hover to rest — ToggleButton.Build never re-reads it)
+            OnPressedForeground = onMedia ? Design.OnMedia.InkSecondary : Tok.TextSecondary, // the table's pressed-label pull-back to neutral ink
 
             OnGlyphForeground = t.HeartInk,
             OffGlyphForeground = null,                        // ride the label's own TextPrimary ramp (off row)

@@ -282,10 +282,10 @@ public static partial class Palette
     /// is the header row's raw accent (the ladder's payload rung) — 0 when the caller has none.
     /// <para><paramref name="width"/>/<paramref name="height"/> finite = the veil at that size (the artist hero);
     /// <c>float.NaN</c> for both = the STRETCH arm: the veil takes its ZStack slot, for a surface whose height is its
-    /// content's (<see cref="CoverKeyedVeil"/>).</para></summary>
+    /// content's (<see cref="CoverKeyedVeil"/>). <paramref name="onMedia"/> = the artist bleed's dark arm (same in both themes).</para></summary>
     public static Element ArtistHeroVeil(string? url, bool vertical, float width, float height, string key,
-                                          uint payloadAccent = 0, bool disabled = false)
-        => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height, payloadAccent, disabled),
+                                          uint payloadAccent = 0, bool disabled = false, bool onMedia = false)
+        => Embed.Comp(new CoverKeyedVeil.Props(url, vertical, width, height, payloadAccent, disabled, onMedia),
                       static () => new CoverKeyedVeil()) with { Key = key };
 
     /// <summary>Publishes the page-scoped shell-material tint when THIS cover is graded — with no page re-render. Every

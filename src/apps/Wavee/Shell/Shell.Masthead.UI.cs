@@ -169,7 +169,7 @@ public static partial class Shell
             // EXPERIMENTAL (artist bleed): the page-published photo and its chrome scrim, ABOVE the tint and the washes. Null for
             // every page that publishes none, which adds nothing to the children below. After the page lets go, the RETAINED backdrop
             // keeps the nodes mounted while BleedPresence fades them, so the photo and the card's strip share one clock.
-            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, light) : null;
+            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop) : null;
 
             if (state.Wash is not { } wash)
                 return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = bleed is null ? [tint] : [tint, .. bleed] };
@@ -194,16 +194,20 @@ public static partial class Shell
             };
         }
 
-        /// <summary>EXPERIMENTAL (artist bleed): the backdrop photo and the scrim that keeps the chrome readable over it. Both are
-        /// keyed on the backdrop (a new photo remounts, and so cross-fades, through the WashFade idiom), both are hit-test
-        /// free, and every binding below is a paint channel except Width/Height, which change only on a resize, a pane or rail
+        /// <summary>EXPERIMENTAL (artist bleed): the backdrop photo, the hero's horizontal veil over it and the scrim that keeps
+        /// the chrome readable over it. ONE FIELD, ONE FRAME: the photo box and the veil box both come from
+        /// <see cref="ArtistBleed.FrameFor"/> (the same rule the card's own photo uses), the scrim and the veil are dark in both
+        /// themes (<see cref="ArtistBleed.FieldBase"/>), and the veil rides the photo's clip, translation, strength and
+        /// Enter/Exit, so chrome and hero are one field. All three
+        /// layers (photo, veil, scrim) are keyed on the backdrop (a new photo remounts, and so cross-fades, through the WashFade
+        /// idiom) and hit-test free, and every binding below is a paint channel except Width/Height, which change only on a resize, a pane or rail
         /// change or a nav-style switch (the card's rect). The span is the card's left..right edge (flush with the window's left
         /// edge when no pane is docked); it never sits under the right rail or the Classic/Library pane.
         /// <para>THE PHOTO FOLLOWS THE CARD'S PRESENTED POSE. A pane toggle or a nav-style switch FLIPs the card (Reveal: its
         /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
         /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
         /// crop never rescales mid-move and the left edge never snaps.</para></summary>
-        static Element[] BleedNodes(ShellBackdrop b, bool light)
+        static Element[] BleedNodes(ShellBackdrop b)
         {
             // The span is the card's own: flush with the window edge whenever no pane is docked (FrameRules.ContentCardX is 0 under
             // Zune), so it follows the card's FLIP in BOTH directions with no style-keyed snap.
@@ -214,10 +218,41 @@ public static partial class Shell
             // The clip never runs past the card's right edge (a closing pane's translated photo would otherwise reach under the rail).
             static float ClipWidth() => MathF.Max(0f, MathF.Min(FinalWidth(), Right() - Left()));
             float Strength() => Ui.BleedPresence.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
+            // The taller of the final and the presented top, so a Zune-to-Classic ease never runs short of photo. The card's HeroArt
+            // takes the same frame from the same rule.
+            ArtistBleed.PhotoFrame Frame() => ArtistBleed.FrameFor(FinalWidth(), Ui.CardPose.Value.Y, Ui.CardRect.Value.Y, b.PhotoHeight);
 
             // The page's own decode (its latched size), so the page's HeroArt decode is the cache hit.
             float aspect = (float)b.DecodeW / Math.Max(1, b.DecodeH);
 
+            Element image = new BoxEl
+            {
+                ZStack = true, HitTestVisible = false,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Width = Prop.Of(() => Frame().Width),
+                Height = Prop.Of(() => Frame().Height),
+                Children =
+                [
+                    Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent)
+                        with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = ArtistBleed.PhotoFocusY },
+                ],
+            };
+            // The hero's horizontal veil (the onMedia arm) over the same frame: its gradient spans the same columns as the card's own
+            // veil, so the hand-over shifts no pixel. Stacked tiers keep no veil.
+            Element? veil = b.Veil
+                ? new BoxEl
+                {
+                    ZStack = true, HitTestVisible = false,
+                    AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                    Width = Prop.Of(() => Frame().Width),
+                    Height = Prop.Of(() => Frame().Height),
+                    Children =
+                    [
+                        Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
+                                               key: "shell.bleed.veil:" + b.Key, payloadAccent: b.PayloadAccent, onMedia: true),
+                    ],
+                }
+                : null;
             Element photo = new BoxEl
             {
                 Key = "shell.bleed:" + b.Key,
@@ -229,24 +264,9 @@ public static partial class Shell
                 Opacity = Prop.Of(Strength),
                 EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
                 Enter = WashFade, Exit = WashFade,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        ZStack = true, HitTestVisible = false,
-                        AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                        Width = Prop.Of(FinalWidth),
-                        // The taller of the final and the presented top, so a Zune-to-Classic ease never runs short of photo.
-                        Height = Prop.Of(() => MathF.Max(Ui.CardRect.Value.Y, Ui.CardPose.Value.Y) + b.PhotoHeight),
-                        Children =
-                        [
-                            Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent)
-                                with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = 0f },
-                        ],
-                    },
-                ],
+                Children = veil is null ? [image] : [image, veil],
             };
-            var ground = Design.Colors.ShellGround;
+            var ground = ArtistBleed.FieldBase;
             Element scrim = new BoxEl
             {
                 Key = "shell.bleed.scrim:" + b.Key,
@@ -259,7 +279,7 @@ public static partial class Shell
                 // Straight-alpha stops: the transparent stop carries the ground's own RGB (Design.Wash.Vanish).
                 Gradient = new GradientSpec(GradientShape.Linear, 90f,
                 [
-                    new GradientStop(0f, ground with { A = ArtistBleed.ScrimTopAlpha(light) }),
+                    new GradientStop(0f, ground with { A = ArtistBleed.ScrimTopAlpha() }),
                     new GradientStop(1f, Design.Wash.Vanish(ground)),
                 ]),
                 Enter = WashFade, Exit = WashFade,

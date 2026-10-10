@@ -7,6 +7,7 @@
 // or a stray publish can never leave a stale photo behind.
 
 using FluentGpu.Foundation;
+using FluentGpu.Render;
 using FluentGpu.Signals;
 using Xunit;
 
@@ -117,12 +118,146 @@ public class ArtistBleedGeometryTests
     }
 
     [Fact]
-    public void The_scrim_is_a_partial_veil_in_both_themes_and_as_tall_as_the_chrome()
+    public void The_scrim_is_one_partial_veil_in_both_themes_and_as_tall_as_the_chrome()
     {
-        Assert.InRange(ArtistBleed.ScrimTopAlpha(light: true), 0.01f, 0.99f);
-        Assert.InRange(ArtistBleed.ScrimTopAlpha(light: false), 0.01f, 0.99f);
+        // The field is dark in both themes, so the scrim is a single constant, not a per-theme pair.
+        Assert.Equal(ArtistBleed.ScrimTop, ArtistBleed.ScrimTopAlpha());
+        Assert.InRange(ArtistBleed.ScrimTopAlpha(), 0.01f, 0.99f);
         Assert.Equal(132f, ArtistBleed.ScrimHeight(132f));
         Assert.Equal(0f, ArtistBleed.ScrimHeight(-4f));
+    }
+}
+
+public class ArtistBleedFrameTests
+{
+    static readonly float[] Aspects = [1.5f, 2.4f, 3.6f];
+    static readonly float[] CardWidths = [600f, 1200f, 1900f];
+    static readonly float[] PhotoHeights = [320f, 440f];
+    static readonly float[] Tops = [40f, 92f, 124f];
+
+    [Fact]
+    public void The_cards_photo_box_translated_by_the_pose_is_the_shells_box_and_crops_the_same_pixels()
+    {
+        foreach (float aspect in Aspects)
+        foreach (float cardW in CardWidths)
+        foreach (float photoH in PhotoHeights)
+        foreach (float rectY in Tops)
+        foreach (float poseY in Tops)   // equal to rectY and not
+        {
+            var f = ArtistBleed.FrameFor(cardW, poseY, rectY, photoH);
+
+            // The shell's inner photo box, in window coordinates: top 0, the card's final width, the taller chrome plus the photo.
+            var shell = new RectF(0f, 0f, cardW, MathF.Max(rectY, poseY) + photoH);
+            // The card's box, in card-local coordinates, translated by the card's presented top (poseY).
+            var card = new RectF(0f, f.Top + poseY, f.Width, f.Height);
+            Assert.Equal(shell, card);
+
+            int srcH = 1000;
+            int srcW = (int)MathF.Round(srcH * aspect);
+            var (shellDraw, shellUv) = SceneRecorder.ImageContentFit(ImageFit.Cover, new RectF(0f, 0f, f.Width, f.Height), srcW, srcH,
+                                                                     ArtistHeroLayout.PhotoFocusX, ArtistBleed.PhotoFocusY);
+            var (cardDraw, cardUv) = SceneRecorder.ImageContentFit(ImageFit.Cover, new RectF(0f, 0f, card.W, card.H), srcW, srcH,
+                                                                   ArtistHeroLayout.PhotoFocusX, ArtistBleed.PhotoFocusY);
+            Assert.Equal(shellDraw, cardDraw);
+            Assert.Equal(shellUv, cardUv);
+        }
+    }
+
+    [Theory]
+    [InlineData(1200f, 92f, 92f, 440f)]
+    [InlineData(1200f, 40f, 124f, 320f)]
+    [InlineData(600f, 124f, 40f, 440f)]
+    public void The_frame_is_the_taller_chrome_plus_the_photo_and_rises_by_the_pose(float cardW, float poseY, float rectY, float photoH)
+    {
+        var f = ArtistBleed.FrameFor(cardW, poseY, rectY, photoH);
+        Assert.Equal(MathF.Max(rectY, poseY) + photoH, f.Height);
+        Assert.Equal(-poseY, f.Top);
+        Assert.Equal(cardW, f.Width);
+    }
+
+    [Fact]
+    public void The_photo_is_unscaled_and_focused_on_the_top()
+    {
+        Assert.Equal(1f, ArtistBleed.PhotoScale);
+        Assert.Equal(0f, ArtistBleed.PhotoFocusY);
+    }
+}
+
+public class ArtistBleedHandOverTests
+{
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.5f)]
+    [InlineData(0.998f)]
+    public void The_cards_layers_stay_until_the_shells_are_fully_present(float presence)
+        => Assert.Equal(1f, ArtistBleed.CardLayerOpacity(true, presence));
+
+    [Fact]
+    public void The_cards_layers_yield_in_one_step_at_full_presence()
+    {
+        Assert.Equal(0f, ArtistBleed.CardLayerOpacity(true, 1f));
+        Assert.Equal(0f, ArtistBleed.CardLayerOpacity(true, 0.999f));
+    }
+
+    [Fact]
+    public void The_hand_over_eases_the_cards_layers_out_only_once_the_shell_is_fully_present()
+    {
+        // No hand-over yet: nothing yields. The hand-over never starts before presence 1, however far it has run.
+        Assert.Equal(1f, ArtistBleed.CardLayerOpacity(true, 1f, 0f));
+        Assert.Equal(1f, ArtistBleed.CardLayerOpacity(true, 0.9f, 1f));
+        float prev = 1f;
+        for (float h = 0f; h <= 1f; h += 0.1f)
+        {
+            float o = ArtistBleed.CardLayerOpacity(true, 1f, h);
+            Assert.InRange(o, 0f, prev);   // monotone, never a step back up
+            prev = o;
+        }
+        Assert.Equal(0f, ArtistBleed.CardLayerOpacity(true, 1f, 1f));
+        Assert.Equal(0.5f, ArtistBleed.CardLayerOpacity(true, 1f, 0.5f), 5);
+        Assert.Equal(1f, ArtistBleed.CardLayerOpacity(false, 1f, 1f));
+    }
+
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(0.7f)]
+    [InlineData(1f)]
+    public void Nothing_yields_when_the_shell_does_not_draw_the_photo(float presence)
+        => Assert.Equal(1f, ArtistBleed.CardLayerOpacity(false, presence));
+
+    [Fact]
+    public void The_chrome_ink_mix_is_the_presence_times_the_hero_still_showing()
+    {
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f));
+        Assert.Equal(1f, ArtistBleed.ChromeInkMix(1f, 1f));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f));
+        Assert.Equal(0.25f, ArtistBleed.ChromeInkMix(0.5f, 0.5f), 5);
+        Assert.Equal(1f, ArtistBleed.ChromeInkMix(3f, 2f));   // clamped both ways
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(-1f, 1f));
+        float prev = 0f;
+        for (int i = 0; i <= 10; i++)
+        {
+            float v = ArtistBleed.ChromeInkMix(i / 10f, 0.8f);
+            Assert.True(v >= prev - 1e-6f);
+            prev = v;
+        }
+        prev = 0f;
+        for (int i = 0; i <= 10; i++)
+        {
+            float v = ArtistBleed.ChromeInkMix(0.8f, i / 10f);
+            Assert.True(v >= prev - 1e-6f);
+            prev = v;
+        }
+    }
+
+    [Fact]
+    public void The_ink_is_the_themes_at_zero_and_the_medias_at_one()
+    {
+        var a = ColorF.FromRgba(10, 20, 30, 255);
+        var b = ColorF.FromRgba(240, 230, 220, 255);
+        Assert.Equal(a, ArtistBleed.Ink(a, b, 0f));
+        Assert.Equal(b, ArtistBleed.Ink(a, b, 1f));
+        Assert.Equal(a, ArtistBleed.Ink(a, b, -3f));
+        Assert.Equal(b, ArtistBleed.Ink(a, b, 3f));
     }
 }
 

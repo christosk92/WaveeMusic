@@ -415,7 +415,8 @@ public readonly partial struct Artist
                 float bleedFloor = Detail.BandLayout.StuckHeight(_floorInRow2.Value);
                 float bleedPhotoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
                 backdrop = new ShellBackdrop(heroUrl!, bleedPhotoH, bleedPhotoH, bleedFloor, _scroll.Offset,
-                    ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text);
+                    ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text,
+                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent, Veil: !_metrics.Stacked);
             }
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,

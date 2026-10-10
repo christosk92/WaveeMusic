@@ -518,15 +518,19 @@ public static partial class Controls
     /// on a real surface and the photography lives in the right half. A softened pass made the plate a whisper in light
     /// themes so the always-on bottom photo fade read as "the" fade; it was restored by explicit ruling. The VERTICAL
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
-    /// image into a painted plate.</para></summary>
-    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical)
+    /// image into a painted plate.</para>
+    ///
+    /// <para><paramref name="onMedia"/> is the artist bleed's arm: the veil's base is the dark <see cref="Tok.MediaStage"/> instead
+    /// of the theme's layer fill, so the bleed field looks the same in both themes (the shell and the card draw the same veil).</para></summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, bool onMedia = false)
     {
-        ColorF layer = Tok.FillLayerDefault;
-        float pull = Tok.Theme == ThemeKind.Light ? 0.16f : 0.24f;
+        bool dark = onMedia || Tok.Theme != ThemeKind.Light;
+        ColorF layer = onMedia ? Tok.MediaStage : Tok.FillLayerDefault;
+        float pull = dark ? 0.24f : 0.16f;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
         if (vertical)
         {
-            float top = Tok.Theme == ThemeKind.Light ? 0.42f : 0.78f;
+            float top = dark ? 0.78f : 0.42f;
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(0.45f, veil with { A = 0.35f }),
@@ -1109,6 +1113,8 @@ public static partial class Controls
         /// mounts). Null reads the PAGE accent off <see cref="Design.AccentCtx"/>, falling back to the semantic token
         /// — the plan's "A = page accent, else Tok.AccentDefault".</summary>
         public Func<ColorF>? Accent { get; init; }
+        /// <summary>Sits on the artist bleed's dark hero (either theme): the ON ramp and label read on dark. Static per mount.</summary>
+        public bool OnMedia { get; init; }
 
         public override Element Render()
         {
@@ -1123,7 +1129,7 @@ public static partial class Controls
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
                 glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Label(Verb, true),
-                style: ButtonRules.FollowStyle(a, light), parts: RootNoShrink);
+                style: ButtonRules.FollowStyle(a, light, OnMedia), parts: RootNoShrink);
         }
 
         static string Label(FollowVerb verb, bool on) => Loc.Get(verb switch

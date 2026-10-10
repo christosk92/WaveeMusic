@@ -930,15 +930,17 @@ public static partial class Shell
     }
 
     /// <summary>EXPERIMENTAL (artist bleed): follows "a backdrop is published" into <see cref="Ui.BleedPresence"/> with a tween of
-    /// <c>Design.Motion.Standard</c> (a snap under reduced motion), and retains the last backdrop in <see cref="Ui.BleedBackdrop"/>
-    /// until the fade-out ends so the card ground keeps its geometry meanwhile. The per-frame ticker is mounted only while the
-    /// tween runs. Renders an empty, zero-size box.</summary>
+    /// <c>Design.Motion.Standard</c> (a snap under reduced motion), then runs <see cref="Ui.BleedHandover"/> over a second
+    /// Standard so the page's own photo and veil ease out over the shell's identical ones, and retains the last backdrop in
+    /// <see cref="Ui.BleedBackdrop"/> until the fade-out ends so the card ground keeps its geometry meanwhile. The per-frame
+    /// ticker is mounted only while the tween runs. Renders an empty, zero-size box.</summary>
     sealed class BleedPresenter : Component
     {
         readonly Signal<bool> _running = new(false);
         readonly Action _step;
         float _from, _target;
         long _t0;
+        string? _lastKey;
 
         public BleedPresenter() => _step = Step;
 
@@ -954,10 +956,15 @@ public static partial class Shell
                     if (Ui.BleedBackdrop.Peek() is null) SampleCardPose();   // the pose was parked at the final rect; start from the presented one
                     Ui.BleedBackdrop.Value = backdrop;
                 }
-                if (target == _target) return;
+                // A different artist published while the bleed is already fully present restarts the hand-over (the new page's own
+                // photo draws again until the shell's new one is in), without touching the presence.
+                bool republished = backdrop is not null && !string.Equals(_lastKey, backdrop.Key, StringComparison.Ordinal);
+                _lastKey = backdrop?.Key;
+                if (target == _target && !republished) return;
                 _from = Ui.BleedPresence.Peek();
                 _target = target;
                 _t0 = Design.FrameTime.NowMs;
+                Ui.BleedHandover.Value = 0f;
                 if (Design.Reduced) Land();
                 else _running.Value = true;
             }, DepKey.From(HashCode.Combine(target, backdrop)));
@@ -970,14 +977,24 @@ public static partial class Shell
 
         void Step()
         {
-            float t = Math.Clamp((Design.FrameTime.NowMs - _t0) / Design.Motion.Standard, 0f, 1f);
+            float elapsed = Design.FrameTime.NowMs - _t0;
+            float t = Math.Clamp(elapsed / Design.Motion.Standard, 0f, 1f);
             Ui.BleedPresence.Value = _from + (_target - _from) * Easings.Ease(Easing.FluentStandard, t);
-            if (t >= 1f) Land();
+            if (_target == 0f)
+            {
+                if (t >= 1f) Land();
+                return;
+            }
+            // The hand-over starts only once the shell's layers are fully present.
+            float h = Math.Clamp((elapsed - Design.Motion.Standard) / Design.Motion.Standard, 0f, 1f);
+            Ui.BleedHandover.Value = Easings.Ease(Easing.FluentStandard, h);
+            if (h >= 1f) Land();
         }
 
         void Land()
         {
             Ui.BleedPresence.Value = _target;
+            Ui.BleedHandover.Value = _target;
             if (_target == 0f) Ui.BleedBackdrop.Value = null;
             _running.Value = false;
         }

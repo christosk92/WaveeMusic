@@ -1097,6 +1097,11 @@ public static partial class Shell
         /// ground and the stroke is multiplied by it, so navigating to or from an artist cross-fades instead of snapping.</summary>
         public static readonly FloatSignal BleedPresence = new(0f);
 
+        /// <summary>EXPERIMENTAL (artist bleed): the card-to-shell hand-over, 0..1. It starts only once <see cref="BleedPresence"/> has
+        /// reached 1 and eases over <c>Design.Motion.Standard</c>; the page's own photo and veil fade out by it
+        /// (<c>ArtistBleed.CardLayerOpacity</c>) over the shell's identical ones. Reset to 0 whenever a backdrop is (re)published.</summary>
+        public static readonly FloatSignal BleedHandover = new(0f);
+
         /// <summary>EXPERIMENTAL (artist bleed): the last non-null backdrop, retained while <see cref="BleedPresence"/> fades back
         /// to 0, so the card ground keeps its geometry for the whole fade-out. Cleared when the fade ends.</summary>
         public static readonly Signal<ShellBackdrop?> BleedBackdrop = new(null);

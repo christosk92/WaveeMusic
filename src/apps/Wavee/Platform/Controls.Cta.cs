@@ -284,12 +284,21 @@ public static partial class Controls
     }
 
     /// <summary>Row 3, and the DEFAULT: the standard 32 × 32, 4-radius icon button. Toolbars, panels, rows, flyouts,
-    /// dialogs. If a new icon affordance is not obviously one of the other two rows, it is this one.</summary>
+    /// dialogs. If a new icon affordance is not obviously one of the other two rows, it is this one.
+    /// <para><paramref name="onMedia"/> is the glyph on a DARK field in either theme (the artist bleed's hero): on-media
+    /// ink with the glass hover/press ramp, instead of the theme's near-black glyph that would vanish there.</para></summary>
     public static BoxEl IconAction(string glyph, Action? onClick, bool requestsContext = false,
-                                   float size = IconButtonSize)
+                                   float size = IconButtonSize, bool onMedia = false)
     {
-        var box = IconButton.Create(glyph, onClick ?? NoOp,
-            style: IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control }) with
+        var style = IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control };
+        if (onMedia)
+            style = style with
+            {
+                Foreground = Design.OnMedia.Ink, HoverForeground = Design.OnMedia.Ink,
+                PressedForeground = Design.OnMedia.InkSecondary, DisabledForeground = Design.OnMedia.InkTertiary,
+                Fill = Design.OnMedia.GlassRest, HoverFill = Design.OnMedia.GlassHover, PressedFill = Design.OnMedia.GlassPressed,
+            };
+        var box = IconButton.Create(glyph, onClick ?? NoOp, style: style) with
         {
             HoverScale = Design.Motion.ScaleSubtle.Hover,
             PressScale = Design.Motion.ScaleSubtle.Press,
