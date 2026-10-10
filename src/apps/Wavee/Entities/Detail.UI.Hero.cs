@@ -132,7 +132,8 @@ public static partial class Detail
         float bw = VerticalLayout.BucketW(w);
         var f = FlagsOf(spec);
         return VerticalLayout.HeroBandHeight(bw, rowFlow, f.Eyebrow, f.Attribution, f.Meta, f.Description,
-                                             pulse: f.Pulse, chart: f.Chart, title: spec.Identity.Title);
+                                             pulse: f.Pulse, chart: f.Chart, title: spec.Identity.Title,
+                                             actionLines: VerticalLayout.ActionRowLinesFor(bw, rowFlow, Skeleton.HasLabelledShuffle(spec.Identity.Kind)));
     }
 
     // ══ 3. THE HERO ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -234,9 +235,14 @@ public static partial class Detail
             ColorF accent = spec.Accent();
             var f = FlagsOf(spec);
 
+            // The action row's LINES at this width: the one rule the skeleton and the pre-measure band read too, so the
+            // title budget, the identity gap and the reserved height all charge the row the hero actually draws.
+            int actionLines = VerticalLayout.ActionRowLinesFor(bw, rowFlow, acts.HasPlaySplit);
+
             // ── the title TYPE PLAN: ONE size per (bucketed width, title), drawn exactly (no auto-fit, no hysteresis) ──
             var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
-                eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
+                eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart,
+                actionLines: actionLines);
 
             // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
             var blocks = new List<Element>(10);
@@ -258,7 +264,7 @@ public static partial class Detail
             if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
             if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
             if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
-            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts)));
+            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, VerticalLayout.LabelledShuffleFits(bw, rowFlow))));
 
             // The description is no longer a row of the identity column: it is the padded box's second child, after
             // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
@@ -272,7 +278,7 @@ public static partial class Detail
                                                           id.Subject.Text, s_navRoute, fullTextTip: true);
 
             float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
+                f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines);
 
             // AlignItems Stretch (+ a definite width when stacked) is load-bearing: the action row WRAPS, and a wrap
             // needs a definite width to wrap against.
@@ -413,16 +419,26 @@ public static partial class Detail
         Key = key, Direction = 1, Layout = Shove, Enter = late ? FadeUp : (EnterExit?)null, Children = [child],
     };
 
-    /// <summary>W27: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) · the heart (DROPPED, not
-    /// disabled, when <c>Heart == None</c>) · Share · More.</summary>
-    static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts)
+    /// <summary>The ONE action row. A page that supplies the Play split's verbs (an album, a playlist) gets the SPLIT, then
+    /// the LABELLED Shuffle (this arm has the width the rail lacks), the heart, Share and ⋯: Play split · Shuffle · heart ·
+    /// share · ⋯, the Shuffle's label dropped (<paramref name="labelShuffle"/> false, the icon-only form of the same button)
+    /// when the identity column cannot hold the labelled row on one line. Every other kind keeps W27's row: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) ·
+    /// the heart (DROPPED, not disabled, when <c>Heart == None</c>) · Share · More.</summary>
+    static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts, bool labelShuffle)
     {
+        bool split = acts.HasPlaySplit;
+        Func<ColorF> accent = spec.Accent;
         var actions = new List<Element>(5)
         {
-            PlayButton(spec.Accent, spec.PlayAll ?? DefaultPlay(id.Subject)) with { Key = "vhero-play" },
+            split
+                ? Controls.PlaySplitButton(id.Subject.Text, accent, spec.PlayAll ?? DefaultPlay(id.Subject),
+                                           acts.AddToQueue!, acts.PlayNext!, acts.StartRadio!) with { Key = "vhero-play:" + id.Subject.Text }
+                : PlayButton(accent, spec.PlayAll ?? DefaultPlay(id.Subject)) with { Key = "vhero-play" },
         };
         if (acts.Shuffle is { } shuffle)
-            actions.Add(Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
+            actions.Add(split
+                ? Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, labelShuffle) with { Key = "vhero-shuffle" }
+                : Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
         if (cfg.Heart != HeartMode.None)
         {
             // Keyed on the TARGET: SaveButton's uri freezes at mount. The heart reads the page accent through
@@ -434,7 +450,9 @@ public static partial class Detail
                 with { Key = "vhero-save:" + saveUri });
         }
         if (ShareActionFor(id) is { } share)
-            actions.Add(Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
+            actions.Add(split
+                ? Controls.QuietIconButton(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" }
+                : Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
         if (acts.More is { } more)
             actions.Add(MoreButton(more, Controls.IconButtonSize, 16f, round: false) with { Key = "vhero-more:" + id.Subject.Text });
         return new BoxEl
@@ -515,10 +533,13 @@ public static partial class Detail
         float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
         // The KNOWN title's plan (the loaded hero's own, so the swap does not jump), else the PESSIMISTIC null-title plan
         // (an empty Title is null to the estimator) — the one the pre-measure collapse height builds too.
+        bool split = Skeleton.HasLabelledShuffle(id.Kind);
+        int actionLines = VerticalLayout.ActionRowLinesFor(bw, rowFlow, split);
         var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
-            eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
+            eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart,
+            actionLines: actionLines);
         float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-            f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
+            f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines);
 
         var blocks = new List<Element>(8);
         if (f.Eyebrow) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.EyebrowFraction), VerticalLayout.EyebrowRowHeight));
@@ -532,7 +553,7 @@ public static partial class Detail
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
-        blocks.Add(SkeletonActionRow());
+        blocks.Add(SkeletonActionRow(split, VerticalLayout.LabelledShuffleFits(bw, rowFlow)));
 
         Element identity = new BoxEl
         {
@@ -558,7 +579,7 @@ public static partial class Detail
             Direction = 1,
             // A FLOOR (never a cap): the SAME number the loaded hero's collapse binds assume before their first measure.
             MinHeight = VerticalLayout.HeroBandHeight(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart),
+                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines),
             Children =
             [
                 new BoxEl
@@ -595,23 +616,34 @@ public static partial class Detail
         return new BoxEl { Direction = 1, Gap = 0f, Children = kids };
     }
 
-    static Element SkeletonActionRow()
+    /// <summary>The loaded row's shape, member for member, wrapping against the same identity column the same way:
+    /// [Play split 121] · [Shuffle, labelled 96 or icon-only 32 by the SAME width rule as the loaded hero] · heart · share · ⋯
+    /// for the kinds that carry the split (<see cref="Skeleton.HasLabelledShuffle"/>), else [Play 120] and the 32-DIP
+    /// satellites. It wraps against the identity column (stretched, so the width is definite) exactly as the loaded row does.</summary>
+    static Element SkeletonActionRow(bool split, bool labelledShuffle)
     {
         var kids = new Element[1 + Skeleton.SatelliteCount];
         kids[0] = new BoxEl
         {
-            Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight,
+            Width = Skeleton.PrimaryWidthFor(plainPlay: !split), Height = Controls.ButtonHeight, Shrink = 0f,
             Corners = Radii.ControlAll,
         };
-        for (int i = 1; i < kids.Length; i++)
+        int next = 1;
+        if (split)
+            kids[next++] = new BoxEl
+            {
+                Width = labelledShuffle ? Skeleton.ShuffleButtonWidth : Controls.IconButtonSize,
+                Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll,
+            };
+        for (int i = next; i < kids.Length; i++)
             kids[i] = new BoxEl
             {
                 Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, Corners = Radii.ControlAll,
             };
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Margin = new Edges4(0f, Spacing.XS, 0f, 0f), Height = Controls.ButtonHeight,
+            Direction = 0, Gap = VerticalLayout.ActionRowGap, Wrap = true, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start,
+            Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
             Children = kids,
         };
     }

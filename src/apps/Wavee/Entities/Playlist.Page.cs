@@ -323,6 +323,10 @@ public readonly partial struct Playlist
             _actions = new Detail.FrameActions
             {
                 Shuffle = Shuffle, More = MoreMenu, CoverDrag = CoverPayload, DepositOnPage = _deposit,
+                // The Play split's menu: the same context verbs the removed "…" rows ran, and a real playlist radio.
+                AddToQueue = () => RunContext(ActionId.AddContextToQueue),
+                PlayNext = () => RunContext(ActionId.PlayContextNext),
+                StartRadio = StartRadio,
                 GoLibrary = static () => Shell.GoTo(new Shell.Route(Shell.RouteKind.LibraryAlbums)),
             };
             _actionsReadOnly = _actions with { DepositOnPage = null };
@@ -695,21 +699,45 @@ public readonly partial struct Playlist
             Playback.PlayRows(rows, 0, pl.Id);
         }
 
-        /// <summary>The hero/rail ⋯ (ch 03 item 49): the one container menu, on-page (Play next · Add to queue · Copy to
-        /// playlist ▸ · Pin · Share — "Copy to playlist" is a playlist page's label for owned and followed alike, Heart is
-        /// Follow for both), then the owner pair as the page's own tail, each self-gated.</summary>
+        /// <summary>The container target the Play split's verbs and the ⋯ run over.</summary>
+        ActionTarget TargetOf(Playlist pl)
+            => ActionTarget.ForPlaylist(pl.Uri, TitleOf(pl), new PlaylistHost(pl.Uri, pl.Caps, Array.Empty<int>()));
+
+        /// <summary>The split's "Add to queue" / "Play next": the registered context verb over the playlist's container
+        /// target (the whole context, no 50-track cap).</summary>
+        void RunContext(ActionId id)
+        {
+            var pl = _playlist;
+            if (!pl.IsValid) return;
+            var target = TargetOf(pl);
+            Detail.RunContextVerb(id, in target);
+        }
+
+        /// <summary>The split's "Start radio": a real radio off the playlist's uri.</summary>
+        void StartRadio()
+        {
+            var pl = _playlist;
+            if (pl.IsValid) Detail.StartRadioFor(pl.Uri, TitleOf(pl))();
+        }
+
+        /// <summary>The hero/rail ⋯ (ch 03 item 49): the one container menu, on-page — Download · Add to folder · Copy link
+        /// first (the page's action row carries Play next, Add to queue and Share), then Copy to playlist ▸ · Pin ("Copy to
+        /// playlist" is a playlist page's label for owned and followed alike, Heart is Follow for both), then the owner
+        /// pair as the page's own tail, each self-gated.</summary>
         ContextMenuModel? MoreMenu()
         {
             var pl = _playlist;
             if (!pl.IsValid) return null;
             var tracks = TracksOf(pl);
-            var target = ActionTarget.ForPlaylist(pl.Uri, TitleOf(pl), new PlaylistHost(pl.Uri, pl.Caps, Array.Empty<int>()));
+            var target = TargetOf(pl);
             var tail = new List<MenuFlyoutItem>(3);
             AppendOwnerItems(tail, pl, _overlay);
             string owner = pl.Owner.IsValid ? Entities.Strings.Resolve(pl.Owner.NameId) : "";
             return Menus.Container(in target, Controls.ArtUrl(pl.ImageId), owner.Length > 0 ? owner : null, new ContainerExtras
             {
-                OnPage = true,
+                OnPage = true, ActionRow = true,
+                Lead = Detail.ContainerLead(pl.Uri, !pl.ShareUrlId.IsEmpty ? Entities.Strings.Resolve(pl.ShareUrlId) : null,
+                                            playlist: true, _overlay),
                 Deposit = tracks.Length > 0 ? DepositMenu(Loc.Get(Strings.Detail.CopyToPlaylist), tracks, pl.Uri, _overlay) : null,
                 Tail = tail,
             });

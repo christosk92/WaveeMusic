@@ -189,7 +189,14 @@ public readonly partial struct Album
             _demandAlbum = DemandAlbum;
             _demandTracked = DemandTracked;
             _stamp = Stamp;
-            _actions = new Detail.FrameActions { Shuffle = ShuffleAlbum, More = MoreMenu, CoverDrag = CoverPayload };
+            _actions = new Detail.FrameActions
+            {
+                Shuffle = ShuffleAlbum, More = MoreMenu, CoverDrag = CoverPayload,
+                // The Play split's menu: the same context verbs the removed "…" rows ran, and a real album radio.
+                AddToQueue = () => RunContext(ActionId.AddContextToQueue),
+                PlayNext = () => RunContext(ActionId.PlayContextNext),
+                StartRadio = StartRadio,
+            };
             Func<float, Element> attribution = w => FacePile(_display, w);
             Func<Element> preRelease = () => Countdown(_display.Uri, _upcomingAt, _accent);
             Func<bool, Element> release = outer => ReleasePanel(_display, outer);
@@ -386,8 +393,26 @@ public readonly partial struct Album
             else Actions.Services.Play?.Invoke(a.Uri);
         }
 
-        /// <summary>The hero ⋯ (W20): the one container menu, on-page — see <see cref="Album.HeroMenu"/>.</summary>
-        ContextMenuModel? MoreMenu() => HeroMenu(_display, _overlay);
+        /// <summary>The split's "Add to queue" / "Play next": the registered context verb over the album's container target
+        /// (the whole context, no 50-track cap).</summary>
+        void RunContext(ActionId id)
+        {
+            var a = _display;
+            if (!a.IsValid) return;
+            var target = ActionTarget.ForAlbum(a.Uri, a.Title);
+            Detail.RunContextVerb(id, in target);
+        }
+
+        /// <summary>The split's "Start radio": a real radio off the album's uri.</summary>
+        void StartRadio()
+        {
+            var a = _display;
+            if (a.IsValid) Detail.StartRadioFor(a.Uri, a.Title)();
+        }
+
+        /// <summary>The hero ⋯ (W20): the one container menu, on-page — see <see cref="Album.HeroMenu"/>. The page has an
+        /// action row (the Play split and a Share button), so the ⋯ leads with Download · Copy link and drops the verbs those carry.</summary>
+        ContextMenuModel? MoreMenu() => HeroMenu(_display, _overlay, actionRow: true);
 
         /// <summary>The cover drags the whole album: the resident rows when they are in hand, else the library's resolver.</summary>
         object? CoverPayload()
@@ -410,10 +435,12 @@ public readonly partial struct Album
     }
 
     /// <summary>The album's hero ⋯ — the page's and the library pane's ONE menu, built at OPEN from the live model:
-    /// <c>Menus.Container</c> on the page (Play next · Add to queue · Add to playlist ▸ · Pin · Share). When the tracks are
+    /// <c>Menus.Container</c> on the page (Play next · Add to queue · Add to playlist ▸ · Pin · Share). With
+    /// <paramref name="actionRow"/> (the PAGE: its action row carries the Play split and a Share button) it is Download ·
+    /// Copy link, then Add to playlist ▸ · Pin; the library pane keeps the full menu. When the tracks are
     /// resident, Add to playlist is the track menu's own deposit submenu over them (no resolve round-trip); otherwise the
     /// registered container verb resolves them. Null when nothing is offerable.</summary>
-    internal static ContextMenuModel? HeroMenu(Album a, IOverlayService? overlay)
+    internal static ContextMenuModel? HeroMenu(Album a, IOverlayService? overlay, bool actionRow = false)
     {
         if (!a.IsValid) return null;
         MenuFlyoutItem? deposit = null;
@@ -434,7 +461,13 @@ public readonly partial struct Album
         string subtitle = PageRules.Subtitle(artist.IsValid && artist.Knows(ArtistFields.Name) ? artist.Name : null, a.Year, a.Kind);
         var target = ActionTarget.ForAlbum(a.Uri, a.Title);
         return Menus.Container(in target, Controls.ArtUrl(a.ImageId), subtitle,
-            new ContainerExtras { OnPage = true, Deposit = deposit });
+            new ContainerExtras
+            {
+                OnPage = true, Deposit = deposit, ActionRow = actionRow,
+                Lead = actionRow
+                    ? Detail.ContainerLead(a.Uri, !a.ShareUrlId.IsEmpty ? Entities.Strings.Resolve(a.ShareUrlId) : null, playlist: false, overlay)
+                    : null,
+            });
     }
 
     /// <summary>W18's unresolvable prerelease: 14 px tertiary, centred, 16/24 padding.</summary>

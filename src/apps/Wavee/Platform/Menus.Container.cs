@@ -36,7 +36,10 @@ public readonly record struct ContainerMenuPlan(ContainerVerb[] Strip, Container
 /// </list>
 /// <b>On a page</b> (the hero "…") the page already has its own Play, Save and Open, so the strip dissolves: the strip's
 /// remaining verbs lead the rows, then the rows minus Open and Go to artist — Play next · Add to queue · Add to playlist ·
-/// Pin/Unpin · Share.</summary>
+/// Pin/Unpin · Share.
+/// <para><b>On a page with an action row</b> (an album's or playlist's hero, whose Play split already runs Add to queue and
+/// Play next and whose own Share button replaces the Share submenu) the plan is the on-page one minus those three — the
+/// remaining rows, led at composition time by the page's <see cref="ContainerExtras.Lead"/> rows.</para></summary>
 public static class ContainerMenuRules
 {
     static readonly ContainerVerb[] s_none = [];
@@ -67,16 +70,25 @@ public static class ContainerMenuRules
     static readonly ContainerMenuPlan s_artistPage = OnPage(s_artist);
     static readonly ContainerMenuPlan s_showPage = OnPage(s_show);
 
+    // The action-row variants are DERIVED from the on-page plans (not restated), so they cannot drift either.
+    static readonly ContainerMenuPlan s_albumRow = ActionRowOf(s_albumPage);
+    static readonly ContainerMenuPlan s_playlistRow = ActionRowOf(s_playlistPage);
+
     /// <param name="kind">Album · Artist · Playlist · Show; anything else has no container menu (empty plan).</param>
     /// <param name="liked">Liked Songs: a playlist target that is always saved, so it has no Save.</param>
     /// <param name="onPage">The hero "…" of the entity's own page: no strip, no Open, no Go to artist.</param>
-    public static ContainerMenuPlan For(TargetKind kind, bool liked, bool onPage)
+    /// <param name="actionRow">With <paramref name="onPage"/>, on an album / playlist whose hero carries the Play split and
+    /// a Share button: Play next, Add to queue and Share live there, so the "…" drops them. Other kinds (Liked Songs among
+    /// them, which has no Play split) ignore it.</param>
+    public static ContainerMenuPlan For(TargetKind kind, bool liked, bool onPage, bool actionRow = false)
     {
         bool l = liked && kind == TargetKind.Playlist;
+        bool row = onPage && actionRow;
         return kind switch
         {
-            TargetKind.Album => onPage ? s_albumPage : s_album,
-            TargetKind.Playlist => l ? (onPage ? s_likedPage : s_liked) : (onPage ? s_playlistPage : s_playlist),
+            TargetKind.Album => row ? s_albumRow : onPage ? s_albumPage : s_album,
+            TargetKind.Playlist => l ? (onPage ? s_likedPage : s_liked)
+                                     : (row ? s_playlistRow : onPage ? s_playlistPage : s_playlist),
             TargetKind.Artist => onPage ? s_artistPage : s_artist,
             TargetKind.Show => onPage ? s_showPage : s_show,
             _ => new ContainerMenuPlan(s_none, s_none),
@@ -89,6 +101,13 @@ public static class ContainerMenuRules
         foreach (var v in card.Strip) if (v is not (ContainerVerb.Play or ContainerVerb.Save)) rows.Add(v);
         foreach (var v in card.Rows) if (v is not (ContainerVerb.Open or ContainerVerb.GoToArtist)) rows.Add(v);
         return new ContainerMenuPlan(s_none, rows.ToArray());
+    }
+
+    static ContainerMenuPlan ActionRowOf(ContainerMenuPlan onPage)
+    {
+        var rows = new List<ContainerVerb>(onPage.Rows.Length);
+        foreach (var v in onPage.Rows) if (v is not (ContainerVerb.PlayNext or ContainerVerb.AddToQueue or ContainerVerb.Share)) rows.Add(v);
+        return new ContainerMenuPlan(onPage.Strip, rows.ToArray());
     }
 }
 
@@ -113,6 +132,12 @@ public readonly record struct ContainerExtras
     public Func<MenuFlyoutItem?>? Pin { get; init; }
     /// <summary>Open a separator group in front of the <see cref="Pin"/> slot (the sidebar's Organize ▸ stands apart).</summary>
     public bool PinStartsGroup { get; init; }
+    /// <summary>With <see cref="OnPage"/>: the hero carries the Play split and a Share button (an album's or playlist's
+    /// action row), so the "…" drops Play next, Add to queue and Share (<see cref="ContainerMenuRules.For"/>).</summary>
+    public bool ActionRow { get; init; }
+    /// <summary>Rows BEFORE everything else (then a separator): the page's own lead — Download · Add to folder ·
+    /// Copy link on an album or playlist hero.</summary>
+    public IReadOnlyList<MenuFlyoutItem>? Lead { get; init; }
     /// <summary>Page- or surface-only rows, appended after Share behind a separator (owner pair, Rename, Delete…).</summary>
     public IReadOnlyList<MenuFlyoutItem>? Tail { get; init; }
     /// <summary>Replaces the header tile (the Liked Songs treatment).</summary>
@@ -126,7 +151,7 @@ public static partial class Menus
     public static ContextMenuModel? Container(in ActionTarget target, string? art, string? subtitle,
                                               in ContainerExtras x = default)
     {
-        var plan = ContainerMenuRules.For(target.Kind, x.Liked, x.OnPage);
+        var plan = ContainerMenuRules.For(target.Kind, x.Liked, x.OnPage, x.ActionRow);
         if (plan.IsEmpty) return null;
         var ctx = new ActionContext(target, x.Services ?? Actions.Services);
 
@@ -136,6 +161,11 @@ public static partial class Menus
 
         var rows = new List<MenuFlyoutItem>(plan.Rows.Length + 2);
         bool sharePending = false;
+        if (x.Lead is { Count: > 0 } lead)
+        {
+            for (int i = 0; i < lead.Count; i++) rows.Add(lead[i]);
+            Actions.Menu.OpenGroup(rows);
+        }
         foreach (var verb in plan.Rows)
         {
             if (verb == ContainerVerb.Share) { sharePending = true; continue; }   // Share is its own group
@@ -152,6 +182,7 @@ public static partial class Menus
             Actions.Menu.OpenGroup(rows);
             for (int i = 0; i < tail.Count; i++) rows.Add(tail[i]);
         }
+        if (rows.Count > 0 && rows[^1].IsSeparator) rows.RemoveAt(rows.Count - 1);   // a Lead with nothing after it
         if (strip.Count == 0 && rows.Count == 0) return null;
 
         string sub = subtitle is { Length: > 0 } ? subtitle : KindWordOf(target.Kind);
@@ -162,7 +193,8 @@ public static partial class Menus
     static string KindWordOf(TargetKind kind)
         => kind == TargetKind.Show ? Loc.Get(Strings.Menu.KindPodcast) : Actions.Menu.KindWord(kind);
 
-    static ActionId IdOf(ContainerVerb verb) => verb switch
+    /// <summary>The registered action a container verb runs (the Play split runs the same two for Play next / Add to queue).</summary>
+    public static ActionId IdOf(ContainerVerb verb) => verb switch
     {
         ContainerVerb.Play => ActionId.PlayContext,
         ContainerVerb.PlayNext => ActionId.PlayContextNext,

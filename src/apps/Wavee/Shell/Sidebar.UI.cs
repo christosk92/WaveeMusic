@@ -2097,7 +2097,7 @@ public static partial class Sidebar
             => Binder?.CurrentInput is { TreeState: SidebarSourceState.Ready, PlaylistTree.Count: > 0 };
 
         /// <summary>The FULL flattened tree the projection publishes — structure is decided here, never on the plan.</summary>
-        internal IReadOnlyList<SidebarLibraryEntry>? RootlistTree => Binder?.CurrentInput.PlaylistTree;
+        internal IReadOnlyList<SidebarLibraryEntry>? RootlistTree => Sidebar.LiveRootlistTree;
 
         /// <summary>THE marker stream every legality question is asked against, derived from the published tree
         /// (<see cref="RootlistMarkerStream"/>) and cached per projection revision.</summary>

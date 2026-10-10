@@ -59,6 +59,120 @@ public static partial class Sidebar
     internal static string NavStyleName(ShellNavStyle style) => style == ShellNavStyle.Zune ? Loc.Get("sidebar.layoutName.zune")
         : LayoutName(style == ShellNavStyle.Library ? SidebarLayoutId.Library : SidebarLayoutId.Classic);
 
+    // ══ THE ROOTLIST'S FILING, WITHOUT A PANE (W24) ════════════════════════════════════════════════════════════════
+    // The pane's "Move to folder…" and a playlist page's "Add to folder…" are ONE flow: the same picker over the same live
+    // tree, the same commit. Nothing here reads a pane instance, so a surface with no sidebar mounted (Zune's page head,
+    // a detail page's "…") files a playlist exactly as the tree row's own menu does.
+
+    /// <summary>The live rootlist tree the projection publishes (null before the first publish).</summary>
+    internal static IReadOnlyList<SidebarLibraryEntry>? LiveRootlistTree => Binder?.CurrentInput.PlaylistTree;
+
+    /// <summary>The rootlist entry id of the playlist at <paramref name="uri"/> ("" when it is not in the user's rootlist:
+    /// someone else's playlist, a not-yet-loaded tree).</summary>
+    internal static string RootlistEntryIdOf(string uri)
+    {
+        if (uri.Length == 0 || LiveRootlistTree is not { Count: > 0 } tree) return "";
+        for (int i = 0; i < tree.Count; i++)
+        {
+            var e = tree[i];
+            if (e.Kind == SidebarEntryKind.Playlist && e.Id.Length > 0 && string.Equals(e.Uri, uri, StringComparison.Ordinal)) return e.Id;
+        }
+        return "";
+    }
+
+    /// <summary>Whether "Add to folder…" can do anything for this rootlist entry: a write seam is installed and the picker
+    /// would list at least one legal destination.</summary>
+    internal static bool CanFileInFolder(string entryId)
+    {
+        if (entryId.Length == 0 || LibraryWrites?.MoveRootlist is null || LiveRootlistTree is not { Count: > 0 } tree) return false;
+        var markers = new List<RootlistEntry>(tree.Count);
+        RootlistMarkerStream.Build(tree, markers);
+        var destinations = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(tree, markers, [entryId], destinations);
+        return destinations.Count > 0;
+    }
+
+    /// <summary>The keyboard-accessible counterpart to tree drag: a ContentDialog (the menu that launched it is gone,
+    /// so there is no anchor). The list is a SNAPSHOT taken at open; the commit re-reads the LIVE tree, so a mid-flight
+    /// rootlist change resolves to nothing rather than to the wrong folder. Opens nothing when there is nowhere legal.
+    /// <paramref name="sortedListFix"/> is the pane's "switch to custom order" action for a sorted-list refusal.</summary>
+    internal static void OpenFolderPicker(IOverlayService overlay, IReadOnlyList<string> entryIds, Action? sortedListFix = null)
+    {
+        if (Controls.IsNullOverlay(overlay)) return;
+        var tree = LiveRootlistTree;
+        if (tree is not { Count: > 0 }) return;
+        var selection = RootlistSelection.Normalize(tree, entryIds);
+        if (selection.Count == 0) return;
+        var ids = new string[selection.Count];
+        for (int i = 0; i < selection.Count; i++) ids[i] = selection[i].Id;
+        var markers = new List<RootlistEntry>(tree.Count);
+        RootlistMarkerStream.Build(tree, markers);
+        var destinations = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(tree, markers, ids, destinations);
+        if (destinations.Count == 0) return;
+
+        string topLevel = Loc.Get("sidebar.topLevel");
+        var items = new Actions.PickerItem[destinations.Count];
+        for (int i = 0; i < destinations.Count; i++)
+        {
+            var c = destinations[i];
+            items[i] = c.IsTopLevel
+                ? new Actions.PickerItem("top-level", topLevel, Glyph: Icons.List, Pinned: true)
+                : new Actions.PickerItem(c.FolderId, c.Name, Glyph: Icons.Folder, Depth: c.Depth);
+        }
+        // The body names WHAT is moving: one row by name, a selection by its count.
+        string subject = selection.Count == 1 ? selection[0].Name : Loc.Format("sidebar.itemCount", ("count", selection.Count));
+        Actions.OpenPicker(overlay, new Actions.PickerSpec(Loc.Get("sidebar.moveToFolderTitle"), items,
+            picked => CommitPicked(ids, picked, sortedListFix))
+        {
+            Body = Loc.Format("sidebar.moveToFolderBody", ("name", subject)),
+            Placeholder = Loc.Get("sidebar.findFolder"),
+            EmptyText = Loc.Get("sidebar.noFolders"),
+            PanelPadding = 0f,
+        });
+    }
+
+    static void CommitPicked(IReadOnlyList<string> ids, Actions.PickerItem picked, Action? sortedListFix)
+    {
+        var tree = LiveRootlistTree;
+        if (tree is not { Count: > 0 }) return;
+        var live = RootlistSelection.Normalize(tree, ids);
+        if (live.Count == 0) return;
+        var markers = new List<RootlistEntry>(tree.Count);
+        RootlistMarkerStream.Build(tree, markers);
+        var refs = RootlistSelection.Refs(live);
+        if (string.Equals(picked.Key, "top-level", StringComparison.Ordinal))
+        {
+            // "After everything at depth 0": the exclusive end lands it after a TRAILING folder, not inside it.
+            if (RootlistTreeNav.TryTopLevelAnchor(tree, markers, ids, out var anchor))
+                CommitRootlistMove(tree, markers, refs, ids, anchor, RootlistDropPlacement.After, "", sortedListFix);
+            return;
+        }
+        CommitRootlistMove(tree, markers, refs, ids, new RootlistItemRef(picked.Key, IsFolder: true), RootlistDropPlacement.Inside,
+                           picked.Label, sortedListFix);
+    }
+
+    /// <summary>The ONE commit the menu, the keyboard and the picker share with a drop: legality asked of the same
+    /// authority, undo anchors captured before the move, a refusal said out loud.</summary>
+    internal static void CommitRootlistMove(IReadOnlyList<SidebarLibraryEntry>? tree, IReadOnlyList<RootlistEntry>? markers,
+                                            IReadOnlyList<RootlistItemRef> refs, IReadOnlyList<string> ids, RootlistItemRef target,
+                                            RootlistDropPlacement placement, string destinationName, Action? sortedListFix)
+    {
+        var check = RootlistDropDecision.Check(markers, refs, target, placement);
+        if (check != RootlistMoveCheck.Ok)
+        {
+            PaneView.RefuseDrop(RootlistDropDecision.RefusalFor(check), "menu move " + check, sortedListFix);
+            return;
+        }
+        if (LibraryWrites?.MoveRootlist is not { } move)
+        {
+            PaneView.RefuseDrop(SidebarDropRefusal.Unavailable, "no rootlist seam", sortedListFix);
+            return;
+        }
+        RootlistUndoAnchors.TryResolveMany(tree, ids, out var undo);
+        move(refs, target, placement, destinationName, undo);
+    }
+
     // ══ THE MENU MAPPER (§P4.6) ════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Data menu rows → engine menu items; actions → service calls. ONE mapper for every sidebar menu (the pane
@@ -623,78 +737,18 @@ public static partial class Sidebar
         }
 
         /// <summary>The ONE commit the menu, the keyboard and the picker share with a drop: legality asked of the same
-        /// authority, undo anchors captured before the move, a refusal said out loud.</summary>
+        /// authority, undo anchors captured before the move, a refusal said out loud (<see cref="Sidebar.CommitRootlistMove"/>).</summary>
         void CommitMove(IReadOnlyList<RootlistItemRef> refs, IReadOnlyList<string> ids, RootlistItemRef target,
                         RootlistDropPlacement placement, string destinationName)
-        {
-            var check = RootlistDropDecision.Check(RootlistMarkers, refs, target, placement);
-            if (check != RootlistMoveCheck.Ok)
-            {
-                RefuseDrop(RootlistDropDecision.RefusalFor(check), "menu move " + check);
-                return;
-            }
-            if (LibraryWrites?.MoveRootlist is not { } move)
-            {
-                RefuseDrop(SidebarDropRefusal.Unavailable, "no rootlist seam");
-                return;
-            }
-            RootlistUndoAnchors.TryResolveMany(RootlistTree, ids, out var undo);
-            move(refs, target, placement, destinationName, undo);
-        }
+            => Sidebar.CommitRootlistMove(RootlistTree, RootlistMarkers, refs, ids, target, placement, destinationName,
+                                          Config.SortedListRefusalAction);
 
         // ══ "MOVE TO FOLDER…" (W24) ════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The keyboard-accessible counterpart to tree drag: a ContentDialog (the menu that launched it is gone,
-        /// so there is no anchor). The list is a SNAPSHOT taken at open; the commit re-reads the LIVE tree, so a mid-flight
-        /// rootlist change resolves to nothing rather than to the wrong folder. Opens nothing when there is nowhere legal.</summary>
+        /// <summary>The pane's "Move to folder…": the sidebar-wide picker (<see cref="Sidebar.OpenFolderPicker"/>) over this
+        /// pane's overlay.</summary>
         internal void OpenFolderPicker(IReadOnlyList<string> entryIds)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay)) return;
-            var tree = RootlistTree;
-            var selection = RootlistSelection.Normalize(tree, entryIds);
-            if (selection.Count == 0) return;
-            var ids = new string[selection.Count];
-            for (int i = 0; i < selection.Count; i++) ids[i] = selection[i].Id;
-            var destinations = new List<RootlistFolderChoice>();
-            RootlistTreeNav.PickerDestinations(tree, RootlistMarkers, ids, destinations);
-            if (destinations.Count == 0) return;
-
-            string topLevel = Loc.Get("sidebar.topLevel");
-            var items = new Actions.PickerItem[destinations.Count];
-            for (int i = 0; i < destinations.Count; i++)
-            {
-                var c = destinations[i];
-                items[i] = c.IsTopLevel
-                    ? new Actions.PickerItem("top-level", topLevel, Glyph: Icons.List, Pinned: true)
-                    : new Actions.PickerItem(c.FolderId, c.Name, Glyph: Icons.Folder, Depth: c.Depth);
-            }
-            // The body names WHAT is moving: one row by name, a selection by its count.
-            string subject = selection.Count == 1 ? selection[0].Name : Loc.Format("sidebar.itemCount", ("count", selection.Count));
-            Actions.OpenPicker(MenuOverlay, new Actions.PickerSpec(Loc.Get("sidebar.moveToFolderTitle"), items,
-                picked => CommitPicked(ids, picked))
-            {
-                Body = Loc.Format("sidebar.moveToFolderBody", ("name", subject)),
-                Placeholder = Loc.Get("sidebar.findFolder"),
-                EmptyText = Loc.Get("sidebar.noFolders"),
-                PanelPadding = 0f,
-            });
-        }
-
-        void CommitPicked(IReadOnlyList<string> ids, Actions.PickerItem picked)
-        {
-            var tree = RootlistTree;
-            var live = RootlistSelection.Normalize(tree, ids);
-            if (live.Count == 0) return;
-            var refs = RootlistSelection.Refs(live);
-            if (string.Equals(picked.Key, "top-level", StringComparison.Ordinal))
-            {
-                // "After everything at depth 0" — the exclusive end lands it after a TRAILING folder, not inside it.
-                if (RootlistTreeNav.TryTopLevelAnchor(tree, RootlistMarkers, ids, out var anchor))
-                    CommitMove(refs, ids, anchor, RootlistDropPlacement.After, "");
-                return;
-            }
-            CommitMove(refs, ids, new RootlistItemRef(picked.Key, IsFolder: true), RootlistDropPlacement.Inside, picked.Label);
-        }
+            => Sidebar.OpenFolderPicker(MenuOverlay, entryIds, Config.SortedListRefusalAction);
 
         // ══ THE "+" FLYOUTS, RENAME, ALT+ARROWS ════════════════════════════════════════════════════════════════════
 

@@ -236,10 +236,21 @@ public static partial class Detail
         public Func<DragPayload, int?, bool>? DepositOnPage { get; init; }
         /// <summary>The notice strip's action (the "albums" route); null ⇒ no button.</summary>
         public Action? GoLibrary { get; init; }
+        /// <summary>The Play split's menu verbs (a container page supplies all three or none): "Add to queue" and "Play
+        /// next" run the container's context verbs, "Start radio" a real radio off its uri. Null ⇒ the page's primary is
+        /// the plain Play button (podcasts, Liked).</summary>
+        public Action? AddToQueue { get; init; }
+        public Action? PlayNext { get; init; }
+        public Action? StartRadio { get; init; }
+
+        /// <summary>Whether the Play primary is the SPLIT (<see cref="Controls.PlaySplitButton"/>) — a page that supplies its
+        /// three menu verbs. The one switch the rail CTA and the vertical hero read.</summary>
+        internal bool HasPlaySplit => AddToQueue is not null && PlayNext is not null && StartRadio is not null;
 
         internal int Mask()
             => (Shuffle is null ? 0 : 1) | (More is null ? 0 : 2) | (CoverClick is null ? 0 : 4)
-             | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32);
+             | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32)
+             | (AddToQueue is null ? 0 : 64) | (PlayNext is null ? 0 : 128) | (StartRadio is null ? 0 : 256);
 
         public bool Equals(FrameActions? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
@@ -544,7 +555,7 @@ public static partial class Detail
         readonly Func<bool> _railPending;
 
         // trampolines into _latest
-        readonly Action _tShuffle, _tCoverClick, _tGoLibrary;
+        readonly Action _tShuffle, _tCoverClick, _tGoLibrary, _tAddToQueue, _tPlayNext, _tStartRadio;
         readonly Func<ContextMenuModel?> _tMore;
         readonly Func<object?> _tCoverDrag;
         readonly Func<DragPayload, int?, bool> _tDeposit;
@@ -591,6 +602,9 @@ public static partial class Detail
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
             _tCoverClick = () => _latest?.Actions.CoverClick?.Invoke();
             _tGoLibrary = () => _latest?.Actions.GoLibrary?.Invoke();
+            _tAddToQueue = () => _latest?.Actions.AddToQueue?.Invoke();
+            _tPlayNext = () => _latest?.Actions.PlayNext?.Invoke();
+            _tStartRadio = () => _latest?.Actions.StartRadio?.Invoke();
             _tMore = () => _latest?.Actions.More?.Invoke();
             _tCoverDrag = () => _latest?.Actions.CoverDrag?.Invoke();
             _tDeposit = (p, i) => _latest?.Actions.DepositOnPage?.Invoke(p, i) ?? false;
@@ -1010,6 +1024,9 @@ public static partial class Detail
                     CoverDrag = a.CoverDrag is null ? null : _tCoverDrag,
                     DepositOnPage = a.DepositOnPage is null ? null : _tDeposit,
                     GoLibrary = a.GoLibrary is null ? null : _tGoLibrary,
+                    AddToQueue = a.AddToQueue is null ? null : _tAddToQueue,
+                    PlayNext = a.PlayNext is null ? null : _tPlayNext,
+                    StartRadio = a.StartRadio is null ? null : _tStartRadio,
                 };
             }
             return _trampActions;
@@ -1337,7 +1354,8 @@ public static partial class Detail
         var kids = new List<Element>(16);
 
         // The CTA's pieces first: how many FABs it carries is a row decision (it sizes the CTA's lines) as well as its
-        // children. A page's Satellites replace the fixed group; no Shuffle either way (the command bar's, W27).
+        // children. A page's Satellites replace the fixed group (and carry no Shuffle: the command bar's, W27); the fixed group's
+        // icon-only Shuffle belongs to the Play-split kinds only (RailFabs).
         Element[]? satellites = slots.Satellites?.Invoke();
         List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent, insights, insightsLive) : null;
         var presence = PresenceOf(slots, satellites?.Length ?? 0);
@@ -1401,7 +1419,9 @@ public static partial class Detail
 
         // CTA cluster: the primary (the page's, else Play), then the fixed FAB GROUP that wraps as a unit — or the page's
         // satellites, wrapping one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
+        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent)
+            : acts.HasPlaySplit ? Controls.PlaySplitButton(spec.Identity.Subject.Text, accent, play, acts.AddToQueue!, acts.PlayNext!, acts.StartRadio!)
+            : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
         kids.Add(satellites is not null
             ? SatelliteCta("rail:cta", primary, satellites, RailLayout.CtaTopMargin)
             : new BoxEl
@@ -1449,13 +1469,17 @@ public static partial class Detail
         Children = rows,
     };
 
-    /// <summary>The rail's FIXED FAB group — the heart (a Save / Follow kind), Share, the Insights toggle (a facts-bearing kind,
-    /// in a slot reserved by kind) and the ⋯ every kind but the album carries. What a page's <see cref="FrameSlots.Satellites"/>
-    /// replace.</summary>
+    /// <summary>The rail's FIXED FAB group, in the order of the one action row (Play split · Shuffle · heart · Share · ⋯):
+    /// an icon-only Shuffle (the rail is narrow; a page that supplies the Play split's verbs and a shuffle —
+    /// <see cref="Skeleton.HasLabelledShuffle"/>), the heart (a Save / Follow kind), Share, the Insights toggle (a facts-bearing
+    /// kind, in a slot reserved by kind) and the ⋯ every kind carries. What a page's <see cref="FrameSlots.Satellites"/>
+    /// replace. <see cref="Skeleton.RailPlanFor"/> counts the same members per kind, so the wrap never moves at reveal.</summary>
     static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent,
                                   InsightsToggle? insights = null, bool insightsLive = false)
     {
-        var fabs = new List<Element>(3);
+        var fabs = new List<Element>(5);
+        if (acts.Shuffle is { } shuffle && acts.HasPlaySplit)
+            fabs.Add(Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, showLabel: false) with { Key = "rail:shuffle" });
         if (heart)
         {
             string saveUri = SaveTargetOf(id).Text;
@@ -1464,12 +1488,11 @@ public static partial class Detail
                 with { Key = "save:" + saveUri });
         }
         if (ShareActionFor(id) is { } share)
-            fabs.Add(Controls.Named(Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
+            fabs.Add(Controls.QuietIconButton(Icons.Share, Loc.Get(Strings.Menu.Share), share));
         // The Insights toggle, among the primary actions: its slot is RESERVED by kind (InsightsSheet.ToggleSlotReserved), shown at
         // opacity 0 and inert until the facts have settled, so a late fact never adds a button or changes the CTA's wrap.
         if (insights is not null) fabs.Add(InsightsToggleSlot(insights, insightsLive, "rail:insights"));
-        // ch 05 parity 15: an album's rail has no ⋯ — its overflow is the vertical hero's alone.
-        if (acts.More is { } more && id.Kind != DetailKind.Album)
+        if (acts.More is { } more)
             fabs.Add(MoreButton(more, RailFabSize, 16f, round: true) with { Key = "rail:more" });
         return fabs;
     }
@@ -1581,7 +1604,7 @@ public static partial class Detail
         var fabs = new Element[Math.Max(0, plan.Fabs)];
         for (int i = 0; i < fabs.Length; i++)
             fabs[i] = new BoxEl { Width = fabEdge, Height = fabEdge, Shrink = 0f, Corners = Radii.ControlAll };
-        Element pill = new BoxEl { Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll };
+        Element pill = new BoxEl { Width = Skeleton.PrimaryWidthFor(plan.PlainPlay), Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll };
         kids.Add(plan.Satellites
             ? SatelliteCta("skel:cta", pill, fabs, RailLayout.CtaTopMargin)
             : new BoxEl
@@ -2047,6 +2070,30 @@ public static partial class Detail
     /// page's Radio (Artist.Page.cs).</summary>
     internal static Action StartRadioFor(EntityUri seed, string name)
         => () => Playback.StartRadio(seed, o => Queue.RadioToast(o with { Name = name }));
+
+    /// <summary>The lead of an album's or playlist's hero "…" (<see cref="ContainerExtras.Lead"/>): Download · Add to
+    /// folder · Copy link. The page's Play split and Share button carry Play next / Add to queue / Share, so these three
+    /// stand first and the remaining container rows follow.
+    /// <para>Download is shown DISABLED with a short trailing hint ("Not available yet") — Wavee has no offline downloads,
+    /// and a missing row would hide that from a user who looks for it. Add to folder exists for a playlist in the user's own
+    /// rootlist only (<see cref="Sidebar.RootlistEntryIdOf"/>; a folder cannot hold an album) and is enabled when the
+    /// picker would list a legal destination. Copy link is the container pattern of the episode / profile menus: the
+    /// page's own share url, else the subject's web link.</para></summary>
+    internal static IReadOnlyList<MenuFlyoutItem> ContainerLead(EntityUri subject, string? shareUrl, bool playlist, IOverlayService? overlay)
+    {
+        var lead = new List<MenuFlyoutItem>(3)
+        {
+            new(Loc.Get(Strings.Detail.Download), new IconRef { Glyph = Icons.Download, Font = Theme.IconFont }, false)
+                { AcceleratorText = Loc.Get(Strings.Detail.DownloadUnavailable) },
+        };
+        if (playlist && overlay is not null && Sidebar.RootlistEntryIdOf(subject.Text) is { Length: > 0 } entryId)
+            lead.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.AddToFolder), ActionIcons.Resolve(ActionIcons.Folder),
+                Sidebar.CanFileInFolder(entryId), () => Sidebar.OpenFolderPicker(overlay, [entryId])));
+        string link = shareUrl is { Length: > 0 } ? shareUrl : Actions.WebLinkOf(subject);
+        lead.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.CopyLink), ActionIcons.Resolve(ActionIcons.Link),
+            Actions.Services.Clipboard is not null && link.Length > 0, () => Episode.CopyLink(link)));
+        return lead;
+    }
 
     /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory. <c>internal</c> because the
     /// library's panes (<c>Album.Pane</c>, <c>Artist.Reader</c>) head their command rows with the SAME ⋯ — one menu host, so

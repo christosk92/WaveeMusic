@@ -298,6 +298,58 @@ public static partial class Detail
         /// <summary>The editable title run's own width — the wrap width less the pencil slot, floored at 0 (#92).</summary>
         public static float EditableTitleMeasure(float wrapWidth) => MathF.Max(0f, wrapWidth - EditableTitlePencilW - EditableTitlePencilGap);
         public const float ActionRowHeight = 36f;          // Play button 32 + the row's 4-DIP top margin
+
+        // ── the ONE action row as LINES: a rule both the loaded hero and its skeleton read ──
+        // An album's or playlist's row [Play split 121][Shuffle][heart][Share][⋯] wraps against the identity column.
+        // Its line count is a pure function of that column's width, so the skeleton, the pre-measure band and the
+        // loaded hero all agree on it and the track list never shifts at reveal.
+
+        /// <summary>The gap between the row's members, on both axes (the loaded row's <c>Gap</c>).</summary>
+        public const float ActionRowGap = FluentGpu.Dsl.Spacing.S;
+
+        /// <summary>The identity column's real measure: the copy column in row flow (it grows to fill), the capped content
+        /// width stacked (<c>HeroHost</c>'s identity box).</summary>
+        public static float IdentityWidthFor(float colW, bool rowFlow)
+            => rowFlow ? MathF.Max(0f, CopyAvailFor(colW, rowFlow)) : ContentWidthFor(colW, rowFlow);
+
+        /// <summary>The Play-split row's natural width, one line: split · Shuffle (labelled, else a 32-DIP square) · three
+        /// 32-DIP icon buttons (heart, Share, ⋯), a gap between each.</summary>
+        public static float SplitActionRowWidth(bool labelledShuffle)
+            => ButtonRules.PlaySplitWidthNominal
+             + (labelledShuffle ? Skeleton.ShuffleButtonWidth : Controls.IconButtonSize)
+             + 3f * Controls.IconButtonSize + 4f * ActionRowGap;
+
+        /// <summary>Whether the hero's Shuffle carries its label: only while the labelled row still fits ONE line in the
+        /// identity column. Below that it takes the icon-only form (<c>Controls.SecondaryButton(showLabel: false)</c>, the
+        /// grammar built for width pressure) before the row would wrap.</summary>
+        public static bool LabelledShuffleFits(float colW, bool rowFlow)
+            => IdentityWidthFor(colW, rowFlow) + 0.01f >= SplitActionRowWidth(labelledShuffle: true);
+
+        /// <summary>The lines the Play-split row spends in this column (greedy wrap, the gap on both axes, the engine's
+        /// 0.01 tolerance). 1 for a kind without the split: its row keeps the single line the arithmetic always charged.</summary>
+        public static int ActionRowLinesFor(float colW, bool rowFlow, bool split)
+        {
+            if (!split) return 1;
+            float avail = IdentityWidthFor(colW, rowFlow) + 0.01f;
+            float icon = Controls.IconButtonSize;
+            Span<float> members = stackalloc float[5];
+            members[0] = ButtonRules.PlaySplitWidthNominal;
+            members[1] = LabelledShuffleFits(colW, rowFlow) ? Skeleton.ShuffleButtonWidth : icon;
+            members[2] = members[3] = members[4] = icon;
+            int lines = 1;
+            float used = 0f;
+            foreach (float m in members)
+            {
+                if (used > 0f && used + ActionRowGap + m > avail) { lines++; used = m; }
+                else used += (used > 0f ? ActionRowGap : 0f) + m;
+            }
+            return lines;
+        }
+
+        /// <summary>The action row's height at <paramref name="lines"/> lines: the 36 of one line, plus a 32-DIP line and
+        /// a gap for each further one.</summary>
+        public static float ActionRowHeightFor(int lines)
+            => ActionRowHeight + (Math.Max(1, lines) - 1) * (Controls.ButtonHeight + ActionRowGap);
         public const float DescriptionLineHeight = 18f;    // the 13px expandable blurb
         public const float IdentityGap = 4f;
         /// <summary>The BOX reserved for the list command bar (a 32 pill row padded 5 top and bottom).</summary>
@@ -418,7 +470,7 @@ public static partial class Detail
         /// The description is no longer one of them: it left the column for the band beneath it
         /// (<see cref="DescriptionBandHeight"/>).</summary>
         public static (float Height, int Blocks) IdentityChrome(bool eyebrow, bool attribution, bool meta, bool pulse,
-                                                               bool rowFlow, bool chart = false)
+                                                               bool rowFlow, bool chart = false, int actionLines = 1)
         {
             float h = 0f; int blocks = 1;
             if (eyebrow) { h += EyebrowRowHeight; blocks++; }
@@ -427,17 +479,17 @@ public static partial class Detail
             if (meta) { h += MetaRowHeight; blocks++; }
             if (pulse) { h += PulseRowHeight; blocks++; }
             if (chart) { h += ChartRowHeight; blocks++; }
-            h += ActionRowHeight; blocks++;
+            h += ActionRowHeightFor(actionLines); blocks++;
             return (h, blocks);
         }
 
         /// <summary>Row flow's title HEIGHT BUDGET: the cover edge less the other chrome and its gaps. The description
         /// lives in the band under the hero now, never in this column, so it never steers the title's size. Stacked ⇒ 0.</summary>
         public static float TitleHeightBudgetFor(float colW, bool rowFlow,
-            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false, int actionLines = 1)
         {
             if (!rowFlow) return 0f;
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow: true, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow: true, chart, actionLines);
             return MathF.Max(0f, ArtworkFor(colW, rowFlow) - chrome - (blocks - 1) * IdentityGap);
         }
 
@@ -494,9 +546,9 @@ public static partial class Detail
         /// terms and yields the PESSIMISTIC plan (a one-line title at the fluid cap) the skeleton and the pre-measure
         /// fallback reserve when no title is known yet.</summary>
         public static TitleTypePlan TitleTypeFor(float colW, bool rowFlow, string? title,
-            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false, int actionLines = 1)
             => TitleTypeFor(TitleWidthFor(colW, rowFlow),
-                            TitleHeightBudgetFor(colW, rowFlow, eyebrow, attribution, meta, pulse, chart),
+                            TitleHeightBudgetFor(colW, rowFlow, eyebrow, attribution, meta, pulse, chart, actionLines),
                             FluidTitleCapFor(colW),
                             TitleAdvanceEm(title), TitleLongestWordEm(title));
 
@@ -516,9 +568,9 @@ public static partial class Detail
         /// description no longer contributes here — it is a sibling block under the whole hero row
         /// (<see cref="DescriptionBandHeight"/>), not a row inside this column.</summary>
         public static float IdentityHeightFor(in TitleTypePlan title, bool rowFlow,
-            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false, int actionLines = 1)
         {
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart, actionLines);
             return chrome + title.BlockHeight + (blocks > 1 ? (blocks - 1) * IdentityGap : 0f);
         }
 
@@ -528,10 +580,10 @@ public static partial class Detail
         /// <summary>Row flow spreads the slack a short column leaves under the cover evenly over every gap (even 2-DIP
         /// steps, ≤ <see cref="IdentityGapMax"/>); stacked keeps the resting gap.</summary>
         public static float IdentityGapFor(float colW, bool rowFlow, in TitleTypePlan title,
-            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool pulse = false, bool chart = false, int actionLines = 1)
         {
             if (!rowFlow) return IdentityGap;
-            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart);
+            var (chrome, blocks) = IdentityChrome(eyebrow, attribution, meta, pulse, rowFlow, chart, actionLines);
             int gaps = Math.Max(1, blocks - 1);
             float slack = ArtworkFor(colW, rowFlow) - (chrome + title.BlockHeight + gaps * IdentityGap);
             if (slack <= 0f) return IdentityGap;
@@ -541,12 +593,13 @@ public static partial class Detail
         /// <summary>The whole expanded band: padded artwork/identity (row flow = the taller of the two, stacked = both
         /// over the gap), the description band beneath it when there is one, plus the toolbar row under that.</summary>
         public static float HeroBandHeight(float colW, bool rowFlow, in TitleTypePlan title,
-            bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false)
+            bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false,
+            int actionLines = 1)
         {
             float w = colW > 0f ? colW : FallbackW;
             float pad = HeroPadFor(w, rowFlow);
             float art = ArtworkFor(w, rowFlow);
-            float identity = IdentityHeightFor(title, rowFlow, eyebrow, attribution, meta, pulse, chart);
+            float identity = IdentityHeightFor(title, rowFlow, eyebrow, attribution, meta, pulse, chart, actionLines);
             float hero = rowFlow ? MathF.Max(art, identity) : art + HeroGapFor(w, rowFlow) + identity;
             return pad + hero + DescriptionBandHeight(rowFlow, description) + HeroBottomPad
                  + ExpandedToolbarTopPad + ToolbarRowHeight + ExpandedToolbarBottomPad;
@@ -557,10 +610,10 @@ public static partial class Detail
         /// (null / empty) the PESSIMISTIC null-title plan — never an invented string.</summary>
         public static float HeroBandHeight(float colW, bool rowFlow,
             bool eyebrow, bool attribution, bool meta, bool description, bool pulse = false, bool chart = false,
-            string? title = null)
+            string? title = null, int actionLines = 1)
             => HeroBandHeight(colW, rowFlow,
-                TitleTypeFor(colW, rowFlow, title, eyebrow, attribution, meta, pulse, chart),
-                eyebrow, attribution, meta, description, pulse, chart);
+                TitleTypeFor(colW, rowFlow, title, eyebrow, attribution, meta, pulse, chart, actionLines),
+                eyebrow, attribution, meta, description, pulse, chart, actionLines);
 
         /// <summary>Scroll distance over which the expanded hero becomes the 56-DIP band.</summary>
         public static float CollapseDistance(float expandedHeight)
@@ -1271,10 +1324,22 @@ public static partial class Detail
         /// <summary>The accent-rule placeholder: 20 × 2 at radius 1, 2-DIP top margin.</summary>
         public const float RuleWidth = Controls.AccentRuleWidth, RuleHeight = Controls.AccentRuleHeight,
                            RuleGap = Controls.AccentRuleGap, RuleRadius = 1f;
-        /// <summary>The action row: a 120-wide Play button (<see cref="Controls.PrimaryMinWidth"/>), then four 32-DIP
-        /// satellites. Renamed from <c>PlayPillWidth</c> (Workstream B migration group C).</summary>
-        public const float PlayButtonWidth = 120f;
+        /// <summary>The action row's primary on a Play-split kind: the split's nominal width (88 + 1 + 32 = 121,
+        /// <see cref="ButtonRules.PlaySplitWidthNominal"/>). A kind that keeps the plain Play button (a podcast, Liked) is
+        /// <see cref="ButtonRules.PrimaryWidthNominal"/> (<see cref="PrimaryWidthFor"/>). Followed by the satellites
+        /// (<see cref="SatelliteCount"/> 32-DIP boxes). Renamed from <c>PlayPillWidth</c> (Workstream B migration group C).</summary>
+        public const float PlayButtonWidth = ButtonRules.PlaySplitWidthNominal;
+        /// <summary>The primary's nominal width: the split's 121, or the plain Play button's 120.</summary>
+        public static float PrimaryWidthFor(bool plainPlay) => plainPlay ? ButtonRules.PrimaryWidthNominal : PlayButtonWidth;
         public const int SatelliteCount = 4;
+        /// <summary>The labelled Shuffle's measured width (the Standard button: glyph, 8, "Shuffle", 12 inset each side)
+        /// in the vertical hero's action row.</summary>
+        public const float ShuffleButtonWidth = 96f;
+
+        /// <summary>The kinds whose action row is [Play split] · Shuffle · heart · Share · ⋯ — the ones whose page supplies the
+        /// split's verbs and a shuffle (<c>FrameActions.HasPlaySplit</c>): an album and a playlist. The rail carries that
+        /// Shuffle as an icon-only member of its fixed group; the vertical hero as a labelled button of its own.</summary>
+        public static bool HasLabelledShuffle(DetailKind kind) => kind is DetailKind.Album or DetailKind.Playlist;
         /// <summary>The toolbar band's three leading pills (the search pill is the command bar's SearchPreferred 240).</summary>
         public const float ToolbarPillA = 72f, ToolbarPillB = 88f, ToolbarPillC = 64f;
 
@@ -1302,13 +1367,13 @@ public static partial class Detail
         /// <c>Badges</c> may share its line) or the LEAD row (<c>Owner</c>: an OwnerRow owner block, or an episode's show
         /// link) · title · attribution (<c>Artists</c>: billed artists; a podcast's Attribution slot) · <c>Rating</c> ·
         /// meta (everything but a TypeYear album) · an episode's badges · <c>Ledger</c> · the CTA cluster (a primary +
-        /// <c>Fabs</c> FABs: the fixed heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
+        /// <c>Fabs</c> FABs: the fixed Shuffle / heart / Share / Insights / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
         /// (clamped to the rail's own description lines). The trailing fields default to "absent", so every rail without
         /// the podcast slots is the plan it always was.</summary>
         public readonly record struct RailPlan(bool Eyebrow, bool Owner, bool Artists, bool Meta, int TitleLines, int Fabs,
                                                int DescriptionLines, RailBadgeRow Badges = RailBadgeRow.None,
                                                bool Rating = false, bool Ledger = false, bool Satellites = false,
-                                               bool Topics = false);
+                                               bool Topics = false, bool PlainPlay = false);
 
         /// <summary>The blurb's reserved lines: the rail's own cap, never more than the window's, never negative.</summary>
         public static int RailDescriptionLinesFor(int descriptionMaxLines)
@@ -1332,13 +1397,14 @@ public static partial class Detail
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
                 Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount)
-                    : (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0) + (InsightsSheet.KindHasFacts(kind) ? 1 : 0),
+                    : (HasLabelledShuffle(kind) ? 1 : 0) + (heart ? 1 : 0) + 1 + 1 + (InsightsSheet.KindHasFacts(kind) ? 1 : 0),
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,
                 Ledger: slots.Ledger,
                 Satellites: slots.Satellites,
-                Topics: slots.Topics);
+                Topics: slots.Topics,
+                PlainPlay: !Skeleton.HasLabelledShuffle(kind));
         }
     }
 
@@ -1433,7 +1499,8 @@ public static partial class Detail
                 Rating: slots.Rating,
                 Ledger: slots.Ledger,
                 Satellites: slots.Satellites,
-                Topics: slots.Topics);
+                Topics: slots.Topics,
+                PlainPlay: !Skeleton.HasLabelledShuffle(kind));
         }
 
         /// <summary>The column's nominal height for a plan: the padding, the cover square, each row at its nominal (the title
@@ -1471,10 +1538,10 @@ public static partial class Detail
             {
                 if (fabs == 0) return CtaTopMargin + PillHeight;
                 float group = fabs * FabSize + (fabs - 1) * FabGap;
-                bool oneLine = Skeleton.PlayButtonWidth + CtaGap + group <= coverEdge + WrapSlack;
+                bool oneLine = Skeleton.PrimaryWidthFor(p.PlainPlay) + CtaGap + group <= coverEdge + WrapSlack;
                 return CtaTopMargin + (oneLine ? MathF.Max(PillHeight, FabSize) : PillHeight + CtaGap + FabSize);
             }
-            float used = Skeleton.PlayButtonWidth, line = PillHeight, closed = 0f;
+            float used = Skeleton.PrimaryWidthFor(p.PlainPlay), line = PillHeight, closed = 0f;
             for (int i = 0; i < fabs; i++)
             {
                 if (used + SatelliteGap + SatelliteSize <= coverEdge + WrapSlack)

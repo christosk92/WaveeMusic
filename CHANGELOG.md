@@ -58,6 +58,7 @@ versions separately under `v*` and is not tracked in this file.)
 - Album and playlist pages: a tighter side column and less space before the songs.
 - Zune: album, playlist and other pages without their own sections show only the top pivot row, so the page title is no longer repeated above the page.
 - Zune: lyrics, the queue and now playing open as a full-height panel beside the page; the navigation band stays with the page.
+- Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle, Save, Share and More).
 
 ### Removed
 
