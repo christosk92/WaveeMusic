@@ -286,7 +286,7 @@ public static partial class Detail
         // ── the podcast seams (plan §5.4) — appended; the WIDTH a Func<float, …> slot below receives is the rail's content
         //    measure (the cover edge, exact) in the two-column rail, and NaN (no measure: fill the column) in the vertical
         //    show header — treat it as a Width / MaxWidth only when it is finite. (Attribution keeps its old contract: the
-        //    cover edge in the rail, a 600 cap in the vertical header.) The frame re-invokes these builders only when it
+        //    cover edge in the rail, the page-estimate's info column in the vertical header.) The frame re-invokes these builders only when it
         //    re-renders for its own reasons, so a body whose content changes — a label, a count, a satellite that comes and
         //    goes — is a keyed component or binds its values / its Visible; the Satellites ARRAY is fixed per slot set.
 
@@ -764,7 +764,7 @@ public static partial class Detail
                     Direction = 1, Grow = 1f, ClipToBounds = true,
                     DropTarget = drop,
                     // A show in the vertical arm is the fixed ShowHeader above its episodes — never the hero system.
-                    Children = verticalTracks ? [right] : [ShowHeaderCore(spec, acts, _accentFn, _playAll), right],
+                    Children = verticalTracks ? [right] : [ShowHeaderCore(spec, acts, _accentFn, _playAll, pageWidthEstimate), right],
                 };
                 Element verticalPage = new BoxEl
                 {
@@ -1623,12 +1623,15 @@ public static partial class Detail
     /// podcast slots land as the prototype's narrow pane does: badges / rating beside the cover in the info column, the
     /// ledger and the CTA (a page's primary + satellites) full width under it, no topics and no blurb. The rows are the
     /// rail's own decision (<see cref="RailLayout.RowsFor"/>); every slot width here is NaN (fill the column).</summary>
-    public static Element ShowHeader(FrameSpec spec, Func<ColorF> accent)
-        => ShowHeaderCore(spec, spec.Actions, accent, DefaultPlay(spec.Identity.Subject));
+    public static Element ShowHeader(FrameSpec spec, Func<ColorF> accent, float pageWidth = float.NaN)
+        => ShowHeaderCore(spec, spec.Actions, accent, DefaultPlay(spec.Identity.Subject), pageWidth);
 
-    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play)
+    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play, float pageWidth)
     {
         const float coverSize = 140f;
+        // The info column's measure: the page less the header's two insets, the cover and the gap between. An unmeasured
+        // page (NaN) keeps the old 600 DIP nominal.
+        float infoW = float.IsFinite(pageWidth) ? MathF.Max(0f, pageWidth - 3f * Spacing.L - coverSize) : 600f;
         var id = spec.Identity;
         var cfg = spec.Config;
         var slots = spec.Slots;
@@ -1660,8 +1663,8 @@ public static partial class Detail
                 Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
             }));
         if (rows.Artists)
-            info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(600f)
-                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, 600f) : new BoxEl())));
+            info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(infoW)
+                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, infoW) : new BoxEl())));
         if (rows.Rating && slots.Rating is { } rating) info.Add(SlotRow("hdr:rating", rating(float.NaN), RailLayout.RatingHeight));
         if (rows.Meta) info.Add(LateRow("hdr:meta", MetaRow(id, float.NaN, maxLines: 1)));
         if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
@@ -1872,6 +1875,7 @@ public static partial class Detail
             HoverFill = live ? Tok.FillCardDefault : ColorF.Transparent, PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
             Role = !live ? AutomationRole.None : s.Menu ? AutomationRole.Button : AutomationRole.Hyperlink,
             Focusable = live, Cursor = live ? CursorId.Hand : (CursorId?)null,
+            FocusVisualMargin = Design.FocusInsetRow,
             OnClick = s.Click, OnKeyDown = s.OnKey, OnRealized = s.OnRealized,
             Children = kids.ToArray(),
         };
@@ -1890,7 +1894,7 @@ public static partial class Detail
     static Element FaceSlot(string key, Element faces) => new BoxEl
     {
         Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [faces],
-        Enter = ArtistFaceFade, Exit = ArtistFaceFade, Transition = FluentGpu.Animation.MotionTok.ControlFast,
+        Enter = ArtistFaceFade, Exit = ArtistFaceFade, Transition = FluentGpu.Animation.MotionTok.ControlFaster,   // Design.Motion.Faster (83 ms)
     };
 
     /// <summary>The default billed-artist line, for a page that declares no Attribution slot: the identity's artists
