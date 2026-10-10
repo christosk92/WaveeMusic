@@ -251,6 +251,17 @@ public readonly partial struct Track
         public static bool HeaderActive(SortColumn header, SortColumn active, bool artistColumn) =>
             header == active || (!artistColumn && header == SortColumn.Title && active == SortColumn.Artist);
 
+        /// <summary>What the natural order of this list is called in the sort dropdown: an album's is the record's own
+        /// track order, everything else's is the owner's (a playlist's custom order). One rule for the button and the menu.</summary>
+        public static string IndexSortLabelKey(DetailKind kind)
+            => kind == DetailKind.Album ? Strings.Detail.Sort.AlbumOrder : Strings.Detail.Sort.CustomOrder;
+
+        /// <summary>Whether "…" itself carries the list verbs (Shuffle · Play next · Add to queue): the two-column arm of a kind
+        /// whose identity row has no [Play │ ⌄] split + Shuffle (Liked, Show). The vertical arm's hero satellite and the
+        /// album/playlist rail already carry them, so there they would only duplicate.</summary>
+        public static bool MoreCarriesListVerbs(DetailKind kind, bool vertical)
+            => !vertical && !Detail.Skeleton.HasLabelledShuffle(kind);
+
         /// <summary>The header-click cycle. # flips while on Index, else resets; a dedicated Artist lane gets its own
         /// asc → desc → default; without it Title runs Title↑ → Title↓ → Artist↑ → Artist↓ → default.</summary>
         public static SortSpec NextSort(SortSpec cur, SortColumn clicked, bool artistColumn)
@@ -684,28 +695,33 @@ public readonly partial struct Track
 
     // ══ 6. THE COMMAND BAR FIT ═══════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The one command the resolver still places: the sort dropdown. Everything else on the bar is either
+    /// mandatory (Tune, Insights, ⋯) or lives in "…" (Select, Row size, Columns). The bit value stays 2.</summary>
     [Flags]
-    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Density = 4, Select = 8 }
+    public enum InlineCommand : byte { None = 0, Sort = 2 }
 
     /// <summary>Measured LABELED widths of the commands whose presence the resolver controls.</summary>
-    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort, float Density, float Select);
+    public readonly record struct CommandWidths(float Tune, float Sort);
 
     public readonly record struct CommandBarFit(InlineCommand Inline, bool SearchExpanded, float SearchWidth)
     {
         public bool Has(InlineCommand command) => (Inline & command) != 0;
         public int Richness =>
             (SearchExpanded ? 8 : 0)
-            + (Has(InlineCommand.Shuffle) ? 4 : 0)
-            + (Has(InlineCommand.Sort) ? 2 : 0)
-            + (Has(InlineCommand.Density) ? 1 : 0)
-            + (Has(InlineCommand.Select) ? 1 : 0);
+            + (Has(InlineCommand.Sort) ? 2 : 0);
     }
 
-    /// <summary>The command bar PROMOTES, it does not shrink: every inline command is icon + label, and one that does not
-    /// fit is evicted into "…". Never returns a layout wider than its input.</summary>
+    /// <summary>The command bar holds only LIST TOOLS: [Sort] · [Tune] ─ search · [Insights] · ⋯. Sort is the one command
+    /// that is placed by width: it stays inline while it fits after the search affordance's reservation and is
+    /// evicted into "…" otherwise. Tune, the Insights toggle slot and "…" are mandatory (they are the same width at
+    /// every pane width, so the bar never reflows when the facts arrive). The bar PROMOTES, it does not shrink: an
+    /// inline command is icon + label, and one that does not fit is evicted. Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
         public const float MoreWidth = 32f;
+        /// <summary>The Insights toggle's slot (the button's 32-DIP edge): reserved by kind, so it is in the budget from
+        /// the first frame whether or not the facts have settled.</summary>
+        public const float InsightsWidth = 32f;
         /// <summary>At rest the search affordance is TWO adjacent buttons (query + filter); the field opens only when invoked.</summary>
         public const float SearchIconWidth = 66f;
         public const float SearchMinExplicit = 160f;
@@ -713,7 +729,6 @@ public readonly partial struct Track
         public const float SearchMax = 280f;
         public const float Gap = 2f;
         public const float SearchGap = 8f;
-        public const float GroupSeparatorWidth = 17f;
         public const float PromotionHysteresis = 16f;
 
         /// <summary>The slack the fit keeps from the measured slot (the surface's own padding and the search's edge).</summary>
@@ -726,24 +741,23 @@ public readonly partial struct Track
 
         /// <summary>Hysteresis applies in EVERY mode — it used to be skipped while search was open, exactly when evicted
         /// commands re-measure mid-animation and the promoted set oscillated. Narrowing stays immediate.</summary>
-        public static CommandBarFit Resolve(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                            bool hasSelect, bool explicitSearch, CommandBarFit? previous = null)
+        public static CommandBarFit Resolve(float available, in CommandWidths widths, bool hasTune, bool hasInsights,
+                                            bool explicitSearch, CommandBarFit? previous = null)
         {
             available = MathF.Max(0f, available);
-            var candidate = ResolveCore(available, widths, vertical, hasTune, hasSelect, explicitSearch);
+            var candidate = ResolveCore(available, widths, hasTune, hasInsights, explicitSearch);
             if (previous is not { } old || candidate.Richness <= old.Richness)
                 return candidate;
-            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, vertical, hasTune, hasSelect,
-                               explicitSearch);
+            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, hasTune, hasInsights, explicitSearch);
         }
 
-        static CommandBarFit ResolveCore(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                         bool hasSelect, bool explicitSearch)
+        static CommandBarFit ResolveCore(float available, in CommandWidths widths, bool hasTune, bool hasInsights,
+                                         bool explicitSearch)
         {
             float mandatory = MoreWidth;
             int mandatoryCount = 1; // More
-            if (!vertical) { mandatory += widths.Play; mandatoryCount++; }
             if (hasTune) { mandatory += widths.Tune; mandatoryCount++; }
+            if (hasInsights) { mandatory += InsightsWidth; mandatoryCount++; }
             mandatory += MathF.Max(0, mandatoryCount - 1) * Gap;
 
             bool expanded = explicitSearch;
@@ -752,21 +766,12 @@ public readonly partial struct Track
             InlineCommand inline = InlineCommand.None;
             float used = mandatory + SearchGap + reservedSearch;
 
-            void Add(InlineCommand command, float width, bool viewCommand)
+            float sortExtra = Gap + widths.Sort;
+            if (used + sortExtra <= available)
             {
-                float extra = Gap + width;
-                bool firstView = viewCommand
-                    && (inline & (InlineCommand.Sort | InlineCommand.Density | InlineCommand.Select)) == 0;
-                if (firstView && (!vertical || hasTune || mandatoryCount > 1)) extra += GroupSeparatorWidth;
-                if (used + extra > available) return;
-                used += extra;
-                inline |= command;
+                used += sortExtra;
+                inline |= InlineCommand.Sort;
             }
-
-            if (!vertical) Add(InlineCommand.Shuffle, widths.Shuffle, viewCommand: false);
-            Add(InlineCommand.Sort, widths.Sort, viewCommand: true);
-            Add(InlineCommand.Density, widths.Density, viewCommand: true);
-            if (hasSelect) Add(InlineCommand.Select, widths.Select, viewCommand: true);
 
             float searchWidth = reservedSearch;
             if (expanded)

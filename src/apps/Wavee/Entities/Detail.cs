@@ -900,14 +900,14 @@ public static partial class Detail
 
         /// <summary>Is the toggle composed at all? On a facts-bearing page whose facts have actually arrived, and only on a
         /// TRACK page (an episode list has no bento), in every arm.
-        /// <para>ONE predicate, FOUR readers: the hero's toolbar button, the pinned band's word, the rail's
-        /// CTA button and the sheet itself. The band does not re-derive it: the frame threads the answer down as the presence
+        /// <para>ONE predicate, THREE readers: the command bar's button, the pinned band's word
+        /// and the sheet itself. The band does not re-derive it: the frame threads the answer down as the presence
         /// of the toggle object (<c>VerticalSpec.Insights</c>), so the entry points cannot disagree about whether they
         /// exist.</para></summary>
         public static bool ShowsToggle(DetailKind kind, bool factsSlot, DetailContent content)
             => content == DetailContent.Tracks && SheetHostsFacts(kind, factsSlot);
 
-        /// <summary>Is a slot for the toggle RESERVED in the rail's CTA group? ROUTE-STATIC (the kind and the content, never the
+        /// <summary>Is a slot for the toggle RESERVED in the command bar? ROUTE-STATIC (the kind and the content, never the
         /// data), so the CTA's wrap is decided from the first frame and the facts arriving only fade the button in. The
         /// button is present at opacity 0 and inert until <see cref="FactsSettled"/>.</summary>
         public static bool ToggleSlotReserved(DetailKind kind, DetailContent content)
@@ -932,7 +932,7 @@ public static partial class Detail
         /// whole scroll range, the pair does, and there is no position at which both are live.</summary>
         public static bool BandToggleTakesInput(bool bandStuck) => bandStuck;
 
-        /// <summary>The hero toolbar's toggle owns input exactly while the band is not stuck (the collapsing hero stops taking
+        /// <summary>The command bar's toggle (in the hero's toolbar row) owns input exactly while the band is not stuck (the collapsing hero stops taking
         /// hits at the stuck edge), wherever the band lives.</summary>
         public static bool HeroToggleTakesInput(bool bandStuck) => !bandStuck;
 
@@ -1367,7 +1367,7 @@ public static partial class Detail
         /// <c>Badges</c> may share its line) or the LEAD row (<c>Owner</c>: an OwnerRow owner block, or an episode's show
         /// link) · title · attribution (<c>Artists</c>: billed artists; a podcast's Attribution slot) · <c>Rating</c> ·
         /// meta (everything but a TypeYear album) · an episode's badges · <c>Ledger</c> · the CTA cluster (a primary +
-        /// <c>Fabs</c> FABs: the fixed Shuffle / heart / Share / Insights / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
+        /// <c>Fabs</c> FABs: the fixed Shuffle / heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
         /// (clamped to the rail's own description lines). The trailing fields default to "absent", so every rail without
         /// the podcast slots is the plan it always was.</summary>
         public readonly record struct RailPlan(bool Eyebrow, bool Owner, bool Artists, bool Meta, int TitleLines, int Fabs,
@@ -1397,7 +1397,7 @@ public static partial class Detail
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
                 Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount)
-                    : (HasLabelledShuffle(kind) ? 1 : 0) + (heart ? 1 : 0) + 1 + 1 + (InsightsSheet.KindHasFacts(kind) ? 1 : 0),
+                    : (HasLabelledShuffle(kind) ? 1 : 0) + (heart ? 1 : 0) + 1 + 1,
                 DescriptionLines: blurb ? RailDescriptionLinesFor(descriptionMaxLines) : 0,
                 Badges: RailLayout.BadgeRowFor(kind, slots.Badges, eyebrow),
                 Rating: slots.Rating,

@@ -355,6 +355,13 @@ public readonly partial struct Track
         /// <summary>Non-null ⇒ the vertical/hero arm.</summary>
         public Detail.VerticalSpec? Vertical { get; init; }
         public bool ShowToolbar { get; init; } = true;
+        /// <summary>── INSIGHTS SHEET ── The sheet's toggle, when this page RESERVES one (<see cref="Detail.InsightsSheet.ToggleSlotReserved"/>:
+        /// a playlist or Liked track list). The command bar carries it in EVERY arm, between the search and "…"; the slot is
+        /// in the bar's width budget from the first frame and only fades in once <see cref="InsightsLive"/>. Presence is data
+        /// (the instance is mount-stable per frame host); the behaviour lives on the toggle.</summary>
+        public Detail.InsightsToggle? Insights { get; init; }
+        /// <summary>The facts have settled (<see cref="Detail.InsightsSheet.ShowsToggle"/>): the reserved slot is visible and live.</summary>
+        public bool InsightsLive { get; init; }
         /// <summary>Library master-detail pane (no hero, no recs).</summary>
         public bool Embedded { get; init; }
         /// <summary>HasTrailing body under the rows (album trailing, M Wave 5). Non-null on an <see cref="Embedded"/>
@@ -379,6 +386,7 @@ public readonly partial struct Track
             => other is not null && (ReferenceEquals(this, other)
                || (Source.Equals(other.Source) && Profile.Equals(other.Profile) && Equals(Vertical, other.Vertical)
                    && (Accent is null) == (other.Accent is null) && ShowToolbar == other.ShowToolbar
+                   && (Insights is null) == (other.Insights is null) && InsightsLive == other.InsightsLive
                    && Embedded == other.Embedded && (Trailing is null) == (other.Trailing is null)
                    && ReferenceEquals(PlayAllCell, other.PlayAllCell) && ReferenceEquals(HeroHeight, other.HeroHeight)
                    && WidthSeed == other.WidthSeed && string.Equals(ScrollKey, other.ScrollKey, StringComparison.Ordinal)));
@@ -413,6 +421,7 @@ public readonly partial struct Track
         public void ApplyProps(object props)
         {
             _latest = (TableArgs)props;
+            _insightsLive.SetIfChanged(_latest.InsightsLive);
             _args.SetIfChanged(_latest);
         }
 
@@ -1356,8 +1365,8 @@ public readonly partial struct Track
         }
 
         /// <summary>The hero's spec with its shuffle satellite pointed at THIS table's <see cref="Shuffle"/> (G-264): the
-        /// page's <c>FrameActions.Shuffle</c> still decides whether the satellite exists, and the command bar, its "…" item and
-        /// the satellite all run the one shuffle. Cached per spec instance, so a steady page allocates nothing.</summary>
+        /// page's <c>FrameActions.Shuffle</c> still decides whether the satellite exists, and the page's shuffle verbs
+        /// all run the one shuffle. Cached per spec instance, so a steady page allocates nothing.</summary>
         Detail.VerticalSpec HeroSpec(Detail.VerticalSpec spec)
         {
             if (spec.Actions.Shuffle is null) return spec;
@@ -1606,8 +1615,8 @@ public readonly partial struct Track
             Playback.PlayRows(refList.ToArray(), target, src.Context.Id);
         }
 
-        /// <summary>The page's ONE shuffle (G-264; 0.2.9 `DetailShell.Shuffle`): the command bar, its "…" item and the vertical
-        /// hero's satellite (<see cref="HeroSpec"/>) all land here. Shuffle on, then the visible order from its first row
+        /// <summary>The page's ONE shuffle (G-264; 0.2.9 `DetailShell.Shuffle`): the vertical hero's Shuffle satellite
+        /// (<see cref="HeroSpec"/>) and, on a kind whose identity row has none (Liked, Show), the "…" item land here. Shuffle on, then the visible order from its first row
         /// through the play funnel — the posted shuffle reorders the next-up run under the new deck in the same drain.</summary>
         internal void Shuffle()
         {

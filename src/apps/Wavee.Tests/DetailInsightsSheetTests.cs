@@ -3,7 +3,7 @@
 // A playlist and Liked Songs reach their facts bento ONLY through the Insights toggle, in EVERY layout: a dismissable sheet
 // laid OVER the content, closed on arrival and never opened by anything but the toggle's own click. `Detail.InsightsSheet` is
 // the whole decision, extracted so it can be tested without an engine: WHETHER a toggle exists (mode-free), whether its slot is
-// reserved in the rail's CTA group (route-static), WHICH of the vertical arm's two entry points owns input at a given scroll
+// reserved in the table's command bar (route-static), WHICH of the vertical arm's two entry points owns input at a given scroll
 // position, what the sheet's resolved width is for a page of a given
 // width, what the band's action cluster then claims, and what happens to an open sheet when the page stops being able to show it.
 //
@@ -11,8 +11,8 @@
 //   . the sheet is the ONLY host: the rail no longer renders the bento inline and nothing appends it to the page body;
 //   . the toggle is gated on the facts actually being there, so a page with none shows no button, and it is the same in every
 //     mode (a window resize never moves the bento between hosts);
-//   . the rail's toggle SLOT is reserved by kind and content, never by data, so a late fact adds no button and no wrap;
-//   . in the vertical arm the hero toolbar and the pinned band each carry that one toggle, and EXACTLY ONE of them is live at
+//   . the command bar's toggle SLOT is reserved by kind and content, never by data, so a late fact adds no button and no reflow;
+//   . in the vertical arm the command bar and the pinned band each carry that one toggle, and EXACTLY ONE of them is live at
 //     any scroll position;
 //   . an absent facts slot means "not answered yet", not "no facts": the frame latches it for the route.
 
@@ -141,15 +141,16 @@ public class DetailInsightsSheetTests
         => Assert.Equal(InsightsSheet.SheetHostsFacts(DetailKind.Playlist, factsSlot: true),
                         InsightsSheet.ShowsToggle(DetailKind.Playlist, factsSlot: true, DetailContent.Tracks));
 
-    /// <summary>The rail CTA's slot is RESERVED by kind and content alone (never by the facts), so the CTA's wrap is decided from
-    /// the first frame and the facts arriving only fade the button in.</summary>
+    /// <summary>The command bar's toggle slot is RESERVED by kind and content alone (never by the facts), so the bar's fit
+    /// (<c>CommandBarLayout.Resolve(hasInsights)</c>) is decided from the first frame and the facts arriving only fade the
+    /// button in. A playlist and Liked reserve it; an album and a podcast do not.</summary>
     [Theory]
     [InlineData(DetailKind.Playlist, DetailContent.Tracks, true)]
     [InlineData(DetailKind.Liked, DetailContent.Tracks, true)]
     [InlineData(DetailKind.Album, DetailContent.Tracks, false)]
     [InlineData(DetailKind.Show, DetailContent.Episodes, false)]
     [InlineData(DetailKind.Playlist, DetailContent.Episodes, false)]
-    public void TheRailsToggleSlotIsReservedByKind(DetailKind kind, DetailContent content, bool expected)
+    public void TheCommandBarsToggleSlotIsReservedByKind(DetailKind kind, DetailContent content, bool expected)
         => Assert.Equal(expected, InsightsSheet.ToggleSlotReserved(kind, content));
 
     /// <summary>The reservation is a superset of the toggle: wherever the toggle can ever show, its slot is already there.</summary>
@@ -161,6 +162,28 @@ public class DetailInsightsSheetTests
                 foreach (bool slot in new[] { false, true })
                     if (InsightsSheet.ShowsToggle(kind, slot, content))
                         Assert.True(InsightsSheet.ToggleSlotReserved(kind, content), $"{kind}/{content} shows a toggle without a slot");
+    }
+
+    /// <summary>The command bar's width budget reserves the toggle exactly where the kind reserves its slot: at the width that
+    /// holds Sort without a toggle, a reserving kind (playlist, Liked) has already given 32 DIP and a gap to it, so Sort
+    /// moves into "…" there, while an album keeps it inline.</summary>
+    [Theory]
+    [InlineData(DetailKind.Playlist, DetailContent.Tracks)]
+    [InlineData(DetailKind.Liked, DetailContent.Tracks)]
+    [InlineData(DetailKind.Album, DetailContent.Tracks)]
+    public void TheToolbarBudgetReservesTheSlotWhereTheKindDoes(DetailKind kind, DetailContent content)
+    {
+        bool reserved = InsightsSheet.ToggleSlotReserved(kind, content);
+        var widths = new Track.CommandWidths(92, 156);
+        float sortFitsWithoutToggle = Track.CommandBarLayout.MoreWidth + Track.CommandBarLayout.SearchGap
+            + Track.CommandBarLayout.SearchIconWidth + Track.CommandBarLayout.Gap + widths.Sort;
+
+        var fit = Track.CommandBarLayout.Resolve(sortFitsWithoutToggle, widths, hasTune: false, hasInsights: reserved, explicitSearch: false);
+        Assert.Equal(!reserved, fit.Has(Track.InlineCommand.Sort));
+
+        var wider = Track.CommandBarLayout.Resolve(sortFitsWithoutToggle + Track.CommandBarLayout.InsightsWidth + Track.CommandBarLayout.Gap,
+                                                   widths, hasTune: false, hasInsights: reserved, explicitSearch: false);
+        Assert.True(wider.Has(Track.InlineCommand.Sort));
     }
 
     // ── the live open state ──

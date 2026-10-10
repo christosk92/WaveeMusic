@@ -9,17 +9,17 @@
 // ── WHY THIS EXISTS ──────────────────────────────────────────────────────────────────────────────────────────────────
 //
 // A playlist and Liked Songs carry a facts bento (cards, charts, lenses). It used to be a row of the two-column rail and, in
-// the vertical (hero/stacked) arm, a page footer nobody scrolled to. Now it is reached ONLY through the Insights toggle among
-// the page's primary actions and shown in a right-anchored sheet laid OVER the content, in every layout: the rail no longer
+// the vertical (hero/stacked) arm, a page footer nobody scrolled to. Now it is reached ONLY through the Insights toggle in
+// the table's command bar and shown in a right-anchored sheet laid OVER the content, in every layout: the rail no longer
 // renders it inline. The sheet is dismissed by Escape, the scrim, the close button, the toggle again, or navigating away. It is
 // CLOSED on arrival and never opened by anything but the toggle's own click (width, route and data never open it), and it is an
 // overlay, so opening it moves neither the rail nor the list.
 //
-// ENTRY POINTS, ONE CONTROL: in the vertical arm the hero's toolbar row (§6) carries it while the reader is at the top of the
-// page, and the pinned 56-DIP context band (§7) carries it for the whole of the rest of the page — because the hero
-// COLLAPSES, and a sheet meant to be read ALONGSIDE the list cannot be opened from chrome that scrolls away. In the
-// two-column arms the rail's CTA group carries it (Detail.UI.cs RailFabs, `InsightsToggleSlot`), in a slot reserved by kind
-// (InsightsSheet.ToggleSlotReserved) that fades in when the facts settle. In the vertical arm they are never both legible
+// ENTRY POINTS, ONE CONTROL: the table's command bar (§6) carries it in EVERY arm — between the search and "…", in a slot
+// reserved by kind (InsightsSheet.ToggleSlotReserved) that fades in when the facts settle. In the vertical arm the pinned
+// 56-DIP context band (§7) carries it for the whole of the rest of the page once the hero COLLAPSES: a sheet meant to be
+// read ALONGSIDE the list cannot be opened from chrome that scrolls away. The two-column rail no longer carries it.
+// In the vertical arm the command bar's toggle and the band's word are never both legible
 // (the band crossfades in exactly as the hero fades out) and never both interactive (input crosses with the pin, not with
 // the paint). §7 carries the whole argument.
 //
@@ -300,26 +300,13 @@ public static partial class Detail
         Children = [Icon(Icons.ChromeClose, SheetCloseGlyph, Tok.TextSecondary)],
     };
 
-    // ══ 6. THE HERO TOOLBAR'S TOGGLE (the PRE-STUCK half — see §7 for the other) ══════════════════════════════════════
+    // ══ 6. THE COMMAND BAR'S TOGGLE (the PRE-STUCK half — see §7 for the other) ═══════════════════════════════════════
 
-    /// <summary>The vertical arm's toolbar ROW: the table's own command bar and, trailing it, the sheet's toggle. With
-    /// no toggle the bar IS the row — a page without facts composes exactly the tree it composed before.</summary>
-    static Element ToolbarRow(in HeroParts parts, InsightsToggle? insights, bool live)
-    {
-        Element bar = parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight };
-        if (insights is null) return bar;
-        return new BoxEl
-        {
-            Key = "vhero:toolbar-row", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, MinWidth = 0f,
-            Children =
-            [
-                // Direction 1 on the wrapper: a single-child row wrapper shrink-wraps its child on the MAIN axis, and
-                // the command bar must keep the whole remaining width to resolve its own promote/evict fit.
-                new BoxEl { Key = "vhero:toolbar", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Children = [bar] },
-                InsightsToggleSlot(insights, live, "vhero:insights"),
-            ],
-        };
-    }
+    // The toggle is a member of the table's COMMAND BAR (Track.Table.Chrome.cs BuildToolbar), in EVERY arm: [Sort] · [Tune] ─
+    // search · Insights · ⋯. The vertical arm's toolbar row is therefore just the bar (it used to wrap the bar and trail the
+    // toggle after "…"); the two-column arm's bar carries it where the rail's CTA group used to. The fit reserves its 32 DIP
+    // (CommandBarLayout.InsightsWidth) whenever the kind reserves the slot. While the selection surface replaces the bar the slot
+    // trails that surface, so an open sheet keeps its toggle (and the focus-return target).
 
     static readonly MotionTokenDef s_toggleFade =
         MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);

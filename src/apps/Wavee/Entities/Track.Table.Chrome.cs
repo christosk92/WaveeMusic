@@ -1,8 +1,9 @@
 // ── Entities/Track.Table.Chrome.cs ────────────────────────────────────────────────────────────────────────────────
-// the detail track table's CHROME: the command bar (labeled commands promoted into the measured pane, the rest evicted
-// into "…" with 16-DIP promotion hysteresis and a fit latch while search is open), the in-list search disclosure
+// the detail track table's CHROME: the command bar (LIST TOOLS only: Sort · Tune ─ search · Insights · "…"; Sort is promoted
+// into the measured pane or evicted into "…" with 16-DIP promotion hysteresis and a fit latch while search is open; "…" holds
+// Select, Row size ▸ and Columns ▸), the in-list search disclosure
 // (66 → 160…280 over 260 ms, Reflow), the context band's words Find · Filter · Play, the column header (one ColumnSet +
-// one TrackSize[] with the rows, keyed cells, sort carets), the Sort / Row size / More flyouts, the 368-wide filter card
+// one TrackSize[] with the rows, keyed cells, sort carets), the Sort / More flyouts, the 368-wide filter card
 // and the selection command bar's commands. The TableHost partial of Track.Table.cs.
 // Plus, at STRUCT level, the embedded arm's lane constants and its host-free header shim (§6) — what the library's panes
 // shimmer under before a tracklist has answered (library rework §5.5).
@@ -46,10 +47,13 @@ public readonly partial struct Track
         bool _restoreSearchFocus;
         NodeHandle _searchButtonNode;
 
-        // Conservative first-frame LABELED widths (Play next · Tune · Shuffle · Sort · Row size · Select), refined by the
-        // measured commands; the fit resolves against these and the pane.
+        // Conservative first-frame LABELED widths (Tune · Sort), refined by the measured commands; the fit resolves against
+        // these and the pane.
         readonly Signal<int> _toolbarEpoch = new(0);
-        readonly float[] _toolbarWidths = [120f, 92f, 96f, 156f, 144f, 82f];
+        readonly float[] _toolbarWidths = [92f, 156f];
+        // The Insights toggle's LIVE state (the facts have settled), mirrored from the args: the bar is a cached builder that a
+        // host render does not re-run, so the slot's fade-in rides this signal.
+        readonly Signal<bool> _insightsLive = new(false);
         CommandBarFit? _toolbarFit;
         // The fit LATCHED when search opened, with the pane it resolved against: promoting/evicting mid-flight re-measures,
         // bumps the epoch and would hand the width tween a new target. A genuine pane resize drops the latch.
@@ -105,8 +109,6 @@ public readonly partial struct Track
             TransitionDynamics.Tween(MotionTok.DisclosureExpand.DurationMs, Easing.FluentDecelerate));
 
         internal static PopupOptions MenuPopup => Controls.MenuPopup;
-        static PopupOptions RichPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss, Chrome: PopupChrome.Popup)
-        { ConstrainToRootBounds = false };
 
         // ══ 1. THE CHROME STACK ══════════════════════════════════════════════════════════════════════════════════════
 
@@ -151,61 +153,39 @@ public readonly partial struct Track
         Element BuildToolbar(float available, float lead)
         {
             _ = _toolbarEpoch.Value;   // measured labeled widths refine the first-frame budgets
-            bool vertical = VerticalArm;
-            if (_selectionVisible?.Value == true) return SelectionSurface("selection", lead);
+            var insights = _latest.Insights;
+            // The selection surface replaces the bar but keeps the Insights toggle at its trailing end: an open sheet never
+            // loses its toggle (or the focus-return target) mid-session.
+            if (_selectionVisible?.Value == true)
+                return SelectionSurface("selection", lead,
+                    insights is null ? null : Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
 
             bool hasTune = P.Tune is not null;
-            bool hasSelect = Cfg.Selection != ItemsSelectionMode.None;
             bool explicitSearch = _searchExpanded.Value;
             var w = _toolbarWidths;
-            var widths = new CommandWidths(w[0], w[1], w[2], w[3], w[4], w[5]);
+            var widths = new CommandWidths(w[0], w[1]);
             float pane = CommandBarLayout.PaneWidth(available);
-            var fit = CommandBarLayout.Resolve(pane, in widths, vertical, hasTune, hasSelect, explicitSearch, _toolbarFit);
+            var fit = CommandBarLayout.Resolve(pane, in widths, hasTune, insights is not null, explicitSearch, _toolbarFit);
             if (!explicitSearch) _searchOpenFit = null;
             else if (_searchOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
             else _searchOpenFit = (pane, fit);
             _toolbarFit = fit;
 
-            var kids = new List<Element>(9);
-            if (!vertical)
-            {
-                IReadOnlyList<MenuFlyoutItem> playItems =
-                [
-                    new(Loc.Get(Strings.Detail.AddToQueue), ActionIcons.Resolve(ActionIcons.Queue), true,
-                        () => RunOnContext(ActionId.AddToQueue)),
-                ];
-                // SplitButton owns its content after mount: the ink rides a binding so a theme flip still reaches it.
-                Element playNext = new BoxEl
-                {
-                    Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        new TextEl(WaveeIcons.PlayNext) { Size = 14f, FontFamily = WaveeIcons.Font, Color = Prop.Of(static () => Tok.TextSecondary) },
-                        new TextEl(Loc.Get(Strings.Detail.PlayNext)) { Size = Ui.Caption("").Size, Weight = 600, Color = Prop.Of(static () => Tok.TextSecondary) },
-                    ],
-                };
-                kids.Add(MeasuredCommand(0, "cmd:play-next:" + _contextText,
-                    SplitButton.Create(playNext, () => RunOnContext(ActionId.PlayNext), playItems, parts: s_commandBarSplitParts)));
-            }
-            if (fit.Has(InlineCommand.Shuffle))
-                kids.Add(MeasuredCommand(2, "cmd:shuffle", LabeledButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), false, Shuffle, null)));
+            var kids = new List<Element>(3);
+            if (fit.Has(InlineCommand.Sort))
+                kids.Add(MeasuredCommand(1, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
             if (hasTune)
-                kids.Add(MeasuredCommand(1, "cmd:tune", ToolTip.Wrap(
+                kids.Add(MeasuredCommand(0, "cmd:tune", ToolTip.Wrap(
                     LabeledButton(Icons.RefineSparkle, Loc.Get(Strings.Detail.Tuning.Tune), false, () => _latest.Profile.Tune?.Invoke(), null),
                     Loc.Get(Strings.Detail.Tuning.Tooltip))));
 
-            bool viewInline = fit.Has(InlineCommand.Sort) || fit.Has(InlineCommand.Density) || fit.Has(InlineCommand.Select);
-            if (viewInline && kids.Count > 0) kids.Add(Separator() with { Key = "cmd:separator" });
-            if (fit.Has(InlineCommand.Sort))
-                kids.Add(MeasuredCommand(3, "cmd:sort", Embed.Comp(() => new TableSortButton(this))));
-            if (fit.Has(InlineCommand.Density))
-                kids.Add(MeasuredCommand(4, "cmd:density", Embed.Comp(() => new TableDensityButton(this))));
-            if (fit.Has(InlineCommand.Select))
-                kids.Add(MeasuredCommand(5, "cmd:select", Embed.Comp(() => new TableSelectButton(this))));
-
-            var overflow = InlineCommand.Shuffle | InlineCommand.Sort | InlineCommand.Density | (hasSelect ? InlineCommand.Select : InlineCommand.None);
-            overflow &= ~fit.Inline;
-            kids.Add(Embed.Comp(() => new TableMoreButton(this, overflow))
+            var overflow = InlineCommand.Sort & ~fit.Inline;
+            // The right end: search, then the Insights toggle (a slot reserved by kind, faded in once the facts settle), then "…".
+            // Insights sits BEFORE "…" in both arms, so the bar reads find · Insights · ⋯.
+            var tail = new List<Element>(2);
+            if (insights is not null)
+                tail.Add(Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
+            tail.Add(Embed.Comp(() => new TableMoreButton(this, overflow))
                 with { Key = "cmd:more:" + (int)overflow + ":" + _contextText });
 
             Element search = Embed.Comp(new SearchProps(fit.SearchExpanded, fit.SearchWidth, false), () => new TableSearchHost(this))
@@ -218,6 +198,7 @@ public readonly partial struct Track
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = kids.ToArray() },
                     new BoxEl { Grow = 1f, MinWidth = 0f },
                     search,
+                    .. tail,
                 ],
             };
             return CommandSurface("normal", normal, lead);
@@ -255,23 +236,6 @@ public readonly partial struct Track
             _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
         }
 
-        /// <summary>Real SplitButton behaviour (two hit targets, keyboard chords) wearing CommandBar visuals: the joined
-        /// root is ghosted at rest instead of painting the boxed form-control surface.</summary>
-        static readonly TemplateParts s_commandBarSplitParts = new()
-        {
-            [SplitButton.PartRoot] = static e => e with
-            {
-                AlignSelf = FlexAlign.Center, MinHeight = 32f, Fill = ColorF.Transparent, BorderWidth = 0f, BorderBrush = null,
-                Corners = Radii.ControlAll,
-            },
-            [SplitButton.PartPrimaryButton] = static e => e with { Grow = 0f, MinWidth = 0f, Height = 32f, Padding = new Edges4(9f, 0f, 8f, 0f) },
-            [SplitButton.PartSecondaryButton] = static e => e with { Width = 24f, Height = 32f, Padding = default, Justify = FlexJustify.Center },
-            [SplitButton.PartDivider] = static e => e with
-            {
-                Width = 1f, Height = 20f, AlignSelf = FlexAlign.Center, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-            },
-        };
-
         /// <summary>The 32×32 toolbar glyph button: active → the accent@0.11 plate + accent glyph; idle → ghost.</summary>
         static BoxEl IconButton(string glyph, bool active, Action onClick, Action<NodeHandle>? onRealized) => new()
         {
@@ -292,17 +256,11 @@ public readonly partial struct Track
                                    Element? trailing = null)
             => Controls.LabeledButton(glyph, label, active, onClick, onRealized, trailing);
 
-        static Element Separator() => new BoxEl
+        /// <summary>The sort dropdown's word for a column. The natural order is "Album order" on an album and "Custom order"
+        /// elsewhere (<see cref="TableRules.IndexSortLabelKey"/>).</summary>
+        static string SortLabelFor(SortColumn c, DetailKind kind) => c switch
         {
-            Width = 1f, Height = 20f, AlignSelf = FlexAlign.Center, Fill = Prop.Of(static () => Tok.StrokeDividerDefault),
-            Margin = new Edges4(Spacing.XS, 0f, Spacing.XS, 0f),
-        };
-
-        static Element Chevron() => Icon(Icons.ChevronDown, 8f, Tok.TextTertiary);
-
-        static string SortLabelFor(SortColumn c) => c switch
-        {
-            SortColumn.Index => Loc.Get(Strings.Detail.Sort.CustomOrder),
+            SortColumn.Index => Loc.Get(TableRules.IndexSortLabelKey(kind)),
             SortColumn.Title => Loc.Get(Strings.Detail.Sort.Title),
             SortColumn.Artist => Loc.Get(Strings.Detail.Sort.Artist),
             SortColumn.Album => Loc.Get(Strings.Detail.Sort.Album),
@@ -327,7 +285,7 @@ public readonly partial struct Track
             var cur = _sort.Peek();
             var cfg = Cfg;
             var items = new List<MenuFlyoutItem>(10);
-            void Field(SortColumn col) => items.Add(MenuFlyoutItem.RadioItem(SortLabelFor(col), cur.Column == col,
+            void Field(SortColumn col) => items.Add(MenuFlyoutItem.RadioItem(SortLabelFor(col, cfg.Kind), cur.Column == col,
                 () => SetSort(col == SortColumn.Index ? SortSpec.Default : new SortSpec(col, _sort.Peek().Descending))));
             Field(SortColumn.Index);
             Field(SortColumn.Title);
@@ -739,80 +697,15 @@ public readonly partial struct Track
             public override Element Render()
             {
                 var h = host;
-                return Controls.SortButton(() => SortLabelFor(h._sort.Value.Column), h.SortItems,
+                return Controls.SortButton(() => SortLabelFor(h._sort.Value.Column, h.Cfg.Kind), h.SortItems,
                     () => h._sort.Value.Column != SortColumn.Index,
                     () => h._sort.Value.Descending, () => h._sort.Value.Column != SortColumn.Index);
             }
         }
 
-        /// <summary>Row size: a stepped slider in a rich popup. While the popup is open the button keeps the label it OPENED
-        /// with — relabelling mid-drag would move its right edge and re-anchor the popup under the pointer. Never accent:
-        /// density is a view preference, not an active filter.</summary>
-        sealed class TableDensityButton(TableHost host) : Component
-        {
-            public override Element Render()
-            {
-                var overlay = UseContext(Overlay.Service);
-                var anchor = UseRef<NodeHandle>(default);
-                var handle = UseRef<OverlayHandle?>(null);
-                var frozen = UseRef<string?>(null);
-                var closedEpoch = UseSignal(0);
-                _ = closedEpoch.Value;   // the close re-renders the button so the frozen label is released
-                int current = Prefs.Appearance.RowDensity();
-                void Toggle()
-                {
-                    if (handle.Value is not { IsOpen: true }) frozen.Value = DensityLabel(Prefs.Appearance.RowDensity());
-                    ToggleOverlay(overlay, anchor, handle, static () => Embed.Comp(static () => new TableDensityPanel()), RichPopup,
-                        () => { frozen.Value = null; closedEpoch.Value = closedEpoch.Peek() + 1; });
-                }
-                string label = handle.Value is { IsOpen: true } && frozen.Value is { } f ? f : DensityLabel(current);
-                _ = host;
-                return LabeledButton(Icons.RowSize, label, false, Toggle, n => anchor.Value = n, Chevron());
-            }
-        }
-
-        sealed class TableDensityPanel : Component
-        {
-            public override Element Render()
-            {
-                int d = Prefs.Appearance.RowDensity();
-                // The slider rides a FloatSignal; mirror the int preference into it so an external change moves the thumb.
-                var dv = UseFloatSignal(d);
-                UseEffect(() => { dv.Value = d; }, DepKey.From(d));
-                return Layer(Edges4.All(Spacing.M), new BoxEl
-                {
-                    Direction = 1, Gap = Spacing.S, MinWidth = 240f,
-                    Children =
-                    [
-                        new BoxEl
-                        {
-                            Direction = 0, AlignItems = FlexAlign.Center,
-                            Children = [Ui.BodyStrong(Loc.Get(Strings.Detail.Density.RowSize)) with { Grow = 1f }, Ui.Caption(DensityLabel(d))],
-                        },
-                        Slider.Create(dv, v => SetDensity((int)MathF.Round(v)),
-                            new Slider.SliderOptions
-                            {
-                                Min = 0f, Max = 3f, Step = 1f, TickFrequency = 1f,
-                                ThumbToolTipValueConverter = v => DensityLabel(Math.Clamp((int)MathF.Round(v), 0, 3)),
-                            },
-                            length: 216f),
-                    ],
-                });
-            }
-        }
-
-        sealed class TableSelectButton(TableHost host) : Component
-        {
-            public override Element Render()
-            {
-                var h = host;
-                bool on = h._multi.Value;
-                return LabeledButton(Icons.MultiSelect, Loc.Get(Strings.Detail.Select), on, () => h.SetMultiSelect(!h._multi.Peek()), null);
-            }
-        }
-
-        /// <summary>"…": the evicted commands first (Shuffle · Sort ▸ · Row size ▸), the two column opt-ins, the Select
-        /// toggle, then — only if anything above exists — a separator and the playlist deposit ("Copy to playlist" on a
+        /// <summary>"…": on Liked and Show (no Play split on the identity row) Shuffle · Play next · Add to queue first, then
+        /// Sort ▸ when the bar evicted it, then Select, Row size ▸ and Columns ▸ (the BPM · Key and Plays
+        /// opt-ins, when either is offered), then a separator and the playlist deposit ("Copy to playlist" on a
         /// playlist/Liked, "Add to playlist" on an album). Never accent-lit (W21).</summary>
         sealed class TableMoreButton(TableHost host, InlineCommand overflow) : Component
         {
@@ -826,31 +719,43 @@ public readonly partial struct Track
                 List<MenuFlyoutItem> Items()
                 {
                     var cfg = h.Cfg;
-                    var items = new List<MenuFlyoutItem>(10);
-                    if ((overflow & InlineCommand.Shuffle) != 0)
+                    var items = new List<MenuFlyoutItem>(12);
+                    // Liked and Show have no [Play │ ⌄] + Shuffle on their identity row: the list verbs live here.
+                    if (TableRules.MoreCarriesListVerbs(cfg.Kind, h.VerticalArm))
+                    {
                         items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.Shuffle), Icons.Shuffle, true, h.Shuffle));
+                        items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.PlayNext), ActionIcons.Resolve(ActionIcons.PlayNext), true,
+                            () => h.RunOnContext(ActionId.PlayNext)));
+                        items.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.AddToQueue), ActionIcons.Resolve(ActionIcons.Queue), true,
+                            () => h.RunOnContext(ActionId.AddToQueue)));
+                        items.Add(MenuFlyoutItem.Separator);
+                    }
                     if ((overflow & InlineCommand.Sort) != 0)
                         items.Add(MenuFlyoutItem.SubMenu(Loc.Get("detail.sort.menu"), h.SortItems(), Icons.Sort));   // key from batch-loc WP-4.5-U2a.json; a literal so the build does not wait on the merge
-                    if ((overflow & InlineCommand.Density) != 0)
-                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), DensityItems(), Icons.List));
-                    if (cfg.ShowTempo)
-                    {
-                        bool tempoOn = Platform.Settings.Get(Platform.Keys.TempoColumn);
-                        items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.TempoColumn), tempoOn,
-                            () => Prefs.Appearance.Set(Platform.Keys.TempoColumn, !tempoOn)));
-                    }
-                    if (cfg.PlaysColumnOptIn)
-                    {
-                        bool playsOn = Platform.Settings.Get(Platform.Keys.PlaysColumn);
-                        items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.PlaysColumn), playsOn,
-                            () => Prefs.Appearance.Set(Platform.Keys.PlaysColumn, !playsOn)));
-                    }
-                    if ((overflow & InlineCommand.Select) != 0)
+                    if (cfg.Selection != ItemsSelectionMode.None)
                     {
                         bool selecting = h._multi.Peek();
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.Select), selecting, () => h.SetMultiSelect(!selecting)));
                     }
-                    if (items.Count > 0) items.Add(MenuFlyoutItem.Separator);
+                    items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), DensityItems(), Icons.List));
+                    if (cfg.ShowTempo || cfg.PlaysColumnOptIn)
+                    {
+                        var columns = new List<MenuFlyoutItem>(2);
+                        if (cfg.ShowTempo)
+                        {
+                            bool tempoOn = Platform.Settings.Get(Platform.Keys.TempoColumn);
+                            columns.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.TempoColumn), tempoOn,
+                                () => Prefs.Appearance.Set(Platform.Keys.TempoColumn, !tempoOn)));
+                        }
+                        if (cfg.PlaysColumnOptIn)
+                        {
+                            bool playsOn = Platform.Settings.Get(Platform.Keys.PlaysColumn);
+                            columns.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.PlaysColumn), playsOn,
+                                () => Prefs.Appearance.Set(Platform.Keys.PlaysColumn, !playsOn)));
+                        }
+                        items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Columns), columns, Icons.ViewList));
+                    }
+                    items.Add(MenuFlyoutItem.Separator);
 
                     var src = h._latest.Source;
                     var tracks = new Track[src.Count];
@@ -1230,8 +1135,17 @@ public readonly partial struct Track
 
         /// <summary>The selection mode of the command lane. Count 0 + minCount 0: the bar's props never change, and its
         /// commands read the live selection themselves — so "1 selected" can never sit beside "Play 4 next".</summary>
-        Element SelectionSurface(string mode, float lead = 0f)
-            => CommandSurface(mode, Controls.SelectionBar(0, _selectionCommands, minCount: 0), lead);
+        Element SelectionSurface(string mode, float lead = 0f, Element? trailing = null)
+        {
+            Element bar = Controls.SelectionBar(0, _selectionCommands, minCount: 0);
+            if (trailing is not null)
+                bar = new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, MinWidth = 0f,
+                    Children = [new BoxEl { Direction = 1, Grow = 1f, MinWidth = 0f, Children = [bar] }, trailing],
+                };
+            return CommandSurface(mode, bar, lead);
+        }
 
         /// <summary>The table's host for the shared lane (<see cref="Track.SelectionLane"/>): the live selection picks the
         /// variant (an episode-capable source may select episode rows, track rows, or both), plus the table's exit and

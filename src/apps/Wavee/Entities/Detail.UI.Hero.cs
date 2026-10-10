@@ -62,9 +62,9 @@ public static partial class Detail
         internal Action? PlayAll { get; init; }
 
         /// <summary>── INSIGHTS SHEET (additive) ── The frame's sheet toggle, present when this page's KIND carries facts
-        /// (<see cref="InsightsSheet.ToggleSlotReserved"/>): the toggle's slot in the toolbar row and the band's cluster is
+        /// (<see cref="InsightsSheet.ToggleSlotReserved"/>): the toggle's slot in the command bar and the band's cluster is
         /// RESERVED from the first frame. Set by the frame only — a stable per-host object, so like <see cref="PlayAll"/> its
-        /// OPEN state travels by signal, never by a re-push. Null ⇒ this kind has no facts and the toolbar row carries no
+        /// OPEN state travels by signal, never by a re-push. Null ⇒ this kind has no facts and the command bar carries no
         /// toggle.</summary>
         internal InsightsToggle? Insights { get; init; }
 
@@ -330,12 +330,11 @@ public static partial class Detail
                         Direction = 1,
                         Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
                                              parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                        // ── INSIGHTS SHEET (additive) ── the toolbar ROW: the table's command bar, plus the sheet's
-                        //    toggle pinned to its trailing end when this page has facts and no rail to show them in
-                        //    (Detail.Insights.cs). The bar keeps the whole row when there is no toggle, so a page
-                        //    without facts composes exactly the tree it composed before. This is the PRE-STUCK half of
-                        //    the control: once the hero collapses the pinned band's word (§7) is the reachable one.
-                        Children = [ToolbarRow(parts, spec.Insights, spec.InsightsLive)],
+                        // ── INSIGHTS SHEET (additive) ── the toolbar row IS the table's command bar: the sheet's toggle
+                        //    is one of its members (between the search and "…") when this page has facts
+                        //    (Detail.Insights.cs §6). This is the PRE-STUCK half of the control: once the hero collapses
+                        //    the pinned band's word (§7) is the reachable one.
+                        Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
                     },
                 ],
             };

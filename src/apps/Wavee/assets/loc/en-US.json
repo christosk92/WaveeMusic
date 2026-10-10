@@ -117,6 +117,7 @@
     "metaLine": "{count} · {duration}",
     "tempoColumn": "BPM · Key column",
     "playsColumn": "Plays column",
+    "columns": "Columns",
     "metaLineSaved": "{count} · {saves} · {duration}",
     "saveCount": "{count, plural, one {# save} other {# saves}}",
     "saveCountCompact": "{value} saves",
@@ -135,6 +136,7 @@
     },
     "sort": {
       "customOrder": "Custom order",
+      "albumOrder": "Album order",
       "title": "Title",
       "artist": "Artist",
       "album": "Album",

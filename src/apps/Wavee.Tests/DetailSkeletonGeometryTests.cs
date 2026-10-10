@@ -43,7 +43,7 @@ public class DetailSkeletonGeometryTests
         Assert.False(plan.Artists);
         Assert.True(plan.Meta);
         Assert.Equal(Skeleton.RailTitleLines, plan.TitleLines);
-        Assert.Equal(5, plan.Fabs);                       // Shuffle · heart · Share · Insights · ⋯ (the Insights slot is reserved by kind)
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ (the Insights toggle lives in the command bar)
         Assert.Equal(Skeleton.RailDescriptionLines, plan.DescriptionLines);
     }
 
@@ -73,7 +73,7 @@ public class DetailSkeletonGeometryTests
         var plan = Skeleton.RailPlanFor(DetailKind.Liked, BadgeStyle.None, heart: false, descriptionMaxLines: 6);
         Assert.False(plan.Owner);
         Assert.True(plan.Meta);
-        Assert.Equal(3, plan.Fabs);                       // Share · Insights · ⋯
+        Assert.Equal(2, plan.Fabs);                       // Share · ⋯ (the Insights toggle lives in the command bar)
         Assert.Equal(0, plan.DescriptionLines);
     }
 
@@ -103,7 +103,7 @@ public class DetailSkeletonGeometryTests
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 1 + 1 + (kind is DetailKind.Playlist or DetailKind.Liked ? 1 : 0),
+            Fabs: (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 1 + 1,
             DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0,
             PlainPlay: kind is not (DetailKind.Album or DetailKind.Playlist));
 
@@ -142,18 +142,19 @@ public class DetailSkeletonGeometryTests
         Assert.Equal(121f, Skeleton.PlayButtonWidth);
     }
 
-    /// <summary>The fixed group's members per kind are Shuffle (album, playlist) · heart · Share · Insights (a facts kind) · ⋯,
+    /// <summary>The fixed group's members per kind are Shuffle (album, playlist) · heart · Share · ⋯ (the Insights toggle lives in the command bar),
     /// so the predicted CTA wrap is the loaded one's. An album's four members (152) never fit beside the Play split
     /// (121 + 12 + 152 = 285) at the rail's cover edges 200 / 240 / 280, so the group takes a second 32-DIP line; a
-    /// playlist's five (192) wrap too, and a 320 edge holds an album's on one line.</summary>
+    /// playlist's four are the same group (it lost the Insights slot), and a 320 edge holds either on one line.</summary>
     [Theory]
     [InlineData(DetailKind.Album, 4, 200f, 80f)]
     [InlineData(DetailKind.Album, 4, 240f, 80f)]
     [InlineData(DetailKind.Album, 4, 280f, 80f)]
     [InlineData(DetailKind.Album, 4, 320f, 36f)]
-    [InlineData(DetailKind.Playlist, 5, 200f, 80f)]
-    [InlineData(DetailKind.Playlist, 5, 240f, 80f)]
-    [InlineData(DetailKind.Playlist, 5, 280f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 200f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 240f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 280f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 320f, 36f)]
     public void ActionRow_CtaHeight_AtTheCoverEdges(DetailKind kind, int fabs, float edge, float cta)
     {
         var badges = kind == DetailKind.Album ? BadgeStyle.TypeYear : BadgeStyle.OwnerRow;

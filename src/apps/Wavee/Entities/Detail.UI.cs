@@ -721,8 +721,8 @@ public static partial class Detail
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
 
             // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the bento lives ONLY in the sheet, in every arm: the rail no
-            //    longer renders it inline, the vertical arm's toolbar and band carry its toggle and the two-column rail's CTA
-            //    group carries it (Detail.InsightsSheet). The sheet is closed on arrival and nothing but the toggle's own
+            //    longer renders it inline, and the table's command bar carries its toggle in every arm (the vertical arm's pinned
+            //    band carries it too, Detail.InsightsSheet). The sheet is closed on arrival and nothing but the toggle's own
             //    click opens it.
             //
             //    The slot is LATCHED for the route first (InsightsSheet.FactsSettled): a page derives its bento slot
@@ -859,8 +859,7 @@ public static partial class Detail
                     ClipToBounds = true,
                     MinHeight = 0f, Shrink = 0f, Width = railW,
                     Opacity = _railFade,
-                    Children = [RailRegion(spec, acts, railW, titleSize, descLines,
-                        InsightsSheet.ToggleSlotReserved(id.Kind, cfg.Content) ? _insights : null, factsSettled)],
+                    Children = [RailRegion(spec, acts, railW, titleSize, descLines)],
                 };
                 rowKids = [railFaded, tableColumn];
             }
@@ -924,11 +923,10 @@ public static partial class Detail
         /// tween). The frame (layer fill + scroller) sits OUTSIDE the boundary so the fill never blinks. The content thunk
         /// closes over this render's spec; a later push re-renders the frame and the region refreshes its Ready branch in
         /// place, so the rail keeps following the header (meta, description, a rename) after the reveal.</summary>
-        Element RailRegion(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descLines,
-                           InsightsToggle? insights, bool insightsLive)
+        Element RailRegion(FrameSpec spec, FrameActions acts, float railW, float titleSize, int descLines)
             => RailFrame(spec.Identity.Kind, railW, new SkelRegionEl(
                 Pending: _railPending, Failed: s_false,
-                Content: () => RailColumn(spec, acts, railW, titleSize, descLines, _accentFn, _playAll, insights, insightsLive),
+                Content: () => RailColumn(spec, acts, railW, titleSize, descLines, _accentFn, _playAll),
                 ShimmerSource: () => RailSkeletonColumn(spec, railW, titleSize, descLines),
                 OnFailed: null, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null, SmoothResize: false));
 
@@ -971,6 +969,9 @@ public static partial class Detail
                     }
                     : null,
                 ShowToolbar = cfg.Content == DetailContent.Tracks || !vertical,
+                // The command bar carries the Insights toggle in every arm (reserved by kind; live once the facts settle).
+                Insights = InsightsSheet.ToggleSlotReserved(spec.Identity.Kind, cfg.Content) ? _insights : null,
+                InsightsLive = _sheetHosts,
                 Trailing = trailing,
                 PlayAllCell = _playAllCell,
                 HeroHeight = _heroHeight,
@@ -1309,7 +1310,7 @@ public static partial class Detail
 
     static Element RailCore(FrameSpec spec, FrameActions acts, float railW, float titleSize,
                             int descMaxLines, Func<ColorF> accent, Action play)
-        => RailFrame(spec.Identity.Kind, railW, RailColumn(spec, acts, railW, titleSize, descMaxLines, accent, play, null, false));
+        => RailFrame(spec.Identity.Kind, railW, RailColumn(spec, acts, railW, titleSize, descMaxLines, accent, play));
 
     /// <summary>The rail's frame: the layer fill and, the LAST resort once the text has given, the rail's own scroller.
     /// The Liked arm differs in exactly ONE property — no layer fill (ch 03 §9). Holds the loaded column, or the skeleton
@@ -1338,13 +1339,12 @@ public static partial class Detail
 
     /// <summary>The rail's loaded column: cover · eyebrow (+ a show's badges) / owner / an episode's show link · title ·
     /// attribution · rating · meta · an episode's badges · ledger · daylist · chart · CTA (primary + the fixed group or the
-    /// page's satellites) · topics · prerelease · release panel · description. A facts-bearing page's CTA group carries the Insights
-    /// toggle (a slot reserved by kind). The identity rows are
+    /// page's satellites) · topics · prerelease · release panel · description. The identity rows are
     /// <see cref="RailLayout.RowsFor"/>'s decisions; <see cref="RailSkeletonColumn"/> reserves the same rows
     /// (<see cref="Skeleton.RailPlanFor"/>) in the same order at the same widths, so the swap is a dissolve and never a
     /// reflow. With none of the podcast slots declared the column is exactly the pre-podcast one.</summary>
     static Element RailColumn(FrameSpec spec, FrameActions acts, float railW, float titleSize,
-                              int descMaxLines, Func<ColorF> accent, Action play, InsightsToggle? insights, bool insightsLive)
+                              int descMaxLines, Func<ColorF> accent, Action play)
     {
         var id = spec.Identity;
         var cfg = spec.Config;
@@ -1354,10 +1354,10 @@ public static partial class Detail
         var kids = new List<Element>(16);
 
         // The CTA's pieces first: how many FABs it carries is a row decision (it sizes the CTA's lines) as well as its
-        // children. A page's Satellites replace the fixed group (and carry no Shuffle: the command bar's, W27); the fixed group's
-        // icon-only Shuffle belongs to the Play-split kinds only (RailFabs).
+        // children. A page's Satellites replace the fixed group (and carry no Shuffle: Liked and Show keep theirs in the
+        // command bar's "…", W27); the fixed group's icon-only Shuffle belongs to the Play-split kinds only (RailFabs).
         Element[]? satellites = slots.Satellites?.Invoke();
-        List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent, insights, insightsLive) : null;
+        List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent) : null;
         var presence = PresenceOf(slots, satellites?.Length ?? 0);
         bool lead = RailLayout.LeadsWithAttribution(id.Kind, presence);
         bool blurb = (id.EditableMetadata && slots.Description is not null) || id.DescriptionHtml is { Length: > 0 };
@@ -1471,11 +1471,10 @@ public static partial class Detail
 
     /// <summary>The rail's FIXED FAB group, in the order of the one action row (Play split · Shuffle · heart · Share · ⋯):
     /// an icon-only Shuffle (the rail is narrow; a page that supplies the Play split's verbs and a shuffle —
-    /// <see cref="Skeleton.HasLabelledShuffle"/>), the heart (a Save / Follow kind), Share, the Insights toggle (a facts-bearing
-    /// kind, in a slot reserved by kind) and the ⋯ every kind carries. What a page's <see cref="FrameSlots.Satellites"/>
+    /// <see cref="Skeleton.HasLabelledShuffle"/>), the heart (a Save / Follow kind), Share and the ⋯ every kind carries (the Insights toggle
+    /// lives in the table's command bar, not here). What a page's <see cref="FrameSlots.Satellites"/>
     /// replace. <see cref="Skeleton.RailPlanFor"/> counts the same members per kind, so the wrap never moves at reveal.</summary>
-    static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent,
-                                  InsightsToggle? insights = null, bool insightsLive = false)
+    static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent)
     {
         var fabs = new List<Element>(5);
         if (acts.Shuffle is { } shuffle && acts.HasPlaySplit)
@@ -1489,9 +1488,6 @@ public static partial class Detail
         }
         if (ShareActionFor(id) is { } share)
             fabs.Add(Controls.QuietIconButton(Icons.Share, Loc.Get(Strings.Menu.Share), share));
-        // The Insights toggle, among the primary actions: its slot is RESERVED by kind (InsightsSheet.ToggleSlotReserved), shown at
-        // opacity 0 and inert until the facts have settled, so a late fact never adds a button or changes the CTA's wrap.
-        if (insights is not null) fabs.Add(InsightsToggleSlot(insights, insightsLive, "rail:insights"));
         if (acts.More is { } more)
             fabs.Add(MoreButton(more, RailFabSize, 16f, round: true) with { Key = "rail:more" });
         return fabs;
