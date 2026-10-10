@@ -2269,7 +2269,7 @@ public static partial class Spotify
             for (int d = Fields(ref r); Next(ref r, d);)
             {
                 if (r.ValueTextEquals("url"u8)) { r.Read(); url = s.AddJson(ref r); }
-                else if (r.ValueTextEquals("width"u8)) { r.Read(); width = (int)Num(ref r); }
+                else if (r.ValueTextEquals("width"u8) || r.ValueTextEquals("maxWidth"u8)) { r.Read(); width = (int)Num(ref r); }
                 else SkipValue(ref r);
             }
             return !url.IsEmpty;
