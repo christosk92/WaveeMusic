@@ -203,8 +203,9 @@ public static partial class Shell
         /// themes (<see cref="ArtistBleed.FieldBase"/>), and the veil rides the photo's clip, translation, strength and
         /// Enter/Exit, so chrome and hero are one field. All three
         /// layers (photo, veil, scrim) are keyed on the backdrop (a new photo remounts, and so cross-fades, through the WashFade
-        /// idiom) and hit-test free, and every binding below is a paint channel except Width/Height, which change only on a resize, a pane or rail
-        /// change or a nav-style switch (the card's rect). The photo's span is the card's left..right edge (flush with the window's left
+        /// idiom) and hit-test free, and every binding below is a paint channel except Width/Height, which change on a resize, a pane or rail
+        /// change or a nav-style switch (the card's rect), and the photo clip's Height, which follows the hero's presented bottom (it
+        /// relays out that one leaf per scroll frame while the hero is on screen). The photo's span is the card's left..right edge (flush with the window's left
         /// edge when no pane is docked); it never sits under the right rail or the Classic/Library pane. The CHROME INK is window-wide
         /// (<c>Ui.ChromeInkMix</c>), so the dark field is too: two side strips (the SIDE FIELD below) run the title bar's height under
         /// whatever lies outside the photo's span, so the island above the pane column and the one above the rail read light-on-dark
@@ -266,8 +267,10 @@ public static partial class Shell
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(ClipWidth),
                 // The clip's ON-SCREEN bottom (this box carries the parallax translation, which PhotoClip subtracts) lands on the riser
-                // line (the hero's presented bottom): no sliver below the hero, and no feather of its own,
-                // because CardGround's fade box above the line (the same PhotoFadeBandFor band as the card media's) is the one feather.
+                // line (the hero's presented bottom): no sliver below the hero. The box feathers its own bottom with the same
+                // PhotoFadeBandFor band as the card media, so its on-screen feather lands in CardGround's [line - band, line] ramp (the
+                // translucent fill fading in): the photo cross-fades into the ground and never ends in a hard horizontal edge.
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
                 Height = Prop.Of(() => Ui.CardPose.Value.Y + ArtistBleed.PhotoClip(b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight)),
                 Transform = Prop.Of(() => Affine2D.Translation(Left(), ArtistBleed.ParallaxY(b.ScrollY.Value))),
                 Opacity = Prop.Of(Strength),

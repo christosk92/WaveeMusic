@@ -10,7 +10,7 @@
 // as DATA through the shell material channel (`ShellBackdrop`, carried by `ShellMaterial.Publish` on the tint's ownership
 // outcome, so a successor's claim always drops it). Only the card's TOP region changes: its fill and its top/left stroke over
 // the hero fade out and return as the hero scrolls away; the solid fill below the hero stays, its top edge riding the hero's
-// bottom through a paint-only translation. The card rect never changes, so nothing here lays anything out per scroll.
+// bottom through a paint-only translation. The card rect never changes; per scroll only the shell photo clip's height (one leaf) is re-solved, everything else is paint.
 //
 // ONE FIELD, ONE FRAME. The shell draws the photo, a DARK top scrim and the hero's horizontal veil as one field; the card's own
 // photo and veil are drawn at exactly the same frame, crop and colour (<see cref="FrameFor"/>), so the card layers yield to the
@@ -70,7 +70,7 @@ public static class ArtistBleed
     /// <summary>The photo clip's bottom in the clip box's OWN coordinates (the card's presented top is 0). The box carries the
     /// parallax translation (<see cref="ParallaxY"/>), so its on-screen bottom is <c>clip + ParallaxY</c>: the clip is the riser line
     /// MINUS the translation, which lands the on-screen bottom exactly on the hero's presented bottom. The shell's photo never paints
-    /// below it (no sliver under the solid ground) and the one feather is CardGround's. Capped at the photo's own end.</summary>
+    /// below it (no sliver under the solid ground), and the box feathers its own bottom with the same band as the card media (that on-screen band lands in CardGround's fade ramp, so the photo cross-fades into the fill). Capped at the photo's own end.</summary>
     public static float PhotoClip(double offset, float heroH, float floor, float photoH)
         => MathF.Min(MathF.Max(0f, photoH), HeroBottom(offset, heroH, floor) - ParallaxY(offset));
 

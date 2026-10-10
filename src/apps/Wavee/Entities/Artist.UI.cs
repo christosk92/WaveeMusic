@@ -418,10 +418,9 @@ public readonly partial struct Artist
             EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(photoH)),
             // EXPERIMENTAL (artist bleed): while the shell draws the photo behind the chrome, the banner's own copy stays mounted (the
             // decode is warm and the layout is unchanged, the veil and the copy stay put) and eases out (BleedHandover) once the
-            // shell's identical photo is fully present. The media's bottom EdgeFade and the shell photo's, plus CardGround's fade box
-            // (Shell.UI.cs), are the same PhotoFadeBandFor band at the riser line, so at scroll 0 the photo's end matches. Only in
-            // that band do the card's feather and the shell's differ (two feathers over each other), so the ease, not a step, is
-            // what merges them.
+            // shell's identical photo is fully present. The media's bottom EdgeFade and the shell photo's are the same PhotoFadeBandFor band at the riser line, so at scroll 0 the
+            // photo's end matches. Only in that band do the card's feather and the shell's differ (two feathers over each other), so the
+            // ease, not a step, is what merges them.
             Opacity = bleedDrawn is null ? 1f : Prop.Of(() => ArtistBleed.CardLayerOpacity(bleedDrawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)),
             Children = [art],
         }.StretchFromTop().ParallaxY(ArtistHeroLayout.PhotoParallaxFraction, photoH);
@@ -472,8 +471,8 @@ public readonly partial struct Artist
             // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
             // over a growing photo left an unveiled band above the hero's top edge.
             // Under the bleed the veil is the dark onMedia arm over the shell's frame width (the same columns as the shell's veil), it
-            // feathers out over the same bottom band as the photo (the shell's veil does, inside its photo box, so an unfaded veil
-            // would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity).
+            // feathers out over the same bottom band as the photo (the shell's veil does, through its photo box's own EdgeFade, so an
+            // unfaded veil would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity).
             Element veil = play is null
                 ? new BoxEl()
                 : bleed
