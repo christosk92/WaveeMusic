@@ -24,10 +24,12 @@ versions separately under `v*` and is not tracked in this file.)
   on each row.
 - **Experimental**: on artist pages the header photo now runs behind the title bar and the navigation band. This may
   change or be removed.
-- **Experimental**: over that photo the title bar, the pivots and the second pivot row turn light, then fade back to
-  your theme's colours as the photo scrolls away or you leave the page.
+- **Experimental**: the artist photo now takes your theme. In the light theme it fades through a light veil tinted with
+  the artist's colour into the page, with dark text, as the artist page looked before. In the dark theme it stays dark
+  and fades into the artist's colour instead of black.
 - **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the
-  hero, and it follows the page when you open or close the sidebar or the right rail or switch the navigation style.
+  hero, no dark band over the title bar above the right panel and no line under the navigation band while the page
+  loads, and it follows the page when you open or close the sidebar or the right rail or switch the navigation style.
 - **A Play menu on album, playlist and Liked Songs pages**: Add to queue, Play next and Start radio, right beside
   Play. Start radio on an album or a playlist builds a radio from it; on Liked Songs it starts from the first song in
   your list.
@@ -73,7 +75,8 @@ versions separately under `v*` and is not tracked in this file.)
 - Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle,
   Save, Share and More).
 - Album and playlist song lists: the toolbar holds only list tools (sort, find, Insights and More, which now has
-  Select, Row size and Columns).
+  Select, Row size and Columns). The song count and length fill the left of the toolbar ("12 songs · 48 min") and
+  follow find and filters ("3 of 12 songs").
 - Liked Songs has a new, simpler page: one toolbar with Play, Shuffle, genre filters, sort, find and Insights, and no
   side column.
 - Liked Songs rows are quieter: no heart column (the heart and More show when you hover a row or move to it with the
