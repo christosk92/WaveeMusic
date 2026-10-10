@@ -1,5 +1,5 @@
 // ── Entities/Track.Table.Chrome.cs ────────────────────────────────────────────────────────────────────────────────
-// the detail track table's CHROME: the command bar (LIST TOOLS only: Sort · Tune ─ search · Insights · "…"; Sort is promoted
+// the detail track table's CHROME: the command bar (LIST TOOLS only: Sort · Tune ─ [album/playlist: the list's facts] ─ search · Insights · "…"; Sort is promoted
 // into the measured pane or evicted into "…" with 16-DIP promotion hysteresis and a fit latch while search is open; "…" holds
 // Select, Row size ▸ and Columns ▸; Liked Songs' SlimHead page builds its own one-bar variant, BuildLikedBar: Play split · Shuffle ·
 // divider · genre chips · Sort ─ find · Insights · ⋯, on LikedBarLayout's ladder), the in-list search disclosure
@@ -56,6 +56,9 @@ public readonly partial struct Track
         // The Insights toggle's LIVE state (the facts have settled), mirrored from the args: the bar is a cached builder that a
         // host render does not re-run, so the slot's fade-in rides this signal.
         readonly Signal<bool> _insightsLive = new(false);
+        // The list facts' fade-in (D-7): the Insights slot's own, so the two reveal as one.
+        static readonly MotionTokenDef s_factsFade =
+            MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
         // The Liked bar's chip slot exists (the page has a chip set), mirrored from the profile for the same reason.
         readonly Signal<bool> _chipsInBar = new(false);
         CommandBarFit? _toolbarFit;
@@ -219,11 +222,58 @@ public readonly partial struct Track
                 Children =
                 [
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 0f, Children = kids.ToArray() },
-                    new BoxEl { Grow = 1f, MinWidth = 0f },
+                    // D-7: the empty middle states the list's facts. A free-width slot (Basis 0), outside CommandBarLayout.Resolve's budget:
+                    // it only takes what the commands leave, so nothing moves when the text arrives and it truncates before the right cluster.
+                    new BoxEl
+                    {
+                        Key = "cmd:facts-slot", Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                        Children = ShowsListFacts ? [Embed.Comp(() => new TableFacts(this)) with { Key = "cmd:facts" }] : [],
+                    },
                     .. tail,
                 ],
             };
             return CommandSurface("normal", normal, lead);
+        }
+
+        /// <summary>Album and playlist track lists state their facts on the bar's left (D-7); Liked, Show and Episode bars do not.</summary>
+        bool ShowsListFacts => Cfg.Kind is DetailKind.Album or DetailKind.Playlist && Cfg.Content == DetailContent.Tracks;
+
+        /// <summary>The VISIBLE list's facts ("12 songs · 48 min", "3 of 12 songs · 11 min" under a find or filter), or null until
+        /// the list has a total. The length sums the shown rows and is stated only when the membership is complete and every shown
+        /// row knows its duration; rows landing wake this through the track (and episode) publication.</summary>
+        string? ListFactsText()
+        {
+            var snap = _snapshot!.Value;
+            var src = _latest.Source;
+            var view = ViewOf(in snap);
+            long ms = 0;
+            int episodes = 0;
+            bool known = src.State == EdgeState.Complete;
+            for (int i = 0; i < view.Length; i++)
+            {
+                int o = view[i];
+                if (o < 0) continue;
+                if (src.KindAt(o) == EntityKind.Episode)
+                {
+                    var e = src.EpisodeAt(o);
+                    episodes++;
+                    ms += e.DurationMs;
+                    if (!e.Knows(EpisodeFields.Duration)) known = false;
+                }
+                else
+                {
+                    var t = src.At(o);
+                    ms += t.DurationMs;
+                    if (!t.Knows(TrackFields.Duration)) known = false;
+                }
+            }
+            if (src.State == EdgeState.Complete && !known)
+            {
+                _ = Entities.Current.Tracks.Changed.Value;
+                if (episodes > 0) _ = Entities.Current.Episodes.Changed.Value;
+            }
+            return Detail.Text.ListFacts(view.Length, Math.Max(src.Total, src.Count), ms, known,
+                snap.Query.Length > 0 || !snap.Filters.IsDefault, episodes);
         }
 
         /// <summary>The LIKED SONGS bar (<see cref="Detail.Config.SlimHead"/>): <c>[Play | v] - Shuffle - divider - genre chips
@@ -850,6 +900,29 @@ public readonly partial struct Track
                 return Controls.SortButton(() => SortLabelFor(h._sort.Value.Column, h.Cfg.Kind), h.SortItems,
                     () => TableRules.SortIsActive(h._sort.Value, h.P.DefaultSort),
                     () => h._sort.Value.Descending, () => !h.Cfg.SlimHead && h._sort.Value.Column != SortColumn.Index);
+            }
+        }
+
+        /// <summary>The list bar's facts (D-7): its own component and memo, so find or rows landing re-render this text only. Always the
+        /// same node shape (no tooltip wrapper), so the opacity fade runs when the first text arrives; it never takes input.</summary>
+        sealed class TableFacts(TableHost host) : Component
+        {
+            public override Element Render()
+            {
+                string? text = UseComputed(host.ListFactsText).Value;
+                return new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
+                    Padding = new Edges4(CommandBarLayout.FactsInset, 0f, Spacing.M, 0f),
+                    Opacity = text is null ? 0f : 1f, Transition = s_factsFade, HitTestVisible = false, Role = AutomationRole.Text,
+                    Children =
+                    [
+                        Design.Type.TrackMeta(text ?? "") with
+                        {
+                            MinWidth = 0f, Shrink = 1f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
+                };
             }
         }
 

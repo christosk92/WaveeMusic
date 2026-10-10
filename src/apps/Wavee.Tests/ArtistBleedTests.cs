@@ -8,6 +8,7 @@
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 using FluentGpu.Render;
 using FluentGpu.Signals;
 using Xunit;
@@ -72,15 +73,6 @@ public class ArtistBleedPhotoRightTests
     {
         Assert.Equal(600f, ArtistBleed.PhotoRight(600f, zune: true, railFloats: true, 1000f, 320f, 0f));
         Assert.Equal(0f, ArtistBleed.PhotoRight(600f, zune: true, railFloats: true, 300f, 320f, 0f));
-    }
-
-    [Fact]
-    public void The_band_above_a_floating_panel_keeps_the_photo_through_the_extension()
-    {
-        float right = ArtistBleed.PhotoRight(1000f, zune: true, railFloats: true, 1000f, 320f, 0f);
-        Assert.Equal(320f, ArtistBleed.BandExtensionWidth(1000f, right));
-        Assert.Equal(0f, ArtistBleed.BandExtensionWidth(1000f, 1000f));
-        Assert.Equal(0f, ArtistBleed.BandExtensionWidth(600f, 700f));
     }
 }
 
@@ -161,6 +153,18 @@ public class ArtistBleedGeometryTests
         Assert.Equal(line * scale, MathF.Round(line * scale), 3);
     }
 
+    [Theory]
+    [InlineData(320f)]
+    [InlineData(384f)]
+    [InlineData(440f)]
+    public void The_wash_never_yields_and_starts_at_the_photos_feather(float photoH)
+    {
+        float inset = ArtistBleed.WashTopInset(photoH);
+        Assert.True(inset > 0f);
+        Assert.Equal(photoH, inset + ArtistHeroLayout.PhotoFadeBandFor(photoH), 3);
+        Assert.True(ArtistBleed.WashTopInset(100f) >= 0f);
+    }
+
     [Fact]
     public void The_ground_line_never_leaves_the_photos_clip()
     {
@@ -170,11 +174,14 @@ public class ArtistBleedGeometryTests
     }
 
     [Fact]
-    public void The_scrim_is_one_partial_veil_in_both_themes_and_as_tall_as_the_chrome()
+    public void The_scrim_takes_the_themes_strength_and_is_as_tall_as_the_chrome()
     {
-        // The field is dark in both themes, so the scrim is a single constant, not a per-theme pair.
-        Assert.Equal(ArtistBleed.ScrimTop, ArtistBleed.ScrimTopAlpha());
-        Assert.InRange(ArtistBleed.ScrimTopAlpha(), 0.01f, 0.99f);
+        // A light veil has to hold the theme's dark ink over a photo, so the light scrim is the stronger of the two.
+        Assert.Equal(0.75f, ArtistBleed.ScrimTopAlpha(ThemeKind.Light));
+        Assert.Equal(0.55f, ArtistBleed.ScrimTopAlpha(ThemeKind.Dark));
+        Assert.True(ArtistBleed.ScrimTopAlpha(ThemeKind.Light) > ArtistBleed.ScrimTopAlpha(ThemeKind.Dark));
+        foreach (var theme in new[] { ThemeKind.Light, ThemeKind.Dark })
+            Assert.InRange(ArtistBleed.ScrimTopAlpha(theme), 0.01f, 0.99f);
         Assert.Equal(132f, ArtistBleed.ScrimHeight(132f));
         Assert.Equal(0f, ArtistBleed.ScrimHeight(-4f));
     }
@@ -182,40 +189,78 @@ public class ArtistBleedGeometryTests
     [Fact]
     public void The_scrim_is_an_eased_four_stop_falloff_that_ends_clear()
     {
-        var s = ArtistBleed.ScrimStops;
-        Assert.Equal(GradientSpec.MaxStops, s.Length);               // the recorder's ceiling, no more
-        Assert.Equal((0f, 0.55f), s[0]);
-        Assert.Equal((0.4f, 0.38f), s[1]);
-        Assert.Equal((0.8f, 0.12f), s[2]);
-        Assert.Equal((1f, 0f), s[3]);
-        for (int i = 1; i < s.Length; i++)
+        var expected = new Dictionary<ThemeKind, (float Offset, float Alpha)[]>
         {
-            Assert.True(s[i].Offset > s[i - 1].Offset);              // strictly increasing offsets
-            Assert.True(s[i].Alpha < s[i - 1].Alpha);                // and a strictly falling alpha
+            [ThemeKind.Light] = [(0f, 0.75f), (0.4f, 0.55f), (0.8f, 0.2f), (1f, 0f)],
+            [ThemeKind.Dark] = [(0f, 0.55f), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)],
+        };
+        foreach (var (theme, want) in expected)
+        {
+            var s = ArtistBleed.ScrimStopsFor(theme);
+            Assert.Equal(GradientSpec.MaxStops, s.Length);               // the recorder's ceiling, no more
+            Assert.Equal(want, s);
+            for (int i = 1; i < s.Length; i++)
+            {
+                Assert.True(s[i].Offset > s[i - 1].Offset);              // strictly increasing offsets
+                Assert.True(s[i].Alpha < s[i - 1].Alpha);                // and a strictly falling alpha
+            }
+            Assert.Equal(0f, s[^1].Alpha);                               // it ends clear
+            // Eased, not linear: the first leg falls slower than a straight ramp would.
+            Assert.True(s[1].Alpha > s[0].Alpha * (1f - s[1].Offset));
         }
-        // Eased, not linear: the first leg falls slower than a straight ramp would (0.55 to 0 over 0..1 is 0.33 at 0.4).
-        Assert.True(s[1].Alpha > ArtistBleed.ScrimTop * (1f - s[1].Offset));
     }
 
     [Fact]
-    public void The_on_media_veil_pulls_only_a_hint_of_the_accent()
+    public void The_bleed_veil_is_the_production_veil_in_both_themes()
     {
-        Assert.Equal(0.09f, Controls.OnMediaPull);
         var accent = ColorF.FromRgba(200, 40, 40, 255);
-        var onMedia = Controls.ArtistHeroVeil(accent, vertical: false, onMedia: true);
-        var expected = ColorF.Lerp(Tok.MediaStage, accent, Controls.OnMediaPull);
-        Assert.Equal(expected.R, onMedia.Stops[0].Color.R, 4);
-        Assert.Equal(expected.G, onMedia.Stops[0].Color.G, 4);
-        Assert.Equal(expected.B, onMedia.Stops[0].Color.B, 4);
+        foreach (var (theme, set) in new[] { (ThemeKind.Light, Tok.Light), (ThemeKind.Dark, Tok.Dark) })
+        {
+            bool light = theme == ThemeKind.Light;
+            var expected = ColorF.Lerp(set.FillLayerDefault, accent, light ? 0.16f : 0.24f);
+            var horizontal = Controls.ArtistHeroVeil(accent, vertical: false, theme, set.FillLayerDefault);
+            Assert.Equal(expected.R, horizontal.Stops[0].Color.R, 4);
+            Assert.Equal(expected.G, horizontal.Stops[0].Color.G, 4);
+            Assert.Equal(expected.B, horizontal.Stops[0].Color.B, 4);
+            Assert.Equal(0.96f, horizontal.Stops[0].Color.A);
+            var vertical = Controls.ArtistHeroVeil(accent, vertical: true, theme, set.FillLayerDefault);
+            Assert.Equal(light ? 0.42f : 0.78f, vertical.Stops[2].Color.A);
+        }
     }
 
-    [Theory]
-    [InlineData(48f, 48f, 48f)]     // Classic / Library: the card's top is the title bar's bottom
-    [InlineData(132f, 48f, 48f)]    // Zune with a row 2: the inline right panel starts at the title bar's bottom, not under the band
-    [InlineData(100f, 48f, 48f)]    // Zune with no row 2, mid-FLIP
-    [InlineData(20f, 48f, 20f)]     // never taller than the card's presented top
-    public void The_right_side_field_stops_at_the_title_bar_so_it_never_shows_through_the_rail_gap(float cardTop, float titleBar, float expected)
-        => Assert.Equal(expected, ArtistBleed.SideFieldHeight(cardTop, titleBar));
+    [Fact]
+    public void The_field_takes_the_themes_polarity_and_the_heros_tone()
+    {
+        const uint red = 0xFFC82828;
+        var light = ArtistBleed.FieldBase(ThemeKind.Light, null, red);
+        var dark = ArtistBleed.FieldBase(ThemeKind.Dark, null, red);
+        Assert.True(Design.Palette.ToHsl(light).L > 0.8f);
+        Assert.True(Design.Palette.ToHsl(dark).L < 0.25f);
+        Assert.True(light.ToHsv().S > 0f);                  // tinted by the hero, not a neutral
+        Assert.True(dark.ToHsv().S > 0f);
+        Assert.NotEqual(Tok.MediaStage, light);
+        Assert.NotEqual(Tok.MediaStage, dark);
+        Assert.False(ArtistBleed.FieldDark(ThemeKind.Light));
+        Assert.True(ArtistBleed.FieldDark(ThemeKind.Dark));
+        // No hero hue (no accent, or a grey one) is the theme's neutral page tone.
+        Assert.Equal(Design.Palette.PageToneNeutralLight, ArtistBleed.FieldBase(ThemeKind.Light, null, 0));
+        Assert.Equal(Design.Palette.PageToneNeutralDark, ArtistBleed.FieldBase(ThemeKind.Dark, null, 0));
+        Assert.Equal(Design.Palette.PageToneNeutralLight, ArtistBleed.FieldBase(ThemeKind.Light, null, 0xFF808080));
+        Assert.Equal(Design.Palette.PageToneNeutralDark, ArtistBleed.FieldBase(ThemeKind.Dark, null, 0xFF808080));
+    }
+
+    [Fact]
+    public void The_field_prefers_the_graded_scheme_over_the_payload_accent()
+    {
+        // The scrim's ground is the page's own tone with CoverPageTonePlane.Resolve's precedence: the graded scheme first.
+        var scheme = new Scheme(0xFF191414, 0xFF1DB954, 0xFFFFFFFF, 0xFFB3B3B3, 0xFFFFFFFF);
+        foreach (var theme in new[] { ThemeKind.Light, ThemeKind.Dark })
+        {
+            var graded = ArtistBleed.FieldBase(theme, scheme, 0xFFC82828);
+            Assert.Equal(Design.Palette.PageTone(scheme, theme), graded);
+            Assert.NotEqual(ArtistBleed.FieldBase(theme, null, 0xFFC82828), graded);
+        }
+    }
 }
 
 public class ArtistBleedFrameTests
@@ -276,6 +321,17 @@ public class ArtistBleedFrameTests
 public class ArtistBleedHandOverTests
 {
     [Theory]
+    [InlineData(false, 0f, false)]
+    [InlineData(false, 0.5f, false)]
+    [InlineData(false, 1f, false)]
+    [InlineData(true, 0f, false)]
+    [InlineData(true, 0.5f, true)]
+    [InlineData(true, 0.998f, true)]
+    [InlineData(true, 1f, true)]
+    public void The_photo_layers_cross_fade_on_mount_only_while_another_artists_are_showing(bool replacesShown, float presence, bool crossFades)
+        => Assert.Equal(crossFades, ArtistBleed.CrossFadesOnMount(replacesShown, presence));
+
+    [Theory]
     [InlineData(0f)]
     [InlineData(0.5f)]
     [InlineData(0.998f)]
@@ -315,25 +371,25 @@ public class ArtistBleedHandOverTests
         => Assert.Equal(1f, ArtistBleed.CardLayerOpacity(false, presence));
 
     [Fact]
-    public void The_chrome_ink_mix_is_the_presence_times_the_hero_still_showing()
+    public void The_chrome_ink_mix_is_the_presence_times_the_hero_still_showing_when_the_polarities_differ()
     {
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f));
-        Assert.Equal(1f, ArtistBleed.ChromeInkMix(1f, 1f));
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f));
-        Assert.Equal(0.25f, ArtistBleed.ChromeInkMix(0.5f, 0.5f), 5);
-        Assert.Equal(1f, ArtistBleed.ChromeInkMix(3f, 2f));   // clamped both ways
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(-1f, 1f));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f, fieldDark: true, themeDark: false));
+        Assert.Equal(1f, ArtistBleed.ChromeInkMix(1f, 1f, fieldDark: true, themeDark: false));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f, fieldDark: true, themeDark: false));
+        Assert.Equal(0.25f, ArtistBleed.ChromeInkMix(0.5f, 0.5f, fieldDark: true, themeDark: false), 5);
+        Assert.Equal(1f, ArtistBleed.ChromeInkMix(3f, 2f, fieldDark: true, themeDark: false));   // clamped both ways
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(-1f, 1f, fieldDark: true, themeDark: false));
         float prev = 0f;
         for (int i = 0; i <= 10; i++)
         {
-            float v = ArtistBleed.ChromeInkMix(i / 10f, 0.8f);
+            float v = ArtistBleed.ChromeInkMix(i / 10f, 0.8f, fieldDark: true, themeDark: false);
             Assert.True(v >= prev - 1e-6f);
             prev = v;
         }
         prev = 0f;
         for (int i = 0; i <= 10; i++)
         {
-            float v = ArtistBleed.ChromeInkMix(0.8f, i / 10f);
+            float v = ArtistBleed.ChromeInkMix(0.8f, i / 10f, fieldDark: true, themeDark: false);
             Assert.True(v >= prev - 1e-6f);
             prev = v;
         }
@@ -387,12 +443,27 @@ public class ArtistBleedHandOverTests
     }
 
     [Fact]
-    public void The_chrome_ink_mix_is_zero_at_no_presence_and_at_no_hero()
+    public void The_chrome_ink_mix_is_zero_at_no_presence_and_at_no_hero_when_the_polarities_differ()
     {
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 0f));
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f));      // nothing drawn: the theme's ink
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f));      // the hero scrolled away: the theme's ink
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0.6f, 0f));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 0f, fieldDark: true, themeDark: false));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f, fieldDark: true, themeDark: false));      // nothing drawn: the theme's ink
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f, fieldDark: true, themeDark: false));      // the hero scrolled away: the theme's ink
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0.6f, 0f, fieldDark: true, themeDark: false));
+    }
+
+    [Fact]
+    public void In_light_the_chrome_ink_is_the_themes_at_full_presence()
+    {
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 1f, ArtistBleed.FieldDark(ThemeKind.Light), themeDark: false));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 1f, ArtistBleed.FieldDark(ThemeKind.Dark), themeDark: true));
+    }
+
+    [Fact]
+    public void The_hero_copy_is_theme_ink_in_light()
+    {
+        Assert.False(ArtistBleed.CopyOnMedia(true, ThemeKind.Light));
+        Assert.True(ArtistBleed.CopyOnMedia(true, ThemeKind.Dark));
+        Assert.False(ArtistBleed.CopyOnMedia(false, ThemeKind.Dark));
     }
 
     [Fact]
@@ -427,14 +498,6 @@ public class ArtistBleedHandOverTests
         Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeInkSecondary());   // mix 0: the rest ink is the theme's, bound
         var plain = Controls.TextAction("Share", null, ink: new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary, Tok.TextPrimary, Tok.TextSecondary));
         Assert.True(((TextEl)plain.Children![0]).Color.IsBound);
-    }
-
-    [Fact]
-    public void The_side_field_is_heavier_than_the_photo_scrim()
-    {
-        // It has to hold light ink on the plain theme ground, where the scrim only has to calm a photo.
-        Assert.True(ArtistBleed.SideFieldAlpha > ArtistBleed.ScrimTop);
-        Assert.InRange(ArtistBleed.SideFieldAlpha, 0f, 1f);
     }
 }
 
@@ -513,6 +576,19 @@ public class ArtistBleedMaterialProtocolTests
     }
 
     [Fact]
+    public void A_claim_that_holds_its_colour_still_carries_the_backdrop()
+    {
+        var slot = Slot();
+        var a = new object();
+        var bd = Backdrop("a");
+        // The claim lands before the palette has graded (the hold outcome): the backdrop is data of its own and rides it.
+        ShellMaterial.Publish(slot, a, isClaim: true, definite: false, tint: null, wash: null, bd);
+        Assert.Same(bd, slot.Peek().Backdrop);
+        Assert.Same(a, slot.Peek().Owner);
+        Assert.Null(slot.Peek().Tint);
+    }
+
+    [Fact]
     public void A_stray_publish_from_a_non_owner_writes_nothing()
     {
         var slot = Slot();
@@ -560,6 +636,53 @@ public class ArtistBleedNotchAndPoseTests
             // Equal to the hero's presented bottom whenever the photo is tall enough to reach it.
             if (photoH + ArtistBleed.ParallaxY(o) >= heroBottom)
                 Assert.True(MathF.Abs(heroBottom - screenBottom) <= 0.001f);
+        }
+    }
+
+    [Fact]
+    public void The_under_card_clip_ends_on_the_heros_presented_bottom()
+    {
+        foreach (double o in new[] { -40.0, 0.0, 60.0, 200.0, 380.0, 900.0 })
+        foreach (float heroH in new[] { 280f, 440f })
+        foreach (float floor in new[] { 0f, 56f })
+        foreach (float photoH in new[] { 300f, 440f, 520f })
+        {
+            float under = ArtistBleed.UnderCardClip(o, heroH, floor, photoH);
+            float heroBottom = ArtistBleed.HeroBottom(o, heroH, floor);
+            Assert.Equal(MathF.Max(0f, ArtistBleed.PhotoClip(o, heroH, floor, photoH) + ArtistBleed.ParallaxY(o)), under);
+            Assert.True(under <= heroBottom + 0.001f);
+            Assert.True(under >= 0f);
+            // Equal to the hero's presented bottom whenever the photo is tall enough to reach it.
+            if (photoH + ArtistBleed.ParallaxY(o) >= heroBottom)
+                Assert.True(MathF.Abs(heroBottom - under) <= 0.001f);
+        }
+    }
+
+    [Fact]
+    public void The_two_photo_parts_tile_one_feathered_field_so_the_alpha_is_continuous_at_the_seam()
+    {
+        foreach (double o in new[] { -40.0, 0.0, 60.0, 200.0, 317.0, 344.0, 380.0, 900.0 })
+        foreach (float heroH in new[] { 280f, 440f })
+        foreach (float floor in new[] { 0f, 56f })
+        foreach (float photoH in new[] { 300f, 440f, 520f })
+        foreach (float cardTop in new[] { 0f, 48f })
+        {
+            float seam = cardTop;
+            float field = ArtistBleed.FeatherBoxHeight(cardTop, o, heroH, floor, photoH);
+            float underHeight = MathF.Max(0f, field - seam);
+            // The chrome part (0..seam) and the under-card part (seam..field) tile the field's rows, and the field ends on the riser line.
+            Assert.Equal(field, seam + underHeight, 3);
+            Assert.True(field >= cardTop);
+            Assert.True(field <= cardTop + ArtistBleed.HeroBottom(o, heroH, floor) + 0.001f);
+            // The feather is the field's alone, sampled from the window top in both parts, so just above and just below the seam it is one value.
+            float band = ArtistHeroLayout.PhotoFadeBandFor(photoH);
+            Assert.Equal(FeatherAlpha(field, band, seam - 0.01f), FeatherAlpha(field, band, seam + 0.01f), 2);
+        }
+
+        static float FeatherAlpha(float fieldHeight, float band, float y)
+        {
+            float t = Math.Clamp((fieldHeight - y) / band, 0f, 1f);
+            return t * t * (3f - 2f * t);
         }
     }
 
@@ -616,5 +739,87 @@ public class ArtistBleedNotchAndPoseTests
         Assert.False(ArtistBleed.ContinuesTween(to, to with { X = 240f }));   // a pane/resize layout
         Assert.False(ArtistBleed.ContinuesTween(to, to with { Y = 0f }));
         Assert.False(ArtistBleed.ContinuesTween(to, to with { W = 800f }));
+    }
+}
+
+public class ArtistBleedEntranceTests
+{
+    [Fact]
+    public void The_entrance_is_one_clock()
+    {
+        Assert.Equal(Expressive.Fast, ArtistBleed.EntranceMs);
+        Assert.Equal(SkelReveal.FadeOnly, ArtistBleed.RevealFor(true));
+        Assert.Equal(SkelReveal.Soft, ArtistBleed.RevealFor(false));
+        Assert.Equal(0f, ArtistBleed.EntranceAt(0f));
+        Assert.Equal(1f, ArtistBleed.EntranceAt(ArtistBleed.EntranceMs));
+        Assert.Equal(Easings.Ease(Easing.SmoothOut, .4f), ArtistBleed.EntranceAt(ArtistBleed.EntranceMs * .4f), 5);
+        float prev = 0f;
+        for (float e = 0f; e <= ArtistBleed.EntranceMs + 50f; e += 10f)
+        {
+            float v = ArtistBleed.EntranceAt(e);
+            Assert.True(v >= prev - 1e-6f, $"not monotone at {e} ms");
+            prev = v;
+        }
+    }
+
+    [Fact]
+    public void The_entrance_starts_on_the_photos_frame_or_now()
+    {
+        Assert.Equal(1000L, ArtistBleed.EntranceStart(1100, 1000));
+        Assert.Equal(1000L + (long)ArtistBleed.EntranceMs, ArtistBleed.EntranceStart(1000L + (long)ArtistBleed.EntranceMs, 1000));   // the entrance is over: now
+        Assert.Equal(5000L, ArtistBleed.EntranceStart(5000, 1000));
+        Assert.Equal(1000L, ArtistBleed.EntranceStart(1000, 0));
+        Assert.Equal(900L, ArtistBleed.EntranceStart(900, 1000));
+    }
+
+    [Fact]
+    public void The_settle_is_two_legs_never_a_step()
+    {
+        for (float e = 0f; e <= ArtistBleed.EntranceMs; e += 5f) Assert.Equal(0f, ArtistBleed.UnderlayAt(e));
+        for (float e = 0f; e <= ArtistBleed.EntranceMs + ArtistBleed.LegMs; e += 5f) Assert.Equal(0f, ArtistBleed.HandoverAt(e));
+        Assert.Equal(1f, ArtistBleed.UnderlayAt(ArtistBleed.EntranceMs + ArtistBleed.LegMs));
+        Assert.Equal(1f, ArtistBleed.HandoverAt(ArtistBleed.SettleMs));
+        float u = 0f, h = 0f;
+        for (float e = 1f; e <= ArtistBleed.SettleMs; e += 1f)
+        {
+            float nu = ArtistBleed.UnderlayAt(e), nh = ArtistBleed.HandoverAt(e);
+            Assert.True(nu >= u && nh >= h, $"not monotone at {e} ms");
+            Assert.True(nu - u < 0.02f && nh - h < 0.02f, $"a step at {e} ms");
+            u = nu; h = nh;
+        }
+        // The card's layers hold through leg 1, while the shell's under-card layers come in beneath them.
+        Assert.Equal(1f, ArtistBleed.CardLayerOpacity(true, 1f, ArtistBleed.HandoverAt(ArtistBleed.EntranceMs + ArtistBleed.LegMs * .5f)));
+    }
+
+    [Fact]
+    public void A_stamped_page_keeps_publishing_while_its_bitmap_leaves_ready()
+    {
+        // The stamp (the once-per-artist entrance frame), not the live bitmap state, gates the backdrop: a url or rendition swap or a
+        // scale change that leaves Ready must not tear a bleed that is already up down.
+        Assert.True(ArtistBleed.PublishesBackdrop(bleed: true, stamped: true));
+        Assert.False(ArtistBleed.PublishesBackdrop(bleed: true, stamped: false));
+        Assert.False(ArtistBleed.PublishesBackdrop(bleed: false, stamped: true));
+        Assert.False(ArtistBleed.PublishesBackdrop(bleed: false, stamped: false));
+    }
+
+    [Theory]
+    [InlineData(1f)]
+    [InlineData(.6f)]
+    [InlineData(.2f)]
+    [InlineData(0f)]
+    public void The_strip_returns_with_the_fade_out(float presence)
+    {
+        Assert.Equal(presence, ArtistBleed.ExitUnderlay(1f, presence));
+        Assert.Equal(0f, ArtistBleed.ExitUnderlay(0f, .7f));
+        foreach (float under in new[] { 0f, .3f, .8f, 1f }) Assert.True(ArtistBleed.ExitUnderlay(under, presence) <= presence);
+    }
+
+    [Fact]
+    public void Under_the_bleed_the_card_photo_fades_only_when_its_bitmap_lands_late()
+    {
+        Assert.False(ArtistBleed.CardPhotoFadesItself(true, true));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(true, false));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(false, true));
+        Assert.True(ArtistBleed.CardPhotoFadesItself(false, false));
     }
 }

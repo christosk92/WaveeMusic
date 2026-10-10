@@ -1110,12 +1110,21 @@ public static partial class Shell
         public static readonly Signal<int> CardSettle = new(0);
 
         /// <summary>EXPERIMENTAL (artist bleed): how present the page-published backdrop is, 0..1. Tweened by
-        /// <c>BleedPresenter</c> over <c>Design.Motion.Standard</c> (0 ms under reduced motion); every bleed term in the card
-        /// ground and the stroke is multiplied by it, so navigating to or from an artist cross-fades instead of snapping.</summary>
+        /// <c>BleedPresenter</c>: the entrance runs over <c>ArtistBleed.EntranceMs</c> with its SmoothOut ease from the backdrop's
+        /// <c>EntranceAtMs</c> (the card photo's own clock; 0 ms under reduced motion), the fade-out over <c>Design.Motion.Standard</c>;
+        /// it drives the shell's chrome photo part, the scrim and the chrome ink, so navigating to or from an artist cross-fades
+        /// instead of snapping. The card ground, the stroke, the corner and the shell's under-card photo ride <see cref="BleedUnderlay"/>
+        /// (leg 1), which follows the presence down on the fade-out.</summary>
         public static readonly FloatSignal BleedPresence = new(0f);
 
-        /// <summary>EXPERIMENTAL (artist bleed): the card-to-shell hand-over, 0..1. It starts only once <see cref="BleedPresence"/> has
-        /// reached 1 and eases over <c>Design.Motion.Standard</c>; the page's own photo and veil fade out by it
+        /// <summary>EXPERIMENTAL (artist bleed): LEG 1 of the settle, 0..1 (<c>ArtistBleed.UnderlayAt</c>): the shell's under-card layers
+        /// (the strip cut, the fade box, the corner and the under-card photo) coming in under the card's still-opaque photo, so no
+        /// layer steps. On the fade-out it is <c>min(its value at the exit's start, presence)</c>, so the strip returns with the fade
+        /// instead of at once.</summary>
+        public static readonly FloatSignal BleedUnderlay = new(0f);
+
+        /// <summary>EXPERIMENTAL (artist bleed): the card-to-shell hand-over, 0..1, LEG 2 of the settle. It starts only once
+        /// <see cref="BleedUnderlay"/> has reached 1 and eases over <c>ArtistBleed.LegMs</c>; the page's own photo and veil fade out by it
         /// (<c>ArtistBleed.CardLayerOpacity</c>) over the shell's identical ones. Reset to 0 whenever a backdrop is (re)published.</summary>
         public static readonly FloatSignal BleedHandover = new(0f);
 
@@ -1125,16 +1134,19 @@ public static partial class Shell
 
         /// <summary>EXPERIMENTAL (artist bleed): THE ONE SOURCE OF TRUTH for how far the chrome's ink has moved from the theme's
         /// toward the on-media ink, 0..1 (<c>ArtistBleed.ChromeInkMix</c>): <see cref="BleedPresence"/> times how much of the hero is
-        /// still showing. 0 with no backdrop, so every chrome colour is today's. Reads signals, so call it inside a paint-rate
+        /// still showing, while the field's polarity differs from the theme's. The field takes the theme's polarity
+        /// (<see cref="ArtistBleed.FieldDark"/>), so the mix is 0 and the chrome keeps the theme's ink over the bleed. 0 with no
+        /// backdrop, so every chrome colour is today's. Reads signals, so call it inside a paint-rate
         /// <c>Prop.Of</c> thunk (the <see cref="ChromeInkPrimary"/> family), never in a render.</summary>
         public static float ChromeInkMix()
         {
             if (BleedBackdrop.Value is not { } b) return 0f;
-            return ArtistBleed.ChromeInkMix(BleedPresence.Value, ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance));
+            return ArtistBleed.ChromeInkMix(BleedPresence.Value, ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance),
+                ArtistBleed.FieldDark(Tok.Theme), Tok.Theme == ThemeKind.Dark);
         }
 
         /// <summary>The chrome's primary / secondary / tertiary ink at <see cref="ChromeInkMix"/>: the theme's text token cross-fading
-        /// to the on-media ink. Cached thunks, so a bind (<c>Color = Prop.Of(Ui.ChromeInkPrimary)</c>) allocates nothing and two
+        /// to the on-media ink (a no-op while the mix is 0, which is always while the field takes the theme's polarity). Cached thunks, so a bind (<c>Color = Prop.Of(Ui.ChromeInkPrimary)</c>) allocates nothing and two
         /// renders of the same site compare equal.</summary>
         public static readonly Func<ColorF> ChromeInkPrimary = static () => ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, ChromeInkMix());
         /// <inheritdoc cref="ChromeInkPrimary"/>
@@ -1142,7 +1154,8 @@ public static partial class Shell
         /// <inheritdoc cref="ChromeInkPrimary"/>
         public static readonly Func<ColorF> ChromeInkTertiary = static () => ArtistBleed.Ink(Tok.TextTertiary, Design.OnMedia.InkTertiary, ChromeInkMix());
         /// <summary>The accent word's ink (row 2's primary verb, a latched toggle): the theme's accent text cross-fading to the dark-theme
-        /// accent shade at <see cref="ChromeInkMix"/>, so it stays legible over the dark bleed in the light theme.</summary>
+        /// accent shade at <see cref="ChromeInkMix"/>, so it would stay legible over a field of the opposite polarity (the mix is 0 while the
+        /// field takes the theme's, so the accent word keeps the theme's accent text).</summary>
         public static readonly Func<ColorF> ChromeInkAccent = static () => ArtistBleed.Ink(Tok.AccentTextPrimary, Design.OnMedia.AccentInk, ChromeInkMix());
 
         /// <summary>A backdrop is published (or still fading out). A navigation-rate read (it changes with the publication, never per

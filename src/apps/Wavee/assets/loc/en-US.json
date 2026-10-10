@@ -108,6 +108,7 @@
     "preSave": "Pre-save",
     "preSaved": "Pre-saved",
     "songCount": "{count, plural, one {# song} other {# songs}}",
+    "songCountOf": "{shown} of {count, plural, one {# song} other {# songs}}",
     "selectedCount": "{count, plural, one {# selected} other {# selected}}",
     "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
     "today": "Today",

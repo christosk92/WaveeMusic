@@ -172,6 +172,9 @@ public readonly partial struct Artist
         // ── readiness ──
         bool _ready, _failed, _bodyReady, _heroGateOpened;
         int _heroDecodeW, _heroDecodeH;
+        /// <summary>The frame (<c>Design.FrameTime.NowMs</c>) on which this artist's photo started its entrance, stamped once: the reveal
+        /// frame when the bitmap was resident, else the frame it landed on. Rides the backdrop so the shell's presence starts there.</summary>
+        long _entranceAtMs;
         Element? _body;
         IOverlayService? _overlay;
 
@@ -298,6 +301,7 @@ public readonly partial struct Artist
                 // photo just because its own art has not resolved yet.
                 _heroUrl = null;
                 _heroGateOpened = false;
+                _entranceAtMs = 0;
                 _heroDecodeW = _heroDecodeH = 0;
                 // DemandRows' gates (ch 08 render-cost fix): forced back to default so the first pass for the NEW
                 // artist always walks every relation once, even in the (astronomically unlikely) case a recycled slot
@@ -397,11 +401,14 @@ public readonly partial struct Artist
             // a genuinely ungraded cover falls through to TintOwnership's hold.
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
 
-            // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
-            // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
+            // ONE visual swap: overview + measured width + chart settled (the body does NOT wait for the bitmap: waiting for it and then
+            // fading the whole tree from 0 hid the photo again, stillwrong.mp4). The reveal is Soft, or FadeOnly under the bleed (RevealFor).
             bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a));
             _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
             if (_bodyReady) _heroGateOpened = true;
+            // The photo's entrance starts on this frame (the page's reveal, or the late bitmap's ready edge): the shell's presence is stamped
+            // with it, once per artist, and only for a real hero (heroImageReady is true while there is no url).
+            if (_bodyReady && heroImageReady && heroBind.Length > 0 && _entranceAtMs == 0) _entranceAtMs = Design.FrameTime.NowMs;
 
             // EXPERIMENTAL (artist bleed; Artist.Bleed.cs): the photo runs from the window top behind the chrome. The ONE read of
             // `ArtistBleed.Enabled`. Only once the body is up, so the skeleton never draws over a photo it does not show. The
@@ -410,14 +417,17 @@ public readonly partial struct Artist
             // decision reads the LIVE nav style, so a switch re-renders the page and the card's layers fade with the shell's).
             bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), _bodyReady ? heroUrl : null,
                 zune: Sidebar.NavStyle.Value == ShellNavStyle.Zune, stacked: _metrics.Stacked);
+            // The backdrop is published only once the hero bitmap has been resident (the stamp; the page's own UseImage is the card's and the
+            // shell's cache entry), so until then drawn() is false, the card carries everything and the shell draws nothing. It is gated on the
+            // STAMP, not the live state: a later url/rendition swap or scale change leaves Ready for a moment and must not tear the bleed down.
             ShellBackdrop? backdrop = null;
-            if (bleed)
+            if (ArtistBleed.PublishesBackdrop(bleed, _entranceAtMs != 0))
             {
                 float bleedFloor = Detail.BandLayout.StuckHeight(_floorInRow2.Value);
                 float bleedPhotoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
                 backdrop = new ShellBackdrop(heroUrl!, bleedPhotoH, bleedPhotoH, bleedFloor, _scroll.Offset,
                     ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text,
-                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent);
+                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent, EntranceAtMs: _entranceAtMs);
             }
             Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
                 owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
@@ -440,15 +450,21 @@ public readonly partial struct Artist
             // Not None, which means "the content animates its own entrance" - and this content has none, so the swap
             // landed as a hard cut with nothing moving at all (shitttt.mp4).
             //
+            // A bleeding Zune artist page reveals opacity-only instead (ArtistBleed.RevealFor): the photo is also drawn by the shell
+            // above the card's top, which has no rise and no blur, so the region fades on the shell photo's clock
+            // (ArtistBleed.EntranceMs). It publishes the backdrop only once the hero bitmap is resident, and both photos start from one
+            // stamp (EntranceAtMs); the shell's first paint trails it by about two frames (the publish and the presenter are passive
+            // effects) and catches up on the same curve.
+            //
             // The reveal is safe to animate now in a way it was NOT before, which is the whole point of the gate
-            // above: `BodyReady` has already waited for the measured width, the DECODED hero bitmap and a settled
-            // chart, so the tree that rises is complete. What broke earlier (stillwrong.mp4) was revealing at
+            // above: `BodyReady` has already waited for the overview, the measured width and a settled chart (not the bitmap, which
+            // HeroArt fades in itself), so the tree that rises is complete. What broke earlier (stillwrong.mp4) was revealing at
             // overview-readiness and animating a tree whose photo had not landed - the header appeared, then vanished
             // behind its own second fade. Group null, not routeKey: the chart's inner region (Artist.UI.Chart.cs) must
             // NOT join this one, or top tracks plays a second wave after the page has already revealed.
             Element region = new SkelRegionEl(
                 Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
+                OnFailed: _failedPanelFn, Reveal: ArtistBleed.RevealFor(bleed), Style: SkeletonStyle.Default,
                 Group: null, SmoothResize: false);
 
             Element scroll = ScrollView(new BoxEl
@@ -578,7 +594,8 @@ public readonly partial struct Artist
             }
             Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems, inRow2);
             Element hero = HeroBanner(HeroText.For(a), uri, heroUrl, paletteUrl, width, in m, accent,
-                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor, bleedDrawn: _bleedDrawn);
+                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor, bleedDrawn: _bleedDrawn,
+                decodeW: _heroDecodeW, decodeH: _heroDecodeH);
 
             // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`_compact`). The
             // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two
@@ -612,20 +629,43 @@ public readonly partial struct Artist
                 ],
             }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2));
 
+            // The wash never yields: it stays at full strength before and after the hand-over, so the hero-tinted tone carries the
+            // photo's fade into the page in both themes and every surface level. While the bleed applies it starts at the photo's
+            // feather (ArtistBleed.WashTopInset) and fades in over that band, so it tints the feather and the page and never the
+            // opaque photo (the card's or the shell's). ONE tree shape in both arms (a nav-style switch re-pushes props and never
+            // remounts the wash): only Margin, ClipToBounds and EdgeFade differ, and the inner negative margin keeps the
+            // gradient's stops where they were.
+            bool bleeding = _bleedDrawn is not null;
+            float washPhotoH = ArtistHeroLayout.PhotoHeightFor(in m);
+            float washInset = bleeding ? ArtistBleed.WashTopInset(washPhotoH) : 0f;
+
             return new BoxEl
             {
                 ZStack = true,
                 Children =
                 [
-                    // H2: while the shell draws the photo, the wash yields with the card's photo (same hand-over) instead of starting
-                    // abruptly at the card top over the shell's photo. ALWAYS bound (a thunk that reads the field live and returns 1
-                    // when not bleeding): a bind is only created at mount, and this node stays mounted across a nav-style switch.
                     new BoxEl
                     {
-                        Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash],
-                        Opacity = Prop.Of(() => _bleedDrawn is { } drawn
-                            ? ArtistBleed.CardLayerOpacity(drawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)
-                            : 1f),
+                        Key = "artist-wash-clip", Direction = 1, HitTestVisible = false,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = "artist-wash-inset", Direction = 1, HitTestVisible = false,
+                                ClipToBounds = bleeding,
+                                Margin = new Edges4(0f, washInset, 0f, 0f),
+                                EdgeFade = bleeding ? new EdgeFadeSpec(EdgeMask.Top, ArtistHeroLayout.PhotoFadeBandFor(washPhotoH)) : null,
+                                Children =
+                                [
+                                    new BoxEl
+                                    {
+                                        Direction = 1, HitTestVisible = false,
+                                        Margin = new Edges4(0f, -washInset, 0f, 0f),
+                                        Children = [wash],
+                                    },
+                                ],
+                            },
+                        ],
                     }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2)),
                     new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
                 ],

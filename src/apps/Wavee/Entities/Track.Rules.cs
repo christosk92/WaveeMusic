@@ -864,6 +864,9 @@ public readonly partial struct Track
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
         public const float Gap = 2f;
+        /// <summary>Where the list facts start (D-7): a labelled command's 9-DIP glyph lead, less the one <see cref="Gap"/> the
+        /// empty Tune group still takes in the row. The facts slot is outside <see cref="Resolve"/>'s budget (it only takes free width).</summary>
+        public const float FactsInset = 9f - Gap;
         public const float SearchGap = 8f;
         public const float PromotionHysteresis = 16f;
         /// <summary>A vertical group divider between two clusters of a bar (<see cref="LikedBarLayout"/>): a 1-DIP line with 8 DIP

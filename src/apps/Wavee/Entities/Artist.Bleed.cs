@@ -12,12 +12,15 @@
 // the hero fade out and return as the hero scrolls away; the solid fill below the hero stays, its top edge riding the hero's
 // bottom through a paint-only translation. The card rect never changes; per scroll only the shell photo clip's height (one leaf) is re-solved, everything else is paint.
 //
-// ONE FIELD, ONE FRAME. The shell draws the photo, a DARK top scrim and the hero's horizontal veil as one field; the card's own
+// ONE FIELD, ONE FRAME. The shell draws the photo, a top scrim (over the field base) and the hero's horizontal veil as one field; the card's own
 // photo and veil are drawn at exactly the same frame, crop and colour (<see cref="FrameFor"/>), so the card layers yield to the
-// shell's with no seam, no content shift and no dip. The field is dark in both themes (<see cref="FieldBase"/>).
+// shell's with no seam, no content shift and no dip. The field takes the theme's polarity and the page's own hero-tinted tone
+// (<see cref="FieldBase"/>): in the light theme a light veil and scrim under the theme's dark ink, as production's hero; in the dark theme
+// a dark one that fades into the hero tone, never black.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
+using FluentGpu.Hooks;
 
 namespace Wavee;
 
@@ -27,22 +30,32 @@ public static class ArtistBleed
     /// experiment and leaves no behavioural trace.</summary>
     public const bool Enabled = true;
 
-    /// <summary>The bleed field's base colour. The field (photo, scrim, veil) is DARK in both themes, so the chrome and the hero
-    /// copy over it read as light-on-dark everywhere.</summary>
-    public static ColorF FieldBase => Tok.MediaStage;
+    /// <summary>The field's polarity: dark in the dark theme, light in the light one. The field follows the theme, so the chrome's
+    /// ink stays the theme's (<see cref="ChromeInkMix"/> is 0) and the hero copy is light-on-dark only over the dark theme's field
+    /// (<see cref="CopyOnMedia"/>).</summary>
+    public static bool FieldDark(ThemeKind theme) => theme == ThemeKind.Dark;
 
-    /// <summary>The scrim's strongest alpha, at the window top (over <see cref="FieldBase"/>), the same in both themes.</summary>
-    public const float ScrimTop = 0.55f;
+    /// <summary>The bleed field's base colour: the page's OWN tone, with the precedence of <c>CoverPageTonePlane.Resolve</c> (the
+    /// graded scheme's tone, else the payload accent's hue, else the theme's neutral), so the field fades into exactly the page's
+    /// ground. Light in the light theme, dark in the dark one, tinted by the hero either way. Never black and never
+    /// a fixed stage colour.</summary>
+    public static ColorF FieldBase(ThemeKind theme, Scheme? scheme, uint payloadAccent)
+        => Design.Palette.PageTone(scheme, theme)
+           ?? (payloadAccent != 0 ? Design.Palette.PageToneFromHue(Design.Palette.ToColor(payloadAccent), theme) : null)
+           ?? (theme == ThemeKind.Dark ? Design.Palette.PageToneNeutralDark : Design.Palette.PageToneNeutralLight);
 
-    /// <summary>The scrim's eased falloff: (offset down the chrome's height, alpha over <see cref="FieldBase"/>). Four stops, the
-    /// recorder's ceiling: a straight two-stop ramp read as a hard dark lid with a visible knee where it ended, so the alpha
-    /// eases out (0.55, 0.38 at 40%, 0.12 at 80%, 0) and the scrim fades into the photo instead of ending on it.</summary>
-    public static readonly (float Offset, float Alpha)[] ScrimStops = [(0f, ScrimTop), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)];
+    /// <summary>The light theme's scrim: (offset down the chrome's height, alpha over <see cref="FieldBase"/>). Four stops, the
+    /// recorder's ceiling: a straight two-stop ramp read as a hard lid with a visible knee where it ended, so the alpha eases out
+    /// (0.75, 0.55 at 40%, 0.2 at 80%, 0) and the scrim fades into the photo instead of ending on it. It is the stronger of the two
+    /// because a light veil has to hold the theme's dark ink over a photo.</summary>
+    public static readonly (float Offset, float Alpha)[] ScrimStopsLight = [(0f, 0.75f), (0.4f, 0.55f), (0.8f, 0.2f), (1f, 0f)];
 
-    /// <summary>The side field's alpha: the flat dark ground under the chrome columns the photo does not reach (above the
-    /// Classic/Library pane and above the rail). Heavier than <see cref="ScrimTop"/>, which only has to calm a photo: here the dark
-    /// has to hold the chrome's light ink on the plain theme ground, a white one in the light theme, down to the hold line.</summary>
-    public const float SideFieldAlpha = 0.86f;
+    /// <summary>The dark theme's scrim, the same eased falloff over the dark <see cref="FieldBase"/> (0.55, 0.38 at 40%, 0.12 at 80%,
+    /// 0): the theme's light ink already reads over a photo, so it only has to calm it.</summary>
+    public static readonly (float Offset, float Alpha)[] ScrimStopsDark = [(0f, 0.55f), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)];
+
+    /// <summary>The scrim's stops for the theme.</summary>
+    public static (float Offset, float Alpha)[] ScrimStopsFor(ThemeKind theme) => theme == ThemeKind.Dark ? ScrimStopsDark : ScrimStopsLight;
 
     /// <summary>The bleed applies: the experiment is on, tinted surfaces are on (the photo is part of the tinted material), the
     /// artist has a header photo (an avatar-only artist keeps today's hero), the nav style is Zune and the tier is not stacked.
@@ -53,18 +66,13 @@ public static class ArtistBleed
     public static bool Applies(bool enabled, WashLevel surfaces, string? headerUrl, bool zune, bool stacked)
         => enabled && zune && !stacked && surfaces != WashLevel.Off && headerUrl is { Length: > 0 };
 
-    /// <summary>The right edge of the shell's photo, scrim and side field, in window coordinates. Under Zune a FLOATING rail (open
+    /// <summary>The right edge of the shell's photo, in window coordinates. Under Zune a FLOATING rail (open
     /// and not fitting) overlays the page: its panel's left edge is <c>viewportW - railW - railMargin</c> (the overlay is
     /// right-aligned at its final width), and the photo stops there instead of running under the panel (below the card's top: the
-    /// chrome above the panel keeps the photo through <see cref="BandExtensionWidth"/>). Every other case is the
+    /// chrome part above the card top keeps the card's full span, so the chrome above the panel keeps the photo). Every other case is the
     /// card's own right edge (<paramref name="cardRight"/>). Never past the card's edge, never negative.</summary>
     public static float PhotoRight(float cardRight, bool zune, bool railFloats, float viewportW, float railW, float railMargin)
         => zune && railFloats ? MathF.Min(cardRight, MathF.Max(0f, viewportW - railW - railMargin)) : cardRight;
-
-    /// <summary>The width of the photo's BAND EXTENSION: a floating panel starts under the Zune band, so the chrome above it (the
-    /// title bar and the band, over the rail column) keeps the photo between <paramref name="photoRight"/> and the card's edge.
-    /// Zero whenever the photo already reaches the card's edge.</summary>
-    public static float BandExtensionWidth(float cardRight, float photoRight) => MathF.Max(0f, cardRight - photoRight);
 
     /// <summary>How much of the photo (and how little of the card's top fill) shows at <paramref name="offset"/>: 1 until the
     /// hero's own expanded fade starts (<see cref="ArtistHeroLayout.ExpandedFadeStart"/>, the same number the hero's Fade
@@ -96,9 +104,25 @@ public static class ArtistBleed
     public static float PhotoClip(double offset, float heroH, float floor, float photoH)
         => MathF.Min(MathF.Max(0f, photoH), HeroBottom(offset, heroH, floor) - ParallaxY(offset));
 
+    /// <summary>The under-card part's on-screen height from the card top: it ends on the hero's presented bottom (the clip, in the
+    /// box's own coordinates, plus the parallax translation) and never past the photo's end.</summary>
+    public static float UnderCardClip(double offset, float heroH, float floor, float photoH)
+        => MathF.Max(0f, PhotoClip(offset, heroH, floor, photoH) + ParallaxY(offset));
+
+    /// <summary>The height, from the window top, of the one box that feathers the shell photo's bottom: the card's presented top plus the
+    /// under-card part's height (<see cref="UnderCardClip"/>). Both photo parts sample this ONE feathered field (the chrome part from the
+    /// window top, the under-card part shifted up by the split line), so the photo's alpha is continuous across the card's top at every
+    /// offset, even once the hero's bottom is nearer than the feather band.</summary>
+    public static float FeatherBoxHeight(float cardTop, double offset, float heroH, float floor, float photoH)
+        => MathF.Max(0f, cardTop) + UnderCardClip(offset, heroH, floor, photoH);
+
     /// <summary>The card's top-left radius while the photo bleeds through: it fades with the hero region (<paramref name="cut"/> is
     /// <c>Shell.BleedCut</c>, 0..1), so the photo meets the window edge with no notch and the radius returns as the hero scrolls away.</summary>
     public static float CornerFor(float radius, float cut) => radius * (1f - Math.Clamp(cut, 0f, 1f));
+
+    /// <summary>Where the hero tone wash starts, from the top of the photo's box: while bleeding it starts where the photo's bottom
+    /// feather starts, so it tints the feather and the page and never the opaque photo.</summary>
+    public static float WashTopInset(float photoH) => MathF.Max(0f, photoH - ArtistHeroLayout.PhotoFadeBandFor(photoH));
 
     /// <summary>The line snapped to a device pixel, so the strip's and the riser's anti-aliased edges meet without a hairline.</summary>
     public static float SnapToPixel(float v, float scale) => scale > 0f ? MathF.Round(v * scale) / scale : v;
@@ -112,17 +136,11 @@ public static class ArtistBleed
     /// band behind the chrome.</summary>
     public static float ParallaxY(double offset) => -(float)Math.Max(0.0, offset) * (1f - ArtistHeroLayout.PhotoParallaxFraction);
 
-    /// <summary>The scrim's alpha at the window top; it falls to 0 by the card's top edge.</summary>
-    public static float ScrimTopAlpha() => ScrimStops[0].Alpha;
+    /// <summary>The scrim's alpha at the window top for the theme; it falls to 0 by the card's top edge.</summary>
+    public static float ScrimTopAlpha(ThemeKind theme) => ScrimStopsFor(theme)[0].Alpha;
 
     /// <summary>The scrim's height: the chrome's whole extent above the card (the title bar, plus the Zune band when present).</summary>
     public static float ScrimHeight(float chromeBottom) => MathF.Max(0f, chromeBottom);
-
-    /// <summary>The right side field's height: the card's top, but never below the title bar's bottom. Under Zune the card's top
-    /// is the title bar plus the band, and the inline right panel runs from the title bar's bottom, so the field must not reach
-    /// into the panel's column below the title bar (it would show through the rail gap and behind the panel's rounded corner).
-    /// Outside Zune the card's top is the title bar's bottom and this is <see cref="ScrimHeight"/>.</summary>
-    public static float SideFieldHeight(float cardTop, float titleBarBottom) => ScrimHeight(MathF.Min(cardTop, titleBarBottom));
 
     // ── THE SHARED PHOTO FRAME ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -130,7 +148,8 @@ public static class ArtistBleed
     public const float PhotoFocusY = 0f;
 
     /// <summary>The photo's scale, shared by both renderers. While the bleed applies the card's frame scale, lift and entrance
-    /// zoom do not apply (the shell's node cannot share a component's keyframes); the photo's entrance is its opacity fade.</summary>
+    /// zoom do not apply (the shell's node cannot share a component's keyframes); the photo's entrance is the page's reveal (a
+    /// resident bitmap) or <see cref="EntranceMs"/> from a late bitmap's ready edge, on the shell photo's clock.</summary>
     public const float PhotoScale = 1f;
 
     /// <summary>The photo's box in CARD-LOCAL coordinates (the card's presented top is 0): <paramref name="Top"/> is
@@ -145,20 +164,91 @@ public static class ArtistBleed
     public static PhotoFrame FrameFor(float cardW, float poseY, float rectY, float photoH)
         => new(-poseY, MathF.Max(0f, cardW), MathF.Max(rectY, poseY) + MathF.Max(0f, photoH));
 
+    // ── THE ENTRANCE AND THE SETTLE ──────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The ONE entrance clock: <c>SkelReveal.FadeOnly</c>'s (opacity 0 to 1 over <see cref="Expressive.Fast"/> with SmoothOut, in
+    /// the engine's <c>SkeletonReveal.Play</c>). The shell's presence and a late card photo run on exactly this duration and ease, so
+    /// the photo above the card's top and the photo below it are never on two clocks.</summary>
+    public const float EntranceMs = Expressive.Fast;
+
+    /// <summary>The entrance's ease (FadeOnly's).</summary>
+    public const Easing EntranceEase = Easing.SmoothOut;
+
+    /// <summary>One leg of the settle: the underlay leg and the hand-over leg each run this long.</summary>
+    public const float LegMs = Design.Motion.Standard;
+
+    /// <summary>The whole entrance-and-settle: the entrance, then the underlay leg, then the hand-over leg.</summary>
+    public const float SettleMs = EntranceMs + 2f * LegMs;
+
+    /// <summary>The presence from which the shell's layers count as fully there (<see cref="CardLayerOpacity"/>).</summary>
+    public const float FullPresence = 0.999f;
+
+    /// <summary>The page's reveal: a bleeding artist page reveals opacity-only (the engine's fixed Fast/SmoothOut), because the Soft
+    /// reveal's rise and blur sit on the region's content root and cannot be lifted off the hero without an engine change, and the shell
+    /// photo above the card has neither. Every other artist page keeps Soft.</summary>
+    public static SkelReveal RevealFor(bool bleed) => bleed ? SkelReveal.FadeOnly : SkelReveal.Soft;
+
+    /// <summary>Whether the page publishes its backdrop. It gates on the once-per-artist stamp (<see cref="ShellBackdrop.EntranceAtMs"/> was
+    /// set, which needs a real hero and its resident bitmap), not on the bitmap's live state: a later url or rendition swap, or a scale
+    /// change, leaves Ready for a moment and must not tear a bleed that is already up down and rebuild it.</summary>
+    public static bool PublishesBackdrop(bool bleed, bool stamped) => bleed && stamped;
+
+    /// <summary>The shell presence's entrance at <paramref name="e"/> ms after its start: <see cref="EntranceEase"/> over
+    /// <see cref="EntranceMs"/>, the card photo's own clock.</summary>
+    public static float EntranceAt(float e)
+        => e <= 0f ? 0f : e >= EntranceMs ? 1f : Easings.Ease(EntranceEase, e / EntranceMs);
+
+    /// <summary>The frame the shell's entrance starts on: the frame the page's photo started (<paramref name="stampMs"/>, the backdrop's
+    /// <see cref="ShellBackdrop.EntranceAtMs"/>) while that entrance is still running, since the publish lands an effect after the
+    /// reveal; otherwise now (no stamp, a stale one, or a clock that reads earlier than the stamp).</summary>
+    public static long EntranceStart(long nowMs, long stampMs)
+        => stampMs > 0 && nowMs >= stampMs && nowMs - stampMs < EntranceMs ? stampMs : nowMs;
+
+    /// <summary>LEG 1 of the settle at <paramref name="e"/> ms: the underlay (the strip cut, the fade box, the corner and the under-card
+    /// shell photo) eases 0 to 1 over <see cref="LegMs"/> once the entrance is done, while the card's own layers are still opaque.</summary>
+    public static float UnderlayAt(float e)
+        => Easings.Ease(Easing.FluentStandard, Math.Clamp((e - EntranceMs) / LegMs, 0f, 1f));
+
+    /// <summary>LEG 2 of the settle at <paramref name="e"/> ms: the hand-over, the card's layers easing out, over <see cref="LegMs"/> after
+    /// leg 1.</summary>
+    public static float HandoverAt(float e)
+        => Easings.Ease(Easing.FluentStandard, Math.Clamp((e - EntranceMs - LegMs) / LegMs, 0f, 1f));
+
+    /// <summary>The underlay during the fade-out: never above the presence, so the strip returns with the fade instead of at once.</summary>
+    public static float ExitUnderlay(float underFrom, float presence) => MathF.Min(underFrom, presence);
+
+    /// <summary>Whether a bleed photo layer mounts with the WashFade cross-fade: only when it replaces another artist's layers that are
+    /// still showing (<paramref name="replacesShown"/> and a presence above 0), so the outgoing photo and the incoming one cross-fade
+    /// instead of the new one stepping in at the current presence. A fresh entrance (nothing shown, presence 0 when the shell renders
+    /// it) runs on the presence alone: a mount fade would multiply a second clock into it.</summary>
+    public static bool CrossFadesOnMount(bool replacesShown, float presence) => replacesShown && presence > 0f;
+
+    /// <summary>Whether the card's photo plays an entrance of its own. Under the bleed a bitmap that was resident when the hero mounted
+    /// rests at 1 and the page's FadeOnly reveal carries it; a bitmap that lands later fades itself over <see cref="EntranceMs"/>, on
+    /// the shell's clock. Off the bleed the hero keeps today's entrance.</summary>
+    public static bool CardPhotoFadesItself(bool bleed, bool residentAtMount) => !bleed || !residentAtMount;
+
     // ── THE HAND-OVER ────────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The in-card photo and veil's opacity. They stay fully drawn until the shell's identical layers are fully present
-    /// (<paramref name="presence"/> 1), so a first reveal or a KeepAlive reactivation never dips; then they EASE out with
-    /// <paramref name="handover"/> (0..1, <see cref="Shell.Ui.BleedHandover"/>) instead of snapping. Over the opaque region the
-    /// shell's pixels are the same, so the ease is invisible there; in the photo's feathered bottom band, where the card's own
-    /// feather sits over the shell's, the ease is what turns the two feathers into one without a step.</summary>
+    /// <summary>The in-card photo and veil's opacity. The settle is two legs and neither is a step: leg 1 brings the shell's under-card
+    /// layers in (<see cref="UnderlayAt"/>) under the card's still-opaque photo, so this stays 1; leg 2 then EASES the card's layers out
+    /// with <paramref name="handover"/> (0..1, <see cref="Shell.Ui.BleedHandover"/>, <see cref="HandoverAt"/>). They stay fully drawn
+    /// until the shell's identical layers are fully present (<paramref name="presence"/> 1), so a first reveal or a KeepAlive
+    /// reactivation never dips. Over the opaque region the shell's pixels are the same, so the ease is invisible there; in the photo's
+    /// feathered bottom band, where the card's own feather sits over the shell's, the ease is what turns the two feathers into one.</summary>
     public static float CardLayerOpacity(bool drawn, float presence, float handover = 1f)
-        => drawn && presence >= 0.999f ? 1f - Math.Clamp(handover, 0f, 1f) : 1f;
+        => drawn && presence >= FullPresence ? 1f - Math.Clamp(handover, 0f, 1f) : 1f;
 
     /// <summary>How far the chrome's ink has moved from the theme's toward the on-media ink: the shell's presence times how
-    /// much of the hero is still showing, 0..1.</summary>
-    public static float ChromeInkMix(float presence, float heroVisible)
-        => Math.Clamp(presence, 0f, 1f) * Math.Clamp(heroVisible, 0f, 1f);
+    /// much of the hero is still showing, 0..1, and only when the field's polarity differs from the theme's. With
+    /// <see cref="FieldBase"/> following the theme that never happens, so the chrome keeps the theme's ink while the always-bound
+    /// ink Props stay.</summary>
+    public static float ChromeInkMix(float presence, float heroVisible, bool fieldDark, bool themeDark)
+        => fieldDark == themeDark ? 0f : Math.Clamp(presence, 0f, 1f) * Math.Clamp(heroVisible, 0f, 1f);
+
+    /// <summary>The hero copy is light-on-dark (on-media ink) only while bleeding over the dark theme's field; in the light theme
+    /// it keeps the theme's ink over the light field.</summary>
+    public static bool CopyOnMedia(bool bleed, ThemeKind theme) => bleed && FieldDark(theme);
 
     /// <summary>The chrome ink at <paramref name="mix"/> (<see cref="ChromeInkMix"/>).</summary>
     public static ColorF Ink(ColorF theme, ColorF media, float mix) => ColorF.Lerp(theme, media, Math.Clamp(mix, 0f, 1f));

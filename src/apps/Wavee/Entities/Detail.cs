@@ -1798,6 +1798,17 @@ public static partial class Detail
                 : Strings.Detail.MetaLine(songs, total);
         }
 
+        /// <summary>The list bar's facts (D-7): the unfiltered list states its meta line ("12 songs · 48 min", with no saves
+        /// segment), a find or filter states what is shown against what the list HAS ("3 of 12 songs · 11 min"). The length is the
+        /// SHOWN rows' and is dropped when a duration is unknown or nothing matches. Null until the list has a total.</summary>
+        public static string? ListFacts(int shown, int total, long shownMs, bool durationsKnown, bool filtered, int episodes = 0)
+        {
+            if (total <= 0) return null;
+            if (!filtered) return PlaylistMeta(total, shownMs, durationsKnown, saves: 0, episodes);
+            string count = Strings.Detail.SongCountOf(shown.ToString("N0", CultureInfo.CurrentCulture), total);
+            return durationsKnown && shown > 0 ? Strings.Detail.MetaLine(count, Track.Format.TotalTime(shownMs)) : count;
+        }
+
         /// <summary>"1,204 songs · 71 hr 3 min".</summary>
         public static string? LikedMeta(int count, long totalMs, bool durationsKnown)
         {
