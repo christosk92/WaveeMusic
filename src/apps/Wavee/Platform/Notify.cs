@@ -1101,8 +1101,10 @@ public static partial class Notify
 
     // ══ 12. THE PANEL'S DECISIONS (ch 19 W14-W17) ══════════════════════════════════════════════════════════════════
 
-    /// <summary>The panel's fixed geometry: 380 wide, the feed scrolls at most 460, the whole panel caps at 520.</summary>
-    public const float PanelWidth = 380f, FeedMaxHeight = 460f, PanelMaxHeight = 520f;
+    /// <summary>The panel's fixed geometry: 380 wide, the whole panel caps at 520, and the feed scrolls at most 420 so the
+    /// header (48: 12 + 28 + 8) and the chip strip (50: 2 + <see cref="Controls.ChipRailExtent"/>) above it still fit
+    /// under the cap (48 + 50 + 420 = 518).</summary>
+    public const float PanelWidth = 380f, FeedMaxHeight = 420f, PanelMaxHeight = 520f;
 
     /// <summary>Relative times advance on this cadence while the panel is open (auto-paused when parked).</summary>
     public const int RelativeTickMs = 30_000;

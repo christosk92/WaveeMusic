@@ -725,16 +725,22 @@ public static partial class Sidebar
         }
 
         /// <summary>The app's one filter chip (<see cref="Controls.Chip"/>, the stock toggle: 32/r4, checked = accent); a click
-        /// on the active chip clears it. The root keeps the rail's roving tab stop and radio role.</summary>
+        /// on the active chip clears it, which the lit chip's tooltip says. The root keeps the rail's roving tab stop, but
+        /// <see cref="ToggleButton"/> re-asserts its own role, so the <c>RadioButton</c> set here is overridden and assistive
+        /// tech announces a toggle button (with its checked state): the semantics stay the toggle's, on purpose. The tooltip
+        /// wrapper is always mounted (text null while unlit), so lighting a chip never remounts it.</summary>
         Element Chip(NodeHandle[] nodes, int index, SidebarLibraryFilter chip, bool on, bool focusable)
-            => Controls.Chip(Loc.Get(SidebarLibraryHeadRules.ChipKey(chip)), on, true, () => Commit(chip), new TemplateParts
+        {
+            var toggle = Controls.Chip(Loc.Get(SidebarLibraryHeadRules.ChipKey(chip)), on, true, () => Commit(chip), new TemplateParts
             {
                 [ToggleButton.PartRoot] = b => b with
                 {
                     Shrink = 0f, Role = AutomationRole.RadioButton, Focusable = focusable,
                     OnRealized = h => nodes[index] = h,
                 },
-            }) with { Key = "chip:" + (int)chip };
+            });
+            return ToolTip.Wrap(toggle, (Prop<string?>)(on ? Loc.Get(Strings.Sidebar.V3.ClearFilter) : null)) with { Key = "chip:" + (int)chip };
+        }
 
         /// <summary>One tab stop, roving by index (←/→/Home/End); Space/Enter commits; selection does not follow focus.</summary>
         void Rove(KeyEventArgs e, InputHooks hooks, NodeHandle[] nodes, Signal<int> focused, int cur)

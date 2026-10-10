@@ -582,9 +582,9 @@ public static partial class ProfileLists
                     Direction = 0, Gap = Spacing.S, Shrink = 0f,
                     Children =
                     [
-                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.PillAll },
-                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.PillAll },
-                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.PillAll },
+                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.ControlAll },
+                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.ControlAll },
+                        new BoxEl { Width = 96f, Height = Controls.ChipHeight, Shrink = 0f, Corners = Radii.ControlAll },
                     ],
                 });
             toolKids.Add(new BoxEl { Width = Controls.FindBoxWidth, Height = 32f, Shrink = 0f, Corners = Radii.ControlAll });

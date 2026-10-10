@@ -553,7 +553,7 @@ public static partial class Controls
     /// <summary>The filter-chip rail's own metrics. <see cref="ChipRailExtent"/> is what the chip bar contributes to a
     /// stacked detail chrome column, INCLUDING its bottom semantic gap — one number, so a page's layout arithmetic and
     /// the rail itself cannot disagree.</summary>
-    public const float ChipHeight = 32f, ChipRailHeight = 40f;
+    public const float ChipHeight = 32f, ChipRailHeight = 40f, ChipRailInsetX = 3f;
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipRailExtent = ChipRailHeight + Spacing.S;
 
@@ -583,6 +583,8 @@ public static partial class Controls
         => ScrollView(new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+            // The scroll viewport clips at its edge: 3 DIP either side keep the first and last chip's stock focus ring whole.
+            Padding = new Edges4(ChipRailInsetX, 0f, ChipRailInsetX, 0f),
             Children = [.. chips],
         }, horizontal: true) with
         {
