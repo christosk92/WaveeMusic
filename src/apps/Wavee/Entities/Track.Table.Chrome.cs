@@ -1045,12 +1045,14 @@ public readonly partial struct Track
         /// <summary>The Filter command's props: <paramref name="Labelled"/> = the button wears its word (else the funnel alone).</summary>
         sealed record FilterCommandProps(bool Labelled);
 
-        /// <summary>The count badge of the command bar's Filter button: 18 DIP round, accent. Inline it sits in the labelled button's reserved slot.</summary>
+        /// <summary>The count badge of the command bar's Filter button: 18 DIP round for one digit, accent, growing rightward for two
+        /// (the labelled button's <see cref="CommandBarLayout.FilterBadgeSlot"/> is wide enough). Inline it sits at the slot's left edge.</summary>
         static readonly TemplateParts s_badgeCommand = new()
         {
             [InfoBadge.PartRoot] = static b => b with
             {
-                Width = 18f, MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
+                MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
+                AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
             },
         };
 
@@ -1059,7 +1061,7 @@ public readonly partial struct Track
         {
             [InfoBadge.PartRoot] = static b => b with
             {
-                Width = 18f, MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
+                MinWidth = 18f, Height = 18f, MaxHeight = 18f, Corners = CornerRadius4.All(9f), Shrink = 0f,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.End, BorderWidth = 1.5f, BorderColor = Tok.FillSolidBase,
                 OffsetX = MathF.Min(4f, CommandBarLayout.Gap), OffsetY = -4f, HitTestVisible = false,
             },
@@ -1096,7 +1098,7 @@ public readonly partial struct Track
                         Ui.Caption(Loc.Get(Strings.Detail.Filter.Short)) with { Weight = 600, Color = ink },
                         new BoxEl
                         {
-                            Width = 18f, Height = 18f, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                            Width = CommandBarLayout.FilterBadgeSlot, Height = 18f, Shrink = 0f, AlignItems = FlexAlign.Center,
                             Children = active ? [InfoBadge.Count(count, parts: s_badgeCommand)] : [],
                         },
                     ],

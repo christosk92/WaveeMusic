@@ -704,8 +704,11 @@ public readonly partial struct Track
         public const float SearchWithFilterWidth = 66f;
         /// <summary>The Filter button without its word (the funnel; the count badge overlays its corner, so it never changes width).</summary>
         public const float FilterIconWidth = 32f;
+        /// <summary>The labelled Filter button's reserved badge slot: the 18-DIP round badge sits at its left edge and a two-digit
+        /// count ("12": 14 + 4 + 4 margin) grows rightward into the rest, so no count ever changes the button's width.</summary>
+        public const float FilterBadgeSlot = 22f;
         /// <summary>The labelled Filter button's width before it is measured: funnel, "Filter" and the reserved badge slot.</summary>
-        public const float FilterLabelledNominal = 96f;
+        public const float FilterLabelledNominal = 100f;
         public const float SearchMinExplicit = 160f;
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
