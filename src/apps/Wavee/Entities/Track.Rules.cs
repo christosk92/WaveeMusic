@@ -829,37 +829,48 @@ public readonly partial struct Track
 
     // ══ 6. THE COMMAND BAR FIT ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The one command the resolver still places: the sort dropdown. Everything else on the bar is either
-    /// mandatory (Tune, Insights, ⋯) or lives in "…" (Select, Row size, Columns). The bit value stays 2.</summary>
+    /// <summary>The commands the resolver still places: Filter and the sort dropdown. Everything else on the bar is either
+    /// mandatory (Tune, Insights, ⋯) or lives in "…" (Select, Row size, Columns). <see cref="Filter"/> is the funnel being
+    /// inline at all (a 32-DIP icon button), <see cref="FilterLabel"/> additionally its word (it always comes with
+    /// <see cref="Filter"/>). The bit value of Sort stays 2.</summary>
     [Flags]
-    public enum InlineCommand : byte { None = 0, Sort = 2 }
+    public enum InlineCommand : byte { None = 0, Sort = 2, Filter = 4, FilterLabel = 8 }
 
-    /// <summary>Measured LABELED widths of the commands whose presence the resolver controls.</summary>
-    public readonly record struct CommandWidths(float Tune, float Sort);
+    /// <summary>Measured LABELED widths of the commands whose presence the resolver controls. <paramref name="Filter"/> is the
+    /// LABELLED Filter button (its badge slot included); its icon-only form is the fixed
+    /// <see cref="CommandBarLayout.FilterIconWidth"/>.</summary>
+    public readonly record struct CommandWidths(float Tune, float Sort, float Filter = CommandBarLayout.FilterLabelledNominal);
 
     public readonly record struct CommandBarFit(InlineCommand Inline, bool SearchExpanded, float SearchWidth)
     {
         public bool Has(InlineCommand command) => (Inline & command) != 0;
         public int Richness =>
-            (SearchExpanded ? 8 : 0)
-            + (Has(InlineCommand.Sort) ? 2 : 0);
+            (SearchExpanded ? 16 : 0)
+            + (Has(InlineCommand.Sort) ? 4 : 0)
+            + (Has(InlineCommand.Filter) ? 2 : 0)
+            + (Has(InlineCommand.FilterLabel) ? 1 : 0);
     }
 
-    /// <summary>The command bar holds only LIST TOOLS: [Tune] ─ [Sort] · search · [Insights] · ⋯ (Sort leads the right-aligned
-    /// cluster, one gap rhythm). Sort is the one command
-    /// that is placed by width: it stays inline while it fits after the search affordance's reservation and is
-    /// evicted into "…" otherwise. Tune, the Insights toggle slot and "…" are mandatory (they are the same width at
-    /// every pane width, so the bar never reflows when the facts arrive). The bar PROMOTES, it does not shrink: an
-    /// inline command is icon + label, and one that does not fit is evicted. Never returns a layout wider than its input.</summary>
+    /// <summary>The command bar holds only LIST TOOLS: [Tune] ─ [Filter] · [Sort] · search · [Insights] · ⋯ (Filter and Sort lead
+    /// the right-aligned cluster, one gap rhythm). Filter and Sort are the commands placed by width, on one ladder: Filter
+    /// + Sort labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge
+    /// returning to "…"). Each stays inline while it fits after the search affordance's reservation. Tune, the Insights toggle slot
+    /// and "…" are mandatory (they are the same width at every pane width, so the bar never reflows when the facts arrive). The
+    /// bar PROMOTES, it does not shrink: an inline command is icon + label (Filter's word aside), and one that does not fit is
+    /// evicted. Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
         public const float MoreWidth = 32f;
         /// <summary>The Insights toggle's slot (the button's 32-DIP edge): reserved by kind, so it is in the budget from
         /// the first frame whether or not the facts have settled.</summary>
         public const float InsightsWidth = 32f;
-        /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The filter funnel left the
-        /// bar: "Filter…" lives in "…" (and an active filter badges it).</summary>
+        /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The Filter command is its own
+        /// button before Sort; "Filter…" in "…" (badged while a filter is on) is where a narrow bar puts it.</summary>
         public const float SearchIconWidth = 32f;
+        /// <summary>The Filter button without its word (the funnel; the count badge overlays its corner, so it never changes width).</summary>
+        public const float FilterIconWidth = 32f;
+        /// <summary>The labelled Filter button's width before it is measured: funnel, "Filter" and the reserved badge slot.</summary>
+        public const float FilterLabelledNominal = 92f;
         public const float SearchMinExplicit = 160f;
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
@@ -905,15 +916,27 @@ public readonly partial struct Track
             bool expanded = explicitSearch;
             float reservedSearch = expanded ? SearchMinExplicit : SearchIconWidth;
 
-            InlineCommand inline = InlineCommand.None;
             float used = mandatory + SearchGap + reservedSearch;
 
-            float sortExtra = Gap + widths.Sort;
-            if (used + sortExtra <= available)
+            // The ladder, richest first: the first rung whose extra width fits wins.
+            float filterIcon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
+            InlineCommand inline;
+            if (used + Gap + widths.Filter + sortExtra <= available)
             {
-                used += sortExtra;
-                inline |= InlineCommand.Sort;
+                used += Gap + widths.Filter + sortExtra;
+                inline = InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
             }
+            else if (used + filterIcon + sortExtra <= available)
+            {
+                used += filterIcon + sortExtra;
+                inline = InlineCommand.Filter | InlineCommand.Sort;
+            }
+            else if (used + filterIcon <= available)
+            {
+                used += filterIcon;
+                inline = InlineCommand.Filter;
+            }
+            else inline = InlineCommand.None;
 
             float searchWidth = reservedSearch;
             if (expanded)
@@ -930,22 +953,24 @@ public readonly partial struct Track
     /// past the explicit minimum only when no chip slot absorbs the slack.</summary>
     public readonly record struct LikedBarFit(LikedBarLayout.Rung Rung, float ChipSlotW, bool SearchExpanded, float SearchWidth);
 
-    /// <summary>THE LIKED SONGS BAR: one 44-DIP row, <c>[Play │ ⌄] · Shuffle · divider · genre chips ─ Date added ⌄ · find ·
+    /// <summary>THE LIKED SONGS BAR: one 44-DIP row, <c>[Play │ ⌄] · Shuffle · divider · genre chips ─ Filter · Date added ⌄ · find ·
     /// Insights · ⋯</c>, and the pure ladder that decides what stays inline at a width. The ladder runs richest to poorest and
     /// every step is a statement of what yields FIRST: the chips shrink (down to <see cref="ChipSlotMinW"/>, under their edge
-    /// fade), then Shuffle loses its label, then Sort goes into "…", then the chips go into "…" ("Genre ▸"), then Shuffle goes
-    /// into "…", then Insights goes into "…". The Play split, find and "…" always stay: they are the mandatory floor, so the
+    /// fade), then Shuffle loses its label, then Filter loses its label (icon + badge), then Sort goes into "…", then the chips go
+    /// into "…" ("Genre ▸"), then Shuffle goes into "…", then Insights goes into "…", and only then Filter goes into "…" ("Filter…",
+    /// the badge returning to "…"). The Play split, find and "…" always stay: they are the mandatory floor, so the
     /// bar never overflows or clips whatever the pane. Promotion has <see cref="CommandBarLayout.PromotionHysteresis"/>
     /// (a richer rung than the previous one must fit with that much to spare); narrowing is immediate.</summary>
     public static class LikedBarLayout
     {
-        public enum Rung : byte { Full, ShuffleIcon, SortInMore, ChipsInMore, ShuffleInMore, InsightsInMore }
+        public enum Rung : byte { Full, ShuffleIcon, FilterIcon, SortInMore, ChipsInMore, ShuffleInMore, InsightsInMore, FilterInMore }
 
         public const float PlayW = ButtonRules.PlaySplitWidthNominal;
         public const float ShuffleIconW = 32f;
         public const float DividerW = CommandBarLayout.GroupSeparatorWidth;
         public const float ChipSlotMinW = 120f;
         public const float InsightsW = 32f;
+        public const float FilterIconW = CommandBarLayout.FilterIconWidth;
         /// <summary>The air between the chip slot's end (where its edge fade lands) and Sort, on top of the bar's own
         /// <see cref="CommandBarLayout.Gap"/>: the slot carries it as a right margin, so every rung that shows the chips pays it.</summary>
         public const float ChipRailTrailGap = Spacing.S;
@@ -954,23 +979,27 @@ public readonly partial struct Track
         public const float PlayShuffleGap = Spacing.S;
 
         /// <summary>The rungs, richest first.</summary>
-        public static ReadOnlySpan<Rung> Rungs => [Rung.Full, Rung.ShuffleIcon, Rung.SortInMore, Rung.ChipsInMore, Rung.ShuffleInMore, Rung.InsightsInMore];
+        public static ReadOnlySpan<Rung> Rungs => [Rung.Full, Rung.ShuffleIcon, Rung.FilterIcon, Rung.SortInMore, Rung.ChipsInMore, Rung.ShuffleInMore, Rung.InsightsInMore, Rung.FilterInMore];
 
         public static bool ShuffleInline(Rung r) => r < Rung.ShuffleInMore;
         public static bool ShuffleLabelled(Rung r) => r == Rung.Full;
-        public static bool SortInline(Rung r) => r <= Rung.ShuffleIcon;
+        public static bool FilterInline(Rung r) => r < Rung.FilterInMore;
+        public static bool FilterLabelled(Rung r) => r <= Rung.ShuffleIcon;
+        public static bool SortInline(Rung r) => r <= Rung.FilterIcon;
         public static bool ChipsInline(Rung r) => r <= Rung.SortInMore;
         public static bool InsightsInline(Rung r) => r < Rung.InsightsInMore;
 
         /// <summary>What a rung needs at minimum: its inline pieces summed with <see cref="CommandBarLayout.Gap"/> between them,
         /// the search affordance (its icon pair, or the explicit field's minimum) behind <see cref="CommandBarLayout.SearchGap"/>.
-        /// Strictly decreasing from <see cref="Rung.Full"/> to <see cref="Rung.InsightsInMore"/>.</summary>
-        public static float RungWidth(Rung r, float shuffleW, float sortW, bool explicitSearch, bool chips = true)
+        /// Strictly decreasing from <see cref="Rung.Full"/> to <see cref="Rung.FilterInMore"/>. <paramref name="filterW"/> is the
+        /// LABELLED Filter button's measured width.</summary>
+        public static float RungWidth(Rung r, float shuffleW, float sortW, float filterW, bool explicitSearch, bool chips = true)
         {
             float w = PlayW + CommandBarLayout.Gap + CommandBarLayout.MoreWidth
                     + CommandBarLayout.SearchGap + (explicitSearch ? CommandBarLayout.SearchMinExplicit : CommandBarLayout.SearchIconWidth);
             if (InsightsInline(r)) w += CommandBarLayout.Gap + InsightsW;
             if (ShuffleInline(r)) w += PlayShuffleGap + (ShuffleLabelled(r) ? shuffleW : ShuffleIconW);
+            if (FilterInline(r)) w += CommandBarLayout.Gap + (FilterLabelled(r) ? filterW : FilterIconW);
             if (SortInline(r)) w += CommandBarLayout.Gap + sortW;
             if (chips && ChipsInline(r)) w += CommandBarLayout.Gap + DividerW + CommandBarLayout.Gap + ChipSlotMinW + ChipRailTrailGap;
             return w;
@@ -991,19 +1020,19 @@ public readonly partial struct Track
 
         /// <param name="allowPromotion">False while a collapse hold is set: with a previous fit the rung is never richer than
         /// <c>previous.Rung</c> (the freed width goes to the chip slot or the search field); narrowing still steps down at once.</param>
-        public static LikedBarFit Resolve(float available, float shuffleW, float sortW, bool explicitSearch, LikedBarFit? previous = null,
+        public static LikedBarFit Resolve(float available, float shuffleW, float sortW, float filterW, bool explicitSearch, LikedBarFit? previous = null,
                                           bool chips = true, bool allowPromotion = true)
         {
             available = MathF.Max(0f, available);
-            var rung = RungFor(available, shuffleW, sortW, explicitSearch, chips);
+            var rung = RungFor(available, shuffleW, sortW, filterW, explicitSearch, chips);
             if (previous is { } old && rung < old.Rung)
             {
                 // A promotion: it must also fit with the hysteresis to spare, else the previous (poorer) rung holds. The previous
                 // rung fits `available` by construction (it is poorer than a rung that does).
-                var steady = RungFor(MathF.Max(0f, available - CommandBarLayout.PromotionHysteresis), shuffleW, sortW, explicitSearch, chips);
+                var steady = RungFor(MathF.Max(0f, available - CommandBarLayout.PromotionHysteresis), shuffleW, sortW, filterW, explicitSearch, chips);
                 rung = allowPromotion && steady < old.Rung ? steady : old.Rung;
             }
-            float used = RungWidth(rung, shuffleW, sortW, explicitSearch, chips);
+            float used = RungWidth(rung, shuffleW, sortW, filterW, explicitSearch, chips);
             float spare = MathF.Max(0f, available - used);
             float chipSlot = chips && ChipsInline(rung) ? ChipSlotMinW + spare : 0f;
             float search = explicitSearch
@@ -1014,11 +1043,11 @@ public readonly partial struct Track
         }
 
         /// <summary>The richest rung whose width fits, else the floor.</summary>
-        static Rung RungFor(float available, float shuffleW, float sortW, bool explicitSearch, bool chips)
+        static Rung RungFor(float available, float shuffleW, float sortW, float filterW, bool explicitSearch, bool chips)
         {
             foreach (var r in Rungs)
-                if (RungWidth(r, shuffleW, sortW, explicitSearch, chips) <= available) return r;
-            return Rung.InsightsInMore;
+                if (RungWidth(r, shuffleW, sortW, filterW, explicitSearch, chips) <= available) return r;
+            return Rung.FilterInMore;
         }
     }
 

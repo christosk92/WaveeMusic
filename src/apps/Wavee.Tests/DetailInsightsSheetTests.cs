@@ -176,7 +176,8 @@ public class DetailInsightsSheetTests
         bool reserved = InsightsSheet.ToggleSlotReserved(kind, content);
         var widths = new Track.CommandWidths(92, 156);
         float sortFitsWithoutToggle = Track.CommandBarLayout.MoreWidth + Track.CommandBarLayout.SearchGap
-            + Track.CommandBarLayout.SearchIconWidth + Track.CommandBarLayout.Gap + widths.Sort;
+            + Track.CommandBarLayout.SearchIconWidth + Track.CommandBarLayout.Gap + Track.CommandBarLayout.FilterIconWidth
+            + Track.CommandBarLayout.Gap + widths.Sort;
 
         var fit = Track.CommandBarLayout.Resolve(sortFitsWithoutToggle, widths, hasTune: false, hasInsights: reserved, explicitSearch: false);
         Assert.Equal(!reserved, fit.Has(Track.InlineCommand.Sort));

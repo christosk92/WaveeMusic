@@ -197,7 +197,22 @@
       "activeCount": "{count} active filters",
       "noFiltersApplied": "No filters applied",
       "clearFilters": "Clear all filters",
-      "clear": "Clear"
+      "clear": "Clear",
+      "$comment": "The filter card (Flyout B): one combo row per facet. The tempo bands are short because they sit in a 168-DIP field; show/hide/only are the explicit and video rows' options.",
+      "reset": "Reset",
+      "allSongs": "All {count, plural, one {# song} other {# songs}}",
+      "length": "Length",
+      "explicit": "Explicit",
+      "video": "Video",
+      "show": "Show",
+      "onlyExplicit": "Only explicit",
+      "onlyVideo": "Only video",
+      "tempoSlow": "Under 90 BPM",
+      "tempoMid": "90–119 BPM",
+      "tempoFast": "120–139 BPM",
+      "tempoVeryFast": "140+ BPM",
+      "onlyLiked": "Only songs I liked",
+      "hideUnplayable": "Hide songs I can’t play"
     },
     "density": {
       "rowSize": "Row size",

@@ -1,10 +1,10 @@
 // ── Wavee.Tests/DetailTrackCommandBarLayoutTests.cs — the table command bar's fit ───────────────────────────────────
 //
-// The gate for `Track.CommandBarLayout` (Entities/Track.Rules.cs). The bar holds only LIST TOOLS: [Tune] ─ [Sort] · search ·
-// [Insights] · ⋯ (Sort leads the right cluster; the filter funnel folded into "…" as "Filter…", so the search affordance is ONE
-// 32-DIP button). Tune, the Insights slot and "…" are mandatory; Sort is the one command placed by width — inline while it
-// fits after the search affordance's reservation, otherwise evicted into "…". The bar PROMOTES, it does not shrink, with
-// 16-DIP promotion hysteresis in every mode, and is never wider than its input.
+// The gate for `Track.CommandBarLayout` (Entities/Track.Rules.cs). The bar holds only LIST TOOLS: [Tune] ─ [Filter] · [Sort] ·
+// search · [Insights] · ⋯ (Filter and Sort lead the right cluster; the search affordance is ONE 32-DIP button). Tune, the
+// Insights slot and "…" are mandatory; Filter and Sort are placed by width on one ladder - Filter labelled + Sort, Filter loses
+// its word, Sort moves into "…", Filter moves into "…". The bar PROMOTES, it does not shrink, with 16-DIP promotion hysteresis in
+// every mode, and is never wider than its input.
 //
 // Pure: no scope, no engine.
 
@@ -15,11 +15,13 @@ namespace Wavee.Tests;
 
 public class DetailTrackCommandBarLayoutTests
 {
-    static readonly Track.CommandWidths Widths = new(92, 156);
+    static readonly Track.CommandWidths Widths = new(92, 156, 92);
 
     // Mandatory floor with Tune + Insights: ⋯ 32 + Tune 92 + Insights 32 + 2 gaps of 2, then SearchGap 8 + the 32 search button.
-    // Sort then needs Gap 2 + 156 more.
-    const float SortBudget = 32f + 92f + 32f + 4f + 8f + 32f + 2f + 156f;   // 358
+    // The icon Filter then needs Gap 2 + 32 more, and Sort Gap 2 + 156 on top of that.
+    const float FilterBudget = 32f + 92f + 32f + 4f + 8f + 32f + 2f + 32f;   // 234
+    const float SortBudget = FilterBudget + 2f + 156f;                       // 392
+    const float LabelBudget = SortBudget + (92f - 32f);                      // 452
 
     static float Used(Track.CommandBarFit fit, bool hasTune, bool hasInsights)
     {
@@ -27,6 +29,7 @@ public class DetailTrackCommandBarLayoutTests
         int count = 1 + (hasTune ? 1 : 0) + (hasInsights ? 1 : 0);
         float used = mandatory + (count - 1) * Layout.Gap + Layout.SearchGap
             + (fit.SearchExpanded ? Layout.SearchMinExplicit : Layout.SearchIconWidth);
+        if (fit.Has(Track.InlineCommand.Filter)) used += Layout.Gap + (fit.Has(Track.InlineCommand.FilterLabel) ? Widths.Filter : Layout.FilterIconWidth);
         if (fit.Has(Track.InlineCommand.Sort)) used += Layout.Gap + Widths.Sort;
         return used;
     }
@@ -39,22 +42,25 @@ public class DetailTrackCommandBarLayoutTests
         Assert.False(fit.SearchExpanded);
         Assert.Equal(Layout.SearchIconWidth, fit.SearchWidth);
         Assert.True(fit.Has(Track.InlineCommand.Sort));
+        Assert.True(fit.Has(Track.InlineCommand.Filter));
+        Assert.True(fit.Has(Track.InlineCommand.FilterLabel));
     }
 
     [Fact]
-    public void TheSearchAffordance_IsOneButton_TheFunnelLivesInMore()
+    public void TheSearchAffordance_IsOneButton_TheFilterIsItsOwn()
     {
         Assert.Equal(32f, Layout.SearchIconWidth);
         Assert.Equal(Layout.MoreWidth, Layout.SearchIconWidth);
     }
 
-    /// <summary>Sort is the head of the right cluster [Sort][find][Insights][⋯]: with no Tune its budget is exactly the cluster's
-    /// four members (Insights 32, ⋯ 32, find 32, Sort 156) behind one gap each, plus the 8-DIP search gap.</summary>
+    /// <summary>Filter and Sort head the right cluster [Filter][Sort][find][Insights][⋯]: with no Tune Sort's budget is exactly the
+    /// cluster's five members (Insights 32, ⋯ 32, find 32, the Filter icon 32, Sort 156) behind one gap each, plus the 8-DIP search gap.</summary>
     [Fact]
     public void SortLeadsTheRightCluster_ItsBudgetIsTheClusterSum()
     {
-        float cluster = Layout.MoreWidth + Layout.InsightsWidth + Layout.Gap + Layout.SearchGap + Layout.SearchIconWidth + Layout.Gap + Widths.Sort;
-        Assert.Equal(264f, cluster);
+        float cluster = Layout.MoreWidth + Layout.InsightsWidth + Layout.Gap + Layout.SearchGap + Layout.SearchIconWidth
+            + Layout.Gap + Layout.FilterIconWidth + Layout.Gap + Widths.Sort;
+        Assert.Equal(298f, cluster);
         Assert.True(Layout.Resolve(cluster, Widths, hasTune: false, hasInsights: true, explicitSearch: false).Has(Track.InlineCommand.Sort));
         Assert.False(Layout.Resolve(cluster - 0.5f, Widths, hasTune: false, hasInsights: true, explicitSearch: false).Has(Track.InlineCommand.Sort));
     }
@@ -67,7 +73,32 @@ public class DetailTrackCommandBarLayoutTests
 
         Assert.True(at.Has(Track.InlineCommand.Sort));
         Assert.False(below.Has(Track.InlineCommand.Sort));
-        Assert.Equal(Track.InlineCommand.None, below.Inline);
+        Assert.Equal(Track.InlineCommand.Filter, below.Inline);   // the icon Filter stays until Sort is gone AND it no longer fits
+    }
+
+    /// <summary>The ladder, rung by rung: Filter loses its word BEFORE Sort moves into "…", and Filter moves into "…" only after Sort.</summary>
+    [Fact]
+    public void FilterLosesItsWord_BeforeSortLeaves_AndLeavesLast()
+    {
+        Track.InlineCommand At(float available) => Layout.Resolve(available, Widths, hasTune: true, hasInsights: true, explicitSearch: false).Inline;
+
+        Assert.Equal(Track.InlineCommand.Filter | Track.InlineCommand.FilterLabel | Track.InlineCommand.Sort, At(LabelBudget));
+        Assert.Equal(Track.InlineCommand.Filter | Track.InlineCommand.Sort, At(LabelBudget - 0.5f));
+        Assert.Equal(Track.InlineCommand.Filter | Track.InlineCommand.Sort, At(SortBudget));
+        Assert.Equal(Track.InlineCommand.Filter, At(SortBudget - 0.5f));
+        Assert.Equal(Track.InlineCommand.Filter, At(FilterBudget));
+        Assert.Equal(Track.InlineCommand.None, At(FilterBudget - 0.5f));
+    }
+
+    [Fact]
+    public void TheFilterLabelIsOnlyEverImpliedByTheFilter()
+    {
+        for (float available = 0f; available <= 900f; available += 1f)
+        {
+            var fit = Layout.Resolve(available, Widths, hasTune: true, hasInsights: true, explicitSearch: false);
+            if (fit.Has(Track.InlineCommand.FilterLabel)) Assert.True(fit.Has(Track.InlineCommand.Filter), available.ToString());
+            if (fit.Has(Track.InlineCommand.Sort)) Assert.True(fit.Has(Track.InlineCommand.Filter), available.ToString());
+        }
     }
 
     [Fact]
@@ -76,7 +107,8 @@ public class DetailTrackCommandBarLayoutTests
         var fit = Layout.Resolve(150, Widths, hasTune: false, hasInsights: false, explicitSearch: false);
 
         Assert.False(fit.SearchExpanded);
-        Assert.Equal(Track.InlineCommand.None, fit.Inline);
+        Assert.Equal(Track.InlineCommand.Filter, fit.Inline);   // the icon Filter fits; Sort does not
+        Assert.Equal(Track.InlineCommand.None, Layout.Resolve(100, Widths, hasTune: false, hasInsights: false, explicitSearch: false).Inline);
         Assert.Equal(Layout.SearchIconWidth, fit.SearchWidth);
     }
 
@@ -84,7 +116,7 @@ public class DetailTrackCommandBarLayoutTests
     public void InsightsReservesItsSlotAndAGap()
     {
         // An album has no Insights slot, a playlist does: the width that holds Sort without it must not hold it with it.
-        float without = 32f + 92f + 2f + 8f + 32f + 2f + 156f;   // ⋯ + Tune + 1 gap, search, Sort
+        float without = 32f + 92f + 2f + 8f + 32f + 2f + 32f + 2f + 156f;   // ⋯ + Tune + 1 gap, search, the Filter icon, Sort
         Assert.True(Layout.Resolve(without, Widths, hasTune: true, hasInsights: false, explicitSearch: false).Has(Track.InlineCommand.Sort));
         Assert.False(Layout.Resolve(without, Widths, hasTune: true, hasInsights: true, explicitSearch: false).Has(Track.InlineCommand.Sort));
         // …and the difference is exactly the toggle's 32 DIP plus the 2-DIP gap it adds.
@@ -95,7 +127,8 @@ public class DetailTrackCommandBarLayoutTests
     [Theory]
     [InlineData(0f, false, false)]
     [InlineData(150f, true, true)]
-    [InlineData(358f, true, true)]
+    [InlineData(392f, true, true)]
+    [InlineData(452f, true, true)]
     [InlineData(500f, false, true)]
     [InlineData(760f, true, true)]
     [InlineData(1400f, true, false)]
@@ -253,21 +286,21 @@ public class DetailTrackCommandBarLayoutTests
     }
 }
 
-/// <summary>The Liked Songs bar's ladder (<c>Track.LikedBarLayout</c>): chips shrink, Shuffle loses its label, Sort goes into
-/// "...", the chips go into "...", Shuffle goes into "...", Insights goes into "...". Sort rides the right cluster
-/// [Sort][find][Insights][...]. Nominal widths: Shuffle 96, Sort 156.
+/// <summary>The Liked Songs bar's ladder (<c>Track.LikedBarLayout</c>): chips shrink, Shuffle loses its label, Filter loses its
+/// label, Sort goes into "...", the chips go into "...", Shuffle goes into "...", Insights goes into "...", Filter goes into "...".
+/// Filter and Sort ride the right cluster [Filter][Sort][find][Insights][...]. Nominal widths: Shuffle 96, Sort 156, Filter 92.
 /// Pure: no scope, no engine.</summary>
 public class LikedBarLayoutTests
 {
-    const float Shuffle = 96f, Sort = 156f;
+    const float Shuffle = 96f, Sort = 156f, Filter = 92f;
     static readonly Track.LikedBarLayout.Rung[] Rungs = Enum.GetValues<Track.LikedBarLayout.Rung>();
 
     static float W(Track.LikedBarLayout.Rung r, bool explicitSearch = false, bool chips = true)
-        => Track.LikedBarLayout.RungWidth(r, Shuffle, Sort, explicitSearch, chips);
+        => Track.LikedBarLayout.RungWidth(r, Shuffle, Sort, Filter, explicitSearch, chips);
 
     static Track.LikedBarFit Fit(float available, bool explicitSearch = false, Track.LikedBarFit? previous = null, bool chips = true,
                                  bool allowPromotion = true)
-        => Track.LikedBarLayout.Resolve(available, Shuffle, Sort, explicitSearch, previous, chips, allowPromotion);
+        => Track.LikedBarLayout.Resolve(available, Shuffle, Sort, Filter, explicitSearch, previous, chips, allowPromotion);
 
     // A pane where the open find costs rungs: Full fits closed with the hysteresis and 20 DIP to spare, so closing the find promotes.
     static float CollapsePane => W(Track.LikedBarLayout.Rung.Full) + Track.CommandBarLayout.PromotionHysteresis + 20f;
@@ -305,7 +338,7 @@ public class LikedBarLayoutTests
         var narrower = Fit(W(Track.LikedBarLayout.Rung.InsightsInMore) + 1f, previous: held, allowPromotion: false);
         Assert.True(narrower.Rung > held.Rung);
         Assert.True(W(narrower.Rung) <= W(Track.LikedBarLayout.Rung.InsightsInMore) + 1f);
-        Assert.Equal(Track.LikedBarLayout.Rung.InsightsInMore, Fit(0f, previous: held, allowPromotion: false).Rung);
+        Assert.Equal(Track.LikedBarLayout.Rung.FilterInMore, Fit(0f, previous: held, allowPromotion: false).Rung);
     }
 
     [Fact]
@@ -360,10 +393,10 @@ public class LikedBarLayoutTests
     [Fact]
     public void TheFullRung_SumsEveryInlinePiece()
     {
-        // Play 121 + more 32 + SearchGap 8 + the 32 search button, then Insights 32, Shuffle 96, Sort 156, divider 17 and the 120 chip
-        // slot (plus its 8-DIP trailing air before Sort), each behind one 2-DIP gap (the divider and the slot are two pieces),
-        // and one gap between Play and more.
-        float expected = 121f + 2f + 32f + 8f + 32f + (2f + 32f) + (2f + 96f) + (2f + 156f) + (2f + 17f + 2f + 120f + 8f);
+        // Play 121 + more 32 + SearchGap 8 + the 32 search button, then Insights 32, Filter 92, Sort 156, divider 17 and the
+        // 120 chip slot (plus its 8-DIP trailing air before Filter), each behind one 2-DIP gap (the divider and the slot are two
+        // pieces), one gap between Play and more, and Shuffle 96 behind the 8-DIP Play-Shuffle gap.
+        float expected = 121f + 2f + 32f + 8f + 32f + (2f + 32f) + (8f + 96f) + (2f + 92f) + (2f + 156f) + (2f + 17f + 2f + 120f + 8f);
         Assert.Equal(expected, W(Track.LikedBarLayout.Rung.Full));
     }
 
@@ -373,7 +406,7 @@ public class LikedBarLayoutTests
         foreach (var r in Rungs)
         {
             Assert.Equal(r, Fit(W(r)).Rung);
-            if (r == Track.LikedBarLayout.Rung.InsightsInMore) continue;   // the floor: nothing poorer exists
+            if (r == Track.LikedBarLayout.Rung.FilterInMore) continue;   // the floor: nothing poorer exists
             Assert.True(Fit(W(r) - 1f).Rung > r, r.ToString());
         }
     }
@@ -381,7 +414,7 @@ public class LikedBarLayoutTests
     [Fact]
     public void AboveTheFloor_TheResultIsNeverWiderThanAvailable()
     {
-        float floor = W(Track.LikedBarLayout.Rung.InsightsInMore);
+        float floor = W(Track.LikedBarLayout.Rung.FilterInMore);
         Track.LikedBarFit? previous = null;
         for (float available = 1400f; available >= floor; available -= 1f)
         {
@@ -402,10 +435,11 @@ public class LikedBarLayoutTests
     public void BelowTheFloor_TheBarKeepsTheMandatoryFloor()
     {
         var fit = Fit(0f);
-        Assert.Equal(Track.LikedBarLayout.Rung.InsightsInMore, fit.Rung);
+        Assert.Equal(Track.LikedBarLayout.Rung.FilterInMore, fit.Rung);
         Assert.False(Track.LikedBarLayout.ChipsInline(fit.Rung));
         Assert.False(Track.LikedBarLayout.ShuffleInline(fit.Rung));
         Assert.False(Track.LikedBarLayout.InsightsInline(fit.Rung));
+        Assert.False(Track.LikedBarLayout.FilterInline(fit.Rung));
     }
 
     [Fact]
@@ -419,22 +453,44 @@ public class LikedBarLayoutTests
         Assert.Equal(shuffleIcon, Fit(W(full) + Track.CommandBarLayout.PromotionHysteresis - 1f, previous: previous).Rung);
         Assert.Equal(full, Fit(W(full) + Track.CommandBarLayout.PromotionHysteresis, previous: previous).Rung);
         // Narrowing is immediate.
-        Assert.Equal(Track.LikedBarLayout.Rung.SortInMore, Fit(W(shuffleIcon) - 1f, previous: Fit(W(full))).Rung);
+        Assert.Equal(Track.LikedBarLayout.Rung.FilterIcon, Fit(W(shuffleIcon) - 1f, previous: Fit(W(full))).Rung);
     }
 
     [Fact]
     public void SortPromotesBackIntoTheRightCluster_OnlyWithTheHysteresisToSpare()
     {
-        var shuffleIcon = Track.LikedBarLayout.Rung.ShuffleIcon;
+        var filterIcon = Track.LikedBarLayout.Rung.FilterIcon;
         var sortInMore = Track.LikedBarLayout.Rung.SortInMore;
         // The step between the two rungs is exactly Sort and its gap.
-        Assert.Equal(Track.CommandBarLayout.Gap + Sort, W(shuffleIcon) - W(sortInMore));
+        Assert.Equal(Track.CommandBarLayout.Gap + Sort, W(filterIcon) - W(sortInMore));
 
         var evicted = Fit(W(sortInMore));
         Assert.Equal(sortInMore, evicted.Rung);
-        Assert.Equal(sortInMore, Fit(W(shuffleIcon) + Track.CommandBarLayout.PromotionHysteresis - 1f, previous: evicted).Rung);
-        Assert.Equal(shuffleIcon, Fit(W(shuffleIcon) + Track.CommandBarLayout.PromotionHysteresis, previous: evicted).Rung);
-        Assert.Equal(shuffleIcon, Fit(W(shuffleIcon) + Track.CommandBarLayout.PromotionHysteresis - 1f).Rung);   // no history, no hysteresis
+        Assert.Equal(sortInMore, Fit(W(filterIcon) + Track.CommandBarLayout.PromotionHysteresis - 1f, previous: evicted).Rung);
+        Assert.Equal(filterIcon, Fit(W(filterIcon) + Track.CommandBarLayout.PromotionHysteresis, previous: evicted).Rung);
+        Assert.Equal(filterIcon, Fit(W(filterIcon) + Track.CommandBarLayout.PromotionHysteresis - 1f).Rung);   // no history, no hysteresis
+    }
+
+    /// <summary>The Filter's three steps: it loses its word (to the 32-DIP icon + badge) BEFORE Sort moves into "...", and it moves
+    /// into "..." only after Insights has.</summary>
+    [Fact]
+    public void FilterLosesItsWordBeforeSortLeaves_AndLeavesAfterInsights()
+    {
+        Assert.True(Track.LikedBarLayout.FilterLabelled(Track.LikedBarLayout.Rung.Full));
+        Assert.True(Track.LikedBarLayout.FilterLabelled(Track.LikedBarLayout.Rung.ShuffleIcon));
+        Assert.False(Track.LikedBarLayout.FilterLabelled(Track.LikedBarLayout.Rung.FilterIcon));
+        Assert.True(Track.LikedBarLayout.FilterInline(Track.LikedBarLayout.Rung.FilterIcon));
+        Assert.True(Track.LikedBarLayout.SortInline(Track.LikedBarLayout.Rung.FilterIcon));      // the word went, Sort stayed
+        Assert.False(Track.LikedBarLayout.SortInline(Track.LikedBarLayout.Rung.SortInMore));
+        Assert.True(Track.LikedBarLayout.FilterInline(Track.LikedBarLayout.Rung.SortInMore));    // Filter outlives Sort
+        Assert.True(Track.LikedBarLayout.FilterInline(Track.LikedBarLayout.Rung.InsightsInMore));
+        Assert.False(Track.LikedBarLayout.InsightsInline(Track.LikedBarLayout.Rung.InsightsInMore));
+        Assert.False(Track.LikedBarLayout.FilterInline(Track.LikedBarLayout.Rung.FilterInMore)); // ...and goes last
+
+        // Each step's saving: the word, then Sort and its gap, then (last) the icon and its gap.
+        Assert.Equal(Filter - Track.LikedBarLayout.FilterIconW, W(Track.LikedBarLayout.Rung.ShuffleIcon) - W(Track.LikedBarLayout.Rung.FilterIcon));
+        Assert.Equal(Track.CommandBarLayout.Gap + Track.LikedBarLayout.FilterIconW,
+                     W(Track.LikedBarLayout.Rung.InsightsInMore) - W(Track.LikedBarLayout.Rung.FilterInMore));
     }
 
     [Fact]
@@ -444,9 +500,9 @@ public class LikedBarLayoutTests
         {
             float available = W(r);   // the rung fits with the search pair, exactly
             var open = Fit(available, explicitSearch: true);
-            var expected = Rungs.FirstOrDefault(k => W(k, explicitSearch: true) <= available, Track.LikedBarLayout.Rung.InsightsInMore);
+            var expected = Rungs.FirstOrDefault(k => W(k, explicitSearch: true) <= available, Track.LikedBarLayout.Rung.FilterInMore);
             Assert.Equal(expected, open.Rung);
-            if (r != Track.LikedBarLayout.Rung.InsightsInMore)   // the floor holds whatever the search asks for
+            if (r != Track.LikedBarLayout.Rung.FilterInMore)   // the floor holds whatever the search asks for
                 Assert.NotEqual(r, open.Rung);
             Assert.True(open.SearchExpanded);
         }
@@ -492,7 +548,7 @@ public class LikedBarLayoutTests
     [Fact]
     public void ThePlaySplitFindAndMoreAreInEveryRungsWidth()
     {
-        float floor = W(Track.LikedBarLayout.Rung.InsightsInMore);
+        float floor = W(Track.LikedBarLayout.Rung.FilterInMore);
         Assert.Equal(Track.LikedBarLayout.PlayW + Track.CommandBarLayout.Gap + Track.CommandBarLayout.MoreWidth
                      + Track.CommandBarLayout.SearchGap + Track.CommandBarLayout.SearchIconWidth, floor);
     }
