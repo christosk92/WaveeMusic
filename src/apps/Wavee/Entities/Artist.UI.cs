@@ -405,7 +405,8 @@ public readonly partial struct Artist
         // render, so a future caller of this arm with a real (still-ungrading) url repaints instead of staying grey.
         // EXPERIMENTAL (artist bleed): `bleedDrawn is not null` is the page's `ArtistBleed.Applies` decision, made once per render at
         // navigation rate and never from presence. While it applies the card and the shell draw the photo from ONE frame
-        // (ArtistBleed.FrameFor), the card's veil and the hero copy use the dark on-media arm, and the card's layers yield in one step
+        // (ArtistBleed.FrameFor), the card's veil is the theme's veil, the hero copy keeps the theme's ink except over the dark theme's
+        // field (ArtistBleed.CopyOnMedia), and the card's layers yield in one step
         // once the shell's identical ones are fully present (ArtistBleed.CardLayerOpacity).
         bool bleed = bleedDrawn is not null;
         Element art = photoUrl is { Length: > 0 } src
@@ -433,9 +434,10 @@ public readonly partial struct Artist
             new(ScrollEffect.Fade(ArtistHeroLayout.ExpandedFadeStart(collapse), collapse, 1f, 0f)),
         ];
 
-        // The copy is light-on-dark while the bleed applies (the decision is Zune-only and never stacked, so a stacked identity stays
-        // on theme tokens). The ink is a plain prop, re-pushed on a switch; the Follow toggle is keyed on it (a mount-frozen field).
-        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio, onMedia: bleed);
+        // The copy is light-on-dark only while the bleed applies over the dark theme's field (the decision is Zune-only and never stacked,
+        // so a stacked identity stays on theme tokens); over the light theme's field it keeps the theme's ink. The ink is a plain prop,
+        // re-pushed on a switch; the Follow toggle is keyed on it (a mount-frozen field).
+        Element identity = HeroIdentity(in text, uri, w, in m, accent, play, shuffle, radio, onMedia: ArtistBleed.CopyOnMedia(bleed, Tok.Theme));
         Element expanded;
         if (m.Stacked)
         {
@@ -471,7 +473,7 @@ public readonly partial struct Artist
             // this stays source-compatible until Artist.Page.cs's two HeroBanner call sites are wired to pass it.
             // The veil stretches WITH the photo on a top overpan (the same top-anchored StretchFromTop): a fixed veil
             // over a growing photo left an unveiled band above the hero's top edge.
-            // Under the bleed the veil is the dark onMedia arm over the shell's frame width (the same columns as the shell's veil), it
+            // Under the bleed the veil is the theme's veil over the shell's frame width (the same columns as the shell's veil), it
             // feathers out over the same bottom band as the photo (the shell's veil does, through its photo box's own EdgeFade, so an
             // unfaded veil would end in a hard edge at the riser line) and it yields with the photo (CardLayerOpacity). ONE box shape
             // for both arms (the decision flips on a mounted page at a nav-style switch): Width and Opacity are always bound, the veil
@@ -494,7 +496,7 @@ public readonly partial struct Artist
                     [
                         bleed
                             ? Palette.ArtistHeroVeil(paletteUrl, vertical: false, float.NaN, float.NaN, key: "artist-veil:" + uri,
-                                                     payloadAccent: headerAccent, onMedia: true)
+                                                     payloadAccent: headerAccent)
                             : Palette.ArtistHeroVeil(paletteUrl, vertical: false, w, height, key: "artist-veil:" + uri,
                                                      payloadAccent: headerAccent,
                                                      disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off),
@@ -523,7 +525,7 @@ public readonly partial struct Artist
     static Element HeroIdentity(in HeroText text, string uri, float w, in ArtistHeroMetrics m, ColorF accent,
                                 Action? play, Action? shuffle, Action? radio, bool onMedia = false)
     {
-        // onMedia (the artist bleed's dark field; re-pushed as a prop when the nav style switches): the copy is light-on-dark in both themes.
+        // onMedia (the artist bleed over the dark theme's field; re-pushed as a prop when the nav style or theme switches): the copy is light-on-dark.
         ColorF inkPrimary = onMedia ? Design.OnMedia.Ink : Tok.TextPrimary;
         ColorF inkSecondary = onMedia ? Design.OnMedia.InkSecondary : Tok.TextSecondary;
         Element verified = text.Verified

@@ -211,8 +211,9 @@ public static partial class Shell
 
         /// <summary>EXPERIMENTAL (artist bleed): the backdrop photo, the hero's horizontal veil over it and the scrim that keeps
         /// the chrome readable over it. ONE FIELD, ONE FRAME: the photo box and the veil box both come from
-        /// <see cref="ArtistBleed.FrameFor"/> (the same rule the card's own photo uses), the scrim and the veil are dark in both
-        /// themes (<see cref="ArtistBleed.FieldBase"/>), and the veil rides the photo's clip, translation, strength and
+        /// <see cref="ArtistBleed.FrameFor"/> (the same rule the card's own photo uses), the scrim takes the theme's polarity over the
+        /// page's hero-tinted tone (<see cref="ArtistBleed.FieldBase"/>: light in the light theme, dark in the dark one) and the veil
+        /// is the theme's production veil, and the veil rides the photo's clip, translation, strength and
         /// Enter/Exit, so chrome and hero are one field. All four
         /// layers (photo with its veil, the band extension with its own copy of the veil, scrim) are keyed on the backdrop (a new
         /// photo remounts, and so cross-fades, through the WashFade idiom) and hit-test free, and every binding below is a paint channel except Width/Height, which change on a resize, a pane or rail
@@ -221,9 +222,9 @@ public static partial class Shell
         /// (flush with the window's left edge when no pane is docked); it never sits under the right rail or the Classic/Library
         /// pane. Under Zune a FLOATING rail's panel starts under the band, so below the card's top the photo stops at the panel's
         /// left edge (<see cref="ArtistBleed.PhotoRight"/>) while a band extension keeps the photo across the chrome above the panel.
-        /// The CHROME INK is window-wide (<c>Ui.ChromeInkMix</c>), so the dark field is too: two side strips (the SIDE FIELD below)
+        /// The CHROME INK is window-wide (<c>Ui.ChromeInkMix</c>), so the field is too: two side strips (the SIDE FIELD below)
         /// run the title bar's height under whatever lies outside the photo's span, so the island above the pane column and the one
-        /// above the rail read light-on-dark in a light theme as well.
+        /// above the rail sit on the same field and keep the theme's ink.
         /// <para>THE PHOTO FOLLOWS THE CARD'S PRESENTED POSE. A pane toggle or a nav-style switch FLIPs the card (Reveal: its
         /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
         /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
@@ -268,7 +269,7 @@ public static partial class Shell
                         with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = ArtistBleed.PhotoFocusY },
                 ],
             };
-            // The hero's horizontal veil (the onMedia arm) over the same frame: its gradient spans the same columns as the card's own
+            // The hero's horizontal veil (the theme's production veil) over the same frame: its gradient spans the same columns as the card's own
             // veil, so the hand-over shifts no pixel.
             Element veil = new BoxEl
             {
@@ -280,7 +281,7 @@ public static partial class Shell
                 Children =
                 [
                     Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
-                                           key: "shell.bleed.veil:" + b.Key, payloadAccent: b.PayloadAccent, onMedia: true),
+                                           key: "shell.bleed.veil:" + b.Key, payloadAccent: b.PayloadAccent),
                 ],
             };
             Element photo = new BoxEl
@@ -323,7 +324,7 @@ public static partial class Shell
                         Children =
                         [
                             Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
-                                                   key: "shell.bleed.band.veil:" + b.Key, payloadAccent: b.PayloadAccent, onMedia: true),
+                                                   key: "shell.bleed.band.veil:" + b.Key, payloadAccent: b.PayloadAccent),
                         ],
                     },
                 ],
@@ -340,10 +341,14 @@ public static partial class Shell
                 Enter = WashFade, Exit = WashFade,
                 Children = [bandImage],
             };
-            var ground = ArtistBleed.FieldBase;
+            // The field's ground is the page's own hero-tinted tone (the precedence of CoverPageTonePlane.Resolve). The grading reaches this
+            // render through the tint's republish (CoverShellTintBinder's known colour changes, so MaterialState changes): no Palette.Watch
+            // is needed here, and moving the tint publish elsewhere would leave the scrim on the payload tone. The scrim is keyed on its
+            // tone, so a grading or theme change cross-fades through WashFade instead of snapping.
+            var ground = ArtistBleed.FieldBase(Tok.Theme, Design.SchemeFor(b.PaletteUrl), b.PayloadAccent);
             Element scrim = new BoxEl
             {
-                Key = "shell.bleed.scrim:" + b.Key,
+                Key = "shell.bleed.scrim:" + b.Key + ":" + ground.GetHashCode().ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
                 HitTestVisible = false,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(ChromeClipWidth),
@@ -354,7 +359,7 @@ public static partial class Shell
                 Gradient = new GradientSpec(GradientShape.Linear, 90f, ScrimStops(ground)),
                 Enter = WashFade, Exit = WashFade,
             };
-            // THE SIDE FIELD: the same dark ground, flat across the chrome's height, under the title bar's columns the photo does not
+            // THE SIDE FIELD: the same ground, flat across the chrome's height, under the title bar's columns the photo does not
             // reach (above the Classic/Library pane on the left, above the rail on the right). It rides the photo's strength and
             // Enter/Exit, so the ink and the field are one clock. Zero-width when the card is flush (Zune, no rail). The RIGHT field
             // stops at the title bar's bottom (ArtistBleed.SideFieldHeight): under Zune the inline rail runs from there to the dock

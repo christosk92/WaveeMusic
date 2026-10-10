@@ -198,15 +198,55 @@ public class ArtistBleedGeometryTests
     }
 
     [Fact]
-    public void The_on_media_veil_pulls_only_a_hint_of_the_accent()
+    public void The_bleed_veil_is_the_production_veil_in_both_themes()
     {
-        Assert.Equal(0.09f, Controls.OnMediaPull);
         var accent = ColorF.FromRgba(200, 40, 40, 255);
-        var onMedia = Controls.ArtistHeroVeil(accent, vertical: false, onMedia: true);
-        var expected = ColorF.Lerp(Tok.MediaStage, accent, Controls.OnMediaPull);
-        Assert.Equal(expected.R, onMedia.Stops[0].Color.R, 4);
-        Assert.Equal(expected.G, onMedia.Stops[0].Color.G, 4);
-        Assert.Equal(expected.B, onMedia.Stops[0].Color.B, 4);
+        foreach (var (theme, set) in new[] { (ThemeKind.Light, Tok.Light), (ThemeKind.Dark, Tok.Dark) })
+        {
+            bool light = theme == ThemeKind.Light;
+            var expected = ColorF.Lerp(set.FillLayerDefault, accent, light ? 0.16f : 0.24f);
+            var horizontal = Controls.ArtistHeroVeil(accent, vertical: false, theme, set.FillLayerDefault);
+            Assert.Equal(expected.R, horizontal.Stops[0].Color.R, 4);
+            Assert.Equal(expected.G, horizontal.Stops[0].Color.G, 4);
+            Assert.Equal(expected.B, horizontal.Stops[0].Color.B, 4);
+            Assert.Equal(0.96f, horizontal.Stops[0].Color.A);
+            var vertical = Controls.ArtistHeroVeil(accent, vertical: true, theme, set.FillLayerDefault);
+            Assert.Equal(light ? 0.42f : 0.78f, vertical.Stops[2].Color.A);
+        }
+    }
+
+    [Fact]
+    public void The_field_takes_the_themes_polarity_and_the_heros_tone()
+    {
+        const uint red = 0xFFC82828;
+        var light = ArtistBleed.FieldBase(ThemeKind.Light, null, red);
+        var dark = ArtistBleed.FieldBase(ThemeKind.Dark, null, red);
+        Assert.True(Design.Palette.ToHsl(light).L > 0.8f);
+        Assert.True(Design.Palette.ToHsl(dark).L < 0.25f);
+        Assert.True(light.ToHsv().S > 0f);                  // tinted by the hero, not a neutral
+        Assert.True(dark.ToHsv().S > 0f);
+        Assert.NotEqual(Tok.MediaStage, light);
+        Assert.NotEqual(Tok.MediaStage, dark);
+        Assert.False(ArtistBleed.FieldDark(ThemeKind.Light));
+        Assert.True(ArtistBleed.FieldDark(ThemeKind.Dark));
+        // No hero hue (no accent, or a grey one) is the theme's neutral page tone.
+        Assert.Equal(Design.Palette.PageToneNeutralLight, ArtistBleed.FieldBase(ThemeKind.Light, null, 0));
+        Assert.Equal(Design.Palette.PageToneNeutralDark, ArtistBleed.FieldBase(ThemeKind.Dark, null, 0));
+        Assert.Equal(Design.Palette.PageToneNeutralLight, ArtistBleed.FieldBase(ThemeKind.Light, null, 0xFF808080));
+        Assert.Equal(Design.Palette.PageToneNeutralDark, ArtistBleed.FieldBase(ThemeKind.Dark, null, 0xFF808080));
+    }
+
+    [Fact]
+    public void The_field_prefers_the_graded_scheme_over_the_payload_accent()
+    {
+        // The scrim's ground is the page's own tone with CoverPageTonePlane.Resolve's precedence: the graded scheme first.
+        var scheme = new Scheme(0xFF191414, 0xFF1DB954, 0xFFFFFFFF, 0xFFB3B3B3, 0xFFFFFFFF);
+        foreach (var theme in new[] { ThemeKind.Light, ThemeKind.Dark })
+        {
+            var graded = ArtistBleed.FieldBase(theme, scheme, 0xFFC82828);
+            Assert.Equal(Design.Palette.PageTone(scheme, theme), graded);
+            Assert.NotEqual(ArtistBleed.FieldBase(theme, null, 0xFFC82828), graded);
+        }
     }
 
     [Theory]
@@ -315,25 +355,25 @@ public class ArtistBleedHandOverTests
         => Assert.Equal(1f, ArtistBleed.CardLayerOpacity(false, presence));
 
     [Fact]
-    public void The_chrome_ink_mix_is_the_presence_times_the_hero_still_showing()
+    public void The_chrome_ink_mix_is_the_presence_times_the_hero_still_showing_when_the_polarities_differ()
     {
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f));
-        Assert.Equal(1f, ArtistBleed.ChromeInkMix(1f, 1f));
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f));
-        Assert.Equal(0.25f, ArtistBleed.ChromeInkMix(0.5f, 0.5f), 5);
-        Assert.Equal(1f, ArtistBleed.ChromeInkMix(3f, 2f));   // clamped both ways
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(-1f, 1f));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f, fieldDark: true, themeDark: false));
+        Assert.Equal(1f, ArtistBleed.ChromeInkMix(1f, 1f, fieldDark: true, themeDark: false));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f, fieldDark: true, themeDark: false));
+        Assert.Equal(0.25f, ArtistBleed.ChromeInkMix(0.5f, 0.5f, fieldDark: true, themeDark: false), 5);
+        Assert.Equal(1f, ArtistBleed.ChromeInkMix(3f, 2f, fieldDark: true, themeDark: false));   // clamped both ways
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(-1f, 1f, fieldDark: true, themeDark: false));
         float prev = 0f;
         for (int i = 0; i <= 10; i++)
         {
-            float v = ArtistBleed.ChromeInkMix(i / 10f, 0.8f);
+            float v = ArtistBleed.ChromeInkMix(i / 10f, 0.8f, fieldDark: true, themeDark: false);
             Assert.True(v >= prev - 1e-6f);
             prev = v;
         }
         prev = 0f;
         for (int i = 0; i <= 10; i++)
         {
-            float v = ArtistBleed.ChromeInkMix(0.8f, i / 10f);
+            float v = ArtistBleed.ChromeInkMix(0.8f, i / 10f, fieldDark: true, themeDark: false);
             Assert.True(v >= prev - 1e-6f);
             prev = v;
         }
@@ -387,12 +427,27 @@ public class ArtistBleedHandOverTests
     }
 
     [Fact]
-    public void The_chrome_ink_mix_is_zero_at_no_presence_and_at_no_hero()
+    public void The_chrome_ink_mix_is_zero_at_no_presence_and_at_no_hero_when_the_polarities_differ()
     {
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 0f));
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f));      // nothing drawn: the theme's ink
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f));      // the hero scrolled away: the theme's ink
-        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0.6f, 0f));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 0f, fieldDark: true, themeDark: false));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f, fieldDark: true, themeDark: false));      // nothing drawn: the theme's ink
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f, fieldDark: true, themeDark: false));      // the hero scrolled away: the theme's ink
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0.6f, 0f, fieldDark: true, themeDark: false));
+    }
+
+    [Fact]
+    public void In_light_the_chrome_ink_is_the_themes_at_full_presence()
+    {
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 1f, ArtistBleed.FieldDark(ThemeKind.Light), themeDark: false));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 1f, ArtistBleed.FieldDark(ThemeKind.Dark), themeDark: true));
+    }
+
+    [Fact]
+    public void The_hero_copy_is_theme_ink_in_light()
+    {
+        Assert.False(ArtistBleed.CopyOnMedia(true, ThemeKind.Light));
+        Assert.True(ArtistBleed.CopyOnMedia(true, ThemeKind.Dark));
+        Assert.False(ArtistBleed.CopyOnMedia(false, ThemeKind.Dark));
     }
 
     [Fact]

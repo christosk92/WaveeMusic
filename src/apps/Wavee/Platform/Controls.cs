@@ -511,11 +511,6 @@ public static partial class Controls
             new GradientStop(1f, card));
     }
 
-    /// <summary>How far the artist bleed's veil base (the dark <see cref="Tok.MediaStage"/>) is pulled toward the page accent. Light:
-    /// the old 0.24 tinted the whole photo field a muddy, grey-washed accent over the chrome (worst on black-and-white photos), so the
-    /// on-media veil keeps only a hint of the hue.</summary>
-    public const float OnMediaPull = 0.09f;
-
     /// <summary>Semantic copy protection over full-bleed artist photography. Both axes use exactly FOUR stops — the
     /// recorder's limit, so this is a hard ceiling and not a preference — and both release to alpha 0 at the hero seam.
     ///
@@ -525,17 +520,21 @@ public static partial class Controls
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
     /// image into a painted plate.</para>
     ///
-    /// <para><paramref name="onMedia"/> is the artist bleed's arm: the veil's base is the dark <see cref="Tok.MediaStage"/> instead
-    /// of the theme's layer fill, so the bleed field looks the same in both themes (the shell and the card draw the same veil).</para></summary>
-    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, bool onMedia = false)
+    /// <para>The artist bleed (the shell's field and the card's hero) draws this same theme veil: light over the light theme, dark
+    /// over the dark one, so the hero reads as production's in both.</para></summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical)
+        => ArtistHeroVeil(accent, vertical, Tok.Theme, Tok.FillLayerDefault);
+
+    /// <summary><see cref="ArtistHeroVeil(ColorF, bool)"/> for an explicit theme and layer fill (the pure arm, so a test can pin both
+    /// themes without the ambient token set).</summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, ThemeKind theme, ColorF layer)
     {
-        bool dark = onMedia || Tok.Theme != ThemeKind.Light;
-        ColorF layer = onMedia ? Tok.MediaStage : Tok.FillLayerDefault;
-        float pull = onMedia ? OnMediaPull : dark ? 0.24f : 0.16f;
+        bool light = theme == ThemeKind.Light;
+        float pull = light ? 0.16f : 0.24f;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
         if (vertical)
         {
-            float top = dark ? 0.78f : 0.42f;
+            float top = light ? 0.42f : 0.78f;
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(0.45f, veil with { A = 0.35f }),

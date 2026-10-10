@@ -12,9 +12,11 @@
 // the hero fade out and return as the hero scrolls away; the solid fill below the hero stays, its top edge riding the hero's
 // bottom through a paint-only translation. The card rect never changes; per scroll only the shell photo clip's height (one leaf) is re-solved, everything else is paint.
 //
-// ONE FIELD, ONE FRAME. The shell draws the photo, a DARK top scrim and the hero's horizontal veil as one field; the card's own
+// ONE FIELD, ONE FRAME. The shell draws the photo, a top scrim (over the field base) and the hero's horizontal veil as one field; the card's own
 // photo and veil are drawn at exactly the same frame, crop and colour (<see cref="FrameFor"/>), so the card layers yield to the
-// shell's with no seam, no content shift and no dip. The field is dark in both themes (<see cref="FieldBase"/>).
+// shell's with no seam, no content shift and no dip. The field takes the theme's polarity and the page's own hero-tinted tone
+// (<see cref="FieldBase"/>): in the light theme a light veil and scrim under the theme's dark ink, as production's hero; in the dark theme
+// a dark one that fades into the hero tone, never black.
 
 using FluentGpu.Dsl;
 using FluentGpu.Foundation;
@@ -27,11 +29,22 @@ public static class ArtistBleed
     /// experiment and leaves no behavioural trace.</summary>
     public const bool Enabled = true;
 
-    /// <summary>The bleed field's base colour. The field (photo, scrim, veil) is DARK in both themes, so the chrome and the hero
-    /// copy over it read as light-on-dark everywhere.</summary>
-    public static ColorF FieldBase => Tok.MediaStage;
+    /// <summary>The field's polarity: dark in the dark theme, light in the light one. The field follows the theme, so the chrome's
+    /// ink stays the theme's (<see cref="ChromeInkMix"/> is 0) and the hero copy is light-on-dark only over the dark theme's field
+    /// (<see cref="CopyOnMedia"/>).</summary>
+    public static bool FieldDark(ThemeKind theme) => theme == ThemeKind.Dark;
 
-    /// <summary>The scrim's strongest alpha, at the window top (over <see cref="FieldBase"/>), the same in both themes.</summary>
+    /// <summary>The bleed field's base colour: the page's OWN tone, with the precedence of <c>CoverPageTonePlane.Resolve</c> (the
+    /// graded scheme's tone, else the payload accent's hue, else the theme's neutral), so the field fades into exactly the page's
+    /// ground. Light in the light theme, dark in the dark one, tinted by the hero either way. Never black and never
+    /// a fixed stage colour.</summary>
+    public static ColorF FieldBase(ThemeKind theme, Scheme? scheme, uint payloadAccent)
+        => Design.Palette.PageTone(scheme, theme)
+           ?? (payloadAccent != 0 ? Design.Palette.PageToneFromHue(Design.Palette.ToColor(payloadAccent), theme) : null)
+           ?? (theme == ThemeKind.Dark ? Design.Palette.PageToneNeutralDark : Design.Palette.PageToneNeutralLight);
+
+    /// <summary>The scrim's strongest alpha, at the window top (over <see cref="FieldBase"/>, the page's hero-tinted tone in the theme's
+    /// polarity), the same in both themes.</summary>
     public const float ScrimTop = 0.55f;
 
     /// <summary>The scrim's eased falloff: (offset down the chrome's height, alpha over <see cref="FieldBase"/>). Four stops, the
@@ -39,9 +52,9 @@ public static class ArtistBleed
     /// eases out (0.55, 0.38 at 40%, 0.12 at 80%, 0) and the scrim fades into the photo instead of ending on it.</summary>
     public static readonly (float Offset, float Alpha)[] ScrimStops = [(0f, ScrimTop), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)];
 
-    /// <summary>The side field's alpha: the flat dark ground under the chrome columns the photo does not reach (above the
-    /// Classic/Library pane and above the rail). Heavier than <see cref="ScrimTop"/>, which only has to calm a photo: here the dark
-    /// has to hold the chrome's light ink on the plain theme ground, a white one in the light theme, down to the hold line.</summary>
+    /// <summary>The side field's alpha: the flat ground under the chrome columns the photo does not reach (above the
+    /// Classic/Library pane and above the rail). Heavier than <see cref="ScrimTop"/>, which only has to calm a photo: here the ground
+    /// has to match the field the photo sits on, down to the hold line.</summary>
     public const float SideFieldAlpha = 0.86f;
 
     /// <summary>The bleed applies: the experiment is on, tinted surfaces are on (the photo is part of the tinted material), the
@@ -156,9 +169,15 @@ public static class ArtistBleed
         => drawn && presence >= 0.999f ? 1f - Math.Clamp(handover, 0f, 1f) : 1f;
 
     /// <summary>How far the chrome's ink has moved from the theme's toward the on-media ink: the shell's presence times how
-    /// much of the hero is still showing, 0..1.</summary>
-    public static float ChromeInkMix(float presence, float heroVisible)
-        => Math.Clamp(presence, 0f, 1f) * Math.Clamp(heroVisible, 0f, 1f);
+    /// much of the hero is still showing, 0..1, and only when the field's polarity differs from the theme's. With
+    /// <see cref="FieldBase"/> following the theme that never happens, so the chrome keeps the theme's ink while the always-bound
+    /// ink Props stay.</summary>
+    public static float ChromeInkMix(float presence, float heroVisible, bool fieldDark, bool themeDark)
+        => fieldDark == themeDark ? 0f : Math.Clamp(presence, 0f, 1f) * Math.Clamp(heroVisible, 0f, 1f);
+
+    /// <summary>The hero copy is light-on-dark (on-media ink) only while bleeding over the dark theme's field; in the light theme
+    /// it keeps the theme's ink over the light field.</summary>
+    public static bool CopyOnMedia(bool bleed, ThemeKind theme) => bleed && FieldDark(theme);
 
     /// <summary>The chrome ink at <paramref name="mix"/> (<see cref="ChromeInkMix"/>).</summary>
     public static ColorF Ink(ColorF theme, ColorF media, float mix) => ColorF.Lerp(theme, media, Math.Clamp(mix, 0f, 1f));
