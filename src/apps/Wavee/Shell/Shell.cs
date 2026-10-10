@@ -1145,9 +1145,10 @@ public static partial class Shell
         /// accent shade at <see cref="ChromeInkMix"/>, so it stays legible over the dark bleed in the light theme.</summary>
         public static readonly Func<ColorF> ChromeInkAccent = static () => ArtistBleed.Ink(Tok.AccentTextPrimary, Design.OnMedia.AccentInk, ChromeInkMix());
 
-        /// <summary>A backdrop is published (or still fading out): the chrome binds its rest ink to the mix (<see cref="ChromePrimary"/>
-        /// family). A navigation-rate read (it changes with the publication, never per scroll or per frame). With no backdrop the
-        /// sites keep their STATIC theme colour, so today's code path, brush transitions included, is untouched: at mix 0 the swap is invisible.</summary>
+        /// <summary>A backdrop is published (or still fading out). A navigation-rate read (it changes with the publication, never per
+        /// scroll or per frame). It no longer picks BIND versus STATIC for the chrome's rest ink (that flip, on a REUSED node, never
+        /// wired the new bind, so the ink stayed the theme's: see <see cref="ChromePrimary"/>); it only decides what genuinely differs
+        /// with a backdrop (the field behind the chrome, the static hover and pressed arms).</summary>
         public static bool ChromeOnMedia => BleedBackdrop.Value is not null;
 
         /// <summary>The mix has crossed one half (<see cref="ChromeInkMix"/> >= 0.5): the chrome's STATIC hover and pressed arms
@@ -1157,14 +1158,16 @@ public static partial class Shell
         /// eager signal effect), so it is false wherever that layer is not mounted.</summary>
         public static readonly Signal<bool> ChromeArmsOnMedia = new(false);
 
-        /// <summary>The chrome's rest ink as a Prop: bound to <see cref="ChromeInkPrimary"/> while a backdrop shows, the plain theme token
-        /// otherwise (a static colour keeps the reconciler's brush transition on a state or theme change). Call it from a render or a
-        /// part modifier, which re-run on <see cref="ChromeOnMedia"/>.</summary>
-        public static Prop<ColorF> ChromePrimary => ChromeOnMedia ? Prop.Of(ChromeInkPrimary) : Tok.TextPrimary;
+        /// <summary>The chrome's rest ink as a Prop: ALWAYS bound to <see cref="ChromeInkPrimary"/>, with or without a backdrop (at mix 0
+        /// the thunk is the theme token itself). A Prop binding is wired only when a node MOUNTS; a re-render never wires a newly bound
+        /// channel, so a site that was static at mount and turned bound when the bleed published kept the theme colour for good (dark
+        /// ink on the dark field in the light theme). One shape for the whole life of the node removes the flip. The theme token is read
+        /// inside the thunk, so a theme switch still repaints it.</summary>
+        public static Prop<ColorF> ChromePrimary => Prop.Of(ChromeInkPrimary);
         /// <inheritdoc cref="ChromePrimary"/>
-        public static Prop<ColorF> ChromeSecondary => ChromeOnMedia ? Prop.Of(ChromeInkSecondary) : Tok.TextSecondary;
+        public static Prop<ColorF> ChromeSecondary => Prop.Of(ChromeInkSecondary);
         /// <inheritdoc cref="ChromePrimary"/>
-        public static Prop<ColorF> ChromeTertiary => ChromeOnMedia ? Prop.Of(ChromeInkTertiary) : Tok.TextTertiary;
+        public static Prop<ColorF> ChromeTertiary => Prop.Of(ChromeInkTertiary);
 
         /// <summary>The rail is open. When false the rail slot animates its width to 0.</summary>
         public static readonly Signal<bool> RailOpen = new(false);

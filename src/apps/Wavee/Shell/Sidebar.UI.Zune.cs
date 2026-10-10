@@ -591,14 +591,15 @@ public static partial class Sidebar
             Element cluster = new BoxEl
             {
                 Key = "zune:sub:context:" + name, Direction = 0, Grow = 1f, Height = rowH, MinWidth = 0f, AlignItems = FlexAlign.Center,
-                Children = Detail.BandCluster(lead, pivotsEl, actionsEl, rowH, dividerInk: Shell.Ui.ChromeOnMedia ? s_dividerOnMedia : (Prop<ColorF>?)null),
+                Children = Detail.BandCluster(lead, pivotsEl, actionsEl, rowH, dividerInk: s_dividerOnMedia),
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_viewsFade,
             };
             return cluster;
         }
 
         /// <summary>Row 2's divider over the artist bleed: the theme's hairline cross-fading to the on-media one with the chrome ink mix
-        /// (<c>Shell.Ui.ChromeInkMix</c>, the one source of truth).</summary>
+        /// (<c>Shell.Ui.ChromeInkMix</c>, the one source of truth). Always bound (a mix of 0 is the theme's hairline), never
+        /// static-then-bound on a reused node.</summary>
         static readonly Prop<ColorF> s_dividerOnMedia = Prop.Of(static () =>
             ArtistBleed.Ink(Tok.StrokeDividerDefault, Design.OnMedia.Stroke, Shell.Ui.ChromeInkMix()));
 
@@ -663,9 +664,8 @@ public static partial class Sidebar
         static readonly MotionTokenDef s_viewsFade =
             MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
-        /// <summary>A row word's rest ink (primary when it is the lit one, else secondary): the paint-rate bind while a backdrop shows
-        /// (<see cref="Shell.Ui.ChromeOnMedia"/>, a navigation-rate read in the band's render), the theme token otherwise, which keeps
-        /// the word's brush transition on a selection change.</summary>
+        /// <summary>A row word's rest ink (primary when it is the lit one, else secondary): ALWAYS the paint-rate bind
+        /// (<see cref="Shell.Ui.ChromePrimary"/> family), so the word's channel never flips between static and bound on a reused node.</summary>
         static Prop<ColorF> WordInk(bool on) => on ? Shell.Ui.ChromePrimary : Shell.Ui.ChromeSecondary;
 
         /// <summary>The words' static hover and pressed arms: the theme's until the mix passes one half

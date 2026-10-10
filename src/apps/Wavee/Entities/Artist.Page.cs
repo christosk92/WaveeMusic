@@ -730,10 +730,10 @@ public readonly partial struct Artist
         }
 
         /// <summary>Row 2's word ink over the artist bleed (<c>Shell.Ui.ChromeInkMix</c>): the chrome's secondary ink at rest, and the
-        /// on-media hover and pressed arms once the mix is past one half. Null with no backdrop: today's tokens. Read in a render.</summary>
+        /// on-media hover and pressed arms once the mix is past one half. Never null: the rest ink is ALWAYS bound (a mix of 0 is today's
+        /// token), so a word never turns from static to bound on a reused node when the bleed publishes. Read in a render.</summary>
         static Controls.TextActionInk? RowInk()
         {
-            if (!Shell.Ui.ChromeOnMedia) return null;
             bool arms = Shell.Ui.ChromeArmsOnMedia.Value;
             return new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary,
                 arms ? Design.OnMedia.Ink : Tok.TextPrimary, arms ? Design.OnMedia.InkSecondary : Tok.TextSecondary,

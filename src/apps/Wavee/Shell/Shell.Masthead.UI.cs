@@ -162,6 +162,9 @@ public static partial class Shell
             var state = MaterialState.Value;                  // navigation rate
             var vp = UseContextSignal(Viewport.Size);         // read through BOUND sizes: a resize never re-renders this
             bool light = Tok.Theme == ThemeKind.Light;
+            // The card's final top (the title bar, plus the Zune band): the depth of the veil's top fade. Changes only with the nav
+            // style or the band, never per scroll or per frame.
+            float cardTop = UseComputed(static () => Ui.CardRect.Value.Y).Value;
             // The chrome's static hover/pressed arms follow the ink mix across one half (Ui.ChromeArmsOnMedia): bridged here, the one
             // shell-level component, so what reads it renders once per crossing and never per scroll tick.
             UseSignalEffect(static () => Ui.ChromeArmsOnMedia.SetIfChanged(Ui.ChromeInkMix() >= 0.5f));
@@ -177,7 +180,7 @@ public static partial class Shell
             // EXPERIMENTAL (artist bleed): the page-published photo and its chrome scrim, ABOVE the tint and the washes. Null for
             // every page that publishes none, which adds nothing to the children below. After the page lets go, the RETAINED backdrop
             // keeps the nodes mounted while BleedPresence fades them, so the photo and the card's strip share one clock.
-            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, vp) : null;
+            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, vp, cardTop) : null;
 
             if (state.Wash is not { } wash)
                 return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = bleed is null ? [tint] : [tint, .. bleed] };
@@ -225,8 +228,12 @@ public static partial class Shell
         /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
         /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
         /// crop never rescales mid-move and the left edge never snaps.</para></summary>
-        static Element[] BleedNodes(ShellBackdrop b, IReadSignal<Size2> vp)
+        static Element[] BleedNodes(ShellBackdrop b, IReadSignal<Size2> vp, float cardTop)
         {
+            // THE VEIL'S TOP FADE: the veil's horizontal plate is near-opaque on the left, which over the chrome (the title bar and the
+            // band) muddied the pivots and the search pill. It fades in from nothing at the window top to full at the card's top, so
+            // the chrome sees the photo and the scrim, and from the card's top down the veil is the card's own (same pixels, no seam).
+            EdgeFadeSpec? veilTopFade = cardTop > 0f ? new EdgeFadeSpec(EdgeMask.Top, cardTop) : null;
             // The span is the card's own: flush with the window edge whenever no pane is docked (FrameRules.ContentCardX is 0 under
             // Zune), so it follows the card's FLIP in BOTH directions with no style-keyed snap.
             static float CardRight() { var r = Ui.CardRect.Value; return r.X + r.W; }
@@ -269,6 +276,7 @@ public static partial class Shell
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(() => Frame().Width),
                 Height = Prop.Of(() => Frame().Height),
+                EdgeFade = veilTopFade,
                 Children =
                 [
                     Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
@@ -308,8 +316,16 @@ public static partial class Shell
                 [
                     Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent)
                         with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = ArtistBleed.PhotoFocusY },
-                    Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
-                                           key: "shell.bleed.band.veil:" + b.Key, payloadAccent: b.PayloadAccent, onMedia: true),
+                    new BoxEl
+                    {
+                        ZStack = true, HitTestVisible = false, AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch,
+                        EdgeFade = veilTopFade,
+                        Children =
+                        [
+                            Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
+                                                   key: "shell.bleed.band.veil:" + b.Key, payloadAccent: b.PayloadAccent, onMedia: true),
+                        ],
+                    },
                 ],
             };
             Element photoBand = new BoxEl
@@ -335,11 +351,7 @@ public static partial class Shell
                 Transform = Prop.Of(() => Affine2D.Translation(Left(), 0f)),
                 Opacity = Prop.Of(Strength),
                 // Straight-alpha stops: the transparent stop carries the ground's own RGB (Design.Wash.Vanish).
-                Gradient = new GradientSpec(GradientShape.Linear, 90f,
-                [
-                    new GradientStop(0f, ground with { A = ArtistBleed.ScrimTopAlpha() }),
-                    new GradientStop(1f, Design.Wash.Vanish(ground)),
-                ]),
+                Gradient = new GradientSpec(GradientShape.Linear, 90f, ScrimStops(ground)),
                 Enter = WashFade, Exit = WashFade,
             };
             // THE SIDE FIELD: the same dark ground, flat across the chrome's height, under the title bar's columns the photo does not
@@ -374,6 +386,17 @@ public static partial class Shell
                 Side("shell.bleed.side.r:", static () => CardRight(), () => MathF.Max(0f, vp.Value.Width - CardRight()),
                     static () => ArtistBleed.SideFieldHeight(Ui.CardPose.Value.Y, TitleBar.ExpandedHeight)),
             ];
+        }
+
+        /// <summary>The scrim's gradient stops (<see cref="ArtistBleed.ScrimStops"/>) over <paramref name="ground"/>: straight-alpha, the
+        /// last (alpha 0) stop carrying the ground's own RGB.</summary>
+        static GradientStop[] ScrimStops(ColorF ground)
+        {
+            var stops = ArtistBleed.ScrimStops;
+            var result = new GradientStop[stops.Length];
+            for (int i = 0; i < stops.Length; i++)
+                result[i] = new GradientStop(stops[i].Offset, stops[i].Alpha > 0f ? ground with { A = stops[i].Alpha } : Design.Wash.Vanish(ground));
+            return result;
         }
 
         static void AddWash(List<Element> legs, WashLayer? layer, ShellWashPlacement p, float alpha, string key, IReadSignal<Size2> vp)
@@ -471,6 +494,11 @@ public static partial class Shell
     static readonly Func<ColorF> PillInkPrimary = static () => ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, PillInkMix());
     /// <inheritdoc cref="PillInkPrimary"/>
     static readonly Func<ColorF> PillInkSecondary = static () => ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, PillInkMix());
+    /// <summary>The pill's plate and hairline: the standard field's control fill and stroke (the pill is <c>AutoSuggestBoxChrome.Standard</c>)
+    /// cross-fading to the glass plate and the on-media stroke at <see cref="PillInkMix"/>. Read live, so a theme switch repaints them.</summary>
+    static readonly Func<ColorF> s_pillPlate = static () => ColorF.Lerp(Tok.FillControlDefault, Design.OnMedia.GlassPlate, PillInkMix());
+    /// <inheritdoc cref="s_pillPlate"/>
+    static readonly Func<ColorF> s_pillHairline = static () => ColorF.Lerp(Tok.StrokeControlDefault, Design.OnMedia.Stroke, PillInkMix());
 
     /// <summary>The pill's width motion (F5): a REFLOW on the width axis, so the neighbours (the drag gap, the centre column's
     /// grow bands) are pushed through real layout instead of the pill overlapping them. <see cref="Design.Motion.Standard"/>.</summary>
@@ -518,18 +546,19 @@ public static partial class Shell
                         OnRealized = h => field.Value = h,
                         OnFocusChanged = static f => s_searchFocused.SetIfChanged(f),
                     };
-                    if (!Ui.ChromeOnMedia || b.Fill.IsBound || b.BorderColor.IsBound) return b;
-                    ColorF plate = b.Fill.Value, hair = b.BorderColor.Value;
+                    // ALWAYS bound (a mix of 0 is the theme's plate and hairline): a bind is wired only at mount, so a plate that
+                    // mounted static kept the theme's colour when the bleed published (a white pill over the dark photo).
+                    if (b.Fill.IsBound || b.BorderColor.IsBound) return b;
                     bool arms = Ui.ChromeArmsOnMedia.Value;
                     return b with
                     {
-                        Fill = Prop.Of(() => ColorF.Lerp(plate, Design.OnMedia.GlassPlate, PillInkMix())),
-                        BorderColor = Prop.Of(() => ColorF.Lerp(hair, Design.OnMedia.Stroke, PillInkMix())),
+                        Fill = Prop.Of(s_pillPlate),
+                        BorderColor = Prop.Of(s_pillHairline),
                         HoverFill = arms && !s_searchFocused.Value ? Design.OnMedia.GlassPlateHover : b.HoverFill,
                         PressedFill = arms && !s_searchFocused.Value ? Design.OnMedia.GlassPlatePressed : b.PressedFill,
                     };
                 };
-                p.Set<TextEl>(AutoSuggestBox.PartQueryIcon, static t => Ui.ChromeOnMedia ? t with { Color = Prop.Of(PillInkSecondary) } : t);   // ink: see Ui.ChromeInkMix
+                p.Set<TextEl>(AutoSuggestBox.PartQueryIcon, static t => t with { Color = Prop.Of(PillInkSecondary) });   // ink: see Ui.ChromeInkMix
                 return p;
             }, DepKey.Empty);
 
@@ -817,7 +846,7 @@ public static partial class Shell
                 Margin = new Edges4(0f, 0f, AutoSuggestBox.QueryButtonWidth + AutoSuggestBox.QueryButtonLeftMargin + AutoSuggestBox.RightButtonMargin, 0f),
                 Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(4f),
                 // ink: see Ui.ChromeInkMix (the chip shows only while unfocused, so the pill's focus override never applies to it)
-                BorderWidth = 1f, BorderColor = Ui.ChromeOnMedia ? Prop.Of(s_hintBorderOnMedia) : Tok.StrokeControlDefault,
+                BorderWidth = 1f, BorderColor = Prop.Of(s_hintBorderOnMedia),
                 Opacity = show ? 1f : 0f, Transition = s_chromeFade,
                 Children = [Caption(Chrome.SearchHintChord) with { Color = Ui.ChromeTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap }],
             };

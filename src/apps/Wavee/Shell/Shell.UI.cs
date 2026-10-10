@@ -1642,15 +1642,16 @@ public static partial class Shell
         }
         : IconButton.DefaultStyle with { Size = 40f, Height = 44f };
 
-    /// <summary>The chrome buttons' rest glyph ink: a paint-rate bind of <see cref="Ui.ChromeInkPrimary"/> (the style's own rest
-    /// colour, so a mix of 0 is exactly today's) while a backdrop shows; with none the part leaves the glyph's static colour
-    /// alone. One instance: the modifier is static, and re-runs wherever the button is built.</summary>
+    /// <summary>The chrome buttons' rest glyph ink: ALWAYS a paint-rate bind of <see cref="Ui.ChromeInkPrimary"/> (the style's own rest
+    /// colour, so a mix of 0 is exactly today's). Always bound, never static-then-bound: a bind is wired only at mount, so a glyph
+    /// mounted static kept the theme ink when the bleed published. One instance: the modifier is static, and re-runs wherever the
+    /// button is built.</summary>
     static readonly TemplateParts ChromeGlyphParts = MakeChromeGlyphParts();
 
     static TemplateParts MakeChromeGlyphParts()
     {
         var p = new TemplateParts();
-        p.Set<TextEl>(IconButton.PartGlyph, static g => Ui.ChromeOnMedia ? g with { Color = Prop.Of(Ui.ChromeInkPrimary) } : g);   // ink: see Ui.ChromeInkMix
+        p.Set<TextEl>(IconButton.PartGlyph, static g => g with { Color = Prop.Of(Ui.ChromeInkPrimary) });   // ink: see Ui.ChromeInkMix
         return p;
     }
 
@@ -1714,8 +1715,7 @@ public static partial class Shell
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
                   | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (zune ? 128 : 0)
-                  | (Ui.ChromeOnMedia ? 256 : 0)           // the rest ink is bound (ChromeGlyphParts, the wordmark, the tab labels)
-                  | (Ui.ChromeArmsOnMedia.Value ? 512 : 0); // the static hover/pressed arms (ChromeButtonStyle)
+                  | (Ui.ChromeArmsOnMedia.Value ? 512 : 0); // the static hover/pressed arms (ChromeButtonStyle); the rest ink is always bound, so no flag
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
         // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
@@ -1733,9 +1733,9 @@ public static partial class Shell
     static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value,
         (int)Sidebar.NavStyle.Value, Tabs.Count);
 
-    // The ink flags ride along: the labels' part modifier (ChromeTabParts) reads them while the strip renders.
+    // The arms flag rides along: the labels' part modifier (ChromeTabParts) reads it while the strip renders (the rest ink is always bound).
     static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value,
-        (Ui.ChromeOnMedia ? 1 : 0) | (Ui.ChromeArmsOnMedia.Value ? 2 : 0));
+        Ui.ChromeArmsOnMedia.Value ? 2 : 0);
 
     /// <summary>The tabs island takes a RESERVED, quantised width (issue #88): hugging the strip shoved the centred search
     /// by half of every title swing.</summary>
@@ -1775,9 +1775,9 @@ public static partial class Shell
         };
     }
 
-    /// <summary>The tab labels' ink: while a backdrop shows, the rest colour is a paint-rate bind (selected = primary, the others
-    /// secondary) and the static hover and pressed arms go light once the mix is past one half (a navigation-rate read of the tab
-    /// strip's own render). The selected label is the one with weight; the text-first strip gives only it any.</summary>
+    /// <summary>The tab labels' ink: the rest colour is ALWAYS a paint-rate bind (selected = primary, the others secondary; a mix of 0
+    /// is the theme's ink) and the static hover and pressed arms go light once the mix is past one half (a navigation-rate read of
+    /// the tab strip's own render). The selected label is the one with weight; the text-first strip gives only it any.</summary>
     static readonly TemplateParts ChromeTabParts = MakeChromeTabParts();
 
     static TemplateParts MakeChromeTabParts()
@@ -1785,7 +1785,6 @@ public static partial class Shell
         var p = new TemplateParts();
         p.Set<TextEl>(TabStrip.PartTabLabel, static t =>
         {
-            if (!Ui.ChromeOnMedia) return t;
             bool selected = t.Weight > 0;   // the TabStrip's weight rule: only the selected label carries any (TabStrip.cs, Text appearance)
             bool arms = Ui.ChromeArmsOnMedia.Value;
             // ink: see Ui.ChromeInkMix
@@ -1989,7 +1988,7 @@ public static partial class Shell
         {
             Key = "chrome-connecting", Height = 32f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
             // ink: see Ui.ChromeInkMix
-            Children = [Ui.ChromeOnMedia ? Caption(Loc.Get(Strings.Shell.Connecting)) with { Color = Prop.Of(Ui.ChromeInkSecondary) } : Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
+            Children = [Caption(Loc.Get(Strings.Shell.Connecting)) with { Color = Prop.Of(Ui.ChromeInkSecondary) }],
         },
         // Offline = a credential is on disk but the resume failed: the verb is "try again", not "sign in".
         var form => Button.Accent(Loc.Get(form == FrameRules.ChipForm.Reconnect ? Strings.Shell.Reconnect : Strings.Shell.SignIn),

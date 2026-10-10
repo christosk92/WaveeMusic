@@ -511,6 +511,11 @@ public static partial class Controls
             new GradientStop(1f, card));
     }
 
+    /// <summary>How far the artist bleed's veil base (the dark <see cref="Tok.MediaStage"/>) is pulled toward the page accent. Light:
+    /// the old 0.24 tinted the whole photo field a muddy, grey-washed accent over the chrome (worst on black-and-white photos), so the
+    /// on-media veil keeps only a hint of the hue.</summary>
+    public const float OnMediaPull = 0.09f;
+
     /// <summary>Semantic copy protection over full-bleed artist photography. Both axes use exactly FOUR stops — the
     /// recorder's limit, so this is a hard ceiling and not a preference — and both release to alpha 0 at the hero seam.
     ///
@@ -526,7 +531,7 @@ public static partial class Controls
     {
         bool dark = onMedia || Tok.Theme != ThemeKind.Light;
         ColorF layer = onMedia ? Tok.MediaStage : Tok.FillLayerDefault;
-        float pull = dark ? 0.24f : 0.16f;
+        float pull = onMedia ? OnMediaPull : dark ? 0.24f : 0.16f;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
         if (vertical)
         {

@@ -32,7 +32,12 @@ public static class ArtistBleed
     public static ColorF FieldBase => Tok.MediaStage;
 
     /// <summary>The scrim's strongest alpha, at the window top (over <see cref="FieldBase"/>), the same in both themes.</summary>
-    public const float ScrimTop = 0.62f;
+    public const float ScrimTop = 0.55f;
+
+    /// <summary>The scrim's eased falloff: (offset down the chrome's height, alpha over <see cref="FieldBase"/>). Four stops, the
+    /// recorder's ceiling: a straight two-stop ramp read as a hard dark lid with a visible knee where it ended, so the alpha
+    /// eases out (0.55, 0.38 at 40%, 0.12 at 80%, 0) and the scrim fades into the photo instead of ending on it.</summary>
+    public static readonly (float Offset, float Alpha)[] ScrimStops = [(0f, ScrimTop), (0.4f, 0.38f), (0.8f, 0.12f), (1f, 0f)];
 
     /// <summary>The side field's alpha: the flat dark ground under the chrome columns the photo does not reach (above the
     /// Classic/Library pane and above the rail). Heavier than <see cref="ScrimTop"/>, which only has to calm a photo: here the dark
@@ -108,7 +113,7 @@ public static class ArtistBleed
     public static float ParallaxY(double offset) => -(float)Math.Max(0.0, offset) * (1f - ArtistHeroLayout.PhotoParallaxFraction);
 
     /// <summary>The scrim's alpha at the window top; it falls to 0 by the card's top edge.</summary>
-    public static float ScrimTopAlpha() => ScrimTop;
+    public static float ScrimTopAlpha() => ScrimStops[0].Alpha;
 
     /// <summary>The scrim's height: the chrome's whole extent above the card (the title bar, plus the Zune band when present).</summary>
     public static float ScrimHeight(float chromeBottom) => MathF.Max(0f, chromeBottom);

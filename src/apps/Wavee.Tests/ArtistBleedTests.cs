@@ -179,6 +179,36 @@ public class ArtistBleedGeometryTests
         Assert.Equal(0f, ArtistBleed.ScrimHeight(-4f));
     }
 
+    [Fact]
+    public void The_scrim_is_an_eased_four_stop_falloff_that_ends_clear()
+    {
+        var s = ArtistBleed.ScrimStops;
+        Assert.Equal(GradientSpec.MaxStops, s.Length);               // the recorder's ceiling, no more
+        Assert.Equal((0f, 0.55f), s[0]);
+        Assert.Equal((0.4f, 0.38f), s[1]);
+        Assert.Equal((0.8f, 0.12f), s[2]);
+        Assert.Equal((1f, 0f), s[3]);
+        for (int i = 1; i < s.Length; i++)
+        {
+            Assert.True(s[i].Offset > s[i - 1].Offset);              // strictly increasing offsets
+            Assert.True(s[i].Alpha < s[i - 1].Alpha);                // and a strictly falling alpha
+        }
+        // Eased, not linear: the first leg falls slower than a straight ramp would (0.55 to 0 over 0..1 is 0.33 at 0.4).
+        Assert.True(s[1].Alpha > ArtistBleed.ScrimTop * (1f - s[1].Offset));
+    }
+
+    [Fact]
+    public void The_on_media_veil_pulls_only_a_hint_of_the_accent()
+    {
+        Assert.Equal(0.09f, Controls.OnMediaPull);
+        var accent = ColorF.FromRgba(200, 40, 40, 255);
+        var onMedia = Controls.ArtistHeroVeil(accent, vertical: false, onMedia: true);
+        var expected = ColorF.Lerp(Tok.MediaStage, accent, Controls.OnMediaPull);
+        Assert.Equal(expected.R, onMedia.Stops[0].Color.R, 4);
+        Assert.Equal(expected.G, onMedia.Stops[0].Color.G, 4);
+        Assert.Equal(expected.B, onMedia.Stops[0].Color.B, 4);
+    }
+
     [Theory]
     [InlineData(48f, 48f, 48f)]     // Classic / Library: the card's top is the title bar's bottom
     [InlineData(132f, 48f, 48f)]    // Zune with a row 2: the inline right panel starts at the title bar's bottom, not under the band
@@ -377,16 +407,26 @@ public class ArtistBleedHandOverTests
     }
 
     [Fact]
-    public void With_no_backdrop_the_chrome_props_are_the_static_theme_tokens_and_the_arms_stay_theme()
+    public void The_chrome_props_are_always_bound_and_at_mix_zero_read_as_the_theme_tokens()
     {
-        // A static colour keeps the reconciler's brush transition on a selection or theme change: the bind exists only while a backdrop does.
-        Assert.False(Shell.Ui.ChromePrimary.IsBound);
-        Assert.False(Shell.Ui.ChromeSecondary.IsBound);
-        Assert.False(Shell.Ui.ChromeTertiary.IsBound);
-        Assert.Equal(Tok.TextPrimary, Shell.Ui.ChromePrimary.Value);
-        Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeSecondary.Value);
-        Assert.Equal(Tok.TextTertiary, Shell.Ui.ChromeTertiary.Value);
+        // A bind is wired only when a node mounts, so a site that was static at mount and bound once the bleed published kept the
+        // theme ink on a reused node. The chrome ink is therefore bound with or without a backdrop; at mix 0 it IS the theme's token.
+        Assert.True(Shell.Ui.ChromePrimary.IsBound);
+        Assert.True(Shell.Ui.ChromeSecondary.IsBound);
+        Assert.True(Shell.Ui.ChromeTertiary.IsBound);
+        Assert.Equal(0f, Shell.Ui.ChromeInkMix());
+        Assert.Equal(Tok.TextPrimary, Shell.Ui.ChromeInkPrimary());
+        Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeInkSecondary());
+        Assert.Equal(Tok.TextTertiary, Shell.Ui.ChromeInkTertiary());
         Assert.False(Shell.Ui.ChromeArmsOnMedia.Peek());
+    }
+
+    [Fact]
+    public void The_row_ink_is_always_given_so_a_row_two_word_never_flips_from_static_to_bound()
+    {
+        Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeInkSecondary());   // mix 0: the rest ink is the theme's, bound
+        var plain = Controls.TextAction("Share", null, ink: new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary, Tok.TextPrimary, Tok.TextSecondary));
+        Assert.True(((TextEl)plain.Children![0]).Color.IsBound);
     }
 
     [Fact]
