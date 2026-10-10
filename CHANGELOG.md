@@ -22,12 +22,12 @@ versions separately under `v*` and is not tracked in this file.)
   with guide lines.
 - **Show covers for the Classic sidebar.** Off by default for Spotify's classic text-only list; on shows a small cover
   on each row.
-- **Experimental**: on artist pages the header photo now runs behind the title bar and the navigation band. This may
-  change or be removed.
-- **Experimental**: over that photo the title bar, the pivots and the second pivot row turn light, then fade back to
-  your theme's colours as the photo scrolls away or you leave the page.
-- **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the
-  hero, and it follows the page when you open or close the sidebar or the right rail or switch the navigation style.
+- **Experimental**: in Zune, on artist pages the header photo runs behind the title bar and the navigation band. It is
+  not shown on narrow layouts and stops at a floating queue panel. This may change or be removed.
+- **Experimental**: over that photo the title bar, the pivots and the second pivot row turn light, on a lighter wash
+  with readable light text, then fade back to your theme's colours as the photo scrolls away or you leave the page.
+- **Experimental**: the artist photo no longer leaves a sliver below the hero, and it follows the page when you open or
+  close the right rail or switch the navigation style.
 - **A Play menu on album, playlist and Liked Songs pages**: Add to queue, Play next and Start radio, right beside
   Play. Start radio on an album or a playlist builds a radio from it; on Liked Songs it starts from the first song in
   your list.
@@ -82,6 +82,25 @@ versions separately under `v*` and is not tracked in this file.)
   released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
   and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
   half, while its audio downloads.
+- **Zune page changes no longer jump.** The second pivot row and the page head change together with the page, and a
+  switch between views of the same page happens at once.
+- **Search pill**: the pill and its content move together, it never covers the pivots, and the flyout keeps its height
+  and closes with an animation.
+- **Liked Songs bar**: Browse-style chips that take the first click, air before Sort, one sort chevron, and Filter… in
+  ⋯. Album and playlist bars put Sort beside find.
+- **The Play split reads as one button.**
+- **Album page**: a wider gap between the cover and the list, a placeholder that matches what loads, and "Featured on"
+  without a stuck outline.
+- **Classic and Library**: the card outline and depth are back, counts sit at the right edge and the ⋯ takes their place
+  on hover, the pin on a pinned row is now an Unpin button, and Pin / Unpin sits at the top level of the menu. Playlists
+  have roomier rows, and Classic folders line up with their contents. The header ⋯ no longer glows, and the Settings
+  row is gone from the footer (Ctrl+, opens Settings).
+- **Music-video glyph**: on Liked Songs it is larger and in secondary ink so it no longer reads as a checkbox, and
+  elsewhere it has a tooltip.
+- **Sidebar sections open and close as one slide**, headers never disappear, the scroll position holds, and pinned
+  playlists glide between lists.
+- **Queue stays in a narrower player bar.**
+- **Settings has less space under its title.**
 
 ### Removed
 
@@ -109,6 +128,10 @@ versions separately under `v*` and is not tracked in this file.)
 - Library: Podcasts' Followed shows and Your Episodes both fit at the narrowest pane width.
 - Library: the focus ring on the views row is no longer cut off.
 - Concerts: the hub and tour headers use the same title size as every other page.
+- Title-bar buttons work again after switching navigation style.
+- Now-playing bars keep moving after you return to a page.
+- The rail's artist line keeps the name when the rail is narrow.
+- The Local playback setup footer fits its dialog.
 
 ## [0.3.4] - 2026-10-06
 
