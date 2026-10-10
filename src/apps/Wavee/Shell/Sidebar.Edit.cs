@@ -53,7 +53,7 @@ public static class SidebarEditRules
 
     /// <summary>The Outline's rows for <paramref name="layout"/> in display order: Home; then the BAND (Classic: every
     /// movable section, each with its body; Library: Pinned then Filters — a fixed order, design Q2); then Your Library
-    /// (Library, locked); then Settings.</summary>
+    /// (Library, locked). The sidebar has no Settings row: Settings lives in the profile menu and the palette.</summary>
     public static void Outline(SidebarLayoutState state, SidebarLayoutId layout, IReadOnlyList<SidebarPin> pins,
                                bool pinnedLocked, bool showAllPins, int playlistCount, List<SidebarOutlineRow> into)
     {
@@ -97,8 +97,6 @@ public static class SidebarEditRules
                     break;
             }
         }
-        var settings = overlay.Find("settings");
-        into.Add(new SidebarOutlineRow(SidebarOutlineRowKind.Settings, "settings", "", settings is { Hidden: false }, false, false, 0));
     }
 
     /// <summary>The SECTION band's sections (Classic: the movable ones in display order; Library: none — its sections keep

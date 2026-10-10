@@ -107,6 +107,55 @@ public class OmnibarQueryLifecycleTests
     }
 }
 
+public class OmnibarPopupHeightTests
+{
+    [Fact]
+    public void A_pending_body_reserves_the_previous_answers_rows()
+    {
+        Assert.Equal((3, 2), Shell.Omnibar.PendingSkeletonRows(3, 2));
+        Assert.Equal((0, 4), Shell.Omnibar.PendingSkeletonRows(0, 4));
+    }
+
+    [Fact]
+    public void With_no_previous_answer_it_reserves_a_typical_one()
+    {
+        Assert.Equal((Shell.Omnibar.MaxQueryRows, 3), Shell.Omnibar.PendingSkeletonRows(0, 0));
+    }
+
+    [Fact]
+    public void A_full_previous_answer_reserves_the_whole_capped_viewport()
+    {
+        var (q, r) = Shell.Omnibar.PendingSkeletonRows(Shell.Omnibar.MaxQueryRows, Shell.Omnibar.MaxRichRows);
+        Assert.Equal((Shell.Omnibar.MaxQueryRows, Shell.Omnibar.MaxRichRows), (q, r));   // rows are never dropped to fit
+        Assert.Equal(Shell.Omnibar.PopupBodyMaxHeight,
+            Shell.Omnibar.PendingBodyHeight(Shell.Omnibar.MaxQueryRows, Shell.Omnibar.MaxRichRows, false));
+    }
+
+    [Fact]
+    public void A_pending_body_reserves_what_the_previous_answer_took()
+    {
+        Assert.Equal(Shell.Omnibar.PopupBodyHeight(3, 2), Shell.Omnibar.PendingBodyHeight(3, 2, false));
+        Assert.Equal(Shell.Omnibar.PopupBodyHeight(Shell.Omnibar.MaxQueryRows, 3), Shell.Omnibar.PendingBodyHeight(0, 0, false));
+    }
+
+    [Fact]
+    public void A_pending_body_after_a_notice_reserves_the_notice_height()
+    {
+        Assert.Equal(Shell.Omnibar.NoticeHeight, Shell.Omnibar.PendingBodyHeight(0, 0, true));
+        Assert.Equal(Shell.Omnibar.NoticeHeight, Shell.Omnibar.PendingBodyHeight(6, 10, true));   // the notice wins over stale counts
+    }
+
+    [Fact]
+    public void The_body_height_sums_the_rows_and_is_capped_at_560()
+    {
+        Assert.Equal(0f, Shell.Omnibar.PopupBodyHeight(0, 0));
+        Assert.Equal(2 * 44f, Shell.Omnibar.PopupBodyHeight(2, 0));
+        Assert.Equal(2 * 44f + 62f + 9f, Shell.Omnibar.PopupBodyHeight(2, 1));
+        Assert.Equal(560f, Shell.Omnibar.PopupBodyHeight(6, 10));
+        Assert.True(Shell.Omnibar.PopupBodyHeight(100, 100) <= 560f);
+    }
+}
+
 public class OmnibarRowRulesTests
 {
     [Fact]

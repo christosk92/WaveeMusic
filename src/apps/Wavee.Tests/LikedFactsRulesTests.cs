@@ -774,6 +774,23 @@ public class LikedFactsRulesTests
     }
 
     [Fact]
+    public void TheLikedHeaderDropsATagPillOnlyWhenAChipShowsThatTag()
+    {
+        var filter = Track.FilterState.Default.WithArtist(7, "vaultboy") with { Tag = "Nostalgia" };
+        var tagAndArtist = LikedFactsRules.LikedLens.Tag | LikedFactsRules.LikedLens.Artist;
+
+        // A chip with that title (any case) lights instead of the pill; the other lenses stay.
+        Assert.Equal(LikedFactsRules.LikedLens.Artist,
+                     LikedFactsRules.HeaderLenses(filter, DetailKind.Liked, ["Pop", "nostalgia"]));
+        // No chip for it (an Insights blend or slice), no chips yet, or not told: the pill is the only sign.
+        Assert.Equal(tagAndArtist, LikedFactsRules.HeaderLenses(filter, DetailKind.Liked, ["Pop", "Jazz"]));
+        Assert.Equal(tagAndArtist, LikedFactsRules.HeaderLenses(filter, DetailKind.Liked, []));
+        Assert.Equal(tagAndArtist, LikedFactsRules.HeaderLenses(filter, DetailKind.Liked));
+        // A playlist has no chip bar: its pill stays even if titles are passed.
+        Assert.Equal(tagAndArtist, LikedFactsRules.HeaderLenses(filter, DetailKind.Playlist, ["Nostalgia"]));
+    }
+
+    [Fact]
     public void ClearingOneLensLeavesTheOthersStanding()
     {
         var all = Track.FilterState.Default.WithAddedWindow(1_000L, 2_000L).WithArtist(7, "vaultboy")

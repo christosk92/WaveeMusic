@@ -746,4 +746,62 @@ public class SidebarPlanDiffTests
     public void An_index_past_the_new_plan_is_never_a_change()
         => Assert.False(Sidebar.PlanDiff.RowChanged(TwoRows, Array.Empty<SidebarLibraryEntry>(), TwoRows,
                                                     Array.Empty<SidebarLibraryEntry>(), 5));
+
+    // ── the ordered edit script (S3): what the pane splices into the extent table ──
+
+    static SidebarRow In(string section, SidebarRowKind kind, string key) => new(kind, section, 0, -1, 0, key);
+
+    [Fact]
+    public void Splices_of_an_identical_plan_are_empty()
+        => Assert.Empty(Sidebar.PlanDiff.Splices(TwoRows, TwoRows));
+
+    [Fact]
+    public void A_collapse_removes_its_band_as_one_splice()
+    {
+        SidebarRow[] before =
+        [
+            In("a", SidebarRowKind.SectionHeader, "a"), In("a", SidebarRowKind.IconRow, "a1"), In("a", SidebarRowKind.IconRow, "a2"),
+            In("b", SidebarRowKind.SectionHeader, "b"),
+        ];
+        SidebarRow[] after = [before[0], before[3]];
+        Assert.Equal([(1, 2, 0)], Sidebar.PlanDiff.Splices(before, after));
+        Assert.Equal([(1, 0, 2)], Sidebar.PlanDiff.Splices(after, before));
+    }
+
+    [Fact]
+    public void A_band_removal_plus_a_dedupe_insert_are_two_ascending_splices()
+    {
+        SidebarRow[] before =
+        [
+            In("pinned", SidebarRowKind.SectionHeader, "pinned"), In("pinned", SidebarRowKind.EntityRow, "pl:a"),
+            In("play", SidebarRowKind.SectionHeader, "play"), In("play", SidebarRowKind.EntityRow, "pl:b"),
+        ];
+        // Pinned collapsed: its row leaves, and pl:a returns to its home section (a different section = a different row).
+        SidebarRow[] after =
+        [
+            before[0], before[2], In("play", SidebarRowKind.EntityRow, "pl:a"), before[3],
+        ];
+        var splices = Sidebar.PlanDiff.Splices(before, after);
+        Assert.Equal([(1, 1, 0), (2, 0, 1)], splices);
+        Assert.True(splices[0].At < splices[1].At);
+    }
+
+    [Fact]
+    public void A_key_that_changes_section_is_a_remove_plus_an_insert()
+    {
+        SidebarRow[] before = [In("x", SidebarRowKind.EntityRow, "k"), In("x", SidebarRowKind.EntityRow, "z")];
+        SidebarRow[] after = [In("y", SidebarRowKind.EntityRow, "k"), In("x", SidebarRowKind.EntityRow, "z")];
+        Assert.Equal([(0, 1, 1)], Sidebar.PlanDiff.Splices(before, after));
+    }
+
+    [Fact]
+    public void A_reorder_still_balances_the_count()
+    {
+        SidebarRow[] before = [In("s", SidebarRowKind.EntityRow, "a"), In("s", SidebarRowKind.EntityRow, "b"), In("s", SidebarRowKind.EntityRow, "c")];
+        SidebarRow[] after = [before[2], before[0], before[1]];
+        var splices = Sidebar.PlanDiff.Splices(before, after);
+        int net = 0;
+        foreach (var sp in splices) net += sp.Inserted - sp.Removed;
+        Assert.Equal(after.Length - before.Length, net);
+    }
 }

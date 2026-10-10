@@ -29,10 +29,13 @@ public sealed class SidebarRowGeometryTests
     }
 
     [Fact]
-    public void Rulers_IconCentre24_Label48_Trailing18_Chevron44()
+    public void Rulers_IconCentre30_Label54_Trailing18_Chevron44()
     {
-        Assert.Equal(24f, SidebarRowGeometry.IconCentreX);
-        Assert.Equal(48f, SidebarRowGeometry.LabelX);
+        Assert.Equal(30f, SidebarRowGeometry.IconCentreX);
+        Assert.Equal(54f, SidebarRowGeometry.LabelX);
+        // The section title starts on the covers' left edge, and the cover clears the 3-px pill by 7.
+        Assert.Equal(SidebarRowGeometry.LeadInset, SidebarRowGeometry.HeaderTextX);
+        Assert.Equal(7f, SidebarRowGeometry.LeadInset - SidebarRowGeometry.PillX(0) - SidebarRowGeometry.PillW);
         Assert.Equal(302f, SidebarRowGeometry.TrailingRight(320f));
         Assert.Equal(276f, SidebarRowGeometry.ChevronLeft(320f));
     }

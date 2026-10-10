@@ -645,8 +645,10 @@ public static partial class Detail
         /// <see cref="MaxWidth"/> is the ABSOLUTE ceiling; the live one is <see cref="MaxWidthForPage"/>.</summary>
         public const float MinWidth = 180f, MaxWidth = 480f;
 
-        /// <summary>The seam the row always pays between rail and content (<see cref="Splitter.StripW"/>), and the two
-        /// widths the COLLAPSED arm composes instead (the 96-DIP identity strip + its 20-DIP re-open grip).</summary>
+        /// <summary>The expanded grip's strip (<see cref="Splitter.StripW"/>), and the two widths the COLLAPSED arm composes
+        /// instead (the 96-DIP identity strip + its 20-DIP re-open grip). The expanded grip floats over the seam and the row
+        /// no longer pays it, but the page-aware cap still reserves it: the content column keeps 16 DIP above its floor and
+        /// every cap is what it was.</summary>
         public const float GripStripW = Splitter.StripW;
         public const float CompactStripW = 96f, CollapsedGripW = 20f;
 
@@ -968,6 +970,21 @@ public static partial class Detail
         public const float UnderlineGap = 4f;
         /// <summary>The widest slot the title claims; the surplus goes to the pivot.</summary>
         public const float TitleCap = 280f;
+
+        // ── ONE BASELINE ──
+        // The title, the section tabs and the trailing text actions share ONE 20-DIP line box, vertically centred in the
+        // same 32-DIP item slot, so their baselines are the same line. The pivot used to be a text-plus-underline COLUMN
+        // centred in 32, which put its word 3 DIP above the title's; the underline is an overlay now, at a fixed y.
+
+        /// <summary>THE line box of every text in a band (<c>Controls.TextActionLineHeight</c>, 20).</summary>
+        public const float TextLine = Controls.TextActionLineHeight;
+        /// <summary>Every group's slot (title, tabs, actions): the band less its 12-DIP air above and below (32).</summary>
+        public const float ItemHeight = Height - 2f * FluentGpu.Dsl.Spacing.M;
+        /// <summary>The top of a <see cref="TextLine"/> centred in a box of <paramref name="box"/> DIP.</summary>
+        public static float TextTopIn(float box) => (box - TextLine) * 0.5f;
+        /// <summary>The active mark's top inside an item slot: under the text line plus <see cref="UnderlineGap"/> (30), so it sits
+        /// on the slot's bottom edge (<see cref="ItemHeight"/> - <see cref="UnderlineHeight"/>).</summary>
+        public const float UnderlineY = (ItemHeight - TextLine) * 0.5f + TextLine + UnderlineGap;
         /// <summary>Average advance at the band's 14/600 rung, deliberately generous so a localized label reserves.</summary>
         public const float AvgCharW = 7.6f;
 
@@ -1208,11 +1225,13 @@ public static partial class Detail
         /// meta (everything but a TypeYear album) · an episode's badges · <c>Ledger</c> · the CTA cluster (a primary +
         /// <c>Fabs</c> FABs: the fixed heart / Share / ⋯ group, or a page's <c>Satellites</c>) · <c>Topics</c> · the blurb
         /// (clamped to the rail's own description lines). The trailing fields default to "absent", so every rail without
-        /// the podcast slots is the plan it always was.</summary>
+        /// the podcast slots is the plan it always was. <c>ArtistFaces</c>: the <c>Artists</c> row is the artist line (an
+        /// album-family page, whether the line comes from its Attribution slot or the default), whose reserved height is
+        /// <see cref="RailArtistLine.ReservedHeight"/> of the rail's width; false = a plain text row (a podcast's publisher).</summary>
         public readonly record struct RailPlan(bool Eyebrow, bool Owner, bool Artists, bool Meta, int TitleLines, int Fabs,
                                                int DescriptionLines, RailBadgeRow Badges = RailBadgeRow.None,
                                                bool Rating = false, bool Ledger = false, bool Satellites = false,
-                                               bool Topics = false);
+                                               bool Topics = false, bool ArtistFaces = false);
 
         /// <summary>The blurb's reserved lines: the rail's own cap, never more than the window's, never negative.</summary>
         public static int RailDescriptionLinesFor(int descriptionMaxLines)
@@ -1233,6 +1252,7 @@ public static partial class Detail
                 Eyebrow: eyebrow,
                 Owner: lead || badges == BadgeStyle.OwnerRow,
                 Artists: typeYear && kind != DetailKind.Episode,
+                ArtistFaces: typeYear && !RailLayout.IsPodcast(kind),
                 Meta: !typeYear || RailLayout.IsPodcast(kind),
                 TitleLines: RailTitleLines,
                 Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
@@ -1327,6 +1347,7 @@ public static partial class Detail
                 Eyebrow: eyebrow,
                 Owner: lead || (badges == BadgeStyle.OwnerRow && (slots.Attribution || ownerKnown)),
                 Artists: typeYear && !lead && (artists || (IsPodcast(kind) && slots.Attribution)),
+                ArtistFaces: typeYear && !lead && artists && !IsPodcast(kind),
                 Meta: (!typeYear || IsPodcast(kind)) && metaShown,
                 TitleLines: Skeleton.RailTitleLines,
                 Fabs: slots.Satellites ? Math.Max(0, slots.SatelliteCount) : Math.Max(0, fabs),
@@ -1350,7 +1371,7 @@ public static partial class Detail
             if (p.Owner) Add(LeadHeight);
             if (p.Badges == RailBadgeRow.OwnRow) Add(BadgeHeight);
             Add(Skeleton.LineCount(p.TitleLines) * titleLineHeight);
-            if (p.Artists) Add(AttributionHeight);
+            if (p.Artists) Add(p.ArtistFaces ? RailArtistLine.ReservedHeight(coverEdge) : AttributionHeight);
             if (p.Rating) Add(RatingHeight);
             if (p.Meta) Add(MetaHeight);
             if (p.Badges == RailBadgeRow.AfterMeta) Add(BadgeHeight);
@@ -1396,6 +1417,55 @@ public static partial class Detail
 
         /// <summary>The engine's wrap tolerance (a run that overshoots by less still fits its line).</summary>
         const float WrapSlack = 0.01f;
+    }
+
+    /// <summary>How much of the billed-artist line the rail's width can pay for: faces yield BEFORE the name does. Wide: the
+    /// three-face pile and the names; Medium: the lead face, the names wrapping to two lines and a "+N"; Narrow: the names
+    /// alone (two lines). The chevron follows the text in every mode.</summary>
+    public enum RailArtistMode : byte { Wide, Medium, Narrow }
+
+    /// <summary>The rail artist line's width ladder. The width is the rail's cover edge (the column's content measure). A step
+    /// toward the RICHER mode needs <see cref="Hysteresis"/> more than the plain threshold, a step toward the poorer one
+    /// happens at the threshold, so a rail dragged across a boundary never flickers between two looks.</summary>
+    public static class RailArtistLine
+    {
+        /// <summary>Pile of three (72) + gap + chevron + a readable run of names.</summary>
+        public const float WideMinW = 232f;
+        /// <summary>Lead face (24) + gap + chevron + a name that still wraps to two lines.</summary>
+        public const float MediumMinW = 168f;
+        public const float Hysteresis = 16f;
+        /// <summary>The trigger's vertical padding (its hover plate) and the names' text line.</summary>
+        public const float PadY = 4f, TextLine = 20f;
+        /// <summary>The line box's height PER MODE, never per data: Wide holds the pile frame; Medium and Narrow hold TWO
+        /// text lines whether the names need them or not, so a long billing and a short one are the same height and
+        /// nothing under the line moves when the names arrive. All three include the trigger's padding.</summary>
+        public const float WideHeight = Controls.FaceOuter + 2f * PadY, NarrowHeight = 2f * TextLine + 2f * PadY, MediumHeight = NarrowHeight;
+        /// <summary>The tallest look: what a skeleton of unknown width would have to reserve to never be outgrown.</summary>
+        public const float TallestHeight = NarrowHeight;
+        public const int WideFaces = 3;
+
+        public static float MinWidthOf(RailArtistMode mode) => mode == RailArtistMode.Wide ? WideMinW : mode == RailArtistMode.Medium ? MediumMinW : 0f;
+
+        public static float HeightOf(RailArtistMode mode)
+            => mode == RailArtistMode.Wide ? WideHeight : mode == RailArtistMode.Medium ? MediumHeight : NarrowHeight;
+
+        /// <summary>What the skeleton reserves for a rail of this width: the height of the look the line will have there (a
+        /// fresh mount has no previous mode), so the loaded line fills the reserved row instead of resizing it.</summary>
+        public static float ReservedHeight(float width) => HeightOf(Mode(width, null));
+
+        public static RailArtistMode Mode(float width, RailArtistMode? previous)
+        {
+            if (!float.IsFinite(width)) return RailArtistMode.Wide;   // unmeasured: the richest look, as the unclamped row had
+            var plain = width >= WideMinW ? RailArtistMode.Wide : width >= MediumMinW ? RailArtistMode.Medium : RailArtistMode.Narrow;
+            if (previous is not { } prev || plain >= prev) return plain;
+            // The plain answer is RICHER than the last one: climb a rung at a time, each needing its threshold + the slack.
+            var mode = prev;
+            while (mode > plain && width >= MinWidthOf(mode - 1) + Hysteresis) mode--;
+            return mode;
+        }
+
+        /// <summary>The "+N" after the lead name: the billed artists the drawn faces do not stand for.</summary>
+        public static int PlusN(int total, int faces) => Math.Max(0, total - Math.Max(0, faces));
     }
 
     // ══ 9. THE PER-KIND CONFIG ═══════════════════════════════════════════════════════════════════════════════════════

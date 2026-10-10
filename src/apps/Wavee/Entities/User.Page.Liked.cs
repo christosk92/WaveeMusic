@@ -79,12 +79,13 @@ public readonly partial struct User
         {
             _demandModel = DemandModel;
             _demandRows = DemandRows;
-            _lensActive = () => LensActive(_lens);
+            _lensActive = () => LensActive(_lens, DetailKind.Liked);
             _computeChips = ComputeChips;
             _chipBar = () => _chips is { } chips
                 ? Embed.Comp(new LikedChipBarProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
                 : null;
             _lensHeader = () => LensHeader(_lens, DetailKind.Liked);
+            _lens.ChipTitles = () => _chips?.Value.Titles ?? [];
 
             // The cover slots: the dynamic treatment WITH its style picker on the rail and the vertical hero, the flat
             // mosaic / stock with NO picker on the 96-DIP strip (ch 03 item 23, ch 07 §1.1 mount table).

@@ -71,7 +71,6 @@ public static partial class Sidebar
                 CommitReorder = s.CommitReorder,
                 ActivateFolder = s.ActivateFolder,
                 DisclosesFoldersInline = s.DisclosesFoldersInline,
-                ShowsSettings = static () => Doc.ShowsSettings,
                 OnEdgeNavigate = s.OnListEdge,
                 PillOnRowChanged = s.NotePillOnRow,
                 OpenSearch = s.OpenSearch,
@@ -724,29 +723,22 @@ public static partial class Sidebar
             LibrarySession.Resync();
         }
 
-        /// <summary>32 tall, r16; inactive FillSubtleSecondary + TextPrimary; active AccentDefault + TextOnAccentPrimary with a
-        /// trailing ✕ 10 (a click on the active chip clears it). Selection is colour only — the padding never changes.</summary>
+        /// <summary>The app's one filter chip (<see cref="Controls.Chip"/>, the stock toggle: 32/r4, checked = accent); a click
+        /// on the active chip clears it, which the lit chip's tooltip says. The root keeps the rail's roving tab stop, but
+        /// <see cref="ToggleButton"/> re-asserts its own role, so the <c>RadioButton</c> set here is overridden and assistive
+        /// tech announces a toggle button (with its checked state): the semantics stay the toggle's, on purpose. The tooltip
+        /// wrapper is always mounted (text null while unlit), so lighting a chip never remounts it.</summary>
         Element Chip(NodeHandle[] nodes, int index, SidebarLibraryFilter chip, bool on, bool focusable)
         {
-            string label = Loc.Get(SidebarLibraryHeadRules.ChipKey(chip));
-            var kids = on
-                ? new Element[] { new TextEl(label) { Size = 12f, Weight = 600, Color = Tok.TextOnAccentPrimary, MaxLines = 1 },
-                                  Icon(Icons.Cancel, 10f, Tok.TextOnAccentPrimary) }
-                : new Element[] { new TextEl(label) { Size = 12f, Color = Tok.TextPrimary, MaxLines = 1 } };   // V.12 ramp: 12
-            return new BoxEl
+            var toggle = Controls.Chip(Loc.Get(SidebarLibraryHeadRules.ChipKey(chip)), on, true, () => Commit(chip), new TemplateParts
             {
-                Key = "chip:" + (int)chip,
-                Direction = 0, Height = SidebarLibraryHeadRules.ChipHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = 6f,
-                Padding = new Edges4(12f, 0f, 12f, 0f), Corners = Radii.PillAll,
-                Fill = on ? Tok.AccentDefault : Tok.FillSubtleSecondary,
-                HoverFill = on ? Tok.AccentSecondary : Tok.FillSubtleTertiary,
-                BrushTransitionMs = global::Wavee.Design.Motion.Fast,
-                Role = AutomationRole.RadioButton, Cursor = CursorId.Hand,
-                Focusable = focusable, FocusVisualMargin = new Edges4(2f, 2f, 2f, 2f),
-                OnClick = () => Commit(chip),
-                OnRealized = h => nodes[index] = h,
-                Children = kids,
-            };
+                [ToggleButton.PartRoot] = b => b with
+                {
+                    Shrink = 0f, Role = AutomationRole.RadioButton, Focusable = focusable,
+                    OnRealized = h => nodes[index] = h,
+                },
+            });
+            return ToolTip.Wrap(toggle, (Prop<string?>)(on ? Loc.Get(Strings.Sidebar.V3.ClearFilter) : null)) with { Key = "chip:" + (int)chip };
         }
 
         /// <summary>One tab stop, roving by index (←/→/Home/End); Space/Enter commits; selection does not follow focus.</summary>

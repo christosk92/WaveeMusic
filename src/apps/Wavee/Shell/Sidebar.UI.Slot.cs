@@ -147,8 +147,8 @@ public static partial class Sidebar
                     dropActive: () => owner.HeaderCreateDropActive.Value,
                     box: SidebarRowGeometry.HeaderButton, glyph: 12f)) with { Key = "tree-create" };
             if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu)
-                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast)
-                    .WithContextMenu(svc, menu) with { ClickRequestsContext = true }, Loc.Get(PaneLoc.SectionOptions));
+                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast, requestsContext: true)
+                    .WithContextMenu(svc, menu), Loc.Get(PaneLoc.SectionOptions));
 
             // ONE rotating glyph, never a swap; a recycle onto another section seeds its angle instead of spinning.
             Action<bool> toggle = open => owner.ToggleSection(id, !open);
@@ -320,8 +320,7 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
-            spec.LabelTooltip = LabelOverflows(label, row.Depth, (spec.Trailing is null ? 0f : CountTrail)
-                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null || spec.Pinned || playing));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, spec.Trailing is null ? 0f : CountTrail);
             Element built = EntityRow.Create(in spec);
             if (track) built = EntityRow.WithPlayTrackHint(built);
             // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
@@ -407,7 +406,7 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
-            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail + EntityRow.OverflowReserve(menu is not null, trailing: true));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail);
             // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
             // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
             // happens on folder rows.
@@ -521,8 +520,7 @@ public static partial class Sidebar
                 Drag = drag,
                 DropTarget = PinSpec(section, section.Id, index),
             };
-            spec.LabelTooltip = LabelOverflows(title, 0, (spec.Trailing is null ? 0f : CountTrail)
-                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null));
+            spec.LabelTooltip = LabelOverflows(title, 0, spec.Trailing is null ? 0f : CountTrail);
             return Indicator(Tipped(EntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
         }
 

@@ -1021,36 +1021,67 @@ public readonly partial struct Album
 
         // ── the trailing skeleton's shape (the recording's defect 4: a fixed three-section reserve collapsed on reveal) ──
 
-        /// <summary>Which section skeletons the band reserves: the About card, the fans chip row, and
-        /// <paramref name="RowBlocks"/> list-section blocks (a short release reserves none — its band is a video card
-        /// and chips, not rows).</summary>
-        public readonly record struct TrailingShape(bool About, bool Fans, int RowBlocks)
+        /// <summary>Which section skeletons the band reserves, in the order the loaded band stacks them: the music-video
+        /// block (<paramref name="Video"/>, only when the row already knows it has one), the About card, the fans shelf and
+        /// <paramref name="RowBlocks"/> list-section blocks (Featured on, which the loaded band adds whenever the album has
+        /// recommendations, whatever its length).</summary>
+        public readonly record struct TrailingShape(bool About, bool Fans, int RowBlocks, bool Video = false, bool VideoShelf = false)
         {
-            public bool IsEmpty => !About && !Fans && RowBlocks == 0;
+            public bool IsEmpty => !About && !Fans && RowBlocks == 0 && !Video;
         }
 
         /// <summary>The shape off what the row knows at mount. An unknown kind reads as a full album (the sections do
         /// the same); About and Fans are always reserved (a release without a billed artist is the exception, and a
-        /// wrong reserve eases while a re-keyed region goes blank).</summary>
-        public static TrailingShape SkeletonShape(bool knowsKind, AlbumKind kind, int knownTrackCount)
+        /// wrong reserve eases while a re-keyed region goes blank). The Featured on block is reserved for every release,
+        /// a single included: <c>SectionsHost</c> asks for it at Visible priority whatever the length and adds it when it
+        /// answers, so a short release that reserved none would grow a whole rows block on the reveal.
+        /// <paramref name="videoKnown"/> is true only when every
+        /// member's video verdict is in AND at least one member has a video (<see cref="VideoDecided"/>,
+        /// <see cref="SelectVideos"/>): a video that lands later is never guessed, it eases in like any late section.
+        /// <paramref name="videoShelf"/> (two or more videos, <see cref="ArmFor"/>) reserves the shelf's height, not the single hero's.</summary>
+        public static TrailingShape SkeletonShape(bool knowsKind, AlbumKind kind, int knownTrackCount, bool videoKnown = false,
+                                                  bool videoShelf = false)
         {
-            bool shortRelease = IsShortRelease(knowsKind ? kind : AlbumKind.Album, knownTrackCount);
-            return new TrailingShape(About: true, Fans: true, RowBlocks: shortRelease ? 0 : 1);
+            return new TrailingShape(About: true, Fans: true, RowBlocks: 1, Video: videoKnown || videoShelf, VideoShelf: videoShelf);
         }
 
-        // The skeleton's numbers, shared with the elements Album.Page.cs draws so the reserve equals the paint.
-        public const float SkelHeaderH = 18f, SkelAboutH = 96f, SkelChipH = 40f, SkelRowH = 64f, SkelRowGap = 4f;
+        // The skeleton's numbers, derived from the real surfaces (Album.Page.cs) so the reserve equals the paint.
+        /// <summary>A section header's line box (<c>Design.Type.RailHeader</c> = Subtitle 20/28) and the bone drawn in it.</summary>
+        public const float SkelHeaderH = 28f, SkelHeaderBarH = 18f;
+        /// <summary>A related row's floor (pinned to <c>Shape.RowTileStill</c>), the gap between rows, and the rows a block shows
+        /// (<see cref="StackCap"/>).</summary>
+        public const float SkelRowH = 64f, SkelRowGap = 4f;
+        public const int SkelRows = StackCap;
         /// <summary>Header-to-body gap and the section padding's vertical sum (Album.Page.cs <c>SectionPad</c>: XL top, L bottom).</summary>
         public const float SkelSectionGap = 12f, SkelSectionPadV = 36f;
-        public const int SkelRows = 3;
+        /// <summary>The About card (<c>Controls.PageAbout</c>): its tallest cell is the text column, eyebrow 16 + name 28 + a two-line
+        /// 13/18 bio 36 + two 4-DIP gaps = 88, inside the link's 12 + 12 padding. The 84 portrait is shorter.</summary>
+        public const float SkelAboutPortrait = 84f, SkelAboutTextH = 88f, SkelAboutH = SkelAboutTextH + 24f;
+        /// <summary>One "Fans also like" card (the artist-page circular card): <see cref="FanCardW"/> wide, as tall as the shelf
+        /// card with one caption line, <see cref="FansCap"/> of them in one clipped row.</summary>
+        public const float FanCardW = 148f;
+        public static float SkelFansH => SurfaceGeometry.ShelfHeight(FanCardW, 1f, captionLines: 1, metaLine: false);
+        /// <summary>The single-video hero (<c>VideoHero</c>): a 116 thumb inside 12 + 12 padding, under the section's XL top pad
+        /// and no bottom pad (About supplies that step).</summary>
+        public const float SkelVideoThumbW = 200f, SkelVideoThumbH = 116f, SkelVideoTopPad = 20f;
+        public const float SkelVideoH = SkelVideoTopPad + SkelVideoThumbH + 24f;
+        /// <summary>The video SHELF (<c>VideoShelf</c>, two or more videos): the section's XL top pad, the shelf's header row (its 32-DIP
+        /// pager is taller than the 28 title), the shelf's 12 header gap, then one row of 16:9 <c>Shape.Video</c> cards. The cards fit
+        /// 200-280 wide at the live page width; the skeleton has no width, so it reserves the narrowest (under-states, like the rest).</summary>
+        public const float SkelVideoShelfHeaderH = 32f, SkelVideoShelfGap = 12f;
+        public const int SkelVideoShelfCards = 3;
+        public static float SkelVideoShelfH => SkelVideoTopPad + SkelVideoShelfHeaderH + SkelVideoShelfGap
+                                               + SurfaceGeometry.StackExtent(Shape.Video, VideoCardMinW, 16f / 9f);
 
-        /// <summary>The DIP the skeleton for <paramref name="s"/> occupies — the same numbers the elements use.</summary>
+        /// <summary>The DIP the skeleton for <paramref name="s"/> occupies — the same numbers the elements use, summed in
+        /// the order the loaded band stacks them (the sum itself is order-free).</summary>
         public static float SkeletonHeight(in TrailingShape s)
         {
             float section = SkelSectionPadV + SkelHeaderH + SkelSectionGap;
             float h = 0f;
-            if (s.About) h += section + SkelAboutH;
-            if (s.Fans) h += section + SkelChipH;
+            if (s.Video) h += s.VideoShelf ? SkelVideoShelfH : SkelVideoH;
+            if (s.About) h += SkelSectionPadV + SkelAboutH;                 // the card has no header
+            if (s.Fans) h += section + SkelFansH;
             if (s.RowBlocks > 0) h += s.RowBlocks * (section + SkelRows * SkelRowH + (SkelRows - 1) * SkelRowGap);
             return h;
         }
@@ -1196,9 +1227,10 @@ public readonly partial struct Album
 
         /// <summary>The face pile's <c>+N</c>. FIXED (ch 05 §0.5): with billed artists it is everything not DRAWN — 0.2.9
         /// drew <c>min(4, billed)</c> faces and subtracted all of <paramref name="billed"/>, so a 6-artist billing hid two
-        /// faces and counted neither. With none billed the pile draws the first four of all.</summary>
+        /// faces and counted neither. With none billed the pile draws the first <paramref name="drawn"/> of all (the rail
+        /// line draws three), so both arms count what is not drawn.</summary>
         public static int FaceOverflow(int billed, int allDistinct, int drawn)
-            => billed > 0 ? Math.Max(0, allDistinct - drawn) : Math.Max(0, allDistinct - Math.Min(allDistinct, 4));
+            => billed > 0 ? Math.Max(0, allDistinct - drawn) : Math.Max(0, allDistinct - Math.Min(allDistinct, drawn));
 
         /// <summary>Every distinct artist on the album — the billed ones first, then track-only contributors in row
         /// order — written into <paramref name="into"/>. Returns the count (capped by the span).</summary>

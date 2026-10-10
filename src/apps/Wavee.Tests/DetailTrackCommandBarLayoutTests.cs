@@ -96,4 +96,64 @@ public class DetailTrackCommandBarLayoutTests
         Assert.True(narrow.Richness < wide.Richness);
         Assert.True(narrow.SearchExpanded);
     }
+
+    // ── the Filter command's ladder: Filter + Sort labelled, Filter loses its word, Sort into "…", Filter into "…" ──
+
+    [Fact]
+    public void Filter_LeadsTheViewCommands_AndKeepsItsWordOnAWideBar()
+    {
+        var fit = Layout.Resolve(1000, Widths, vertical: false, hasTune: true, hasSelect: true, explicitSearch: false);
+        Assert.True(fit.Has(Track.InlineCommand.Filter));
+        Assert.True(fit.Has(Track.InlineCommand.FilterLabel));
+    }
+
+    /// <summary>Vertical arm with Tune: mandatory 32 + 92 + 2 = 126, search 8 + 32, the group separator 17: the rungs cost
+    /// 34 (funnel), +158 (Sort), +68 (the word and its 22 DIP badge slot instead of the funnel).</summary>
+    [Theory]
+    [InlineData(443f, true, true, true)]
+    [InlineData(442f, true, false, true)]
+    [InlineData(375f, true, false, true)]
+    [InlineData(374f, true, false, false)]
+    [InlineData(217f, true, false, false)]
+    [InlineData(216f, false, false, false)]
+    public void Filter_RungsFitAtTheirExactBudgets(float available, bool filter, bool label, bool sort)
+    {
+        var fit = Layout.Resolve(available, Widths, vertical: true, hasTune: true, hasSelect: false, explicitSearch: false);
+        Assert.Equal(filter, fit.Has(Track.InlineCommand.Filter));
+        Assert.Equal(label, fit.Has(Track.InlineCommand.FilterLabel));
+        Assert.Equal(sort, fit.Has(Track.InlineCommand.Sort));
+    }
+
+    /// <summary>Sweeping the pane down never keeps a poorer-ranked command while a richer one is gone, and richness only falls.</summary>
+    [Fact]
+    public void Filter_LadderIsMonotoneAsTheBarNarrows()
+    {
+        int last = int.MaxValue;
+        for (float w = 1000f; w >= 0f; w -= 1f)
+        {
+            var fit = Layout.Resolve(w, Widths, vertical: false, hasTune: true, hasSelect: true, explicitSearch: false);
+            if (fit.Has(Track.InlineCommand.FilterLabel)) Assert.True(fit.Has(Track.InlineCommand.Filter));
+            if (fit.Has(Track.InlineCommand.Sort)) Assert.True(fit.Has(Track.InlineCommand.Filter));
+            Assert.True(fit.Richness <= last, $"richness rose at {w}");
+            last = fit.Richness;
+        }
+    }
+
+    /// <summary>A two-digit count ("12": 14 text + 4 + 4 margin) must fit the labelled button's reserved slot, so the button never
+    /// changes width as the count grows; the nominal width already includes that slot.</summary>
+    [Fact]
+    public void TheLabelledFilterReservesRoomForATwoDigitBadge()
+    {
+        Assert.True(Track.CommandBarLayout.FilterBadgeSlot >= 22f);
+        Assert.Equal(96f + (Track.CommandBarLayout.FilterBadgeSlot - 18f), Track.CommandBarLayout.FilterLabelledNominal);
+    }
+
+    [Fact]
+    public void TheBadgeCount_CountsASearchScopeOnlyWhileSearching()
+    {
+        var f = Track.FilterState.Default with { SearchScope = Track.SearchScope.Title };
+        Assert.Equal(0, f.ActiveCountFor(searching: false));
+        Assert.Equal(1, f.ActiveCountFor(searching: true));
+        Assert.Equal(1, f.ActiveCount);
+    }
 }

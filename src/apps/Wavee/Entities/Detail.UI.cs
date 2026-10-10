@@ -286,7 +286,7 @@ public static partial class Detail
         // ── the podcast seams (plan §5.4) — appended; the WIDTH a Func<float, …> slot below receives is the rail's content
         //    measure (the cover edge, exact) in the two-column rail, and NaN (no measure: fill the column) in the vertical
         //    show header — treat it as a Width / MaxWidth only when it is finite. (Attribution keeps its old contract: the
-        //    cover edge in the rail, a 600 cap in the vertical header.) The frame re-invokes these builders only when it
+        //    cover edge in the rail, the page-estimate's info column in the vertical header.) The frame re-invokes these builders only when it
         //    re-renders for its own reasons, so a body whose content changes — a label, a count, a satellite that comes and
         //    goes — is a keyed component or binds its values / its Visible; the Satellites ARRAY is fixed per slot set.
 
@@ -764,7 +764,7 @@ public static partial class Detail
                     Direction = 1, Grow = 1f, ClipToBounds = true,
                     DropTarget = drop,
                     // A show in the vertical arm is the fixed ShowHeader above its episodes — never the hero system.
-                    Children = verticalTracks ? [right] : [ShowHeaderCore(spec, acts, _accentFn, _playAll), right],
+                    Children = verticalTracks ? [right] : [ShowHeaderCore(spec, acts, _accentFn, _playAll, pageWidthEstimate), right],
                 };
                 Element verticalPage = new BoxEl
                 {
@@ -804,10 +804,17 @@ public static partial class Detail
             float railW = resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg);
 
             Element[] rowKids;
+            Element seam = SeamOff;
             if (collapsed)
             {
-                // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll.
-                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), Grip(rail, railMax, collapsedNow: true), right];
+                // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll. The
+                // collapsed grip keeps its 20-DIP slot in the row, but the grip itself lives in the seam layer in BOTH arms:
+                // a drag collapses (and re-opens) mid-gesture, and a grip that changed parent would remount and drop the
+                // pointer capture.
+                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand),
+                           new BoxEl { Key = "detail-rail-grip-slot", Width = GripStripCollapsedW, Shrink = 0f, HitTestVisible = false },
+                           right];
+                seam = SeamOverlay(RailCompactW, Grip(rail, railMax, collapsedNow: true));
             }
             else
             {
@@ -836,18 +843,25 @@ public static partial class Detail
                     Opacity = _railFade,
                     Children = [RailRegion(spec, acts, railW, titleSize, descLines)],
                 };
-                rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
+                // The expanded grip takes NO width in the row: it floats over the seam (SeamOverlay), so the gap between
+                // the rail and the list is the rail's own right pad plus the rows' inset (8 + 8), the same as a fixed rail.
+                rowKids = [railFaded, right];
+                if (resizable) seam = SeamOverlay(railW, Grip(rail, railMax, collapsedNow: false));
             }
 
             var row = new BoxEl
             {
                 // flex:1 1 0 — the row's width is the AVAILABLE region, so the right column yields to a tighter tier
-                // instead of overflowing the clipped content card.
-                Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                // instead of overflowing the clipped content card. A z-stack of the [rail | right] flow and the seam layer
+                // above it; both arms keep this shape, so `right` reconciles in place across a collapse.
+                ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                 MaxWidth = Design.Size.PageMaxW,
-                AlignItems = FlexAlign.Stretch,
                 DropTarget = drop,
-                Children = rowKids,
+                Children =
+                [
+                    new BoxEl { Direction = 0, AlignItems = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 0f, Children = rowKids },
+                    seam,
+                ],
             };
             var twoColumnPage = new BoxEl
             {
@@ -1029,6 +1043,18 @@ public static partial class Detail
                     with { Key = rail.GripKey },
             ],
         };
+
+        /// <summary>The grip's layer, above the row: a pass-through row whose spacer puts the strip at the rail's edge. Expanded,
+        /// the 16-DIP strip takes no row width and covers the list's empty row inset (and the rows' first 8 DIP) instead
+        /// of widening the gap; collapsed, it sits over its own 20-DIP slot. It starts AT the edge, never left of it: the
+        /// rail's own scrollbar owns the rail's last 12 DIP.</summary>
+        static Element SeamOverlay(float railW, Element grip) => new BoxEl
+        {
+            Key = "detail-rail-seam", Direction = 0, AlignItems = FlexAlign.Stretch, HitTestPassThrough = true,
+            Children = [new BoxEl { Key = "detail-rail-seam-spacer", Width = railW, Shrink = 0f, HitTestVisible = false }, grip],
+        };
+
+        static readonly Element SeamOff = new BoxEl { Key = "detail-rail-seam", HitTestVisible = false };
 
         // ── layout callbacks, effects, memos ──
 
@@ -1480,7 +1506,8 @@ public static partial class Detail
         }
         else
             kids.Add(Lines(cover, VerticalLayout.NaturalLineHeightFor(titleSize), plan.TitleLines, Skeleton.TitleLastLineFraction));
-        if (plan.Artists) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.AttributionFraction), VerticalLayout.AttributionRowHeight));
+        if (plan.Artists) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.AttributionFraction),
+            plan.ArtistFaces ? RailArtistLine.ReservedHeight(cover) : VerticalLayout.AttributionRowHeight));
         if (plan.Rating) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.RatingFraction), RailLayout.RatingHeight));
         if (plan.Meta) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (plan.Badges == RailBadgeRow.AfterMeta) kids.Add(Bar(Skeleton.BadgeBarWidth, RailLayout.BadgeHeight));
@@ -1622,12 +1649,15 @@ public static partial class Detail
     /// podcast slots land as the prototype's narrow pane does: badges / rating beside the cover in the info column, the
     /// ledger and the CTA (a page's primary + satellites) full width under it, no topics and no blurb. The rows are the
     /// rail's own decision (<see cref="RailLayout.RowsFor"/>); every slot width here is NaN (fill the column).</summary>
-    public static Element ShowHeader(FrameSpec spec, Func<ColorF> accent)
-        => ShowHeaderCore(spec, spec.Actions, accent, DefaultPlay(spec.Identity.Subject));
+    public static Element ShowHeader(FrameSpec spec, Func<ColorF> accent, float pageWidth = float.NaN)
+        => ShowHeaderCore(spec, spec.Actions, accent, DefaultPlay(spec.Identity.Subject), pageWidth);
 
-    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play)
+    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play, float pageWidth)
     {
         const float coverSize = 140f;
+        // The info column's measure: the page less the header's two insets, the cover and the gap between. An unmeasured
+        // page (NaN) keeps the old 600 DIP nominal.
+        float infoW = float.IsFinite(pageWidth) ? MathF.Max(0f, pageWidth - 3f * Spacing.L - coverSize) : 600f;
         var id = spec.Identity;
         var cfg = spec.Config;
         var slots = spec.Slots;
@@ -1659,8 +1689,8 @@ public static partial class Detail
                 Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
             }));
         if (rows.Artists)
-            info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(600f)
-                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, 600f) : new BoxEl())));
+            info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(infoW)
+                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, infoW) : new BoxEl())));
         if (rows.Rating && slots.Rating is { } rating) info.Add(SlotRow("hdr:rating", rating(float.NaN), RailLayout.RatingHeight));
         if (rows.Meta) info.Add(LateRow("hdr:meta", MetaRow(id, float.NaN, maxLines: 1)));
         if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
@@ -1801,39 +1831,162 @@ public static partial class Detail
         };
     }
 
-    /// <summary>The default billed-artist row: the face pile, then ONE ellipsised accent run to the lead artist.</summary>
-    static Element BilledArtists(IReadOnlyList<Controls.Face> artists, float width)
+    /// <summary>What one render of the billed-artist line paints: the drawn faces (WITHOUT their own click: the whole line is
+    /// ONE trigger), the names, how many billed artists there are (the Medium "+N"), the pile's own overflow frame, and the
+    /// trigger's behaviour. <c>Menu</c> is true when the click opens a list (the chevron shows, Down / F4 open).</summary>
+    internal readonly record struct RailArtistLineSpec(IReadOnlyList<Controls.Face> Faces, string Names, int Count, int Overflow,
+        float Width, string Tip, bool Menu, Action? Click, Action<KeyEventArgs>? OnKey, Action<NodeHandle>? OnRealized);
+
+    const string LocRailMoreArtists = "detail.row.moreArtists";
+
+    /// <summary>The line box's height ease: real layout, so the rows under it reflow with it.</summary>
+    static readonly LayoutTransition ArtistLineReflow = new(TransitionChannels.Size, FluentGpu.Animation.MotionTok.ContentResize.ToDynamics(),
+        Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+    static readonly EnterExit ArtistFaceFade = new(Opacity: 0f, Active: true);
+
+    /// <summary>The billed-artist line in one mode: the ONE look both the default line and the album's own
+    /// (<c>Album.FacePileHost</c>) paint. The NAME is what survives: <see cref="RailArtistLine"/> drops the faces first
+    /// (Wide: pile + names, Medium: the lead face + names on two lines + "+N", Narrow: names only), and the chevron follows
+    /// the text in every mode. Nothing under the pointer moves on hover (the plate is a fill); a mode change never snaps:
+    /// the line box eases its height, the face slots are keyed per mode and cross-fade in place, and the names glide to
+    /// their new position (<see cref="Shove"/>).</summary>
+    internal static Element RailArtistLineBox(RailArtistMode mode, in RailArtistLineSpec s)
     {
-        var lead = artists[0];
-        var names = new System.Text.StringBuilder(64);
-        for (int i = 0; i < artists.Count; i++)
+        var kids = new List<Element>(4);
+        if (s.Faces.Count > 0)
         {
-            if (i > 0) names.Append(", ");
-            names.Append(artists[i].Name);
+            if (mode == RailArtistMode.Wide)
+                kids.Add(FaceSlot("faces:pile", Controls.FacePile(s.Faces, RailArtistLine.WideFaces, s.Overflow)));
+            else if (mode == RailArtistMode.Medium)
+            {
+                var lead = s.Faces[0];
+                kids.Add(FaceSlot("faces:lead", PersonPicture.Create("", Skeleton.OwnerAvatar, displayName: lead.Name, imageSourcePath: lead.ImageUrl)));
+            }
         }
-        return new BoxEl
+
+        bool wide = mode == RailArtistMode.Wide;
+        kids.Add(new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MaxWidth = width,
+            Key = "names", Direction = 0, Shrink = 1f, MinWidth = 0f, Layout = Shove,
             Children =
             [
-                Controls.FacePile(artists, maxVisible: 3),
-                new BoxEl
+                new TextEl(s.Names)
                 {
-                    Direction = 0, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f,
-                    OnClick = lead.OnClick,
-                    Cursor = lead.OnClick is null ? (CursorId?)null : CursorId.Hand,
-                    Role = lead.OnClick is null ? AutomationRole.None : AutomationRole.Hyperlink,
-                    Children =
-                    [
-                        new TextEl(names.ToString())
-                        {
-                            Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.AccentTextPrimary,
-                            Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                        },
-                    ],
+                    Size = 14f, LineHeight = RailArtistLine.TextLine, Weight = 600, Color = Tok.AccentTextPrimary,
+                    MinWidth = 0f, Shrink = 1f,
+                    MaxLines = wide ? 1 : 2, Wrap = wide ? TextWrap.NoWrap : TextWrap.WrapWholeWords,
+                    Trim = TextTrim.CharacterEllipsis,
                 },
             ],
+        });
+        int plus = mode == RailArtistMode.Medium ? RailArtistLine.PlusN(s.Count, 1) : 0;
+        if (plus > 0)
+            kids.Add(new TextEl(Loc.Format(LocRailMoreArtists, ("count", plus)))
+            {
+                Key = "plus", Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
+            });
+        if (s.Menu) kids.Add(new BoxEl
+        {
+            Key = "chevron", Shrink = 0f, AlignItems = FlexAlign.Center, Layout = Shove,
+            Children = [Icon(Icons.ChevronDownSmall, 8f, Tok.TextTertiary)],
+        });
+
+        bool live = s.Click is not null;
+        Element trigger = new BoxEl
+        {
+            Key = "trigger",
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 1f, MinWidth = 0f, MaxWidth = s.Width,
+            Padding = new Edges4(6f, RailArtistLine.PadY, 6f, RailArtistLine.PadY), Corners = CornerRadius4.All(Radii.Card),
+            Fill = ColorF.Transparent,
+            HoverFill = live ? Tok.FillCardDefault : ColorF.Transparent, PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
+            Role = !live ? AutomationRole.None : s.Menu ? AutomationRole.Button : AutomationRole.Hyperlink,
+            Focusable = live, Cursor = live ? CursorId.Hand : (CursorId?)null,
+            FocusVisualMargin = Design.FocusInsetRow,
+            OnClick = s.Click, OnKeyDown = s.OnKey, OnRealized = s.OnRealized,
+            Children = kids.ToArray(),
         };
+        // The tooltip wrapper shrink-wraps to the trigger, whose MaxWidth is the line's measure: it can never outgrow the row.
+        if (s.Menu) trigger = ToolTip.Wrap(trigger, s.Tip);
+
+        return new BoxEl
+        {
+            Key = "artist-line", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MaxWidth = s.Width,
+            MinHeight = RailArtistLine.HeightOf(mode), ClipToBounds = true, Animate = ArtistLineReflow,
+            Children = [trigger],
+        };
+    }
+
+    /// <summary>One mode's face slot: keyed per look, so a width step cross-fades the faces in place.</summary>
+    static Element FaceSlot(string key, Element faces) => new BoxEl
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [faces],
+        Enter = ArtistFaceFade, Exit = ArtistFaceFade, Transition = FluentGpu.Animation.MotionTok.ControlFaster,   // Design.Motion.Faster (83 ms)
+    };
+
+    /// <summary>The default billed-artist line, for a page that declares no Attribution slot: the identity's artists
+    /// under the rail's width pressure. ONE trigger holds it all: it opens the every-artist menu, or goes straight to the
+    /// artist when there is only one.</summary>
+    static Element BilledArtists(IReadOnlyList<Controls.Face> artists, float width)
+        => Embed.Comp(new RailArtistLineProps(artists, width), static () => new RailArtistLineView())
+            with { Key = "rail:artist-line" };
+
+    sealed record RailArtistLineProps(IReadOnlyList<Controls.Face> Artists, float Width);
+
+    /// <summary>Hosts <see cref="RailArtistLineBox"/> for the default line: <see cref="RailArtistLine.Mode"/> needs the
+    /// PREVIOUS mode for its hysteresis, so the mode is a plain field of the component.</summary>
+    sealed class RailArtistLineView : Component
+    {
+        static readonly Func<Element> s_none = static () => new BoxEl();
+
+        RailArtistMode? _mode;
+
+        public override Element Render()
+        {
+            var p = UseProps<RailArtistLineProps>();
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
+            var artists = p.Artists;
+            if (artists.Count == 0) return s_none();
+
+            var mode = RailArtistLine.Mode(p.Width, _mode);
+            _mode = mode;
+
+            bool menu = artists.Count > 1;
+            var names = new System.Text.StringBuilder(64);
+            var faces = new List<Controls.Face>(artists.Count);
+            for (int i = 0; i < artists.Count; i++)
+            {
+                if (i > 0) names.Append(", ");
+                names.Append(artists[i].Name);
+                faces.Add(new Controls.Face(artists[i].Name, artists[i].ImageUrl));   // no click of its own: the line is the trigger
+            }
+
+            void Toggle()
+            {
+                if (Controls.IsNullOverlay(overlay)) return;
+                if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+                var opened = overlay.Open(() => anchor.Value, () => MenuFlyout.Create(MenuItems(artists), () => handle.Value?.Close()),
+                    FlyoutPlacement.BottomEdgeAlignedLeft,
+                    new PopupOptions(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false });
+                handle.Value = opened;
+                opened.ClosedAction = () => handle.Value = null;
+            }
+
+            return RailArtistLineBox(mode, new RailArtistLineSpec(
+                faces, names.ToString(), artists.Count, RailArtistLine.PlusN(artists.Count, RailArtistLine.WideFaces), p.Width,
+                Loc.Get(Strings.Detail.Rail.ArtistsMenu), menu, menu ? Toggle : artists[0].OnClick,
+                menu ? e => { if (e.KeyCode is Keys.Down or Keys.F4) { Toggle(); e.Handled = true; } } : null,
+                n => anchor.Value = n));
+        }
+
+        static MenuFlyoutItem[] MenuItems(IReadOnlyList<Controls.Face> artists)
+        {
+            var items = new MenuFlyoutItem[artists.Count];
+            for (int i = 0; i < items.Length; i++)
+                items[i] = new MenuFlyoutItem(artists[i].Name, Icons.Contact, artists[i].OnClick is not null, artists[i].OnClick);
+            return items;
+        }
     }
 
     static EntityUri SaveTargetOf(Identity id) => id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;

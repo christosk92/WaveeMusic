@@ -20,7 +20,7 @@ versions separately under `v*` and is not tracked in this file.)
 - **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
   bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
   full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in
-  Settings › Appearance or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists, and optional
+  Settings › Appearance or from the sidebar's right-click menu: Classic (Home, Pinned, Collections, Playlists, and optional
   Recently played and New releases sections) or Library (one list with filters, like Spotify's Your Library). In
   Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips and the
   toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
@@ -30,14 +30,45 @@ versions separately under `v*` and is not tracked in this file.)
   released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
   and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
   half, while its audio downloads.
+- **Filter is a button of its own on song lists.** Album, playlist and Liked Songs pages show a labelled Filter
+  button with a count of the filters that are on. It opens one card with a dropdown per filter, switches for liked and
+  playable songs, an "X of N songs" heading and Reset, and the card follows filters you change elsewhere. On a narrow
+  window the button first drops its label, then moves into ⋯ as "Filter…".
+- **Every filter chip looks the same.** Chips on Liked Songs, Concerts, the sidebar's Library and notifications are
+  now the standard Windows toggle chip; a lit sidebar chip says "Clear filter" when you point at it.
+- **A tidier sidebar.** Covers, glyphs and section titles start on one line, a cover no longer touches the selection
+  bar, the "+" sits beside its section's chevron, and a count or pin mark ends at the row's edge instead of leaving a
+  gap; pointing at the row swaps it for the row's ⋯ button.
+- **Less space between a page's side column and its songs.** The gap beside a resizable album or playlist column is
+  half as wide, the same as everywhere else; the column still resizes from that edge.
 
 ### Removed
 
 - **The Custom sidebar layout and its full-page customizer.** Its sections are mapped onto the closest Classic or
   Library setup the first time this version starts (a toast says which ones could not be kept); everything it offered
   is now in the sidebar's Edit mode.
+- **The Settings bar at the bottom of the sidebar.** Settings is in the profile menu and the command palette, and the
+  sidebar's options are on its right-click menu.
 
 ### Fixed
+
+- **Album covers, avatars and headers load sharp.** Images that Spotify describes only by their maximum width used to
+  load the smallest (64 px) version.
+- **The now-playing equalizer keeps moving after you navigate back to a page,** and a paused one no longer restarts
+  when the window comes back.
+- **Collapsing or expanding a sidebar section slides its rows** instead of wiping or snapping them, pinning and
+  unpinning animates too, and rows no longer go missing after collapsing Pinned.
+- **Home respects "Colour washes".** With washes off, Home no longer tints the title bar from cover art.
+- **Long Browse and Concerts titles stay on one line** instead of drawing over the page.
+- **The in-list search stays open** on narrow album, playlist and Liked Songs pages instead of closing the moment it
+  opens.
+- **The Local playback setup footer wraps** instead of cutting off "Try again".
+- **Album pages no longer jump while they load,** and "Featured on" rows no longer keep a stuck accent outline.
+- **Artist, profile and episode pages line their tab words up with the page title.**
+- **Liked Songs shows the selected genre once,** not as both a lit chip and a second pill.
+- **Pointing at a sidebar section header no longer lights up its ⋯ button.**
+- **Artist names on narrow album and playlist pages stay readable** instead of collapsing to "…".
+- **Search suggestions keep their height while you type** instead of shrinking to a bar on every keystroke.
 
 - **A pinned Your Episodes opens Your Episodes.** It used to open a playlist page with recommended songs, "2
   collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts

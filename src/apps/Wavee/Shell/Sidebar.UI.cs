@@ -189,7 +189,6 @@ public static partial class Sidebar
                 ScrollKeyPrefix = "sidebar.classic",
                 Document = static () => { _ = LayoutVersion.Value; return Doc; },
                 OnCreatePlaylist = PaneView.CreatePlaylistFlow,
-                ShowsSettings = static () => Doc.ShowsSettings,
             }, DepKey.Empty);
             return Embed.Comp(() => new PaneView(config, _inDrawer));
         }
@@ -223,8 +222,6 @@ public static partial class Sidebar
         public Func<SidebarSectionKind, int, int, int>? ClampReorderSlot { get; init; }
         public Action<PaneReorder>? CommitReorder { get; init; }
         public Action? OnCreatePlaylist { get; init; }
-        /// <summary>Whether the pane footer shows the Settings row (null ⇒ shown). The ⋯ is always there.</summary>
-        public Func<bool>? ShowsSettings { get; init; }
         /// <summary>Arrow navigation ran off an END of the list (−1 above the first row, +1 below the last). Return true when
         /// the mode took focus (Library: Up from the first row lands on the page dropdown, design V.11).</summary>
         public Func<int, bool>? OnEdgeNavigate { get; init; }
@@ -264,7 +261,7 @@ public static partial class Sidebar
     {
         public static readonly Edges4 PanePad = new(SidebarRowGeometry.PaneEdge, SidebarRowGeometry.PaneTopInset, SidebarRowGeometry.PaneEdge, 0f);
         public const float PaneInsetH = SidebarRowGeometry.PaneEdge * 2f;
-        /// <summary>A band above the list whose content starts at the header text's x (pane 16).</summary>
+        /// <summary>A band above the list whose content starts at the header text's x (pane 14).</summary>
         public static readonly Edges4 HeadBandInset = new(SidebarRowGeometry.PaneEdge + SidebarRowGeometry.HeaderTextX, 0f,
                                                           SidebarRowGeometry.PaneEdge + SidebarRowGeometry.TrailingPad, 0f);
         public const float EmptyHintHeight = SidebarRowGeometry.EmptyHintHeight;
@@ -322,7 +319,6 @@ public static partial class Sidebar
         // reads only fields that never change after mount (the layout, the count signal, the controller, `this`).
         Element? _paddedList;
         Element? _dragPeekWatcher;
-        Element? _footer;
         /// <summary>The pane's bound width — one Prop for the pane's life, never a fresh closure per render.</summary>
         readonly Prop<float> _expandedWidth = Prop.Of(static () => Sidebar.Width.Value);
 
@@ -335,6 +331,16 @@ public static partial class Sidebar
 
         // ── disclosure ──
         readonly SidebarDisclosures _disclosures = new();
+        /// <summary>The sections a header click toggled through <see cref="ToggleSection"/>, recorded by its commit lambda. A
+        /// collapse's disclosure entry is already gone when its commit's publish runs (the band settles right after the
+        /// commit), so the publish learns "this flip was choreographed" from here. Consumed by every collapse-only publish.</summary>
+        readonly HashSet<string> _choreographed = new(StringComparer.Ordinal);
+        /// <summary>The last keyed publish's per-row motion (new-plan index to FLIP start / fade), valid only for the
+        /// displacement bump that carries it (<see cref="_dedupeSeedsVer"/>) so a later bump never replays it.</summary>
+        Dictionary<int, SidebarDedupeMotion.Seed> _dedupeSeeds = new();
+        int _dedupeSeedsVer = -1;
+        Func<int, (float dx, float dy)?>? _dedupeFlip;
+        Func<int, (float from, float delayMs)?>? _dedupeFade;
         Func<string, ItemDisclosureRange?>? _resolveDisclosure;
         Action<Action>? _post;
         Action? _flushPrefsCommit;
@@ -362,8 +368,6 @@ public static partial class Sidebar
         /// <summary>The keyboard-current row's key, captured on the edit edge while the list is still mounted.</summary>
         string? _editReturnKey;
         bool _restoreAfterEdit;
-        /// <summary>The footer's ⋯ node (<c>PaneFooter</c> registers it), the focus fallback after Edit.</summary>
-        internal NodeHandle _footerMore;
         readonly HashSet<string> _selBefore = new(StringComparer.Ordinal);
 
         /// <summary>DRAG PEEK — a transient expansion of a collapsed pane for one drag (never a write to Collapsed).</summary>
@@ -515,7 +519,7 @@ public static partial class Sidebar
                 {
                     int at = key is null ? -1 : IndexOfRowKey(key);
                     if (at >= 0) _listController.FocusItem(at);   // current + into view + keyboard focus
-                    else FocusFooterMore();                       // the row is gone (or focus was never in the list)
+                    else if (Plan.Rows.Count > 0) _listController.FocusItem(0);   // the row is gone: the first row
                 });
             }, DepKey.From(editing ? 1 : 0));
 
@@ -567,29 +571,23 @@ public static partial class Sidebar
 
         // ── the pane layer's children ──────────────────────────────────────────────────────────────────────────────
 
-        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head and footer.</summary>
+        /// <summary>The rail's empty body: the rail has no room for the empty hint, so an empty rail is just its head.</summary>
         static readonly BoxEl s_railSpacer = new() { Key = "empty", Grow = 1f };
 
-        /// <summary>The layer's children, top to bottom: the mode head, the body (the padded list or the empty hint) and the
-        /// footer, which sits outside the scroller. Nulls are skipped.</summary>
+        /// <summary>The layer's children, top to bottom: the mode head and the body (the padded list or the empty hint). There
+        /// is no footer: Settings lives in the profile menu and the palette, the pane menu on the pane's right-click.</summary>
         Element[] PaneChildren(int rows, bool compact, bool editing)
         {
-            // Edit mode (expanded only) swaps the head, the list and the footer for the Outline; the list is unmounted and its
-            // state stays with its element (§P4.5).
+            // Edit mode (expanded only) swaps the head and the list for the Outline; the list is unmounted and its state stays
+            // with its element (§P4.5).
             if (editing && !compact) return [_editPane ??= Embed.Comp(() => new EditPane(this)) with { Key = "edit-pane" }];
             Element? modeHead = Config.Head?.Invoke();
 
             // The list is built ONCE: every option it carries is a mount-stable field or delegate, and the count rides
             // its CountSignal — so a re-render hands the reconciler the same element and it writes nothing.
-            // The rail has no room for the empty hint: an empty rail is just its head and footer.
+            // The rail has no room for the empty hint: an empty rail is just its head.
             Element body = rows == 0 ? (compact ? s_railSpacer : EmptyPane()) : (_paddedList ??= PaddedList());
-            Element footer = _footer ??= Embed.Comp(() => new PaneFooter(this)) with { Key = "pane-footer" };
-            var kids = new Element[modeHead is null ? 2 : 3];
-            int k = 0;
-            if (modeHead is { } mh) kids[k++] = mh;
-            kids[k++] = body;
-            kids[k] = footer;
-            return kids;
+            return modeHead is { } mh ? [mh, body] : [body];
         }
 
         /// <summary>The plan row whose key is <paramref name="key"/>, or −1.</summary>
@@ -598,12 +596,6 @@ public static partial class Sidebar
             var rows = Plan.Rows;
             for (int i = 0; i < rows.Count; i++) if (string.Equals(rows[i].Key, key, StringComparison.Ordinal)) return i;
             return -1;
-        }
-
-        /// <summary>The footer's ⋯ (the Edit entry most pointer users came from). <c>PaneFooter</c> registers its node here.</summary>
-        internal void FocusFooterMore()
-        {
-            if (!_footerMore.IsNull) _hooks?.FocusNode?.Invoke(_footerMore, true);
         }
 
         /// <summary>THE PANE'S ONE INSET: PaneMetrics.PanePad (4,3,4,0) around the virtualized list, and nowhere else.</summary>
@@ -635,6 +627,13 @@ public static partial class Sidebar
                 {
                     ItemDisplacement = _displacement ??= Displacement,
                     DisplacementVersion = _dispVersion,
+                },
+                // The key-matched publish's motion (a section toggle's or a pin move's displaced and de-duped rows) rides the
+                // same displacement bump. Stable delegates: ListOptions freeze at mount.
+                Entrance = new EntranceOptions
+                {
+                    ItemFlipFrom = _dedupeFlip ??= DedupeFlipFrom,
+                    ItemFadeFrom = _dedupeFade ??= DedupeFadeFrom,
                 },
                 Disclosure = new DisclosureOptions
                 {
@@ -859,7 +858,7 @@ public static partial class Sidebar
             {
                 SidebarMenus.Overlay = MenuOverlay;
                 var rows = SidebarMenuModel.Header(Sidebar.Layout.Peek(), Sidebar.State, sectionId, SidebarMenus.LockingNames());
-                return rows.Count == 0 ? null : new ContextMenuModel(SidebarMenus.Map(rows, sectionId));
+                return rows.Count == 0 ? null : new ContextMenuModel(SidebarMenus.Map(rows, sectionId, this));
             };
         }
 
@@ -1003,13 +1002,34 @@ public static partial class Sidebar
             // changes what rows draw without necessarily changing the row record, so those bump wholesale. A document that
             // only COLLAPSED or EXPANDED a section is not one of them: every section/folder toggle mints such a document, and
             // bumping wholesale re-rendered every realized row on each click (~15 KB a row, ~0.5 MB a toggle in the frame
-            // bench). Its rows still re-seed their extents, like any re-shaped plan; only the rows the diff finds changed,
-            // and the headers whose state flipped, re-render.
+            // bench). Its rows still re-seed their extents (by key, for a choreographed toggle - see below; anchored and
+            // by index for any other), like any re-shaped plan; only the rows the diff finds changed, and the headers
+            // whose state flipped, re-render.
             bool collapseOnly = _planPublished && !ReferenceEquals(stage.Document, oldDoc) && stage.Document.SameExceptCollapsed(oldDoc);
             bool wholesale = !_planPublished
                              || (!ReferenceEquals(stage.Document, oldDoc) && !collapseOnly)
                              || !string.Equals(stage.EffectiveSearch, _effectiveSearch, StringComparison.Ordinal)
                              || stage.Compact != CompactPlan;
+            // THE KEY-MATCHED PATH (S2d, S3, J2). A section toggle that ran through the disclosure channel, and a pin or
+            // unpin (pins arrive through the binder, not the document, so those publishes are neither wholesale nor
+            // collapse-only), edit rows OUTSIDE the reveal band too (the planner's pin dedupe). They splice the extent table
+            // by KEY (every survivor keeps its measured extent, the scroll offset holds) and seed the displaced rows' glide,
+            // instead of re-seeding the table index by index. Any other collapse-only publish (a header-menu or remote
+            // collapse) keeps the anchored Reseed with no motion. A folder disclosure in flight stands the path down: its
+            // band range comes from the entries, which the seeds do not read.
+            bool flips = collapseOnly && !wholesale && SidebarDedupeMotion.FlippedSectionsAll(oldDoc, stage.Document, _choreographed);
+            bool pinMove = !wholesale && !collapseOnly && SidebarDedupeMotion.PinnedKeysChanged(oldRows, stage.Pane.Rows);
+            if (collapseOnly && _choreographed.Count > 0)
+                foreach (var consumed in SidebarDedupeMotion.FlippedSections(oldDoc, stage.Document)) _choreographed.Remove(consumed);   // only the ids this publish flipped
+            MeasuredStackVirtualLayout? keyed = null;
+            float[]? oldExtents = null;
+            if ((flips || pinMove) && !_disclosures.AnyFolder()
+                && _rowLayout.CustomLayout is MeasuredStackVirtualLayout measured && measured.ItemCount == oldRows.Count)
+            {
+                keyed = measured;
+                oldExtents = new float[oldRows.Count];
+                for (int i = 0; i < oldExtents.Length; i++) oldExtents[i] = measured.ItemRect(i, 0f).H;   // a toggle, not a frame
+            }
 
             Doc = stage.Document;
             Plan = stage.Pane;
@@ -1022,7 +1042,21 @@ public static partial class Sidebar
             ResolvePillTarget(SelectedRoutePeek);
             ConfigureReorder();
             EnsureRowSlots(Plan.Rows.Count);
-            if (wholesale || collapseOnly) ReseedRowExtents();
+            if (keyed is not null && oldExtents is not null)
+            {
+                var olds = oldExtents;
+                // The old band ranges come from the PRE-swap rows (oldRows), never from Plan.Rows. ItemsViewController's
+                // SpliceDisclosures then sees the layout's count already equal and does not splice a second time.
+                _dedupeSeeds = SidebarDedupeMotion.ForPublish(oldDoc, Doc, oldRows, Plan.Rows, _disclosures.SectionIds(),
+                    i => (uint)i < (uint)olds.Length ? olds[i] : float.NaN, RowExtentSeed, out var splices);
+                foreach (var splice in splices) keyed.Splice(splice.At, splice.Removed, splice.Inserted);
+                if (keyed.ItemCount != Plan.Rows.Count) { _dedupeSeeds.Clear(); ReseedRowExtents(); }
+            }
+            else
+            {
+                _dedupeSeeds.Clear();
+                if (wholesale || collapseOnly) ReseedRowExtents();
+            }
             if (!notify)
             {
                 // The FIRST publish runs synchronously inside the pane's render, before anything has read the count
@@ -1037,6 +1071,12 @@ public static partial class Sidebar
             {
                 _rowCount.Value = Plan.Rows.Count;
                 _planVersion.Value = _planVersion.Peek() + 1;
+                // The entrance edge: the list plays the seeds once, on the displacement bump that carries them.
+                if (_dedupeSeeds.Count > 0)
+                {
+                    _dedupeSeedsVer = _dispVersion.Peek() + 1;
+                    _dispVersion.Value = _dedupeSeedsVer;
+                }
                 if (wholesale) BumpAllRowEpochs();
                 else
                 {
@@ -1667,6 +1707,16 @@ public static partial class Sidebar
             Context.RequestRerender();
         }
 
+        /// <summary>A displaced row's FLIP start (the key-matched publish's seeds), only on the bump that carries them.</summary>
+        (float dx, float dy)? DedupeFlipFrom(int planIndex)
+            => _dedupeSeedsVer == _dispVersion.Peek() && _dedupeSeeds.TryGetValue(planIndex, out var seed) && seed.Dy != 0f
+                ? (0f, seed.Dy) : null;
+
+        /// <summary>A row the publish inserted outside the reveal band eases in from transparent.</summary>
+        (float from, float delayMs)? DedupeFadeFrom(int planIndex)
+            => _dedupeSeedsVer == _dispVersion.Peek() && _dedupeSeeds.TryGetValue(planIndex, out var seed) && seed.Fade
+                ? (0f, 0f) : null;
+
         /// <summary>The ItemsView displacement channel in plan-row space. Stable delegate (ListOptions freeze at mount).</summary>
         (float dx, float dy) Displacement(int planIndex)
         {
@@ -1926,9 +1976,19 @@ public static partial class Sidebar
             if (_disclosures.TryGet("section:" + sectionId, out var live)) collapsed = live.Open;
             StartDisclosure("section:" + sectionId, sectionId, folder: false, open: !collapsed, () =>
             {
+                _choreographed.Add(sectionId);   // the publish this commit causes takes the key-matched path
                 Sidebar.Dispatch(new SetSectionCollapsed(Config.Layout, sectionId, collapsed));
                 if (!collapsed && sectionId == SidebarCatalogue.IdOf(SidebarSectionKind.NewReleases)) Sidebar.MarkNewReleasesSeen();
             });
+        }
+
+        /// <summary>A header menu's Collapse or Expand: the same choreography as a click, toward the menu's own direction. The
+        /// menu's label comes from the persisted state, which a collapse writes only at rest, so a pick that names the way
+        /// the section's disclosure is already heading is a no-op (it must not reverse that disclosure).</summary>
+        internal void SetSectionDirection(string sectionId, bool collapsed)
+        {
+            if (_disclosures.TryGet("section:" + sectionId, out var live) && live.Open == !collapsed) return;
+            ToggleSection(sectionId, collapsed);
         }
 
         /// <summary>A folder activation through the mode seam, structurally animated only when it discloses inline.</summary>
@@ -2113,6 +2173,61 @@ public static partial class Sidebar
             bool inNew = entry < newEntries.Count;
             if (inOld != inNew) return true;
             return inNew && !SidebarEntriesShadow.SameEntry(oldEntries[entry], newEntries[entry]);
+        }
+
+        /// <summary>The ORDERED EDIT SCRIPT from <paramref name="oldRows"/> to <paramref name="newRows"/>, matched on
+        /// (SectionId, Key): a two-pointer walk with set lookups. A row only in the old list is removed, a row only in the
+        /// new list is inserted, and a key that CHANGES section is a remove plus an insert (it is a different row). The
+        /// splices ascend, and each <c>At</c> is in the index space AFTER the earlier splices, so applying them in order to
+        /// a layout's extent table (<c>ISplicingVirtualLayout.Splice</c>) turns the old table into the new count with every
+        /// surviving row keeping its measured extent. A pair of rows present in both lists but out of order (a reorder)
+        /// is also a remove plus an insert, so the script is always count-correct.</summary>
+        public static List<(int At, int Removed, int Inserted)> Splices(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarRow> newRows)
+        {
+            ArgumentNullException.ThrowIfNull(oldRows);
+            ArgumentNullException.ThrowIfNull(newRows);
+            var result = new List<(int At, int Removed, int Inserted)>(4);
+            var inOld = new HashSet<(string, string)>(oldRows.Count);
+            var inNew = new HashSet<(string, string)>(newRows.Count);
+            for (int i = 0; i < oldRows.Count; i++) inOld.Add((oldRows[i].SectionId, oldRows[i].Key));
+            for (int j = 0; j < newRows.Count; j++) inNew.Add((newRows[j].SectionId, newRows[j].Key));
+
+            int a = 0, b = 0;      // the walk's cursors into the old and the new list
+            int removed = 0, inserted = 0, editAt = 0;
+            void Flush()
+            {
+                if (removed > 0 || inserted > 0) result.Add((editAt, removed, inserted));
+                removed = inserted = 0;
+            }
+            while (a < oldRows.Count || b < newRows.Count)
+            {
+                if (a < oldRows.Count && b < newRows.Count
+                    && string.Equals(oldRows[a].Key, newRows[b].Key, StringComparison.Ordinal)
+                    && string.Equals(oldRows[a].SectionId, newRows[b].SectionId, StringComparison.Ordinal))
+                {
+                    Flush();
+                    a++; b++;
+                    continue;
+                }
+                if (removed == 0 && inserted == 0) editAt = b;   // b IS the index in the after-earlier-splices space
+                var oldKey = a < oldRows.Count ? (oldRows[a].SectionId, oldRows[a].Key) : default;
+                var newKey = b < newRows.Count ? (newRows[b].SectionId, newRows[b].Key) : default;
+                bool oldGone = a < oldRows.Count && !inNew.Contains(oldKey);
+                bool newFresh = b < newRows.Count && !inOld.Contains(newKey);
+                if (a >= oldRows.Count) { inserted++; b++; }
+                else if (b >= newRows.Count) { removed++; a++; }
+                else if (oldGone) { removed++; a++; }
+                else if (newFresh) { inserted++; b++; }
+                else
+                {
+                    // Both exist on the other side but not at this position (a reorder): drop both from the lookups so
+                    // their later partners read as plain edits instead of cascading mismatches.
+                    inNew.Remove(newKey); inOld.Remove(oldKey);
+                    removed++; a++; inserted++; b++;
+                }
+            }
+            Flush();
+            return result;
         }
 
         /// <summary>Did the plan move at all — a different row count, or any slot <see cref="RowChanged"/>? The rail's

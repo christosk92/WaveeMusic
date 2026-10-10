@@ -5,6 +5,7 @@
 // private statics inside `DetailTrailing`, `DetailTracks` and `ArtistFacePile`. Each fact states 0.2.9's decision over
 // `Album.PageRules`; the ONE deliberate change is `FaceOverflow` (ch 05 §0.5, 05-album.md:44-47), asserted as the fix.
 
+using FluentGpu.Dsl;
 using FluentGpu.Localization;
 using Wavee;
 using Xunit;
@@ -96,10 +97,11 @@ public class AlbumPageRulesTests
     // ── the skeleton's shape (defect 4 of the 2026-09-16 recording: a fixed three-section reserve collapsed on reveal) ──
 
     [Fact]
-    public void SkeletonShape_ASingle_ReservesNoRowsBlock()
+    public void SkeletonShape_ASingle_StillReservesTheFeaturedOnBlock()
     {
+        // Featured on is asked for and added whatever the length, so a short release reserves it too (B2).
         var s = Rules.SkeletonShape(knowsKind: true, AlbumKind.Single, knownTrackCount: 0);
-        Assert.Equal(new Rules.TrailingShape(About: true, Fans: true, RowBlocks: 0), s);
+        Assert.Equal(new Rules.TrailingShape(About: true, Fans: true, RowBlocks: 1), s);
         Assert.False(s.IsEmpty);
     }
 
@@ -108,10 +110,10 @@ public class AlbumPageRulesTests
         => Assert.Equal(new Rules.TrailingShape(true, true, 1), Rules.SkeletonShape(true, AlbumKind.Album, 12));
 
     [Fact]
-    public void SkeletonShape_OneOrTwoTracks_IsShort_WhateverTheKind()
+    public void SkeletonShape_ReservesOneRowsBlock_WhateverTheLength()
     {
-        Assert.Equal(0, Rules.SkeletonShape(true, AlbumKind.Album, 1).RowBlocks);
-        Assert.Equal(0, Rules.SkeletonShape(true, AlbumKind.EP, 2).RowBlocks);
+        Assert.Equal(1, Rules.SkeletonShape(true, AlbumKind.Album, 1).RowBlocks);
+        Assert.Equal(1, Rules.SkeletonShape(true, AlbumKind.EP, 2).RowBlocks);
         Assert.Equal(1, Rules.SkeletonShape(true, AlbumKind.EP, 3).RowBlocks);
     }
 
@@ -132,7 +134,7 @@ public class AlbumPageRulesTests
     }
 
     [Fact]
-    public void SkeletonHeight_GrowsWithEachSection_AndAnAlbumOutreservesASingle()
+    public void SkeletonHeight_GrowsWithEachSection_AndASingleReservesTheAlbumsBand()
     {
         float none = Rules.SkeletonHeight(default);
         float fans = Rules.SkeletonHeight(new Rules.TrailingShape(false, true, 0));
@@ -141,21 +143,78 @@ public class AlbumPageRulesTests
         Assert.Equal(0f, none);
         Assert.True(fans > none);
         Assert.True(single > fans);
-        Assert.True(album > single);
-        // The rows block is the whole difference between the two shapes.
-        float rows = Rules.SkelSectionPadV + Rules.SkelHeaderH + Rules.SkelSectionGap
-                   + Rules.SkelRows * Rules.SkelRowH + (Rules.SkelRows - 1) * Rules.SkelRowGap;
-        Assert.Equal(rows, album - single);
+        Assert.Equal(album, single);     // the band's reserve does not depend on the length: the reveal has nothing to snap to
     }
 
     [Fact]
     public void SkeletonHeight_IsTheSumOfTheSectionsDrawn()
     {
         float section = Rules.SkelSectionPadV + Rules.SkelHeaderH + Rules.SkelSectionGap;
-        Assert.Equal(section + Rules.SkelAboutH, Rules.SkeletonHeight(new Rules.TrailingShape(true, false, 0)));
-        Assert.Equal(section + Rules.SkelChipH, Rules.SkeletonHeight(new Rules.TrailingShape(false, true, 0)));
+        // About has no header (an 84 circle and two bars in the card); Fans is a header over a row of 148-wide shelf cards.
+        Assert.Equal(Rules.SkelSectionPadV + Rules.SkelAboutH, Rules.SkeletonHeight(new Rules.TrailingShape(true, false, 0)));
+        Assert.Equal(section + Rules.SkelFansH, Rules.SkeletonHeight(new Rules.TrailingShape(false, true, 0)));
+        Assert.Equal(Rules.SkelVideoH, Rules.SkeletonHeight(new Rules.TrailingShape(false, false, 0, Video: true)));
         Assert.Equal(2 * (section + Rules.SkelRows * Rules.SkelRowH + (Rules.SkelRows - 1) * Rules.SkelRowGap),
                      Rules.SkeletonHeight(new Rules.TrailingShape(false, false, 2)));
+    }
+
+    // The skeleton mirrors the loaded band (B2): the numbers are the real builders' own, so the dissolve has nothing to snap to.
+    [Fact]
+    public void SkeletonNumbers_AreTheRealSurfacesOwn()
+    {
+        Assert.Equal(28f, Rules.SkelHeaderH);                                                 // Subtitle 20/28
+        Assert.Equal(5, Rules.SkelRows);                                                      // Featured on shows StackCap rows
+        Assert.Equal(Rules.StackCap, Rules.SkelRows);
+        Assert.Equal(4f, Rules.SkelRowGap);                                                   // the stack's Spacing.XS
+        Assert.Equal(Spacing.M, Rules.SkelSectionGap);                                        // header-to-body, Section and Stack alike
+        Assert.Equal(Spacing.XL + Spacing.L, Rules.SkelSectionPadV);                          // SectionPad: XL top, L bottom
+        Assert.Equal(Rules.SkelRowH, Shape.RowTileStill.MinHeight);
+        Assert.True(Rules.SkelAboutPortrait <= Rules.SkelAboutTextH);
+        Assert.Equal(16f + 28f + 2 * 18f + 2 * Spacing.XS, Rules.SkelAboutTextH);             // eyebrow + name + 2-line bio + gaps
+        Assert.Equal(Rules.SkelAboutTextH + 2 * Spacing.M, Rules.SkelAboutH);
+        Assert.Equal(SurfaceGeometry.ShelfHeight(148f, 1f, captionLines: 1, metaLine: false), Rules.SkelFansH);
+        Assert.Equal(Album.SurfaceMetrics.HeroThumbW, Rules.SkelVideoThumbW);
+        Assert.Equal(Album.SurfaceMetrics.HeroThumbH, Rules.SkelVideoThumbH);
+        Assert.Equal(Spacing.XL + Album.SurfaceMetrics.HeroThumbH + 2 * Spacing.M, Rules.SkelVideoH);
+    }
+
+    [Fact]
+    public void SkeletonShape_VideoIsReservedOnlyWhenKnown()
+    {
+        Assert.False(Rules.SkeletonShape(true, AlbumKind.Album, 12).Video);
+        var s = Rules.SkeletonShape(true, AlbumKind.Album, 12, videoKnown: true);
+        Assert.Equal(new Rules.TrailingShape(true, true, 1, true), s);
+        Assert.False(s.IsEmpty);
+    }
+
+    [Fact]
+    public void SkeletonHeight_ForAnAlbum_AWithVideoAlbum_AndASingle()
+    {
+        float section = Rules.SkelSectionPadV + Rules.SkelHeaderH + Rules.SkelSectionGap;
+        float rows = section + Rules.SkelRows * Rules.SkelRowH + (Rules.SkelRows - 1) * Rules.SkelRowGap;
+        float about = Rules.SkelSectionPadV + Rules.SkelAboutH;
+        float fans = section + Rules.SkelFansH;
+
+        // An album: About, Fans shelf, one Featured-on block of five rows.
+        Assert.Equal(about + fans + rows, Rules.SkeletonHeight(Rules.SkeletonShape(true, AlbumKind.Album, 12)));
+        // The same album with a known video: the video block rides on top.
+        Assert.Equal(Rules.SkelVideoH + about + fans + rows,
+                     Rules.SkeletonHeight(Rules.SkeletonShape(true, AlbumKind.Album, 12, videoKnown: true)));
+        // A single reserves the same band: Featured on is added whenever the album has recommendations.
+        Assert.Equal(about + fans + rows, Rules.SkeletonHeight(Rules.SkeletonShape(true, AlbumKind.Single, 0)));
+    }
+
+    /// <summary>Two or more videos load as the shelf, which is taller than the single hero (header row + gap + a 16:9 card row),
+    /// so the skeleton reserves it; the shelf shape implies a video and a lone video stays the hero.</summary>
+    [Fact]
+    public void SkeletonShape_TwoOrMoreVideos_ReservesTheShelfNotTheHero()
+    {
+        var hero = Rules.SkeletonShape(true, AlbumKind.Album, 12, videoKnown: true);
+        var shelf = Rules.SkeletonShape(true, AlbumKind.Album, 12, videoKnown: true, videoShelf: true);
+        Assert.False(hero.VideoShelf);
+        Assert.True(shelf.Video && shelf.VideoShelf);
+        Assert.Equal(Rules.SkeletonHeight(hero) - Rules.SkelVideoH + Rules.SkelVideoShelfH, Rules.SkeletonHeight(shelf));
+        Assert.True(Rules.SkelVideoShelfH > Rules.SkelVideoH);
     }
 
     // No members, nothing to wait for. (A full album no longer short-circuits: see AlbumVideoSectionTests — the
