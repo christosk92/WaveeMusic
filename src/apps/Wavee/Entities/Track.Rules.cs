@@ -666,30 +666,46 @@ public readonly partial struct Track
 
     // ══ 6. THE COMMAND BAR FIT ═══════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary><see cref="Filter"/> is the Filter button being inline at all (a 32-DIP funnel), <see cref="FilterLabel"/>
+    /// additionally its word (it always comes with <see cref="Filter"/>).</summary>
     [Flags]
-    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Density = 4, Select = 8 }
+    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Density = 4, Select = 8, Filter = 16, FilterLabel = 32 }
 
-    /// <summary>Measured LABELED widths of the commands whose presence the resolver controls.</summary>
-    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort, float Density, float Select);
+    /// <summary>Measured LABELED widths of the commands whose presence the resolver controls. <paramref name="Filter"/> is the
+    /// LABELLED Filter button (its badge slot included); its icon-only form is the fixed
+    /// <see cref="CommandBarLayout.FilterIconWidth"/>.</summary>
+    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort, float Density, float Select,
+                                                float Filter = CommandBarLayout.FilterLabelledNominal);
 
     public readonly record struct CommandBarFit(InlineCommand Inline, bool SearchExpanded, float SearchWidth)
     {
         public bool Has(InlineCommand command) => (Inline & command) != 0;
         public int Richness =>
-            (SearchExpanded ? 8 : 0)
-            + (Has(InlineCommand.Shuffle) ? 4 : 0)
-            + (Has(InlineCommand.Sort) ? 2 : 0)
-            + (Has(InlineCommand.Density) ? 1 : 0)
+            (SearchExpanded ? 64 : 0)
+            + (Has(InlineCommand.Shuffle) ? 32 : 0)
+            + (Has(InlineCommand.Sort) ? 16 : 0)
+            + (Has(InlineCommand.Filter) ? 8 : 0)
+            + (Has(InlineCommand.FilterLabel) ? 4 : 0)
+            + (Has(InlineCommand.Density) ? 2 : 0)
             + (Has(InlineCommand.Select) ? 1 : 0);
     }
 
     /// <summary>The command bar PROMOTES, it does not shrink: every inline command is icon + label, and one that does not
-    /// fit is evicted into "…". Never returns a layout wider than its input.</summary>
+    /// fit is evicted into "…". Filter leads the view commands and is the one command with a middle rung: Filter + Sort
+    /// labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge
+    /// returning to "…"). Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
         public const float MoreWidth = 32f;
-        /// <summary>At rest the search affordance is TWO adjacent buttons (query + filter); the field opens only when invoked.</summary>
-        public const float SearchIconWidth = 66f;
+        /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The Filter command is its own
+        /// button before Sort; "Filter…" in "…" (badged while a filter is on) is where a narrow bar puts it.</summary>
+        public const float SearchIconWidth = 32f;
+        /// <summary>The context band's search host keeps its funnel beside the query button (query + filter, two adjacent buttons).</summary>
+        public const float SearchWithFilterWidth = 66f;
+        /// <summary>The Filter button without its word (the funnel; the count badge overlays its corner, so it never changes width).</summary>
+        public const float FilterIconWidth = 32f;
+        /// <summary>The labelled Filter button's width before it is measured: funnel, "Filter" and the reserved badge slot.</summary>
+        public const float FilterLabelledNominal = 96f;
         public const float SearchMinExplicit = 160f;
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
@@ -730,7 +746,7 @@ public readonly partial struct Track
             {
                 float extra = Gap + width;
                 bool firstView = viewCommand
-                    && (inline & (InlineCommand.Sort | InlineCommand.Density | InlineCommand.Select)) == 0;
+                    && (inline & (InlineCommand.Filter | InlineCommand.Sort | InlineCommand.Density | InlineCommand.Select)) == 0;
                 if (firstView && (!vertical || hasTune || mandatoryCount > 1)) extra += GroupSeparatorWidth;
                 if (used + extra > available) return;
                 used += extra;
@@ -738,7 +754,28 @@ public readonly partial struct Track
             }
 
             if (!vertical) Add(InlineCommand.Shuffle, widths.Shuffle, viewCommand: false);
-            Add(InlineCommand.Sort, widths.Sort, viewCommand: true);
+
+            // Filter and Sort share one ladder, richest first: the first rung whose extra width fits wins.
+            {
+                float sep = (!vertical || hasTune || mandatoryCount > 1) ? GroupSeparatorWidth : 0f;
+                float labelled = Gap + widths.Filter, icon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
+                if (used + sep + labelled + sortExtra <= available)
+                {
+                    used += sep + labelled + sortExtra;
+                    inline |= InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
+                }
+                else if (used + sep + icon + sortExtra <= available)
+                {
+                    used += sep + icon + sortExtra;
+                    inline |= InlineCommand.Filter | InlineCommand.Sort;
+                }
+                else if (used + sep + icon <= available)
+                {
+                    used += sep + icon;
+                    inline |= InlineCommand.Filter;
+                }
+                else Add(InlineCommand.Sort, widths.Sort, viewCommand: true);   // (Sort never fits where the icon did not, but stay greedy-safe)
+            }
             Add(InlineCommand.Density, widths.Density, viewCommand: true);
             if (hasSelect) Add(InlineCommand.Select, widths.Select, viewCommand: true);
 
@@ -803,26 +840,27 @@ public readonly partial struct Track
 
         /// <summary>The number on the Filter affordance: each toggle and each non-default facet counts once; a window is ONE
         /// facet however many endpoints it names.</summary>
-        public int ActiveCount
+        public int ActiveCount => ActiveCountFor(searching: true);
+
+        /// <summary><see cref="ActiveCount"/> as the badge states it: the search scope is the QUERY's, so it counts only while a query
+        /// is typed (<paramref name="searching"/>); an empty find leaves the scope uncounted, as nothing on the card is then narrowing.</summary>
+        public int ActiveCountFor(bool searching)
         {
-            get
-            {
-                int n = SearchScope == SearchScope.Everything ? 0 : 1;
-                if (ExplicitMode != TraitMode.All) n++;
-                if (VideoMode != TraitMode.All) n++;
-                if (LikedOnly) n++;
-                if (PlayableOnly) n++;
-                if (Duration != DurationRange.Any) n++;
-                if (Added != AddedRange.Any) n++;
-                if (Origin != OriginFilter.Any) n++;
-                if (Tempo != TempoBand.Any) n++;
-                if (Camelot != 0) n++;
-                if (!string.IsNullOrEmpty(Tag)) n++;
-                if (AddedAfterMs != 0L || AddedBeforeMs != 0L) n++;
-                if (ArtistSlot != 0) n++;
-                if (ReleaseYearMin != 0 || ReleaseYearMax != 0) n++;
-                return n;
-            }
+            int n = SearchScope == SearchScope.Everything || !searching ? 0 : 1;
+            if (ExplicitMode != TraitMode.All) n++;
+            if (VideoMode != TraitMode.All) n++;
+            if (LikedOnly) n++;
+            if (PlayableOnly) n++;
+            if (Duration != DurationRange.Any) n++;
+            if (Added != AddedRange.Any) n++;
+            if (Origin != OriginFilter.Any) n++;
+            if (Tempo != TempoBand.Any) n++;
+            if (Camelot != 0) n++;
+            if (!string.IsNullOrEmpty(Tag)) n++;
+            if (AddedAfterMs != 0L || AddedBeforeMs != 0L) n++;
+            if (ArtistSlot != 0) n++;
+            if (ReleaseYearMin != 0 || ReleaseYearMax != 0) n++;
+            return n;
         }
 
         /// <summary>Set the coarse preset, clearing any window: ANDing both would return fewer rows than either promised.</summary>
