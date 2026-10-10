@@ -204,6 +204,19 @@ public class AlbumPageRulesTests
         Assert.Equal(about + fans + rows, Rules.SkeletonHeight(Rules.SkeletonShape(true, AlbumKind.Single, 0)));
     }
 
+    /// <summary>Two or more videos load as the shelf, which is taller than the single hero (header row + gap + a 16:9 card row),
+    /// so the skeleton reserves it; the shelf shape implies a video and a lone video stays the hero.</summary>
+    [Fact]
+    public void SkeletonShape_TwoOrMoreVideos_ReservesTheShelfNotTheHero()
+    {
+        var hero = Rules.SkeletonShape(true, AlbumKind.Album, 12, videoKnown: true);
+        var shelf = Rules.SkeletonShape(true, AlbumKind.Album, 12, videoKnown: true, videoShelf: true);
+        Assert.False(hero.VideoShelf);
+        Assert.True(shelf.Video && shelf.VideoShelf);
+        Assert.Equal(Rules.SkeletonHeight(hero) - Rules.SkelVideoH + Rules.SkelVideoShelfH, Rules.SkeletonHeight(shelf));
+        Assert.True(Rules.SkelVideoShelfH > Rules.SkelVideoH);
+    }
+
     // No members, nothing to wait for. (A full album no longer short-circuits: see AlbumVideoSectionTests — the
     // section is not a short-release privilege any more, so its verdict is not either.)
     [Fact]

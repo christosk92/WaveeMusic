@@ -1025,7 +1025,7 @@ public readonly partial struct Album
         /// block (<paramref name="Video"/>, only when the row already knows it has one), the About card, the fans shelf and
         /// <paramref name="RowBlocks"/> list-section blocks (Featured on, which the loaded band adds whenever the album has
         /// recommendations, whatever its length).</summary>
-        public readonly record struct TrailingShape(bool About, bool Fans, int RowBlocks, bool Video = false)
+        public readonly record struct TrailingShape(bool About, bool Fans, int RowBlocks, bool Video = false, bool VideoShelf = false)
         {
             public bool IsEmpty => !About && !Fans && RowBlocks == 0 && !Video;
         }
@@ -1037,10 +1037,12 @@ public readonly partial struct Album
         /// answers, so a short release that reserved none would grow a whole rows block on the reveal.
         /// <paramref name="videoKnown"/> is true only when every
         /// member's video verdict is in AND at least one member has a video (<see cref="VideoDecided"/>,
-        /// <see cref="SelectVideos"/>): a video that lands later is never guessed, it eases in like any late section.</summary>
-        public static TrailingShape SkeletonShape(bool knowsKind, AlbumKind kind, int knownTrackCount, bool videoKnown = false)
+        /// <see cref="SelectVideos"/>): a video that lands later is never guessed, it eases in like any late section.
+        /// <paramref name="videoShelf"/> (two or more videos, <see cref="ArmFor"/>) reserves the shelf's height, not the single hero's.</summary>
+        public static TrailingShape SkeletonShape(bool knowsKind, AlbumKind kind, int knownTrackCount, bool videoKnown = false,
+                                                  bool videoShelf = false)
         {
-            return new TrailingShape(About: true, Fans: true, RowBlocks: 1, Video: videoKnown);
+            return new TrailingShape(About: true, Fans: true, RowBlocks: 1, Video: videoKnown || videoShelf, VideoShelf: videoShelf);
         }
 
         // The skeleton's numbers, derived from the real surfaces (Album.Page.cs) so the reserve equals the paint.
@@ -1063,6 +1065,13 @@ public readonly partial struct Album
         /// and no bottom pad (About supplies that step).</summary>
         public const float SkelVideoThumbW = 200f, SkelVideoThumbH = 116f, SkelVideoTopPad = 20f;
         public const float SkelVideoH = SkelVideoTopPad + SkelVideoThumbH + 24f;
+        /// <summary>The video SHELF (<c>VideoShelf</c>, two or more videos): the section's XL top pad, the shelf's header row (its 32-DIP
+        /// pager is taller than the 28 title), the shelf's 12 header gap, then one row of 16:9 <c>Shape.Video</c> cards. The cards fit
+        /// 200-280 wide at the live page width; the skeleton has no width, so it reserves the narrowest (under-states, like the rest).</summary>
+        public const float SkelVideoShelfHeaderH = 32f, SkelVideoShelfGap = 12f;
+        public const int SkelVideoShelfCards = 3;
+        public static float SkelVideoShelfH => SkelVideoTopPad + SkelVideoShelfHeaderH + SkelVideoShelfGap
+                                               + SurfaceGeometry.StackExtent(Shape.Video, VideoCardMinW, 16f / 9f);
 
         /// <summary>The DIP the skeleton for <paramref name="s"/> occupies — the same numbers the elements use, summed in
         /// the order the loaded band stacks them (the sum itself is order-free).</summary>
@@ -1070,7 +1079,7 @@ public readonly partial struct Album
         {
             float section = SkelSectionPadV + SkelHeaderH + SkelSectionGap;
             float h = 0f;
-            if (s.Video) h += SkelVideoH;
+            if (s.Video) h += s.VideoShelf ? SkelVideoShelfH : SkelVideoH;
             if (s.About) h += SkelSectionPadV + SkelAboutH;                 // the card has no header
             if (s.Fans) h += section + SkelFansH;
             if (s.RowBlocks > 0) h += s.RowBlocks * (section + SkelRows * SkelRowH + (SkelRows - 1) * SkelRowGap);

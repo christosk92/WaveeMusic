@@ -676,17 +676,19 @@ public readonly partial struct Album
             {
                 var a = new Album(_slot);
                 // A video is reserved only when the rows already say so: every member's verdict is in AND one has a video.
-                bool videoKnown = false;
+                int videoCount = 0;
                 if (a.IsValid)
                 {
                     var known = MemoryMarshal.Cast<int, Track>(a.TrackSlots);
                     Span<PageRules.AlbumVideo> probe = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
-                    videoKnown = PageRules.VideoDecided(known) && PageRules.SelectVideos(known, probe) > 0;
+                    videoCount = PageRules.VideoDecided(known) ? PageRules.SelectVideos(known, probe) : 0;
                 }
                 _shape = a.IsValid
-                    ? PageRules.SkeletonShape(a.Knows(AlbumFields.Kind), a.Kind, a.TrackCount, videoKnown)
+                    ? PageRules.SkeletonShape(a.Knows(AlbumFields.Kind), a.Kind, a.TrackCount, videoKnown: videoCount > 0,
+                                              videoShelf: PageRules.ArmFor(videoCount) == PageRules.VideoArm.Shelf)
                     : PageRules.SkeletonShape(knowsKind: false, AlbumKind.Album, 0);
-                int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.Video ? 4 : 0) | (_shape.RowBlocks << 3);
+                int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.Video ? 4 : 0) | (_shape.VideoShelf ? 8 : 0)
+                           | (_shape.RowBlocks << 4);
                 _skelKey = "trailing-skel:" + hash.ToString(CultureInfo.InvariantCulture);
             }
             return new BoxEl
@@ -1216,13 +1218,19 @@ public readonly partial struct Album
     }
 
     /// <summary>"About the artist": the shared <see cref="Controls.ArtistAboutCard"/> in its page row layout (the link is the
-    /// focusable click owner; Follow is its sibling, never nested inside it).</summary>
+    /// focusable click owner; Follow is its sibling, never nested inside it). The card is at least the skeleton's reserve
+    /// (<see cref="PageRules.SkelAboutH"/>): a bio-less artist's card would otherwise land shorter than the skeleton it
+    /// replaces and pull the sections under it up.</summary>
     static Element AboutSection(Artist artist)
-        => new BoxEl
+    {
+        var card = Controls.ArtistAboutCard(artist, AboutLayout.Page);
+        if (card is BoxEl box) card = box with { MinHeight = PageRules.SkelAboutH };
+        return new BoxEl
         {
             Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,
-            Children = [Controls.ArtistAboutCard(artist, AboutLayout.Page) with { Key = "about:" + artist.Uri.Text }],
+            Children = [card with { Key = "about:" + artist.Uri.Text }],
         };
+    }
 
     // ── the music-video section (ch 05 W12; the 2026-09-17 rewrite) ──────────────────────────────────────────────────
     //
@@ -1522,7 +1530,7 @@ public readonly partial struct Album
     static Element TrailingSkeleton(in PageRules.TrailingShape shape)
     {
         var sections = new List<Element>(3 + shape.RowBlocks);
-        if (shape.Video) sections.Add(VideoSkeleton());
+        if (shape.Video) sections.Add(shape.VideoShelf ? VideoShelfSkeleton() : VideoSkeleton());
         if (shape.About) sections.Add(AboutSkeleton());
         if (shape.Fans) sections.Add(SectionSkeleton(FansSkeleton()));
         for (int i = 0; i < shape.RowBlocks; i++) sections.Add(SectionSkeleton(RowsSkeleton()));
@@ -1560,6 +1568,30 @@ public readonly partial struct Album
             },
         ],
     };
+
+    /// <summary>Two or more videos load as the shelf (<see cref="VideoShelf"/>), not the single hero: the shelf's header row
+    /// (title bar left, the pager's 32 DIP right), then one clipped row of 16:9 cards at the shelf's narrowest card width
+    /// (<see cref="VideoCardMinW"/>), under the section's own pad (no bottom).</summary>
+    static Element VideoShelfSkeleton()
+    {
+        var cards = new Element[PageRules.SkelVideoShelfCards];
+        var seed = Controls.CardData.Seed with { CoverAspect = 16f / 9f };
+        for (int i = 0; i < cards.Length; i++) cards[i] = Controls.Surface(seed, Shape.Video, VideoCardMinW);
+        return new BoxEl
+        {
+            Direction = 1, AlignSelf = FlexAlign.Stretch, Gap = PageRules.SkelVideoShelfGap,
+            Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, 0f),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, AlignItems = FlexAlign.Center, Height = PageRules.SkelVideoShelfHeaderH,
+                    Children = [Bone(160f, PageRules.SkelHeaderBarH)],
+                },
+                new BoxEl { Direction = 0, Gap = Spacing.M, ClipToBounds = true, Children = cards },
+            ],
+        };
+    }
 
     /// <summary>"About the artist": the card has no header — an 84 circle, two bars and the Follow cell, in the page row layout
     /// (<c>Controls.PageAbout</c>: the link cell carries no right padding, the Follow cell its own L on both sides).</summary>
