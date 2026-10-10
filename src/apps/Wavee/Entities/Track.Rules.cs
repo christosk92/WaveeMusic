@@ -970,8 +970,23 @@ public readonly partial struct Track
             return w;
         }
 
+        /// <summary>The pointer is over the bar when its (window) position lies in the bar's rect; the right and bottom edges are
+        /// outside, and a zero-width rect (a bar that has not laid out) holds nothing.</summary>
+        public static bool PointerOver(Point2? pointer, RectF bar)
+            => pointer is { } p && bar.W > 0f && p.X >= bar.X && p.X < bar.X + bar.W && p.Y >= bar.Y && p.Y < bar.Y + bar.H;
+
+        /// <summary>The find collapsed under the pointer (it was open, now is not, and the pointer is over the bar): the rung holds
+        /// instead of promoting, so a chip pressed in the same moment is not moved out from under its own click.</summary>
+        public static bool HoldsOnCollapse(bool wasOpen, bool open, bool pointerOverBar) => wasOpen && !open && pointerOverBar;
+
+        /// <summary>A hold ends when the pointer is off the bar, the find reopened, or the pane really changed (more than 0.5 DIP).</summary>
+        public static bool HoldReleased(float holdPane, float pane, bool open, bool pointerOverBar)
+            => !pointerOverBar || open || MathF.Abs(pane - holdPane) > 0.5f;
+
+        /// <param name="allowPromotion">False while a collapse hold is set: with a previous fit the rung is never richer than
+        /// <c>previous.Rung</c> (the freed width goes to the chip slot or the search field); narrowing still steps down at once.</param>
         public static LikedBarFit Resolve(float available, float shuffleW, float sortW, bool explicitSearch, LikedBarFit? previous = null,
-                                          bool chips = true)
+                                          bool chips = true, bool allowPromotion = true)
         {
             available = MathF.Max(0f, available);
             var rung = RungFor(available, shuffleW, sortW, explicitSearch, chips);
@@ -980,7 +995,7 @@ public readonly partial struct Track
                 // A promotion: it must also fit with the hysteresis to spare, else the previous (poorer) rung holds. The previous
                 // rung fits `available` by construction (it is poorer than a rung that does).
                 var steady = RungFor(MathF.Max(0f, available - CommandBarLayout.PromotionHysteresis), shuffleW, sortW, explicitSearch, chips);
-                rung = steady < old.Rung ? steady : old.Rung;
+                rung = allowPromotion && steady < old.Rung ? steady : old.Rung;
             }
             float used = RungWidth(rung, shuffleW, sortW, explicitSearch, chips);
             float spare = MathF.Max(0f, available - used);

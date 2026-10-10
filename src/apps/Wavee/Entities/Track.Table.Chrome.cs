@@ -62,6 +62,16 @@ public readonly partial struct Track
         // The Liked bar's rung (LikedBarLayout), latched while search is open exactly like the list-tools fit below.
         LikedBarFit? _likedFit;
         (float Available, LikedBarFit Fit)? _likedOpenFit;
+        // The collapse hold (D2): an empty find that blurs and collapses under the pointer would re-rung the bar (the freed width
+        // promotes it) and move the chip being pressed out from under its own click. While the pointer is over the bar the rung holds
+        // (LikedBarLayout.Resolve allowPromotion: false); the hold ends on exit, a real pane change, the find reopening or a mode swap,
+        // and the release re-fits through s_toolbarCommandMotion.
+        bool _likedBarPointerOver, _likedWasOpen;
+        float? _likedHoldPane;
+        NodeHandle _likedBarNode;
+        Action<Point2>? _likedBarMove;
+        Action? _likedBarExit;
+        Action<NodeHandle>? _likedBarRealized;
         // The fit LATCHED when search opened, with the pane it resolved against: promoting/evicting mid-flight re-measures,
         // bumps the epoch and would hand the width tween a new target. A genuine pane resize drops the latch.
         (float Available, CommandBarFit Fit)? _searchOpenFit;
@@ -164,8 +174,12 @@ public readonly partial struct Track
             // The selection surface replaces the bar but keeps the Insights toggle at its trailing end: an open sheet never
             // loses its toggle (or the focus-return target) mid-session.
             if (_selectionVisible?.Value == true)
+            {
+                // A mode swap ends a collapse hold: the bar behind the selection surface is not under the pointer any more.
+                _likedHoldPane = null; _likedWasOpen = false; _likedBarPointerOver = false;
                 return SelectionSurface("selection", lead,
                     insights is null ? null : Detail.InsightsToggleSlot(insights, _insightsLive.Value, "table:insights"));
+            }
 
             if (Cfg.SlimHead && VerticalArm) return BuildLikedBar(available, lead, insights);
 
@@ -224,7 +238,17 @@ public readonly partial struct Track
             bool chipsPresent = _chipsInBar.Value && P.ContentFilterBar is not null;
             bool explicitSearch = _searchExpanded.Value;
             float pane = CommandBarLayout.PaneWidth(available);
-            var fit = LikedBarLayout.Resolve(pane, _toolbarWidths[2], _toolbarWidths[1], explicitSearch, _likedFit, chipsPresent);
+            // D2: the find collapsing under the pointer holds the rung (see _likedHoldPane); a set hold ends on a real pane change,
+            // the pointer leaving or the find reopening, and the release re-fits on the bar's normal motion.
+            if (_likedHoldPane is null)
+            {
+                if (LikedBarLayout.HoldsOnCollapse(_likedWasOpen, explicitSearch, LikedPointerOverBar())) _likedHoldPane = pane;
+            }
+            else if (LikedBarLayout.HoldReleased(_likedHoldPane.Value, pane, explicitSearch, LikedPointerOverBar()))
+                _likedHoldPane = null;
+            var fit = LikedBarLayout.Resolve(pane, _toolbarWidths[2], _toolbarWidths[1], explicitSearch, _likedFit, chipsPresent,
+                allowPromotion: _likedHoldPane is null);
+            _likedWasOpen = explicitSearch;
             if (!explicitSearch) _likedOpenFit = null;
             else if (_likedOpenFit is { } latched && MathF.Abs(latched.Available - pane) <= 0.5f) fit = latched.Fit;
             else _likedOpenFit = (pane, fit);
@@ -271,6 +295,9 @@ public readonly partial struct Track
             Element normal = new BoxEl
             {
                 Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Grow = 1f, MinWidth = 0f,
+                OnPointerMoveWithin = _likedBarMove ??= _ => _likedBarPointerOver = true,
+                OnPointerExit = _likedBarExit ??= ReleaseLikedHoldOnExit,
+                OnRealized = _likedBarRealized ??= h => _likedBarNode = h,
                 Children =
                 [
                     new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Gap = CommandBarLayout.Gap, Shrink = 1f, MinWidth = 0f, Children = left.ToArray() },
@@ -279,6 +306,23 @@ public readonly partial struct Track
                 ],
             };
             return CommandSurface("normal", normal, lead);
+        }
+
+        // The latch covers pointer moves; the position test covers a bar that laid out under a still pointer. The engine also
+        // re-delivers OnPointerMoveWithin on a stationary re-hover (InputDispatcher.cs ~3118/~3178/~3202), but the collapse edge
+        // must not depend on that ordering.
+        bool LikedPointerOverBar()
+            => _likedBarPointerOver
+            || (_hooks is { GetPointerPosition: { } pos, GetNodeRect: { } rect } && !_likedBarNode.IsNull
+                && LikedBarLayout.PointerOver(pos(), rect(_likedBarNode)));
+
+        /// <summary>The pointer left the bar: the latch clears, and a set hold ends with a re-fit on the bar's own motion.</summary>
+        void ReleaseLikedHoldOnExit()
+        {
+            _likedBarPointerOver = false;
+            if (_likedHoldPane is null) return;
+            _likedHoldPane = null;
+            _toolbarEpoch.Value = _toolbarEpoch.Peek() + 1;
         }
 
         /// <summary>What a rung moves into "..." (the Liked bar).</summary>

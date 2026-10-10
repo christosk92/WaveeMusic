@@ -265,8 +265,90 @@ public class LikedBarLayoutTests
     static float W(Track.LikedBarLayout.Rung r, bool explicitSearch = false, bool chips = true)
         => Track.LikedBarLayout.RungWidth(r, Shuffle, Sort, explicitSearch, chips);
 
-    static Track.LikedBarFit Fit(float available, bool explicitSearch = false, Track.LikedBarFit? previous = null, bool chips = true)
-        => Track.LikedBarLayout.Resolve(available, Shuffle, Sort, explicitSearch, previous, chips);
+    static Track.LikedBarFit Fit(float available, bool explicitSearch = false, Track.LikedBarFit? previous = null, bool chips = true,
+                                 bool allowPromotion = true)
+        => Track.LikedBarLayout.Resolve(available, Shuffle, Sort, explicitSearch, previous, chips, allowPromotion);
+
+    // A pane where the open find costs rungs: Full fits closed with the hysteresis and 20 DIP to spare, so closing the find promotes.
+    static float CollapsePane => W(Track.LikedBarLayout.Rung.Full) + Track.CommandBarLayout.PromotionHysteresis + 20f;
+
+    [Fact]
+    public void ACollapseHold_KeepsTheRung_AndTheFreedWidthGoesToTheChipSlot()
+    {
+        float pane = CollapsePane;
+        var open = Fit(pane, explicitSearch: true);
+        Assert.True(open.Rung > Track.LikedBarLayout.Rung.Full);
+        Assert.True(Track.LikedBarLayout.ChipsInline(open.Rung));
+
+        var held = Fit(pane, previous: open, allowPromotion: false);
+        Assert.Equal(open.Rung, held.Rung);
+        Assert.False(held.SearchExpanded);
+        Assert.Equal(Track.LikedBarLayout.ChipSlotMinW + (pane - W(open.Rung)), held.ChipSlotW, 3);
+        Assert.True(held.ChipSlotW > open.ChipSlotW);
+    }
+
+    [Fact]
+    public void WithoutAHold_TheCollapsePromotes()
+    {
+        float pane = CollapsePane;
+        var open = Fit(pane, explicitSearch: true);
+        var closed = Fit(pane, previous: open);
+        Assert.True(closed.Rung < open.Rung);
+        Assert.Equal(Track.LikedBarLayout.Rung.Full, closed.Rung);
+    }
+
+    [Fact]
+    public void NarrowingStepsDownAtOnce_WhileHeld()
+    {
+        float pane = CollapsePane;
+        var held = Fit(pane, previous: Fit(pane, explicitSearch: true), allowPromotion: false);
+        var narrower = Fit(W(Track.LikedBarLayout.Rung.InsightsInMore) + 1f, previous: held, allowPromotion: false);
+        Assert.True(narrower.Rung > held.Rung);
+        Assert.True(W(narrower.Rung) <= W(Track.LikedBarLayout.Rung.InsightsInMore) + 1f);
+        Assert.Equal(Track.LikedBarLayout.Rung.InsightsInMore, Fit(0f, previous: held, allowPromotion: false).Rung);
+    }
+
+    [Fact]
+    public void ReleasingTheHold_PromotesToTheUnheldRung()
+    {
+        float pane = CollapsePane;
+        var open = Fit(pane, explicitSearch: true);
+        var held = Fit(pane, previous: open, allowPromotion: false);
+        var released = Fit(pane, previous: held);
+        Assert.Equal(Fit(pane, previous: open).Rung, released.Rung);
+        Assert.True(released.Rung < held.Rung);
+    }
+
+    [Theory]
+    [InlineData(true, false, true, true)]     // collapsed under the pointer
+    [InlineData(true, false, false, false)]   // collapsed with the pointer elsewhere
+    [InlineData(true, true, true, false)]     // still open
+    [InlineData(false, false, true, false)]   // was never open
+    [InlineData(false, true, true, false)]    // opening
+    public void HoldsOnCollapse_TruthTable(bool wasOpen, bool open, bool over, bool expected)
+        => Assert.Equal(expected, Track.LikedBarLayout.HoldsOnCollapse(wasOpen, open, over));
+
+    [Theory]
+    [InlineData(500f, 500f, false, true, false)]    // nothing changed: the hold stays
+    [InlineData(500f, 500.5f, false, true, false)]  // within half a DIP
+    [InlineData(500f, 501f, false, true, true)]     // the pane really changed
+    [InlineData(500f, 500f, false, false, true)]    // the pointer left
+    [InlineData(500f, 500f, true, true, true)]      // the find reopened
+    public void HoldReleased_TruthTable(float holdPane, float pane, bool open, bool over, bool expected)
+        => Assert.Equal(expected, Track.LikedBarLayout.HoldReleased(holdPane, pane, open, over));
+
+    [Fact]
+    public void PointerOver_IsTheBarsHalfOpenRect()
+    {
+        var bar = new FluentGpu.Foundation.RectF(10f, 20f, 100f, 44f);
+        Assert.False(Track.LikedBarLayout.PointerOver(null, bar));
+        Assert.True(Track.LikedBarLayout.PointerOver(new FluentGpu.Foundation.Point2(10f, 20f), bar));
+        Assert.True(Track.LikedBarLayout.PointerOver(new FluentGpu.Foundation.Point2(60f, 40f), bar));
+        Assert.False(Track.LikedBarLayout.PointerOver(new FluentGpu.Foundation.Point2(110f, 40f), bar));   // right edge
+        Assert.False(Track.LikedBarLayout.PointerOver(new FluentGpu.Foundation.Point2(60f, 64f), bar));    // bottom edge
+        Assert.False(Track.LikedBarLayout.PointerOver(new FluentGpu.Foundation.Point2(9f, 40f), bar));
+        Assert.False(Track.LikedBarLayout.PointerOver(new FluentGpu.Foundation.Point2(10f, 20f), new FluentGpu.Foundation.RectF(10f, 20f, 0f, 44f)));
+    }
 
     [Fact]
     public void RungWidths_StrictlyDecrease_FromFullToTheFloor()

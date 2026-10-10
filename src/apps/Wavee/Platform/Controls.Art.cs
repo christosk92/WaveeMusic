@@ -640,6 +640,8 @@ public static partial class Controls
             Children = [.. chips],
         }, horizontal: true) with
         {
+            // The hidden scrollbar lane no longer takes input (fluent-gpu 7dcd19d06), so the first-click loss that remained was the
+            // Liked bar re-fitting when the find collapsed under the pointer (Track.Table.Chrome.cs, the collapse hold).
             Grow = inBar ? 1f : 0f, Height = inBar ? ChipHeight : ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
             // In a bar the fade is a short 24 DIP band (the engine default is a quarter of the viewport, which ran into Sort).
             AutoEdgeFadeBand = inBar ? 24f : 0f,
