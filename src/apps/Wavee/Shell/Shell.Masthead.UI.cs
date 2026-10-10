@@ -113,7 +113,7 @@ public static partial class Shell
         }
         var current = Design.Type.SurfaceDisplay(title) with
         {
-            Key = "masthead-current", MaxLines = 2, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+            Key = "masthead-current", MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Grow = 1f, Basis = 0f, Shrink = 1f,
         };
         if (segs.Count == 0)
