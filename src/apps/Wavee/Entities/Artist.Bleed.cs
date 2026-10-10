@@ -34,6 +34,11 @@ public static class ArtistBleed
     /// <summary>The scrim's strongest alpha, at the window top (over <see cref="FieldBase"/>), the same in both themes.</summary>
     public const float ScrimTop = 0.62f;
 
+    /// <summary>The side field's alpha: the flat dark ground under the chrome columns the photo does not reach (above the
+    /// Classic/Library pane and above the rail). Heavier than <see cref="ScrimTop"/>, which only has to calm a photo: here the dark
+    /// has to hold the chrome's light ink on the plain theme ground, a white one in the light theme, down to the hold line.</summary>
+    public const float SideFieldAlpha = 0.86f;
+
     /// <summary>The bleed applies: the experiment is on, tinted surfaces are on (the photo is part of the tinted material), and
     /// the artist has a header photo (an avatar-only artist keeps today's hero).</summary>
     public static bool Applies(bool enabled, WashLevel surfaces, string? headerUrl)

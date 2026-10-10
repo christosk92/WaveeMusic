@@ -417,6 +417,17 @@ public static partial class Design
         /// <summary>Tertiary on-media ink: captions / meta over art. White @ 0.60.</summary>
         public static ColorF InkTertiary => Tok.OnMediaTertiary;
 
+        // ── accent ink: the page accent as a WORD over a dark ground ───────────────────────────────────────────────
+
+        /// <summary>The accent's text shades as the DARK theme paints them (WinUI Light3 / Light3 / Light2), derived from the live accent
+        /// base in either theme: the light theme's own accent-text ramp is the DARK one, which is unreadable over the dark artist bleed.
+        /// Primary verb / latched toggle words wear these while the chrome is on media (<c>Shell.Ui.ChromeInkAccent</c>).</summary>
+        public static ColorF AccentInk => AccentRamp.Derive(Tok.AccentSelectedTextBackground).Light3;
+        /// <inheritdoc cref="AccentInk"/>
+        public static ColorF AccentInkSecondary => AccentRamp.Derive(Tok.AccentSelectedTextBackground).Light3;
+        /// <inheritdoc cref="AccentInk"/>
+        public static ColorF AccentInkTertiary => AccentRamp.Derive(Tok.AccentSelectedTextBackground).Light2;
+
         // ── glass: the on-media INTERACTION ramp for a control carrying NO resting plate ──────────────────────────────
         // The scrim ladder above is a PLATE — a small dark surface a control sits on permanently. Glass is its opposite:
         // nothing at rest, a breath of the on-media INK on hover, one rung more on press. It is what the immersive stage

@@ -61,6 +61,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -379,6 +380,13 @@ public static partial class Controls
     /// <inheritdoc cref="TextActionSize"/>
     public const ushort TextActionWeight = 600;
 
+    /// <summary>A <see cref="TextAction"/>'s ink over a backdrop (the artist bleed): the rest ink is a live thunk (bound at paint
+    /// rate), the hover and pressed arms are static colours. Resolved by the band that hosts the action, which owns the signals
+    /// behind it; null = the control's own tokens. The <c>Accent*</c> arms are the primary verb's / a latched toggle's: left null, an
+    /// accent word keeps the page's own accent text ramp.</summary>
+    public readonly record struct TextActionInk(Func<ColorF> Rest, ColorF Hover, ColorF Pressed,
+                                                Func<ColorF>? AccentRest = null, ColorF AccentHover = default, ColorF AccentPressed = default);
+
     /// <summary>A PLATELESS labelled action for a context-band row.
     ///
     /// <para><b>Ink is the whole state model.</b> Rest secondary → hover primary, eased by the engine's own hover
@@ -404,12 +412,31 @@ public static partial class Controls
     /// file carries none of the detail frame's arithmetic. The defaults are the 0.2.9 values: 56 − 2 × 12 = 32, and a
     /// 10-DIP waist.</para></summary>
     public static BoxEl TextAction(string label, Action? onClick, bool primary = false, bool toggledOn = false,
-                                   string? glyph = null, float height = 32f, float padX = 10f)
+                                   string? glyph = null, float height = 32f, float padX = 10f, TextActionInk? ink = null)
     {
         bool accent = primary || toggledOn;
         ColorF rest = accent ? Tok.AccentTextPrimary : Tok.TextSecondary;
         ColorF hover = accent ? Tok.AccentTextSecondary : Tok.TextPrimary;
         ColorF pressed = accent ? Tok.AccentTextTertiary : Tok.TextSecondary;
+        // INK OVER A BACKDROP: a band that sits over the artist photo resolves its ink (the caller owns the signals) and passes it in:
+        // the word's rest colour binds to it (paint rate) and its static hover/pressed arms are the given ones. An accent word (the
+        // primary verb, a latched toggle) takes the accent arms when given: the page's accent text ramp is the dark one in the light theme.
+        Prop<ColorF> restBind = rest;
+        if (ink is { } over)
+        {
+            if (!accent)
+            {
+                restBind = Prop.Of(over.Rest);
+                hover = over.Hover;
+                pressed = over.Pressed;
+            }
+            else if (over.AccentRest is { } accentRest)
+            {
+                restBind = Prop.Of(accentRest);
+                hover = over.AccentHover;
+                pressed = over.AccentPressed;
+            }
+        }
 
         var kids = new System.Collections.Generic.List<Element>(2);
         // The optional LEADING glyph wears the SAME rest/hover/pressed ink triple as the word, so the two brighten
@@ -418,12 +445,12 @@ public static partial class Controls
             kids.Add(new TextEl(glyph)
             {
                 Size = 14f, FontFamily = Theme.IconFont,
-                Color = rest, HoverColor = hover, PressedColor = pressed,
+                Color = restBind, HoverColor = hover, PressedColor = pressed,
             });
         kids.Add(new TextEl(label)
         {
             Size = TextActionSize, LineHeight = TextActionLineHeight, Weight = TextActionWeight,
-            Color = rest, HoverColor = hover, PressedColor = pressed,
+            Color = restBind, HoverColor = hover, PressedColor = pressed,
             MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
         });
 

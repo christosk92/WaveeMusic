@@ -684,26 +684,29 @@ public static partial class Detail
     };
 
     /// <summary>The 1 x 16 divider between the title and the tabs.</summary>
-    public static Element BandDivider() => new BoxEl
+    public static Element BandDivider(Prop<ColorF>? ink = null) => new BoxEl
     {
-        Width = 1f, Height = BandLayout.DividerH, Shrink = 0f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false,
+        Width = 1f, Height = BandLayout.DividerH, Shrink = 0f, Fill = ink ?? Tok.StrokeDividerDefault, HitTestVisible = false,
     };
 
-    /// <summary>A band action: the shared <see cref="Controls.TextAction"/> at the band's item height and waist.</summary>
-    public static BoxEl BandAction(string label, Action? onClick, bool primary = false)
-        => Controls.TextAction(label, onClick, primary, height: BandLayout.ItemHeight, padX: BandLayout.ActionPadX);
+    /// <summary>A band action: the shared <see cref="Controls.TextAction"/> at the band's item height and waist.
+    /// <paramref name="ink"/> (resolved by a band that sits over the artist bleed) binds the plain word's ink; null = today's tokens.</summary>
+    public static BoxEl BandAction(string label, Action? onClick, bool primary = false, Controls.TextActionInk? ink = null)
+        => Controls.TextAction(label, onClick, primary, height: BandLayout.ItemHeight, padX: BandLayout.ActionPadX, ink: ink);
 
     /// <summary>The band's cluster, ONE builder for the in-page band (<paramref name="rowH"/> = 56) and the Zune band's row 2
     /// (32): [title slot] · [divider · tabs, elastic] · [actions slot]. The title and the actions never drop; the tabs are
     /// the only elastic lane. With no tabs a grow spacer carries the actions to the end. The row has no flex gap: the divider
     /// air and the minimum title-to-actions gap are explicit spacers.</summary>
-    public static Element[] BandCluster(Element title, Element? pivots, Element? actions, float rowH)
+    /// <param name="dividerInk">The divider's fill when the cluster sits over the artist bleed (row 2): a bound ink the Zune band resolves
+    /// (the words carry their own). Null = today's divider.</param>
+    public static Element[] BandCluster(Element title, Element? pivots, Element? actions, float rowH, Prop<ColorF>? dividerInk = null)
     {
         var kids = new List<Element>(7) { BandSlot(title, rowH, shrink: 1f) };
         if (pivots is not null)
         {
             kids.Add(Spacer(BandLayout.DividerGap));
-            kids.Add(BandDivider());
+            kids.Add(BandDivider(dividerInk));
             kids.Add(Spacer(BandLayout.DividerGap));
             kids.Add(new BoxEl
             {
@@ -733,14 +736,14 @@ public static partial class Detail
 
     /// <summary>The band byline: Caption 12 on the same 20-DIP line as the title, tertiary, one line — context for the title,
     /// not a competing label. It joins the title's line (<c>[title, S, byline]</c>) and ellipsises first.</summary>
-    public static Element BandByline(string byline) => new BoxEl
+    public static Element BandByline(string byline, Func<ColorF>? ink = null) => new BoxEl
     {
         Direction = 0, MinWidth = 0f, Shrink = 1f, AlignItems = FlexAlign.Center,
         Children =
         [
             Ui.Caption(byline) with
             {
-                LineHeight = BandLayout.TextLine, Color = Tok.TextTertiary,
+                LineHeight = BandLayout.TextLine, Color = ink is null ? Tok.TextTertiary : Prop.Of(ink),   // ink: see Shell.Ui.ChromeInkMix
                 MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
             },
         ],

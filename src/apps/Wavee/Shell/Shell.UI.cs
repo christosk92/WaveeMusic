@@ -1398,7 +1398,28 @@ public static partial class Shell
 
     /// <summary>The island-button footprint: 40×44, the bar's own nav metric (a 32-DIP button would leave strips that are
     /// neither draggable nor clickable). A property: the default style captures theme brushes.</summary>
-    static IconButton.Style ChromeButtonStyle => IconButton.DefaultStyle with { Size = 40f, Height = 44f };
+    static IconButton.Style ChromeButtonStyle => Ui.ChromeArmsOnMedia.Value
+        // CHROME INK (artist bleed): the rest glyph is the bound ink (ChromeGlyphParts); the static hover and pressed arms go light
+        // while the mix is past one half. A once-per-crossing read, folded into ChromeContentVersion so the bar's memo follows it.
+        ? IconButton.DefaultStyle with
+        {
+            Size = 40f, Height = 44f,
+            HoverFill = Design.OnMedia.GlassHover, PressedFill = Design.OnMedia.GlassPressed,
+            HoverForeground = Design.OnMedia.Ink, PressedForeground = Design.OnMedia.InkSecondary,
+        }
+        : IconButton.DefaultStyle with { Size = 40f, Height = 44f };
+
+    /// <summary>The chrome buttons' rest glyph ink: a paint-rate bind of <see cref="Ui.ChromeInkPrimary"/> (the style's own rest
+    /// colour, so a mix of 0 is exactly today's) while a backdrop shows; with none the part leaves the glyph's static colour
+    /// alone. One instance: the modifier is static, and re-runs wherever the button is built.</summary>
+    static readonly TemplateParts ChromeGlyphParts = MakeChromeGlyphParts();
+
+    static TemplateParts MakeChromeGlyphParts()
+    {
+        var p = new TemplateParts();
+        p.Set<TextEl>(IconButton.PartGlyph, static g => Ui.ChromeOnMedia ? g with { Color = Prop.Of(Ui.ChromeInkPrimary) } : g);   // ink: see Ui.ChromeInkMix
+        return p;
+    }
 
     /// <summary>2 DIP either side — what the bar gives its own pane toggle.</summary>
     static readonly Edges4 ChromeButtonMargin = new(2f, 0f, 2f, 0f);
@@ -1437,6 +1458,7 @@ public static partial class Shell
             ShowPaneToggle = Sidebar.NavStyle.Peek() != ShellNavStyle.Zune, OnPaneToggle = Sidebar.TogglePane,
             PaneToggleEnabledSignal = s_paneToggleEnabled, PaneToggleToolTip = PaneToggleTip,
             ShowRailBaseline = false,          // the seam below is the content region's own stroke
+            CaptionInk = Ui.ChromeInkPrimary,  // ink: see Ui.ChromeInkMix (the caption glyphs ride the same mix)
             Tabs = TabsIsland, TabsVersion = TitleBarTabsVersion,
             TabsElasticLane = true,            // tabs absorb the overrun; the omnibar keeps its allocation
             Trailing = TrailingIsland, CaptionLeading = CaptionLeadingIsland,
@@ -1458,7 +1480,9 @@ public static partial class Shell
         if (s_titleBar is { } bar) bar.ShowPaneToggle = !zune;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
-                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (zune ? 128 : 0);
+                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (zune ? 128 : 0)
+                  | (Ui.ChromeOnMedia ? 256 : 0)           // the rest ink is bound (ChromeGlyphParts, the wordmark, the tab labels)
+                  | (Ui.ChromeArmsOnMedia.Value ? 512 : 0); // the static hover/pressed arms (ChromeButtonStyle)
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
         // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
@@ -1475,7 +1499,9 @@ public static partial class Shell
     static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value,
         (int)Sidebar.NavStyle.Value, Tabs.Count);
 
-    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value);
+    // The ink flags ride along: the labels' part modifier (ChromeTabParts) reads them while the strip renders.
+    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value,
+        (Ui.ChromeOnMedia ? 1 : 0) | (Ui.ChromeArmsOnMedia.Value ? 2 : 0));
 
     /// <summary>The tabs island takes a RESERVED, quantised width (issue #88): hugging the strip shoved the centred search
     /// by half of every title swing.</summary>
@@ -1498,7 +1524,8 @@ public static partial class Shell
         if (FrameRules.ShowsWordmark(Sidebar.NavStyle.Value, Tabs.Count))
             kids.Add(Design.Type.Wordmark(Loc.Get(Strings.Shell.Wordmark)) with
             {
-                Key = "chrome-wordmark", Color = Tok.TextPrimary, Margin = new Edges4(Spacing.S, 0f, 0f, 0f),
+                // ink: see Ui.ChromeInkMix
+                Key = "chrome-wordmark", Color = Ui.ChromePrimary, Margin = new Edges4(Spacing.S, 0f, 0f, 0f),
                 Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_chromeFade,
             });
         else
@@ -1512,6 +1539,30 @@ public static partial class Shell
             Direction = 0, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
             Width = l.TabIslandWidth, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
         };
+    }
+
+    /// <summary>The tab labels' ink: while a backdrop shows, the rest colour is a paint-rate bind (selected = primary, the others
+    /// secondary) and the static hover and pressed arms go light once the mix is past one half (a navigation-rate read of the tab
+    /// strip's own render). The selected label is the one with weight; the text-first strip gives only it any.</summary>
+    static readonly TemplateParts ChromeTabParts = MakeChromeTabParts();
+
+    static TemplateParts MakeChromeTabParts()
+    {
+        var p = new TemplateParts();
+        p.Set<TextEl>(TabStrip.PartTabLabel, static t =>
+        {
+            if (!Ui.ChromeOnMedia) return t;
+            bool selected = t.Weight > 0;   // the TabStrip's weight rule: only the selected label carries any (TabStrip.cs, Text appearance)
+            bool arms = Ui.ChromeArmsOnMedia.Value;
+            // ink: see Ui.ChromeInkMix
+            return t with
+            {
+                Color = Prop.Of(selected ? Ui.ChromeInkPrimary : Ui.ChromeInkSecondary),
+                HoverColor = arms && t.HoverColor.A > 0f ? Design.OnMedia.Ink : t.HoverColor,
+                PressedColor = arms && t.PressedColor.A > 0f ? (selected ? Design.OnMedia.Ink : Design.OnMedia.InkTertiary) : t.PressedColor,
+            };
+        });
+        return p;
     }
 
     static TabStrip BuildTabStrip()
@@ -1531,6 +1582,7 @@ public static partial class Shell
             MaxTabWidth = Layout.ChromeTabMaxW,
             ItemsSource = BuildTabItems,
             ItemsVersion = TabStripItemsVersion,
+            Parts = ChromeTabParts,
             // CONTRACT: the strip WRITES this cell before raising OnSelectionChanged, so it is never evidence of a change —
             // ActivateTab asks the workspace, and the host re-asserts the cell from the model afterwards.
             SelectedIndex = SelectedTab,
@@ -1654,7 +1706,7 @@ public static partial class Shell
     static void UnpinDestination(string pinId) => Sidebar.UnpinRecorded(pinId, Sidebar.SidebarMenus.PinName(pinId));
 
     static Element ChromeButton(string glyph, Action onClick, string tooltip, string key)
-        => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
+        => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle, parts: ChromeGlyphParts) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
 
     static Element CaptionLeadingIsland()
     {
@@ -1702,7 +1754,8 @@ public static partial class Shell
         FrameRules.ChipForm.Connecting => new BoxEl
         {
             Key = "chrome-connecting", Height = 32f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-            Children = [Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
+            // ink: see Ui.ChromeInkMix
+            Children = [Ui.ChromeOnMedia ? Caption(Loc.Get(Strings.Shell.Connecting)) with { Color = Prop.Of(Ui.ChromeInkSecondary) } : Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
         },
         // Offline = a credential is on disk but the resume failed: the verb is "try again", not "sign in".
         var form => Button.Accent(Loc.Get(form == FrameRules.ChipForm.Reconnect ? Strings.Shell.Reconnect : Strings.Shell.SignIn),
@@ -1759,7 +1812,7 @@ public static partial class Shell
             }
 
             return IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? GoForward : (Action)GoBack,
-                    ChromeButtonStyle, isEnabled: canDo)
+                    ChromeButtonStyle, isEnabled: canDo, parts: ChromeGlyphParts)
                 with { Margin = ChromeButtonMargin, OnRealized = h => anchor.Value = h, OnContextRequested = OpenHistory };
         }
     }
@@ -1778,7 +1831,7 @@ public static partial class Shell
             void Toggle() => OpenNotificationPanel(overlay, () => anchor.Value, handle);
 
             var style = ChromeButtonStyle;
-            var button = IconButton.Create(Icons.Bell, Toggle, style) with { OnRealized = h => anchor.Value = h };
+            var button = IconButton.Create(Icons.Bell, Toggle, style, parts: ChromeGlyphParts) with { OnRealized = h => anchor.Value = h };
             float w = style.Size, hgt = style.Height ?? style.Size;
             BoxEl content = unread <= 0 ? button : new BoxEl
             {

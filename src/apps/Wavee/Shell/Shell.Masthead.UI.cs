@@ -157,6 +157,9 @@ public static partial class Shell
             var state = MaterialState.Value;                  // navigation rate
             var vp = UseContextSignal(Viewport.Size);         // read through BOUND sizes: a resize never re-renders this
             bool light = Tok.Theme == ThemeKind.Light;
+            // The chrome's static hover/pressed arms follow the ink mix across one half (Ui.ChromeArmsOnMedia): bridged here, the one
+            // shell-level component, so what reads it renders once per crossing and never per scroll tick.
+            UseSignalEffect(static () => Ui.ChromeArmsOnMedia.SetIfChanged(Ui.ChromeInkMix() >= 0.5f));
 
             // Always mounted, even at the neutral ground, so the node is live across a change and the brush transition has
             // a colour to fade FROM. Never Transparent (premultiplied black drags the ramp dark).
@@ -169,7 +172,7 @@ public static partial class Shell
             // EXPERIMENTAL (artist bleed): the page-published photo and its chrome scrim, ABOVE the tint and the washes. Null for
             // every page that publishes none, which adds nothing to the children below. After the page lets go, the RETAINED backdrop
             // keeps the nodes mounted while BleedPresence fades them, so the photo and the card's strip share one clock.
-            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop) : null;
+            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, vp) : null;
 
             if (state.Wash is not { } wash)
                 return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = bleed is null ? [tint] : [tint, .. bleed] };
@@ -201,13 +204,16 @@ public static partial class Shell
         /// Enter/Exit, so chrome and hero are one field. All three
         /// layers (photo, veil, scrim) are keyed on the backdrop (a new photo remounts, and so cross-fades, through the WashFade
         /// idiom) and hit-test free, and every binding below is a paint channel except Width/Height, which change only on a resize, a pane or rail
-        /// change or a nav-style switch (the card's rect). The span is the card's left..right edge (flush with the window's left
-        /// edge when no pane is docked); it never sits under the right rail or the Classic/Library pane.
+        /// change or a nav-style switch (the card's rect). The photo's span is the card's left..right edge (flush with the window's left
+        /// edge when no pane is docked); it never sits under the right rail or the Classic/Library pane. The CHROME INK is window-wide
+        /// (<c>Ui.ChromeInkMix</c>), so the dark field is too: two side strips (the SIDE FIELD below) run the title bar's height under
+        /// whatever lies outside the photo's span, so the island above the pane column and the one above the rail read light-on-dark
+        /// in a light theme as well.
         /// <para>THE PHOTO FOLLOWS THE CARD'S PRESENTED POSE. A pane toggle or a nav-style switch FLIPs the card (Reveal: its
         /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
         /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
         /// crop never rescales mid-move and the left edge never snaps.</para></summary>
-        static Element[] BleedNodes(ShellBackdrop b)
+        static Element[] BleedNodes(ShellBackdrop b, IReadSignal<Size2> vp)
         {
             // The span is the card's own: flush with the window edge whenever no pane is docked (FrameRules.ContentCardX is 0 under
             // Zune), so it follows the card's FLIP in BOTH directions with no style-keyed snap.
@@ -284,7 +290,32 @@ public static partial class Shell
                 ]),
                 Enter = WashFade, Exit = WashFade,
             };
-            return [photo, scrim];
+            // THE SIDE FIELD: the same dark ground, flat across the chrome's height, under the title bar's columns the photo does not
+            // reach (above the Classic/Library pane on the left, above the rail on the right). It rides the photo's strength and
+            // Enter/Exit, so the ink and the field are one clock. Zero-width when the card is flush (Zune, no rail).
+            Element Side(string key, Func<float> left, Func<float> width) => new BoxEl
+            {
+                Key = key + b.Key,
+                HitTestVisible = false,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Width = Prop.Of(width),
+                Height = Prop.Of(() => ArtistBleed.ScrimHeight(Ui.CardPose.Value.Y)),
+                Transform = Prop.Of(() => Affine2D.Translation(left(), 0f)),
+                Opacity = Prop.Of(Strength),
+                Gradient = new GradientSpec(GradientShape.Linear, 90f,
+                [
+                    new GradientStop(0f, ground with { A = ArtistBleed.SideFieldAlpha }),
+                    new GradientStop(0.7f, ground with { A = ArtistBleed.SideFieldAlpha }),
+                    new GradientStop(1f, Design.Wash.Vanish(ground)),
+                ]),
+                Enter = WashFade, Exit = WashFade,
+            };
+            return
+            [
+                photo, scrim,
+                Side("shell.bleed.side.l:", static () => 0f, static () => MathF.Max(0f, Left())),
+                Side("shell.bleed.side.r:", static () => Right(), () => MathF.Max(0f, vp.Value.Width - Right())),
+            ];
         }
 
         static void AddWash(List<Element> legs, WashLayer? layer, ShellWashPlacement p, float alpha, string key, IReadSignal<Size2> vp)
@@ -369,6 +400,16 @@ public static partial class Shell
 
     static Element SearchFlyoutButton() => Embed.Comp(static () => new SearchFlyoutButtonView()) with { Key = "chrome-search-button-host" };
 
+    /// <summary>The title-bar pill's own ink mix: <see cref="Ui.ChromeInkMix"/>, except 0 while the pill has focus (its editor's focus
+    /// fill is the theme's input plate, which the theme's ink belongs on). A paint-rate read.</summary>
+    static float PillInkMix() => s_searchFocused.Value ? 0f : Ui.ChromeInkMix();
+
+    /// <summary>The pill's typed text, placeholder and query icon: the theme's text tokens at
+    /// <see cref="PillInkMix"/>, cross-fading to the on-media ink. Cached thunks (the box's frozen <c>TextInk</c> / <c>PlaceholderInk</c>).</summary>
+    static readonly Func<ColorF> PillInkPrimary = static () => ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, PillInkMix());
+    /// <inheritdoc cref="PillInkPrimary"/>
+    static readonly Func<ColorF> PillInkSecondary = static () => ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, PillInkMix());
+
     sealed class SearchField(IReadSignal<float> avail) : Component
     {
         public override Element Render()
@@ -377,12 +418,30 @@ public static partial class Shell
             var field = UseRef<NodeHandle>(default);
             var parts = UseMemo(() =>
             {
+                // CHROME INK (artist bleed): see Ui.ChromeInkMix. While a backdrop shows, the plate and the hairline cross-fade toward the
+                // glass plate and the on-media stroke, the query icon takes the secondary ink, and the editor's typed text, placeholder
+                // and ghost take theirs through the box's TextInk / PlaceholderInk (RichOmnibar). Focused, the pill is back on the theme:
+                // the editor's own focus fill is the theme's light input plate, and light ink must never sit on it.
                 var p = new TemplateParts();
-                p[AutoSuggestBox.PartRoot] = b => b with
+                p[AutoSuggestBox.PartRoot] = b =>
                 {
-                    OnRealized = h => field.Value = h,
-                    OnFocusChanged = static f => s_searchFocused.SetIfChanged(f),
+                    b = b with
+                    {
+                        OnRealized = h => field.Value = h,
+                        OnFocusChanged = static f => s_searchFocused.SetIfChanged(f),
+                    };
+                    if (!Ui.ChromeOnMedia || b.Fill.IsBound || b.BorderColor.IsBound) return b;
+                    ColorF plate = b.Fill.Value, hair = b.BorderColor.Value;
+                    bool arms = Ui.ChromeArmsOnMedia.Value;
+                    return b with
+                    {
+                        Fill = Prop.Of(() => ColorF.Lerp(plate, Design.OnMedia.GlassPlate, PillInkMix())),
+                        BorderColor = Prop.Of(() => ColorF.Lerp(hair, Design.OnMedia.Stroke, PillInkMix())),
+                        HoverFill = arms && !s_searchFocused.Value ? Design.OnMedia.GlassPlateHover : b.HoverFill,
+                        PressedFill = arms && !s_searchFocused.Value ? Design.OnMedia.GlassPlatePressed : b.PressedFill,
+                    };
                 };
+                p.Set<TextEl>(AutoSuggestBox.PartQueryIcon, static t => Ui.ChromeOnMedia ? t with { Color = Prop.Of(PillInkSecondary) } : t);   // ink: see Ui.ChromeInkMix
                 return p;
             }, DepKey.Empty);
 
@@ -486,7 +545,7 @@ public static partial class Shell
             }
 
             return ToolTip.Wrap(
-                IconButton.Create(Icons.Search, Toggle, ChromeButtonStyle)
+                IconButton.Create(Icons.Search, Toggle, ChromeButtonStyle, parts: ChromeGlyphParts)   // ink: see Ui.ChromeInkMix
                     with { Key = "chrome-search-button", Margin = ChromeButtonMargin, OnRealized = h => anchor.Value = h },
                 Loc.Get(Strings.Nav.Search));
         }
@@ -587,13 +646,18 @@ public static partial class Shell
             Element field = AutoSuggestBox.Create(Array.Empty<string>(), Loc.Get(Strings.Shell.SearchShort),
                 grow: 1f, maxFillWidth: maxWidth, text: SearchText, onQuerySubmitted: Submit,
                 minHeight: Controls.ButtonHeight, cornerRadius: Controls.ButtonHeight / 2f, presenter: presenter, parts: parts,
-                chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion);
+                chrome: AutoSuggestBoxChrome.Standard, suggestionPresentation: presentation, completion: completion,
+                // The title-bar pill (the one built with parts) sits over the bleed; the flyout's inline field sits on its own popup plate.
+                textInk: parts is null ? null : PillInkPrimary, placeholderInk: parts is null ? null : PillInkSecondary);
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f,
                 Children = hintAvail is null ? [field] : [ZStack(field, SearchHintChip(hintAvail))],
             };
         }
+
+        /// <summary>The chip's hairline over the bleed: the theme's control stroke cross-fading to the on-media one (<c>Ui.ChromeInkMix</c>).</summary>
+        static readonly Func<ColorF> s_hintBorderOnMedia = static () => ColorF.Lerp(Tok.StrokeControlDefault, Design.OnMedia.Stroke, Ui.ChromeInkMix());
 
         /// <summary>The shortcut chip over the pill's trailing end. Visible ONLY while the field is unfocused AND empty and the
         /// pill is at least <see cref="Chrome.SearchPillMinW"/> wide (<see cref="Chrome.ShowSearchHint"/>); it fades on change.
@@ -608,9 +672,10 @@ public static partial class Shell
                 JustifySelf = FlexAlign.End, AlignSelf = FlexAlign.Center,
                 Margin = new Edges4(0f, 0f, AutoSuggestBox.QueryButtonWidth + AutoSuggestBox.QueryButtonLeftMargin + AutoSuggestBox.RightButtonMargin, 0f),
                 Padding = new Edges4(6f, 1f, 6f, 1f), Corners = CornerRadius4.All(4f),
-                BorderWidth = 1f, BorderColor = Tok.StrokeControlDefault,
+                // ink: see Ui.ChromeInkMix (the chip shows only while unfocused, so the pill's focus override never applies to it)
+                BorderWidth = 1f, BorderColor = Ui.ChromeOnMedia ? Prop.Of(s_hintBorderOnMedia) : Tok.StrokeControlDefault,
                 Opacity = show ? 1f : 0f, Transition = s_chromeFade,
-                Children = [Caption(Chrome.SearchHintChord) with { Color = Tok.TextTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap }],
+                Children = [Caption(Chrome.SearchHintChord) with { Color = Ui.ChromeTertiary, MaxLines = 1, Wrap = TextWrap.NoWrap }],
             };
         }
 

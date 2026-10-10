@@ -6,6 +6,7 @@
 // The protocol half pins that a backdrop rides the SAME ownership outcome as the tint: a successor's claim, a neutral write
 // or a stray publish can never leave a stale photo behind.
 
+using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Render;
 using FluentGpu.Signals;
@@ -258,6 +259,83 @@ public class ArtistBleedHandOverTests
         Assert.Equal(b, ArtistBleed.Ink(a, b, 1f));
         Assert.Equal(a, ArtistBleed.Ink(a, b, -3f));
         Assert.Equal(b, ArtistBleed.Ink(a, b, 3f));
+    }
+
+    [Fact]
+    public void The_real_ink_endpoints_are_the_theme_token_at_zero_and_the_on_media_token_at_one()
+    {
+        Assert.Equal(Tok.TextPrimary, ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, 0f));
+        Assert.Equal(Design.OnMedia.Ink, ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, 1f));
+        Assert.Equal(Tok.TextSecondary, ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, 0f));
+        Assert.Equal(Design.OnMedia.InkSecondary, ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, 1f));
+        Assert.Equal(Tok.TextTertiary, ArtistBleed.Ink(Tok.TextTertiary, Design.OnMedia.InkTertiary, 0f));
+        Assert.Equal(Design.OnMedia.InkTertiary, ArtistBleed.Ink(Tok.TextTertiary, Design.OnMedia.InkTertiary, 1f));
+    }
+
+    [Fact]
+    public void The_accent_word_binds_the_on_media_accent_arms_only_when_the_band_gives_them()
+    {
+        // Over the dark bleed the light theme's own accent text is dark on dark: an accent word takes the dark-theme shades once given.
+        Assert.Equal(Tok.AccentTextPrimary, ArtistBleed.Ink(Tok.AccentTextPrimary, Design.OnMedia.AccentInk, 0f));
+        Assert.Equal(Design.OnMedia.AccentInk, ArtistBleed.Ink(Tok.AccentTextPrimary, Design.OnMedia.AccentInk, 1f));
+        Assert.Equal(Tok.AccentTextPrimary, Shell.Ui.ChromeInkAccent());   // no backdrop: today's accent text
+
+        var plain = Controls.TextAction("Play", null, primary: true);
+        Assert.False(((TextEl)plain.Children![0]).Color.IsBound);
+
+        var arms = new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary, Design.OnMedia.Ink, Design.OnMedia.InkSecondary,
+            Shell.Ui.ChromeInkAccent, Design.OnMedia.AccentInkSecondary, Design.OnMedia.AccentInkTertiary);
+        var accent = (TextEl)Controls.TextAction("Play", null, primary: true, ink: arms).Children![0];
+        Assert.True(accent.Color.IsBound);
+        Assert.Equal(Design.OnMedia.AccentInkSecondary, accent.HoverColor);
+        Assert.Equal(Design.OnMedia.AccentInkTertiary, accent.PressedColor);
+
+        // Without accent arms an accent word keeps the page's own ramp even when the plain words are given ink.
+        var noAccent = new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary, Design.OnMedia.Ink, Design.OnMedia.InkSecondary);
+        var kept = (TextEl)Controls.TextAction("Play", null, primary: true, ink: noAccent).Children![0];
+        Assert.False(kept.Color.IsBound);
+        Assert.Equal(Tok.AccentTextSecondary, kept.HoverColor);
+    }
+
+    [Fact]
+    public void The_chrome_ink_mix_is_zero_at_no_presence_and_at_no_hero()
+    {
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 0f));
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0f, 1f));      // nothing drawn: the theme's ink
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(1f, 0f));      // the hero scrolled away: the theme's ink
+        Assert.Equal(0f, ArtistBleed.ChromeInkMix(0.6f, 0f));
+    }
+
+    [Fact]
+    public void With_no_backdrop_the_shells_chrome_ink_is_exactly_the_themes()
+    {
+        Assert.Null(Shell.Ui.BleedBackdrop.Peek());
+        Assert.False(Shell.Ui.ChromeOnMedia);
+        Assert.Equal(0f, Shell.Ui.ChromeInkMix());
+        Assert.Equal(Tok.TextPrimary, Shell.Ui.ChromeInkPrimary());
+        Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeInkSecondary());
+        Assert.Equal(Tok.TextTertiary, Shell.Ui.ChromeInkTertiary());
+    }
+
+    [Fact]
+    public void With_no_backdrop_the_chrome_props_are_the_static_theme_tokens_and_the_arms_stay_theme()
+    {
+        // A static colour keeps the reconciler's brush transition on a selection or theme change: the bind exists only while a backdrop does.
+        Assert.False(Shell.Ui.ChromePrimary.IsBound);
+        Assert.False(Shell.Ui.ChromeSecondary.IsBound);
+        Assert.False(Shell.Ui.ChromeTertiary.IsBound);
+        Assert.Equal(Tok.TextPrimary, Shell.Ui.ChromePrimary.Value);
+        Assert.Equal(Tok.TextSecondary, Shell.Ui.ChromeSecondary.Value);
+        Assert.Equal(Tok.TextTertiary, Shell.Ui.ChromeTertiary.Value);
+        Assert.False(Shell.Ui.ChromeArmsOnMedia.Peek());
+    }
+
+    [Fact]
+    public void The_side_field_is_heavier_than_the_photo_scrim()
+    {
+        // It has to hold light ink on the plain theme ground, where the scrim only has to calm a photo.
+        Assert.True(ArtistBleed.SideFieldAlpha > ArtistBleed.ScrimTop);
+        Assert.InRange(ArtistBleed.SideFieldAlpha, 0f, 1f);
     }
 }
 

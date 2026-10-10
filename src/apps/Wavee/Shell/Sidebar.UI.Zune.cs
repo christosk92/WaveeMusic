@@ -170,7 +170,7 @@ public static partial class Sidebar
                 {
                     var items = new List<Element>(_tiles.Count + 1)
                     {
-                        Design.Type.MicroMeta(Loc.Get("sidebar.zune.pinned")) with { Color = Tok.TextTertiary, Shrink = 0f },
+                        Design.Type.MicroMeta(Loc.Get("sidebar.zune.pinned")) with { Color = Shell.Ui.ChromeTertiary, Shrink = 0f },   // ink: see Shell.Ui.ChromeInkMix
                     };
                     for (int i = 0; i < _tiles.Count; i++) items.Add(PinColumn(_tiles[i]));
                     row.Add(new BoxEl
@@ -287,7 +287,7 @@ public static partial class Sidebar
             [
                 Design.Type.ZuneSubPivot(Shell.Dest(in route).Title.ToLower(CultureInfo.CurrentCulture), selected: true) with
                 {
-                    Color = Tok.TextPrimary, Shrink = 1f, MinWidth = 0f,
+                    Color = Shell.Ui.ChromePrimary, Shrink = 1f, MinWidth = 0f,   // ink: see Shell.Ui.ChromeInkMix
                 },
             ],
         };
@@ -415,7 +415,7 @@ public static partial class Sidebar
             {
                 Key = "zune:ctx:lead", Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
                 Children = pub?.Byline is { Length: > 0 } byline
-                    ? [titleEl, Detail.BandByline(byline) with { Key = "zune:ctx:byline" }]
+                    ? [titleEl, Detail.BandByline(byline, Shell.Ui.ChromeOnMedia ? Shell.Ui.ChromeInkTertiary : null) with { Key = "zune:ctx:byline" }]
                     : [titleEl],
             };
             var searchOpen = pub?.SearchExpanded ?? s_never;
@@ -504,7 +504,7 @@ public static partial class Sidebar
             Element cluster = new BoxEl
             {
                 Key = "zune:ctx:cluster", Direction = 0, Height = rowH, MinWidth = 0f, AlignItems = FlexAlign.Center,
-                Children = Detail.BandCluster(lead, pivotsEl, actionsEl, rowH),
+                Children = Detail.BandCluster(lead, pivotsEl, actionsEl, rowH, dividerInk: Shell.Ui.ChromeOnMedia ? s_dividerOnMedia : (Prop<ColorF>?)null),
             };
             Element selection = new BoxEl
             {
@@ -523,6 +523,11 @@ public static partial class Sidebar
         /// row composes the same two layers either way.</summary>
         static readonly Signal<bool> s_never = new(false);
 
+        /// <summary>Row 2's divider over the artist bleed: the theme's hairline cross-fading to the on-media one with the chrome ink mix
+        /// (<c>Shell.Ui.ChromeInkMix</c>, the one source of truth).</summary>
+        static readonly Prop<ColorF> s_dividerOnMedia = Prop.Of(static () =>
+            ArtistBleed.Ink(Tok.StrokeDividerDefault, Design.OnMedia.Stroke, Shell.Ui.ChromeInkMix()));
+
         /// <summary>The page accent when a publication names none.</summary>
         static readonly Func<ColorF> s_defaultAccent = static () => Tok.AccentDefault;
 
@@ -532,7 +537,7 @@ public static partial class Sidebar
         {
             Element word = Design.Type.ZuneSubPivot(title, selected: true) with
             {
-                Color = Tok.TextPrimary, MinWidth = 0f, Shrink = 1f, Trim = TextTrim.CharacterEllipsis,
+                Color = Shell.Ui.ChromePrimary, MinWidth = 0f, Shrink = 1f, Trim = TextTrim.CharacterEllipsis,   // ink: see Shell.Ui.ChromeInkMix
             };
             var box = new BoxEl
             {
@@ -566,7 +571,8 @@ public static partial class Sidebar
                     [
                         Design.Type.ZuneSubPivot(label, selected: false) with
                         {
-                            Color = on ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary,
+                            // ink: see Shell.Ui.ChromeInkMix (rest is the bound mix; hover and pressed are the static arms)
+                            Color = WordInk(on), HoverColor = HoverInk, PressedColor = PressedInk,
                             BrushTransitionMs = Design.Motion.Faster,
                         },
                     ],
@@ -583,6 +589,18 @@ public static partial class Sidebar
         static readonly MotionTokenDef s_viewsFade =
             MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
+        /// <summary>A row word's rest ink (primary when it is the lit one, else secondary): the paint-rate bind while a backdrop shows
+        /// (<see cref="Shell.Ui.ChromeOnMedia"/>, a navigation-rate read in the band's render), the theme token otherwise, which keeps
+        /// the word's brush transition on a selection change.</summary>
+        static Prop<ColorF> WordInk(bool on) => on ? Shell.Ui.ChromePrimary : Shell.Ui.ChromeSecondary;
+
+        /// <summary>The words' static hover and pressed arms: the theme's until the mix passes one half
+        /// (<see cref="Shell.Ui.ChromeArmsOnMedia"/>), the on-media ink's after, and back to the theme's once the hero has scrolled
+        /// mostly away.</summary>
+        static ColorF HoverInk => Shell.Ui.ChromeArmsOnMedia.Value ? Design.OnMedia.Ink : Tok.TextPrimary;
+        /// <inheritdoc cref="HoverInk"/>
+        static ColorF PressedInk => Shell.Ui.ChromeArmsOnMedia.Value ? Design.OnMedia.InkTertiary : Tok.TextTertiary;
+
         /// <summary>A pivot: its text is the target, so the item has no plate and no scale. The word carries the state in ink
         /// alone (secondary at rest, primary on hover and when selected, tertiary on press) and in weight (the selected one
         /// reads heavier, through the role). The box exists for the click, the cursor and the focus ring.</summary>
@@ -594,7 +612,8 @@ public static partial class Sidebar
             [
                 (sub ? Design.Type.ZuneSubPivot(label, on) : Design.Type.ZunePivot(label, on)) with
                 {
-                    Color = on ? Tok.TextPrimary : Tok.TextSecondary, HoverColor = Tok.TextPrimary, PressedColor = Tok.TextTertiary,
+                    // ink: see Shell.Ui.ChromeInkMix (rest is the bound mix; hover and pressed are the static arms)
+                    Color = WordInk(on), HoverColor = HoverInk, PressedColor = PressedInk,
                     BrushTransitionMs = Design.Motion.Faster,
                 },
             ],
@@ -626,9 +645,9 @@ public static partial class Sidebar
         {
             string route = pin.RouteKey;
             Element art = pin.Kind == SidebarEntryKind.AppRoute
-                ? Icon(Shell.Dest(Shell.Parse(pin.Id)).Glyph, 16f, Tok.TextSecondary)
+                ? Icon(Shell.Dest(Shell.Parse(pin.Id)).Glyph, 16f) with { Color = Shell.Ui.ChromeSecondary }   // ink: see Shell.Ui.ChromeInkMix
                 : ResolvedPin(pin.Id) is { } entry ? Cover.ForEntry(in entry, ZuneNavRules.PinTile)
-                : Icon(SidebarKindGlyph.For(pin.Kind, pin.Id, pin.Uri), 16f, Tok.TextSecondary);
+                : Icon(SidebarKindGlyph.For(pin.Kind, pin.Id, pin.Uri), 16f) with { Color = Shell.Ui.ChromeSecondary };
             var tile = new BoxEl
             {
                 Width = ZuneNavRules.PinTile, Height = ZuneNavRules.PinTile, Shrink = 0f, Corners = Radii.ControlAll,

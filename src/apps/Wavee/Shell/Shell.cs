@@ -1106,6 +1106,49 @@ public static partial class Shell
         /// to 0, so the card ground keeps its geometry for the whole fade-out. Cleared when the fade ends.</summary>
         public static readonly Signal<ShellBackdrop?> BleedBackdrop = new(null);
 
+        /// <summary>EXPERIMENTAL (artist bleed): THE ONE SOURCE OF TRUTH for how far the chrome's ink has moved from the theme's
+        /// toward the on-media ink, 0..1 (<c>ArtistBleed.ChromeInkMix</c>): <see cref="BleedPresence"/> times how much of the hero is
+        /// still showing. 0 with no backdrop, so every chrome colour is today's. Reads signals, so call it inside a paint-rate
+        /// <c>Prop.Of</c> thunk (the <see cref="ChromeInkPrimary"/> family), never in a render.</summary>
+        public static float ChromeInkMix()
+        {
+            if (BleedBackdrop.Value is not { } b) return 0f;
+            return ArtistBleed.ChromeInkMix(BleedPresence.Value, ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance));
+        }
+
+        /// <summary>The chrome's primary / secondary / tertiary ink at <see cref="ChromeInkMix"/>: the theme's text token cross-fading
+        /// to the on-media ink. Cached thunks, so a bind (<c>Color = Prop.Of(Ui.ChromeInkPrimary)</c>) allocates nothing and two
+        /// renders of the same site compare equal.</summary>
+        public static readonly Func<ColorF> ChromeInkPrimary = static () => ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, ChromeInkMix());
+        /// <inheritdoc cref="ChromeInkPrimary"/>
+        public static readonly Func<ColorF> ChromeInkSecondary = static () => ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, ChromeInkMix());
+        /// <inheritdoc cref="ChromeInkPrimary"/>
+        public static readonly Func<ColorF> ChromeInkTertiary = static () => ArtistBleed.Ink(Tok.TextTertiary, Design.OnMedia.InkTertiary, ChromeInkMix());
+        /// <summary>The accent word's ink (row 2's primary verb, a latched toggle): the theme's accent text cross-fading to the dark-theme
+        /// accent shade at <see cref="ChromeInkMix"/>, so it stays legible over the dark bleed in the light theme.</summary>
+        public static readonly Func<ColorF> ChromeInkAccent = static () => ArtistBleed.Ink(Tok.AccentTextPrimary, Design.OnMedia.AccentInk, ChromeInkMix());
+
+        /// <summary>A backdrop is published (or still fading out): the chrome binds its rest ink to the mix (<see cref="ChromePrimary"/>
+        /// family). A navigation-rate read (it changes with the publication, never per scroll or per frame). With no backdrop the
+        /// sites keep their STATIC theme colour, so today's code path, brush transitions included, is untouched: at mix 0 the swap is invisible.</summary>
+        public static bool ChromeOnMedia => BleedBackdrop.Value is not null;
+
+        /// <summary>The mix has crossed one half (<see cref="ChromeInkMix"/> >= 0.5): the chrome's STATIC hover and pressed arms
+        /// take the on-media variants, and fall back to the theme's once the hero has mostly scrolled away or the fade is mostly done,
+        /// so a hovered word never goes near-white on the plain theme ground. A threshold, not the mix itself: it flips once per
+        /// crossing, never per frame, so what reads it renders at navigation rate. Written by the shell's material layer (an
+        /// eager signal effect), so it is false wherever that layer is not mounted.</summary>
+        public static readonly Signal<bool> ChromeArmsOnMedia = new(false);
+
+        /// <summary>The chrome's rest ink as a Prop: bound to <see cref="ChromeInkPrimary"/> while a backdrop shows, the plain theme token
+        /// otherwise (a static colour keeps the reconciler's brush transition on a state or theme change). Call it from a render or a
+        /// part modifier, which re-run on <see cref="ChromeOnMedia"/>.</summary>
+        public static Prop<ColorF> ChromePrimary => ChromeOnMedia ? Prop.Of(ChromeInkPrimary) : Tok.TextPrimary;
+        /// <inheritdoc cref="ChromePrimary"/>
+        public static Prop<ColorF> ChromeSecondary => ChromeOnMedia ? Prop.Of(ChromeInkSecondary) : Tok.TextSecondary;
+        /// <inheritdoc cref="ChromePrimary"/>
+        public static Prop<ColorF> ChromeTertiary => ChromeOnMedia ? Prop.Of(ChromeInkTertiary) : Tok.TextTertiary;
+
         /// <summary>The rail is open. When false the rail slot animates its width to 0.</summary>
         public static readonly Signal<bool> RailOpen = new(false);
 

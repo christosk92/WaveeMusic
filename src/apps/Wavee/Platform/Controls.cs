@@ -1157,6 +1157,9 @@ public static partial class Controls
         public float Height { get; init; } = 32f;
         /// <inheritdoc cref="Height"/>
         public float PadX { get; init; } = 10f;
+        /// <summary>The word's ink when the band sits over the artist bleed (see <see cref="TextAction"/>'s <c>ink</c>), resolved per render:
+        /// it reads the host's signals, which a component's frozen fields cannot carry. Null = today's tokens.</summary>
+        public Func<TextActionInk?>? InkSource { get; init; }
 
         public override Element Render()
         {
@@ -1165,7 +1168,7 @@ public static partial class Controls
             bool following = lib.IsSaved(Uri);
             return TextAction(Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
                               () => lib.ToggleSaved(Uri, Name), toggledOn: following,
-                              height: Height, padX: PadX);
+                              height: Height, padX: PadX, ink: InkSource?.Invoke());
         }
     }
 

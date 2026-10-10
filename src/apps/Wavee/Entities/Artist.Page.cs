@@ -234,7 +234,7 @@ public readonly partial struct Artist
             {
                 if ((uint)i < (uint)_pivotCount) _sectionClicks[(int)_pivot[i]]();
             };
-            _bandActions = BandActions;
+            _bandActions = () => BandActions(inRow2: true);
             _captureViewport = h => _viewport = h;
             _measure = r =>
             {
@@ -720,9 +720,23 @@ public readonly partial struct Artist
                 Design.Reduced ? 0f : Spacing.XS).Skeletonized(false);
         }
 
-        /// <summary>Play + Follow, the band's action cluster: the in-page band and the Zune band's row 2 both build it here.</summary>
-        Element BandActions()
+        /// <summary>Row 2's word ink over the artist bleed (<c>Shell.Ui.ChromeInkMix</c>): the chrome's secondary ink at rest, and the
+        /// on-media hover and pressed arms once the mix is past one half. Null with no backdrop: today's tokens. Read in a render.</summary>
+        static Controls.TextActionInk? RowInk()
         {
+            if (!Shell.Ui.ChromeOnMedia) return null;
+            bool arms = Shell.Ui.ChromeArmsOnMedia.Value;
+            return new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary,
+                arms ? Design.OnMedia.Ink : Tok.TextPrimary, arms ? Design.OnMedia.InkSecondary : Tok.TextSecondary,
+                Shell.Ui.ChromeInkAccent,
+                arms ? Design.OnMedia.AccentInkSecondary : Tok.AccentTextSecondary, arms ? Design.OnMedia.AccentInkTertiary : Tok.AccentTextTertiary);
+        }
+
+        /// <summary>Play + Follow, the band's action cluster: the in-page band and the Zune band's row 2 both build it here.</summary>
+        Element BandActions(bool inRow2 = false)
+        {
+            // Row 2 sits over the bleed: its words take the chrome's secondary ink (Shell.Ui.ChromeInkMix). The in-page band sits on the card.
+            Controls.TextActionInk? ink = inRow2 ? RowInk() : null;
             string uri = _artist.Uri.Text;
             string name = _artist.Name;
             return new BoxEl
@@ -730,9 +744,9 @@ public readonly partial struct Artist
                 Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
                 Children =
                 [
-                    Detail.BandAction(Loc.Get(Strings.Artist.Play), _play, primary: true),
+                    Detail.BandAction(Loc.Get(Strings.Artist.Play), _play, primary: true, ink: ink),
                     Embed.Comp(() => new Controls.FollowTextAction
-                        { Uri = uri, Name = name, Height = Detail.BandLayout.ItemHeight, PadX = Detail.BandLayout.ActionPadX })
+                        { Uri = uri, Name = name, Height = Detail.BandLayout.ItemHeight, PadX = Detail.BandLayout.ActionPadX, InkSource = inRow2 ? RowInk : null })
                         with { Key = "artist-band-follow:" + uri, SkeletonProxy = s_emptyShape },
                 ],
             };
