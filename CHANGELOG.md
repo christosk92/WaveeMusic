@@ -24,12 +24,13 @@ versions separately under `v*` and is not tracked in this file.)
   on each row.
 - **Experimental**: on artist pages the header photo now runs behind the title bar and the navigation band. This may
   change or be removed.
-- **Experimental**: over that photo the title bar, the pivots and the second pivot row turn light, then fade back to your
-  theme's colours as the photo scrolls away or you leave the page.
-- **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the hero, and it
-  follows the page when you open or close the sidebar or the right rail or switch the navigation style.
-- **A Play menu on album, playlist and Liked Songs pages**: Add to queue, Play next and Start radio, right beside Play.
-  Start radio on an album or a playlist builds a radio from it; on Liked Songs it starts from the first song in your list.
+- **Experimental**: over that photo the title bar, the pivots and the second pivot row turn light, then fade back to
+  your theme's colours as the photo scrolls away or you leave the page.
+- **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the
+  hero, and it follows the page when you open or close the sidebar or the right rail or switch the navigation style.
+- **A Play menu on album, playlist and Liked Songs pages**: Add to queue, Play next and Start radio, right beside
+  Play. Start radio on an album or a playlist builds a radio from it; on Liked Songs it starts from the first song in
+  your list.
 - **Liked Songs groups your songs by date** while it is sorted by Date added: This week, Last week, then each month,
   with a count on every group.
 
@@ -60,12 +61,18 @@ versions separately under `v*` and is not tracked in this file.)
 - Library: one sort menu instead of a row of sort words; counts read like "20 albums".
 - The title bar is simpler: the theme switch moved into the profile menu, and the search box is a compact pill.
 - Album and playlist pages: a tighter side column and less space before the songs.
-- Zune: album, playlist and other pages without their own sections show only the top pivot row, so the page title is no longer repeated above the page.
-- Zune: lyrics, the queue and now playing open as a full-height panel beside the page; the navigation band stays with the page.
-- Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle, Save, Share and More).
-- Album and playlist song lists: the toolbar holds only list tools (sort, find, Insights and More, which now has Select, Row size and Columns).
-- Liked Songs has a new, simpler page: one toolbar with Play, Shuffle, genre filters, sort, find and Insights, and no side column.
-- Liked Songs rows are quieter: no heart column (the heart and More show when you hover a row or move to it with the keyboard), no striping, regular-weight titles, and Added reads Today, Yesterday, 3 days ago or Last week.
+- Zune: album, playlist and other pages without their own sections show only the top pivot row, so the page title is
+  no longer repeated above the page.
+- Zune: lyrics, the queue and now playing open as a full-height panel beside the page; the navigation band stays with
+  the page.
+- Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle,
+  Save, Share and More).
+- Album and playlist song lists: the toolbar holds only list tools (sort, find, Insights and More, which now has
+  Select, Row size and Columns).
+- Liked Songs has a new, simpler page: one toolbar with Play, Shuffle, genre filters, sort, find and Insights, and no
+  side column.
+- Liked Songs rows are quieter: no heart column (the heart and More show when you hover a row or move to it with the
+  keyboard), no striping, regular-weight titles, and Added reads Today, Yesterday, 3 days ago or Last week.
 
 ### Removed
 
@@ -82,7 +89,8 @@ versions separately under `v*` and is not tracked in this file.)
   full-screen art placeholder.
 - Zune pins show their covers instead of the same library icon.
 - Album and playlist pages use one accent colour for the playing song, the heart and Play.
-- Zune: Home, Browse, Recently played and your Library pages no longer open with an empty strip under the navigation band.
+- Zune: Home, Browse, Recently played and your Library pages no longer open with an empty strip under the navigation
+  band.
 - Zune: Browse no longer lists Music, Podcasts, Audiobooks and Live events twice.
 - The search suggestions now line up with the search box, which widens while you type.
 - Library: Podcasts' Followed shows and Your Episodes both fit at the narrowest pane width.
