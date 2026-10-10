@@ -994,8 +994,8 @@ public readonly partial struct Track
         {
             var snap = _snapshot!.Value;
             var src = _latest.Source;
-            return (ViewOf(in snap).Length, Math.Max(src.Total, src.Count), snap.Query.Length > 0 || !snap.Filters.IsDefault,
-                    Cfg.Kind == DetailKind.Show);
+            return (ViewOf(in snap).Length, Math.Max(src.Total, src.Count), snap.Query.Length > 0 || snap.Filters.ActiveCountFor(snap.Query.Length > 0) > 0,
+                    Cfg.Content == DetailContent.Episodes);
         }
 
         FilterCaps CapsNow()
@@ -1250,9 +1250,9 @@ public readonly partial struct Track
                 // One facet: the label and a combo whose tint (accent 14% fill + accent border, laid over the stock field, which has no
                 // style seam) reads "this row is filtering". The overlay is always there (transparent at rest), so a value change
                 // never restructures the row and the combo keeps its focus.
-                Element Pick(string key, string label, Signal<int> signal, string[] options, Action<int> changed, string placeholder = "")
+                Element Pick(string key, string label, Signal<int> signal, string[] options, Action<int> changed, string placeholder = "", bool? tinted = null)
                 {
-                    bool on = signal.Value != 0;
+                    bool on = tinted ?? signal.Value != 0;
                     return Row(key, on, label, new BoxEl
                     {
                         ZStack = true, Width = ComboWidth, Shrink = 0f,
@@ -1316,7 +1316,8 @@ public readonly partial struct Track
                 rows.Add(Pick("filter:scope", Loc.Get(Strings.Detail.Filter.SearchIn), _scope,
                     [Loc.Get(Strings.Detail.Filter.Everything), Loc.Get(Strings.Detail.Filter.TitleOnly),
                      Loc.Get(Strings.Detail.Filter.ArtistOnly), Loc.Get(Strings.Detail.Filter.AlbumOnly)],
-                    v => Set(Current with { SearchScope = (SearchScope)v })));
+                    v => Set(Current with { SearchScope = (SearchScope)v }),
+                    tinted: _scope.Value != 0 && _h._query.Value.Length > 0));
 
                 var toggles = new List<Element>(2);
                 if (caps.HasLibrary || current.LikedOnly)
