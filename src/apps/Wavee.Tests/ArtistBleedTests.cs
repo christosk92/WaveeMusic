@@ -161,6 +161,18 @@ public class ArtistBleedGeometryTests
         Assert.Equal(line * scale, MathF.Round(line * scale), 3);
     }
 
+    [Theory]
+    [InlineData(320f)]
+    [InlineData(384f)]
+    [InlineData(440f)]
+    public void The_wash_never_yields_and_starts_at_the_photos_feather(float photoH)
+    {
+        float inset = ArtistBleed.WashTopInset(photoH);
+        Assert.True(inset > 0f);
+        Assert.Equal(photoH, inset + ArtistHeroLayout.PhotoFadeBandFor(photoH), 3);
+        Assert.True(ArtistBleed.WashTopInset(100f) >= 0f);
+    }
+
     [Fact]
     public void The_ground_line_never_leaves_the_photos_clip()
     {

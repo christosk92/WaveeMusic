@@ -113,6 +113,10 @@ public static class ArtistBleed
     /// <c>Shell.BleedCut</c>, 0..1), so the photo meets the window edge with no notch and the radius returns as the hero scrolls away.</summary>
     public static float CornerFor(float radius, float cut) => radius * (1f - Math.Clamp(cut, 0f, 1f));
 
+    /// <summary>Where the hero tone wash starts, from the top of the photo's box: while bleeding it starts where the photo's bottom
+    /// feather starts, so it tints the feather and the page and never the opaque photo.</summary>
+    public static float WashTopInset(float photoH) => MathF.Max(0f, photoH - ArtistHeroLayout.PhotoFadeBandFor(photoH));
+
     /// <summary>The line snapped to a device pixel, so the strip's and the riser's anti-aliased edges meet without a hairline.</summary>
     public static float SnapToPixel(float v, float scale) => scale > 0f ? MathF.Round(v * scale) / scale : v;
 

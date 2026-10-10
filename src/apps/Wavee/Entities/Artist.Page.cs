@@ -612,20 +612,43 @@ public readonly partial struct Artist
                 ],
             }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2));
 
+            // The wash never yields: it stays at full strength before and after the hand-over, so the hero-tinted tone carries the
+            // photo's fade into the page in both themes and every surface level. While the bleed applies it starts at the photo's
+            // feather (ArtistBleed.WashTopInset) and fades in over that band, so it tints the feather and the page and never the
+            // opaque photo (the card's or the shell's). ONE tree shape in both arms (a nav-style switch re-pushes props and never
+            // remounts the wash): only Margin, ClipToBounds and EdgeFade differ, and the inner negative margin keeps the
+            // gradient's stops where they were.
+            bool bleeding = _bleedDrawn is not null;
+            float washPhotoH = ArtistHeroLayout.PhotoHeightFor(in m);
+            float washInset = bleeding ? ArtistBleed.WashTopInset(washPhotoH) : 0f;
+
             return new BoxEl
             {
                 ZStack = true,
                 Children =
                 [
-                    // H2: while the shell draws the photo, the wash yields with the card's photo (same hand-over) instead of starting
-                    // abruptly at the card top over the shell's photo. ALWAYS bound (a thunk that reads the field live and returns 1
-                    // when not bleeding): a bind is only created at mount, and this node stays mounted across a nav-style switch.
                     new BoxEl
                     {
-                        Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash],
-                        Opacity = Prop.Of(() => _bleedDrawn is { } drawn
-                            ? ArtistBleed.CardLayerOpacity(drawn(), Shell.Ui.BleedPresence.Value, Shell.Ui.BleedHandover.Value)
-                            : 1f),
+                        Key = "artist-wash-clip", Direction = 1, HitTestVisible = false,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = "artist-wash-inset", Direction = 1, HitTestVisible = false,
+                                ClipToBounds = bleeding,
+                                Margin = new Edges4(0f, washInset, 0f, 0f),
+                                EdgeFade = bleeding ? new EdgeFadeSpec(EdgeMask.Top, ArtistHeroLayout.PhotoFadeBandFor(washPhotoH)) : null,
+                                Children =
+                                [
+                                    new BoxEl
+                                    {
+                                        Direction = 1, HitTestVisible = false,
+                                        Margin = new Edges4(0f, -washInset, 0f, 0f),
+                                        Children = [wash],
+                                    },
+                                ],
+                            },
+                        ],
                     }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2)),
                     new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
                 ],
