@@ -109,6 +109,18 @@ public static partial class Sidebar
     internal sealed class ZuneBandView : Component
     {
         readonly List<SidebarPin> _tiles = new(ZuneNavRules.MaxPins);
+        readonly Signal<int> _pinsTick = new(0);
+        readonly Action _settlePins;
+        bool _pinsInit, _pinsTarget, _pinsMounted, _pinsSettled;
+
+        public ZuneBandView() => _settlePins = SettlePins;
+
+        void SettlePins()
+        {
+            if (_pinsSettled) return;
+            _pinsSettled = true;
+            _pinsTick.Value++;
+        }
 
         public override Element Render()
         {
@@ -116,7 +128,14 @@ public static partial class Sidebar
             var overlay = UseContext(Overlay.Service);
             var vp = UseContextSignal(Viewport.Size);
             // Decided from the PAGE COLUMN's width (the band stops at the inline rail), not the viewport's.
-            bool pinsShown = UseComputed(() => ZuneNavRules.ShowsPins(ZunePins.Value, Shell.PageColumnWidth(vp.Value.Width))).Value;
+            bool pinsTarget = UseComputed(() => ZuneNavRules.ShowsPins(ZunePins.Value, Shell.PageColumnWidth(vp.Value.Width))).Value;
+            // The target reads the FINAL column width while the band eases to it: the group mounts after the band has settled and,
+            // going away, fades by opacity and unmounts after it (ZuneNavRules.PinsMounted), so a rail toggle never re-solves the row.
+            if (!_pinsInit) { _pinsInit = true; _pinsTarget = pinsTarget; _pinsMounted = pinsTarget; _pinsSettled = true; }
+            else if (pinsTarget != _pinsTarget) { _pinsTarget = pinsTarget; _pinsSettled = false; }
+            UseTimeout(_settlePins, Shell.FrameRules.CardMotionMs + 40f, DepKey.From(pinsTarget ? 1 : 0));
+            _ = _pinsTick.Value;
+            bool pinsMounted = _pinsMounted = ZuneNavRules.PinsMounted(pinsTarget, _pinsMounted, _pinsSettled);
             // The pins' covers: the band pumps the binder (the pane is not mounted under Zune) and re-renders on its first projection.
             EnsureBinder();
             UseSignalEffect(PumpWhenZune);
@@ -130,7 +149,7 @@ public static partial class Sidebar
             {
                 var route = Shell.Current.Value;
                 string name = Shell.NameOf(route);
-                rows = [TopRow(name, pinsShown), Row2Host(in route, name), Spacer(ZuneNavRules.SubToCard)];
+                rows = [TopRow(name, pinsMounted, pinsTarget), Row2Host(in route, name), Spacer(ZuneNavRules.SubToCard)];
             }
 
             // Band HEIGHT follows the live style (the frame commit) and the PRESENTED row-2 kind (posted after a navigation's
@@ -143,10 +162,11 @@ public static partial class Sidebar
             }.WithContextMenu(overlay, () => ZuneMenu(overlay));
         }
 
-        /// <summary>Row 1: the top pivots, and the pin tiles beside them when the setting is on and the page column is wide enough.
+        /// <summary>Row 1: the top pivots, and the pin tiles beside them when the setting is on and the page column is wide enough
+        /// (<paramref name="pinsMounted"/>: in the row; <paramref name="pinsVisible"/>: the target, faded by opacity).
         /// <see cref="ZuneNavRules.PivotRowHeight"/> tall: the pivot line (<see cref="ZuneNavRules.PivotLine"/>) with its air
         /// above and below.</summary>
-        Element TopRow(string name, bool pinsShown)
+        Element TopRow(string name, bool pinsMounted, bool pinsVisible)
         {
             string? top = ZuneNavRules.TopOf(name);
             // The band re-renders when the pin list changes and when the binder resolves the entries that give tiles their covers.
@@ -176,7 +196,7 @@ public static partial class Sidebar
             };
 
             var row = new List<Element>(2) { strip };
-            if (pinsShown)
+            if (pinsMounted)
             {
                 ZuneNavRules.PinTiles(Pins.Items, _tiles);
                 if (_tiles.Count > 0)
@@ -188,7 +208,9 @@ public static partial class Sidebar
                     for (int i = 0; i < _tiles.Count; i++) items.Add(PinColumn(_tiles[i]));
                     row.Add(new BoxEl
                     {
-                        Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PinGap, Shrink = 0f, Children = [.. items],
+                        Key = "zune:pins", Direction = 0, AlignItems = FlexAlign.Center, Gap = ZuneNavRules.PinGap, Shrink = 0f, Children = [.. items],
+                        Opacity = pinsVisible ? 1f : 0f, HitTestVisible = pinsVisible,
+                        Enter = PageHead.FadeIn, Transition = PageHead.FadeMotion,
                     });
                 }
             }

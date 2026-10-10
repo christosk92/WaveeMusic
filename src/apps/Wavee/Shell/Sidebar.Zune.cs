@@ -261,6 +261,14 @@ public static class ZuneNavRules
     /// narrower than the window.</summary>
     public static bool ShowsPins(bool setting, float bandW) => setting && float.IsFinite(bandW) && bandW >= PinsMinBandW;
 
+    /// <summary>Whether the pin group is MOUNTED in the band's row while the page column's width is still easing (a rail toggle).
+    /// <see cref="ShowsPins"/> reads the FINAL column width, the band tweens to it, so the group must not change the row's layout
+    /// at the target's flip: it mounts only once the band has settled (<paramref name="settled"/>, so the pivot strip is never solved
+    /// narrower than its final width), and a group that is going away stays mounted, faded out by opacity, until the band has settled
+    /// too. The group's VISIBILITY is the target itself.</summary>
+    public static bool PinsMounted(bool target, bool mounted, bool settled)
+        => target ? mounted || settled : mounted && !settled;
+
     /// <summary>The pin tiles: the first <see cref="MaxPins"/> pins that have a route, in order. A folder has no route and is
     /// skipped. <paramref name="into"/> is cleared and refilled, so the caller's list is reused between renders.</summary>
     public static void PinTiles(IReadOnlyList<SidebarPin> pins, List<SidebarPin> into)

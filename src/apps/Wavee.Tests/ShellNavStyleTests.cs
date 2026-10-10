@@ -92,6 +92,19 @@ public sealed class ShellNavStyleTests
         Assert.True(ZuneNavRules.ShowsPins(true, Shell.FrameRules.CardWidth(1200f, 0f, 8f, 360f)));
     }
 
+    [Fact] public void PinsMounted_WaitsForTheBandToSettleBeforeMountingAndBeforeDropping()
+    {
+        // Widening (target on): not mounted yet while the band still eases; mounted once it has settled; stays mounted after.
+        Assert.False(ZuneNavRules.PinsMounted(target: true, mounted: false, settled: false));
+        Assert.True(ZuneNavRules.PinsMounted(target: true, mounted: false, settled: true));
+        Assert.True(ZuneNavRules.PinsMounted(target: true, mounted: true, settled: false));
+        // Narrowing (target off): the mounted group stays (faded by opacity) until the band has settled, then it is dropped.
+        Assert.True(ZuneNavRules.PinsMounted(target: false, mounted: true, settled: false));
+        Assert.False(ZuneNavRules.PinsMounted(target: false, mounted: true, settled: true));
+        Assert.False(ZuneNavRules.PinsMounted(target: false, mounted: false, settled: false));
+        Assert.False(ZuneNavRules.PinsMounted(target: false, mounted: false, settled: true));
+    }
+
     [Fact] public void PinTiles_SkipsFoldersKeepsOrderAndCapsAtSix()
     {
         var pins = new List<SidebarPin>
