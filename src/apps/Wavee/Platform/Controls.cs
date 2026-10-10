@@ -824,10 +824,11 @@ public static partial class Controls
             UseLayoutEffect(Seed, DepKey.From(moving ? 1f : 0f, rest));
             // A keep-alive reactivation re-seeds: the render thread's loop track may have been dropped while the page was
             // parked (the engine's structural snap now spares loop rows, so this is the belt). A park defers the render, so
-            // no DepKey can see it: the activation edge itself is the trigger. A frozen meter is re-held after the seed.
+            // no DepKey can see it: the activation edge itself is the trigger. A frozen meter is only re-held: re-seeding it
+            // would restart the loop at frame 0 and step the bar back from the pose it was frozen at.
             UseActivation(onActivated: () =>
             {
-                Seed();
+                if (mode != EqMode.Freeze) Seed();
                 if (moving && Context.Anim is { } anim && !Context.HostNode.IsNull)
                     anim.SetHeld(Context.HostNode, AnimChannel.ScaleY, mode == EqMode.Freeze);
             });
