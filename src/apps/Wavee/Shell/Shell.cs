@@ -2009,9 +2009,15 @@ public static partial class Shell
         /// is, which parks the LEFT stroke in the card's clip (invisible) and leaves the top stroke.</summary>
         public static float StrokeLeftShift(bool docked) => docked ? 0f : -StrokeW;
 
-        /// <summary>The Zune band's left padding: where the page text starts (the card's x plus the page gutter), so the first
-        /// pivot word and the page title share an x. DERIVED, never a literal.</summary>
-        public static float ZuneBandInset(float cardX, float gutter) => cardX + gutter;
+        /// <summary>The Zune band's left padding: where the page text starts, so the first pivot word and the page title share
+        /// an x. The band is the first child of the page column, which starts at the card's x, so the inset is CARD-RELATIVE:
+        /// the page gutter alone. DERIVED, never a literal.</summary>
+        public static float ZuneBandInset(float gutter) => gutter;
+
+        /// <summary>The height of the spacer on top of the rail overlay's content. The inline rail starts at the title bar's
+        /// bottom (it spans the full height beside the page column, whose band lives in the column); the narrow overlay floats
+        /// over the page and still starts under the band.</summary>
+        public static float RailOverlayTop(bool fits, float bandHeight) => fits ? 0f : bandHeight;
 
         /// <summary>The Zune title bar shows the "wavee" wordmark in place of the tab strip while there is at most one tab
         /// (a lone tab's strip says nothing the page title does not). The 1 to 2+ swap is a cross-fade inside the tab lane,

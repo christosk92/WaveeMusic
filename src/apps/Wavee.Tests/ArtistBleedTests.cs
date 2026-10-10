@@ -127,6 +127,14 @@ public class ArtistBleedGeometryTests
         Assert.Equal(132f, ArtistBleed.ScrimHeight(132f));
         Assert.Equal(0f, ArtistBleed.ScrimHeight(-4f));
     }
+
+    [Theory]
+    [InlineData(48f, 48f, 48f)]     // Classic / Library: the card's top is the title bar's bottom
+    [InlineData(132f, 48f, 48f)]    // Zune with a row 2: the inline right panel starts at the title bar's bottom, not under the band
+    [InlineData(100f, 48f, 48f)]    // Zune with no row 2, mid-FLIP
+    [InlineData(20f, 48f, 20f)]     // never taller than the card's presented top
+    public void The_right_side_field_stops_at_the_title_bar_so_it_never_shows_through_the_rail_gap(float cardTop, float titleBar, float expected)
+        => Assert.Equal(expected, ArtistBleed.SideFieldHeight(cardTop, titleBar));
 }
 
 public class ArtistBleedFrameTests

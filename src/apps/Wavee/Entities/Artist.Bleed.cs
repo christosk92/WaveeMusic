@@ -96,6 +96,12 @@ public static class ArtistBleed
     /// <summary>The scrim's height: the chrome's whole extent above the card (the title bar, plus the Zune band when present).</summary>
     public static float ScrimHeight(float chromeBottom) => MathF.Max(0f, chromeBottom);
 
+    /// <summary>The right side field's height: the card's top, but never below the title bar's bottom. Under Zune the card's top
+    /// is the title bar plus the band, and the inline right panel runs from the title bar's bottom, so the field must not reach
+    /// into the panel's column below the title bar (it would show through the rail gap and behind the panel's rounded corner).
+    /// Outside Zune the card's top is the title bar's bottom and this is <see cref="ScrimHeight"/>.</summary>
+    public static float SideFieldHeight(float cardTop, float titleBarBottom) => ScrimHeight(MathF.Min(cardTop, titleBarBottom));
+
     // ── THE SHARED PHOTO FRAME ───────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The photo's focus, shared by the card's photo and the shell's: both crop the same pixels.</summary>
@@ -153,9 +159,9 @@ public static class ArtistBleed
     public static bool TweensPose(bool toggleArmed, float sinceArmMs) => toggleArmed && sinceArmMs <= ToggleArmWindowMs;
 
     /// <summary>A settle that arrives while an analytic pose tween runs keeps it when only the card's HEIGHT changed
-    /// (<paramref name="next"/> against the tween's target <paramref name="to"/>): the nav-style switch's content region re-solves
-    /// its subtree at the presented height every frame, so the card re-arranges (H only) per frame while its X, Y and W are
-    /// already final (the region's Position channel is a transform). A change of X, Y or W is a different layout (a resize, a
+    /// (<paramref name="next"/> against the tween's target <paramref name="to"/>): the nav-style switch's page-column card
+    /// stack re-solves its subtree at the presented height every frame, so the card re-arranges (H only) per frame while its X,
+    /// Y and W are already final (the stack's Position channel is a transform). A change of X, Y or W is a different layout (a resize, a
     /// snap) and samples the real pose.</summary>
     public static bool ContinuesTween(RectF to, RectF next)
         => MathF.Abs(to.X - next.X) < 0.01f && MathF.Abs(to.Y - next.Y) < 0.01f && MathF.Abs(to.W - next.W) < 0.01f;

@@ -134,12 +134,22 @@ public class ShellFrameGeometryTests
     }
 
     [Fact]
-    public void The_Zune_band_inset_is_the_card_x_plus_the_gutter()
+    public void The_Zune_band_inset_is_the_gutter_because_the_band_is_card_relative()
     {
-        Assert.Equal(32f, Shell.FrameRules.ZuneBandInset(0f, 32f));
-        Assert.Equal(PageGeometry.GutterWide, Shell.FrameRules.ZuneBandInset(0f, PageGeometry.GutterWide));
-        // A docked pane moves the card's x, and the inset follows it.
-        Assert.Equal(48f + 32f, Shell.FrameRules.ZuneBandInset(48f, 32f));
+        Assert.Equal(36f, Shell.FrameRules.ZuneBandInset(36f));
+        Assert.Equal(32f, Shell.FrameRules.ZuneBandInset(32f));
+        Assert.Equal(PageGeometry.GutterWide, Shell.FrameRules.ZuneBandInset(PageGeometry.GutterWide));
+    }
+
+    [Theory]
+    [InlineData(true, 84f, 0f)]
+    [InlineData(false, 84f, 84f)]
+    [InlineData(false, 52f, 52f)]
+    [InlineData(false, 0f, 0f)]
+    [InlineData(true, 0f, 0f)]
+    public void The_rail_overlay_starts_under_the_band_only_when_it_floats(bool fits, float band, float expected)
+    {
+        Assert.Equal(expected, Shell.FrameRules.RailOverlayTop(fits, band));
     }
 
     [Theory]
@@ -164,7 +174,8 @@ public class ShellFrameGeometryTests
 
         float pageTitleX = Shell.FrameRules.ContentCardX(column) + gutter;
         Assert.Equal(0f, Shell.FrameRules.ContentCardX(column));
-        Assert.Equal(pageTitleX, Shell.FrameRules.ZuneBandInset(Shell.FrameRules.ContentCardX(column), gutter));
+        // The band is the page column's first child, so its inset is card-relative: card x (0 here) plus the same inset.
+        Assert.Equal(pageTitleX, Shell.FrameRules.ContentCardX(column) + Shell.FrameRules.ZuneBandInset(gutter));
     }
 
     [Theory]

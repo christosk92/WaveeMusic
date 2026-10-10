@@ -20,8 +20,10 @@
 //   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
 //            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
 //              OR the fullscreen stage (FrameRules.ChromeMounted): out of layout, paint and hit-test, subtree inactive
-//   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
-//                            rail overlay(Rail.Frame) · rail seam · narrow drawer ]
+//   content region = ZStack[ row(anchor · sidebar column · page column[Zune band, card stack] · rail gap · rail reservation) ·
+//                            sidebar seam · rail overlay(top spacer, Rail.Frame) · rail seam · narrow drawer ]
+//   (the Zune band lives in the page column and stops at the inline rail's left edge; the inline rail runs from the title bar's
+//   bottom to the dock, and only the narrow overlay starts under the band)
 //
 // THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. Every geometry/precedence/gating answer below is a
 // call into `Shell.FrameRules`, `Shell.Chrome`, `TabWorkspace`, `Notify` or an owner's rule table — each pinned by a
@@ -132,6 +134,15 @@ public static partial class Shell
         }
     }
 
+    /// <summary>The page column's (and so the content card's and the Zune band's) width for a viewport: the viewport less the
+    /// sidebar column, the rail's inline gap and the rail's inline reservation. Reads the signals, so a caller inside an effect
+    /// or a computed re-runs on a resize, a pane change or a rail toggle. The page gutter and the band's pin visibility decide
+    /// from THIS.</summary>
+    internal static float PageColumnWidth(float viewportW) => FrameRules.CardWidth(viewportW,
+        FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
+        FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+        FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value));
+
     // ══ 2. THE FRAME ROOT ═════════════════════════════════════════════════════════════════════════════════════════
 
     // The sidebar collapse AND the content card's FLIP share ONE transition, so the pane's animating edge and the card's
@@ -140,8 +151,10 @@ public static partial class Shell
     // behind the heavier media surface).
     static readonly EasingSpec PaneEase = FrameRules.CardMotionEase;
     const float PaneMs = FrameRules.CardMotionMs;
-    const string ContentRowMorphId = "shell.content-row";
     const string FrameColumnMorphId = "shell.frame-column";
+    /// <summary>The card's X anchor (see <see cref="ContentCardAnchor"/>): fixed in x at the row's left edge, and as far below the
+    /// row's top as the Zune band is tall, so it moves in y exactly as the card stack does.</summary>
+    const string ContentCardAnchorId = "shell.content-card-anchor";
 
     /// <summary>The pane opens in 200 ms and closes in 100 ms on WinUI's SplitView spline (MotionTok.PaneOpen/PaneClose).</summary>
     static readonly LayoutTransition SidebarPaneAnim = new(TransitionChannels.Size | TransitionChannels.Position,
@@ -152,24 +165,37 @@ public static partial class Shell
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
 
-    /// <summary>The whole content region's answer to a nav-style switch (the band above it opens or closes by 84 DIP): a Position
-    /// FLIP relative to the frame column, which never moves, plus a Height RELAYOUT. The column lays out once at the band's
-    /// final height, so the region's top jumps by the band height and its height changes by the same amount in that commit.
-    /// The FLIP eases the top back down over the band's own <see cref="PaneMs"/> / <see cref="PaneEase"/> tween, and the
-    /// Relayout re-solves the region's subtree at the interpolated height each tick, so the region's BOTTOM edge stays on the
-    /// dock the whole time (a Reveal would leave an empty strip above the dock when the region shrinks, and overlap the dock
-    /// when it grows). Height only, so width stays with the card's own X FLIP. It is a one-off: the chrome mounting is
-    /// latched out by <c>_chromeEdge</c> and a window resize never captures.</summary>
+    /// <summary>The whole content region's answer to a chrome-edge change that moves its top: a Position FLIP relative to the
+    /// frame column, which never moves, plus a Height RELAYOUT. The region lays out once at its final top and height, the FLIP
+    /// eases the top back over <see cref="PaneMs"/> / <see cref="PaneEase"/> and the Relayout re-solves the region's subtree at
+    /// the interpolated height each tick, so the region's BOTTOM edge stays on the dock the whole time (a Reveal would leave an
+    /// empty strip above the dock when the region shrinks, and overlap the dock when it grows). Height only, so the width
+    /// stays with the card's own X FLIP (<see cref="ContentCardAnim"/>). The Zune band no longer sits above the region (it
+    /// lives in the page column, where <see cref="PageColumnCardAnim"/> does this job for it), so this stays for the chrome-edge
+    /// cases only. It is a one-off: the chrome mounting is latched out by <c>_chromeEdge</c> and a window resize never
+    /// captures.</summary>
     static readonly LayoutTransition ContentRegionAnim = new(TransitionChannels.Position | TransitionChannels.Size,
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), Axes: SizeAxes.Height);
 
-    /// <summary>The Zune band's height change on a nav-style switch: a Size REVEAL on the card's own tween (never a Reflow).
-    /// The column lays out at the band's final height ONCE; the band's clip reveals over <see cref="PaneMs"/> /
-    /// <see cref="PaneEase"/> while <see cref="ContentRegionAnim"/> eases the content region down in the same tween, so the
-    /// band's revealed bottom edge and the card's top travel together and the region's bottom edge stays on the dock.</summary>
+    /// <summary><see cref="ContentRegionAnim"/>'s idiom one level down, for the page column's card stack: the band above it
+    /// opens or closes (84, 52 or 0 DIP), so the card's top travels with the band's revealed bottom edge (a Position FLIP, which
+    /// is PARENT-relative on purpose: the stack's x inside the page column never changes, so this FLIP is Y only and the
+    /// ground and stroke keep snapping in X) while a Height Relayout keeps its bottom on the dock. The X FLIP of a pane or rail
+    /// toggle belongs to the card inside it (<see cref="ContentCardAnim"/>, anchored at <see cref="ContentCardAnchorId"/> so
+    /// that it does not see this Y move a second time). Height only: the width stays with the card's own Reveal.</summary>
+    static readonly LayoutTransition PageColumnCardAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), Axes: SizeAxes.Height);
+
+    /// <summary>The Zune band's size change: on a nav-style switch or a row-2 change its height, on a rail toggle its WIDTH (it
+    /// is the page column's first child, so it narrows with the card). A Size RELAYOUT on the card's own tween
+    /// (<see cref="PaneMs"/> / <see cref="PaneEase"/>), so on a rail toggle the pins slide with the band's right edge instead of
+    /// snapping. <see cref="PageColumnCardAnim"/> eases the card stack below it in the same tween, so the band's bottom edge
+    /// and the card's top travel together and the card's bottom edge stays on the dock. The row-2 fade is an opacity
+    /// transition on a mounted node, so the descendant suppression does not cull it.</summary>
     public static readonly LayoutTransition ZuneBandAnim = new(TransitionChannels.Size,
-        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
 
     /// <summary>A LEFT+TOP-only stroke: the engine's border is one uniform SDF ring, so the stroked box is one DIP larger on
@@ -322,10 +348,7 @@ public static partial class Shell
             // last value (PageGeometry.GutterFor), so a resize near 600 / 880 cannot flicker.
             UseSignalEffect(() =>
             {
-                float cardW = FrameRules.CardWidth(vp.Value.Width,
-                    FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
-                    FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
-                    FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value));
+                float cardW = PageColumnWidth(vp.Value.Width);
                 Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(cardW, Ui.PageGutter.Peek()));
             });
             // The chrome's mount edge (full-screen video, immersive lyrics) is NOT a nav-style switch: the collapsed region is
@@ -536,7 +559,6 @@ public static partial class Shell
                     // buttons) on every exit. A bound Visible takes each out of layout, paint, hit-test and focus and
                     // pauses its subtree (UseInterval, UseIsActive), and the edge never re-renders the frame.
                     ChromeRow() with { Visible = Prop.Of(s_chromeMounted) },
-                    Sidebar.ZuneBand() with { Visible = Prop.Of(s_chromeMounted) },
                     ContentRegion(vp),
                     PlayerBarDock() with { Visible = Prop.Of(s_chromeMounted) },
                 ],
@@ -582,10 +604,11 @@ public static partial class Shell
         Element ContentRegion(IReadSignal<Size2> vp) => ZStack(
             new BoxEl
             {
-                // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
-                MorphId = ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true,
+                Direction = 0, Grow = 1f, ClipToBounds = true,
                 Children =
                 [
+                    // Zero-size: the content card's X anchor (see ContentCardAnchor). First, so it sits at the row's left edge.
+                    Embed.Comp(static () => new ContentCardAnchor()),
                     new BoxEl
                     {
                         // THE W12 TRAP lives in FrameRules.SidebarPaneWidth: a drag peek presents the pane expanded, so this
@@ -608,23 +631,34 @@ public static partial class Shell
                             },
                         ],
                     },
+                    // The PAGE COLUMN: [the Zune band, the card stack]. The band is 0 tall outside Zune, so Classic/Library
+                    // lay out exactly as before; under Zune the inline rail beside it runs from the title bar to the dock.
                     new BoxEl
                     {
-                        // The stock Win11 content region: always flush (no left gap, ever); the one corner and the left+top stroke only while a pane is docked; no shadow.
-                        Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
                         Children =
                         [
-                            Embed.Comp(static () => new CardGround()),
+                            Sidebar.ZuneBand() with { Visible = Prop.Of(s_chromeMounted) },
                             new BoxEl
                             {
-                                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                                Fill = ColorF.Transparent, Corners = Prop.Of(s_contentCorners), ClipToBounds = true,
-                                IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentRowMorphId,
-                                OnRealized = static h => { s_contentCard = h; PublishCardRect(); },
-                                OnBoundsChanged = static _ => PublishCardRect(),
-                                Children = [Embed.Comp(static () => new ContentHost())],
+                                // The stock Win11 content region: always flush (no left gap, ever); the one corner and the left+top stroke only while a pane is docked; no shadow.
+                                Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                                Animate = PageColumnCardAnim,
+                                Children =
+                                [
+                                    Embed.Comp(static () => new CardGround()),
+                                    new BoxEl
+                                    {
+                                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+                                        Fill = ColorF.Transparent, Corners = Prop.Of(s_contentCorners), ClipToBounds = true,
+                                        IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentCardAnchorId,
+                                        OnRealized = static h => { s_contentCard = h; PublishCardRect(); },
+                                        OnBoundsChanged = static _ => { PublishCardRect(); PublishScrimClip(); },
+                                        Children = [Embed.Comp(static () => new ContentHost())],
+                                    },
+                                    Embed.Comp(static () => new CardStroke()),
+                                ],
                             },
-                            Embed.Comp(static () => new CardStroke()),
                         ],
                     },
                     // The rail's 8-DIP breathing room exists only while the rail is inline.
@@ -670,23 +704,34 @@ public static partial class Shell
                 [
                     new BoxEl
                     {
-                        Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
+                        Direction = 1, Shrink = 0f, ClipToBounds = true, HitTestPassThrough = true,
                         Width = Prop.Of(static () => Ui.RailWidth.Value),
                         Children =
                         [
-                            // The FLOATING rail's backing band (the shell ground) — paint-only, never the deepest hit.
+                            // Inline, the rail starts at the title bar's bottom; the narrow overlay still starts under the Zune band.
+                            Embed.Comp(static () => new RailOverlayTopSpacer()),
                             new BoxEl
                             {
-                                Grow = 1f, HitTestPassThrough = true,
-                                Fill = Prop.Of(static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value)
-                                    ? Design.Colors.FloatingChrome : ColorF.Transparent),
-                            },
-                            new BoxEl
-                            {
-                                Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
-                                Corners = RailBandCorners, IsolateLayout = true,
-                                Opacity = Prop.Of(() => _railFade.Value),
-                                Children = [Rail.Frame()],
+                                // The card stack's idiom (PageColumnCardAnim): the body's top eases with the band's bottom edge as a
+                                // parent-relative Y FLIP while a Height Relayout keeps its bottom on the dock. The spacer above is plain.
+                                Grow = 1f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true, Animate = PageColumnCardAnim,
+                                Children =
+                                [
+                                    // The FLOATING rail's backing band (the shell ground) — paint-only, never the deepest hit.
+                                    new BoxEl
+                                    {
+                                        Grow = 1f, HitTestPassThrough = true,
+                                        Fill = Prop.Of(static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value)
+                                            ? Design.Colors.FloatingChrome : ColorF.Transparent),
+                                    },
+                                    new BoxEl
+                                    {
+                                        Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
+                                        Corners = RailBandCorners, IsolateLayout = true,
+                                        Opacity = Prop.Of(() => _railFade.Value),
+                                        Children = [Rail.Frame()],
+                                    },
+                                ],
                             },
                         ],
                     },
@@ -709,11 +754,11 @@ public static partial class Shell
             Embed.Comp(static () => new NarrowDrawer())) with
         {
             // The ONE region that yields when the window is shorter than the column; clipped so a settling page never
-            // paints into the dock slot. The drag spotlight scrim is scoped to it (chrome and dock stay lit).
+            // paints into the dock slot. The drag spotlight scrim is scoped to it, below the Zune band (chrome and dock stay lit).
             // The bound Visible COLLAPSES the whole shell body while the fullscreen stage OR full-screen video is up: out of
             // layout, paint and hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
             // tab switch — every consumer reviewed benign, V-U37). It sits on THIS node, which carries no MorphId: the
-            // content row's MorphId stays on an inner node with an unbound Visible (the BindContract rule guards the
+            // card's anchor (ContentCardAnchorId) is a separate node with an unbound Visible (the BindContract rule guards the
             // tagged node itself).
             Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
             Animate = ContentRegionAnim, RelativeTo = FrameColumnMorphId,
@@ -886,6 +931,45 @@ public static partial class Shell
                 ],
             };
         }
+    }
+
+    /// <summary>The content card's X anchor: a zero-size node in the content row, at the row's left edge (x never changes on a
+    /// pane or rail toggle) and <see cref="ZuneNavRules.BandHeight"/> below the row's top (so it moves in y exactly as the card
+    /// stack does when the band opens or closes). The card's FLIP is measured relative to it, so a toggle gives the card its X
+    /// FLIP (pane, rail) and no Y FLIP: the Y move of the band is the card stack's own (<see cref="PageColumnCardAnim"/>), and
+    /// two nested row-relative FLIPs would compose into double the distance. It reads the same two signals as the band, so both
+    /// re-render in the same commit and the anchor never leads or trails the stack by a layout pass.</summary>
+    sealed class ContentCardAnchor : Component
+    {
+        public override Element Render() => new BoxEl
+        {
+            Direction = 1, Width = 0f, Shrink = 0f, HitTestVisible = false,
+            Children =
+            [
+                new BoxEl
+                {
+                    Shrink = 0f, HitTestVisible = false,
+                    Height = ZuneNavRules.BandHeight(Sidebar.NavStyle.Value, Ui.PresentedSubRow.Value),
+                },
+                new BoxEl { MorphId = ContentCardAnchorId, Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false },
+            ],
+        };
+    }
+
+    /// <summary>The narrow rail overlay's top spacer: the band's height while the rail floats (it starts under the band), zero
+    /// while it is inline (it starts at the title bar's bottom). A plain height, read from the same two signals as the band (so
+    /// it steps in the band's commit) with NO transition of its own: the overlay body below it carries
+    /// <see cref="PageColumnCardAnim"/>, so a navigation between a route with a row 2 and one without, or a nav-style switch,
+    /// eases the overlay's top with the band's bottom edge without a Reflow (a live Reflow shoves every other node's position
+    /// FLIP in the tree).</summary>
+    sealed class RailOverlayTopSpacer : Component
+    {
+        public override Element Render() => new BoxEl
+        {
+            Shrink = 0f, HitTestVisible = false,
+            Height = FrameRules.RailOverlayTop(Ui.RailFits.Value,
+                ZuneNavRules.BandHeight(Sidebar.NavStyle.Value, Ui.PresentedSubRow.Value)),
+        };
     }
 
     /// <summary>EXPERIMENTAL (artist bleed): the content card host's node, for its laid-out window rect.</summary>
@@ -1258,6 +1342,11 @@ public static partial class Shell
     {
         if (s_scene is not { } scene || s_contentRegion.IsNull || !scene.IsLive(s_contentRegion)) return;
         RectF r = scene.AbsoluteRect(s_contentRegion);
+        // The region's page column holds the Zune band, and chrome stays lit: the scrim starts at the card stack's (laid-out) top.
+        // The clip is ONE rect across the region's width, so under Zune the inline rail's top (its header, tabs and gear, level
+        // with the band) stays lit while the rest of the rail dims: the rail's header is chrome too.
+        float top = MathF.Max(r.Y, Ui.CardRect.Peek().Y);
+        if (top > r.Y && top < r.Y + r.H) r = new RectF(r.X, top, r.W, r.H - (top - r.Y));
         scene.SpotlightScrimClip = r.IsEmpty ? null : r;
     }
 

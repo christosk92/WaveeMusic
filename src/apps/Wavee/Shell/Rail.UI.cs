@@ -20,8 +20,9 @@
 //
 // The header (A4): the caption, the Cover|Record tabs (`Design.RailViewsStyle`, the shared views look) and the gear share ONE
 // 20-DIP line (`Hero.HeaderLine`); the caption starts on `PageGeometry.PaneInset` and the gear's centre is on
-// `Hero.TrailingIconAxis`, the other arms' close-button axis. The rail's top equals the content card's top: the coat and the
-// card are both flush children of the content row (`FrameRules.StrokeOverhangTop` = 0 on both, a test pins it; the StrokeOverhang
+// `Hero.TrailingIconAxis`, the other arms' close-button axis. Under Zune the inline rail's top is the title bar's bottom (the
+// band lives in the page column beside it); otherwise the rail's top equals the content card's top: the coat and the card are
+// both flush children of the content row (`FrameRules.StrokeOverhangTop` = 0 on both, a test pins it; the StrokeOverhang
 // margin overhangs right and bottom only), so nothing needed correcting.
 //
 // Mounted here from other stage-B files: `Video.DockedCap()` (K3), `Deck.View()` (K2), `Lyrics.NpvPeek()` and

@@ -294,14 +294,17 @@ public static partial class Shell
             };
             // THE SIDE FIELD: the same dark ground, flat across the chrome's height, under the title bar's columns the photo does not
             // reach (above the Classic/Library pane on the left, above the rail on the right). It rides the photo's strength and
-            // Enter/Exit, so the ink and the field are one clock. Zero-width when the card is flush (Zune, no rail).
-            Element Side(string key, Func<float> left, Func<float> width) => new BoxEl
+            // Enter/Exit, so the ink and the field are one clock. Zero-width when the card is flush (Zune, no rail). The RIGHT field
+            // stops at the title bar's bottom (ArtistBleed.SideFieldHeight): under Zune the inline rail runs from there to the dock
+            // and the Zune band lives in the page column, so a field as tall as the card's top would show through the rail gap and
+            // behind the rail coat's rounded corner. The left field keeps the card's top (Zune has no pane, so it is zero-wide there).
+            Element Side(string key, Func<float> left, Func<float> width, Func<float> height) => new BoxEl
             {
                 Key = key + b.Key,
                 HitTestVisible = false,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(width),
-                Height = Prop.Of(() => ArtistBleed.ScrimHeight(Ui.CardPose.Value.Y)),
+                Height = Prop.Of(height),
                 Transform = Prop.Of(() => Affine2D.Translation(left(), 0f)),
                 Opacity = Prop.Of(Strength),
                 Gradient = new GradientSpec(GradientShape.Linear, 90f,
@@ -315,8 +318,9 @@ public static partial class Shell
             return
             [
                 photo, scrim,
-                Side("shell.bleed.side.l:", static () => 0f, static () => MathF.Max(0f, Left())),
-                Side("shell.bleed.side.r:", static () => Right(), () => MathF.Max(0f, vp.Value.Width - Right())),
+                Side("shell.bleed.side.l:", static () => 0f, static () => MathF.Max(0f, Left()), static () => ArtistBleed.ScrimHeight(Ui.CardPose.Value.Y)),
+                Side("shell.bleed.side.r:", static () => Right(), () => MathF.Max(0f, vp.Value.Width - Right()),
+                    static () => ArtistBleed.SideFieldHeight(Ui.CardPose.Value.Y, TitleBar.ExpandedHeight)),
             ];
         }
 

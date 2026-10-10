@@ -12,9 +12,10 @@
 //
 // The band is BandHeight tall under Zune: 84 with row 2, 52 when the route has nothing for it (ZuneSubRow.None). Its height
 // follows the PRESENTED row kind (Shell.Ui.PresentedSubRow), and its change on a nav-style switch or a navigation
-// is a Size Reveal on the content card's own tween (Shell.ZuneBandAnim) while the content region FLIPs down and relayouts
-// its height in the same tween (Shell.ContentRegionAnim): the column lays out once, the card moves once and its bottom
-// edge stays on the dock. Every vertical DIP of the band is a named rhythm term (PivotTop, PivotLine, PivotToSub,
+// is a Size Relayout on the content card's own tween (Shell.ZuneBandAnim) while the page-column card FLIPs down and
+// relayouts its height in the same tween (Shell.PageColumnCardAnim): the column lays out once, the card moves once and its
+// bottom edge stays on the dock. The band is the first child of the page column, beside the inline right panel. Every
+// vertical DIP of the band is a named rhythm term (PivotTop, PivotLine, PivotToSub,
 // SubRowHeight, SubToCard), so no literal height can drift from the two Zune type roles.
 //
 // ROW 2 IS ROUTE-DECIDED AND NEVER AN EMPTY STRIP. SubRowOf(route) picks what the second row carries from the ROUTE alone (no
@@ -57,7 +58,7 @@ public static class ZuneNavRules
     public const int MaxPins = 6;
 
     /// <summary>The pivot words' sizes are the <c>Design.Type.ZunePivot</c> / <c>ZuneSubPivot</c> roles. The band's left inset is
-    /// DERIVED (<see cref="Shell.FrameRules.ZuneBandInset"/>: the card's x plus the page gutter), never a literal here.</summary>
+    /// DERIVED (<see cref="Shell.FrameRules.ZuneBandInset"/>: the page gutter, card-relative), never a literal here.</summary>
     public const float PinTile = 32f, PinGap = 8f, PivotGap = 24f, SubPivotGap = 20f;
 
     /// <summary>A pin's now-playing dot (size, gap under its tile): the dot is ALWAYS laid out (a 4-DIP box that is transparent
@@ -85,8 +86,8 @@ public static class ZuneNavRules
     /// <summary>Row 1: the pivot line with its air above and below (44). The pin column (32 + 2 + 4) fits inside it.</summary>
     public const float PivotRowHeight = PivotTop + PivotLine + PivotToSub;
 
-    /// <summary>The narrowest viewport at which the pins show beside the pivots.</summary>
-    public const float PinsMinViewportW = 720f;
+    /// <summary>The narrowest band (the page column, which stops at the inline right panel) at which the pins show beside the pivots.</summary>
+    public const float PinsMinBandW = 720f;
 
     public const string LibraryPivot = "library";
 
@@ -255,8 +256,10 @@ public static class ZuneNavRules
     /// <summary>A pin's now-playing dot is lit: the pin has a uri, playback has an active context, and the pin relates to it.</summary>
     public static bool PinShowsPlaying(string uri, bool activeContext, bool relatesTo) => uri.Length > 0 && activeContext && relatesTo;
 
-    /// <summary>The pins show when the setting is on and the viewport is wide enough for them beside the pivots.</summary>
-    public static bool ShowsPins(bool setting, float viewportW) => setting && float.IsFinite(viewportW) && viewportW >= PinsMinViewportW;
+    /// <summary>The pins show when the setting is on and the band is wide enough for them beside the pivots. <paramref name="bandW"/>
+    /// is the PAGE COLUMN's width (<c>Shell.PageColumnWidth</c>), not the viewport's: with the right panel inline the band is
+    /// narrower than the window.</summary>
+    public static bool ShowsPins(bool setting, float bandW) => setting && float.IsFinite(bandW) && bandW >= PinsMinBandW;
 
     /// <summary>The pin tiles: the first <see cref="MaxPins"/> pins that have a route, in order. A folder has no route and is
     /// skipped. <paramref name="into"/> is cleared and refilled, so the caller's list is reused between renders.</summary>

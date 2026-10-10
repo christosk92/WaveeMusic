@@ -57,6 +57,7 @@ versions separately under `v*` and is not tracked in this file.)
 - The title bar is simpler: the theme switch moved into the profile menu, and the search box is a compact pill.
 - Album and playlist pages: a tighter side column and less space before the songs.
 - Zune: album, playlist and other pages without their own sections show only the top pivot row, so the page title is no longer repeated above the page.
+- Zune: lyrics, the queue and now playing open as a full-height panel beside the page; the navigation band stays with the page.
 
 ### Removed
 

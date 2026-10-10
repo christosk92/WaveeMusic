@@ -7,16 +7,22 @@
 //
 // LAYOUT STABILITY. The band root is ONE keyed node in every nav style. Its Height is ZuneNavRules.BandHeight(NavStyle,
 // Shell.Ui.PresentedSubRow) (84 under Zune with a row 2, 52 without one, 0 otherwise: PivotTop + PivotLine + PivotToSub +
-// SubRowHeight + SubToCard, every term a named constant) and it carries Shell.ZuneBandAnim: a Size REVEAL on the content
-// card's own tween, never a Reflow. The column therefore lays out once at the final height. The whole content region
-// (Shell.ContentRegionAnim: a Position FLIP relative to the frame column plus a Height Relayout) eases down in the same
-// tween, so the card's top travels with the band's revealed bottom edge, its bottom edge stays on the dock, and a nav-style
-// switch moves the card one time. Row 2 is ALWAYS mounted at SubRowHeight (the band's clip decides how much of it shows) and
-// never an empty strip (ZuneNavRules.SubRowOf decides from the ROUTE what it carries), and a skeleton-to-words swap is an
-// opacity cross-fade inside slots of the final size. A navigation between a route with a row 2 and one without moves the
-// card ONCE, on its own tween, one commit after the page mounted (see ROW 2 MOTION).
-// The inset is DERIVED (FrameRules.ZuneBandInset: the card's x, 0 under Zune where the page bleeds to the window edge,
-// plus the page gutter the pages read), so the first pivot word and the page title share an x.
+// SubRowHeight + SubToCard, every term a named constant) and it carries Shell.ZuneBandAnim: a Size RELAYOUT on the content
+// card's own tween, never a Reflow. The band is the PAGE COLUMN's first child (the column is [band, card stack] beside the
+// inline right panel, which therefore runs from the title bar's bottom to the dock), so on a rail toggle the band's width
+// eases with the card's tween and the pins slide instead of snapping. The card stack under it (Shell.PageColumnCardAnim: a
+// Y-only Position FLIP, parent-relative, plus a Height Relayout) eases down in the same tween, so the card's top travels with
+// the band's bottom edge, its bottom edge stays on the dock, and a nav-style switch moves the card one time: the card inside
+// the stack FLIPs in X only (it is anchored at Shell's zero-size ContentCardAnchor, which moves in y with the stack), so the
+// two FLIPs never compose. Whether the pins show is decided from the page column's width (Shell.PageColumnWidth), not the
+// viewport's, so the pivots keep their room while the panel is inline.
+// Row 2 is ALWAYS mounted at SubRowHeight (the band's clip decides how much of it shows) and never an empty strip
+// (ZuneNavRules.SubRowOf decides from the ROUTE what it carries), and a skeleton-to-words swap is an opacity cross-fade
+// inside slots of the final size. A navigation between a route with a row 2 and one without moves the card ONCE, on its own
+// tween, one commit after the page mounted (see ROW 2 MOTION).
+// The inset is DERIVED (FrameRules.ZuneBandInset: the page gutter the pages read, card-relative because the band starts at
+// the card's x, which is 0 under Zune where the page bleeds to the window edge), so the first pivot word and the page title
+// share an x.
 //
 // ROW 2 BY KIND (ZuneSubRow). Library: the sub-pivots (one stable key across the library pages, so only the selected
 // word's weight changes). Views: the words Shell.PageViews holds for the route, else the route's SEED (the loc keys of
@@ -88,7 +94,7 @@ namespace Wavee;
 public static partial class Sidebar
 {
     /// <summary>The Zune band: <see cref="ZuneNavRules.BandHeight"/> tall under Zune, zero height otherwise. Mounted in the
-    /// frame's column under the chrome row.</summary>
+    /// page column, above the card.</summary>
     public static Element ZuneBand() => Embed.Comp(static () => new ZuneBandView()) with { Key = "zune-band" };
 
     /// <summary>The binder's pump while the Zune frame is up: the pane is not mounted then, so the band keeps the projection
@@ -109,7 +115,8 @@ public static partial class Sidebar
             // Every hook runs before anything that depends on the style: a Zune switch must not change the hook count between renders.
             var overlay = UseContext(Overlay.Service);
             var vp = UseContextSignal(Viewport.Size);
-            bool pinsShown = UseComputed(() => ZuneNavRules.ShowsPins(ZunePins.Value, vp.Value.Width)).Value;
+            // Decided from the PAGE COLUMN's width (the band stops at the inline rail), not the viewport's.
+            bool pinsShown = UseComputed(() => ZuneNavRules.ShowsPins(ZunePins.Value, Shell.PageColumnWidth(vp.Value.Width))).Value;
             // The pins' covers: the band pumps the binder (the pane is not mounted under Zune) and re-renders on its first projection.
             EnsureBinder();
             UseSignalEffect(PumpWhenZune);
@@ -117,7 +124,6 @@ public static partial class Sidebar
             var style = NavStyle.Value;
             bool zune = style == ShellNavStyle.Zune;
             float gutter = Shell.Ui.PageGutter.Value;
-            float cardX = Shell.FrameRules.ContentCardX(Sidebar.PresentedWidth.Value);
 
             Element[] rows = [];
             if (zune)
@@ -133,11 +139,11 @@ public static partial class Sidebar
             {
                 Key = "zune:band", Direction = 1, Shrink = 0f, ClipToBounds = true,
                 Height = ZuneNavRules.BandHeight(style, Shell.Ui.PresentedSubRow.Value), Animate = Shell.ZuneBandAnim,
-                Padding = new Edges4(Shell.FrameRules.ZuneBandInset(cardX, gutter), 0f, Spacing.L, 0f), Children = rows,
+                Padding = new Edges4(Shell.FrameRules.ZuneBandInset(gutter), 0f, Spacing.L, 0f), Children = rows,
             }.WithContextMenu(overlay, () => ZuneMenu(overlay));
         }
 
-        /// <summary>Row 1: the top pivots, and the pin tiles beside them when the setting is on and the viewport is wide enough.
+        /// <summary>Row 1: the top pivots, and the pin tiles beside them when the setting is on and the page column is wide enough.
         /// <see cref="ZuneNavRules.PivotRowHeight"/> tall: the pivot line (<see cref="ZuneNavRules.PivotLine"/>) with its air
         /// above and below.</summary>
         Element TopRow(string name, bool pinsShown)
@@ -205,8 +211,8 @@ public static partial class Sidebar
 
         /// <summary>The row-2 host. It LATCHES the last non-None content (the row kind plus the route it was built for). While the
         /// route has a row 2 it renders that content; when the route has none it keeps rendering the latched content, inert, with
-        /// its opacity eased to 0 as <see cref="Shell.Ui.PresentedSubRow"/> catches up, while the band's height closes under the
-        /// Reveal clip. That is an opacity Transition on a node that stays mounted, not an Exit, so ZuneBandAnim's descendant
+        /// its opacity eased to 0 as <see cref="Shell.Ui.PresentedSubRow"/> catches up, while the band's height closes (a Relayout)
+        /// under its clip. That is an opacity Transition on a node that stays mounted, not an Exit, so ZuneBandAnim's descendant
         /// suppression (which snaps geometry tracks only) cannot cull it. The latch clears after the band has closed, so an empty
         /// strip is never visible: in the one commit before the presented row catches up, the old content is still at full opacity.
         /// When a row enters (52 to 84) the new content draws at opacity 0 and fades in when the presented row flips.</summary>

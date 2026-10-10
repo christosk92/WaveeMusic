@@ -75,11 +75,21 @@ public sealed class ShellNavStyleTests
         Assert.Equal("home", ZuneNavRules.LandingOf("home"));
     }
 
-    [Fact] public void ShowsPins_NeedsTheSettingAndTheMinimumViewport()
+    [Fact] public void ShowsPins_NeedsTheSettingAndTheMinimumBandWidth()
     {
         Assert.False(ZuneNavRules.ShowsPins(true, 719f));
         Assert.True(ZuneNavRules.ShowsPins(true, 720f));
         Assert.False(ZuneNavRules.ShowsPins(false, 1200f));
+    }
+
+    [Fact] public void ShowsPins_DecidesFromThePageColumnNotTheWindow_WhenTheRailIsInline()
+    {
+        // An 830 DIP window, rail closed: the band spans the window and the pins fit beside the pivots.
+        Assert.True(ZuneNavRules.ShowsPins(true, Shell.FrameRules.CardWidth(830f, 0f, 0f, 0f)));
+        // The same window with the 360 DIP rail inline (plus its 8 DIP gap): the band is 462 wide, so the pins give way to the pivots.
+        Assert.False(ZuneNavRules.ShowsPins(true, Shell.FrameRules.CardWidth(830f, 0f, 8f, 360f)));
+        // A 1200 DIP window with the rail inline keeps them (832 wide).
+        Assert.True(ZuneNavRules.ShowsPins(true, Shell.FrameRules.CardWidth(1200f, 0f, 8f, 360f)));
     }
 
     [Fact] public void PinTiles_SkipsFoldersKeepsOrderAndCapsAtSix()
