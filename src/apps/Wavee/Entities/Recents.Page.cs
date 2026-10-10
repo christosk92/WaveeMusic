@@ -1,5 +1,5 @@
 // ── Entities/Recents.Page.cs ───────────────────────────────────────────────────────────────────────────────────────
-// the page: masthead, pivots, the measured grouped list with its pinned day band, the drawer accordion, the annotated
+// the page: head (title, summary, Overview, views), the measured grouped list with its pinned day band, the drawer accordion, the annotated
 // rail, the semantic zoom + calendar surface, the viewport-following page accent and its ONE wash leg
 //
 // Role: UI
@@ -18,7 +18,7 @@
 // the STATEFUL measured layout live on one immutable `Shape`; `BuildShape` publishes it in 0.2.9's order (build →
 // reuse-or-build the layout → prime it → publish → reset the drawer → re-resolve the sticky band → today in the
 // readout → `ShapeEpoch` LAST). Two epochs: `Epoch` = the same list, new words (midnight); `ShapeEpoch` = a different
-// list (Key remount of the list, the rail, the sticky band, the pivots and the calendar). A publication whose snapshot
+// list (Key remount of the list, the rail, the sticky band and the calendar). A publication whose snapshot
 // is value-equal to the adopted one changes NOTHING, so an entity-table or no-op publish never remounts a row.
 //
 // PROPS FREEZE AT MOUNT. The row slot is a BOUND slot (`ItemsView.CreateBound` + the scope's item signal); its handlers
@@ -26,9 +26,14 @@
 // `Prop` over pre-created thunks; the ONE cover-grading `Watch` lives in the 0×0 `AccentBinder` leaf, which also
 // publishes the wash (§9.2: the page's Render never subscribes to a grading).
 //
-// THE MASTHEAD IS THE PAGE'S OWN. `Shell.TryMasthead` answers only the browse/home-section/concert families, so Recents
-// (a root, no trail) keeps 0.2.9's hand-rolled SurfaceDisplay hero; it publishes nothing to `Shell.Mastheads` (a
-// publication the band never reads would be a second copy waiting to double-expose).
+// THE HEAD IS THE SHARED PageHead (Platform/Page.UI.cs). Title, the summary in the RESERVED meta slot, Overview as the
+// title row's action, and All / Music / Podcasts / Artists as its views bar on ONE stable signal (`_viewIndex`). The head is
+// PageHeadRules.Extent(TitleViews) (164) before the shape loads and after it (the summary fades into its slot), and
+// Extent(Hoisted) (24, the head-top strip alone) under Zune, where the views are published to the band
+// (`PageHead.Publish("recents", ...)`) and the summary + Overview ride the band's row 2 trailing slot (`RecentsTrailing`,
+// a keyed leaf that reads the shape signal, so the summary fades in there through `PageHead.MetaSlot`).
+// `PageHead.HoistedFor` reads the PRESENTED nav style, so the hoist's height change lands in a quiet commit, never in
+// the one that moves the content card. The page publishes nothing to `Shell.Mastheads`.
 //
 // ZERO ALLOCATION ON THE SCROLL PATH. The sticky watch over the list's scroll handle (`WatchSticky`/`UpdateSticky`) is
 // arithmetic, three change-gated signal writes and one pre-created posted delegate; per-row strings (when, uri, morph key, the
@@ -160,6 +165,13 @@ public readonly partial struct Recents
         internal readonly Func<BoundItemScope<RecentsFlatItem>, Element> SlotFactory;
         readonly Action _resolveAccentDay, _rollover, _refresh, _ensureEdge, _adopt, _activated, _deactivated, _openOverview, _retry;
         readonly Action<KeyEventArgs> _onKeyDown;
+        /// <summary>The views bar's ONE selection signal (a view's index in <see cref="RecentsView.PivotOrder"/>), shared by the
+        /// page's bar and the Zune band's words, so the pill slides and the bar never re-mounts. It follows <see cref="Chip"/>.</summary>
+        readonly Signal<int> _viewIndex = new(0);
+        /// <summary>A view was chosen (cached: the bar and the band hold ONE delegate).</summary>
+        readonly Action<int> _onView;
+        readonly Action _publishViews;
+        IReadSignal<bool>? _active;
         /// <summary>The sticky band's watch over the list's scroll handle (<see cref="ScrollController"/>'s): mounted by
         /// <see cref="ListSurface"/>, it re-runs on every published offset/extent and writes only on a projected change.</summary>
         internal readonly Action WatchStickyAction;
@@ -172,8 +184,9 @@ public readonly partial struct Recents
         internal readonly Func<float, AnnotatedScrollBarLabel?> RailDetailFunc;
         readonly Func<bool> _pending, _failed;
         readonly Func<Element> _content, _shimmer, _failedPanel;
-        readonly Func<PivotTabs> _pivots;
         readonly Func<AccentBinder> _binder;
+        /// <summary>The band's row 2 trailing builder (cached: the store keeps ONE delegate, so a re-publish is silent).</summary>
+        readonly Func<Element> _recentsTrailing;
         readonly Func<OwnerDemand> _owners;
 
         public PageView()
@@ -242,12 +255,18 @@ public readonly partial struct Recents
             _content = Content;
             _shimmer = PendingContent;
             _failedPanel = () => Controls.Vacancy(Controls.VacancyVoice.Error, Controls.VacancyScale.Page, onAction: _retry);
-            _pivots = () => new PivotTabs(this);
+            _onView = OnView;
+            _publishViews = PublishViews;
             _binder = () => new AccentBinder(this);
             _owners = () => new OwnerDemand(this);
+            _recentsTrailing = () => Embed.Comp(this, static () => new RecentsTrailing()) with { Key = "recents-trailing" };
         }
 
-        /// <summary>The accent before any cover grades, with washes off, or with no source row: byte-identical to what
+        /// <summary>The Overview button: the head's title-row action, and the Zune band's trailing control.</summary>
+        internal Element OverviewButton() => Button.Create(Loc.Get(Strings.Recents.Overview), _openOverview, ButtonAppearance.Subtle,
+            ControlSize.Small, glyph: Icons.Calendar);
+
+        /// <summary>The accent before any cover grades, with accent from artwork off, or with no source row: byte-identical to what
         /// every consumer painted before the page had a dynamic accent (§4.1).</summary>
         internal static Design.PageAccent Fallback() => new(Tok.AccentTextPrimary, Tok.AccentDefault, "");
 
@@ -270,27 +289,41 @@ public readonly partial struct Recents
             UseTimeout(_refresh, 2000f, DepKey.From((long)Playback.CurrentId.Value.GetHashCode()));
             UseActivation(onActivated: _activated, onDeactivated: _deactivated);
 
-            int shapeEpoch = ShapeEpoch.Value;
+            _ = ShapeEpoch.Value;
             _ = Epoch.Value;
             var shape = ShapeNow;
+
+            // The views follow the chip (Adopt can fall back to All), and the Zune band gets the same words and signal. ONLY the
+            // active instance publishes: a parked Recents must not take the slot's selection away from the page on screen.
+            _active = UseIsActive();
+            var labels = ViewLabels();
+            UseLayoutEffect(SyncViewIndex, DepKey.From(RecentsView.PivotIndexOf(Chip.Value)));
+            UseEffect(_publishViews, DepKey.From(LabelsKey(labels)));
+            float g = Shell.Ui.PageGutter.Value;
 
             Element body = new SkelRegionEl(_pending, _failed, _content, _shimmer, _failedPanel,
                 SkelReveal.None, SkeletonStyle.Default, null, SmoothResize: true);
             var kids = new Element[]
             {
-                Hero(shape),
-                new BoxEl
+                PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Home.Recents))
                 {
-                    Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.S),
-                    // Keyed on the SHAPE, not the token: a pivot switch re-renders the live strip (its underline enters).
-                    Children = [Embed.Comp(_pivots) with { Key = "recents-pivots:" + FormatCache.Int(shapeEpoch) }],
-                },
+                    // The summary fills the reserved meta slot (it fades in; the head's height never depends on it).
+                    Meta = shape.Summary,
+                    Actions = OverviewButton(),
+                    Views = labels, ViewsSelected = _viewIndex, OnView = _onView,
+                    Hoisted = PageHead.HoistedFor("recents"), Gutter = g, Key = "recents:head",
+                }),
                 new BoxEl
                 {
                     Grow = 1f, Shrink = 1f, Direction = 1, MinWidth = 0f, MinHeight = 0f,
-                    // No dock reserve (§9.1 #10): the shell clips above the player bar; Spacing.L is breathing room.
-                    Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.L),
-                    // The FLIP on a pivot switch. Reduced motion is a VALUE: no transition at all.
+                    // No dock reserve (§9.1 #10): the list owns its scroller and the shell clips above the player bar, so the
+                    // trailing inset is Spacing.L of air: the documented exception to PageGeometry.BottomReserve.
+                    Padding = new Edges4(g, 0f, g, Spacing.L),
+                    // The FLIP on a view switch. Reduced motion is a VALUE: no transition at all. The head's hoist height
+                    // change arrives in the quiet PresentedNavStyle commit, where the card is not a suppression root; this
+                    // body is a later sibling of the reflowing head, so the engine's reflow-shove map (AppHost.cs:7405-7418)
+                    // marks it shoved and lands its Position on the per-tick re-solve (AppHost.cs:7454-7465) instead of
+                    // seeding a FLIP each tick.
                     Layout = Design.Reduced ? null : BodyFlip,
                     Children = [body],
                 },
@@ -307,41 +340,51 @@ public readonly partial struct Recents
             return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)Accent, page);
         }
 
-        // ── the masthead (W3, §0 #1-#2) ──────────────────────────────────────────────────────────────────────────────
+        // ── the head's views (W3, W10, §0 #3) ────────────────────────────────────────────────────────────────────────
 
-        Element Hero(Shape shape)
+        /// <summary>The four words, in <see cref="RecentsView.PivotOrder"/>'s order, from the keys the Zune band's seed shares
+        /// (<see cref="ZuneNavRules.RecentsViewKeys"/>): the page's bar and the band's words are ONE list. Built per render so a
+        /// locale change relabels.</summary>
+        static string[] ViewLabels()
         {
-            var title = Design.Type.SurfaceDisplay(Loc.Get(Strings.Home.Recents)) with
+            var keys = ZuneNavRules.RecentsViewKeys;
+            var labels = new string[keys.Length];
+            for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(keys[i]);
+            return labels;
+        }
+
+        static long LabelsKey(string[] labels)
+        {
+            var h = new HashCode();
+            foreach (var l in labels) h.Add(l, StringComparer.Ordinal);
+            return h.ToHashCode();
+        }
+
+        /// <summary>A word chosen in the bar or the Zune band. A view with no rows is listed but inert (the stock bar has no
+        /// per-item enabled state): the selection snaps back to the live chip instead of cutting to nothing.</summary>
+        void OnView(int index)
+        {
+            string? token = RecentsView.PivotTokenAt(index);
+            if (token is not null && !RecentsView.PivotAvailable(ShapeNow.Rows, token))
             {
-                MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f, Grow = 1f, Basis = 0f,
-                Enter = new EnterExit(Dy: 10f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-            };
-            var overview = Button.Create(Loc.Get(Strings.Recents.Overview), _openOverview, ButtonAppearance.Subtle,
-                ControlSize.Small, glyph: Icons.Calendar) with { Shrink = 0f };
-            Element titleRow = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f, Children = [title, overview],
-            };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.XS,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.L),
-                // The two lines arrive 45 ms apart; reduced motion is a VALUE (0), never a branch.
-                Stagger = Design.Reduced ? 0f : Design.Motion.MastheadStaggerMs,
-                Children = shape.Summary.Length == 0
-                    ? [titleRow]
-                    :
-                    [
-                        titleRow,
-                        Caption(shape.Summary) with
-                        {
-                            Color = Tok.TextTertiary, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                            // A reserved measure in lieu of tabular figures: the line never reflows (§0 #2).
-                            MinWidth = 220f,
-                            Enter = new EnterExit(Dy: 10f, Opacity: 0f, Active: true), Transition = MotionTok.StandardEnter,
-                        },
-                    ],
-            };
+                _viewIndex.Value = RecentsView.PivotIndexOf(Chip.Peek());
+                return;
+            }
+            SelectPivot(token);
+        }
+
+        void SyncViewIndex()
+        {
+            int index = RecentsView.PivotIndexOf(Chip.Peek());
+            if (_viewIndex.Peek() != index) _viewIndex.Value = index;
+        }
+
+        /// <summary>Hands the four words to the Zune band under the route name. Safe any time and any number of times: the store
+        /// bumps its version only when the labels or the selected signal change.</summary>
+        void PublishViews()
+        {
+            if (_active is { } a && !a.Peek()) return;
+            PageHead.Publish("recents", ViewLabels(), _viewIndex, _onView, _recentsTrailing);
         }
 
         // ── the body arms ────────────────────────────────────────────────────────────────────────────────────────────
@@ -471,6 +514,7 @@ public readonly partial struct Recents
         {
             // While row render effects are live, so the first return frame cannot replay the old drawer (§9.2).
             CollapseExpanded();
+            PublishViews();
             if (ShapeNow.Loaded && Recents.Me.Slot > 0) Entities.RefreshEdge(FetchEdge.Recents, Recents.Me.Slot, FetchPriority.Prefetch);
         }
 
@@ -841,60 +885,6 @@ public readonly partial struct Recents
         }
     }
 
-    // ══ 3. THE PIVOTS (W3, W10, §0 #3) ═══════════════════════════════════════════════════════════════════════════════
-
-    /// <summary>Four FIXED tabs on frame one; a tab with no rows is dimmed and inert, never hidden. Only the selected tab
-    /// MOUNTS its underline, so the scaleX 0 → 1 enter is a real mount; the others reserve the 2-DIP baseline.</summary>
-    internal sealed class PivotTabs(PageView page) : Component
-    {
-        static readonly MotionTokenDef UnderlineEnter = MotionTokenDef.Eased(260f, Easing.SmoothOut);
-
-        public override Element Render()
-        {
-            string? selected = page.Chip.Value;
-            _ = page.ShapeEpoch.Value;
-            var rows = page.ShapeNow.Rows;
-            return new BoxEl
-            {
-                Direction = 0, Gap = Spacing.XL, AlignItems = FlexAlign.Center, Shrink = 0f,
-                Children =
-                [
-                    Tab(null, Loc.Get(Strings.Detail.Filter.All), true, selected is null),
-                    Tab(RecentsView.PivotMusic, Loc.Get(Strings.Recents.Chip.Music), RecentsView.PivotAvailable(rows, RecentsView.PivotMusic),
-                        string.Equals(selected, RecentsView.PivotMusic, StringComparison.OrdinalIgnoreCase)),
-                    Tab(RecentsView.PivotPodcasts, Loc.Get(Strings.Recents.Chip.Podcasts), RecentsView.PivotAvailable(rows, RecentsView.PivotPodcasts),
-                        string.Equals(selected, RecentsView.PivotPodcasts, StringComparison.OrdinalIgnoreCase)),
-                    Tab(RecentsView.PivotArtists, Loc.Get(Strings.Recents.Pivot.Artists), RecentsView.PivotAvailable(rows, RecentsView.PivotArtists),
-                        string.Equals(selected, RecentsView.PivotArtists, StringComparison.OrdinalIgnoreCase)),
-                ],
-            };
-        }
-
-        Element Tab(string? token, string label, bool available, bool isSelected)
-        {
-            Element text = Design.Type.PivotLabel(label) with
-            {
-                Color = !available ? Tok.TextDisabled : isSelected ? Tok.TextPrimary : Tok.TextSecondary, MaxLines = 1,
-            };
-            Element underline = isSelected
-                ? new BoxEl
-                {
-                    Key = "underline", Height = 2f, Corners = Radii.FullAll,
-                    Fill = page.AccentFillProp, BrushTransitionMs = AccentTransitionMs,
-                    TransformOriginX = 0f, Enter = new EnterExit(Sx: 0f, Active: true), Transition = UnderlineEnter,
-                }
-                : new BoxEl { Key = "baseline", Height = 2f, Fill = ColorF.Transparent };
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.XS, Shrink = 0f,
-                Role = AutomationRole.Button, Focusable = available, Cursor = available ? CursorId.Hand : CursorId.Arrow,
-                IsEnabled = available, FocusVisualMargin = new Edges4(2f, 2f, 2f, 2f),
-                OnClick = available ? () => page.SelectPivot(token) : null,
-                Children = [text, underline],
-            };
-        }
-    }
-
     // ══ 4. THE SEMANTIC SURFACE, THE LIST, THE SLOT, THE PINNED BAND, THE RAIL ═══════════════════════════════════════
 
     /// <summary>Both views stay mounted (the zoom's keep-alive); the overview enters from 1.08 while the list recedes to
@@ -1099,7 +1089,7 @@ public readonly partial struct Recents
         {
             var calendar = page.ShapeNow.Calendar;
             Element grid = ItemsView.Create(calendar.Months.Length, page.MonthCardFactory,
-                RepeatLayout.GridFit(RecentsLayout.CalGridW, Spacing.PageWide, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
+                RepeatLayout.GridFit(RecentsLayout.CalGridW, RecentsLayout.CalGridGap, RecentsLayout.MonthCardHeight(RecentsView.MaxWeeks(calendar))),
                 new ListOptions
                 {
                     SelectionMode = ItemsSelectionMode.None, Selector = SelectorVisual.None,
@@ -1159,7 +1149,8 @@ public readonly partial struct Recents
         public override Element Render()
         {
             var slot = UseContext(ShellMaterial.Slot);
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
+            bool artAccent = Prefs.Appearance.AccentFromArtwork();
             _ = Entities.ScopeEpoch.Value;
             _ = page.AccentDay.Value;
             _ = page.ShapeEpoch.Value;
@@ -1174,7 +1165,7 @@ public readonly partial struct Recents
             string? url = target.Slot > 0 ? FactsOf(target).Cover : null;
 
             var resolved = PageView.Fallback();
-            if (washes && url is { Length: > 0 })
+            if (artAccent && url is { Length: > 0 })
             {
                 _ = Palette.Watch(url).Value;
                 if (Design.ChromeSchemeFor(url) is { } scheme)
@@ -1202,8 +1193,36 @@ public readonly partial struct Recents
                 claimed.Value = true;
             }, DepKey.From(HashCode.Combine(washes, pick?.Key, pick?.Color.R, pick?.Color.G, pick?.Color.B)));
             UseActivation(onActivated: () => ShellMaterial.Publish(slot, page.WashOwner, isClaim: true,
-                definite: !Prefs.Appearance.ColorWashes(), tint: null, page.LastWash));
+                definite: Prefs.Appearance.SurfaceWash() == WashLevel.Off, tint: null, page.LastWash));
             return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+        }
+    }
+
+    /// <summary>The summary and the Overview button as the Zune band's row 2 trailing slot (hoisted, the page's head is the
+    /// empty 24-DIP strip). A leaf that reads the page's shape signal, so a summary that lands or relabels re-renders only
+    /// this and not the shell band. The summary fades in through the head's meta slot; the Overview button is the head's own
+    /// (<c>OverviewButton</c>).</summary>
+    internal sealed class RecentsTrailing : Component
+    {
+        /// <summary>The summary's cap: the band wraps the trailing in a no-shrink box, so the text ellipsizes here and the
+        /// view words keep their room at narrow widths.</summary>
+        const float SummaryMaxWidth = 240f;
+
+        public override Element Render()
+        {
+            // The page arrives as re-pushed props (a different Recents publishing into the same band row is followed live).
+            var page = UseProps<PageView>();
+            string summary = page.ShapeSignal.Value.Summary;
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, MinWidth = 0f,
+                Children =
+                [
+                    // The head's own meta slot: a late summary mounts and fades in place.
+                    PageHead.MetaSlot(summary) with { MaxWidth = SummaryMaxWidth },
+                    page.OverviewButton(),
+                ],
+            };
         }
     }
 

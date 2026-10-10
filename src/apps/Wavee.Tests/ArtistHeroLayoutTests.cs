@@ -126,4 +126,37 @@ public class ArtistHeroLayoutTests
         Assert.InRange(ArtistHeroLayout.NarrowHeight,
             ArtistHeroLayout.MediumHeight, ArtistHeroLayout.MediumHeight * 1.35f);
     }
+
+    // ── A2: the collapse floor ──
+
+    [Theory]
+    [InlineData(260f)] [InlineData(420f)] [InlineData(560f)]
+    public void CollapseDistance_RunsToTheFloor(float height)
+    {
+        Assert.Equal(height, ArtistHeroLayout.CollapseDistance(height, 0f));
+        Assert.Equal(height - 56f, ArtistHeroLayout.CollapseDistance(height, 56f));
+        Assert.Equal(ArtistHeroLayout.CollapseDistance(height, ArtistHeroLayout.CompactIdentityHeight), ArtistHeroLayout.CollapseDistance(height));
+        Assert.Equal(1f, ArtistHeroLayout.CollapseDistance(10f, 56f));
+    }
+
+    /// <summary>The hero's laid-out height and its photo are pure functions of the width and the previous tier: neither takes a floor
+    /// or a nav style, so they are the tier's constants whatever the band's placement (only the Collapse paint channel reads it).</summary>
+    [Theory]
+    [InlineData(1440f, ArtistHeroTier.Wide)] [InlineData(900f, ArtistHeroTier.Medium)]
+    [InlineData(700f, ArtistHeroTier.Compact)] [InlineData(320f, ArtistHeroTier.Narrow)]
+    public void MinHeightAndPhotoHeight_AreTheTierConstants(float width, ArtistHeroTier previous)
+    {
+        var m = ArtistHeroLayout.For(width, previous);
+        float expected = m.Tier switch
+        {
+            ArtistHeroTier.Wide => ArtistHeroLayout.WideHeight,
+            ArtistHeroTier.Medium => ArtistHeroLayout.MediumHeight,
+            ArtistHeroTier.Compact => ArtistHeroLayout.CompactHeight,
+            _ => ArtistHeroLayout.NarrowHeight,
+        };
+        Assert.Equal(expected, m.MinHeight);
+        float photo = !m.Stacked ? expected
+            : m.Tier == ArtistHeroTier.Compact ? ArtistHeroLayout.CompactPhotoHeight : ArtistHeroLayout.NarrowPhotoHeight;
+        Assert.Equal(photo, ArtistHeroLayout.PhotoHeightFor(in m));
+    }
 }

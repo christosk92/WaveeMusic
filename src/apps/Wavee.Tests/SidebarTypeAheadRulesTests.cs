@@ -35,4 +35,13 @@ public sealed class SidebarTypeAheadRulesTests
     [Fact]
     public void Overflows_AShortTitleWithTrailingContent_DoesNot()
         => Assert.False(SidebarLabelFit.Overflows("Jazz", SidebarLabelFit.LabelWidth(320, 0, 28)));
+
+    [Fact]
+    public void LabelWidth_TextOnlyRow_ChargesNoIconColumn()
+    {
+        Assert.Equal(
+            SidebarLabelFit.LabelWidth(240, 0, 0) + SidebarRowGeometry.IconColumn + SidebarRowGeometry.LabelGap - SidebarRowGeometry.TextLabelX,
+            SidebarLabelFit.LabelWidth(240, 0, 0, iconColumn: false));
+        Assert.Equal(SidebarLabelFit.LabelWidth(240, 1, 28), SidebarLabelFit.LabelWidth(240, 1, 28, iconColumn: true));
+    }
 }

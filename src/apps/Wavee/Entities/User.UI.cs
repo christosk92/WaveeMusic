@@ -1,6 +1,6 @@
 // ── Entities/User.UI.cs ────────────────────────────────────────────────────────────────────────────────────────────
-// the library's row shapes and small controls: the WORD RAILS' library adapters (the navigator's sort rail, the reader's
-// scope and sort rails, over `Controls.Words.Rail`) + the view toggle and its trimmed panel, the letter header / sticky
+// the library's row shapes and small controls: the WORD RAILS' library adapters (the reader's scope and sort rails,
+// over `Controls.Words.Rail`; the navigator's sort is `Controls.SortButton`, see `LibraryWordRail`) + the view toggle and its trimmed panel, the letter header / sticky
 // letter overlay / A-Z jump strip, the crumb
 // bar, the column grip, the BOUND navigator rows and cards (and their grid selection chrome), the search-row shapes, and
 // the library mutation seam (`LibrarySeam`) the shared save/follow affordances read
@@ -62,8 +62,7 @@ public readonly partial struct User
     // ══ 1. THE PERSISTED CODES (shared with the sidebar's Library V3 — never renumber) ═══════════════════════════════
 
     /// <summary>Sort code → its Title-Case loc KEY. Codes 0..4 are persisted (<c>library.&lt;kind&gt;.sort</c>); unknown →
-    /// Recents. The library's own rail reads the lowercase <c>library.rail.*</c> keys through
-    /// <see cref="LibraryWordRail.WordKey"/> — these labels are the SIDEBAR's (Library V3's pills share the codes).</summary>
+    /// Recents. The library's dropdown reads <see cref="LibraryWordRail.MenuKey"/> — these labels are the SIDEBAR's (Library V3's pills share the codes).</summary>
     public static string SortLabelKey(int code) => code switch
     {
         1 => Strings.Library.Sort.RecentlyAdded,
@@ -82,10 +81,10 @@ public readonly partial struct User
     public static bool IsGridView(int view) => view >= 2;
     public static bool IsCompactView(int view) => view is 0 or 2;
 
-    // ══ 2. THE WORD RAILS (W8 — Zune's text pivot; it REPLACED the sort pill, which is deleted) ═══════════════════════
+    // ══ 2. THE WORD RAILS (W8 — Zune's text pivot; the navigator's sort has since moved to `Controls.SortButton`) ═══════════════════════
     //
     // The rail itself is `Controls.Words.Rail` (promoted for the podcast reader, podcast plan §5.5 — the metrics, the two
-    // stacked runs and the underline moved with it). These three are the library's ADAPTERS: which words, which codes,
+    // stacked runs and the underline moved with it). The adapters below are the library's: which words, which codes,
     // what a re-tap means. Their signatures are unchanged.
 
     /// <summary>The rail's height, kept under its old name for <c>Artist.Reader</c>'s sticky sub-rail arithmetic.</summary>
@@ -93,25 +92,6 @@ public readonly partial struct User
 
     /// <summary>The ink/underline fade the A–Z strip shares with the rail words: the 83-ms WinUI BrushTransition.</summary>
     static readonly FluentGpu.Animation.MotionTokenDef RailInkFade = FluentGpu.Animation.MotionTok.ControlFaster;
-
-    /// <summary>The navigator's sort rail: the kind's words (<see cref="LibraryWordRail.WordsFor"/>) in rail order, each
-    /// carrying its PERSISTED code (codes are not positions). Tapping the ACTIVE word flips the direction and a 10-px
-    /// chevron after it says which way; picking another word resets to ascending. The rail holds the two Signal
-    /// INSTANCES, so nothing here is frozen at mount — the words themselves are a per-kind constant and are built once.</summary>
-    public static Element WordRail(EntityKind kind, Signal<int> sort, Signal<bool> desc)
-    {
-        var codes = LibraryWordRail.WordsFor(kind);
-        var words = new Controls.Words.Word[codes.Length];
-        for (int i = 0; i < codes.Length; i++)
-        {
-            int c = (int)codes[i];
-            words[i] = new Controls.Words.Word(Loc.Bind(LibraryWordRail.WordKey(codes[i])), Code: c,
-                                               Chevron: () => sort.Value == c && desc.Value);
-        }
-        return Controls.Words.Rail(words, sort, fill: true,
-            onReselect: _ => desc.Value = !desc.Peek(),
-            onSelect: _ => desc.Value = false);
-    }
 
     /// <summary>The reader's scope rail (W3/W4): "in your library" · "all releases · N" — the same words with no
     /// direction flip. The total rides a <see cref="Prop{T}"/> so the facets answering re-fires ONE text bind instead of
@@ -173,9 +153,15 @@ public readonly partial struct User
     /// <summary>The toggle beside the rail: list (1) / grid (3) glyphs, then "…" for the trimmed <see cref="ViewPanel"/>
     /// (the compact variants + S/M/L). View codes stay 0..3 and stay persisted; the list/grid glyphs keep whichever
     /// compactness the persisted code already carried.</summary>
-    public static Element ViewToggle(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size));
+    public static Element ViewToggle(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size, false));
 
-    sealed class ViewToggleHost(Signal<int> view, Signal<int> size) : Component
+    /// <summary>The one-button form for a row with no room for three cells (Podcasts' filter row at the 208-DIP pane):
+    /// ONE <see cref="Controls.IconButtonSize"/> button that shows the CURRENT view's glyph and opens the same
+    /// <see cref="ViewPanel"/> flyout as the "…" cell (the four view variants + S/M/L), so nothing the full toggle offers
+    /// is lost. Its tooltip (the accessible name) is the "View as" label.</summary>
+    public static Element ViewToggleCompact(Signal<int> view, Signal<int> size) => Embed.Comp(() => new ViewToggleHost(view, size, true));
+
+    sealed class ViewToggleHost(Signal<int> view, Signal<int> size, bool compact) : Component
     {
         NodeHandle _anchor;
         OverlayHandle? _handle;
@@ -197,6 +183,10 @@ public readonly partial struct User
                     { ConstrainToRootBounds = false });
                 _handle.ClosedAction = () => _handle = null;
             }
+
+            if (compact)
+                return Controls.Named(Controls.IconAction(ViewGlyph(v), Flyout) with { Key = "lib:viewpanel", OnRealized = h => _anchor = h },
+                    Loc.Get(Strings.Library.ViewAs));
 
             return new BoxEl
             {
@@ -370,7 +360,7 @@ public readonly partial struct User
         Direction = 1, Shrink = 0f, Fill = Tok.FillLayerDefault,
         Children =
         [
-            new BoxEl { Padding = new Edges4(Spacing.M, Spacing.S, Spacing.M, Spacing.S), Children = [BreadcrumbBar.Create(crumbs, onPick)] },
+            new BoxEl { Padding = new Edges4(PageGeometry.PaneInset, Spacing.S, PageGeometry.PaneInset, Spacing.S), Children = [BreadcrumbBar.Create(crumbs, onPick)] },
             new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault },
         ],
     };
@@ -412,6 +402,14 @@ public readonly partial struct User
     public const float NavRowExtent = NavRowPlate + 2f * NavRowMarginY,
                        NavRowCompactExtent = NavRowCompactPlate + 2f * NavRowMarginY;
 
+    /// <summary>The navigator row's art starts on <see cref="PageGeometry.PaneInset"/>, like the toolbar's rail and filter
+    /// above it: the bound chrome already puts <see cref="NavRowMarginX"/> between the pane edge and the plate, so the
+    /// plate's own left padding is the inset less that margin. The hover plate keeps the engine's margin.</summary>
+    public const float NavRowArtInset = PageGeometry.PaneInset - NavRowMarginX;
+
+    /// <summary>The horizontal half of the bound chrome's plate margin (<c>s_backplateMargin {4,2,4,2}</c>).</summary>
+    public const float NavRowMarginX = 4f;
+
     /// <summary>A navigator LIST row (plate 40 compact / 56, outer extent 44 / 60): 40×40 art (r 20 artist / 5 album,
     /// show) + title 14/20/600 + subtitle 12/16 — compact drops both the art and the subtitle. Wears the bound
     /// AccentPill chrome.</summary>
@@ -427,7 +425,7 @@ public readonly partial struct User
         };
         Element content = new BoxEl
         {
-            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(Spacing.S, 0f, Spacing.S, 0f),
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Center, Gap = Spacing.M, Padding = new Edges4(NavRowArtInset, 0f, Spacing.S, 0f),
             Draggable = DragOf(scope),
             Children = compact ? [text] : [ArtBox(scope, 40f, circular ? 20f : 5f), text],
         };

@@ -27,6 +27,18 @@
 // `Button.*` directly. This pill is for MEDIA PRIMARIES only. It is also NOT the skin for circular play FABs sitting ON
 // artwork: those keep their round geometry and their own scale cues.
 //
+// ── THE 32/r4 GRAMMAR (Workstream B), AS THE DETAIL COMMAND BAR USES IT ──────────────────────────────────────────────
+//
+//   ┌─ role ────────────┬─ builder ─────────────────────────────────────────────────────────────────────────────────┐
+//   │ Primary           │ PlayButton / ContextPlayButton (the artist page's Play); on a CONTAINER's command bar the   │
+//   │                   │ PlaySplitButton: the SAME accent look as ONE engine SplitButton, 88 + 1 + 32 = 121 DIP,     │
+//   │                   │ whose chevron menu is always Add to queue · Play next · Start radio.                        │
+//   │ Secondary         │ SecondaryButton: the artist page's bordered Standard button (Shuffle), labelled or          │
+//   │                   │ icon-only.                                                                                  │
+//   │ Quiet icon        │ QuietIconButton (share) · Controls.SaveButton (the heart) · Detail.MoreButton (more): the   │
+//   │                   │ stock 32/r4 icon button, transparent until hover.                                           │
+//   └───────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────┘
+//
 // ── THE ICON-BUTTON GEOMETRY TABLE ───────────────────────────────────────────────────────────────────────────────────
 //
 // A button with no label has no text to say what it is, so its SHAPE has to. The app had FIVE shapes doing that job
@@ -61,6 +73,7 @@ using FluentGpu.Dsl;
 using FluentGpu.Foundation;
 using FluentGpu.Hooks;
 using FluentGpu.Localization;
+using FluentGpu.Signals;
 
 namespace Wavee;
 
@@ -153,6 +166,45 @@ public static partial class Controls
             DisabledFill = s.DisabledBackground,
         });
     }
+
+    /// <summary>The standard SECONDARY action — the artist page's Shuffle: the stock Standard-appearance bordered button
+    /// (32/r4, the control-fill ramp and elevation hairline). Labelled when <paramref name="showLabel"/>
+    /// (<c>Button.Create(label, …, glyph:)</c>, exactly the artist's); otherwise the same plate and hairline as a 32 × 32
+    /// icon-only square, named by a tooltip (the engine carries no accessible-name property on a box, so the name rides
+    /// the tooltip like <see cref="Named"/>). The two forms are one grammar so a command bar can drop the label under
+    /// width pressure without the button changing look.</summary>
+    public static Element SecondaryButton(string glyph, string label, Action onClick, bool showLabel)
+    {
+        if (showLabel) return Button.Create(label, onClick, ButtonAppearance.Standard, glyph: glyph);
+        var s = Button.DefaultStyle(ButtonAppearance.Standard);
+        var box = IconButton.Create(glyph, onClick, style: IconButton.DefaultStyle with
+        {
+            Size = IconButtonSize,
+            CornerRadius = Radii.Control,
+            Foreground = s.Foreground,
+            HoverForeground = s.HoverForeground,
+            PressedForeground = s.PressedForeground,
+            DisabledForeground = s.DisabledForeground,
+            Fill = s.Background,
+            HoverFill = s.HoverBackground,
+            PressedFill = s.PressedBackground,
+            DisabledFill = s.DisabledBackground,
+        }) with
+        {
+            // The button ramp's HAIRLINE, which the icon-button style has no knob for (the IconPill's seam).
+            BorderBrush = s.BorderBrush,
+            HoverBorderBrush = s.HoverBorderBrush,
+            PressedBorderBrush = s.PressedBorderBrush,
+            BorderWidth = s.BorderWidth,
+        };
+        return Named(box, label);
+    }
+
+    /// <summary>A QUIET icon button — the stock 32/r4 <see cref="IconAction"/> (transparent until hover) with its NAME on
+    /// the tooltip. Share is this; the heart is <see cref="SaveButton"/> and more is <c>Detail.MoreButton</c>, on the same
+    /// 32/r4 ladder. A null <paramref name="onClick"/> is a no-op button.</summary>
+    public static Element QuietIconButton(string glyph, string name, Action? onClick)
+        => Named(IconAction(glyph, onClick), name);
 
     /// <summary>The ONE on-media scrim button ramp (Workstream B) — a <see cref="Button.ButtonPalette"/> for a labeled
     /// or icon-only stock control sitting directly on artwork (a video poster's transport row, a cover-corner action
@@ -284,12 +336,21 @@ public static partial class Controls
     }
 
     /// <summary>Row 3, and the DEFAULT: the standard 32 × 32, 4-radius icon button. Toolbars, panels, rows, flyouts,
-    /// dialogs. If a new icon affordance is not obviously one of the other two rows, it is this one.</summary>
+    /// dialogs. If a new icon affordance is not obviously one of the other two rows, it is this one.
+    /// <para><paramref name="onMedia"/> is the glyph on a DARK field in either theme (the artist bleed's hero): on-media
+    /// ink with the glass hover/press ramp, instead of the theme's near-black glyph that would vanish there.</para></summary>
     public static BoxEl IconAction(string glyph, Action? onClick, bool requestsContext = false,
-                                   float size = IconButtonSize)
+                                   float size = IconButtonSize, bool onMedia = false)
     {
-        var box = IconButton.Create(glyph, onClick ?? NoOp,
-            style: IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control }) with
+        var style = IconButton.DefaultStyle with { Size = size, CornerRadius = Radii.Control };
+        if (onMedia)
+            style = style with
+            {
+                Foreground = Design.OnMedia.Ink, HoverForeground = Design.OnMedia.Ink,
+                PressedForeground = Design.OnMedia.InkSecondary, DisabledForeground = Design.OnMedia.InkTertiary,
+                Fill = Design.OnMedia.GlassRest, HoverFill = Design.OnMedia.GlassHover, PressedFill = Design.OnMedia.GlassPressed,
+            };
+        var box = IconButton.Create(glyph, onClick ?? NoOp, style: style) with
         {
             HoverScale = Design.Motion.ScaleSubtle.Hover,
             PressScale = Design.Motion.ScaleSubtle.Press,
@@ -370,6 +431,13 @@ public static partial class Controls
     /// <inheritdoc cref="TextActionSize"/>
     public const ushort TextActionWeight = 600;
 
+    /// <summary>A <see cref="TextAction"/>'s ink over a backdrop (the artist bleed): the rest ink is a live thunk (bound at paint
+    /// rate), the hover and pressed arms are static colours. Resolved by the band that hosts the action, which owns the signals
+    /// behind it; null = the control's own tokens. The <c>Accent*</c> arms are the primary verb's / a latched toggle's: left null, an
+    /// accent word keeps the page's own accent text ramp.</summary>
+    public readonly record struct TextActionInk(Func<ColorF> Rest, ColorF Hover, ColorF Pressed,
+                                                Func<ColorF>? AccentRest = null, ColorF AccentHover = default, ColorF AccentPressed = default);
+
     /// <summary>A PLATELESS labelled action for a context-band row.
     ///
     /// <para><b>Ink is the whole state model.</b> Rest secondary → hover primary, eased by the engine's own hover
@@ -395,12 +463,31 @@ public static partial class Controls
     /// file carries none of the detail frame's arithmetic. The defaults are the 0.2.9 values: 56 − 2 × 12 = 32, and a
     /// 10-DIP waist.</para></summary>
     public static BoxEl TextAction(string label, Action? onClick, bool primary = false, bool toggledOn = false,
-                                   string? glyph = null, float height = 32f, float padX = 10f)
+                                   string? glyph = null, float height = 32f, float padX = 10f, TextActionInk? ink = null)
     {
         bool accent = primary || toggledOn;
         ColorF rest = accent ? Tok.AccentTextPrimary : Tok.TextSecondary;
         ColorF hover = accent ? Tok.AccentTextSecondary : Tok.TextPrimary;
         ColorF pressed = accent ? Tok.AccentTextTertiary : Tok.TextSecondary;
+        // INK OVER A BACKDROP: a band that sits over the artist photo resolves its ink (the caller owns the signals) and passes it in:
+        // the word's rest colour binds to it (paint rate) and its static hover/pressed arms are the given ones. An accent word (the
+        // primary verb, a latched toggle) takes the accent arms when given: the page's accent text ramp is the dark one in the light theme.
+        Prop<ColorF> restBind = rest;
+        if (ink is { } over)
+        {
+            if (!accent)
+            {
+                restBind = Prop.Of(over.Rest);
+                hover = over.Hover;
+                pressed = over.Pressed;
+            }
+            else if (over.AccentRest is { } accentRest)
+            {
+                restBind = Prop.Of(accentRest);
+                hover = over.AccentHover;
+                pressed = over.AccentPressed;
+            }
+        }
 
         var kids = new System.Collections.Generic.List<Element>(2);
         // The optional LEADING glyph wears the SAME rest/hover/pressed ink triple as the word, so the two brighten
@@ -409,12 +496,12 @@ public static partial class Controls
             kids.Add(new TextEl(glyph)
             {
                 Size = 14f, FontFamily = Theme.IconFont,
-                Color = rest, HoverColor = hover, PressedColor = pressed,
+                Color = restBind, HoverColor = hover, PressedColor = pressed,
             });
         kids.Add(new TextEl(label)
         {
             Size = TextActionSize, LineHeight = TextActionLineHeight, Weight = TextActionWeight,
-            Color = rest, HoverColor = hover, PressedColor = pressed,
+            Color = restBind, HoverColor = hover, PressedColor = pressed,
             MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
         });
 
@@ -507,6 +594,192 @@ public static partial class Controls
             return pause
                 ? PlayButton(Accent(), OnClick, Loc.Get(Strings.Home.Pause), Icons.Pause)
                 : PlayButton(Accent(), OnClick);
+        }
+    }
+
+    // ══ THE PLAY SPLIT — one engine SplitButton wearing the artist page's Play look ═══════════════════════════════════
+
+    /// <summary>The Play SPLIT on a container's command bar: ONE engine <see cref="SplitButton"/> — nothing hand-rolled, so
+    /// the two halves keep their own hit targets, the focus ring and the stock keyboard (Enter / Space plays; Down / F4
+    /// opens the menu) — dressed through <see cref="TemplateParts"/> in <see cref="PlayButton(Func{ColorF}, Action, string?, string?)"/>'s
+    /// look: the accent fill (<see cref="Button.ButtonPalette.ForAccent"/> read live through <paramref name="accent"/>), r4,
+    /// 32 tall, a play glyph and a semibold "Play". 88 + 1 + 32 = <see cref="ButtonRules.PlaySplitWidthNominal"/> DIP.
+    /// <para>The primary follows Play/Pause (<see cref="ShowsPause(string)"/>) like <see cref="ContextPlayButton"/>. The
+    /// chevron's menu is ALWAYS <see cref="ButtonRules.PlaySplitItems"/> — Add to queue · Play next · Start radio — so no
+    /// verb is nullable: each owns its own "nothing to add" / "couldn't start radio" toast.</para>
+    /// <para>The verbs freeze at mount (a component's props do), so each must depend on the SUBJECT only; the host is keyed
+    /// by <paramref name="subjectUri"/>, so another subject remounts it.</para></summary>
+    public static Element PlaySplitButton(string subjectUri, Func<ColorF> accent, Action play, Action addToQueue,
+                                          Action playNext, Action startRadio)
+        => Embed.Comp(() => new PlaySplitHost
+        {
+            Uri = subjectUri, Accent = accent, Play = play, AddToQueue = addToQueue, PlayNext = playNext, StartRadio = startRadio,
+        }) with { Key = "playsplit:" + subjectUri };
+
+    sealed class PlaySplitHost : Component
+    {
+        public required string Uri { get; init; }
+        public required Func<ColorF> Accent { get; init; }
+        public required Action Play { get; init; }
+        public required Action AddToQueue { get; init; }
+        public required Action PlayNext { get; init; }
+        public required Action StartRadio { get; init; }
+
+        public override Element Render()
+        {
+            var accent = Accent;
+            var uri = Uri;
+            return SplitButton.Create(
+                Embed.Comp(() => new PlaySplitLabelHost { Uri = uri, Accent = accent }),
+                Play, MenuItems(), parts: PartsFor(accent));
+        }
+
+        IReadOnlyList<MenuFlyoutItem> MenuItems()
+        {
+            var items = new List<MenuFlyoutItem>(ButtonRules.PlaySplitItems.Length);
+            foreach (var verb in ButtonRules.PlaySplitItems)
+                items.Add(verb switch
+                {
+                    ButtonRules.PlaySplitVerb.AddToQueue => new MenuFlyoutItem(Loc.Get(Strings.Detail.AddToQueue),
+                        ActionIcons.Resolve(ActionIcons.Queue), true, AddToQueue),
+                    ButtonRules.PlaySplitVerb.PlayNext => new MenuFlyoutItem(Loc.Get(Strings.Detail.PlayNext),
+                        ActionIcons.Resolve(ActionIcons.PlayNext), true, PlayNext),
+                    _ => new MenuFlyoutItem(Loc.Get(Strings.Detail.StartRadio),
+                        ActionIcons.Resolve(ActionIcons.Radio), true, StartRadio),
+                });
+            return items;
+        }
+
+        /// <summary>The accent look, as Props over the palette's states so a late-landing cover accent re-tints the live
+        /// nodes, read as ONE accent control like <see cref="PrimaryButton"/>. Each HALF swaps its own fill (rest → hover →
+        /// pressed, the tiers the stock accent Button swaps), so hovering Play does not light the chevron. While the menu is
+        /// open the engine hands the primary a non-transparent fill (the pressed plate); that is read ONCE into a shared
+        /// <c>open</c> flag (the engine builds the primary first) which the divider, the chevron ink and the root border
+        /// follow, so the halves agree.
+        /// <para>The root draws the ONE border (<see cref="Tok.AccentControlElevationBorder"/>, transparent while open) over
+        /// a transparent fill, rounds (r4) and clips; a border is paint-only, so the 88 + 1 + 32 = 121 width does not move.
+        /// The 1-DIP divider is a FULL-HEIGHT column in the half's live fill (opaque, so the page never shows through it
+        /// and no notch can read as an outline) holding a centred 20-tall hairline of ink at ~20%. The chevron is a 12 px
+        /// <see cref="Icons.ChevronDown"/> that dims with the pressed ink while open or pressed; the chevron half holds the
+        /// tooltip that names it (the engine has no accessible-name property on a box).</para></summary>
+        static TemplateParts PartsFor(Func<ColorF> accent)
+        {
+            Button.ButtonPalette Pal() => Button.ButtonPalette.ForAccent(accent());
+            string optionsName = Loc.Get(Strings.Detail.PlayOptions);
+            bool open = false;
+            return new TemplateParts
+            {
+                [SplitButton.PartRoot] = e => e with
+                {
+                    Fill = ColorF.Transparent,
+                    BorderWidth = 1f,
+                    BorderBrush = open ? GradientSpec.Solid(ColorF.Transparent) : Tok.AccentControlElevationBorder,
+                    Corners = Radii.ControlAll, MinHeight = ButtonHeight, ClipToBounds = true,
+                },
+                [SplitButton.PartPrimaryButton] = e =>
+                {
+                    open = e.Fill.Value.A > 0f;
+                    bool o = open;
+                    return e with
+                    {
+                        MinWidth = ButtonRules.PlaySplitPrimaryMinW, Height = ButtonHeight,
+                        Padding = new Edges4(12f, 0f, 12f, 0f),
+                        Fill = Prop.Of(() => o ? Pal().Background.Pressed : Pal().Background.Rest),
+                        HoverFill = Prop.Of(() => Pal().Background.Hover),
+                        PressedFill = Prop.Of(() => Pal().Background.Pressed),
+                    };
+                },
+                [SplitButton.PartSecondaryButton] = e =>
+                {
+                    bool o = open;
+                    return e with
+                    {
+                        Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
+                        Padding = default, Justify = FlexJustify.Center,
+                        Fill = Prop.Of(() => o ? Pal().Background.Pressed : Pal().Background.Rest),
+                        HoverFill = Prop.Of(() => Pal().Background.Hover),
+                        PressedFill = Prop.Of(() => Pal().Background.Pressed),
+                    };
+                },
+                [SplitButton.PartDivider] = e =>
+                {
+                    bool o = open;
+                    return e with
+                    {
+                        Width = 1f, Height = ButtonHeight, AlignSelf = FlexAlign.Center,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Fill = Prop.Of(() => o ? Pal().Background.Pressed : Pal().Background.Rest),
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Width = 1f, Height = 20f,
+                                Fill = Prop.Of(() => Pal().Foreground.Rest with { A = 0.20f }),
+                            },
+                        ],
+                    };
+                },
+                // The chevron box fills the half so the tooltip covers all of it; the glyph is the palette ink.
+                [SplitButton.PartChevron] = e =>
+                {
+                    bool o = open;
+                    return e with
+                    {
+                        Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
+                        Children =
+                        [
+                            ToolTip.Wrap(new BoxEl
+                            {
+                                Width = ButtonRules.PlaySplitChevronW, Height = ButtonHeight,
+                                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                                Children =
+                                [
+                                    new TextEl(Icons.ChevronDown)
+                                    {
+                                        Size = 12f, FontFamily = Theme.IconFont,
+                                        Color = Prop.Of(() => o ? Pal().Foreground.Pressed : Pal().Foreground.Rest),
+                                        PressedColor = Pal().Foreground.Pressed,   // a cold field: read when the half builds
+                                    },
+                                ],
+                            }, optionsName),
+                        ],
+                    };
+                },
+            };
+        }
+    }
+
+    /// <summary>The split's primary face: ▶ Play, or ⏸ Pause while the subject plays. Its own component so the flip
+    /// re-renders this label and not the split around it (the SplitButton freezes its content slot at mount).</summary>
+    sealed class PlaySplitLabelHost : Component
+    {
+        public required string Uri { get; init; }
+        public required Func<ColorF> Accent { get; init; }
+        EntityId _id;
+        bool _parsed;
+
+        public override Element Render()
+        {
+            if (!_parsed) { _id = EntityId.Parse(Uri); _parsed = true; }
+            bool pause = ShowsPause(_id);
+            var accent = Accent;
+            Prop<ColorF> ink = Prop.Of(() => Button.ButtonPalette.ForAccent(accent()).Foreground.Rest);
+            ColorF pressedInk = Button.ButtonPalette.ForAccent(accent()).Foreground.Pressed;   // PressedColor is a cold field, not a Prop
+            return new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f,       // Button.Build's icon-to-label gap
+                Children =
+                [
+                    new TextEl(pause ? Icons.Pause : Icons.Play)
+                    {
+                        Size = 16f, FontFamily = Theme.IconFont, Color = ink, PressedColor = pressedInk,
+                    },
+                    new TextEl(pause ? Loc.Get(Strings.Home.Pause) : Loc.Get(Strings.Detail.Play))
+                    {
+                        Size = 14f, Weight = 600, Color = ink, PressedColor = pressedInk, MaxLines = 1, Wrap = TextWrap.NoWrap,
+                    },
+                ],
+            };
         }
     }
 }

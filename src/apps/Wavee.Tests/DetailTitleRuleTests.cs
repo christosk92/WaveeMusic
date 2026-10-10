@@ -38,7 +38,7 @@ public class DetailTitleRuleTests
         "running on sentence after sentence about the songs inside it, the summer they were collected in, the friends " +
         "who suggested them, and the long drive home that none of the passengers wanted to end, until it simply stops.";
 
-    static float Cover(float railW) => MathF.Max(80f, railW - 24f);   // RailCoverEdge: the rail less its 16 + 8 side pads
+    static float Cover(float railW) => RailPolicy.CoverEdge(railW);   // RailCoverEdge: the rail less its 16 + 24 side pads
 
     // ── the rail ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -58,14 +58,14 @@ public class DetailTitleRuleTests
                 }
     }
 
-    /// <summary>The owner's exact case: the mode-2 rail at rest (188 → a 164-DIP cover), the short-window rung (28). The
+    /// <summary>The owner's exact case: the mode-2 rail at rest (188 → a 148-DIP cover), the short-window rung (28). The
     /// title keeps every word (no cap reached) in the natural line box of the size it is drawn at — never the 36-DIP box
     /// of the 28 rung around smaller glyphs.</summary>
     [Fact]
     public void Rail_OwnersTitle_AtTheNarrowRestRail_WrapsInItsOwnLineBox()
     {
         float cover = Cover(RailPolicy.NarrowRestWidth);
-        Assert.Equal(164f, cover);
+        Assert.Equal(148f, cover);
         var plan = VerticalLayout.RailTitleTypeFor(cover, 28f, OwnersTitle);
         Assert.True(plan.Lines >= 3 && plan.Lines < VerticalLayout.TitleLineCap, $"{plan.Lines} lines");
         Assert.Equal(VerticalLayout.NaturalLineHeightFor(plan.Size), plan.LineHeight);

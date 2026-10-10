@@ -9,6 +9,7 @@
 //   THE AUTO-ZOOM LOOP DETECTS A MANUAL MOVE AGAINST ITS OWN LAST PICK. Comparing the live zoom against the suggestion
 //   instead makes every Ctrl+± silently undone on the next resize tick.
 
+using FluentGpu.Animation;
 using Xunit;
 
 namespace Wavee.Tests;
@@ -57,6 +58,145 @@ public class ShellFrameGeometryTests
         Assert.Equal(1200f - 340f - Shell.FrameRules.SeamStripW, Shell.FrameRules.RailSeamX(1200f, 340f));
         Assert.Equal(Shell.FrameRules.SeamStripW, Shell.FrameRules.RailSeamWidth(open: true));
         Assert.Equal(0f, Shell.FrameRules.RailSeamWidth(open: false));
+    }
+
+    [Fact]
+    public void The_card_width_is_the_viewport_less_the_columns_beside_it_and_never_negative()
+    {
+        // 1400 window, 280 pane, an inline 360 rail with its 8 gap: the seam strips are overlays and take no width.
+        Assert.Equal(752f, Shell.FrameRules.CardWidth(1400f, 280f, 8f, 360f));
+        // A window narrower than its columns clamps at 0 rather than going negative.
+        Assert.Equal(0f, Shell.FrameRules.CardWidth(300f, 280f, 8f, 360f));
+        // The Zune frame: no pane and no left gap (the page bleeds to the window edge), no rail.
+        Assert.Equal(1200f, Shell.FrameRules.CardWidth(1200f, 0f, 0f, 0f));
+    }
+
+    [Fact]
+    public void The_card_motion_is_one_300_ms_tween_shared_by_the_pane_the_card_and_the_band()
+        => Assert.Equal(300f, Shell.FrameRules.CardMotionMs);
+
+    [Fact]
+    public void There_is_one_frame_gap_and_the_rail_gap_is_it()
+        => Assert.Equal(Shell.FrameRules.FrameGap, Shell.FrameRules.RailGapW);
+
+    [Theory]
+    [InlineData(SidebarPaneMode.Expanded, true)]
+    [InlineData(SidebarPaneMode.Compact, true)]
+    [InlineData(SidebarPaneMode.Minimal, false)]
+    public void A_pane_is_docked_beside_the_card_in_the_Expanded_and_Compact_modes_only(SidebarPaneMode mode, bool docked)
+        => Assert.Equal(docked, Shell.FrameRules.PaneDocked(mode));
+
+    [Fact]
+    public void The_rail_coat_top_equals_the_content_card_top()
+    {
+        // Both read Shell.StrokeOverhang, whose top is this constant: no offset, so the rail's top lines up with the card's.
+        Assert.Equal(0f, Shell.FrameRules.StrokeOverhangTop);
+    }
+
+    [Fact]
+    public void With_no_pane_docked_the_card_is_flush_with_a_square_corner_and_no_left_stroke()
+    {
+        // Zune always presents Minimal; Classic and Library do in the Tiny band or with the pane hidden.
+        bool docked = Shell.FrameRules.PaneDocked(SidebarPaneMode.Minimal);
+        Assert.Equal(0f, Shell.FrameRules.ContentCardX(0f));
+        Assert.Equal(default, Shell.FrameRules.ContentCorners(docked));
+        Assert.Equal(0f, Shell.FrameRules.ContentCorners(docked).TopLeft);
+        // The stroke box is shifted by its own width: the left stroke leaves the card's clip.
+        Assert.Equal(-Shell.FrameRules.StrokeW, Shell.FrameRules.StrokeLeftShift(docked));
+    }
+
+    [Theory]
+    [InlineData(SidebarPaneMode.Expanded)]
+    [InlineData(SidebarPaneMode.Compact)]
+    public void With_a_docked_pane_the_card_keeps_its_rounded_top_left_corner_and_stroke(SidebarPaneMode mode)
+    {
+        bool docked = Shell.FrameRules.PaneDocked(mode);
+        Assert.Equal(Design.Size.ContentPaneCorners, Shell.FrameRules.ContentCorners(docked));
+        Assert.Equal(FluentGpu.Dsl.Radii.Card, Shell.FrameRules.ContentCorners(docked).TopLeft);
+        Assert.Equal(0f, Shell.FrameRules.StrokeLeftShift(docked));
+    }
+
+    [Theory]
+    [InlineData(ShellNavStyle.Classic, true)]
+    [InlineData(ShellNavStyle.Library, true)]
+    [InlineData(ShellNavStyle.Zune, false)]
+    public void The_card_hairline_shows_in_Classic_and_Library_and_never_in_Zune(ShellNavStyle style, bool shows)
+        => Assert.Equal(shows, Shell.FrameRules.CardStrokeShows(style));
+
+    [Fact]
+    public void A_light_docked_pane_caps_the_tone_plane_at_the_subtle_value_so_the_card_stays_lifted()
+    {
+        float subtle = CoverPageTonePlane.PlaneAlphaLight;
+        // Light + docked: Rich (0.45) drops to the Subtle light value; Subtle is already there.
+        Assert.Equal(subtle, Design.Wash.PlaneAlpha(light: true, rich: true, paneDocked: true));
+        Assert.Equal(subtle, Design.Wash.PlaneAlpha(light: true, rich: false, paneDocked: true));
+        // No pane (Zune, Minimal): untouched, Rich keeps its pair.
+        Assert.Equal(Design.Wash.PlaneAlpha(light: true, rich: true), Design.Wash.PlaneAlpha(light: true, rich: true, paneDocked: false));
+        // Dark never caps, docked or not.
+        Assert.Equal(Design.Wash.PlaneAlpha(light: false, rich: true), Design.Wash.PlaneAlpha(light: false, rich: true, paneDocked: true));
+        Assert.Equal(Design.Wash.PlaneAlpha(light: false, rich: false), Design.Wash.PlaneAlpha(light: false, rich: false, paneDocked: true));
+    }
+
+    [Fact]
+    public void The_Zune_style_presents_no_pane_so_it_is_always_undocked()
+    {
+        foreach (var band in new[] { SidebarWindowBand.Wide, SidebarWindowBand.Narrow, SidebarWindowBand.Tiny })
+        {
+            var mode = SidebarPaneModeRules.Resolve(band, userCollapsed: false, editing: false, paneHidden: true);
+            Assert.False(Shell.FrameRules.PaneDocked(mode));
+        }
+    }
+
+    [Fact]
+    public void The_chrome_edge_snap_window_is_shorter_than_a_card_tween()
+    {
+        // Long enough for the edge's commit, short enough that a nav-style switch right after still animates.
+        Assert.InRange(Shell.FrameRules.ChromeEdgeSnapMs, 1f, Shell.FrameRules.CardMotionMs - 1f);
+    }
+
+    [Fact]
+    public void The_Zune_band_inset_is_the_gutter_because_the_band_is_card_relative()
+    {
+        Assert.Equal(36f, Shell.FrameRules.ZuneBandInset(36f));
+        Assert.Equal(32f, Shell.FrameRules.ZuneBandInset(32f));
+        Assert.Equal(PageGeometry.GutterWide, Shell.FrameRules.ZuneBandInset(PageGeometry.GutterWide));
+    }
+
+    [Theory]
+    [InlineData(true, 84f, 0f)]
+    [InlineData(false, 84f, 84f)]
+    [InlineData(false, 52f, 52f)]
+    [InlineData(false, 0f, 0f)]
+    [InlineData(true, 0f, 0f)]
+    public void The_rail_overlay_starts_under_the_band_only_when_it_floats(bool fits, float band, float expected)
+    {
+        Assert.Equal(expected, Shell.FrameRules.RailOverlayTop(fits, band));
+    }
+
+    [Theory]
+    [InlineData(500f, false)]
+    [InlineData(500f, true)]
+    [InlineData(700f, false)]
+    [InlineData(700f, true)]
+    [InlineData(1200f, false)]
+    [InlineData(1200f, true)]
+    public void Under_Zune_the_first_pivot_word_and_the_page_title_share_an_x(float w, bool railOpen)
+    {
+        // The pane is hidden under Zune, so the sidebar column is 0 wide whatever the band; the card starts at the window edge.
+        var band = SidebarPaneModeRules.BandOf(w, SidebarWindowBand.Wide);
+        var mode = SidebarPaneModeRules.Resolve(band, false, false, paneHidden: true);
+        float column = SidebarPaneModeRules.PresentedWidth(mode, 280f, w);
+        Assert.Equal(0f, column);
+
+        float railGap = Shell.FrameRules.RailGapWidth(railOpen, fits: true);
+        float railReserved = Shell.FrameRules.RailReservedWidth(railOpen, fits: true, 360f);
+        float cardW = Shell.FrameRules.CardWidth(w, column, railGap, railReserved);
+        float gutter = PageGeometry.GutterFor(cardW);
+
+        float pageTitleX = Shell.FrameRules.ContentCardX(column) + gutter;
+        Assert.Equal(0f, Shell.FrameRules.ContentCardX(column));
+        // The band is the page column's first child, so its inset is card-relative: card x (0 here) plus the same inset.
+        Assert.Equal(pageTitleX, Shell.FrameRules.ContentCardX(column) + Shell.FrameRules.ZuneBandInset(gutter));
     }
 
     [Theory]
@@ -334,4 +474,295 @@ public class ShellChromeSearchFieldWidthTests
                 Assert.InRange(c.SearchWidth, Shell.Layout.ChromeSearchMinW, Shell.Layout.ChromeSearchMaxW);
         }
     }
+}
+
+public class ShellHoistSettleTests
+{
+    [Fact]
+    public void The_hoist_lands_after_the_card_tween()
+        => Assert.True(Shell.FrameRules.HoistSettleMs > Shell.FrameRules.CardMotionMs);
+
+    [Fact]
+    public void The_hoist_never_lands_while_a_frame_motion_is_in_flight()
+    {
+        Assert.True(Shell.FrameRules.HoistSettleMs >= MotionTok.PaneOpen.DurationMs);
+        Assert.True(Shell.FrameRules.HoistSettleMs >= MotionTok.PaneClose.DurationMs);
+    }
+}
+
+/// <summary>P10: the Zune title bar. The wordmark stands in for the tab strip at one tab, the search is a compact field
+/// before the avatar, Forward is never priced, and the theme toggle left the row in every style.</summary>
+public class ShellZuneChromeTests
+{
+    static readonly float[] Widths = [900f, 1100f, 1400f, 1800f];
+    static readonly float[] Extents = [110f, 400f];
+
+    static readonly Shell.FrameRules.ChipForm[] Chips =
+    [
+        Shell.FrameRules.ChipForm.Profile, Shell.FrameRules.ChipForm.Connecting,
+        Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
+    ];
+
+    [Theory]
+    [InlineData(ShellNavStyle.Zune, 1, true)]
+    [InlineData(ShellNavStyle.Zune, 0, true)]
+    [InlineData(ShellNavStyle.Zune, 2, false)]
+    [InlineData(ShellNavStyle.Zune, 7, false)]
+    [InlineData(ShellNavStyle.Classic, 1, false)]
+    [InlineData(ShellNavStyle.Library, 1, false)]
+    [InlineData(ShellNavStyle.Classic, 0, false)]
+    public void The_wordmark_replaces_the_strip_only_under_zune_with_at_most_one_tab(ShellNavStyle style, int tabs, bool wordmark)
+        => Assert.Equal(wordmark, Shell.FrameRules.ShowsWordmark(style, tabs));
+
+    [Fact]
+    public void A_compact_search_is_exactly_the_minimum_and_the_row_still_seats_it()
+    {
+        foreach (var chip in Chips)
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+        {
+            var compact = Shell.Chrome.Resolve(w, extent, null, chip, zune: true, compactSearch: true);
+            if (compact.SearchMode != Shell.MergedSearchMode.Field) continue;
+            Assert.Equal(Shell.Layout.ChromeSearchMinW, compact.SearchWidth);
+            Assert.True(compact.FootprintFor(extent) <= w,
+                $"Compact field at {w} (extent {extent}, chip {chip}) needs {compact.FootprintFor(extent)} DIP.");
+        }
+    }
+
+    [Fact]
+    public void Compact_search_never_yields_a_field_where_the_ladder_yields_an_icon()
+    {
+        // The compact width is the minimum the field stage is already admitted on, so it changes the width and nothing else.
+        foreach (var chip in Chips)
+        for (float w = 200f; w <= 2600f; w += 1f)
+        foreach (float extent in Extents)
+        {
+            var classic = Shell.Chrome.Resolve(w, extent, null, chip);
+            var compact = Shell.Chrome.Resolve(w, extent, null, chip, zune: false, compactSearch: true);
+            Assert.Equal(classic.SearchMode, compact.SearchMode);
+            Assert.False(classic.SearchMode == Shell.MergedSearchMode.Icon && compact.SearchMode == Shell.MergedSearchMode.Field);
+            Assert.Equal(classic.ShowActions, compact.ShowActions);
+            Assert.Equal(classic.ShowName, compact.ShowName);
+        }
+    }
+
+    [Fact]
+    public void The_default_flags_are_the_classic_resolution()
+    {
+        foreach (var chip in Chips)
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+            Assert.Equal(Shell.Chrome.Resolve(w, extent, null, chip),
+                Shell.Chrome.Resolve(w, extent, null, chip, zune: false, compactSearch: false));
+    }
+
+    [Fact]
+    public void Zune_never_shows_forward_and_never_prices_it()
+    {
+        for (float w = 200f; w <= 2600f; w += 1f)
+        {
+            var z = Shell.Chrome.Resolve(w, 220f, null, Shell.FrameRules.ChipForm.Profile, zune: true);
+            Assert.False(z.ShowForward, $"Forward shown under Zune at {w}.");
+            // Not pricing Forward can only free room: the field is never LATER than the classic one.
+            var classic = Shell.Chrome.Resolve(w, 220f);
+            Assert.False(classic.SearchMode == Shell.MergedSearchMode.Field && z.SearchMode == Shell.MergedSearchMode.Icon);
+        }
+    }
+
+    [Fact]
+    public void The_theme_toggle_is_no_longer_in_the_budget()
+    {
+        // The baseline row: lead, back, forward, add slot, the avatar, two gutters, the drag strip and the caption cluster.
+        float expected = Shell.Layout.ChromeBarLeadW + 2f * Shell.Layout.ChromeNavButtonW + Shell.Layout.ChromeAddSlotW
+                       + Shell.Layout.ChromeProfileChipW + 2f * Shell.Layout.ChromeGutterMinW
+                       + Shell.Layout.ChromeMinDragStripW + Shell.Layout.ChromeCaptionClusterW;
+        Assert.Equal(expected, Shell.Chrome.FixedBudget(name: false, actionsInRow: false, forward: true, back: true,
+            newTab: true, trailing: true), 3);
+        Assert.Equal(414f, expected, 3);
+    }
+
+    [Theory]
+    [InlineData(false, true, 400f, true)]     // unfocused and empty with room: shown
+    [InlineData(true, true, 400f, false)]     // focused: the ghost completion owns the end of the field
+    [InlineData(false, false, 400f, false)]   // typed text can never run under the chip
+    [InlineData(true, false, 400f, false)]
+    public void The_hint_shows_only_while_the_field_is_unfocused_and_empty(bool focused, bool empty, float width, bool shown)
+        => Assert.Equal(shown, Shell.Chrome.ShowSearchHint(focused, empty, width));
+
+    [Fact]
+    public void The_hint_is_dropped_by_rule_below_the_pill_floor()
+    {
+        float floor = Shell.Chrome.SearchPillMinW;
+        Assert.True(Shell.Chrome.ShowSearchHint(false, true, floor));
+        Assert.False(Shell.Chrome.ShowSearchHint(false, true, floor - 1f));
+        Assert.Equal("Ctrl+F", Shell.Chrome.SearchHintChord);
+    }
+
+    [Fact]
+    public void The_row_never_sizes_the_pill_below_its_floor()
+    {
+        Assert.True(Shell.Layout.ChromeSearchMinW >= Shell.Chrome.SearchPillMinW);
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+        {
+            var c = Shell.Chrome.Resolve(w, extent);
+            if (c.SearchMode == Shell.MergedSearchMode.Field) Assert.True(c.SearchWidth >= Shell.Chrome.SearchPillMinW);
+        }
+    }
+
+    [Fact]
+    public void A_non_finite_allocation_takes_the_compact_width()
+    {
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(float.NaN, float.PositiveInfinity));
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(float.PositiveInfinity, float.PositiveInfinity));
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(280f, float.PositiveInfinity));
+    }
+}
+
+// ── F5: the focused pill widens (allocator-authoritative) ─────────────────────────────────────────────────────────────
+//
+// `Chrome.SearchExpandW` is the width the pill eases to while its field has focus. It is bounded by the RESERVED tab
+// cluster, so `FixedBudget + SearchExpandW + LeadClusterW <= width` and the tabs never move; focus is not an input to
+// `Resolve`, so focusing the field cannot republish the layout. While expanded the laid-out width comes from the
+// allocator (`ExpandedFieldWidth`), never from the elastic lane's measured centre width.
+public class ShellChromeSearchExpandTests
+{
+    static readonly float[] Widths = [900f, 1280f, 1920f];
+    static readonly float[] Extents = [110f, 220f, 600f];
+
+    static readonly Shell.FrameRules.ChipForm[] Chips =
+    [
+        Shell.FrameRules.ChipForm.Profile, Shell.FrameRules.ChipForm.Connecting,
+        Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
+    ];
+
+    static void AssertExpandInvariants(Shell.Chrome c, float width)
+    {
+        if (c.SearchMode == Shell.MergedSearchMode.Field)
+        {
+            Assert.InRange(c.SearchExpandW, c.SearchWidth, Shell.Layout.ChromeSearchMaxW);
+            Assert.True(c.FixedBudgetFor() + c.SearchExpandW + c.LeadClusterW <= width + 0.001f,
+                $"width {width}: {c.FixedBudgetFor()} + {c.SearchExpandW} + {c.LeadClusterW} overruns the row");
+        }
+        else Assert.Equal(Shell.Layout.ChromeSearchIconW, c.SearchExpandW);
+    }
+
+    [Fact]
+    public void The_expanded_width_is_seatable_beside_the_reserved_tab_cluster_in_both_styles()
+    {
+        foreach (var chip in Chips)
+        foreach (bool zune in new[] { false, true })
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+        {
+            var c = Shell.Chrome.Resolve(w, extent, null, chip, zune, compactSearch: zune);
+            AssertExpandInvariants(c, w);
+        }
+    }
+
+    [Fact]
+    public void The_expanded_width_stays_seatable_after_a_narrow_later_hold()
+    {
+        // The hold keeps LeadClusterW ABOVE the required extent after the tabs shrink; the bound is the reserved cluster.
+        foreach (bool zune in new[] { false, true })
+        foreach (float w in Widths)
+        {
+            var wide = Shell.Chrome.Resolve(w, 600f, null, Shell.FrameRules.ChipForm.Profile, zune, compactSearch: zune);
+            // 600 -> 590: a shrink inside the hysteresis band, so the reservation is HELD above the new required extent.
+            var held = Shell.Chrome.Resolve(w, 590f, wide, Shell.FrameRules.ChipForm.Profile, zune, compactSearch: zune);
+            AssertExpandInvariants(held, w);
+            // ...and a shrink past the band releases it; the bound still holds.
+            AssertExpandInvariants(Shell.Chrome.Resolve(w, 120f, held, Shell.FrameRules.ChipForm.Profile, zune, compactSearch: zune), w);
+        }
+    }
+
+    [Fact]
+    public void A_wide_zune_window_rests_at_280_and_expands_to_the_ceiling()
+    {
+        var c = Shell.Chrome.Resolve(1920f, 220f, null, Shell.FrameRules.ChipForm.Profile, zune: true, compactSearch: true);
+        Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
+        Assert.Equal(280f, c.SearchWidth);
+        Assert.Equal(420f, c.SearchExpandW);
+        Assert.Equal(420f, Shell.Chrome.ExpandedFieldWidth(c.SearchExpandW, Shell.Chrome.FieldWidthFor(c.SearchWidth, 280f)));
+    }
+
+    [Fact]
+    public void A_classic_window_widens_beyond_its_rest_width_whatever_the_measured_lane_says()
+    {
+        var c = Shell.Chrome.Resolve(1280f, 220f);
+        Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
+        Assert.True(c.SearchExpandW > c.SearchWidth);
+        float rest = Shell.Chrome.FieldWidthFor(c.SearchWidth, measuredCentreAvail: c.SearchWidth);
+        Assert.Equal(c.SearchWidth, rest);
+        Assert.True(Shell.Chrome.ExpandedFieldWidth(c.SearchExpandW, rest) > rest);
+    }
+
+    [Fact]
+    public void A_lane_of_exactly_280_expands_to_nothing_and_icon_mode_stays_44()
+    {
+        bool found = false;
+        for (float w = 700f; w <= 2600f; w += 1f)
+        {
+            var c = Shell.Chrome.Resolve(w, 220f);
+            if (c.SearchMode != Shell.MergedSearchMode.Field) continue;
+            float lane = Shell.Chrome.SearchLane(w, 220f, c.ShowName, c.ShowActions, c.ShowForward, c.ShowBack,
+                c.ShowNewTab, c.ShowTrailing, c.Chip);
+            if (lane < 280f || lane >= 290f) continue;
+            Assert.Equal(280f, c.SearchExpandW);
+            found = true;
+        }
+        Assert.True(found, "no width in the sweep seats a 280 lane");
+
+        var icon = Shell.Chrome.Resolve(700f, naturalTabExtent: 110f);
+        Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
+        Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.SearchExpandW);
+    }
+
+    [Fact]
+    public void The_expanded_width_ignores_the_measured_lane_and_takes_the_compact_width_for_a_bad_allocation()
+    {
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.ExpandedFieldWidth(float.NaN, 300f));
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.ExpandedFieldWidth(float.PositiveInfinity, 300f));
+        // Never narrower than the rest width, never beyond the ceiling.
+        Assert.Equal(350f, Shell.Chrome.ExpandedFieldWidth(300f, 350f));
+        Assert.Equal(420f, Shell.Chrome.ExpandedFieldWidth(10_000f, 280f));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_ignores_an_unmeasured_pill_edge_or_pivot_edge()
+    {
+        Assert.Equal(420f, Shell.Chrome.CapExpandForPivots(420f, 280f, float.NaN, 300f));
+        Assert.Equal(420f, Shell.Chrome.CapExpandForPivots(420f, 280f, 900f, float.NaN));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_caps_the_width_to_the_room_left_of_the_right_anchored_pill()
+    {
+        // The pill grows leftward from its right edge 800; pivots end at 400: room = 800 - 400 - 12 = 388.
+        Assert.Equal(388f, Shell.Chrome.CapExpandForPivots(420f, 280f, 800f, 400f));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_never_goes_below_the_rest_width()
+    {
+        Assert.Equal(280f, Shell.Chrome.CapExpandForPivots(420f, 280f, 700f, 500f));
+    }
+
+    [Fact]
+    public void CapExpandForPivots_leaves_a_width_that_already_clears_the_pivots()
+    {
+        Assert.Equal(360f, Shell.Chrome.CapExpandForPivots(360f, 280f, 1000f, 400f));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void The_pill_expands_while_focused_or_while_a_suggestions_list_is_open(bool focused, bool listOpen, bool expands)
+        => Assert.Equal(expands, Shell.FrameRules.SearchExpands(focused, listOpen));
+
+    [Fact]
+    public void The_hint_chord_is_unchanged()
+        => Assert.Equal("Ctrl+F", Shell.Chrome.SearchHintChord);
 }

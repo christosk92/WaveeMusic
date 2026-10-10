@@ -33,8 +33,8 @@
 // ── THE CHAPTER SHAPE (one per zone) ──────────────────────────────────────────────────────────────────────────────────
 //
 //   BoxEl { Key = "zone:" + key, ScrollScope = key, Animate = Design.Entrance.Row(i) }
-//   ├─ HEADER  ModuleHeader(title, subtitle, tools, open: null)  .Sticky(Facet.StuckBottom, scope: key)  — paints NOTHING
-//   └─ BODY    .StickyClip(Facet.StuckBottom + HeaderH + HeaderGap)
+//   ├─ HEADER  ModuleHeader(title, subtitle, tools, open: null)  .Sticky(Facet.StuckBottomFor(hoisted), scope: key)  — paints NOTHING
+//   └─ BODY    .StickyClip(BodyClipInsetFor(hoisted))   (= Facet.StuckBottomFor(hoisted) + HeaderH + HeaderGap)
 //              EdgeFade = EdgeFadeSpec(Top, ClipFadeBand) { WhileStuck = true }
 //
 // The header pins under the (transparent) facet row and the body cuts ITSELF at the header's lower edge, feathered only
@@ -94,8 +94,9 @@ public static class Zones
     public const float HeaderGap = Spacing.M;
     /// <summary>The feather the body dissolves through while its clip is engaged (the shelf fade rung, as Browse).</summary>
     public const float ClipFadeBand = Design.Size.FadeShelf;
-    /// <summary>The viewport line a zone body is cut at while its header is pinned.</summary>
-    public static float BodyClipInset => Facet.StuckBottom + HeaderH + HeaderGap;
+    /// <summary>The viewport line a zone body is cut at while its header is pinned: the header's stick line plus the header
+    /// and its gap. With the head hoisted nothing is pinned above the headers, so they pin at <see cref="Facet.StuckInset"/>.</summary>
+    public static float BodyClipInsetFor(bool hoisted) => Facet.StuckBottomFor(hoisted) + HeaderH + HeaderGap;
 
     // ── the grid geometry per body (stock auto-fill: MinColWidth × MaxColumns; the width picks the count) ───────────
 
@@ -166,6 +167,8 @@ public static class Zones
         Element body = Body(zone, overlay, controller);
         Element? header = Header(zone, controller);
         if (header is null) return body;
+        // The PRESENTED nav style: the headers' stick line changes in the quiet hoist commit, with the head's own height.
+        bool hoisted = PageHead.HoistedFor("home");
         return new BoxEl
         {
             Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
@@ -177,14 +180,14 @@ public static class Zones
                     Direction = 1, Justify = FlexJustify.Center, MinWidth = 0f,
                     Height = HeaderH + HeaderGap, Padding = new Edges4(0f, 0f, 0f, HeaderGap),
                     Children = [header],
-                }.Sticky(Facet.StuckBottom, scope: zone.Key),
+                }.Sticky(Facet.StuckBottomFor(hoisted), scope: zone.Key),
                 // The body cuts itself at the header's lower edge, feathered exactly while the cut is engaged.
                 new BoxEl
                 {
                     Direction = 1, MinWidth = 0f, AlignItems = FlexAlign.Stretch,
                     EdgeFade = new EdgeFadeSpec(EdgeMask.Top, ClipFadeBand) { WhileStuck = true },
                     Children = [body],
-                }.StickyClip(BodyClipInset),
+                }.StickyClip(BodyClipInsetFor(hoisted)),
             ],
         };
     }

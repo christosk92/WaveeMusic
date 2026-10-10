@@ -32,9 +32,10 @@ public enum SurfaceLayout : byte { Stack, Row }
 /// and ONE mechanism applies them: the root carries the stroke and the selected skin, a non-hit-testable sibling REVEAL
 /// carries the hover/press fills. <see cref="CardPlate"/> = the subtle plate every card has; <see cref="ListRow"/> = the
 /// same ramp on a row (the list hover every list has); <see cref="Tile"/> = the opaque card fill under a card hairline
-/// that turns accent while the surface relates to playback; <see cref="Outline"/> = a dashed, fill-less "go somewhere"
+/// that turns accent while the surface relates to playback; <see cref="TileStill"/> = the same tile with a hairline that
+/// never follows playback (a browse list, not a now-playing one); <see cref="Outline"/> = a dashed, fill-less "go somewhere"
 /// frame.</summary>
-public enum PlateKind : byte { CardPlate, ListRow, Tile, Outline }
+public enum PlateKind : byte { CardPlate, ListRow, Tile, Outline, TileStill }
 
 /// <summary>Where the "…" lives: over the cover's top-right (<see cref="Corner"/>, stacks); on a row, a hot-revealed 32
 /// icon at the row's end — <see cref="Trailing"/> as an OVERLAY that takes no width (a narrow row keeps its title, and on
@@ -100,6 +101,10 @@ public static class Shape
 
     /// <summary>A row on the opaque card tile (Home's recents).</summary>
     public static readonly SurfaceShape RowTile = Row(48f) with { Plate = PlateKind.Tile };
+
+    /// <summary>A row on the opaque card tile whose hairline stays the card stroke: the album's related rows ("Featured on"),
+    /// where the playing context must not wear a stuck-looking accent outline. Recents and the queue keep <see cref="RowTile"/>.</summary>
+    public static readonly SurfaceShape RowTileStill = Row(48f) with { Plate = PlateKind.TileStill };
 
     /// <summary>A row in the dashed outline (the listening-history tile).</summary>
     public static readonly SurfaceShape RowOutline = Row(48f) with { Plate = PlateKind.Outline };
@@ -185,6 +190,7 @@ public readonly record struct PlateRules(bool HasRootFill, bool HasStroke, bool 
     public static PlateRules Of(PlateKind k) => k switch
     {
         PlateKind.Tile => new(true, true, false, true),
+        PlateKind.TileStill => new(true, true, false, false),
         PlateKind.Outline => new(false, true, true, false),
         _ => new(false, false, false, false),
     };

@@ -526,10 +526,7 @@
       "mostVisited": "MEEST BEZOCHT",
       "visitCount": "{count, plural, one {# bezoek} other {# bezoeken}}",
       "visitMultiplier": "{count}×",
-      "stat": {
-        "visits": "bezoeken",
-        "unique": "unieke"
-      },
+      "meta": "{visits, plural, one {# bezoek} other {# bezoeken}} · {unique} unieke",
       "filter": {
         "all": "Alles",
         "playlists": "Playlists",

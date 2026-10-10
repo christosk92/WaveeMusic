@@ -371,12 +371,16 @@ public static partial class Sidebar
 
         /// <summary>A drop that cannot be honoured says so: a log line for us, the refusal's own sentence for the user —
         /// and "clear sorting to reorder" carries the one action a mode can fix it with (#85 H3).</summary>
-        void RefuseDrop(SidebarDropRefusal refusal, string why)
+        void RefuseDrop(SidebarDropRefusal refusal, string why) => RefuseDrop(refusal, why, Config.SortedListRefusalAction);
+
+        /// <summary>The static form (<paramref name="sortedListFix"/> is the pane's "switch to custom order"): the folder
+        /// picker files a playlist from a page with no pane instance in hand.</summary>
+        internal static void RefuseDrop(SidebarDropRefusal refusal, string why, Action? sortedListFix)
         {
             if (refusal == SidebarDropRefusal.WritesUnavailable) { RefuseWrite(why); return; }
             Log.Warn("sidebar", "rootlist drop refused at commit: " + refusal + " (" + why + ")");
             if (RefusalSentence(refusal) is not { Length: > 0 } sentence) return;
-            if (refusal == SidebarDropRefusal.SortedList && Config.SortedListRefusalAction is { } fix)
+            if (refusal == SidebarDropRefusal.SortedList && sortedListFix is { } fix)
                 Notify.Say(sentence, InfoBarSeverity.Informational, Loc.Get("sidebar.v3.sort.custom"), fix);
             else
                 Notify.Say(sentence, InfoBarSeverity.Informational);

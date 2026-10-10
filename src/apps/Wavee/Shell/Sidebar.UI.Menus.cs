@@ -55,6 +55,124 @@ public static partial class Sidebar
         return SidebarLayoutRules.IsModified(State.Of(layout)) ? Loc.Format("sidebar.layoutName.modified", ("layout", name)) : name;
     }
 
+    /// <summary>The name of any nav style, Zune included (Zune has no <see cref="SidebarLayoutId"/> of its own).</summary>
+    internal static string NavStyleName(ShellNavStyle style) => style == ShellNavStyle.Zune ? Loc.Get("sidebar.layoutName.zune")
+        : LayoutName(style == ShellNavStyle.Library ? SidebarLayoutId.Library : SidebarLayoutId.Classic);
+
+    // ══ THE ROOTLIST'S FILING, WITHOUT A PANE (W24) ════════════════════════════════════════════════════════════════
+    // The pane's "Move to folder…" and a playlist page's "Add to folder…" are ONE flow: the same picker over the same live
+    // tree, the same commit. Nothing here reads a pane instance, so a surface with no sidebar mounted (Zune's page head,
+    // a detail page's "…") files a playlist exactly as the tree row's own menu does.
+
+    /// <summary>The live rootlist tree the projection publishes (null before the first publish).</summary>
+    internal static IReadOnlyList<SidebarLibraryEntry>? LiveRootlistTree => Binder?.CurrentInput.PlaylistTree;
+
+    /// <summary>The rootlist entry id of the playlist at <paramref name="uri"/> ("" when it is not in the user's rootlist:
+    /// someone else's playlist, a not-yet-loaded tree).</summary>
+    internal static string RootlistEntryIdOf(string uri)
+    {
+        if (uri.Length == 0 || LiveRootlistTree is not { Count: > 0 } tree) return "";
+        for (int i = 0; i < tree.Count; i++)
+        {
+            var e = tree[i];
+            if (e.Kind == SidebarEntryKind.Playlist && e.Id.Length > 0 && string.Equals(e.Uri, uri, StringComparison.Ordinal)) return e.Id;
+        }
+        return "";
+    }
+
+    /// <summary>Whether "Add to folder…" can do anything for this rootlist entry: a write seam is installed and the picker
+    /// would list at least one legal destination.</summary>
+    internal static bool CanFileInFolder(string entryId)
+    {
+        if (entryId.Length == 0 || LibraryWrites?.MoveRootlist is null || LiveRootlistTree is not { Count: > 0 } tree) return false;
+        var markers = new List<RootlistEntry>(tree.Count);
+        RootlistMarkerStream.Build(tree, markers);
+        var destinations = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(tree, markers, [entryId], destinations);
+        return destinations.Count > 0;
+    }
+
+    /// <summary>The keyboard-accessible counterpart to tree drag: a ContentDialog (the menu that launched it is gone,
+    /// so there is no anchor). The list is a SNAPSHOT taken at open; the commit re-reads the LIVE tree, so a mid-flight
+    /// rootlist change resolves to nothing rather than to the wrong folder. Opens nothing when there is nowhere legal.
+    /// <paramref name="sortedListFix"/> is the pane's "switch to custom order" action for a sorted-list refusal.</summary>
+    internal static void OpenFolderPicker(IOverlayService overlay, IReadOnlyList<string> entryIds, Action? sortedListFix = null)
+    {
+        if (Controls.IsNullOverlay(overlay)) return;
+        var tree = LiveRootlistTree;
+        if (tree is not { Count: > 0 }) return;
+        var selection = RootlistSelection.Normalize(tree, entryIds);
+        if (selection.Count == 0) return;
+        var ids = new string[selection.Count];
+        for (int i = 0; i < selection.Count; i++) ids[i] = selection[i].Id;
+        var markers = new List<RootlistEntry>(tree.Count);
+        RootlistMarkerStream.Build(tree, markers);
+        var destinations = new List<RootlistFolderChoice>();
+        RootlistTreeNav.PickerDestinations(tree, markers, ids, destinations);
+        if (destinations.Count == 0) return;
+
+        string topLevel = Loc.Get("sidebar.topLevel");
+        var items = new Actions.PickerItem[destinations.Count];
+        for (int i = 0; i < destinations.Count; i++)
+        {
+            var c = destinations[i];
+            items[i] = c.IsTopLevel
+                ? new Actions.PickerItem("top-level", topLevel, Glyph: Icons.List, Pinned: true)
+                : new Actions.PickerItem(c.FolderId, c.Name, Glyph: Icons.Folder, Depth: c.Depth);
+        }
+        // The body names WHAT is moving: one row by name, a selection by its count.
+        string subject = selection.Count == 1 ? selection[0].Name : Loc.Format("sidebar.itemCount", ("count", selection.Count));
+        Actions.OpenPicker(overlay, new Actions.PickerSpec(Loc.Get("sidebar.moveToFolderTitle"), items,
+            picked => CommitPicked(ids, picked, sortedListFix))
+        {
+            Body = Loc.Format("sidebar.moveToFolderBody", ("name", subject)),
+            Placeholder = Loc.Get("sidebar.findFolder"),
+            EmptyText = Loc.Get("sidebar.noFolders"),
+            PanelPadding = 0f,
+        });
+    }
+
+    static void CommitPicked(IReadOnlyList<string> ids, Actions.PickerItem picked, Action? sortedListFix)
+    {
+        var tree = LiveRootlistTree;
+        if (tree is not { Count: > 0 }) return;
+        var live = RootlistSelection.Normalize(tree, ids);
+        if (live.Count == 0) return;
+        var markers = new List<RootlistEntry>(tree.Count);
+        RootlistMarkerStream.Build(tree, markers);
+        var refs = RootlistSelection.Refs(live);
+        if (string.Equals(picked.Key, "top-level", StringComparison.Ordinal))
+        {
+            // "After everything at depth 0": the exclusive end lands it after a TRAILING folder, not inside it.
+            if (RootlistTreeNav.TryTopLevelAnchor(tree, markers, ids, out var anchor))
+                CommitRootlistMove(tree, markers, refs, ids, anchor, RootlistDropPlacement.After, "", sortedListFix);
+            return;
+        }
+        CommitRootlistMove(tree, markers, refs, ids, new RootlistItemRef(picked.Key, IsFolder: true), RootlistDropPlacement.Inside,
+                           picked.Label, sortedListFix);
+    }
+
+    /// <summary>The ONE commit the menu, the keyboard and the picker share with a drop: legality asked of the same
+    /// authority, undo anchors captured before the move, a refusal said out loud.</summary>
+    internal static void CommitRootlistMove(IReadOnlyList<SidebarLibraryEntry>? tree, IReadOnlyList<RootlistEntry>? markers,
+                                            IReadOnlyList<RootlistItemRef> refs, IReadOnlyList<string> ids, RootlistItemRef target,
+                                            RootlistDropPlacement placement, string destinationName, Action? sortedListFix)
+    {
+        var check = RootlistDropDecision.Check(markers, refs, target, placement);
+        if (check != RootlistMoveCheck.Ok)
+        {
+            PaneView.RefuseDrop(RootlistDropDecision.RefusalFor(check), "menu move " + check, sortedListFix);
+            return;
+        }
+        if (LibraryWrites?.MoveRootlist is not { } move)
+        {
+            PaneView.RefuseDrop(SidebarDropRefusal.Unavailable, "no rootlist seam", sortedListFix);
+            return;
+        }
+        RootlistUndoAnchors.TryResolveMany(tree, ids, out var undo);
+        move(refs, target, placement, destinationName, undo);
+    }
+
     // ══ THE MENU MAPPER (§P4.6) ════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>Data menu rows → engine menu items; actions → service calls. ONE mapper for every sidebar menu (the pane
@@ -62,7 +180,7 @@ public static partial class Sidebar
     internal static class SidebarMenus
     {
         /// <summary>The overlay host the last sidebar menu opened on (every sidebar menu opener sets it right before it opens:
-        /// the pane menu, the seam, a header ⋯, the footer's Settings row, the V3 overflow, the edit bar's Reset ▾) — the
+        /// the pane menu, the seam, a header ⋯, the V3 overflow, the edit bar's Reset ▾) — the
         /// confirm dialog of a menu verb opens on the same host.</summary>
         internal static IOverlayService? Overlay;
 
@@ -110,6 +228,7 @@ public static partial class Sidebar
                 Action invoke = () => Run(row, sectionId, pane);
                 var item = r.Radio ? MenuFlyoutItem.RadioItem(label, r.Checked, invoke)
                     : r.Action is SidebarMenuAction.ToggleLiked or SidebarMenuAction.ToggleKind or SidebarMenuAction.ToggleDescending
+                        or SidebarMenuAction.ToggleCovers or SidebarMenuAction.ToggleZunePins
                         ? MenuFlyoutItem.Toggle(label, r.Checked, invoke)
                     : new MenuFlyoutItem(label, default, r.Enabled, invoke);
                 // A disabled verb says why on its trailing line (Q7: "Finish editing the sidebar first"); HideSection
@@ -142,10 +261,18 @@ public static partial class Sidebar
 
         static string LabelOf(SidebarMenuRow r) => r.Action switch
         {
-            SidebarMenuAction.SwitchLayout => LayoutName(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic),
+            SidebarMenuAction.SwitchLayout => NavStyleName(NavStyleOf(r.Arg)),
             SidebarMenuAction.SetLimit => Loc.Format(r.LabelKey, ("count", r.Arg)),
             SidebarMenuAction.HideSection when r.ReasonKey is { } reason => Loc.Format(reason, ("names", string.Join(", ", LockingNames()))),
             _ => Loc.Get(r.LabelKey),
+        };
+
+        /// <summary>A SwitchLayout row's Arg → the nav style it switches to.</summary>
+        static ShellNavStyle NavStyleOf(string arg) => arg switch
+        {
+            "zune" => ShellNavStyle.Zune,
+            "library" => ShellNavStyle.Library,
+            _ => ShellNavStyle.Classic,
         };
 
         static void Run(SidebarMenuRow r, string? sectionId, PaneView? pane)
@@ -153,7 +280,7 @@ public static partial class Sidebar
             var layout = Sidebar.Layout.Peek();
             switch (r.Action)
             {
-                case SidebarMenuAction.SwitchLayout: SwitchLayout(r.Arg == "library" ? SidebarLayoutId.Library : SidebarLayoutId.Classic); break;
+                case SidebarMenuAction.SwitchLayout: SwitchNavStyle(NavStyleOf(r.Arg)); break;
                 case SidebarMenuAction.ResetLayout: Dispatch(new ResetLayout(layout), Loc.Format("sidebar.toast.reset", ("name", LayoutName(layout)))); break;
                 case SidebarMenuAction.ShowSection: Dispatch(new SetSectionShown(layout, r.Arg, true)); break;
                 case SidebarMenuAction.SetDensity: SetDensity(r.Arg == "compact" ? SidebarDensity.Compact : SidebarDensity.Default); break;
@@ -166,13 +293,22 @@ public static partial class Sidebar
                 case SidebarMenuAction.ToggleDescending: Dispatch(new SetLibrarySort(Doc.Library.Sort, !Doc.Library.Descending)); break;
                 case SidebarMenuAction.SetView: Dispatch(new SetLibraryView(r.Arg == "grid" ? SidebarLibraryView.Grid : SidebarLibraryView.List)); break;
                 case SidebarMenuAction.ToggleLiked: Dispatch(new SetShowLiked(!Doc.Library.ShowLiked)); break;
+                case SidebarMenuAction.ToggleCovers: Sidebar.SetClassicCovers(!Sidebar.ClassicCovers.Peek()); break;
+                case SidebarMenuAction.ToggleZunePins: SetZunePins(!ZunePins.Peek()); break;
                 case SidebarMenuAction.ToggleKind: ToggleKind(r.Arg); break;
                 case SidebarMenuAction.SetLimit when sectionId is not null:
                     Dispatch(new SetSectionLimit(layout, sectionId, int.Parse(r.Arg, CultureInfo.InvariantCulture)));
                     break;
                 case SidebarMenuAction.ShowItem when sectionId is not null: Dispatch(new SetItemShown(layout, sectionId, r.Arg, true)); break;
-                case SidebarMenuAction.Collapse when sectionId is not null: Dispatch(new SetSectionCollapsed(layout, sectionId, true)); break;
-                case SidebarMenuAction.Expand when sectionId is not null: Dispatch(new SetSectionCollapsed(layout, sectionId, false)); break;
+                // From a header menu the pane is at hand: the toggle runs the same choreography as a click.
+                case SidebarMenuAction.Collapse when sectionId is not null:
+                    if (pane is not null) pane.SetSectionDirection(sectionId, true);
+                    else Dispatch(new SetSectionCollapsed(layout, sectionId, true));
+                    break;
+                case SidebarMenuAction.Expand when sectionId is not null:
+                    if (pane is not null) pane.SetSectionDirection(sectionId, false);
+                    else Dispatch(new SetSectionCollapsed(layout, sectionId, false));
+                    break;
                 case SidebarMenuAction.MoveUp when sectionId is not null: MoveBy(layout, sectionId, r.Arg, -1); break;
                 case SidebarMenuAction.MoveDown when sectionId is not null: MoveBy(layout, sectionId, r.Arg, +1); break;
                 case SidebarMenuAction.HideSection when (r.Arg.Length > 0 ? r.Arg : sectionId) is { } hideId:
@@ -218,18 +354,11 @@ public static partial class Sidebar
             if (slot >= 0) Dispatch(new MoveSection(layout, sectionId, slot + delta));
         }
 
-        /// <summary>Hide a row's item (§P4.6): a Collections page; the Library's Liked row; the footer's Settings. Decided by
+        /// <summary>Hide a row's item (§P4.6): a Collections page; the Library's Liked row. Decided by
         /// the row's SECTION, not the item id: Classic's Collections "Liked Songs" is a page like any other. Hiding the last
         /// visible page hides Collections itself, so its toast names the SECTION (design C.4 corner case).</summary>
         static void HideItem(SidebarLayoutId layout, string? sectionId, string item)
         {
-            string settings = SidebarCatalogue.IdOf(SidebarSectionKind.Settings);
-            if (string.Equals(item, settings, StringComparison.Ordinal))
-            {
-                // The toast says where Settings went: the profile menu keeps it (§P4.6).
-                Dispatch(new SetSectionShown(layout, settings, false), Loc.Get("sidebar.toast.settingsHidden"));
-                return;
-            }
             if (sectionId is null || !SidebarCatalogue.TryKindOf(sectionId, out var kind)) return;
             if (kind == SidebarSectionKind.Library)
             {
@@ -266,7 +395,7 @@ public static partial class Sidebar
         {
             SidebarMenus.Overlay = MenuOverlay;
             return new ContextMenuModel(SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-                Sidebar.Editing.Peek(), SidebarMenus.LockingNames())));
+                Sidebar.Editing.Peek(), SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek(), zune: false, zunePins: Sidebar.ZunePins.Peek())));
         }
 
         OverlayHandle? _paneMenu;
@@ -367,9 +496,9 @@ public static partial class Sidebar
             return Actions.Menu.WithLayoutExtras(menu, extras.Flat());
         }
 
-        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: Organize ▸ takes
-        /// the Pin slot (pin lives inside it), and the owner's Rename · Delete trail behind a separator. Liked Songs drops
-        /// Save exactly as a card does.</summary>
+        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: Pin / Unpin sits
+        /// top-level in the Pin slot's group with Organize ▸ (Move out of …) right after it, and the owner's Rename · Delete
+        /// trail behind a separator. Liked Songs drops Save exactly as a card does.</summary>
         ContextMenuModel PlaylistModel(ActionServices s, in SidebarLibraryEntry e, IReadOnlyList<MenuFlyoutItem>? organize)
         {
             var caps = PlaylistCaps.CanView
@@ -392,7 +521,8 @@ public static partial class Sidebar
             {
                 Services = s,
                 Liked = EntityUri.IsLikedCollection(e.Uri),
-                Pin = () => Actions.Menu.Organize(organize, MoveOutRow(in entry), PinRow(in entry)),
+                Pin = () => PinRow(in entry),
+                Organize = () => Actions.Menu.Organize(organize, MoveOutRow(in entry), null),
                 PinStartsGroup = true,
                 Tail = tail,
             }) ?? new ContextMenuModel(tail, Actions.Menu.Header(ArtOf(in e), e.Name, subtitle));
@@ -414,7 +544,11 @@ public static partial class Sidebar
                 writes?.NewFolderWith is not null && folderId.Length > 0,
                 () => LibraryWrites?.NewFolderWith?.Invoke(folderId, Array.Empty<RootlistItemRef>())));
             rows.Add(MenuFlyoutItem.Separator);
-            Actions.Menu.Group(rows, Actions.Menu.Organize(organize, MoveOutRow(in e), PinRow(in e)));
+            // Pin / Unpin top-level, Organize ▸ (Move out of …) right after it. Pinning de-dupes the row from Playlists:
+            // the pin publish (the binder's PinnedIds) moves through the key-matched splice path, so the rows below glide
+            // up and the new Pinned row fades in rather than the list snapping.
+            Actions.Menu.Group(rows, PinRow(in e));
+            if (Actions.Menu.Organize(organize, MoveOutRow(in e), null) is { } org) rows.Add(org);   // after the group's separator or the pin
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.renameFolder"), ActionIcons.Resolve(ActionIcons.Rename),
                 writes?.RenameFolder is not null && folderId.Length > 0, () => PromptRenameFolder(folderId, name)));
             rows.Add(MenuFlyoutItem.Separator);
@@ -608,78 +742,18 @@ public static partial class Sidebar
         }
 
         /// <summary>The ONE commit the menu, the keyboard and the picker share with a drop: legality asked of the same
-        /// authority, undo anchors captured before the move, a refusal said out loud.</summary>
+        /// authority, undo anchors captured before the move, a refusal said out loud (<see cref="Sidebar.CommitRootlistMove"/>).</summary>
         void CommitMove(IReadOnlyList<RootlistItemRef> refs, IReadOnlyList<string> ids, RootlistItemRef target,
                         RootlistDropPlacement placement, string destinationName)
-        {
-            var check = RootlistDropDecision.Check(RootlistMarkers, refs, target, placement);
-            if (check != RootlistMoveCheck.Ok)
-            {
-                RefuseDrop(RootlistDropDecision.RefusalFor(check), "menu move " + check);
-                return;
-            }
-            if (LibraryWrites?.MoveRootlist is not { } move)
-            {
-                RefuseDrop(SidebarDropRefusal.Unavailable, "no rootlist seam");
-                return;
-            }
-            RootlistUndoAnchors.TryResolveMany(RootlistTree, ids, out var undo);
-            move(refs, target, placement, destinationName, undo);
-        }
+            => Sidebar.CommitRootlistMove(RootlistTree, RootlistMarkers, refs, ids, target, placement, destinationName,
+                                          Config.SortedListRefusalAction);
 
         // ══ "MOVE TO FOLDER…" (W24) ════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>The keyboard-accessible counterpart to tree drag: a ContentDialog (the menu that launched it is gone,
-        /// so there is no anchor). The list is a SNAPSHOT taken at open; the commit re-reads the LIVE tree, so a mid-flight
-        /// rootlist change resolves to nothing rather than to the wrong folder. Opens nothing when there is nowhere legal.</summary>
+        /// <summary>The pane's "Move to folder…": the sidebar-wide picker (<see cref="Sidebar.OpenFolderPicker"/>) over this
+        /// pane's overlay.</summary>
         internal void OpenFolderPicker(IReadOnlyList<string> entryIds)
-        {
-            if (Controls.IsNullOverlay(MenuOverlay)) return;
-            var tree = RootlistTree;
-            var selection = RootlistSelection.Normalize(tree, entryIds);
-            if (selection.Count == 0) return;
-            var ids = new string[selection.Count];
-            for (int i = 0; i < selection.Count; i++) ids[i] = selection[i].Id;
-            var destinations = new List<RootlistFolderChoice>();
-            RootlistTreeNav.PickerDestinations(tree, RootlistMarkers, ids, destinations);
-            if (destinations.Count == 0) return;
-
-            string topLevel = Loc.Get("sidebar.topLevel");
-            var items = new Actions.PickerItem[destinations.Count];
-            for (int i = 0; i < destinations.Count; i++)
-            {
-                var c = destinations[i];
-                items[i] = c.IsTopLevel
-                    ? new Actions.PickerItem("top-level", topLevel, Glyph: Icons.List, Pinned: true)
-                    : new Actions.PickerItem(c.FolderId, c.Name, Glyph: Icons.Folder, Depth: c.Depth);
-            }
-            // The body names WHAT is moving: one row by name, a selection by its count.
-            string subject = selection.Count == 1 ? selection[0].Name : Loc.Format("sidebar.itemCount", ("count", selection.Count));
-            Actions.OpenPicker(MenuOverlay, new Actions.PickerSpec(Loc.Get("sidebar.moveToFolderTitle"), items,
-                picked => CommitPicked(ids, picked))
-            {
-                Body = Loc.Format("sidebar.moveToFolderBody", ("name", subject)),
-                Placeholder = Loc.Get("sidebar.findFolder"),
-                EmptyText = Loc.Get("sidebar.noFolders"),
-                PanelPadding = 0f,
-            });
-        }
-
-        void CommitPicked(IReadOnlyList<string> ids, Actions.PickerItem picked)
-        {
-            var tree = RootlistTree;
-            var live = RootlistSelection.Normalize(tree, ids);
-            if (live.Count == 0) return;
-            var refs = RootlistSelection.Refs(live);
-            if (string.Equals(picked.Key, "top-level", StringComparison.Ordinal))
-            {
-                // "After everything at depth 0" — the exclusive end lands it after a TRAILING folder, not inside it.
-                if (RootlistTreeNav.TryTopLevelAnchor(tree, RootlistMarkers, ids, out var anchor))
-                    CommitMove(refs, ids, anchor, RootlistDropPlacement.After, "");
-                return;
-            }
-            CommitMove(refs, ids, new RootlistItemRef(picked.Key, IsFolder: true), RootlistDropPlacement.Inside, picked.Label);
-        }
+            => Sidebar.OpenFolderPicker(MenuOverlay, entryIds, Config.SortedListRefusalAction);
 
         // ══ THE "+" FLYOUTS, RENAME, ALT+ARROWS ════════════════════════════════════════════════════════════════════
 

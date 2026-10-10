@@ -134,6 +134,17 @@ public static class BrowseTaxonomy
 
     static readonly Dictionary<string, BrowseGroup> Map = BuildMap();
 
+    /// <summary>The Top group's uris in map order (Music, Podcasts, Audiobooks, <c>spotify:concerts</c>), read from the
+    /// entries table so nothing is restated. The Zune band's Browse words are these four, in this order.</summary>
+    public static readonly IReadOnlyList<string> TopUris = BuildTopUris();
+
+    static string[] BuildTopUris()
+    {
+        var list = new List<string>(4);
+        foreach (var (uri, group) in Entries) if (group == BrowseGroup.Top) list.Add(uri);
+        return [.. list];
+    }
+
     static Dictionary<string, BrowseGroup> BuildMap()
     {
         var map = new Dictionary<string, BrowseGroup>(Entries.Length, StringComparer.Ordinal);
@@ -336,39 +347,52 @@ public static class BrowsePageLayout
     };
 }
 
-/// <summary>The overlay masthead's layout reserve — <c>FrameTop</c> + the SurfaceDisplay line. A CONSTANT, never a live
-/// measure: parked family pages must not re-pad when the overlay fades out.</summary>
+/// <summary>The overlay masthead's layout reserve — <see cref="PageGeometry.HeadTop"/> + the title line. A CONSTANT, never a
+/// live measure: parked family pages must not re-pad when the overlay fades out.
+/// <para>The family's body starts where every Title-kind page head's body starts (<see cref="PageHeadRules.Extent"/> of
+/// <see cref="PageHeadKind.Title"/>, 120), so a masthead page and a <see cref="PageHead"/> title page land their first row
+/// at the same y. Under the Zune band the browse ROOT hoists to the fixed 24-DIP strip
+/// (<see cref="PageGeometry.HeadTop"/>, <see cref="BodyTopFor"/>).</para></summary>
 public static class BrowseMastheadMetrics
 {
-    public const float TitleLine = 52f;
-    public const float Reserve = Spacing.XXXL + TitleLine;
-    /// <summary>The body's top inset: the overlay reserve plus the gap that used to sit under the in-flow band.</summary>
-    public const float BodyTop = Reserve + Spacing.L;
+    public const float TitleLine = PageGeometry.TitleLine;
+    public const float Reserve = PageGeometry.HeadTop + TitleLine;
+    /// <summary>The body's top inset: the Title head's extent — the same y as every title page.</summary>
+    public static float BodyTop => PageHeadRules.Extent(PageHeadKind.Title);
     /// <summary>The band paints NOTHING (a fill reads as a black slab on Mica), so a page scrolling under it cuts its
     /// content at the band's lower edge — exactly the reserve.</summary>
     public const float ClipInset = Reserve;
     /// <summary>The feather at that cut — the band every detail surface uses.</summary>
     public const float ClipFadeBand = Detail.VerticalLayout.StickyFadeBand;
 
-    public static Edges4 FamilyBodyPad(float bottom) => new(Spacing.PageWide, BodyTop, Spacing.PageWide, bottom);
+    /// <summary>The browse root's body top: the fixed hoisted strip (<see cref="PageHeadRules.Extent"/> of
+    /// <see cref="PageHeadKind.Hoisted"/>, <see cref="PageGeometry.HeadTop"/> = 24) once the PRESENTED style hoists it, else
+    /// <see cref="BodyTop"/>. <paramref name="hoisted"/> is <see cref="PageHead.HoistedFor"/>.</summary>
+    public static float BodyTopFor(bool hoisted) => hoisted ? PageHeadRules.Extent(PageHeadKind.Hoisted) : BodyTop;
+
+    /// <summary>Whether the Browse root renders its own Top band (eyebrow + chips). Under Zune the Top categories ARE the
+    /// band's row 2 (music · podcasts · audiobooks · live events), so the page must not repeat them.
+    /// <paramref name="hoisted"/> is <see cref="PageHead.HoistedFor"/>.</summary>
+    public static bool ShowsTopBand(bool hoisted) => !hoisted;
+
+    /// <summary>The sticky clip's inset. Hoisted, the masthead paints nothing, so nothing is cut: 0. It follows
+    /// <see cref="BodyTopFor"/> in the same render, so the clip and the band never disagree.</summary>
+    public static float ClipInsetFor(bool hoisted) => hoisted ? 0f : ClipInset;
+
+    /// <summary>Padding of a family body that sits under the band: the page gutter on both sides, the reserve on top.</summary>
+    public static Edges4 FamilyBodyPad(float gutter, float bottom) => new(gutter, BodyTop, gutter, bottom);
 
     /// <summary>Padding for a page that clips under the band: the reserve is a SPACER above the clipped node (so the cut
     /// engages when content reaches the band, not at rest), leaving the gutters and the bottom on the node.</summary>
-    public static Edges4 FamilyUnderBandPad(float bottom) => new(Spacing.PageWide, 0f, Spacing.PageWide, bottom);
+    public static Edges4 FamilyUnderBandPad(float gutter, float bottom) => new(gutter, 0f, gutter, bottom);
 }
 
 /// <summary>Layout constants and the column math for the Browse cells (0.2.9 <c>BrowseTiles.cs:286-358</c>).</summary>
 public static class BrowseLayout
 {
-    public const float FrameTop = Spacing.XXXL;
-    public const float MastheadReserve = BrowseMastheadMetrics.Reserve;
-    public const float FrameX = Spacing.PageWide;
-    public static Edges4 Frame(float bottom) => new(FrameX, FrameTop, FrameX, bottom);
     /// <summary>First-frame width guess the directory's Responsive grids share before a real measure lands.</summary>
     public const float DirectoryFallbackWidth = 900f;
 
-    public const float WordChipH = 36f;
-    public const float NameChipH = 32f;
     public const float ChipGap = Spacing.S;
     public const float TickW = 3f;
     public const float TickH = 14f;

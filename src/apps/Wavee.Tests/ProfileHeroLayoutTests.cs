@@ -69,4 +69,15 @@ public class ProfileHeroLayoutTests
         float b = ProfileHeroLayout.WashBoundary(in m);
         Assert.True(b > 0f && b < 1f);
     }
+
+    // ── A2: the collapse floor ──
+
+    [Theory, MemberData(nameof(Tiers))]
+    public void CollapseDistance_RunsToTheFloor(float width, ArtistHeroTier previous)
+    {
+        var m = ProfileHeroLayout.For(width, previous);
+        Assert.Equal(m.Height, ProfileHeroLayout.CollapseDistance(in m, 0f));
+        Assert.Equal(m.Height - 56f, ProfileHeroLayout.CollapseDistance(in m, 56f));
+        Assert.Equal(ProfileHeroLayout.CollapseDistance(in m, ArtistHeroLayout.CompactIdentityHeight), ProfileHeroLayout.CollapseDistance(in m));
+    }
 }

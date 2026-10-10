@@ -26,6 +26,7 @@ public class DesignTypeRampTests
     {
         "TrackTitle", "CardTitle", "TrackMeta", "Eyebrow", "MicroMeta", "DenseMeta", "DenseTitle", "SheetTitle",
         "RailHeader", "ModuleHeader", "PageHero", "DetailHero", "SurfaceDisplay", "NowPlayingTitle", "PickQuote",
+        "PageTitle", "PageMeta", "PaneTitle",
     };
 
     static TextEl Alias(string name) => name switch
@@ -45,6 +46,9 @@ public class DesignTypeRampTests
         "SurfaceDisplay" => Design.Type.SurfaceDisplay("x"),
         "NowPlayingTitle" => Design.Type.NowPlayingTitle("x"),
         "PickQuote" => Design.Type.PickQuote("x"),
+        "PageTitle" => Design.Type.PageTitle("x"),
+        "PageMeta" => Design.Type.PageMeta("x"),
+        "PaneTitle" => Design.Type.PaneTitle("x"),
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, null),
     };
 
@@ -73,7 +77,7 @@ public class DesignTypeRampTests
         Assert.Equal(700, Design.Type.ArtistTitle("x").ResolvedWeight);
         Assert.Equal(700, Design.Type.ArtistCompactTitle("x").ResolvedWeight);
         // THREE SemiLight 350s — the same cut the engine's own pivot header uses.
-        Assert.Equal(350, Design.Type.PivotLabel("x").ResolvedWeight);
+        Assert.Equal(350, Design.Type.ZunePivot("x", false).ResolvedWeight);
         Assert.Equal(350, Design.Type.NpvLyric("x").ResolvedWeight);
         Assert.Equal(350, Design.Type.StatHero("2B", null).Weight);
     }
@@ -103,6 +107,18 @@ public class DesignTypeRampTests
         Assert.Equal(48f, el.Size);
         Assert.Equal(60f, el.LineHeight);
         Assert.Equal(700, el.ResolvedWeight);
+    }
+
+    [Fact]
+    public void PaneTitle_is_the_light_28_36_display_cut()
+    {
+        var el = Design.Type.PaneTitle("x");
+        Assert.Equal(28f, el.Size);
+        Assert.Equal(36f, el.LineHeight);
+        Assert.Equal(400, el.ResolvedWeight);
+        // Design.Type.DisplayFace is internal (no InternalsVisibleTo): the literal pins the face, the page title shares it.
+        Assert.Equal("Segoe UI Variable Display", el.FontFamily);
+        Assert.Equal(Design.Type.PageTitle("x").FontFamily, el.FontFamily);
     }
 
     [Fact]
@@ -161,11 +177,37 @@ public class DesignTypeRampTests
             Assert.Equal(weight, el.ResolvedWeight);
         }
 
-        OffRamp(Design.Type.PivotLabel("x"), 19f, 25f, 350);
         OffRamp(Design.Type.MicroMeta("x"), 11f, 15f, 400);
         OffRamp(Design.Type.DenseMeta("x"), 13f, 18f, 400);
         OffRamp(Design.Type.DenseTitle("x"), 13f, 18f, 600);
         OffRamp(Design.Type.SheetTitle("x"), 16f, 22f, 600);
+    }
+
+    [Fact]
+    public void ZunePivot_is_the_28_36_display_cut_at_350_rest_and_600_selected()
+    {
+        var rest = Design.Type.ZunePivot("x", false);
+        var on = Design.Type.ZunePivot("x", true);
+        Assert.Equal(28f, on.Size);
+        Assert.Equal(36f, on.LineHeight);
+        Assert.Equal(600, on.ResolvedWeight);
+        Assert.Equal("Segoe UI Variable Display", on.FontFamily);
+        // Selection changes the weight only: the line box stays, so a pivot never moves the row.
+        Assert.Equal(on.Size, rest.Size);
+        Assert.Equal(on.LineHeight, rest.LineHeight);
+    }
+
+    [Fact]
+    public void ZuneSubPivot_is_14_20_at_400_rest_and_600_selected()
+    {
+        var rest = Design.Type.ZuneSubPivot("x", false);
+        var on = Design.Type.ZuneSubPivot("x", true);
+        Assert.Equal(14f, rest.Size);
+        Assert.Equal(20f, rest.LineHeight);
+        Assert.Equal(400, rest.ResolvedWeight);
+        Assert.Equal(14f, on.Size);
+        Assert.Equal(20f, on.LineHeight);
+        Assert.Equal(600, on.ResolvedWeight);
     }
 
     [Fact]
@@ -1018,6 +1060,37 @@ public class DesignWashTests
     }
 
     [Fact]
+    public void Wash_Rich_IsStrongerThanSubtle_AndCapped()
+    {
+        // Rich is stronger than Subtle on every surface, and every Rich value stays under the 0.5 that keeps body text
+        // above AA on the plane.
+        foreach (bool light in new[] { true, false })
+        {
+            Assert.True(Design.Wash.PlaneAlpha(light, rich: true) > Design.Wash.PlaneAlpha(light, rich: false));
+            Assert.True(Design.Wash.TintAlpha(light, rich: true) > Design.Wash.TintAlpha(light, rich: false));
+            Assert.True(Design.Wash.HeroAlpha(light, rich: true) > Design.Wash.HeroAlpha(light));
+            Assert.True(Design.Wash.ShelfAlpha(light, rich: true) > Design.Wash.ShelfAlpha(light));
+
+            foreach (float a in new[]
+                     {
+                         Design.Wash.PlaneAlpha(light, rich: true), Design.Wash.TintAlpha(light, rich: true),
+                         Design.Wash.HeroAlpha(light, rich: true), Design.Wash.ShelfAlpha(light, rich: true),
+                     })
+                Assert.True(a <= 0.5f, $"Rich alpha {a} exceeds 0.5");
+        }
+    }
+
+    [Fact]
+    public void Wash_Subtle_IsTodaysValues()
+    {
+        // The Subtle path must not move: these are the values the surfaces shipped with before the Rich level.
+        Assert.Equal(0.30f, Design.Wash.PlaneAlpha(light: true, rich: false));
+        Assert.Equal(0.20f, Design.Wash.PlaneAlpha(light: false, rich: false));
+        Assert.Equal(0.05f, Design.Wash.TintAlpha(light: true, rich: false));
+        Assert.Equal(0.14f, Design.Wash.TintAlpha(light: false, rich: false));
+    }
+
+    [Fact]
     public void A_vanishing_stop_keeps_its_own_rgb()
     {
         // Stop interpolation is STRAIGHT-alpha; a premultiplied-black transparent would drag the whole falloff toward
@@ -1283,4 +1356,12 @@ public class DesignMorphKeyTests
         Assert.Null(Design.MorphKeys.For(EntityKind.Album, null));
         Assert.Null(Design.MorphKeys.For(EntityKind.Album, ""));
     }
+}
+
+public class DesignStageStandInTests
+{
+    [Fact]
+    public void With_now_playing_colors_off_the_stand_in_is_the_neutral_alone()
+        => Assert.Equal(Design.PlaceholderFor(default, light: !Design.StageInk.IsDark),
+                        Design.StageInk.ArtStandIn("https://x/cover.jpg", false));
 }

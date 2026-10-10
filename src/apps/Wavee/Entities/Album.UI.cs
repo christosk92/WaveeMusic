@@ -36,9 +36,12 @@ public readonly partial struct Album
 {
     // ══ 1. THE FACE PILE (ch 05 §0.5, W16, §6) ═══════════════════════════════════════════════════════════════════════
 
-    /// <summary>The billed-artist row: up to four framed portraits + the <c>+N</c> overflow + a chevron (ONE button that
-    /// opens the every-artist flyout), then the billed names as one accent run to the lead artist. Portraits land after
-    /// the album, so the pile reads the artist table itself (props would freeze the placeholders).</summary>
+    /// <summary>The billed-artist row (L1): the rail's ONE artist-line look (<see cref="Detail.RailArtistLineBox"/>) fed from
+    /// this host's gated stamp. The NAME is what survives the rail's width pressure: Wide paints a three-face pile + the
+    /// <c>+N</c> overflow + the billed names, Medium the lead face + names on two lines + <c>+N</c>, Narrow the names alone,
+    /// and the chevron follows the text. The whole line is ONE trigger: with more than one artist on the album it opens the
+    /// every-artist flyout, with one it goes straight to that artist. Portraits land after the album, so the pile reads
+    /// the artist table itself (props would freeze the placeholders).</summary>
     /// <summary>Keyed on the album slot: the host's gate memo folds the pile off <c>_albumSlot</c> (W2-A2), so a page
     /// whose display row moves — a <c>prerelease:</c> subject resolving to its album — mounts a fresh pile rather than
     /// painting the old row's faces until the next publication.</summary>
@@ -57,6 +60,8 @@ public readonly partial struct Album
         bool _fromBilled;
         int _drawn, _overflow;
         Artist _lead;
+        // The previous width look: Detail.RailArtistLine.Mode needs it for its hysteresis, so it is a plain field.
+        Detail.RailArtistMode? _mode;
         NodeHandle _anchor;
         OverlayHandle? _handle;
         IOverlayService? _overlay;
@@ -114,7 +119,7 @@ public readonly partial struct Album
             _allCount = PageRules.DistinctArtists(a, _all);
             _fromBilled = billed.Length > 0;
             ReadOnlySpan<int> source = _fromBilled ? billed : _all.AsSpan(0, _allCount);
-            _drawn = Math.Min(Controls.FaceMaxVisible, source.Length);
+            _drawn = Math.Min(Detail.RailArtistLine.WideFaces, source.Length);
             // Until every member's credits are in, an overflow would under-count — no "+N" frame at all (ch 05 §7).
             _overflow = membersReady ? PageRules.FaceOverflow(billed.Length, _allCount, _drawn) : 0;
             return new FaceStamp(epoch, slot, _drawn, _overflow, source.Length, RowFold.Rows(scope.Artists, source));
@@ -145,41 +150,14 @@ public readonly partial struct Album
             _lead = new Artist(source[0]);
             bool leadLive = _lead.IsValid && _lead.Uri.IsValid;
 
-            Element button = new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.XS, Shrink = 0f,
-                Padding = new Edges4(6f, 4f, 6f, 4f), Corners = CornerRadius4.All(Radii.Card),
-                Fill = ColorF.Transparent, HoverFill = Tok.FillCardDefault, PressedFill = Tok.FillSubtleTertiary,
-                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
-                OnClick = _toggle, OnKeyDown = _key, OnRealized = _realized,
-                Children =
-                [
-                    Controls.FacePile(_faces, Controls.FaceMaxVisible, overflow),
-                    Icon(Icons.ChevronDownSmall, 8f, Tok.TextTertiary),
-                ],
-            };
-            Element names = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f,
-                OnClick = leadLive ? _goLead : null,
-                Cursor = leadLive ? CursorId.Hand : (CursorId?)null,
-                Role = leadLive ? AutomationRole.Hyperlink : AutomationRole.Text,
-                Children =
-                [
-                    new TextEl(JoinNames(source))
-                    {
-                        // 14/700 is ch 05 §3's rung for the billed names (the chapter wins on look; see the report).
-                        Size = 14f, LineHeight = 20f, Weight = 700, Color = Tok.AccentTextPrimary,
-                        Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                    },
-                ],
-            };
-            return new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MaxWidth = p.MaxWidth,
-                // The loc drift fixed (ch 05 §6): the tooltip was a literal beside an existing key.
-                Children = [ToolTip.Wrap(button, Loc.Get(Strings.Detail.ViewAllArtists)), names],
-            };
+            // ONE trigger for the whole line. More than one artist on the album: the every-artist flyout; exactly one: straight
+            // to that artist (a flyout of one row would be a detour). The faces carry no click of their own.
+            bool menu = _allCount > 1;
+            var mode = Detail.RailArtistLine.Mode(p.MaxWidth, _mode);
+            _mode = mode;
+            return Detail.RailArtistLineBox(mode, new Detail.RailArtistLineSpec(
+                _faces, JoinNames(source), source.Length, overflow, p.MaxWidth, Loc.Get(Strings.Detail.ViewAllArtists), menu,
+                menu ? _toggle : leadLive ? _goLead : null, menu ? _key : null, _realized));
         }
 
         static string JoinNames(ReadOnlySpan<int> artists)

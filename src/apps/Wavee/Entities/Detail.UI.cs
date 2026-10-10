@@ -236,10 +236,21 @@ public static partial class Detail
         public Func<DragPayload, int?, bool>? DepositOnPage { get; init; }
         /// <summary>The notice strip's action (the "albums" route); null ⇒ no button.</summary>
         public Action? GoLibrary { get; init; }
+        /// <summary>The Play split's menu verbs (a container page supplies all three or none): "Add to queue" and "Play
+        /// next" run the container's context verbs, "Start radio" a real radio off its uri. Null ⇒ the page's primary is
+        /// the plain Play button (podcasts, Liked).</summary>
+        public Action? AddToQueue { get; init; }
+        public Action? PlayNext { get; init; }
+        public Action? StartRadio { get; init; }
+
+        /// <summary>Whether the Play primary is the SPLIT (<see cref="Controls.PlaySplitButton"/>) — a page that supplies its
+        /// three menu verbs. The one switch the rail CTA and the vertical hero read.</summary>
+        internal bool HasPlaySplit => AddToQueue is not null && PlayNext is not null && StartRadio is not null;
 
         internal int Mask()
             => (Shuffle is null ? 0 : 1) | (More is null ? 0 : 2) | (CoverClick is null ? 0 : 4)
-             | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32);
+             | (CoverDrag is null ? 0 : 8) | (DepositOnPage is null ? 0 : 16) | (GoLibrary is null ? 0 : 32)
+             | (AddToQueue is null ? 0 : 64) | (PlayNext is null ? 0 : 128) | (StartRadio is null ? 0 : 256);
 
         public bool Equals(FrameActions? o) => o is not null && Mask() == o.Mask();
         public override int GetHashCode() => Mask();
@@ -276,7 +287,7 @@ public static partial class Detail
         public Func<Element>? PreRelease { get; init; }
         /// <summary>About this release (outerPadding).</summary>
         public Func<bool, Element>? ReleasePanel { get; init; }
-        /// <summary>The liked facts bento (rail).</summary>
+        /// <summary>The liked facts bento. Hosted ONLY by the Insights sheet, in every arm (the rail no longer renders it inline).</summary>
         public Func<float, Element>? LikedFacts { get; init; }
         /// <summary>The album trailing body (HasTrailing).</summary>
         public Func<Element>? Trailing { get; init; }
@@ -286,7 +297,7 @@ public static partial class Detail
         // ── the podcast seams (plan §5.4) — appended; the WIDTH a Func<float, …> slot below receives is the rail's content
         //    measure (the cover edge, exact) in the two-column rail, and NaN (no measure: fill the column) in the vertical
         //    show header — treat it as a Width / MaxWidth only when it is finite. (Attribution keeps its old contract: the
-        //    cover edge in the rail, a 600 cap in the vertical header.) The frame re-invokes these builders only when it
+        //    cover edge in the rail, the page-estimate's info column in the vertical header.) The frame re-invokes these builders only when it
         //    re-renders for its own reasons, so a body whose content changes — a label, a count, a satellite that comes and
         //    goes — is a keyed component or binds its values / its Visible; the Satellites ARRAY is fixed per slot set.
 
@@ -378,7 +389,7 @@ public static partial class Detail
     const float TwoColumnHeroBandFraction = 0.55f;                    // the tone plane's synthetic band (hero-only is dead)
     const float TallWindowH = Design.Size.DesignH;                    // the 40/52 rail title at ≥ 900
     const float ShortWindowH = 760f;                                  // the 3-line description below 760
-    const float RailSidePadL = Spacing.L, RailSidePadR = Spacing.S;   // 16 / 8
+    const float RailSidePadL = RailPolicy.SidePadL;   // 16, the one pane inset (the right side is RailPolicy.PanelPad inside the panel)
     const float RailGap = RailLayout.Gap;                             // 14 — the row model's (Detail.cs §8b)
     const float RailFabSize = RailLayout.FabSize;                     // 32 (Workstream B: was 40)
     const int RailCoverDecodePx = 256;                                // the shelf card's bucket — a warm texture on arrival
@@ -390,7 +401,7 @@ public static partial class Detail
     static float RailWidthForMode(int mode, in Config cfg) => mode switch { 0 => cfg.RailWidth, 1 => RailMidW, _ => RailNarrowW };
 
     /// <summary><c>DetailRail.CoverEdge</c>: the rail cover fills the column less its side padding, floored at 80.</summary>
-    static float RailCoverEdge(float railW) => MathF.Max(80f, railW - RailSidePadL - RailSidePadR);
+    static float RailCoverEdge(float railW) => RailPolicy.CoverEdge(railW);
 
     /// <summary>One persisted rail pair (width + collapsed), live. TWO widths, deliberately: <see cref="Width"/> is the
     /// LIVE column (what the row lays out and the grip drags — always inside the page-aware bounds), <c>_stored</c> is
@@ -517,7 +528,7 @@ public static partial class Detail
         IReadSignal<Size2>? _viewport;
         bool _accentSeeded;
 
-        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the vertical arm's host for the facts bento. One toggle
+        // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the host for the facts bento, in every arm. One toggle
         //    per mounted frame: the open state is a signal, so the toolbar button and the pane cannot disagree and
         //    neither costs the page a render. `_sheetRoute` closes it on any route swap the host survives.
         readonly InsightsToggle _insights = new();
@@ -544,7 +555,7 @@ public static partial class Detail
         readonly Func<bool> _railPending;
 
         // trampolines into _latest
-        readonly Action _tShuffle, _tCoverClick, _tGoLibrary;
+        readonly Action _tShuffle, _tCoverClick, _tGoLibrary, _tAddToQueue, _tPlayNext, _tStartRadio;
         readonly Func<ContextMenuModel?> _tMore;
         readonly Func<object?> _tCoverDrag;
         readonly Func<DragPayload, int?, bool> _tDeposit;
@@ -591,6 +602,9 @@ public static partial class Detail
             _tShuffle = () => _latest?.Actions.Shuffle?.Invoke();
             _tCoverClick = () => _latest?.Actions.CoverClick?.Invoke();
             _tGoLibrary = () => _latest?.Actions.GoLibrary?.Invoke();
+            _tAddToQueue = () => _latest?.Actions.AddToQueue?.Invoke();
+            _tPlayNext = () => _latest?.Actions.PlayNext?.Invoke();
+            _tStartRadio = () => _latest?.Actions.StartRadio?.Invoke();
             _tMore = () => _latest?.Actions.More?.Invoke();
             _tCoverDrag = () => _latest?.Actions.CoverDrag?.Invoke();
             _tDeposit = (p, i) => _latest?.Actions.DepositOnPage?.Invoke(p, i) ?? false;
@@ -666,7 +680,7 @@ public static partial class Detail
             var cfg = spec.Config;
 
             // ── preferences (each subscribes its epoch, then re-reads the store) ──
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
             int pageLayout = Prefs.DetailHero.PageLayout();
             bool uniform = Prefs.DetailHero.RailUniform();
             int railEpoch = Prefs.DetailHero.Epoch.Value;
@@ -683,7 +697,8 @@ public static partial class Detail
             UseEffect(_publishAccentTracked);                                   // grading / spec
             UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));              // a theme flip re-derives the accent
 
-            string? paletteUrl = id.PaletteUrl ?? id.CoverUrl;
+            var paletteSource = PaletteSource.Of(id);          // the tint and the page accent read this ONE pair
+            string? paletteUrl = paletteSource.Url;
             string routeKey = spec.RouteKey;
             RefreshCaches(id);
 
@@ -700,15 +715,15 @@ public static partial class Detail
                 if (fit > mode) mode = fit;
             }
             // The Hero page layout forces the vertical SYSTEM for track pages only; _mode keeps tracking the real width.
-            if (cfg.Content == DetailContent.Tracks && pageLayout == Prefs.DetailHero.Hero)
+            if (Breakpoints.ForcesVertical(in cfg, pageLayout))
                 mode = Breakpoints.VerticalMode;
             bool vertical = mode == Breakpoints.VerticalMode;
             bool verticalTracks = vertical && cfg.Content == DetailContent.Tracks;
 
-            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── which arm HOSTS the facts bento. A two-column arm is
-            //    unchanged (the rail row, below). The vertical arm has no rail, so the bento is a sheet over the
-            //    content and the toolbar carries its toggle — and, because the toggle is gated on the same slot
-            //    presence, the bento is never appended to the page body again (Detail.InsightsSheet).
+            // ── INSIGHTS SHEET (additive; Detail.Insights.cs) ── the bento lives ONLY in the sheet, in every arm: the rail no
+            //    longer renders it inline, and the table's command bar carries its toggle in every arm (the vertical arm's pinned
+            //    band carries it too, Detail.InsightsSheet). The sheet is closed on arrival and nothing but the toggle's own
+            //    click opens it.
             //
             //    The slot is LATCHED for the route first (InsightsSheet.FactsSettled): a page derives its bento slot
             //    from a scan of the live row source, which reads empty while the list's open holds its reveal, so an
@@ -718,19 +733,19 @@ public static partial class Detail
             bool factsNow = spec.Slots.LikedFacts is not null;
             bool factsSettled = InsightsSheet.FactsSettled(_factsLatched is not null, factsNow);
             if (factsNow) _factsLatched = spec.Slots.LikedFacts;      // a plain field, not a signal: no render write
-            _sheetHosts = InsightsSheet.ShowsToggle(mode, id.Kind, factsSettled, cfg.Content);
-            // Widening back into a two-column arm (or losing the facts) CLOSES the sheet — a signal write belongs in an
-            // effect, never in a render (rule 6).
+            _sheetHosts = InsightsSheet.ShowsToggle(id.Kind, factsSettled, cfg.Content);
+            // Losing the facts CLOSES the sheet — a signal write belongs in an effect, never in a render (rule 6).
             UseEffect(_syncInsightsArm, DepKey.From(_sheetHosts ? 1 : 0));
 
             // ── the leaves: shell tint (a hand-over, never a clear) and the page tone plane (the ONE ground) ──
-            Element tint = Palette.ShellTint(paletteUrl, ready: true, disabled: !washes, apply: cfg.TwoColumn,
-                owner: _tintOwner, slot: shellSlot, key: "detail-tint:" + routeKey, payloadAccent: id.CardAccent);
+            Element tint = Palette.ShellTint(paletteSource.Url, ready: true, disabled: !washes, apply: cfg.TwoColumn,
+                owner: _tintOwner, slot: shellSlot, key: "detail-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
+                payloadAccent: id.CardAccent);
             float pageH = _measuredH > 1f ? _measuredH : viewportSig.Peek().Height;
             // heroOnly is dead (the setting is gone): the band/height props feed only that arm, so they are PEEKED — a
             // hero measurement must not re-render the page for a value nothing paints.
             float heroBand = verticalTracks ? _heroHeight.Peek() : pageH * TwoColumnHeroBandFraction;
-            Element tone = Palette.PageTonePlane(paletteUrl, fallbackUrl: null, disabled: !washes, backdropBand: heroBand,
+            Element tone = Palette.PageTonePlane(paletteSource.Url, fallbackUrl: paletteSource.FallbackUrl, disabled: !washes, backdropBand: heroBand,
                 pageHeight: pageH, heroOnly: false,
                 key: "detail-tone:" + routeKey + (Tok.Theme == ThemeKind.Light ? ":light" : ":dark"),
                 payloadAccent: id.CardAccent);
@@ -741,7 +756,7 @@ public static partial class Detail
 
             // ── the right column ──
             float rightMin = Breakpoints.ContentMinWidthForMode(mode);
-            Element right = cfg.Content == DetailContent.Episodes
+            BoxEl right = cfg.Content == DetailContent.Episodes
                 ? new BoxEl
                 {
                     Key = "right:eps", Grow = 1f, Shrink = 1f, MinWidth = rightMin, MinHeight = 0f, Direction = 1,
@@ -764,7 +779,7 @@ public static partial class Detail
                     Direction = 1, Grow = 1f, ClipToBounds = true,
                     DropTarget = drop,
                     // A show in the vertical arm is the fixed ShowHeader above its episodes — never the hero system.
-                    Children = verticalTracks ? [right] : [ShowHeaderCore(spec, acts, _accentFn, _playAll), right],
+                    Children = verticalTracks ? [right] : [ShowHeaderCore(spec, acts, _accentFn, _playAll, pageWidthEstimate), right],
                 };
                 Element verticalPage = new BoxEl
                 {
@@ -788,7 +803,7 @@ public static partial class Detail
                 });
             }
 
-            // ── modes 0/1/2: the centred two-column row [rail | grip | right] ──
+            // ── modes 0/1/2: the centred two-column row [rail | right], the grip an overlay strip on the gap between them ──
             var rail = _rails[(int)RailPolicy.ScopeFor(cfg.RailScope, uniform)];
             bool resizable = RailPolicy.ResizableFor(cfg.RailResizable, mode);
             // Read unconditionally (a stable subscription) but honoured only where the grip that can undo it exists.
@@ -801,13 +816,23 @@ public static partial class Detail
             // "full title for 1-2 frames" flicker, 2026-09-30).
             float railMaxLive = _railMax.Value;
             float railMax = _measuredW > 0f ? railMaxLive : RailPolicy.MaxWidthForPage(pageWidthEstimate, mode);
-            float railW = resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg);
+            // The COMPOSED width: the resting width plus what the grip's strip and the table's plate lead used to take out of the
+            // row (RailPolicy.ComposedExtraWidth). The stored width and every clamp stay in the resting width's own units.
+            // The Classic skin's fill is full-bleed, so it needs no plate lead (the row skin and the toolbar read the same pref).
+            bool classicRows = Prefs.Appearance.TrackRowStyle() == 1;
+            float railW = (resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg))
+                          + RailPolicy.ComposedExtraWidth(resizable, classicRows);
+            // The table has no plate lead of its own in this arm: its host overhangs the rail's trailing gap by the plate lead
+            // (LeadFor: RowInset for Modern, 0 for Classic), which the composed rail gave back, so the table's plates, header text
+            // and rows stay exactly where they were.
+            float plateLead = Track.RowMetrics.LeadFor(twoColumn: true, classicRows);
+            BoxEl tableColumn = right with { Margin = new Edges4(-plateLead, 0f, 0f, 0f) };
 
             Element[] rowKids;
             if (collapsed)
             {
                 // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll.
-                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), Grip(rail, railMax, collapsedNow: true), right];
+                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), GripSpacer(plateLead), tableColumn];
             }
             else
             {
@@ -836,7 +861,7 @@ public static partial class Detail
                     Opacity = _railFade,
                     Children = [RailRegion(spec, acts, railW, titleSize, descLines)],
                 };
-                rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
+                rowKids = [railFaded, tableColumn];
             }
 
             var row = new BoxEl
@@ -849,6 +874,18 @@ public static partial class Detail
                 DropTarget = drop,
                 Children = rowKids,
             };
+            // The resizable rail's grip is an overlay strip centred on the gap between the rail's panel and the first plate
+            // (RailPolicy.PanelGap): it takes no row width. The collapsed arm's
+            // re-open strip is the SAME node on the 20-DIP slot after the identity strip, so a drag that collapses the rail keeps
+            // its pointer capture. It is the topmost child so it wins hit-testing over the cover and the plate; the cost is that it
+            // follows the table in Tab / automation order (the engine has no focus-order hint), and it stays reachable by pointer.
+            Element rowHost = resizable
+                ? new BoxEl
+                {
+                    ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
+                    Children = [row, GripOverlay(rail, railMax, collapsed, railW)],
+                }
+                : row;
             var twoColumnPage = new BoxEl
             {
                 Key = "detail:two-column",
@@ -859,16 +896,22 @@ public static partial class Detail
                     new BoxEl
                     {
                         Direction = 0, Grow = 1f, Shrink = 1f, MinHeight = 0f, Justify = FlexJustify.Center,
-                        Children = [row],
+                        Children = [rowHost],
                     },
                 ],
             };
+            // ── INSIGHTS SHEET ── the same overlay the vertical arm wears, ALWAYS composed for a track page (open or not, facts
+            //    or not), so the tree shape never changes when the facts arrive or the sheet opens: the rail and the list do
+            //    not move. An episode list has no bento.
+            Element twoColumnRoot = cfg.Content == DetailContent.Tracks
+                ? InsightsOverlay(twoColumnPage, _insights, _sheetHosts ? _factsLatched : null, _measuredW, routeKey, _returnInsightsFocus)
+                : twoColumnPage;
             // The page PROVIDES its accent: the heart and every other ambient consumer read it through the context.
             return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)_pageAccent, new BoxEl
             {
                 ZStack = true, Grow = 1f, Shrink = 1f, MinHeight = 0f,
                 OnBoundsChanged = _measure, ClipToBounds = true,
-                Children = [tint, tone, twoColumnPage],
+                Children = [tint, tone, twoColumnRoot],
             });
         }
 
@@ -918,9 +961,17 @@ public static partial class Detail
                 Accent = _accentFn,
                 Vertical = verticalTracks
                     ? new VerticalSpec(spec.Identity, cfg, TrampolineActions(spec.Actions), TrampolineSlots(spec.Slots), _accentFn)
-                    { PlayAll = _playAll, Insights = _sheetHosts ? _insights : null }
+                    {
+                        PlayAll = _playAll,
+                        // The toggle's slot is reserved by KIND (route-static); it goes live when the facts settle.
+                        Insights = InsightsSheet.ToggleSlotReserved(spec.Identity.Kind, cfg.Content) ? _insights : null,
+                        InsightsLive = _sheetHosts,
+                    }
                     : null,
                 ShowToolbar = cfg.Content == DetailContent.Tracks || !vertical,
+                // The command bar carries the Insights toggle in every arm (reserved by kind; live once the facts settle).
+                Insights = InsightsSheet.ToggleSlotReserved(spec.Identity.Kind, cfg.Content) ? _insights : null,
+                InsightsLive = _sheetHosts,
                 Trailing = trailing,
                 PlayAllCell = _playAllCell,
                 HeroHeight = _heroHeight,
@@ -974,13 +1025,16 @@ public static partial class Detail
                     CoverDrag = a.CoverDrag is null ? null : _tCoverDrag,
                     DepositOnPage = a.DepositOnPage is null ? null : _tDeposit,
                     GoLibrary = a.GoLibrary is null ? null : _tGoLibrary,
+                    AddToQueue = a.AddToQueue is null ? null : _tAddToQueue,
+                    PlayNext = a.PlayNext is null ? null : _tPlayNext,
+                    StartRadio = a.StartRadio is null ? null : _tStartRadio,
                 };
             }
             return _trampActions;
         }
 
         /// <summary>The VERTICAL arm's view of the page's slots. ── INSIGHTS SHEET (additive) ── <c>LikedFacts</c> is
-        /// deliberately DROPPED here: in this arm the bento belongs to the sheet, and the table's own facts FOOTER
+        /// deliberately DROPPED here: the bento belongs to the sheet (in every arm), and the table's own facts FOOTER
         /// (its <c>hasFacts</c> reads exactly this slot) is what used to push it to the bottom of the page. The frame
         /// still hands the page's own builder to the sheet, so nothing is lost — only the host changed.</summary>
         FrameSlots TrampolineSlots(FrameSlots s)
@@ -1016,15 +1070,27 @@ public static partial class Detail
 
         // ── the grip ──
 
-        Element Grip(RailCell rail, float max, bool collapsedNow) => new BoxEl
+        /// <summary>The collapsed arm's reserved slot after the identity strip: the re-open grip's 20 DIP (an overlay, see
+        /// <see cref="GripOverlay"/>) plus the table's plate lead (its host overhangs the slot by <c>RowMetrics.LeadFor</c>), so the
+        /// collapsed table sits where it always did.</summary>
+        static Element GripSpacer(float plateLead) => new BoxEl
+        {
+            Key = "detail-rail-grip-slot", Width = GripStripCollapsedW + plateLead, Shrink = 0f,
+        };
+
+        /// <summary>The grip: one strip, one key, never in the row's flow. Expanded, it is centred on the 24-DIP cover gap between the
+        /// rail's cover and the table's first plate; collapsed, it is the 20-DIP re-open slot after the identity strip. Translated
+        /// like the shell's sidebar seam, so it neither takes row width nor moves the table. Width writes are direct during the
+        /// drag (bounded by the page-aware Max, so a drag can never squeeze the content column out); RELEASE commits width +
+        /// collapsed to THIS scope's pair.</summary>
+        Element GripOverlay(RailCell rail, float max, bool collapsedNow, float composedRailW) => new BoxEl
         {
             Key = "detail-rail-grip-strip",
             Width = collapsedNow ? GripStripCollapsedW : Splitter.StripW,
             Shrink = 0f, Direction = 1, AlignItems = FlexAlign.Stretch,
+            Transform = Affine2D.Translation(collapsedNow ? RailCompactW : RailPolicy.GripOverlayX(composedRailW), 0f),
             Children =
             [
-                // Width writes are direct during the drag (bounded by the page-aware Max, so a drag can never squeeze the
-                // content column out); RELEASE commits width + collapsed to THIS scope's pair.
                 Splitter.Create(rail.Width, rail.Commit, rail.OptionsFor(max), collapsed: rail.Collapsed, fade: _railFade)
                     with { Key = rail.GripKey },
             ],
@@ -1076,7 +1142,7 @@ public static partial class Detail
             var spec = _spec.Value;
             if (spec is null) return;
             _ = _theme.Value;
-            string? paletteUrl = spec.Identity.PaletteUrl ?? spec.Identity.CoverUrl;
+            string? paletteUrl = PaletteSource.Of(spec.Identity).Url;
             if (paletteUrl is { Length: > 0 } p) _ = Palette.Watch(p).Value;
             PublishAccent(spec);
         }
@@ -1087,7 +1153,7 @@ public static partial class Detail
         {
             var accent = ComputeAccent(spec);
             _accent.Value = accent;
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, spec.RouteKey));
+            _pageAccent.SetIfChanged(PageAccentOf(accent, spec.RouteKey));
         }
 
         int ComputeHeightRungs()
@@ -1154,14 +1220,29 @@ public static partial class Detail
             => p.SourceRows is { Length: > 0 } && string.Equals(p.SourcePlaylistUri, _subjectText, StringComparison.Ordinal);
     }
 
+    /// <summary>ONE page = ONE artwork entry: the url pair the shell tint (<see cref="Palette.ShellTint"/>) and the page
+    /// accent (<see cref="AccentFor"/>) both read, so the chrome tint and every accent role grade from the same Palette
+    /// entry. The polarity split (surfaces grade FOR the theme, plates with on-accent ink AGAINST it) decides only the
+    /// grading, never the source. Pure, so a test pins the identity per detail kind.</summary>
+    public readonly record struct PaletteSource(string? Url, string? FallbackUrl)
+    {
+        /// <summary>A detail identity's source: its palette image, else its cover; no fallback.</summary>
+        public static PaletteSource Of(Identity id) => new(id.PaletteUrl ?? id.CoverUrl, null);
+
+        /// <summary>The artist page's source: the header (palette) image, with the avatar as the fallback entry.</summary>
+        public static PaletteSource ForArtist(string? headerUrl, string? avatarUrl) => new(headerUrl, avatarUrl);
+    }
+
     static readonly Func<uint, ColorF> s_liftPayload = static a => Design.Palette.ChromeFromPayload(a);
 
     /// <summary>The one accent ladder (<see cref="AccentLadder"/>): the cover's chrome grading (else the fallback
     /// url's), else the payload hex, else the last remembered page accent while this page's grading is still pending,
     /// else the system accent. Never the now-playing track. Cached probes only — a miss enqueues elsewhere and the
-    /// caller's tracked effect re-runs when it lands.</summary>
+    /// caller's tracked effect re-runs when it lands. Accent from artwork off ⇒ the system accent; the read subscribes
+    /// the caller's tracked effect, so the toggle re-publishes live.</summary>
     public static ColorF AccentFor(string? paletteUrl, uint payloadAccent, string? fallbackUrl = null)
     {
+        if (!Prefs.Appearance.AccentFromArtwork()) return Tok.AccentDefault;
         var scheme = Design.ChromeSchemeFor(paletteUrl) ?? Design.ChromeSchemeFor(fallbackUrl);
         ColorF? graded = scheme is { } cp ? Design.Palette.ChromeAccent(cp) : null;
         // Nothing better can arrive: no payload and a url the endpoint cannot grade (or has already refused).
@@ -1173,10 +1254,25 @@ public static partial class Detail
         return result.Color;
     }
 
+    /// <summary>The page-scoped accent pair for a resolved accent. Accent from artwork on ⇒ the Fill is the art colour
+    /// (a plate with on-accent ink) and the Ink is the SAME hue solved for text contrast on the content surface
+    /// (<see cref="Design.Palette.TextInk(ColorF,ThemeKind,ColorF)"/>, the app's role-3 answer), so the playing title,
+    /// the numbers and the hearts stay legible on a pale or a dark cover alike; off ⇒ the system pair, the same one
+    /// Recents' <c>PageView.Fallback</c> publishes. The theme re-publish re-derives the Ink.</summary>
+    public static Design.PageAccent PageAccentOf(ColorF accent, string routeKey)
+        => PageAccentOf(accent, routeKey, Tok.Theme, Design.Colors.ContentSurface);
+
+    /// <summary>Pure overload: the theme and the ground the Ink is solved against are explicit, so a test pins both themes.</summary>
+    public static Design.PageAccent PageAccentOf(ColorF accent, string routeKey, ThemeKind theme, ColorF ground)
+        => Prefs.Appearance.AccentFromArtwork()
+            ? new(Design.Palette.TextInk(accent, theme, ground), accent, routeKey)
+            : new(Tok.AccentTextPrimary, Tok.AccentDefault, routeKey);
+
     static ColorF ComputeAccent(FrameSpec spec)
     {
         var id = spec.Identity;
-        return AccentFor(id.PaletteUrl ?? id.CoverUrl, id.CardAccent);
+        var src = PaletteSource.Of(id);
+        return AccentFor(src.Url, id.CardAccent, src.FallbackUrl);
     }
 
     // ══ 4. THE RAIL FAMILY ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -1205,7 +1301,7 @@ public static partial class Detail
     static Action DefaultPlay(EntityUri subject) => () => Playback.PlayOrToggleContext(subject.Id);
 
     /// <summary>The fixed-width metadata rail (two-column arm): cover · eyebrow/owner · title · artists · meta · daylist ·
-    /// chart · CTA · prerelease · release panel · description · liked facts, in its own scroller. <paramref name="titleSize"/>
+    /// chart · CTA · prerelease · release panel · description, in its own scroller. <paramref name="titleSize"/>
     /// is the title's size CAP (the window rung); the size drawn is <see cref="VerticalLayout.RailTitleTypeFor"/>'s.</summary>
     public static Element Rail(FrameSpec spec, float railWidth, float titleSize, int descriptionLines,
                                Func<ColorF> accent)
@@ -1221,9 +1317,19 @@ public static partial class Detail
     /// boundary that swaps to it (<c>FrameHost.RailRegion</c>) — outside the boundary, so the fill never blinks.</summary>
     static Element RailFrame(DetailKind kind, float railW, Element body) => new BoxEl
     {
-        Direction = 1, Width = railW, Shrink = 0f, ClipToBounds = true,
-        Fill = kind == DetailKind.Liked ? ColorF.Transparent : Tok.FillLayerDefault,
-        Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW }],
+        // The panel stops PanelGap short of the column: that gap is the air between the panel and the list (RailPolicy.CoverGap
+        // is PanelPad inside it plus PanelGap outside it). The column keeps its full width, so the table does not move.
+        Direction = 1, Width = railW, Shrink = 0f,
+        Padding = new Edges4(0f, 0f, RailPolicy.PanelGap, 0f),
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 1, Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+                Fill = kind == DetailKind.Liked ? ColorF.Transparent : Tok.FillLayerDefault,
+                Children = [ScrollView(body) with { Grow = 1f, Shrink = 1f, MinHeight = 0f, Width = railW - RailPolicy.PanelGap }],
+            },
+        ],
     };
 
     /// <summary>The page-subject cover's gesture, from the shared surface's ownership rule (<see cref="SurfaceRules"/>). The
@@ -1243,7 +1349,7 @@ public static partial class Detail
 
     /// <summary>The rail's loaded column: cover · eyebrow (+ a show's badges) / owner / an episode's show link · title ·
     /// attribution · rating · meta · an episode's badges · ledger · daylist · chart · CTA (primary + the fixed group or the
-    /// page's satellites) · topics · prerelease · release panel · description · liked facts. The identity rows are
+    /// page's satellites) · topics · prerelease · release panel · description. The identity rows are
     /// <see cref="RailLayout.RowsFor"/>'s decisions; <see cref="RailSkeletonColumn"/> reserves the same rows
     /// (<see cref="Skeleton.RailPlanFor"/>) in the same order at the same widths, so the swap is a dissolve and never a
     /// reflow. With none of the podcast slots declared the column is exactly the pre-podcast one.</summary>
@@ -1258,7 +1364,8 @@ public static partial class Detail
         var kids = new List<Element>(16);
 
         // The CTA's pieces first: how many FABs it carries is a row decision (it sizes the CTA's lines) as well as its
-        // children. A page's Satellites replace the fixed group; no Shuffle either way (the command bar's, W27).
+        // children. A page's Satellites replace the fixed group (and carry no Shuffle: Liked and Show keep theirs in the
+        // command bar's "…", W27); the fixed group's icon-only Shuffle belongs to the Play-split kinds only (RailFabs).
         Element[]? satellites = slots.Satellites?.Invoke();
         List<Element>? fabs = satellites is null ? RailFabs(id, cfg.Heart != HeartMode.None, acts, accent) : null;
         var presence = PresenceOf(slots, satellites?.Length ?? 0);
@@ -1322,7 +1429,9 @@ public static partial class Detail
 
         // CTA cluster: the primary (the page's, else Play), then the fixed FAB GROUP that wraps as a unit — or the page's
         // satellites, wrapping one by one.
-        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent) : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
+        Element primary = slots.Primary is { } primaryOf ? primaryOf(accent)
+            : acts.HasPlaySplit ? Controls.PlaySplitButton(spec.Identity.Subject.Text, accent, play, acts.AddToQueue!, acts.PlayNext!, acts.StartRadio!)
+            : Controls.ContextPlayButton(spec.Identity.Subject.Text, accent, play);
         kids.Add(satellites is not null
             ? SatelliteCta("rail:cta", primary, satellites, RailLayout.CtaTopMargin)
             : new BoxEl
@@ -1359,24 +1468,27 @@ public static partial class Detail
                     descMaxLines, id.Subject.Text, s_navRoute, fullTextTip: true)));
         }
 
-        // Row, not LateRow: the facts panel owns its own entrance.
-        if (slots.LikedFacts is { } facts) kids.Add(Row("rail:likedfacts", facts(cover)));
-
+        // No inline facts: the bento lives in the Insights sheet only (the toggle is in the CTA group above).
         return RailColumnBox(railW, kids.ToArray());
     }
 
     static Element RailColumnBox(float railW, Element[] rows) => new BoxEl
     {
-        Direction = 1, Gap = RailGap, Width = railW, Shrink = 0f,
-        Padding = new Edges4(RailSidePadL, RailLayout.PadTop, RailSidePadR, RailLayout.PadBottom),
+        Direction = 1, Gap = RailGap, Width = railW - RailPolicy.PanelGap, Shrink = 0f,
+        Padding = new Edges4(RailSidePadL, RailLayout.PadTop, RailPolicy.PanelPad, RailLayout.PadBottom),
         Children = rows,
     };
 
-    /// <summary>The rail's FIXED FAB group — the heart (a Save / Follow kind), Share, and the ⋯ every kind but the album
-    /// carries. What a page's <see cref="FrameSlots.Satellites"/> replace.</summary>
+    /// <summary>The rail's FIXED FAB group, in the order of the one action row (Play split · Shuffle · heart · Share · ⋯):
+    /// an icon-only Shuffle (the rail is narrow; a page that supplies the Play split's verbs and a shuffle —
+    /// <see cref="Skeleton.HasLabelledShuffle"/>), the heart (a Save / Follow kind), Share and the ⋯ every kind carries (the Insights toggle
+    /// lives in the table's command bar, not here). What a page's <see cref="FrameSlots.Satellites"/>
+    /// replace. <see cref="Skeleton.RailPlanFor"/> counts the same members per kind, so the wrap never moves at reveal.</summary>
     static List<Element> RailFabs(Identity id, bool heart, FrameActions acts, Func<ColorF> accent)
     {
-        var fabs = new List<Element>(3);
+        var fabs = new List<Element>(5);
+        if (acts.Shuffle is { } shuffle && acts.HasPlaySplit)
+            fabs.Add(Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, showLabel: false) with { Key = "rail:shuffle" });
         if (heart)
         {
             string saveUri = SaveTargetOf(id).Text;
@@ -1385,9 +1497,8 @@ public static partial class Detail
                 with { Key = "save:" + saveUri });
         }
         if (ShareActionFor(id) is { } share)
-            fabs.Add(Controls.Named(Fab(Icons.Share, share), Loc.Get(Strings.Menu.Share)));
-        // ch 05 parity 15: an album's rail has no ⋯ — its overflow is the vertical hero's alone.
-        if (acts.More is { } more && id.Kind != DetailKind.Album)
+            fabs.Add(Controls.QuietIconButton(Icons.Share, Loc.Get(Strings.Menu.Share), share));
+        if (acts.More is { } more)
             fabs.Add(MoreButton(more, RailFabSize, 16f, round: true) with { Key = "rail:more" });
         return fabs;
     }
@@ -1480,7 +1591,8 @@ public static partial class Detail
         }
         else
             kids.Add(Lines(cover, VerticalLayout.NaturalLineHeightFor(titleSize), plan.TitleLines, Skeleton.TitleLastLineFraction));
-        if (plan.Artists) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.AttributionFraction), VerticalLayout.AttributionRowHeight));
+        if (plan.Artists) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.AttributionFraction),
+            plan.ArtistFaces ? RailArtistLine.ReservedHeight(cover) : VerticalLayout.AttributionRowHeight));
         if (plan.Rating) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.RatingFraction), RailLayout.RatingHeight));
         if (plan.Meta) kids.Add(Bar(Skeleton.BarWidth(cover, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (plan.Badges == RailBadgeRow.AfterMeta) kids.Add(Bar(Skeleton.BadgeBarWidth, RailLayout.BadgeHeight));
@@ -1499,7 +1611,7 @@ public static partial class Detail
         var fabs = new Element[Math.Max(0, plan.Fabs)];
         for (int i = 0; i < fabs.Length; i++)
             fabs[i] = new BoxEl { Width = fabEdge, Height = fabEdge, Shrink = 0f, Corners = Radii.ControlAll };
-        Element pill = new BoxEl { Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll };
+        Element pill = new BoxEl { Width = Skeleton.PrimaryWidthFor(plan.PlainPlay), Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll };
         kids.Add(plan.Satellites
             ? SatelliteCta("skel:cta", pill, fabs, RailLayout.CtaTopMargin)
             : new BoxEl
@@ -1622,12 +1734,15 @@ public static partial class Detail
     /// podcast slots land as the prototype's narrow pane does: badges / rating beside the cover in the info column, the
     /// ledger and the CTA (a page's primary + satellites) full width under it, no topics and no blurb. The rows are the
     /// rail's own decision (<see cref="RailLayout.RowsFor"/>); every slot width here is NaN (fill the column).</summary>
-    public static Element ShowHeader(FrameSpec spec, Func<ColorF> accent)
-        => ShowHeaderCore(spec, spec.Actions, accent, DefaultPlay(spec.Identity.Subject));
+    public static Element ShowHeader(FrameSpec spec, Func<ColorF> accent, float pageWidth = float.NaN)
+        => ShowHeaderCore(spec, spec.Actions, accent, DefaultPlay(spec.Identity.Subject), pageWidth);
 
-    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play)
+    static Element ShowHeaderCore(FrameSpec spec, FrameActions acts, Func<ColorF> accent, Action play, float pageWidth)
     {
         const float coverSize = 140f;
+        // The info column's measure: the page less the header's two insets, the cover and the gap between. An unmeasured
+        // page (NaN) keeps the old 600 DIP nominal.
+        float infoW = float.IsFinite(pageWidth) ? MathF.Max(0f, pageWidth - 3f * Spacing.L - coverSize) : 600f;
         var id = spec.Identity;
         var cfg = spec.Config;
         var slots = spec.Slots;
@@ -1659,8 +1774,8 @@ public static partial class Detail
                 Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap, Trim = TextTrim.CharacterEllipsis,
             }));
         if (rows.Artists)
-            info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(600f)
-                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, 600f) : new BoxEl())));
+            info.Add(LateRow("hdr:artists", slots.Attribution?.Invoke(infoW)
+                ?? (id.Artists is { Count: > 0 } billed ? BilledArtists(billed, infoW) : new BoxEl())));
         if (rows.Rating && slots.Rating is { } rating) info.Add(SlotRow("hdr:rating", rating(float.NaN), RailLayout.RatingHeight));
         if (rows.Meta) info.Add(LateRow("hdr:meta", MetaRow(id, float.NaN, maxLines: 1)));
         if (rows.Badges == RailBadgeRow.AfterMeta && slots.Badges is { } badgesLate)
@@ -1801,45 +1916,155 @@ public static partial class Detail
         };
     }
 
-    /// <summary>The default billed-artist row: the face pile, then ONE ellipsised accent run to the lead artist.</summary>
-    static Element BilledArtists(IReadOnlyList<Controls.Face> artists, float width)
+    /// <summary>What one render of the billed-artist line paints: the drawn faces (WITHOUT their own click: the whole line is
+    /// ONE trigger), the names, how many billed artists there are (the Medium "+N"), the pile's own overflow frame, and the
+    /// trigger's behaviour. <c>Menu</c> is true when the click opens a list (the chevron shows, Down / F4 open).</summary>
+    internal readonly record struct RailArtistLineSpec(IReadOnlyList<Controls.Face> Faces, string Names, int Count, int Overflow,
+        float Width, string Tip, bool Menu, Action? Click, Action<KeyEventArgs>? OnKey, Action<NodeHandle>? OnRealized);
+
+    const string LocRailMoreArtists = "detail.row.moreArtists";
+
+    /// <summary>The billed-artist line (L1) in one mode: the ONE look both the default line and the album's own
+    /// (<c>Album.FacePileHost</c>) paint. The NAME is what survives: <see cref="RailArtistLine"/> drops the faces first
+    /// (Wide: pile + names, Medium: the lead face + names on two lines + "+N", Narrow: names only), and the chevron follows
+    /// the text in every mode. Nothing under the pointer moves on hover (the plate is a fill); a mode change never snaps:
+    /// the line box eases its height (<see cref="PageHead.Reflow"/>), the face slots are keyed per mode and cross-fade in
+    /// place, and the names glide to their new position (<see cref="Shove"/>).</summary>
+    internal static Element RailArtistLineBox(RailArtistMode mode, in RailArtistLineSpec s)
     {
-        var lead = artists[0];
-        var names = new System.Text.StringBuilder(64);
-        for (int i = 0; i < artists.Count; i++)
+        var kids = new List<Element>(4);
+        if (s.Faces.Count > 0)
         {
-            if (i > 0) names.Append(", ");
-            names.Append(artists[i].Name);
+            if (mode == RailArtistMode.Wide)
+                kids.Add(FaceSlot("faces:pile", Controls.FacePile(s.Faces, RailArtistLine.WideFaces, s.Overflow)));
+            else if (mode == RailArtistMode.Medium)
+            {
+                var lead = s.Faces[0];
+                kids.Add(FaceSlot("faces:lead", PersonPicture.Create("", Skeleton.OwnerAvatar, displayName: lead.Name, imageSourcePath: lead.ImageUrl)));
+            }
         }
-        return new BoxEl
+
+        bool wide = mode == RailArtistMode.Wide;
+        kids.Add(new BoxEl
         {
-            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MaxWidth = width,
+            Key = "names", Direction = 0, Shrink = 1f, MinWidth = 0f, Layout = Shove,
             Children =
             [
-                Controls.FacePile(artists, maxVisible: 3),
-                new BoxEl
+                new TextEl(s.Names)
                 {
-                    Direction = 0, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f,
-                    OnClick = lead.OnClick,
-                    Cursor = lead.OnClick is null ? (CursorId?)null : CursorId.Hand,
-                    Role = lead.OnClick is null ? AutomationRole.None : AutomationRole.Hyperlink,
-                    Children =
-                    [
-                        new TextEl(names.ToString())
-                        {
-                            Size = 14f, LineHeight = 20f, Weight = 600, Color = Tok.AccentTextPrimary,
-                            Grow = 1f, Basis = 0f, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
-                        },
-                    ],
+                    Size = 14f, LineHeight = RailArtistLine.TextLine, Weight = 600, Color = Tok.AccentTextPrimary,
+                    MinWidth = 0f, Shrink = 1f,
+                    MaxLines = wide ? 1 : 2, Wrap = wide ? TextWrap.NoWrap : TextWrap.WrapWholeWords,
+                    Trim = TextTrim.CharacterEllipsis,
                 },
             ],
+        });
+        int plus = mode == RailArtistMode.Medium ? RailArtistLine.PlusN(s.Count, 1) : 0;
+        if (plus > 0)
+            kids.Add(new TextEl(Loc.Format(LocRailMoreArtists, ("count", plus)))
+            {
+                Key = "plus", Size = 12f, LineHeight = 16f, Weight = 600, Color = Tok.TextTertiary, Shrink = 0f, MaxLines = 1,
+            });
+        if (s.Menu) kids.Add(new BoxEl
+        {
+            Key = "chevron", Shrink = 0f, AlignItems = FlexAlign.Center, Layout = Shove,
+            Children = [Icon(Icons.ChevronDown, 12f, Tok.TextTertiary)],
+        });
+
+        bool live = s.Click is not null;
+        Element trigger = new BoxEl
+        {
+            Key = "trigger",
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, Shrink = 1f, MinWidth = 0f, MaxWidth = s.Width,
+            Padding = new Edges4(6f, RailArtistLine.PadY, 6f, RailArtistLine.PadY), Corners = CornerRadius4.All(Radii.Card),
+            Fill = ColorF.Transparent,
+            HoverFill = live ? Tok.FillCardDefault : ColorF.Transparent, PressedFill = live ? Tok.FillSubtleTertiary : ColorF.Transparent,
+            Role = !live ? AutomationRole.None : s.Menu ? AutomationRole.Button : AutomationRole.Hyperlink,
+            Focusable = live, Cursor = live ? CursorId.Hand : (CursorId?)null,
+            FocusVisualMargin = Design.FocusInsetRow,
+            OnClick = s.Click, OnKeyDown = s.OnKey, OnRealized = s.OnRealized,
+            Children = kids.ToArray(),
         };
+        // The tooltip wrapper shrink-wraps to the trigger, whose MaxWidth is the line's measure: it can never outgrow the row.
+        if (s.Menu) trigger = ToolTip.Wrap(trigger, s.Tip);
+
+        return new BoxEl
+        {
+            Key = "artist-line", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, MaxWidth = s.Width,
+            MinHeight = RailArtistLine.HeightOf(mode), ClipToBounds = true, Animate = PageHead.Reflow,
+            Children = [trigger],
+        };
+    }
+
+    /// <summary>One mode's face slot: keyed per look, so a width step cross-fades the faces in place.</summary>
+    static Element FaceSlot(string key, Element faces) => new BoxEl
+    {
+        Key = key, Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [faces],
+        Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = PageHead.FadeMotion,
+    };
+
+    /// <summary>The default billed-artist line (L1), for a page that declares no Attribution slot: the identity's artists
+    /// under the rail's width pressure. ONE trigger holds it all: it opens the every-artist menu, or goes straight to the
+    /// artist when there is only one.</summary>
+    static Element BilledArtists(IReadOnlyList<Controls.Face> artists, float width)
+        => Embed.Comp(new RailArtistLineProps(artists, width), static () => new RailArtistLineView())
+            with { Key = "rail:artist-line" };
+
+    sealed record RailArtistLineProps(IReadOnlyList<Controls.Face> Artists, float Width);
+
+    /// <summary>Hosts <see cref="RailArtistLineBox"/> for the default line: <see cref="RailArtistLine.Mode"/> needs the
+    /// PREVIOUS mode for its hysteresis, so the mode is a plain field of the component.</summary>
+    sealed class RailArtistLineView : Component
+    {
+        static readonly Func<Element> s_none = static () => new BoxEl();
+
+        RailArtistMode? _mode;
+
+        public override Element Render()
+        {
+            var p = UseProps<RailArtistLineProps>();
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
+            var artists = p.Artists;
+            if (artists.Count == 0) return s_none();
+
+            var mode = RailArtistLine.Mode(p.Width, _mode);
+            _mode = mode;
+
+            bool menu = artists.Count > 1;
+            var names = new System.Text.StringBuilder(64);
+            var faces = new List<Controls.Face>(artists.Count);
+            for (int i = 0; i < artists.Count; i++)
+            {
+                if (i > 0) names.Append(", ");
+                names.Append(artists[i].Name);
+                faces.Add(new Controls.Face(artists[i].Name, artists[i].ImageUrl));   // no click of its own: the line is the trigger
+            }
+
+            void Toggle() => Controls.ToggleOverlay(overlay, anchor, handle,
+                () => MenuFlyout.Create(MenuItems(artists), () => handle.Value?.Close()), Controls.MenuPopup);
+
+            return RailArtistLineBox(mode, new RailArtistLineSpec(
+                faces, names.ToString(), artists.Count, RailArtistLine.PlusN(artists.Count, RailArtistLine.WideFaces), p.Width,
+                Loc.Get(Strings.Detail.Rail.ArtistsMenu), menu, menu ? Toggle : artists[0].OnClick,
+                menu ? e => { if (e.KeyCode is Keys.Down or Keys.F4) { Toggle(); e.Handled = true; } } : null,
+                n => anchor.Value = n));
+        }
+
+        static MenuFlyoutItem[] MenuItems(IReadOnlyList<Controls.Face> artists)
+        {
+            var items = new MenuFlyoutItem[artists.Count];
+            for (int i = 0; i < items.Length; i++)
+                items[i] = new MenuFlyoutItem(artists[i].Name, Icons.Contact, artists[i].OnClick is not null, artists[i].OnClick);
+            return items;
+        }
     }
 
     static EntityUri SaveTargetOf(Identity id) => id.SaveTarget.IsValid ? id.SaveTarget : id.Subject;
 
     /// <summary>Copy the page's web link with the confirmation toast — only when a clipboard seam exists.</summary>
-    static Action? ShareActionFor(Identity id)
+    internal static Action? ShareActionFor(Identity id)
     {
         if (id.ShareUrl is not { Length: > 0 } url) return null;
         return () =>
@@ -1946,6 +2171,49 @@ public static partial class Detail
     /// (<see cref="Controls.PlayFab"/>, <see cref="Controls.CoverActionFab"/>).</para></summary>
     static BoxEl Fab(string glyph, Action? onClick, float size = RailFabSize, float glyphSize = 16f)
         => Controls.IconAction(glyph, onClick, size: size);
+
+    /// <summary>Run a registered context verb over a CONTAINER target (the Play split's "Add to queue" / "Play next": the
+    /// verbs <c>ContainerMenuRules</c> mapped for the ⋯ rows — <c>PlayContextNext</c> / <c>AddContextToQueue</c> over the
+    /// whole context's local members, no 50-row cap). An unregistered verb does nothing; one the target cannot satisfy
+    /// ends in the "nothing to add" warning toast instead of a silent click. UI thread.</summary>
+    internal static void RunContextVerb(ActionId id, in ActionTarget target)
+    {
+        if (AppActions.Find(id) is not { } a) return;
+        var ctx = new ActionContext(target, Actions.Services);
+        if (a.EnabledFor(in ctx)) a.Execute(ctx);
+        else _ = Notify.Say(Loc.Get(Strings.Drag.NothingToAdd), InfoBarSeverity.Warning);
+    }
+
+    /// <summary>The Play split's "Start radio": a real radio off <paramref name="seed"/> (a track, artist, album or
+    /// playlist — <see cref="Playback.RemotePlan.RadioSeedUri"/>), whose OUTCOME raises the toast
+    /// (<see cref="Queue.RadioToast"/>; a refused seed is "Couldn't start radio"), never the click. Mirrors the artist
+    /// page's Radio (Artist.Page.cs).</summary>
+    internal static Action StartRadioFor(EntityUri seed, string name)
+        => () => Playback.StartRadio(seed, o => Queue.RadioToast(o with { Name = name }));
+
+    /// <summary>The lead of an album's or playlist's hero "…" (<see cref="ContainerExtras.Lead"/>): Download · Add to
+    /// folder · Copy link. The page's Play split and Share button carry Play next / Add to queue / Share, so these three
+    /// stand first and the remaining container rows follow.
+    /// <para>Download is shown DISABLED with a short trailing hint ("Not available yet") — Wavee has no offline downloads,
+    /// and a missing row would hide that from a user who looks for it. Add to folder exists for a playlist in the user's own
+    /// rootlist only (<see cref="Sidebar.RootlistEntryIdOf"/>; a folder cannot hold an album) and is enabled when the
+    /// picker would list a legal destination. Copy link is the container pattern of the episode / profile menus: the
+    /// page's own share url, else the subject's web link.</para></summary>
+    internal static IReadOnlyList<MenuFlyoutItem> ContainerLead(EntityUri subject, string? shareUrl, bool playlist, IOverlayService? overlay)
+    {
+        var lead = new List<MenuFlyoutItem>(3)
+        {
+            new(Loc.Get(Strings.Detail.Download), new IconRef { Glyph = Icons.Download, Font = Theme.IconFont }, false)
+                { AcceleratorText = Loc.Get(Strings.Detail.DownloadUnavailable) },
+        };
+        if (playlist && overlay is not null && Sidebar.RootlistEntryIdOf(subject.Text) is { Length: > 0 } entryId)
+            lead.Add(new MenuFlyoutItem(Loc.Get(Strings.Detail.AddToFolder), ActionIcons.Resolve(ActionIcons.Folder),
+                Sidebar.CanFileInFolder(entryId), () => Sidebar.OpenFolderPicker(overlay, [entryId])));
+        string link = shareUrl is { Length: > 0 } ? shareUrl : Actions.WebLinkOf(subject);
+        lead.Add(new MenuFlyoutItem(Loc.Get(Strings.Menu.CopyLink), ActionIcons.Resolve(ActionIcons.Link),
+            Actions.Services.Clipboard is not null && link.Length > 0, () => Episode.CopyLink(link)));
+        return lead;
+    }
 
     /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory. <c>internal</c> because the
     /// library's panes (<c>Album.Pane</c>, <c>Artist.Reader</c>) head their command rows with the SAME ⋯ — one menu host, so

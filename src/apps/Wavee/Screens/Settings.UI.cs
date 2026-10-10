@@ -1,6 +1,6 @@
 // ── Screens/Settings.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
-// the page shell (masthead, the 7-tab SelectorBar — General, Appearance, Playback, Notifications, Storage, Privacy &
-// diagnostics, About — and the per-tab scroll lane), the shared row grammar every tab builds with, the glyph resolver,
+// the page shell (the shared PageHead: title + the 7 tab views — General, Appearance, Playback, Notifications, Storage,
+// Privacy & diagnostics, About — and the per-tab scroll lane), the shared row grammar every tab builds with, the glyph resolver,
 // General (incl. the tray's Notification-area group), Notifications, and the Screens-side install call
 //
 // Role: UI
@@ -59,8 +59,13 @@ public static partial class Settings
     public static void Open(Tab tab)
     {
         s_tab.Value = (int)tab;
-        Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+        Shell.GoTo(s_route);
     }
+
+    /// <summary>The remembered tab's index: the Zune band's seed selection before the page publishes its views.</summary>
+    public static int TabIndex => s_tab.Peek();
+
+    static readonly Shell.Route s_route = new(Shell.RouteKind.Settings);
 
     /// <summary>Owner S's notification simulator (G-218): push a real event of the topic through the pipeline and report
     /// what consumed it. Null → "Send event" answers <see cref="TestEventOutcome.Unavailable"/>.</summary>
@@ -71,6 +76,10 @@ public static partial class Settings
     const float ContentMaxWidth = 1000f;
     const float CardSpacing = 4f;
     static readonly Edges4 SectionHeaderMargin = new(0f, Spacing.XXXL, 0f, Spacing.S);
+
+    /// <summary>The tab's FIRST section header: no top margin: the head's own <c>PageGeometry.HeadToBody</c> (24) is
+    /// the whole gap above the first card; the 32 only separates one group from the previous.</summary>
+    static readonly Edges4 FirstSectionHeaderMargin = SectionHeaderMargin with { Top = 0f };
 
     static readonly Signal<int> s_tab = new(0);
     static readonly Signal<int> s_epoch = new(0);
@@ -130,7 +139,14 @@ public static partial class Settings
                 return (Action?)(static () => EnterPlayback(false));
             }, DepKey.Empty);
             // The route is keep-alive: a PARKED page is not unmounted, so the same teardown rides the deactivation edge.
-            UseActivation(onDeactivated: static () => EnterPlayback(false));
+            UseActivation(onActivated: PublishViews, onDeactivated: static () => EnterPlayback(false));
+            // The tab views go to the Zune band's second row (only the ACTIVE instance publishes; the store's version moves
+            // only when the labels or the signal change).
+            var active = UseIsActive();
+            UseSignalEffect(() =>
+            {
+                if (active.Value) PublishViews();
+            });
 
             _ = s_epoch.Value;
             _ = Prefs.PlayerBar.Epoch.Value;
@@ -158,55 +174,49 @@ public static partial class Settings
             // N7: the body swaps with no transition; only the scroller is keyed, per tab, so each tab keeps its own
             // offset. Every tab is an ordinary scrolling lane (N8's unscrolled Logs lane is retired: the viewer is the
             // route `logs`).
+            float g = Shell.Ui.PageGutter.Value;
             Element content = ScrollView(new BoxEl
             {
                 Direction = 1,
-                Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.PageWide),
+                Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
                 Children = [ContentColumn(body)],
             }) with { Grow = 1f, ScrollKey = "settings:" + slug, Key = "settings:scroll:" + slug };
 
-            // W28: the masthead and the strip are SIBLINGS of the scroller — nothing compacts, sticks or gains a shadow.
+            // W28: the head (title + the tab views) is a SIBLING of the scroller — nothing compacts, sticks or gains a
+            // shadow. The head has no meta line (HasMeta false) and is TitleViews (144) on every tab (Title, 100, while the
+            // PRESENTED nav style is Zune: the views then live in the band's row 2) and the bar is one stable key on s_tab, so a tab switch moves only the pill; the
+            // body's top edge never moves.
             return new BoxEl
             {
                 Grow = 1f, Direction = 1,
                 Children =
                 [
-                    Header(),
-                    new BoxEl
+                    PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Settings.Title))
                     {
-                        Direction = 1, Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, 0f),
-                        Children = [SelectorBar.Create(TabLabels(), s_tab), Divider()],
-                    },
+                        Views = TabLabels(), ViewsSelected = s_tab, Gutter = g, Key = "settings:head", HasMeta = false,
+                        ViewsInBand = PageHead.ViewsInBandFor(s_route),
+                    }),
                     content,
                 ],
             };
         }
     }
 
-    static string[] TabLabels() =>
-    [
-        Loc.Get(Strings.Settings.Tabs.General),
-        Loc.Get(Strings.Settings.Tabs.Appearance),
-        Loc.Get(Strings.Settings.Tabs.Playback),
-        Loc.Get(Strings.Settings.Notify.Title),
-        Loc.Get(Strings.Settings.Tabs.Storage),
-        Loc.Get(Strings.Settings.Tabs.Privacy),
-        Loc.Get(Strings.Settings.Tabs.About),
-    ];
+    /// <summary>The seven tab words, from the keys the Zune band's seed shares (<see cref="ZuneNavRules.SettingsTabKeys"/>), so the page's
+    /// bar and the band's words cannot drift. Built per call, so a locale change relabels.</summary>
+    public static string[] TabLabels()
+    {
+        var keys = ZuneNavRules.SettingsTabKeys;
+        var labels = new string[keys.Length];
+        for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(keys[i]);
+        return labels;
+    }
+
+    /// <summary>Hands the tab words to the Zune band under the route name. A band click is <see cref="Open"/>, the same path
+    /// the palette takes.</summary>
+    static void PublishViews() => PageHead.Publish("settings", TabLabels(), s_tab, static i => Open((Tab)i));
 
     // ══ 3. THE SHARED ROW GRAMMAR (0.2.9 `SettingsPage.cs:192-290`, `SettingsShared.cs`) ══════════════════════════
-
-    /// <summary>W1's masthead: a 24-DIP gear + the 28/36/600 title, padded (36, 16, 36, 12).</summary>
-    static Element Header() => new BoxEl
-    {
-        Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-        Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
-        Children =
-        [
-            Icon(Icons.Settings, 24f, Tok.TextPrimary),
-            Design.Type.PageHero(Loc.Get(Strings.Settings.Title)) with { Grow = 1f },
-        ],
-    };
 
     /// <summary>N1: a LEFT-aligned 1000-DIP column — never centred, never full-bleed.</summary>
     static Element ContentColumn(Element body) => new BoxEl
@@ -215,10 +225,13 @@ public static partial class Settings
     };
 
     /// <summary>N2: cards 4 DIP apart.</summary>
-    static Element TabStack(params Element[] children) => new BoxEl
+    static Element TabStack(params Element[] children)
     {
-        Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children,
-    };
+        // The first group eyebrow has nothing above it to separate from: drop its 32 so the body starts at HeadToBody.
+        if (children.Length > 0 && children[0] is BoxEl { Margin: var m } first && m == SectionHeaderMargin)
+            children[0] = first with { Margin = FirstSectionHeaderMargin };
+        return new BoxEl { Direction = 1, Gap = CardSpacing, AlignSelf = FlexAlign.Stretch, Children = children };
+    }
 
     /// <summary>A group eyebrow: 16-DIP glyph + BodyStrong title, optionally a ≤ 2-line caption in the SAME column as
     /// the title; margin (0, 32, 0, 8). One line centres on the glyph; two lines hang from the top.</summary>

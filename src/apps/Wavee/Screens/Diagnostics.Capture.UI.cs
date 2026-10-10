@@ -79,7 +79,7 @@ public static partial class Diagnostics
                 // pixel query over the latest composite, and the evidence bundle export.
                 Embed.Comp(static () => new EvidenceCardView()) with { Key = "evidence-card" },
             };
-            return PageFrame(Icons.Document, Loc.Get(Strings.Nav.CaptureDiagnostics), "capture-diagnostics", body);
+            return PageFrame(Loc.Get(Strings.Nav.CaptureDiagnostics), "capture-diagnostics", body);
         }
 
         // ── the status line ──────────────────────────────────────────────────────────────────────────────────────

@@ -38,7 +38,7 @@ public sealed class SidebarEditRulesTests
         => SidebarLayoutRules.Apply(state, new SetSectionShown(layout, id, false), pinnedLocked: false).State;
 
     [Fact]
-    public void Outline_Classic_HomeBandSettings()
+    public void Outline_Classic_HomeBand_NoSettings()
     {
         var rows = Rows(SidebarLayoutState.Default, SidebarLayoutId.Classic, NoPins);
         const SidebarOutlineRowKind Sec = SidebarOutlineRowKind.Section, Hint = SidebarOutlineRowKind.Hint, Item = SidebarOutlineRowKind.Item;
@@ -50,10 +50,9 @@ public sealed class SidebarEditRulesTests
             Sec, Hint,                  // Playlists
             Sec, Hint,                  // Recently played (hidden by default)
             Sec, Hint,                  // New releases (hidden by default)
-            SidebarOutlineRowKind.Settings,
-        }, rows.Select(r => r.Kind));
+        }, rows.Select(r => r.Kind));       // no Settings row: the pane has none (G3)
         Assert.False(Section(rows, "recent").Shown);
-        Assert.True(rows[^1].Shown);
+        Assert.DoesNotContain(rows, r => r.SectionId == "settings");
 
         var band = new List<string>();
         SidebarEditRules.Band(SidebarLayoutState.Default.Classic, band);
@@ -73,7 +72,6 @@ public sealed class SidebarEditRulesTests
             SidebarOutlineRowKind.Section, SidebarOutlineRowKind.Hint,
             SidebarOutlineRowKind.Section, SidebarOutlineRowKind.Item, SidebarOutlineRowKind.Item,
             SidebarOutlineRowKind.Item, SidebarOutlineRowKind.Item,
-            SidebarOutlineRowKind.Settings,
         }, rows.Select(r => r.Kind));
         var items = rows.Where(r => r.Kind == SidebarOutlineRowKind.Item).ToList();
         Assert.Equal(new[] { "albums", "artists", "podcasts", "audiobooks" }, items.Select(r => r.ItemId));

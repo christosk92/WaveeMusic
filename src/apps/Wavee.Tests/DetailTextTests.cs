@@ -185,6 +185,56 @@ public class DetailTextTests
         Assert.Equal(Strings.Detail.SongCount(1204), Text.LikedMeta(1204, Ms1h14, durationsKnown: false));
     }
 
+    // ── the list bar's facts (D-7) ─────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Unfiltered, the bar states the same line the head does, minus the saves segment.</summary>
+    [Fact]
+    public void ListFacts_Unfiltered_IsTheMetaLine()
+    {
+        string facts = Text.ListFacts(12, 12, Ms1h14, durationsKnown: true, filtered: false)!;
+        Assert.Equal(Text.PlaylistMeta(12, Ms1h14, true, 0), facts);
+        Assert.Equal(Text.AlbumMeta(12, Ms1h14, true), facts);
+        Assert.Equal(Strings.Detail.MetaLine(Strings.Detail.SongCount(12), Track.Format.TotalTime(Ms1h14)), facts);
+    }
+
+    [Fact]
+    public void ListFacts_Unfiltered_MixedList_StatesBothKinds()
+        => Assert.Equal(
+            Strings.Detail.MetaLine(Strings.Detail.SongCount(48) + " · " + Strings.Podcast.EpisodeCount(3),
+                                    Track.Format.TotalTime(Ms1h14)),
+            Text.ListFacts(51, 51, Ms1h14, durationsKnown: true, filtered: false, episodes: 3));
+
+    /// <summary>A find or filter states what is shown against what the list has, with the SHOWN rows' length.</summary>
+    [Fact]
+    public void ListFacts_Filtered_IsShownOfTotal_WithTheVisibleLength()
+    {
+        long shownMs = 11 * 60_000L;
+        Assert.Equal(
+            Strings.Detail.MetaLine(Strings.Detail.SongCountOf("3", 12), Track.Format.TotalTime(shownMs)),
+            Text.ListFacts(3, 12, shownMs, durationsKnown: true, filtered: true));
+    }
+
+    /// <summary>Nothing matches: the count alone ("0 of 12 songs"), never a "0 min".</summary>
+    [Fact]
+    public void ListFacts_FilteredToNothing_DropsTheLength()
+        => Assert.Equal(Strings.Detail.SongCountOf("0", 12), Text.ListFacts(0, 12, 0, durationsKnown: true, filtered: true));
+
+    /// <summary>A thin row (or an incomplete membership) drops the length segment, filtered or not.</summary>
+    [Fact]
+    public void ListFacts_UnknownDurations_DropTheLength()
+    {
+        Assert.Equal(Strings.Detail.SongCount(12), Text.ListFacts(12, 12, Ms1h14, durationsKnown: false, filtered: false));
+        Assert.Equal(Strings.Detail.SongCountOf("3", 12), Text.ListFacts(3, 12, Ms1h14, durationsKnown: false, filtered: true));
+    }
+
+    /// <summary>Nothing is stated before the list has a total (no "0 songs" flash while it loads).</summary>
+    [Fact]
+    public void ListFacts_NoTotal_IsNull()
+    {
+        Assert.Null(Text.ListFacts(0, 0, 0, durationsKnown: false, filtered: false));
+        Assert.Null(Text.ListFacts(0, 0, 0, durationsKnown: true, filtered: true));
+    }
+
     /// <summary>The count is what the show HAS; a missing publisher never leaves a dangling " · ".</summary>
     [Fact]
     public void ShowMeta_IsPublisherDotEpisodeCount()

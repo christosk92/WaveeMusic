@@ -19,8 +19,8 @@ public sealed class SidebarMenuModelTests
     static readonly string[] Search = ["Search"];
 
     static IReadOnlyList<SidebarMenuRow> Pane(SidebarLayoutId layout, SidebarLayoutState state, SidebarDensity density = SidebarDensity.Default,
-        bool editing = false, IReadOnlyList<string>? locking = null)
-        => SidebarMenuModel.Pane(layout, state, density, editing, locking ?? None);
+        bool editing = false, IReadOnlyList<string>? locking = null, bool classicCovers = false, bool zune = false, bool zunePins = true)
+        => SidebarMenuModel.Pane(layout, state, density, editing, locking ?? None, classicCovers, zune, zunePins);
 
     static IReadOnlyList<SidebarMenuRow> Header(SidebarLayoutId layout, SidebarLayoutState state, string section, IReadOnlyList<string>? locking = null)
         => SidebarMenuModel.Header(layout, state, section, locking ?? None);
@@ -67,9 +67,9 @@ public sealed class SidebarMenuModelTests
     [Fact]
     public void Pane_Editing_LayoutAndResetEverythingDisabledWithReason_DensityLive()
     {
-        var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, SidebarDensity.Compact, editing: true);
+        var rows = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default, SidebarDensity.Compact, editing: true);
         var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
-        Assert.Equal(2, switches.Count);
+        Assert.Equal(3, switches.Count);
         Assert.All(switches, r =>
         {
             Assert.False(r.Enabled);
@@ -88,14 +88,80 @@ public sealed class SidebarMenuModelTests
     }
 
     [Fact]
-    public void Pane_ShowSection_ListsHiddenSettingsAndPinned()
+    public void Pane_DensityIsLibraryOnly_ShowCoversIsClassicOnly()
+    {
+        var classic = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default);
+        Assert.Empty(FindAll(classic, SidebarMenuAction.SetDensity));
+        Assert.Single(FindAll(classic, SidebarMenuAction.ToggleCovers));
+
+        var library = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default);
+        Assert.Equal(2, FindAll(library, SidebarMenuAction.SetDensity).Count);
+        Assert.Empty(FindAll(library, SidebarMenuAction.ToggleCovers));
+    }
+
+    [Fact]
+    public void Pane_Zune_ChecksZuneRadio_OffersPinsToggle()
+    {
+        var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, zune: true, zunePins: false);
+        var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
+        Assert.Equal(3, switches.Count);
+        Assert.False(switches.Single(r => r.Arg == "classic").Checked);
+        Assert.False(switches.Single(r => r.Arg == "library").Checked);
+        Assert.True(switches.Single(r => r.Arg == "zune").Checked);
+        var pins = FindAll(rows, SidebarMenuAction.ToggleZunePins);
+        Assert.Single(pins);
+        Assert.False(pins[0].Checked);
+        Assert.Null(Find(rows, SidebarMenuAction.SetDensity));
+        Assert.Null(Find(rows, SidebarMenuAction.ToggleCovers));
+        Assert.Null(Find(rows, SidebarMenuAction.EditSidebar));
+        AssertEveryLabelKeyResolves(rows);
+    }
+
+    [Fact]
+    public void Pane_NotZune_HasZuneRadioUnchecked()
+    {
+        var rows = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default);
+        var switches = FindAll(rows, SidebarMenuAction.SwitchLayout);
+        Assert.Equal(3, switches.Count);
+        Assert.Equal("classic", switches.Single(r => r.Checked).Arg);
+        Assert.False(switches.Single(r => r.Arg == "zune").Checked);
+        Assert.Null(Find(rows, SidebarMenuAction.ToggleZunePins));
+    }
+
+    [Fact]
+    public void Pane_Classic_OffersShowCoversNotDensity()
+    {
+        var off = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, classicCovers: false);
+        var covers = FindAll(off, SidebarMenuAction.ToggleCovers);
+        Assert.Single(covers);
+        Assert.False(covers[0].Checked);
+        Assert.Empty(FindAll(off, SidebarMenuAction.SetDensity));
+        Assert.DoesNotContain(off, r => r.LabelKey == "sidebar.menu.density");
+
+        var on = Pane(SidebarLayoutId.Classic, SidebarLayoutState.Default, classicCovers: true);
+        Assert.True(FindAll(on, SidebarMenuAction.ToggleCovers).Single().Checked);
+        AssertEveryLabelKeyResolves(on);
+    }
+
+    [Fact]
+    public void Pane_Library_OffersDensityNotShowCovers()
+    {
+        var rows = Pane(SidebarLayoutId.Library, SidebarLayoutState.Default, classicCovers: true);
+        Assert.Empty(FindAll(rows, SidebarMenuAction.ToggleCovers));
+        Assert.Equal(2, FindAll(rows, SidebarMenuAction.SetDensity).Count);
+        AssertEveryLabelKeyResolves(rows);
+    }
+
+    [Fact]
+    public void Pane_ShowSection_ListsHiddenPinned_NeverSettings()
     {
         var state = SidebarLayoutState.Default;
+        // An old document with Settings hidden still loads; the Show list never offers it (G3).
         state = SidebarLayoutRules.Apply(state, new SetSectionShown(SidebarLayoutId.Classic, "settings", false), pinnedLocked: false).State;
         state = SidebarLayoutRules.Apply(state, new SetSectionShown(SidebarLayoutId.Classic, "pinned", false), pinnedLocked: false).State;
         var rows = SidebarMenuModel.Pane(SidebarLayoutId.Classic, state, SidebarDensity.Default, false, None);
         var show = rows.First(r => r.LabelKey == "sidebar.menu.showSection");
-        Assert.Contains(show.Children!, c => c.Arg == "settings");   // Q15
+        Assert.DoesNotContain(show.Children!, c => c.Arg == "settings");
         Assert.Contains(show.Children!, c => c.Arg == "pinned");
         AssertEveryLabelKeyResolves(rows);                           // no raw "sidebar.section.title.settings" on screen (D9)
     }
@@ -291,6 +357,52 @@ public sealed class SidebarMenuModelTests
         Assert.Equal(SidebarMenuAction.Unpin, Assert.Single(rows).Action);
     }
 
+    // J2: the sidebar's Pin / Unpin sits top-level in the container menu's Pin slot, Organize ▸ right after it.
+
+    static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> ContainerRows(bool pin, bool organize, bool startsGroup = true)
+    {
+        var target = ActionTarget.ForPlaylist(EntityUri.Parse("spotify:playlist:abc"), "Mix");
+        var model = Menus.Container(in target, null, "Playlist", new ContainerExtras
+        {
+            Pin = pin ? () => new FluentGpu.Controls.MenuFlyoutItem("PIN") : null,
+            Organize = organize ? () => new FluentGpu.Controls.MenuFlyoutItem("ORGANIZE") : null,
+            PinStartsGroup = startsGroup,
+            Tail = [new FluentGpu.Controls.MenuFlyoutItem("TAIL")],
+        });
+        return model?.Rows ?? [];
+    }
+
+    [Fact]
+    public void ContainerMenu_PinThenOrganize_AreAdjacentInOneGroup()
+    {
+        var rows = ContainerRows(pin: true, organize: true);
+        int p = rows.ToList().FindIndex(r => r.Label == "PIN");
+        int o = rows.ToList().FindIndex(r => r.Label == "ORGANIZE");
+        Assert.True(p >= 0);
+        Assert.Equal(p + 1, o);                          // Organize ▸ directly after Pin, no separator between
+        if (p > 0) Assert.True(rows[p - 1].IsSeparator); // the pair opens its own group
+    }
+
+    [Fact]
+    public void ContainerMenu_OrganizeAlone_StillOpensItsGroup()
+    {
+        var rows = ContainerRows(pin: false, organize: true);
+        int o = rows.ToList().FindIndex(r => r.Label == "ORGANIZE");
+        Assert.True(o >= 0);
+        Assert.DoesNotContain(rows, r => r.Label == "PIN");
+        if (o > 0) Assert.True(rows[o - 1].IsSeparator);
+    }
+
+    [Fact]
+    public void ContainerMenu_NothingApplies_NoPinGroupAndNoStraySeparator()
+    {
+        var rows = ContainerRows(pin: false, organize: false);
+        Assert.DoesNotContain(rows, r => r.Label is "PIN" or "ORGANIZE");
+        for (int i = 1; i < rows.Count; i++)
+            Assert.False(rows[i].IsSeparator && rows[i - 1].IsSeparator);
+        Assert.False(rows.Count > 0 && rows[0].IsSeparator);
+    }
+
     [Fact]
     public void Item_Collections_MoveAndHide()
     {
@@ -310,11 +422,8 @@ public sealed class SidebarMenuModelTests
     }
 
     [Fact]
-    public void Item_Settings_Hide()
-    {
-        var rows = SidebarMenuModel.Item(SidebarSectionKind.Settings, SidebarCatalogue.SettingsRoute, 0, 1, false);
-        Assert.Equal(SidebarMenuAction.HideItem, Assert.Single(rows).Action);
-    }
+    public void Item_Settings_OffersNothing()
+        => Assert.Empty(SidebarMenuModel.Item(SidebarSectionKind.Settings, SidebarCatalogue.SettingsRoute, 0, 1, false));
 
     [Fact]
     public void Item_RootlistRow_MovesOnlyWhileTheRootlistOrderIsShown()

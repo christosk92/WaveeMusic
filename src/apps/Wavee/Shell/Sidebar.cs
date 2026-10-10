@@ -330,13 +330,18 @@ public enum SidebarRowShape : byte
     EntityTwoLine = 1,
     /// <summary>Row B — an entity row at Compact density: 36 tall, 24-px art, title only.</summary>
     EntityOneLine = 2,
+    /// <summary>Classic with Show covers off: 36 tall (pitch 40, the Collections rows' pitch), one line. A row with no leading
+    /// visual has no icon column and its label at the header's x (pane 16); a FOLDER row carries its 16-DIP folder mark at
+    /// pane 16 with an 8 gap (label at pane 40), so the tree reads as a tree without covers.</summary>
+    Text = 3,
 }
 
 /// <summary>THE ONE ROW LADDER, drawn to WinUI NavigationView (NavigationView_themeresources.xaml, "TR"): 36-px rows in
 /// a 4,2 margin (TR:217, TR:228), a 40-px icon column whose centre sits at pane x 24 (TR:612), the label at pane x 48
-/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 31-px
-/// folder indents (NavigationViewItemBase.h:63) and the 3×16 r2 pill at slot x 31·depth (TR:220-222). Numbers are SLOT
-/// space (the list's one 4-px inset is <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
+/// (TR:251), trailing content ending at pane W − 18 (TR:604), a 40-px chevron column at pane W − 44..W − 4 (TR:617), 32-px
+/// folder indents (WinUI's 31, rounded to the 8-px grid), the 3×16 r2 pill at slot x 32·depth (TR:220-222) and the 1-px tree
+/// guides at the folder mark's centre column. Numbers are SLOT space (the list's one 4-px inset is
+/// <see cref="PaneEdge"/>). Engine-free so Wavee.Tests pins every one.</summary>
 public static class SidebarRowGeometry
 {
     // ── the pane ──
@@ -344,7 +349,7 @@ public static class SidebarRowGeometry
     /// (<c>PaneMetrics.PanePad</c>), never per row.</summary>
     public const float PaneEdge = 4f;
     /// <summary>The pane content grid's top margin (TR:233's −1,3 with the −1 dropped: no content border to tuck under).</summary>
-    public const float PaneTopInset = 3f;
+    public const float PaneTopInset = 4f;
     /// <summary>The vertical half of the 4,2 item margin, carried by every row.</summary>
     public const float RowMarginY = 2f;
     /// <summary>The compact rail (TR:208 NavigationViewCompactPaneLength).</summary>
@@ -355,28 +360,76 @@ public static class SidebarRowGeometry
     // ── rows ──
     public const float RowHeight = 36f;
     public const float TwoLineRowHeight = 40f;
+    /// <summary>A Classic text row (Show covers off): 36 tall (pitch 40), the label only. P7 had it at 28 (pitch 32), which read
+    /// as cramped beside the 40-pitch Collections rows. This is the Text SHAPE's own height, not a Zune compaction that leaked:
+    /// Zune hides the pane (<c>ShellNavStyle.HidesPane</c>) and no Zune rule touches a row height. The pitch is derived from
+    /// the shape everywhere (the extent table, the band pitch, the skeleton), so the virtual list sees one pitch per section.</summary>
+    public const float TextRowHeight = 36f;
     public const float IconColumn = 40f;
     public const float GlyphSize = 16f;
+    /// <summary>A Classic text row's label x when it has NO icon column (no glyph, no leading): the header's text x in
+    /// slot space (pane 16). A Text row that carries a glyph (a folder) uses the icon column and <see cref="LabelGap"/> instead.</summary>
+    public const float TextLabelX = HeaderTextX;
+    /// <summary>The gap between a Text-shape folder's mark and its label (Spacing.S; this file is engine-free).</summary>
+    public const float TextGlyphGap = 8f;
+    /// <summary>The right edge (slot space) of a Text-shape folder's mark: it sits at <see cref="TextLabelX"/> (pane 16) and is
+    /// <see cref="GlyphSize"/> wide.</summary>
+    public const float TextGlyphColumn = TextLabelX + GlyphSize;
+    /// <summary>A Text-shape folder's label x in slot space: the mark's column plus <see cref="TextGlyphGap"/> (pane 40).</summary>
+    public const float TextGlyphLabelX = TextGlyphColumn + TextGlyphGap;
     /// <summary>The ContentPresenter's 4-px left margin between the icon column and the label (TR:251).</summary>
     public const float LabelGap = 4f;
     /// <summary>The ContentGrid's 14-px right margin (TR:604): trailing content ends at pane W − 18.</summary>
     public const float TrailingPad = 14f;
     /// <summary>The chevron column (TR:617): its −14 margin cancels <see cref="TrailingPad"/>.</summary>
     public const float ChevronColumn = 40f;
-    public const float IndentStep = 31f;
+    public const float IndentStep = 32f;
     public const int MaxIndentDepth = 3;
     /// <summary>The trailing cluster's gap (count · pin mark · equalizer).</summary>
     public const float TrailingGap = 6f;
+    /// <summary>The hover "…" box, and the count slot's minimum width, so the "…" lands exactly where the count sits.</summary>
+    public const float OverflowBox = 26f;
+
+    /// <summary>The width a row's label gives up to a SEPARATE hover "…" reserve. Only a chevron row keeps one (the "…" parks
+    /// just left of the chevron column, next to the folder's "+"). A count row has none: the count and the "…" share the
+    /// <see cref="CountSlotWidth"/> slot and cross-fade in place.</summary>
+    public static float OverflowReserve(bool menu, bool chevron) => menu && chevron ? OverflowBox : 0f;
+
+    /// <summary>The flow width of a non-chevron row's count slot (its 6 gap included), 0 when the row has none. The slot exists
+    /// for a count, and for a menu row whose pin / equalizer would otherwise sit under the "…"; it is
+    /// <see cref="OverflowBox"/> wide at least when the row has a menu, so a count and the "…" never change the label's width
+    /// between rest and hover.</summary>
+    public static float CountSlotWidth(bool menu, bool count, bool lead, float countWidth)
+        => count || (menu && lead)
+            ? TrailingGap + (menu ? MathF.Max(OverflowBox, count ? countWidth : 0f) : countWidth)
+            : 0f;
+
+    /// <summary>The flow width of the pin mark left of the count slot (its 6 gap included): 12 for the bare mark, the 24
+    /// <see cref="RowButton"/> box of the Unpin button otherwise.</summary>
+    public static float PinWidth(bool pinned, bool button)
+        => pinned ? TrailingGap + (button ? RowButton : 12f) : 0f;
 
     // ── chrome rows ──
     public const float HeaderHeight = 40f;
-    /// <summary>The header title's x: pane 16 (TR:229's 16,0) less <see cref="PaneEdge"/>.</summary>
+    /// <summary>The header title's x: pane 16 (TR:229's 16,0) less <see cref="PaneEdge"/>. Slot space: it already draws at pane 16.</summary>
     public const float HeaderTextX = 12f;
-    /// <summary>A header's inline button (chevron, ⋯, +): 24×24.</summary>
-    public const float HeaderButton = 24f;
+    /// <summary>The header title's x in pane space (16), the ruler the tests pin.</summary>
+    public const float HeaderTextPaneX = PaneEdge + HeaderTextX;
+    /// <summary>A header's inline button (⋯, +, and the footer ⋯): a 28×28 box carrying a 16 glyph, the same as
+    /// <c>SidebarLibraryHeadRules.ToolbarIconButton</c>. The chevron keeps its own glyph size.</summary>
+    public const float HeaderButton = 28f;
+    /// <summary>The glyph inside a header's inline button and every '+' glyph.</summary>
+    public const float HeaderGlyph = 16f;
+    /// <summary>Every '+' glyph (a header's create, the Library toolbar's create, a folder row's +).</summary>
+    public const float PlusGlyph = 16f;
+    /// <summary>A row's own trailing button (the folder +): 24 so it fits inside every row shape, including Classic's
+    /// 28-px text row.</summary>
+    public const float RowButton = 24f;
+    /// <summary>6: a header's or the footer's last 28-px button centres on pane W − 24, the chevron column's centre.</summary>
+    public const float HeaderTrailingPad = (ChevronColumn - HeaderButton) * 0.5f;
     /// <summary>A separator: the 1-px rule plus its 0,3,0,4 margin (TR:223, TR:247), full pane width.</summary>
     public const float SeparatorHeight = 8f;
-    public const float SeparatorLineTop = 3f;
+    public const float SeparatorLineTop = 4f;
     /// <summary>A quiet one-line hint (an empty Playlists, a search with no match): 40 tall in the 4,2 margin.</summary>
     public const float EmptyHintHeight = 40f;
     /// <summary>The tree's closing drop gutter.</summary>
@@ -385,10 +438,14 @@ public static class SidebarRowGeometry
     // ── the pill ──
     public const float PillW = 3f, PillH = 16f, PillRadius = 2f;
 
-    public static float HeightOf(SidebarRowShape shape)
-        => shape == SidebarRowShape.EntityTwoLine ? TwoLineRowHeight : RowHeight;
+    public static float HeightOf(SidebarRowShape shape) => shape switch
+    {
+        SidebarRowShape.EntityTwoLine => TwoLineRowHeight,
+        SidebarRowShape.Text => TextRowHeight,
+        _ => RowHeight,
+    };
 
-    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40).</summary>
+    /// <summary>A row's slot extent: its height plus the 2 + 2 margin (40 / 44 / 40 / 32).</summary>
     public static float PitchOf(SidebarRowShape shape) => HeightOf(shape) + 2f * RowMarginY;
 
     /// <summary>The leading visual's edge: glyph 16 · art 32 (Default) · art 24 (Compact).</summary>
@@ -396,16 +453,17 @@ public static class SidebarRowGeometry
     {
         SidebarRowShape.Glyph => GlyphSize,
         SidebarRowShape.EntityTwoLine => 32f,
+        SidebarRowShape.Text => 0f,
         _ => 24f,
     };
 
     public static int ClampDepth(int depth) => depth < 0 ? 0 : depth > MaxIndentDepth ? MaxIndentDepth : depth;
 
-    /// <summary>The content indent for a nesting depth: 31 per level, capped at 3 (93). The FILL stays full width; only
+    /// <summary>The content indent for a nesting depth: 32 per level, capped at 3 (96). The FILL stays full width; only
     /// pill, icon and label move (NavigationViewItem.cpp:894-902).</summary>
     public static float IndentFor(int depth) => IndentStep * ClampDepth(depth);
 
-    /// <summary>The pill's x in slot space (pane 4 + 31·depth).</summary>
+    /// <summary>The pill's x in slot space (pane 4 + 32·depth).</summary>
     public static float PillX(int depth) => IndentFor(depth);
 
     /// <summary>The pill's y inside a slot whose row is <paramref name="rowHeight"/> tall: centred on the row, below its
@@ -416,9 +474,25 @@ public static class SidebarRowGeometry
     /// "insert here at this depth" lines up with the row it describes. Read backwards by the drop resolver.</summary>
     public static float TreeContentX(int depth) => IndentFor(depth);
 
+    /// <summary>The x (slot space) of the 1-px tree guide that joins the rows under an ancestor at level
+    /// <paramref name="level"/>: the folder mark's centre column (20) plus 32 per level.</summary>
+    public static float TreeGuideX(int level) => IconColumn * 0.5f + IndentStep * level;
+
     /// <summary>Pane-space rulers (diagnostics, tests).</summary>
     public const float IconCentreX = PaneEdge + IconColumn * 0.5f;              // 24
     public const float LabelX = PaneEdge + IconColumn + LabelGap;               // 48
+    /// <summary>A tree guide's x in pane space: pane 24 + 32·level (the folder mark's centre column).</summary>
+    public static float TreeGuidePaneX(int level) => PaneEdge + TreeGuideX(level);
+    /// <summary>A glyph-less Text row's label x in pane space: the header's x (16) plus the depth indent.</summary>
+    public static float TextLabelPaneX(int depth) => PaneEdge + IndentFor(depth) + TextLabelX;
+    /// <summary>A Text-shape folder's label x in pane space: mark at 16, 8 gap, label at 40 (plus the depth indent).</summary>
+    public static float TextGlyphLabelPaneX(int depth) => PaneEdge + IndentFor(depth) + TextGlyphLabelX;
+    /// <summary>Where a row's label starts in slot space before the depth indent: after the 40-px icon column and its gap, after a
+    /// Text-shape folder's mark and its 8 gap, or at the header's x for a glyph-less Text row.</summary>
+    public static float LabelStartOf(bool iconColumn, bool textGlyph)
+        => textGlyph ? TextGlyphLabelX : iconColumn ? IconColumn + LabelGap : TextLabelX;
+    /// <summary>An icon-column row's label x in pane space: 48 plus the depth indent.</summary>
+    public static float LabelPaneX(int depth) => LabelX + IndentFor(depth);
     public static float TrailingRight(float paneWidth) => paneWidth - PaneEdge - TrailingPad;   // W − 18
     public static float ChevronLeft(float paneWidth) => paneWidth - PaneEdge - ChevronColumn;   // W − 44
 
@@ -854,7 +928,8 @@ public readonly record struct SidebarPaneFrameSnapshot(
     bool OverlayOpen,
     float PreferredExpandedWidth,
     float PresentedWidth,
-    float RenderedPaneWidth);
+    float RenderedPaneWidth,
+    bool PaneHidden = false);
 
 /// <summary>All terminal-state violations detected in one observation. Flags make one diagnostic edge sufficient
 /// even when one bad state breaks width and mode at the same time.</summary>
@@ -885,8 +960,11 @@ public static class SidebarPaneInvariant
         var fault = SidebarPaneInvariantFault.None;
         if (!InExpandedRange(s.PreferredExpandedWidth)) fault |= SidebarPaneInvariantFault.PreferredWidthOutOfRange;
         // A forced band can only present its forced mode.
-        if ((s.Band == SidebarWindowBand.Narrow && s.Mode != SidebarPaneMode.Compact)
-            || (s.Band == SidebarWindowBand.Tiny && s.Mode != SidebarPaneMode.Minimal))
+        // A hidden pane (Zune) presents Minimal in every band.
+        if (s.PaneHidden
+                ? s.Mode != SidebarPaneMode.Minimal
+                : (s.Band == SidebarWindowBand.Narrow && s.Mode != SidebarPaneMode.Compact)
+                  || (s.Band == SidebarWindowBand.Tiny && s.Mode != SidebarPaneMode.Minimal))
             fault |= SidebarPaneInvariantFault.ModeBandMismatch;
         switch (s.Mode)
         {
@@ -1453,7 +1531,7 @@ public static class RootlistSlotResolver
         if (min >= max) return max;
         if (!float.IsFinite(xInRow)) return max;
 
-        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (31 per level
+        // THE LADDER IS THE ROW'S OWN. `TreeContentX(d)` is where a tree row at depth d starts drawing (32 per level
         // from the row origin, the pill's x) — so one step left is one outdent. There is no reserved disclosure cell
         // (the folder chevron is trailing).
         float steps = (xInRow - SidebarRowGeometry.TreeContentX(0)) / SidebarRowGeometry.IndentStep;

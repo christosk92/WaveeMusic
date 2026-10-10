@@ -189,7 +189,14 @@ public readonly partial struct Album
             _demandAlbum = DemandAlbum;
             _demandTracked = DemandTracked;
             _stamp = Stamp;
-            _actions = new Detail.FrameActions { Shuffle = ShuffleAlbum, More = MoreMenu, CoverDrag = CoverPayload };
+            _actions = new Detail.FrameActions
+            {
+                Shuffle = ShuffleAlbum, More = MoreMenu, CoverDrag = CoverPayload,
+                // The Play split's menu: the same context verbs the removed "…" rows ran, and a real album radio.
+                AddToQueue = () => RunContext(ActionId.AddContextToQueue),
+                PlayNext = () => RunContext(ActionId.PlayContextNext),
+                StartRadio = StartRadio,
+            };
             Func<float, Element> attribution = w => FacePile(_display, w);
             Func<Element> preRelease = () => Countdown(_display.Uri, _upcomingAt, _accent);
             Func<bool, Element> release = outer => ReleasePanel(_display, outer);
@@ -386,8 +393,26 @@ public readonly partial struct Album
             else Actions.Services.Play?.Invoke(a.Uri);
         }
 
-        /// <summary>The hero ⋯ (W20): the one container menu, on-page — see <see cref="Album.HeroMenu"/>.</summary>
-        ContextMenuModel? MoreMenu() => HeroMenu(_display, _overlay);
+        /// <summary>The split's "Add to queue" / "Play next": the registered context verb over the album's container target
+        /// (the whole context, no 50-track cap).</summary>
+        void RunContext(ActionId id)
+        {
+            var a = _display;
+            if (!a.IsValid) return;
+            var target = ActionTarget.ForAlbum(a.Uri, a.Title);
+            Detail.RunContextVerb(id, in target);
+        }
+
+        /// <summary>The split's "Start radio": a real radio off the album's uri.</summary>
+        void StartRadio()
+        {
+            var a = _display;
+            if (a.IsValid) Detail.StartRadioFor(a.Uri, a.Title)();
+        }
+
+        /// <summary>The hero ⋯ (W20): the one container menu, on-page — see <see cref="Album.HeroMenu"/>. The page has an
+        /// action row (the Play split and a Share button), so the ⋯ leads with Download · Copy link and drops the verbs those carry.</summary>
+        ContextMenuModel? MoreMenu() => HeroMenu(_display, _overlay, actionRow: true);
 
         /// <summary>The cover drags the whole album: the resident rows when they are in hand, else the library's resolver.</summary>
         object? CoverPayload()
@@ -410,10 +435,12 @@ public readonly partial struct Album
     }
 
     /// <summary>The album's hero ⋯ — the page's and the library pane's ONE menu, built at OPEN from the live model:
-    /// <c>Menus.Container</c> on the page (Play next · Add to queue · Add to playlist ▸ · Pin · Share). When the tracks are
+    /// <c>Menus.Container</c> on the page (Play next · Add to queue · Add to playlist ▸ · Pin · Share). With
+    /// <paramref name="actionRow"/> (the PAGE: its action row carries the Play split and a Share button) it is Download ·
+    /// Copy link, then Add to playlist ▸ · Pin; the library pane keeps the full menu. When the tracks are
     /// resident, Add to playlist is the track menu's own deposit submenu over them (no resolve round-trip); otherwise the
     /// registered container verb resolves them. Null when nothing is offerable.</summary>
-    internal static ContextMenuModel? HeroMenu(Album a, IOverlayService? overlay)
+    internal static ContextMenuModel? HeroMenu(Album a, IOverlayService? overlay, bool actionRow = false)
     {
         if (!a.IsValid) return null;
         MenuFlyoutItem? deposit = null;
@@ -434,7 +461,13 @@ public readonly partial struct Album
         string subtitle = PageRules.Subtitle(artist.IsValid && artist.Knows(ArtistFields.Name) ? artist.Name : null, a.Year, a.Kind);
         var target = ActionTarget.ForAlbum(a.Uri, a.Title);
         return Menus.Container(in target, Controls.ArtUrl(a.ImageId), subtitle,
-            new ContainerExtras { OnPage = true, Deposit = deposit });
+            new ContainerExtras
+            {
+                OnPage = true, Deposit = deposit, ActionRow = actionRow,
+                Lead = actionRow
+                    ? Detail.ContainerLead(a.Uri, !a.ShareUrlId.IsEmpty ? Entities.Strings.Resolve(a.ShareUrlId) : null, playlist: false, overlay)
+                    : null,
+            });
     }
 
     /// <summary>W18's unresolvable prerelease: 14 px tertiary, centred, 16/24 padding.</summary>
@@ -675,10 +708,18 @@ public readonly partial struct Album
             if (_skelKey.Length == 0)
             {
                 var a = new Album(_slot);
+                // A video is reserved only when the rows already say so: every member's verdict is in AND one has a video.
+                bool videoKnown = false;
+                if (a.IsValid)
+                {
+                    var known = MemoryMarshal.Cast<int, Track>(a.TrackSlots);
+                    Span<PageRules.AlbumVideo> probe = stackalloc PageRules.AlbumVideo[PageRules.VideoCap];
+                    videoKnown = PageRules.VideoDecided(known) && PageRules.SelectVideos(known, probe) > 0;
+                }
                 _shape = a.IsValid
-                    ? PageRules.SkeletonShape(a.Knows(AlbumFields.Kind), a.Kind, a.TrackCount)
+                    ? PageRules.SkeletonShape(a.Knows(AlbumFields.Kind), a.Kind, a.TrackCount, videoKnown)
                     : PageRules.SkeletonShape(knowsKind: false, AlbumKind.Album, 0);
-                int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.RowBlocks << 2);
+                int hash = (_shape.About ? 1 : 0) | (_shape.Fans ? 2 : 0) | (_shape.Video ? 4 : 0) | (_shape.RowBlocks << 3);
                 _skelKey = "trailing-skel:" + hash.ToString(CultureInfo.InvariantCulture);
             }
             return new BoxEl
@@ -1085,7 +1126,7 @@ public readonly partial struct Album
 
     static int At(ReadOnlySpan<int> slots, int index) => (uint)index < (uint)slots.Length ? slots[index] : 0;
 
-    /// <summary>A related album: the shared media surface (<see cref="Shape.RowTile"/> — 48 cover, hover play FAB, the
+    /// <summary>A related album: the shared media surface (<see cref="Shape.RowTileStill"/> — 48 cover, hover play FAB, the
     /// hot-revealed "…", drag source) on the opaque card tile under its hairline. Its menu is the home card grammar
     /// (<see cref="HomeCardNav.MenuOf"/>: Play · Play next · Add to queue, Save · Add to playlist · Open · Pin · Share),
     /// built at open from the card handle — the row has no tracklist of its own to compose a track menu from.</summary>
@@ -1106,7 +1147,7 @@ public readonly partial struct Album
             OnPlay: () => Playback.PlayOrToggleContext(id),
             Drag: Drag.Source(() => ResourcePayload(DragKind.Album, EntityKind.Album, slot, uri, title, cover)))
             { Menu = HomeCardNav.MenuOf(in card) },
-            Shape.RowTile) with { Key = "album:" + slot.ToString(CultureInfo.InvariantCulture) };
+            Shape.RowTileStill) with { Key = "album:" + slot.ToString(CultureInfo.InvariantCulture) };
     }
 
     /// <summary>A playlist this album appears on: the same plated row, the owner as its subtitle, the same card menu.</summary>
@@ -1126,7 +1167,7 @@ public readonly partial struct Album
             OnPlay: () => Playback.PlayOrToggleContext(id),
             Drag: Drag.Source(() => ResourcePayload(DragKind.Playlist, EntityKind.Playlist, slot, uri, title, cover)))
             { Menu = HomeCardNav.MenuOf(in card) },
-            Shape.RowTile) with { Key = "playlist:" + slot.ToString(CultureInfo.InvariantCulture) };
+            Shape.RowTileStill) with { Key = "playlist:" + slot.ToString(CultureInfo.InvariantCulture) };
     }
 
     static Element SubtitleLine(string text)
@@ -1176,7 +1217,7 @@ public readonly partial struct Album
         };
     }
 
-    const float FanCardW = 148f;
+    const float FanCardW = PageRules.FanCardW;
     static readonly SurfaceShape s_fanShape = Shape.Shelf(captionLines: 1);
 
     /// <summary>"Fans also like": at most eight circular artist cards in ONE clipped row, the same card as the artist page
@@ -1505,41 +1546,122 @@ public readonly partial struct Album
     static string VideoKey(in PageRules.AlbumVideo v)
         => "video:" + v.MemberSlot.ToString(CultureInfo.InvariantCulture);
 
-    // ── the trailing skeleton (W7): the section skeletons PageRules.SkeletonShape names, each with a 160×18 header bar ──
-    // The sizes are PageRules.Skel* so PageRules.SkeletonHeight equals what is drawn. It deliberately UNDER-states (no
-    // watch-video, merch or "show all" placeholder).
+    // ── the trailing skeleton (W7): the section skeletons PageRules.SkeletonShape names, in the loaded band's own order ──
+    // Video (when known), About (no header), Fans also like (header + a clipped row of circular cards), then the
+    // list-section blocks. The sizes are PageRules.Skel* (derived from the real builders above, pinned by facts) so
+    // PageRules.SkeletonHeight equals what is drawn and the reveal is a dissolve, not a snap. It deliberately
+    // UNDER-states (no "show all", merch or two-video shelf placeholder).
 
     static Element TrailingSkeleton(in PageRules.TrailingShape shape)
     {
-        var sections = new List<Element>(2 + shape.RowBlocks);
-        if (shape.About)
-            sections.Add(SectionSkeleton(new BoxEl { Height = PageRules.SkelAboutH, Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault }));
-        if (shape.Fans) sections.Add(SectionSkeleton(ChipsSkeleton()));
+        var sections = new List<Element>(3 + shape.RowBlocks);
+        if (shape.Video) sections.Add(VideoSkeleton());
+        if (shape.About) sections.Add(AboutSkeleton());
+        if (shape.Fans) sections.Add(SectionSkeleton(FansSkeleton()));
         for (int i = 0; i < shape.RowBlocks; i++) sections.Add(SectionSkeleton(RowsSkeleton()));
         return new BoxEl { Direction = 1, AlignSelf = FlexAlign.Stretch, Children = sections.ToArray() };
     }
 
-    static Element ChipsSkeleton()
+    static BoxEl Bone(float w, float h, float radius = 4f)
+        => new() { Width = w, Height = h, Shrink = 0f, Corners = CornerRadius4.All(radius), Fill = Tok.FillSubtleSecondary };
+
+    /// <summary>A text-column bone: up to <paramref name="maxW"/> wide, narrower when the column is (a narrow list column
+    /// must not push the bar past the card).</summary>
+    static BoxEl TextBone(float maxW, float h)
+        => new() { MaxWidth = maxW, Height = h, AlignSelf = FlexAlign.Stretch, Corners = CornerRadius4.All(4f), Fill = Tok.FillSubtleSecondary };
+
+    /// <summary>The single-video hero's face: a 200×116 thumb beside three bars, under the section's own pad (no bottom).</summary>
+    static Element VideoSkeleton() => new BoxEl
     {
-        var chips = new Element[5];
-        for (int i = 0; i < chips.Length; i++)
-            chips[i] = new BoxEl { Width = 132f, Height = PageRules.SkelChipH, Shrink = 0f, Corners = CornerRadius4.All(20f), Fill = Tok.FillCardDefault };
-        return new BoxEl { Direction = 0, Gap = Spacing.S, ClipToBounds = true, Children = chips };
+        Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = new Edges4(Spacing.L, Spacing.XL, Spacing.L, 0f),
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center,
+                Padding = new Edges4(Spacing.M, Spacing.M, Spacing.L, Spacing.M),
+                Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault, ClipToBounds = true,
+                Children =
+                [
+                    Bone(PageRules.SkelVideoThumbW, PageRules.SkelVideoThumbH, Radii.Control),
+                    new BoxEl
+                    {
+                        Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.S,
+                        Children = [TextBone(96f, 12f), TextBone(200f, 16f), TextBone(120f, 12f)],
+                    },
+                ],
+            },
+        ],
+    };
+
+    /// <summary>"About the artist": the card has no header — an 84 circle, two bars and the Follow cell, in the page row layout
+    /// (<c>Controls.PageAbout</c>: the link cell carries no right padding, the Follow cell its own L on both sides).</summary>
+    static Element AboutSkeleton() => new BoxEl
+    {
+        Direction = 1, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Height = PageRules.SkelAboutH,
+                Corners = CornerRadius4.All(Radii.Card), Fill = Tok.FillCardDefault, ClipToBounds = true,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Direction = 0, Gap = Spacing.L, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                        Padding = new Edges4(Spacing.L, Spacing.M, 0f, Spacing.M),
+                        Children =
+                        [
+                            Bone(PageRules.SkelAboutPortrait, PageRules.SkelAboutPortrait, PageRules.SkelAboutPortrait / 2f),
+                            new BoxEl
+                            {
+                                Direction = 1, Grow = 1f, Basis = 0f, MinWidth = 0f, Gap = Spacing.S,
+                                Children = [TextBone(180f, 20f), TextBone(320f, 12f)],
+                            },
+                        ],
+                    },
+                    new BoxEl
+                    {
+                        Shrink = 0f, Padding = new Edges4(Spacing.L, 0f, Spacing.L, 0f),
+                        Children = [Bone(96f, 32f, 16f)],
+                    },
+                ],
+            },
+        ],
+    };
+
+    /// <summary>"Fans also like": the real row's seed face — circular 148-wide shelf cards in one clipped row.</summary>
+    static Element FansSkeleton()
+    {
+        var cards = new Element[PageRules.FansCap];
+        var seed = Controls.CardData.Seed with { Circular = true };
+        for (int i = 0; i < cards.Length; i++) cards[i] = Controls.Surface(seed, s_fanShape, FanCardW);
+        return new BoxEl { Direction = 0, Gap = Spacing.M, ClipToBounds = true, Children = cards };
     }
 
-    /// <summary>The rows block: the SEED face of the real rows' own shape (<see cref="Shape.RowTile"/>), which is as tall
+    /// <summary>The rows block: the SEED face of the real rows' own shape (<see cref="Shape.RowTileStill"/>), which is as tall
     /// as the live row (its 64 floor — <c>PageRules.SkelRowH</c>, pinned by a fact) because every line keeps its box.</summary>
     static Element RowsSkeleton()
     {
         var rows = new Element[PageRules.SkelRows];
-        for (int i = 0; i < rows.Length; i++) rows[i] = Controls.Surface(Controls.CardData.Seed, Shape.RowTile);
+        for (int i = 0; i < rows.Length; i++) rows[i] = Controls.Surface(Controls.CardData.Seed, Shape.RowTileStill);
         return new BoxEl { Direction = 1, Gap = PageRules.SkelRowGap, Children = rows };
     }
 
-    // SectionPad's vertical sum is PageRules.SkelSectionPadV; the gap is PageRules.SkelSectionGap.
+    // SectionPad's vertical sum is PageRules.SkelSectionPadV; the gap is PageRules.SkelSectionGap; the header line box
+    // is PageRules.SkelHeaderH with its 160×18 bone centred in it.
     static Element SectionSkeleton(Element body) => new BoxEl
     {
         Direction = 1, Gap = PageRules.SkelSectionGap, AlignSelf = FlexAlign.Stretch, Padding = SectionPad,
-        Children = [new BoxEl { Width = 160f, Height = PageRules.SkelHeaderH, Corners = CornerRadius4.All(4f), Fill = Tok.FillCardDefault }, body],
+        Children =
+        [
+            new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Height = PageRules.SkelHeaderH,
+                Children = [Bone(160f, PageRules.SkelHeaderBarH)],
+            },
+            body,
+        ],
     };
 }

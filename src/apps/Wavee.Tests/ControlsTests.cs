@@ -152,6 +152,20 @@ public class ControlsGeometryTests
         => Assert.Equal(Controls.ChipRailHeight + Spacing.S, Controls.ChipRailExtent);
 
     [Fact]
+    public void A_chip_is_the_stock_32_dip_control_height()
+        => Assert.Equal(32f, Controls.ChipHeight);
+
+    [Fact]
+    public void A_link_chip_is_a_keyed_hyperlink_that_never_shrinks()
+    {
+        var chip = Assert.IsType<BoxEl>(Controls.LinkChip("Podcasts", static () => { }, "spotify:page:podcasts"));
+        Assert.Equal("spotify:page:podcasts", chip.Key);
+        Assert.Equal(AutomationRole.Hyperlink, chip.Role);
+        Assert.Equal(0f, chip.Shrink);                       // a wrapping row breaks to a new line instead of ellipsising
+        Assert.Equal(Controls.ChipHeight, chip.MinHeight);   // one fixed height per line
+    }
+
+    [Fact]
     public void The_dialog_width_ladder_is_three_rungs_inside_the_engine_clamp()
     {
         Assert.Equal(320f, Controls.DialogWidthCompact);
@@ -326,6 +340,23 @@ public class ControlsCtaTests
         Assert.Equal(0x80 / 255f, Controls.OnFillSecondaryAlpha(ColorF.FromRgba(0, 0, 0)), 4);
         Assert.Equal(0x80 / 255f, Controls.OnFillSecondaryAlpha(ColorF.FromRgba(20, 20, 24)), 4);
         Assert.Equal(0xB3 / 255f, Controls.OnFillSecondaryAlpha(ColorF.FromRgba(255, 255, 255)), 4);
+    }
+
+    [Fact]
+    public void The_play_split_is_88_plus_a_divider_plus_a_32_chevron()
+    {
+        Assert.Equal(121f, ButtonRules.PlaySplitWidthNominal);
+        Assert.Equal(ButtonRules.PlaySplitPrimaryMinW + 1f + ButtonRules.PlaySplitChevronW, ButtonRules.PlaySplitWidthNominal);
+    }
+
+    [Fact]
+    public void The_play_split_menu_is_always_queue_then_play_next_then_radio()
+    {
+        var items = ButtonRules.PlaySplitItems;
+        Assert.Equal(3, items.Length);
+        Assert.Equal(ButtonRules.PlaySplitVerb.AddToQueue, items[0]);
+        Assert.Equal(ButtonRules.PlaySplitVerb.PlayNext, items[1]);
+        Assert.Equal(ButtonRules.PlaySplitVerb.StartRadio, items[2]);
     }
 }
 

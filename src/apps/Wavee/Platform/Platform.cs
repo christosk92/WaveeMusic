@@ -79,14 +79,21 @@ public static partial class Platform
         /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). There
         /// is no key-exists probe, so this is the ONLY thing that tells "never written" from "written as the default".</summary>
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
-        /// <summary>The active sidebar layout: 0 Classic · 1 Library. Written by the one-time v3 migration.</summary>
+        /// <summary>The active sidebar layout: 0 Classic · 1 Library · 2 Zune (ShellNavStyle). Written by the one-time v3 migration.</summary>
         public static readonly SettingKey<int> SidebarLayoutId = new("sidebar.layout.id", 0);
+        /// <summary>The pane layout (0 Classic · 1 Library) a Zune start returns to. Zune has no pane of its own, so
+        /// <see cref="SidebarLayoutId"/> alone loses it across a restart; written whenever a non-Zune style is chosen.</summary>
+        public static readonly SettingKey<int> SidebarLastPane = new("sidebar.layout.lastPane", 0);
         /// <summary>The expanded pane width, one value for both layouts (180-460).</summary>
         public static readonly SettingKey<float> SidebarPaneWidth = new("sidebar.pane.width", 320f);
         /// <summary>The user's collapse to the 48 rail — written only in the Wide band, never by a forced mode.</summary>
         public static readonly SettingKey<bool> SidebarPaneUserCollapsed = new("sidebar.pane.userCollapsed", false);
         /// <summary>Entity-row density: 0 Default · 1 Compact.</summary>
         public static readonly SettingKey<int> SidebarPaneDensity = new("sidebar.pane.density", 0);
+        /// <summary>Zune: up to six pins beside the pivots.</summary>
+        public static readonly SettingKey<bool> SidebarZunePins = new("sidebar.zune.pins", true);
+        /// <summary>Classic only: cover art on entity rows (off = Spotify-classic text rows).</summary>
+        public static readonly SettingKey<bool> SidebarClassicCovers = new("sidebar.classic.covers", false);
         /// <summary>Your Library's chip: 0 none · 1 Playlists · 2 Albums · 3 Artists · 4 Podcasts · 5 Audiobooks.</summary>
         public static readonly SettingKey<int> SidebarLibraryFilter = new("sidebar.library.filter", 0);
         /// <summary>The loc keys of what the v2 migration could not carry over, comma-separated (Settings' "What changed").</summary>
@@ -140,8 +147,15 @@ public static partial class Platform
         /// <summary>TRUE (the default) scrolls overflowing text; FALSE truncates. Renamed from the negative DisableMarquee
         /// (no migration — pre-1.0, cosmetic).</summary>
         public static readonly SettingKey<bool> MarqueeEnabled = new("appearance.marquee.enabled", true);
-        /// <summary>FALSE keeps the neutral surface: every tone plane / wash / tint binder paints nothing.</summary>
+        /// <summary>LEGACY. FALSE kept the neutral surface. Read only as the fallback for the three wash keys below while
+        /// they are unset (-1), and never written again.</summary>
         public static readonly SettingKey<bool> ColorWashesEnabled = new("appearance.colorWashes.enabled", true);
+        /// <summary><see cref="ColorWashRules.Unset"/> unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On · 2 Rich (surfaces only).</summary>
+        public static readonly SettingKey<int> WashSurfaces = new("appearance.wash.surfaces", ColorWashRules.Unset);
+        /// <summary><see cref="ColorWashRules.Unset"/> unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
+        public static readonly SettingKey<int> WashAccent = new("appearance.wash.accent", ColorWashRules.Unset);
+        /// <summary><see cref="ColorWashRules.Unset"/> unset (read through the legacy <see cref="ColorWashesEnabled"/>) · 0 Off · 1 Subtle/On.</summary>
+        public static readonly SettingKey<int> WashNowPlaying = new("appearance.wash.nowPlaying", ColorWashRules.Unset);
         /// <summary>App-wide UI zoom (effective scale = OS DPI × zoom). Seeded into the window BEFORE it comes up and
         /// SNAPPED on that read: a hand-edited value must never seed a non-ladder scale, because off-rung zooms alias the
         /// glyph-atlas raster buckets — which is the whole reason the ladder is discrete.</summary>

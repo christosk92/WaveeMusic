@@ -20,7 +20,7 @@
 //  LibraryPage (keyed "library:"+route)            ─ seeds every persisted signal in its CONSTRUCTOR (frame one = saved)
 //  └─ root BoxEl (OnBoundsChanged → _collapsed, 640/24 hysteresis)
 //     ├─ WIDE "lib:wide": NavPanel "lib:nav"[Toolbar · ListBody | LeftSearchBody] │ "lib:grip" ColumnGrip(LeftW) │ right
-//     │        Toolbar = PageHero + the bound count · User.WordRail (fill) + User.ViewToggle · the filter box
+//     │        Toolbar = PaneTitle + the bound count as the meta line · Controls.SortButton + User.ViewToggle · the filter box
 //     │        right   = DetailColumn → Album.Pane (albums) | LibraryShowPane (podcasts)
 //     │                  ReaderColumn → Artist.Reader (artists, 280 + the rest — no MidW, no third pane)
 //     │                  the two SEARCH column shapes (unchanged, still MidW + _midGrip)
@@ -294,7 +294,7 @@ public readonly partial struct User
         /// old per-key <c>_layout</c> cache existed — a fresh <c>RepeatLayout.Extents</c> per render throws every
         /// measured row away.</summary>
         readonly NavMountCache _mounts = new();
-        Element? _picker, _leftGrip, _midGrip, _sticky, _strip;
+        Element? _leftGrip, _midGrip, _sticky, _strip;
 
         readonly Func<NavShape> _computeShape;
         readonly Func<int> _resolveSelected;
@@ -322,6 +322,8 @@ public readonly partial struct User
         /// <summary>The toolbar's count, as ONE bound property allocated once: a row landing re-fires this thunk and
         /// rewrites one text node instead of re-rendering the toolbar.</summary>
         readonly Prop<string> _countText;
+        readonly FormatCache<int> _countCache = new();
+        readonly Func<int, string> _countFmt;
         readonly Func<BoundItemScope<LibraryNavItem>, Element> _slotT, _slotCompactT, _cardT, _cardCompactT;
 
         bool IsArtists => _entity == EntityKind.Artist;
@@ -393,7 +395,12 @@ public readonly partial struct User
             _watchLetters = WatchLetters;
             _navContent = _ => NavList();
             _navNoMatch = () => EmptyCompact(Loc.Get(Strings.Library.NoMatch));
-            _countText = Prop.Of(() => FormatCache.Int(_shape is { } shape ? shape.Value.Count : 0));
+            _countFmt = IsPodcasts ? static n => Strings.Library.Count.Shows(n)
+                      : IsAudiobooks ? static n => Strings.Library.Count.Audiobooks(n)
+                      : IsArtists ? static n => Strings.Library.Count.Artists(n)
+                      : static n => Strings.Library.Count.Albums(n);
+            // The count NOUN ("20 albums"): "" until the relation has answered, so a not-yet-known count is the reserved empty line.
+            _countText = Prop.Of(() => _shape is { } shape && shape.Value.Answered ? _countCache.Get(shape.Value.Count, _countFmt) : "");
             var entity = _entity;
             _slotT = scope => NavSlot(scope, entity, compact: false);
             _slotCompactT = scope => NavSlot(scope, entity, compact: true);
@@ -1002,62 +1009,157 @@ public readonly partial struct User
         /// <inheritdoc cref="LeftGrip"/>
         Element MidGrip() => ColumnGrip(MidW, 300f, 620f, _commitMid) with { Key = "lib:midgrip" };
 
-        /// <summary>The master column's head (W1): the page title (PageHero, one line) with the live count beside it, the
-        /// word rail + the view toggle, then the filter. The collapsed layout drops the title row — the crumb root names
-        /// the kind. The count is a BOUND text, so a row landing re-fires one property instead of the toolbar.</summary>
+        /// <summary>The master column's head (W1). Three arms inside ONE stable outer box:
+        /// <list type="bullet">
+        /// <item><c>lib:toolbar:wide</c>: <see cref="Design.Type.PaneTitle"/> over the live count (the pane head's META line),
+        /// the sort dropdown + view toggle, the filter (Podcasts: the views switch alone on the first row; the sort and the one-button toggle sit beside the filter);</item>
+        /// <item><c>lib:toolbar:hoisted</c>: the same without the title. Under the Zune nav style the band names the kind
+        /// (<see cref="PageHead.HoistedFor"/> reads the PRESENTED style), so the column opens on the count, whose first line
+        /// starts at <see cref="PageGeometry.HeadTop"/> (24) like every hoisted page's body;</item>
+        /// <item><c>lib:toolbar:compact</c>: the collapsed layout, whose crumb root already names the kind (no title, no count).</item>
+        /// </list>
+        /// The count is a BOUND text, so a row landing re-fires one property instead of the toolbar, and its line is always
+        /// mounted (an unknown count is "") so the column's height never depends on data.
+        /// <para>THE OUTER BOX IS THE STABLE NODE (<c>Animate = PageHead.Reflow</c>): an arm swap is a height change the body
+        /// below follows, not a snap. A hoist swap happens in the quiet <c>PresentedNavStyle</c> commit, where the card is not
+        /// a suppression root, and Reflows. A compact/wide swap caused by a pane or rail toggle lands in a card-moving commit
+        /// and rides the card's FLIP like all card content today.</para></summary>
         Element Toolbar(bool title)
         {
-            // Podcasts' row-1 words ARE Followed shows / Your Episodes (A2 plan §3.5) — the shows sort rail only
-            // makes sense while browsing shows, and the mode switch belongs in the SAME row Albums uses for its own
-            // words, not a wrapper of its own.
-            // Podcasts' mode words own their row: sharing it with the view toggle scrolled "Your Episodes" out of a
-            // narrow column. The filter and the view toggle only browse SHOWS, so they share the next row and Your
-            // Episodes (which has neither) drops it.
-            _picker ??= new BoxEl
+            // ONE control row for every kind (LibraryPaneRules.ControlRowH): [sort][Grow][view toggle], or on Podcasts [views] alone.
+            // Podcasts' views ARE Followed shows / Your Episodes (A2 plan §3.5) in the shared views control. The pane is 208-308
+            // DIP of content and the views bar is ~219 outer (97.7 + 85.7 label widths, 12 + 12 item padding each, minus the -12
+            // leading inset), so on Podcasts the views take the WHOLE first row with no clip: at 208 the bar overflows the content
+            // box by ~11 into the 16-DIP pane padding by design (both stay clickable, item 0's focus ring is whole). The shows'
+            // sort (icon-only, the menu names the words) and the view button (ONE 32-DIP button that opens the view panel,
+            // ViewToggleCompact) move to the filter row: [filter][sort][button], which only exists while browsing shows.
+            bool podcasts = IsPodcasts;
+            Element sort = Controls.SortButton(
+                () => Loc.Get(LibraryWordRail.MenuKey(LibraryWordRail.Clamp(_entity, Sort.Value))), SortMenu, () => false,
+                descending: () => Desc.Value, showLabel: !podcasts, shrink: true);
+            Element picker = new BoxEl
             {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                Children = IsPodcasts
-                    ? [Controls.Words.Rail([new(Loc.Bind(Strings.Podcast.Reader.FollowedShows)), new(Loc.Bind(Strings.Podcast.Reader.YourEpisodes))], PodcastsMode, fill: true)]
-                    : [WordRail(_entity, Sort, Desc), ViewToggle(View, Size)],
+                Key = "lib:picker", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
+                Children = podcasts
+                    ? [new BoxEl
+                       {
+                           // NO ClipToBounds: item 0's focus ring sits outside the item and a clip cut it.
+                           Key = "lib:views", Direction = 0, AlignItems = FlexAlign.Center, MinWidth = 0f, Grow = 1f, Shrink = 1f,
+                           Children = [SelectorBar.Create([Loc.Get(Strings.Podcast.Reader.FollowedShows), Loc.Get(Strings.Podcast.Reader.YourEpisodes)],
+                               PodcastsMode, style: Design.PaneViewsStyle)],
+                       }]
+                    : [sort, new BoxEl { Grow = 1f, MinWidth = 0f }, ViewToggle(View, Size)],
             };
-            Element? filter = IsPodcasts && PodcastsMode.Value == 1 ? null : AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter),
-                text: Filter, queryIcon: Icons.Search, grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
-            if (IsPodcasts && filter is not null)
-                filter = new BoxEl
-                {
-                    Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
-                    Children = [filter, ViewToggle(View, Size)],
-                };
-            // The two arms differ in CHILD COUNT (the collapsed one drops the title row), so they carry different keys:
-            // paired by ordinal they would have matched the title row against `_picker` and `_picker` against the filter
-            // — and the count is a BOUND text (`_countText`) that only a mount wires. The two arms live under
-            // "lib:wide" and "lib:collapsed" respectively, which already keeps them apart; this is the second lock.
+            Element filterBox = AutoSuggestBox.Create(s_noSuggest, Loc.Get(Strings.Library.Filter), text: Filter, queryIcon: Icons.Search,
+                grow: 1f, maxFillWidth: 9999f, minHeight: 32f, cornerRadius: Radii.Control);
+            // The filter row's one flexible cell: grows into what the sort slot and the toggle leave, never below FilterMinW.
+            Element filterCell = new BoxEl
+            {
+                Direction = 0, AlignItems = FlexAlign.Center, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = LibraryPaneRules.FilterMinW,
+                Children = [filterBox],
+            };
+            // Your Episodes has neither a filter nor a view (main ffbfd67b): its row goes, and the toolbar's Reflow carries the
+            // height change. While browsing shows the row is [filter][sort][view button].
+            Element? filter = !podcasts
+                ? filterBox
+                : PodcastsMode.Value == 1
+                    ? null
+                    : new BoxEl
+                    {
+                        Key = "lib:filterrow", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.S, MinWidth = 0f,
+                        Height = LibraryPaneRules.ControlRowH, Shrink = 0f,
+                        Children = [filterCell, sort, ViewToggleCompact(View, Size)],
+                    };
+            // The arms differ in CHILD COUNT and in where the bound count sits, so each carries its own key: paired by
+            // ordinal they would have matched the title column against `picker` and `picker` against the filter — and
+            // the count is a BOUND text (`_countText`) that only a mount wires. Distinct arm keys keep it from pairing across arms.
+            Element TitleColumn() => new BoxEl
+            {
+                Direction = 1, Gap = PageGeometry.TitleToMeta, MinWidth = 0f,
+                Children = [Design.Type.PaneTitle(Shell.Dest(new Shell.Route(_route)).Title), CountLine()],
+            };
+            Element arm;
             if (!title)
-                return new BoxEl
+                arm = new BoxEl
                 {
                     Key = "lib:toolbar:compact",
-                    Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.M, Spacing.M, Spacing.S),
-                    Children = filter is null ? [_picker] : [_picker, filter],
+                    Direction = 1, Gap = Spacing.S, Shrink = 0f,
+                    Padding = new Edges4(PageGeometry.PaneInset, Spacing.M, PageGeometry.PaneInset, Spacing.S),
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
+                    Children = filter is null ? [picker] : [picker, filter],
                 };
-            Element titleRow = new BoxEl
-            {
-                // FlexAlign.End, not Baseline: the engine's FlexAlign has no baseline arm (Foundation/LayoutTypes.cs),
-                // and END puts the 20-line count's bottom on the 36-line hero's, which is the prototype's reading.
-                Direction = 0, AlignItems = FlexAlign.End, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    Design.Type.PageHero(Shell.Dest(new Shell.Route(_route)).Title) with
-                        { MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, Shrink = 1f, MinWidth = 0f },
-                    new TextEl(_countText) { Size = 14f, LineHeight = 20f, Color = Tok.TextTertiary, Shrink = 0f },
-                ],
-            };
+            else if (PageHead.HoistedFor(Shell.NameOf(new Shell.Route(_route))))
+                arm = new BoxEl
+                {
+                    Key = "lib:toolbar:hoisted",
+                    Direction = 1, Gap = Spacing.S, Shrink = 0f,
+                    Padding = new Edges4(PageGeometry.PaneInset, PageGeometry.HeadTop, PageGeometry.PaneInset, Spacing.S),
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
+                    Children = filter is null ? [CountLine(), picker] : [CountLine(), picker, filter],
+                };
+            else
+                arm = new BoxEl
+                {
+                    Key = "lib:toolbar:wide",
+                    Direction = 1, Gap = Spacing.S, Shrink = 0f,
+                    Padding = new Edges4(PageGeometry.PaneInset, Spacing.L, PageGeometry.PaneInset, Spacing.S),
+                    Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_armFade,
+                    Children = filter is null ? [TitleColumn(), picker] : [TitleColumn(), picker, filter],
+                };
             return new BoxEl
             {
                 Key = "lib:toolbar",
-                Direction = 1, Gap = Spacing.S, Shrink = 0f, Padding = new Edges4(Spacing.M, Spacing.L, Spacing.M, Spacing.S),
-                Children = filter is null ? [titleRow, _picker] : [titleRow, _picker, filter],
+                Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true, Animate = PageHead.Reflow,
+                Children = [arm],
             };
         }
+
+        /// <summary>The sort dropdown's menu, built when it OPENS: one radio item per word of the kind
+        /// (<see cref="LibraryWordRail.MenuEntries"/>), the current one checked.</summary>
+        IReadOnlyList<MenuFlyoutItem> SortMenu()
+        {
+            var entries = LibraryWordRail.MenuEntries(_entity, Sort.Peek());
+            var items = new List<MenuFlyoutItem>(entries.Length);
+            foreach (var e in entries)
+            {
+                int code = (int)e.Sort;
+                items.Add(MenuFlyoutItem.RadioItem(Loc.Get(e.Key), e.Checked, () => PickSort(code)));
+            }
+            return items;
+        }
+
+        /// <summary>Choosing the current word flips the direction; another word sets it and resets to ascending
+        /// (<see cref="LibraryWordRail.Choose"/>). The signals are the persisted ones: nothing else changes.</summary>
+        void PickSort(int picked)
+        {
+            var (sort, desc) = LibraryWordRail.Choose((int)LibraryWordRail.Clamp(_entity, Sort.Peek()), Desc.Peek(), picked);
+            if (Desc.Peek() != desc) Desc.Value = desc;
+            if (Sort.Peek() != sort) Sort.Value = sort;
+        }
+
+        /// <summary>The bound count as the pane head's META line: <see cref="Design.Type.PageMeta"/>'s size and line height in
+        /// secondary ink, in a box of exactly <see cref="PageGeometry.MetaLine"/>, so the count landing (or being "") never
+        /// moves the rail under it.</summary>
+        Element CountLine() => new BoxEl
+        {
+            Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, MinWidth = 0f,
+            Children =
+            [
+                new TextEl(_countText)
+                {
+                    Size = s_metaFace.Size, LineHeight = s_metaFace.LineHeight, Color = Tok.TextSecondary,
+                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
+                },
+            ],
+        };
+
+        /// <summary>The arms' cross-fade (the page head's own fade).</summary>
+        static readonly MotionTokenDef s_armFade =
+            MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
+
+        /// <summary>The page-meta face, read once for its metrics (the count is a bound text, which <c>PageMeta(string)</c> cannot take).</summary>
+        static readonly TextEl s_metaFace = Design.Type.PageMeta("");
 
         /// <summary>The navigator, as ONE skeleton boundary: eight shimmer rows while the relation has not answered, the
         /// no-match vacancy for a filter that matched nothing (the engine's own Empty arm), otherwise the bound list —
@@ -1088,7 +1190,7 @@ public readonly partial struct User
                 rows[i] = Skeletons.ListItemRow(withThumbnail: true, 40f) with { Key = "navskel:" + i };
             return new BoxEl
             {
-                Direction = 1, Gap = Spacing.S, Padding = new Edges4(Spacing.M, Spacing.XS, Spacing.M, Spacing.XS),
+                Direction = 1, Gap = Spacing.S, Padding = new Edges4(PageGeometry.PaneInset, Spacing.XS, PageGeometry.PaneInset, Spacing.XS),
                 Children = rows,
             };
         };
@@ -1111,6 +1213,8 @@ public readonly partial struct User
             var mount = shape.Mount;
             PrepareMount(mount);
             var (layout, options) = _mounts.Resolve(mount, this);
+            // The list owns its scroller and ends above the player bar already (a SIBLING in the shell column), so it keeps
+            // no BottomReserve: the documented exception on PageGeometry.BottomReserve (Library master nav).
             Element list = new BoxEl
             {
                 Key = mount.Key, OnRealized = _onNavMounted,
@@ -1501,7 +1605,7 @@ public readonly partial struct User
 
         static Element SearchScroll(Element[] rows) => ScrollView(new BoxEl
         {
-            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, Design.Dock.Reserve + Spacing.XL),
+            Direction = 1, Gap = 2f, Padding = new Edges4(Spacing.S, Spacing.XS, Spacing.S, PageGeometry.BottomReserve),
             Children = rows,
         }) with { Grow = 1f };
 

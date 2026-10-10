@@ -7,11 +7,13 @@
 //
 // ── THE SHAPE ────────────────────────────────────────────────────────────────────────────────────────────────────────
 //
-//  PageHost (keyed "people-page:" + route key)
+//  PageHost (keyed "people-page:" + FrameRules.PageKeyOf: the user, NOT the facet)
 //  └─ column
-//     ├─ HEAD (always real, outside the region): BreadcrumbBar [name › facet] · PageHero(facet) · SelectorBar (a change NAVIGATES —
-//     │        the route is the truth, not the control; Discography's head)
-//     └─ BODY (PageWide gutters) └─ measured box (_bodyW, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView —
+//     ├─ HEAD (always real, outside the region): the shared PageHead, CrumbTitleViews (200, route-static): BreadcrumbBar
+//     │        [name › facet] · the facet title · the Following / Followers views bar (a change NAVIGATES, the route is the
+//     │        truth, not the control; Discography's head). The bar is on ONE field signal (`_facetIndex`) synced from the
+//     │        route in a layout effect.
+//     └─ BODY (page gutter) └─ measured box (_bodyW, floored to 8 DIP) └─ ONE SkelRegionEl (Soft; no outer ScrollView —
 //              the bound list OWNS the scroll)
 //          Pending     → the derived shimmer (tool bones + two rows of circular seed cards; stateful leaves never mount)
 //          Ready       → [tools: chips + find] over [ ZStack{ list · StickyLetter } · JumpStrip ]
@@ -22,6 +24,13 @@
 // projection says (the sticky letter and the jump read the same prefix sums, so seed == measured). `CreateBound` provides no
 // `ItemsView.SlotRow`, so every card owns its own click, focus and menu. The list REMOUNTS when its geometry changes
 // (columns, grouping: `MountKey`) and re-skins in place when only data lands (`ProfileRowItem.Epoch`).
+//
+// ONE PAGE PER USER, NOT PER FACET. The page key (Shell.FrameRules.PageKeyOf) and the keep-alive slot ignore the facet, so a
+// Following <-> Followers click re-binds THIS instance: the views pill slides (the bar never re-mounts), `_facetIndex` moves,
+// `Sync` re-derives for the new relation (it reads `_facetIndex`, the one signal that carries the facet into the effect), the
+// chip and the find box reset, and only the body below re-skeletons in place. The list REMOUNTS (the mount key carries the
+// facet) and each facet restores its own scroll offset (its ScrollKey carries the facet). The route stays the truth: back and
+// forward move the facet through the same re-bind.
 //
 // DEMAND (the sanctioned planner path): `ProfileAsk.Apply(user, ProfileAsk.Plan(user, surface))` once per (user, facet, scope
 // epoch). Retry = `RetryList` (+ `RetryHeader` when the profile row itself failed) — Refresh, never Ensure.
@@ -39,13 +48,14 @@ namespace Wavee;
 
 public static partial class ProfileLists
 {
-    /// <summary>The route's page: <c>people:&lt;facet&gt;:&lt;user uri&gt;</c>. Keyed by the whole route key, so another user or
-    /// another facet is a fresh page. Registered by <c>Profile.InstallPages()</c> for <c>RouteKind.ProfileList</c>.</summary>
+    /// <summary>The route's page: <c>people:&lt;facet&gt;:&lt;user uri&gt;</c>. Keyed by the USER (<c>Shell.FrameRules.PageKeyOf</c>),
+    /// so another user is a fresh page and another facet of the same user re-binds the mounted one. <c>PageProps.Key</c> is the
+    /// whole route key (the list's scroll identity). Registered by <c>Profile.InstallPages()</c> for <c>RouteKind.ProfileList</c>.</summary>
     // MOUNT POINT (profile pages: Shell lazy group {User, ProfileList})
     public static Element Page(in Shell.Route route)
     {
         string key = Shell.NameOf(route);
-        return Embed.Comp(new PageProps(route, key), static () => new PageHost()) with { Key = "people-page:" + key };
+        return Embed.Comp(new PageProps(route, key), static () => new PageHost()) with { Key = "people-page:" + Shell.FrameRules.PageKeyOf(route) };
     }
 
     sealed record PageProps(Shell.Route Route, string Key);
@@ -79,6 +89,10 @@ public static partial class ProfileLists
         // ── state ──
         readonly Signal<ListShape> _shape;
         internal ListShape ShapeNow;
+        /// <summary>The views bar's selection: ONE signal per page instance (the bar never re-mounts, the pill slides), synced
+        /// from the route's facet in a layout effect. <see cref="Sync"/> reads it, which is what re-derives the list for the new
+        /// relation when the facet changes under a mounted page.</summary>
+        readonly Signal<int> _facetIndex = new(0);
         readonly Signal<ProfileChip> _chip = new(ProfileChip.All);
         readonly Signal<string> _query = new("");
         /// <summary>The body's measured width, floored to 8 DIP (never wider than the box, so a card never overhangs).</summary>
@@ -116,8 +130,12 @@ public static partial class ProfileLists
         // ── cached delegates (a node handler never captures a render's closure) ──
         readonly Func<bool> _pendingFn, _failedFn;
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
-        readonly Action _demand, _sync, _watchLetters, _retry;
-        readonly Action<int> _jump;
+        readonly Action _demand, _sync, _watchLetters, _retry, _syncFacet, _publishViews;
+        readonly Action<int> _jump, _onView;
+        IReadSignal<bool>? _active;
+        string _viewsName = "";
+        string[] _viewLabels = [];
+        Shell.Route _route;
         readonly Action<RectF> _onBounds;
         readonly Func<BoundItemScope<ProfileRowItem>, Element> _rowT;
         readonly Func<int, float> _extentOf;
@@ -137,6 +155,9 @@ public static partial class ProfileLists
             _sync = Sync;
             _watchLetters = WatchLetters;
             _retry = Retry;
+            _syncFacet = SyncFacet;
+            _publishViews = PublishViews;
+            _onView = OnView;
             _jump = Jump;
             _onBounds = r =>
             {
@@ -196,11 +217,20 @@ public static partial class ProfileLists
             _debounced = UseDebouncedValue<string>(_query, 150f);
             var u = _user;
             UseEffect(_demand, DepKey.From(u.Slot, (int)facet, (int)epoch, 0));
+            UseLayoutEffect(_syncFacet, DepKey.From(ProfileListFacets.IndexOf(facet)));
             UseSignalEffect(_sync);
             UseSignalEffect(_watchLetters);
+            // The two list words (with their counts) go to the Zune band's row 2 too; ONLY the active instance publishes.
+            _route = p.Route;
+            _viewsName = Shell.NameOf(p.Route);
+            _viewLabels = ViewLabels(u);
+            _active = UseIsActive();
+            UseEffect(_publishViews, DepKey.From(LabelsKey(_viewLabels), _viewsName.GetHashCode()));
+            UseActivation(onActivated: _publishViews);
             if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
-            Element head = Head(u, facet);
+            float g = Shell.Ui.PageGutter.Value;
+            Element head = Head(u, facet, g);
             Element region = new SkelRegionEl(
                 Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
                 OnFailed: _failedPanelFn, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
@@ -208,7 +238,9 @@ public static partial class ProfileLists
             Element body = new BoxEl
             {
                 Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
-                Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, Spacing.L),
+                // The list owns its scroller and the shell clips above the player bar, so the trailing inset is Spacing.L of air:
+                // the documented exception to PageGeometry.BottomReserve.
+                Padding = new Edges4(g, 0f, g, Spacing.L),
                 Children =
                 [
                     // The measured box is INSIDE the gutters: its width is the list's, not the page's.
@@ -228,40 +260,71 @@ public static partial class ProfileLists
 
         // ── the head (always real) ───────────────────────────────────────────────────────────────────────────────────────
 
-        Element Head(User u, ProfileFacet facet)
+        Element Head(User u, ProfileFacet facet, float g)
         {
             bool valid = u.IsValid;
             string name = valid ? u.Name : "";
             if (name.Length == 0) name = Loc.Get(Strings.Person.List.FallbackName);
             string title = Loc.Get(facet == ProfileFacet.Followers ? Strings.Person.List.Title.Followers : Strings.Person.List.Title.Following);
+            string[] labels = _viewLabels;
+            var profile = valid ? ProfileRoute.For(u) : Shell.Route.None;
+            // CrumbTitleViews (200) in every data state: a late name or count changes only text inside boxes that were
+            // reserved from the first frame (the crumb's AboveLine, the views row's labels).
+            return PageHead.Create(new PageHeadSpec(title)
+            {
+                Above = BreadcrumbBar.Create([name, title], i => { if (i == 0 && !profile.IsNone) Shell.GoTo(profile); }),
+                Views = labels, ViewsSelected = _facetIndex, OnView = _onView,
+                ViewsInBand = PageHead.ViewsInBandFor(_route), Gutter = g, Key = "profile-lists:head",
+            });
+        }
+
+        /// <summary>The two list words with their counts ("Following 24"), in <see cref="ProfileListFacets.Order"/>'s order. The
+        /// head's bar and the Zune band's row 2 draw the SAME strings.</summary>
+        static string[] ViewLabels(User u)
+        {
+            bool valid = u.IsValid;
             bool social = valid && u.Knows(UserFields.Social);
             var culture = CultureInfo.CurrentCulture;
-            string[] labels =
+            return
             [
                 ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Following), valid ? u.Following : 0, social, culture),
                 ProfileListFilter.WordCount(Loc.Get(Strings.Person.Pivot.Followers), valid ? u.Followers : 0, social, culture),
             ];
-            var profile = valid ? ProfileRoute.For(u) : Shell.Route.None;
-            var listRoute = new Func<ProfileFacet, Shell.Route>(f => valid ? ProfileListRoute.For(u, f) : Shell.Route.None);
-            return new BoxEl
-            {
-                Direction = 1, Gap = Spacing.S, MinWidth = 0f, Shrink = 0f,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Spacing.M),
-                Children =
-                [
-                    BreadcrumbBar.Create([name, title], i => { if (i == 0 && !profile.IsNone) Shell.GoTo(profile); }),
-                    Design.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
-                    // route re-seeds it (Discography's head).
-                    SelectorBar.Create(labels, new Signal<int>(ProfileListFacets.IndexOf(facet)), onChange: i =>
-                    {
-                        var target = ProfileListFacets.At(i);
-                        if (target == facet) return;
-                        var route = listRoute(target);
-                        if (!route.IsNone) Shell.GoTo(route);
-                    }),
-                ],
-            };
+        }
+
+        static int LabelsKey(string[] labels)
+        {
+            var h = new HashCode();
+            foreach (var l in labels) h.Add(l, StringComparer.Ordinal);
+            return h.ToHashCode();
+        }
+
+        /// <summary>Hands the two list words to the Zune band under the route name. Safe any time and any number of times.</summary>
+        void PublishViews()
+        {
+            if (_active is { } a && !a.Peek()) return;
+            if (_viewsName.Length == 0 || _viewLabels.Length == 0) return;
+            PageHead.Publish(_viewsName, _viewLabels, _facetIndex, _onView);
+        }
+
+        /// <summary>A word chosen in the views bar: the ROUTE, not the control, is the truth. A change navigates and the layout
+        /// effect re-seeds <see cref="_facetIndex"/> from the new route.</summary>
+        void OnView(int index)
+        {
+            var target = ProfileListFacets.At(index);
+            if (target == _facet) return;
+            var u = _user;
+            var route = u.IsValid ? ProfileListRoute.For(u, target) : Shell.Route.None;
+            if (!route.IsNone) Shell.GoTo(route);
+        }
+
+        /// <summary>The route's facet moved (a click, back or forward): the bar follows (the pill slides) and the per-facet tools
+        /// start clean, as a fresh page's did. Runs on mount too, where it writes the defaults it already holds.</summary>
+        void SyncFacet()
+        {
+            _facetIndex.SetIfChanged(ProfileListFacets.IndexOf(_facet));
+            _chip.SetIfChanged(ProfileChip.All);
+            _query.SetIfChanged("");
         }
 
         // ── demand ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -294,6 +357,7 @@ public static partial class ProfileLists
         void Sync()
         {
             _ = Entities.ScopeEpoch.Value;                             // FIRST: a scope switch re-points every table
+            _ = _facetIndex.Value;                                     // a facet change under the mounted page re-derives
             var scope = Entities.Current;
             Bind(_parsed, _subject, _facet);
             var u = _user;

@@ -30,7 +30,8 @@ public class CommandTableShapeTests
         Assert.Equal("sidebar.edit", rows[17].Id);
         Assert.Equal("sidebar.classic", rows[18].Id);
         Assert.Equal("sidebar.library", rows[19].Id);
-        Assert.Equal("library.newFolder", rows[21].Id);
+        Assert.Equal("sidebar.zune", rows[20].Id);
+        Assert.Equal("library.newFolder", rows[22].Id);
     }
 
     [Fact]

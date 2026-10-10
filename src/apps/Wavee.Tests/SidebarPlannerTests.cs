@@ -311,7 +311,7 @@ public sealed class SidebarRowPlannerTests
     [Fact]
     public void Classic_SettingsNeverPlanned()
     {
-        // Fact 16. Settings is the footer, not a planned section.
+        // Fact 16. Settings has no pane row, not a planned section.
         var plan = Plan(Classic(), OneInTree());
         Assert.DoesNotContain(plan.Rows, r => r.Key == "settings");
     }
@@ -544,17 +544,17 @@ public sealed class SidebarPlanGeometryTests
 {
     // ── 0. THE TREE-CONTENT ORIGIN (the caret's x) ────────────────────────────────────────────────────────────────────
     //
-    // A tree row's content origin is `TreeContentX(depth)` = `IndentFor(depth)`: one 31-DIP level per folder, no gutter
+    // A tree row's content origin is `TreeContentX(depth)` = `IndentFor(depth)`: one 32-DIP level per folder, no gutter
     // and no connector cells. The folder's chevron lives in the row's TRAILING cluster.
 
     [Theory]
     [InlineData(0, 0f)]
-    [InlineData(1, 31f)]
-    [InlineData(2, 62f)]
-    [InlineData(3, 93f)]
-    [InlineData(4, 93f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
+    [InlineData(1, 32f)]
+    [InlineData(2, 64f)]
+    [InlineData(3, 96f)]
+    [InlineData(4, 96f)]     // past MaxIndentDepth the ladder stops marching right, exactly like IndentFor
     [InlineData(-3, 0f)]
-    public void TreeContentX_IsThirtyOnePerLevelFromTheRowOrigin(int depth, float expected)
+    public void TreeContentX_IsThirtyTwoPerLevelFromTheRowOrigin(int depth, float expected)
     {
         Assert.Equal(expected, SidebarRowGeometry.TreeContentX(depth), 3);
         // …and it IS a sum of the named constants, not a literal that happens to match.
@@ -578,7 +578,8 @@ public sealed class SidebarPlanGeometryTests
     [InlineData(SidebarRowShape.Glyph, 36f, 40f)]
     [InlineData(SidebarRowShape.EntityOneLine, 36f, 40f)]
     [InlineData(SidebarRowShape.EntityTwoLine, 40f, 44f)]
-    public void HeightAndPitch_AreTheThreeWinUiShapes(SidebarRowShape shape, float height, float pitch)
+    [InlineData(SidebarRowShape.Text, 36f, 40f)]
+    public void HeightAndPitch_AreTheRowShapes(SidebarRowShape shape, float height, float pitch)
     {
         Assert.Equal(height, SidebarRowGeometry.HeightOf(shape));
         Assert.Equal(pitch, SidebarRowGeometry.PitchOf(shape));
@@ -587,10 +588,10 @@ public sealed class SidebarPlanGeometryTests
     [Theory]
     [InlineData(-1, 0f)]
     [InlineData(0, 0f)]
-    [InlineData(1, 31f)]
-    [InlineData(4, 93f)]
-    [InlineData(9, 93f)]   // clamped at three levels
-    public void IndentFor_IsThirtyOnePerLevelClampedAtThree(int depth, float expected)
+    [InlineData(1, 32f)]
+    [InlineData(4, 96f)]
+    [InlineData(9, 96f)]   // clamped at three levels
+    public void IndentFor_IsThirtyTwoPerLevelClampedAtThree(int depth, float expected)
         => Assert.Equal(expected, SidebarRowGeometry.IndentFor(depth));
 
     // ── 2. pure plan geometry ────────────────────────────────────────────────────────────────────────────────────────
@@ -898,6 +899,20 @@ public class SidebarPaneInvariantTests
     }
 
     [Fact]
+    public void HiddenPane_IsValidOnlyAsMinimal()
+    {
+        // Zune presents no pane in any band: a hidden pane in Narrow is Minimal and empty; Compact is a band mismatch.
+        var hidden = new SidebarPaneFrameSnapshot(
+            Layout: SidebarLayoutId.Classic, Mode: SidebarPaneMode.Minimal, Band: SidebarWindowBand.Narrow,
+            UserCollapsed: false, OverlayOpen: false, PreferredExpandedWidth: 320f, PresentedWidth: 0f,
+            RenderedPaneWidth: 0f, PaneHidden: true);
+        Assert.Equal(SidebarPaneInvariantFault.None, SidebarPaneInvariant.Inspect(in hidden));
+
+        var compact = hidden with { Mode = SidebarPaneMode.Compact, RenderedPaneWidth = 48f, PresentedWidth = 48f };
+        Assert.True(SidebarPaneInvariant.Inspect(in compact).HasFlag(SidebarPaneInvariantFault.ModeBandMismatch));
+    }
+
+    [Fact]
     public void A_rail_at_fifty_six_is_not_the_forty_eight_dip_strip()
     {
         var state = Compact(rendered: 56f);
@@ -975,7 +990,7 @@ public class SidebarPaneInvariantTests
 
     // ── THE ONE CONTENT LANE ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A NESTED row indents from the row origin, so a depth-1 child sits exactly one 31-DIP level inside it,
+    /// <summary>A NESTED row indents from the row origin, so a depth-1 child sits exactly one 32-DIP level inside it,
     /// and the ladder stops at three levels.</summary>
     [Fact]
     public void NestedRowsIndentOneStepPerLevel()

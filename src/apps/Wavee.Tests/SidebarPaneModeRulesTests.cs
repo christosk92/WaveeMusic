@@ -40,6 +40,13 @@ public sealed class SidebarPaneModeRulesTests
         Assert.Equal(SidebarPaneMode.Minimal, SidebarPaneModeRules.Resolve(SidebarWindowBand.Tiny, false, true));
     }
 
+    [Fact] public void Mode_PaneHiddenIsMinimalInEveryBand()
+    {
+        Assert.Equal(SidebarPaneMode.Minimal, SidebarPaneModeRules.Resolve(SidebarWindowBand.Wide, false, false, paneHidden: true));
+        Assert.Equal(SidebarPaneMode.Minimal, SidebarPaneModeRules.Resolve(SidebarWindowBand.Narrow, false, false, paneHidden: true));
+        Assert.Equal(SidebarPaneMode.Minimal, SidebarPaneModeRules.Resolve(SidebarWindowBand.Tiny, false, false, paneHidden: true));
+    }
+
     [Fact] public void Mode_WideFollowsTheUser_EditingPresentsExpanded()
     {
         Assert.Equal(SidebarPaneMode.Compact, SidebarPaneModeRules.Resolve(SidebarWindowBand.Wide, true, false));

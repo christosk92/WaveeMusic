@@ -14,9 +14,18 @@ public sealed class SidebarLibraryHeadRulesTests
     static readonly System.Func<string, string> Glyph = static r => "g:" + r;
 
     [Fact]
-    public void HeadHeight_Is172()
+    public void HeadHeight_Is173()
     {
-        Assert.Equal(172f, SidebarLibraryHeadRules.HeadHeight);
+        Assert.Equal(173f, SidebarLibraryHeadRules.HeadHeight);
+    }
+
+    [Fact]
+    public void Head_SitsOnTheSixteenGrid()
+    {
+        Assert.Equal(16f, SidebarLibraryHeadRules.BandInsetX);
+        Assert.Equal(SidebarLibraryHeadRules.TitleX, SidebarLibraryHeadRules.BandInsetX);
+        Assert.Equal(24f, SidebarLibraryHeadRules.ToolbarInsetLeft + SidebarLibraryHeadRules.ToolbarIconButton / 2f);
+        Assert.Equal(296f, 320f - SidebarLibraryHeadRules.ToolbarInsetRight - SidebarLibraryHeadRules.ToolbarIconButton / 2f);
     }
 
     [Fact]
@@ -198,7 +207,7 @@ public sealed class SidebarLibraryHeadRulesTests
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, SidebarLibraryHeadRules.ShapeOf(460f, "Recents"));
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Full, SidebarLibraryHeadRules.ShapeOf(320f, "Recents"));
         Assert.Equal(SidebarLibraryHeadRules.ToolbarShape.Folded, SidebarLibraryHeadRules.ShapeOf(float.NaN, "Recents"));
-        Assert.Equal(164f, SidebarLibraryHeadRules.ToolbarLane(180f));
+        Assert.Equal(160f, SidebarLibraryHeadRules.ToolbarLane(180f));
     }
 
     static readonly SidebarLibraryOptions LikedShown = SidebarLibraryOptions.Default;                 // ShowLiked true

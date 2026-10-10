@@ -54,10 +54,10 @@ public static partial class Profile
     /// horizontal tiers put avatar | copy bottom-aligned; stacked tiers put avatar over copy. Content sits on the hero's
     /// bottom edge inside a fixed tier height, so the sticky collapse is exact.</summary>
     internal static Element HeroBanner(in HeroText t, string uri, float width, in ProfileHeroMetrics m, bool compactCanHit,
-                                       HeroActs? acts, Element? band)
+                                       HeroActs? acts, Element? band, float floor = ArtistHeroLayout.CompactIdentityHeight)
     {
         float w = MathF.Max(1f, width);
-        float collapse = ProfileHeroLayout.CollapseDistance(in m);
+        float collapse = ProfileHeroLayout.CollapseDistance(in m, floor);
         ScrollEffectSpec[] collapseEffects =
         [
             new(ScrollEffect.Parallax(0.0, collapse, 0f, -collapse)),
@@ -98,7 +98,7 @@ public static partial class Profile
         {
             Direction = 1, Height = m.Height, ZStack = true,
             Children = band is null ? [expanded] : [expanded, band],
-        }.Sticky(0f).Collapse(collapse, ArtistHeroLayout.CompactIdentityHeight, CollapseAnchor.Leading);
+        }.Sticky(0f).Collapse(collapse, floor, CollapseAnchor.Leading);
     }
 
     /// <summary>The photo in a clipped circle (Artist.UI's pick-avatar precedent: <c>Controls.Artwork</c>, so the tile is

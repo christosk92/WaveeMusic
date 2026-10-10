@@ -109,7 +109,8 @@ public readonly partial struct Track
     /// <paramref name="Heart"/> — a row states its like once — and the gate both the width track and the cell read is
     /// <see cref="RowMetrics.ShowHeartTrailing"/>, which normalizes a set that asks for both by keeping the LEADING
     /// heart (the lane every existing surface already reserves). It is NOT on the relief ladder: the ladder yields
-    /// trailing lanes for the tiered TABLE, and the only surface that sets this builds one fixed set at one width.</para></summary>
+    /// trailing lanes for the tiered TABLE, and a trailing heart never yields (the reader builds one fixed set at one width;
+    /// Liked's hover heart, <see cref="TableRules.ForHoverHeart"/>, keeps its 32 DIP at every tier).</para></summary>
     public readonly record struct ColumnSet(bool Album, bool By, bool Date, bool Video, bool Plays, bool Heart, bool Thumb,
                                             bool Actions = true, int Tier = 0, bool Tempo = false, bool Expand = false,
                                             bool Artist = false, bool Classic = false, bool HeartTrailing = false);
@@ -251,6 +252,31 @@ public readonly partial struct Track
         public static bool HeaderActive(SortColumn header, SortColumn active, bool artistColumn) =>
             header == active || (!artistColumn && header == SortColumn.Title && active == SortColumn.Artist);
 
+        /// <summary>Is the Sort command lit (accent)? Only when the sort differs from the list's profile default: Liked opens on
+        /// Date added (desc), so lighting "anything but Index" kept its Sort accent forever, and a button that is always lit
+        /// says nothing. Every other list's default is the natural order, so any other sort (column or direction) lights it.</summary>
+        public static bool SortIsActive(SortSpec sort, SortSpec profileDefault) => sort != profileDefault;
+
+        /// <summary>What the natural order of this list is called in the sort dropdown: an album's is the record's own
+        /// track order, everything else's is the owner's (a playlist's custom order). One rule for the button and the menu.</summary>
+        public static string IndexSortLabelKey(DetailKind kind)
+            => kind == DetailKind.Album ? Strings.Detail.Sort.AlbumOrder : Strings.Detail.Sort.CustomOrder;
+
+        /// <summary>Whether "…" itself carries the list verbs (Shuffle · Play next · Add to queue): the two-column arm of a kind
+        /// whose identity row has no [Play │ ⌄] split + Shuffle (Liked, Show). The vertical arm's hero satellite and the
+        /// album/playlist rail already carry them, so there they would only duplicate.</summary>
+        public static bool MoreCarriesListVerbs(DetailKind kind, bool vertical)
+            => !vertical && !Detail.Skeleton.HasLabelledShuffle(kind);
+
+        /// <summary>Does "…" offer Columns ▸ (the BPM · Key / Plays opt-ins)? Never on a hover-heart page (Liked): its column
+        /// list is fixed, so a toggle there would do nothing.</summary>
+        public static bool OffersColumnsMenu(in Detail.Config cfg)
+            => !cfg.HoverHeart && (cfg.ShowTempo || cfg.PlaysColumnOptIn);
+
+        /// <summary>Does the sort menu offer Plays? Only where the Plays lane can exist (never on a hover-heart page).</summary>
+        public static bool OffersPlaysSort(in Detail.Config cfg, bool playsPreference)
+            => !cfg.HoverHeart && (cfg.ShowPlays || (cfg.PlaysColumnOptIn && playsPreference));
+
         /// <summary>The header-click cycle. # flips while on Index, else resets; a dedicated Artist lane gets its own
         /// asc → desc → default; without it Title runs Title↑ → Title↓ → Artist↑ → Artist↓ → default.</summary>
         public static SortSpec NextSort(SortSpec cur, SortColumn clicked, bool artistColumn)
@@ -355,6 +381,13 @@ public readonly partial struct Track
                 Plays = r.Plays, Tempo = s.Tempo && (r.Tempo || !RowMetrics.ShowTempo(in s)),
             };
         }
+
+        /// <summary>Liked Songs' approved column list (<see cref="Detail.Config.HoverHeart"/>): # · cover + title/artist ·
+        /// Album · Added · duration, with NO leading heart lane (every row is liked, so the heart is a hover/focus reveal in
+        /// the trailing lane) and neither BPM·Key nor Plays on offer. Applied to the tier-admitted set before the relief
+        /// ladder, so the header, the rows and the width tracks all read the one set.</summary>
+        public static ColumnSet ForHoverHeart(in ColumnSet s, bool hoverHeart)
+            => hoverHeart ? s with { Heart = false, HeartTrailing = true, Tempo = false, Plays = false } : s;
     }
 
     // ══ 3. ROW METRICS — the alignment invariant ═════════════════════════════════════════════════════════════════════
@@ -368,9 +401,27 @@ public readonly partial struct Track
         public const float RowHeight = 48f;
         public const float HeaderHeight = 36f;
         public const float ColGap = Spacing.M;
-        public const float PadX = Spacing.L;
+        /// <summary>The pane's side inset: the one number every pane leads with (<see cref="PageGeometry.PaneInset"/>).</summary>
+        public const float PadX = PageGeometry.PaneInset;
         /// <summary>The rounded row-highlight inset (rows pad PadX − RowInset so columns stay header-aligned).</summary>
         public const float RowInset = Spacing.S;
+
+        /// <summary>Where a row's hover/selection plate starts inside the table, from the table's own edge: the Modern skin's plate
+        /// is inset by <see cref="RowInset"/>, the Classic skin's fill is full-bleed (0).</summary>
+        public static float PlateX(bool classic) => classic ? 0f : RowInset;
+
+        /// <summary>How far a table's host reaches LEFT over the gap before it. A two-column page's Modern table has a plate lead of
+        /// 0: its row plates abut the composed rail (one 24-DIP cover gap past its cover) and its header text, first toolbar command and row content sit at the
+        /// plate's inner padding (<see cref="RowInset"/>), so the host overhangs by that much and the rail, composed that much
+        /// wider (<c>Detail.RailPolicy.ComposedExtraWidth</c>), gives it back. A Classic table's fill is already flush with the
+        /// host, so it needs no overhang (the rail is composed by the same 0). Every other table starts on its own edge.</summary>
+        public static float LeadFor(bool twoColumn, bool classic) => twoColumn ? PlateX(classic) : 0f;
+
+        /// <summary>The toolbar's left shift inside the chrome (a positive number to subtract), so its first plate sits on the row
+        /// plates' edge (<see cref="PlateX"/>) at EVERY tier: the chrome pads <see cref="PadXFor"/>, the command surface pads
+        /// its own <see cref="Detail.VerticalLayout.ToolbarSurfacePadX"/>.</summary>
+        public static float ToolbarLead(int tier, bool classic)
+            => PadXFor(tier) - PlateX(classic) + Detail.VerticalLayout.ToolbarSurfacePadX;
         /// <summary>36 sat between two ladder rungs and broke DOWNWARD: the Compact row is 40 tall.</summary>
         public const float ThumbSize = Design.Size.Thumb32;
         public const float HeartCol = Lane.Heart;
@@ -451,11 +502,13 @@ public readonly partial struct Track
         // handed a "1,85B" formatted under nl-NL a moment earlier, and a language change must not keep "Today" in English.
         static FormatCache<long> s_plays = FormatCache.Create<long>();
         static FormatCache<(int Added, int NowDay)> s_dateAdded = FormatCache.Create<(int Added, int NowDay)>();
+        static FormatCache<(int Added, int NowDay)> s_relativeAdded = FormatCache.Create<(int Added, int NowDay)>();
         static FormatCache<(int At, int NowYear)> s_releaseDate = FormatCache.Create<(int At, int NowYear)>();
         static CultureInfo? s_cachesCulture;
         static int s_cachesEpoch;
         static readonly Func<long, string> s_playsFormat = FormatPlays;
         static readonly Func<(int Added, int NowDay), string> s_dateAddedFormat = FormatDateAdded;
+        static readonly Func<(int Added, int NowDay), string> s_relativeAddedFormat = FormatRelativeAdded;
         static readonly Func<(int At, int NowYear), string> s_releaseDateFormat = FormatReleaseDate;
         // `now` arrives as live unix seconds and changes once a second while thirteen rows share it inside one frame;
         // one memo of its local calendar day spares twelve of the thirteen zone conversions.
@@ -481,6 +534,7 @@ public readonly partial struct Track
             s_cachesEpoch = epoch;
             s_plays = FormatCache.Create<long>();
             s_dateAdded = FormatCache.Create<(int Added, int NowDay)>();
+            s_relativeAdded = FormatCache.Create<(int Added, int NowDay)>();
             s_releaseDate = FormatCache.Create<(int At, int NowYear)>();
             s_nowMemoSeconds = long.MinValue;
         }
@@ -580,9 +634,40 @@ public readonly partial struct Track
             if (days <= 0) return Loc.Get(Strings.Detail.Today);
             if (days == 1) return Loc.Get(Strings.Detail.Yesterday);
             if (days < 7) return Strings.Detail.DaysAgo(days);
-            return d.Year == now.Year
+            return AbsoluteAdded(d, now);
+        }
+
+        static string AbsoluteAdded(DateTimeOffset d, DateTime now)
+            => d.Year == now.Year
                 ? d.ToString("MMM d", CultureInfo.CurrentCulture)
                 : d.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+
+        /// <summary>Liked Songs' Added lane: the <see cref="DateAddedLabel"/> ladder with ONE more rung - "Last week" for
+        /// 7..13 days - before the absolute date. The ladder counts days while the group strips above it count LOCAL
+        /// calendar weeks, so near a week boundary a row's label and its strip can differ. Its own cache (the same stamp
+        /// prints differently here), keyed and dropped exactly like the playlist lane's.</summary>
+        public static string RelativeAddedLabel(int unixSeconds, long nowUnixSeconds)
+        {
+            if (unixSeconds == 0) return "";
+            FreshenCultureCaches();
+            if (nowUnixSeconds != s_nowMemoSeconds)
+            {
+                s_nowMemoDay = LocalDay(nowUnixSeconds);
+                s_nowMemoSeconds = nowUnixSeconds;
+            }
+            return s_relativeAdded.Get((unixSeconds, s_nowMemoDay), s_relativeAddedFormat);
+        }
+
+        static string FormatRelativeAdded((int Added, int NowDay) key)
+        {
+            var d = DateTimeOffset.FromUnixTimeSeconds(key.Added).ToLocalTime();
+            var now = DateTime.SpecifyKind(new DateTime(key.NowDay * TimeSpan.TicksPerDay), DateTimeKind.Local);
+            int days = (int)(now - d.Date).TotalDays;
+            if (days <= 0) return Loc.Get(Strings.Detail.Today);
+            if (days == 1) return Loc.Get(Strings.Detail.Yesterday);
+            if (days < 7) return Strings.Detail.DaysAgo(days);
+            if (days < 14) return Loc.Get(Strings.Detail.LastWeek);
+            return AbsoluteAdded(d, now);
         }
 
         /// <summary>The LOCAL calendar day of a unix instant as a day number (ticks / day) — the date-added cache key.</summary>
@@ -600,6 +685,84 @@ public readonly partial struct Track
         }
 
         static int LocalYear(long unixSeconds) => DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime().Year;
+    }
+
+    /// <summary>Liked Songs' date groups, as pure rules: which group an Added stamp falls in (LOCAL calendar weeks starting
+    /// on the culture's first day), where a group starts in the displayed order, its label, and the ONE height formula a
+    /// row's slot has - <see cref="Extent"/> - that the list's analytic layout, the slot's strip and the focus-ring inset
+    /// all read, so the extent the list SEEDS is the extent the slot REALIZES (no measure-correct jump).</summary>
+    public static class LikedGroups
+    {
+        /// <summary>Kind 0 = this week, 1 = last week, 2 = a month (Year/Month name it; the others carry 0).</summary>
+        public readonly record struct Key(byte Kind, int Year, int Month);
+
+        public const byte ThisWeek = 0, LastWeek = 1, MonthKind = 2;
+
+        /// <summary>Groups show only on a page that asked for them AND only while the list is in Date-added order (either
+        /// direction) - under any other sort a date strip would sit over rows that are not in date order.</summary>
+        public static bool Applies(bool hoverHeart, SortSpec sort) => hoverHeart && sort.Column == SortColumn.DateAdded;
+
+        /// <summary>The group strip's fixed height: quiet, never data-dependent.</summary>
+        public const float HeaderH = 40f;
+
+        /// <summary>The recycle-pool bit a group-starting row adds to its <c>ContentType</c>: a header row and a plain row of
+        /// the same kind recycle from separate pools, so a recycled slot never changes shape (and never re-renders).</summary>
+        public const int PoolBit = 1 << 8;
+
+        /// <summary>The <c>ContentType</c> of a track-list row: its template kind, plus <see cref="PoolBit"/> when it starts a group.</summary>
+        public static int PoolOf(int rowKind, bool startsGroup) => rowKind | (startsGroup ? PoolBit : 0);
+
+        /// <summary>A row's slot height: the row, plus the strip above it when it starts a group.</summary>
+        public static float Extent(float rowH, bool startsGroup) => rowH + (startsGroup ? HeaderH : 0f);
+
+        /// <summary>The row at <paramref name="i"/> opens a group: the first row, or one whose key differs from its
+        /// predecessor's. Groups are runs of the DISPLAYED order, so the same rule serves either sort direction.</summary>
+        public static bool StartsGroup(ReadOnlySpan<Key> keys, int i) => i == 0 || keys[i] != keys[i - 1];
+
+        /// <summary>The LOCAL calendar day of a unix instant as a day number (ticks / day) - the plan's day key.</summary>
+        public static int DayOf(long unixSeconds)
+            => (int)(DateTimeOffset.FromUnixTimeSeconds(unixSeconds).ToLocalTime().Date.Ticks / TimeSpan.TicksPerDay);
+
+        /// <summary>The group of an Added stamp: this local calendar week (a week starts on <paramref name="firstDay"/>),
+        /// the week before it, else its calendar month. A stamp from the future (clock skew) is this week; no stamp at all
+        /// is the year-0 month, which <see cref="Label"/> prints as a dash.</summary>
+        public static Key KeyOf(long addedUnix, long nowUnix, DayOfWeek firstDay)
+        {
+            if (addedUnix <= 0) return new Key(MonthKind, 0, 0);
+            var added = DateTimeOffset.FromUnixTimeSeconds(addedUnix).ToLocalTime().Date;
+            var nowWeek = WeekStart(DateTimeOffset.FromUnixTimeSeconds(nowUnix).ToLocalTime().Date, firstDay);
+            var addedWeek = WeekStart(added, firstDay);
+            if (addedWeek >= nowWeek) return new Key(ThisWeek, 0, 0);
+            if (addedWeek == nowWeek.AddDays(-7)) return new Key(LastWeek, 0, 0);
+            return new Key(MonthKind, added.Year, added.Month);
+        }
+
+        static DateTime WeekStart(DateTime day, DayOfWeek firstDay)
+            => day.AddDays(-(((int)day.DayOfWeek - (int)firstDay + 7) % 7));
+
+        /// <summary>The strip's title: "This week", "Last week", "September", or "September 2025" for another year.</summary>
+        public static string Label(Key k, int nowYear)
+        {
+            if (k.Kind == ThisWeek) return Loc.Get(Strings.Detail.ThisWeek);
+            if (k.Kind == LastWeek) return Loc.Get(Strings.Detail.LastWeek);
+            if (k.Year <= 0 || k.Month is < 1 or > 12) return Format.Dash;
+            var culture = CultureInfo.CurrentCulture;
+            string month = culture.DateTimeFormat.GetMonthName(k.Month);
+            return k.Year == nowYear ? month : month + " " + k.Year.ToString(culture);
+        }
+
+        /// <summary>Fills <paramref name="counts"/>[i] with the size of the group that STARTS at row i (0 on every other
+        /// row), so the strip prints its count without a second pass.</summary>
+        public static void Counts(ReadOnlySpan<Key> keys, Span<int> counts)
+        {
+            int start = 0;
+            for (int i = 0; i < keys.Length; i++)
+            {
+                counts[i] = 0;
+                if (i > 0 && keys[i] != keys[i - 1]) { counts[start] = i - start; start = i; }
+            }
+            if (keys.Length > 0) counts[start] = keys.Length - start;
+        }
     }
 
     /// <summary>The row's credit-line discriminator: ONE 64-bit stamp over exactly what the row prints per billed artist —
@@ -666,81 +829,114 @@ public readonly partial struct Track
 
     // ══ 6. THE COMMAND BAR FIT ═══════════════════════════════════════════════════════════════════════════════════════
 
+    /// <summary>The commands the resolver still places: Filter and the sort dropdown. Everything else on the bar is either
+    /// mandatory (Tune, Insights, ⋯) or lives in "…" (Select, Row size, Columns). <see cref="Filter"/> is the funnel being
+    /// inline at all (a 32-DIP icon button), <see cref="FilterLabel"/> additionally its word (it always comes with
+    /// <see cref="Filter"/>). The bit value of Sort stays 2.</summary>
     [Flags]
-    public enum InlineCommand : byte { None = 0, Shuffle = 1, Sort = 2, Density = 4, Select = 8 }
+    public enum InlineCommand : byte { None = 0, Sort = 2, Filter = 4, FilterLabel = 8 }
 
-    /// <summary>Measured LABELED widths of the commands whose presence the resolver controls.</summary>
-    public readonly record struct CommandWidths(float Play, float Tune, float Shuffle, float Sort, float Density, float Select);
+    /// <summary>Measured LABELED widths of the commands whose presence the resolver controls. <paramref name="Filter"/> is the
+    /// LABELLED Filter button (its badge slot included); its icon-only form is the fixed
+    /// <see cref="CommandBarLayout.FilterIconWidth"/>.</summary>
+    public readonly record struct CommandWidths(float Tune, float Sort, float Filter = CommandBarLayout.FilterLabelledNominal);
 
     public readonly record struct CommandBarFit(InlineCommand Inline, bool SearchExpanded, float SearchWidth)
     {
         public bool Has(InlineCommand command) => (Inline & command) != 0;
         public int Richness =>
-            (SearchExpanded ? 8 : 0)
-            + (Has(InlineCommand.Shuffle) ? 4 : 0)
-            + (Has(InlineCommand.Sort) ? 2 : 0)
-            + (Has(InlineCommand.Density) ? 1 : 0)
-            + (Has(InlineCommand.Select) ? 1 : 0);
+            (SearchExpanded ? 16 : 0)
+            + (Has(InlineCommand.Sort) ? 4 : 0)
+            + (Has(InlineCommand.Filter) ? 2 : 0)
+            + (Has(InlineCommand.FilterLabel) ? 1 : 0);
     }
 
-    /// <summary>The command bar PROMOTES, it does not shrink: every inline command is icon + label, and one that does not
-    /// fit is evicted into "…". Never returns a layout wider than its input.</summary>
+    /// <summary>The command bar holds only LIST TOOLS: [Tune] ─ [Filter] · [Sort] · search · [Insights] · ⋯ (Filter and Sort lead
+    /// the right-aligned cluster, one gap rhythm). Filter and Sort are the commands placed by width, on one ladder: Filter
+    /// + Sort labelled, then Filter loses its word, then Sort moves into "…", then Filter moves into "…" ("Filter…", the badge
+    /// returning to "…"). Each stays inline while it fits after the search affordance's reservation. Tune, the Insights toggle slot
+    /// and "…" are mandatory (they are the same width at every pane width, so the bar never reflows when the facts arrive). The
+    /// bar PROMOTES, it does not shrink: an inline command is icon + label (Filter's word aside), and one that does not fit is
+    /// evicted. Never returns a layout wider than its input.</summary>
     public static class CommandBarLayout
     {
         public const float MoreWidth = 32f;
-        /// <summary>At rest the search affordance is TWO adjacent buttons (query + filter); the field opens only when invoked.</summary>
-        public const float SearchIconWidth = 66f;
+        /// <summary>The Insights toggle's slot (the button's 32-DIP edge): reserved by kind, so it is in the budget from
+        /// the first frame whether or not the facts have settled.</summary>
+        public const float InsightsWidth = 32f;
+        /// <summary>At rest the search affordance is ONE 32-DIP button; the field opens only when invoked. The Filter command is its own
+        /// button before Sort; "Filter…" in "…" (badged while a filter is on) is where a narrow bar puts it.</summary>
+        public const float SearchIconWidth = 32f;
+        /// <summary>The Filter button without its word (the funnel; the count badge overlays its corner, so it never changes width).</summary>
+        public const float FilterIconWidth = 32f;
+        /// <summary>The labelled Filter button's width before it is measured: funnel, "Filter" and the reserved badge slot.</summary>
+        public const float FilterLabelledNominal = 92f;
         public const float SearchMinExplicit = 160f;
         public const float SearchPreferred = 240f;
         public const float SearchMax = 280f;
         public const float Gap = 2f;
+        /// <summary>Where the list facts start (D-7): a labelled command's 9-DIP glyph lead, less the one <see cref="Gap"/> the
+        /// empty Tune group still takes in the row. The facts slot is outside <see cref="Resolve"/>'s budget (it only takes free width).</summary>
+        public const float FactsInset = 9f - Gap;
         public const float SearchGap = 8f;
-        public const float GroupSeparatorWidth = 17f;
         public const float PromotionHysteresis = 16f;
+        /// <summary>A vertical group divider between two clusters of a bar (<see cref="LikedBarLayout"/>): a 1-DIP line with 8 DIP
+        /// of air either side.</summary>
+        public const float GroupSeparatorWidth = 17f;
+
+        /// <summary>The slack the fit keeps from the measured slot (the surface's own padding and the search's edge).</summary>
+        public const float FitSlack = 12f;
+
+        /// <summary>The width <see cref="Resolve"/> is handed for a measured slot. The toolbar's left shift
+        /// (<c>RowMetrics.ToolbarLead</c>) moves the command surface but never the box that measures it, so the fit is the same
+        /// at every pane width: a resize cannot newly overflow a command into "…".</summary>
+        public static float PaneWidth(float available) => MathF.Max(0f, available - FitSlack);
 
         /// <summary>Hysteresis applies in EVERY mode — it used to be skipped while search was open, exactly when evicted
         /// commands re-measure mid-animation and the promoted set oscillated. Narrowing stays immediate.</summary>
-        public static CommandBarFit Resolve(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                            bool hasSelect, bool explicitSearch, CommandBarFit? previous = null)
+        public static CommandBarFit Resolve(float available, in CommandWidths widths, bool hasTune, bool hasInsights,
+                                            bool explicitSearch, CommandBarFit? previous = null)
         {
             available = MathF.Max(0f, available);
-            var candidate = ResolveCore(available, widths, vertical, hasTune, hasSelect, explicitSearch);
+            var candidate = ResolveCore(available, widths, hasTune, hasInsights, explicitSearch);
             if (previous is not { } old || candidate.Richness <= old.Richness)
                 return candidate;
-            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, vertical, hasTune, hasSelect,
-                               explicitSearch);
+            return ResolveCore(MathF.Max(0f, available - PromotionHysteresis), widths, hasTune, hasInsights, explicitSearch);
         }
 
-        static CommandBarFit ResolveCore(float available, in CommandWidths widths, bool vertical, bool hasTune,
-                                         bool hasSelect, bool explicitSearch)
+        static CommandBarFit ResolveCore(float available, in CommandWidths widths, bool hasTune, bool hasInsights,
+                                         bool explicitSearch)
         {
             float mandatory = MoreWidth;
             int mandatoryCount = 1; // More
-            if (!vertical) { mandatory += widths.Play; mandatoryCount++; }
             if (hasTune) { mandatory += widths.Tune; mandatoryCount++; }
+            if (hasInsights) { mandatory += InsightsWidth; mandatoryCount++; }
             mandatory += MathF.Max(0, mandatoryCount - 1) * Gap;
 
             bool expanded = explicitSearch;
             float reservedSearch = expanded ? SearchMinExplicit : SearchIconWidth;
 
-            InlineCommand inline = InlineCommand.None;
             float used = mandatory + SearchGap + reservedSearch;
 
-            void Add(InlineCommand command, float width, bool viewCommand)
+            // The ladder, richest first: the first rung whose extra width fits wins.
+            float filterIcon = Gap + FilterIconWidth, sortExtra = Gap + widths.Sort;
+            InlineCommand inline;
+            if (used + Gap + widths.Filter + sortExtra <= available)
             {
-                float extra = Gap + width;
-                bool firstView = viewCommand
-                    && (inline & (InlineCommand.Sort | InlineCommand.Density | InlineCommand.Select)) == 0;
-                if (firstView && (!vertical || hasTune || mandatoryCount > 1)) extra += GroupSeparatorWidth;
-                if (used + extra > available) return;
-                used += extra;
-                inline |= command;
+                used += Gap + widths.Filter + sortExtra;
+                inline = InlineCommand.Filter | InlineCommand.FilterLabel | InlineCommand.Sort;
             }
-
-            if (!vertical) Add(InlineCommand.Shuffle, widths.Shuffle, viewCommand: false);
-            Add(InlineCommand.Sort, widths.Sort, viewCommand: true);
-            Add(InlineCommand.Density, widths.Density, viewCommand: true);
-            if (hasSelect) Add(InlineCommand.Select, widths.Select, viewCommand: true);
+            else if (used + filterIcon + sortExtra <= available)
+            {
+                used += filterIcon + sortExtra;
+                inline = InlineCommand.Filter | InlineCommand.Sort;
+            }
+            else if (used + filterIcon <= available)
+            {
+                used += filterIcon;
+                inline = InlineCommand.Filter;
+            }
+            else inline = InlineCommand.None;
 
             float searchWidth = reservedSearch;
             if (expanded)
@@ -749,6 +945,109 @@ public readonly partial struct Track
                 searchWidth = Math.Clamp(reservedSearch + spare, SearchMinExplicit, SearchMax);
             }
             return new CommandBarFit(inline, expanded, searchWidth);
+        }
+    }
+
+    /// <summary>The Liked bar's ladder answer. <see cref="ChipSlotW"/> is the chip slot's width while the chips are inline (the
+    /// slack the rung leaves, never under <see cref="LikedBarLayout.ChipSlotMinW"/>), else 0; <see cref="SearchWidth"/> grows
+    /// past the explicit minimum only when no chip slot absorbs the slack.</summary>
+    public readonly record struct LikedBarFit(LikedBarLayout.Rung Rung, float ChipSlotW, bool SearchExpanded, float SearchWidth);
+
+    /// <summary>THE LIKED SONGS BAR: one 44-DIP row, <c>[Play │ ⌄] · Shuffle · divider · genre chips ─ Filter · Date added ⌄ · find ·
+    /// Insights · ⋯</c>, and the pure ladder that decides what stays inline at a width. The ladder runs richest to poorest and
+    /// every step is a statement of what yields FIRST: the chips shrink (down to <see cref="ChipSlotMinW"/>, under their edge
+    /// fade), then Shuffle loses its label, then Filter loses its label (icon + badge), then Sort goes into "…", then the chips go
+    /// into "…" ("Genre ▸"), then Shuffle goes into "…", then Insights goes into "…", and only then Filter goes into "…" ("Filter…",
+    /// the badge returning to "…"). The Play split, find and "…" always stay: they are the mandatory floor, so the
+    /// bar never overflows or clips whatever the pane. Promotion has <see cref="CommandBarLayout.PromotionHysteresis"/>
+    /// (a richer rung than the previous one must fit with that much to spare); narrowing is immediate.</summary>
+    public static class LikedBarLayout
+    {
+        public enum Rung : byte { Full, ShuffleIcon, FilterIcon, SortInMore, ChipsInMore, ShuffleInMore, InsightsInMore, FilterInMore }
+
+        public const float PlayW = ButtonRules.PlaySplitWidthNominal;
+        public const float ShuffleIconW = 32f;
+        public const float DividerW = CommandBarLayout.GroupSeparatorWidth;
+        public const float ChipSlotMinW = 120f;
+        public const float InsightsW = 32f;
+        public const float FilterIconW = CommandBarLayout.FilterIconWidth;
+        /// <summary>The air between the chip slot's end (where its edge fade lands) and Sort, on top of the bar's own
+        /// <see cref="CommandBarLayout.Gap"/>: the slot carries it as a right margin, so every rung that shows the chips pays it.</summary>
+        public const float ChipRailTrailGap = Spacing.S;
+        /// <summary>The air between Play and Shuffle: two bordered buttons sit a standard 8 DIP apart, not the bar's 2-DIP icon
+        /// rhythm (they read as glued). Shuffle carries the difference as a left margin.</summary>
+        public const float PlayShuffleGap = Spacing.S;
+
+        /// <summary>The rungs, richest first.</summary>
+        public static ReadOnlySpan<Rung> Rungs => [Rung.Full, Rung.ShuffleIcon, Rung.FilterIcon, Rung.SortInMore, Rung.ChipsInMore, Rung.ShuffleInMore, Rung.InsightsInMore, Rung.FilterInMore];
+
+        public static bool ShuffleInline(Rung r) => r < Rung.ShuffleInMore;
+        public static bool ShuffleLabelled(Rung r) => r == Rung.Full;
+        public static bool FilterInline(Rung r) => r < Rung.FilterInMore;
+        public static bool FilterLabelled(Rung r) => r <= Rung.ShuffleIcon;
+        public static bool SortInline(Rung r) => r <= Rung.FilterIcon;
+        public static bool ChipsInline(Rung r) => r <= Rung.SortInMore;
+        public static bool InsightsInline(Rung r) => r < Rung.InsightsInMore;
+
+        /// <summary>What a rung needs at minimum: its inline pieces summed with <see cref="CommandBarLayout.Gap"/> between them,
+        /// the search affordance (its icon pair, or the explicit field's minimum) behind <see cref="CommandBarLayout.SearchGap"/>.
+        /// Strictly decreasing from <see cref="Rung.Full"/> to <see cref="Rung.FilterInMore"/>. <paramref name="filterW"/> is the
+        /// LABELLED Filter button's measured width.</summary>
+        public static float RungWidth(Rung r, float shuffleW, float sortW, float filterW, bool explicitSearch, bool chips = true)
+        {
+            float w = PlayW + CommandBarLayout.Gap + CommandBarLayout.MoreWidth
+                    + CommandBarLayout.SearchGap + (explicitSearch ? CommandBarLayout.SearchMinExplicit : CommandBarLayout.SearchIconWidth);
+            if (InsightsInline(r)) w += CommandBarLayout.Gap + InsightsW;
+            if (ShuffleInline(r)) w += PlayShuffleGap + (ShuffleLabelled(r) ? shuffleW : ShuffleIconW);
+            if (FilterInline(r)) w += CommandBarLayout.Gap + (FilterLabelled(r) ? filterW : FilterIconW);
+            if (SortInline(r)) w += CommandBarLayout.Gap + sortW;
+            if (chips && ChipsInline(r)) w += CommandBarLayout.Gap + DividerW + CommandBarLayout.Gap + ChipSlotMinW + ChipRailTrailGap;
+            return w;
+        }
+
+        /// <summary>The pointer is over the bar when its (window) position lies in the bar's rect; the right and bottom edges are
+        /// outside, and a zero-width rect (a bar that has not laid out) holds nothing.</summary>
+        public static bool PointerOver(Point2? pointer, RectF bar)
+            => pointer is { } p && bar.W > 0f && p.X >= bar.X && p.X < bar.X + bar.W && p.Y >= bar.Y && p.Y < bar.Y + bar.H;
+
+        /// <summary>The find collapsed under the pointer (it was open, now is not, and the pointer is over the bar): the rung holds
+        /// instead of promoting, so a chip pressed in the same moment is not moved out from under its own click.</summary>
+        public static bool HoldsOnCollapse(bool wasOpen, bool open, bool pointerOverBar) => wasOpen && !open && pointerOverBar;
+
+        /// <summary>A hold ends when the pointer is off the bar, the find reopened, or the pane really changed (more than 0.5 DIP).</summary>
+        public static bool HoldReleased(float holdPane, float pane, bool open, bool pointerOverBar)
+            => !pointerOverBar || open || MathF.Abs(pane - holdPane) > 0.5f;
+
+        /// <param name="allowPromotion">False while a collapse hold is set: with a previous fit the rung is never richer than
+        /// <c>previous.Rung</c> (the freed width goes to the chip slot or the search field); narrowing still steps down at once.</param>
+        public static LikedBarFit Resolve(float available, float shuffleW, float sortW, float filterW, bool explicitSearch, LikedBarFit? previous = null,
+                                          bool chips = true, bool allowPromotion = true)
+        {
+            available = MathF.Max(0f, available);
+            var rung = RungFor(available, shuffleW, sortW, filterW, explicitSearch, chips);
+            if (previous is { } old && rung < old.Rung)
+            {
+                // A promotion: it must also fit with the hysteresis to spare, else the previous (poorer) rung holds. The previous
+                // rung fits `available` by construction (it is poorer than a rung that does).
+                var steady = RungFor(MathF.Max(0f, available - CommandBarLayout.PromotionHysteresis), shuffleW, sortW, filterW, explicitSearch, chips);
+                rung = allowPromotion && steady < old.Rung ? steady : old.Rung;
+            }
+            float used = RungWidth(rung, shuffleW, sortW, filterW, explicitSearch, chips);
+            float spare = MathF.Max(0f, available - used);
+            float chipSlot = chips && ChipsInline(rung) ? ChipSlotMinW + spare : 0f;
+            float search = explicitSearch
+                ? (chips && ChipsInline(rung) ? CommandBarLayout.SearchMinExplicit
+                                     : Math.Clamp(CommandBarLayout.SearchMinExplicit + spare, CommandBarLayout.SearchMinExplicit, CommandBarLayout.SearchMax))
+                : CommandBarLayout.SearchIconWidth;
+            return new LikedBarFit(rung, chipSlot, explicitSearch, search);
+        }
+
+        /// <summary>The richest rung whose width fits, else the floor.</summary>
+        static Rung RungFor(float available, float shuffleW, float sortW, float filterW, bool explicitSearch, bool chips)
+        {
+            foreach (var r in Rungs)
+                if (RungWidth(r, shuffleW, sortW, filterW, explicitSearch, chips) <= available) return r;
+            return Rung.FilterInMore;
         }
     }
 
@@ -803,26 +1102,27 @@ public readonly partial struct Track
 
         /// <summary>The number on the Filter affordance: each toggle and each non-default facet counts once; a window is ONE
         /// facet however many endpoints it names.</summary>
-        public int ActiveCount
+        public int ActiveCount => ActiveCountFor(searching: true);
+
+        /// <summary><see cref="ActiveCount"/> as the badge states it: the search scope is the QUERY's, so it counts only while a query
+        /// is typed (<paramref name="searching"/>); an empty find leaves the scope uncounted, as nothing on the card is then narrowing.</summary>
+        public int ActiveCountFor(bool searching)
         {
-            get
-            {
-                int n = SearchScope == SearchScope.Everything ? 0 : 1;
-                if (ExplicitMode != TraitMode.All) n++;
-                if (VideoMode != TraitMode.All) n++;
-                if (LikedOnly) n++;
-                if (PlayableOnly) n++;
-                if (Duration != DurationRange.Any) n++;
-                if (Added != AddedRange.Any) n++;
-                if (Origin != OriginFilter.Any) n++;
-                if (Tempo != TempoBand.Any) n++;
-                if (Camelot != 0) n++;
-                if (!string.IsNullOrEmpty(Tag)) n++;
-                if (AddedAfterMs != 0L || AddedBeforeMs != 0L) n++;
-                if (ArtistSlot != 0) n++;
-                if (ReleaseYearMin != 0 || ReleaseYearMax != 0) n++;
-                return n;
-            }
+            int n = SearchScope == SearchScope.Everything || !searching ? 0 : 1;
+            if (ExplicitMode != TraitMode.All) n++;
+            if (VideoMode != TraitMode.All) n++;
+            if (LikedOnly) n++;
+            if (PlayableOnly) n++;
+            if (Duration != DurationRange.Any) n++;
+            if (Added != AddedRange.Any) n++;
+            if (Origin != OriginFilter.Any) n++;
+            if (Tempo != TempoBand.Any) n++;
+            if (Camelot != 0) n++;
+            if (!string.IsNullOrEmpty(Tag)) n++;
+            if (AddedAfterMs != 0L || AddedBeforeMs != 0L) n++;
+            if (ArtistSlot != 0) n++;
+            if (ReleaseYearMin != 0 || ReleaseYearMax != 0) n++;
+            return n;
         }
 
         /// <summary>Set the coarse preset, clearing any window: ANDing both would return fewer rows than either promised.</summary>

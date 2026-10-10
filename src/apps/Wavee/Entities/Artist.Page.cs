@@ -37,6 +37,17 @@
 // an effect: `OnRealized` fires during the reconcile of this very render, an effect after present — ch 08 §9 #6). The
 // spy is an auto-tracked effect over the page's scroll signals that resolves `Detail.BandLayout.ActiveSection` into the
 // pivot's `active` signal, so a scroll step re-renders the pivot only when the answer changes.
+//
+// ── ONE BASELINE, AND THE ZUNE ROW 2 (A2) ───────────────────────────────────────────────────────────────────────────────
+//
+// The band is `Detail.BandCluster`: title · divider · tabs · actions share one 20-DIP line (Detail.BandLayout). Under Zune the
+// band lives in row 2: the page publishes the same words (`PageHead.PublishBand`, under its route name), its in-page band is
+// not composed, its stuck floor is 0 and the hero collapses to that floor itself. The floor is LATCHED
+// (Detail.BandLayout.FloorLatch): it flips only while the scroll is under FlipLine, where every scroll channel presents the
+// same, so a nav-style switch while scrolled never snaps the hero, the sentinel or the clip. Above the line the page keeps its
+// band (row 2 shows the same words for that window) until the scroll next crosses back. `_inRow2` is the ONE input for the
+// hero's floor, both clips, the facets' pin, the spy's band height, GoToSection's margin, the sentinel and whether the band
+// composes.
 
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -128,6 +139,17 @@ public readonly partial struct Artist
         long _scrollKey = long.MinValue;   // the last coarse geometry key the watch let through
         readonly Signal<int> _active = new(Detail.BandLayout.NoSection);   // nothing lit until the spy answers (RCA E)
         readonly Signal<int> _pivotEpoch = new(0);
+        // The LATCHED floor placement (Detail.BandLayout.FloorLatch): true while the band lives in the Zune band's row 2.
+        readonly Signal<bool> _floorInRow2 = new(Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Peek()));
+        bool _inRow2;                      // the value Compose latched this render; every other reader uses this
+        float _flipHeroH = ArtistHeroLayout.WideHeight;
+        /// <summary>EXPERIMENTAL (artist bleed): non-null when this render publishes a backdrop; true while the shell slot actually
+        /// carries it, so the hero hides its own photo only while the shell draws one (never blank when the publish was dropped).</summary>
+        Func<bool>? _bleedDrawn;
+        Memo<bool>? _belowLine;            // offset < FlipLine: a threshold, so the latch subscribes to the crossing only
+        IReadSignal<bool>? _isActive;
+        string[]? _bandLabels;
+        int _bandLabelsHash;
         NodeHandle _viewport;
         readonly NodeHandle[] _anchors = new NodeHandle[ArtistSections.Count];
         readonly Action<NodeHandle>[] _anchorRealized = new Action<NodeHandle>[ArtistSections.Count];
@@ -138,15 +160,42 @@ public readonly partial struct Artist
 
         // ── colour ──
         // Seeded from the last remembered page accent, so the first frame never paints the default over a held colour.
-        readonly Signal<ColorF> _accent = new(AccentHold.Last ?? Tok.AccentDefault);
+        readonly Signal<ColorF> _accent = new(HeldSeed() ?? Tok.AccentDefault);
         readonly Signal<Design.PageAccent> _pageAccent = new(new Design.PageAccent(
-            AccentHold.Last ?? Tok.AccentTextPrimary, AccentHold.Last ?? Tok.AccentDefault, ""));
+            HeldSeed() ?? Tok.AccentTextPrimary,
+            HeldSeed() ?? Tok.AccentDefault, ""));
+        /// <summary>The held page accent, only while "Accent from artwork" is on (null otherwise).</summary>
+        static ColorF? HeldSeed() => AccentHold.Seed(Prefs.Appearance.AccentFromArtwork());
         readonly Signal<ThemeKind> _theme = new(ThemeKind.Dark);
         readonly Func<ColorF> _accentFn;
 
         // ── readiness ──
         bool _ready, _failed, _bodyReady, _heroGateOpened;
         int _heroDecodeW, _heroDecodeH;
+        /// <summary>The frame (<c>Design.FrameTime.NowMs</c>) on which this artist's photo started its entrance, stamped once: the reveal
+        /// frame when the bitmap was resident, else the frame it landed on. Rides the backdrop so the shell's presence starts there.</summary>
+        long _entranceAtMs;
+        /// <summary>The frame the overview landed on a measured page (the hero request only starts then), stamped once per artist; the
+        /// hero wait's cap (<see cref="ArtistReadiness.HeroWaitCapMs"/>) is armed from it. 0 until then.</summary>
+        long _overviewAtMs;
+        /// <summary>The hero wait's cap, LATCHED by <see cref="_heroWaitElapsed"/> (a timeout after <see cref="_overviewAtMs"/>) and read by
+        /// Render as a flag, never re-derived from frame time (<c>FrameTime.NowMs</c> is the present stamp and trails the timer).</summary>
+        bool _heroCapElapsed;
+        /// <summary>The page's ONE entrance clock (<see cref="ShellEntranceClock"/>), under the bleed: the page content, the card's photo
+        /// field and the shell's layers all read its <see cref="ShellEntranceClock.Elapsed"/>. It is primed in Render on the frame the
+        /// entrance is stamped and armed by the layout effect, so the first step lands on the frame after the reveal.</summary>
+        readonly ShellEntranceClock _clock = new();
+        /// <summary>True while the entrance ticker is mounted past the reveal frame (the clock is stepping); cleared by the tick that
+        /// finds the clock done, which unmounts the ticker.</summary>
+        readonly Signal<bool> _clockRunning = new(false);
+        /// <summary>DemandRows has asked for the rows of the current popular list, so the page's chart gate may read their marks.</summary>
+        bool _popularAsked;
+        /// <summary>The hero photo's failure as seen up to the reveal, then frozen (F2): a failure before the reveal reveals the non-bleed
+        /// look; one after it keeps the look already on screen, so the wash, the ink and the photo frame never snap.</summary>
+        bool _heroPhotoFailed;
+        /// <summary>Wakes Render while the page is still gated: when the cap elapses, and whenever DemandRows moves to a new popular
+        /// version (the gate reads both).</summary>
+        readonly Signal<int> _heroWaitTick = new(0);
         Element? _body;
         IOverlayService? _overlay;
 
@@ -168,9 +217,16 @@ public readonly partial struct Artist
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _demandRows, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
         readonly Action _play, _shuffle, _radio, _scrollToTop;
+        readonly Action _latchFloor, _publishBand;
+        readonly Func<bool> _belowLineFn;
+        readonly Action<int> _onBandPivot;
+        readonly Func<Element> _bandActions;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
         readonly Action _watchScroll;
+        readonly Action _heroWaitElapsed;
+        readonly Action _stepClock, _armClock;
+        readonly Func<float> _contentIn, _photoIn;
         readonly Func<long> _stampFn;
 
         public PageHost()
@@ -198,6 +254,14 @@ public readonly partial struct Artist
             _shuffle = Shuffle;
             _radio = Radio;
             _scrollToTop = ScrollToTop;
+            _latchFloor = LatchFloor;
+            _publishBand = PublishBand;
+            _belowLineFn = () => _scroll.Offset.Value < Detail.BandLayout.FlipLine(_flipHeroH);
+            _onBandPivot = i =>
+            {
+                if ((uint)i < (uint)_pivotCount) _sectionClicks[(int)_pivot[i]]();
+            };
+            _bandActions = () => BandActions(inRow2: true);
             _captureViewport = h => _viewport = h;
             _measure = r =>
             {
@@ -225,8 +289,34 @@ public readonly partial struct Artist
                 _viewportH.SetIfChanged(vh);
                 _atEnd.SetIfChanged(atEnd);
             };
+            _heroWaitElapsed = () =>
+            {
+                // A fire before the overview stamp (the timer arms at mount) counts for nothing.
+                if (_overviewAtMs == 0 || _heroCapElapsed) return;
+                _heroCapElapsed = true;
+                if (!_heroGateOpened) _heroWaitTick.Value = _heroWaitTick.Peek() + 1;
+            };
+            _stepClock = () =>
+            {
+                if (_clock.Running) _clock.Step(Design.FrameTime.NowMs);
+                if (!_clock.Running) _clockRunning.Value = false;
+            };
+            // The layout effect of the reveal frame N: the clock starts at N (Elapsed 0) and its first step lands on N+1. Reduced motion
+            // finishes it at once, so the page is fully visible and no ticker ever mounts.
+            _armClock = () =>
+            {
+                if (_clock.Mode != ShellEntranceMode.Primed) return;
+                if (Design.Reduced) { _clock.Finish(); return; }
+                _clock.Arm(Design.FrameTime.NowMs);
+                _clockRunning.Value = true;
+            };
+            _contentIn = () => ArtistBleed.ContentIn(_clock.Mode, _clock.ContentFollows, _clock.Elapsed.Value);
+            _photoIn = () => ArtistBleed.PhotoIn(_entranceAtMs != 0, _clock.Mode, _clock.ContentFollows, _clock.Elapsed.Value);
             _stampFn = Stamp;
         }
+
+        /// <summary>The entrance clock's per-frame tick (<see cref="Controls.FrameTicker"/>), named for the <c>[wake]</c> census.</summary>
+        sealed class EntranceTicker(Action tick) : Controls.FrameTicker(tick);
 
         public void ApplyProps(object props)
         {
@@ -261,6 +351,9 @@ public readonly partial struct Artist
                 // photo just because its own art has not resolved yet.
                 _heroUrl = null;
                 _heroGateOpened = false;
+                _entranceAtMs = 0;
+                _clock.Reset();
+                _overviewAtMs = 0; _heroCapElapsed = false; _popularAsked = false; _heroPhotoFailed = false;
                 _heroDecodeW = _heroDecodeH = 0;
                 // DemandRows' gates (ch 08 render-cost fix): forced back to default so the first pass for the NEW
                 // artist always walks every relation once, even in the (astronomically unlikely) case a recycled slot
@@ -290,13 +383,19 @@ public readonly partial struct Artist
             UseEffect(_publishAccent);                                    // the watched chrome accent
             UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));
             UseEffect(_resolveSpy);                                       // the scroll spy
+            // THE FLOOR LATCH and the Zune row 2 (A2). Every hook runs unconditionally: Compose is not always reached.
+            _isActive = UseIsActive();
+            _belowLine = UseComputed(_belowLineFn);
+            UseSignalEffect(_latchFloor);
+            UseActivation(onActivated: _publishBand);
 
             // ch 08 §6's settings, each subscribing the appearance epoch.
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
             _classic = Prefs.Appearance.TrackRowStyle() == 1;
             _showArtwork = !Prefs.Appearance.TrackArtworkHidden();
 
             _ = _layoutEpoch.Value;
+            _ = _heroWaitTick.Value;
             _width = MathF.Max(1f, _heroWidth.Value);
             _metrics = ArtistHeroLayout.For(_width, _tier);
             _tier = _metrics.Tier;
@@ -307,7 +406,8 @@ public readonly partial struct Artist
             _failed = !a.IsValid || ArtistSections.PageFailed(_ready, overviewPending, e.ArtistPopular.Readiness(a.Slot));
 
             string routeKey = p.RouteKey;
-            string? paletteUrl = a.IsValid ? Controls.ArtUrl(a.PaletteImageId) : null;
+            var paletteSource = PaletteSourceOf(a);   // the tint and the page accent read this ONE pair
+            string? paletteUrl = paletteSource.Url;
             // Latch the hero only once the overview is known so a launching card's avatar cannot paint, then swap to
             // the header. Do not clear a latched url after the first reveal — that unmounted HeroArt and flashed the
             // flat placeholder over already-visible copy.
@@ -345,24 +445,80 @@ public readonly partial struct Artist
                 dh = Math.Max(1, Design.ImageDecodeScale.For(baseH, scale));
             }
             var heroImage = UseImage(heroBind, dw, dh, ImagePriority.Visible, blurHash: null);
-            if (heroBind.Length > 0)
+            bool hasUrl = heroBind.Length > 0;
+            if (hasUrl)
                 heroImageReady = heroImage.State is ImageState.Ready or ImageState.Failed;
+            // Only a RESIDENT bitmap stamps the entrance and publishes the backdrop; a failed photo never bleeds (F2). The failure is read
+            // only until the reveal and frozen after it: a photo that fails past the cap, or a later rendition swap that fails, keeps the
+            // look that is already up (no stamp, no backdrop) instead of snapping the wash and the ink to the non-bleed look.
+            bool heroResident = hasUrl && heroImage.State == ImageState.Ready;
+            _heroPhotoFailed = ArtistBleed.PhotoFailed(_heroGateOpened, hasUrl && heroImage.State == ImageState.Failed, _heroPhotoFailed);
+            bool heroFailed = _heroPhotoFailed;
+            // The hero wait's cap runs from the frame the overview landed on a measured page (the hero request starts then). The timeout
+            // arms at mount, re-arms when the stamp lands, and its callback ignores a fire before it; it sets a flag, Render never
+            // compares frame time against the cap.
+            if (_ready && _measured && _overviewAtMs == 0) { _overviewAtMs = Design.FrameTime.NowMs; _heroCapElapsed = false; }
+            UseTimeout(_heroWaitElapsed, ArtistReadiness.HeroWaitCapMs, DepKey.From(HashCode.Combine(a.Slot, (int)scopeEpoch), _overviewAtMs != 0 ? 1 : 0));
 
             // A 0-size leaf: the watch, the tone and the claim live there, never in this render. Gated on the incoming
             // art being USABLE (ch 08 BUG D) — never on Knows(Overview): a claim whose cover is already graded (the
             // search/home card's avatar, warmed by an earlier batch) must land its colour on the first paint, and only
             // a genuinely ungraded cover falls through to TintOwnership's hold.
             bool artUsable = Detail.CoverLatch.IsUsable(paletteUrl);
-            Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
-                owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey);
 
-            // ONE visual swap: overview + measured width + the first hero decode + chart settled. Snap, not FadeOnly:
-            // waiting for the bitmap then fading the whole tree from 0 hid the photo again (stillwrong.mp4).
-            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a));
-            _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled);
+            // ONE visual swap: overview + measured width + chart settled, and UNDER THE BLEED the decoded hero bitmap (V2: the copy and the
+            // photo are one entrance; waiting for it and then fading the whole tree from 0 hid the photo again, stillwrong.mp4, which is
+            // why the wait is capped and the reveal is FadeOnly). The cap (ArtistReadiness.HeroWaitCapMs) is a flag the timeout above
+            // sets; past it the copy reveals and the photo takes the late path. Off the bleed the body does not wait for the bitmap.
+            bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+            bool bleedEligible = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(), heroUrl, zune, _metrics.Stacked)
+                && !heroFailed;
+            bool heroSettled = ArtistReadiness.HeroSettled(bleedEligible, heroImageReady, _heroCapElapsed);
+            // The gate reads the popular rows' marks only for the list DemandRows has asked: before that "not asked" is not "failed".
+            bool rowsAsked = _popularAsked && _popularStamp.Slot == a.Slot && _popularStamp.Version == e.ArtistPopular.Version(a.Slot);
+            bool chartSettled = ArtistReadiness.ChartSettled(ArtistReadiness.Chart(a), ArtistReadiness.ChartFailed(a, rowsAsked));
+            bool wasRevealed = _heroGateOpened;
+            _bodyReady = ArtistReadiness.BodyReady(_ready, _measured, _heroGateOpened, chartSettled, heroSettled);
             if (_bodyReady) _heroGateOpened = true;
+            // EXPERIMENTAL (artist bleed; Artist.Bleed.cs): the photo runs from the window top behind the chrome. The ONE read of
+            // `ArtistBleed.Enabled`. Only once the body is up, so the skeleton never draws over a photo it does not show. The
+            // tint's publish carries the backdrop as data; the shell draws it. `floor` and the collapse distance are the hero's own
+            // (A2's latched floor), so the shell's ground and fade track the hero 1:1. Zune only and never on a stacked tier (the
+            // decision reads the LIVE nav style, so a switch re-renders the page and the card's layers fade with the shell's).
+            bool bleed = ArtistBleed.Applies(ArtistBleed.Enabled, Prefs.Appearance.SurfaceWash(),
+                ArtistBleed.HeaderPhotoFor(heroUrl, _bodyReady, heroFailed), zune, _metrics.Stacked);
+            // The photo's entrance starts on this frame (the page's reveal, or the late bitmap's ready edge): the shell's presence is stamped
+            // with it, once per artist, and only for a real hero whose bitmap is resident (a failed photo never stamps). Under the bleed it
+            // also primes the page's ONE clock (every entrance factor reads 0 until the layout effect below arms it on this same frame, so
+            // the first step lands on the next one): the content follows it on the first reveal, only the late photo on a later stamp.
+            if (ArtistBleed.StampsEntrance(_bodyReady, hasUrl, heroResident, _entranceAtMs != 0))
+            {
+                _entranceAtMs = Design.FrameTime.NowMs;
+                if (bleed) _clock.Prime(contentFollows: !wasRevealed);
+            }
+            UseLayoutEffect(_armClock, DepKey.From(_entranceAtMs));
+
+            // The backdrop is published only once the hero bitmap has been resident (the stamp; the page's own UseImage is the card's and the
+            // shell's cache entry), so until then drawn() is false, the card carries everything and the shell draws nothing. It is gated on the
+            // STAMP, not the live state: a later url/rendition swap or scale change leaves Ready for a moment and must not tear the bleed down.
+            ShellBackdrop? backdrop = null;
+            if (ArtistBleed.PublishesBackdrop(bleed, _entranceAtMs != 0))
+            {
+                float bleedFloor = Detail.BandLayout.StuckHeight(_floorInRow2.Value);
+                float bleedPhotoH = ArtistHeroLayout.PhotoHeightFor(_metrics);
+                backdrop = new ShellBackdrop(heroUrl!, bleedPhotoH, bleedPhotoH, bleedFloor, _scroll.Offset,
+                    ArtistHeroLayout.CollapseDistance(_metrics.MinHeight, bleedFloor), dw, dh, a.Uri.Text,
+                    PaletteUrl: paletteUrl, PayloadAccent: a.HeaderAccent, EntranceAtMs: _entranceAtMs, Entrance: _clock);
+            }
+            Element tint = Palette.ShellTint(paletteUrl, ready: artUsable, disabled: !washes, apply: true,
+                owner: _tintOwner, slot: shellSlot, key: "artist-tint:" + routeKey, fallbackUrl: paletteSource.FallbackUrl,
+                backdrop: backdrop);
+            string bleedKey = a.Uri.Text;
+            _bleedDrawn = bleed ? () => shellSlot?.Value.Backdrop?.Key == bleedKey : null;
             _body = _bodyReady ? Compose(a, paletteUrl, _heroUrl, washes, routeKey) : null;
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));   // a new section set → re-resolve the spy
+            // Row 2's words: the deps-gated form (PublishBand reads no signal), keyed on everything the publication carries.
+            UseEffect(_publishBand, DepKey.From(HashCode.Combine(_bodyReady, _bandLabelsHash, a.IsValid ? a.Name : null, routeKey)));
             UseSignalEffect(_watchScroll);
 
             // ONE region, and the shimmer is DERIVED — `PageShimmer` is a ShimmerSource (a representative tree at the
@@ -375,15 +531,22 @@ public readonly partial struct Artist
             // Not None, which means "the content animates its own entrance" - and this content has none, so the swap
             // landed as a hard cut with nothing moving at all (shitttt.mp4).
             //
+            // A bleeding Zune artist page has no engine reveal for a resident bitmap (ArtistBleed.RevealFor: None) and an opacity-only one
+            // for a late bitmap: the photo is also drawn by the shell above the card's top, which has no rise and no blur, and the entrance
+            // is the page's ONE clock (_clock): the content root (ContentIn), the card's photo field (PhotoIn) and the shell's presence,
+            // underlay and hand-over (BleedPresenter follows it) all read the same stepped signal, so nothing can drift. It publishes the
+            // backdrop only once the hero bitmap is resident, from the one stamp (EntranceAtMs).
+            //
             // The reveal is safe to animate now in a way it was NOT before, which is the whole point of the gate
-            // above: `BodyReady` has already waited for the measured width, the DECODED hero bitmap and a settled
-            // chart, so the tree that rises is complete. What broke earlier (stillwrong.mp4) was revealing at
-            // overview-readiness and animating a tree whose photo had not landed - the header appeared, then vanished
-            // behind its own second fade. Group null, not routeKey: the chart's inner region (Artist.UI.Chart.cs) must
-            // NOT join this one, or top tracks plays a second wave after the page has already revealed.
+            // above: `BodyReady` has already waited for the overview, the measured width, a settled chart and, under the bleed, the
+            // decoded bitmap up to the cap (off the bleed HeroArt fades the bitmap in itself), so the tree that rises is complete. What
+            // broke earlier (stillwrong.mp4) was revealing at overview-readiness and animating a tree whose photo had not landed - the
+            // header appeared, then vanished behind its own second fade. Past the cap the copy reveals and the photo takes the late path.
+            // Group null, not routeKey: the chart's inner region (Artist.UI.Chart.cs) must NOT join this one, or top tracks plays a
+            // second wave after the page has already revealed.
             Element region = new SkelRegionEl(
                 Pending: _pendingFn, Failed: _failedFn, Content: _contentFn, ShimmerSource: _shimmerFn,
-                OnFailed: _failedPanelFn, Reveal: SkelReveal.Soft, Style: SkeletonStyle.Default,
+                OnFailed: _failedPanelFn, Reveal: ArtistBleed.RevealFor(bleed, heroResident), Style: SkeletonStyle.Default,
                 Group: null, SmoothResize: false);
 
             Element scroll = ScrollView(new BoxEl
@@ -402,12 +565,18 @@ public readonly partial struct Artist
                 Handle = _scroll,
             };
 
+            // The entrance ticker is mounted from RENDER while the clock is primed (the reveal frame N: FrameTicker's first run only
+            // subscribes and the layout effect arms the clock at N, so the first step lands on N+1) or running. Never under reduced motion.
+            Element ticker = ArtistBleed.TicksEntrance(_clock.Mode, _clockRunning.Value, Design.Reduced)
+                ? Embed.Comp(() => new EntranceTicker(_stepClock)) with { Key = "artist-entrance-ticker" }
+                : new BoxEl { Width = 0f, Height = 0f };
+
             // The page PROVIDES its accent (Design.AccentCtx): the heart and every other ambient consumer read it.
             return Ctx.Provide(Design.AccentCtx.Slot, (IReadSignal<Design.PageAccent>?)_pageAccent,
                 Ctx.Provide(LazyScroll.Slot, (IReadSignal<float>?)_scrollY, new BoxEl
                 {
                     Key = "artist-page:" + routeKey, Grow = 1f, Direction = 1, OnBoundsChanged = _measure,
-                    Children = [tint, scroll],
+                    Children = [tint, scroll, ticker],
                 }));
         }
 
@@ -427,6 +596,7 @@ public readonly partial struct Artist
             ColorF accent = _accent.Value;
             var m = _metrics;
             float width = _width;
+            bool inRow2 = _inRow2 = _floorInRow2.Value;   // the LATCHED floor placement, read once for the whole compose
             // ── what is present (ch 08 §7's readiness column) ──
             // Keep edge-backed section slots in the page plan while their first answer is pending. Without this,
             // every late edge answer inserts a new sibling into the magazine and shifts all following anchors/cards.
@@ -498,21 +668,33 @@ public readonly partial struct Artist
             var pivotItems = new (string Label, Action OnClick)[pivots];
             for (int i = 0; i < pivots; i++) pivotItems[i] = (PivotLabel(_pivot[i]), _sectionClicks[(int)_pivot[i]]);
 
-            float collapse = ArtistHeroLayout.CollapseDistance(m.MinHeight);
+            // The floor: 56 with the band in the page, 0 once it lives in row 2. The ONE input below is the LATCHED value.
+            float floor = Detail.BandLayout.StuckHeight(inRow2);
+            _flipHeroH = m.MinHeight;
+            float collapse = ArtistHeroLayout.CollapseDistance(m.MinHeight, floor);
             bool compact = _compact.Value;
-            Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems);
+            if (_bandLabels is null || _bandLabelsHash != _pivotHash || _bandLabels.Length != pivots)
+            {
+                _bandLabelsHash = _pivotHash;
+                var labels = new string[pivots];
+                for (int i = 0; i < pivots; i++) labels[i] = pivotItems[i].Label;
+                _bandLabels = labels;
+            }
+            Element band = BandBar(a, width, m.Gutter, collapse, compact, pivotItems, inRow2);
             Element hero = HeroBanner(HeroText.For(a), uri, heroUrl, paletteUrl, width, in m, accent,
-                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent);
+                compact, _play, _shuffle, _radio, band, headerAccent: a.HeaderAccent, floor: floor, bleedDrawn: _bleedDrawn,
+                decodeW: _heroDecodeW, decodeH: _heroDecodeH, photoIn: _photoIn);
 
             // One edge-only hand-off: the sentinel's sticky(56) ENGAGED edge is the band's input switch (`_compact`). The
             // magazine's feather is NOT switched by it (RCA 2026-09-25 F(ii): a re-render off the engaged edge landed two
             // presents after the render-posed clip — `[scroll.engaged.present] ticksAfterCross=2`); it is the clip's own
             // composite-time parameter below (EdgeFadeSpec.WhileStuck).
             Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
-                .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: _compact);
+                .Sticky(floor, engaged: _compact);
 
             // The blend wash, from the RESOLVED metrics (ch 08 §9 inconsistency #1); a cover-keyed leaf, so a grading
-            // re-renders only the wash. Colour washes off ⇒ it renders nothing (the veil and the Play colour stay, §4).
+            // re-renders only the wash. Tinted surfaces Off ⇒ it renders nothing; the veil falls to its neutral rung and
+            // the Play colour follows 'Accent from artwork' (Detail.AccentFor).
             Element wash = Palette.ArtistBlendWash(paletteUrl, ArtistHeroLayout.BlendBackdropHeightFor(in m),
                 ArtistHeroLayout.BlendBoundaryFor(in m), disabled: !washes, key: "artist-wash:" + uri,
                 payloadAccent: a.HeaderAccent);
@@ -533,27 +715,59 @@ public readonly partial struct Artist
                     new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
                     new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter)] },
                 ],
-            }.StickyClip(Detail.BandLayout.ClipInset);
+            }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2));
 
+            // The wash never yields: it stays at full strength before and after the hand-over, so the hero-tinted tone carries the
+            // photo's fade into the page in both themes and every surface level. While the bleed applies it starts at the photo's
+            // feather (ArtistBleed.WashTopInset) and fades in over that band, so it tints the feather and the page and never the
+            // opaque photo (the card's or the shell's). ONE tree shape in both arms (a nav-style switch re-pushes props and never
+            // remounts the wash): only Margin, ClipToBounds and EdgeFade differ, and the inner negative margin keeps the
+            // gradient's stops where they were.
+            bool bleeding = _bleedDrawn is not null;
+            float washPhotoH = ArtistHeroLayout.PhotoHeightFor(in m);
+            float washInset = bleeding ? ArtistBleed.WashTopInset(washPhotoH) : 0f;
+
+            // ONE always-present root whose opacity is the page clock's content factor (1 unless the first reveal's content follows it).
             return new BoxEl
             {
-                ZStack = true,
+                ZStack = true, Opacity = Prop.Of(_contentIn),
                 Children =
                 [
-                    new BoxEl { Key = "artist-wash-clip", Direction = 1, HitTestVisible = false, Children = [wash] }
-                        .StickyClip(Detail.BandLayout.ClipInset),
+                    new BoxEl
+                    {
+                        Key = "artist-wash-clip", Direction = 1, HitTestVisible = false,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Key = "artist-wash-inset", Direction = 1, HitTestVisible = false,
+                                ClipToBounds = bleeding,
+                                Margin = new Edges4(0f, washInset, 0f, 0f),
+                                EdgeFade = bleeding ? new EdgeFadeSpec(EdgeMask.Top, ArtistHeroLayout.PhotoFadeBandFor(washPhotoH)) : null,
+                                Children =
+                                [
+                                    new BoxEl
+                                    {
+                                        Direction = 1, HitTestVisible = false,
+                                        Margin = new Edges4(0f, -washInset, 0f, 0f),
+                                        Children = [wash],
+                                    },
+                                ],
+                            },
+                        ],
+                    }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2)),
                     new BoxEl { Direction = 1, Children = [hero, sentinel, magazine] },
                 ],
             };
         }
 
         /// <summary>The centred magazine column: Grow toward the row's free width, capped at 1600, the hero's gutter on
-        /// both sides, a 32 section gap, the player dock's reserve under the last section (ArtistPage.cs:271-285).</summary>
+        /// both sides, a 32 section gap, the page's bottom reserve (PageGeometry.BottomReserve) under the last section (ArtistPage.cs:271-285).</summary>
         static Element Magazine(Element[] sections, float gutter) => new BoxEl
         {
             Direction = 1, Gap = Design.Size.SectionGap,
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
-            Padding = new Edges4(gutter, Spacing.M, gutter, Design.Dock.Reserve + 40f),
+            Padding = new Edges4(gutter, Spacing.M, gutter, PageGeometry.BottomReserve),
             Children = sections,
         };
 
@@ -572,15 +786,18 @@ public readonly partial struct Artist
             _ => "",
         };
 
+        /// <summary>The stuck height under the LATCHED floor placement: the facets pin their headers at it.</summary>
+        float Stuck => Detail.BandLayout.StuckHeight(_inRow2);
+
         /// <summary>One section's body, in the plan's order (ArtistPage.cs:234-269).</summary>
         Element SectionBody(ArtistSection s, Artist a, ColorF accent, int[] fans, int relatedCount) => s switch
         {
             ArtistSection.Popular => TopBand(a, accent),
             ArtistSection.Upcoming => SectionBlock(Loc.Get(Strings.Artist.Upcoming), UpcomingCard(a, _accentFn, wide: false), accent),
             ArtistSection.LatestRelease => SectionBlock(Loc.Get(Strings.Artist.LatestRelease), LatestBanner(a.Latest, accent), accent),
-            ArtistSection.Albums => FacetSection(a, DiscoFacet.Albums, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.Singles => FacetSection(a, DiscoFacet.Singles, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
-            ArtistSection.Compilations => FacetSection(a, DiscoFacet.Compilations, _accentFn, Detail.BandLayout.Height, ArtistSections.FacetExpandedTopInset),
+            ArtistSection.Albums => FacetSection(a, DiscoFacet.Albums, _accentFn, Stuck, Stuck + FacetHeaderRowH),
+            ArtistSection.Singles => FacetSection(a, DiscoFacet.Singles, _accentFn, Stuck, Stuck + FacetHeaderRowH),
+            ArtistSection.Compilations => FacetSection(a, DiscoFacet.Compilations, _accentFn, Stuck, Stuck + FacetHeaderRowH),
             ArtistSection.AppearsOn => AppearsOnShelf(a, accent),
             ArtistSection.Tour => TourBanner(a, accent),
             ArtistSection.MusicVideos => VideosShelf(a, accent),
@@ -595,47 +812,30 @@ public readonly partial struct Artist
 
         // ── 2.2 the context band's artist arm (ArtistCompactBar.cs) ────────────────────────────────────────────────
 
-        /// <summary>title · pivot · Play + Follow as WORDS, one hairline, no fill, no avatar, no capsules (ch 08 §0 #4).
-        /// Everything geometric is the shared band's; the gutter is the hero metrics' and the content is this page's.
-        /// Reveals over the last 44 DIP of the collapse with a 4-DIP settle; takes input only past the sentinel's edge.</summary>
+        /// <summary>title · divider · tabs · Play + Follow as WORDS on one baseline (<see cref="Detail.BandCluster"/>), one
+        /// hairline, no fill, no avatar, no capsules (ch 08 §0 #4). Everything geometric is the shared band's; the gutter is the
+        /// hero metrics' and the content is this page's. Reveals over the last 44 DIP of the collapse with a 4-DIP settle; takes
+        /// input only past the sentinel's edge. With the band in Zune's row 2 (<paramref name="inRow2"/>) the SAME outer box
+        /// stays (the hero's tree shape never changes) with no children and no input.</summary>
         Element BandBar(Artist a, float width, float gutter, float collapse, bool canHit,
-                        (string Label, Action OnClick)[] pivotItems)
+                        (string Label, Action OnClick)[] pivotItems, bool inRow2)
         {
-            string uri = a.Uri.Text;
-            string name = a.Name;
-            float actionH = Detail.BandLayout.Height - 2f * Spacing.M;
-            // No "Overview" pivot tab: the title itself is the way back to the top of the page.
-            Element title = new BoxEl
+            Element[] kids = [];
+            if (!inRow2)
             {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
-                Cursor = CursorId.Hand, OnClick = _scrollToTop,
-                Children = [Detail.BandTitle(name)],
-            };
-            // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
-            Element pivot = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-                Children = [Detail.Pivot(pivotItems, _active, _accentFn)],
-            };
-            Element actions = new BoxEl
-            {
-                Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
-                Children =
+                // No "Overview" pivot tab: the title itself is the way back to the top of the page.
+                Element title = new BoxEl
+                {
+                    Direction = 0, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap, AlignItems = FlexAlign.Center,
+                    Cursor = CursorId.Hand, OnClick = _scrollToTop,
+                    Children = [Detail.BandTitle(a.Name)],
+                };
+                // The pivot is the ONLY elastic lane; the title and the actions never drop (W28).
+                Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter,
+                    Detail.BandCluster(title, Detail.Pivot(pivotItems, _active, _accentFn), BandActions(), Detail.BandLayout.Height));
+                kids =
                 [
-                    Controls.TextAction(Loc.Get(Strings.Artist.Play), _play, primary: true,
-                        height: actionH, padX: Detail.BandLayout.ActionPadX),
-                    Embed.Comp(() => new Controls.FollowTextAction { Uri = uri, Name = name, Height = actionH, PadX = Detail.BandLayout.ActionPadX })
-                        with { Key = "artist-band-follow:" + uri, SkeletonProxy = s_emptyShape },
-                ],
-            };
-            // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-            Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter, [title, pivot, actions]);
-            return new BoxEl
-            {
-                Width = width, Height = Detail.BandLayout.Height, ZStack = true,
-                HitTestVisible = canHit, HitTestPassThrough = true,
-                Children =
-                [
+                    // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
                     new BoxEl
                     {
                         Direction = 0, Width = width, Height = Detail.BandLayout.Height, Justify = FlexJustify.Center,
@@ -647,9 +847,70 @@ public readonly partial struct Artist
                         Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
                         HitTestVisible = false, Children = [Detail.BandHairline()],
                     },
-                ],
+                ];
+            }
+            return new BoxEl
+            {
+                Key = "artist-band", Width = width, Height = Detail.BandLayout.Height, ZStack = true,
+                HitTestVisible = canHit && !inRow2, HitTestPassThrough = true,
+                Children = kids,
             }.Reveal(ArtistHeroLayout.CompactRevealStart(collapse), collapse - ArtistHeroLayout.CompactRevealStart(collapse),
                 Design.Reduced ? 0f : Spacing.XS).Skeletonized(false);
+        }
+
+        /// <summary>Row 2's word ink over the artist bleed (<c>Shell.Ui.ChromeInkMix</c>): the chrome's secondary ink at rest, and the
+        /// on-media hover and pressed arms once the mix is past one half. Never null: the rest ink is ALWAYS bound (a mix of 0 is today's
+        /// token), so a word never turns from static to bound on a reused node when the bleed publishes. Read in a render.</summary>
+        static Controls.TextActionInk? RowInk()
+        {
+            bool arms = Shell.Ui.ChromeArmsOnMedia.Value;
+            return new Controls.TextActionInk(Shell.Ui.ChromeInkSecondary,
+                arms ? Design.OnMedia.Ink : Tok.TextPrimary, arms ? Design.OnMedia.InkSecondary : Tok.TextSecondary,
+                Shell.Ui.ChromeInkAccent,
+                arms ? Design.OnMedia.AccentInkSecondary : Tok.AccentTextSecondary, arms ? Design.OnMedia.AccentInkTertiary : Tok.AccentTextTertiary);
+        }
+
+        /// <summary>Play + Follow, the band's action cluster: the in-page band and the Zune band's row 2 both build it here.</summary>
+        Element BandActions(bool inRow2 = false)
+        {
+            // Row 2 sits over the bleed: its words take the chrome's secondary ink (Shell.Ui.ChromeInkMix). The in-page band sits on the card.
+            Controls.TextActionInk? ink = inRow2 ? RowInk() : null;
+            string uri = _artist.Uri.Text;
+            string name = _artist.Name;
+            return new BoxEl
+            {
+                Direction = 0, Gap = Detail.BandLayout.ActionGap, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    Detail.BandAction(Loc.Get(Strings.Artist.Play), _play, primary: true, ink: ink),
+                    Embed.Comp(() => new Controls.FollowTextAction
+                        { Uri = uri, Name = name, Height = Detail.BandLayout.ItemHeight, PadX = Detail.BandLayout.ActionPadX, InkSource = inRow2 ? RowInk : null })
+                        with { Key = "artist-band-follow:" + uri, SkeletonProxy = s_emptyShape },
+                ],
+            };
+        }
+
+        /// <summary>The floor latch (Detail.BandLayout.FloorLatch): adopt the WANTED placement only while the scroll is under
+        /// the flip line, where the flip is invisible. Subscribes to the presented nav style and the threshold crossing, never
+        /// to every scroll frame.</summary>
+        void LatchFloor()
+        {
+            bool wanted = Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Value);
+            _ = _belowLine?.Value;
+            _floorInRow2.SetIfChanged(Detail.BandLayout.FloorLatch(_floorInRow2.Peek(), wanted, _scroll.Offset.Peek(), _flipHeroH));
+        }
+
+        /// <summary>Hands the band to the Zune band's row 2 under the route name, only while this page is the active one (a parked
+        /// artist must not take the slot's words away from the page on screen). Safe any time and any number of times: the store
+        /// bumps its version only when the title, the tabs or the active signal change. It publishes regardless of the latch, so
+        /// row 2 is filled from its first frame.</summary>
+        void PublishBand()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            var labels = _bandLabels;
+            var p = _latest;
+            if (labels is null || p is null || !_artist.IsValid || !_bodyReady) return;
+            PageHead.PublishBand(p.RouteKey, _artist.Name, labels, _active, _onBandPivot, _bandActions, _scrollToTop, _accentFn);
         }
 
         /// <summary>A pivot click parks the section's top exactly under the band, animated unless reduced motion is on,
@@ -660,7 +921,7 @@ public readonly partial struct Artist
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
-                margin: Detail.BandLayout.Height);
+                margin: Detail.BandLayout.StuckHeight(_inRow2));
         }
 
         /// <summary>The band title's click target: no "Overview" pivot tab, so the title itself is the way back to the
@@ -688,7 +949,8 @@ public readonly partial struct Artist
             }
             float viewportHeight = _viewportH.Peek();
             if (viewportHeight <= 0f) viewportHeight = vp.H;
-            int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.Height, viewportHeight, atEnd);
+            float band = Detail.BandLayout.StuckHeight(_inRow2);
+            int at = Detail.BandLayout.ActiveSection(tops[..n], band, viewportHeight, atEnd);
             if (at != _spyLogged) LogSpy(at, tops[..n], viewportHeight, atEnd);
             if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had (D40); NoSection lights nothing
         }
@@ -715,7 +977,7 @@ public readonly partial struct Artist
                 WaveeLogField.Of("at", at),
                 WaveeLogField.Of("label", label),
                 WaveeLogField.Of("tops", sb.ToString()),
-                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(Detail.BandLayout.Height, viewportHeight)),
+                WaveeLogField.Of("line", (double)Detail.BandLayout.SpyLine(Detail.BandLayout.StuckHeight(_inRow2), viewportHeight)),
                 WaveeLogField.Of("vh", (double)viewportHeight),
                 WaveeLogField.Of("atEnd", atEnd));
         }
@@ -809,7 +1071,7 @@ public readonly partial struct Artist
         /// </list>
         ///
         /// <para><b>Kept OUT of this fold</b> (too dynamic to fold cheaply, per the render-cost fix's own escape
-        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist)"/> additionally
+        /// hatch): <see cref="ArtistReadiness.Chart"/>/<see cref="ArtistReadiness.ChartFailed(Artist,bool)"/> additionally
         /// read every popular track's <c>Known</c>/<c>Asked</c>/<c>Inflight</c> bits (up to
         /// <see cref="ArtistPopularTracks.ExtendedCap"/> rows, each landing independently) to decide the chart gate —
         /// folding that is as expensive as just re-rendering on it. Render keeps a literal
@@ -900,7 +1162,8 @@ public readonly partial struct Artist
         /// below are table-wide (any artist's shelf landing anywhere wakes every artist page that reads it), so each
         /// Ensure call is gated behind a <see cref="RowStamp"/> for the ONE relation it walks (ch 08 render-cost fix) —
         /// re-running this whole effect stays cheap, re-walking six shelves' worth of slots on someone else's drain
-        /// does not.</summary>
+        /// does not. The page's chart gate (<c>ArtistReadiness.ChartFailed(a, rowsAsked)</c>) reads the target rows' marks only for the popular
+        /// version asked here (<c>_popularAsked</c> and <c>_popularStamp</c>); before that an unasked row is pending, not failed.</summary>
         void DemandRows()
         {
             _ = Entities.ScopeEpoch.Value;
@@ -922,6 +1185,10 @@ public readonly partial struct Artist
             if (popularStamp.Moved(_popularStamp))
             {
                 _popularStamp = popularStamp;
+                // From here the page's chart gate may read the rows' marks (ArtistReadiness.ChartFailed(a, rowsAsked)): wake it at every
+                // new popular version until the reveal, since Render sees the new version before this effect has asked it.
+                _popularAsked = true;
+                if (!_heroGateOpened) _heroWaitTick.Value = _heroWaitTick.Peek() + 1;
                 var popular = a.PopularSlots;
                 if (popular.Length > 0)
                 {
@@ -1029,7 +1296,7 @@ public readonly partial struct Artist
         {
             var accent = AccentFor(a);
             _accent.SetIfChanged(accent);
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, routeKey));
+            _pageAccent.SetIfChanged(Detail.PageAccentOf(accent, routeKey));
         }
 
         /// <summary>The header's chrome grading, else the avatar's, else the header payload colour, else the ladder's
@@ -1037,13 +1304,18 @@ public readonly partial struct Artist
         /// effect, so either grading landing re-derives the accent.</summary>
         static ColorF AccentFor(Artist a)
         {
-            if (!a.IsValid) return AccentHold.Last ?? Tok.AccentDefault;
-            string? url = Controls.ArtUrl(a.PaletteImageId);
-            string? avatar = Controls.ArtUrl(a.ImageId);
+            if (!a.IsValid) return HeldSeed() ?? Tok.AccentDefault;
+            var src = PaletteSourceOf(a);
+            string? url = src.Url, avatar = src.FallbackUrl;
             if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
             if (avatar is { Length: > 0 } && !string.Equals(avatar, url, StringComparison.Ordinal)) _ = Palette.Watch(avatar).Value;
             return Detail.AccentFor(url, a.HeaderAccent, fallbackUrl: avatar);
         }
+
+        /// <summary>The artist's ONE artwork entry pair: the header (palette) image, else the avatar. The shell tint and
+        /// <see cref="AccentFor"/> both read it, so the chrome tint and every accent role grade from the same entry.</summary>
+        static Detail.PaletteSource PaletteSourceOf(Artist a)
+            => a.IsValid ? Detail.PaletteSource.ForArtist(Controls.ArtUrl(a.PaletteImageId), Controls.ArtUrl(a.ImageId)) : default;
 
         void Play()
         {

@@ -108,13 +108,22 @@ public readonly partial struct Track
     /// <summary>One slot's bound inputs, created once at mount: the presentation memo every cell reads, the like-edge
     /// memo, the row hover signal, the page accent and the three handlers (each resolves the current item itself).</summary>
     sealed class BoundRow(IReadSignal<TableHost.RowPresentation> presentation, IReadSignal<bool> likePop,
-                          IReadSignal<bool> hovered, Func<ColorF> accent, Action play, Action like, Action toggleExpand)
+                          IReadSignal<bool> hovered, Func<ColorF> accent, Func<ColorF> ink, Action play, Action like, Action toggleExpand,
+                          Func<bool> isCurrent)
     {
         public readonly IReadSignal<TableHost.RowPresentation> Presentation = presentation;
         public readonly IReadSignal<bool> LikePop = likePop;
         public readonly IReadSignal<bool> Hovered = hovered;
         public readonly Func<ColorF> Accent = accent;
+        /// <summary>The page accent's INK half (<see cref="Design.AccentRoles.Ink"/>): the playing title and number, the
+        /// volume and star marks, the heart. A subscribing read, for bind thunks only.</summary>
+        public readonly Func<ColorF> Ink = ink;
+        /// <summary>The now-playing row's marquee: the shared style wearing THIS table's page ink.</summary>
+        public readonly Marquee.Style MarqueeStyle = s_rowMarqueeStyle with { Foreground = Prop.Of(ink) };
         public readonly Action Play = play, Like = like, ToggleExpand = toggleExpand;
+        /// <summary>Is this slot the ItemsView's keyboard-current item (<c>RowScope.IsCurrent</c>)? A subscribing read, for bind
+        /// thunks only: Liked's hover-revealed heart and "…" stay shown on the row the keyboard is on.</summary>
+        public readonly Func<bool> IsCurrent = isCurrent;
 
         /// <summary>The current presentation — a subscribing read, for bind thunks only.</summary>
         public TableHost.RowPresentation P => Presentation.Value;
@@ -172,7 +181,8 @@ public readonly partial struct Track
 
     /// <summary>The bound twin of <see cref="Grid"/>: same lanes, same keys, same wrappers, every per-item value bound.
     /// Built once per slot per shape; the shape (column set, tracks, row height, art) is the only thing read here.</summary>
-    static Element BoundGrid(BoundRow r, in ColumnSet set, TrackSize[] tracks, float rowH, float art)
+    static Element BoundGrid(BoundRow r, in ColumnSet set, TrackSize[] tracks, float rowH, float art, bool hoverHeart = false,
+                             bool flush = false)
     {
         bool classic = set.Classic;
         float artSize = art > 0f ? art : RowMetrics.ThumbSize;
@@ -182,20 +192,22 @@ public readonly partial struct Track
         cells[i++] = BoundNumberCell(r, classic);
         if (set.Heart) cells[i++] = RowCenterCell(BoundHeart(r, classic), CellKey.Heart);
         if (set.Thumb) cells[i++] = RowCenterCell(BoundArtwork(r, artSize), CellKey.Art);
-        cells[i++] = BoundTitleCell(r, in set);
+        cells[i++] = BoundTitleCell(r, in set, regular: hoverHeart);
         if (set.Artist) cells[i++] = RowLeftCell(BoundArtistLinks(r, classic), CellKey.Artist);
         if (set.Album) cells[i++] = RowLeftCell(BoundAlbumLink(r, classic), CellKey.Album);
         if (set.By) cells[i++] = BoundAddedByCell(r, classic);
-        if (set.Date) cells[i++] = RowLeftCell(BoundDateCell(r, classic), CellKey.Date);
+        if (set.Date) cells[i++] = RowLeftCell(BoundDateCell(r, classic, relative: hoverHeart), CellKey.Date);
         if (set.Plays) cells[i++] = RowEndCell(BoundPlaysCell(r, classic), CellKey.Plays);
         if (RowMetrics.ShowTempo(in set)) cells[i++] = RowEndCell(BoundTempoCell(r, classic), CellKey.Tempo);
+        if (RowMetrics.ShowHeartTrailing(in set)) cells[i++] = RowCenterCell(BoundTrailingHeart(r, classic), CellKey.HeartTrailing);
         cells[i++] = RowEndCell(BoundDurationCell(r, classic), CellKey.Duration);
-        if (set.Video) cells[i++] = RowCenterCell(BoundVideoMoreCell(r), CellKey.Video);
-        if (set.Actions) cells[i++] = MoreCell(true, classic, CellKey.More);
+        if (set.Video) cells[i++] = RowCenterCell(BoundVideoMoreCell(r, hoverHeart), CellKey.Video);
+        if (set.Actions) cells[i++] = MoreCell(true, classic, CellKey.More, hoverHeart ? r.IsCurrent : null);
         if (set.Expand) cells[i++] = BoundExpandCell(r);
 
         float padX = RowMetrics.PadXFor(set.Tier);
-        float inner = classic ? padX : padX - RowMetrics.RowInset;
+        // A flush row (Classic, or a page whose rows are plain) has no skin margin, so its grid pays the full padding.
+        float inner = classic || flush ? padX : padX - RowMetrics.RowInset;
         return new GridEl
         {
             Columns = tracks, ColGap = RowMetrics.ColGapFor(set.Tier), RowHeight = rowH, Grow = 1f,
@@ -246,7 +258,7 @@ public readonly partial struct Track
                                     Children =
                                     [
                                         Glyph(Prop.Of(() => r.P.State is { IsNow: true, IsPlaying: true } ? Icons.Pause : Icons.Play), 12f,
-                                              Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary)),
+                                              Prop.Of(() => r.P.State.IsNow ? r.Ink() : Tok.TextPrimary)),
                                     ],
                                 },
                             ],
@@ -290,7 +302,7 @@ public readonly partial struct Track
         if (classic)
             kids =
             [
-                Glyph(Icons.Volume, 13f, Tok.AccentTextPrimary, Prop.Of(() => RestOf(r, true) == RowCellRules.Rest.Volume)),
+                Glyph(Icons.Volume, 13f, Prop.Of(r.Ink), Prop.Of(() => RestOf(r, true) == RowCellRules.Rest.Volume)),
                 Flow.Show(() => RestOf(r, true) == RowCellRules.Rest.Spinner, Spinner()),
             ];
         else
@@ -312,9 +324,9 @@ public readonly partial struct Track
                         },
                     ],
                 },
-                Glyph(Icons.FavoriteStarFill, 11f, Tok.AccentTextPrimary, Prop.Of(() => RestOf(r, false) == RowCellRules.Rest.Star)),
+                Glyph(Icons.FavoriteStarFill, 11f, Prop.Of(r.Ink), Prop.Of(() => RestOf(r, false) == RowCellRules.Rest.Star)),
                 Flow.Show(() => RestOf(r, false) == RowCellRules.Rest.Equalizer,
-                    Controls.Equalizer(Playback.IsPlaying, r.Accent, RowEqualizerHeight, r.Hovered)),
+                    Controls.Equalizer(Playback.IsPlaying, r.Ink, RowEqualizerHeight, r.Hovered)),
                 Flow.Show(() => RestOf(r, false) == RowCellRules.Rest.Spinner, Spinner()),
             ];
         return new BoxEl
@@ -339,7 +351,7 @@ public readonly partial struct Track
     /// heart (a real mount on the like EDGE, so the Enter spring replays exactly once) and the outline.</summary>
     static Element BoundHeart(BoundRow r, bool classic)
     {
-        ColorF onInk = classic ? Tok.TextPrimary : Tok.AccentTextPrimary;
+        Prop<ColorF> onInk = classic ? Tok.TextPrimary : Prop.Of(r.Ink);
         ColorF offInk = classic ? Tok.TextSecondary : Tok.TextTertiary;
         return new BoxEl
         {
@@ -353,10 +365,10 @@ public readonly partial struct Track
                 new BoxEl
                 {
                     Visible = Prop.Of(() => r.P.State.Saved && !r.LikePop.Value),
-                    Children = [Icon(Icons.HeartFill, 14f, onInk)],
+                    Children = [Icon(Icons.HeartFill, 14f) with { Color = onInk }],
                 },
                 Flow.Show(() => r.P.State.Saved && r.LikePop.Value,
-                    new BoxEl { Animate = s_heartPopIn, Children = [Icon(Icons.HeartFill, 14f, onInk)] }),
+                    new BoxEl { Animate = s_heartPopIn, Children = [Icon(Icons.HeartFill, 14f) with { Color = onInk }] }),
                 new BoxEl
                 {
                     Visible = Prop.Of(() => !r.P.State.Saved),
@@ -364,6 +376,30 @@ public readonly partial struct Track
                 },
             ],
         }.Interactive(Interaction.Subtle);
+    }
+
+    /// <summary>The TRAILING heart of a page whose every row is liked (Liked Songs): a filled heart that REMOVES the row from
+    /// the collection, absent at rest and revealed on row hover (the engine's own hover progress, so it fades) and while the
+    /// row is the keyboard-current item. The reveal rides a non-interactive wrapper so it follows the ROW's hover, not the
+    /// button's. Named and tooltipped "Remove from Liked Songs" - the tooltip is the accessible name here.</summary>
+    static Element BoundTrailingHeart(BoundRow r, bool classic)
+    {
+        Prop<ColorF> onInk = classic ? Tok.TextPrimary : Prop.Of(r.Ink);
+        Element button = new BoxEl
+        {
+            Width = RowMetrics.HeartCol, Height = RowMetrics.HeartCol,
+            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Corners = Radii.Circle(RowMetrics.HeartCol),
+            Cursor = CursorId.Hand, OnClick = r.Like, Role = AutomationRole.Button,
+            BlocksDragArm = true,
+            Children = [Icon(Icons.HeartFill, 14f) with { Color = onInk }],
+        }.Interactive(Interaction.Subtle);
+        return new BoxEl
+        {
+            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Opacity = Prop.Of(() => r.IsCurrent() ? 1f : 0f), HoverOpacity = 1f,
+            Children = [ToolTip.Wrap(button, Prop.Of<string?>(() => Loc.Get(Strings.Detail.RemoveFromLiked)))],
+        };
     }
 
     /// <summary>The thumb as <c>Controls.Artwork</c> lays it out (a square decode at the ONE shared
@@ -403,27 +439,28 @@ public readonly partial struct Track
 
     /// <summary>The plain ellipsis title and, on the now-playing row when the setting allows, the marquee — swapped by a
     /// real mount so the marquee host only exists on that one row.</summary>
-    static Element[] BoundTitleRuns(BoundRow r)
+    static Element[] BoundTitleRuns(BoundRow r, bool regular = false)
     {
-        // Design.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds.
+        // Design.Type.TrackTitle's rung (BodyStrong 14/20/600), constructed once with its binds - Liked's plain rows
+        // set the title at regular weight (400) and let the playing row's ink carry the emphasis.
         var plain = new TextEl(Prop.Of(() => r.P.Track.ForDisplay.Title))
         {
-            Size = 14f, LineHeight = 20f, Weight = 600,
-            Color = Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary),
+            Size = 14f, LineHeight = 20f, Weight = regular ? (ushort)400 : (ushort)600,
+            Color = Prop.Of(() => r.P.State.IsNow ? r.Ink() : Tok.TextPrimary),
             Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
             Visible = Prop.Of(() => !(r.P.State.IsNow && r.P.Marquee)),
         };
         var marquee = Flow.Show(() => r.P.State.IsNow && r.P.Marquee,
-            Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), s_rowMarqueeStyle));
+            Marquee.Of(Prop.Of(() => r.P.Track.ForDisplay.Title), r.MarqueeStyle));
         return [plain, marquee];
     }
 
-    static Element BoundTitleCell(BoundRow r, in ColumnSet set)
+    static Element BoundTitleCell(BoundRow r, in ColumnSet set, bool regular = false)
     {
         bool classic = set.Classic;
         bool setArtist = set.Artist, setAlbum = set.Album;
         int tier = set.Tier;
-        var runs = BoundTitleRuns(r);
+        var runs = BoundTitleRuns(r, regular);
         Element[] column;
         if (classic) column = [BoundClassicTitleLine(r, runs, setArtist, tier)];
         else column = [runs[0], runs[1], BoundMetadataLine(r, setArtist, setAlbum)];
@@ -514,16 +551,17 @@ public readonly partial struct Track
     {
         var buffer = new SpanBuffer();
         bool ShowVideo(in TableHost.RowPresentation p) => TableRules.ShowClassicInlineVideo(true, p.Track.HasVideo, tier);
-        Prop<ColorF> Ink(Func<ColorF> plain) => Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : plain());
+        Prop<ColorF> Ink(Func<ColorF> plain) => Prop.Of(() => r.P.State.IsNow ? r.Ink() : plain());
 
         Element folded = new SpanTextEl(Prop.Of(() =>
         {
             buffer.Clear();
             var p = r.P;
             bool now = p.State.IsNow;
+            ColorF nowInk = now ? r.Ink() : default;
             FillClassicSpans(buffer, p.Track.ForDisplay, p.Track.ForDisplay.ArtistSlots.Length, ShowVideo(in p),
-                now ? Tok.AccentTextPrimary : Tok.TextPrimary, now ? Tok.AccentTextPrimary : Tok.TextSecondary,
-                now ? Tok.AccentTextPrimary : Tok.TextTertiary);
+                now ? nowInk : Tok.TextPrimary, now ? nowInk : Tok.TextSecondary,
+                now ? nowInk : Tok.TextTertiary);
             return buffer.Current;
         }))
         {
@@ -587,7 +625,7 @@ public readonly partial struct Track
 
     /// <summary>Classic's now-playing row tints every factual lane accent; otherwise the lane's own rung.</summary>
     static Prop<ColorF> LaneInk(BoundRow r, bool classic, Func<ColorF> plain)
-        => classic ? Prop.Of(() => r.P.State.IsNow ? Tok.AccentTextPrimary : plain()) : plain();
+        => classic ? Prop.Of(() => r.P.State.IsNow ? r.Ink() : plain()) : plain();
 
     static Element BoundArtistLinks(BoundRow r, bool classic)
     {
@@ -597,7 +635,7 @@ public readonly partial struct Track
             buffer.Clear();
             var p = r.P;
             var d = p.Track.ForDisplay;
-            ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
+            ColorF ink = classic && p.State.IsNow ? r.Ink() : Tok.TextSecondary;
             FillLinkSpans(buffer, d, d.ArtistSlots.Length, default, ink);
             return buffer.Current;
         }))
@@ -625,7 +663,7 @@ public readonly partial struct Track
             buffer.Clear();
             var p = r.P;
             var c = ContainerOf(p.Track.ForDisplay);
-            ColorF ink = classic && p.State.IsNow ? Tok.AccentTextPrimary : Tok.TextSecondary;
+            ColorF ink = classic && p.State.IsNow ? r.Ink() : Tok.TextSecondary;
             if (c.Name.Length == 0 && ink == Tok.TextSecondary) ink = Tok.TextTertiary;
             buffer.Add(new TextSpan(c.Name.Length > 0 ? c.Name : Format.Dash, Color: ink, IsLink: c.Uri.IsValid));
             return buffer.Current;
@@ -667,8 +705,12 @@ public readonly partial struct Track
         };
     }
 
-    static Element BoundDateCell(BoundRow r, bool classic)
-        => FactualFill(classic, Prop.Of(() => Format.DateAddedLabel(r.P.AddedAt, NowUnix)),
+    /// <summary>The Added lane. <paramref name="relative"/> is Liked's: Today / Yesterday / N days ago / Last week, then a date
+    /// (<see cref="Format.RelativeAddedLabel"/>); every other table keeps the playlist ladder.</summary>
+    static Element BoundDateCell(BoundRow r, bool classic, bool relative = false)
+        => FactualFill(classic,
+                       relative ? Prop.Of(() => Format.RelativeAddedLabel(r.P.AddedAt, NowUnix))
+                                : Prop.Of(() => Format.DateAddedLabel(r.P.AddedAt, NowUnix)),
                        LaneInk(r, classic, static () => Tok.TextSecondary));
 
     /// <summary>A count of 0 is "not known yet", and a withheld row states the absence rather than a real-looking number.</summary>
@@ -724,43 +766,93 @@ public readonly partial struct Track
             Prop.Of(() =>
             {
                 var p = r.P;
-                if (classic && p.State.IsNow) return Tok.AccentTextPrimary;
+                if (classic && p.State.IsNow) return r.Ink();
                 return Withheld(in p, NowUnix) ? Tok.TextTertiary : Tok.TextSecondary;
             }));
 
     // ── trailing chrome ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary><see cref="VideoMoreCell"/> bound: the film glyph at rest on a row with a video, the quiet "…" on one
-    /// without; the full-strength "…" on row hover either way.</summary>
-    static Element BoundVideoMoreCell(BoundRow r)
-        => new BoxEl
+    /// without; the full-strength "…" on row hover either way.
+    /// <para>Liked (<paramref name="hoverHeart"/>) keeps its "…" absent at rest like the heart (shown on hover and on the
+    /// keyboard-current row) and draws the film at 16 DIP in the secondary ink (at 13 DIP tertiary it read as a checkbox); the
+    /// film hands over to the "…" on row hover and on the keyboard-current row.</para>
+    /// <para>Every other table names the film with a tooltip. The tooltip text is STATIC (a bound text would re-render a
+    /// ToolTip component on every recycle) and its owner must be an ANCESTOR of the "…" hit target (the hit ignores opacity,
+    /// so the film layer under it never sees the pointer), so the video lane has two layers, each collapsed by the row's
+    /// <c>HasVideo</c> bind: the tooltip-wrapped film + "…" for a row with a video, the bare "…" for one without. Both fill
+    /// the cell, so a recycle across the two moves nothing.</para></summary>
+    static Element BoundVideoMoreCell(BoundRow r, bool hoverHeart = false)
+    {
+        if (hoverHeart)
         {
-            ZStack = true, MinWidth = 0f,
+            return new BoxEl
+            {
+                ZStack = true, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
+                        Opacity = Prop.Of(() => r.P.Track.HasVideo && !r.IsCurrent() ? 1f : 0f),
+                        Children = [Glyph(Icons.Movie, 16f, Tok.TextSecondary)],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
+                        Opacity = Prop.Of(() => r.IsCurrent() ? 1f : 0f),
+                        HoverOpacity = 1f,
+                        Children = [MoreHit(true)],
+                    },
+                ],
+            };
+        }
+        Element withVideo = new BoxEl
+        {
+            Grow = 1f, MinWidth = 0f, Visible = Prop.Of(() => r.P.Track.HasVideo),
             Children =
             [
-                new BoxEl
+                ToolTip.Wrap(new BoxEl
                 {
-                    Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
-                    Children = [Glyph(Icons.Movie, 13f, Tok.TextTertiary, Prop.Of(() => r.P.Track.HasVideo))],
-                },
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    Opacity = Prop.Of(() => r.P.Track.HasVideo ? 0f : Controls.MoreRestOpacity),
-                    HoverOpacity = 1f,
+                    ZStack = true, Grow = 1f, MinWidth = 0f,
                     Children =
                     [
                         new BoxEl
                         {
-                            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-                            Cursor = CursorId.Hand, ClickRequestsContext = true, HitTestVisible = true,
-                            Role = AutomationRole.Button, BlocksDragArm = true,
-                            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
+                            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
+                            Children = [Glyph(Icons.Movie, 13f, Tok.TextTertiary)],
+                        },
+                        new BoxEl
+                        {
+                            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, Opacity = 0f, HoverOpacity = 1f,
+                            Children = [MoreHit(false)],
                         },
                     ],
-                },
+                }, Prop.Of<string?>(() => Loc.Get(Strings.Detail.Row.HasMusicVideo)), grow: 1f),
             ],
         };
+        Element withoutVideo = new BoxEl
+        {
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
+            Visible = Prop.Of(() => !r.P.Track.HasVideo),
+            Opacity = Controls.MoreRestOpacity, HoverOpacity = 1f,
+            Children = [MoreHit(false)],
+        };
+        return new BoxEl { ZStack = true, MinWidth = 0f, Children = [withVideo, withoutVideo] };
+    }
+
+    /// <summary>The video lane's "…" hit target; Liked's (hover-revealed) names itself with a tooltip.</summary>
+    static Element MoreHit(bool named)
+    {
+        Element hit = new BoxEl
+        {
+            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Cursor = CursorId.Hand, ClickRequestsContext = true, HitTestVisible = true,
+            Role = AutomationRole.Button, BlocksDragArm = true,
+            Children = [Icon(Icons.More, 16f, Tok.TextSecondary)],
+        };
+        return named ? ToolTip.Wrap(hit, Prop.Of<string?>(() => Loc.Get(Strings.Common.More)), grow: 1f) : hit;
+    }
 
     /// <summary><see cref="ExpandCell"/> bound: the chevron ROTATES (ChevronRight → down) on the reveal spring with the drawer,
     /// inked accent while open; a recycle onto another track re-seeds it without spinning. An episode row (no versions)

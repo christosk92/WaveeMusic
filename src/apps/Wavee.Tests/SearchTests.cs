@@ -27,6 +27,15 @@ public class SearchTests
 {
     static StringId Uri(string s) => Entities.Strings.Intern(s);
 
+    // ── the facet label ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("All", 0, "All")]
+    [InlineData("Songs", 0, "Songs")]
+    [InlineData("Songs", 24, "Songs 24")]
+    public void FacetLabel_omits_a_zero_count_and_appends_a_positive_one(string name, int count, string expected)
+        => Assert.Equal(expected, Search.FacetLabel(name, count));
+
     // ── the facet list ──────────────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

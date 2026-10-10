@@ -69,6 +69,11 @@
     "playNext": "Play next",
     "playAfter": "Play after",
     "addToQueue": "Add to queue",
+    "startRadio": "Start radio",
+    "playOptions": "More ways to play",
+    "download": "Download",
+    "downloadUnavailable": "Not available yet",
+    "addToFolder": "Add to folder…",
     "addToPlaylist": "Add to playlist",
     "copyToPlaylist": "Copy to playlist",
     "addedToQueue": "Added {count} to queue",
@@ -103,15 +108,21 @@
     "preSave": "Pre-save",
     "preSaved": "Pre-saved",
     "songCount": "{count, plural, one {# song} other {# songs}}",
+    "songCountOf": "{shown} of {count, plural, one {# song} other {# songs}}",
+    "episodeCountOf": "{shown} of {count, plural, one {# episode} other {# episodes}}",
     "selectedCount": "{count, plural, one {# selected} other {# selected}}",
     "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
     "today": "Today",
     "yesterday": "Yesterday",
+    "thisWeek": "This week",
+    "lastWeek": "Last week",
+    "removeFromLiked": "Remove from Liked Songs",
     "durationHrMin": "{hours} hr {minutes} min",
     "durationMin": "{minutes} min",
     "metaLine": "{count} · {duration}",
     "tempoColumn": "BPM · Key column",
     "playsColumn": "Plays column",
+    "columns": "Columns",
     "metaLineSaved": "{count} · {saves} · {duration}",
     "saveCount": "{count, plural, one {# save} other {# saves}}",
     "saveCountCompact": "{value} saves",
@@ -130,6 +141,7 @@
     },
     "sort": {
       "customOrder": "Custom order",
+      "albumOrder": "Album order",
       "title": "Title",
       "artist": "Artist",
       "album": "Album",
@@ -144,6 +156,7 @@
       "searchThisList": "Search this list",
       "find": "Find",
       "short": "Filter",
+      "menuItem": "Filter…",
       "searchIn": "Search in",
       "everything": "Everything",
       "titleOnly": "Title",
@@ -171,6 +184,7 @@
       "overFive": "Over 5 minutes",
       "dateAdded": "Date added",
       "anyTime": "Any time",
+      "customRange": "Custom range",
       "lastSevenDays": "Last 7 days",
       "lastThirtyDays": "Last 30 days",
       "lastSixMonths": "Last 6 months",
@@ -181,10 +195,32 @@
       "local": "Local files",
       "allTracks": "All tracks",
       "allChip": "All",
+      "genre": "Genre",
       "activeCount": "{count} active filters",
       "noFiltersApplied": "No filters applied",
       "clearFilters": "Clear all filters",
-      "clear": "Clear"
+      "clear": "Clear",
+      "$comment": "The filter card (Flyout B): one combo row per facet. The tempo bands are short because they sit in a 168-DIP field; show/hide/only are the explicit and video rows' options.",
+      "reset": "Reset",
+      "allSongs": "All {count, plural, one {# song} other {# songs}}",
+      "allEpisodes": "All {count, plural, one {# episode} other {# episodes}}",
+      "facetGenre": "genre",
+      "facetArtist": "artist",
+      "facetKey": "key",
+      "facetYear": "release year",
+      "facetDates": "date range",
+      "length": "Length",
+      "explicit": "Explicit",
+      "video": "Video",
+      "show": "Show",
+      "onlyExplicit": "Only explicit",
+      "onlyVideo": "Only video",
+      "tempoSlow": "Under 90 BPM",
+      "tempoMid": "90–119 BPM",
+      "tempoFast": "120–139 BPM",
+      "tempoVeryFast": "140+ BPM",
+      "onlyLiked": "Only songs I liked",
+      "hideUnplayable": "Hide songs I can’t play"
     },
     "density": {
       "rowSize": "Row size",
@@ -396,10 +432,14 @@
     "collabCount": "{n, plural, one {# collaborator} other {# collaborators}}",
     "collabView": "View collaborators",
     "queueUnavailable": "Can’t add to queue right now",
+    "rail": {
+      "artistsMenu": "Artists"
+    },
     "row": {
       "chartNew": "New",
       "playsFull": "{count} plays",
-      "moreArtists": "+{count}"
+      "moreArtists": "+{count}",
+      "hasMusicVideo": "Has a music video"
     }
   },
   "artist": {
@@ -641,6 +681,12 @@
     "pause": "Pause",
     "album": "Album",
     "facetAll": "All",
+    "facet": {
+      "$comment": "The Zune band's seed words for Home's facets, shown until the page publishes the server's own chips.",
+      "music": "Music",
+      "podcasts": "Podcasts",
+      "audiobooks": "Audiobooks"
+    },
     "following": "Following",
     "seeAll": "See all",
     "seeAllN": "See all {n}",
@@ -1046,7 +1092,14 @@
       "recentlyAdded": "Recently added",
       "alphabetical": "Alphabetical",
       "creator": "Artist",
-      "releaseDate": "Release date"
+      "releaseDate": "Release date",
+      "albums": "Albums"
+    },
+    "count": {
+      "albums": "{count, plural, one {# album} other {# albums}}",
+      "artists": "{count, plural, one {# artist} other {# artists}}",
+      "shows": "{count, plural, one {# show} other {# shows}}",
+      "audiobooks": "{count, plural, one {# audiobook} other {# audiobooks}}"
     },
     "rail": {
       "recents": "recents",
@@ -1085,10 +1138,18 @@
       "resetEverythingSub": "Both layouts and the density back to their defaults. Pins stay.",
       "title": "Sidebar",
       "subtitle": "Saved on this PC",
-      "layout": "Layout",
-      "layoutSub": "Classic or Library. Applies immediately.",
+      "layout": "Navigation style",
+      "layoutSub": "Classic, Library or Zune. Applies immediately.",
       "density": "Density",
-      "densitySub": "Two-line or one-line rows for playlists and albums",
+      "densitySub": "Two-line or one-line rows in Your Library",
+      "showCovers": "Show covers",
+      "showCoversSub": "Cover art on playlist, album and artist rows",
+      "view": "View",
+      "viewSub": "List or grid for Your Library",
+      "showLiked": "Show Liked Songs",
+      "showLikedSub": "Liked Songs as the first row of Your Library",
+      "zunePins": "Pins in the title bar",
+      "zunePinsSub": "Up to six pins beside the pivots",
       "reset": "Reset this layout",
       "resetSub": "Back to the default sections and order",
       "fileFault": "Your sidebar layout couldn't be read, so the default is shown.",
@@ -1296,8 +1357,15 @@
       "subtitle": "Theme, zoom and shell effects",
       "marquee": "Marquee text",
       "marqueeSub": "Scroll overflowing titles instead of truncating them",
-      "colorWashes": "Color washes",
-      "colorWashesSub": "Tint the shell and page surfaces from artwork",
+      "washSurfaces": "Tinted surfaces",
+      "washSurfacesSub": "Color the window and page backgrounds from artwork",
+      "washOff": "Off",
+      "washSubtle": "Subtle",
+      "washRich": "Rich",
+      "washAccent": "Accent from artwork",
+      "washAccentSub": "Color buttons, links and highlights from the page's artwork",
+      "washNowPlaying": "Now playing colors",
+      "washNowPlayingSub": "Color the queue, full screen and lyrics from the playing track",
       "pageMotion": "Page motion",
       "pageMotionSub": "How pages animate when you navigate",
       "pageMotionFluent": "Fluent",
@@ -1713,6 +1781,8 @@
   },
   "shell": {
     "searchPlaceholder": "Search songs, artists, albums...",
+    "searchShort": "Search",
+    "wordmark": "wavee",
     "connecting": "Connecting...",
     "signIn": "Sign in",
     "reconnect": "Reconnect",
@@ -2143,10 +2213,7 @@
       "mostVisited": "Most visited",
       "visitCount": "{count, plural, one {# visit} other {# visits}}",
       "visitMultiplier": "{count}×",
-      "stat": {
-        "visits": "Visits",
-        "unique": "Unique"
-      },
+      "meta": "{visits, plural, one {# visit} other {# visits}} · {unique} unique",
       "filter": {
         "all": "All",
         "playlists": "Playlists",
@@ -2267,7 +2334,6 @@
       "announceCancelled": "Move cancelled",
       "footClassic": "Drag sections by their header or grip. Changes apply at once.",
       "footLibrary": "Library keeps a fixed order. Changes apply at once.",
-      "stillInProfile": "Still in the profile menu",
       "pinsSummary": "{count} pinned",
       "showAllPins": "Show all {count} pins",
       "playlistsSummary": "{count} playlists",
@@ -2284,8 +2350,7 @@
       "reset": "{name} reset to its defaults",
       "hidden": "{name} hidden",
       "shortcutsUnpinned": "Shortcuts unpinned",
-      "resetEverything": "Sidebar reset",
-      "settingsHidden": "Settings hidden. It stays in the profile menu"
+      "resetEverything": "Sidebar reset"
     },
     "palette": {
       "useLayout": "Use {layout} layout"
@@ -2323,6 +2388,8 @@
       "showSection": "Show section",
       "nothingHidden": "Nothing is hidden",
       "density": "Density",
+      "showCovers": "Show covers",
+      "zunePins": "Pins in the title bar",
       "edit": "Edit sidebar…",
       "resetEverything": "Reset everything…",
       "show": "Show",
@@ -2376,7 +2443,11 @@
       "options": "Sidebar options",
       "collapse": "Collapse navigation",
       "expand": "Expand navigation",
-      "finishEditing": "Finish editing the sidebar first"
+      "finishEditing": "Finish editing the sidebar first",
+      "zuneNoPane": "The Zune style has no sidebar"
+    },
+    "zune": {
+      "pinned": "pinned"
     },
     "header": {
       "options": "Section options"
@@ -2451,7 +2522,9 @@
       "library": "Library",
       "modified": "{layout} · modified",
       "classicSub": "Sections you can show, hide and reorder.",
-      "librarySub": "Spotify's one list with filters."
+      "librarySub": "Spotify's one list with filters.",
+      "zune": "Zune",
+      "zuneSub": "Big pivots across the top, no sidebar."
     },
     "density": {
       "default": "Default",
@@ -2627,6 +2700,13 @@
     "title": "Browse",
     "homeTitle": "Browse",
     "top": "Top",
+    "topCategory": {
+      "$comment": "The four top categories as the Zune band's second row words on the Browse pages (the Top group of the taxonomy, in map order).",
+      "music": "Music",
+      "podcasts": "Podcasts",
+      "audiobooks": "Audiobooks",
+      "liveEvents": "Live events"
+    },
     "forYou": "For you",
     "genres": "Genres",
     "moodActivity": "Mood & activity",

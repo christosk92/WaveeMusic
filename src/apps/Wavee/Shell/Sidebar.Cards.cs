@@ -154,16 +154,9 @@ public static partial class Sidebar
             return Controls.ArtUrl(e.Cover) is not null || e.MosaicTiles is { Count: > 0 };
         }
 
-        /// <summary>The glyph a no-art tile carries: the entry kind's own mark (a folder's or a route's glyph included).</summary>
-        static string KindGlyph(in SidebarLibraryEntry e) => e.Kind switch
-        {
-            SidebarEntryKind.Folder => Icons.Folder,
-            SidebarEntryKind.AppRoute => Shell.Dest(Shell.Parse(e.Id)).Glyph,
-            SidebarEntryKind.Album => Icons.Album,
-            SidebarEntryKind.Artist => Icons.Contact,
-            SidebarEntryKind.Show => Icons.Microphone,
-            _ => Icons.MusicNote,
-        };
+        /// <summary>The glyph a no-art tile carries: the entry kind's own mark (a folder's or a route's glyph included), the one
+        /// rule the Zune band's unresolved pins share (<see cref="SidebarKindGlyph"/>).</summary>
+        static string KindGlyph(in SidebarLibraryEntry e) => SidebarKindGlyph.For(e.Kind, e.Id, e.Uri);
 
         // ── the shared pieces ────────────────────────────────────────────────────────────────────────────────────────
 

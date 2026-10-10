@@ -38,8 +38,9 @@ namespace Wavee;
 
 public readonly partial struct Show
 {
-    /// <summary>The reader's bottom reserve: the last row clears the player dock by 24 (ch 09 item 11).</summary>
-    public const float BottomReserve = Design.Dock.Reserve + Spacing.XXL;
+    /// <summary>The reader's bottom reserve: the page-wide one (<see cref="PageGeometry.BottomReserve"/>), so the last row
+    /// clears the player dock by the same air on every scrolling page.</summary>
+    public const float BottomReserve = PageGeometry.BottomReserve;
 
     // ── the reader's rhythm (the prototype's .reader / .sec / .wordrail) ──
     const float ReaderPad = ShowReaderRules.Pad, ReaderPadNarrow = ShowReaderRules.PadNarrow;

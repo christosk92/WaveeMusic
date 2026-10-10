@@ -979,8 +979,8 @@ public static partial class Shell
     /// write on the already-active key look like an activation change, which re-seeded the entrance and re-faded the
     /// whole page with no content change at all.</summary>
     public static string SlotKey(in Route r)
-        => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + NameOf(r) + ""
-         + (Row(r.Kind).KeyedByArg ? Entities.Strings.Resolve(r.Arg) : "");
+        => r.Tab.ToString(CultureInfo.InvariantCulture) + "" + FrameRules.PageKeyOf(r) + ""
+         + (Row(r.Kind).KeyedByArg && !FrameRules.IsFacetPage(r.Kind) ? Entities.Strings.Resolve(r.Arg) : "");
 
     /// <summary>How many pages the content host keeps alive. Back to a page shows it exactly as it was, including
     /// scroll and selection; the fourth oldest is evicted.</summary>
@@ -1066,6 +1066,124 @@ public static partial class Shell
 
     public static class Ui
     {
+        /// <summary>The page gutter in DIP (36 / 32 / 16 by the content card's width, hysteretic). Written ONLY by the
+        /// shell's gutter effect, in the same flush as the widths it depends on, and seeded before the column mounts so
+        /// the first frame is right; pages read it in Render.</summary>
+        public static readonly Signal<float> PageGutter = new(PageGeometry.GutterWide);
+
+        /// <summary>The nav style the PAGE HEADS present. It follows <c>Sidebar.NavStyle</c> after
+        /// <see cref="FrameRules.HoistSettleMs"/>, so a head's hoist (its height change) lands in a commit where the content
+        /// card's rect does not move; written ONLY by <c>NavStylePresenter</c> (and the boot seed in <c>FrameRoot</c>). The
+        /// frame (pane, band, gutter) follows <c>NavStyle</c> at once.</summary>
+        public static readonly Signal<ShellNavStyle> PresentedNavStyle = new(ShellNavStyle.Classic);
+
+        /// <summary>The Zune band's row-2 kind as PRESENTED: what <c>ZuneNavRules.BandHeight</c> reads, so the band eases 84 to 52
+        /// (and back) on the card's own tween. It is written when the page swap LANDS (<c>Shell.Shown</c> reaches the route; <c>SubRowPresenter</c>),
+        /// so the card move trails the outgoing page's exit leg and never shares a commit with the old page's content.
+        /// Seeded from the boot route in <c>FrameRoot</c>, so Home opens at 84 and never animates from 52.</summary>
+        public static readonly Signal<ZuneSubRow> PresentedSubRow = new(ZuneSubRow.None);
+
+        /// <summary>The route the band's row 2 is BUILT for. It follows <see cref="Shown"/> (the page that is on screen), not
+        /// <c>Current</c>, so row 2's content and its height (<see cref="PresentedSubRow"/>) change WITH the page swap, on one clock
+        /// with the masthead's crumb head; a same-page facet switch presents at once (<c>ZuneNavRules.PresentsNow</c>). Written only
+        /// by <c>SubRowPresenter</c> and the boot seed in <c>FrameRoot</c>.</summary>
+        public static readonly Signal<Route> PresentedRoute = new(Route.None);
+
+        /// <summary>EXPERIMENTAL (artist bleed): the content card's LAID-OUT rect in window coordinates (final, never the FLIP's
+        /// in-flight pose), value-gated, written by the card host's bounds callback. The material layer derives the backdrop's
+        /// span and the chrome scrim from it; it changes only on a resize, a pane or rail change or a nav-style switch.</summary>
+        public static readonly Signal<RectF> CardRect = new(default);
+
+        /// <summary>Measures the right edge (window coordinates) of the Zune pivot strip's items NOW; registered by the band, null
+        /// before it mounts. It returns NaN outside Zune or when the strip is not live. The focused title-bar pill samples it when it
+        /// expands and caps itself against it (<c>Chrome.CapExpandForPivots</c>), so it never grows over the pivots.</summary>
+        public static Func<float>? ZunePivotsRightProbe;
+
+        /// <summary>EXPERIMENTAL (artist bleed): where the content card is PRESENTED right now: its left and top in window
+        /// coordinates including the layout transitions' in-flight pose (the pane toggle's and the nav-style switch's FLIPs); the
+        /// size is the final one. Sampled per frame by <c>CardPoseTracker</c> only while a backdrop shows and the card has just
+        /// moved, so the photo and the scrim follow the card instead of snapping to its final rect.</summary>
+        public static readonly Signal<RectF> CardPose = new(default);
+
+        /// <summary>EXPERIMENTAL (artist bleed): bumped each time the card's laid-out rect changes while a backdrop shows, so
+        /// <c>CardPoseTracker</c> samples the presented pose for the length of the card's layout transition.</summary>
+        public static readonly Signal<int> CardSettle = new(0);
+
+        /// <summary>EXPERIMENTAL (artist bleed): how present the page-published backdrop is, 0..1. Tweened by
+        /// <c>BleedPresenter</c>: the entrance runs over <c>ArtistBleed.EntranceMs</c> with its SmoothOut ease from the backdrop's
+        /// <c>EntranceAtMs</c> (the card photo's own clock; 0 ms under reduced motion), the fade-out over <c>Design.Motion.Standard</c>;
+        /// it drives the shell's chrome photo part, the scrim and the chrome ink, so navigating to or from an artist cross-fades
+        /// instead of snapping. The card ground, the stroke, the corner and the shell's under-card photo ride <see cref="BleedUnderlay"/>
+        /// (leg 1), which follows the presence down on the fade-out. While the artist page's own entrance clock runs
+        /// (<c>ShellBackdrop.Entrance</c>) the entrance is not stepped by the presenter at all: presence, underlay and hand-over FOLLOW that
+        /// one clock, the same one the page content and the card's photo field read.</summary>
+        public static readonly FloatSignal BleedPresence = new(0f);
+
+        /// <summary>EXPERIMENTAL (artist bleed): LEG 1 of the settle, 0..1 (<c>ArtistBleed.UnderlayAt</c>): the shell's under-card layers
+        /// (the strip cut, the fade box, the corner and the under-card photo) coming in under the card's still-opaque photo, so no
+        /// layer steps. On the fade-out it is <c>min(its value at the exit's start, presence)</c>, so the strip returns with the fade
+        /// instead of at once.</summary>
+        public static readonly FloatSignal BleedUnderlay = new(0f);
+
+        /// <summary>EXPERIMENTAL (artist bleed): the card-to-shell hand-over, 0..1, LEG 2 of the settle. It starts only once
+        /// <see cref="BleedUnderlay"/> has reached 1 and eases over <c>ArtistBleed.LegMs</c>; the page's own photo and veil fade out by it
+        /// (<c>ArtistBleed.CardLayerOpacity</c>) over the shell's identical ones. Reset to 0 whenever a backdrop is (re)published.</summary>
+        public static readonly FloatSignal BleedHandover = new(0f);
+
+        /// <summary>EXPERIMENTAL (artist bleed): the last non-null backdrop, retained while <see cref="BleedPresence"/> fades back
+        /// to 0, so the card ground keeps its geometry for the whole fade-out. Cleared when the fade ends.</summary>
+        public static readonly Signal<ShellBackdrop?> BleedBackdrop = new(null);
+
+        /// <summary>EXPERIMENTAL (artist bleed): THE ONE SOURCE OF TRUTH for how far the chrome's ink has moved from the theme's
+        /// toward the on-media ink, 0..1 (<c>ArtistBleed.ChromeInkMix</c>): <see cref="BleedPresence"/> times how much of the hero is
+        /// still showing, while the field's polarity differs from the theme's. The field takes the theme's polarity
+        /// (<see cref="ArtistBleed.FieldDark"/>), so the mix is 0 and the chrome keeps the theme's ink over the bleed. 0 with no
+        /// backdrop, so every chrome colour is today's. Reads signals, so call it inside a paint-rate
+        /// <c>Prop.Of</c> thunk (the <see cref="ChromeInkPrimary"/> family), never in a render.</summary>
+        public static float ChromeInkMix()
+        {
+            if (BleedBackdrop.Value is not { } b) return 0f;
+            return ArtistBleed.ChromeInkMix(BleedPresence.Value, ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance),
+                ArtistBleed.FieldDark(Tok.Theme), Tok.Theme == ThemeKind.Dark);
+        }
+
+        /// <summary>The chrome's primary / secondary / tertiary ink at <see cref="ChromeInkMix"/>: the theme's text token cross-fading
+        /// to the on-media ink (a no-op while the mix is 0, which is always while the field takes the theme's polarity). Cached thunks, so a bind (<c>Color = Prop.Of(Ui.ChromeInkPrimary)</c>) allocates nothing and two
+        /// renders of the same site compare equal.</summary>
+        public static readonly Func<ColorF> ChromeInkPrimary = static () => ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, ChromeInkMix());
+        /// <inheritdoc cref="ChromeInkPrimary"/>
+        public static readonly Func<ColorF> ChromeInkSecondary = static () => ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, ChromeInkMix());
+        /// <inheritdoc cref="ChromeInkPrimary"/>
+        public static readonly Func<ColorF> ChromeInkTertiary = static () => ArtistBleed.Ink(Tok.TextTertiary, Design.OnMedia.InkTertiary, ChromeInkMix());
+        /// <summary>The accent word's ink (row 2's primary verb, a latched toggle): the theme's accent text cross-fading to the dark-theme
+        /// accent shade at <see cref="ChromeInkMix"/>, so it would stay legible over a field of the opposite polarity (the mix is 0 while the
+        /// field takes the theme's, so the accent word keeps the theme's accent text).</summary>
+        public static readonly Func<ColorF> ChromeInkAccent = static () => ArtistBleed.Ink(Tok.AccentTextPrimary, Design.OnMedia.AccentInk, ChromeInkMix());
+
+        /// <summary>A backdrop is published (or still fading out). A navigation-rate read (it changes with the publication, never per
+        /// scroll or per frame). It no longer picks BIND versus STATIC for the chrome's rest ink (that flip, on a REUSED node, never
+        /// wired the new bind, so the ink stayed the theme's: see <see cref="ChromePrimary"/>); it only decides what genuinely differs
+        /// with a backdrop (the field behind the chrome, the static hover and pressed arms).</summary>
+        public static bool ChromeOnMedia => BleedBackdrop.Value is not null;
+
+        /// <summary>The mix has crossed one half (<see cref="ChromeInkMix"/> >= 0.5): the chrome's STATIC hover and pressed arms
+        /// take the on-media variants, and fall back to the theme's once the hero has mostly scrolled away or the fade is mostly done,
+        /// so a hovered word never goes near-white on the plain theme ground. A threshold, not the mix itself: it flips once per
+        /// crossing, never per frame, so what reads it renders at navigation rate. Written by the shell's material layer (an
+        /// eager signal effect), so it is false wherever that layer is not mounted.</summary>
+        public static readonly Signal<bool> ChromeArmsOnMedia = new(false);
+
+        /// <summary>The chrome's rest ink as a Prop: ALWAYS bound to <see cref="ChromeInkPrimary"/>, with or without a backdrop (at mix 0
+        /// the thunk is the theme token itself). A Prop binding is wired only when a node MOUNTS; a re-render never wires a newly bound
+        /// channel, so a site that was static at mount and turned bound when the bleed published kept the theme colour for good (dark
+        /// ink on the dark field in the light theme). One shape for the whole life of the node removes the flip. The theme token is read
+        /// inside the thunk, so a theme switch still repaints it.</summary>
+        public static Prop<ColorF> ChromePrimary => Prop.Of(ChromeInkPrimary);
+        /// <inheritdoc cref="ChromePrimary"/>
+        public static Prop<ColorF> ChromeSecondary => Prop.Of(ChromeInkSecondary);
+        /// <inheritdoc cref="ChromePrimary"/>
+        public static Prop<ColorF> ChromeTertiary => Prop.Of(ChromeInkTertiary);
+
         /// <summary>The rail is open. When false the rail slot animates its width to 0.</summary>
         public static readonly Signal<bool> RailOpen = new(false);
 
@@ -1232,10 +1350,17 @@ public static partial class Shell
     /// what the row DROPS and by the spacing rungs, never by the buttons.</para>
     /// <para>The 300-DIP floor still balances: 12 row pad + 132 identity block + 6 row gaps + 36 primary + 2 cluster
     /// gap + 32 devices + 32 overflow = 252, leaving the seek bar the ~48 DIP it grows into. That is the honest trade
-    /// — a short seek line at the absolute floor, never a 26-DIP Next button.</para></summary>
+    /// — a short seek line at the absolute floor, never a 26-DIP Next button.</para>
+    /// <para>Queue survives from Compact up (since 2026-10-10); the video split does not move with it. At 440 the widest
+    /// right cluster is devices + queue + overflow (3 × 32 + 2 × RightGap 1 = 98), so the seek bar keeps 58 DIP after
+    /// the remaining-time slot (440 − 16 − 172 − 8 − 39 − (44 + 5) − 98). Compact holds down to 416 under the narrowing
+    /// hysteresis, where it keeps 34 DIP. A live broadcast pays the same: the Compact live slot is the 44-DIP
+    /// <see cref="TimeLabel.CompactLiveSlotW"/> (LIVE mark only; behind a window the mark is the GO LIVE button), so
+    /// the 104-DIP face never overruns the Queue button. Medium (760) has room to spare. Pressure is paid from the seek
+    /// bar's growth, never from the button sizes.</para></summary>
     public readonly record struct PlayerBarLayout(
         PlayerBarTier Tier,
-        bool ShowExpand, bool ShowDevices, bool ShowQueue, bool ShowVolumeSlider, bool ShowShuffleRepeat,
+        bool ShowExpand, bool ShowDevices, bool ShowQueue, bool ShowVideoSplit, bool ShowVolumeSlider, bool ShowShuffleRepeat,
         bool ShowLikeSlot, bool ShowVolumeButton, bool ShowLyrics, bool ShowRemoteDeviceLine,
         bool ShowTimesElapsed, bool ShowTimesRemaining, bool ShowPrevNext, bool ShowSubtitle,
         float ButtonBox, float ButtonGlyph, float PrimaryBox, float PrimaryGlyph,
@@ -1280,7 +1405,8 @@ public static partial class Shell
                 Tier: tier,
                 ShowExpand: full,
                 ShowDevices: true,          // the device picker is the only route when local playback is unavailable
-                ShowQueue: wide,
+                ShowQueue: compact,         // the Queue button survives width pressure: it is paid for by the seek bar
+                ShowVideoSplit: wide,       // the inline video split keeps its own tier (user decision 2026-09-16)
                 ShowVolumeSlider: wide,
                 ShowShuffleRepeat: comfortable,
                 ShowLikeSlot: true,         // identity-first: the heart survives down to the 300-DIP floor
@@ -1855,8 +1981,17 @@ public static partial class Shell
         /// file stays free of a control's constant.</summary>
         public const float SeamStripW = 16f;
 
-        /// <summary>The rail's breathing gap while it is INLINE (<c>Spacing.S</c>).</summary>
-        public const float RailGapW = 8f;
+        /// <summary>THE frame gap (<c>Spacing.S</c>): the inline rail's breathing room. The content card has NO left gap: with
+        /// no pane docked beside it the page bleeds to the window edge.</summary>
+        public const float FrameGap = 8f;
+
+        /// <summary>The rail's breathing gap while it is INLINE.</summary>
+        public const float RailGapW = FrameGap;
+
+        /// <summary>The top of the stroke box's overhang margin (<c>Shell.StrokeOverhang</c>), shared by the content card's
+        /// stroke box and the rail coat's underlay. Zero: the overhang is right and bottom only, so both start at the
+        /// content row's top and the rail's top equals the card's top.</summary>
+        public const float StrokeOverhangTop = 0f;
 
         /// <summary>The sidebar column's bound width — THE W12 TRAP. A drag that starts on a COLLAPSED rail presents the
         /// pane expanded for the whole drag (drag peek); the column is <c>ClipToBounds</c>, so deriving its width from
@@ -1864,6 +1999,73 @@ public static partial class Shell
         /// off. The peek term must stay in the same expression.</summary>
         public static float SidebarPaneWidth(bool dragPeek, float expanded, float presented)
             => dragPeek ? expanded : presented;
+
+        /// <summary>The content card's one motion: the pane, the card's FLIP and the Zune band's reveal all tween over
+        /// this many milliseconds on the same spline, so they land together. <c>Shell.UI.cs</c>'s PaneMs reads it.</summary>
+        public const float CardMotionMs = 300f;
+
+        /// <summary>The spline of that tween (WinUI SplitView's pane spline). <c>Shell.UI.cs</c>'s PaneEase reads it, and the
+        /// artist bleed's analytic card pose evaluates the same curve.</summary>
+        public static readonly EasingSpec CardMotionEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
+
+        /// <summary>When the page heads follow a nav-style switch: the card's tween plus two 60-Hz frames. A head hoist
+        /// (<c>PageHead.Reflow</c>) changes height inside the content card, and the engine snaps every bounds-animated node
+        /// inside a card whose rect changes in the same commit (the card is a suppression root), so the hoist lands only
+        /// after the frame motion has settled: its Reflow then runs in a quiet commit.</summary>
+        public const float HoistSettleMs = CardMotionMs + 32f;
+
+        /// <summary>How long after the chrome mounts or unmounts (full-screen video, immersive lyrics) the content region's
+        /// layout transition stays suppressed: long enough to cover the commit that carries the edge, short enough that a
+        /// nav-style switch right after it still animates.</summary>
+        public const float ChromeEdgeSnapMs = 100f;
+
+        /// <summary>The content card's width: the viewport less the sidebar column, the rail's inline gap and the rail's
+        /// inline reservation. The seam strips are translated overlays and take no width. The
+        /// page gutter is decided from THIS, so it steps in the same commit as the card does.</summary>
+        public static float CardWidth(float viewportW, float sidebarW, float railGap, float railReserved)
+            => MathF.Max(0f, viewportW - sidebarW - railGap - railReserved);
+
+        /// <summary>The content card's left edge: the sidebar column's width, nothing more. With no pane docked (Zune always;
+        /// Classic and Library when the pane is hidden or in the Minimal overlay band) the column is 0 wide and the card is
+        /// flush with the window edge. The layout derives this from the column itself; the rule is kept as the documented identity the
+        /// frame-rules tests pin (the page title's x is this plus the gutter), not as a runtime call.</summary>
+        public static float ContentCardX(float sidebarW) => sidebarW;
+
+        /// <summary>Is a pane docked beside the content card? Expanded and the Compact rail are; Minimal (the Tiny band's
+        /// drawer, and every Zune frame, which presents no pane) is not. The corner and the stroke follow this.</summary>
+        public static bool PaneDocked(SidebarPaneMode mode) => mode != SidebarPaneMode.Minimal;
+
+        /// <summary>The content card's corners: the stock Win11 single rounded top-left while a pane is docked beside it, SQUARE
+        /// when none is (the page bleeds to the window edge, so there is no corner to round). Ground, clip, stroke and the wash
+        /// plane all read this, bound to the pane mode, so the corner changes in the commit the pane does.</summary>
+        public static CornerRadius4 ContentCorners(bool docked) => docked ? Design.Size.ContentPaneCorners : default;
+
+        /// <summary>The card stroke's width.</summary>
+        public const float StrokeW = 1f;
+
+        /// <summary>Does the content card draw its hairline ring? Classic and Library: yes (the WinUI card layer on the pane's
+        /// base). Zune: no, the photo and the flat page carry their own edge (owner decision D-1). The ring's geometry is
+        /// always laid out, so a nav-style switch only recolours it and nothing mounts or relayouts.</summary>
+        public static bool CardStrokeShows(ShellNavStyle style) => style != ShellNavStyle.Zune;
+
+        /// <summary>How far the left+top stroke box is shifted left: 0 while a pane is docked, <see cref="StrokeW"/> when none
+        /// is, which parks the LEFT stroke in the card's clip (invisible) and leaves the top stroke.</summary>
+        public static float StrokeLeftShift(bool docked) => docked ? 0f : -StrokeW;
+
+        /// <summary>The Zune band's left padding: where the page text starts, so the first pivot word and the page title share
+        /// an x. The band is the first child of the page column, which starts at the card's x, so the inset is CARD-RELATIVE:
+        /// the page gutter alone. DERIVED, never a literal.</summary>
+        public static float ZuneBandInset(float gutter) => gutter;
+
+        /// <summary>The height of the spacer on top of the rail overlay's content. The inline rail starts at the title bar's
+        /// bottom (it spans the full height beside the page column, whose band lives in the column); the narrow overlay floats
+        /// over the page and still starts under the band.</summary>
+        public static float RailOverlayTop(bool fits, float bandHeight) => fits ? 0f : bandHeight;
+
+        /// <summary>The Zune title bar shows the "wavee" wordmark in place of the tab strip while there is at most one tab
+        /// (a lone tab's strip says nothing the page title does not). The 1 to 2+ swap is a cross-fade inside the tab lane,
+        /// whose width change rides <c>TabLaneMotion</c>.</summary>
+        public static bool ShowsWordmark(ShellNavStyle style, int tabCount) => style == ShellNavStyle.Zune && tabCount <= 1;
 
         /// <summary>The seam strip exists only where the pane is docked beside the content (the Wide band). A forced band
         /// (Narrow, Tiny) has no seam: the overlay pane owns the width.</summary>
@@ -1942,6 +2144,10 @@ public static partial class Shell
         public static bool ReissueSearchFocus(MergedSearchMode old, MergedSearchMode next, bool fieldFocused, bool flyoutOpen)
             => old != next && (old == MergedSearchMode.Field ? fieldFocused : flyoutOpen);
 
+        /// <summary>The title-bar search pill widens to <see cref="Chrome.SearchExpandW"/> while its field has focus or the icon
+        /// form's flyout is open (F5). It returns on blur or Escape (the editor blurs itself on Escape).</summary>
+        public static bool SearchExpands(bool focused, bool flyoutOpen) => focused || flyoutOpen;
+
         /// <summary>The back/forward history flyout shows at most this many rows (0.2.9 <c>HistoryMenuMax</c>).</summary>
         public const int HistoryMenuMax = 8;
 
@@ -1972,6 +2178,28 @@ public static partial class Shell
 
         public static BodyKind BodyFor(in Route route, bool hasPage, bool developerMode)
             => !IsKnown(route, developerMode) ? BodyKind.NotFound : hasPage ? BodyKind.Page : BodyKind.Empty;
+
+        /// <summary>A kind whose route carries a FACET digit in its key (<c>disco:&lt;facet&gt;:&lt;artist&gt;</c>,
+        /// <c>people:&lt;facet&gt;:&lt;user&gt;</c>): the facet is a view of one page, not another page.</summary>
+        public static bool IsFacetPage(RouteKind kind) => kind is RouteKind.Discography or RouteKind.ProfileList;
+
+        /// <summary>The identity of the PAGE a route shows, which is what the content host keys the page (and its keep-alive
+        /// slot) by. For a facet page (Discography, a profile list) it is the row key + the subject WITHOUT the facet, so a
+        /// facet change keeps the page mounted: the views pill slides and only the body below re-skeletons in place. Every
+        /// other kind (and a facet route that does not parse) is <see cref="NameOf"/>. The route itself stays the truth
+        /// and the page-transition token, so another artist or user still swaps pages.</summary>
+        public static string PageKeyOf(in Route route)
+        {
+            if (!IsFacetPage(route.Kind) || route.Arg.IsEmpty) return NameOf(route);
+            ReadOnlySpan<char> arg = Entities.Strings.Resolve(route.Arg);
+            ReadOnlySpan<char> subject;
+            if (route.Kind == RouteKind.Discography)
+            {
+                if (!DiscoRoute.TryParseArg(arg, out _, out subject)) return NameOf(route);
+            }
+            else if (!ProfileListRoute.TryParseArg(arg, out _, out subject)) return NameOf(route);
+            return string.Concat(Row(route.Kind).Key, subject);
+        }
 
         /// <summary>The CLEARING half of <see cref="Ui.ActiveStagePlayable"/>: a navigation to a route no module watch page
         /// will mount for clears a stale claim — value-gated, so an idle navigation writes nothing. Module routes are the
@@ -2099,6 +2327,152 @@ public static partial class Shell
         }
     }
 
+    // ══ 13b. THE PAGE VIEWS PUBLICATIONS ══════════════════════════════════════════════════════════════════════════════
+    //
+    // Under the Zune style a pivot destination's views (Songs · Albums · Playlists) move from the page head into the
+    // band's second row. The page publishes what the band needs to draw them under its ROUTE NAME; the band reads it.
+    // Same idiom as the mastheads: UI state, an LRU, a Version bumped only when the visible data changes. The band's row 2
+    // is route-decided and ALWAYS filled (ZuneNavRules.SubRowOf): until a page publishes, the band draws the route's SEED
+    // (the loc keys of ZuneNavRules.ViewSeedKeys, selected by SeedSelected), and the publication replaces the words in place.
+    // Settings, Search, the people lists and the discography publish too, though their heads are not pivot destinations:
+    // under Zune their views move to the band (PageHeadSpec.ViewsInBand) and the head keeps its title and meta.
+
+    /// <summary>What a page hands the Zune band for its views. <see cref="Selected"/> is the page's own signal (the band's
+    /// bar writes it and the page reads it, so the two bars never disagree); <see cref="OnSelect"/> is BEHAVIOUR.
+    /// <see cref="Trailing"/> is a FACTORY, so the band builds the page's control (Home's Following) itself: the page and
+    /// the band switch on the same <c>PresentedNavStyle</c> read, so it renders in exactly one place per commit.</summary>
+    public sealed record PageViewsPublication(IReadOnlyList<string> Labels, Signal<int> Selected, Action<int> OnSelect,
+        Func<Element>? Trailing = null);
+
+    public static class PageViews
+    {
+        public const int Capacity = 16;
+
+        /// <summary>Bumped only when a publication's DATA changes (its labels or its selected signal), so the band
+        /// re-renders at navigation rate. A new delegate or trailing factory alone updates silently.</summary>
+        public static readonly Signal<int> Version = new(0);
+
+        static readonly Dictionary<string, PageViewsPublication> s_map = new(StringComparer.Ordinal);
+        static readonly List<string> s_lru = [];
+
+        /// <summary>Publish (or re-publish) a route's views. Returns whether the band must re-render.</summary>
+        public static bool Publish(string routeName, PageViewsPublication publication)
+        {
+            bool changed = !s_map.TryGetValue(routeName, out var old)
+                || !ReferenceEquals(old.Selected, publication.Selected)
+                || !SameLabels(old.Labels, publication.Labels);
+            s_lru.Remove(routeName);
+            s_lru.Add(routeName);
+            s_map[routeName] = publication;
+            while (s_map.Count > Capacity && s_lru.Count > 0)
+            {
+                s_map.Remove(s_lru[0]);
+                s_lru.RemoveAt(0);
+            }
+            if (changed) Version.Value = Version.Peek() + 1;
+            return changed;
+        }
+
+        static bool SameLabels(IReadOnlyList<string> a, IReadOnlyList<string> b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        /// <summary>Subscribing read (the band).</summary>
+        public static PageViewsPublication? For(string routeName)
+        {
+            _ = Version.Value;
+            return s_map.TryGetValue(routeName, out var p) ? p : null;
+        }
+
+        /// <summary>Non-subscribing read: a click resolves the LATEST delegate here.</summary>
+        public static PageViewsPublication? Peek(string routeName) => s_map.TryGetValue(routeName, out var p) ? p : null;
+
+        /// <summary>Drops every publication. Public, not internal: this assembly has no <c>InternalsVisibleTo</c>, so the
+        /// tests reset the store through it.</summary>
+        public static void Clear()
+        {
+            s_map.Clear();
+            s_lru.Clear();
+        }
+    }
+
+    // ══ 13c. THE ENTITY BAND PUBLICATIONS ═════════════════════════════════════════════════════════════════════════════
+    //
+    // An entity page (artist, profile, episode, show) keeps its own sticky band in Classic and Library. Under Zune that band
+    // is suppressed and the page publishes the same words here, under its route name, for the Zune band's row 2 (the A2 pages
+    // publish; until then the row shows the route's seed). Album, prerelease and playlist publish nothing: they keep their
+    // in-page band in every nav style. Same idiom as the page views: UI state, an LRU, a Version bumped only when the
+    // visible data changes.
+
+    /// <summary>What an entity page hands the Zune band: its title, its pivot words, the selected pivot and the action cluster.
+    /// <see cref="Active"/> is the page's own signal; <see cref="OnPivot"/>, <see cref="Actions"/> and <see cref="OnTitle"/>
+    /// are BEHAVIOUR, so a re-publish that changes only them updates silently. <see cref="Accent"/> is the page's accent for
+    /// the active tab's underline (the band falls back to the app accent).</summary>
+    public sealed record PageBandPublication(string Title, IReadOnlyList<string> Pivots, IReadSignal<int> Active, Action<int> OnPivot,
+        Func<Element>? Actions = null, Action? OnTitle = null, Func<ColorF>? Accent = null);
+
+    public static class PageBands
+    {
+        public const int Capacity = 16;
+
+        /// <summary>Bumped only when a publication's DATA changes (its title, its pivot labels or its active signal), so the band
+        /// re-renders at navigation rate. A new delegate or actions factory alone updates silently.</summary>
+        public static readonly Signal<int> Version = new(0);
+
+        static readonly Dictionary<string, PageBandPublication> s_map = new(StringComparer.Ordinal);
+        static readonly List<string> s_lru = [];
+
+        /// <summary>Publish (or re-publish) a route's band. Returns whether the band must re-render.</summary>
+        public static bool Publish(string routeName, PageBandPublication publication)
+        {
+            bool changed = !s_map.TryGetValue(routeName, out var old)
+                || !ReferenceEquals(old.Active, publication.Active)
+                || !string.Equals(old.Title, publication.Title, StringComparison.Ordinal)
+                || !SameLabels(old.Pivots, publication.Pivots);
+            s_lru.Remove(routeName);
+            s_lru.Add(routeName);
+            s_map[routeName] = publication;
+            while (s_map.Count > Capacity && s_lru.Count > 0)
+            {
+                s_map.Remove(s_lru[0]);
+                s_lru.RemoveAt(0);
+            }
+            if (changed) Version.Value = Version.Peek() + 1;
+            return changed;
+        }
+
+        static bool SameLabels(IReadOnlyList<string> a, IReadOnlyList<string> b)
+        {
+            if (ReferenceEquals(a, b)) return true;
+            if (a.Count != b.Count) return false;
+            for (int i = 0; i < a.Count; i++)
+                if (!string.Equals(a[i], b[i], StringComparison.Ordinal)) return false;
+            return true;
+        }
+
+        /// <summary>Subscribing read (the band).</summary>
+        public static PageBandPublication? For(string routeName)
+        {
+            _ = Version.Value;
+            return s_map.TryGetValue(routeName, out var p) ? p : null;
+        }
+
+        /// <summary>Non-subscribing read: a click resolves the LATEST delegate here.</summary>
+        public static PageBandPublication? Peek(string routeName) => s_map.TryGetValue(routeName, out var p) ? p : null;
+
+        /// <summary>Drops every publication (public: this assembly has no <c>InternalsVisibleTo</c>, so the tests reset the store).</summary>
+        public static void Clear()
+        {
+            s_map.Clear();
+            s_lru.Clear();
+        }
+    }
+
     // ══ 14. THE OMNIBAR'S MODEL (ch 18 W15) — the seam owner P's `Search.cs` plugs into ══════════════════════════════
     //
     // The omnibar is owner I's; its SUGGESTION SOURCE is owner P's (Wave 5). Until P installs <see cref="Omnibar.Source"/>
@@ -2150,6 +2524,48 @@ public static partial class Shell
         public static int QueryRowCount(Suggestions s) => Math.Min(MaxQueryRows, s.Queries.Count);
         public static int RichRowCount(Suggestions s) => Math.Min(MaxRichRows, s.Items.Count);
         public static int SelectableCount(Suggestions s) => QueryRowCount(s) + RichRowCount(s);
+
+        // ── the popup body's reserved height ─────────────────────────────────────────────────────────────────────────
+        // The flyout never sizes itself by async data: while a request is Pending with nothing to show it reserves what the
+        // PREVIOUS answer took (else a typical first answer), and the body is capped where the scroll viewport caps.
+
+        /// <summary>The scroll viewport's cap, and so the most the popup body ever takes.</summary>
+        public const float PopupBodyMaxHeight = 560f;
+
+        /// <summary>One query row (the 40 floor plus its 2 + 2 margin), one rich row (the 58 floor plus its 2 + 2 margin),
+        /// and the divider that separates the two groups (1 high, 4 + 4 margin).</summary>
+        public const float QueryRowHeight = 44f, RichRowHeight = 62f, GroupDividerHeight = 9f;
+
+        /// <summary>The notice slot ("No results found" / the failure + Retry): the stock list item floor.</summary>
+        public const float NoticeHeight = 40f;
+
+        /// <summary>The placeholder rows a Pending body is built from: the previous answer's own row counts when it had any,
+        /// else <see cref="MaxQueryRows"/> query rows + 3 rich ones. The counts are not trimmed to the cap: the reserved
+        /// height is <see cref="PopupBodyHeight"/> and the body's clip cuts the last row, like the real viewport.</summary>
+        public static (int Query, int Rich) PendingSkeletonRows(int lastQueryRows, int lastRichRows)
+        {
+            int q = Math.Clamp(lastQueryRows, 0, MaxQueryRows);
+            int r = Math.Clamp(lastRichRows, 0, MaxRichRows);
+            return q + r == 0 ? (MaxQueryRows, 3) : (q, r);
+        }
+
+        /// <summary>The height a Pending body with nothing to show reserves: one notice slot when the last settled answer
+        /// was a notice (Empty / Failed), else the previous answer's rows (or a typical first answer), capped at
+        /// <see cref="PopupBodyMaxHeight"/>. Typing on past a no-match query therefore never pumps the card.</summary>
+        public static float PendingBodyHeight(int lastQueryRows, int lastRichRows, bool lastWasNotice)
+        {
+            if (lastWasNotice) return NoticeHeight;
+            var (q, r) = PendingSkeletonRows(lastQueryRows, lastRichRows);
+            return PopupBodyHeight(q, r);
+        }
+
+        /// <summary>The body height of <paramref name="queryRows"/> + <paramref name="richRows"/> rows, never above
+        /// <see cref="PopupBodyMaxHeight"/> (past it the viewport scrolls).</summary>
+        public static float PopupBodyHeight(int queryRows, int richRows)
+            => MathF.Min(PopupBodyMaxHeight, RawBodyHeight(Math.Max(0, queryRows), Math.Max(0, richRows)));
+
+        static float RawBodyHeight(int q, int r)
+            => q * QueryRowHeight + r * RichRowHeight + (q > 0 && r > 0 ? GroupDividerHeight : 0f);
 
         /// <summary>↑/↓ over the visible rows, wrapping through "none" (−1) at both ends.</summary>
         public static int MoveHighlight(int current, int delta, int count)

@@ -99,7 +99,11 @@ public readonly partial struct Show
         readonly Func<Element> _badges;
         readonly Func<PageFacts> _facts;
         readonly Func<ContextMenuModel?> _more;
-        readonly Action _demandShow, _demandTrailer, _persist, _playTrailer, _share;
+        readonly Action _demandShow, _demandTrailer, _persist, _playTrailer, _share, _publishBand;
+        IReadSignal<bool>? _isActive;
+        /// <summary>The show's title row has no tabs, so its band publication carries a never-lit active signal.</summary>
+        static readonly Signal<int> s_noTab = new(Detail.BandLayout.NoSection);
+        static readonly Action<int> s_noPivot = static _ => { };
         readonly Prop<bool> _heartShown, _trailerShown;
 
         public PageHost(EntityUri subject)
@@ -110,6 +114,7 @@ public readonly partial struct Show
             _demandShow = DemandShow;
             _demandTrailer = DemandTrailer;
             _persist = PersistView;
+            _publishBand = PublishBand;
             _playTrailer = PlayTrailer;
             _share = () => Episode.CopyLink(_show.IsValid ? Actions.WebLinkOf(_show.Uri) : "");
             _more = MoreMenu;
@@ -159,6 +164,11 @@ public readonly partial struct Show
             // mounts the same reader without a page around it.
             UseEffect(_demandTrailer);
             UseEffect(_persist);
+            // The Zune band's row 2 shows the show's name (title only: no tabs, no actions) once it is known; the route title
+            // prefills the first frame.
+            _isActive = UseIsActive();
+            UseActivation(onActivated: _publishBand);
+            UseEffect(_publishBand, DepKey.From(HashCode.Combine(show.IsValid ? show.Title : "", _routeKey)));
 
             if (!show.IsValid) return Controls.Vacancy(Controls.VacancyVoice.Error);
             return Detail.Frame(new Detail.FrameSpec
@@ -169,6 +179,16 @@ public readonly partial struct Show
                 Slots = SlotsFor(MaskOf(in facts)),
                 RouteKey = p.RouteKey,
             });
+        }
+
+        /// <summary>Hands the show's name to the Zune band's row 2 under the route name, only while this page is the active one.</summary>
+        void PublishBand()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            if (!_show.IsValid || _routeKey.Length == 0) return;
+            string title = _show.Title;
+            if (title.Length == 0) return;
+            PageHead.PublishBand(_routeKey, title, Array.Empty<string>(), s_noTab, s_noPivot);
         }
 
         /// <summary>A slot is absent until its facts are known (§6.1, never reserved) and the frame's slot equality is

@@ -20,8 +20,10 @@
 //   column = 14 zero-size chord boxes · [chrome row] · content region · [player dock]
 //            └ the bracketed bands and the content region COLLAPSE (bound Visible, still mounted) under full-screen video
 //              OR the fullscreen stage (FrameRules.ChromeMounted): out of layout, paint and hit-test, subtree inactive
-//   content region = ZStack[ row(sidebar column · content card · rail gap · rail reservation) · sidebar seam ·
-//                            rail overlay(Rail.Frame) · rail seam · narrow drawer ]
+//   content region = ZStack[ row(anchor · sidebar column · page column[Zune band, card stack] · rail gap · rail reservation) ·
+//                            sidebar seam · rail overlay(top spacer, Rail.Frame) · rail seam · narrow drawer ]
+//   (the Zune band lives in the page column and stops at the inline rail's left edge; the inline rail runs from the title bar's
+//   bottom to the dock, and only the narrow overlay starts under the band)
 //
 // THE RULE THIS FILE KEEPS: it lays out and binds, it never decides. Every geometry/precedence/gating answer below is a
 // call into `Shell.FrameRules`, `Shell.Chrome`, `TabWorkspace`, `Notify` or an owner's rule table — each pinned by a
@@ -132,15 +134,27 @@ public static partial class Shell
         }
     }
 
+    /// <summary>The page column's (and so the content card's and the Zune band's) width for a viewport: the viewport less the
+    /// sidebar column, the rail's inline gap and the rail's inline reservation. Reads the signals, so a caller inside an effect
+    /// or a computed re-runs on a resize, a pane change or a rail toggle. The page gutter and the band's pin visibility decide
+    /// from THIS.</summary>
+    internal static float PageColumnWidth(float viewportW) => FrameRules.CardWidth(viewportW,
+        FrameRules.SidebarPaneWidth(Sidebar.DragPeek.Value, Sidebar.Width.Value, Sidebar.PresentedWidth.Value),
+        FrameRules.RailGapWidth(Ui.RailOpen.Value, Ui.RailFits.Value),
+        FrameRules.RailReservedWidth(Ui.RailOpen.Value, Ui.RailFits.Value, Ui.RailWidth.Value));
+
     // ══ 2. THE FRAME ROOT ═════════════════════════════════════════════════════════════════════════════════════════
 
     // The sidebar collapse AND the content card's FLIP share ONE transition, so the pane's animating edge and the card's
     // left edge ease on identical dynamics. Reveal lays out at the FINAL size and eases a clip + translate only; a grip
     // drag snaps both 1:1 through the suppression arbiter. WinUI SplitView's pane spline at 300 ms (200 ms read as a snap
     // behind the heavier media surface).
-    static readonly EasingSpec PaneEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
-    const float PaneMs = 300f;
-    const string ContentRowMorphId = "shell.content-row";
+    static readonly EasingSpec PaneEase = FrameRules.CardMotionEase;
+    const float PaneMs = FrameRules.CardMotionMs;
+    const string FrameColumnMorphId = "shell.frame-column";
+    /// <summary>The card's X anchor (see <see cref="ContentCardAnchor"/>): fixed in x at the row's left edge, and as far below the
+    /// row's top as the Zune band is tall, so it moves in y exactly as the card stack does.</summary>
+    const string ContentCardAnchorId = "shell.content-card-anchor";
 
     /// <summary>The pane opens in 200 ms and closes in 100 ms on WinUI's SplitView spline (MotionTok.PaneOpen/PaneClose).</summary>
     static readonly LayoutTransition SidebarPaneAnim = new(TransitionChannels.Size | TransitionChannels.Position,
@@ -151,10 +165,43 @@ public static partial class Shell
         TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Reveal,
         ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
 
+    /// <summary>The whole content region's answer to a chrome-edge change that moves its top: a Position FLIP relative to the
+    /// frame column, which never moves, plus a Height RELAYOUT. The region lays out once at its final top and height, the FLIP
+    /// eases the top back over <see cref="PaneMs"/> / <see cref="PaneEase"/> and the Relayout re-solves the region's subtree at
+    /// the interpolated height each tick, so the region's BOTTOM edge stays on the dock the whole time (a Reveal would leave an
+    /// empty strip above the dock when the region shrinks, and overlap the dock when it grows). Height only, so the width
+    /// stays with the card's own X FLIP (<see cref="ContentCardAnim"/>). The Zune band no longer sits above the region (it
+    /// lives in the page column, where <see cref="PageColumnCardAnim"/> does this job for it), so this stays for the chrome-edge
+    /// cases only. It is a one-off: the chrome mounting is latched out by <c>_chromeEdge</c> and a window resize never
+    /// captures.</summary>
+    static readonly LayoutTransition ContentRegionAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), Axes: SizeAxes.Height);
+
+    /// <summary><see cref="ContentRegionAnim"/>'s idiom one level down, for the page column's card stack: the band above it
+    /// opens or closes (84, 52 or 0 DIP), so the card's top travels with the band's revealed bottom edge (a Position FLIP, which
+    /// is PARENT-relative on purpose: the stack's x inside the page column never changes, so this FLIP is Y only and the
+    /// ground and stroke keep snapping in X) while a Height Relayout keeps its bottom on the dock. The X FLIP of a pane or rail
+    /// toggle belongs to the card inside it (<see cref="ContentCardAnim"/>, anchored at <see cref="ContentCardAnchorId"/> so
+    /// that it does not see this Y move a second time). Height only: the width stays with the card's own Reveal.</summary>
+    static readonly LayoutTransition PageColumnCardAnim = new(TransitionChannels.Position | TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), Axes: SizeAxes.Height);
+
+    /// <summary>The Zune band's size change: on a nav-style switch or a row-2 change its height, on a rail toggle its WIDTH (it
+    /// is the page column's first child, so it narrows with the card). A Size RELAYOUT on the card's own tween
+    /// (<see cref="PaneMs"/> / <see cref="PaneEase"/>), so on a rail toggle the pins slide with the band's right edge instead of
+    /// snapping. <see cref="PageColumnCardAnim"/> eases the card stack below it in the same tween, so the band's bottom edge
+    /// and the card's top travel together and the card's bottom edge stays on the dock. The row-2 fade is an opacity
+    /// transition on a mounted node, so the descendant suppression does not cull it.</summary>
+    public static readonly LayoutTransition ZuneBandAnim = new(TransitionChannels.Size,
+        TransitionDynamics.Tween(PaneMs, PaneEase), SizeMode.Relayout,
+        ExitDynamics: TransitionDynamics.Tween(PaneMs, PaneEase), SuppressDescendantTransitions: true);
+
     /// <summary>A LEFT+TOP-only stroke: the engine's border is one uniform SDF ring, so the stroked box is one DIP larger on
     /// its right and bottom and parked in a clip of the real geometry — the right/bottom strokes land in the clipped DIP
     /// and the rounded top-left arc survives whole.</summary>
-    static readonly Edges4 StrokeOverhang = new(0f, 0f, -1f, -1f);
+    static readonly Edges4 StrokeOverhang = new(0f, FrameRules.StrokeOverhangTop, -1f, -1f);
     static readonly CornerRadius4 RailBandCorners = new(Radii.Card, 0f, 0f, 0f);
 
     // CLAMP-ONLY: no `collapsed` argument, so the engine detent is off and the raw cell reaches the rail floor. The mode,
@@ -177,6 +224,9 @@ public static partial class Shell
     static readonly KeyAccelerator NewTabChord = new(Keys.T, KeyModifiers.Ctrl);
     static readonly KeyAccelerator PaletteChord = new(Keys.K, KeyModifiers.Ctrl);
     static readonly KeyAccelerator FindChord = new(Keys.F, KeyModifiers.Ctrl);
+    /// <summary>Ctrl+, opens Settings (the pane has no Settings row). The engine's <c>Keys</c> has no OemComma, so the VK is spelled here.</summary>
+    const int VkOemComma = 188;
+    static readonly KeyAccelerator SettingsChord = new(VkOemComma, KeyModifiers.Ctrl);
     static readonly KeyAccelerator BackChord = new(Keys.Left, KeyModifiers.Alt);
     static readonly KeyAccelerator ForwardChord = new(Keys.Right, KeyModifiers.Alt);
     static readonly KeyAccelerator FullscreenChord = new(Keys.F11, KeyModifiers.None);
@@ -207,11 +257,15 @@ public static partial class Shell
         readonly Signal<float> _railFade = new(1f);
         readonly Signal<bool> _sidebarDragging = new(false);
         readonly Signal<bool> _railDragging = new(false);
+        /// <summary>True for <see cref="FrameRules.ChromeEdgeSnapMs"/> after the chrome mounts or unmounts: the content region
+        /// then SNAPS instead of FLIPping (see <see cref="ContentRegionAnim"/>).</summary>
+        readonly Signal<bool> _chromeEdge = new(false);
         /// <summary>A module watch page's stage would host what is playing — split from the resize-rate effect so the
         /// playable-uri reads run at navigation/track rate, not per resize pixel.</summary>
         readonly Signal<bool> _pageStageHosts = new(false);
 
         bool _bandSeeded;
+        bool _chromeWas = s_chromeMounted();
         TemplateParts? _seamParts;
         TemplateParts? _railSeamParts;
         float _lastAutoZoom;
@@ -242,9 +296,23 @@ public static partial class Shell
                 float w0 = vp.Peek().Width;
                 var band0 = SidebarPaneModeRules.BandOf(w0, SidebarWindowBand.Wide);
                 Sidebar.Band.SetIfChanged(band0);
-                var mode0 = SidebarPaneModeRules.Resolve(band0, Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek());
+                var mode0 = SidebarPaneModeRules.Resolve(band0, Sidebar.UserCollapsed.Peek(), Sidebar.Editing.Peek(),
+                    paneHidden: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune);
                 Sidebar.Mode.SetIfChanged(mode0);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode0, Sidebar.Width.Peek(), w0));
+                // The heads present the launch style from frame one: a Zune launch is hoisted without a Reflow.
+                Ui.PresentedNavStyle.SetIfChanged(Sidebar.NavStyle.Peek());
+                // The band's row 2 is right on frame one: Home opens at 84, never animating from 52.
+                var boot = Current.Peek();
+                Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in boot));
+                // Boot's route is on screen from frame one (ContentHost's first UseTimeout lands the same value): seeding Shown and
+                // PresentedRoute keeps the crumb head and row 2 up on frame one. The tab-label staging is unchanged.
+                Shown.SetIfChanged(boot);
+                Ui.PresentedRoute.SetIfChanged(boot);
+                // The page gutter is right on frame one: a narrow launch must not mount at 36 and step a frame later.
+                Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(FrameRules.CardWidth(w0, Sidebar.PresentedWidth.Peek(),
+                    FrameRules.RailGapWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek()),
+                    FrameRules.RailReservedWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek(), Ui.RailWidth.Peek()))));
             }
 
             // THE WINDOW BAND (design V.1): hysteretic, derived — the ONLY way the window width reaches the sidebar.
@@ -256,7 +324,8 @@ public static partial class Shell
                 Sidebar.Band.Value = next;
                 if (!SidebarPaneModeRules.HasOverlay(next)) Sidebar.OverlayOpen.SetIfChanged(false);
             });
-            // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here).
+            // The title bar's pane toggle is disabled while the sidebar is being edited (a plain signal mirrored here). Under
+            // Zune it is not disabled but ABSENT: ChromeContentVersion hides it through TitleBar.ShowPaneToggle.
             UseSignalEffect(static () => s_paneToggleEnabled.SetIfChanged(!Sidebar.Editing.Value));
             // THE ONE PRESENTATION EFFECT: ① the mode, ② the presented width. A live drag presents Track(seam). It never
             // writes Sidebar.Width or UserCollapsed (those are the preference, persisted at commit).
@@ -266,7 +335,8 @@ public static partial class Shell
                 var band = Sidebar.Band.Value;
                 bool editing = Sidebar.Editing.Value;
                 var state = new SidebarResizeRules.State(Sidebar.UserCollapsed.Value, Sidebar.Width.Value);
-                if (_sidebarDragging.Value && SidebarPaneModeRules.SeamVisible(band))
+                bool hidden = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+                if (_sidebarDragging.Value && SidebarPaneModeRules.SeamVisible(band) && !hidden)
                 {
                     var live = SidebarResizeRules.Track(Sidebar.Seam.Value, in state, editing);
                     Sidebar.Mode.SetIfChanged(live.Collapsed ? SidebarPaneMode.Compact : SidebarPaneMode.Expanded);
@@ -275,11 +345,34 @@ public static partial class Shell
                     return;
                 }
                 _sidebarFade.SetIfChanged(1f);
-                var mode = SidebarPaneModeRules.Resolve(band, state.UserCollapsed, editing);
+                var mode = SidebarPaneModeRules.Resolve(band, state.UserCollapsed, editing, paneHidden: hidden);
                 Sidebar.Mode.SetIfChanged(mode);
                 Sidebar.PresentedWidth.SetIfChanged(SidebarPaneModeRules.PresentedWidth(mode, state.ExpandedWidth, vpW));
             });
-            UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(MotionSuppressionSource.AppResize, _sidebarDragging.Value));
+            // THE PAGE GUTTER: one effect, reading exactly what the content card's width reads (the same signals, the same
+            // FrameRules), so the gutter steps in the SAME flush as the card and its FLIP covers the step. Not
+            // OnBoundsChanged: that fires after layout and would re-lay the page a frame late. Hysteretic against its own
+            // last value (PageGeometry.GutterFor), so a resize near 600 / 880 cannot flicker.
+            UseSignalEffect(() =>
+            {
+                float cardW = PageColumnWidth(vp.Value.Width);
+                Ui.PageGutter.SetIfChanged(PageGeometry.GutterFor(cardW, Ui.PageGutter.Peek()));
+            });
+            // The chrome's mount edge (full-screen video, immersive lyrics) is NOT a nav-style switch: the collapsed region is
+            // arranged 0x0 at the cursor, so on the way back ContentRegionAnim would see a Y/H change and fly the whole card
+            // in from the window top. The edge latches the same layout-transition suppression a seam drag uses, for the
+            // commit that carries it (the latch is written in the flush, before the layout and ApplyProjections).
+            var chromeEdgeEnd = UseTimeout(() => _chromeEdge.Value = false, FrameRules.ChromeEdgeSnapMs);
+            UseSignalEffect(() =>
+            {
+                bool mounted = s_chromeMounted();
+                if (mounted == _chromeWas) return;
+                _chromeWas = mounted;
+                _chromeEdge.Value = true;
+                chromeEdgeEnd.RestartIn(FrameRules.ChromeEdgeSnapMs);
+            });
+            UseSignalEffect(() => FgMotion.SetLayoutTransitionsSuppressed(
+                MotionSuppressionSource.AppResize, _sidebarDragging.Value || _chromeEdge.Value));
             // F243: a rail drag ends (the splitter clears `dragging` AFTER its commit). A COMMITTED drag already made the
             // preview equal; a CANCELLED one never commits, so the preview falls back to the committed width here.
             UseSignalEffect(() =>
@@ -412,7 +505,9 @@ public static partial class Shell
                 // The identity chip's FORM is a budget input, not a decoration: "Connecting" and "Reconnect" are 58-68
                 // DIP wider than the avatar, well past the 16-DIP gutter cushion (#88). Reading it here also subscribes
                 // this effect to the auth fold, so a sign-in or a resume RE-ALLOCATES the row instead of overflowing it.
-                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value));
+                // Zune: no Forward in the budget (it is not drawn) and a compact, right-aligned search at its minimum.
+                bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+                var next = Chrome.Resolve(w, extent, old, FrameRules.ChipFor(Auth.Value), zune: zune, compactSearch: zune);
                 if (FrameRules.ReissueSearchFocus(old.SearchMode, next.SearchMode, s_searchFocused.Peek(), s_searchFlyoutOpen.Peek()))
                     SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1;
                 ChromeLayout.SetIfChanged(next);
@@ -443,13 +538,14 @@ public static partial class Shell
             var column = new BoxEl
             {
                 // Window-tall, bound: the content region yields instead of shoving the docked bar off the bottom.
-                Direction = 1, Grow = 1f, Height = Prop.Of(() => vp.Value.Height),
+                Direction = 1, Grow = 1f, Height = Prop.Of(() => vp.Value.Height), MorphId = FrameColumnMorphId,
                 OnKeyDown = OnShellKey,
                 Children =
                 [
                     Chord(NewTabChord, static () => OpenTab(new Route(RouteKind.Home))),
                     Chord(PaletteChord, static () => PaletteOpen.Value = !PaletteOpen.Peek()),
                     Chord(FindChord, static () => SearchFocusRequest.Value = SearchFocusRequest.Peek() + 1),
+                    Chord(SettingsChord, static () => GoTo(new Route(RouteKind.Settings))),
                     Chord(BackChord, GoBack),
                     Chord(ForwardChord, GoForward),
                     Chord(FullscreenChord, ToggleVideoFullscreen),
@@ -461,6 +557,10 @@ public static partial class Shell
                     Chord(ZoomOutPadChord, static () => ZoomStep(-1)),
                     Chord(ZoomResetChord, static () => ZoomStep(0)),
                     Chord(ZoomResetPadChord, static () => ZoomStep(0)),
+                    Embed.Comp(static () => new NavStylePresenter()) with { Key = "shell:navstyle-presenter" },
+                    Embed.Comp(static () => new SubRowPresenter()) with { Key = "shell:subrow-presenter" },
+                    Embed.Comp(static () => new BleedPresenter()) with { Key = "shell:bleed-presenter" },
+                    Embed.Comp(static () => new CardPoseTracker()) with { Key = "shell:card-pose-tracker" },
                     // FULL-SCREEN VIDEO COLLAPSES THE CHROME, it does not unmount it: every layer left under the video
                     // costs GPU, and the docked bar is what stacked a second transport under the video's own, but a
                     // structural Flow.Show rebuilt the tab row and the whole player bar (seek rail, marquee, art, device
@@ -512,10 +612,11 @@ public static partial class Shell
         Element ContentRegion(IReadSignal<Size2> vp) => ZStack(
             new BoxEl
             {
-                // The row never moves on a toggle: the content card FLIPs relative to THIS frame.
-                MorphId = ContentRowMorphId, Direction = 0, Grow = 1f, ClipToBounds = true,
+                Direction = 0, Grow = 1f, ClipToBounds = true,
                 Children =
                 [
+                    // Zero-size: the content card's X anchor (see ContentCardAnchor). First, so it sits at the row's left edge.
+                    Embed.Comp(static () => new ContentCardAnchor()),
                     new BoxEl
                     {
                         // THE W12 TRAP lives in FrameRules.SidebarPaneWidth: a drag peek presents the pane expanded, so this
@@ -538,21 +639,34 @@ public static partial class Shell
                             },
                         ],
                     },
+                    // The PAGE COLUMN: [the Zune band, the card stack]. The band is 0 tall outside Zune, so Classic/Library
+                    // lay out exactly as before; under Zune the inline rail beside it runs from the title bar to the dock.
                     new BoxEl
                     {
-                        // The stock Win11 content region: flush, one corner, a left+top stroke, no shadow, no gutter.
-                        Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                        Direction = 1, Grow = 1f, Shrink = 1f, Basis = 0f, MinWidth = 0f, MinHeight = 0f,
                         Children =
                         [
-                            new BoxEl { Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Design.Size.ContentPaneCorners },
+                            Sidebar.ZuneBand() with { Visible = Prop.Of(s_chromeMounted) },
                             new BoxEl
                             {
-                                Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                                Fill = ColorF.Transparent, Corners = Design.Size.ContentPaneCorners, ClipToBounds = true,
-                                IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentRowMorphId,
-                                Children = [Embed.Comp(static () => new ContentHost())],
+                                // The stock Win11 content region: always flush (no left gap, ever); the one corner and the left+top stroke only while a pane is docked; no shadow.
+                                Direction = 1, ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                                Animate = PageColumnCardAnim,
+                                Children =
+                                [
+                                    Embed.Comp(static () => new CardGround()),
+                                    new BoxEl
+                                    {
+                                        Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
+                                        Fill = ColorF.Transparent, Corners = Prop.Of(s_bleedCorners), ClipToBounds = true,
+                                        IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentCardAnchorId,
+                                        OnRealized = static h => { s_contentCard = h; PublishCardRect(); },
+                                        OnBoundsChanged = static _ => { PublishCardRect(); PublishScrimClip(); },
+                                        Children = [Embed.Comp(static () => new ContentHost())],
+                                    },
+                                    Embed.Comp(static () => new CardStroke()),
+                                ],
                             },
-                            ContentRegionStroke(),
                         ],
                     },
                     // The rail's 8-DIP breathing room exists only while the rail is inline.
@@ -581,7 +695,8 @@ public static partial class Shell
             new BoxEl
             {
                 Direction = 1, ClipToBounds = true,
-                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value))),
+                Width = Prop.Of(static () => FrameRules.SidebarSeamWidth(SidebarPaneModeRules.SeamVisible(Sidebar.Band.Value)
+                    && Sidebar.NavStyle.Value != ShellNavStyle.Zune)),
                 Transform = Prop.Of(static () => Affine2D.Translation(Sidebar.PresentedWidth.Value, 0f)),
                 Children =
                 [
@@ -597,23 +712,34 @@ public static partial class Shell
                 [
                     new BoxEl
                     {
-                        Direction = 1, Shrink = 0f, ClipToBounds = true, ZStack = true, HitTestPassThrough = true,
+                        Direction = 1, Shrink = 0f, ClipToBounds = true, HitTestPassThrough = true,
                         Width = Prop.Of(static () => Ui.RailWidth.Value),
                         Children =
                         [
-                            // The FLOATING rail's backing band (the shell ground) — paint-only, never the deepest hit.
+                            // Inline, the rail starts at the title bar's bottom; the narrow overlay still starts under the Zune band.
+                            Embed.Comp(static () => new RailOverlayTopSpacer()),
                             new BoxEl
                             {
-                                Grow = 1f, HitTestPassThrough = true,
-                                Fill = Prop.Of(static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value)
-                                    ? Design.Colors.FloatingChrome : ColorF.Transparent),
-                            },
-                            new BoxEl
-                            {
-                                Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
-                                Corners = RailBandCorners, IsolateLayout = true,
-                                Opacity = Prop.Of(() => _railFade.Value),
-                                Children = [Rail.Frame()],
+                                // The card stack's idiom (PageColumnCardAnim): the body's top eases with the band's bottom edge as a
+                                // parent-relative Y FLIP while a Height Relayout keeps its bottom on the dock. The spacer above is plain.
+                                Grow = 1f, MinHeight = 0f, ZStack = true, HitTestPassThrough = true, Animate = PageColumnCardAnim,
+                                Children =
+                                [
+                                    // The FLOATING rail's backing band (the shell ground) — paint-only, never the deepest hit.
+                                    new BoxEl
+                                    {
+                                        Grow = 1f, HitTestPassThrough = true,
+                                        Fill = Prop.Of(static () => FrameRules.RailFloats(Ui.RailOpen.Value, Ui.RailFits.Value)
+                                            ? Design.Colors.FloatingChrome : ColorF.Transparent),
+                                    },
+                                    new BoxEl
+                                    {
+                                        Direction = 1, Grow = 1f, MinHeight = 0f, ClipToBounds = true, HitTestPassThrough = true,
+                                        Corners = RailBandCorners, IsolateLayout = true,
+                                        Opacity = Prop.Of(() => _railFade.Value),
+                                        Children = [Rail.Frame()],
+                                    },
+                                ],
                             },
                         ],
                     },
@@ -636,18 +762,24 @@ public static partial class Shell
             Embed.Comp(static () => new NarrowDrawer())) with
         {
             // The ONE region that yields when the window is shorter than the column; clipped so a settling page never
-            // paints into the dock slot. The drag spotlight scrim is scoped to it (chrome and dock stay lit).
+            // paints into the dock slot. The drag spotlight scrim is scoped to it, below the Zune band (chrome and dock stay lit).
             // The bound Visible COLLAPSES the whole shell body while the fullscreen stage OR full-screen video is up: out of
             // layout, paint and hit-test, and its subtree goes inactive (UseInterval pauses, UseActivation fires its edges as on a KeepAlive
             // tab switch — every consumer reviewed benign, V-U37). It sits on THIS node, which carries no MorphId: the
-            // content row's MorphId stays on an inner node with an unbound Visible (the BindContract rule guards the
+            // card's anchor (ContentCardAnchorId) is a separate node with an unbound Visible (the BindContract rule guards the
             // tagged node itself).
             Grow = 1f, Shrink = 1f, MinHeight = 0f, ClipToBounds = true,
+            Animate = ContentRegionAnim, RelativeTo = FrameColumnMorphId,
             Visible = Prop.Of(s_chromeMounted),
             OnRealized = static h => { s_contentRegion = h; PublishScrimClip(); },
             OnBoundsChanged = static _ => PublishScrimClip(),
         };
     }
+
+    /// <summary>The content card's corners, bound to the pane mode: one thunk for the ground, the clip, the stroke and the
+    /// cover-tone plane, so they change in the same commit.</summary>
+    internal static readonly Func<CornerRadius4> s_contentCorners =
+        static () => FrameRules.ContentCorners(FrameRules.PaneDocked(Sidebar.Mode.Value));
 
     static readonly Func<bool> s_chromeMounted = static () =>
         FrameRules.ChromeMounted(Video.PlacementCore.Resolve(Video.State.Surface.Value), Ui.ImmersiveLyrics.Value);
@@ -668,18 +800,449 @@ public static partial class Shell
         if (closeRail) Ui.RailOpen.Value = false;
     };
 
-    static Element ContentRegionStroke() => new BoxEl
+    // ══ 2.2 THE CARD'S GROUND AND STROKE (and the artist bleed's cut-out) ══════════════════════════════════════════════
+
+    /// <summary>EXPERIMENTAL (artist bleed): how much of the card's top fill is gone at this moment, 0..1. The strip over the
+    /// photo's extent and the stroke over it are both drawn at <c>1 - this</c>. It rides leg 1 of the settle
+    /// (<see cref="Ui.BleedUnderlay"/>), in step with the shell's under-card photo and under the card's own still-opaque photo, so the
+    /// entrance runs on one clock; on exit it returns with the fade-out. 0 with no backdrop, so the ground is today's.</summary>
+    static float BleedCut()
     {
-        ZStack = true, ClipToBounds = true, HitTestVisible = false,
-        Children =
-        [
-            new BoxEl
-            {
-                Margin = StrokeOverhang, BorderWidth = 1f, BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
-                Corners = Design.Size.ContentPaneCorners,
-            },
-        ],
+        if (Ui.BleedBackdrop.Value is not { } b) return 0f;
+        return Ui.BleedUnderlay.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
+    }
+
+    static readonly Func<float> s_bleedKeep = static () => 1f - BleedCut();
+
+    /// <summary>The corners of the layers that sit over the photo (the ground and the stroke), WITH a backdrop: today's thunk with the
+    /// top-left radius faded by <see cref="ArtistBleed.CornerFor"/>, so the notch the rounded corner would cut out of the photo
+    /// fades with the hero region and returns as the hero scrolls away. Paint-rate (BleedCut reads the scroll and the underlay).</summary>
+    static readonly Func<CornerRadius4> s_bleedCorners = static () =>
+    {
+        var c = s_contentCorners();
+        return new CornerRadius4(ArtistBleed.CornerFor(c.TopLeft, BleedCut()), c.TopRight, c.BottomRight, c.BottomLeft);
     };
+
+    /// <summary>The photo's extent below the card top while a backdrop is published (or fading out), else 0. Read at navigation
+    /// rate by <see cref="CardGround"/> and <see cref="CardStroke"/>, which re-render when the publication changes, never per
+    /// scroll.</summary>
+    static float BleedExtent() => Ui.BleedBackdrop.Value?.PhotoHeight ?? 0f;
+
+    /// <summary>The content card's fill. With no backdrop it is the plain rounded fill, no clip and no extra nodes. With one it is
+    /// a clip exactly the photo's extent tall over the plain fill below, and inside the clip the translucent fill is split at ONE
+    /// line, the hero's presented bottom (<see cref="ArtistBleed.RiserTop"/>, a paint-only translation): a STRIP above it that
+    /// fades out as the photo bleeds through (<see cref="BleedCut"/>), a RISER from it down that is always solid, and a short
+    /// FADE above the line that is the photo's own bottom feather turned into fill (so the photo ends in the card's fill, not in
+    /// a hard edge). The strip and the riser TILE the clip, so the translucent fill is never drawn twice. The strip, its stroke, the
+    /// corner and the fade box move on leg 1 of the settle (<see cref="Ui.BleedUnderlay"/>), under the card's own opaque photo, so the
+    /// entrance runs on one clock. The card rect never changes; with no backdrop nothing here is translated or faded.</summary>
+    sealed class CardGround : Component
+    {
+        public override Element Render()
+        {
+            float scale = UseContext(Viewport.Scale);   // the line is snapped to a device pixel (unconditional: hook order)
+            float p = BleedExtent();
+            if (p <= 0f)
+                return new BoxEl { Grow = 1f, Fill = Prop.Of(static () => Design.Colors.FileArea), Corners = Prop.Of(s_contentCorners) };
+            float band = ArtistHeroLayout.PhotoFadeBandFor(p);
+            float Line() => Ui.BleedBackdrop.Value is { } b
+                ? ArtistBleed.SnapToPixel(ArtistBleed.RiserTop(b.ScrollY.Value, b.HeroHeight, b.Floor, p), scale)
+                : p;
+            return new BoxEl
+            {
+                Direction = 1, Grow = 1f, ClipToBounds = true, HitTestVisible = false,
+                Corners = Prop.Of(s_bleedCorners),
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Height = p, Shrink = 0f, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                        Children =
+                        [
+                            new BoxEl
+                            {
+                                Height = p, AlignSelf = FlexAlign.Start, Fill = Prop.Of(static () => Design.Colors.FileArea),
+                                Opacity = Prop.Of(s_bleedKeep),
+                                Transform = Prop.Of(() => Affine2D.Translation(0f, ArtistBleed.StripShift(Line(), p))),
+                            },
+                            new BoxEl
+                            {
+                                Height = band, AlignSelf = FlexAlign.Start, Fill = Prop.Of(static () => Design.Colors.FileArea),
+                                EdgeFade = new EdgeFadeSpec(EdgeMask.Top, band),
+                                Opacity = Prop.Of(static () => BleedCut()),
+                                Transform = Prop.Of(() => Affine2D.Translation(0f, Line() - band)),
+                            },
+                            new BoxEl
+                            {
+                                Height = p, AlignSelf = FlexAlign.Start, Fill = Prop.Of(static () => Design.Colors.FileArea),
+                                Transform = Prop.Of(() => Affine2D.Translation(0f, Line())),
+                            },
+                        ],
+                    },
+                    new BoxEl { Grow = 1f, MinHeight = 0f, Fill = Prop.Of(static () => Design.Colors.FileArea) },
+                ],
+            };
+        }
+    }
+
+    /// <summary>The card's left+top stroke. Without a backdrop it is the single plain ring. With one it is split by CLIPPING,
+    /// never redrawn: a top clip (the photo's extent, faded with the strip) and a lower clip holding the same ring with its
+    /// geometry still starting at the card top, so the union is exactly the plain ring and the left edge below the hero stays.
+    /// THE NOTCH (option 1): the ring over the photo (a) and the ground use <see cref="s_bleedCorners"/>, whose top-left radius fades
+    /// with the hero region (<see cref="ArtistBleed.CornerFor"/>), so the photo meets the window edge with no rounded notch and the
+    /// stroke fades with it; the part below the hero (b) keeps today's corners, and the backdrop is not extended behind the pane.</summary>
+    sealed class CardStroke : Component
+    {
+        static readonly Func<Affine2D> s_leftShift = static () => Affine2D.Translation(
+            FrameRules.StrokeLeftShift(FrameRules.PaneDocked(Sidebar.Mode.Value)), 0f);
+
+        /// <summary>The plain ring (one DIP of extra right overhang so the box can shift left: undocked, the page bleeds to the
+        /// window edge and the LEFT stroke leaves the clip, the top stroke stays), with an overridable top margin.</summary>
+        static BoxEl Ring(float top, bool bleeding = false) => new()
+        {
+            Margin = new Edges4(0f, top, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
+            BorderColor = Prop.Of(static () => FrameRules.CardStrokeShows(Sidebar.NavStyle.Value) ? Tok.StrokeCardDefault : ColorF.Transparent),
+            Corners = Prop.Of(bleeding ? s_bleedCorners : s_contentCorners),
+            Transform = Prop.Of(s_leftShift),
+        };
+
+        public override Element Render()
+        {
+            float p = BleedExtent();
+            if (p <= 0f)
+                return new BoxEl { ZStack = true, Grow = 1f, ClipToBounds = true, HitTestVisible = false, Children = [Ring(FrameRules.StrokeOverhangTop)] };
+            return new BoxEl
+            {
+                ZStack = true, Grow = 1f, ClipToBounds = true, HitTestVisible = false,
+                Children =
+                [
+                    // (a) over the photo: a clip exactly the photo's extent tall holding today's ring (card-tall: it overhangs the
+                    //     clip's bottom by the card's own height), faded with the strip.
+                    new BoxEl
+                    {
+                        Height = p, AlignSelf = FlexAlign.Start, ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                        Opacity = Prop.Of(s_bleedKeep),
+                        Children =
+                        [
+                            Ring(FrameRules.StrokeOverhangTop, bleeding: true) with
+                            {
+                                Margin = new Edges4(0f, FrameRules.StrokeOverhangTop, -2f * FrameRules.StrokeW, 0f),
+                                AlignSelf = FlexAlign.Start,
+                                Height = Prop.Of(static () => Ui.CardRect.Value.H + FrameRules.StrokeW),
+                            },
+                        ],
+                    },
+                    // (b) below the photo: the ring's geometry still starts at the card top (negative top margin), so only the part
+                    //     below the hero shows.
+                    new BoxEl
+                    {
+                        Margin = new Edges4(0f, p, 0f, 0f), ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                        Children = [Ring(FrameRules.StrokeOverhangTop - p)],
+                    },
+                ],
+            };
+        }
+    }
+
+    /// <summary>The content card's X anchor: a zero-size node in the content row, at the row's left edge (x never changes on a
+    /// pane or rail toggle) and <see cref="ZuneNavRules.BandHeight"/> below the row's top (so it moves in y exactly as the card
+    /// stack does when the band opens or closes). The card's FLIP is measured relative to it, so a toggle gives the card its X
+    /// FLIP (pane, rail) and no Y FLIP: the Y move of the band is the card stack's own (<see cref="PageColumnCardAnim"/>), and
+    /// two nested row-relative FLIPs would compose into double the distance. It reads the same two signals as the band, so both
+    /// re-render in the same commit and the anchor never leads or trails the stack by a layout pass.</summary>
+    sealed class ContentCardAnchor : Component
+    {
+        public override Element Render() => new BoxEl
+        {
+            Direction = 1, Width = 0f, Shrink = 0f, HitTestVisible = false,
+            Children =
+            [
+                new BoxEl
+                {
+                    Shrink = 0f, HitTestVisible = false,
+                    Height = ZuneNavRules.BandHeight(Sidebar.NavStyle.Value, Ui.PresentedSubRow.Value),
+                },
+                new BoxEl { MorphId = ContentCardAnchorId, Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false },
+            ],
+        };
+    }
+
+    /// <summary>The narrow rail overlay's top spacer: the band's height while the rail floats (it starts under the band), zero
+    /// while it is inline (it starts at the title bar's bottom). A plain height, read from the same two signals as the band (so
+    /// it steps in the band's commit) with NO transition of its own: the overlay body below it carries
+    /// <see cref="PageColumnCardAnim"/>, so a navigation between a route with a row 2 and one without, or a nav-style switch,
+    /// eases the overlay's top with the band's bottom edge without a Reflow (a live Reflow shoves every other node's position
+    /// FLIP in the tree).</summary>
+    sealed class RailOverlayTopSpacer : Component
+    {
+        public override Element Render() => new BoxEl
+        {
+            Shrink = 0f, HitTestVisible = false,
+            Height = FrameRules.RailOverlayTop(Ui.RailFits.Value,
+                ZuneNavRules.BandHeight(Sidebar.NavStyle.Value, Ui.PresentedSubRow.Value)),
+        };
+    }
+
+    /// <summary>EXPERIMENTAL (artist bleed): the content card host's node, for its laid-out window rect.</summary>
+    static NodeHandle s_contentCard;
+
+    /// <summary>Publishes the card's LAID-OUT rect in window coordinates (the sum of the layout bounds up the parent chain, never
+    /// the FLIP's in-flight pose), value-gated. The material layer derives the backdrop's final span from it. With a backdrop
+    /// showing, a change also arms <see cref="CardPoseTracker"/>; without one the presented pose is simply the final rect.</summary>
+    static void PublishCardRect()
+    {
+        if (s_scene is not { } scene || s_contentCard.IsNull || !scene.IsLive(s_contentCard)) return;
+        float x = 0f, y = 0f;
+        for (var n = s_contentCard; !n.IsNull; n = scene.Parent(n))
+        {
+            ref readonly var b = ref scene.Bounds(n);
+            x += b.X;
+            y += b.Y;
+        }
+        var own = scene.Bounds(s_contentCard);
+        var rect = new RectF(x, y, own.W, own.H);
+        bool moved = Ui.CardRect.SetIfChanged(rect);
+        // Without a backdrop nobody draws the pose: keep it equal to the final rect, so a backdrop that appears later starts in
+        // place. With one the tracker owns it (a FLIP starts at the OLD pose, which is exactly what stays until it samples).
+        if (Ui.BleedBackdrop.Peek() is null) Ui.CardPose.SetIfChanged(rect);
+        else if (moved) Ui.CardSettle.Value++;
+    }
+
+    /// <summary>The card's PRESENTED left/top (the layout transitions' in-flight translation included) into <see cref="Ui.CardPose"/>.</summary>
+    static void SampleCardPose()
+    {
+        if (s_scene is not { } scene || s_contentCard.IsNull || !scene.IsLive(s_contentCard)) return;
+        Ui.CardPose.SetIfChanged(scene.AbsoluteRect(s_contentCard));
+    }
+
+    /// <summary>EXPERIMENTAL (artist bleed): feeds <see cref="Ui.CardPose"/> for the length of the card's layout transition
+    /// (<see cref="Ui.CardSettle"/> re-arms it on every change of the final rect), then lands on the settled pose. The ticker is
+    /// mounted only inside that window, so an idle window pays nothing. Renders an empty, zero-size box.
+    /// <para>TWO SOURCES. Under the Async host, sampling <c>AbsoluteRect</c> reads the PREVIOUS frame's layout, so the photo would
+    /// trail the card. A pane, rail or nav-style toggle, and a change of the band's row 2 (<see cref="Ui.PresentedSubRow"/>, which
+    /// eases the band's height under a navigation), run a known tween (the card's FLIP: <see cref="PaneMs"/> /
+    /// <see cref="PaneEase"/>), so a settle ARMED by a live toggle plays that tween analytically
+    /// (<see cref="ArtistBleed.PoseAt"/>) and the photo follows the card in the same frame. Everything else (a window resize, the
+    /// sidebar drag peek, the rail drag commit, a snap) has no known curve and samples the real pose per tick. Every run lands on
+    /// the sample.</para>
+    /// <para>THE ARM is recorded in Render, not in an effect: the toggle's own commit re-renders this tracker (it reads the
+    /// toggles) BEFORE the layout pass that bumps <see cref="Ui.CardSettle"/> and re-renders it again, so the arm is always
+    /// recorded first. It reads the LIVE nav style, not <c>PresentedNavStyle</c>: the card's nav-style FLIP runs in the NavStyle
+    /// commit, while PresentedNavStyle flips <c>HoistSettleMs</c> later. A settle consumes the arm.</para></summary>
+    sealed class CardPoseTracker : Component
+    {
+        readonly Signal<bool> _running = new(false);
+        readonly Action _tick;
+        readonly Action _stop;
+        bool _seen;
+        SidebarPaneMode _mode;
+        bool _railOpen;
+        ShellNavStyle _navStyle;
+        ZuneSubRow _subRow;
+        SidebarWindowBand _band;
+        long _bandT;               // when the window band last crossed (0: never)
+        long _armT;               // when a live toggle last changed (0: none, or consumed by a settle)
+        int _lastSettle;
+        bool _tween;               // the current run plays the analytic pose
+        RectF _from, _to;
+        long _t0;
+
+        public CardPoseTracker()
+        {
+            _tick = Tick;
+            _stop = () => { SampleCardPose(); _running.Value = false; };
+        }
+
+        void Tick()
+        {
+            // The analytic pose keeps running through a scroll: the engine snaps only the nodes whose rect changes in a suppressed
+            // commit, so the card keeps easing and the settle path (a rect that does not continue the tween) ends the run.
+            if (_tween) Ui.CardPose.SetIfChanged(TweenPose());
+            else SampleCardPose();
+        }
+
+        RectF TweenPose() => ArtistBleed.PoseAt(_from, _to, Design.FrameTime.NowMs - _t0, PaneMs, ArtistBleed.PaneEase);
+
+        public override Element Render()
+        {
+            int settle = Ui.CardSettle.Value;       // layout-change rate, never per frame
+            // The live toggles, all navigation rate. The first render only takes the snapshot (a toggle that predates the tracker
+            // armed nothing).
+            var mode = Sidebar.Mode.Value;
+            bool railOpen = Ui.RailOpen.Value;
+            var navStyle = Sidebar.NavStyle.Value;
+            var subRow = Ui.PresentedSubRow.Value;
+            var band = Sidebar.Band.Value;
+            long now = Design.FrameTime.NowMs;
+            // A window-band cross (a resize) also flips the mode, and the resize cancels the card's FLIP; the mode can trail the band
+            // by a render, so the cross shadows arming for the arm window. A drag (or the chrome-edge latch) holds the layout
+            // suppression, so the card snaps 1:1 and the sample is right. Neither is a toggle.
+            if (_seen && band != _band) _bandT = now;
+            bool toggled = _seen && (mode != _mode || railOpen != _railOpen || navStyle != _navStyle || subRow != _subRow);
+            if (toggled && ArtistBleed.ArmsPose(FgMotion.LayoutTransitionsSuppressed, _bandT > 0 && now - _bandT <= ArtistBleed.ToggleArmWindowMs))
+                _armT = now;
+            (_seen, _mode, _railOpen, _navStyle, _subRow, _band) = (true, mode, railOpen, navStyle, subRow, band);
+            if (settle != _lastSettle)
+            {
+                _lastSettle = settle;
+                var rect = Ui.CardRect.Peek();
+                bool armed = !Design.Reduced && ArtistBleed.TweensPose(_armT > 0, now - _armT);
+                _armT = 0;                          // consumed: a later settle (a resize) samples
+                if (armed)
+                {
+                    _tween = true;
+                    _from = Ui.CardPose.Peek();
+                    _to = rect;
+                    _t0 = now;
+                }
+                // The nav-style FLIP's height relayout re-arranges the card (H only) on every frame of the tween, one settle each:
+                // those keep the running tween and only move its target height.
+                else if (_tween && now - _t0 < PaneMs && ArtistBleed.ContinuesTween(_to, rect)) _to = rect;
+                else _tween = false;
+            }
+            bool running = _running.Value;
+            // The ticker mounts on the render AFTER this effect (the run's first pose is the one the settle sampled).
+            UseEffect(() =>
+            {
+                if (settle <= 0) return;
+                _running.Value = true;
+            }, DepKey.From(settle));
+            UseTimeout(_stop, PaneMs + 120f, DepKey.From(settle));
+            return new BoxEl
+            {
+                Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_tick))] : [],
+            };
+        }
+    }
+
+    /// <summary>EXPERIMENTAL (artist bleed): follows "a backdrop is published" into <see cref="Ui.BleedPresence"/> on the card photo's
+    /// clock (<c>ArtistBleed.EntranceMs</c>, SmoothOut, started on the frame the backdrop's <c>EntranceAtMs</c> names; a snap under
+    /// reduced motion), then settles in two legs on the same ticker: <see cref="Ui.BleedUnderlay"/> (the shell's under-card layers in
+    /// under the card's opaque photo), then <see cref="Ui.BleedHandover"/> (the page's own photo and veil easing out over the shell's
+    /// identical ones), each over <c>ArtistBleed.LegMs</c>. Neither leg is a step. The fade-out runs over <c>Design.Motion.Standard</c>
+    /// with the underlay following the presence down. It retains the last backdrop in <see cref="Ui.BleedBackdrop"/> until the
+    /// fade-out ends so the card ground keeps its geometry meanwhile. The per-frame ticker is mounted only while the tween runs.
+    /// While the publishing page's own entrance clock runs (<see cref="ShellBackdrop.Entrance"/>, under the bleed) the presenter has no
+    /// clock: it FOLLOWS that clock (<see cref="Follow"/>), so the page's content, its photo field and these layers read one signal
+    /// and never drift apart; a finished clock (reduced motion) lands at once, and every other publish steps the presenter's own clock.
+    /// Renders an empty, zero-size box.</summary>
+    sealed class BleedPresenter : Component
+    {
+        readonly Signal<bool> _running = new(false);
+        readonly Action _step;
+        float _from, _target, _underFrom;
+        long _t0;
+        string? _lastKey;
+        /// <summary>The page clock this presenter follows while the entrance runs (null otherwise), and the flag that mounts its follower.</summary>
+        ShellEntranceClock? _follow;
+        readonly Signal<bool> _following = new(false);
+
+        public BleedPresenter() => _step = Step;
+
+        public override Element Render()
+        {
+            var backdrop = MaterialState.Value.Backdrop;   // navigation rate
+            float target = backdrop is null ? 0f : 1f;
+            bool running = _running.Value;
+            var follow = _following.Value ? _follow : null;
+            UseEffect(() =>
+            {
+                if (backdrop is not null && !ReferenceEquals(Ui.BleedBackdrop.Peek(), backdrop))
+                {
+                    if (Ui.BleedBackdrop.Peek() is null) SampleCardPose();   // the pose was parked at the final rect; start from the presented one
+                    Ui.BleedBackdrop.Value = backdrop;
+                }
+                // A different artist published while the bleed is already fully present restarts the hand-over (the new page's own
+                // photo draws again until the shell's new one is in), without touching the presence.
+                bool republished = backdrop is not null && !string.Equals(_lastKey, backdrop.Key, StringComparison.Ordinal);
+                _lastKey = backdrop?.Key;
+                if (target == _target && !republished) return;
+                _from = Ui.BleedPresence.Peek();
+                _target = target;
+                long now = Design.FrameTime.NowMs;
+                _underFrom = Ui.BleedUnderlay.Peek();
+                // The entrance starts on the frame the page's photo started (the publish lands an effect after it); a republish while
+                // the shell is fully present, and the fade-out, start now.
+                _t0 = target == 1f && _from < ArtistBleed.FullPresence && backdrop is not null
+                    ? ArtistBleed.EntranceStart(now, backdrop.EntranceAtMs) : now;
+                Ui.BleedHandover.Value = 0f;
+                // The page's entrance clock is running: follow it (it already holds this frame's value), with no ticker of our own.
+                if (target == 1f && _from < ArtistBleed.FullPresence && backdrop?.Entrance is { Running: true } clock)
+                {
+                    _running.Value = false;
+                    _follow = clock;
+                    _following.Value = true;
+                    Follow(clock, clock.Elapsed.Peek());
+                    return;
+                }
+                _follow = null;
+                _following.Value = false;
+                if (Design.Reduced) Land();
+                else { _running.Value = true; Step(); }   // seed this frame, so the shell is where the card's photo is
+            }, DepKey.From(HashCode.Combine(target, backdrop)));
+            return new BoxEl
+            {
+                Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
+                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_step))]
+                    : follow is not null ? [Embed.Comp(() => new ClockFollower(this, follow)) with { Key = "bleed-follow:" + follow.GetHashCode() }]
+                    : [],
+            };
+        }
+
+        /// <summary>The entrance FOLLOWING the page's clock at <paramref name="e"/> ms: the same three curves <see cref="Step"/> reads off its own
+        /// clock, so the shell's presence, underlay and hand-over are the page content's and the card photo's factors, frame for frame.
+        /// A stale follower (another page's clock, or the presenter already moved on) is ignored.</summary>
+        void Follow(ShellEntranceClock clock, float e)
+        {
+            if (!ReferenceEquals(_follow, clock) || _target != 1f) return;
+            Ui.BleedPresence.Value = _from + (1f - _from) * ArtistBleed.EntranceAt(e);
+            Ui.BleedUnderlay.Value = MathF.Max(_underFrom, ArtistBleed.UnderlayAt(e));
+            Ui.BleedHandover.Value = ArtistBleed.HandoverAt(e);
+            if (e >= ArtistBleed.SettleMs) Land();
+        }
+
+        /// <summary>Subscribes to the page clock and forwards each step to <see cref="Follow"/>. Mounted only while the presenter follows;
+        /// its zero-size box is the whole tree.</summary>
+        sealed class ClockFollower(BleedPresenter owner, ShellEntranceClock clock) : Component
+        {
+            public override Element Render()
+            {
+                UseSignalEffect(() => owner.Follow(clock, clock.Elapsed.Value));
+                return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
+            }
+        }
+
+        void Step()
+        {
+            float elapsed = Design.FrameTime.NowMs - _t0;
+            if (_target == 0f)
+            {
+                float t = Math.Clamp(elapsed / Design.Motion.Standard, 0f, 1f);
+                float presence = _from * (1f - Easings.Ease(Easing.FluentStandard, t));
+                Ui.BleedPresence.Value = presence;
+                Ui.BleedUnderlay.Value = ArtistBleed.ExitUnderlay(_underFrom, presence);
+                if (t >= 1f) Land();
+                return;
+            }
+            // Entrance, then leg 1 (the underlay), then leg 2 (the hand-over); a republish while present holds the underlay.
+            Ui.BleedPresence.Value = _from + (1f - _from) * ArtistBleed.EntranceAt(elapsed);
+            Ui.BleedUnderlay.Value = MathF.Max(_underFrom, ArtistBleed.UnderlayAt(elapsed));
+            Ui.BleedHandover.Value = ArtistBleed.HandoverAt(elapsed);
+            if (elapsed >= ArtistBleed.SettleMs) Land();
+        }
+
+        void Land()
+        {
+            Ui.BleedPresence.Value = _target;
+            Ui.BleedUnderlay.Value = _target;
+            Ui.BleedHandover.Value = _target;
+            if (_target == 0f) Ui.BleedBackdrop.Value = null;
+            _running.Value = false;
+            _follow = null;
+            _following.Value = false;
+        }
+    }
 
     static uint PackArgb(ColorF c)
     {
@@ -731,7 +1294,8 @@ public static partial class Shell
     {
         Sidebar.SidebarMenus.Overlay = overlay;
         return new ContextMenuModel(Sidebar.SidebarMenus.Map(SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(),
-            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames())));
+            Sidebar.Editing.Peek(), Sidebar.SidebarMenus.LockingNames(), Sidebar.ClassicCovers.Peek(),
+            zune: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune, zunePins: Sidebar.ZunePins.Peek())));
     }
 
     /// <summary>The rail seam's guide: the splitter's 2-DIP thumb, bound to the drag so it shows while the pointer is down
@@ -835,13 +1399,25 @@ public static partial class Shell
         float rendered = s_scene is { } scene && !s_sidebarColumn.IsNull && scene.IsLive(s_sidebarColumn)
             ? scene.AbsoluteRect(s_sidebarColumn).W : Sidebar.PresentedWidth.Peek();
         return new SidebarPaneFrameSnapshot(Sidebar.Layout.Peek(), Sidebar.Mode.Peek(), Sidebar.Band.Peek(),
-            Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered);
+            Sidebar.UserCollapsed.Peek(), Sidebar.OverlayOpen.Peek(), Sidebar.Width.Peek(), Sidebar.PresentedWidth.Peek(), rendered,
+            PaneHidden: Sidebar.NavStyle.Peek() == ShellNavStyle.Zune);
     }
 
     static void PublishScrimClip()
     {
         if (s_scene is not { } scene || s_contentRegion.IsNull || !scene.IsLive(s_contentRegion)) return;
         RectF r = scene.AbsoluteRect(s_contentRegion);
+        // The region's page column holds the Zune band, and chrome stays lit: the scrim starts at the card stack's (laid-out) top.
+        // The clip is ONE rect, so under Zune the inline rail (a full-height column whose header level with the band is chrome too)
+        // is left out of it whole: the rail stays lit instead of dimming from the band's bottom edge, which would cut across it.
+        // The region is not animated, so its presented rect and the card's laid-out top share one coordinate space.
+        float top = MathF.Max(r.Y, Ui.CardRect.Peek().Y);
+        if (top > r.Y && top < r.Y + r.H) r = new RectF(r.X, top, r.W, r.H - (top - r.Y));
+        if (Sidebar.NavStyle.Peek() == ShellNavStyle.Zune)
+        {
+            float rail = FrameRules.RailReservedWidth(Ui.RailOpen.Peek(), Ui.RailFits.Peek(), Ui.RailWidth.Peek());
+            if (rail > 0f && rail < r.W) r = new RectF(r.X, r.Y, r.W - rail, r.H);
+        }
         scene.SpotlightScrimClip = r.IsEmpty ? null : r;
     }
 
@@ -879,6 +1455,73 @@ public static partial class Shell
             UseTransition(AnimChannel.Opacity, _mounted ? 1f - target : target, target, ms, Easing.Linear, DepKey.From(dim));
             _mounted = true;
             return new BoxEl { Grow = 1f, Fill = Tok.FillSmoke, Opacity = target, HitTestVisible = dim };
+        }
+    }
+
+    // ══ 2b. THE NAV-STYLE PRESENTER ═══════════════════════════════════════════════════════════════════════════════════
+    //
+    // A nav-style switch is TWO commits by construction. Commit 1 (Sidebar.NavStyle) moves only the frame: the pane, the
+    // Zune band and the gutter, and the content card FLIPs once. Commit 2, FrameRules.HoistSettleMs later
+    // (Ui.PresentedNavStyle), changes only what is INSIDE the card: the page heads' heights (which Reflow) and the Zune
+    // band's row-2 words. The card's rect does not change there, so the engine's descendant suppression (the card is a
+    // suppression root whenever its rect changes) cannot snap the heads' Reflow.
+
+    /// <summary>Follows <see cref="Sidebar.NavStyle"/> into <see cref="Ui.PresentedNavStyle"/> once the frame has settled. The
+    /// only writer besides the boot seed. Renders an empty, zero-size box; a double switch re-arms the timer, so only the
+    /// last style presents.</summary>
+    sealed class NavStylePresenter : Component
+    {
+        readonly Action _present = static () => Ui.PresentedNavStyle.SetIfChanged(Sidebar.NavStyle.Peek());
+
+        public override Element Render()
+        {
+            var s = Sidebar.NavStyle.Value;
+            // The frame-clock idiom (Album.Page.cs, Artist.UI.cs): UseTimeout arms from mount and re-arms when its deps
+            // change. The mount-time fire is a no-op because the value is already seeded.
+            UseTimeout(_present, FrameRules.HoistSettleMs, DepKey.From((int)s));
+            return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+        }
+    }
+
+    /// <summary>Follows the page swap (and the nav style) into <see cref="Ui.PresentedRoute"/> and <see cref="Ui.PresentedSubRow"/>,
+    /// the route row 2 is built for and its kind. On a navigation it waits for <see cref="Shown"/> to LAND on the new route (the
+    /// old page's exit leg), so row 2's height and content change WITH the page swap and the masthead's crumb head, never ahead of
+    /// it; a same-page facet switch presents at once (<see cref="ZuneNavRules.PresentsNow"/>). On a style change it writes at once.
+    /// The boot value is seeded by <c>FrameRoot</c>. Renders an empty, zero-size box.</summary>
+    sealed class SubRowPresenter : Component
+    {
+        public override Element Render()
+        {
+            // A signal write belongs in an effect, never in a render. A style change presents the current route at once.
+            UseSignalEffect(() =>
+            {
+                _ = Sidebar.NavStyle.Value;
+                var now = Current.Peek();
+                Present(in now);
+            });
+            // A navigation presents when its page lands: Shown moves after the exit leg, Current at the commit. The rule is
+            // re-read against the LAST route, so a second navigation before the first lands presents the last one.
+            UseSignalEffect(() =>
+            {
+                var shown = Shown.Value;
+                var current = Current.Value;
+                var presented = Ui.PresentedRoute.Peek();
+                if (!ZuneNavRules.PresentsNow(in shown, in current, in presented)) return;
+                Present(in current);
+            });
+            return new BoxEl { Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false };
+        }
+
+        /// <summary>Both writes in ONE runtime batch, so row 2's content and its height never land in separate commits.</summary>
+        void Present(in Route route)
+        {
+            var r = route;
+            void Write()
+            {
+                Ui.PresentedRoute.SetIfChanged(r);
+                Ui.PresentedSubRow.SetIfChanged(ZuneNavRules.SubRowOf(in r));
+            }
+            if (Context.Runtime is { } rt) rt.Batch(Write); else Write();
         }
     }
 
@@ -971,6 +1614,12 @@ public static partial class Shell
         // time the facet pivot is clicked).
         if (oldToken is Route prevHome && prevHome.Kind == RouteKind.Home && next.Kind == RouteKind.Home && prevHome.Tab == next.Tab)
             return null;
+        // Facet→facet of one artist's discography or one user's list, same tab: SlotKey and PageKey both ignore the facet, so
+        // this is the SAME mounted page re-binding in place (the views pill slides, the body re-skeletons). A page
+        // entrance here would replay the whole page for a pill click.
+        if (oldToken is Route prevFacet && FrameRules.IsFacetPage(next.Kind) && prevFacet.Kind == next.Kind && prevFacet.Tab == next.Tab
+            && string.Equals(FrameRules.PageKeyOf(prevFacet), FrameRules.PageKeyOf(next), StringComparison.Ordinal))
+            return null;
         var motion = Motion.Peek();
         bool videoSafe = oldToken is Route prev ? NeedsVideoSafe(prev, next) : next.Kind == RouteKind.Module;
         if (videoSafe) return RecipeForVideoSafe(motion);
@@ -983,7 +1632,7 @@ public static partial class Shell
         switch (FrameRules.BodyFor(route, factory is not null, Platform.Settings.Get(Platform.Keys.DeveloperMode)))
         {
             case FrameRules.BodyKind.Page:
-                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + NameOf(route), factory!(route)));
+                return Ctx.Provide(PageScrollScope, ScrollScopeOf(route.Tab), PageBox("page:" + FrameRules.PageKeyOf(route), factory!(route)));
             case FrameRules.BodyKind.Empty:
                 return PageBox("page-empty:" + NameOf(route), null);
             default:
@@ -998,22 +1647,24 @@ public static partial class Shell
     };
 
     /// <summary>Nothing claims the route (a retired key, a stale restored tab, a developer route with developer mode off).
-    /// NOT "coming soon": say so, keep the destination's own glyph, give the one action that always works.</summary>
+    /// NOT "coming soon": say so under the shared page head (Title, 120) and give the one action that always works.</summary>
     static Element NotFoundPage(in Route route)
     {
-        var (_, glyph) = Dest(route);
         string key = NameOf(route) + "|" + (ArgOf(route) ?? "");
         if (s_warnedUnknown.Add(key)) Log.Warn("nav", "route.unknown: " + key);   // once per key per process
+        float g = Ui.PageGutter.Value;
         return new BoxEl
         {
             Key = "page-notfound:" + key,
-            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Gap = Spacing.M,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+            Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
             Children =
             [
-                Icon(glyph, 40f, Tok.TextTertiary),
-                Design.Type.PageHero(Loc.Get(Strings.Nav.PageNotFound)),
-                Button.Standard(Loc.Get(Strings.Nav.GoHome), static () => GoTo(new Route(RouteKind.Home))),
+                PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Nav.PageNotFound)) { Gutter = g, Key = "notfound:head" }),
+                new BoxEl
+                {
+                    Direction = 1, Padding = new Edges4(g, 0f, g, 0f), AlignItems = FlexAlign.Start,
+                    Children = [Button.Standard(Loc.Get(Strings.Nav.GoHome), static () => GoTo(new Route(RouteKind.Home)))],
+                },
             ],
         };
     }
@@ -1044,7 +1695,29 @@ public static partial class Shell
 
     /// <summary>The island-button footprint: 40×44, the bar's own nav metric (a 32-DIP button would leave strips that are
     /// neither draggable nor clickable). A property: the default style captures theme brushes.</summary>
-    static IconButton.Style ChromeButtonStyle => IconButton.DefaultStyle with { Size = 40f, Height = 44f };
+    static IconButton.Style ChromeButtonStyle => Ui.ChromeArmsOnMedia.Value
+        // CHROME INK (artist bleed): the rest glyph is the bound ink (ChromeGlyphParts); the static hover and pressed arms go light
+        // while the mix is past one half. A once-per-crossing read, folded into ChromeContentVersion so the bar's memo follows it.
+        ? IconButton.DefaultStyle with
+        {
+            Size = 40f, Height = 44f,
+            HoverFill = Design.OnMedia.GlassHover, PressedFill = Design.OnMedia.GlassPressed,
+            HoverForeground = Design.OnMedia.Ink, PressedForeground = Design.OnMedia.InkSecondary,
+        }
+        : IconButton.DefaultStyle with { Size = 40f, Height = 44f };
+
+    /// <summary>The chrome buttons' rest glyph ink: ALWAYS a paint-rate bind of <see cref="Ui.ChromeInkPrimary"/> (the style's own rest
+    /// colour, so a mix of 0 is exactly today's). Always bound, never static-then-bound: a bind is wired only at mount, so a glyph
+    /// mounted static kept the theme ink when the bleed published. One instance: the modifier is static, and re-runs wherever the
+    /// button is built.</summary>
+    static readonly TemplateParts ChromeGlyphParts = MakeChromeGlyphParts();
+
+    static TemplateParts MakeChromeGlyphParts()
+    {
+        var p = new TemplateParts();
+        p.Set<TextEl>(IconButton.PartGlyph, static g => g with { Color = Prop.Of(Ui.ChromeInkPrimary) });   // ink: see Ui.ChromeInkMix
+        return p;
+    }
 
     /// <summary>2 DIP either side — what the bar gives its own pane toggle.</summary>
     static readonly Edges4 ChromeButtonMargin = new(2f, 0f, 2f, 0f);
@@ -1053,6 +1726,15 @@ public static partial class Shell
     static readonly Signal<float> s_tabExtent = new(Layout.ChromeTabMinW);
 
     static TabStrip? s_strip;
+
+    /// <summary>The mounted title bar, so <see cref="ChromeContentVersion"/> can set its public <c>ShowPaneToggle</c> before the
+    /// bar reads it.</summary>
+    static TitleBar? s_titleBar;
+
+    /// <summary>The chrome islands' fade: the wordmark, the tab strip and the compact search cross-fade in place. The chrome
+    /// row is a SIBLING of the content card, not a descendant, so the card's descendant suppression never touches these.</summary>
+    static readonly MotionTokenDef s_chromeFade =
+        MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
     /// <summary>The title bar's pane toggle reads this for its enabled state (see <see cref="PaneToggleTip"/>). A plain
     /// signal mirrored by the frame component, so the bar's live binding needs no runtime at construction.</summary>
@@ -1071,38 +1753,55 @@ public static partial class Shell
         var bar = new TitleBar
         {
             IconGlyph = "", ShowBackButton = false, ShowCaptionButtons = true,
-            ShowPaneToggle = true, OnPaneToggle = Sidebar.TogglePane,
+            ShowPaneToggle = Sidebar.NavStyle.Peek() != ShellNavStyle.Zune, OnPaneToggle = Sidebar.TogglePane,
             PaneToggleEnabledSignal = s_paneToggleEnabled, PaneToggleToolTip = PaneToggleTip,
             ShowRailBaseline = false,          // the seam below is the content region's own stroke
+            CaptionInk = Ui.ChromeInkPrimary,  // ink: see Ui.ChromeInkMix (the caption glyphs ride the same mix)
             Tabs = TabsIsland, TabsVersion = TitleBarTabsVersion,
             TabsElasticLane = true,            // tabs absorb the overrun; the omnibar keeps its allocation
             Trailing = TrailingIsland, CaptionLeading = CaptionLeadingIsland,
             ContentVersion = ChromeContentVersion,
         };
         bar.CenterContent = _ => CenterIsland(bar.CenterAvail);
+        s_titleBar = bar;
         return bar;
     });
 
     static int ChromeContentVersion()
     {
         var l = ChromeLayout.Value;
+        // Zune presents no pane, so its toggle is ABSENT (no button, no client region), not disabled. TitleBar.Render calls this
+        // before it reads ShowPaneToggle for its memo key and its region deps, so setting the field HERE lands in the same
+        // render that re-pushes the drag regions (no ordering dependency on a signal effect), and bit 128 below makes the
+        // bar re-render and re-push when the style flips. The flip adds or removes a root child of the bar: the engine keys every
+        // root slot (tb-back, tb-pane, tb-tabs, ...) and PushRegions skips dead handles (G2), so the client regions follow their
+        // nodes and the title-bar buttons keep working after a nav-style switch.
+        bool zune = Sidebar.NavStyle.Value == ShellNavStyle.Zune;
+        if (s_titleBar is { } bar) bar.ShowPaneToggle = !zune;
         int flags = (l.ShowName ? 1 : 0) | (l.ShowActions ? 2 : 0) | (l.ShowForward ? 4 : 0)
                   | (l.SearchMode == MergedSearchMode.Icon ? 8 : 0) | (l.ShowBack ? 16 : 0)
-                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0);
+                  | (l.ShowNewTab ? 32 : 0) | (l.ShowTrailing ? 64 : 0) | (zune ? 128 : 0)
+                  | (Ui.ChromeArmsOnMedia.Value ? 512 : 0); // the static hover/pressed arms (ChromeButtonStyle); the rest ink is always bound, so no flag
         var r = Current.Value;
         // The route and the pin store's version: the trailing Pin/Unpin follows a navigation and a pin change.
         // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
         // the allocator effect publishes the new Chip after Auth flips, so the bar can render once with the stale chip
         // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
+        // s_searchSettle: the pill's width eases on focus, and the regions must be pushed once it has SETTLED (F5).
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
-            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, (int)l.Chip);
+            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, HashCode.Combine((int)l.Chip, s_searchSettle.Value));
     }
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the
     // exit leg after the commit), not only when the workspace or the selection changes.
-    static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value);
+    // The nav style and the tab count ride along: the lane swaps the strip for the wordmark at one tab under Zune, and a
+    // hidden pane toggle shifts the lane, so the bar must re-render and re-push its regions on either.
+    static int TitleBarTabsVersion() => HashCode.Combine(TabsVersion.Value, SelectedTab.Value, Shown.Value,
+        (int)Sidebar.NavStyle.Value, Tabs.Count);
 
-    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value);
+    // The arms flag rides along: the labels' part modifier (ChromeTabParts) reads it while the strip renders (the rest ink is always bound).
+    static int TabStripItemsVersion() => HashCode.Combine(TabsVersion.Value, ChromeLayout.Value.ShowNewTab, Shown.Value,
+        Ui.ChromeArmsOnMedia.Value ? 2 : 0);
 
     /// <summary>The tabs island takes a RESERVED, quantised width (issue #88): hugging the strip shoved the centred search
     /// by half of every title swing.</summary>
@@ -1119,13 +1818,50 @@ public static partial class Shell
             kids.Add(Embed.Comp(static () => new NavHistoryButton(forward: true)) with { Key = "chrome-forward" });
         }
         if (s_strip is { } strip) strip.IsAddTabButtonVisible = l.ShowNewTab;
-        kids.Add(Embed.Comp(BuildTabStrip) with { Key = "chrome-tab-strip" });
+        // One tab under Zune: the wordmark stands in for the strip. The lane keeps its key, its width and TabLaneMotion, so the
+        // 1 to 2+ swap is a cross-fade of the two arms inside a lane whose width change (if any) slides; the exiting arm leaves
+        // layout as an orphan layer, so the entering one is never pushed aside.
+        if (FrameRules.ShowsWordmark(Sidebar.NavStyle.Value, Tabs.Count))
+            kids.Add(Design.Type.Wordmark(Loc.Get(Strings.Shell.Wordmark)) with
+            {
+                // ink: see Ui.ChromeInkMix
+                Key = "chrome-wordmark", Color = Ui.ChromePrimary, Margin = new Edges4(Spacing.S, 0f, 0f, 0f),
+                Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_chromeFade,
+            });
+        else
+            kids.Add(Embed.Comp(BuildTabStrip) with
+            {
+                Key = "chrome-tab-strip", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = s_chromeFade,
+            });
         return new BoxEl
         {
             Key = "chrome-tabs-lane", Animate = TabLaneMotion,
             Direction = 0, AlignItems = FlexAlign.Center, Height = TitleBar.ExpandedHeight,
             Width = l.TabIslandWidth, Shrink = 0f, ClipToBounds = true, Children = kids.ToArray(),
         };
+    }
+
+    /// <summary>The tab labels' ink: the rest colour is ALWAYS a paint-rate bind (selected = primary, the others secondary; a mix of 0
+    /// is the theme's ink) and the static hover and pressed arms go light once the mix is past one half (a navigation-rate read of
+    /// the tab strip's own render). The selected label is the one with weight; the text-first strip gives only it any.</summary>
+    static readonly TemplateParts ChromeTabParts = MakeChromeTabParts();
+
+    static TemplateParts MakeChromeTabParts()
+    {
+        var p = new TemplateParts();
+        p.Set<TextEl>(TabStrip.PartTabLabel, static t =>
+        {
+            bool selected = t.Weight > 0;   // the TabStrip's weight rule: only the selected label carries any (TabStrip.cs, Text appearance)
+            bool arms = Ui.ChromeArmsOnMedia.Value;
+            // ink: see Ui.ChromeInkMix
+            return t with
+            {
+                Color = Prop.Of(selected ? Ui.ChromeInkPrimary : Ui.ChromeInkSecondary),
+                HoverColor = arms && t.HoverColor.A > 0f ? Design.OnMedia.Ink : t.HoverColor,
+                PressedColor = arms && t.PressedColor.A > 0f ? (selected ? Design.OnMedia.Ink : Design.OnMedia.InkTertiary) : t.PressedColor,
+            };
+        });
+        return p;
     }
 
     static TabStrip BuildTabStrip()
@@ -1145,6 +1881,7 @@ public static partial class Shell
             MaxTabWidth = Layout.ChromeTabMaxW,
             ItemsSource = BuildTabItems,
             ItemsVersion = TabStripItemsVersion,
+            Parts = ChromeTabParts,
             // CONTRACT: the strip WRITES this cell before raising OnSelectionChanged, so it is never evidence of a change —
             // ActivateTab asks the workspace, and the host re-asserts the cell from the model afterwards.
             SelectedIndex = SelectedTab,
@@ -1268,20 +2005,16 @@ public static partial class Shell
     static void UnpinDestination(string pinId) => Sidebar.UnpinRecorded(pinId, Sidebar.SidebarMenus.PinName(pinId));
 
     static Element ChromeButton(string glyph, Action onClick, string tooltip, string key)
-        => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
+        => ToolTip.Wrap(IconButton.Create(glyph, onClick, ChromeButtonStyle, parts: ChromeGlyphParts) with { Key = key, Margin = ChromeButtonMargin }, tooltip);
 
     static Element CaptionLeadingIsland()
     {
+        // No theme toggle here any more: the profile menu's Theme row (Actions.ProfileRules.Rows) carries it in every nav style.
         var l = ChromeLayout.Value;
-        bool dark = Theme.Dark;
-        var theme = ToolTip.Wrap(
-            IconButton.Create(dark ? Icons.Sun : Icons.Moon, static () => ToggleTheme(s_requestTheme), ChromeButtonStyle)
-                with { Key = "chrome-theme-toggle", Margin = ChromeButtonMargin },
-            Loc.Get(dark ? Strings.Shell.LightTheme : Strings.Shell.DarkTheme));
         return new BoxEl
         {
             Direction = 0, Height = TitleBar.ExpandedHeight, Shrink = 0f, AlignItems = FlexAlign.Center,
-            Children = l.SearchMode == MergedSearchMode.Icon ? [theme, SearchFlyoutButton()] : [theme],
+            Children = l.SearchMode == MergedSearchMode.Icon ? [SearchFlyoutButton()] : [],
         };
     }
 
@@ -1289,7 +2022,10 @@ public static partial class Shell
     {
         var l = ChromeLayout.Value;
         if (!l.ShowTrailing) return new BoxEl { Width = 0f, Height = 0f, HitTestVisible = false };
-        var kids = new List<Element>(5) { AuthChip(l.Chip) };
+        var kids = new List<Element>(6);
+        // Zune: the compact search sits right-aligned just before the identity chip (the centre column is empty there).
+        if (Sidebar.NavStyle.Value == ShellNavStyle.Zune && l.SearchMode == MergedSearchMode.Field) kids.Add(ZuneSearchHost());
+        kids.Add(AuthChip(l.Chip));
         // The ONE "actions in row" stage: bell, friends and pin enter together. Below it they fold into the profile menu
         // (pin simply drops — the tab menu still offers it).
         if (l.ActionsInRow)
@@ -1317,7 +2053,8 @@ public static partial class Shell
         FrameRules.ChipForm.Connecting => new BoxEl
         {
             Key = "chrome-connecting", Height = 32f, AlignItems = FlexAlign.Center, Padding = new Edges4(8f, 0f, 8f, 0f),
-            Children = [Caption(Loc.Get(Strings.Shell.Connecting)).Secondary()],
+            // ink: see Ui.ChromeInkMix
+            Children = [Caption(Loc.Get(Strings.Shell.Connecting)) with { Color = Prop.Of(Ui.ChromeInkSecondary) }],
         },
         // Offline = a credential is on disk but the resume failed: the verb is "try again", not "sign in".
         var form => Button.Accent(Loc.Get(form == FrameRules.ChipForm.Reconnect ? Strings.Shell.Reconnect : Strings.Shell.SignIn),
@@ -1374,7 +2111,7 @@ public static partial class Shell
             }
 
             return IconButton.Create(forward ? Icons.Forward : Icons.Back, forward ? GoForward : (Action)GoBack,
-                    ChromeButtonStyle, isEnabled: canDo)
+                    ChromeButtonStyle, isEnabled: canDo, parts: ChromeGlyphParts)
                 with { Margin = ChromeButtonMargin, OnRealized = h => anchor.Value = h, OnContextRequested = OpenHistory };
         }
     }
@@ -1393,7 +2130,7 @@ public static partial class Shell
             void Toggle() => OpenNotificationPanel(overlay, () => anchor.Value, handle);
 
             var style = ChromeButtonStyle;
-            var button = IconButton.Create(Icons.Bell, Toggle, style) with { OnRealized = h => anchor.Value = h };
+            var button = IconButton.Create(Icons.Bell, Toggle, style, parts: ChromeGlyphParts) with { OnRealized = h => anchor.Value = h };
             float w = style.Size, hgt = style.Height ?? style.Size;
             BoxEl content = unread <= 0 ? button : new BoxEl
             {
@@ -1428,7 +2165,7 @@ public static partial class Shell
         public override Element Render()
         {
             var band = Sidebar.Band.Value;
-            bool overlay = SidebarPaneModeRules.HasOverlay(band);
+            bool overlay = SidebarPaneModeRules.HasOverlay(band) && Sidebar.NavStyle.Value != ShellNavStyle.Zune;
             bool pinned = SidebarPaneModeRules.OverlayPinned(band, Sidebar.Editing.Value);
             bool open = overlay && (Sidebar.OverlayOpen.Value || pinned);
             var hooks = UseContext(InputHooks.Current);
@@ -1687,33 +2424,26 @@ public static partial class Shell
         };
     }
 
+    /// <summary>The filter chips on the shared one-line rail (it scrolls with an edge fade if the flyout is too narrow).</summary>
     static Element FilterPills(NotifyFilter current) => new BoxEl
     {
-        Direction = 0, Gap = 6f, Padding = new Edges4(12f, 2f, 12f, 8f),
+        Padding = new Edges4(12f, 2f, 12f, 0f),
         Children =
         [
-            FilterPill(Strings.Notifications.Filter.All, NotifyFilter.All, current),
-            FilterPill(Strings.Notifications.Filter.Updates, NotifyFilter.Updates, current),
-            FilterPill(Strings.Notifications.Filter.Spotify, NotifyFilter.Spotify, current),
-            FilterPill(Strings.Notifications.Filter.New, NotifyFilter.New, current),
-            FilterPill(Strings.Notifications.Filter.Activity, NotifyFilter.Activity, current),
+            Controls.ChipRail(
+            [
+                FilterPill(Strings.Notifications.Filter.All, NotifyFilter.All, current),
+                FilterPill(Strings.Notifications.Filter.Updates, NotifyFilter.Updates, current),
+                FilterPill(Strings.Notifications.Filter.Spotify, NotifyFilter.Spotify, current),
+                FilterPill(Strings.Notifications.Filter.New, NotifyFilter.New, current),
+                FilterPill(Strings.Notifications.Filter.Activity, NotifyFilter.Activity, current),
+            ], "notify.filters"),
         ],
     };
 
+    /// <summary>The app's one filter chip (<see cref="Controls.Chip"/>); exclusive, so a click on the active one is a no-op.</summary>
     static Element FilterPill(string labelKey, NotifyFilter pill, NotifyFilter current)
-    {
-        bool on = pill == current;
-        return new BoxEl
-        {
-            Shrink = 0f, MinHeight = 26f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Padding = new Edges4(11f, 3f, 11f, 3f), Corners = CornerRadius4.All(13f),
-            Fill = on ? Tok.AccentDefault : Tok.FillSubtleSecondary,
-            HoverFill = on ? Tok.AccentSecondary : Design.Colors.RowHover,
-            Role = AutomationRole.Button, Cursor = CursorId.Hand, Focusable = true,
-            OnClick = () => Notify.Filter.Value = pill,
-            Children = [new TextEl(Loc.Get(labelKey)) { Size = 12f, Weight = 600, Color = on ? Tok.TextOnAccentPrimary : Tok.TextSecondary }],
-        };
-    }
+        => Controls.Chip(Loc.Get(labelKey), pill == current, true, () => Notify.Filter.Value = pill) with { Key = "notify-filter:" + (int)pill };
 
     static Element NotificationRow(Notification n, long now, Signal<string> expanded, string expandedId, IOverlayService? overlay) => n.Category switch
     {

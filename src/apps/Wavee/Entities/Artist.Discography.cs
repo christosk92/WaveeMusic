@@ -1632,18 +1632,25 @@ public readonly partial struct Artist
     // ══ 9. THE DISCOGRAPHY PAGE (UI, ch 08 W22; 0.2.9 DiscographyPage) ═══════════════════════════════════════════════
 
     // MOUNT POINT (WP-5.N contract §4) — RouteKind.Discography
-    /// <summary><c>disco:&lt;kind&gt;:&lt;artist&gt;</c>: a breadcrumb ("Artist › Albums"), the 28/36 page title, the facet
-    /// SelectorBar and the SAME grid + drawer. Deliberately NO cover palette (system accent) and NO shell tint — the two
-    /// visible 0.2.9 differences ch 08 W22 records (parity 88-89); the route row does not claim material.</summary>
+    /// <summary><c>disco:&lt;kind&gt;:&lt;artist&gt;</c>: the shared PageHead (CrumbTitleViews, 200, in every data state: a
+    /// breadcrumb "Artist › Albums", the facet title, the facet views bar) and the SAME grid + drawer. Deliberately NO cover
+    /// palette (system accent) and NO shell tint — the two visible 0.2.9 differences ch 08 W22 records (parity 88-89); the
+    /// route row does not claim material.
+    /// <para>The page is keyed by the ARTIST (<c>Shell.FrameRules.PageKeyOf</c>), not the facet: a facet click re-binds the
+    /// mounted page, so the views pill slides and only the grid below re-skeletons in place. <c>DiscoPageProps.Key</c> is the
+    /// whole route key, so each facet still restores its own scroll offset. The facet SWAP is therefore not a page transition
+    /// (<c>Shell.PageTransition</c>); the route stays the truth.</para></summary>
     public static Element DiscographyPage(in Shell.Route route)
     {
         string key = Shell.NameOf(route);
-        return Embed.Comp(new DiscoPageProps(route, key), static () => new DiscoPageHost()) with { Key = "disco-page:" + key };
+        return Embed.Comp(new DiscoPageProps(route, key), static () => new DiscoPageHost())
+               with { Key = "disco-page:" + Shell.FrameRules.PageKeyOf(route) };
     }
 
     sealed record DiscoPageProps(Shell.Route Route, string Key);
 
-    static readonly string[] s_facetLabelKeys = [Strings.Artist.Albums, Strings.Artist.SinglesEps, Strings.Artist.Compilations];
+    /// <summary>The facet words' keys: the Zune band's seed shares them, so the page's bar and the band cannot drift.</summary>
+    static readonly string[] s_facetLabelKeys = ZuneNavRules.DiscographyViewKeys;
 
     sealed class DiscoPageHost : Component
     {
@@ -1657,10 +1664,20 @@ public readonly partial struct Artist
         DiscoFacet _facet;
         Scope? _scope;
         EntityUri _subject;
+        /// <summary>The views bar's selection: ONE signal per page instance (the bar never re-mounts, the pill slides), synced
+        /// from the route's facet in a layout effect.</summary>
+        readonly Signal<int> _facetIndex = new(0);
+        readonly Action<int> _onView;
+        readonly Action _syncFacet, _publishViews;
+        IReadSignal<bool>? _active;
+        string _viewsName = "";
 
         public DiscoPageHost()
         {
             _demand = Demand;
+            _onView = OnView;
+            _syncFacet = SyncFacet;
+            _publishViews = PublishViews;
             _watchScroll = () =>
             {
                 float y = (float)_handle.Offset.Value;
@@ -1669,6 +1686,27 @@ public readonly partial struct Artist
                 _scrollStep = step;
                 _scroll.Value = y;
             };
+        }
+
+        /// <summary>A word chosen in the views bar: the ROUTE, not the control, is the truth. A change navigates and the layout
+        /// effect re-seeds <see cref="_facetIndex"/> from the new route (0.2.9 DiscographyPage.cs:120-125).</summary>
+        void OnView(int index)
+        {
+            var a = _artist;
+            if ((DiscoFacet)index != _facet && a.IsValid) Shell.GoTo(DiscoRoute.For(a, (DiscoFacet)index));
+        }
+
+        void SyncFacet() => _facetIndex.SetIfChanged((int)_facet);
+
+        /// <summary>Hands the three facet words to the Zune band under the route name (the facet is in it). ONLY the active
+        /// instance publishes, and the store bumps its version only when the labels or the signal change.</summary>
+        void PublishViews()
+        {
+            if (_active is { } a && !a.Peek()) return;
+            if (_viewsName.Length == 0) return;
+            var labels = new string[s_facetLabelKeys.Length];
+            for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(s_facetLabelKeys[i]);
+            PageHead.Publish(_viewsName, labels, _facetIndex, _onView);
         }
 
         void Demand()
@@ -1698,7 +1736,12 @@ public readonly partial struct Artist
             }
             _facet = facet;
             UseEffect(_demand, DepKey.From(_artist.Slot, (int)facet));
+            UseLayoutEffect(_syncFacet, DepKey.From((int)facet));
             UseSignalEffect(_watchScroll);
+            _viewsName = Shell.NameOf(p.Route);
+            _active = UseIsActive();
+            UseEffect(_publishViews, DepKey.From((int)facet, _viewsName.GetHashCode()));
+            UseActivation(onActivated: _publishViews);
             if (!parsed) return Controls.Vacancy(Controls.VacancyVoice.Error);
 
             var a = _artist;
@@ -1708,30 +1751,31 @@ public readonly partial struct Artist
             for (int i = 0; i < labels.Length; i++) labels[i] = Loc.Get(s_facetLabelKeys[i]);
             var goArtist = a.Uri;
 
-            Element head = new BoxEl
+            float g = Shell.Ui.PageGutter.Value;
+            // CrumbTitleViews (200) in every data state: a late artist name changes only the crumb text inside the reserved
+            // AboveLine box. The head carries its own gutter; the grid below carries the page gutter and the bottom reserve.
+            Element head = PageHead.Create(new PageHeadSpec(title)
             {
-                Direction = 1, Gap = Spacing.S, MinWidth = 0f,
-                Children =
-                [
-                    BreadcrumbBar.Create([name, title], i => { if (i == 0) Shell.GoTo(Shell.For(goArtist, name)); }),
-                    Design.Type.PageHero(title) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    // A FRESH signal per render: the ROUTE, not the control, is the truth; a change navigates and the next
-                    // route re-seeds it (0.2.9 DiscographyPage.cs:120-125).
-                    SelectorBar.Create(labels, new Signal<int>((int)facet),
-                        onChange: i => { if ((DiscoFacet)i != facet && a.IsValid) Shell.GoTo(DiscoRoute.For(a, (DiscoFacet)i)); }),
-                ],
-            };
+                Above = BreadcrumbBar.Create([name, title], i => { if (i == 0) Shell.GoTo(Shell.For(goArtist, name)); }),
+                Views = labels, ViewsSelected = _facetIndex, OnView = _onView,
+                ViewsInBand = PageHead.ViewsInBandFor(p.Route), Gutter = g, Key = "disco:head",
+            });
 
             var content = new BoxEl
             {
-                Direction = 1, Gap = Design.Size.SectionGap,
-                Padding = new Edges4(Spacing.PageWide, Spacing.XXL, Spacing.PageWide, Design.Dock.Reserve + Spacing.PageWide),
+                Direction = 1, Gap = 0f,
                 Children =
                 [
                     head,
-                    // System accent (no palette) and a 28 top inset: there is no sticky facet band on this page. This
-                    // facet IS the whole page, so its continuation pages stay Visible priority.
-                    a.IsValid ? Grid(a, facet, s_themeAccent, null, 28f, FetchPriority.Visible) : new BoxEl(),
+                    new BoxEl
+                    {
+                        Direction = 1, MinWidth = 0f,
+                        Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
+                        // System accent (no palette) and a 28 inset for the drawer's reveal (expandedTopInset, not a margin): there
+                        // is no sticky facet band on this page. This facet IS the whole page, so its continuation pages stay
+                        // Visible priority.
+                        Children = [a.IsValid ? Grid(a, facet, s_themeAccent, null, 28f, FetchPriority.Visible) : new BoxEl()],
+                    },
                 ],
             };
             var scroll = ScrollView(content) with

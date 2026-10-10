@@ -7,6 +7,7 @@
 //
 // Engine-free; it allocates only per user edit (never per frame), so Wavee.Tests pins every decision here.
 
+using System;
 using System.Collections.Generic;
 
 namespace Wavee;
@@ -14,14 +15,44 @@ namespace Wavee;
 /// <summary>The two sidebar layouts. PERSISTED as <c>sidebar.layout.id</c> (0 Classic · 1 Library) — append only.</summary>
 public enum SidebarLayoutId : byte { Classic = 0, Library = 1 }
 
+/// <summary>The navigation style: the two sidebar layouts plus Zune, which hides the pane and navigates by the header's
+/// pivots. PERSISTED as <c>sidebar.layout.id</c> (0 Classic · 1 Library · 2 Zune) — append only. Classic and Library are
+/// sidebar layouts; Zune hides the pane and navigates by the header's pivots.</summary>
+public enum ShellNavStyle : byte { Classic = 0, Library = 1, Zune = 2 }
+
+/// <summary>The pure mapping between the stored <c>sidebar.layout.id</c>, <see cref="ShellNavStyle"/> and the sidebar layout
+/// that Zune keeps underneath (Zune leaves the layout as it was, so leaving Zune returns to it).</summary>
+public static class ShellNavStyleRules
+{
+    public static ShellNavStyle FromStored(int stored) => stored switch { 1 => ShellNavStyle.Library, 2 => ShellNavStyle.Zune, _ => ShellNavStyle.Classic };
+
+    public static ShellNavStyle Of(SidebarLayoutId l) => l == SidebarLayoutId.Library ? ShellNavStyle.Library : ShellNavStyle.Classic;
+
+    /// <summary>The sidebar layout a style presents. Zune keeps <paramref name="current"/>, so the layout survives a trip
+    /// through Zune.</summary>
+    public static SidebarLayoutId LayoutOf(ShellNavStyle s, SidebarLayoutId current) => s switch
+    {
+        ShellNavStyle.Classic => SidebarLayoutId.Classic,
+        ShellNavStyle.Library => SidebarLayoutId.Library,
+        _ => current,
+    };
+
+    /// <summary>The pane layout a stored <c>sidebar.layout.lastPane</c> names: 1 is Library, every other value Classic.</summary>
+    public static SidebarLayoutId PaneLayoutFromStored(int stored) => stored == 1 ? SidebarLayoutId.Library : SidebarLayoutId.Classic;
+
+    /// <summary>Zune presents no pane in any window band.</summary>
+    public static bool HidesPane(ShellNavStyle s) => s == ShellNavStyle.Zune;
+}
+
 /// <summary>The closed section catalogue (design C.1). Not persisted by number: the files use <see cref="SidebarCatalogue.IdOf"/>.</summary>
 public enum SidebarSectionKind : byte
 {
     Home = 0, Pinned = 1, Collections = 2, Playlists = 3, Library = 4, Recent = 5, NewReleases = 6, Settings = 7,
 }
 
-/// <summary>Row density for entity rows (design P.4): Default = row C (two lines, art 32), Compact = row B (one line, art
-/// 24). Glyph rows and headers are unaffected. PERSISTED as <c>sidebar.pane.density</c>.</summary>
+/// <summary>Row density for Library's entity rows (design P.4): Default = row C (two lines, art 32), Compact = row B (one
+/// line, art 24). Glyph rows, headers and Classic's entity rows are unaffected (Classic has its own Show covers switch).
+/// PERSISTED as <c>sidebar.pane.density</c>.</summary>
 public enum SidebarDensity : byte { Default = 0, Compact = 1 }
 
 /// <summary>Your Library's list presentation.</summary>
@@ -551,7 +582,8 @@ public static class SidebarLayoutRules
     }
 
     /// <summary>The resolved document for a layout (§P3.3).</summary>
-    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density)
+    public static SidebarLayoutDoc Resolve(SidebarLayoutState state, SidebarLayoutId layout, SidebarDensity density,
+        bool classicCovers = false)
     {
         var overlay = state.Of(layout);
         var sections = new SidebarSection[overlay.Sections.Count];
@@ -564,7 +596,7 @@ public static class SidebarLayoutRules
             var visible = new List<string>(order.Count);
             for (int k = 0; k < order.Count; k++) if (!Contains(s.HiddenList, order[k])) visible.Add(order[k]);
             sections[i] = new SidebarSection(kind, s.Hidden, s.Collapsed, s.Limit ?? SidebarCatalogue.DefaultLimit(kind),
-                SidebarSection.ShapeFor(kind, density), visible.ToArray());
+                SidebarSection.ShapeFor(layout, kind, density, classicCovers), visible.ToArray());
             if (kind == SidebarSectionKind.Library)
             {
                 var hiddenKinds = SidebarLibraryKinds.None;
@@ -590,11 +622,31 @@ public sealed record SidebarSection(
 {
     public string Id => SidebarCatalogue.IdOf(Kind);
 
-    /// <summary>The one row shape per section (design V.3): glyph sections are row A; entity sections follow the density.</summary>
+    /// <summary>The one row shape per section (design V.3), Library semantics: glyph sections are row A; entity sections
+    /// follow the density. The compact rail uses this for every layout (see <see cref="ForRail"/>).</summary>
     public static SidebarRowShape ShapeFor(SidebarSectionKind kind, SidebarDensity density)
         => kind is SidebarSectionKind.Home or SidebarSectionKind.Collections or SidebarSectionKind.Settings
             ? SidebarRowShape.Glyph
             : density == SidebarDensity.Compact ? SidebarRowShape.EntityOneLine : SidebarRowShape.EntityTwoLine;
+
+    /// <summary>The one row shape per section in a layout. Glyph sections stay row A in every layout. Classic's entity
+    /// sections are text-only (28) unless Show covers is on, then one-line 36 rows with a 24 cover; density does not
+    /// apply in Classic. Library follows the density. A covers flip changes Shape, so <see cref="SidebarLayoutDoc.SameExceptCollapsed"/>
+    /// reports it as a change and the pane publishes the whole document.</summary>
+    public static SidebarRowShape ShapeFor(SidebarLayoutId layout, SidebarSectionKind kind, SidebarDensity density, bool classicCovers)
+        => kind is SidebarSectionKind.Home or SidebarSectionKind.Collections or SidebarSectionKind.Settings
+            ? SidebarRowShape.Glyph
+            : layout == SidebarLayoutId.Classic
+                ? (classicCovers ? SidebarRowShape.EntityOneLine : SidebarRowShape.Text)
+                : ShapeFor(kind, density);
+
+    /// <summary>The compact rail keeps its density-based tiles in every layout (the rail is unchanged): a section's shape is
+    /// remapped to <see cref="ShapeFor(SidebarSectionKind, SidebarDensity)"/> for the rail's plan.</summary>
+    public static SidebarSection ForRail(SidebarSection s, SidebarDensity density)
+    {
+        var shape = ShapeFor(s.Kind, density);
+        return shape == s.Shape ? s : s with { Shape = shape };
+    }
 }
 
 /// <summary>Your Library's resolved options (the <c>library</c> section's state).</summary>
@@ -624,9 +676,6 @@ public sealed record SidebarLayoutDoc(
 
     public SidebarSection? Find(string? id)
         => SidebarCatalogue.TryKindOf(id, out var kind) ? Find(kind) : null;
-
-    /// <summary>The footer's Settings row is shown.</summary>
-    public bool ShowsSettings => Find(SidebarSectionKind.Settings) is { Hidden: false };
 
     /// <summary>True when <paramref name="other"/> is this document with only sections' <see cref="SidebarSection.Collapsed"/>
     /// changed: a collapse adds or removes a section's rows, which the plan's row diff sees, but changes nothing a row that
@@ -770,4 +819,144 @@ public static class SidebarPinStateRules
         SidebarEntryKind.Show => "nav.show",          // "Podcast": IsAudiobook is not known before hydration either
         _ => null,
     };
+}
+
+/// <summary>The key-matched MOTION a section toggle or a pin move owes the rows it displaces (S2d, S3, J2). A collapse
+/// commits its rows' removal and the planner's dedupe (a pin returning to Playlists, or leaving it) edits rows OUTSIDE the
+/// band in the same publish; the reveal band animates only its own rows, so every other edit would snap. This turns the
+/// publish into the ordered edit script (<see cref="Sidebar.PlanDiff.Splices"/>) plus one seed per row: an inserted row
+/// outside the bands fades in, and a surviving row glides from where the user saw it (a FLIP start of
+/// <c>removed extents above it - inserted extents above it</c>). Rows INSIDE a band are never seeded - the band presents
+/// them - and band extents are never part of a glide, for the same reason.
+/// <para>Scroll: a header-driven toggle or a row-driven pin has its trigger on screen (section headers are not sticky), so
+/// every edit it makes lies at or below the trigger - below the scroll anchor - and needs no offset correction. A pin from
+/// a scrolled Playlists row inserts above the viewport; the seeds then move only the rows the user saw move.</para>
+/// Pure: Wavee.Tests pins it over planner-built rows (<c>SidebarDedupeMotionTests</c>).</summary>
+public static class SidebarDedupeMotion
+{
+    /// <summary>One row's start: the FLIP translate (DIP, y) it begins at, and whether it fades in.</summary>
+    public readonly record struct Seed(float Dy, bool Fade);
+
+    /// <summary>The ids of the sections whose Collapsed flag differs between the documents, by index (the same rule the
+    /// pane's header re-skin uses). Empty when none flipped.</summary>
+    public static List<string> FlippedSections(SidebarLayoutDoc oldDoc, SidebarLayoutDoc newDoc)
+    {
+        var flipped = new List<string>(2);
+        var a = oldDoc.Sections;
+        var b = newDoc.Sections;
+        for (int i = 0; i < b.Count && i < a.Count; i++)
+            if (a[i].Collapsed != b[i].Collapsed) flipped.Add(b[i].Id);
+        return flipped;
+    }
+
+    /// <summary>Did the PINNED section's rows gain or lose a key - a pin or an unpin? A pure reorder (the same keys in a
+    /// new order) is not one: the drag's own displacement choreography owns it.</summary>
+    public static bool PinnedKeysChanged(IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarRow> newRows)
+    {
+        string pinned = SidebarCatalogue.IdOf(SidebarSectionKind.Pinned);
+        var oldKeys = new List<string>(8);
+        var newKeys = new List<string>(8);
+        for (int i = 0; i < oldRows.Count; i++)
+            if (string.Equals(oldRows[i].SectionId, pinned, StringComparison.Ordinal)) oldKeys.Add(oldRows[i].Key);
+        for (int i = 0; i < newRows.Count; i++)
+            if (string.Equals(newRows[i].SectionId, pinned, StringComparison.Ordinal)) newKeys.Add(newRows[i].Key);
+        if (oldKeys.Count != newKeys.Count) return true;
+        var set = new HashSet<string>(oldKeys, StringComparer.Ordinal);
+        for (int i = 0; i < newKeys.Count; i++)
+            if (!set.Contains(newKeys[i])) return true;
+        return false;   // the same keys (in whatever order): nothing was pinned or unpinned
+    }
+
+    /// <summary>Every section the publish flipped was toggled through the pane's disclosure channel (and at least one
+    /// flipped): only then does a collapse-only publish take the key-matched path.</summary>
+    public static bool FlippedSectionsAll(SidebarLayoutDoc oldDoc, SidebarLayoutDoc newDoc, HashSet<string> choreographed)
+    {
+        var flipped = FlippedSections(oldDoc, newDoc);
+        if (flipped.Count == 0) return false;
+        for (int i = 0; i < flipped.Count; i++)
+            if (!choreographed.Contains(flipped[i])) return false;
+        return true;
+    }
+
+    /// <summary>The whole job of a keyed publish: the edit script from <paramref name="oldRows"/> to
+    /// <paramref name="newRows"/> and the seeds. The bands are the flipped sections' body ranges (the old range read from
+    /// the OLD rows, the new from the new ones) plus every section disclosure still in flight (<paramref name="inFlightSections"/>).
+    /// <paramref name="oldExtentOf"/> reads the pre-swap layout (index in the OLD rows), <paramref name="newExtentOf"/> the
+    /// analytic extent of a new row.</summary>
+    public static Dictionary<int, Seed> ForPublish(
+        SidebarLayoutDoc oldDoc, SidebarLayoutDoc newDoc,
+        IReadOnlyList<SidebarRow> oldRows, IReadOnlyList<SidebarRow> newRows,
+        IReadOnlyList<string> inFlightSections,
+        Func<int, float> oldExtentOf, Func<int, float> newExtentOf,
+        out List<(int At, int Removed, int Inserted)> splices)
+    {
+        splices = Sidebar.PlanDiff.Splices(oldRows, newRows);
+        var ids = FlippedSections(oldDoc, newDoc);
+        for (int i = 0; i < inFlightSections.Count; i++)
+            if (!ids.Contains(inFlightSections[i])) ids.Add(inFlightSections[i]);
+        var oldBands = new List<(int First, int Count)>(ids.Count);
+        var newBands = new List<(int First, int Count)>(ids.Count);
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (SidebarRowGeometry.TrySectionBodyRange(oldRows, ids[i], out int of, out int oc)) oldBands.Add((of, oc));
+            if (SidebarRowGeometry.TrySectionBodyRange(newRows, ids[i], out int nf, out int nc)) newBands.Add((nf, nc));
+        }
+        return Seeds(splices, oldBands, newBands, oldExtentOf, newExtentOf, newRows.Count);
+    }
+
+    /// <summary>One walk over the splices with two running sums: the old extents of the rows REMOVED above, and the new
+    /// extents of the rows INSERTED above, both outside the bands. A row inserted outside the bands fades in; a survivor
+    /// outside them starts <c>removedAbove - insertedAbove</c> from where it now lies (when at least half a DIP). A
+    /// non-finite extent for an inserted row answers an empty map: no motion, never a wrong one.</summary>
+    public static Dictionary<int, Seed> Seeds(
+        IReadOnlyList<(int At, int Removed, int Inserted)> splices,
+        IReadOnlyList<(int First, int Count)> oldBands, IReadOnlyList<(int First, int Count)> newBands,
+        Func<int, float> oldExtentOf, Func<int, float> newExtentOf, int newCount)
+    {
+        var seeds = new Dictionary<int, Seed>();
+        double removedAbove = 0.0, insertedAbove = 0.0;
+        int next = 0, sumRemoved = 0, sumInserted = 0;
+        void Survivors(int end)
+        {
+            end = Math.Min(end, newCount);
+            float dy = (float)(removedAbove - insertedAbove);
+            if (MathF.Abs(dy) < 0.5f) return;
+            for (int i = next; i < end; i++)
+                if (!InBands(newBands, i)) seeds[i] = new Seed(dy, false);
+        }
+        for (int s = 0; s < splices.Count; s++)
+        {
+            var (at, removed, inserted) = splices[s];
+            Survivors(at);
+            int oldStart = at - sumInserted + sumRemoved;
+            for (int r = 0; r < removed; r++)
+            {
+                int oldIndex = oldStart + r;
+                if (InBands(oldBands, oldIndex)) continue;
+                float e = oldExtentOf(oldIndex);
+                if (float.IsFinite(e)) removedAbove += e;
+            }
+            for (int k = 0; k < inserted; k++)
+            {
+                int newIndex = at + k;
+                if (InBands(newBands, newIndex)) continue;
+                float e = newExtentOf(newIndex);
+                if (!float.IsFinite(e)) return new Dictionary<int, Seed>();
+                insertedAbove += e;
+                seeds[newIndex] = new Seed(0f, true);
+            }
+            next = at + inserted;
+            sumRemoved += removed;
+            sumInserted += inserted;
+        }
+        Survivors(newCount);
+        return seeds;
+    }
+
+    static bool InBands(IReadOnlyList<(int First, int Count)> bands, int index)
+    {
+        for (int i = 0; i < bands.Count; i++)
+            if (index >= bands[i].First && index < bands[i].First + bands[i].Count) return true;
+        return false;
+    }
 }

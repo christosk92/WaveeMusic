@@ -64,6 +64,24 @@ public sealed class SidebarDisclosures
         return fallback;
     }
 
+    /// <summary>Is a FOLDER disclosure in flight? A folder's band range comes from the plan's entries, which the key-matched
+    /// publish path does not walk, so it stands down while one runs.</summary>
+    public bool AnyFolder()
+    {
+        for (int i = 0; i < _entries.Count; i++)
+            if (_entries[i].Folder) return true;
+        return false;
+    }
+
+    /// <summary>The ids of the SECTION disclosures in flight (a cold path: one publish of a toggle).</summary>
+    public List<string> SectionIds()
+    {
+        var ids = new List<string>(_entries.Count);
+        for (int i = 0; i < _entries.Count; i++)
+            if (!_entries[i].Folder) ids.Add(_entries[i].Id);
+        return ids;
+    }
+
     private int IndexOf(string key)
     {
         for (int i = 0; i < _entries.Count; i++)

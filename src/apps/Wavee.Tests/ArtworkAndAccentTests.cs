@@ -178,3 +178,109 @@ public class AccentLadderTests
         Assert.NotEqual(Design.Palette.ChromeFromPayload(0xFFC2185Bu), Playlist.AccentOf(p));
     }
 }
+
+// ══ ONE PAGE ACCENT (A4) ═════════════════════════════════════════════════════════════════════════════════════════════
+//
+// A page publishes ONE `PageAccent` (Ink + Fill); every consumer reads the half its role needs through `AccentRoles`, and
+// the shell tint and the accent read the same artwork entry (`Detail.PaletteSource`). The grading split (surfaces FOR the
+// theme, plates AGAINST it) is untouched; these facts pin the roles, the source identity and the off switch.
+
+public class AccentRolesTests
+{
+    [Fact]
+    public void A_published_page_accent_supplies_its_ink_and_fill()
+    {
+        var p = new Design.PageAccent(new ColorF(0.1f, 0.4f, 0.8f, 1f), new ColorF(0.2f, 0.5f, 0.9f, 1f), "route");
+        Assert.Equal(p.Ink, Design.AccentRoles.Ink(p));
+        Assert.Equal(p.Fill, Design.AccentRoles.Fill(p));
+    }
+
+    [Fact]
+    public void With_no_page_accent_both_roles_are_the_system_tokens()
+    {
+        Assert.Equal(Tok.AccentTextPrimary, Design.AccentRoles.Ink(null));
+        Assert.Equal(Tok.AccentDefault, Design.AccentRoles.Fill(null));
+    }
+}
+
+[Collection(PlatformCollection.Name)]
+public sealed class PageAccentSourceTests : IDisposable
+{
+    readonly MemoryAppSettings _store = new();
+
+    public PageAccentSourceTests() => Platform.UseSettings(_store);
+    public void Dispose() => Platform.UseSettings(null);
+
+    [Fact]
+    public void With_accent_from_artwork_off_every_role_is_the_system_pair()
+    {
+        _store.Set(Platform.Keys.WashAccent, 0);
+        Assert.False(Prefs.Appearance.AccentFromArtwork());
+        var page = Detail.PageAccentOf(new ColorF(0.9f, 0.1f, 0.1f, 1f), "route");
+        Assert.Equal(Tok.AccentTextPrimary, page.Ink);
+        Assert.Equal(Tok.AccentDefault, page.Fill);
+        Assert.Equal(Tok.AccentTextPrimary, Design.AccentRoles.Ink(page));
+        Assert.Equal(Tok.AccentDefault, Design.AccentRoles.Fill(page));
+    }
+
+    // Sample ChromeAccent-like seeds across hues: yellow and green are the pale-cover worst case on a light surface,
+    // blue is the dark-theme worst case (a mid-blue tops out low at the hairline saturation cap).
+    public static TheoryData<float, float, float> SeedHues => new()
+    {
+        { 0.82f, 0.82f, 0.37f },   // yellow
+        { 0.45f, 0.85f, 0.50f },   // green
+        { 0.30f, 0.45f, 0.90f },   // blue
+        { 0.90f, 0.25f, 0.25f },   // red
+    };
+
+    [Theory]
+    [MemberData(nameof(SeedHues))]
+    public void With_accent_from_artwork_on_the_ink_is_solved_for_text_contrast_and_the_fill_is_the_art_colour(float r, float g, float b)
+    {
+        Assert.True(Prefs.Appearance.AccentFromArtwork());
+        var seed = new ColorF(r, g, b, 1f);
+        foreach (var theme in new[] { ThemeKind.Light, ThemeKind.Dark })
+        {
+            var ground = Design.Colors.ContentSurfaceFor(theme == ThemeKind.Light ? Tok.Palette.Light : Tok.Palette.Dark, theme);
+            var page = Detail.PageAccentOf(seed, "route", theme, ground);
+            Assert.Equal(seed, page.Fill);
+            Assert.Equal("route", page.Key);
+            Assert.True(ColorContrast.MeetsAaText(page.Ink, ground),
+                $"{theme}: Ink {ColorContrast.Ratio(page.Ink, ground):0.00}:1 on the content surface (floor {Design.Palette.TextContrast}:1)");
+        }
+    }
+
+    // ── source identity: the tint and the accent read the same url pair ─────────────────────────────────────────────
+
+    static Detail.Identity IdentityOf(DetailKind kind, string? cover, string? palette)
+        => new() { Subject = EntityUri.Parse("spotify:album:1TSZDcvlPtAnekTaItI3qO"), Kind = kind, CoverUrl = cover, PaletteUrl = palette };
+
+    [Theory]
+    [InlineData(DetailKind.Album)]
+    [InlineData(DetailKind.Playlist)]
+    [InlineData(DetailKind.Liked)]
+    [InlineData(DetailKind.Show)]
+    [InlineData(DetailKind.Episode)]
+    public void Every_detail_kind_reads_the_palette_image_else_the_cover_with_no_fallback(DetailKind kind)
+    {
+        var plain = Detail.PaletteSource.Of(IdentityOf(kind, "https://cdn/cover", null));
+        Assert.Equal("https://cdn/cover", plain.Url);
+        Assert.Null(plain.FallbackUrl);
+
+        // Liked's cover-wall anchor: the palette url wins over the (mosaic) cover.
+        var anchored = Detail.PaletteSource.Of(IdentityOf(kind, "https://cdn/mosaic", "https://cdn/anchor"));
+        Assert.Equal("https://cdn/anchor", anchored.Url);
+        Assert.Null(anchored.FallbackUrl);
+
+        var none = Detail.PaletteSource.Of(IdentityOf(kind, null, null));
+        Assert.Null(none.Url);
+    }
+
+    [Fact]
+    public void The_artist_page_reads_its_header_image_with_the_avatar_as_the_one_fallback_entry()
+    {
+        var src = Detail.PaletteSource.ForArtist("https://cdn/header", "https://cdn/avatar");
+        Assert.Equal("https://cdn/header", src.Url);
+        Assert.Equal("https://cdn/avatar", src.FallbackUrl);
+    }
+}

@@ -11,7 +11,7 @@
 // Spec: ch 28 §9.5
 //
 //   Shell.SetPage(WhatsNew) → Page(versionArg)                 signals: view · loaded · onlyLatest (ch 28 §1.2)
-//   └ Frame ── header (tag 22 · PageHero)
+//   └ Frame ── PageHead (title only, Title 120)
 //            └ row ── body column ── [stacked] SinceBanner
 //                  │               └ ScrollView "whatsnew:<ver>" → Hero · Strip(CardView ×≤3)
 //                  │                  · per release [Divider] · InfoBar per notice · SectionView(props) per section · as-of
@@ -128,6 +128,7 @@ public static partial class ReleaseNotes
             var view = _view.Value;
             bool onlyLatest = _onlyLatest.Value;
             bool loaded = _loaded.Value;
+            float gutter = Shell.Ui.PageGutter.Value;
 
             UseEffect(() =>
             {
@@ -138,7 +139,7 @@ public static partial class ReleaseNotes
                 return (Action?)(() => cts.Cancel());
             }, DepKey.Empty);
 
-            if (view is null) return Frame(loaded ? EmptyState() : LoadingState(), rail: null);
+            if (view is null) return Frame(loaded ? EmptyState() : LoadingState(), rail: null, gutter);
 
             void Copy(string text)
             {
@@ -183,7 +184,7 @@ public static partial class ReleaseNotes
 
             return Frame(
                 new BoxEl { Direction = 1, Gap = Spacing.M, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = column.ToArray() },
-                ReleaseRail(view.Index, view.SelectedVersion, Platform.Version.Core, view.LastSeen));
+                ReleaseRail(view.Index, view.SelectedVersion, Platform.Version.Core, view.LastSeen), gutter);
         }
 
         /// <summary>One whole view or nothing, then the budgeted issue-state republish over the newest document.</summary>
@@ -223,21 +224,16 @@ public static partial class ReleaseNotes
         };
     }
 
-    static Element Frame(Element body, Element? rail) => new BoxEl
+    static Element Frame(Element body, Element? rail, float gutter) => new BoxEl
     {
         Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
         Children =
         [
-            new BoxEl
-            {
-                Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M,
-                Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.M),
-                Children = [Icon(Icons.Tag, 22f, Tok.TextPrimary), Design.Type.PageHero(Loc.Get(Strings.WhatsNew.Title)) with { Grow = 1f }],
-            },
+            PageHead.Create(new PageHeadSpec(Loc.Get(Strings.WhatsNew.Title)) { Gutter = gutter, Key = "whatsnew:head" }),
             new BoxEl
             {
                 Direction = 0, Gap = 14f, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                Padding = new Edges4(Spacing.PageWide, 0f, Spacing.PageWide, 0f),
+                Padding = new Edges4(gutter, 0f, gutter, 0f),
                 Children = rail is null ? [body] : [body, rail],   // loading / empty: the 208 column AND the 14 gap are gone
             },
         ],

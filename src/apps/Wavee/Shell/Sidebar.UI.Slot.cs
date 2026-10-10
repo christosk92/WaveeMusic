@@ -145,10 +145,10 @@ public static partial class Sidebar
                 create = Embed.Comp(() => new CreateButton(
                     owner.CreatePlaylist, menu: owner.CreateMenu, drop: owner.HeaderCreateDropSpec(),
                     dropActive: () => owner.HeaderCreateDropActive.Value,
-                    box: SidebarRowGeometry.HeaderButton, glyph: 12f)) with { Key = "tree-create" };
+                    box: SidebarRowGeometry.HeaderButton, glyph: SidebarRowGeometry.PlusGlyph)) with { Key = "tree-create" };
             if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu)
-                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast)
-                    .WithContextMenu(svc, menu) with { ClickRequestsContext = true }, Loc.Get(PaneLoc.SectionOptions));
+                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast, requestsContext: true)
+                    .WithContextMenu(svc, menu), Loc.Get(PaneLoc.SectionOptions));
 
             // ONE rotating glyph, never a swap; a recycle onto another section seeds its angle instead of spinning.
             Action<bool> toggle = open => owner.ToggleSection(id, !open);
@@ -252,6 +252,8 @@ public static partial class Sidebar
             bool reordering = _o.TryBandOf(index, out _);
             var (playing, animated) = _o.RowPlayState(index);
             var shape = section.Shape;
+            // A Text section (Classic, Show covers off) is text-only: no cover and no route glyph, so a route pin is text too.
+            bool textOnly = shape == SidebarRowShape.Text;
             float height = SidebarRowGeometry.HeightOf(shape);
 
             var snapshot = entry;   // an `in` parameter cannot be captured — copy the record struct for the closures
@@ -285,6 +287,7 @@ public static partial class Sidebar
                     isPlaylistRow: playlistRow, rootFacts: TreeRowFacts(index, in snapshot))
                 : PinSpec(section, row.SectionId, index);
 
+            bool markPinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, snapshot.IsPinned, track);
             var spec = new RowSpec
             {
                 Key = row.Key,
@@ -302,11 +305,12 @@ public static partial class Sidebar
                 Height = height,   // UNIFORM per section: a band's slot pitch and the extent table both assume one height
                 ArtSize = SidebarRowGeometry.ArtOf(shape),
                 Ink = placeholderTitle || unavailable ? Tok.TextTertiary : null,
-                Leading = routeGlyph ? null : Cover.ForEntry(in snapshot, SidebarRowGeometry.ArtOf(shape)),
-                Glyph = routeGlyph ? Shell.Dest(Shell.Parse(entry.Id)).Glyph : null,
+                Leading = routeGlyph || textOnly ? null : Cover.ForEntry(in snapshot, SidebarRowGeometry.ArtOf(shape)),
+                Glyph = routeGlyph && !textOnly ? Shell.Dest(Shell.Parse(entry.Id)).Glyph : null,
                 // The warning mark is the unavailable pin's trailing mark, so it shows in every row shape.
                 Trailing = unavailable ? Icon(Icons.Warning, 12f, Tok.TextTertiary) : TrailingBadge(section, in snapshot),
-                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, snapshot.IsPinned, track),   // #85
+                Pinned = markPinned,   // #85
+                OnUnpin = UnpinOf(markPinned, in snapshot),
                 Playing = playing,
                 PlayingAnimated = animated,
                 Track = track,
@@ -320,11 +324,10 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (treeRow && rootlistItem) ApplyTreeSelection(ref spec, snapshot.Id, click);
-            spec.LabelTooltip = LabelOverflows(label, row.Depth, (spec.Trailing is null ? 0f : CountTrail)
-                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null || spec.Pinned || playing));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, RowTrailing(in spec, menu is not null, playing), LabelStartOf(in spec));
             Element built = EntityRow.Create(in spec);
             if (track) built = EntityRow.WithPlayTrackHint(built);
-            // The pill stays in the row's own indent (31 per depth level), never the drop caret's gutter.
+            // The pill stays in the row's own indent (32 per depth level), never the drop caret's gutter.
             return Indicator(Tipped(built, spec.LabelTooltip, label), selected, IndentOf(in row), height, route);
         }
 
@@ -376,6 +379,7 @@ public static partial class Sidebar
                     rootFacts: TreeRowFacts(index, in snapshot))
                 : PinSpec(section, row.SectionId, index, springLoad);
 
+            bool folderPinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false);
             var spec = new RowSpec
             {
                 Key = row.Key,
@@ -389,10 +393,13 @@ public static partial class Sidebar
                 Shape = shape,
                 Height = height,
                 ArtSize = art,
-                Leading = Cover.Folder(art, expanded),
+                // Text shape: the 16-DIP folder mark in the icon column (cover shapes keep the folder cover).
+                Leading = shape == SidebarRowShape.Text ? null : Cover.Folder(art, expanded),
+                Glyph = shape == SidebarRowShape.Text ? (expanded ? Icons.FolderOpen : Icons.Folder) : null,
                 // A pinned folder shows the mark LEFT of its chevron (Library's depth-0 pins; §P5.6). Its IsPinned is not a
                 // rootlist fact, so the folder's own state never enters the rule.
-                Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
+                Pinned = folderPinned,
+                OnUnpin = UnpinOf(folderPinned, in snapshot),
                 DisclosureChevron = Chevron.Disclosure(_folderOpen ??= FolderOpenLive, identity: _folderIdentity ??= FolderIdentity),
                 Trailing = FolderTrailing(section, in snapshot, folderId, rootlistItem),
                 Tile = compact,
@@ -407,7 +414,7 @@ public static partial class Sidebar
                 DropTarget = drop,
             };
             if (rootlistItem) ApplyTreeSelection(ref spec, folderId.Length > 0 ? snapshot.Id : "", activate);
-            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail + EntityRow.OverflowReserve(menu is not null, trailing: true));
+            spec.LabelTooltip = LabelOverflows(label, row.Depth, FolderTrail + SidebarRowGeometry.OverflowReserve(menu is not null, chevron: true), LabelStartOf(in spec));
             // A folder is a pill anchor when it is the deepest visible ancestor of the route (rule 2 of §P1.2). Both drop
             // cues stay: the bottom band of an expanded header IS the "first child" slot, and the whole outdent gesture
             // happens on folder rows.
@@ -433,7 +440,8 @@ public static partial class Sidebar
                 Shape = section.Shape,
                 Height = height,
                 ArtSize = art,
-                Leading = Cover.Folder(art, expanded: false),
+                Leading = section.Shape == SidebarRowShape.Text ? null : Cover.Folder(art, expanded: false),
+                Glyph = section.Shape == SidebarRowShape.Text ? Icons.Folder : null,
                 Pinned = SidebarPinRules.ShowsPinMark(_o.Config.Layout, section.Kind, row.Depth, false, false),
                 Overflow = menu is not null,
                 MenuOverlay = _o.MenuOverlay,
@@ -447,10 +455,37 @@ public static partial class Sidebar
         /// what the row keeps for itself.</summary>
         const float CountTrail = 28f, FolderTrail = SidebarRowGeometry.ChevronColumn - SidebarRowGeometry.TrailingPad;
 
+        /// <summary>The trailing width a non-chevron row's label gives up: the pin mark (12, or the 24 Unpin button) plus the
+        /// count slot, which the hover "…" shares (<see cref="SidebarRowGeometry.CountSlotWidth"/>), so rest and hover agree.</summary>
+        static float RowTrailing(in RowSpec spec, bool menu, bool playing)
+            => SidebarRowGeometry.PinWidth(spec.Pinned, spec.OnUnpin is not null)
+               + SidebarRowGeometry.CountSlotWidth(menu, spec.Trailing is not null, spec.Pinned || playing, CountTrail - SidebarRowGeometry.TrailingGap);
+
+        /// <summary>The pin mark's action (J1): "Unpin" when the row is a pin the rule offers an Unpin for, else null (the bare
+        /// mark). The same rule and the same ring-recorded verb as the row's context menu.</summary>
+        static Action? UnpinOf(bool pinned, in SidebarLibraryEntry entry)
+        {
+            if (!pinned) return null;
+            string? id = SidebarPinId.FromEntry(in entry);
+            if (PinRowRule.Decide(true, id, id is not null && Sidebar.IsPinned(id)) != PinRowKind.Unpin) return null;
+            string pinId = id!, name = entry.Name;
+            return () => PaneView.UnpinWithToast(pinId, name);
+        }
+
         /// <summary>Does the one-line label truncate in this row? The pane's CURRENT width (peeked: a tooltip decision, not a
         /// subscription) minus the row's own ladder, through the one estimate <see cref="SidebarLabelFit"/> owns.</summary>
-        static bool LabelOverflows(string label, int depth, float trailing)
-            => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(Sidebar.Width.Peek(), depth, trailing));
+        static bool LabelOverflows(string label, int depth, float trailing, float labelStart)
+            => SidebarLabelFit.Overflows(label, SidebarLabelFit.LabelWidth(Sidebar.Width.Peek(), depth, trailing, labelStart));
+
+        /// <summary>Where the row's label starts (slot space, before the depth indent): the same three cases
+        /// <see cref="EntityRow.Create"/> lays out. A Text-shape row with no glyph and no leading visual has no icon column (label
+        /// at the header's x); one with a glyph and no leading visual is a folder (mark at the header's x, 8 gap, label at pane
+        /// 40); every other row has the 40-px icon column and its 4 gap.</summary>
+        static float LabelStartOf(in RowSpec spec)
+        {
+            bool text = spec.Shape == SidebarRowShape.Text && spec.Leading is null;
+            return SidebarRowGeometry.LabelStartOf(iconColumn: !text || spec.Glyph is not null, textGlyph: text && spec.Glyph is { Length: > 0 });
+        }
 
         /// <summary>A row whose full label would truncate wears it as a tooltip. The slot owns the wrap, so the tooltip is the
         /// row's wrapper and a sibling of the drop cues, never a child of the row. A compact TILE always wears its label (the
@@ -511,7 +546,8 @@ public static partial class Sidebar
                 Depth = 0,
                 Shape = section.Shape,
                 Height = height,
-                Glyph = dest.Glyph,
+                // A Text section's route pin stays text-only (no glyph); only a folder carries a mark in Text shape.
+                Glyph = section.Shape == SidebarRowShape.Text ? null : dest.Glyph,
                 Trailing = CountBadge(section, key),
                 Tile = _o.CompactPlan,
                 OnClick = () => _o.Navigate(key, null),
@@ -521,8 +557,7 @@ public static partial class Sidebar
                 Drag = drag,
                 DropTarget = PinSpec(section, section.Id, index),
             };
-            spec.LabelTooltip = LabelOverflows(title, 0, (spec.Trailing is null ? 0f : CountTrail)
-                + EntityRow.OverflowReserve(menu is not null, spec.Trailing is not null));
+            spec.LabelTooltip = LabelOverflows(title, 0, RowTrailing(in spec, menu is not null, playing: false), LabelStartOf(in spec));
             return Indicator(Tipped(EntityRow.Create(in spec), spec.LabelTooltip, title), selected, 0, height, key);
         }
 
@@ -635,12 +670,12 @@ public static partial class Sidebar
                     return owner.TreeSelection.Contains(entryId);
                 },
                 interact: (_, _) => owner.ToggleTreeSelection(entryId),
-                // The row owns its own left inset (the 31-px depth ladder), so the lane adds none.
+                // The row owns its own left inset (the 32-px depth ladder), so the lane adds none.
                 leftMargin: 0f);
         }
 
         /// <summary>A folder row's trailing slot: the quiet count (the Playlists section), then the folder's own "+"
-        /// (20 box, glyph 12) — the count is the fact, the "+" the verb. The "+" is keyed inside a row keyed by the entry,
+        /// (24 box, glyph 16) — the count is the fact, the "+" the verb. The "+" is keyed inside a row keyed by the entry,
         /// so it remounts when this slot recycles onto another folder, which is what makes capturing the folder id in its
         /// factory safe.</summary>
         Element? FolderTrailing(SidebarSection section, in SidebarLibraryEntry entry, string folderId, bool rootlistItem)
@@ -658,7 +693,7 @@ public static partial class Sidebar
                 drop: owner.FolderCreateDropSpec(folderId, name, active),
                 dropActive: () => active.Value,
                 revealOpacity: reveal,
-                box: 20f, glyph: 12f)) with { Key = "folder-create" };
+                box: SidebarRowGeometry.RowButton, glyph: SidebarRowGeometry.PlusGlyph)) with { Key = "folder-create" };
             return plus;
         }
 
@@ -712,8 +747,39 @@ public static partial class Sidebar
                 Top: SidebarRowGeometry.PillTop(height));
             var owner = _o;
             Func<SidebarPillState> probe = _pillProbe ??= PillState;
-            return ZStack(DropPlate(), row, Embed.Comp(() => new SelectionPill(owner, probe)), InsertionLine());
+            // Tree guides sit between the row and the pill: under the pill (the pill is the only "you are here"), over the
+            // row's plate. The compact rail has no tree, so it mounts none.
+            return _o.CompactPlan
+                ? ZStack(DropPlate(), row, Embed.Comp(() => new SelectionPill(owner, probe)), InsertionLine())
+                : ZStack(DropPlate(), row, TreeGuides(depth), Embed.Comp(() => new SelectionPill(owner, probe)), InsertionLine());
         }
+
+        /// <summary>THE TREE GUIDES: one 1-px <see cref="Tok.StrokeDividerDefault"/> line per ancestor level of a child row,
+        /// at slot x <see cref="SidebarRowGeometry.TreeGuideX"/> (pane 24 + 32·d), spanning the whole slot (margins
+        /// included) so the lines of consecutive rows join. A zero-layout overlay: not hit-testable and not in flex sizing,
+        /// built per row render (a recycled slot gets its own depth's lines), so no slot height or virtual offset moves.</summary>
+        static Element TreeGuides(int depth)
+        {
+            int levels = SidebarRowGeometry.ClampDepth(depth);
+            var kids = new Element[levels * 2];
+            float cursor = 0f;
+            for (int d = 0; d < levels; d++)
+            {
+                float x = SidebarRowGeometry.TreeGuideX(d);
+                kids[d * 2] = new BoxEl { Width = x - cursor, Shrink = 0f };
+                kids[d * 2 + 1] = new BoxEl { Width = TreeGuideWidth, Shrink = 0f, Fill = Tok.StrokeDividerDefault };
+                cursor = x + TreeGuideWidth;
+            }
+            return new BoxEl
+            {
+                Key = "tree-guides",
+                Direction = 0, AlignItems = FlexAlign.Stretch,
+                HitTestVisible = false,
+                Children = kids,
+            };
+        }
+
+        const float TreeGuideWidth = 1f;
 
         /// <summary>THE "INTO" PLATE (W16): mounted once per row, ALWAYS, as the ZStack's first child — accent@0.18 with a
         /// 1-DIP accent border, radius 4, auto-sized to the row's rect, out of hit-testing so hover and the drop reach the

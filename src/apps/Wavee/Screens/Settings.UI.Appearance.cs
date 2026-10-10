@@ -1,5 +1,5 @@
 // ── Screens/Settings.UI.Appearance.cs ──────────────────────────────────────────────────────────────────────────────
-// the Appearance tab: Theme (theme, zoom, marquee, colour washes, page motion*) · Lists (the three collapsed picker groups:
+// the Appearance tab: Theme (theme, zoom, marquee, tinted surfaces / accent from artwork / now playing colours, page motion*) · Lists (the three collapsed picker groups:
 // row density + hide artwork, track list style, track page layout + the two rail rows; then the daylist clock combo) ·
 // Sidebar (the layout cards and density) · Lyrics (blur, the on-device AI lyrics card) ·
 // Fullscreen (visualizer, sensitivity, lyrics overlay, sync offset, calm motion, change with the music — the fullscreen
@@ -17,7 +17,8 @@
 // items 12-20; ch 30 §1.1 (which epoch each write bumps) + N12 (the row-density write reaches mounted pages); ch 25 W21
 // (the design cards — no 0.3 `SidebarDesignPicker` exists, so the compact cards are built here on owner L's picker)
 //
-// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / washes / hide artwork /
+// EVERY ROW WRITES THROUGH ITS OWN EPOCH (ch 27 W2 "three facts"): marquee / tinted surfaces / accent from artwork /
+// now playing colours / hide artwork /
 // row density / track list style / daylist clock → `Prefs.Appearance`; page layout, rail uniform, rail reset → `Prefs.DetailHero`;
 // the lyrics blur → `Prefs.Lyrics`; the two Now-playing rows → `Prefs.NpvPlayer` with NO page `Bump()` (the
 // tab reads that epoch); the six Fullscreen rows → `Prefs.Stage` (the page reads that epoch too, so the stage's own
@@ -115,8 +116,12 @@ public static partial class Settings
                 Embed.Comp(static () => new ZoomPicker()), RowGlyph(Tab.Appearance, "zoom")),
             Row(Loc.Get(Strings.Settings.Appearance.Marquee), Loc.Get(Strings.Settings.Appearance.MarqueeSub),
                 AppearanceToggle(Platform.Keys.MarqueeEnabled), RowGlyph(Tab.Appearance, "marquee")),
-            Row(Loc.Get(Strings.Settings.Appearance.ColorWashes), Loc.Get(Strings.Settings.Appearance.ColorWashesSub),
-                AppearanceToggle(Platform.Keys.ColorWashesEnabled), RowGlyph(Tab.Appearance, "colorWashes")),
+            Row(Loc.Get(Strings.Settings.Appearance.WashSurfaces), Loc.Get(Strings.Settings.Appearance.WashSurfacesSub),
+                WashSurfacesControl(), RowGlyph(Tab.Appearance, "washSurfaces")),
+            Row(Loc.Get(Strings.Settings.Appearance.WashAccent), Loc.Get(Strings.Settings.Appearance.WashAccentSub),
+                WashToggle(Platform.Keys.WashAccent, Prefs.Appearance.AccentFromArtwork()), RowGlyph(Tab.Appearance, "washAccent")),
+            Row(Loc.Get(Strings.Settings.Appearance.WashNowPlaying), Loc.Get(Strings.Settings.Appearance.WashNowPlayingSub),
+                WashToggle(Platform.Keys.WashNowPlaying, Prefs.Appearance.NowPlayingColors()), RowGlyph(Tab.Appearance, "washNowPlaying")),
         };
 
         // A SelectorBar, not a ComboBox: it re-pushes its selected index every render (ch 27 §0's frozen-inputs rule),
@@ -300,6 +305,64 @@ public static partial class Settings
 
     /// <summary>An appearance switch: persist, bump the appearance epoch once, bump the page.</summary>
     static Element AppearanceToggle(SettingKey<bool> key) => Toggle(key, afterWrite: static _ => Prefs.Appearance.Bump());
+
+    /// <summary>An On/Off wash switch: a fresh signal seeded from the reactive read, the write through the one appearance
+    /// writer, then the page bump.</summary>
+    static Element WashToggle(SettingKey<int> key, bool on) => ToggleSwitch.Create(new Signal<bool>(on), onChange: v =>
+    {
+        Prefs.Appearance.Set(key, v ? 1 : 0);
+        Bump();
+    }, style: SettingsCard.CompactToggleStyle());
+
+    /// <summary>Tinted surfaces: the Off / Subtle / Rich picker beside a swatch of what the level paints.</summary>
+    static Element WashSurfacesControl()
+    {
+        var level = Prefs.Appearance.SurfaceWash();
+        return new BoxEl
+        {
+            Direction = 0, Gap = Spacing.M, AlignItems = FlexAlign.Center,
+            Children =
+            [
+                WashPreview(level),
+                SelectorBar.Create([Loc.Get(Strings.Settings.Appearance.WashOff), Loc.Get(Strings.Settings.Appearance.WashSubtle), Loc.Get(Strings.Settings.Appearance.WashRich)],
+                    new Signal<int>((int)level), onChange: static i =>
+                    {
+                        Prefs.Appearance.Set(Platform.Keys.WashSurfaces, Math.Clamp(i, 0, 2));
+                        Bump();
+                    }),
+            ],
+        };
+    }
+
+    /// <summary>The display scale of the swatch. The real wash alphas (the chrome tint 0.05–0.22, the plane 0.20–0.45)
+    /// cannot be told apart on a 64-px chip, so the swatch multiplies them by this factor, capped at 0.6. It is for
+    /// display only: the app paints with the unscaled values.</summary>
+    const float WashPreviewScale = 3f;
+
+    /// <summary>A miniature window: the chrome strip over the page plane, painted with the real Design.Wash alphas. The
+    /// Settings route claims the neutral material, so this swatch is how the choice shows while Settings is open.</summary>
+    static Element WashPreview(WashLevel level)
+    {
+        bool light = Tok.Theme == ThemeKind.Light;
+        bool rich = level == WashLevel.Rich;
+        ColorF chrome = level == WashLevel.Off ? Design.Wash.NeutralGround
+            : Tok.AccentDefault with { A = Shown(Design.Wash.TintAlpha(light, rich)) };
+        ColorF page = level == WashLevel.Off ? Design.Wash.NeutralGround
+            : Tok.AccentDefault with { A = Shown(Design.Wash.PlaneAlpha(light, rich)) };
+        return new BoxEl
+        {
+            Width = 64f, Height = 36f, Shrink = 0f, Direction = 1, ClipToBounds = true,
+            Corners = CornerRadius4.All(4f), Fill = Tok.FillLayerDefault, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault,
+            HitTestVisible = false,
+            Children =
+            [
+                new BoxEl { Height = 12f, Shrink = 0f, Fill = chrome },
+                new BoxEl { Grow = 1f, Fill = page },
+            ],
+        };
+    }
+
+    static float Shown(float alpha) => MathF.Min(alpha * WashPreviewScale, 0.6f);
 
     // ══ 4. LISTS ══════════════════════════════════════════════════════════════════════════════════════════════════════
 
@@ -541,34 +604,60 @@ public static partial class Settings
 
     // ══ 5. SIDEBAR (G-182; ch 25 W21 compact cards, ch 27 W2/W29 ②) ═════════════════════════════════════════════════
 
-    /// <summary>Settings › Sidebar (design C.2 entry 3): the layout (two cards, "· modified"), density, Edit sidebar (P4),
-    /// reset; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
+    /// <summary>Settings › Sidebar (design C.2 entry 3): the navigation style (cards), the style's own rows (Classic: Show covers; Library: View, Density, Show Liked Songs; Zune: Pins in the title bar), Edit sidebar (P4) and Reset this layout (both left out under Zune, where the pane is hidden), reset everything; a corrupt-file InfoBar and the migration's "What changed" note when they apply. Subscribes to the layout
     /// signals, so a change made on the sidebar itself shows here live.</summary>
     sealed class SidebarLayoutCard : Component
     {
         public override Element Render()
         {
+            var style = Sidebar.NavStyle.Value;
+            bool zune = style == ShellNavStyle.Zune;
             var layout = Sidebar.Layout.Value;
             _ = Sidebar.LayoutVersion.Value;
             var density = Sidebar.Density.Value;
+            bool covers = Sidebar.ClassicCovers.Value;
             bool editing = Sidebar.Editing.Value;
             // Q7: a disabled control always says why; the palette path toasts the same reason (§P4.7).
             string finish = Loc.Get("sidebar.pane.finishEditing");
-            var items = new List<Element>(4)
+            var items = new List<Element>(7);
+            // The style's own rows come first: Classic shows its covers toggle, Library its view, Density and Liked Songs (the same ops as the toolbar and ⋯ menu),
+            // Zune its pins-in-the-title-bar toggle (the pane is hidden, so the layout rows below do not apply).
+            if (!zune && layout == SidebarLayoutId.Classic)
             {
-                Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
-                    Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList),
-                Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
+                items.Add(Item(Loc.Get("settings.sidebar.showCovers"), Loc.Get("settings.sidebar.showCoversSub"),
+                    ToggleSwitch.Create(new Signal<bool>(covers), onChange: static on => Sidebar.SetClassicCovers(on),
+                        style: SettingsCard.CompactToggleStyle()), icon: Icons.Picture));
+            }
+            if (!zune && layout == SidebarLayoutId.Library)
+            {
+                items.Add(Item(Loc.Get("settings.sidebar.view"), Loc.Get("settings.sidebar.viewSub"),
+                    Embed.Comp(() => new SidebarViewPicker()) with { Key = "sidebar.view:" + (int)Sidebar.Doc.Library.View }, icon: Icons.ViewGrid));
+                items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Density), Loc.Get(Strings.Settings.Sidebar.DensitySub),
+                    Embed.Comp(() => new SidebarDensityPicker()) with { Key = "sidebar.density:" + (int)density }, icon: Icons.ViewList));
+                items.Add(Item(Loc.Get("settings.sidebar.showLiked"), Loc.Get("settings.sidebar.showLikedSub"),
+                    ToggleSwitch.Create(new Signal<bool>(Sidebar.Doc.Library.ShowLiked), onChange: static on => Sidebar.Dispatch(new SetShowLiked(on)),
+                        style: SettingsCard.CompactToggleStyle()), icon: Icons.Heart));
+            }
+            if (zune)
+            {
+                items.Add(Item(Loc.Get("settings.sidebar.zunePins"), Loc.Get("settings.sidebar.zunePinsSub"),
+                    ToggleSwitch.Create(new Signal<bool>(Sidebar.ZunePins.Value), onChange: static on => Sidebar.SetZunePins(on),
+                        style: SettingsCard.CompactToggleStyle()), icon: Icons.Pin));
+            }
+            // The pane is hidden under Zune, so its layout-only rows (reset this layout, edit sidebar) are left out there.
+            if (!zune)
+            {
+                items.Add(Item(Loc.Get(Strings.Settings.Sidebar.Reset), editing ? finish : Loc.Get(Strings.Settings.Sidebar.ResetSub), null,
                     isClickEnabled: !editing && SidebarLayoutRules.IsModified(Sidebar.State.Of(layout)),
-                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo),
-                Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
-                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit),
-                Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
-                    isClickEnabled: !editing,
-                    // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
-                    onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
-                    icon: Icons.Delete),
-            };
+                    onClick: static () => Sidebar.Dispatch(new ResetLayout(Sidebar.Layout.Peek()), Loc.Format("sidebar.toast.reset", ("name", Sidebar.LayoutName(Sidebar.Layout.Peek())))), icon: Icons.Undo));
+                items.Add(Item(Loc.Get("sidebar.menu.edit"), editing ? finish : Loc.Get("settings.sidebar.editSub"), null,
+                    isClickEnabled: !editing, onClick: static () => Sidebar.EnterEdit(), icon: Icons.Edit));
+            }
+            items.Add(Item(Loc.Get("sidebar.menu.resetEverything"), editing ? finish : Loc.Get("settings.sidebar.resetEverythingSub"), null,
+                isClickEnabled: !editing,
+                // The Settings page's own overlay host (`s_overlay`): the confirm opens over Settings.
+                onClick: static () => { if (s_overlay is { } overlay) Sidebar.SidebarMenus.ConfirmResetEverything(overlay); },
+                icon: Icons.Delete));
             if (Sidebar.LayoutFileFault)
                 items.Insert(0, Item(Loc.Get(Strings.Settings.Sidebar.FileFault), "", null, icon: Icons.Warning));
             if (Platform.Settings.Get(Platform.Keys.SidebarMigrationDropped) is { Length: > 0 } dropped)
@@ -580,10 +669,23 @@ public static partial class Settings
                 Header = Loc.Get(Strings.Settings.Sidebar.Layout),
                 Description = Loc.Get(Strings.Settings.Sidebar.LayoutSub),
                 HeaderIcon = RowGlyph(Tab.Appearance, "sidebarDesign"),
-                Content = ValueTag(Sidebar.LayoutName(layout)),
-                ItemsHeader = ExpanderPanel(SidebarLayoutCards(layout, editing)),
+                Content = ValueTag(Sidebar.NavStyleName(style)),
+                ItemsHeader = ExpanderPanel(SidebarLayoutCards(style, editing)),
                 Items = [.. items],
             }) with { Key = "appearance.sidebar.layout" };
+        }
+    }
+
+    /// <summary>List · Grid for Your Library (the toolbar's and the ⋯ menu's view radios, as a combo).</summary>
+    sealed class SidebarViewPicker : Component
+    {
+        static readonly Signal<int> s_index = new(0);
+        public override Element Render()
+        {
+            int index = (int)Sidebar.Doc.Library.View;
+            UseEffect(() => s_index.Value = index, DepKey.From(index));
+            return ComboBox.Create([Loc.Get("sidebar.view.list"), Loc.Get("sidebar.view.grid")], s_index, width: 160f,
+                onChange: static i => Sidebar.Dispatch(new SetLibraryView(i == 1 ? SidebarLibraryView.Grid : SidebarLibraryView.List)));
         }
     }
 
@@ -600,13 +702,13 @@ public static partial class Settings
         }
     }
 
-    /// <summary>The two layout cards (Classic · Library), applied at once; disabled while the sidebar is being edited
-    /// (design Q7). Public: the setup wizard's Layout step reuses them (P4).</summary>
-    public static Element SidebarLayoutCards(SidebarLayoutId active, bool editing)
+    /// <summary>The three navigation-style cards (Classic · Library · Zune), applied at once; disabled while the sidebar is being edited
+    /// (design Q7). Public: the setup wizard's Layout step reuses them (P4, P12).</summary>
+    public static Element SidebarLayoutCards(ShellNavStyle active, bool editing)
     {
-        var strip = Controls.PickerStrip(2, (int)active,
-            static (i, on) => SidebarLayoutCardFace((SidebarLayoutId)i, on),
-            editing ? static _ => { } : static i => Sidebar.SwitchLayout((SidebarLayoutId)i));
+        var strip = Controls.PickerStrip(3, (int)active,
+            static (i, on) => SidebarLayoutCardFace((ShellNavStyle)i, on),
+            editing ? static _ => { } : static i => Sidebar.SwitchNavStyle((ShellNavStyle)i));
         if (!editing) return strip;
         // Q7: never a silent dead control — the cards say why they do not switch.
         return new BoxEl
@@ -616,10 +718,9 @@ public static partial class Settings
         };
     }
 
-    static Element SidebarLayoutCardFace(SidebarLayoutId layout, bool on)
+    static Element SidebarLayoutCardFace(ShellNavStyle style, bool on)
     {
         var ink = Controls.PickerInk.For(on);
-        bool library = layout == SidebarLayoutId.Library;
         Element preview = new BoxEl
         {
             Height = 96f, AlignSelf = FlexAlign.Stretch, Shrink = 0f, Direction = 1, Gap = 3f, ClipToBounds = true,
@@ -627,21 +728,28 @@ public static partial class Settings
             Corners = CornerRadius4.All(6f),
             Fill = on ? Tok.AccentSubtle : Tok.FillLayerDefault,
             BorderWidth = 1f, BorderColor = on ? Tok.AccentDefault : Tok.StrokeCardDefault,
-            Children = SidebarPreview(layout, ink),
+            Children = SidebarPreview(style, ink),
         };
-        var title = Controls.PickerLabel(Sidebar.LayoutName(layout), on);
+        var title = Controls.PickerLabel(Sidebar.NavStyleName(style), on);
         Element titleRow = new BoxEl
         {
             Direction = 0, Gap = 6f, AlignItems = FlexAlign.Center, AlignSelf = FlexAlign.Stretch,
             // The "Active" tag makes the selection survive a colour-blind read.
             Children = on ? [title with { Shrink = 1f }, ActiveTag()] : [title],
         };
+        string sub = style switch
+        {
+            ShellNavStyle.Library => "sidebar.layoutName.librarySub",
+            ShellNavStyle.Zune => "sidebar.layoutName.zuneSub",
+            _ => "sidebar.layoutName.classicSub",
+        };
+        string key = style switch { ShellNavStyle.Library => "library", ShellNavStyle.Zune => "zune", _ => "classic" };
         return Controls.PickerCard(on, Controls.PickerPaneCompact, preview, titleRow,
-            Design.Type.MicroMeta(Loc.Get(library ? "sidebar.layoutName.librarySub" : "sidebar.layoutName.classicSub")) with
+            Design.Type.MicroMeta(Loc.Get(sub)) with
             {
                 Color = Tok.TextTertiary, Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.WordEllipsis,
                 AlignSelf = FlexAlign.Stretch,
-            }) with { Key = library ? "library" : "classic" };
+            }) with { Key = key };
     }
 
     static Element ActiveTag() => new BoxEl
@@ -652,10 +760,25 @@ public static partial class Settings
     };
 
     /// <summary>Static semantic geometry at quarter scale (the compact counts) — never a mounted sidebar, never text.</summary>
-    static Element[] SidebarPreview(SidebarLayoutId layout, Controls.PickerInk ink)
+    static Element[] SidebarPreview(ShellNavStyle style, Controls.PickerInk ink)
     {
         var kids = new List<Element>(9);
-        if (layout == SidebarLayoutId.Library)   // the filter chip strip, the sort pill, then the unified list
+        if (style == ShellNavStyle.Zune)         // the pivot row over the title bar, the smaller sub-pivots, then the pin tiles
+        {
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = 5f, Shrink = 0f,
+                Children = [MiniBar(30f, 10f, ink.Block), MiniBar(24f, 10f, ink.Faint), MiniBar(26f, 10f, ink.Faint)],
+            });
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Gap = 4f, Shrink = 0f,
+                Children = [MiniBar(16f, 5f, ink.Faint), MiniBar(16f, 5f, ink.Faint), MiniBar(16f, 5f, ink.Faint)],
+            });
+            kids.Add(MiniArtRow(ink));
+            kids.Add(MiniArtRow(ink));
+        }
+        else if (style == ShellNavStyle.Library)   // the filter chip strip, the sort pill, then the unified list
         {
             kids.Add(new BoxEl
             {

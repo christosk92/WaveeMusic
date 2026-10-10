@@ -580,13 +580,20 @@ public readonly partial struct Artist
         bool _likeSaved;
         readonly Func<ChartPresentation> _compute;
         readonly Action _play, _like;
+        readonly Func<ColorF> _ink;
+        IReadSignal<Design.PageAccent>? _pageAccent;
 
         public ChartRow()
         {
             _compute = Compute;
             _play = Play;
             _like = Like;
+            _ink = Ink;
         }
+
+        /// <summary>The playing title, number and heart ink: the INK half of the accent the artist page publishes (one accent per
+        /// page), the system ink off a page that publishes none.</summary>
+        ColorF Ink() => Design.AccentRoles.Ink(_pageAccent?.Value);
 
         ChartPresentation Compute()
         {
@@ -614,6 +621,7 @@ public readonly partial struct Artist
             // The shelf slot root's scope (the slot owns click, focus and keys; this content is click-less). Read BEFORE
             // the early return so the hook order never depends on the row being live.
             RowScope? slot = UseContext(ItemsView.SlotRow);
+            _pageAccent = UseContext(Design.AccentCtx.Slot);
             var memo = UseComputed(_compute);
             var pr = memo.Value;
             if (pr.Slot <= 0) return new BoxEl();
@@ -633,7 +641,7 @@ public readonly partial struct Artist
                 plays > 0 ? Strings.Detail.Row.PlaysFull(plays.ToString("N0", System.Globalization.CultureInfo.CurrentCulture)) : "",
                 t.IsExplicit, t.HasVideo);
             return ChartRowView(in cells, p.Index, pr.State, p.Tier, feat, _play, t.IsValid ? _like : null, pop,
-                hovered, slot, owner.ChecksVisible, owner.ShowArtwork, classic);
+                hovered, slot, owner.ChecksVisible, owner.ShowArtwork, classic, _ink);
         }
 
         void Play()
@@ -700,16 +708,19 @@ public readonly partial struct Artist
     readonly record struct ChartCells(string Title, string? ArtUrl, string Duration, string PlaysCompact, string PlaysExact,
                                       bool Explicit, bool Video);
 
+    static readonly Func<ColorF> s_systemInk = static () => Design.AccentRoles.Ink(null);
+
     /// <summary>The prototype row (ArtistPopular.cs:365-522), shared by live rows and the skeleton so the two cannot
     /// drift. Modern: 56 tall, r6, a 1-DIP transparent border that paints on hover, NO resting fill — now-playing is
     /// content (the equalizer + the accent title). Classic: 48 tall, square, a hairline per row, and the now-playing
     /// accent spreads to the explicit mark, the dots, the video glyph, the plays and the duration (W10, parity 83).</summary>
     static Element ChartRowView(in ChartCells c, int index, in Track.RowState st, ArtistPopularLayout.Tier tier,
                                 Element? feat, Action? onPlay, Action? onLike, bool pop, Signal<bool>? hovered,
-                                RowScope? slot, Func<bool>? checksVisible, bool showArtwork, bool classic)
+                                RowScope? slot, Func<bool>? checksVisible, bool showArtwork, bool classic, Func<ColorF>? accent = null)
     {
         bool classicNow = classic && st.IsNow;
-        ColorF? nowInk = classicNow ? Tok.AccentTextPrimary : null;
+        ColorF nowAccent = st.IsNow ? (accent ?? s_systemInk)() : default;
+        ColorF? nowInk = classicNow ? nowAccent : null;
         bool hasPlays = c.PlaysCompact.Length > 0;
         // The third line needs ALL THREE: a stacking tier, a feat credit and a play count (ch 08 audit #17).
         bool stacked = tier.StackSub && feat is not null && hasPlays;
@@ -741,7 +752,7 @@ public readonly partial struct Artist
 
         var title = new TextEl(c.Title)
         {
-            Size = 14f, Weight = 600, Color = st.IsNow ? Tok.AccentTextPrimary : Tok.TextPrimary,
+            Size = 14f, Weight = 600, Color = st.IsNow ? nowAccent : Tok.TextPrimary,
             MaxLines = 1, Trim = TextTrim.CharacterEllipsis, MinWidth = 0f,
         };
         Element subLine = sub.Length > 0
@@ -752,7 +763,7 @@ public readonly partial struct Artist
             : [title, subLine];
 
         var trail = new Element[tier.ShowDuration ? 2 : 1];
-        trail[0] = Track.Heart(st.Saved, onLike, pop, classic);
+        trail[0] = Track.Heart(st.Saved, onLike, pop, classic, accent);
         if (tier.ShowDuration)
             trail[1] = Design.Type.DenseMeta(c.Duration) with { Color = nowInk ?? Tok.TextSecondary };
 
@@ -761,7 +772,7 @@ public readonly partial struct Artist
         rowChildren[child++] = new BoxEl
         {
             Width = 24f, Height = 24f, Shrink = 0f,
-            Children = [Track.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, classic: classic)],
+            Children = [Track.NumberCell(index, in st, onPlay, hovered, chartStatus: 0, classic: classic, accent: accent)],
         };
         // TRACK ARTWORK HIDDEN: the cell is not built at all (rowChildren is 3 long), the mid column takes the width.
         if (showArtwork)

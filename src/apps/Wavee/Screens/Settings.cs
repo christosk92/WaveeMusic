@@ -115,8 +115,11 @@ public static partial class Settings
             new(Tab.Appearance, "Theme", "theme", "Sun"),
             new(Tab.Appearance, "Theme", "zoom", "Zoom"),
             new(Tab.Appearance, "Theme", "marquee", "Font"),
-            new(Tab.Appearance, "Theme", "colorWashes", "Design"),
-            // "Movie", not "Design": `colorWashes` above already took Design, and a glyph may not repeat inside a
+            new(Tab.Appearance, "Theme", "washSurfaces", "Design"),
+            // "Picture", not "Brush": the section owns Brush.
+            new(Tab.Appearance, "Theme", "washAccent", "Picture"),
+            new(Tab.Appearance, "Theme", "washNowPlaying", "Album"),
+            // "Movie", not "Design": `washSurfaces` above already took Design, and a glyph may not repeat inside a
             // section (SettingsCatalogTests.NoGlyph_RepeatsWithinASection) — two identical icons in one list are two
             // rows the eye cannot tell apart at a glance, which is the whole point of the rule.
             new(Tab.Appearance, "Theme", "pageMotion", "Movie", DeveloperOnly: true),

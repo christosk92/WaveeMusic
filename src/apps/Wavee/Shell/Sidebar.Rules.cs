@@ -9,8 +9,33 @@
 // only draws what these rules decide: the pill's row, the subtitle's words and the focus stops.
 
 using System.Collections.Generic;
+using FluentGpu.Controls;
 
 namespace Wavee;
+
+/// <summary>The glyph an entry wears where it has no art: the Liked collection's heart, a folder's folder, an app route's own
+/// destination glyph, else its kind's mark. ONE rule for the grid cards (Sidebar.Cards.cs) and the Zune band's pin tiles, so a
+/// pin that has not resolved yet reads as what it is, never as a generic library icon. Pure: no scene, no signal.</summary>
+public static class SidebarKindGlyph
+{
+    /// <param name="kind">The entry's kind.</param>
+    /// <param name="id">The entry's id (a route key for an app route; <c>liked</c> for Liked Songs).</param>
+    /// <param name="uri">The entry's uri (the Liked collection's uri also marks it).</param>
+    public static string For(SidebarEntryKind kind, string id, string uri)
+    {
+        if (string.Equals(id, SidebarCatalogue.LikedRoute, System.StringComparison.Ordinal) || EntityUri.IsLikedCollection(uri))
+            return Icons.Heart;
+        return kind switch
+        {
+            SidebarEntryKind.Folder => Icons.Folder,
+            SidebarEntryKind.AppRoute => Shell.Dest(Shell.Parse(id)).Glyph,
+            SidebarEntryKind.Album => Icons.Album,
+            SidebarEntryKind.Artist => Icons.Contact,
+            SidebarEntryKind.Show => Icons.Microphone,
+            _ => Icons.MusicNote,
+        };
+    }
+}
 
 /// <summary>Where the one selection pill sits (design V.5).</summary>
 public enum SidebarPillAnchor : byte { None = 0, Row = 1, AncestorFolder = 2, SectionHeader = 3 }
@@ -72,7 +97,8 @@ public static class SidebarPillRules
     }
 }
 
-/// <summary>Which container a selection pill lives in (design V.5): the list, the fixed head above it, the footer below.</summary>
+/// <summary>Which container a selection pill lives in (design V.5): the list, the fixed head above it, the footer below
+/// (the footer hosts no pill since the Settings row went; the lane stays for the cross-container rule).</summary>
 public enum SidebarPillLane : byte { List = 0, Head = 1, Footer = 2 }
 
 public static class SidebarPillMotionRules
@@ -134,10 +160,17 @@ public static class SidebarLabelFit
     public const float AverageCharWidth = 7f;
 
     /// <summary>The label column of a row in a pane <paramref name="paneWidth"/> wide at <paramref name="depth"/>, with
-    /// <paramref name="trailing"/> DIP of trailing content.</summary>
-    public static float LabelWidth(float paneWidth, int depth, float trailing)
-        => paneWidth - 2f * SidebarRowGeometry.PaneEdge - SidebarRowGeometry.IndentFor(depth) - SidebarRowGeometry.IconColumn
-           - SidebarRowGeometry.LabelGap - SidebarRowGeometry.TrailingPad - trailing;
+    /// <paramref name="trailing"/> DIP of trailing content. A text-only row (<paramref name="iconColumn"/> false) has no icon
+    /// column: its label starts at <see cref="SidebarRowGeometry.TextLabelX"/> instead.</summary>
+    public static float LabelWidth(float paneWidth, int depth, float trailing, bool iconColumn = true)
+        => LabelWidth(paneWidth, depth, trailing, SidebarRowGeometry.LabelStartOf(iconColumn, textGlyph: false));
+
+    /// <summary>The same column for a row whose label starts at <paramref name="labelStart"/> (slot space, before the depth
+    /// indent): <see cref="SidebarRowGeometry.LabelStartOf"/> covers the icon column, the Text-shape folder mark and the bare
+    /// Text row.</summary>
+    public static float LabelWidth(float paneWidth, int depth, float trailing, float labelStart)
+        => paneWidth - 2f * SidebarRowGeometry.PaneEdge - SidebarRowGeometry.IndentFor(depth)
+           - labelStart - SidebarRowGeometry.TrailingPad - trailing;
 
     public static bool Overflows(string? label, float labelWidth)
         => label is { Length: > 0 } && label.Length * AverageCharWidth > labelWidth;

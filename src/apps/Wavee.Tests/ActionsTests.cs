@@ -26,6 +26,7 @@ using Xunit;
 
 namespace Wavee.Tests;
 
+[Collection(ShellStaticsCollection.Name)]
 public class ActionKeyTests
 {
     [Theory]
@@ -63,6 +64,7 @@ public class ActionKeyTests
     }
 }
 
+[Collection(ShellStaticsCollection.Name)]
 public class ActionTargetingTests
 {
     const string AlbumUri = "spotify:album:1TSZDcvlPtAnekTaItI3qO";
@@ -152,6 +154,7 @@ public class ActionTargetingTests
     }
 }
 
+[Collection(ShellStaticsCollection.Name)]
 public class ActionRegistryTests
 {
     static void Noop(ActionServices s, ActionBinding b, ActionResolution t) { }
@@ -224,6 +227,7 @@ public class ActionRegistryTests
     }
 }
 
+[Collection(ShellStaticsCollection.Name)]
 public class ActionDescriptorTests
 {
     static ActionServices Bag() => new() { CanConfirm = static () => true };
@@ -312,6 +316,7 @@ public class ActionDescriptorTests
     }
 }
 
+[Collection(ShellStaticsCollection.Name)]
 public class BuiltInActionTableTests
 {
     static Actions.Registry BuildWith(ActionServices services)

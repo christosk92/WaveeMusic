@@ -470,17 +470,20 @@ public static partial class Stage
         }
 
         /// <summary>The accent derivation (one definition, two triggers). Reads the track KEY (not the table), the cover's late
-        /// grading and the theme; writes the outputs (the accent set, the base palette, the accent target) equality-gated, so
-        /// the second trigger on the same inputs is a no-op.</summary>
+        /// grading, the theme and the now-playing colours switch; writes the outputs (the accent set, the base palette, the
+        /// accent target) equality-gated, so the second trigger on the same inputs is a no-op. With the switch off the system
+        /// accent and a neutral palette are used. This one derivation feeds Stage.AccentSignal (the lyrics pill's accent) and
+        /// the slab palette (Verse ghosts, faces), so Lyrics.UI.cs and Verse.UI.cs need no gate of their own.</summary>
         void PublishAccent()
         {
             var ctx = _ctx;
             var track = ctx.RowValue();
             string url = track.IsValid ? Controls.ArtUrl(track.ImageId) ?? "" : "";
+            bool np = Prefs.Appearance.NowPlayingColors();
             if (url.Length > 0) _ = global::Wavee.Palette.Watch(url).Value;
-            ColorF accentBase = Ink.Accent(url);
+            ColorF accentBase = np ? Ink.Accent(url) : Tok.AccentDefault;
             ctx.Accent.SetIfChanged(AccentSet.From(accentBase));
-            var palette = Visualizer.Palette.From(accentBase, Design.SchemeFor(url), Ink.IsDark);
+            var palette = Visualizer.Palette.From(accentBase, np ? Design.SchemeFor(url) : null, Ink.IsDark);
             ctx.BasePalette.SetIfChanged(palette);
             if (!_paletteSeeded)
             {

@@ -1,7 +1,7 @@
 // ── Screens/LogsPage.UI.cs ─────────────────────────────────────────────────────────────────────────────────────────
 // the Logs page (route `logs`): a full page of its own that replaces the Settings › Logs tab's embedded viewer. It re-hosts
 // the working viewer (the `LogView` pure model, the keyed session / category combos, the measured virtualised list, the row
-// anatomy, the 750 ms live poll) under one header, one toolbar and a list card with a column header
+// anatomy, the 750 ms live poll) under the shared page head, one toolbar and a list card with a column header
 //
 // Role: UI
 // Owner: S
@@ -11,9 +11,8 @@
 // capture levels are `LogCapturePolicy`, the strip's labels / the picker's caption / where a selection lands after a
 // re-list are `LogsPage.Rules` (`LogsPage.cs`, tested); the disk walk is `WaveeLogSessions` (`Diagnostics.Host.cs`).
 //
-// FRAME: the page frame the old sidebar customizer used (deleted in the sidebar rework): a 64-DIP header (Back,
-// eyebrow + title), Esc → back, `Shell.GoBack()` when there is a back stack, else the Privacy & diagnostics tab. The
-// capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs › Detail
+// FRAME: the shared PageHead (breadcrumbs over the title, the session picker as its actions), Esc → back,
+// `Shell.GoBack()` when there is a back stack, else the Privacy & diagnostics tab. The capture level and file level combos left the viewer (they are Settings › Privacy & diagnostics › Logs › Detail
 // level); Verbose stays here as a checkable item of the "…" menu.
 //
 // NOTHING HERE READS A CLOCK PER FRAME (ch 27 N12): the live tail polls at 750 ms and bumps only when `Log.Version` moved
@@ -48,7 +47,7 @@ public static partial class LogsPage
     // MOUNT POINT (stage B contract)
     public static Element Page() => Embed.Comp(static () => new LogsPageView());
 
-    const float GutterX = 36f, ColumnHeaderHeight = 32f;
+    const float ColumnHeaderHeight = 32f;
 
     // The row's fixed columns — ONE copy, read by the rows and the column header so they can never drift apart.
     const float ChevronSlot = 12f, DotSlot = 6f, TimeColumn = 92f, LevelColumn = 58f, CategoryColumn = 96f;
@@ -148,6 +147,7 @@ public static partial class LogsPage
             var query = Query();
             var result = entries is null ? LogViewResult.Empty : LogView.Build(entries, query);
             _rows = result.Rows;
+            float g = Shell.Ui.PageGutter.Value;
 
             return new BoxEl
             {
@@ -155,12 +155,13 @@ public static partial class LogsPage
                 OnKeyDown = _onKey ??= OnPageKey,
                 Children =
                 [
-                    HeaderBar(),
-                    Divider(),
-                    Toolbar(result, live, hooks, post),
+                    HeaderBar(g),
+                    Toolbar(result, live, hooks, post, g),
                     new BoxEl
                     {
-                        Margin = new Edges4(GutterX, 0f, GutterX, Spacing.L),
+                        // The list owns its scroller (the virtualized list below): the documented exception to
+                        // PageGeometry.BottomReserve, so the card keeps a Spacing.L trailing inset.
+                        Margin = new Edges4(g, 0f, g, Spacing.L),
                         Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1, Corners = CornerRadius4.All(Radii.Card),
                         Fill = Tok.FillCardSecondary, BorderWidth = 1f, BorderColor = Tok.StrokeCardDefault, ClipToBounds = true,
                         Children =
@@ -196,34 +197,18 @@ public static partial class LogsPage
             return idx <= 0 || idx > _categories.Length ? null : _categories[idx - 1];
         }
 
-        // ── the header: crumbs over the title lane · [picker caption] · session combo · Open folder ─────────────────
+        // ── the header: crumbs over the title · [picker caption] · session combo · Open folder ──────────────────────────
 
         /// <summary>The child-page head the app uses everywhere a page sits under a parent (Profile lists, the artist
-        /// discography): a <c>BreadcrumbBar</c> whose earlier crumbs navigate, over the page hero — no back arrow. The title
-        /// lane is the only flexible child (Grow 1 · Basis 0 · Shrink 1 · MinWidth 0), so under pressure the title
-        /// ellipsizes and the picker cluster holds its width.</summary>
-        Element HeaderBar()
+        /// discography): the shared <see cref="PageHead"/>, kind CrumbTitle (<c>PageHeadRules.Extent</c> 156) — a
+        /// <c>BreadcrumbBar</c> whose earlier crumbs navigate, over the page title, no back arrow. The picker cluster is the
+        /// title row's action cluster: it holds its width and the title ellipsizes under pressure. The caption comes and goes
+        /// inside the reserved title line, so the head's height never moves.</summary>
+        Element HeaderBar(float gutter)
         {
             // Every child is keyed: the picker caption comes and goes, and a positional diff would otherwise slide the
             // combo's remount key onto the wrong sibling.
-            var kids = new List<Element>(4)
-            {
-                new BoxEl
-                {
-                    Key = "logs:title", Direction = 1, Grow = 1f, Basis = 0f, Shrink = 1f, MinWidth = 0f, Justify = FlexJustify.Center, Gap = Spacing.XXS,
-                    Children =
-                    [
-                        // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
-                        // second lands on the tab this page belongs to; the last is this page and does nothing.
-                        BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)], static i =>
-                        {
-                            if (i == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
-                            else if (i == 1) Settings.Open(Settings.Tab.PrivacyDiagnostics);
-                        }),
-                        Design.Type.PageHero(Loc.Get(Strings.Logs.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
-                    ],
-                },
-            };
+            var kids = new List<Element>(3);
             if (PickerCaptionText() is { } caption)
                 kids.Add(Design.Type.MicroMeta(caption) with
                 {
@@ -236,14 +221,22 @@ public static partial class LogsPage
             kids.Add(Button.Create(Loc.Get(Strings.Logs.OpenFolder), static () => Diagnostics.OpenFolder(Path.GetDirectoryName(Log.FilePath ?? "")),
                 ButtonAppearance.Standard, ControlSize.Small, glyph: Icons.Folder) with { Key = "logs:folder", Shrink = 0f });
 
-            return new BoxEl
+            return PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Logs.Title))
             {
-                // The page gutter (PageWide) and the hero's top room, as Profile.Lists.Page's head; the picker cluster
-                // sits on the hero's baseline row, so it centres against the two-line title lane.
-                Key = "logs-header", Direction = 0, Shrink = 0f, Gap = Spacing.S,
-                AlignItems = FlexAlign.Center, Padding = new Edges4(Spacing.PageWide, Spacing.L, Spacing.PageWide, Spacing.S),
-                Children = kids.ToArray(),
-            };
+                // Settings › Privacy & diagnostics › Logs. The first crumb opens Settings on its remembered tab; the
+                // second lands on the tab this page belongs to; the last is this page and does nothing.
+                Above = BreadcrumbBar.Create([Loc.Get(Strings.Nav.Settings), Loc.Get(Strings.Settings.Tabs.Privacy), Loc.Get(Strings.Logs.Title)], static i =>
+                {
+                    if (i == 0) Shell.GoTo(new Shell.Route(Shell.RouteKind.Settings));
+                    else if (i == 1) Settings.Open(Settings.Tab.PrivacyDiagnostics);
+                }),
+                Actions = new BoxEl
+                {
+                    Key = "logs-header", Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
+                    Children = kids.ToArray(),
+                },
+                Gutter = gutter, Key = "logs:head",
+            });
         }
 
         /// <summary>The picker's status line (G4: "This session" used to read identically for "still walking", "none on
@@ -263,7 +256,7 @@ public static partial class LogsPage
 
         // ── the toolbar: filter · level strip (counts inside) · categories · … · copy · export · more ─────────────────
 
-        Element Toolbar(LogViewResult result, bool live, InputHooks hooks, Action<Action> post)
+        Element Toolbar(LogViewResult result, bool live, InputHooks hooks, Action<Action> post, float gutter)
         {
             var catLabels = new string[_categories.Length + 1];
             catLabels[0] = Loc.Get(Strings.Logs.AllCategories);
@@ -282,7 +275,7 @@ public static partial class LogsPage
             return new BoxEl
             {
                 Key = "logs-toolbar", Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Wrap = true, Shrink = 0f,
-                Padding = new Edges4(GutterX, Spacing.L, GutterX, Spacing.S),
+                Padding = new Edges4(gutter, 0f, gutter, Spacing.S),   // the head already leaves its HeadToBody air
                 Children =
                 [
                     AutoSuggestBox.Create(Array.Empty<string>(), placeholder: Loc.Get(Strings.Logs.FilterPlaceholder),

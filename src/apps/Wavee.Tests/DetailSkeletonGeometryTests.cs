@@ -20,6 +20,7 @@
 
 using Xunit;
 using Config = Wavee.Detail.Config;
+using RailArtistLine = Wavee.Detail.RailArtistLine;
 using RailBadgeRow = Wavee.Detail.RailBadgeRow;
 using RailLayout = Wavee.Detail.RailLayout;
 using RailSlotSet = Wavee.Detail.RailSlotSet;
@@ -43,19 +44,19 @@ public class DetailSkeletonGeometryTests
         Assert.False(plan.Artists);
         Assert.True(plan.Meta);
         Assert.Equal(Skeleton.RailTitleLines, plan.TitleLines);
-        Assert.Equal(3, plan.Fabs);                       // heart · Share · ⋯
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ (the Insights toggle lives in the command bar)
         Assert.Equal(Skeleton.RailDescriptionLines, plan.DescriptionLines);
     }
 
     [Fact]
-    public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurbNoMore()
+    public void RailPlan_Album_EyebrowArtistsNoMetaNoBlurb()
     {
         var plan = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
         Assert.True(plan.Eyebrow);
         Assert.False(plan.Owner);
         Assert.True(plan.Artists);
         Assert.False(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // heart · Share — an album's rail has no ⋯ (ch 05 parity 15)
+        Assert.Equal(4, plan.Fabs);                       // Shuffle · heart · Share · ⋯ — an album's rail has its ⋯ now (D2a)
         Assert.Equal(0, plan.DescriptionLines);
     }
 
@@ -73,7 +74,7 @@ public class DetailSkeletonGeometryTests
         var plan = Skeleton.RailPlanFor(DetailKind.Liked, BadgeStyle.None, heart: false, descriptionMaxLines: 6);
         Assert.False(plan.Owner);
         Assert.True(plan.Meta);
-        Assert.Equal(2, plan.Fabs);                       // Share · ⋯
+        Assert.Equal(2, plan.Fabs);                       // Share · ⋯ (the Insights toggle lives in the command bar)
         Assert.Equal(0, plan.DescriptionLines);
     }
 
@@ -103,32 +104,146 @@ public class DetailSkeletonGeometryTests
         var before = new Skeleton.RailPlan(
             Eyebrow: typeYear, Owner: badges == BadgeStyle.OwnerRow, Artists: typeYear,
             Meta: !typeYear || kind == DetailKind.Show, TitleLines: Skeleton.RailTitleLines,
-            Fabs: (heart ? 1 : 0) + 1 + (kind != DetailKind.Album ? 1 : 0),
-            DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0);
+            Fabs: (kind is DetailKind.Album or DetailKind.Playlist ? 1 : 0) + (heart ? 1 : 0) + 1 + 1,
+            DescriptionLines: kind is DetailKind.Playlist or DetailKind.Show ? Math.Min(Skeleton.RailDescriptionLines, descMax) : 0,
+            PlainPlay: kind is not (DetailKind.Album or DetailKind.Playlist));
+        // L1: an album-family artists row IS the artist line (the page's own Attribution slot paints the same look), whose
+        // reserved row is the look's height; a podcast's attribution row is the publisher line and stays a text row.
+        var faces = before with { ArtistFaces = before.Artists && kind != DetailKind.Show };
 
-        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax));
-        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
-        Assert.Equal(before, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, default));
+        Assert.Equal(faces, Skeleton.RailPlanFor(kind, badges, heart, descMax, new RailSlotSet(Attribution: true)));
         Assert.Equal(RailBadgeRow.None, before.Badges);
         Assert.False(before.Rating || before.Ledger || before.Satellites || before.Topics);
     }
 
     /// <summary>The nominal height of the pre-podcast skeleton columns, by hand: 24 above, the rows, 14 between, 24 below —
-    /// the CTA line wrapping exactly as the engine's flex wrap wraps [PlayButton 120][the icon-action group].
+    /// the CTA line wrapping exactly as the engine's flex wrap wraps [Play split 121][the icon-action group].
     /// <para>Workstream B geometry: <c>RailLayout.PillHeight</c> (the primary's height) and <c>FabSize</c>/<c>SatelliteSize</c>
-    /// are all 32 now (were 36/40/36); <c>Skeleton.PlayButtonWidth</c> is 120 (was <c>PlayPillWidth</c> 104).</para></summary>
+    /// are all 32 now (were 36/40/36); <c>Skeleton.PlayButtonWidth</c> is the Play split's 121 (was <c>PlayPillWidth</c> 104).</para></summary>
     [Fact]
     public void RailHeight_OfThePrePodcastColumns_IsTheirRowSum()
     {
-        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 · CTA 4 + 32 (PlayButton
-        // 120 + 12 + [heart · Share] 72 = 204 ≤ 256: one line, max(PillHeight 32, FabSize 32) = 32). Five rows, four gaps.
+        // The column pads the one pane inset above (RailLayout.PadTop = 16) and 24 below.
+        // Album, 280 rail (cover 256), 36 title line: cover · eyebrow 16 · title 2 × 36 · artists 16 (L1: 40 below) · CTA wrapped
+        // (Play split 121 + 12 + [Shuffle · heart · Share · ⋯] 152 = 285 > 256): 4 + 32 + 12 + 32 = 80. Five rows, four gaps.
         var album = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 256f + 16f + 72f + 16f + 36f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        // L1: the artists row is the artist line's height for the look the rail's width gives it (Wide at 256: the 32 pile
+        // frame + its 4 + 4 plate), not 16; the same plan declared with the album's own Attribution slot is the same height.
+        Assert.Equal(RailLayout.PadTop + 256f + 16f + 72f + 40f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 256f, 36f));
+        var albumWithSlot = Skeleton.RailPlanFor(DetailKind.Album, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6,
+            new RailSlotSet(Attribution: true));
+        Assert.Equal(RailLayout.HeightOf(album, 256f, 36f), RailLayout.HeightOf(albumWithSlot, 256f, 36f));
+        // A narrower rail (cover 200 is Medium) reserves the two-text-line look (48), whatever the names will be.
+        Assert.Equal(RailLayout.PadTop + 200f + 16f + 72f + 48f + 80f + 4 * 14f + 24f, RailLayout.HeightOf(album, 200f, 36f));
+        Assert.Equal(RailLayout.HeightOf(album with { ArtistFaces = false }, 256f, 36f) + RailArtistLine.WideHeight - RailLayout.AttributionHeight,
+            RailLayout.HeightOf(album, 256f, 36f));
 
-        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (120 + 12 + 112 > 216):
+        // Playlist, 240 rail (cover 216): cover · owner 24 · title 72 · meta 16 · CTA wrapped (121 + 12 + 192 > 216):
         // 4 + 32 + 12 + 32 · blurb 3 × 18. Six rows, five gaps.
         var playlist = Skeleton.RailPlanFor(DetailKind.Playlist, BadgeStyle.OwnerRow, heart: true, descriptionMaxLines: 6);
-        Assert.Equal(24f + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+        Assert.Equal(RailLayout.PadTop + 216f + 24f + 72f + 16f + 80f + 54f + 5 * 14f + 24f, RailLayout.HeightOf(playlist, 216f, 36f));
+    }
+
+    // ── D2a: the Play split's width and the one action row's fab counts ───────────────────────────────────────────
+
+    [Fact]
+    public void PlayButtonWidth_IsThePlaySplitsNominalWidth()
+    {
+        Assert.Equal(ButtonRules.PlaySplitWidthNominal, Skeleton.PlayButtonWidth);
+        Assert.Equal(121f, Skeleton.PlayButtonWidth);
+    }
+
+    /// <summary>The fixed group's members per kind are Shuffle (album, playlist) · heart · Share · ⋯ (the Insights toggle lives in the command bar),
+    /// so the predicted CTA wrap is the loaded one's. An album's four members (152) never fit beside the Play split
+    /// (121 + 12 + 152 = 285) at the rail's cover edges 200 / 240 / 280, so the group takes a second 32-DIP line; a
+    /// playlist's four are the same group (it lost the Insights slot), and a 320 edge holds either on one line.</summary>
+    [Theory]
+    [InlineData(DetailKind.Album, 4, 200f, 80f)]
+    [InlineData(DetailKind.Album, 4, 240f, 80f)]
+    [InlineData(DetailKind.Album, 4, 280f, 80f)]
+    [InlineData(DetailKind.Album, 4, 320f, 36f)]
+    [InlineData(DetailKind.Playlist, 4, 200f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 240f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 280f, 80f)]
+    [InlineData(DetailKind.Playlist, 4, 320f, 36f)]
+    public void ActionRow_CtaHeight_AtTheCoverEdges(DetailKind kind, int fabs, float edge, float cta)
+    {
+        var badges = kind == DetailKind.Album ? BadgeStyle.TypeYear : BadgeStyle.OwnerRow;
+        var plan = Skeleton.RailPlanFor(kind, badges, heart: true, descriptionMaxLines: 6);
+        Assert.Equal(fabs, plan.Fabs);
+        Assert.Equal(cta, RailLayout.CtaHeight(plan, edge));
+    }
+
+    [Theory]
+    [InlineData(DetailKind.Album, true)]
+    [InlineData(DetailKind.Playlist, true)]
+    [InlineData(DetailKind.Liked, false)]
+    [InlineData(DetailKind.Show, false)]
+    [InlineData(DetailKind.Episode, false)]
+    public void OnlyTheSplitKindsReserveTheShuffle(DetailKind kind, bool shuffles)
+    {
+        Assert.Equal(shuffles, Skeleton.HasLabelledShuffle(kind));
+        // …and the same kinds carry the split (121); the others keep the plain Play button (120).
+        Assert.Equal(shuffles ? 121f : 120f, Skeleton.PrimaryWidthFor(plainPlay: !shuffles));
+        Assert.Equal(!shuffles, Skeleton.RailPlanFor(kind, BadgeStyle.TypeYear, heart: true, descriptionMaxLines: 6).PlainPlay);
+    }
+
+    // ── the vertical hero's action row: ONE line rule for the skeleton, the pre-measure band and the loaded hero ─────
+
+    /// <summary>The identity column's width decides whether the labelled Shuffle fits (345 DIP: 121 + 96 + 3 × 32 + 4 × 8),
+    /// else the icon-only Shuffle (281) and, below that, a second line. Row flow reads the copy column, stacked the capped
+    /// content width.</summary>
+    [Theory]
+    [InlineData(440f, true, 206f, false, 2)]     // row flow, copy column 206: even the icon-only row (281) wraps
+    [InlineData(600f, true, 296f, false, 1)]     // copy 296: icon-only Shuffle, one line (the labelled row would have wrapped)
+    [InlineData(700f, true, 388f, true, 1)]      // copy 388: labelled, one line
+    [InlineData(360f, false, 328f, false, 1)]    // stacked, narrow pad (16): 328
+    [InlineData(400f, false, 368f, true, 1)]
+    [InlineData(300f, false, 268f, false, 2)]    // 268 < 281: wraps
+    public void ActionRow_LinesFollowTheIdentityColumn(float colW, bool rowFlow, float identityW, bool labelled, int lines)
+    {
+        Assert.Equal(identityW, VerticalLayout.IdentityWidthFor(colW, rowFlow));
+        Assert.Equal(labelled, VerticalLayout.LabelledShuffleFits(colW, rowFlow));
+        Assert.Equal(lines, VerticalLayout.ActionRowLinesFor(colW, rowFlow, split: true));
+        // A kind without the split keeps the single line the arithmetic always charged.
+        Assert.Equal(1, VerticalLayout.ActionRowLinesFor(colW, rowFlow, split: false));
+        Assert.Equal(VerticalLayout.ActionRowHeight + (lines - 1) * 40f, VerticalLayout.ActionRowHeightFor(lines));
+    }
+
+    [Fact]
+    public void LabelledShuffle_FitsExactlyWhenTheLabelledRowDoes()
+    {
+        Assert.Equal(345f, VerticalLayout.SplitActionRowWidth(labelledShuffle: true));
+        Assert.Equal(281f, VerticalLayout.SplitActionRowWidth(labelledShuffle: false));
+        Assert.True(VerticalLayout.LabelledShuffleFits(377f, rowFlow: false));    // 377 − 32 = 345
+        Assert.False(VerticalLayout.LabelledShuffleFits(376f, rowFlow: false));
+    }
+
+    /// <summary>The wrapped line is charged by every consumer of the hero's height: the identity column, the title budget
+    /// (row flow) and the band — so the skeleton's reserved band is the loaded hero's.</summary>
+    [Fact]
+    public void ActionRow_ExtraLinesAreChargedByTheBandAndTheBudget()
+    {
+        const float w = 300f;                      // stacked, 268 identity: two lines
+        int lines = VerticalLayout.ActionRowLinesFor(w, false, split: true);
+        Assert.Equal(2, lines);
+        var plan = VerticalLayout.TitleTypeFor(w, false, "An Album", true, true, true);
+        Assert.Equal(
+            VerticalLayout.HeroBandHeight(w, false, plan, true, true, true, true) + 40f,
+            VerticalLayout.HeroBandHeight(w, false, plan, true, true, true, true, actionLines: lines));
+        Assert.Equal(
+            VerticalLayout.IdentityHeightFor(plan, false, true, true, true) + 40f,
+            VerticalLayout.IdentityHeightFor(plan, false, true, true, true, actionLines: lines));
+
+        var (one, blocks) = VerticalLayout.IdentityChrome(true, true, true, false, rowFlow: true);
+        var (two, blocksTwo) = VerticalLayout.IdentityChrome(true, true, true, false, rowFlow: true, actionLines: 2);
+        Assert.Equal(one + 40f, two);
+        Assert.Equal(blocks, blocksTwo);
+        // A taller row leaves the title less of the cover's height.
+        Assert.Equal(VerticalLayout.TitleHeightBudgetFor(520f, true, true, true, true) - 40f,
+                     VerticalLayout.TitleHeightBudgetFor(520f, true, true, true, true, actionLines: 2));
     }
 
     const int PodcastDescMax = 3;

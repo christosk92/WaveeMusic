@@ -596,9 +596,11 @@ public static partial class Deck
     }
 
     /// <summary>The hero's cover WASH: the card ground lerped toward the cover's lifted accent (the theme accent before a
-    /// grading lands or with no cover) — every cover slot's placeholder, so an undecoded slot is a tint, never a hole.</summary>
+    /// grading lands or with no cover) — every cover slot's placeholder, so an undecoded slot is a tint, never a hole.
+    /// With now-playing colours off the wash is the neutral card fill.</summary>
     static ColorF Wash(string? url)
     {
+        if (!Prefs.Appearance.NowPlayingColors()) return Tok.FillCardSecondary;
         ColorF accent = url is { Length: > 0 } && Design.SchemeFor(url) is { } s
             ? Design.Palette.Lift(Design.Palette.Accent(s))
             : Tok.AccentDefault;

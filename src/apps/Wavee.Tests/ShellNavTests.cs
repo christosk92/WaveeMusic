@@ -462,10 +462,10 @@ public class MergedChromeLayoutTests
 
     [Theory]
     // width · measured tab extent · the mode the row can honestly seat · the field width it publishes
-    [InlineData(847f, 110f, false, Shell.Layout.ChromeSearchIconW)]   // one tab: 847 − 458 − 110 = 279, one DIP short
-    [InlineData(848f, 110f, true, Shell.Layout.ChromeSearchMinW)]     // …and 280 exactly seats the minimum field
-    [InlineData(957f, 220f, false, Shell.Layout.ChromeSearchIconW)]   // two tabs cost 110 more, so the flip moves 110 up
-    [InlineData(958f, 220f, true, Shell.Layout.ChromeSearchMinW)]
+    [InlineData(803f, 110f, false, Shell.Layout.ChromeSearchIconW)]   // one tab: 803 - 414 - 110 = 279, one DIP short
+    [InlineData(804f, 110f, true, Shell.Layout.ChromeSearchMinW)]     // …and 280 exactly seats the minimum field
+    [InlineData(913f, 220f, false, Shell.Layout.ChromeSearchIconW)]   // two tabs cost 110 more, so the flip moves 110 up
+    [InlineData(914f, 220f, true, Shell.Layout.ChromeSearchMinW)]
     [InlineData(1216f, 270f, true, 340f)]                             // the lane is under the DESIRE (350): take the lane
     [InlineData(2400f, 330f, true, Shell.Layout.ChromeSearchMaxW)]    // plenty spare: the desire caps at the max
     public void The_field_is_chosen_and_sized_by_the_lane_the_row_can_really_give(
@@ -578,21 +578,21 @@ public class MergedChromeLayoutTests
         var icon = Shell.Chrome.Resolve(700f, 110f);
         Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
 
-        // 848 is the first width whose lane seats the minimum; a PROMOTION re-resolves at (width − 40) and so waits.
-        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(848f, 110f, icon).SearchMode);
-        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(887f, 110f, icon).SearchMode);
-        var promoted = Shell.Chrome.Resolve(888f, 110f, icon);
+        // 804 is the first width whose lane seats the minimum; a PROMOTION re-resolves at (width − 40) and so waits.
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(804f, 110f, icon).SearchMode);
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(843f, 110f, icon).SearchMode);
+        var promoted = Shell.Chrome.Resolve(844f, 110f, icon);
         Assert.Equal(Shell.MergedSearchMode.Field, promoted.SearchMode);
 
         // Coming back down, a demotion is immediate — a field is never left in a row that cannot seat it.
-        Assert.Equal(Shell.MergedSearchMode.Field, Shell.Chrome.Resolve(848f, 110f, promoted).SearchMode);
-        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(847f, 110f, promoted).SearchMode);
+        Assert.Equal(Shell.MergedSearchMode.Field, Shell.Chrome.Resolve(804f, 110f, promoted).SearchMode);
+        Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(803f, 110f, promoted).SearchMode);
     }
 
     [Fact]
     public void Dragging_the_window_edge_across_the_band_commits_one_flip_not_a_flicker()
     {
-        // The band is [848, 888). Inside it the mode must depend only on where the drag came FROM, and re-resolving at
+        // The band is [804, 844). Inside it the mode must depend only on where the drag came FROM, and re-resolving at
         // a standing width must never move it again (the per-frame resolve is a fixed point).
         var state = Shell.Chrome.Resolve(700f, 110f);
         int flips = 0;
@@ -600,7 +600,7 @@ public class MergedChromeLayoutTests
         for (int pass = 0; pass < 4; pass++)
         {
             bool up = pass % 2 == 0;
-            for (float w = up ? 830f : 910f; up ? w <= 910f : w >= 830f; w += up ? 1f : -1f)
+            for (float w = up ? 790f : 870f; up ? w <= 870f : w >= 790f; w += up ? 1f : -1f)
             {
                 state = Shell.Chrome.Resolve(w, 110f, state);
                 Assert.Equal(state, Shell.Chrome.Resolve(w, 110f, state));   // idempotent at a standing width
@@ -637,8 +637,8 @@ public class MergedChromeLayoutTests
 
     [Theory]
     // measured tab extent · the RAW threshold · the width the row can first afford the stage at
-    [InlineData(330f, Shell.Layout.ChromeActionsEnterW, 1200f)]   // three tabs: 590 + 280 + 330 (affordable at the raw threshold)
-    [InlineData(440f, Shell.Layout.ChromeActionsEnterW, 1310f)]   // four tabs:  590 + 280 + 440
+    [InlineData(330f, Shell.Layout.ChromeActionsEnterW, 1200f)]   // three tabs: 546 + 280 + 330 (affordable at the raw threshold)
+    [InlineData(440f, Shell.Layout.ChromeActionsEnterW, 1266f)]   // four tabs:  546 + 280 + 440
     public void The_trailing_actions_wait_until_the_row_can_seat_them_beside_the_field(
         float extent, float raw, float afford)
     {
@@ -659,14 +659,14 @@ public class MergedChromeLayoutTests
     [Fact]
     public void The_profile_name_waits_for_the_same_check_on_top_of_the_actions()
     {
-        // Four tabs: the name's raw threshold is 1360 but the row cannot seat 680 + 280 + 440 until 1400.
-        for (float w = Shell.Layout.ChromeNameEnterW; w < 1400f; w += 1f)
+        // Five tabs: the name's raw threshold is 1360 but the row cannot seat 636 + 280 + 500 until 1416.
+        for (float w = Shell.Layout.ChromeNameEnterW; w < 1416f; w += 1f)
         {
-            var c = Shell.Chrome.Resolve(w, 440f);
+            var c = Shell.Chrome.Resolve(w, 500f);
             Assert.False(c.ShowName, $"The name entered at {w} without the row affording it.");
             Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
         }
-        var at = Shell.Chrome.Resolve(1400f, 440f);
+        var at = Shell.Chrome.Resolve(1416f, 500f);
         Assert.True(at.ShowName);
         Assert.Equal(Shell.MergedSearchMode.Field, at.SearchMode);
 
@@ -685,14 +685,14 @@ public class MergedChromeLayoutTests
         var narrow = Shell.Chrome.Resolve(Shell.Layout.ChromeActionsEnterW, 440f);
         Assert.False(narrow.ShowActions);
 
-        Assert.False(Shell.Chrome.Resolve(1310f, 440f, narrow).ShowActions);   // at the affordable width: still held
-        Assert.False(Shell.Chrome.Resolve(1349f, 440f, narrow).ShowActions);
-        var promoted = Shell.Chrome.Resolve(1350f, 440f, narrow);              // …a full reserve past it
+        Assert.False(Shell.Chrome.Resolve(1266f, 440f, narrow).ShowActions);   // at the affordable width: still held
+        Assert.False(Shell.Chrome.Resolve(1305f, 440f, narrow).ShowActions);
+        var promoted = Shell.Chrome.Resolve(1306f, 440f, narrow);              // …a full reserve past it
         Assert.True(promoted.ShowActions);
         Assert.Equal(Shell.MergedSearchMode.Field, promoted.SearchMode);
 
-        Assert.True(Shell.Chrome.Resolve(1310f, 440f, promoted).ShowActions);  // coming back down it holds…
-        Assert.False(Shell.Chrome.Resolve(1309f, 440f, promoted).ShowActions); // …and then goes at once
+        Assert.True(Shell.Chrome.Resolve(1266f, 440f, promoted).ShowActions);  // coming back down it holds…
+        Assert.False(Shell.Chrome.Resolve(1265f, 440f, promoted).ShowActions); // …and then goes at once
     }
 
     // ══ THE AUTH CHIP'S REAL WIDTH (#88) ════════════════════════════════════════════════════════════════════════════
@@ -716,17 +716,17 @@ public class MergedChromeLayoutTests
 
     [Theory]
     // the chip on screen · the first width whose lane seats a minimum field beside one tab
-    [InlineData(Shell.FrameRules.ChipForm.Profile, 848f)]
-    [InlineData(Shell.FrameRules.ChipForm.SignIn, 900f)]
-    [InlineData(Shell.FrameRules.ChipForm.Connecting, 906f)]
-    [InlineData(Shell.FrameRules.ChipForm.Reconnect, 916f)]
+    [InlineData(Shell.FrameRules.ChipForm.Profile, 804f)]
+    [InlineData(Shell.FrameRules.ChipForm.SignIn, 856f)]
+    [InlineData(Shell.FrameRules.ChipForm.Connecting, 862f)]
+    [InlineData(Shell.FrameRules.ChipForm.Reconnect, 872f)]
     public void The_field_flip_moves_by_exactly_what_the_chip_on_screen_costs(Shell.FrameRules.ChipForm chip, float flip)
     {
         Assert.Equal(Shell.MergedSearchMode.Icon, Shell.Chrome.Resolve(flip - 1f, 110f, null, chip).SearchMode);
         Assert.Equal(Shell.MergedSearchMode.Field, Shell.Chrome.Resolve(flip, 110f, null, chip).SearchMode);
-        // The avatar's 848 is the baseline, and every other form's flip is that plus the DIPs it really occupies —
+        // The avatar's 804 is the baseline, and every other form's flip is that plus the DIPs it really occupies —
         // nothing else about the ladder moved.
-        Assert.Equal(flip - 848f, Shell.Chrome.ChipWidth(chip) - Shell.Layout.ChromeProfileChipW, 3);
+        Assert.Equal(flip - 804f, Shell.Chrome.ChipWidth(chip) - Shell.Layout.ChromeProfileChipW, 3);
     }
 
     [Fact]

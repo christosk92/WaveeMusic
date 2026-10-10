@@ -153,7 +153,8 @@ public sealed class DaylistCard : Component
         Element? art = artUrl is null ? null : ArtLayer(artUrl);
         Element? veil = artUrl is null ? null
             : Palette.ArtistHeroVeil(artUrl, vertical: false, float.NaN, float.NaN, key: "daylist-veil:" + uri,
-                                     payloadAccent: card.Accent);
+                                     payloadAccent: card.Accent,
+                                     disabled: Prefs.Appearance.SurfaceWash() == WashLevel.Off);
 
         // The card IS the daylist: a click anywhere outside its buttons opens the playlist (the buttons are nested
         // click targets, so Play/Shuffle/♡/… keep their own action). The tile ramp is the card's hover/press feedback.

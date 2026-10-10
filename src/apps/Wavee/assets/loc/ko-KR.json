@@ -526,10 +526,7 @@
       "mostVisited": "가장 많이 방문",
       "visitCount": "{count, plural, other {방문 #회}}",
       "visitMultiplier": "{count}×",
-      "stat": {
-        "visits": "방문",
-        "unique": "고유"
-      },
+      "meta": "{visits, plural, other {방문 #회}} · 고유 {unique}",
       "filter": {
         "all": "전체",
         "playlists": "플레이리스트",

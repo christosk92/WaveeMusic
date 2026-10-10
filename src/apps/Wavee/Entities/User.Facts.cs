@@ -190,6 +190,11 @@ public static class LikedFactsRules
         return lenses;
     }
 
+    /// <summary>The lenses the lens header shows as pills: all of them, except a genre on Liked Songs, whose own chip bar
+    /// already shows the selected genre (a second "Nostalgia ✕" under it said the same thing twice).</summary>
+    public static LikedLens HeaderLenses(in Track.FilterState filter, DetailKind kind)
+        => ActiveLenses(filter) & (kind == DetailKind.Liked ? ~LikedLens.Tag : ~LikedLens.None);
+
     /// <summary>Retire ONE lens, leaving every other facet exactly as it was — a per-facet undo, not a reset.</summary>
     public static Track.FilterState ClearLens(in Track.FilterState filter, LikedLens lens) => lens switch
     {

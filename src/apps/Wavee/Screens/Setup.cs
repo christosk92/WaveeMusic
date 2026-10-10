@@ -419,6 +419,13 @@ public static partial class Setup
         /// <summary>The banner's inner cap, and its lane's top pad (the 48-DIP chrome row + 8).</summary>
         public const float BannerMaxWidth = 560f, BannerTopPad = 56f;
 
+        /// <summary>Whether the command row's two groups (the links, the buttons) no longer share one line of the dialog's
+        /// <see cref="ProgressWidth"/> and the footer wraps the buttons onto a second line. It is the engine's own wrap-line
+        /// break rule (a gap between the groups, a 0.01 slack), restated so the Failed footer's "wraps" is a fact, not a
+        /// guess. An empty group (no links, or no buttons) never wraps.</summary>
+        public static bool FooterWraps(float linksW, float buttonsW, float lineW = ProgressWidth)
+            => linksW > 0f && buttonsW > 0f && linksW + FluentGpu.Dsl.Spacing.S + buttonsW > lineW + 0.01f;
+
         /// <summary>The download bar's fill: clamped 0..1, 0 when the total is unknown.</summary>
         public static float ProgressFraction(long received, long total)
             => total <= 0 ? 0f : Math.Clamp((float)((double)received / total), 0f, 1f);

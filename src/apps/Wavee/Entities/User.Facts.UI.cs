@@ -54,12 +54,12 @@ public readonly partial struct User
 
     /// <summary>Is any rail lens on in the table behind <paramref name="lens"/>? SUBSCRIBES (the bridge, then the view) —
     /// read it from a computed memo so a page re-renders only when the answer flips.</summary>
-    public static bool LensActive(LensCell lens)
-        => lens.Live.Value is { } live && LikedFactsRules.ActiveLenses(live.View.Value.Filters) != LikedFactsRules.LikedLens.None;
+    public static bool LensActive(LensCell lens, DetailKind kind)
+        => lens.Live.Value is { } live && LikedFactsRules.HeaderLenses(live.View.Value.Filters, kind) != LikedFactsRules.LikedLens.None;
 
     /// <summary>The value for <c>TableProfile.LensExtent</c>: <see cref="LensExtent"/> while a lens is on, 0 otherwise —
     /// exactly what the header paints. Subscribes like <see cref="LensActive"/>.</summary>
-    public static float LensExtentFor(LensCell lens) => LensActive(lens) ? LensExtent : 0f;
+    public static float LensExtentFor(LensCell lens, DetailKind kind) => LensActive(lens, kind) ? LensExtent : 0f;
 
     /// <summary>ch 06 <c>LikedFacts.Has</c>: true when at least one card would mount — an ALLOCATION-FREE early-exit scan
     /// (a keyed credit, a usable stamp or a release year is enough). Liked or a playlist; any other kind ⇒ false.</summary>
@@ -1600,7 +1600,7 @@ public readonly partial struct User
             if (live is null) return new BoxEl { Key = "lens-header:off", HitTestVisible = false };
             var filter = live.View.Value.Filters;
             int visible = live.Visible.Value;
-            var lenses = LikedFactsRules.ActiveLenses(filter);
+            var lenses = LikedFactsRules.HeaderLenses(filter, p.Kind);
             if (lenses == LikedFactsRules.LikedLens.None)
                 return new BoxEl { Key = "lens-header:off", HitTestVisible = false };
 

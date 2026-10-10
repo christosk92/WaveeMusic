@@ -10,6 +10,32 @@ versions separately under `v*` and is not tracked in this file.)
 
 ## [0.3.5] - unreleased
 
+### Added
+
+- **A third navigation style, Zune.** No sidebar: big pivots across the top for Home, Browse, Your Library and Recently
+  played, smaller ones under Your Library for Liked Songs, Albums, Artists, Podcasts and Audiobooks, and up to six of
+  your pins beside them. Pick it in Settings › Appearance › Navigation style or the sidebar's ⋯ › Layout.
+- **Zune**: the pivots line up with the page and never move between pages, Home's and Recently played's views sit in
+  the second pivot row, pins show their cover, a "pinned" label and a dot under the one that is playing; the title bar
+  shows the Wavee wordmark and a compact search.
+- **Folders in the sidebar** show a folder icon in every layout, and their contents are indented under the folder name
+  with guide lines.
+- **Show covers for the Classic sidebar.** Off by default for Spotify's classic text-only list; on shows a small cover
+  on each row.
+- **Experimental**: in Zune, on artist pages the header photo runs behind the title bar and the navigation band. It is
+  not shown on narrow layouts and stops at a floating queue panel. This may change or be removed.
+- **Experimental**: the artist photo takes your theme. In the light theme it fades through a light veil tinted with the
+  artist's colour into the page, with dark text, as the artist page looked before. In the dark theme it stays dark, the
+  title bar and pivots turn light over it, and it fades into the artist's colour instead of black.
+- **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the
+  hero, no dark band over the title bar above the right panel and no line under the navigation band while the page
+  loads, and it follows the page when you open or close the sidebar or the right rail or switch the navigation style.
+- **A Play menu on album, playlist and Liked Songs pages**: Add to queue, Play next and Start radio, right beside
+  Play. Start radio on an album or a playlist builds a radio from it; on Liked Songs it starts from the first song in
+  your list.
+- **Liked Songs groups your songs by date** while it is sorted by Date added: This week, Last week, then each month,
+  with a count on every group.
+
 ### Changed
 
 - **Smooth expand and collapse.** Sidebar sections and folders, the song details under a track row, Recents, the
@@ -19,17 +45,65 @@ versions separately under `v*` and is not tracked in this file.)
   earlier one snapping shut.
 - **A new sidebar.** The sidebar now looks and behaves like a Windows navigation pane: rows, headers and the selection
   bar match Windows 11, the pane opens and closes on Windows 11's pane curve, and it switches on its own between the
-  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick one of two layouts in
-  Settings › Appearance or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists, and optional
-  Recently played and New releases sections) or Library (one list with filters, like Spotify's Your Library). In
-  Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips and the
-  toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections and pins
-  in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's pins. Your
-  current sidebar carries over.
+  full pane, a 48-px icon rail and a pane that slides over the page as the window narrows. Pick a layout in
+  Settings › Appearance › Navigation style or from the sidebar's ⋯ menu: Classic (Home, Pinned, Collections, Playlists,
+  and optional Recently played and New releases sections) or Library (one list with filters, like Spotify's Your
+  Library). In Library, the "Your Library" button opens your Albums, Artists, Podcasts or Audiobooks page, and the chips
+  and the toolbar under it filter, sort and search the list. "Edit sidebar…" lets you show, hide and reorder sections
+  and pins in place, with Undo. Pins now belong to the signed-in account, so switching accounts shows that account's
+  pins. Your current sidebar carries over.
+- **Color washes are now three settings**: Tinted surfaces (Off, Subtle, Rich), Accent from artwork and Now playing
+  colors. If Color washes was off, all three start off.
+- Sidebar rows, headers, chips and the Your Library toolbar now line up on one grid.
+- **One page head everywhere.** Every page (Home, Browse, Recents, Search, Settings, your Library pages, artist lists,
+  history, logs, …) now opens with the same title, the same view switcher and the same margins in all three
+  navigation styles; margins shrink on narrow windows (36 → 32 → 16).
+- Pages no longer jump while they load or when you switch navigation style: titles, counts and view switchers keep
+  their place, and layout changes slide.
+- Home shows a "Home" title above All / Music / Podcasts / Audiobooks.
+- Zune: the second row under the pivots is filled the moment you navigate: views, categories, or the page's
+  sections and actions.
+- Artist, profile and episode bands: the title, sections and actions now sit on one line.
+- Insights for playlists and Liked Songs open from the Insights button in every layout.
+- Library: one sort menu instead of a row of sort words; counts read like "20 albums".
+- The title bar is simpler: the theme switch moved into the profile menu, and the search box is a compact pill.
+- Album and playlist pages: a tighter side column and less space before the songs.
+- Zune: album, playlist and other pages without their own sections show only the top pivot row, so the page title is
+  no longer repeated above the page.
+- Zune: lyrics, the queue and now playing open as a full-height panel beside the page; the navigation band stays with
+  the page.
+- Album and playlist pages: one action row (Play with a menu for Add to queue, Play next and Start radio, Shuffle,
+  Save, Share and More).
+- Album and playlist song lists: the toolbar holds only list tools (sort, find, Insights and More, which now has
+  Select, Row size and Columns). The song count and length fill the left of the toolbar ("12 songs · 48 min") and
+  follow find and filters ("3 of 12 songs").
+- Liked Songs has a new, simpler page: one toolbar with Play, Shuffle, genre filters, sort, find and Insights, and no
+  side column.
+- Liked Songs rows are quieter: no heart column (the heart and More show when you hover a row or move to it with the
+  keyboard), no striping, regular-weight titles, and Added reads Today, Yesterday, 3 days ago or Last week.
 - **About 900 MB less memory when on-device lyrics sync is not working.** The NPU models it loads for a song are
   released 90 seconds after the song is timed instead of after 10 idle minutes, which while you listen meant never,
   and they are now also released while Wavee is minimized. The next song loads them again in about a second and a
   half, while its audio downloads.
+- **Zune page changes no longer jump.** The second pivot row and the page head change together with the page, and a
+  switch between views of the same page happens at once.
+- **Search pill**: the pill and its content move together, it never covers the pivots, and the flyout keeps its height
+  and closes with an animation.
+- **Liked Songs bar**: Browse-style chips that take the first click, air before Sort, one sort chevron, and Filter… in
+  ⋯. Album and playlist bars put Sort beside find.
+- **The Play split reads as one button.**
+- **Album page**: a wider gap between the cover and the list, a placeholder that matches what loads, and "Featured on"
+  without a stuck outline.
+- **Classic and Library**: the card outline and depth are back, counts sit at the right edge and the ⋯ takes their place
+  on hover, the pin on a pinned row is now an Unpin button, and Pin / Unpin sits at the top level of the menu. Playlists
+  have roomier rows, and Classic folders line up with their contents. The header ⋯ no longer glows, and the Settings
+  row is gone from the footer (Ctrl+, opens Settings).
+- **Music-video glyph**: on Liked Songs it is larger and in secondary ink so it no longer reads as a checkbox, and
+  elsewhere it has a tooltip.
+- **Sidebar sections open and close as one slide**, headers never disappear, the scroll position holds, and pinned
+  playlists glide between lists.
+- **Queue stays in a narrower player bar.**
+- **Settings has less space under its title.**
 
 ### Removed
 
@@ -43,6 +117,24 @@ versions separately under `v*` and is not tracked in this file.)
   collaborators" and no episodes; now it opens the Your Episodes tab of the Podcasts page, and its sidebar row counts
   episodes instead of songs. On the Podcasts page, the "Followed shows | Your Episodes" switch now has its own row, so
   "Your Episodes" no longer slides off the edge of a narrow column. (#200)
+- **Home kept its color wash with color washes turned off.**
+- Some Browse and Home images loaded at the smallest size (image sources that only state a maximum width).
+- The sidebar layout you had before switching to Zune is restored after a restart.
+- Accent from artwork and Now playing colors off no longer leave artwork colours on the artist page and the
+  full-screen art placeholder.
+- Zune pins show their covers instead of the same library icon.
+- Album and playlist pages use one accent colour for the playing song, the heart and Play.
+- Zune: Home, Browse, Recently played and your Library pages no longer open with an empty strip under the navigation
+  band.
+- Zune: Browse no longer lists Music, Podcasts, Audiobooks and Live events twice.
+- The search suggestions now line up with the search box, which widens while you type.
+- Library: Podcasts' Followed shows and Your Episodes both fit at the narrowest pane width.
+- Library: the focus ring on the views row is no longer cut off.
+- Concerts: the hub and tour headers use the same title size as every other page.
+- Title-bar buttons work again after switching navigation style.
+- Now-playing bars keep moving after you return to a page.
+- The rail's artist line keeps the name when the rail is narrow.
+- The Local playback setup footer fits its dialog.
 
 ## [0.3.4] - 2026-10-06
 

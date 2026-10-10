@@ -518,15 +518,23 @@ public static partial class Controls
     /// on a real surface and the photography lives in the right half. A softened pass made the plate a whisper in light
     /// themes so the always-on bottom photo fade read as "the" fade; it was restored by explicit ruling. The VERTICAL
     /// arm keeps the softened peaks: it underlays copy stacked at a photo's bottom seam, where a 0.96 band flattened the
-    /// image into a painted plate.</para></summary>
+    /// image into a painted plate.</para>
+    ///
+    /// <para>The artist bleed (the shell's field and the card's hero) draws this same theme veil: light over the light theme, dark
+    /// over the dark one, so the hero reads as production's in both.</para></summary>
     public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical)
+        => ArtistHeroVeil(accent, vertical, Tok.Theme, Tok.FillLayerDefault);
+
+    /// <summary><see cref="ArtistHeroVeil(ColorF, bool)"/> for an explicit theme and layer fill (the pure arm, so a test can pin both
+    /// themes without the ambient token set).</summary>
+    public static GradientSpec ArtistHeroVeil(ColorF accent, bool vertical, ThemeKind theme, ColorF layer)
     {
-        ColorF layer = Tok.FillLayerDefault;
-        float pull = Tok.Theme == ThemeKind.Light ? 0.16f : 0.24f;
+        bool light = theme == ThemeKind.Light;
+        float pull = light ? 0.16f : 0.24f;
         ColorF veil = ColorF.Lerp(layer, accent, pull);
         if (vertical)
         {
-            float top = Tok.Theme == ThemeKind.Light ? 0.42f : 0.78f;
+            float top = light ? 0.42f : 0.78f;
             return GradientDown(
                 new GradientStop(0f, veil with { A = 0f }),
                 new GradientStop(0.45f, veil with { A = 0.35f }),
@@ -770,7 +778,8 @@ public static partial class Controls
     }
 
     /// <summary>One bar: a bottom-anchored rounded rect whose height is its node's <c>ScaleY</c> track (see
-    /// <see cref="EqHost"/>). The track is re-seeded only on a mode (or rest-shape) edge, never per frame.</summary>
+    /// <see cref="EqHost"/>). The track is re-seeded only on a mode (or rest-shape) edge or a keep-alive reactivation,
+    /// never per frame.</summary>
     sealed class EqBar : Component
     {
         const float LoopMs = 850f;
@@ -813,13 +822,23 @@ public static partial class Controls
             bool moving = mode != EqMode.Rest;
             // The loop is seeded ONCE per entry into motion (the three bars in the same layout pass, so they share a phase);
             // Rest settles the exact authored scale (a 1 ms constant track: it lands on its value and frees itself).
-            UseLayoutEffect(() =>
+            void Seed()
             {
                 if (Context.Anim is not { } anim || Context.HostNode.IsNull) return;
                 NodeHandle node = Context.HostNode;
                 if (moving) anim.Keyframes(node, AnimChannel.ScaleY, LoopKeys[index], LoopMs, loop: true, snapToDevicePixels: true);
                 else anim.Keyframes(node, AnimChannel.ScaleY, [new(0f, rest, Easing.Linear), new(1f, rest, Easing.Linear)], 1f);
-            }, DepKey.From(moving ? 1f : 0f, rest));
+            }
+            UseLayoutEffect(Seed, DepKey.From(moving ? 1f : 0f, rest));
+            // A keep-alive reactivation re-seeds: the render thread's loop track may have been dropped while the page was
+            // parked (the engine's structural snap now spares loop rows, so this is the belt). A park defers the render, so
+            // no DepKey can see it: the activation edge itself is the trigger. A frozen meter is re-held after the seed.
+            UseActivation(onActivated: () =>
+            {
+                Seed();
+                if (moving && Context.Anim is { } anim && !Context.HostNode.IsNull)
+                    anim.SetHeld(Context.HostNode, AnimChannel.ScaleY, mode == EqMode.Freeze);
+            });
             // Freeze HOLDS the running loop in place (AnimEngine.SetHeld): the render thread keeps the pixel it last posed —
             // the one on screen — and a release resumes at the phase the loop's clock has reached, as the per-frame ticker
             // did (its phase was the wall clock since play). No re-seed, so neither edge can step a bar back or restart it.
@@ -834,6 +853,109 @@ public static partial class Controls
                 AlignSelf = FlexAlign.End, TransformOriginY = 1f,
                 // The authored rest pose, so the mount frame already stands at it before the track is seeded.
                 Transform = Affine2D.Scale(1f, rest),
+            };
+        }
+    }
+
+    // ══ 3b. THE SORT DROPDOWN ════════════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>The toolbar's 32-DIP command button: glyph + label (+ trailing), ghost at rest, accent plate when
+    /// <paramref name="active"/>. The ONE recipe behind the track table's Sort / Row size / Select commands and
+    /// <see cref="SortButton"/>.</summary>
+    internal static BoxEl LabeledButton(string glyph, string label, bool active, Action onClick, Action<NodeHandle>? onRealized,
+                                        Element? trailing = null, bool shrink = false, bool showLabel = true)
+    {
+        Prop<ColorF> ink = active ? Prop.Of(static () => Tok.AccentTextPrimary) : Prop.Of(static () => Tok.TextSecondary);
+        // A shrinking button gives its WORD up first (one line, ellipsis) so the row it sits in never overflows.
+        Element word = shrink
+            ? Ui.Caption(label) with { Weight = 600, Color = ink, MinWidth = 0f, MaxLines = 1, Trim = TextTrim.CharacterEllipsis }
+            : Ui.Caption(label) with { Weight = 600, Color = ink };
+        var kids = new List<Element>(3) { Icon(glyph, 14f) with { Color = ink } };
+        if (showLabel) kids.Add(word);
+        if (trailing is not null) kids.Add(trailing);
+        return new BoxEl
+        {
+            Direction = 0, AlignItems = FlexAlign.Center, Gap = 6f, Height = ButtonHeight, Padding = new Edges4(9f, 0f, 10f, 0f),
+            MinWidth = shrink ? 0f : float.NaN, Shrink = shrink ? 1f : 0f,
+            Corners = Radii.ControlAll,
+            Fill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.11f }) : (Prop<ColorF>)ColorF.Transparent,
+            HoverFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.17f }) : Prop.Of(static () => Tok.FillSubtleSecondary),
+            PressedFill = active ? Prop.Of(static () => Tok.AccentTextPrimary with { A = 0.08f }) : Prop.Of(static () => Tok.FillSubtleTertiary),
+            HoverDurationMs = Design.Motion.Faster, PressDurationMs = Design.Motion.Faster,
+            Role = AutomationRole.Button, Focusable = true,
+            OnClick = onClick, OnRealized = onRealized,
+            Children = kids.ToArray(),
+        };
+    }
+
+    /// <summary>The shared sort dropdown: <see cref="Icons.Sort"/> · the current word · ONE trailing glyph (the direction caret while
+    /// one shows, else a 12 DIP chevron), opening a radio-checked <see cref="MenuFlyout"/> under it. The track table's Sort button and the Library master
+    /// pane's both are this control, so a sort reads the same everywhere.
+    /// <para>An <c>Embed.Comp</c> factory runs ONCE (at mount), so every input that can change is a THUNK read inside the
+    /// button's own Render: <paramref name="label"/>, <paramref name="active"/>, <paramref name="descending"/> and
+    /// <paramref name="showCaret"/>. A sort change re-fires this button alone; the label changes text in place inside a
+    /// fixed-height button, never in a wrapping row. <paramref name="items"/> is built when the menu OPENS (the radio state
+    /// is the live one). A non-null <paramref name="descending"/> swaps the chevron for the caret (while <paramref name="showCaret"/> is
+    /// null or true), which pops in on activation and springs 0 to 180 degrees on every flip. With <paramref name="shrink"/> the
+    /// button gives its word up (ellipsis) before it can overflow a narrow row; <paramref name="showLabel"/> false drops the word for an icon-only
+    /// button where the row has no room for it.</para></summary>
+    public static Element SortButton(Func<string> label, Func<IReadOnlyList<MenuFlyoutItem>> items, Func<bool> active,
+                                     Func<bool>? descending = null, Func<bool>? showCaret = null, bool showLabel = true, bool shrink = false)
+        => Embed.Comp(() => new SortButtonHost(label, items, active, descending, showCaret, showLabel, shrink));
+
+    /// <summary>The menu popup every anchored dropdown shares: focus-trapped, light-dismiss, free to leave the root.</summary>
+    internal static PopupOptions MenuPopup => new(FocusTrap: true, DismissBehavior: DismissBehavior.LightDismiss) { ConstrainToRootBounds = false };
+
+    /// <summary>One anchored overlay at a time per button: a second click closes it.</summary>
+    internal static void ToggleOverlay(IOverlayService overlay, Ref<NodeHandle> anchor, Ref<OverlayHandle?> handle,
+                                       Func<Element> content, PopupOptions options, Action? closed = null)
+    {
+        if (IsNullOverlay(overlay)) return;
+        if (handle.Value is { IsOpen: true } open) { open.Close(); return; }
+        var opened = overlay.Open(() => anchor.Value, content, FlyoutPlacement.BottomEdgeAlignedRight, options);
+        handle.Value = opened;
+        opened.ClosedAction = () => { handle.Value = null; closed?.Invoke(); };
+    }
+
+    sealed class SortButtonHost(Func<string> label, Func<IReadOnlyList<MenuFlyoutItem>> items, Func<bool> active,
+                                Func<bool>? descending, Func<bool>? showCaret, bool showLabel, bool shrink) : Component
+    {
+        public override Element Render()
+        {
+            var overlay = UseContext(Overlay.Service);
+            var anchor = UseRef<NodeHandle>(default);
+            var handle = UseRef<OverlayHandle?>(null);
+            string text = label();
+            bool isActive = active();
+            bool caret = descending is not null && (showCaret?.Invoke() ?? true);
+            void Toggle() => ToggleOverlay(overlay, anchor, handle,
+                () => MenuFlyout.Create(items(), () => handle.Value?.Close()), MenuPopup);
+            // ONE chevron, never two: the direction caret IS the trailing glyph while a direction is shown, else the dropdown chevron.
+            Element trailing = caret
+                ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [SortCaret(descending!)] }
+                : Icon(Icons.ChevronDown, 12f, Tok.TextTertiary);
+            return LabeledButton(Icons.Sort, text, isActive, Toggle, n => anchor.Value = n, trailing, shrink: shrink, showLabel: showLabel);
+        }
+    }
+
+    /// <summary>The direction caret: pops in once and SPRINGS its rotation 0 to 180 degrees on every flip, so
+    /// ascending, descending, ascending reads as one continuous rotation, never a glyph swap. Also the track table's
+    /// column-header caret.</summary>
+    internal static Element SortCaret(Func<bool> descending) => Embed.Comp(() => new SortCaretHost(descending));
+
+    sealed class SortCaretHost(Func<bool> descending) : Component
+    {
+        public override Element Render()
+        {
+            bool desc = descending();
+            UseTransition(AnimChannel.Opacity, 0f, 1f, Expressive.Fast, Easing.EaseInOut, "in");
+            UseTransition(AnimChannel.ScaleX, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
+            UseTransition(AnimChannel.ScaleY, 0.3f, 1f, Expressive.Fast, Easing.Overshoot, "in");
+            UseSpring(AnimChannel.Rotation, desc ? 180f : 0f, SpringParams.FromResponse(0.30f, 0.7f), desc);
+            return new BoxEl
+            {
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                Children = [Icon(Icons.CaretSolidUp, 9f, Tok.TextSecondary)],
             };
         }
     }
@@ -1002,6 +1124,8 @@ public static partial class Controls
         /// mounts). Null reads the PAGE accent off <see cref="Design.AccentCtx"/>, falling back to the semantic token
         /// — the plan's "A = page accent, else Tok.AccentDefault".</summary>
         public Func<ColorF>? Accent { get; init; }
+        /// <summary>Sits on the artist bleed's dark hero (either theme): the ON ramp and label read on dark. Static per mount.</summary>
+        public bool OnMedia { get; init; }
 
         public override Element Render()
         {
@@ -1016,7 +1140,7 @@ public static partial class Controls
 
             return ToggleButton.Controlled(Label(Verb, false), on, _ => lib.ToggleSaved(Uri, Name),
                 glyph: Icons.Heart, checkedGlyph: Icons.HeartFill, checkedLabel: Label(Verb, true),
-                style: ButtonRules.FollowStyle(a, light), parts: RootNoShrink);
+                style: ButtonRules.FollowStyle(a, light, OnMedia), parts: RootNoShrink);
         }
 
         static string Label(FollowVerb verb, bool on) => Loc.Get(verb switch
@@ -1044,6 +1168,9 @@ public static partial class Controls
         public float Height { get; init; } = 32f;
         /// <inheritdoc cref="Height"/>
         public float PadX { get; init; } = 10f;
+        /// <summary>The word's ink when the band sits over the artist bleed (see <see cref="TextAction"/>'s <c>ink</c>), resolved per render:
+        /// it reads the host's signals, which a component's frozen fields cannot carry. Null = today's tokens.</summary>
+        public Func<TextActionInk?>? InkSource { get; init; }
 
         public override Element Render()
         {
@@ -1052,7 +1179,7 @@ public static partial class Controls
             bool following = lib.IsSaved(Uri);
             return TextAction(Loc.Get(following ? Strings.Artist.Following : Strings.Artist.Follow),
                               () => lib.ToggleSaved(Uri, Name), toggledOn: following,
-                              height: Height, padX: PadX);
+                              height: Height, padX: PadX, ink: InkSource?.Invoke());
         }
     }
 

@@ -9,6 +9,7 @@
 // What only the engine can show (the hand cursor, the focus ring, the hover plate, the now-playing pill, the drop wash,
 // the tooltip on the label-less tile) is the live check's job — the surface rules themselves are SurfaceRulesTests.
 
+using System;
 using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
@@ -155,5 +156,38 @@ public class SidebarCardsTests
         Assert.Equal(53f, SidebarCardRules.TileCover(69f));
         Assert.Equal(24f, SidebarCardRules.TileCover(40f));
         Assert.Equal(0f, SidebarCardRules.TileCover(10f));
+    }
+
+    // ── the no-art / unresolved glyph (the cards and the Zune band's pin tiles share it) ─────────────────────────────
+
+    [Theory]
+    [InlineData(SidebarEntryKind.Playlist, "spotify:playlist:1", "pl:spotify:playlist:1", "")]
+    [InlineData(SidebarEntryKind.Album, "spotify:album:1", "album:spotify:album:1", "")]
+    [InlineData(SidebarEntryKind.Artist, "spotify:artist:1", "artist:spotify:artist:1", "")]
+    [InlineData(SidebarEntryKind.Show, "spotify:show:1", "show:spotify:show:1", "")]
+    [InlineData(SidebarEntryKind.Folder, "", "folder:abc", "")]
+    [InlineData(SidebarEntryKind.Track, "spotify:track:1", "track:1", "")]
+    public void KindGlyph_IsTheKindsMark_AndNeverTheLibraryIcon(SidebarEntryKind kind, string uri, string id, string _)
+    {
+        string glyph = SidebarKindGlyph.For(kind, id, uri);
+        Assert.NotEqual(FluentGpu.Controls.Icons.Library, glyph);
+        string expected = kind switch
+        {
+            SidebarEntryKind.Album => FluentGpu.Controls.Icons.Album,
+            SidebarEntryKind.Artist => FluentGpu.Controls.Icons.Contact,
+            SidebarEntryKind.Show => FluentGpu.Controls.Icons.Microphone,
+            SidebarEntryKind.Folder => FluentGpu.Controls.Icons.Folder,
+            _ => FluentGpu.Controls.Icons.MusicNote,
+        };
+        Assert.Equal(expected, glyph);
+    }
+
+    [Fact]
+    public void KindGlyph_TheLikedIdIsAHeart_AndAnAppRouteWearsItsDestinationGlyph()
+    {
+        Assert.Equal(FluentGpu.Controls.Icons.Heart, SidebarKindGlyph.For(SidebarEntryKind.AppRoute, "liked", ""));
+        Assert.Equal(Shell.Dest(Shell.Parse("albums")).Glyph, SidebarKindGlyph.For(SidebarEntryKind.AppRoute, "albums", ""));
+        foreach (var kind in Enum.GetValues<SidebarEntryKind>())
+            Assert.NotEqual(FluentGpu.Controls.Icons.Library, SidebarKindGlyph.For(kind, "home", ""));
     }
 }

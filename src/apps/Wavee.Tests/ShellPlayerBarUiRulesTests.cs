@@ -334,10 +334,18 @@ public class PlayerBarOverflowTests
         Assert.Equal(new[]
         {
             Shell.OverflowCommand.Previous, Shell.OverflowCommand.Next, Shell.OverflowCommand.Shuffle,
-            Shell.OverflowCommand.Repeat, Shell.OverflowCommand.Lyrics, Shell.OverflowCommand.Queue,
+            Shell.OverflowCommand.Repeat, Shell.OverflowCommand.Lyrics,
             Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.FullScreen, Shell.OverflowCommand.Video,
             Shell.OverflowCommand.Mute,
         }, Build(Shell.PlayerBarTier.Compact, video: true));
+        // Queue is in the Compact row since 2026-10-10; Minimal still carries it in the menu, between Lyrics and NowPlaying.
+        Assert.Equal(new[]
+        {
+            Shell.OverflowCommand.Previous, Shell.OverflowCommand.Next, Shell.OverflowCommand.Shuffle,
+            Shell.OverflowCommand.Repeat, Shell.OverflowCommand.Lyrics, Shell.OverflowCommand.Queue,
+            Shell.OverflowCommand.NowPlaying, Shell.OverflowCommand.FullScreen, Shell.OverflowCommand.Video,
+            Shell.OverflowCommand.Mute,
+        }, Build(Shell.PlayerBarTier.Minimal, video: true));
     }
 
     [Fact]
@@ -361,9 +369,10 @@ public class PlayerBarOverflowTests
     }
 
     [Fact]
-    public void The_inline_video_slot_rides_the_queue_tier_and_needs_a_video()
+    public void The_inline_video_slot_rides_the_split_tier_and_needs_a_video()
     {
-        // The queue tier AND a video: with no video the cluster reclaims the split's width (user decision 2026-09-16).
+        // The split's tier (Wide and up) AND a video: with no video the cluster reclaims the split's width (user decision
+        // 2026-09-16).
         Assert.True(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Full), hasVideo: true));
         Assert.True(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Wide), hasVideo: true));
         Assert.False(Shell.PlayerBarRules.VideoSlotReserved(Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Comfortable), hasVideo: true));
@@ -385,6 +394,38 @@ public class PlayerBarOverflowTests
         Assert.Contains(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, video: true));
         Assert.Contains(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Minimal, video: true));
         Assert.DoesNotContain(Shell.OverflowCommand.Video, Build(Shell.PlayerBarTier.Comfortable, active: false, video: true));
+    }
+
+    [Fact]
+    public void The_video_split_keeps_its_wide_tier_while_queue_survives_from_compact()
+    {
+        foreach (var tier in new[]
+                 {
+                     Shell.PlayerBarTier.Minimal, Shell.PlayerBarTier.Compact, Shell.PlayerBarTier.Medium,
+                     Shell.PlayerBarTier.Comfortable, Shell.PlayerBarTier.Wide, Shell.PlayerBarTier.Full,
+                 })
+        {
+            var L = Shell.PlayerBarLayout.ForTier(tier);
+            Assert.Equal(tier >= Shell.PlayerBarTier.Compact, L.ShowQueue);
+            Assert.Equal(tier >= Shell.PlayerBarTier.Wide, L.ShowVideoSplit);
+            Assert.Equal(tier >= Shell.PlayerBarTier.Wide, Shell.PlayerBarRules.VideoSlotReserved(L, hasVideo: true));
+            Assert.False(Shell.PlayerBarRules.VideoSlotReserved(L, hasVideo: false));
+        }
+    }
+
+    [Fact]
+    public void Below_wide_with_an_active_video_the_menu_carries_video_and_not_queue_from_compact()
+    {
+        foreach (var tier in new[] { Shell.PlayerBarTier.Compact, Shell.PlayerBarTier.Medium, Shell.PlayerBarTier.Comfortable })
+        {
+            var rows = Build(tier, active: true, video: true);
+            Assert.Contains(Shell.OverflowCommand.Video, rows);
+            Assert.DoesNotContain(Shell.OverflowCommand.Queue, rows);
+        }
+        // Minimal has neither the Queue button nor the split: the menu carries both.
+        var minimal = Build(Shell.PlayerBarTier.Minimal, active: true, video: true);
+        Assert.Contains(Shell.OverflowCommand.Video, minimal);
+        Assert.Contains(Shell.OverflowCommand.Queue, minimal);
     }
 }
 
@@ -508,14 +549,14 @@ public class PlayerBarSlotReservationTests
             var with = Shell.PlayerBarRules.RightSlots(L, hasVideo: true);
             float delta = Shell.PlayerBarRules.RightWidth(L, hasVideo: true) - Shell.PlayerBarRules.RightWidth(L, hasVideo: false);
             Assert.Equal(Shell.RightSlot.None, without & Shell.RightSlot.Video);
-            if (L.ShowQueue)
+            if (L.ShowVideoSplit)
             {
                 Assert.Equal(without | Shell.RightSlot.Video, with);
                 Assert.Equal(L.ButtonBox + Shell.PlayerBarLayout.SplitChevronW + L.RightGap, delta);
             }
             else
             {
-                // Below Wide the video verb lives in the "⋯" menu; the row is untouched.
+                // Below Wide the video verb lives in the "⋯" menu; the row is untouched (Queue or not).
                 Assert.Equal(without, with);
                 Assert.Equal(0f, delta);
             }
@@ -546,8 +587,8 @@ public class PlayerBarSlotReservationTests
             Assert.Equal(L.ShowVolumeSlider, (slots & Shell.RightSlot.VolumeSlider) != 0);
             // Lyrics stays a face-only slot: RESERVED wherever the tier shows it, whatever plays.
             Assert.Equal(L.ShowLyrics, (slots & Shell.RightSlot.Lyrics) != 0);
-            // The video split is the ONE slot with a state input: the queue tier AND a video.
-            Assert.Equal(L.ShowQueue && video, (slots & Shell.RightSlot.Video) != 0);
+            // The video split is the ONE slot with a state input: the split's tier AND a video.
+            Assert.Equal(L.ShowVideoSplit && video, (slots & Shell.RightSlot.Video) != 0);
             Assert.Equal(L.ShowQueue, (slots & Shell.RightSlot.Queue) != 0);
             Assert.Equal(L.ShowDevices, (slots & Shell.RightSlot.Devices) != 0);
             Assert.Equal(L.ShowExpand, (slots & Shell.RightSlot.Expand) != 0);
@@ -631,6 +672,50 @@ public class PlayerBarSlotReservationTests
         Assert.False(L.ShowTimesRemaining);
         float seek = 300f - 2f * L.RowPad - L.LeftW - 2f * L.RowGap - (L.PrimaryBox + L.ClusterGap) - L.RightWMax;
         Assert.True(seek >= 48f, "the seek bar has " + seek + " DIP at the 300-DIP floor");
+    }
+
+    [Fact]
+    public void The_compact_and_medium_floors_leave_the_seek_bar_48()
+    {
+        // Queue joined the Compact row (2026-10-10), so the narrow tiers' budgets are pinned the same way as the 300-DIP
+        // floor: width − row pads − identity block − two row gaps − (primary + cluster gap) − prev/next and the time
+        // labels where shown − the WIDEST right cluster ≥ 48.
+        foreach (var (tier, width) in new[] { (Shell.PlayerBarTier.Compact, 440f), (Shell.PlayerBarTier.Medium, 760f) })
+            foreach (bool live in new[] { false, true })
+            {
+                var L = Shell.PlayerBarLayout.ForTier(tier, width);
+                Assert.True(L.ShowQueue);
+                float seek = SeekWidth(L, width, live);
+                Assert.True(seek >= 48f, tier + " (live " + live + ") leaves the seek bar " + seek + " DIP at " + width);
+            }
+    }
+
+    [Fact]
+    public void Compact_holds_down_to_416_and_a_live_broadcast_never_overruns_the_right_cluster_there()
+    {
+        // Narrowing hysteresis holds Compact through a 24-DIP dip: the layout stays Compact at 416 and falls to Minimal below.
+        Assert.Equal(Shell.PlayerBarTier.Compact, Shell.PlayerBar.Resolve(416f, Shell.PlayerBarTier.Compact, initialized: true));
+        Assert.Equal(Shell.PlayerBarTier.Minimal, Shell.PlayerBar.Resolve(415f, Shell.PlayerBarTier.Compact, initialized: true));
+        var L = Shell.PlayerBarLayout.ForTier(Shell.PlayerBarTier.Compact, 416f);
+        Assert.Equal(Shell.TimeLabel.SlotW, Shell.TimeLabel.LiveSlotWidth(Shell.PlayerBarTier.Compact));
+        Assert.Equal(Shell.TimeLabel.LiveSlotW, Shell.TimeLabel.LiveSlotWidth(Shell.PlayerBarTier.Medium));
+        foreach (bool live in new[] { false, true })
+        {
+            float seek = SeekWidth(L, 416f, live);
+            Assert.True(seek >= 32f, "the Compact hold leaves the seek bar " + seek + " DIP at 416 (live " + live + ")");
+        }
+    }
+
+    /// <summary>The seek rail's width: the bar minus pads, the identity block, the row gaps, the transport, the time labels
+    /// (the live slot's width while live) and the WIDEST right cluster.</summary>
+    static float SeekWidth(in Shell.PlayerBarLayout L, float width, bool live)
+    {
+        float transport = L.PrimaryBox + (L.ShowPrevNext ? 2f * L.ButtonBox : 0f);
+        float labelsW = 0f;
+        if (L.ShowTimesElapsed) labelsW += Shell.TimeLabel.SlotW + L.SeekGap;
+        if (L.ShowTimesRemaining)
+            labelsW += (live ? Shell.TimeLabel.LiveSlotWidth(L.Tier) : Shell.TimeLabel.SlotW) + L.SeekGap;
+        return width - 2f * L.RowPad - L.LeftW - 2f * L.RowGap - (transport + L.ClusterGap) - labelsW - L.RightWMax;
     }
 }
 

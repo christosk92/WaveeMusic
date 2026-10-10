@@ -18,6 +18,13 @@
 // takes the coat back for the 300 ms slide-out (the Fill bind includes RailOpen); floating paints its own FileArea, a
 // uniform ring and Elevation.Flyout. Open/close is ONE TranslateX track on the host node — never an opacity track.
 //
+// The header (A4): the caption, the Cover|Record tabs (`Design.RailViewsStyle`, the shared views look) and the gear share ONE
+// 20-DIP line (`Hero.HeaderLine`); the caption starts on `PageGeometry.PaneInset` and the gear's centre is on
+// `Hero.TrailingIconAxis`, the other arms' close-button axis. Under Zune the inline rail's top is the title bar's bottom (the
+// band lives in the page column beside it); otherwise the rail's top equals the content card's top: the coat and the card are
+// both flush children of the content row (`FrameRules.StrokeOverhangTop` = 0 on both, a test pins it; the StrokeOverhang
+// margin overhangs right and bottom only), so nothing needed correcting.
+//
 // Mounted here from other stage-B files: `Video.DockedCap()` (K3), `Deck.View()` (K2), `Lyrics.NpvPeek()` and
 // `Lyrics.View()` (K3). The queue body is owner Q's (Wave 5) and installs itself through `Rail.QueueBody`.
 // The style flyout, the mini-arts, the art menu and the swatches are the named partial `Rail.Styles.UI.cs`.
@@ -336,10 +343,12 @@ public static partial class Rail
 
     /// <summary>THE hero wash — one function, three surfaces (the cover placeholder, the deck faces' art and the flyout's
     /// "Album colour" swatch), so the three can never grade the artwork differently. The palette watch is read INSIDE, so
-    /// a late grading repaints a bound placeholder without re-rendering anything.</summary>
+    /// a late grading repaints a bound placeholder without re-rendering anything. With now-playing colours off the wash is
+    /// the neutral card fill; this also neutralises the player-style flyout's "Album colour" swatch.</summary>
     public static ColorF HeroWashColor(string? url)
     {
         if (url is { Length: > 0 }) _ = Palette.Watch(url).Value;
+        if (!Prefs.Appearance.NowPlayingColors()) return Tok.FillCardSecondary;
         ColorF accent = Design.SchemeFor(url) is { } s ? Design.Palette.Lift(Design.Palette.Accent(s)) : Tok.AccentDefault;
         return ColorF.Lerp(Tok.FillCardSecondary, accent, Tok.Theme == ThemeKind.Dark ? 0.18f : 0.10f);
     }
@@ -397,29 +406,6 @@ public static partial class Rail
     {
         static readonly string?[] ModeIcons = [Icons.Picture, Icons.Album];
 
-        /// <summary>WinUI's SelectorBarItem builds a 47-DIP bar; the strip is 36. Compress the ITEM's content box to the
-        /// 30-DIP pill (shape-guarded: an item tree change makes this a no-op instead of a mangle).</summary>
-        static readonly TemplateParts CompactBar = new()
-        {
-            [SelectorBar.PartItem] = static item =>
-            {
-                if (item.Children is not [BoxEl content, var pill]) return item;
-                var kids = new Element[content.Children.Length];
-                for (int i = 0; i < kids.Length; i++)
-                {
-                    if (content.Children[i] is TextEl t && t.FontFamily is null)
-                    {
-                        var rung = t.Weight is 600 or 650 or 700 or 540
-                            ? global::Wavee.Design.Type.DenseTitle("")
-                            : global::Wavee.Design.Type.DenseMeta("");
-                        kids[i] = t with { Size = rung.Size, LineHeight = rung.LineHeight, Weight = rung.ResolvedWeight };
-                    }
-                    else kids[i] = content.Children[i];
-                }
-                return item with { Children = [content with { Padding = new Edges4(12f, 3f, 12f, 2f), Gap = 7f, Children = kids }, pill] };
-            },
-        };
-
         public override Element Render()
         {
             int epoch = PlayerPrefs.Epoch.Value;
@@ -437,7 +423,7 @@ public static partial class Rail
             // Sentence case, never .ToUpper() on a localized string.
             Element eyebrow = Design.Type.Eyebrow(Loc.Get(Strings.Player.NowPlaying)) with
             {
-                Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                Color = Tok.TextTertiary, Grow = 1f, Basis = 0f, MinWidth = 0f, LineHeight = Hero.HeaderLine,
                 Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis,
             };
             // A plain wrapper takes the row's Center: the popup's own anchor wrapper is AlignSelf=Start.
@@ -456,12 +442,13 @@ public static partial class Rail
             return new BoxEl
             {
                 Direction = 0, Height = Hero.HeaderRowH, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = Spacing.XS,
+                Padding = new Edges4(Hero.HeaderInsetL, 0f, 0f, 0f),
                 Children = devSwitch
                     ? [
                         eyebrow,
                         SelectorBar.Create(items, presentation,
                             onChange: static i => PlayerPrefs.SetPresentation(i, NpvDiagnostics.SourceHeader),
-                            parts: CompactBar, icons: ModeIcons),
+                            style: Design.RailViewsStyle, icons: ModeIcons),
                         gearBox,
                       ]
                     : [eyebrow, gearBox],

@@ -13,7 +13,7 @@ public class ContainerMenuRulesTests
     static ContainerVerb[] V(params ContainerVerb[] verbs) => verbs;
 
     static ContainerVerb[] Strip(TargetKind k, bool liked = false, bool onPage = false) => ContainerMenuRules.For(k, liked, onPage).Strip;
-    static ContainerVerb[] Rows(TargetKind k, bool liked = false, bool onPage = false) => ContainerMenuRules.For(k, liked, onPage).Rows;
+    static ContainerVerb[] Rows(TargetKind k, bool liked = false, bool onPage = false, bool actionRow = false) => ContainerMenuRules.For(k, liked, onPage, actionRow).Rows;
 
     [Fact]
     public void An_album_card_is_strip_then_deposit_open_pin_artist_share()
@@ -77,6 +77,55 @@ public class ContainerMenuRulesTests
         Assert.Equal(Rows(TargetKind.Album, onPage: true), Rows(TargetKind.Playlist, onPage: true));
         Assert.Equal(V(ContainerVerb.PlayNext, ContainerVerb.AddToQueue, ContainerVerb.Pin, ContainerVerb.Share), Rows(TargetKind.Show, onPage: true));
         Assert.Equal(V(ContainerVerb.Pin, ContainerVerb.ArtistRadio, ContainerVerb.Share), Rows(TargetKind.Artist, onPage: true));
+    }
+
+    // ── D2a: the action row (the Play split + a Share button) takes three verbs out of the album / playlist "…" ──
+
+    [Theory]
+    [InlineData(TargetKind.Album, false)]
+    [InlineData(TargetKind.Playlist, false)]
+    public void An_action_row_page_drops_play_next_add_to_queue_and_share_and_keeps_the_rest(TargetKind kind, bool liked)
+    {
+        var page = ContainerMenuRules.For(kind, liked, onPage: true);
+        var row = ContainerMenuRules.For(kind, liked, onPage: true, actionRow: true);
+        Assert.Empty(row.Strip);
+        Assert.DoesNotContain(ContainerVerb.PlayNext, row.Rows);
+        Assert.DoesNotContain(ContainerVerb.AddToQueue, row.Rows);
+        Assert.DoesNotContain(ContainerVerb.Share, row.Rows);
+        Assert.Contains(ContainerVerb.AddToPlaylist, row.Rows);
+        Assert.Contains(ContainerVerb.Pin, row.Rows);
+        // Derived from the on-page plan: its rows in the same order, minus the three.
+        Assert.Equal(page.Rows.Where(v => v is not (ContainerVerb.PlayNext or ContainerVerb.AddToQueue or ContainerVerb.Share)), row.Rows);
+    }
+
+    [Fact]
+    public void The_album_action_row_menu_is_deposit_then_pin()
+    {
+        Assert.Equal(V(ContainerVerb.AddToPlaylist, ContainerVerb.Pin), Rows(TargetKind.Album, onPage: true, actionRow: true));
+        Assert.Equal(Rows(TargetKind.Album, onPage: true, actionRow: true), Rows(TargetKind.Playlist, onPage: true, actionRow: true));
+    }
+
+    [Fact]
+    public void The_on_page_plan_without_an_action_row_is_unchanged()
+    {
+        Assert.Equal(V(ContainerVerb.PlayNext, ContainerVerb.AddToQueue, ContainerVerb.AddToPlaylist, ContainerVerb.Pin, ContainerVerb.Share),
+                     Rows(TargetKind.Album, onPage: true));
+        Assert.Equal(Rows(TargetKind.Album, onPage: true), ContainerMenuRules.For(TargetKind.Album, false, true, actionRow: false).Rows);
+        // actionRow means nothing off a page, or on a kind without the split.
+        Assert.Equal(Rows(TargetKind.Album), ContainerMenuRules.For(TargetKind.Album, false, false, actionRow: true).Rows);
+    }
+
+    [Theory]
+    [InlineData(TargetKind.Album)]
+    [InlineData(TargetKind.Playlist)]
+    public void The_verbs_the_action_row_drops_run_the_ids_the_split_runs(TargetKind kind)
+    {
+        // What actionRow moves OUT of the "…": the on-page rows the action-row plan no longer has, in the on-page order.
+        var row = ContainerMenuRules.For(kind, liked: false, onPage: true, actionRow: true).Rows;
+        var moved = ContainerMenuRules.For(kind, liked: false, onPage: true).Rows.Where(v => Array.IndexOf(row, v) < 0).ToArray();
+        Assert.Equal(V(ContainerVerb.PlayNext, ContainerVerb.AddToQueue, ContainerVerb.Share), moved);
+        var queueIds = moved.Where(v => v != ContainerVerb.Share).Select(Menus.IdOf).ToArray();
+        Assert.Equal(new[] { ActionId.PlayContextNext, ActionId.AddContextToQueue }, queueIds);
     }
 
     [Theory]

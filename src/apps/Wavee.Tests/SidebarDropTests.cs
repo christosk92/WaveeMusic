@@ -151,7 +151,7 @@ static class RowGeometryLiteral
     /// <summary>TreeContentX(0) = IndentFor(0) = 0: a tree row starts at the row origin.</summary>
     public const float TreeContentX0 = 0f;
     /// <summary>== IndentStep.</summary>
-    public const float TreeGuideStep = 31f;
+    public const float TreeGuideStep = 32f;
     public const float TreeEndHeight = 24f;
 
     public static float TreeContentX(int depth) => TreeContentX0 + depth * TreeGuideStep;
@@ -409,8 +409,8 @@ public class RootlistSlotResolverTests
 
     [Theory]
     [InlineData(0f, 0)]      // TreeContentX(0) — where a depth-0 row starts drawing
-    [InlineData(31f, 1)]     // TreeContentX(1)
-    [InlineData(62f, 2)]     // TreeContentX(2): the row's own depth
+    [InlineData(32f, 1)]     // TreeContentX(1)
+    [InlineData(64f, 2)]     // TreeContentX(2): the row's own depth
     [InlineData(999f, 2)]    // past the ladder: clamped to Max
     [InlineData(-50f, 0)]    // before the row: clamped to Min
     public void DepthPick_ReadsTheTreeContentLadderFromPointerX(float x, int expected)
@@ -427,7 +427,7 @@ public class RootlistSlotResolverTests
     public void DepthPick_TheOutdentBandIsReachable(int depth)
     {
         // Parked on the row's own content origin the pick is that depth; half a step plus 5 DIP to the LEFT of it —
-        // a deliberate slide, still inside the row — it is one shallower. depth 1: 31 → 10.5. depth 2: 62 → 41.5.
+        // a deliberate slide, still inside the row — it is one shallower. depth 1: 32 → 10.5. depth 2: 64 → 41.5.
         var f = Leaf(depth: depth, nextDepth: 0);
         float here = RowGeometryLiteral.TreeContentX(depth);
         float outdent = here - RowGeometryLiteral.TreeGuideStep / 2f - 5f;
@@ -440,12 +440,13 @@ public class RootlistSlotResolverTests
     {
         var f = Leaf(depth: 2, nextDepth: 0);
         var previous = new SidebarDropSlot(3, SidebarDropKind.After, 1, SidebarDropRefusal.None);
-        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 46.5. Inside 4 DIP of it the previous holds…
+        // The 1→2 boundary sits at TreeContentX(1) + 0.5·TreeGuideStep = 48. Inside 4 DIP of it (44…52) the previous holds…
         Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, in previous).Depth);
-        // …and past it the pick commits.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 51f, 44f, in f, in previous).Depth);
-        // With no previous slot there is nothing to hold: the raw pick wins.
-        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None).Depth);
+        // …and past the band (54 > 52) the pick commits.
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 54f, 44f, in f, in previous).Depth);
+        // With no previous slot there is nothing to hold: the raw pick wins, and 47 is still short of the 48 boundary.
+        Assert.Equal(1, RootlistSlotResolver.Resolve(3, 0.9f, 47f, 44f, in f, SidebarDropSlot.None).Depth);
+        Assert.Equal(2, RootlistSlotResolver.Resolve(3, 0.9f, 54f, 44f, in f, SidebarDropSlot.None).Depth);
     }
 
     [Fact]
@@ -769,7 +770,7 @@ public class SidebarDropCueTests
     public void LineWidth_IsTheContentWidthMinusTheDepthIndent(int depth)
     {
         const float content = 300f;
-        float expected = content - 31f * depth;
+        float expected = content - 32f * depth;
         Assert.Equal(expected, SidebarDropCue.LineWidth(content, depth), 3);
         // A deeper caret is strictly shorter — that IS the depth cue.
         if (depth > 0)

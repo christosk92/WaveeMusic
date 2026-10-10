@@ -233,12 +233,13 @@ public static partial class Shell
         public static bool OwnsTransport(Video.TransportOwner owner)
             => owner is Video.TransportOwner.GlobalBar or Video.TransportOwner.PopOut or Video.TransportOwner.Docked;
 
-        /// <summary>The video split button's slot exists on the queue tier AND only while the current track has a video:
+        /// <summary>The video split button's slot exists on the split's tier (<see cref="PlayerBarLayout.ShowVideoSplit"/>,
+        /// Wide and up, independent of the Queue button) AND only while the current track has a video:
         /// with no video the cluster RECLAIMS the 52 DIP rather than carrying an unlit hole beside lyrics (user decision
         /// 2026-09-16, narrowing the earlier tier-only rule). <paramref name="hasVideo"/> is the ONE state input to the
         /// right cluster's width; <c>active</c> is still not one (§0 item 12) — a track starting without a video widens
         /// nothing. Whether the face is lit is separate: <see cref="SlotFaceVisible"/>.</summary>
-        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowQueue && hasVideo;
+        public static bool VideoSlotReserved(in PlayerBarLayout layout, bool hasVideo) => layout.ShowVideoSplit && hasVideo;
 
         /// <summary>The "⋯" slot is reserved wherever the IDLE bar already has rows in its menu — the tier-only rows
         /// (shuffle/repeat, queue, now-playing). Every state-dependent row (lyrics, video, mute) only ever ADDS to a menu
@@ -337,8 +338,9 @@ public static partial class Shell
             if (!layout.ShowQueue) dest[n++] = OverflowCommand.Queue;
             dest[n++] = OverflowCommand.NowPlaying;
             if (!layout.ShowExpand) dest[n++] = OverflowCommand.FullScreen;
-            // A tier WITHOUT the inline split carries the verb here instead — and like the slot: no video, no row.
-            if (!layout.ShowQueue && active && hasVideo) dest[n++] = OverflowCommand.Video;
+            // A tier WITHOUT the inline split (ShowVideoSplit, not the Queue tier) carries the verb here instead — and
+            // like the slot: no video, no row.
+            if (!layout.ShowVideoSplit && active && hasVideo) dest[n++] = OverflowCommand.Video;
             if (VolumeInOverflow(layout, active)) dest[n++] = OverflowCommand.Mute;
             return n;
         }
@@ -595,6 +597,13 @@ public static partial class Shell
 
         /// <summary>The live slot, sized once for "GO LIVE −99:59", so the mark ↔ action swap moves nothing.</summary>
         public const float LiveSlotW = 104f;
+
+        /// <summary>The live slot at the Compact tier (since the Queue button joined that row, 2026-10-10): the track slot's
+        /// own width, holding the LIVE mark alone — "GO LIVE −99:59" no longer fits beside the 98-DIP right cluster at 416-440.</summary>
+        public const float CompactLiveSlotW = SlotW;
+
+        /// <summary>The live slot's width at a tier: <see cref="CompactLiveSlotW"/> at Compact, else <see cref="LiveSlotW"/>.</summary>
+        public static float LiveSlotWidth(PlayerBarTier tier) => tier == PlayerBarTier.Compact ? CompactLiveSlotW : LiveSlotW;
 
         /// <summary>Elapsed since TUNE-IN — what "elapsed" means for a broadcast. Before the stamp lands it falls back
         /// to the reported POSITION, never to 0, so the label cannot blink to 0:00 on the way in.</summary>

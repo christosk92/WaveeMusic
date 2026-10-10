@@ -95,6 +95,8 @@ public readonly partial struct Browse
         Browse _dir;
         bool _demanded, _ready, _failed;
         long _dataKey = long.MinValue;
+        bool _bodyHoisted;   // the hoist the cached _body was built for (its Top band collapses with it)
+        bool _skeletonHoisted;   // the same, for the cached shimmer
         Element? _body, _skeleton;
 
 
@@ -108,7 +110,7 @@ public readonly partial struct Browse
             _pendingFn = () => !_ready && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _body ?? new BoxEl();
-            _shimmerFn = () => _skeleton ??= DirectorySkeleton();
+            _shimmerFn = () => _skeleton ??= DirectorySkeleton(!BrowseMastheadMetrics.ShowsTopBand(_skeletonHoisted));
             _demand = Demand;
             _retry = Retry;
             // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` — a row the planner has already sealed
@@ -144,18 +146,28 @@ public readonly partial struct Browse
             var load = BrowseLoadGate.Of(known, _demanded, scope.Browses.Inflight[d.Slot] != 0);
             _ready = load == BrowseLoad.Ready;
             _failed = load == BrowseLoad.Failed;
+            // The hoist reads the PRESENTED nav style (PageHead.HoistedFor): the body-top spacer, the clip inset and the Top
+            // band's collapse change in the quiet commit HoistSettleMs after a nav-style switch, never in the commit that
+            // slides the card, so their Reflows are not snapped by the card's descendant suppression.
+            bool hoisted = PageHead.HoistedFor("browse");
+            // The shimmer follows the hoist too (the factory reads _skeletonHoisted, never the signal), so a pending page
+            // under a switched nav style shows the same Top band (or none) as the body that lands.
+            if (_skeleton is not null && hoisted != _skeletonHoisted) _skeleton = null;
+            _skeletonHoisted = hoisted;
             if (_ready)
             {
                 // The body is rebuilt ONLY when the tile list or a tile row changed — the under-band edge re-render below
                 // hands the region the same instance.
                 long key = ((long)edges.BrowseDirectory.Version(d.Slot) << 32) | scope.Browses.Changed.Peek();
-                if (key != _dataKey)
+                if (key != _dataKey || hoisted != _bodyHoisted)
                 {
                     _dataKey = key;
+                    _bodyHoisted = hoisted;
                     var categories = CategoriesOf(edges.BrowseDirectory.Targets(d.Slot));
                     _body = categories.Length == 0
                         ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Browse.Unavailable), subtitle: "")
-                        : DirectoryBody(BrowseTaxonomy.Grouped(categories), live: true, _chartsBandAt);
+                        : DirectoryBody(BrowseTaxonomy.Grouped(categories), live: true, _chartsBandAt,
+                                        hideTop: !BrowseMastheadMetrics.ShowsTopBand(hoisted));
                 }
             }
 
@@ -165,21 +177,32 @@ public readonly partial struct Browse
                 OnFailed: _failedPanelFn, Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,
                 SmoothResize: false);
 
+            float g = Shell.Ui.PageGutter.Value;
+
             Element directory = new BoxEl
             {
                 Direction = 1, MinWidth = 0f, Gap = Spacing.L,
-                Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.XXL),
+                Padding = BrowseMastheadMetrics.FamilyUnderBandPad(g, PageGeometry.BottomReserve),
                 // Feathered exactly while the clip is engaged, on the render turn that poses it (RCA 2026-09-25 F(ii)).
                 EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true },
                 Children = [region],
-            }.StickyClip(BrowseMastheadMetrics.ClipInset);
+            }.StickyClip(BrowseMastheadMetrics.ClipInsetFor(hoisted));
 
             return ScrollView(new BoxEl
             {
                 Direction = 1, MinWidth = 0f,
                 // The reserve is a SPACER above the clipped node, not padding inside it: the cut engages exactly when the
-                // content reaches the band.
-                Children = [new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false }, directory],
+                // content reaches the band. Route-static height (Extent(Title) 120, or the hoisted strip 24) that eases on
+                // PageHead.Reflow.
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "browse:bodytop", Shrink = 0f, Height = BrowseMastheadMetrics.BodyTopFor(hoisted),
+                        HitTestVisible = false, Animate = PageHead.Reflow,
+                    },
+                    directory,
+                ],
             }) with { Grow = 1f, MinWidth = 0f, ScrollKey = UseContext(Shell.PageScrollScope) + "browse" };
         }
 
@@ -395,12 +418,13 @@ public readonly partial struct Browse
                 OnFailed: _failedPanelFn, Reveal: SkelReveal.FadeOnly, Style: SkeletonStyle.Default, Group: null,
                 SmoothResize: false);
 
-            // The outer column owns the frame: the family gutters and the overlay masthead's reserve (the band takes no
-            // in-flow height), with Spacing.L under the body; only the region below it ever shimmers.
+            // The outer column owns the frame: the page gutter and the overlay masthead's reserve (the band takes no
+            // in-flow height), with Spacing.L under the body (the one documented bottom-reserve exception, PageGeometry.
+            // BottomReserve: the body's lists own their scrollers); only the region below it ever shimmers.
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                Padding = BrowseMastheadMetrics.FamilyBodyPad(Spacing.L),
+                Padding = BrowseMastheadMetrics.FamilyBodyPad(Shell.Ui.PageGutter.Value, Spacing.L),
                 Children =
                 [
                     new BoxEl { Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Children = [region] },
@@ -476,7 +500,7 @@ public readonly partial struct Browse
             return ScrollView(new BoxEl
             {
                 Direction = 1, Gap = Spacing.L, MinWidth = 0f,
-                Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
+                Padding = new Edges4(0f, 0f, 0f, PageGeometry.BottomReserve),
                 Children = kids,
             }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
         }
@@ -486,7 +510,7 @@ public readonly partial struct Browse
         Element Framed(Element content) => ScrollView(new BoxEl
         {
             Direction = 1, Gap = Spacing.L, MinWidth = 0f,
-            Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
+            Padding = new Edges4(0f, 0f, 0f, PageGeometry.BottomReserve),
             Children = [content, ExploreAll(GoDirectory)],
         }) with { Grow = 1f, MinHeight = 0f, ScrollKey = _scrollScope + "browse:" + _uri };
 
@@ -660,7 +684,7 @@ public readonly partial struct Browse
     static readonly Func<Element> s_shimmer = static () => new BoxEl
     {
         Direction = 1, Gap = Spacing.L, MinWidth = 0f, Grow = 1f,
-        Padding = new Edges4(0f, 0f, 0f, Design.Dock.Reserve + Spacing.XXL),
+        Padding = new Edges4(0f, 0f, 0f, PageGeometry.BottomReserve),
         Children = [ShimmerRelated(), ShimmerShelf(), ShimmerShelf()],
     };
 

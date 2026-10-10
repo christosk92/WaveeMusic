@@ -17,6 +17,8 @@
 using Xunit;
 using Breakpoints = Wavee.Detail.Breakpoints;
 using RailPolicy = Wavee.Detail.RailPolicy;
+using RailArtistLine = Wavee.Detail.RailArtistLine;
+using RailArtistMode = Wavee.Detail.RailArtistMode;
 
 namespace Wavee.Tests;
 
@@ -366,5 +368,195 @@ public class DetailRailPolicyTests
         Assert.Equal(RailPolicy.NarrowRestWidth, RailPolicy.NarrowRestWidthFor(2));
         Assert.Equal(FluentGpu.Controls.Splitter.StripW, RailPolicy.GripStripW);
         Assert.Equal(300f, Breakpoints.TwoColumnContentMinW);
+    }
+
+    // ── the grip is an overlay on the gap, the rail pays the table's plate lead ──────────────────────────────────
+
+    /// <summary>The rail's cover ends one FrameGap before the table's first plate (Modern) or row fill (Classic), for a resizable
+    /// rail (grip overlay) and a fixed one, at every resting width: the table host overhangs the composed rail by LeadFor, and
+    /// its plates start PlateX inside the host.</summary>
+    [Theory]
+    [InlineData(true, false, 180f)]
+    [InlineData(true, false, 280f)]
+    [InlineData(true, false, 480f)]
+    [InlineData(false, false, 188f)]
+    [InlineData(false, false, 224f)]
+    [InlineData(true, true, 180f)]
+    [InlineData(true, true, 280f)]
+    [InlineData(true, true, 480f)]
+    [InlineData(false, true, 188f)]
+    [InlineData(false, true, 224f)]
+    public void CoverRightEdge_ToFirstPlate_IsTheCoverGap(bool resizable, bool classic, float resting)
+    {
+        float composed = resting + RailPolicy.ComposedExtraWidth(resizable, classic);
+        float coverRight = composed - RailPolicy.SidePadR;
+        float hostX = composed - Track.RowMetrics.LeadFor(twoColumn: true, classic);
+        float firstPlate = hostX + Track.RowMetrics.PlateX(classic);
+
+        Assert.Equal(RailPolicy.CoverGap, firstPlate - coverRight);
+        Assert.Equal(composed, firstPlate);   // plate lead 0: the plate (or the Classic fill) abuts the composed rail
+    }
+
+    /// <summary>The freed width goes to the rail and nowhere else: the table host starts where it always did (rail + the
+    /// grip's old 16-DIP strip), so its header text, toolbar and rows do not move, and the cover grows by the freed width less
+    /// what the wider cover gap (PanelPad + PanelGap, was 8) takes back. Classic frees only the grip's strip.</summary>
+    [Theory]
+    [InlineData(true, false, 240f)]
+    [InlineData(true, false, 360f)]
+    [InlineData(false, false, 224f)]
+    [InlineData(true, true, 240f)]
+    [InlineData(true, true, 360f)]
+    [InlineData(false, true, 224f)]
+    public void FreedWidth_GoesToTheRail_AndTheTableDoesNotMove(bool resizable, bool classic, float resting)
+    {
+        float freed = RailPolicy.ComposedExtraWidth(resizable, classic);
+        float oldHostX = resting + (resizable ? RailPolicy.GripStripW : 0f);
+        float newHostX = resting + freed - Track.RowMetrics.LeadFor(twoColumn: true, classic);
+        Assert.Equal(oldHostX, newHostX);
+
+        float oldCover = MathF.Max(80f, resting - RailPolicy.SidePadL - Shell.FrameRules.FrameGap);   // old pads were 16 / 8
+        float gapGrowth = RailPolicy.CoverGap - Shell.FrameRules.FrameGap;
+        Assert.Equal(freed - gapGrowth, RailPolicy.CoverEdge(resting + freed) - oldCover);
+    }
+
+    /// <summary>The grip strip is centred on the gap between the rail's panel and the first plate, and takes no row width.</summary>
+    [Fact]
+    public void GripOverlay_IsCentredOnTheGapOutsideThePanel()
+    {
+        const float composed = 400f;
+        float x = RailPolicy.GripOverlayX(composed);
+        float panelEdge = composed - RailPolicy.PanelGap;
+        Assert.Equal(panelEdge + RailPolicy.PanelGap / 2f, x + FluentGpu.Controls.Splitter.StripW / 2f);
+    }
+
+    [Fact]
+    public void OnlyTwoColumnTablesHangIntoTheGap_AndClassicNeedsNoOverhang()
+    {
+        Assert.Equal(Track.RowMetrics.RowInset, Track.RowMetrics.LeadFor(twoColumn: true, classic: false));
+        Assert.Equal(0f, Track.RowMetrics.LeadFor(twoColumn: true, classic: true));
+        Assert.Equal(0f, Track.RowMetrics.LeadFor(twoColumn: false, classic: false));
+        Assert.Equal(0f, Track.RowMetrics.LeadFor(twoColumn: false, classic: true));
+    }
+
+    // ── one layout for Liked Songs ───────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void LikedSongs_AlwaysForcesTheVerticalArm_WhateverThePageLayoutSays()
+    {
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Liked, Detail.VerticalLayout.PageAuto));
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Liked, Detail.VerticalLayout.PageHero));
+    }
+
+    [Fact]
+    public void AlbumAndPlaylist_StillHonourThePageLayout()
+    {
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Playlist, Detail.VerticalLayout.PageAuto));
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Playlist, Detail.VerticalLayout.PageHero));
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Album, Detail.VerticalLayout.PageAuto));
+        Assert.True(Breakpoints.ForcesVertical(Detail.Config.Album, Detail.VerticalLayout.PageHero));
+    }
+
+    [Fact]
+    public void ShowAndEpisode_NeverForceTheVerticalArm_BecauseTheyAreNotTrackPages()
+    {
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Show, Detail.VerticalLayout.PageHero));
+        Assert.False(Breakpoints.ForcesVertical(Detail.Config.Episode, Detail.VerticalLayout.PageHero));
+    }
+
+    [Fact]
+    public void OnlyLikedCarriesTheSlimHead()
+    {
+        Assert.True(Detail.Config.Liked.SlimHead);
+        Assert.False(Detail.Config.Playlist.SlimHead);
+        Assert.False(Detail.Config.Album.SlimHead);
+        Assert.False(Detail.Config.Show.SlimHead);
+    }
+
+    // ── L1: the billed-artist line under width pressure ───────────────────────────────────────────────────────────────
+
+    /// <summary>The faces yield before the name: wide keeps the pile, medium the lead face, narrow only the text.</summary>
+    [Theory]
+    [InlineData(480f, RailArtistMode.Wide)]
+    [InlineData(RailArtistLine.WideMinW, RailArtistMode.Wide)]
+    [InlineData(RailArtistLine.WideMinW - 1f, RailArtistMode.Medium)]
+    [InlineData(RailArtistLine.MediumMinW, RailArtistMode.Medium)]
+    [InlineData(RailArtistLine.MediumMinW - 1f, RailArtistMode.Narrow)]
+    [InlineData(80f, RailArtistMode.Narrow)]
+    public void ArtistLine_FirstSight_UsesThePlainThresholds(float width, RailArtistMode expected)
+        => Assert.Equal(expected, RailArtistLine.Mode(width, null));
+
+    /// <summary>A richer look needs the threshold PLUS the hysteresis; a poorer one happens at the threshold — so a rail
+    /// dragged back and forth across a boundary does not flicker.</summary>
+    [Fact]
+    public void ArtistLine_Hysteresis_HoldsTheCurrentLookInsideTheBand()
+    {
+        const float h = RailArtistLine.Hysteresis;
+        Assert.Equal(16f, h);
+        float w = RailArtistLine.WideMinW;
+        // Medium stays medium until the rail clears Wide + hysteresis, then climbs.
+        Assert.Equal(RailArtistMode.Medium, RailArtistLine.Mode(w, RailArtistMode.Medium));
+        Assert.Equal(RailArtistMode.Medium, RailArtistLine.Mode(w + h - 1f, RailArtistMode.Medium));
+        Assert.Equal(RailArtistMode.Wide, RailArtistLine.Mode(w + h, RailArtistMode.Medium));
+        // Wide stays wide down to the plain threshold, then drops at once.
+        Assert.Equal(RailArtistMode.Wide, RailArtistLine.Mode(w, RailArtistMode.Wide));
+        Assert.Equal(RailArtistMode.Medium, RailArtistLine.Mode(w - 1f, RailArtistMode.Wide));
+        // The same band guards the narrow/medium boundary.
+        float m = RailArtistLine.MediumMinW;
+        Assert.Equal(RailArtistMode.Narrow, RailArtistLine.Mode(m + h - 1f, RailArtistMode.Narrow));
+        Assert.Equal(RailArtistMode.Medium, RailArtistLine.Mode(m + h, RailArtistMode.Narrow));
+        Assert.Equal(RailArtistMode.Medium, RailArtistLine.Mode(m, RailArtistMode.Medium));
+        Assert.Equal(RailArtistMode.Narrow, RailArtistLine.Mode(m - 1f, RailArtistMode.Medium));
+        // A big jump from the poorest look climbs every rung it clears.
+        Assert.Equal(RailArtistMode.Wide, RailArtistLine.Mode(400f, RailArtistMode.Narrow));
+        // A jump that clears medium's slack but not wide's stops at medium.
+        Assert.Equal(RailArtistMode.Medium, RailArtistLine.Mode(w, RailArtistMode.Narrow));
+    }
+
+    [Fact]
+    public void ArtistLine_PlusN_IsTheBilledArtistsTheFacesDoNotStandFor()
+    {
+        Assert.Equal(2, RailArtistLine.PlusN(3, 1));
+        Assert.Equal(0, RailArtistLine.PlusN(1, 1));
+        Assert.Equal(0, RailArtistLine.PlusN(2, 3));
+        Assert.Equal(0, RailArtistLine.PlusN(0, 0));
+        Assert.Equal(4, RailArtistLine.PlusN(4, -1));
+    }
+
+    /// <summary>The line box's height is decided by the MODE, never by the data: Medium and Narrow reserve two text lines
+    /// (a one-line name and a two-line one are the same height), Wide the pile frame, and the plate's padding is in all
+    /// three. The skeleton reserves the look its own width implies, so the loaded line fills the row instead of resizing it.</summary>
+    [Fact]
+    public void ArtistLine_Heights_AreByModeAndCoverTheTallestRenderedLook()
+    {
+        const float twoLines = 2f * RailArtistLine.TextLine + 2f * RailArtistLine.PadY;
+        Assert.Equal(Wavee.Controls.FaceOuter + 2f * RailArtistLine.PadY, RailArtistLine.WideHeight);
+        Assert.Equal(twoLines, RailArtistLine.MediumHeight);
+        Assert.Equal(twoLines, RailArtistLine.NarrowHeight);
+        Assert.Equal(RailArtistLine.WideHeight, RailArtistLine.HeightOf(RailArtistMode.Wide));
+        Assert.Equal(RailArtistLine.MediumHeight, RailArtistLine.HeightOf(RailArtistMode.Medium));
+        Assert.Equal(RailArtistLine.NarrowHeight, RailArtistLine.HeightOf(RailArtistMode.Narrow));
+        // The tallest RENDERED look (two wrapped lines) is covered by every wrapping mode and by the global reserve.
+        Assert.True(RailArtistLine.TallestHeight >= twoLines);
+        Assert.True(RailArtistLine.TallestHeight >= RailArtistLine.WideHeight);
+        // A medium lead face (24) fits its box.
+        Assert.True(RailArtistLine.MediumHeight >= Detail.Skeleton.OwnerAvatar + 2f * RailArtistLine.PadY);
+    }
+
+    /// <summary>The skeleton's reserve is the height of the look the rail's width gives a fresh mount.</summary>
+    [Theory]
+    [InlineData(256f, RailArtistMode.Wide)]
+    [InlineData(232f, RailArtistMode.Wide)]
+    [InlineData(200f, RailArtistMode.Medium)]
+    [InlineData(168f, RailArtistMode.Medium)]
+    [InlineData(120f, RailArtistMode.Narrow)]
+    public void ArtistLine_ReservedHeight_IsTheHeightOfTheLookTheWidthImplies(float width, RailArtistMode mode)
+        => Assert.Equal(RailArtistLine.HeightOf(mode), RailArtistLine.ReservedHeight(width));
+
+    /// <summary>An unmeasured width (NaN / infinity) is the richest look, as the unclamped row always had.</summary>
+    [Fact]
+    public void ArtistLine_UnmeasuredWidth_IsWide()
+    {
+        Assert.Equal(RailArtistMode.Wide, RailArtistLine.Mode(float.NaN, null));
+        Assert.Equal(RailArtistMode.Wide, RailArtistLine.Mode(float.PositiveInfinity, RailArtistMode.Narrow));
     }
 }

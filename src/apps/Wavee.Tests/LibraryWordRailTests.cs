@@ -231,3 +231,120 @@ public class LibraryWordRailTests
         Assert.Equal(word, User.ArtistCountLine(-1, -1));      // a clamped/never-filled count is not a number to print
     }
 }
+
+// ── the sort dropdown and the pane's control row (A4) ──────────────────────────────────────────────────────────────────
+
+public class LibrarySortDropdownTests
+{
+    static readonly EntityKind[] Kinds = [EntityKind.Album, EntityKind.Artist, EntityKind.Show, EntityKind.Playlist, EntityKind.Unknown];
+
+    [Fact]
+    public void The_dropdown_items_for_each_kind_are_the_rails_words_in_rail_order()
+    {
+        foreach (var kind in Kinds)
+        {
+            var entries = LibraryWordRail.MenuEntries(kind, 0);
+            Assert.Equal(LibraryWordRail.WordsFor(kind).ToArray(), entries.Select(e => e.Sort).ToArray());
+            Assert.All(entries, e => Assert.StartsWith("library.sort.", e.Key, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void Exactly_the_clamped_current_word_is_checked()
+    {
+        // 5 ("albums") is not an albums word: it clamps to Recents, which is the checked entry.
+        var albums = LibraryWordRail.MenuEntries(EntityKind.Album, (int)LibraryNavSort.Albums);
+        Assert.Single(albums, e => e.Checked);
+        Assert.True(albums.Single(e => e.Sort == LibraryNavSort.Recents).Checked);
+
+        var artists = LibraryWordRail.MenuEntries(EntityKind.Artist, (int)LibraryNavSort.Albums);
+        Assert.True(artists.Single(e => e.Sort == LibraryNavSort.Albums).Checked);
+        Assert.Single(artists, e => e.Checked);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(2, true)]
+    [InlineData(4, false)]
+    public void Choosing_the_current_word_flips_the_direction(int current, bool desc)
+        => Assert.Equal((current, !desc), LibraryWordRail.Choose(current, desc, current));
+
+    [Theory]
+    [InlineData(0, false, 1)]
+    [InlineData(2, true, 0)]
+    [InlineData(4, true, 3)]
+    public void Choosing_another_word_sets_it_ascending(int current, bool desc, int other)
+        => Assert.Equal((other, false), LibraryWordRail.Choose(current, desc, other));
+
+    [Fact]
+    public void The_menu_keys_are_the_sentence_case_sort_labels()
+    {
+        foreach (LibraryNavSort sort in Enum.GetValues<LibraryNavSort>())
+        {
+            string key = LibraryWordRail.MenuKey(sort);
+            Assert.False(string.IsNullOrEmpty(key));
+            Assert.StartsWith("library.sort.", key, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void The_control_row_is_the_shared_button_height_for_every_kind_and_both_podcast_views()
+    {
+        // ONE constant, no per-kind or per-view input: the pane's head never changes height with either.
+        Assert.Equal(Controls.ButtonHeight, LibraryPaneRules.ControlRowH);
+        Assert.Equal(32f, LibraryPaneRules.ControlRowH);
+    }
+
+    [Fact]
+    public void The_sort_button_holds_its_inputs_as_thunks_and_reads_none_at_construction()
+    {
+        // An Embed.Comp factory runs ONCE (at mount): a captured `active`/caret value would freeze there. Every input is a
+        // thunk the button's own Render reads, so building the element must not call any of them.
+        int calls = 0;
+        _ = Controls.SortButton(() => { calls++; return "x"; }, () => { calls++; return []; }, () => { calls++; return true; },
+            () => { calls++; return true; }, () => { calls++; return true; });
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public void The_pane_views_bar_is_the_control_row_height_with_its_padding()
+    {
+        Assert.Equal(Controls.ButtonHeight, Design.PaneViewsStyle.ItemHeight + 2f * PageGeometry.ViewsBarPadY);
+        Assert.Equal(PageGeometry.ViewsLeadingInset, Design.PaneViewsStyle.LeadingInset);
+    }
+
+    [Fact]
+    public void A_views_item_holds_its_label_and_its_pill_row_inside_its_height()
+    {
+        // The item is a column: padding + one 20 line, then the 3-DIP pill row. Past the item height the pill slides below
+        // the bar and the control row's clip cuts it off, so the selection indicator would not show.
+        const float pill = 3f;
+        foreach (var style in new[] { Design.PaneViewsStyle, Design.RailViewsStyle })
+        {
+            var pad = style.ItemPadding ?? new FluentGpu.Foundation.Edges4(12f, 10f, 12f, 7f);
+            Assert.True(pad.Top + style.LineHeight + pad.Bottom + pill <= style.ItemHeight);
+        }
+    }
+
+    [Fact]
+    public void The_count_has_one_noun_per_kind()
+    {
+        // The harness loads no culture, so the formatted text is the loc entries' business; what matters here is that each
+        // kind reaches for its OWN entry (a shared one would print "20 albums" under the artists page).
+        string[] counts = [Strings.Library.Count.Albums(2), Strings.Library.Count.Artists(2),
+                           Strings.Library.Count.Shows(2), Strings.Library.Count.Audiobooks(2)];
+        Assert.All(counts, c => Assert.False(string.IsNullOrEmpty(c)));
+        Assert.Equal(counts.Length, counts.Distinct().Count());
+    }
+}
+
+public class LibraryPaneRulesTests
+{
+    [Fact]
+    public void The_podcasts_filter_keeps_its_minimum_at_the_narrowest_pane()
+    {
+        // 240-DIP pane = 208 content: [filter][sort slot][ONE view button] with two gaps, and the views alone on row one.
+        Assert.True(LibraryPaneRules.PodcastsFilterW(208f) >= LibraryPaneRules.FilterMinW);
+        Assert.Equal(Controls.IconButtonSize, LibraryPaneRules.ToggleCompactW);
+    }
+}

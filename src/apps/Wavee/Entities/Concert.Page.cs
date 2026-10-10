@@ -84,20 +84,24 @@ public readonly partial struct Concert
         => (node with { EdgeFade = new EdgeFadeSpec(EdgeMask.Top, BrowseMastheadMetrics.ClipFadeBand) { WhileStuck = true } })
             .StickyClip(BrowseMastheadMetrics.ClipInset);
 
-    /// <summary>The schedule/detail page frame (§1.2, §1.3): the 84 + 40 reserve as a SPACER, then the 32-gutter body cut
-    /// under the band, one vertical viewport.</summary>
-    static ScrollEl SubPageScroll(string scrollKey, Element region) => ScrollView(new BoxEl
+    /// <summary>The schedule/detail page frame (§1.2, §1.3): the family's body top (<see cref="BrowseMastheadMetrics.BodyTop"/>,
+    /// the Title head's extent) as a SPACER, then the page-gutter body cut under the band, one vertical viewport.</summary>
+    static ScrollEl SubPageScroll(string scrollKey, Element region)
     {
-        Direction = 1,
-        Children =
-        [
-            new BoxEl { Height = BrowseMastheadMetrics.Reserve + 40f, HitTestVisible = false },
-            UnderBand(new BoxEl
-            {
-                Direction = 1, MinWidth = 0f, Padding = new Edges4(32f, 0f, 32f, Design.Dock.Reserve + 40f), Children = [region],
-            }),
-        ],
-    }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };
+        float g = Shell.Ui.PageGutter.Value;
+        return ScrollView(new BoxEl
+        {
+            Direction = 1,
+            Children =
+            [
+                new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false },
+                UnderBand(new BoxEl
+                {
+                    Direction = 1, MinWidth = 0f, Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve), Children = [region],
+                }),
+            ],
+        }) with { Grow = 1f, MinHeight = 0f, ScrollKey = scrollKey };
+    }
 
     /// <summary>A region that is its shimmer seed while pending and the content once ready (§0 #11: SkelReveal.Soft).</summary>
     static Element Region(Func<bool> pending, Func<bool> failed, Func<Element> content, Func<Element> shimmer, Func<Element>? onFailed, string group)
@@ -366,13 +370,13 @@ public readonly partial struct Concert
                 Direction = 1,
                 Children =
                 [
-                    // The reserve + 24 as a SPACER: the clipped nodes start where the content does, so each cut engages
+                    // The family's body top as a SPACER: the clipped nodes start where the content does, so each cut engages
                     // only once it scrolls (BrowseMastheadMetrics.FamilyUnderBandPad).
-                    new BoxEl { Height = BrowseMastheadMetrics.Reserve + Spacing.XXL, HitTestVisible = false },
+                    new BoxEl { Height = BrowseMastheadMetrics.BodyTop, HitTestVisible = false },
                     new BoxEl
                     {
                         Direction = 1, Gap = Spacing.L,
-                        Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Design.Dock.Reserve + Spacing.PageWide),
+                        Padding = BrowseMastheadMetrics.FamilyUnderBandPad(Shell.Ui.PageGutter.Value, PageGeometry.BottomReserve),
                         Children =
                         [
                             UnderBand(HeaderCard()),
@@ -396,7 +400,7 @@ public readonly partial struct Concert
             Children =
             [
                 SectionCaption(Loc.Get(Strings.Concerts.LiveMusic)),
-                Design.Type.PageHero(Loc.Get(Strings.Concerts.Title)) with { MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
+                Design.Type.PageTitle(Loc.Get(Strings.Concerts.Title)),
                 Body(Loc.Get(Strings.Concerts.Subtitle)) with { Color = Tok.TextSecondary, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             ],
         };
@@ -1010,7 +1014,7 @@ public readonly partial struct Concert
             var blocks = new List<Element>(6)
             {
                 SectionCaption(Loc.Get(Strings.Concerts.Schedule.OnTour)),
-                Design.Type.PageHero(name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
+                Design.Type.PageTitle(name) with { Wrap = TextWrap.Wrap, MaxLines = 2, Trim = TextTrim.CharacterEllipsis },
                 Body(ConcertScheduleShaping.StatsLine(stats)) with { Color = Tok.TextSecondary, MinWidth = 0f, Wrap = TextWrap.NoWrap, MaxLines = 1, Trim = TextTrim.CharacterEllipsis },
             };
             uint accent = 0;
@@ -1066,13 +1070,21 @@ public readonly partial struct Concert
         Element TourDates(IReadOnlyList<ConcertMonthGroup> groups, int selected, HashSet<string> nearby, string name, bool wide, bool seed)
         {
             var labels = ConcertScheduleShaping.MonthTabLabels(groups, CultureInfo.CurrentCulture);
+            // The page-views bar (Design.PageViewsStyle, the stock look) on a STABLE key, so choosing a month slides the pill and
+            // never re-mounts the bar. The viewport absorbs the first plate's pad (margin -12, bar inset 0 — the PageHead scroll
+            // idiom), so the first WORD sits on the card's text edge; the row is the fixed PageGeometry.ViewsBarH (48).
             Element tabs = ScrollView(new BoxEl
             {
                 Direction = 0,
-                Children = [SelectorBar.Create(labels, new Signal<int>(selected), onChange: i => _month.Value = groups[i].Key)],
+                Children =
+                [
+                    SelectorBar.Create(labels, new Signal<int>(selected), onChange: i => _month.Value = groups[i].Key,
+                        style: Design.PageViewsStyle with { LeadingInset = 0f }) with { Key = "concert:months:bar" },
+                ],
             }, horizontal: true) with
             {
-                Height = 48f, Grow = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true,
+                Height = PageGeometry.ViewsBarH, Grow = 0f, AutoEdgeFade = true, AutoEdgeFadeBand = 36f, SuppressScrollBar = true,
+                Margin = new Edges4(PageGeometry.ViewsLeadingInset, 0f, 0f, 0f),
                 ScrollKey = _scrollScope + "artist-schedule-months:" + _routeKey,
             };
             var group = groups[selected];

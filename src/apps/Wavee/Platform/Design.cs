@@ -417,6 +417,17 @@ public static partial class Design
         /// <summary>Tertiary on-media ink: captions / meta over art. White @ 0.60.</summary>
         public static ColorF InkTertiary => Tok.OnMediaTertiary;
 
+        // ── accent ink: the page accent as a WORD over a dark ground ───────────────────────────────────────────────
+
+        /// <summary>The accent's text shades as the DARK theme paints them (WinUI Light3 / Light3 / Light2), derived from the live accent
+        /// base in either theme: the light theme's own accent-text ramp is the DARK one, which is unreadable over the dark artist bleed.
+        /// Primary verb / latched toggle words wear these while the chrome is on media (<c>Shell.Ui.ChromeInkAccent</c>).</summary>
+        public static ColorF AccentInk => AccentRamp.Derive(Tok.AccentSelectedTextBackground).Light3;
+        /// <inheritdoc cref="AccentInk"/>
+        public static ColorF AccentInkSecondary => AccentRamp.Derive(Tok.AccentSelectedTextBackground).Light3;
+        /// <inheritdoc cref="AccentInk"/>
+        public static ColorF AccentInkTertiary => AccentRamp.Derive(Tok.AccentSelectedTextBackground).Light2;
+
         // ── glass: the on-media INTERACTION ramp for a control carrying NO resting plate ──────────────────────────────
         // The scrim ladder above is a PLATE — a small dark surface a control sits on permanently. Glass is its opposite:
         // nothing at rest, a breath of the on-media INK on hover, one rung more on press. It is what the immersive stage
@@ -668,7 +679,12 @@ public static partial class Design
         /// <summary>The backdrop's stand-in while the cover is missing or still decoding, in the STAGE's polarity rather
         /// than the page's. The cover TINT survives (it is what stops the slot reading as a hole); only the neutral it
         /// is blended toward follows the stage.</summary>
-        public static ColorF ArtStandIn(ReadOnlySpan<char> url) => PlaceholderFor(url, light: !IsDark);
+        public static ColorF ArtStandIn(ReadOnlySpan<char> url) => ArtStandIn(url, Prefs.Appearance.NowPlayingColors());
+
+        /// <summary>The stand-in with the setting passed in (pure, for the tests): with "now-playing colours" off the cover
+        /// tint is dropped and the stand-in is the neutral alone.</summary>
+        public static ColorF ArtStandIn(ReadOnlySpan<char> url, bool nowPlayingColors)
+            => PlaceholderFor(nowPlayingColors ? url : default, light: !IsDark);
     }
 
     // ══ 6. THE COVER PALETTE → RENDERER COLOUR ═══════════════════════════════════════════════════════════════════════
@@ -1049,6 +1065,7 @@ public static partial class Design
     //
     // THE RULE IN ONE LINE: if the app's own ink lands ON it, grade it FOR the theme; if it carries on-accent ink and
     // has to be seen, grade it AGAINST the theme.
+    // One page = one artwork entry: the tint and every accent role read the same url; the polarity split above decides only the grading.
     //
     // (These were `Surfaces.SchemeFor` / `.ChromeSchemeFor` in 0.2.9. They live in Design rather than in Controls
     // because they are colour resolution, not an element recipe, and because the four cover leaves below need them.)
@@ -1175,12 +1192,11 @@ public static partial class Design
     /// no vertical rhythm at all. The engine ramp carries eight pairs (12/16 · 14/20 · 14/20-600 · 18/24 · 20/28-600 ·
     /// 28/36-600 · 40/52-600 · 68/92-600); the app adds four rungs on that ladder (<see cref="MicroMeta"/> 11/15,
     /// <see cref="DenseMeta"/> 13/18, <see cref="DenseTitle"/> 13/18-600, <see cref="SheetTitle"/> 16/22-600) — twelve
-    /// named sizes total, not a thirteenth invented ad hoc. <see cref="PivotLabel"/> 19/25/350 remains a sanctioned
-    /// off-ramp. Repointing a call site at an alias brings the line height with it.</para>
+    /// named sizes total, not a thirteenth invented ad hoc. Repointing a call site at an alias brings the line height with it.</para>
     ///
     /// <para><b>WEIGHT POLICY: 400 and 600 only, with SIX documented divergences.</b> Three DISPLAY-FACE identity
     /// aliases keep 700 (<see cref="ArtistDisplay"/> / <see cref="ArtistTitle"/> / <see cref="ArtistCompactTitle"/> —
-    /// the masthead voice, not UI labels) and three keep SemiLight 350 (<see cref="PivotLabel"/> /
+    /// the masthead voice, not UI labels) and three keep SemiLight 350 (<see cref="ZunePivot"/> /
     /// <see cref="NpvLyric"/> / <see cref="StatHero"/> — the same WinUI SemiLight the engine's own pivot control uses
     /// for its header row). A SEVENTH is a regression.</para>
     ///
@@ -1189,8 +1205,7 @@ public static partial class Design
     /// <see cref="TrackMeta"/>'s secondary read is a restatement rather than a change.</para></summary>
     public static class Type
     {
-        /// <summary>The display face every display-voice alias here sets — and <see cref="FacetTitleStyle"/>, the one
-        /// control style that speaks in it.</summary>
+        /// <summary>The display face every display-voice alias here sets.</summary>
         internal const string DisplayFace = "Segoe UI Variable Display";
 
         /// <summary>Track / album / playlist titles in lists. → <c>Ui.BodyStrong</c> (14 / 20 / 600).</summary>
@@ -1318,6 +1333,43 @@ public static partial class Design
             CharSpacing = -12f,
         };
 
+        /// <summary>THE PAGE HEAD'S TITLE — the name of a place or a record at the head of a page. <see cref="SurfaceDisplay"/>
+        /// (40 / 52, display face, light 400) held to ONE line: a long name ellipsises instead of wrapping, so the head's
+        /// height (<see cref="PageGeometry.TitleLine"/>) never depends on the text. <c>MinWidth = 0</c> + <c>Shrink = 1</c>
+        /// let the line yield to a trailing action cluster before it clips. Not a new divergence: same ramp rung, same face.</summary>
+        public static TextEl PageTitle(string s) => SurfaceDisplay(s) with
+        {
+            MaxLines = 1,
+            Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f,
+            Shrink = 1f,
+        };
+
+        /// <summary>THE PAGE HEAD'S META LINE — "42 songs · 3 hr" under the title. <c>Ui.Caption</c> (12 / 16 / 400) held
+        /// to one line, so the reserved <see cref="PageGeometry.MetaLine"/> is exactly what it occupies.</summary>
+        public static TextEl PageMeta(string s) => Ui.Caption(s) with
+        {
+            MaxLines = 1,
+            Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f,
+        };
+
+        /// <summary>A PANE's title ("Settings", a rail panel) — <see cref="PageHero"/>'s engine rung (28 / 36) in the display
+        /// face at the LIGHT 400 weight with −12/1000 em tracking, i.e. <see cref="SurfaceDisplay"/> one rung down. One line,
+        /// ellipsised. On the ramp and inside the 400/600 policy.</summary>
+        public static TextEl PaneTitle(string s) => Ui.Title(s) with
+        {
+            FontFamily = DisplayFace,
+            Weight = 400,
+            CharSpacing = -12f,
+            MaxLines = 1,
+            Wrap = TextWrap.NoWrap,
+            Trim = TextTrim.CharacterEllipsis,
+            MinWidth = 0f,
+        };
+
         /// <summary>The daylist card's TITLE — the Home page's one hero line ("cutesy korean r&amp;b sunday afternoon").
         /// <see cref="SurfaceDisplay"/>'s cut (the 40 / 52 engine rung, the display face, −12/1000 em) at SEMIBOLD
         /// 600: a record's name, not a place's, so it takes the heading weight where the place masthead stays light.
@@ -1370,13 +1422,29 @@ public static partial class Design
         /// policy and 32 px has no rung on the engine ramp.</summary>
         public static TextEl FoldTitle(string s) => PickQuote(s);
 
-        /// <summary>A pivot tab header (All / Music / Podcasts / Artists) — the display face at SemiLight, one rung
-        /// under <see cref="RailHeader(string)"/>. 19 / 25 / <b>350</b>, and deliberately OFF the eight-rung engine
-        /// ramp: the second and last sanctioned off-ramp (the other is <c>Controls.Picker.Label</c>'s <c>size + 4</c>
-        /// line box, which at its default 12 lands exactly on the 12/16 rung). A THIRD off-ramp is a regression.</summary>
-        public static TextEl PivotLabel(string s) => Ui.BodyLarge(s) with
+        /// <summary>The Zune band's TOP pivot word (home · browse · library · recents): <c>Ui.Title</c>'s 28 / 36 pair in the
+        /// display face, selected 600 and the rest SemiLight 350 (the second of the six sanctioned weight divergences: the same
+        /// WinUI SemiLight the engine's own pivot header uses). The line height does not change with weight, so a selection
+        /// never moves the row. Ink is the call site's (secondary at rest, primary on hover and when selected).</summary>
+        public static TextEl ZunePivot(string s, bool selected) => Ui.Title(s) with
         {
-            FontFamily = DisplayFace, Size = 19f, LineHeight = 25f, Weight = 350, CharSpacing = -6f,
+            FontFamily = DisplayFace, Weight = selected ? (ushort)600 : (ushort)350, CharSpacing = -12f,
+            MaxLines = 1, Wrap = TextWrap.NoWrap,
+        };
+
+        /// <summary>The Zune band's SUB pivot word (Library's pages): <c>Ui.Body</c>'s 14 / 20 pair, selected 600 and the rest 400.
+        /// Ink is the call site's.</summary>
+        public static TextEl ZuneSubPivot(string s, bool selected) => Ui.Body(s) with
+        {
+            LineHeight = 20f, Weight = selected ? (ushort)600 : (ushort)400, MaxLines = 1, Wrap = TextWrap.NoWrap,
+        };
+
+        /// <summary>The Zune title bar's WORDMARK ("wavee") that stands in for the tab strip while there is one tab:
+        /// <c>Ui.Subtitle</c>'s 20 / 28 pair in the display face with the same -6/1000 em tracking as <see cref="NpvLyric"/>,
+        /// one line. Ink is the call site's.</summary>
+        public static TextEl Wordmark(string s) => Ui.Subtitle(s) with
+        {
+            FontFamily = DisplayFace, CharSpacing = -6f, MaxLines = 1,
         };
 
         /// <summary>NPV lyrics-peek reel — Subtitle's 20/28 pair in the display face at SemiLight 350.</summary>
@@ -1424,41 +1492,45 @@ public static partial class Design
         }
     }
 
-    /// <summary>The Home FACET ROW as the page's title (All · Music · Podcasts · Audiobooks): the stock
-    /// <see cref="SelectorBar"/> restyled into the prototype's page-title pivot. The words are 28 / 36 in the display
-    /// face — <c>Ui.Title</c>'s engine rung, no tracking — SECONDARY at rest and PRIMARY 600 when selected, so the
-    /// selected facet reads as the heading and its siblings as the choices beside it. No pill: the selection is the
-    /// weight and the ink. Hover and press lay the subtle fill ladder (subtle-hover, then subtle-press) on an
-    /// 8-DIP-padded, 40-tall item, 24 apart, and the first item pulls −8 so its WORD — not its plate — sits on the
-    /// page's leading edge.
-    /// <para>A PROPERTY, like <see cref="Controls.TileCardStyle"/>: every colour is a live token read, so a theme flip
-    /// re-resolves it at the next render.</para></summary>
-    public static SelectorBarStyle FacetTitleStyle => new()
+    /// <summary>THE style for a page's own VIEWS (the <see cref="SelectorBar"/> under a page head: Songs · Albums ·
+    /// Playlists): the stock bar at 14 / 20 with the pill, plus <see cref="PageGeometry.ViewsLeadingInset"/> so the first
+    /// WORD — not its 12-DIP plate — lands on the page gutter. Everything else stays the stock look, so a page's views
+    /// match every other SelectorBar in the app.</summary>
+    public static SelectorBarStyle PageViewsStyle => new()
     {
-        LabelSize = 28f,
-        LineHeight = 36f,
-        FontFamily = Type.DisplayFace,
-        CharSpacing = 0f,
-        RestWeight = 400,
-        SelectedWeight = 600,
-        RestColor = Tok.TextSecondary,
-        SelectedColor = Tok.TextPrimary,
-        HoverColor = Tok.TextPrimary,
-        PressedColor = Tok.TextSecondary,
-        HoverFill = Tok.FillSubtleSecondary,
-        PressedFill = Tok.FillSubtleTertiary,
-        ShowPill = false,
-        ItemPadding = new Edges4(8f, 2f, 8f, 2f),
-        ItemHeight = 40f,
-        ItemGap = 24f,
-        LeadingInset = -8f,
+        LabelSize = 14f,
+        LineHeight = 20f,
+        LeadingInset = PageGeometry.ViewsLeadingInset,
     };
 
-    /// <summary><see cref="FacetTitleStyle"/> one rung down the ramp (20/28; items 8 apart, so with the plates' own 8-DIP
-    /// padding the WORDS stay 24 apart) for a facet row too narrow for
-    /// four 28-px words and the Following toggle (the prototype's compact form, 06 §2.1; the edge is Home's FacetForm). Same
-    /// 40-tall item, so the pinned band's height — every sticky inset under it — never changes with the form.</summary>
-    public static SelectorBarStyle FacetCompactStyle => FacetTitleStyle with { LabelSize = 20f, LineHeight = 28f, ItemGap = 8f };
+    /// <summary>The now-playing rail header's Cover|Record tabs: <see cref="PageViewsStyle"/> with no leading pull (the tile's
+    /// own inset places the first word) and an item box that fits the 36-DIP header strip exactly — the strip is
+    /// <see cref="Rail.Hero.HeaderRowH"/> (a test pins the restated 36), the bar adds its 2 x
+    /// <see cref="PageGeometry.ViewsBarPadY"/>. The pill and the indicator are the stock ones, like every views control.</summary>
+    public static SelectorBarStyle RailViewsStyle => PageViewsStyle with
+    {
+        LeadingInset = 0f,
+        ItemHeight = 36f - 2f * PageGeometry.ViewsBarPadY,
+        // SelectorBar centres the content of a fixed-height item, so any slack in it is split above and below. 4 + 20 + 1 + the
+        // 3-DIP pill row = 28 fills the 28-DIP item exactly: no slack, the pill stays inside, and the label's 20-DIP line box
+        // starts at 4 (bar padding) + 4 = 8 = (36 - 20) / 2, the line-box top of the caption and the gear in the same strip
+        // (Rail.UI.cs centres the eyebrow's `Hero.HeaderLine` box), so the three share one line box. Baselines: the engine puts
+        // the baseline at resolved line height x ascent / (ascent + descent) (TextLayoutEngine), and the 14-px label and the
+        // 12-px eyebrow both resolve to the 20-DIP line (14-px natural height is below 20) in one face, so the two baselines
+        // differ by 0 DIP: no eyebrow offset.
+        ItemPadding = new Edges4(12f, 4f, 12f, 1f),
+    };
+
+    /// <summary>The Library master pane's own views (Podcasts' Followed shows | Your Episodes): a 32-DIP bar
+    /// (<see cref="Controls.ButtonHeight"/>, the same height as the sort button beside it) whose first WORD sits on
+    /// <see cref="PageGeometry.PaneInset"/> through the stock <see cref="PageGeometry.ViewsLeadingInset"/>.</summary>
+    public static SelectorBarStyle PaneViewsStyle => PageViewsStyle with
+    {
+        ItemHeight = Controls.ButtonHeight - 2f * PageGeometry.ViewsBarPadY,
+        // The stock (12,10,12,7) is 37 + the 3-DIP pill row = 40 in a 24 item, which pushed the pill below the row's clip.
+        // 1 + 20 + 0 + 3 = 24 fits the item exactly.
+        ItemPadding = new Edges4(12f, 1f, 12f, 0f),
+    };
 
     // ══ 9. MOTION ════════════════════════════════════════════════════════════════════════════════════════════════════
     //
@@ -2081,6 +2153,27 @@ public static partial class Design
         public static readonly Context<IReadSignal<PageAccent>?> Slot = new(null);
     }
 
+    /// <summary>The page accent's two roles, so a consumer never picks a token by hand. ONE page = ONE accent: the page
+    /// publishes a <see cref="PageAccent"/> (<see cref="AccentCtx"/>) graded from its artwork entry, and every consumer reads
+    /// the half its role needs; with a null page (none published) both fall to the system tokens.
+    /// <list type="bullet">
+    /// <item><b>Ink</b> (glyphs and text on the page surface): the playing-row equaliser, the playing title and number, the
+    /// now-playing meta and duration inks in the classic arms, the row heart, the identity heart, the band Play word, the
+    /// volume and star marks on the playing row.</item>
+    /// <item><b>Fill</b> (a solid plate with on-accent ink): the Play CTA plate and the row heart's filled glyph plate where
+    /// one exists.</item>
+    /// </list>
+    /// With "Accent from artwork" off <see cref="Detail.PageAccentOf"/> publishes the system pair, so every role turns system
+    /// together.</summary>
+    public static class AccentRoles
+    {
+        /// <inheritdoc cref="AccentRoles"/>
+        public static ColorF Ink(PageAccent? page) => page?.Ink ?? Tok.AccentTextPrimary;
+
+        /// <inheritdoc cref="AccentRoles"/>
+        public static ColorF Fill(PageAccent? page) => page?.Fill ?? Tok.AccentDefault;
+    }
+
     // ══ 15. WASH GEOMETRY ════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The three Home washes as pure geometry — the ONE place the window-relative constants live.
@@ -2106,8 +2199,41 @@ public static partial class Design
         /// <inheritdoc cref="HeroAlphaLight"/>
         public const float HeroAlphaDark = 0.10f, ShelfAlphaDark = 0.085f;
 
-        public static float HeroAlpha(bool light) => light ? HeroAlphaLight : HeroAlphaDark;
-        public static float ShelfAlpha(bool light) => light ? ShelfAlphaLight : ShelfAlphaDark;
+        /// <summary>Rich: stronger, still under the 0.5 that keeps body text above AA on the plane. Each pair is the
+        /// light/dark value of one surface: the hero and shelf washes, the tone plane and the chrome tint.</summary>
+        public const float HeroAlphaLightRich = 0.08f, ShelfAlphaLightRich = 0.075f;
+        public const float HeroAlphaDarkRich = 0.15f, ShelfAlphaDarkRich = 0.13f;
+        public const float PlaneAlphaLightRich = 0.45f, PlaneAlphaDarkRich = 0.30f;
+        public const float TintAlphaLightRich = 0.10f, TintAlphaDarkRich = 0.22f;
+
+        public static float HeroAlpha(bool light, bool rich = false) => rich
+            ? (light ? HeroAlphaLightRich : HeroAlphaDarkRich)
+            : (light ? HeroAlphaLight : HeroAlphaDark);
+        public static float ShelfAlpha(bool light, bool rich = false) => rich
+            ? (light ? ShelfAlphaLightRich : ShelfAlphaDarkRich)
+            : (light ? ShelfAlphaLight : ShelfAlphaDark);
+
+        /// <summary>The tone plane's alpha over the Mica stack: the Subtle pair from <see cref="CoverPageTonePlane"/>,
+        /// or the Rich pair.</summary>
+        public static float PlaneAlpha(bool light, bool rich) => rich
+            ? (light ? PlaneAlphaLightRich : PlaneAlphaDarkRich)
+            : (light ? CoverPageTonePlane.PlaneAlphaLight : CoverPageTonePlane.PlaneAlphaDark);
+
+        /// <summary><see cref="PlaneAlpha(bool, bool)"/> with the docked pane in the picture. In a LIGHT theme beside a docked
+        /// pane (Classic, Library) the content card is a LIFTED layer over the pane's base, and the Rich plane (0.45) darkens it
+        /// straight back to the chrome's luminance, so the card stops reading as raised. There the plane is capped at the Subtle
+        /// light value; dark themes, Subtle and the paneless Zune frame keep their pair.</summary>
+        public static float PlaneAlpha(bool light, bool rich, bool paneDocked)
+        {
+            float a = PlaneAlpha(light, rich);
+            return light && paneDocked ? MathF.Min(a, CoverPageTonePlane.PlaneAlphaLight) : a;
+        }
+
+        /// <summary>The chrome tint's alpha: the Subtle pair from <see cref="CoverShellTintBinder"/>, or the Rich
+        /// pair.</summary>
+        public static float TintAlpha(bool light, bool rich) => rich
+            ? (light ? TintAlphaLightRich : TintAlphaDarkRich)
+            : (light ? CoverShellTintBinder.TintAlphaLight : CoverShellTintBinder.TintAlphaDark);
 
         /// <summary>Clip a window-relative radial wash to the bounds of its own ellipse at
         /// <paramref name="fadeOffset"/> and re-express the ellipse relative to that box. Pure — no theme, no viewport,
@@ -2170,7 +2296,70 @@ public readonly record struct HomeWash(WashLayer? Hero, WashLayer? Weekly, WashL
 /// <summary>The published shell-material state: an OWNER token plus the two mutually-exclusive material forms — a flat
 /// <see cref="Tint"/> (detail pages) or a three-layer radial <see cref="Wash"/> (Home). Both null ⇒ the neutral ground.
 /// <para>The owner makes nav transitions race-free: only the page that last CLAIMED the slot may refresh it.</para></summary>
-public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, HomeWash? Wash);
+public readonly record struct ShellMaterialState(object? Owner, ColorF? Tint, HomeWash? Wash, ShellBackdrop? Backdrop = null);
+
+/// <summary>EXPERIMENTAL (artist bleed): a full-bleed photo the page publishes for the shell to draw in the material layer,
+/// behind the title bar and the Zune band. Data only: the shell derives the geometry from the content card's rect, and the
+/// page's scroll rides <paramref name="ScrollY"/> (a paint channel, never a render read).
+/// <paramref name="PhotoHeight"/> is the photo's extent below the card top, <paramref name="HeroHeight"/> the extent the solid
+/// ground rides, <paramref name="Floor"/> the collapsed hero's remnant (56 with the band in the page, 0 in row 2),
+/// <paramref name="CollapseDistance"/> the scroll distance over which the hero collapses to it, and <paramref name="DecodeW"/> and
+/// <paramref name="DecodeH"/> the page's own latched decode size (so the shell's decode is the page's, a cache hit), and
+/// <paramref name="Key"/> the identity of the photo (the layer remounts, and so cross-fades, when it changes).
+/// <paramref name="PaletteUrl"/> and <paramref name="PayloadAccent"/> key the hero's horizontal veil the shell draws over the photo,
+/// so the chrome and the hero are ONE field. <paramref name="EntranceAtMs"/> is the frame time (<c>Design.FrameTime.NowMs</c>) on which
+/// the page's photo starts its entrance (the reveal frame when the bitmap was resident, else the bitmap's ready frame): the shell's
+/// presence starts there even though the publish lands an effect later. 0 means unknown.
+/// <paramref name="Entrance"/> is the page's ONE entrance clock (<see cref="ShellEntranceClock"/>, one instance per page, compared by
+/// reference): while it runs the shell's presence, underlay and hand-over follow it instead of stepping a clock of their own, so the
+/// page content, the card's photo field and the shell's layers are never on two clocks.</summary>
+public sealed record ShellBackdrop(string Url, float PhotoHeight, float HeroHeight, float Floor,
+                                   IReadSignal<double> ScrollY, float CollapseDistance, int DecodeW, int DecodeH, string Key,
+                                   string? PaletteUrl = null, uint PayloadAccent = 0, long EntranceAtMs = 0,
+                                   ShellEntranceClock? Entrance = null);
+
+/// <summary>Where the artist page's entrance clock is (<see cref="ShellEntranceClock.Mode"/>): <c>Idle</c> (no entrance in play, every
+/// factor reads 1), <c>Primed</c> (the reveal frame: the clock holds 0 until it is armed) or <c>Running</c> (stepping or finished).</summary>
+public enum ShellEntranceMode : byte { Idle, Primed, Running }
+
+/// <summary>EXPERIMENTAL (artist bleed): the artist page's ONE entrance clock. It steps <c>min(dt, ArtistBleed.MaxStepMs)</c> per frame
+/// and holds its seed frame like the engine's AnimClock: the reveal frame N renders it Primed (every factor reads 0), the layout effect
+/// arms it at N (<c>Elapsed</c> 0) and the first step lands on N+1. The page content, the card's photo field and the shell's layers all
+/// read <see cref="Elapsed"/>, so the entrance is never two clocks. <see cref="Mode"/> and <see cref="ContentFollows"/> are plain
+/// fields (set from Render or an effect, read in binds); only <see cref="Elapsed"/> is a signal.</summary>
+public sealed class ShellEntranceClock
+{
+    /// <summary>Milliseconds into the entrance; <c>ArtistBleed.ClockIdleMs</c> while idle.</summary>
+    public readonly FloatSignal Elapsed = new(ArtistBleed.ClockIdleMs);
+    public ShellEntranceMode Mode;
+    /// <summary>The page content fades with the clock (the first reveal, with the bitmap resident); false when the content is already
+    /// showing and only the late photo follows it.</summary>
+    public bool ContentFollows;
+    long _lastMs;
+
+    /// <summary>The reveal frame: every factor reads 0 until <see cref="Arm"/>. Plain fields, callable from Render.</summary>
+    public void Prime(bool contentFollows) { Mode = ShellEntranceMode.Primed; ContentFollows = contentFollows; }
+
+    /// <summary>Starts the clock at <paramref name="nowMs"/> with <see cref="Elapsed"/> 0 (the seed frame holds 0).</summary>
+    public void Arm(long nowMs) { Mode = ShellEntranceMode.Running; _lastMs = nowMs; Elapsed.Value = 0f; }
+
+    /// <summary>One frame: <see cref="Elapsed"/> advances by the clamped frame delta.</summary>
+    public void Step(long nowMs)
+    {
+        Elapsed.Value = ArtistBleed.StepClock(Elapsed.Peek(), nowMs - _lastMs);
+        _lastMs = nowMs;
+    }
+
+    /// <summary>Reduced motion: the clock reads as DONE (Running mode at <c>SettleMs</c>), so <c>ContentIn</c> and <c>PhotoIn</c> return
+    /// <c>EntranceAt(SettleMs)</c> = 1 and nothing stays hidden.</summary>
+    public void Finish() { Mode = ShellEntranceMode.Running; Elapsed.Value = ArtistBleed.SettleMs; }
+
+    /// <summary>Back to idle (a new subject): every factor reads 1.</summary>
+    public void Reset() { Mode = ShellEntranceMode.Idle; ContentFollows = false; Elapsed.Value = ArtistBleed.ClockIdleMs; }
+
+    /// <summary>True while the entrance and the settle are stepping.</summary>
+    public bool Running => Mode == ShellEntranceMode.Running && Elapsed.Peek() < ArtistBleed.SettleMs;
+}
 
 /// <summary>The shell-owned, page-scoped MATERIAL channel. The shell publishes one signal at the root and paints it as
 /// the layer directly above the ground that backs ALL chrome — title bar, toolbar, sidebar, player dock. The active page
@@ -2194,8 +2383,11 @@ public static class ShellMaterial
     /// pages.</b></para></summary>
     /// <param name="definite">The page has DECIDED it carries no colour (washes off, or this layout applies no tint) —
     /// as opposed to simply not having graded a cover YET, which is transient.</param>
+    /// <param name="backdrop">An optional full-bleed photo (<see cref="ShellBackdrop"/>). It rides the SAME ownership outcome as
+    /// the tint: a known-colour or held-colour write carries it (so a successor's claim, which passes none, drops it), a
+    /// neutral write clears it.</param>
     public static void Publish(Signal<ShellMaterialState>? slot, object owner, bool isClaim, bool definite,
-                               ColorF? tint, HomeWash? wash)
+                               ColorF? tint, HomeWash? wash, ShellBackdrop? backdrop = null)
     {
         if (slot is null) return;
         var cur = slot.Peek();
@@ -2205,9 +2397,13 @@ public static class ShellMaterial
                         || (wash is { } w && (w.Hero.HasValue || w.Weekly.HasValue || w.Mix.HasValue));
         switch (TintOwnership.Resolve(cur.Owner, new TintOwnership.Request(owner, isClaim, definite, hasColor)))
         {
-            case TintOwnership.Outcome.WriteKnownColor: slot.Value = new ShellMaterialState(owner, tint, wash); break;
+            case TintOwnership.Outcome.WriteKnownColor: slot.Value = new ShellMaterialState(owner, tint, wash, backdrop); break;
             case TintOwnership.Outcome.WriteNeutral: slot.Value = new ShellMaterialState(owner, null, null); break;
-            case TintOwnership.Outcome.WriteHeldColor: slot.Value = cur with { Owner = owner }; break;
+            case TintOwnership.Outcome.WriteHeldColor: slot.Value = cur with { Owner = owner, Backdrop = backdrop }; break;
+            // The owner's colour is not graded yet, but its backdrop is data of its own (the page hides its own photo while it
+            // publishes one): an owner refresh carries the backdrop through, never the tint. A stray (non-owner) publish stays a no-op.
+            case TintOwnership.Outcome.NoWrite when ReferenceEquals(cur.Owner, owner) && !Equals(cur.Backdrop, backdrop):
+                slot.Value = cur with { Backdrop = backdrop }; break;
         }
     }
 }
@@ -2325,6 +2521,7 @@ public sealed class CoverPageTonePlane : Component
     public override Element Render()
     {
         var p = UseProps<Props>();
+        bool rich = Prefs.Appearance.SurfaceWash() == WashLevel.Rich;
 
         // The watch subscriptions, resolved ONCE per render and read here. Hoisting them out of the Fill closure
         // matters: a bound brush is re-evaluated on the PAINT path. Render still has to subscribe (not just the brush)
@@ -2340,16 +2537,16 @@ public sealed class CoverPageTonePlane : Component
 
         // At most ONE child, and only in hero-only mode: the tone BAND that fades back to the neutral surface. The
         // default arm paints the plane's own flat fill and nothing else.
-        Element[] kids = p.HeroOnly && HeroOnlyVeil(p) is { } veil ? [veil] : [];
+        Element[] kids = p.HeroOnly && HeroOnlyVeil(p, rich) is { } veil ? [veil] : [];
 
         return new BoxEl
         {
             ZStack = true, Grow = 1f, HitTestVisible = false,
-            ClipToBounds = true, Corners = Design.Size.ContentPaneCorners,
+            ClipToBounds = true, Corners = Prop.Of(Shell.s_contentCorners),
             // BOUND: the brush stays a compositor value, so a theme/preset re-fire lands without this subtree being
             // rebuilt, and the 250 ms ramp CROSS-FADES a grading arrival instead of snapping to it.
             Fill = Prop.Of(() => !p.HeroOnly && Resolve(p) is { } t
-                ? t with { A = Tok.Theme == ThemeKind.Light ? PlaneAlphaLight : PlaneAlphaDark }
+                ? t with { A = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich, Shell.FrameRules.PaneDocked(Sidebar.Mode.Value)) }
                 : ColorF.Transparent),
             BrushTransitionMs = Design.Motion.Standard,
             Children = kids,
@@ -2371,12 +2568,12 @@ public sealed class CoverPageTonePlane : Component
     /// unpainted content stack, the same breathing surface every other page has.
     /// <para>The Settings row that turned this on ("Limit page color to the hero") is GONE and is not to be reinstated;
     /// the arm survives because a caller may still compose it.</para></summary>
-    static Element? HeroOnlyVeil(Props p)
+    static Element? HeroOnlyVeil(Props p, bool rich)
     {
         float pageH = p.PageHeight > 1f ? p.PageHeight : 0f;
         if (pageH <= 1f) return null;
         if (Resolve(p) is not { } tone) return null;
-        float alpha = Tok.Theme == ThemeKind.Light ? PlaneAlphaLight : PlaneAlphaDark;
+        float alpha = Design.Wash.PlaneAlpha(Tok.Theme == ThemeKind.Light, rich, Shell.FrameRules.PaneDocked(Sidebar.Mode.Value));
         float start = Math.Clamp(p.BackdropBand / pageH, 0.12f, 0.80f);
         float end = MathF.Min(1f, start + 0.22f);
         return new BoxEl
@@ -2499,7 +2696,10 @@ public sealed class CoverArtistBlendWash : Component
 public sealed class CoverKeyedVeil : Component
 {
     /// <inheritdoc cref="CoverKeyedVeil"/>
-    public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0);
+    /// <para>Disabled (surfaces Off) = the ladder's neutral rung: the veil still darkens the photo for the title, it just
+    /// carries no hue.</para>
+    public sealed record Props(string? Url, bool Vertical, float Width, float Height, uint PayloadAccent = 0,
+                               bool Disabled = false);
 
     static readonly Func<uint, ColorF> s_lift = static a => Design.Palette.Lift(Design.Palette.ToColor(a));
     bool _mounted;
@@ -2510,19 +2710,20 @@ public sealed class CoverKeyedVeil : Component
     public override Element Render()
     {
         var p = UseProps<Props>();
-        if (p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
+        if (!p.Disabled && p.Url is { Length: > 0 } url) _ = Palette.Watch(url).Value;
         var pagePal = Design.SchemeFor(p.Url);
         // The page palette's own lifted accent is the graded rung; the payload (header) accent and the neutral
         // FillLayerDefault (ArtistHeroVeil then lerps into the layer colour itself = no tint) fill the rest of the
         // ladder — the old chrome-scheme fallback is gone, subsumed by the shared ladder.
         ColorF? graded = pagePal is { } wp ? Design.Palette.Lift(Design.Palette.Accent(wp)) : null;
         bool definite = string.IsNullOrEmpty(p.Url) || !Palette.CanGrade(p.Url);
-        var result = AccentLadder.Resolve(new(graded, p.PayloadAccent, definite), null, Tok.FillLayerDefault, s_lift);
+        var ladderIn = p.Disabled ? new AccentLadder.Input(null, 0, true) : new AccentLadder.Input(graded, p.PayloadAccent, definite);
+        var result = AccentLadder.Resolve(ladderIn, null, Tok.FillLayerDefault, s_lift);
         // Keyed swap: see CoverArtistBlendWash — a Gradient can't cross-fade through BrushTransitionMs, and a
         // component-root Key is inert (ReconcileSingleChild), so the keyed node is a CHILD.
         //
         // PRE-SETTLEMENT EXIT GUARD — see VeilSettlement's doc for the defect and the fix.
-        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite);
+        var (settled, exitAnimates) = VeilSettlement.Advance(_settled, result.Rung, definite || p.Disabled);
         Element veil = new BoxEl
         {
             Key = "artist-veil-tone:" + (byte)result.Rung + ":" + result.Color.GetHashCode().ToString("X8"),
@@ -2553,7 +2754,7 @@ public sealed class CoverShellTintBinder : Component
 {
     /// <inheritdoc cref="CoverShellTintBinder"/>
     public sealed record Props(string? Url, string? FallbackUrl, bool Ready, bool Disabled, bool Apply, object Owner,
-                               Signal<ShellMaterialState>? Slot, uint PayloadAccent = 0);
+                               Signal<ShellMaterialState>? Slot, uint PayloadAccent = 0, ShellBackdrop? Backdrop = null);
 
     /// <summary>The two tint arms. LIGHT lifts the cover's TEXT role to a 5% whisper; DARK takes the tinted background
     /// role at 14%. Two different ROLES, not one role at two alphas — a lifted background role in light is a pastel
@@ -2567,6 +2768,7 @@ public sealed class CoverShellTintBinder : Component
         if (p.FallbackUrl is { Length: > 0 } fb && !string.Equals(fb, p.Url, StringComparison.Ordinal))
             _ = Palette.Watch(fb).Value;
 
+        bool rich = Prefs.Appearance.SurfaceWash() == WashLevel.Rich;
         var coverArt = p.Ready ? Design.SchemeFor(p.Url) : null;
         var artPalette = coverArt ?? (p.Ready ? Design.SchemeFor(p.FallbackUrl) : null);
         // DEFINITE "no colour": the page has DECIDED to opt out (colour washes off in Settings, or this layout applies
@@ -2579,13 +2781,13 @@ public sealed class CoverShellTintBinder : Component
             if (artPalette is { } artScheme)
             {
                 known = Tok.Theme == ThemeKind.Light
-                    ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = TintAlphaLight }
-                    : Design.Palette.TintedDark(artScheme) with { A = TintAlphaDark };
+                    ? Design.Palette.Lift(Design.Palette.ToColor(artScheme.TextBase)) with { A = Design.Wash.TintAlpha(true, rich) }
+                    : Design.Palette.TintedDark(artScheme) with { A = Design.Wash.TintAlpha(false, rich) };
             }
             else if (p.PayloadAccent != 0)
             {
                 var lifted = Design.Palette.Lift(Design.Palette.ToColor(p.PayloadAccent));
-                known = lifted with { A = Tok.Theme == ThemeKind.Light ? TintAlphaLight : TintAlphaDark };
+                known = lifted with { A = Design.Wash.TintAlpha(Tok.Theme == ThemeKind.Light, rich) };
             }
         }
 
@@ -2593,8 +2795,10 @@ public sealed class CoverShellTintBinder : Component
         // a reactivation claims through onActivated explicitly.
         var claimedOnce = UseRef(false);
 
-        void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null);
+        void Publish(bool isClaim) => ShellMaterial.Publish(p.Slot, p.Owner, isClaim, definite, known, wash: null, p.Backdrop);
 
+        // The alpha travels inside `known`, so a Subtle/Rich flip changes the DepKey below and re-publishes with no
+        // extra key member.
         // `Tok.Theme` is IN THE KEY on purpose: a live theme flip re-derives the tint ARM (light Lift(TextBase)@0.05 vs
         // dark TintedDark@0.14) and re-publishes it. Without it the chrome keeps the OLD arm's tint until the next
         // navigation.
@@ -2603,7 +2807,7 @@ public sealed class CoverShellTintBinder : Component
             Publish(isClaim: !claimedOnce.Value);
             claimedOnce.Value = true;
         }, DepKey.From(HashCode.Combine(p.Url, known.HasValue, known.GetValueOrDefault(), Tok.Theme,
-                                        p.Ready, p.Disabled, p.Apply, p.PayloadAccent)));
+                                        p.Ready, p.Disabled, p.Apply, HashCode.Combine(p.PayloadAccent, p.Backdrop))));
         // Reactivation (KeepAlive Back/forward) is ALWAYS a claim, regardless of claimedOnce — the whole point is to
         // retake the slot from whatever deactivated in between, even if that never cleared it either.
         UseActivation(onActivated: () => Publish(isClaim: true));

@@ -6,6 +6,10 @@
 // The hero, the section bodies and the cards are Profile.UI.cs (U2); the pure decisions are Profile.Rules.cs.
 //
 // Role: UI   Owner: U1   Template: Entities/Artist.Page.cs (the band / spy / sentinel / clip are copied from it)
+//
+// ONE BASELINE AND THE ZUNE ROW 2 (A2), exactly as the artist page: the band is Detail.BandCluster; under Zune it lives in the
+// band's row 2 (the page publishes it under its route name), the hero collapses to the latched floor (0 then), and the floor
+// flips only below Detail.BandLayout.FlipLine, so a nav-style switch while scrolled never snaps a sticky element.
 // Spec: docs/plans/wavee/profile-pages-implementation.md Appendix U §3 + "Reconciliation, round 2"
 //
 // THE FOUR FACES (ProfileLoadRule.Header): Loading → the derived shimmer; Ready → the page; Unavailable → the page's
@@ -87,6 +91,14 @@ public static partial class Profile
         long _scrollKey = long.MinValue;
         readonly Signal<int> _active = new(Detail.BandLayout.NoSection);
         readonly Signal<int> _pivotEpoch = new(0);
+        // The LATCHED floor placement (Detail.BandLayout.FloorLatch): true while the band lives in the Zune band's row 2.
+        readonly Signal<bool> _floorInRow2 = new(Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Peek()));
+        bool _inRow2;                      // the value Compose latched this render; every other reader uses this
+        float _flipHeroH = ArtistHeroLayout.WideHeight;
+        Memo<bool>? _belowLine;            // offset < FlipLine: a threshold, so the latch subscribes to the crossing only
+        IReadSignal<bool>? _isActive;
+        string[]? _bandLabels;
+        int _bandLabelsHash;
         NodeHandle _viewport;
         readonly NodeHandle[] _anchors = new NodeHandle[ProfileSections.Count];
         readonly Action<NodeHandle>[] _anchorRealized = new Action<NodeHandle>[ProfileSections.Count];
@@ -120,6 +132,10 @@ public static partial class Profile
         readonly Func<Element> _contentFn, _shimmerFn, _failedPanelFn;
         readonly Action _demand, _demandTop, _publishAccent, _publishTheme, _resolveSpy, _bumpPivot, _retry;
         readonly Action _scrollToTop, _watchScroll;
+        readonly Action _latchFloor, _publishBand;
+        readonly Func<bool> _belowLineFn;
+        readonly Action<int> _onBandPivot;
+        readonly Func<Element> _bandActions;
         readonly Action<NodeHandle> _captureViewport;
         readonly Action<RectF> _measure;
         readonly Func<long> _stampFn;
@@ -164,6 +180,14 @@ public static partial class Profile
             _resolveSpy = ResolveSpy;
             _bumpPivot = () => _pivotEpoch.Value = _pivotEpoch.Peek() + 1;
             _scrollToTop = () => _scroll.ScrollTo(0.0, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide);
+            _latchFloor = LatchFloor;
+            _publishBand = PublishBand;
+            _belowLineFn = () => _scroll.Offset.Value < Detail.BandLayout.FlipLine(_flipHeroH);
+            _onBandPivot = i =>
+            {
+                if ((uint)i < (uint)_pivotCount) _sectionClicks[(int)_plan[i]]();
+            };
+            _bandActions = BandActions;
             _captureViewport = h => _viewport = h;
             _measure = r =>
             {
@@ -238,8 +262,13 @@ public static partial class Profile
             UseEffect(_publishTheme, DepKey.From((int)Tok.Theme));
             UseEffect(_resolveSpy);
             UseActivation(onActivated: _demand);                   // keep-alive return re-reads (SWR: ProfileAsk → Invalidate)
+            // THE FLOOR LATCH and the Zune row 2 (A2). Every hook runs unconditionally: Compose is not always reached.
+            _isActive = UseIsActive();
+            _belowLine = UseComputed(_belowLineFn);
+            UseSignalEffect(_latchFloor);
+            UseActivation(onActivated: _publishBand);
 
-            bool washes = Prefs.Appearance.ColorWashes();
+            bool washes = Prefs.Appearance.SurfaceWash() != WashLevel.Off;
 
             _ = _layoutEpoch.Value;
             _width = MathF.Max(1f, _heroWidth.Value);
@@ -262,6 +291,8 @@ public static partial class Profile
                   : _bodyReady ? Compose(u, avatar, tone, washes)
                   : null;
             UseEffect(_bumpPivot, DepKey.From(_pivotHash, (int)scopeEpoch));
+            // Row 2's words: the deps-gated form (PublishBand reads no signal), keyed on everything the publication carries.
+            UseEffect(_publishBand, DepKey.From(HashCode.Combine(_bodyReady, _bandLabelsHash, _name, _own, routeKey)));
             UseSignalEffect(_watchScroll);
 
             // ONE page region; the shimmer is DERIVED from PageShimmer (never mounted). Soft: the complete tree rises as one.
@@ -302,6 +333,8 @@ public static partial class Profile
             ColorF accent = _accent.Value;
             string uri = u.Uri.Text;
             bool own = _own;
+            bool inRow2 = _inRow2 = _floorInRow2.Value;   // the LATCHED floor placement, read once for the whole compose
+            float floor = Detail.BandLayout.StuckHeight(inRow2);
 
             int topCount = own ? scope.Edges.UserTopArtists.Count(scope.MeSlot) : 0;
             var facts = new ProfileFacts(own, u.ShowFollows,
@@ -339,12 +372,20 @@ public static partial class Profile
             _pivotCount = n;
             _pivotHash = hash;
 
-            float collapse = ProfileHeroLayout.CollapseDistance(in m);
+            _flipHeroH = m.Height;
+            float collapse = ProfileHeroLayout.CollapseDistance(in m, floor);
             bool compact = _compact.Value;
-            Element band = BandBar(uri, own, width, m.Gutter, collapse, compact, pivotItems);
-            Element hero = HeroBanner(HeroText.For(u, own, avatar), uri, width, in m, compact, _acts, band);
+            if (_bandLabels is null || _bandLabelsHash != hash || _bandLabels.Length != n)
+            {
+                _bandLabelsHash = hash;
+                var labels = new string[n];
+                for (int i = 0; i < n; i++) labels[i] = pivotItems[i].Label;
+                _bandLabels = labels;
+            }
+            Element band = BandBar(uri, own, width, m.Gutter, collapse, compact, pivotItems, inRow2);
+            Element hero = HeroBanner(HeroText.For(u, own, avatar), uri, width, in m, compact, _acts, band, floor);
             Element sentinel = new BoxEl { Height = 0f, HitTestVisible = false }
-                .Sticky(ArtistHeroLayout.CompactIdentityHeight, engaged: _compact);
+                .Sticky(floor, engaged: _compact);
             Element wash = Palette.ArtistBlendWash(tone.PaletteUrl, ProfileHeroLayout.WashHeight(in m),
                 ProfileHeroLayout.WashBoundary(in m), disabled: !washes, key: "profile-wash:" + uri,
                 payloadAccent: tone.PayloadArgb);
@@ -362,7 +403,7 @@ public static partial class Profile
                     new BoxEl { Height = 1f, Fill = Tok.StrokeDividerDefault, HitTestVisible = false },
                     new BoxEl { Direction = 0, Justify = FlexJustify.Center, Children = [Magazine(sections, m.Gutter)] },
                 ],
-            }.StickyClip(Detail.BandLayout.ClipInset);
+            }.StickyClip(Detail.BandLayout.ClipInsetFor(inRow2));
 
             return new BoxEl
             {
@@ -376,12 +417,12 @@ public static partial class Profile
         }
 
         /// <summary>The centred magazine column: Grow toward the row's free width, capped at 1600, the hero's gutter on
-        /// both sides, a 32 section gap, the player dock's reserve under the last section.</summary>
+        /// both sides, a 32 section gap, the page's bottom reserve (PageGeometry.BottomReserve) under the last section.</summary>
         static Element Magazine(Element[] sections, float gutter) => new BoxEl
         {
             Direction = 1, Gap = Design.Size.SectionGap,
             Grow = 1f, Shrink = 1f, MinWidth = 0f, Basis = 0f, MaxWidth = Design.Size.PageMaxW,
-            Padding = new Edges4(gutter, Spacing.M, gutter, Design.Dock.Reserve + 40f),
+            Padding = new Edges4(gutter, Spacing.M, gutter, PageGeometry.BottomReserve),
             Children = sections,
         };
 
@@ -469,43 +510,24 @@ public static partial class Profile
         // ── the context band (Artist.Page §2.2, the profile arm: title · pivot · Follow as a word) ──────────────────────
 
         Element BandBar(string uri, bool own, float width, float gutter, float collapse, bool canHit,
-                        (string Label, Action OnClick)[] pivotItems)
+                        (string Label, Action OnClick)[] pivotItems, bool inRow2)
         {
-            float actionH = Detail.BandLayout.Height - 2f * Spacing.M;
-            string name = _name;
-            // No "Overview" pivot tab: the title itself is the way back to the top of the page.
-            Element title = new BoxEl
+            Element[] kids = [];
+            if (!inRow2)
             {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap,
-                Cursor = CursorId.Hand, OnClick = _scrollToTop,
-                Children = [Detail.BandTitle(name)],
-            };
-            // The pivot is the ONLY elastic lane; the title and the actions never drop.
-            Element pivot = new BoxEl
-            {
-                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = Detail.BandLayout.Height, AlignItems = FlexAlign.Center,
-                Children = [Detail.Pivot(pivotItems, _active, _accentFn)],
-            };
-            Element actions = own
-                ? new BoxEl { Width = 0f, Height = 0f }
-                : new BoxEl
+                // No "Overview" pivot tab: the title itself is the way back to the top of the page.
+                Element title = new BoxEl
                 {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
-                    Children =
-                    [
-                        Embed.Comp(() => new Controls.FollowTextAction
-                            { Uri = uri, Name = name, Height = actionH, PadX = Detail.BandLayout.ActionPadX })
-                            with { Key = "profile-band-follow:" + uri, SkeletonProxy = s_emptyShape },
-                    ],
+                    Direction = 0, MinWidth = 0f, Shrink = 1f, MaxWidth = Detail.BandLayout.TitleCap, AlignItems = FlexAlign.Center,
+                    Cursor = CursorId.Hand, OnClick = _scrollToTop,
+                    Children = [Detail.BandTitle(_name)],
                 };
-            // The content sits at the page's 1600 measure; the band's extent stays full-bleed.
-            Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter, [title, pivot, actions]);
-            float revealStart = ArtistHeroLayout.CompactRevealStart(collapse);
-            return new BoxEl
-            {
-                Width = width, Height = Detail.BandLayout.Height, ZStack = true,
-                HitTestVisible = canHit, HitTestPassThrough = true,
-                Children =
+                // The pivot is the ONLY elastic lane; the title and the actions never drop. The content sits at the page's 1600
+                // measure; the band's extent stays full-bleed.
+                Element row = Detail.Band(MathF.Min(width, Design.Size.PageMaxW), gutter,
+                    Detail.BandCluster(title, Detail.Pivot(pivotItems, _active, _accentFn), own ? null : BandActions(),
+                        Detail.BandLayout.Height));
+                kids =
                 [
                     new BoxEl { Direction = 0, Width = width, Height = Detail.BandLayout.Height, Justify = FlexJustify.Center, Children = [row] },
                     // The ONE hairline, overlaid INSIDE the 56 so the collapse arithmetic stays exact.
@@ -514,8 +536,55 @@ public static partial class Profile
                         Width = width, Height = Detail.BandLayout.Height, Direction = 1, Justify = FlexJustify.End,
                         HitTestVisible = false, Children = [Detail.BandHairline()],
                     },
-                ],
+                ];
+            }
+            float revealStart = ArtistHeroLayout.CompactRevealStart(collapse);
+            return new BoxEl
+            {
+                Key = "profile-band", Width = width, Height = Detail.BandLayout.Height, ZStack = true,
+                HitTestVisible = canHit && !inRow2, HitTestPassThrough = true,
+                Children = kids,
             }.Reveal(revealStart, collapse - revealStart, Design.Reduced ? 0f : Spacing.XS).Skeletonized(false);
+        }
+
+        /// <summary>The band's action cluster: Follow as a word (nothing on your own profile). The in-page band and the Zune
+        /// band's row 2 both build it here.</summary>
+        Element BandActions()
+        {
+            if (_own) return new BoxEl { Width = 0f, Height = 0f };
+            string uri = _user.IsValid ? _user.Uri.Text : "";
+            string name = _name;
+            return new BoxEl
+            {
+                Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children =
+                [
+                    Embed.Comp(() => new Controls.FollowTextAction
+                        { Uri = uri, Name = name, Height = Detail.BandLayout.ItemHeight, PadX = Detail.BandLayout.ActionPadX })
+                        with { Key = "profile-band-follow:" + uri, SkeletonProxy = s_emptyShape },
+                ],
+            };
+        }
+
+        /// <summary>The floor latch (Detail.BandLayout.FloorLatch): adopt the WANTED placement only while the scroll is under the
+        /// flip line, where the flip is invisible. Subscribes to the presented nav style and the threshold crossing, never to
+        /// every scroll frame.</summary>
+        void LatchFloor()
+        {
+            bool wanted = Detail.BandLayout.InRow2(Shell.Ui.PresentedNavStyle.Value);
+            _ = _belowLine?.Value;
+            _floorInRow2.SetIfChanged(Detail.BandLayout.FloorLatch(_floorInRow2.Peek(), wanted, _scroll.Offset.Peek(), _flipHeroH));
+        }
+
+        /// <summary>Hands the band to the Zune band's row 2 under the route name, only while this page is the active one. Safe any
+        /// time and any number of times: the store bumps its version only when the title, the tabs or the active signal change.</summary>
+        void PublishBand()
+        {
+            if (_isActive is { } act && !act.Peek()) return;
+            var labels = _bandLabels;
+            var p = _latest;
+            if (labels is null || p is null || !_user.IsValid || !_bodyReady || _name.Length == 0) return;
+            PageHead.PublishBand(p.RouteKey, _name, labels, _active, _onBandPivot, _own ? null : _bandActions, _scrollToTop, _accentFn);
         }
 
         /// <summary>A pivot click parks the section's top exactly under the band, animated unless reduced motion is on,
@@ -526,7 +595,7 @@ public static partial class Profile
             var node = _anchors[section];
             if (scene is null || node.IsNull || _viewport.IsNull || !scene.IsLive(node) || !scene.IsLive(_viewport)) return;
             scene.BringIntoView(_viewport, node, align: 0f, Design.Reduced ? ScrollMove.Immediate : ScrollMove.Glide,
-                margin: Detail.BandLayout.Height);
+                margin: Detail.BandLayout.StuckHeight(_inRow2));
         }
 
         /// <summary>THE SPY: one AbsoluteRect per pivot section, only on a scroll step the 24-DIP projector let through;
@@ -550,7 +619,7 @@ public static partial class Profile
             }
             float vh = _viewportH.Peek();
             if (vh <= 0f) vh = vp.H;
-            int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.Height, vh, atEnd);
+            int at = Detail.BandLayout.ActiveSection(tops[..n], Detail.BandLayout.StuckHeight(_inRow2), vh, atEnd);
             if (at != -1) _active.SetIfChanged(at);   // −1 = no answer: hold what we had; NoSection lights nothing
         }
 
@@ -677,7 +746,7 @@ public static partial class Profile
             if (tone.PaletteUrl is { Length: > 0 } url) _ = Palette.Watch(url).Value;
             var accent = Detail.AccentFor(tone.PaletteUrl, tone.PayloadArgb);
             _accent.SetIfChanged(accent);
-            _pageAccent.SetIfChanged(new Design.PageAccent(accent, accent, routeKey));
+            _pageAccent.SetIfChanged(Detail.PageAccentOf(accent, routeKey));
         }
 
         // ── the derived shimmer ────────────────────────────────────────────────────────────────────────────────────────

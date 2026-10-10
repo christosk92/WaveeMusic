@@ -35,7 +35,7 @@ public static partial class Sidebar
     //
     // Classic's rows and Library V3's list rows all come out of EntityRow.Create, so the two layouts cannot drift apart.
     // It owns the neutral NavigationViewItem backplate ramp (`NavRow`: the pill is the
-    // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 31-px depth indent), the slot
+    // only "you are here"), the WinUI row ladder (40-px icon column, label at pane 48, 32-px depth indent), the slot
     // order, the one key handler and the drag source.
 
     /// <summary>Everything <see cref="EntityRow.Create"/> needs: a mutable struct filled with an object initializer and
@@ -51,7 +51,7 @@ public static partial class Sidebar
             Playing = false; PlayingAnimated = false; Track = false; Overflow = false; OnClick = null; OnRealized = null;
             MenuOverlay = null; Menu = null; Drag = null; DropTarget = null; DropActive = null; Animate = null;
             Caption = null; CheckLane = null; MultiSelected = false; ChecksVisible = null; Focusable = false;
-            OnRename = null; OnMove = null; OnActivate = null; OnEscape = null;
+            OnRename = null; OnMove = null; OnActivate = null; OnEscape = null; OnUnpin = null;
         }
 
         // ── identity ──
@@ -67,9 +67,10 @@ public static partial class Sidebar
         public bool Selected;
         /// <summary>False dims to 0.3 and drops the ramp (missing entity / unavailable action retention).</summary>
         public bool Enabled;
-        /// <summary>Nesting depth: 31 DIP per level, capped at 3.</summary>
+        /// <summary>Nesting depth: 32 DIP per level, capped at 3 (a Text row adds its label x on top of the indent).</summary>
         public int Depth;
-        /// <summary>The section's ONE row shape (height, art size, subtitle line).</summary>
+        /// <summary>The section's ONE row shape (height, art size, subtitle line). A Text row has no icon column: its label sits
+        /// at the header's x (pane 16) and it draws no art or subtitle (a folder's 16 mark sits at pane 16, its label at pane 40).</summary>
         public SidebarRowShape Shape;
         /// <summary>A compact-rail tile (P2): 40 wide, icon only, the label as tooltip.</summary>
         public bool Tile;
@@ -91,8 +92,11 @@ public static partial class Sidebar
         public string? Glyph;
         /// <summary>A folder's <see cref="Chevron.Disclosure"/> — the FIRST trailing element, never in the leading lane.</summary>
         public Element? DisclosureChevron;
-        /// <summary>A pinned library entry (#85): a quiet 12-DIP pin glyph beside the count. Never on a track.</summary>
+        /// <summary>A pinned library entry (#85): a quiet 12-DIP pin glyph left of the count. Never on a track.</summary>
         public bool Pinned;
+        /// <summary>Makes the pin mark a real button (J1): a focusable 24×24 "Unpin" with a tooltip that consumes its own press
+        /// (never a drag arm). Null keeps the bare mark. Read only when <see cref="Pinned"/>.</summary>
+        public Action? OnUnpin;
         /// <summary>Trailing content (a count badge, a "+").</summary>
         public Element? Trailing;
         /// <summary>This row's context is the playing one: the accent equalizer (<see cref="Controls.EqualizerH"/>).</summary>
@@ -146,12 +150,9 @@ public static partial class Sidebar
 
     internal static class EntityRow
     {
-        /// <summary>The hover "…" box — also the trailing cluster's reserve, so a chevron or a count never sits under it.</summary>
-        const float OverflowWidth = 26f;
-
-        /// <summary>The width a row's label gives up to the hover "…" reserve: only a row with a menu AND trailing content
-        /// (a count, a pin mark, a chevron) keeps one.</summary>
-        public static float OverflowReserve(bool menu, bool trailing) => menu && trailing ? OverflowWidth : 0f;
+        /// <summary>The hover "…" box, and the count slot's minimum width, so the "…" lands exactly where the count sits. The
+        /// reserve / slot arithmetic lives in <see cref="SidebarRowGeometry"/> so the tests can pin it.</summary>
+        const float OverflowWidth = SidebarRowGeometry.OverflowBox;
 
         /// <summary>The height <paramref name="spec"/> renders at, for a host that sizes a slot before building the row.</summary>
         public static float HeightOf(in RowSpec spec)
@@ -183,6 +184,13 @@ public static partial class Sidebar
             var checksVisible = spec.ChecksVisible;
             // Icon colour = label colour in every state (NVX:425-427): TextPrimary, a disabled row fades as a whole.
             var ink = spec.Ink ?? Tok.TextPrimary;
+
+            // A Text row (Classic, Show covers off) with no glyph and no leading visual has no icon column and no LabelGap: its
+            // label starts at the header's x. A Text row that carries a glyph (a folder's mark) keeps the icon column.
+            bool textOnly = spec.Shape == SidebarRowShape.Text && spec.Leading is null && spec.Glyph is null;
+            // A Text-shape folder (a glyph, no leading visual) drops the 40-px icon column too: its 16 mark sits at the header's x
+            // (pane 16) with an 8 gap, so the label lands at pane 40 and a text tree stays close to the pane's left edge.
+            bool textGlyph = spec.Shape == SidebarRowShape.Text && spec.Leading is null && spec.Glyph is { Length: > 0 };
 
             // ── the icon column: 40 wide, the glyph (16) or art centred at slot x 20 ──
             Element visual = spec.Leading
@@ -241,26 +249,64 @@ public static partial class Sidebar
             // The check lane is a gapless sibling BEFORE the icon column: while the checks show it pushes the whole row
             // right (WinUI's multi-select content offset) instead of crushing the 40-px column.
             if (spec.CheckLane is { } lane) kids.Add(lane);
-            kids.Add(iconColumn);
-            kids.Add(new BoxEl { Width = SidebarRowGeometry.LabelGap, Shrink = 0f });
-            kids.Add(text);
-            if (trailingCount > 0)
+            if (textGlyph)
             {
-                var parts = new Element[trailingCount];
-                int t = 0;
-                if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
-                if (spec.Pinned) parts[t++] = Icon(Icons.Pin, 12f, Tok.TextTertiary);
-                if (spec.Trailing is { } trailingContent) parts[t] = trailingContent;
-                kids.Add(new BoxEl
-                {
-                    Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.TrailingGap,
-                    Margin = new Edges4(SidebarRowGeometry.TrailingGap, 0f, 0f, 0f), Children = parts,
-                });
+                kids.Add(Icon(spec.Glyph!, SidebarRowGeometry.GlyphSize, ink));
+                kids.Add(new BoxEl { Width = SidebarRowGeometry.TextGlyphGap, Shrink = 0f });
             }
+            else if (!textOnly)
+            {
+                kids.Add(iconColumn);
+                kids.Add(new BoxEl { Width = SidebarRowGeometry.LabelGap, Shrink = 0f });
+            }
+            kids.Add(text);
             bool chevron = spec.DisclosureChevron is not null;
-            // The hover "…" never covers the count, the pin mark or the chevron: a row with trailing content reserves its
-            // width in the flow, and on a folder the button parks in that reserve just left of the chevron column.
-            if (overflow && (trailingCount > 0 || chevron)) kids.Add(new BoxEl { Width = OverflowWidth, Shrink = 0f });
+            if (chevron)
+            {
+                // A folder: equalizer · pin mark · "+" in one cluster, and the "…" in its own reserve just left of the chevron
+                // column (it never covers the "+" or the chevron).
+                if (trailingCount > 0)
+                {
+                    var parts = new Element[trailingCount];
+                    int t = 0;
+                    if (spec.Playing) parts[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
+                    if (spec.Pinned) parts[t++] = PinMark(in spec);
+                    if (spec.Trailing is { } trailingContent) parts[t] = trailingContent;
+                    kids.Add(new BoxEl
+                    {
+                        Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.TrailingGap,
+                        Margin = new Edges4(SidebarRowGeometry.TrailingGap, 0f, 0f, 0f), Children = parts,
+                    });
+                }
+                if (overflow) kids.Add(new BoxEl { Width = OverflowWidth, Shrink = 0f });
+            }
+            else
+            {
+                // equalizer · pin mark stay left. The COUNT is the LAST flow child, right-justified in a slot as wide as the "…";
+                // the "…" parks on the same right edge and the two cross-fade in place, so hovering moves nothing.
+                int leadCount = (spec.Playing ? 1 : 0) + (spec.Pinned ? 1 : 0);
+                if (leadCount > 0)
+                {
+                    var lead = new Element[leadCount];
+                    int t = 0;
+                    if (spec.Playing) lead[t++] = Controls.Equalizer(spec.PlayingAnimated, Tok.AccentDefault, Controls.EqualizerH);
+                    if (spec.Pinned) lead[t] = PinMark(in spec);
+                    kids.Add(new BoxEl
+                    {
+                        Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Gap = SidebarRowGeometry.TrailingGap,
+                        Margin = new Edges4(SidebarRowGeometry.TrailingGap, 0f, 0f, 0f), Children = lead,
+                    });
+                }
+                if (spec.Trailing is not null || (overflow && leadCount > 0))
+                    kids.Add(new BoxEl
+                    {
+                        Key = "row-count-slot", Direction = 0, Shrink = 0f, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                        MinWidth = overflow ? OverflowWidth : 0f,
+                        Margin = new Edges4(SidebarRowGeometry.TrailingGap, 0f, 0f, 0f),
+                        Opacity = 1f, HoverOpacity = overflow ? 0f : 1f,
+                        Children = spec.Trailing is { } countContent ? [countContent] : [],
+                    });
+            }
             if (spec.DisclosureChevron is { } chev)
                 kids.Add(new BoxEl
                 {
@@ -285,11 +331,30 @@ public static partial class Sidebar
                 ZStack = overflow,
                 Direction = 0, Height = height, AlignItems = FlexAlign.Center,
                 Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
-                Padding = new Edges4(SidebarRowGeometry.IndentFor(spec.Depth), 0f, chevron ? 0f : SidebarRowGeometry.TrailingPad, 0f),
+                Padding = new Edges4(SidebarRowGeometry.IndentFor(spec.Depth) + (textOnly || textGlyph ? SidebarRowGeometry.TextLabelX : 0f), 0f,
+                    chevron ? 0f : SidebarRowGeometry.TrailingPad, 0f),
                 Corners = Radii.ControlAll,
                 Children = rowChildren,
             };
             return Finish(in spec, row, enabled, selected, activate, checksVisible);
+        }
+
+        /// <summary>The row's pin mark: the quiet 12-DIP glyph, or (J1) a real "Unpin" button when the row can unpin. The button is
+        /// 24×24 (it fits Classic's 36 row), a focus stop with the Button role and the hand cursor, names itself through its
+        /// tooltip, and is a <c>BlocksDragArm</c> barrier so pressing it neither lifts the row nor starts a reorder.</summary>
+        static Element PinMark(in RowSpec spec)
+        {
+            if (spec.OnUnpin is not { } unpin) return Icon(Icons.Pin, 12f, Tok.TextTertiary);
+            var button = new BoxEl
+            {
+                Key = "row-unpin",
+                Width = SidebarRowGeometry.RowButton, Height = SidebarRowGeometry.RowButton, Shrink = 0f,
+                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand, BlocksDragArm = true,
+                OnClick = unpin,
+                Children = [Icon(Icons.Pin, 12f, Tok.TextTertiary)],
+            }.Interactive(Interaction.Subtle);
+            return ToolTip.Wrap(button, Loc.Get(Strings.Sidebar.Pin.Unpin));
         }
 
         /// <summary>The wiring every row shape shares: the neutral ramp (the multi-selection's quiet plate is the selected
@@ -828,6 +893,16 @@ public static partial class Sidebar
             bool subtitle = shape == SidebarRowShape.EntityTwoLine;
             float height = float.IsNaN(heightOverride) ? SidebarRowGeometry.HeightOf(shape) : heightOverride;
             float art = float.IsNaN(artOverride) ? SidebarRowGeometry.ArtOf(shape) : artOverride;
+            if (shape == SidebarRowShape.Text)
+                // A glyph-less Text row has no icon column: one bar at the header's x (pane 16), the row's own trailing pad (a seed
+                // never stands for a folder, so it carries no mark).
+                return new BoxEl
+                {
+                    Direction = 0, Height = height, AlignItems = FlexAlign.Center,
+                    Margin = new Edges4(0f, SidebarRowGeometry.RowMarginY, 0f, SidebarRowGeometry.RowMarginY),
+                    Padding = new Edges4(SidebarRowGeometry.TextLabelX, 0f, SidebarRowGeometry.TrailingPad, 0f),
+                    Children = [new BoxEl { Direction = 1, Grow = 1f, Children = [Bar(140f, 12f)] }],
+                };
             Element text = subtitle
                 ? new BoxEl { Direction = 1, Grow = 1f, Gap = 4f, Children = [Bar(140f, 12f), Bar(80f, 10f)] }
                 : new BoxEl { Direction = 1, Grow = 1f, Children = [Bar(140f, 12f)] };
@@ -864,7 +939,7 @@ public static partial class Sidebar
 
     /// <summary>The 40-px section header (design V.6): the title at slot x 12 (pane 16), 14 SemiBold TextSecondary, brightening
     /// to TextPrimary on hover (no plate); then the "+" (always, Playlists / Your Library), the ⋯ (revealed on hover, permanent
-    /// after a touch), and the chevron (24×24, always visible, ending at pane W − 4). A click anywhere collapses; the slot root
+    /// after a touch), and the chevron (always visible, centred on pane W − 24). A click anywhere collapses; the slot root
     /// is the roving focus stop (ToggleButton). <paramref name="onToggle"/> null ⇒ a heading with no chevron.</summary>
     internal static class SectionHeader
     {
@@ -890,7 +965,7 @@ public static partial class Sidebar
             return new BoxEl
             {
                 Direction = 0, Height = SidebarRowGeometry.HeaderHeight, AlignItems = FlexAlign.Center, Gap = 0f,
-                Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, 0f, 0f),
+                Padding = new Edges4(SidebarRowGeometry.HeaderTextX, 0f, SidebarRowGeometry.HeaderTrailingPad, 0f),
                 Role = onToggle is null ? AutomationRole.None : AutomationRole.ToggleButton,
                 Cursor = onToggle is null ? CursorId.Arrow : CursorId.Hand,
                 OnClick = click,
@@ -898,21 +973,37 @@ public static partial class Sidebar
             };
         }
 
-        /// <summary>A header's 24×24 inline button (⋯ / +): consumes its own click, hover plate FillSubtleSecondary.
-        /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). A <see cref="BoxEl"/> so the caller can attach a
-        /// context menu; the caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
-        public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal)
+        /// <summary>A header's 28×28 inline button (⋯ / +), a 16 glyph: consumes its own click, hover plate FillSubtleSecondary.
+        /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). The result is an OUTER, handler-less reveal box
+        /// (Opacity / HoverOpacity follow the header's hover) around the INNER interactive button: the plate belongs to the
+        /// inner node alone, so hovering the header text reveals the glyph at its rest look and only hovering the button
+        /// paints the plate (one node carrying both the reveal and <c>Interactive</c> let the container hover drive the
+        /// fill). A <see cref="BoxEl"/> so the caller can attach a context menu to the outer box (a context request walks up
+        /// from the button); <paramref name="requestsContext"/> makes the click re-enter that funnel, anchored at the
+        /// button. <paramref name="onRealized"/> / <paramref name="focusable"/> apply to the INNER button, the real focus
+        /// stop and anchor. The caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
+        public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal, Action<NodeHandle>? onRealized = null,
+                                         bool focusable = false, bool requestsContext = false)
             => new BoxEl
             {
                 Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = onClick,
                 Opacity = reveal ? 0f : 1f, HoverOpacity = 1f,
-                BlocksDragArm = true,
-                Children = [Icon(glyph, 12f, Tok.TextSecondary)],
-            }.Interactive(Interaction.Subtle);
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                        Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                        OnClick = requestsContext ? null : onClick, ClickRequestsContext = requestsContext,
+                        Focusable = focusable, OnRealized = onRealized,
+                        BlocksDragArm = true,
+                        Children = [Icon(glyph, SidebarRowGeometry.HeaderGlyph, Tok.TextSecondary)],
+                    }.Interactive(Interaction.Subtle),
+                ],
+            };
 
-        /// <summary>The 8-px separator (TR:223, TR:247): a 1-px StrokeDividerDefault rule at y 3, bleeding over the list's
+        /// <summary>The 8-px separator (TR:223, TR:247): a 1-px StrokeDividerDefault rule at y 4, bleeding over the list's
         /// 4-px inset so it spans the full pane width.</summary>
         public static Element Separator() => new BoxEl
         {
@@ -950,7 +1041,7 @@ public static partial class Sidebar
 
         public CreateButton(Action onPlaylist, Func<ContextMenuModel?>? menu = null, DropTargetSpec? drop = null,
                             Func<bool>? dropActive = null, Func<float>? revealOpacity = null, float box = 24f,
-                            float glyph = 14f)
+                            float glyph = SidebarRowGeometry.PlusGlyph)
         {
             _onPlaylist = onPlaylist; _menu = menu; _drop = drop; _dropActive = dropActive;
             _revealOpacity = revealOpacity; _box = box; _glyph = glyph;
@@ -997,9 +1088,18 @@ public static partial class Sidebar
                     BorderColor = Prop.Of(() => cue() ? Tok.AccentDefault : ColorF.Transparent),
                     BorderWidth = 1f,
                 };
-            if (_revealOpacity is { } reveal) box = box with { Opacity = Prop.Of(reveal), HoverOpacity = 1f };
+            // The reveal sits on an OUTER handler-less box (as in SectionHeader.InlineButton): on the interactive button
+            // itself the container hover would drive its plate, so hovering the row alone painted the "+" plate.
+            Element shown = box;
+            if (_revealOpacity is { } reveal)
+                shown = new BoxEl
+                {
+                    Width = _box, Height = _box, Shrink = 0f,
+                    Opacity = Prop.Of(reveal), HoverOpacity = 1f,
+                    Children = [box],
+                };
 
-            return ToolTip.Wrap(box, Loc.Get(_menu is null
+            return ToolTip.Wrap(shown, Loc.Get(_menu is null
                 ? Strings.Sidebar.CreatePlaylistTooltip
                 : Strings.Sidebar.CreateTooltip));
         }

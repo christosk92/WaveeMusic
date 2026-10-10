@@ -142,7 +142,7 @@ public sealed class SidebarPillRulesTests
     public void Pill_SlidesOnlyWithinOneContainerAtOneDepth()
     {
         Assert.True(SidebarPillMotionRules.Slides(SidebarPillLane.List, SidebarPillLane.List, 0f));
-        Assert.False(SidebarPillMotionRules.Slides(SidebarPillLane.List, SidebarPillLane.List, 31f));     // a depth change scales
+        Assert.False(SidebarPillMotionRules.Slides(SidebarPillLane.List, SidebarPillLane.List, 32f));     // a depth change scales
         Assert.False(SidebarPillMotionRules.Slides(SidebarPillLane.Head, SidebarPillLane.List, 0f));      // head ↔ list: no slide
         Assert.False(SidebarPillMotionRules.Slides(SidebarPillLane.List, SidebarPillLane.Footer, 0f));    // list ↔ footer: no slide
         Assert.True(SidebarPillMotionRules.Slides(SidebarPillLane.Head, SidebarPillLane.Head, 0f));       // Home ↔ dropdown worms

@@ -557,29 +557,33 @@ public static partial class Controls
     /// <inheritdoc cref="ChipHeight"/>
     public const float ChipRailExtent = ChipRailHeight + Spacing.S;
 
-    /// <summary>One filter chip — a <see cref="ToggleButton.Controlled"/> (Workstream B: the grammar table's "Filter /
-    /// mode toggles" row, stock checked = accent). <paramref name="available"/> false renders it SHOWN AND DISABLED
-    /// rather than dropping it: a curated filter set is library-scoped and routinely names concepts whose rows have not
-    /// been enriched yet, so dropping those hid the whole bar on a cold list. They become live as enrichment lands.
+    /// <summary>One filter chip: the STOCK <see cref="ToggleButton.Controlled"/> (32/r4, WinUI's own ramp, checked =
+    /// accent) with no style of its own. Every filter chip in the app is this one control, the look the Concerts filter
+    /// bar set; the earlier capsule and white-selected variants are gone. <paramref name="available"/> false renders it
+    /// SHOWN AND DISABLED rather than dropping it: a curated filter set is library-scoped and routinely names concepts
+    /// whose rows have not been enriched yet, so dropping those hid the whole bar on a cold list. They become live as
+    /// enrichment lands.
     /// <para>The selected value is entirely CALLER-owned (the live filter state), so this is <c>Controlled</c>: a click
     /// only invokes <paramref name="onClick"/> — the re-render that follows is what actually flips <paramref
     /// name="selected"/>.</para></summary>
-    public static Element Chip(string label, bool selected, bool available, Action? onClick)
+    public static Element Chip(string label, bool selected, bool available, Action? onClick, TemplateParts? parts = null)
         => ToggleButton.Controlled(label, selected, _ => onClick?.Invoke(),
-            style: AccentToggleStyle(Tok.AccentDefault) with
-            {
-                // The chip keeps its own capsule geometry — the 32/r4 ladder is for the labeled/icon button grammar,
-                // not this scrolling rail, which has always read as pills.
-                CornerRadius = Radii.Full,
-                MinHeight = ChipHeight,
-                Padding = new Edges4(Spacing.M, 0f, Spacing.M, 0f),
-                FontSize = 13f,                              // DenseTitle/DenseMeta's size (13/18) — the chip rail's own rung
-                FocusVisualMargin = Design.FocusInsetBordered,
-            },
-            isEnabled: available, parts: RootNoShrink);
+            isEnabled: available, parts: parts ?? RootNoShrink);
             // RootNoShrink (Shrink = 0 on the toggle's own root) is LOAD-BEARING on a non-wrapping row: without it
             // flex compresses every pill to fit the viewport and the labels ellipsise instead of the rail
-            // overflowing, which is the opposite of what the scroller is for.
+            // overflowing, which is the opposite of what the scroller is for. Callers passing their own parts keep it.
+
+    /// <summary>A destination chip: the stock standard <see cref="Button"/> (<see cref="Chip"/>'s off look), announced as a
+    /// link. For a row of chips that NAVIGATE (Browse's Top and For-you bands), where <see cref="Chip"/> is a toggle.
+    /// Shrink 0: on a wrapping row the row breaks to a new line rather than ellipsising every chip. Always
+    /// <see cref="ChipHeight"/> tall, so a chip row is a fixed 32 per line. <paramref name="inert"/> takes it out of
+    /// the Tab order (a collapsed band).</summary>
+    public static Element LinkChip(string label, Action onClick, string? key = null, bool inert = false)
+        => Button.Standard(label, onClick, style: Button.StandardStyle with { MinHeight = ChipHeight })
+            with { Key = key, Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Shrink = 0f, MinWidth = 0f,
+            // inert: a chip whose band is collapsed (Browse's Top under Zune) leaves the Tab order; the host is already at opacity 0
+            // and takes no pointer hits, and the chip keeps its enabled look through the fade-out.
+            Focusable = !inert };
 
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.
@@ -587,18 +591,27 @@ public static partial class Controls
     /// without adding chrome to a row that is already dense. <paramref name="scrollKey"/> scopes the horizontal offset
     /// so each list remembers its own position and a navigation does not inherit the previous one.</para>
     /// <para>Selection is EXCLUSIVE (All + at most one chip): these are a LENS, not accumulating constraints — two
-    /// genres ANDed almost always yields nothing, and users read a second tap as "switch", not "narrow".</para></summary>
-    public static Element ChipRail(IReadOnlyList<Element> chips, string scrollKey)
-        => ScrollView(new BoxEl
+    /// genres ANDed almost always yields nothing, and users read a second tap as "switch", not "narrow".</para>
+    /// <para><paramref name="inBar"/> is the rail as one MEMBER of a command bar (Liked Songs' slot between Shuffle and Sort): a
+    /// chip tall, no bottom gap, filling the slot its bar gives it - the same scroller and the same fade at its end.</para></summary>
+    public static Element ChipRail(IReadOnlyList<Element> chips, string scrollKey, bool inBar = false)
+    {
+        var rail = ScrollView(new BoxEl
         {
             Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, MinWidth = 0f,
             Children = [.. chips],
         }, horizontal: true) with
         {
-            Grow = 0f, Height = ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
-            Margin = new Edges4(0f, 0f, 0f, Spacing.S),
+            // The hidden scrollbar lane no longer takes input (fluent-gpu 7dcd19d06), so the first-click loss that remained was the
+            // Liked bar re-fitting when the find collapsed under the pointer (Track.Table.Chrome.cs, the collapse hold).
+            Grow = inBar ? 1f : 0f, Height = inBar ? ChipHeight : ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
+            // In a bar the fade is a short 24 DIP band (the engine default is a quarter of the viewport, which ran into Sort).
+            AutoEdgeFadeBand = inBar ? 24f : 0f,
+            Margin = inBar ? default : new Edges4(0f, 0f, 0f, Spacing.S),
             ScrollKey = scrollKey,
         };
+        return inBar ? rail with { MinWidth = 0f } : rail;
+    }
 
     // ══ 7. THE STAT TILE ═════════════════════════════════════════════════════════════════════════════════════════════
 

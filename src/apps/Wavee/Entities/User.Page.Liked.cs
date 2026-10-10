@@ -1,7 +1,11 @@
 // ── Entities/User.Page.Liked.cs ────────────────────────────────────────────────────────────────────────────────────
 // the liked page's own composition of the shared detail frame: LikedPageFor + LikedPage (identity, the dynamic cover
-// slots, the facts slot, the demand rule), the chip rail (TableProfile.ContentFilterBar) and the lens header's placement
-// (TableProfile.LensHeader) — configured only through FrameSpec / TableProfile, never by editing Detail* / Track*
+// slots, the facts slot, the demand rule), the chip rail (TableProfile.ContentFilterBar, mounted INSIDE the page's one
+// command bar: TableProfile.ContentFilterInBar) and the lens header's placement (TableProfile.LensHeader) — configured
+// through FrameSpec / TableProfile and the Detail.Config knobs Liked turns on: SlimHead (one layout, always the vertical
+// arm, a slim title · meta · bar head and no rail), HoverHeart and PlainRows (read by the row grid). The old rule "never by
+// editing Detail* / Track*" is superseded: the slim head and the Liked bar (Detail.UI.Hero.cs SlimExpanded,
+// Track.Rules.cs LikedBarLayout, Track.Table.Chrome.cs BuildLikedBar) are the shared frame's own arms.
 //
 // Role: UI
 // Owner: O
@@ -73,17 +77,19 @@ public readonly partial struct User
         readonly Func<bool> _lensActive;
         readonly Func<LikedChipModel> _computeChips;
         readonly Func<Element?> _chipBar;
+        readonly Func<(string[] Titles, int Evidenced)> _filterSet;
         readonly Func<Element?> _lensHeader;
 
         public LikedPage()
         {
             _demandModel = DemandModel;
             _demandRows = DemandRows;
-            _lensActive = () => LensActive(_lens);
+            _lensActive = () => LensActive(_lens, DetailKind.Liked);
             _computeChips = ComputeChips;
             _chipBar = () => _chips is { } chips
                 ? Embed.Comp(new LikedChipBarProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
                 : null;
+            _filterSet = () => _chips?.Peek() is { } model ? (model.Titles, model.Evidenced) : ([], 0);
             _lensHeader = () => LensHeader(_lens, DetailKind.Liked);
 
             // The cover slots: the dynamic treatment WITH its style picker on the rail and the vertical hero, the flat
@@ -93,7 +99,13 @@ public readonly partial struct User
             Func<float, Element> facts = width => _source is { } src ? FactsPanel(src, DetailKind.Liked, _lens, width, false) : new BoxEl();
             _slotsWithFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover, LikedFacts = facts };
             _slotsWithoutFacts = new Detail.FrameSlots { Cover = cover, CompactCover = compactCover };
-            _actions = new Detail.FrameActions { Shuffle = Shuffle, CoverDrag = CoverDragPayload };
+            // The Play split's menu verbs (the bar carries the split; the cover slots survive for the library's strips): Add to
+            // queue / Play next run the context verbs over the WHOLE liked collection, Start radio seeds off the first row.
+            _actions = new Detail.FrameActions
+            {
+                Shuffle = Shuffle, CoverDrag = CoverDragPayload,
+                AddToQueue = AddToQueue, PlayNext = PlayNext, StartRadio = StartRadio,
+            };
         }
 
         public override Element Render()
@@ -172,6 +184,7 @@ public readonly partial struct User
                 PaletteUrl = LikedToneAnchorUrl(),
                 Eyebrow = Detail.Text.Eyebrow(DetailKind.Liked, BadgeStyle.None, AlbumKind.Album, 0,
                                               collaborative: false, isPublic: true, visibilityKnown: true),
+                // A DetailHero spec, not a PageHeadSpec: MetaLoading holds the line as a same-height shimmer bar until the total lands.
                 Meta = metaLoading ? null : Detail.Text.LikedMeta(liked.Total(slot), totalMs, durationsKnown),
                 MetaLoading = metaLoading,
                 ShareUrl = LikedShareUrl,
@@ -185,8 +198,11 @@ public readonly partial struct User
             int index = (chips ? 1 : 0) | (lens ? 2 : 0);
             return _profiles[index] ??= Track.TableProfile.From(Detail.Config.Liked) with
             {
-                ContentFilterBar = _chipBar,
-                ContentFilterExtent = chips ? Controls.ChipRailExtent : 0f,
+                // The chips live in the bar's own slot (no stacked row, so no extent): present only when there is a set.
+                ContentFilterBar = chips ? _chipBar : null,
+                ContentFilterInBar = true,
+                ContentFilterExtent = 0f,
+                ContentFilterSet = _filterSet,
                 LensHeader = _lensHeader,
                 LensExtent = lens ? LensExtent : 0f,
             };
@@ -251,6 +267,33 @@ public readonly partial struct User
             if (!_subject.IsValid) return;
             Playback.SetShuffle(true);
             Actions.Services.Play?.Invoke(_subject);
+        }
+
+        /// <summary>The Play split's "Add to queue" / "Play next": the registered context verbs over the liked collection as a
+        /// playlist-shaped container - the whole context (no 50-row cap), exactly what the container menus run.</summary>
+        void AddToQueue()
+        {
+            if (!_subject.IsValid) return;
+            var target = ActionTarget.ForPlaylist(_subject, Loc.Get(Strings.Detail.LikedSongs));
+            Detail.RunContextVerb(ActionId.AddContextToQueue, in target);
+        }
+
+        void PlayNext()
+        {
+            if (!_subject.IsValid) return;
+            var target = ActionTarget.ForPlaylist(_subject, Loc.Get(Strings.Detail.LikedSongs));
+            Detail.RunContextVerb(ActionId.PlayContextNext, in target);
+        }
+
+        /// <summary>The Play split's "Start radio": the collection has no Spotify radio seed of its own, so it seeds SONG radio
+        /// from the first row in the current order (the most recently liked, under the default sort). An empty list says so.</summary>
+        void StartRadio()
+        {
+            var src = _source;
+            if (src is { Count: > 0 } && src.At(0) is { IsValid: true } first)
+                Detail.StartRadioFor(first.Uri, Loc.Get(Strings.Detail.LikedSongs))();
+            else
+                _ = Notify.Say(Loc.Get(Strings.Drag.NothingToAdd), InfoBarSeverity.Warning);
         }
 
         /// <summary>The whole collection as a drag (0.2.9 <c>WaveeDetailDrag.Hero</c>): built at promotion, cold.</summary>
@@ -321,7 +364,7 @@ public readonly partial struct User
                 kids[i + 1] = Controls.Chip(tag, on, available, available ? () => Select(on ? null : tag) : null)
                     with { Key = "chip:" + tag };
             }
-            return Controls.ChipRail(kids, p.ScrollKey) with { Key = "chips" };
+            return Controls.ChipRail(kids, p.ScrollKey, inBar: true) with { Key = "chips" };
         }
 
         void Select(string? tag)

@@ -98,8 +98,10 @@ public static partial class Shell
     /// bar's own caption ink). Both are STRUCTURAL and fixed for the label's life. <paramref name="reveal"/> is the
     /// <see cref="SeekBar"/> signal of the same name: a concealed label holds its last text and stops following the
     /// position, and the reveal brings it current.</summary>
-    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null)
-        => Embed.Comp(() => new BarTimeText(remaining, ink, reveal));
+    public static Element TimeText(bool remaining, ColorF? ink = null, IReadSignal<bool>? reveal = null, bool compactLive = false)
+        => compactLive
+            ? Embed.Comp(() => new BarTimeText(remaining, ink, reveal, compactLive: true)) with { Key = "time-compact-live" }
+            : Embed.Comp(() => new BarTimeText(remaining, ink, reveal));
 
     // ── the motion specs (ch 20 §5) ─────────────────────────────────────────────────────────────────────────────────
 
@@ -489,7 +491,7 @@ public static partial class Shell
                     Children = [SeekBar()],
                 });
             if (ownsTransport && L.ShowTimesRemaining)
-                seekKids.Add(new BoxEl { Key = "remaining", Animate = BarItemMotion, Children = [TimeText(remaining: true)] });
+                seekKids.Add(new BoxEl { Key = "remaining", Animate = BarItemMotion, Children = [TimeText(remaining: true, compactLive: L.Tier == PlayerBarTier.Compact)] });
 
             var centre = new BoxEl
             {
@@ -1915,8 +1917,11 @@ public static partial class Shell
         string _shown = "";                    // the last text the bind produced: what a concealed label keeps holding
         readonly Prop<string> _label;
 
-        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null)
+        readonly bool _compactLive;            // the Compact tier's 44-DIP live face (TimeLabel.CompactLiveSlotW)
+
+        public BarTimeText(bool remaining, ColorF? ink, IReadSignal<bool>? reveal = null, bool compactLive = false)
         {
+            _compactLive = compactLive;
             _remaining = remaining;
             _ink = ink;
             _reveal = reveal;
@@ -1951,7 +1956,8 @@ public static partial class Shell
             if (TimeLabel.RightSlotIsLive(_remaining, isLive))
             {
                 var ink = _ink;
-                return Embed.Comp(() => new BarLiveSlot(ink));
+                bool compact = _compactLive;
+                return Embed.Comp(() => new BarLiveSlot(ink, compact));
             }
 
             bool right = _remaining;
@@ -1980,16 +1986,19 @@ public static partial class Shell
     /// <summary>The right slot while live: ONE 104-DIP reservation, right-aligned, holding the LIVE word-mark or —
     /// behind a rewindable window — the GO LIVE action. The swap moves nothing (parity 65); which of the two is the
     /// model's DECIDED edge state, never a threshold here.</summary>
-    sealed class BarLiveSlot(ColorF? ink) : Component
+    sealed class BarLiveSlot(ColorF? ink, bool compact) : Component
     {
         readonly ColorF? _ink = ink;
-        readonly Prop<string> _goLive = Prop.Of(static () => s_goLiveText.Get(Playback.Live.Value.BehindMs / 1000L,
-            static sec => Loc.Get(Strings.Play.GoLive) + " " + Strings.Play.Behind(Playback.TimeFormat.Clock(sec * 1000L))));
+        readonly bool _compact = compact;
+        static string GoLiveText() => s_goLiveText.Get(Playback.Live.Value.BehindMs / 1000L,
+            static sec => Loc.Get(Strings.Play.GoLive) + " " + Strings.Play.Behind(Playback.TimeFormat.Clock(sec * 1000L)));
+        readonly Prop<string> _goLive = Prop.Of(GoLiveText);
 
         public override Element Render()
         {
             bool offer = UseComputed(static () => TimeLabel.OffersGoLive(Playback.Live.Value, Playback.IsBehindLive.Value)).Value;
             ColorF fg = _ink ?? Design.Accent.Decor;
+            if (_compact) return CompactFace(offer, fg);
             Element face = offer
                 ? new BoxEl
                 {
@@ -2024,6 +2033,44 @@ public static partial class Shell
             {
                 Width = TimeLabel.LiveSlotW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
                 Children = [face],
+            };
+        }
+
+        /// <summary>The Compact tier's face: ONE 44-DIP reservation (<see cref="TimeLabel.CompactLiveSlotW"/>, the track
+        /// slot) so the Queue button keeps its place beside it. Dot + LIVE chip at the edge; BEHIND a rewindable window the
+        /// dot greys and the whole mark is the GO LIVE button (the "−h:mm" distance is the tooltip). The swap moves nothing.</summary>
+        Element CompactFace(bool offer, ColorF fg)
+        {
+            Element mark = new BoxEl
+            {
+                Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End, Gap = Spacing.XXS,
+                Children =
+                [
+                    new BoxEl { Width = 6f, Height = 6f, Shrink = 0f, Corners = CornerRadius4.All(3f), Fill = offer ? Tok.TextTertiary : Tok.SystemFillCritical },
+                    new BoxEl
+                    {
+                        Height = 14f, Padding = new Edges4(Spacing.XXS, 0f, Spacing.XXS, 0f), Shrink = 0f,
+                        Corners = CornerRadius4.All(2f), BorderWidth = 1f, BorderColor = fg,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
+                        Children = [new TextEl(Loc.Get(Strings.Play.Live)) { Size = 9f, LineHeight = 12f, Weight = 600, Color = fg, Wrap = TextWrap.NoWrap }],
+                    },
+                ],
+            };
+            if (offer)
+                mark = ToolTip.Wrap(new BoxEl
+                {
+                    Shrink = 0f, Height = 20f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                    Corners = Radii.ControlAll,
+                    HoverFill = _ink is null ? Tok.FillSubtleSecondary : Design.OnMedia.GlassHover,
+                    PressedFill = _ink is null ? Tok.FillSubtleTertiary : Design.OnMedia.GlassPressed,
+                    Role = AutomationRole.Button, Focusable = true, Cursor = CursorId.Hand,
+                    OnClick = static () => Playback.GoLive(),
+                    Children = [mark],
+                }, Prop.Of<string?>(GoLiveText));
+            return new BoxEl
+            {
+                Width = TimeLabel.CompactLiveSlotW, Shrink = 0f, Direction = 0, AlignItems = FlexAlign.Center, Justify = FlexJustify.End,
+                Children = [mark],
             };
         }
     }

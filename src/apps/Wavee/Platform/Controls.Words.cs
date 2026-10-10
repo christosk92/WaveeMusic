@@ -83,7 +83,6 @@ public static partial class Controls
         const float TopPad = 2f;
         /// <summary>Below this a width is "not laid out yet" (a collapsed word, a first frame) and nothing slides.</summary>
         const float MinSlideWidth = 0.5f;
-        const string DisplayFace = "Segoe UI Variable Display";
 
         /// <summary>The ink/opacity fade every word shares: the 83-ms WinUI BrushTransition (plan §7).</summary>
         static readonly MotionTokenDef s_inkFade = MotionTok.ControlFaster;
@@ -362,7 +361,7 @@ public static partial class Controls
             static TextEl Ink(Prop<string> label, ushort weight, Prop<ColorF> ink, bool big) => new(label)
             {
                 Size = big ? BigSize : Size, LineHeight = big ? BigLine : Line, Weight = weight,
-                CharSpacing = big ? BigTracking : Tracking, FontFamily = big ? DisplayFace : null, MaxLines = 1,
+                CharSpacing = big ? BigTracking : Tracking, FontFamily = big ? Design.Type.DisplayFace : null, MaxLines = 1,
                 Color = ink, BrushTransitionMs = Design.Motion.Faster,
                 AlignSelf = FlexAlign.Center, JustifySelf = FlexAlign.Start,
             };

@@ -7,6 +7,8 @@
 // `Platform.Settings` is process state, so this class joins the platform collection and every fact installs its own
 // in-memory store and puts the defaults-only facade back when it is done.
 
+using FluentGpu.Dsl;          // Tok — the system accent pair a page falls back to
+using FluentGpu.Foundation;
 using Wavee;
 using Xunit;
 
@@ -39,9 +41,53 @@ public sealed class PrefsTests : IDisposable
         // The epoch caches NOTHING. A value written behind the epoch's back (a settings import, a second window) is
         // still what the next read returns.
         _store.Set(Platform.Keys.ColorWashesEnabled, false);
-        Assert.False(Prefs.Appearance.ColorWashes());
+        Assert.Equal(WashLevel.Off, Prefs.Appearance.SurfaceWash());
         _store.Set(Platform.Keys.ColorWashesEnabled, true);
-        Assert.True(Prefs.Appearance.ColorWashes());
+        Assert.Equal(WashLevel.Subtle, Prefs.Appearance.SurfaceWash());
+    }
+
+    [Fact]
+    public void Legacy_off_starts_all_three_off()
+    {
+        // An upgrade from the single switch: the three new keys were never written, so the old answer carries over.
+        _store.Set(Platform.Keys.ColorWashesEnabled, false);
+        Assert.Equal(WashLevel.Off, Prefs.Appearance.SurfaceWash());
+        Assert.False(Prefs.Appearance.AccentFromArtwork());
+        Assert.False(Prefs.Appearance.NowPlayingColors());
+    }
+
+    [Fact]
+    public void Defaults_are_subtle_and_on()
+    {
+        Assert.Equal(WashLevel.Subtle, Prefs.Appearance.SurfaceWash());
+        Assert.True(Prefs.Appearance.AccentFromArtwork());
+        Assert.True(Prefs.Appearance.NowPlayingColors());
+    }
+
+    [Fact]
+    public void An_explicit_write_beats_the_legacy_key()
+    {
+        _store.Set(Platform.Keys.ColorWashesEnabled, false);
+        _store.Set(Platform.Keys.WashSurfaces, 2);
+        _store.Set(Platform.Keys.WashAccent, 1);
+        Assert.Equal(WashLevel.Rich, Prefs.Appearance.SurfaceWash());
+        Assert.True(Prefs.Appearance.AccentFromArtwork());
+    }
+
+    [Fact]
+    public void The_three_wash_keys_default_to_the_unset_sentinel()
+    {
+        Assert.Equal(ColorWashRules.Unset, Platform.Keys.WashSurfaces.Default);
+        Assert.Equal(ColorWashRules.Unset, Platform.Keys.WashAccent.Default);
+        Assert.Equal(ColorWashRules.Unset, Platform.Keys.WashNowPlaying.Default);
+    }
+
+    [Fact]
+    public void ColorWashRules_out_of_range_falls_back()
+    {
+        Assert.Equal(WashLevel.Subtle, ColorWashRules.Level(7, true));
+        Assert.Equal(WashLevel.Off, ColorWashRules.Level(-1, false));
+        Assert.False(ColorWashRules.Flag(5, false));
     }
 
     [Fact]
@@ -311,5 +357,23 @@ public sealed class PrefsTests : IDisposable
         Prefs.PlayerBar.ToggleRemaining();
         Assert.Equal(!before, Prefs.PlayerBar.ShowRemaining());
         Assert.Equal(epoch + 1, Prefs.PlayerBar.Epoch.Peek());
+    }
+
+    // ── the page accent gate ─────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Page_accent_falls_to_the_system_pair_with_artwork_accent_off()
+    {
+        var red = ColorF.FromRgba(255, 0, 0);
+
+        _store.Set(Platform.Keys.WashAccent, 0);
+        var off = Detail.PageAccentOf(red, "k");
+        Assert.Equal(Tok.AccentTextPrimary, off.Ink);
+        Assert.Equal(Tok.AccentDefault, off.Fill);
+
+        _store.Set(Platform.Keys.WashAccent, 1);
+        var on = Detail.PageAccentOf(red, "k");
+        Assert.Equal(red, on.Fill);   // the Ink is the same hue solved for text contrast (ArtworkAndAccentTests pins the floor)
+        Assert.NotEqual(Tok.AccentTextPrimary, on.Ink);
     }
 }

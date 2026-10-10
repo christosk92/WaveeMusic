@@ -31,16 +31,3 @@ public class FacetDimPlanTests
         Assert.Equal(Design.Motion.Fast, ms);
     }
 }
-
-/// <summary>The facet row's form at its measured width (Home/Facet.Rules.cs <see cref="FacetForm"/>).</summary>
-public class FacetFormTests
-{
-    [Theory]
-    [InlineData(1316f, true)]    // the prototype's wide board
-    [InlineData(632f, true)]     // the owner's 1717×1150 @150 % row with the right panel open (measured)
-    [InlineData(600f, true)]     // the edge is inclusive
-    [InlineData(599.9f, false)]
-    [InlineData(464f, false)]    // the owner's 1440×900 @150 % row (measured)
-    public void Title_words_only_while_the_row_holds_them(float width, bool title)
-        => Assert.Equal(title, FacetForm.IsTitle(width));
-}

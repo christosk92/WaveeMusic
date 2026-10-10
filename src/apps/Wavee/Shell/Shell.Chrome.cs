@@ -13,6 +13,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FluentGpu.Dsl;
 
 namespace Wavee;
 
@@ -46,7 +47,7 @@ public static partial class Shell
         public const float ChromeNameEnterW = 1360f;
 
         /// <summary>The ONE "actions in row" stage — bell · friends · pin enter the trailing island
-        /// TOGETHER at this width. 1200, not the old friends-only 1000: three 44-DIP buttons plus the theme toggle
+        /// TOGETHER at this width. 1200, not the old friends-only 1000: three 44-DIP buttons (and, once, the theme toggle)
         /// would starve the search field of a 1000-wide window with two tabs. Below it every one of the three FOLDS
         /// rather than vanishing — bell and friends become profile-menu rows, and pin simply drops from the row (the
         /// tab/page context menu still offers it).
@@ -121,10 +122,6 @@ public static partial class Shell
         /// <summary>The caption cluster: 3 × 46.</summary>
         public const float ChromeCaptionClusterW = 138f;
 
-        /// <summary>The permanent theme toggle immediately before the native caption buttons — a real bar-nav island
-        /// button (40 + 2+2), not the old hand-rolled 32-DIP box.</summary>
-        public const float ChromeThemeToggleW = 44f;
-
         /// <summary>Reserved on EACH flank of the centre island so the search never butts against the tab strip or the
         /// identity cluster. The bar's two grow bands split the real leftover between them; this is only the floor
         /// that keeps the two clusters from touching when the row is full.</summary>
@@ -147,6 +144,13 @@ public static partial class Shell
         public const float ChromeSearchMaxW = 420f;
         public const float ChromeSearchMinW = 280f;
         public const float ChromeSearchWidthRatio = 0.28f;
+
+        // The search PILL's own floor (every nav style): the placeholder, the shortcut hint chip, the query slot and the
+        // paddings. The two text widths are NOMINALS for the shipped English strings (a localised string cannot be measured
+        // from a constant), the same discipline as ChromeProfileNameW. Chrome.SearchPillMinW adds the engine's query slot.
+        public const float ChromeSearchPlaceholderW = 56f;
+        public const float ChromeSearchHintW = 52f;
+        public const float ChromeSearchPillPadW = 20f;
 
         /// <summary>The MINIMUM GUARANTEED form of the search: a magnifier that CLICK-expands, styled as a bar-nav
         /// island button (40 + 2+2). Tabs are measured against THIS, not against the field — the search yields all the
@@ -190,6 +194,10 @@ public static partial class Shell
     /// search. Every stage promotion is budget-checked, so it is entered only when the row still seats
     /// <see cref="Layout.ChromeSearchMinW"/> and the tabs beside its own new cost — a threshold is a PERMISSION, not a
     /// decision.</para>
+    /// <para><b>The Zune row (<c>zune</c>, <c>compactSearch</c>).</b> Zune never draws Forward, so the budget never prices it,
+    /// and its right-aligned compact search is always exactly <see cref="Layout.ChromeSearchMinW"/> when a field is seatable
+    /// at all. Neither changes which stage the row can afford beyond that, so the seating invariant above holds for both.
+    /// With neither flag set the resolution is the classic one.</para>
     /// <para><b>Form and width are two different questions (#88).</b> <see cref="SearchMode"/> answers "which shape is
     /// on screen"; <see cref="SearchWidth"/>/<see cref="FieldWidthFor"/> answer "how wide is it". <see
     /// cref="LaidOutSearchWidth"/> conflates the two for a caller that re-reads the form fresh on every call, which is
@@ -219,7 +227,12 @@ public static partial class Shell
         // and held across resolves with a WIDEN-IMMEDIATELY / NARROW-AFTER-hysteresis shape: the OPPOSITE polarity
         // from the boolean stages below (which promote late, demote at once), because here it is GROWTH that must
         // never clip a longer title and SHRINKING that must not reclaim space only to hand it straight back.
-        float LeadClusterW)
+        float LeadClusterW,
+        // The width the search pill EASES to while its field has focus (F5): in field mode SearchWidth ≤ SearchExpandW ≤
+        // ChromeSearchMaxW, in icon mode the icon's own 44. It is bounded by the RESERVED LeadClusterW (not the tabs' required
+        // extent), so FixedBudget + SearchExpandW + LeadClusterW ≤ width and the widened pill spends only the drag gap — the tabs
+        // never move. Focus is not an input to Resolve, so focusing the field can neither republish the layout nor change LeadClusterW.
+        float SearchExpandW = 0f)
     {
         /// <summary>Bell · Friends · Pin are in the trailing row together.</summary>
         public bool ActionsInRow => ShowActions;
@@ -241,18 +254,23 @@ public static partial class Shell
 
         /// <inheritdoc cref="FromWidth"/>
         public static Chrome Resolve(float width, int tabCount, Chrome? previous = null,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
-            => Resolve(width, EstimatedTabExtent(tabCount), previous, chip);
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, bool zune = false, bool compactSearch = false)
+            => Resolve(width, EstimatedTabExtent(tabCount), previous, chip, zune, compactSearch);
 
+        /// <param name="zune">The Zune style: the budget never prices the Forward button (it is not drawn). Alt+Right and the
+        /// engine's mouse X2 handling stay; the back button keeps its history menu.</param>
+        /// <param name="compactSearch">The Zune title bar's right-aligned compact search: when the row can seat a field at
+        /// all, it is exactly <see cref="Layout.ChromeSearchMinW"/> wide instead of the width ladder's preferred width. The
+        /// budget is unchanged (the minimum is what the Field/Icon test already requires), so the seating invariant holds.</param>
         public static Chrome Resolve(float width, float naturalTabExtent, Chrome? previous = null,
-            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
+            FrameRules.ChipForm chip = FrameRules.ChipForm.Profile, bool zune = false, bool compactSearch = false)
         {
             width = MathF.Max(0f, width);
             naturalTabExtent = MathF.Max(Layout.ChromeTabViewportMinW, naturalTabExtent);
-            var candidate = StageFor(width, naturalTabExtent, chip);
-            if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null);
+            var candidate = StageFor(width, naturalTabExtent, chip, zune);
+            if (previous is not { } old) return Compose(width, naturalTabExtent, in candidate, chip, null, compactSearch);
 
-            var reserved = StageFor(MathF.Max(0f, width - Layout.ChromePromotionHysteresisW), naturalTabExtent, chip);
+            var reserved = StageFor(MathF.Max(0f, width - Layout.ChromePromotionHysteresisW), naturalTabExtent, chip, zune);
             var held = new Stage(
                 candidate.Name && (old.ShowName || reserved.Name),
                 candidate.Actions && (old.ShowActions || reserved.Actions),
@@ -261,7 +279,7 @@ public static partial class Shell
                 candidate.NewTab && (old.ShowNewTab || reserved.NewTab),
                 candidate.Trailing && (old.ShowTrailing || reserved.Trailing),
                 candidate.Field && (old.SearchMode == MergedSearchMode.Field || reserved.Field));
-            return Compose(width, naturalTabExtent, in held, chip, old.LeadClusterW);
+            return Compose(width, naturalTabExtent, in held, chip, old.LeadClusterW, compactSearch);
         }
 
         public float FixedBudgetFor()
@@ -328,11 +346,52 @@ public static partial class Shell
         /// [min, max]. A measurement below the minimum is evidence the measurement is wrong, not the ladder. (#88)</para></summary>
         public static float FieldWidthFor(float searchWidth, float measuredCentreAvail)
         {
-            float w = Math.Clamp(searchWidth, Layout.ChromeSearchMinW, Layout.ChromeSearchMaxW);
+            // A non-finite allocation is evidence the input is wrong, not the ladder: it takes the compact width.
+            float w = float.IsFinite(searchWidth)
+                ? Math.Clamp(searchWidth, Layout.ChromeSearchMinW, Layout.ChromeSearchMaxW)
+                : Layout.ChromeSearchMinW;
             if (float.IsFinite(measuredCentreAvail) && measuredCentreAvail >= Layout.ChromeSearchMinW)
                 w = MathF.Min(w, MathF.Min(measuredCentreAvail, Layout.ChromeSearchMaxW));
             return w;
         }
+
+        /// <summary>The width the FOCUSED pill is laid out at (F5). While expanded the ALLOCATOR is authoritative: the elastic
+        /// lane's <c>CenterAvail</c> is a feedback of this very width (the #88 paragraph on <see cref="FieldWidthFor"/>), so
+        /// trimming the expanded width against it would pin the pill at its rest width. <paramref name="expandW"/> is
+        /// <see cref="SearchExpandW"/>; <paramref name="restW"/> the rest width (never narrowed). A non-finite allocation
+        /// takes the compact width, like <see cref="FieldWidthFor"/>.</summary>
+        public static float ExpandedFieldWidth(float expandW, float restW)
+            => float.IsFinite(expandW)
+                ? Math.Clamp(expandW, MathF.Max(restW, Layout.ChromeSearchMinW), Layout.ChromeSearchMaxW)
+                : Layout.ChromeSearchMinW;
+
+        /// <summary>Caps the focused pill's width so it never grows over the Zune pivot row (C3). The pill is the first child of the
+        /// right-aligned trailing island, so its RIGHT edge stays put and all of the growth goes LEFT: the room is
+        /// <c>pillRight - pivotsRight - Spacing.M</c>. Floored at <paramref name="restW"/> (the pill is never narrower than at rest)
+        /// and never above <paramref name="expandW"/>. A non-finite pill edge or pivots edge (outside Zune, or not measured)
+        /// returns <paramref name="expandW"/> unchanged.</summary>
+        public static float CapExpandForPivots(float expandW, float restW, float pillRight, float pivotsRight)
+            => float.IsFinite(pillRight) && float.IsFinite(pivotsRight) && float.IsFinite(expandW)
+                ? MathF.Max(restW, MathF.Min(expandW, pillRight - pivotsRight - Spacing.M))
+                : expandW;
+
+        /// <summary>The shortcut the search pill's hint chip names, from ONE constant. Ctrl+K opens the command palette in
+        /// Wavee; Ctrl+F focuses the search (<c>Shell.FindChord</c>), so that is the chord shown.</summary>
+        public const string SearchHintChord = "Ctrl+F";
+
+        /// <summary>The narrowest the search PILL is ever laid out: the placeholder, the hint chip, the engine's query slot
+        /// (button plus its margins) and the paddings. <see cref="Layout.ChromeSearchMinW"/> is far above it, so
+        /// <c>Resolve</c> never sizes the pill below it; <see cref="ShowSearchHint"/> still guards the arithmetic.</summary>
+        public static float SearchPillMinW
+            => Layout.ChromeSearchPlaceholderW + Layout.ChromeSearchHintW + Layout.ChromeSearchPillPadW
+             + FluentGpu.Controls.AutoSuggestBox.QueryButtonWidth + FluentGpu.Controls.AutoSuggestBox.QueryButtonLeftMargin
+             + FluentGpu.Controls.AutoSuggestBox.RightButtonMargin;
+
+        /// <summary>The hint chip shows ONLY while the field is unfocused AND empty (typed text and the focused-only ghost
+        /// completion can then never run under it) and the pill is wide enough to seat it beside the placeholder. Below the
+        /// floor the hint is dropped by rule, never clipped.</summary>
+        public static bool ShowSearchHint(bool focused, bool empty, float pillWidth)
+            => !focused && empty && pillWidth >= SearchPillMinW;
 
         /// <summary>The laid-out width of whichever search FORM this allocation chose — the icon branch is reachable
         /// only from a call site that is itself the icon form (or a test asserting the allocator's own bookkeeping,
@@ -358,7 +417,6 @@ public static partial class Shell
         public static float FixedBudget(bool name, bool actionsInRow, bool forward, bool back, bool newTab, bool trailing,
             FrameRules.ChipForm chip = FrameRules.ChipForm.Profile)
             => Layout.ChromeBarLeadW
-             + Layout.ChromeThemeToggleW
              + (back ? Layout.ChromeNavButtonW : 0f)
              + (forward ? Layout.ChromeNavButtonW : 0f)
              + (newTab ? Layout.ChromeAddSlotW : 0f)
@@ -387,10 +445,10 @@ public static partial class Shell
 
         readonly record struct Stage(bool Name, bool Actions, bool Forward, bool Back, bool NewTab, bool Trailing, bool Field);
 
-        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip)
+        static Stage StageFor(float width, float naturalTabExtent, FrameRules.ChipForm chip, bool zune)
         {
             bool name = false, actionsInRow = false;
-            bool forward = width > Layout.ChromeForwardEnterW;
+            bool forward = !zune && width > Layout.ChromeForwardEnterW;
             bool back = true, newTab = true, trailing = true;
 
             // The tab viewport is the last elastic lane. Under extreme pressure shed fixed islands before allowing it
@@ -443,21 +501,32 @@ public static partial class Shell
         }
 
         static Chrome Compose(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
-            float? previousLeadClusterW)
+            float? previousLeadClusterW, bool compactSearch)
         {
-            float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip);
+            float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip, compactSearch);
+            float lead = LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW);
+            // The focused pill's width (F5). The lane is the budget with the tabs at their REQUIRED extent; the narrow-later hold can
+            // keep `lead` above that, so the bound is the smaller of the two — the reserved cluster is never spent.
+            float expand = stage.Field
+                ? Math.Clamp(QuantiseDown(MathF.Min(
+                        SearchLane(width, naturalTabExtent, stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip),
+                        width - FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip) - lead)),
+                    searchWidth, Layout.ChromeSearchMaxW)
+                : Layout.ChromeSearchIconW;
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
-                stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth,
-                LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW));
+                stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth, lead, expand);
         }
 
         /// <summary>The field is sized to the LANE, capped by the desire and floored at the minimum — so the published
         /// <see cref="SearchWidth"/> is by construction a width the row can seat
         /// (<c>FixedBudget + SearchWidth + RequiredTabExtent ≤ width</c>), which is the invariant the view then trusts
         /// instead of second-guessing it against a measurement. (#88)</summary>
-        static float SearchWidthFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip)
+        static float SearchWidthFor(float width, float naturalTabExtent, in Stage stage, FrameRules.ChipForm chip,
+            bool compactSearch)
         {
             if (!stage.Field) return Layout.ChromeSearchIconW;
+            // The compact (Zune) field is the minimum the stage was already admitted on, so it is by construction seatable.
+            if (compactSearch) return Layout.ChromeSearchMinW;
             float lane = SearchLane(width, naturalTabExtent,
                 stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip);
             return Math.Clamp(MathF.Min(PreferredSearchWidth(width), QuantiseDown(lane)),

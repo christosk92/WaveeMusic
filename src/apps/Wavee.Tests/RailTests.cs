@@ -7,6 +7,7 @@
 // prefs facts drive the real store through `Platform.UseSettings` and live in the platform collection, which disables
 // parallelism for every test that swaps that process-wide backing store.
 
+using FluentGpu.Dsl;
 using Wavee;
 using Xunit;
 
@@ -348,5 +349,53 @@ public sealed class NpvPlayerPrefsTests : IDisposable
         Assert.Equal(0, Rail.PlayerPrefs.Choice(record, Rail.PlayerCatalog.Option(record, "rpm")));
         _store.Set(Platform.Keys.NpvPlayerStyle, 77);
         Assert.Equal(Rail.PlayerCatalog.Record, Rail.PlayerPrefs.Style());
+    }
+}
+
+// ── the now-playing header's geometry (A4) ─────────────────────────────────────────────────────────────────────────────
+
+public class RailHeaderGeometryTests
+{
+    [Fact]
+    public void The_caption_starts_on_the_pane_inset_from_the_rail_edge()
+        => Assert.Equal(PageGeometry.PaneInset, Rail.Hero.HeaderInsetL + Rail.Hero.Inset);
+
+    [Fact]
+    public void The_gear_sits_on_the_other_rail_arms_close_button_axis()
+    {
+        // HeaderBox: Padding.Right = Spacing.S, then a 32-DIP icon button whose centre is half of it further in.
+        Assert.Equal(Spacing.S + Controls.IconButtonSize / 2f, Rail.Hero.TrailingIconAxis);
+        Assert.Equal(24f, Rail.Hero.TrailingIconAxis);
+    }
+
+    [Fact]
+    public void The_tabs_item_box_plus_the_bars_padding_fills_the_header_strip_exactly()
+    {
+        var style = Design.RailViewsStyle;
+        Assert.Equal(Rail.Hero.HeaderRowH, style.ItemHeight + 2f * PageGeometry.ViewsBarPadY);
+        Assert.Equal(0f, style.LeadingInset);
+    }
+
+    [Fact]
+    public void The_tabs_label_line_box_shares_the_caption_and_gear_line_box_and_the_pill_fits()
+    {
+        var style = Design.RailViewsStyle;
+        var pad = style.ItemPadding ?? throw new Xunit.Sdk.XunitException("the rail tabs set their item padding");
+        // SelectorBar centres a fixed-height item's content, so the label's line-box top is bar padding + the centring slack
+        // + item top padding. It must be the eyebrow's (36 - 20) / 2, and the pill row (3) must fit inside the item.
+        float content = pad.Top + Rail.Hero.HeaderLine + pad.Bottom + 3f;
+        Assert.True(content <= style.ItemHeight);
+        float slackTop = (style.ItemHeight - content) / 2f;
+        float lineBoxTop = PageGeometry.ViewsBarPadY + slackTop + pad.Top;
+        Assert.Equal((Rail.Hero.HeaderRowH - Rail.Hero.HeaderLine) / 2f, lineBoxTop);
+        Assert.Equal(8f, lineBoxTop);
+        Assert.Equal(0f, slackTop);
+    }
+
+    [Fact]
+    public void The_header_line_is_the_shared_views_line_height()
+    {
+        Assert.Equal(Rail.Hero.HeaderLine, Design.PageViewsStyle.LineHeight);
+        Assert.Equal(Rail.Hero.HeaderLine, Design.RailViewsStyle.LineHeight);
     }
 }

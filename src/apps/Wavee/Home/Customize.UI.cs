@@ -80,40 +80,40 @@ public sealed class CustomizeScreen : Component
             rows[i] = _reorder.Item(item, RowFor(entry, item, n), key: entry.Kind);
         }
 
+        float g = Shell.Ui.PageGutter.Value;
         return new BoxEl
         {
             Key = "home-customize", Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
             Children =
             [
-                Header(),
+                Header(g),
                 new BoxEl
                 {
+                    // The reorderable list is the scroller, and its bottom clears the player bar (PageGeometry.BottomReserve).
                     Key = "home-customize-list", Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Direction = 1,
-                    Padding = new Edges4(Left: Spacing.XXXL, Top: 16f, Right: Spacing.XXXL, Bottom: Spacing.XXL),
-                    Children = [_reorder.List(new BoxEl { Direction = 1, MinWidth = 0f, Grow = 1f, Shrink = 1f, Children = rows })],
+                    Padding = new Edges4(g, 0f, g, PageGeometry.BottomReserve),
+                    Children =
+                    [
+                        // The explainer is the body's first paragraph, not a second meta line: the head stays one fixed height.
+                        Ui.Body(Loc.Get(Strings.Home.CustomizeBody)) with
+                        {
+                            Key = "home-customize-explainer", Color = Tok.TextSecondary, Wrap = TextWrap.Wrap, Shrink = 0f,
+                            Margin = new Edges4(0f, 0f, 0f, Spacing.M),
+                        },
+                        _reorder.List(new BoxEl { Direction = 1, MinWidth = 0f, Grow = 1f, Shrink = 1f, Children = rows }),
+                    ],
                 },
             ],
         };
     }
 
-    Element Header() => new BoxEl
+    /// <summary>The shared page head, kind Title (<c>PageHeadRules.Extent</c> 120): Reset is the title row's action. No
+    /// meta, so the reserved meta line stays empty.</summary>
+    Element Header(float gutter) => PageHead.Create(new PageHeadSpec(Loc.Get(Strings.Home.Customizer.Title))
     {
-        Key = "home-customize-header", Direction = 0, AlignItems = FlexAlign.Center, Gap = 16f,
-        Padding = new Edges4(Left: Spacing.XXXL, Top: Spacing.XXL, Right: Spacing.XXXL, Bottom: 0f),
-        Children =
-        [
-            new BoxEl
-            {
-                Direction = 1, Grow = 1f, Shrink = 1f, MinWidth = 0f, Gap = 4f,
-                Children =
-                [
-                    Design.Type.PageHero(Loc.Get(Strings.Home.Customizer.Title)) with { Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis, MaxLines = 1 },
-                    Design.Type.TrackMeta(Loc.Get(Strings.Home.CustomizeBody)) with { Wrap = TextWrap.Wrap, MaxLines = 2 },
-                ],
-            },
-            Button.Standard(Loc.Get(Strings.Home.ResetDefault), Reset) with { Shrink = 0f },
-        ],
-    };
+        Actions = Button.Standard(Loc.Get(Strings.Home.ResetDefault), Reset) with { Shrink = 0f },
+        Gutter = gutter, Key = "home-customize-header",
+    });
 
     Element RowFor(LayoutEntry entry, int index, int count)
         => Embed.Comp(new RowProps(this, entry, index, count), static () => new ZoneRow());

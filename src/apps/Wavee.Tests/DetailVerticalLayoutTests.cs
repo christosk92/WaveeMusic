@@ -10,6 +10,7 @@
 
 using Xunit;
 using VerticalLayout = Wavee.Detail.VerticalLayout;
+using BandLayout = Wavee.Detail.BandLayout;
 
 namespace Wavee.Tests;
 
@@ -597,5 +598,114 @@ public class DetailVerticalLayoutTests
         float b = VerticalLayout.BucketW(w);
         Assert.True(b > 0f);
         Assert.Equal(0f, b % 8f);
+    }
+
+    // ── the collapse floor: the band's 56, in every nav style ────────────────────────────────────────────────────
+
+    [Fact]
+    public void BandFloor_IsTheBandInThePage()
+    {
+        Assert.Equal(56f, VerticalLayout.BandFloor);
+        Assert.Equal(VerticalLayout.CompactIdentityHeight, VerticalLayout.BandFloor);
+    }
+
+    [Theory]
+    [InlineData(360f)]
+    [InlineData(260f)]
+    [InlineData(568f)]
+    public void CollapseDistance_IsTheHeroLessItsFloor(float h)
+    {
+        Assert.Equal(h, VerticalLayout.CollapseDistance(h, 0f));
+        Assert.Equal(h - 56f, VerticalLayout.CollapseDistance(h, 56f));
+        Assert.Equal(VerticalLayout.CollapseDistance(h, 56f), VerticalLayout.CollapseDistance(h));   // the one-arg form is the 56 form
+        Assert.Equal(1f, VerticalLayout.CollapseDistance(20f, 56f));                                    // never below 1
+    }
+
+    /// <summary>The engine's Collapse pairing (over = H - floor, minH = floor) makes the hero's presented bottom
+    /// <c>H - offset * (H - floor) / over</c>, clamped at the floor: that is <c>max(floor, H - offset)</c> at BOTH floors, so the
+    /// hero rides the rows 1:1 and no gap opens above the stuck column header whichever floor is latched.</summary>
+    [Theory]
+    [InlineData(0f)]
+    [InlineData(56f)]
+    public void TheHerosPresentedBottomRidesTheRowsAtEitherFloor(float floor)
+    {
+        const float H = 360f;
+        float over = VerticalLayout.CollapseDistance(H, floor);
+        for (int offset = 0; offset <= (int)H; offset++)
+        {
+            float shown = H - MathF.Min(offset, over) * (H - floor) / over;
+            Assert.Equal(MathF.Max(floor, H - offset), shown, 3);
+        }
+    }
+
+    /// <summary>The floor flips only below the flip line, where the two pairings present identically: below it the presented
+    /// bottom is the same at 56 and 0, and the hero's fade and the band's reveal have not started at either floor.</summary>
+    [Theory]
+    [InlineData(260f)]
+    [InlineData(360f)]
+    [InlineData(568f)]
+    public void BelowTheFlipLineTheTwoFloorsPresentTheSame(float H)
+    {
+        float line = BandLayout.FlipLine(H);
+        Assert.True(line > 0f);
+        float over56 = VerticalLayout.CollapseDistance(H, 56f), over0 = VerticalLayout.CollapseDistance(H, 0f);
+        for (float o = 0f; o < line; o += 4f)
+        {
+            Assert.Equal(H - o, H - o * (H - 56f) / over56, 3);
+            Assert.Equal(H - o, H - o * H / over0, 3);
+            Assert.True(o <= VerticalLayout.ExpandedFadeStart(over56) && o <= VerticalLayout.ExpandedFadeStart(over0));
+            Assert.True(o <= VerticalLayout.CompactRevealStart(over56) && o <= VerticalLayout.CompactRevealStart(over0));
+        }
+    }
+
+    /// <summary>Latched at one placement, the floor holds above the line and adopts the wanted one below it.</summary>
+    [Fact]
+    public void TheFloorLatchHoldsAboveTheLineAndAdoptsBelowIt()
+    {
+        const float H = 360f;
+        float line = BandLayout.FlipLine(H);
+        Assert.False(BandLayout.FloorLatch(latched: false, wanted: true, offset: line + 1f, H));
+        Assert.True(BandLayout.FloorLatch(latched: true, wanted: false, offset: line + 1f, H));
+        Assert.True(BandLayout.FloorLatch(latched: false, wanted: true, offset: line - 1f, H));
+        Assert.False(BandLayout.FloorLatch(latched: true, wanted: false, offset: 0f, H));
+    }
+
+    /// <summary>D49: the skeleton, the pre-measure collapse height and the loaded hero all derive the EXPANDED height from one
+    /// bucketed width, one flag set and one title plan. None of them takes the floor, so a floor flip can never change them; the
+    /// floor only changes where the collapse ends (and so its distance).</summary>
+    [Theory]
+    [InlineData(300f)]
+    [InlineData(560f)]
+    [InlineData(900f)]
+    public void TheExpandedHeightIsFloorIndependent(float w)
+    {
+        bool rowFlow = VerticalLayout.RowFlow(w);
+        float bw = VerticalLayout.BucketW(w);
+        float preMeasure = VerticalLayout.HeroBandHeight(bw, rowFlow, true, true, true, true, title: "A Playlist");
+        var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, "A Playlist", true, true, true, false, false);
+        Assert.Equal(preMeasure, VerticalLayout.HeroBandHeight(bw, rowFlow, plan, true, true, true, true));
+        Assert.Equal(56f, VerticalLayout.CollapseDistance(preMeasure, 0f) - VerticalLayout.CollapseDistance(preMeasure, 56f));
+    }
+
+
+    // ── the slim head (Liked Songs) ──────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SlimHeadHeight_IsTheStripTheTitleTheMetaTheGapAndTheBar_AndTheTitleIsFiftySixOfIt()
+    {
+        float expected = 24f + 52f + 4f + 16f + 12f + VerticalLayout.ToolbarRowHeight + VerticalLayout.ExpandedToolbarBottomPad;
+        Assert.Equal(expected, VerticalLayout.SlimHeadHeight(zune: false));
+        // Under Zune the Library pivot names the page: the title line and its gap (52 + 4) are gone.
+        Assert.Equal(VerticalLayout.SlimHeadHeight(zune: false) - 56f, VerticalLayout.SlimHeadHeight(zune: true));
+        Assert.Equal(24f + 16f + 12f + VerticalLayout.ToolbarRowHeight + VerticalLayout.ExpandedToolbarBottomPad,
+                     VerticalLayout.SlimHeadHeight(zune: true));
+    }
+
+    [Fact]
+    public void SlimHeadHeight_DependsOnTheNavStyleOnly_AndStaysAboveTheBandFloor()
+    {
+        // No width and no data parameter exists: a head cannot jump when the meta lands or the pane resizes.
+        Assert.True(VerticalLayout.SlimHeadHeight(zune: true) > VerticalLayout.BandFloor);
+        Assert.True(VerticalLayout.CollapseDistance(VerticalLayout.SlimHeadHeight(zune: true), VerticalLayout.BandFloor) >= 1f);
     }
 }

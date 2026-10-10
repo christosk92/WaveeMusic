@@ -25,6 +25,14 @@
 // the identity's title — pure, so all three agree whenever the title is known): every block the hero adds has its flag,
 // and the flow decision is read off the raw column width in all three (424 enter / 400 leave).
 //
+// THE COLLAPSE FLOOR. D49's three numbers are the EXPANDED hero's height and are floor-independent: the floor
+// (VerticalLayout.BandFloor, the band's 56) only changes where the collapse ENDS. An album, a prerelease or a playlist has
+// no Zune row 2 (ZuneSubRow.None): it keeps its own sticky band in every nav style, so its hero collapses to the band's 56
+// and the chrome sticks below it. NO scroll compensation is needed or written (fluent-gpu ScrollEffect.cs:153-172):
+// Collapse and Sticky are PAINT channels (PresentedH / ClipBottom / TransY), so the rows never move; the pairing
+// over = H - floor with minH = floor keeps the hero's presented bottom at H - offset (clamped at the floor), so it rides
+// the column header exactly. The band keeps drawing the whole time, so the stuck strip is never empty.
+//
 // NAME NOTE: `Text`, `Skeleton` and `Config` are nested Detail classes here — text runs are `new TextEl`/`Ui.*`.
 
 using System.Globalization;
@@ -53,11 +61,16 @@ public static partial class Detail
         /// only; not part of the table contract and not compared. Null ⇒ the hero plays the context.</summary>
         internal Action? PlayAll { get; init; }
 
-        /// <summary>── INSIGHTS SHEET (additive) ── The frame's sheet toggle, when this arm hosts the facts bento in a
-        /// sheet (<see cref="InsightsSheet.ShowsToggle"/>). Set by the frame only — a stable per-host object, so like
-        /// <see cref="PlayAll"/> it is not compared: its OPEN state travels by signal, never by a re-push. Null ⇒ this
-        /// page has no facts and the toolbar row carries no toggle.</summary>
+        /// <summary>── INSIGHTS SHEET (additive) ── The frame's sheet toggle, present when this page's KIND carries facts
+        /// (<see cref="InsightsSheet.ToggleSlotReserved"/>): the toggle's slot in the command bar and the band's cluster is
+        /// RESERVED from the first frame. Set by the frame only — a stable per-host object, so like <see cref="PlayAll"/> its
+        /// OPEN state travels by signal, never by a re-push. Null ⇒ this kind has no facts and the command bar carries no
+        /// toggle.</summary>
         internal InsightsToggle? Insights { get; init; }
+
+        /// <summary>── INSIGHTS SHEET ── The facts have settled (<see cref="InsightsSheet.ShowsToggle"/>): the reserved toggle is
+        /// visible and live. Until then it is present at opacity 0 and inert, so a late fact adds no button and moves nothing.</summary>
+        internal bool InsightsLive { get; init; }
 
         public bool Equals(VerticalSpec? o)
         {
@@ -67,7 +80,7 @@ public static partial class Detail
                 // ── INSIGHTS SHEET (additive) ── PRESENCE, like every slot: the toggle appears when the page's facts
                 //    arrive and goes when they do not, and the hero must re-render for exactly that (its open STATE is
                 //    a signal the button binds, so opening the sheet still costs no render here).
-                && (Insights is null) == (o.Insights is null);
+                && (Insights is null) == (o.Insights is null) && InsightsLive == o.InsightsLive;
         }
 
         public override int GetHashCode() => HashCode.Combine(Identity, Config, Actions, Slots);
@@ -114,12 +127,16 @@ public static partial class Detail
     /// null-title plan (a one-line title at the fluid cap).</summary>
     public static float HeroBandHeight(VerticalSpec spec, float columnWidth)
     {
+        // The slim head's band is a function of the PRESENTED nav style alone (VerticalLayout.SlimHeadHeight), never of the
+        // width or the data.
+        if (spec.Config.SlimHead) return VerticalLayout.SlimHeadHeight(Shell.Ui.PresentedNavStyle.Peek() == ShellNavStyle.Zune);
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
         bool rowFlow = VerticalLayout.RowFlow(w);
         float bw = VerticalLayout.BucketW(w);
         var f = FlagsOf(spec);
         return VerticalLayout.HeroBandHeight(bw, rowFlow, f.Eyebrow, f.Attribution, f.Meta, f.Description,
-                                             pulse: f.Pulse, chart: f.Chart, title: spec.Identity.Title);
+                                             pulse: f.Pulse, chart: f.Chart, title: spec.Identity.Title,
+                                             actionLines: VerticalLayout.ActionRowLinesFor(bw, rowFlow, Skeleton.HasLabelledShuffle(spec.Identity.Kind)));
     }
 
     // ══ 3. THE HERO ══════════════════════════════════════════════════════════════════════════════════════════════════
@@ -204,131 +221,144 @@ public static partial class Detail
 
             bool compactCanHit = parts.CompactInteractive.Value;   // subscribe: the stuck edge moves input ownership
 
-            // ── geometry: the flow off the raw width (hysteretic), everything else off ONE bucketed width ──
             float availW = parts.ColumnWidth > 0f ? parts.ColumnWidth : VerticalLayout.FallbackW;
-            _rowFlow = VerticalLayout.RowFlow(availW, _rowFlow, _flowInit);
-            if (parts.ColumnWidth > 0f) _flowInit = true;
-            bool rowFlow = _rowFlow;
-            float bw = VerticalLayout.BucketW(availW);
-            float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
-            float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
-            float art = VerticalLayout.ArtworkFor(bw, rowFlow);
-            float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
-            int descLines = VerticalLayout.DescriptionMaxLines(rowFlow);
-            float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
-            // Unmeasured asks the 256 bucket the preview/skeleton already resolved (a cache hit, not a guess).
-            int decodePx = VerticalLayout.ArtworkDecodePx(art, _boundsSeen);
-            ColorF accent = spec.Accent();
-            var f = FlagsOf(spec);
+            Element expanded;
+            if (cfg.SlimHead)
+            {
+                // Liked Songs: the slim head - title (outside Zune), meta, ONE bar. No artwork, rule, description or flow.
+                expanded = SlimExpanded(id, parts, Shell.Ui.PresentedNavStyle.Value == ShellNavStyle.Zune, _measure);
+            }
+            else
+            {
+                // ── geometry: the flow off the raw width (hysteretic), everything else off ONE bucketed width ──
+                _rowFlow = VerticalLayout.RowFlow(availW, _rowFlow, _flowInit);
+                if (parts.ColumnWidth > 0f) _flowInit = true;
+                bool rowFlow = _rowFlow;
+                float bw = VerticalLayout.BucketW(availW);
+                float pad = VerticalLayout.HeroPadFor(bw, rowFlow);
+                float gap = VerticalLayout.HeroGapFor(bw, rowFlow);
+                float art = VerticalLayout.ArtworkFor(bw, rowFlow);
+                float contentW = VerticalLayout.ContentWidthFor(bw, rowFlow);
+                int descLines = VerticalLayout.DescriptionMaxLines(rowFlow);
+                float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
+                // Unmeasured asks the 256 bucket the preview/skeleton already resolved (a cache hit, not a guess).
+                int decodePx = VerticalLayout.ArtworkDecodePx(art, _boundsSeen);
+                ColorF accent = spec.Accent();
+                var f = FlagsOf(spec);
 
-            // ── the title TYPE PLAN: ONE size per (bucketed width, title), drawn exactly (no auto-fit, no hysteresis) ──
-            var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
-                eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
+                // The action row's LINES at this width: the one rule the skeleton and the pre-measure band read too, so the
+                // title budget, the identity gap and the reserved height all charge the row the hero actually draws.
+                int actionLines = VerticalLayout.ActionRowLinesFor(bw, rowFlow, acts.HasPlaySplit);
 
-            // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
-            var blocks = new List<Element>(10);
-            if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", EyebrowRun(id.Eyebrow), late: true));
-            blocks.Add(Block("hero-title", slots.Title is { } editTitle
-                ? editTitle(plan.Size, float.NaN)
-                : Design.Type.DetailHero(id.Title) with
+                // ── the title TYPE PLAN: ONE size per (bucketed width, title), drawn exactly (no auto-fit, no hysteresis) ──
+                var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
+                    eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart,
+                    actionLines: actionLines);
+
+                // ── the identity column, block for block (each keyed; late rows fade up, every row FLIPs) ──
+                var blocks = new List<Element>(10);
+                if (f.Eyebrow) blocks.Add(Block("hero-eyebrow", EyebrowRun(id.Eyebrow), late: true));
+                blocks.Add(Block("hero-title", slots.Title is { } editTitle
+                    ? editTitle(plan.Size, float.NaN)
+                    : Design.Type.DetailHero(id.Title) with
+                    {
+                        Size = plan.Size, Weight = 600,
+                        // CLEARED: the natural line box of the size drawn (the plan's LineHeight is that same number).
+                        LineHeight = float.NaN,
+                        Width = plan.WrapWidth, MaxWidth = plan.WrapWidth,
+                        // WRAPS freely: the cap is the pathological-length guard, never the plan's line count.
+                        Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap,
+                        Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary,
+                    }));
+                blocks.Add(Block("hero-rule", Controls.AccentRule(accent)));
+                if (f.Attribution) blocks.Add(Block("hero-attribution", HeroAttribution(id, slots, contentW, accent), late: true));
+                if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
+                if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
+                if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
+                blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts, VerticalLayout.LabelledShuffleFits(bw, rowFlow))));
+
+                // The description is no longer a row of the identity column: it is the padded box's second child, after
+                // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
+                Element? description = null;
+                if (id.EditableMetadata && slots.Description is { } editDescription)
+                    description = editDescription(descW);
+                else if (id.DescriptionHtml is { Length: > 0 } html)
+                    // Clamped with the inline "… More" the engine shows only when the body overflows, and the whole text on
+                    // hover while collapsed (fullTextTip).
+                    description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, descW, descLines,
+                                                              id.Subject.Text, s_navRoute, fullTextTip: true);
+
+                float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
+                    f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines);
+
+                // AlignItems Stretch (+ a definite width when stacked) is load-bearing: the action row WRAPS, and a wrap
+                // needs a definite width to wrap against.
+                Element identity = new BoxEl
                 {
-                    Size = plan.Size, Weight = 600,
-                    // CLEARED: the natural line box of the size drawn (the plan's LineHeight is that same number).
-                    LineHeight = float.NaN,
-                    Width = plan.WrapWidth, MaxWidth = plan.WrapWidth,
-                    // WRAPS freely: the cap is the pathological-length guard, never the plan's line count.
-                    Wrap = TextWrap.WrapWholeWords, MaxLines = VerticalLayout.TitleLineCap,
-                    Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary,
-                }));
-            blocks.Add(Block("hero-rule", Controls.AccentRule(accent)));
-            if (f.Attribution) blocks.Add(Block("hero-attribution", HeroAttribution(id, slots, contentW, accent), late: true));
-            if (f.Meta) blocks.Add(Block("hero-meta", HeroMeta(id, contentW), late: true));
-            if (f.Pulse && slots.Pulse is { } pulse) blocks.Add(Block("hero-pulse", pulse(), late: true));
-            if (f.Chart) blocks.Add(Block("hero-chart", ChartCaption(id, slots), late: true));
-            blocks.Add(Block("hero-actions", HeroActions(spec, id, cfg, acts)));
+                    Direction = 1, Gap = identityGap, AlignItems = FlexAlign.Stretch,
+                    Width = rowFlow ? float.NaN : contentW,
+                    Grow = rowFlow ? 1f : 0f, Basis = rowFlow ? 0f : float.NaN, MinWidth = 0f,
+                    MinHeight = VerticalLayout.IdentityMinHeightFor(bw, rowFlow),
+                    Children = blocks.ToArray(),
+                };
 
-            // The description is no longer a row of the identity column: it is the padded box's second child, after
-            // the whole [artwork, identity] row, in both flows (D49's band arithmetic already excludes it here).
-            Element? description = null;
-            if (id.EditableMetadata && slots.Description is { } editDescription)
-                description = editDescription(descW);
-            else if (id.DescriptionHtml is { Length: > 0 } html)
-                // Clamped with the inline "… More" the engine shows only when the body overflows, and the whole text on
-                // hover while collapsed (fullTextTip).
-                description = Controls.ExpandableRichText(html, 13f, Tok.TextSecondary, accent, descW, descLines,
-                                                          id.Subject.Text, s_navRoute, fullTextTip: true);
+                // The page's ANCHOR: no entrance, no morph. The bounds tween grows from the top-left so the cover's corner
+                // stays pinned to the title's top across a resize.
+                Element artwork = ClickableCover(new BoxEl
+                {
+                    Width = art, Height = art, Shrink = 0f,
+                    Corners = CornerRadius4.All(Radii.Card), Shadow = Elevation.Card, ClipToBounds = true,
+                    Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
+                    Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
+                    Children = [slots.Cover?.Invoke(art)
+                        ?? Controls.Artwork(id.CoverUrl, art, art, Radii.Card, decodePx: decodePx, saturation: 1.18f)],
+                }, acts.CoverClick);
 
-            float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
+                // Stacked ↔ row is the SAME two children in the same order: the reflow animates as one gesture.
+                Element hero = new BoxEl
+                {
+                    Direction = rowFlow ? (byte)0 : (byte)1, Gap = gap, AlignItems = FlexAlign.Start,
+                    Animate = HeroReflowMotion,
+                    Children = [artwork, identity],
+                };
 
-            // AlignItems Stretch (+ a definite width when stacked) is load-bearing: the action row WRAPS, and a wrap
-            // needs a definite width to wrap against.
-            Element identity = new BoxEl
-            {
-                Direction = 1, Gap = identityGap, AlignItems = FlexAlign.Stretch,
-                Width = rowFlow ? float.NaN : contentW,
-                Grow = rowFlow ? 1f : 0f, Basis = rowFlow ? 0f : float.NaN, MinWidth = 0f,
-                MinHeight = VerticalLayout.IdentityMinHeightFor(bw, rowFlow),
-                Children = blocks.ToArray(),
-            };
-
-            // The page's ANCHOR: no entrance, no morph. The bounds tween grows from the top-left so the cover's corner
-            // stays pinned to the title's top across a resize.
-            Element artwork = ClickableCover(new BoxEl
-            {
-                Width = art, Height = art, Shrink = 0f,
-                Corners = CornerRadius4.All(Radii.Card), Shadow = Elevation.Card, ClipToBounds = true,
-                Animate = HeroGeometryMotion, TransformOriginX = 0f, TransformOriginY = 0f,
-                Draggable = acts.CoverDrag is { } drag ? Drag.Source(drag) : null,
-                Children = [slots.Cover?.Invoke(art)
-                    ?? Controls.Artwork(id.CoverUrl, art, art, Radii.Card, decodePx: decodePx, saturation: 1.18f)],
-            }, acts.CoverClick);
-
-            // Stacked ↔ row is the SAME two children in the same order: the reflow animates as one gesture.
-            Element hero = new BoxEl
-            {
-                Direction = rowFlow ? (byte)0 : (byte)1, Gap = gap, AlignItems = FlexAlign.Start,
-                Animate = HeroReflowMotion,
-                Children = [artwork, identity],
-            };
-
-            Element expanded = new BoxEl
-            {
-                Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = _measure,
-                Children =
-                [
-                    new BoxEl
-                    {
-                        Direction = 1, Animate = HeroReflowMotion,
-                        Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
-                        Children = description is null
-                            ? [hero]
-                            : [hero, Block("hero-description", description, late: true) with
-                                  { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }],
-                    },
-                    new BoxEl
-                    {
-                        Direction = 1,
-                        Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
-                                             parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
-                        // ── INSIGHTS SHEET (additive) ── the toolbar ROW: the table's command bar, plus the sheet's
-                        //    toggle pinned to its trailing end when this page has facts and no rail to show them in
-                        //    (Detail.Insights.cs). The bar keeps the whole row when there is no toggle, so a page
-                        //    without facts composes exactly the tree it composed before. This is the PRE-STUCK half of
-                        //    the control: once the hero collapses the pinned band's word (§7) is the reachable one.
-                        Children = [ToolbarRow(parts, spec.Insights)],
-                    },
-                ],
-            };
+                expanded = new BoxEl
+                {
+                    Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = _measure,
+                    Children =
+                    [
+                        new BoxEl
+                        {
+                            Direction = 1, Animate = HeroReflowMotion,
+                            Padding = new Edges4(pad, pad, pad, VerticalLayout.HeroBottomPad),
+                            Children = description is null
+                                ? [hero]
+                                : [hero, Block("hero-description", description, late: true) with
+                                      { Margin = new Edges4(0f, VerticalLayout.DescriptionGapFor(rowFlow), 0f, 0f) }],
+                        },
+                        new BoxEl
+                        {
+                            Direction = 1,
+                            Padding = new Edges4(parts.CompactLeft, VerticalLayout.ExpandedToolbarTopPad,
+                                                 parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+                            // ── INSIGHTS SHEET (additive) ── the toolbar row IS the table's command bar: the sheet's toggle
+                            //    is one of its members (between the search and "…") when this page has facts
+                            //    (Detail.Insights.cs §6). This is the PRE-STUCK half of the control: once the hero collapses
+                            //    the pinned band's word (§7) is the reachable one.
+                            Children = [parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight }],
+                        },
+                    ],
+                };
+            }
 
             // ── the STUCK BAND: typography only, NO fill (the offset model — the rows are clipped under it) ──
             float heroH = parts.HeroHeight > 1f ? parts.HeroHeight : HeroBandHeight(spec, availW);
-            float cd = VerticalLayout.CollapseDistance(heroH);
+            float cd = VerticalLayout.CollapseDistance(heroH, VerticalLayout.BandFloor);
 
             string? byline = Text.Byline(id.OwnerName, id.Meta, id.Eyebrow);
             Element identityBlock = new BoxEl
             {
-                Direction = 1, MinWidth = 0f, Shrink = 1f, Gap = 0f,
+                Direction = 0, MinWidth = 0f, Shrink = 1f, Gap = Spacing.S, AlignItems = FlexAlign.Center,
                 Children = byline is { Length: > 0 } ? [BandTitle(id.Title), BandByline(byline)] : [BandTitle(id.Title)],
             };
             // The expanded search field takes the TITLE's place, never the actions' — one zero-gap slot, so the hidden
@@ -394,22 +424,74 @@ public static partial class Detail
         }
     }
 
+    /// <summary>The SLIM head's expanded presentation (<see cref="Config.SlimHead"/>): the head-top strip, then
+    /// <c>[title row · gap]</c> outside Zune, the meta line, the gap to the bar, the bar - exactly
+    /// <see cref="VerticalLayout.SlimHeadHeight"/>. The title block is ALWAYS mounted at its route-static height (56, or 0
+    /// under the presented Zune style), so the nav-style change animates its height (<see cref="PageHead.Reflow"/>, a real
+    /// layout tween the bar and rows below ride) while the title fades in place; the meta line is reserved (its shimmer is
+    /// the same 16), so data arriving later fills the slot instead of moving anything.</summary>
+    static Element SlimExpanded(Identity id, in HeroParts parts, bool zune, Action<RectF> measure)
+    {
+        Element titleBlock = new BoxEl
+        {
+            Key = "slim:title", Direction = 1, Shrink = 0f, MinWidth = 0f, ClipToBounds = true, Animate = PageHead.Reflow,
+            Height = zune ? 0f : PageGeometry.TitleLine + PageGeometry.TitleToMeta,
+            Children = zune
+                ? Array.Empty<Element>()
+                : new Element[]
+                {
+                    PageHead.TitleRow(id.Title, null) with
+                        { Key = "slim:title-row", Enter = PageHead.FadeIn, Exit = PageHead.FadeOut, Transition = PageHead.FadeMotion },
+                    Spacer(PageGeometry.TitleToMeta),
+                },
+        };
+        Element meta = (id.MetaLoading || id.Meta is not { Length: > 0 }
+            ? new BoxEl
+            {
+                Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, MinWidth = 0f, ClipToBounds = true,
+                Children = [MetaLine(id, width: float.NaN, maxWidth: float.NaN, maxLines: 1)],
+            }
+            : PageHead.MetaSlot(id.Meta)) with { Key = "slim:meta" };
+        return new BoxEl
+        {
+            Direction = 1, Animate = HeroReflowMotion, OnBoundsChanged = measure,
+            Padding = new Edges4(parts.CompactLeft, PageGeometry.HeadTop, parts.CompactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+            Children =
+            [
+                titleBlock,
+                meta,
+                Spacer(PageGeometry.HeadToViews),
+                parts.Toolbar ?? new BoxEl { Height = VerticalLayout.ToolbarRowHeight },
+            ],
+        };
+    }
+
     /// <summary>A keyed identity block: a position-only FLIP always, a fade-up entrance when it can arrive late.</summary>
     static BoxEl Block(string key, Element child, bool late = false) => new()
     {
         Key = key, Direction = 1, Layout = Shove, Enter = late ? FadeUp : (EnterExit?)null, Children = [child],
     };
 
-    /// <summary>W27: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) · the heart (DROPPED, not
-    /// disabled, when <c>Heart == None</c>) · Share · More.</summary>
-    static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts)
+    /// <summary>The ONE action row. A page that supplies the Play split's verbs (an album, a playlist) gets the SPLIT, then
+    /// the LABELLED Shuffle (this arm has the width the rail lacks), the heart, Share and ⋯: Play split · Shuffle · heart ·
+    /// share · ⋯, the Shuffle's label dropped (<paramref name="labelShuffle"/> false, the icon-only form of the same button)
+    /// when the identity column cannot hold the labelled row on one line. Every other kind keeps W27's row: Play 32 + the 32-DIP satellites — Shuffle (when the page offers it) ·
+    /// the heart (DROPPED, not disabled, when <c>Heart == None</c>) · Share · More.</summary>
+    static Element HeroActions(VerticalSpec spec, Identity id, in Config cfg, FrameActions acts, bool labelShuffle)
     {
+        bool split = acts.HasPlaySplit;
+        Func<ColorF> accent = spec.Accent;
         var actions = new List<Element>(5)
         {
-            PlayButton(spec.Accent, spec.PlayAll ?? DefaultPlay(id.Subject)) with { Key = "vhero-play" },
+            split
+                ? Controls.PlaySplitButton(id.Subject.Text, accent, spec.PlayAll ?? DefaultPlay(id.Subject),
+                                           acts.AddToQueue!, acts.PlayNext!, acts.StartRadio!) with { Key = "vhero-play:" + id.Subject.Text }
+                : PlayButton(accent, spec.PlayAll ?? DefaultPlay(id.Subject)) with { Key = "vhero-play" },
         };
         if (acts.Shuffle is { } shuffle)
-            actions.Add(Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
+            actions.Add(split
+                ? Controls.SecondaryButton(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle, labelShuffle) with { Key = "vhero-shuffle" }
+                : Satellite(Icons.Shuffle, Loc.Get(Strings.Detail.Shuffle), shuffle) with { Key = "vhero-shuffle" });
         if (cfg.Heart != HeartMode.None)
         {
             // Keyed on the TARGET: SaveButton's uri freezes at mount. The heart reads the page accent through
@@ -421,7 +503,9 @@ public static partial class Detail
                 with { Key = "vhero-save:" + saveUri });
         }
         if (ShareActionFor(id) is { } share)
-            actions.Add(Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
+            actions.Add(split
+                ? Controls.QuietIconButton(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" }
+                : Satellite(Icons.Share, Loc.Get(Strings.Menu.Share), share) with { Key = "vhero-share" });
         if (acts.More is { } more)
             actions.Add(MoreButton(more, Controls.IconButtonSize, 16f, round: false) with { Key = "vhero-more:" + id.Subject.Text });
         return new BoxEl
@@ -490,6 +574,7 @@ public static partial class Detail
     /// the engine's deriver paints the bars; a usable preview cover is painted for real (exempt from the deriver).</summary>
     public static Element HeroSkeleton(VerticalSpec spec, float columnWidth, float compactLeft)
     {
+        if (spec.Config.SlimHead) return SlimHeroSkeleton(compactLeft);
         float w = columnWidth > 0f ? columnWidth : VerticalLayout.FallbackW;
         bool rowFlow = VerticalLayout.RowFlow(w);
         float bw = VerticalLayout.BucketW(w);
@@ -502,10 +587,13 @@ public static partial class Detail
         float descW = VerticalLayout.DescriptionWidthFor(bw, rowFlow);
         // The KNOWN title's plan (the loaded hero's own, so the swap does not jump), else the PESSIMISTIC null-title plan
         // (an empty Title is null to the estimator) — the one the pre-measure collapse height builds too.
+        bool split = Skeleton.HasLabelledShuffle(id.Kind);
+        int actionLines = VerticalLayout.ActionRowLinesFor(bw, rowFlow, split);
         var plan = VerticalLayout.TitleTypeFor(bw, rowFlow, id.Title,
-            eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart);
+            eyebrow: f.Eyebrow, attribution: f.Attribution, meta: f.Meta, pulse: f.Pulse, chart: f.Chart,
+            actionLines: actionLines);
         float identityGap = VerticalLayout.IdentityGapFor(bw, rowFlow, plan,
-            f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart);
+            f.Eyebrow, f.Attribution, f.Meta, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines);
 
         var blocks = new List<Element>(8);
         if (f.Eyebrow) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.EyebrowFraction), VerticalLayout.EyebrowRowHeight));
@@ -519,7 +607,7 @@ public static partial class Detail
         if (f.Meta) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.MetaFraction), VerticalLayout.MetaRowHeight));
         if (f.Pulse) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.PulseFraction), VerticalLayout.PulseRowHeight));
         if (f.Chart) blocks.Add(Bar(Skeleton.BarWidth(contentW, Skeleton.ChartFraction), VerticalLayout.ChartRowHeight));
-        blocks.Add(SkeletonActionRow());
+        blocks.Add(SkeletonActionRow(split, VerticalLayout.LabelledShuffleFits(bw, rowFlow)));
 
         Element identity = new BoxEl
         {
@@ -545,7 +633,7 @@ public static partial class Detail
             Direction = 1,
             // A FLOOR (never a cap): the SAME number the loaded hero's collapse binds assume before their first measure.
             MinHeight = VerticalLayout.HeroBandHeight(bw, rowFlow, plan,
-                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart),
+                f.Eyebrow, f.Attribution, f.Meta, f.Description, pulse: f.Pulse, chart: f.Chart, actionLines: actionLines),
             Children =
             [
                 new BoxEl
@@ -568,6 +656,55 @@ public static partial class Detail
         };
     }
 
+    /// <summary>The slim head's reserved band: the title bar (outside Zune), the meta bar and the bar's pills, at the heights
+    /// <see cref="VerticalLayout.SlimHeadHeight"/> sums - so the swap to the loaded head moves nothing.</summary>
+    static Element SlimHeroSkeleton(float compactLeft)
+    {
+        bool zune = Shell.Ui.PresentedNavStyle.Peek() == ShellNavStyle.Zune;
+        var kids = new List<Element>(5);
+        if (!zune)
+        {
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Height = PageGeometry.TitleLine, Shrink = 0f, AlignItems = FlexAlign.Center,
+                Children = [Bar(200f, 32f)],
+            });
+            kids.Add(Spacer(PageGeometry.TitleToMeta));
+        }
+        kids.Add(new BoxEl
+        {
+            Direction = 0, Height = PageGeometry.MetaLine, Shrink = 0f, AlignItems = FlexAlign.Center,
+            Children = [Bar(150f, 12f)],
+        });
+        kids.Add(Spacer(PageGeometry.HeadToViews));
+        kids.Add(new BoxEl
+        {
+            Direction = 1, Height = VerticalLayout.ToolbarRowHeight,
+            Padding = new Edges4(VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY,
+                                 VerticalLayout.ToolbarSurfacePadX, VerticalLayout.ToolbarSurfacePadY),
+            Children =
+            [
+                new BoxEl
+                {
+                    Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center, Grow = 1f, MinWidth = 0f,
+                    Children =
+                    [
+                        ToolbarPill(ButtonRules.PlaySplitWidthNominal), ToolbarPill(Skeleton.ShuffleButtonWidth),
+                        new BoxEl { Grow = 1f, Height = 1f },
+                        ToolbarPill(Track.CommandBarLayout.SearchIconWidth),
+                    ],
+                },
+            ],
+        });
+        return new BoxEl
+        {
+            Key = "detail-skeleton:hero", Direction = 1,
+            MinHeight = VerticalLayout.SlimHeadHeight(zune),
+            Padding = new Edges4(compactLeft, PageGeometry.HeadTop, compactLeft, VerticalLayout.ExpandedToolbarBottomPad),
+            Children = kids.ToArray(),
+        };
+    }
+
     static Element Bar(float width, float height) => new BoxEl
     {
         Width = width, Height = height, Corners = CornerRadius4.All(Skeleton.BarRadius),
@@ -582,23 +719,34 @@ public static partial class Detail
         return new BoxEl { Direction = 1, Gap = 0f, Children = kids };
     }
 
-    static Element SkeletonActionRow()
+    /// <summary>The loaded row's shape, member for member, wrapping against the same identity column the same way:
+    /// [Play split 121] · [Shuffle, labelled 96 or icon-only 32 by the SAME width rule as the loaded hero] · heart · share · ⋯
+    /// for the kinds that carry the split (<see cref="Skeleton.HasLabelledShuffle"/>), else [Play 120] and the 32-DIP
+    /// satellites. It wraps against the identity column (stretched, so the width is definite) exactly as the loaded row does.</summary>
+    static Element SkeletonActionRow(bool split, bool labelledShuffle)
     {
         var kids = new Element[1 + Skeleton.SatelliteCount];
         kids[0] = new BoxEl
         {
-            Width = Skeleton.PlayButtonWidth, Height = Controls.ButtonHeight,
+            Width = Skeleton.PrimaryWidthFor(plainPlay: !split), Height = Controls.ButtonHeight, Shrink = 0f,
             Corners = Radii.ControlAll,
         };
-        for (int i = 1; i < kids.Length; i++)
+        int next = 1;
+        if (split)
+            kids[next++] = new BoxEl
+            {
+                Width = labelledShuffle ? Skeleton.ShuffleButtonWidth : Controls.IconButtonSize,
+                Height = Controls.ButtonHeight, Shrink = 0f, Corners = Radii.ControlAll,
+            };
+        for (int i = next; i < kids.Length; i++)
             kids[i] = new BoxEl
             {
                 Width = Controls.IconButtonSize, Height = Controls.IconButtonSize, Shrink = 0f, Corners = Radii.ControlAll,
             };
         return new BoxEl
         {
-            Direction = 0, Gap = Spacing.S, AlignItems = FlexAlign.Center,
-            Margin = new Edges4(0f, Spacing.XS, 0f, 0f), Height = Controls.ButtonHeight,
+            Direction = 0, Gap = VerticalLayout.ActionRowGap, Wrap = true, AlignItems = FlexAlign.Center, Justify = FlexJustify.Start,
+            Margin = new Edges4(0f, Spacing.XS, 0f, 0f),
             Children = kids,
         };
     }
@@ -630,40 +778,101 @@ public static partial class Detail
     };
 
     // ══ 5. THE BAND HELPERS (the detail band and the artist band are ONE band) ═══════════════════════════════════════
+    //
+    // ONE BASELINE. The title (600, primary), a subtle 1x16 divider, the tabs (400, ink plus the shared accent underline at one
+    // fixed y, never a weight change) and the trailing text actions (Controls.TextAction) each sit in a slot of BandLayout.ItemHeight
+    // (32) and centre the band's ONE 20-DIP line (BandLayout.TextLine), so their baselines are the same line. BandCluster builds
+    // the row; the Zune band's row 2 (Sidebar.UI.Zune.cs) calls the SAME builder at rowH = 32, so the in-page band and row 2 share
+    // text and underline geometry. The pivot used to be a text-plus-underline column centred in 32, which put its word 3 DIP above
+    // the title's. Under Zune the artist, profile, episode and show pages publish this band into row 2 and do not compose it
+    // (the floor placement is Detail.BandLayout.FloorLatch).
 
     /// <summary>The identity row: 56 tall, gutter-padded, UNPAINTED (no fill, no edge — the caller places the one
-    /// hairline), still hit-testable so its actions work and it swallows wheel/click meant for the rows behind it.</summary>
-    public static Element Band(float width, float gutter, Element identity, Element actions) => new BoxEl
-    {
-        Direction = 0, Width = width, Height = BandLayout.Height,
-        Padding = new Edges4(gutter, 0f, gutter, 0f),
-        Gap = BandLayout.ClusterGap, AlignItems = FlexAlign.Center,
-        HitTestVisible = true,
-        Children =
-        [
-            identity,
-            new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Height = 1f, HitTestVisible = false },
-            actions,
-        ],
-    };
+    /// hairline), still hit-testable so its actions work and it swallows wheel/click meant for the rows behind it. A
+    /// <see cref="BandCluster"/> of the identity and the actions.</summary>
+    public static Element Band(float width, float gutter, Element identity, Element actions)
+        => Band(width, gutter, BandCluster(identity, null, actions, BandLayout.Height));
 
-    /// <summary>The artist arm's row (0.2.9 ContextBand.Row): title · pivot · actions as cluster children, same geometry as Band.</summary>
+    /// <summary>The artist arm's row (0.2.9 ContextBand.Row): the cluster's children (<see cref="BandCluster"/>), same geometry as
+    /// the detail band. No flex gap: the cluster carries its own spacers.</summary>
     public static BoxEl Band(float width, float gutter, Element[] children) => new BoxEl
     {
         Direction = 0, Width = width, Height = BandLayout.Height, Padding = new Edges4(gutter, 0f, gutter, 0f),
-        Gap = BandLayout.ClusterGap, AlignItems = FlexAlign.Center, HitTestVisible = true, Children = children,
+        AlignItems = FlexAlign.Center, HitTestVisible = true, Children = children,
     };
 
-    /// <summary>The band title: BodyStrong 14/20/600, primary, one line, ellipsised — never wraps, never drops.</summary>
+    /// <summary>One group's slot: a row of <c>min(ItemHeight, rowH)</c>, its child centred, so the title, the tabs and the
+    /// actions all centre their 20-DIP line in the same box. <paramref name="shrink"/> is 1 only for the title lane.</summary>
+    public static Element BandSlot(Element child, float rowH, float shrink = 0f) => new BoxEl
+    {
+        Direction = 0, Height = MathF.Min(BandLayout.ItemHeight, rowH), AlignItems = FlexAlign.Center,
+        Shrink = shrink, MinWidth = 0f, Children = [child],
+    };
+
+    /// <summary>The 1 x 16 divider between the title and the tabs.</summary>
+    public static Element BandDivider(Prop<ColorF>? ink = null) => new BoxEl
+    {
+        Width = 1f, Height = BandLayout.DividerH, Shrink = 0f, Fill = ink ?? Tok.StrokeDividerDefault, HitTestVisible = false,
+    };
+
+    /// <summary>A band action: the shared <see cref="Controls.TextAction"/> at the band's item height and waist.
+    /// <paramref name="ink"/> (resolved by a band that sits over the artist bleed) binds the plain word's ink; null = today's tokens.</summary>
+    public static BoxEl BandAction(string label, Action? onClick, bool primary = false, Controls.TextActionInk? ink = null)
+        => Controls.TextAction(label, onClick, primary, height: BandLayout.ItemHeight, padX: BandLayout.ActionPadX, ink: ink);
+
+    /// <summary>The band's cluster, ONE builder for the in-page band (<paramref name="rowH"/> = 56) and the Zune band's row 2
+    /// (32): [title slot] · [divider · tabs, elastic] · [actions slot]. The title and the actions never drop; the tabs are
+    /// the only elastic lane. With no tabs a grow spacer carries the actions to the end. The row has no flex gap: the divider
+    /// air and the minimum title-to-actions gap are explicit spacers.</summary>
+    /// <param name="dividerInk">The divider's fill when the cluster sits over the artist bleed (row 2): a bound ink the Zune band resolves
+    /// (the words carry their own). Null = today's divider.</param>
+    public static Element[] BandCluster(Element title, Element? pivots, Element? actions, float rowH, Prop<ColorF>? dividerInk = null)
+    {
+        var kids = new List<Element>(7) { BandSlot(title, rowH, shrink: 1f) };
+        if (pivots is not null)
+        {
+            kids.Add(Spacer(BandLayout.DividerGap));
+            kids.Add(BandDivider(dividerInk));
+            kids.Add(Spacer(BandLayout.DividerGap));
+            kids.Add(new BoxEl
+            {
+                Direction = 0, Grow = 1f, Basis = 0f, MinWidth = 0f, Height = rowH, AlignItems = FlexAlign.Center,
+                Children = [pivots],
+            });
+        }
+        else
+        {
+            kids.Add(new BoxEl { Grow = 1f, Basis = 0f, MinWidth = 0f, Height = 1f, HitTestVisible = false });
+        }
+        if (actions is not null)
+        {
+            kids.Add(Spacer(BandLayout.ClusterGap));
+            kids.Add(BandSlot(actions, rowH));
+        }
+        return [.. kids];
+    }
+
+    /// <summary>The band title: BodyStrong 14/600 on the band's 20-DIP line, primary, one line, ellipsised — never wraps,
+    /// never drops.</summary>
     public static Element BandTitle(string title) => Ui.BodyStrong(title) with
     {
-        Color = Tok.TextPrimary, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+        LineHeight = BandLayout.TextLine, Weight = 600, Color = Tok.TextPrimary,
+        MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
     };
 
-    /// <summary>The band byline: Caption 12/16, tertiary, one line — context for the title, not a competing label.</summary>
-    public static Element BandByline(string byline) => Ui.Caption(byline) with
+    /// <summary>The band byline: Caption 12 on the same 20-DIP line as the title, tertiary, one line — context for the title,
+    /// not a competing label. It joins the title's line (<c>[title, S, byline]</c>) and ellipsises first.</summary>
+    public static Element BandByline(string byline, Func<ColorF>? ink = null) => new BoxEl
     {
-        Color = Tok.TextTertiary, MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+        Direction = 0, MinWidth = 0f, Shrink = 1f, AlignItems = FlexAlign.Center,
+        Children =
+        [
+            Ui.Caption(byline) with
+            {
+                LineHeight = BandLayout.TextLine, Color = ink is null ? Tok.TextTertiary : Prop.Of(ink),   // ink: see Shell.Ui.ChromeInkMix
+                MinWidth = 0f, MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+            },
+        ],
     };
 
     /// <summary>The band's ONE lower edge, as a real laid-out row child — placed on the LAST stuck stratum only.</summary>
@@ -677,15 +886,18 @@ public static partial class Detail
     /// the active one — ALWAYS mounted, switching colour over 167 ms. <paramref name="active"/> is the caller's scroll-spy
     /// answer; the section set is re-pushed (it grows after mount), the signal instance freezes at mount.</summary>
     public static Element Pivot(IReadOnlyList<(string Label, Action OnClick)> sections, IReadSignal<int> active,
-                                Func<ColorF> accent)
-        => Embed.Comp(new PivotProps(sections, active, accent), static () => new PivotHost());
+                                Func<ColorF> accent, bool enabled = true)
+        => Embed.Comp(new PivotProps(sections, active, accent, enabled), static () => new PivotHost());
 
-    sealed record PivotProps(IReadOnlyList<(string Label, Action OnClick)> Sections, IReadSignal<int> Active, Func<ColorF> Accent)
+    /// <summary><paramref name="Enabled"/> false takes the tabs out of the keyboard order (a disabled node is not collected as a
+    /// focus stop) while they stay painted: the episode's row keeps them visible as it eases away under Zune.</summary>
+    sealed record PivotProps(IReadOnlyList<(string Label, Action OnClick)> Sections, IReadSignal<int> Active, Func<ColorF> Accent,
+                             bool Enabled = true)
     {
         public bool Equals(PivotProps? o)
         {
             if (ReferenceEquals(this, o)) return true;
-            if (o is null || !ReferenceEquals(Active, o.Active) || Sections.Count != o.Sections.Count) return false;
+            if (o is null || !ReferenceEquals(Active, o.Active) || Enabled != o.Enabled || Sections.Count != o.Sections.Count) return false;
             for (int i = 0; i < Sections.Count; i++)
                 if (!string.Equals(Sections[i].Label, o.Sections[i].Label, StringComparison.Ordinal)) return false;
             return true;
@@ -737,7 +949,7 @@ public static partial class Detail
 
             var kids = new Element[shown];
             for (int i = 0; i < shown; i++)
-                kids[i] = PivotLink(p.Sections[i].Label, i == current, _tabFills[i], _tabClicks[i], _tabRealized[i]);
+                kids[i] = PivotLink(p.Sections[i].Label, i == current, p.Enabled, _tabFills[i], _tabClicks[i], _tabRealized[i]);
             return new ScrollEl
             {
                 Horizontal = true, ContentSized = true,
@@ -789,33 +1001,46 @@ public static partial class Detail
             _seeded = true;
         }
 
-        /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone.</summary>
-        static Element PivotLink(string label, bool isActive, Func<ColorF> fill, Action go, Action<NodeHandle> realized) => new BoxEl
+        /// <summary>One link: the hover boundary is the LINK's own box, so the word under the pointer lights alone. A ZSTACK of
+        /// <see cref="BandLayout.ItemHeight"/>: the word centred on the band's 20-DIP line (the same line as the title and
+        /// the actions), the active mark an OVERLAY at <see cref="BandLayout.UnderlineY"/>. The weight is a CONSTANT 400 in both
+        /// states (active = primary ink plus the mark), so a tab never changes width while the scroll spy moves and a title
+        /// (600) never looks like a tab.</summary>
+        static Element PivotLink(string label, bool isActive, bool enabled, Func<ColorF> fill, Action go, Action<NodeHandle> realized) => new BoxEl
         {
-            Direction = 1, Shrink = 0f,
-            AlignItems = FlexAlign.Center, Justify = FlexJustify.Center,
-            Height = BandLayout.Height - 2f * Spacing.M,
+            ZStack = true, Shrink = 0f,
+            Height = BandLayout.ItemHeight,
             Padding = new Edges4(BandLayout.PivotPadX, 0f, BandLayout.PivotPadX, 0f),
             Corners = Radii.ControlAll,
-            Role = AutomationRole.Tab, Focusable = true, Cursor = CursorId.Hand, OnClick = go, OnRealized = realized,
+            Role = AutomationRole.Tab, Focusable = true, IsEnabled = enabled, Cursor = CursorId.Hand, OnClick = go, OnRealized = realized,
             Children =
             [
-                new TextEl(label)
+                new BoxEl
                 {
-                    Size = Controls.TextActionSize, LineHeight = Controls.TextActionLineHeight, Weight = Controls.TextActionWeight,
-                    Color = isActive ? Tok.TextPrimary : Tok.TextSecondary,
-                    HoverColor = Tok.TextPrimary,
-                    MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                    Direction = 1, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HitTestVisible = false,
+                    Children =
+                    [
+                        new TextEl(label)
+                        {
+                            Size = Controls.TextActionSize, LineHeight = BandLayout.TextLine, Weight = PivotWeight,
+                            Color = isActive ? Tok.TextPrimary : Tok.TextSecondary,
+                            HoverColor = Tok.TextPrimary,
+                            MaxLines = 1, Wrap = TextWrap.NoWrap, Trim = TextTrim.CharacterEllipsis,
+                        },
+                    ],
                 },
                 new BoxEl
                 {
                     Height = BandLayout.UnderlineHeight, AlignSelf = FlexAlign.Stretch,
-                    Margin = new Edges4(0f, BandLayout.UnderlineGap, 0f, 0f),
+                    Margin = new Edges4(0f, BandLayout.UnderlineY, 0f, 0f),
                     Fill = fill,
                     BrushTransitionMs = AccentTransitionMs,
                     HitTestVisible = false,
                 },
             ],
         };
+
+        /// <summary>A tab's weight, constant in both states (see <see cref="PivotLink"/>).</summary>
+        const ushort PivotWeight = 400;
     }
 }
