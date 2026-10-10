@@ -645,8 +645,10 @@ public static partial class Detail
         /// <see cref="MaxWidth"/> is the ABSOLUTE ceiling; the live one is <see cref="MaxWidthForPage"/>.</summary>
         public const float MinWidth = 180f, MaxWidth = 480f;
 
-        /// <summary>The seam the row always pays between rail and content (<see cref="Splitter.StripW"/>), and the two
-        /// widths the COLLAPSED arm composes instead (the 96-DIP identity strip + its 20-DIP re-open grip).</summary>
+        /// <summary>The expanded grip's strip (<see cref="Splitter.StripW"/>), and the two widths the COLLAPSED arm composes
+        /// instead (the 96-DIP identity strip + its 20-DIP re-open grip). The expanded grip floats over the seam and the row
+        /// no longer pays it, but the page-aware cap still reserves it: the content column keeps 16 DIP above its floor and
+        /// every cap is what it was.</summary>
         public const float GripStripW = Splitter.StripW;
         public const float CompactStripW = 96f, CollapsedGripW = 20f;
 

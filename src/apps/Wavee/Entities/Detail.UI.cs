@@ -804,10 +804,17 @@ public static partial class Detail
             float railW = resizable ? rail.ComposedWidth(mode, railMax) : RailWidthForMode(mode, cfg);
 
             Element[] rowKids;
+            Element seam = SeamOff;
             if (collapsed)
             {
-                // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll.
-                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand), Grip(rail, railMax, collapsedNow: true), right];
+                // `right` keeps its Key across the collapse, so the table reconciles in place and keeps its scroll. The
+                // collapsed grip keeps its 20-DIP slot in the row, but the grip itself lives in the seam layer in BOTH arms:
+                // a drag collapses (and re-opens) mid-gesture, and a grip that changed parent would remount and drop the
+                // pointer capture.
+                rowKids = [CompactRailRegion(spec, RailCompactW, rail.Expand),
+                           new BoxEl { Key = "detail-rail-grip-slot", Width = GripStripCollapsedW, Shrink = 0f, HitTestVisible = false },
+                           right];
+                seam = SeamOverlay(RailCompactW, Grip(rail, railMax, collapsedNow: true));
             }
             else
             {
@@ -836,18 +843,25 @@ public static partial class Detail
                     Opacity = _railFade,
                     Children = [RailRegion(spec, acts, railW, titleSize, descLines)],
                 };
-                rowKids = resizable ? [railFaded, Grip(rail, railMax, collapsedNow: false), right] : [railFaded, right];
+                // The expanded grip takes NO width in the row: it floats over the seam (SeamOverlay), so the gap between
+                // the rail and the list is the rail's own right pad plus the rows' inset (8 + 8), the same as a fixed rail.
+                rowKids = [railFaded, right];
+                if (resizable) seam = SeamOverlay(railW, Grip(rail, railMax, collapsedNow: false));
             }
 
             var row = new BoxEl
             {
                 // flex:1 1 0 — the row's width is the AVAILABLE region, so the right column yields to a tighter tier
-                // instead of overflowing the clipped content card.
-                Direction = 0, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
+                // instead of overflowing the clipped content card. A z-stack of the [rail | right] flow and the seam layer
+                // above it; both arms keep this shape, so `right` reconciles in place across a collapse.
+                ZStack = true, Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f, Basis = 0f,
                 MaxWidth = Design.Size.PageMaxW,
-                AlignItems = FlexAlign.Stretch,
                 DropTarget = drop,
-                Children = rowKids,
+                Children =
+                [
+                    new BoxEl { Direction = 0, AlignItems = FlexAlign.Stretch, MinWidth = 0f, MinHeight = 0f, Children = rowKids },
+                    seam,
+                ],
             };
             var twoColumnPage = new BoxEl
             {
@@ -1029,6 +1043,18 @@ public static partial class Detail
                     with { Key = rail.GripKey },
             ],
         };
+
+        /// <summary>The grip's layer, above the row: a pass-through row whose spacer puts the strip at the rail's edge. Expanded,
+        /// the 16-DIP strip takes no row width and covers the list's empty row inset (and the rows' first 8 DIP) instead
+        /// of widening the gap; collapsed, it sits over its own 20-DIP slot. It starts AT the edge, never left of it: the
+        /// rail's own scrollbar owns the rail's last 12 DIP.</summary>
+        static Element SeamOverlay(float railW, Element grip) => new BoxEl
+        {
+            Key = "detail-rail-seam", Direction = 0, AlignItems = FlexAlign.Stretch, HitTestPassThrough = true,
+            Children = [new BoxEl { Key = "detail-rail-seam-spacer", Width = railW, Shrink = 0f, HitTestVisible = false }, grip],
+        };
+
+        static readonly Element SeamOff = new BoxEl { Key = "detail-rail-seam", HitTestVisible = false };
 
         // ── layout callbacks, effects, memos ──
 
