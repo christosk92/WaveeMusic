@@ -899,18 +899,34 @@ public static partial class Sidebar
         }
 
         /// <summary>A header's 24×24 inline button (⋯ / +): consumes its own click, hover plate FillSubtleSecondary.
-        /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). A <see cref="BoxEl"/> so the caller can attach a
-        /// context menu; the caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
-        public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal)
+        /// <paramref name="reveal"/> = hover-revealed (the ⋯ off touch). The result is an OUTER, handler-less reveal box
+        /// (Opacity / HoverOpacity follow the header's hover) around the INNER interactive button: the plate belongs to the
+        /// inner node alone, so hovering the header text reveals the glyph at its rest look and only hovering the button
+        /// paints the plate (one node carrying both the reveal and <c>Interactive</c> let the container hover drive the
+        /// fill). A <see cref="BoxEl"/> so the caller can attach a context menu to the outer box (a context request walks up
+        /// from the button); <paramref name="requestsContext"/> makes the click re-enter that funnel, anchored at the
+        /// button. <paramref name="onRealized"/> / <paramref name="focusable"/> apply to the INNER button, the real focus
+        /// stop and anchor. The caller wraps the result in <c>ToolTip.Wrap</c> for its tooltip and accessible name.</summary>
+        public static BoxEl InlineButton(string glyph, Action? onClick, bool reveal, Action<NodeHandle>? onRealized = null,
+                                         bool focusable = false, bool requestsContext = false)
             => new BoxEl
             {
                 Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton, Shrink = 0f,
-                AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
-                Role = AutomationRole.Button, Cursor = CursorId.Hand, OnClick = onClick,
                 Opacity = reveal ? 0f : 1f, HoverOpacity = 1f,
-                BlocksDragArm = true,
-                Children = [Icon(glyph, 12f, Tok.TextSecondary)],
-            }.Interactive(Interaction.Subtle);
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Width = SidebarRowGeometry.HeaderButton, Height = SidebarRowGeometry.HeaderButton,
+                        AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, Corners = Radii.ControlAll,
+                        Role = AutomationRole.Button, Cursor = CursorId.Hand,
+                        OnClick = requestsContext ? null : onClick, ClickRequestsContext = requestsContext,
+                        Focusable = focusable, OnRealized = onRealized,
+                        BlocksDragArm = true,
+                        Children = [Icon(glyph, 12f, Tok.TextSecondary)],
+                    }.Interactive(Interaction.Subtle),
+                ],
+            };
 
         /// <summary>The 8-px separator (TR:223, TR:247): a 1-px StrokeDividerDefault rule at y 3, bleeding over the list's
         /// 4-px inset so it spans the full pane width.</summary>
@@ -997,9 +1013,18 @@ public static partial class Sidebar
                     BorderColor = Prop.Of(() => cue() ? Tok.AccentDefault : ColorF.Transparent),
                     BorderWidth = 1f,
                 };
-            if (_revealOpacity is { } reveal) box = box with { Opacity = Prop.Of(reveal), HoverOpacity = 1f };
+            // The reveal sits on an OUTER handler-less box (as in SectionHeader.InlineButton): on the interactive button
+            // itself the container hover would drive its plate, so hovering the row alone painted the "+" plate.
+            Element shown = box;
+            if (_revealOpacity is { } reveal)
+                shown = new BoxEl
+                {
+                    Width = _box, Height = _box, Shrink = 0f,
+                    Opacity = Prop.Of(reveal), HoverOpacity = 1f,
+                    Children = [box],
+                };
 
-            return ToolTip.Wrap(box, Loc.Get(_menu is null
+            return ToolTip.Wrap(shown, Loc.Get(_menu is null
                 ? Strings.Sidebar.CreatePlaylistTooltip
                 : Strings.Sidebar.CreateTooltip));
         }
