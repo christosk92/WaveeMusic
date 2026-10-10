@@ -587,8 +587,9 @@ public static partial class Controls
     /// <summary>A destination chip: a stock standard <see cref="Button"/> in the chip capsule (<see cref="Chip"/>'s geometry),
     /// announced as a link. For a row of pills that NAVIGATE (Browse's Top and For-you bands), where
     /// <see cref="Chip"/> is a toggle. Shrink 0: on a wrapping row the row breaks to a new line rather than ellipsising
-    /// every pill. Always <see cref="ChipHeight"/> tall, so a chip row is a fixed 32 per line.</summary>
-    public static Element LinkChip(string label, Action onClick, string? key = null)
+    /// every pill. Always <see cref="ChipHeight"/> tall, so a chip row is a fixed 32 per line. <paramref name="inert"/> takes it out of
+    /// the Tab order (a collapsed band).</summary>
+    public static Element LinkChip(string label, Action onClick, string? key = null, bool inert = false)
         => Button.Standard(label, onClick, style: Button.StandardStyle with
         {
             CornerRadius = Radii.Full,
@@ -596,7 +597,10 @@ public static partial class Controls
             Padding = new Edges4(ChipPadX, 0f, ChipPadX, 0f),
             FontSize = ChipFontSize,
             FocusVisualMargin = Design.FocusInsetBordered,
-        }) with { Key = key, Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Shrink = 0f, MinWidth = 0f };
+        }) with { Key = key, Role = AutomationRole.Hyperlink, Cursor = CursorId.Hand, Shrink = 0f, MinWidth = 0f,
+            // inert: a chip whose band is collapsed (Browse's Top under Zune) leaves the Tab order; the host is already at opacity 0
+            // and takes no pointer hits, and the chip keeps its enabled look through the fade-out.
+            Focusable = !inert };
 
     /// <summary>The chip RAIL: ONE line that scrolls, never a wrapped block. A curated set runs to 15+ concepts, which
     /// wrapped into a second and third row and pushed the list down the page.

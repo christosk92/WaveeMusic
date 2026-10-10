@@ -266,18 +266,34 @@ public readonly partial struct Browse
     /// as tiles) and <paramref name="chartsBandAt"/> is injected in its slot, always. <paramref name="live"/> false is the
     /// loading directory: every cell still hovers and does nothing.</summary>
     public static Element DirectoryBody(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups,
-                                        bool live, Func<int, Element> chartsBandAt)
+                                        bool live, Func<int, Element> chartsBandAt, bool hideTop = false)
     {
         var children = new List<Element>(groups.Count + 2);
+        Element? topHost = null;
         int band = 1;   // the first band's OWN entrance delay (0.2.9: the masthead used to hold rung 0)
         for (int b = 0; b < BrowseTaxonomy.BandOrder.Count; b++)
         {
             var g = BrowseTaxonomy.BandOrder[b];
             if (g == BrowseGroup.Charts) { children.Add(chartsBandAt(band++) with { Key = "browse-band:charts" }); continue; }
-            if (ItemsOf(groups, g) is { Count: > 0 } items) children.Add(BandOf(g, items, live, band++));
+            if (ItemsOf(groups, g) is not { Count: > 0 } items) continue;
+            // The Top band lives in a collapsing host (its own L gap inside it) so hiding it takes the gap along: the outer
+            // column has Gap 0 and the following bands slide up on the host's height ease instead of jumping.
+            if (g == BrowseGroup.Top) topHost = TopHost(BandOf(g, items, live, hideTop ? band : band++, inert: hideTop), hideTop);
+            else children.Add(BandOf(g, items, live, band++));
         }
-        return new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, Children = children.ToArray() };
+        Element rest = new BoxEl { Direction = 1, Gap = Spacing.L, MinWidth = 0f, Children = children.ToArray() };
+        return new BoxEl { Direction = 1, MinWidth = 0f, Children = topHost is null ? [rest] : [topHost, rest] };
     }
+
+    /// <summary>The Top band's collapsing host: its height eases to 0 on <see cref="PageHead.Reflow"/> and its content fades
+    /// in place when the categories are hoisted into the Zune band's row 2 (the hoist reads the PRESENTED nav style, so this
+    /// lands in a quiet commit). Hidden, it takes no pointer hits and its chips are inert.</summary>
+    static Element TopHost(Element topBand, bool hide) => new BoxEl
+    {
+        Key = "browse-band:top-host", Direction = 1, ClipToBounds = true, MinWidth = 0f, Animate = PageHead.Reflow,
+        Height = hide ? 0f : float.NaN, Opacity = hide ? 0f : 1f, Transition = PageHead.FadeMotion, HitTestVisible = !hide,
+        Children = [topBand, new BoxEl { Height = Spacing.L, Shrink = 0f }],
+    };
 
     static IReadOnlyList<BrowseCategory>? ItemsOf(IReadOnlyList<(BrowseGroup Group, IReadOnlyList<BrowseCategory> Items)> groups, BrowseGroup g)
     {
@@ -295,12 +311,12 @@ public readonly partial struct Browse
 
     /// <summary>One band: an eyebrow label over the density its destinations earn, cascading in at
     /// <paramref name="index"/> (the only thing the index is for).</summary>
-    static Element BandOf(BrowseGroup group, IReadOnlyList<BrowseCategory> items, bool live, int index)
+    static Element BandOf(BrowseGroup group, IReadOnlyList<BrowseCategory> items, bool live, int index, bool inert = false)
     {
         var state = new BandState(items, live);
         Element body = group switch
         {
-            BrowseGroup.Top => WrapRow(items, live),
+            BrowseGroup.Top => WrapRow(items, live, inert),
             BrowseGroup.ForYou => WrapRow(items, live),
             BrowseGroup.Genres => Responsive.Of(state, static (st, w) => LinkGridOf(st, w), fallback: BrowseLayout.DirectoryFallbackWidth),
             BrowseGroup.MoodActivity => Responsive.Of(state, static (st, w) => BarGrid(st, w), fallback: BrowseLayout.DirectoryFallbackWidth),
@@ -317,13 +333,13 @@ public readonly partial struct Browse
 
     /// <summary>Top / For you: a wrapping row of <see cref="Controls.LinkChip"/> pills at their own natural width — no grid,
     /// no column count. Every pill is <see cref="Controls.ChipHeight"/> (32), so a line of the row is a fixed height.</summary>
-    static Element WrapRow(IReadOnlyList<BrowseCategory> items, bool live)
+    static Element WrapRow(IReadOnlyList<BrowseCategory> items, bool live, bool inert = false)
     {
         var cells = new Element[items.Count];
         for (int i = 0; i < cells.Length; i++)
         {
             var m = BrowseTiles.ModelOf(items[i], live);
-            cells[i] = Controls.LinkChip(m.Title, m.Open, m.Uri);
+            cells[i] = Controls.LinkChip(m.Title, m.Open, m.Uri, inert);
         }
         return new BoxEl { Direction = 0, Gap = BrowseLayout.ChipGap, Wrap = true, AlignItems = FlexAlign.Center, MinWidth = 0f, Children = cells };
     }
@@ -373,9 +389,10 @@ public readonly partial struct Browse
 
     /// <summary>The loading directory (0.2.9 <c>BrowseDirectory.Skeleton</c>): the SAME body over the seeds — 4 / 10 / 25 /
     /// 14 / 3 — with the Charts band shimmering off <see cref="HomeBrowseCards.ChartDeckSeed"/>, the whole tree
-    /// <c>.Skeletonized(true)</c>. Built once per theme read by the page and handed to its region.</summary>
-    public static Element DirectorySkeleton()
-        => DirectoryBody(BrowseTaxonomy.Grouped(BrowseDirectorySeeds.Categories), live: false, s_seedChartsBand).Skeletonized(true);
+    /// <c>.Skeletonized(true)</c>. Built once per theme read by the page and handed to its region; the page rebuilds it when the hoist changes, so the shimmer carries the same Top band (or none) as the loaded body.</summary>
+    public static Element DirectorySkeleton(bool hideTop)
+        => DirectoryBody(BrowseTaxonomy.Grouped(BrowseDirectorySeeds.Categories), live: false, s_seedChartsBand,
+                         hideTop).Skeletonized(true);
 
     static readonly Action<HomeSectionView> s_noopSection = static _ => { };
 

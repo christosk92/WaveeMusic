@@ -95,6 +95,8 @@ public readonly partial struct Browse
         Browse _dir;
         bool _demanded, _ready, _failed;
         long _dataKey = long.MinValue;
+        bool _bodyHoisted;   // the hoist the cached _body was built for (its Top band collapses with it)
+        bool _skeletonHoisted;   // the same, for the cached shimmer
         Element? _body, _skeleton;
 
 
@@ -108,7 +110,7 @@ public readonly partial struct Browse
             _pendingFn = () => !_ready && !_failed;
             _failedFn = () => _failed;
             _contentFn = () => _body ?? new BoxEl();
-            _shimmerFn = () => _skeleton ??= DirectorySkeleton();
+            _shimmerFn = () => _skeleton ??= DirectorySkeleton(!BrowseMastheadMetrics.ShowsTopBand(_skeletonHoisted));
             _demand = Demand;
             _retry = Retry;
             // Retry vacancy: `Entities.Refresh`, never `Demand`'s `Ensure` — a row the planner has already sealed
@@ -144,18 +146,28 @@ public readonly partial struct Browse
             var load = BrowseLoadGate.Of(known, _demanded, scope.Browses.Inflight[d.Slot] != 0);
             _ready = load == BrowseLoad.Ready;
             _failed = load == BrowseLoad.Failed;
+            // The hoist reads the PRESENTED nav style (PageHead.HoistedFor): the body-top spacer, the clip inset and the Top
+            // band's collapse change in the quiet commit HoistSettleMs after a nav-style switch, never in the commit that
+            // slides the card, so their Reflows are not snapped by the card's descendant suppression.
+            bool hoisted = PageHead.HoistedFor("browse");
+            // The shimmer follows the hoist too (the factory reads _skeletonHoisted, never the signal), so a pending page
+            // under a switched nav style shows the same Top band (or none) as the body that lands.
+            if (_skeleton is not null && hoisted != _skeletonHoisted) _skeleton = null;
+            _skeletonHoisted = hoisted;
             if (_ready)
             {
                 // The body is rebuilt ONLY when the tile list or a tile row changed — the under-band edge re-render below
                 // hands the region the same instance.
                 long key = ((long)edges.BrowseDirectory.Version(d.Slot) << 32) | scope.Browses.Changed.Peek();
-                if (key != _dataKey)
+                if (key != _dataKey || hoisted != _bodyHoisted)
                 {
                     _dataKey = key;
+                    _bodyHoisted = hoisted;
                     var categories = CategoriesOf(edges.BrowseDirectory.Targets(d.Slot));
                     _body = categories.Length == 0
                         ? Controls.Vacancy(Controls.VacancyVoice.Empty, title: Loc.Get(Strings.Browse.Unavailable), subtitle: "")
-                        : DirectoryBody(BrowseTaxonomy.Grouped(categories), live: true, _chartsBandAt);
+                        : DirectoryBody(BrowseTaxonomy.Grouped(categories), live: true, _chartsBandAt,
+                                        hideTop: !BrowseMastheadMetrics.ShowsTopBand(hoisted));
                 }
             }
 
@@ -165,10 +177,6 @@ public readonly partial struct Browse
                 OnFailed: _failedPanelFn, Reveal: SkelReveal.None, Style: SkeletonStyle.Default, Group: null,
                 SmoothResize: false);
 
-            // The hoist reads the PRESENTED nav style (PageHead.HoistedFor): the body-top spacer and the clip inset change in the
-            // quiet commit HoistSettleMs after a nav-style switch, never in the commit that slides the card, so the spacer's
-            // Reflow is not snapped by the card's descendant suppression and the clip follows the band in the same render.
-            bool hoisted = PageHead.HoistedFor("browse");
             float g = Shell.Ui.PageGutter.Value;
 
             Element directory = new BoxEl

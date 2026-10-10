@@ -370,6 +370,11 @@ public static class BrowseMastheadMetrics
     /// <see cref="BodyTop"/>. <paramref name="hoisted"/> is <see cref="PageHead.HoistedFor"/>.</summary>
     public static float BodyTopFor(bool hoisted) => hoisted ? PageHeadRules.Extent(PageHeadKind.Hoisted) : BodyTop;
 
+    /// <summary>Whether the Browse root renders its own Top band (eyebrow + chips). Under Zune the Top categories ARE the
+    /// band's row 2 (music · podcasts · audiobooks · live events), so the page must not repeat them.
+    /// <paramref name="hoisted"/> is <see cref="PageHead.HoistedFor"/>.</summary>
+    public static bool ShowsTopBand(bool hoisted) => !hoisted;
+
     /// <summary>The sticky clip's inset. Hoisted, the masthead paints nothing, so nothing is cut: 0. It follows
     /// <see cref="BodyTopFor"/> in the same render, so the clip and the band never disagree.</summary>
     public static float ClipInsetFor(bool hoisted) => hoisted ? 0f : ClipInset;

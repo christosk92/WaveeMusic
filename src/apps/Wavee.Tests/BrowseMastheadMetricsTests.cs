@@ -34,6 +34,14 @@ public class BrowseMastheadMetricsTests
         Assert.Equal(120f, BrowseMastheadMetrics.BodyTop);
     }
 
+    // Under Zune the Top categories ARE the band's row 2, so the page does not repeat them.
+    [Fact]
+    public void ShowsTopBand_IsTheOppositeOfHoisted()
+    {
+        Assert.True(BrowseMastheadMetrics.ShowsTopBand(false));
+        Assert.False(BrowseMastheadMetrics.ShowsTopBand(true));
+    }
+
     [Fact]
     public void FamilyBodyPad_CarriesThePassedGutterOnBothSides_UnderTheBodyTop()
     {

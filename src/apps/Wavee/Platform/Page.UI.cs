@@ -97,7 +97,8 @@ public static class PageHead
     /// <summary>A row fades out in place when it leaves.</summary>
     public static readonly EnterExit FadeOut = new(Opacity: 0f, Active: true);
 
-    static readonly MotionTokenDef s_fade =
+    /// <summary>The 83 ms in-place fade a head row (and a page band that collapses with it) rides.</summary>
+    public static readonly MotionTokenDef FadeMotion =
         MotionTokenDef.Eased(Design.Motion.Faster, Easing.FluentStandard, ReducedMotionPolicy.KeepFade);
 
     /// <summary>The head's kind: three ROUTE-STATIC facts and nothing else.</summary>
@@ -147,7 +148,7 @@ public static class PageHead
             Design.Type.PageMeta(text ?? "") with
             {
                 Key = string.IsNullOrEmpty(text) ? "meta:none" : "meta:text",
-                Enter = FadeIn, Exit = FadeOut, Transition = s_fade,
+                Enter = FadeIn, Exit = FadeOut, Transition = FadeMotion,
             },
         ],
     };
@@ -165,7 +166,7 @@ public static class PageHead
         Element barHost = new BoxEl
         {
             Key = key + ":words", Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f,
-            Opacity = empty ? 0f : 1f, HitTestVisible = !empty, Transition = s_fade,
+            Opacity = empty ? 0f : 1f, HitTestVisible = !empty, Transition = FadeMotion,
             Children = [bar],
         };
         Element core = scroll
@@ -181,7 +182,7 @@ public static class PageHead
             core = ZStack(core, new BoxEl
             {
                 Key = key + ":placeholder", Direction = 0, AlignItems = FlexAlign.Center, HitTestVisible = false,
-                Opacity = empty ? 1f : 0f, Transition = s_fade, MinWidth = 0f,
+                Opacity = empty ? 1f : 0f, Transition = FadeMotion, MinWidth = 0f,
                 Children = [placeholder],
             }) with { Height = PageGeometry.ViewsBarH, Shrink = scroll ? 1f : 0f, Grow = scroll ? 1f : 0f, MinWidth = 0f };
         }
@@ -219,7 +220,7 @@ public static class PageHead
             }
             list.Add(TitleRow(s.Title, s.Actions) with
             {
-                Key = s.Key + ":title", Enter = FadeIn, Exit = FadeOut, Transition = s_fade,
+                Key = s.Key + ":title", Enter = FadeIn, Exit = FadeOut, Transition = FadeMotion,
             });
             list.Add(Spacer(PageGeometry.TitleToMeta));
             list.Add(MetaSlot(s.Meta));
@@ -227,7 +228,7 @@ public static class PageHead
             {
                 list.Add(Spacer(PageGeometry.HeadToViewsGap));
                 list.Add(Views(views, s.ViewsSelected, s.OnView, s.ViewsTrailing, s.ViewsPlaceholder, s.ViewsScroll, s.Key + ":views")
-                    with { Key = s.Key + ":views", Enter = FadeIn, Exit = FadeOut, Transition = s_fade });
+                    with { Key = s.Key + ":views", Enter = FadeIn, Exit = FadeOut, Transition = FadeMotion });
             }
             kids = list.ToArray();
         }
