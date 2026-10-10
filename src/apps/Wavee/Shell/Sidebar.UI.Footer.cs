@@ -52,8 +52,7 @@ public static partial class Sidebar
                     Glyph = Icons.More, OnRealized = _realize, MenuOverlay = svc, Menu = menu,
                     Focusable = true, OnClick = _open,
                 })
-                : SectionHeader.InlineButton(Icons.More, _open, reveal: false)
-                    with { OnRealized = _realize, Focusable = true };
+                : SectionHeader.InlineButton(Icons.More, _open, reveal: false, onRealized: _realize, focusable: true);
             more = ToolTip.Wrap(more, Loc.Get("sidebar.pane.options"));
 
             Element body = compact

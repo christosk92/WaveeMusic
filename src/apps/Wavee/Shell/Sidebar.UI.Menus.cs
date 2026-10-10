@@ -489,9 +489,9 @@ public static partial class Sidebar
             return Actions.Menu.WithLayoutExtras(menu, extras.Flat());
         }
 
-        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: Organize ▸ takes
-        /// the Pin slot (pin lives inside it), and the owner's Rename · Delete trail behind a separator. Liked Songs drops
-        /// Save exactly as a card does.</summary>
+        /// <summary>The playlist card menu (<c>Menus.Container</c>) with the sidebar's own rows as extras: Pin / Unpin sits
+        /// top-level in the Pin slot's group with Organize ▸ (Move out of …) right after it, and the owner's Rename · Delete
+        /// trail behind a separator. Liked Songs drops Save exactly as a card does.</summary>
         ContextMenuModel PlaylistModel(ActionServices s, in SidebarLibraryEntry e, IReadOnlyList<MenuFlyoutItem>? organize)
         {
             var caps = PlaylistCaps.CanView
@@ -514,7 +514,8 @@ public static partial class Sidebar
             {
                 Services = s,
                 Liked = EntityUri.IsLikedCollection(e.Uri),
-                Pin = () => Actions.Menu.Organize(organize, MoveOutRow(in entry), PinRow(in entry)),
+                Pin = () => PinRow(in entry),
+                Organize = () => Actions.Menu.Organize(organize, MoveOutRow(in entry), null),
                 PinStartsGroup = true,
                 Tail = tail,
             }) ?? new ContextMenuModel(tail, Actions.Menu.Header(ArtOf(in e), e.Name, subtitle));
@@ -536,7 +537,11 @@ public static partial class Sidebar
                 writes?.NewFolderWith is not null && folderId.Length > 0,
                 () => LibraryWrites?.NewFolderWith?.Invoke(folderId, Array.Empty<RootlistItemRef>())));
             rows.Add(MenuFlyoutItem.Separator);
-            Actions.Menu.Group(rows, Actions.Menu.Organize(organize, MoveOutRow(in e), PinRow(in e)));
+            // Pin / Unpin top-level, Organize ▸ (Move out of …) right after it. Pinning de-dupes the row from Playlists:
+            // the pin publish (the binder's PinnedIds) moves through the key-matched splice path, so the rows below glide
+            // up and the new Pinned row fades in rather than the list snapping.
+            Actions.Menu.Group(rows, PinRow(in e));
+            if (Actions.Menu.Organize(organize, MoveOutRow(in e), null) is { } org) rows.Add(org);   // after the group's separator or the pin
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.renameFolder"), ActionIcons.Resolve(ActionIcons.Rename),
                 writes?.RenameFolder is not null && folderId.Length > 0, () => PromptRenameFolder(folderId, name)));
             rows.Add(MenuFlyoutItem.Separator);

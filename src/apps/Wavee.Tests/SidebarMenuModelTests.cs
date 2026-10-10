@@ -357,6 +357,52 @@ public sealed class SidebarMenuModelTests
         Assert.Equal(SidebarMenuAction.Unpin, Assert.Single(rows).Action);
     }
 
+    // J2: the sidebar's Pin / Unpin sits top-level in the container menu's Pin slot, Organize ▸ right after it.
+
+    static IReadOnlyList<FluentGpu.Controls.MenuFlyoutItem> ContainerRows(bool pin, bool organize, bool startsGroup = true)
+    {
+        var target = ActionTarget.ForPlaylist(EntityUri.Parse("spotify:playlist:abc"), "Mix");
+        var model = Menus.Container(in target, null, "Playlist", new ContainerExtras
+        {
+            Pin = pin ? () => new FluentGpu.Controls.MenuFlyoutItem("PIN") : null,
+            Organize = organize ? () => new FluentGpu.Controls.MenuFlyoutItem("ORGANIZE") : null,
+            PinStartsGroup = startsGroup,
+            Tail = [new FluentGpu.Controls.MenuFlyoutItem("TAIL")],
+        });
+        return model?.Rows ?? [];
+    }
+
+    [Fact]
+    public void ContainerMenu_PinThenOrganize_AreAdjacentInOneGroup()
+    {
+        var rows = ContainerRows(pin: true, organize: true);
+        int p = rows.ToList().FindIndex(r => r.Label == "PIN");
+        int o = rows.ToList().FindIndex(r => r.Label == "ORGANIZE");
+        Assert.True(p >= 0);
+        Assert.Equal(p + 1, o);                          // Organize ▸ directly after Pin, no separator between
+        if (p > 0) Assert.True(rows[p - 1].IsSeparator); // the pair opens its own group
+    }
+
+    [Fact]
+    public void ContainerMenu_OrganizeAlone_StillOpensItsGroup()
+    {
+        var rows = ContainerRows(pin: false, organize: true);
+        int o = rows.ToList().FindIndex(r => r.Label == "ORGANIZE");
+        Assert.True(o >= 0);
+        Assert.DoesNotContain(rows, r => r.Label == "PIN");
+        if (o > 0) Assert.True(rows[o - 1].IsSeparator);
+    }
+
+    [Fact]
+    public void ContainerMenu_NothingApplies_NoPinGroupAndNoStraySeparator()
+    {
+        var rows = ContainerRows(pin: false, organize: false);
+        Assert.DoesNotContain(rows, r => r.Label is "PIN" or "ORGANIZE");
+        for (int i = 1; i < rows.Count; i++)
+            Assert.False(rows[i].IsSeparator && rows[i - 1].IsSeparator);
+        Assert.False(rows.Count > 0 && rows[0].IsSeparator);
+    }
+
     [Fact]
     public void Item_Collections_MoveAndHide()
     {

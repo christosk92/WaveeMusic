@@ -147,8 +147,8 @@ public static partial class Sidebar
                     dropActive: () => owner.HeaderCreateDropActive.Value,
                     box: SidebarRowGeometry.HeaderButton, glyph: SidebarRowGeometry.PlusGlyph)) with { Key = "tree-create" };
             if (_o.MenuOverlay is { } svc && _o.HeaderMenu(id) is { } menu)
-                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast)
-                    .WithContextMenu(svc, menu) with { ClickRequestsContext = true }, Loc.Get(PaneLoc.SectionOptions));
+                more = ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: !_o.TouchLast, requestsContext: true)
+                    .WithContextMenu(svc, menu), Loc.Get(PaneLoc.SectionOptions));
 
             // ONE rotating glyph, never a swap; a recycle onto another section seeds its angle instead of spinning.
             Action<bool> toggle = open => owner.ToggleSection(id, !open);

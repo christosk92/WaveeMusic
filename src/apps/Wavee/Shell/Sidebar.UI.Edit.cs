@@ -344,8 +344,8 @@ public static partial class Sidebar
                 kids.Add(Button.Create(Loc.Get("sidebar.menu.unpinShortcuts"), Sidebar.UnpinAllShortcutsRecorded, ButtonAppearance.Subtle, ControlSize.Small)
                     with { Key = "pinned-unpin-shortcuts", BlocksDragArm = true });
             if (owner.MenuOverlay is { } svc && owner.HeaderMenu(id) is { } menu)
-                kids.Add(ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: false).WithContextMenu(svc, menu)
-                    with { ClickRequestsContext = true }, Loc.Get(PaneLoc.SectionOptions)));
+                kids.Add(ToolTip.Wrap(SectionHeader.InlineButton(Icons.More, null, reveal: false, requestsContext: true).WithContextMenu(svc, menu),
+                    Loc.Get(PaneLoc.SectionOptions)));
             if (row.Movable) kids.Add(Icon(Icons.GripperBar, 16f, Tok.TextTertiary));
             return new BoxEl
             {

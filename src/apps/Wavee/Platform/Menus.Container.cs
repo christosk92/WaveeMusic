@@ -127,10 +127,14 @@ public readonly record struct ContainerExtras
     /// <summary>Replaces the registered Add to playlist row — a page that already holds the tracks passes the track
     /// menu's own deposit submenu (immediate, no resolve round-trip).</summary>
     public MenuFlyoutItem? Deposit { get; init; }
-    /// <summary>Fills the Pin/Unpin slot when set (the sidebar's pin lives in its Organize ▸ submenu, and its pin ids are
-    /// its own). The function is the answer, including null = no row.</summary>
+    /// <summary>Fills the Pin/Unpin slot when set (the sidebar's pin ids are its own). The function is the answer,
+    /// including null = no row.</summary>
     public Func<MenuFlyoutItem?>? Pin { get; init; }
-    /// <summary>Open a separator group in front of the <see cref="Pin"/> slot (the sidebar's Organize ▸ stands apart).</summary>
+    /// <summary>The sidebar's Organize ▸ submenu (Move out of …, positional moves), composed right after the
+    /// <see cref="Pin"/> slot in the same group; null = no row. Read only with <see cref="PinStartsGroup"/>.</summary>
+    public Func<MenuFlyoutItem?>? Organize { get; init; }
+    /// <summary>Open ONE separator group at the Pin slot holding <see cref="Pin"/> then <see cref="Organize"/> (the
+    /// sidebar's Pin/Unpin sits top-level, Organize ▸ right after it; the group is absent when neither applies).</summary>
     public bool PinStartsGroup { get; init; }
     /// <summary>With <see cref="OnPage"/>: the hero carries the Play split and a Share button (an album's or playlist's
     /// action row), so the "…" drops Play next, Add to queue and Share (<see cref="ContainerMenuRules.For"/>).</summary>
@@ -169,9 +173,13 @@ public static partial class Menus
         foreach (var verb in plan.Rows)
         {
             if (verb == ContainerVerb.Share) { sharePending = true; continue; }   // Share is its own group
-            if (verb == ContainerVerb.Pin && x.PinStartsGroup && x.Pin is { } grouped)
+            if (verb == ContainerVerb.Pin && x.PinStartsGroup)
             {
-                Actions.Menu.Group(rows, grouped());
+                var pin = x.Pin?.Invoke();
+                var org = x.Organize?.Invoke();
+                if (pin is not null || org is not null) Actions.Menu.OpenGroup(rows);
+                if (pin is { } pinRow) rows.Add(pinRow);
+                if (org is { } orgRow) rows.Add(orgRow);
                 continue;
             }
             if (RowFor(verb, in ctx, in x) is { } row) rows.Add(row);
