@@ -2494,6 +2494,48 @@ public static partial class Shell
         public static int RichRowCount(Suggestions s) => Math.Min(MaxRichRows, s.Items.Count);
         public static int SelectableCount(Suggestions s) => QueryRowCount(s) + RichRowCount(s);
 
+        // ── the popup body's reserved height ─────────────────────────────────────────────────────────────────────────
+        // The flyout never sizes itself by async data: while a request is Pending with nothing to show it reserves what the
+        // PREVIOUS answer took (else a typical first answer), and the body is capped where the scroll viewport caps.
+
+        /// <summary>The scroll viewport's cap, and so the most the popup body ever takes.</summary>
+        public const float PopupBodyMaxHeight = 560f;
+
+        /// <summary>One query row (the 40 floor plus its 2 + 2 margin), one rich row (the 58 floor plus its 2 + 2 margin),
+        /// and the divider that separates the two groups (1 high, 4 + 4 margin).</summary>
+        public const float QueryRowHeight = 44f, RichRowHeight = 62f, GroupDividerHeight = 9f;
+
+        /// <summary>The notice slot ("No results found" / the failure + Retry): the stock list item floor.</summary>
+        public const float NoticeHeight = 40f;
+
+        /// <summary>The placeholder rows a Pending body is built from: the previous answer's own row counts when it had any,
+        /// else <see cref="MaxQueryRows"/> query rows + 3 rich ones. The counts are not trimmed to the cap: the reserved
+        /// height is <see cref="PopupBodyHeight"/> and the body's clip cuts the last row, like the real viewport.</summary>
+        public static (int Query, int Rich) PendingSkeletonRows(int lastQueryRows, int lastRichRows)
+        {
+            int q = Math.Clamp(lastQueryRows, 0, MaxQueryRows);
+            int r = Math.Clamp(lastRichRows, 0, MaxRichRows);
+            return q + r == 0 ? (MaxQueryRows, 3) : (q, r);
+        }
+
+        /// <summary>The height a Pending body with nothing to show reserves: one notice slot when the last settled answer
+        /// was a notice (Empty / Failed), else the previous answer's rows (or a typical first answer), capped at
+        /// <see cref="PopupBodyMaxHeight"/>. Typing on past a no-match query therefore never pumps the card.</summary>
+        public static float PendingBodyHeight(int lastQueryRows, int lastRichRows, bool lastWasNotice)
+        {
+            if (lastWasNotice) return NoticeHeight;
+            var (q, r) = PendingSkeletonRows(lastQueryRows, lastRichRows);
+            return PopupBodyHeight(q, r);
+        }
+
+        /// <summary>The body height of <paramref name="queryRows"/> + <paramref name="richRows"/> rows, never above
+        /// <see cref="PopupBodyMaxHeight"/> (past it the viewport scrolls).</summary>
+        public static float PopupBodyHeight(int queryRows, int richRows)
+            => MathF.Min(PopupBodyMaxHeight, RawBodyHeight(Math.Max(0, queryRows), Math.Max(0, richRows)));
+
+        static float RawBodyHeight(int q, int r)
+            => q * QueryRowHeight + r * RichRowHeight + (q > 0 && r > 0 ? GroupDividerHeight : 0f);
+
         /// <summary>↑/↓ over the visible rows, wrapping through "none" (−1) at both ends.</summary>
         public static int MoveHighlight(int current, int delta, int count)
         {

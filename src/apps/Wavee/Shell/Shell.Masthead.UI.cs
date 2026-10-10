@@ -731,7 +731,9 @@ public static partial class Shell
                     selection => { if (InvokeSelection(selection)) context.Close(); }, context.Close)),
                 MoveSelection: delta => highlight.Value = Omnibar.MoveHighlight(highlight.Peek(), delta, Omnibar.SelectableCount(query.Suggestions)),
                 SubmitSelection: () => InvokeSelection(highlight.Peek()),
-                ResetSelection: () => highlight.Value = -1);
+                ResetSelection: () => highlight.Value = -1,
+                // The list is a card: Esc / a pick plays the Dropdown exit instead of vanishing (the engine default stays Static).
+                Chrome: PopupChrome.Dropdown);
 
             // Stock metrics: a 32-DIP field at the control corner radius with the control-default chrome. Wrapped in a
             // growing COLUMN so the box is STRETCHED to this component's width: a fill-mode box contributes only its query
@@ -821,9 +823,14 @@ public static partial class Shell
     }
 
     /// <summary>The popup body, rendered BY the store's state. Its one sentence, "No results found", is reserved for a
-    /// confirmed empty answer; pending is a progress bar over the previous rows, failed is a retry offer.</summary>
+    /// confirmed empty answer; pending is the always-mounted progress slot over the previous rows (or skeleton rows in the
+    /// height the previous answer took when there are none), failed is a retry offer. Idle (closing) keeps the last body
+    /// on screen so the Dropdown exit plays over it.</summary>
     sealed class SuggestionsPopup(IReadSignal<float> width, Action<int> choose, Action? close) : Component
     {
+        // The last body that was on screen: the Idle (closing) frames present it while the exit plays. Per mount.
+        Element? _lastBody;
+
         public override Element Render()
         {
             // Mounted exactly while the list is open: the title-bar pill stays expanded for that long (see SearchField).
@@ -854,6 +861,11 @@ public static partial class Shell
                 rows.Add(RichRow(s.Items[i], index));
             }
 
+            // What the last SETTLED answer took (rows, or a notice), so a Pending body with nothing to show reserves the
+            // same space: a no-match query is a notice-high answer, not a stale list.
+            if (rows.Count > 0) { s_lastQueryRows = queryRows; s_lastRichRows = richRows; s_lastWasNotice = false; }
+            else if (state is Omnibar.State.Empty or Omnibar.State.Failed) { s_lastQueryRows = s_lastRichRows = 0; s_lastWasNotice = true; }
+
             Element body;
             if (rows.Count == 0)
             {
@@ -862,24 +874,98 @@ public static partial class Shell
                     Omnibar.State.Empty => OmniNotice(w, Loc.Get(Strings.Search.NoResults), null),
                     Omnibar.State.Failed => OmniNotice(w, Loc.Get(Strings.Search.SuggestFailed),
                         Button.Subtle(Loc.Get(Strings.Common.Retry), static () => s_omnibar.Query.Retry())),
-                    // Pending (the bar is the whole answer) and Idle (closing): no sentence.
-                    _ => new BoxEl { Width = w, MinWidth = w, MinHeight = AutoSuggestBox.ItemMinHeight },
+                    // Pending: skeleton rows in the reserved height, so the answer fills space instead of growing it.
+                    Omnibar.State.Pending => PendingBody(w),
+                    // Idle (closing): the body that was on screen, so the exit collapses real content; no sentence.
+                    _ => _lastBody ?? new BoxEl { Width = w, MinWidth = w, MinHeight = AutoSuggestBox.ItemMinHeight },
                 };
             }
             else
             {
                 body = new ScrollEl
                 {
-                    Width = w, MinWidth = w, MaxHeight = 560f, ContentSized = true,
+                    Width = w, MinWidth = w, MaxHeight = Omnibar.PopupBodyMaxHeight, ContentSized = true,
                     Content = new BoxEl { Direction = 1, Width = w, MinWidth = w, Margin = new Edges4(-1f, 0f, -1f, 0f), Children = rows.ToArray() },
                 };
             }
 
-            // The popup chrome supplies the plate, border, corners, shadow and clip.
+            if (state != Omnibar.State.Idle) _lastBody = body;
+
+            // The progress bar's 3-DIP slot is ALWAYS the first child: it fades, it never mounts or unmounts, so a keystroke
+            // moves nothing. The popup chrome supplies the plate, border, corners, shadow and clip; the root's height eases.
             return new BoxEl
             {
                 Direction = 1, Width = w, MinWidth = w, Padding = new Edges4(0f, 2f, 0f, 2f),
-                Children = state == Omnibar.State.Pending ? [ProgressBar.Indeterminate(w), body] : [body],
+                Layout = Design.Reduced ? null : s_bodyHeightMotion,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Key = "omni-progress", Width = w, Height = ProgressSlotHeight, Shrink = 0f, ClipToBounds = true,
+                        HitTestVisible = false, Opacity = state == Omnibar.State.Pending ? 1f : 0f, Transition = s_chromeFade,
+                        Children = [ProgressBar.Indeterminate(w)],
+                    },
+                    body,
+                ],
+            };
+        }
+
+        const float ProgressSlotHeight = 3f;
+
+        // The previous answer's row counts (UI thread only): what a Pending body reserves while nothing is on screen.
+        static int s_lastQueryRows, s_lastRichRows;
+        static bool s_lastWasNotice;   // the last settled answer was Empty / Failed: one notice slot high
+
+        /// <summary>The popup root's height motion (Reflow on the height axis): rows arriving or leaving ease the card, and
+        /// the top edge never moves. Standard / FluentDecelerate; the call site passes null under reduced motion.</summary>
+        static readonly LayoutTransition s_bodyHeightMotion = new(TransitionChannels.Size,
+            TransitionDynamics.Tween(Design.Motion.Standard, Easing.FluentDecelerate),
+            Size: SizeMode.Reflow, Anchor: SizeAnchor.Leading, Axes: SizeAxes.Height);
+
+        /// <summary>Skeleton rows for a Pending request with no rows to show: the previous answer's counts (else a typical
+        /// answer), each row the real row's height, inert geometry only (<see cref="Controls.PendingBar"/>). The body is
+        /// exactly <see cref="Omnibar.PendingBodyHeight"/> high and clips its last row, so the answer fills the space; after
+        /// a notice (Empty / Failed) it is one notice slot.</summary>
+        static Element PendingBody(float w)
+        {
+            float height = Omnibar.PendingBodyHeight(s_lastQueryRows, s_lastRichRows, s_lastWasNotice);
+            if (s_lastWasNotice)
+                return new BoxEl
+                {
+                    Direction = 0, Width = w, MinWidth = w, Height = height, AlignItems = FlexAlign.Center,
+                    Padding = new Edges4(24f, 0f, 24f, 0f), ClipToBounds = true,
+                    Children = [Controls.PendingBar(160f, 11f)],
+                };
+            var (q, r) = Omnibar.PendingSkeletonRows(s_lastQueryRows, s_lastRichRows);
+            var kids = new List<Element>(q + r + 1);
+            for (int i = 0; i < q; i++)
+                kids.Add(new BoxEl
+                {
+                    Height = Omnibar.QueryRowHeight, Shrink = 0f, AlignItems = FlexAlign.Center, Padding = new Edges4(16f, 0f, 16f, 0f),
+                    Children = [Controls.PendingBar(120f + (i % 3) * 40f, 11f)],
+                });
+            for (int i = 0; i < r; i++)
+            {
+                if (i == 0 && q > 0) kids.Add(new BoxEl { Height = 1f, Shrink = 0f, Margin = new Edges4(16f, 4f, 16f, 4f), Fill = Tok.StrokeDividerDefault });
+                kids.Add(new BoxEl
+                {
+                    Height = Omnibar.RichRowHeight, Shrink = 0f, Direction = 0, Gap = 12f, AlignItems = FlexAlign.Center,
+                    Padding = new Edges4(16f, 0f, 16f, 0f),
+                    Children =
+                    [
+                        new BoxEl { Width = 44f, Height = 44f, Shrink = 0f, Corners = Radii.ControlAll, Fill = Tok.FillSubtleSecondary },
+                        new BoxEl
+                        {
+                            Direction = 1, Gap = 6f, Grow = 1f, Basis = 0f, MinWidth = 0f,
+                            Children = [Controls.PendingBar(140f + (i % 3) * 30f, 11f), Controls.PendingBar(90f, 9f)],
+                        },
+                    ],
+                });
+            }
+            return new BoxEl
+            {
+                Direction = 1, Width = w, MinWidth = w, Height = height, ClipToBounds = true,
+                Children = kids.ToArray(),
             };
         }
 
