@@ -69,15 +69,10 @@ public static class ArtistBleed
     /// <summary>The right edge of the shell's photo, in window coordinates. Under Zune a FLOATING rail (open
     /// and not fitting) overlays the page: its panel's left edge is <c>viewportW - railW - railMargin</c> (the overlay is
     /// right-aligned at its final width), and the photo stops there instead of running under the panel (below the card's top: the
-    /// chrome above the panel keeps the photo through <see cref="BandExtensionWidth"/>). Every other case is the
+    /// chrome part above the card top keeps the card's full span, so the chrome above the panel keeps the photo). Every other case is the
     /// card's own right edge (<paramref name="cardRight"/>). Never past the card's edge, never negative.</summary>
     public static float PhotoRight(float cardRight, bool zune, bool railFloats, float viewportW, float railW, float railMargin)
         => zune && railFloats ? MathF.Min(cardRight, MathF.Max(0f, viewportW - railW - railMargin)) : cardRight;
-
-    /// <summary>The width of the photo's BAND EXTENSION: a floating panel starts under the Zune band, so the chrome above it (the
-    /// title bar and the band, over the rail column) keeps the photo between <paramref name="photoRight"/> and the card's edge.
-    /// Zero whenever the photo already reaches the card's edge.</summary>
-    public static float BandExtensionWidth(float cardRight, float photoRight) => MathF.Max(0f, cardRight - photoRight);
 
     /// <summary>How much of the photo (and how little of the card's top fill) shows at <paramref name="offset"/>: 1 until the
     /// hero's own expanded fade starts (<see cref="ArtistHeroLayout.ExpandedFadeStart"/>, the same number the hero's Fade
@@ -108,6 +103,11 @@ public static class ArtistBleed
     /// below it (no sliver under the solid ground), and the box feathers its own bottom with the same band as the card media (that on-screen band lands in CardGround's fade ramp, so the photo cross-fades into the fill). Capped at the photo's own end.</summary>
     public static float PhotoClip(double offset, float heroH, float floor, float photoH)
         => MathF.Min(MathF.Max(0f, photoH), HeroBottom(offset, heroH, floor) - ParallaxY(offset));
+
+    /// <summary>The under-card part's on-screen height from the card top: it ends on the hero's presented bottom (the clip, in the
+    /// box's own coordinates, plus the parallax translation) and never past the photo's end.</summary>
+    public static float UnderCardClip(double offset, float heroH, float floor, float photoH)
+        => MathF.Max(0f, PhotoClip(offset, heroH, floor, photoH) + ParallaxY(offset));
 
     /// <summary>The card's top-left radius while the photo bleeds through: it fades with the hero region (<paramref name="cut"/> is
     /// <c>Shell.BleedCut</c>, 0..1), so the photo meets the window edge with no notch and the radius returns as the hero scrolls away.</summary>
@@ -209,6 +209,12 @@ public static class ArtistBleed
 
     /// <summary>The underlay during the fade-out: never above the presence, so the strip returns with the fade instead of at once.</summary>
     public static float ExitUnderlay(float underFrom, float presence) => MathF.Min(underFrom, presence);
+
+    /// <summary>Whether a bleed photo layer mounts with the WashFade cross-fade: only when it replaces another artist's layers that are
+    /// still showing (<paramref name="replacesShown"/> and a presence above 0), so the outgoing photo and the incoming one cross-fade
+    /// instead of the new one stepping in at the current presence. A fresh entrance (nothing shown, presence 0 when the shell renders
+    /// it) runs on the presence alone: a mount fade would multiply a second clock into it.</summary>
+    public static bool CrossFadesOnMount(bool replacesShown, float presence) => replacesShown && presence > 0f;
 
     /// <summary>Whether the card's photo plays an entrance of its own. Under the bleed a bitmap that was resident when the hero mounted
     /// rests at 1 and the page's FadeOnly reveal carries it; a bitmap that lands later fades itself over <see cref="EntranceMs"/>, on

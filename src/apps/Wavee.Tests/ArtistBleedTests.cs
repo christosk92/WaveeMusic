@@ -74,15 +74,6 @@ public class ArtistBleedPhotoRightTests
         Assert.Equal(600f, ArtistBleed.PhotoRight(600f, zune: true, railFloats: true, 1000f, 320f, 0f));
         Assert.Equal(0f, ArtistBleed.PhotoRight(600f, zune: true, railFloats: true, 300f, 320f, 0f));
     }
-
-    [Fact]
-    public void The_band_above_a_floating_panel_keeps_the_photo_through_the_extension()
-    {
-        float right = ArtistBleed.PhotoRight(1000f, zune: true, railFloats: true, 1000f, 320f, 0f);
-        Assert.Equal(320f, ArtistBleed.BandExtensionWidth(1000f, right));
-        Assert.Equal(0f, ArtistBleed.BandExtensionWidth(1000f, 1000f));
-        Assert.Equal(0f, ArtistBleed.BandExtensionWidth(600f, 700f));
-    }
 }
 
 public class ArtistBleedScrollCurveTests
@@ -329,6 +320,17 @@ public class ArtistBleedFrameTests
 
 public class ArtistBleedHandOverTests
 {
+    [Theory]
+    [InlineData(false, 0f, false)]
+    [InlineData(false, 0.5f, false)]
+    [InlineData(false, 1f, false)]
+    [InlineData(true, 0f, false)]
+    [InlineData(true, 0.5f, true)]
+    [InlineData(true, 0.998f, true)]
+    [InlineData(true, 1f, true)]
+    public void The_photo_layers_cross_fade_on_mount_only_while_another_artists_are_showing(bool replacesShown, float presence, bool crossFades)
+        => Assert.Equal(crossFades, ArtistBleed.CrossFadesOnMount(replacesShown, presence));
+
     [Theory]
     [InlineData(0f)]
     [InlineData(0.5f)]
@@ -634,6 +636,25 @@ public class ArtistBleedNotchAndPoseTests
             // Equal to the hero's presented bottom whenever the photo is tall enough to reach it.
             if (photoH + ArtistBleed.ParallaxY(o) >= heroBottom)
                 Assert.True(MathF.Abs(heroBottom - screenBottom) <= 0.001f);
+        }
+    }
+
+    [Fact]
+    public void The_under_card_clip_ends_on_the_heros_presented_bottom()
+    {
+        foreach (double o in new[] { -40.0, 0.0, 60.0, 200.0, 380.0, 900.0 })
+        foreach (float heroH in new[] { 280f, 440f })
+        foreach (float floor in new[] { 0f, 56f })
+        foreach (float photoH in new[] { 300f, 440f, 520f })
+        {
+            float under = ArtistBleed.UnderCardClip(o, heroH, floor, photoH);
+            float heroBottom = ArtistBleed.HeroBottom(o, heroH, floor);
+            Assert.Equal(MathF.Max(0f, ArtistBleed.PhotoClip(o, heroH, floor, photoH) + ArtistBleed.ParallaxY(o)), under);
+            Assert.True(under <= heroBottom + 0.001f);
+            Assert.True(under >= 0f);
+            // Equal to the hero's presented bottom whenever the photo is tall enough to reach it.
+            if (photoH + ArtistBleed.ParallaxY(o) >= heroBottom)
+                Assert.True(MathF.Abs(heroBottom - under) <= 0.001f);
         }
     }
 

@@ -803,18 +803,20 @@ public static partial class Shell
     // ══ 2.2 THE CARD'S GROUND AND STROKE (and the artist bleed's cut-out) ══════════════════════════════════════════════
 
     /// <summary>EXPERIMENTAL (artist bleed): how much of the card's top fill is gone at this moment, 0..1. The strip over the
-    /// photo's extent and the stroke over it are both drawn at <c>1 - this</c>. 0 with no backdrop, so the ground is today's.</summary>
+    /// photo's extent and the stroke over it are both drawn at <c>1 - this</c>. It rides leg 1 of the settle
+    /// (<see cref="Ui.BleedUnderlay"/>), in step with the shell's under-card photo and under the card's own still-opaque photo, so the
+    /// entrance runs on one clock; on exit it returns with the fade-out. 0 with no backdrop, so the ground is today's.</summary>
     static float BleedCut()
     {
         if (Ui.BleedBackdrop.Value is not { } b) return 0f;
-        return Ui.BleedPresence.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
+        return Ui.BleedUnderlay.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
     }
 
     static readonly Func<float> s_bleedKeep = static () => 1f - BleedCut();
 
     /// <summary>The corners of the layers that sit over the photo (the ground and the stroke), WITH a backdrop: today's thunk with the
     /// top-left radius faded by <see cref="ArtistBleed.CornerFor"/>, so the notch the rounded corner would cut out of the photo
-    /// fades with the hero region and returns as the hero scrolls away. Paint-rate (BleedCut reads the scroll and the presence).</summary>
+    /// fades with the hero region and returns as the hero scrolls away. Paint-rate (BleedCut reads the scroll and the underlay).</summary>
     static readonly Func<CornerRadius4> s_bleedCorners = static () =>
     {
         var c = s_contentCorners();
@@ -831,8 +833,9 @@ public static partial class Shell
     /// line, the hero's presented bottom (<see cref="ArtistBleed.RiserTop"/>, a paint-only translation): a STRIP above it that
     /// fades out as the photo bleeds through (<see cref="BleedCut"/>), a RISER from it down that is always solid, and a short
     /// FADE above the line that is the photo's own bottom feather turned into fill (so the photo ends in the card's fill, not in
-    /// a hard edge). The strip and the riser TILE the clip, so the translucent fill is never drawn twice. The card rect never
-    /// changes; with no backdrop nothing here is translated or faded.</summary>
+    /// a hard edge). The strip and the riser TILE the clip, so the translucent fill is never drawn twice. The strip, its stroke, the
+    /// corner and the fade box move on leg 1 of the settle (<see cref="Ui.BleedUnderlay"/>), under the card's own opaque photo, so the
+    /// entrance runs on one clock. The card rect never changes; with no backdrop nothing here is translated or faded.</summary>
     sealed class CardGround : Component
     {
         public override Element Render()

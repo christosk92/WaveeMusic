@@ -165,6 +165,7 @@ public static partial class Shell
             // The card's final top (the title bar, plus the Zune band): the depth of the veil's top fade. Changes only with the nav
             // style or the band, never per scroll or per frame.
             float cardTop = UseComputed(static () => Ui.CardRect.Value.Y).Value;
+            float scale = UseContext(Viewport.Scale);         // the split line at the card's top is snapped to a device pixel
             // The chrome's static hover/pressed arms follow the ink mix across one half (Ui.ChromeArmsOnMedia): bridged here, the one
             // shell-level component, so what reads it renders once per crossing and never per scroll tick.
             UseSignalEffect(static () => Ui.ChromeArmsOnMedia.SetIfChanged(Ui.ChromeInkMix() >= 0.5f));
@@ -180,7 +181,7 @@ public static partial class Shell
             // EXPERIMENTAL (artist bleed): the page-published photo and its chrome scrim, ABOVE the tint and the washes. Null for
             // every page that publishes none, which adds nothing to the children below. After the page lets go, the RETAINED backdrop
             // keeps the nodes mounted while BleedPresence fades them, so the photo and the card's strip share one clock.
-            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, vp, cardTop) : null;
+            var bleed = (state.Backdrop ?? Ui.BleedBackdrop.Value) is { } backdrop ? BleedNodes(backdrop, vp, cardTop, scale) : null;
 
             if (state.Wash is not { } wash)
                 return new BoxEl { Grow = 1f, ZStack = true, HitTestVisible = false, Children = bleed is null ? [tint] : [tint, .. bleed] };
@@ -213,22 +214,27 @@ public static partial class Shell
         /// the chrome readable over it. ONE FIELD, ONE FRAME: the photo box and the veil box both come from
         /// <see cref="ArtistBleed.FrameFor"/> (the same rule the card's own photo uses), the scrim takes the theme's polarity over the
         /// page's hero-tinted tone (<see cref="ArtistBleed.FieldBase"/>: light in the light theme, dark in the dark one) and the veil
-        /// is the theme's production veil, and the veil rides the photo's clip, translation, strength and
-        /// Enter/Exit, so chrome and hero are one field. All four
-        /// layers (photo with its veil, the band extension with its own copy of the veil, scrim) are keyed on the backdrop (a new
-        /// photo remounts, and so cross-fades, through the WashFade idiom) and hit-test free, and every binding below is a paint channel except Width/Height, which change on a resize, a pane or rail
-        /// change or a nav-style switch (the card's rect), and the photo clip's Height, which follows the hero's presented bottom (it
-        /// relays out that one leaf per scroll frame while the hero is on screen). The photo's span is the card's left..right edge
-        /// (flush with the window's left edge when no pane is docked); it never sits under the right rail or the Classic/Library
-        /// pane. Under Zune a FLOATING rail's panel starts under the band, so below the card's top the photo stops at the panel's
-        /// left edge (<see cref="ArtistBleed.PhotoRight"/>) while a band extension keeps the photo across the chrome above the panel.
+        /// is the theme's production veil, and the veil rides the photo's clip, translation and strength, so chrome and hero are one
+        /// field. The layers are the CHROME part (the card's full span above its top, so it also covers the band above a floating
+        /// panel), the UNDER-CARD part (below the card's top, stopping at <see cref="ArtistBleed.PhotoRight"/>) and the scrim, all
+        /// drawn from the same frame. The split line is the card's top snapped to a device pixel, so the two clips never leave a
+        /// hairline. The chrome part fades with the presence (the entrance clock alone: the card's own photo carries the entrance
+        /// below the line), and the under-card part with the underlay leg of the settle (<see cref="Ui.BleedUnderlay"/>), in
+        /// step with the strip cut, the fade box and the corner, so they come in under the card's still-opaque photo. Neither photo
+        /// part adds a mount fade during an entrance (<see cref="ArtistBleed.CrossFadesOnMount"/>). All layers are keyed on the
+        /// backdrop (a new photo remounts) and hit-test free, and every binding below is a paint channel except Width/Height, which
+        /// change on a resize, a pane or rail change or a nav-style switch (the card's rect), and the under-card part's Height, which
+        /// follows the hero's presented bottom (it relays out that one leaf per scroll frame while the hero is on screen). The span is
+        /// the card's left..right edge (flush with the window's left edge when no pane is docked); it never sits under the right rail
+        /// or the Classic/Library pane. Under Zune a FLOATING rail's panel starts under the band, so below the card's top the photo
+        /// stops at the panel's left edge while the chrome part keeps the photo across the chrome above the panel.
         /// The CHROME INK keeps the theme's own ink (<c>Ui.ChromeInkMix</c> is 0), so the columns outside the photo's span (above the
         /// Classic/Library pane, above the rail) keep the plain chrome and need no field: nothing is drawn outside the card's span.
         /// <para>THE PHOTO FOLLOWS THE CARD'S PRESENTED POSE. A pane toggle or a nav-style switch FLIPs the card (Reveal: its
         /// contents stay laid out at the FINAL size while a clip and a translation ease), so the photo does the same: an outer
         /// clip at the presented left/top (<see cref="Ui.CardPose"/>) over an inner box laid out at the final span, so the Cover
         /// crop never rescales mid-move and the left edge never snaps.</para></summary>
-        static Element[] BleedNodes(ShellBackdrop b, IReadSignal<Size2> vp, float cardTop)
+        static Element[] BleedNodes(ShellBackdrop b, IReadSignal<Size2> vp, float cardTop, float scale)
         {
             // THE VEIL'S TOP FADE: the veil's horizontal plate is near-opaque on the left, which over the chrome (the title bar and the
             // band) muddied the pivots and the search pill. It fades in from nothing at the window top to full at the card's top, so
@@ -246,7 +252,7 @@ public static partial class Shell
             static float Left() => Ui.CardPose.Value.X;
             // The clip never runs past the photo's right edge (a closing pane's translated photo would otherwise reach under the rail).
             float ClipWidth() => MathF.Max(0f, MathF.Min(FinalWidth(), Right() - Left()));
-            // The chrome above the card (scrim, band extension) lies wholly above a floating panel, so it keeps the card's span.
+            // The chrome above the card (the chrome part and the scrim) lies wholly above a floating panel, so it keeps the card's span.
             static float ChromeClipWidth() => MathF.Max(0f, MathF.Min(FinalWidth(), CardRight() - Left()));
             float Strength() => Ui.BleedPresence.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
             // The taller of the final and the presented top, so a Zune-to-Classic ease never runs short of photo. The card's HeroArt
@@ -256,65 +262,27 @@ public static partial class Shell
             // The page's own decode (its latched size), so the page's HeroArt decode is the cache hit.
             float aspect = (float)b.DecodeW / Math.Max(1, b.DecodeH);
 
-            Element image = new BoxEl
+            // The split line between the chrome part and the under-card part: the card's presented top, snapped to a device pixel.
+            float Seam() => ArtistBleed.SnapToPixel(Ui.CardPose.Value.Y, scale);
+            // The under-card part rides the underlay leg of the settle (with the strip cut, the fade box and the corner), not the presence.
+            float Under() => Ui.BleedUnderlay.Value * ArtistBleed.HeroVisible(b.ScrollY.Value, b.CollapseDistance);
+            // A photo layer cross-fades on mount only when it replaces another artist's layers that are still showing (a quick
+            // artist-to-artist navigation); a fresh entrance runs on the presence alone (Peek: render is navigation rate).
+            bool replacesShown = Ui.BleedBackdrop.Peek() is { } shown && shown.Key != b.Key;
+            EnterExit? enter = ArtistBleed.CrossFadesOnMount(replacesShown, Ui.BleedPresence.Peek()) ? WashFade : null;
+
+            // The photo with the hero's horizontal veil (the theme's production veil) over it, in the shared frame; the two parts differ
+            // only in their translation, so their pixels are identical and the veil's gradient spans the same columns as the card's.
+            Element FrameBox(string veilKey, Func<Affine2D> shift) => new BoxEl
             {
                 ZStack = true, HitTestVisible = false,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(() => Frame().Width),
                 Height = Prop.Of(() => Frame().Height),
+                Transform = Prop.Of(shift),
                 Children =
                 [
-                    Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent)
-                        with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = ArtistBleed.PhotoFocusY },
-                ],
-            };
-            // The hero's horizontal veil (the theme's production veil) over the same frame: its gradient spans the same columns as the card's own
-            // veil, so the hand-over shifts no pixel.
-            Element veil = new BoxEl
-            {
-                ZStack = true, HitTestVisible = false,
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                Width = Prop.Of(() => Frame().Width),
-                Height = Prop.Of(() => Frame().Height),
-                EdgeFade = veilTopFade,
-                Children =
-                [
-                    Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
-                                           key: "shell.bleed.veil:" + b.Key, payloadAccent: b.PayloadAccent),
-                ],
-            };
-            Element photo = new BoxEl
-            {
-                Key = "shell.bleed:" + b.Key,
-                ZStack = true, ClipToBounds = true, HitTestVisible = false,
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                Width = Prop.Of(ClipWidth),
-                // The clip's ON-SCREEN bottom (this box carries the parallax translation, which PhotoClip subtracts) lands on the riser
-                // line (the hero's presented bottom): no sliver below the hero. The box feathers its own bottom with the same
-                // PhotoFadeBandFor band as the card media, so its on-screen feather lands in CardGround's [line - band, line] ramp (the
-                // translucent fill fading in): the photo cross-fades into the ground and never ends in a hard horizontal edge.
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
-                Height = Prop.Of(() => Ui.CardPose.Value.Y + ArtistBleed.PhotoClip(b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight)),
-                Transform = Prop.Of(() => Affine2D.Translation(Left(), ArtistBleed.ParallaxY(b.ScrollY.Value))),
-                Opacity = Prop.Of(Strength),
-                Enter = WashFade, Exit = WashFade,
-                Children = [image, veil],
-            };
-            // THE BAND EXTENSION: under a floating Zune rail the panel starts under the band, so the strip between the title bar and the
-            // card's top over the rail column is chrome ABOVE the panel and keeps the photo (the same pixels: the same frame, shifted by
-            // the clip's offset). Zero-wide whenever the photo already reaches the card's edge.
-            Element bandImage = new BoxEl
-            {
-                ZStack = true, HitTestVisible = false,
-                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                Width = Prop.Of(() => Frame().Width),
-                Height = Prop.Of(() => Frame().Height),
-                Transform = Prop.Of(() => Affine2D.Translation(Left() - Right(), ArtistBleed.ParallaxY(b.ScrollY.Value))),
-                // The same veil as the photo's, over the same frame and under the same translation, so the gradient columns line up with
-                // the photo box and no vertical seam shows at the panel's left edge.
-                Children =
-                [
-                    Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent)
+                    Image(b.Url, ImageFit.Cover, aspect, b.DecodeW, 0f, placeholder: ColorF.Transparent, transition: ImageTransition.None)
                         with { AlignSelf = FlexAlign.Stretch, JustifySelf = FlexAlign.Stretch, FocusX = ArtistHeroLayout.PhotoFocusX, FocusY = ArtistBleed.PhotoFocusY },
                     new BoxEl
                     {
@@ -323,22 +291,42 @@ public static partial class Shell
                         Children =
                         [
                             Palette.ArtistHeroVeil(b.PaletteUrl, vertical: false, float.NaN, float.NaN,
-                                                   key: "shell.bleed.band.veil:" + b.Key, payloadAccent: b.PayloadAccent),
+                                                   key: veilKey + b.Key, payloadAccent: b.PayloadAccent),
                         ],
                     },
                 ],
             };
-            Element photoBand = new BoxEl
+            // THE CHROME PART: the card's full span from the window top to the split line (so it also covers the band above a floating
+            // panel). Its fade is the presence alone: the card's own photo carries the entrance below the line.
+            Element chrome = new BoxEl
             {
-                Key = "shell.bleed.band:" + b.Key,
+                Key = "shell.bleed.chrome:" + b.Key,
                 ZStack = true, ClipToBounds = true, HitTestVisible = false,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
-                Width = Prop.Of(() => ArtistBleed.BandExtensionWidth(CardRight(), Right())),
-                Height = Prop.Of(() => ArtistBleed.ScrimHeight(Ui.CardPose.Value.Y)),
-                Transform = Prop.Of(() => Affine2D.Translation(Right(), 0f)),
+                Width = Prop.Of(ChromeClipWidth),
+                Height = Prop.Of(Seam),
+                Transform = Prop.Of(() => Affine2D.Translation(Left(), 0f)),
                 Opacity = Prop.Of(Strength),
-                Enter = WashFade, Exit = WashFade,
-                Children = [bandImage],
+                Enter = enter, Exit = WashFade,
+                Children = [FrameBox("shell.bleed.chrome.veil:", () => Affine2D.Translation(0f, ArtistBleed.ParallaxY(b.ScrollY.Value)))],
+            };
+            // THE UNDER-CARD PART: from the split line down to the hero's presented bottom, stopping at the photo's right edge. Its
+            // ON-SCREEN bottom lands on the riser line (no sliver below the hero) and it feathers its own bottom with the same
+            // PhotoFadeBandFor band as the card media, so its feather lands in CardGround's [line - band, line] ramp (the translucent
+            // fill fading in): the photo cross-fades into the ground and never ends in a hard horizontal edge. The frame box is shifted
+            // up by the split line, so the pixels are the chrome part's.
+            Element under = new BoxEl
+            {
+                Key = "shell.bleed:" + b.Key,
+                ZStack = true, ClipToBounds = true, HitTestVisible = false,
+                AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
+                Width = Prop.Of(ClipWidth),
+                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
+                Height = Prop.Of(() => MathF.Max(0f, Ui.CardPose.Value.Y + ArtistBleed.UnderCardClip(b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight) - Seam())),
+                Transform = Prop.Of(() => Affine2D.Translation(Left(), Seam())),
+                Opacity = Prop.Of(Under),
+                Enter = enter, Exit = WashFade,
+                Children = [FrameBox("shell.bleed.veil:", () => Affine2D.Translation(0f, ArtistBleed.ParallaxY(b.ScrollY.Value) - Seam()))],
             };
             // The field's ground is the page's own hero-tinted tone (the precedence of CoverPageTonePlane.Resolve). The grading reaches this
             // render through the tint's republish (CoverShellTintBinder's known colour changes, so MaterialState changes): no Palette.Watch
@@ -358,7 +346,7 @@ public static partial class Shell
                 Gradient = new GradientSpec(GradientShape.Linear, 90f, ScrimStops(ground, ArtistBleed.ScrimStopsFor(Tok.Theme))),
                 Enter = WashFade, Exit = WashFade,
             };
-            return [photo, photoBand, scrim];
+            return [under, chrome, scrim];
         }
 
         /// <summary>The scrim's gradient <paramref name="stops"/> (<see cref="ArtistBleed.ScrimStopsFor"/>) over <paramref name="ground"/>:

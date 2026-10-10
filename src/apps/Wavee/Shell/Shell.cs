@@ -1112,8 +1112,9 @@ public static partial class Shell
         /// <summary>EXPERIMENTAL (artist bleed): how present the page-published backdrop is, 0..1. Tweened by
         /// <c>BleedPresenter</c>: the entrance runs over <c>ArtistBleed.EntranceMs</c> with its SmoothOut ease from the backdrop's
         /// <c>EntranceAtMs</c> (the card photo's own clock; 0 ms under reduced motion), the fade-out over <c>Design.Motion.Standard</c>;
-        /// every bleed term in the card ground and the stroke is multiplied by it, so navigating to or from an artist cross-fades
-        /// instead of snapping.</summary>
+        /// it drives the shell's chrome photo part, the scrim and the chrome ink, so navigating to or from an artist cross-fades
+        /// instead of snapping. The card ground, the stroke, the corner and the shell's under-card photo ride <see cref="BleedUnderlay"/>
+        /// (leg 1), which follows the presence down on the fade-out.</summary>
         public static readonly FloatSignal BleedPresence = new(0f);
 
         /// <summary>EXPERIMENTAL (artist bleed): LEG 1 of the settle, 0..1 (<c>ArtistBleed.UnderlayAt</c>): the shell's under-card layers
