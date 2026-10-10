@@ -67,6 +67,17 @@ public static class ArtistBleed
     public static float RiserTop(double offset, float heroH, float floor, float photoH)
         => MathF.Min(MathF.Max(0f, photoH), HeroBottom(offset, heroH, floor));
 
+    /// <summary>The photo clip's bottom in the clip box's OWN coordinates (the card's presented top is 0). The box carries the
+    /// parallax translation (<see cref="ParallaxY"/>), so its on-screen bottom is <c>clip + ParallaxY</c>: the clip is the riser line
+    /// MINUS the translation, which lands the on-screen bottom exactly on the hero's presented bottom. The shell's photo never paints
+    /// below it (no sliver under the solid ground) and the one feather is CardGround's. Capped at the photo's own end.</summary>
+    public static float PhotoClip(double offset, float heroH, float floor, float photoH)
+        => MathF.Min(MathF.Max(0f, photoH), HeroBottom(offset, heroH, floor) - ParallaxY(offset));
+
+    /// <summary>The card's top-left radius while the photo bleeds through: it fades with the hero region (<paramref name="cut"/> is
+    /// <c>Shell.BleedCut</c>, 0..1), so the photo meets the window edge with no notch and the radius returns as the hero scrolls away.</summary>
+    public static float CornerFor(float radius, float cut) => radius * (1f - Math.Clamp(cut, 0f, 1f));
+
     /// <summary>The line snapped to a device pixel, so the strip's and the riser's anti-aliased edges meet without a hairline.</summary>
     public static float SnapToPixel(float v, float scale) => scale > 0f ? MathF.Round(v * scale) / scale : v;
 
@@ -123,4 +134,39 @@ public static class ArtistBleed
 
     /// <summary>The chrome ink at <paramref name="mix"/> (<see cref="ChromeInkMix"/>).</summary>
     public static ColorF Ink(ColorF theme, ColorF media, float mix) => ColorF.Lerp(theme, media, Math.Clamp(mix, 0f, 1f));
+
+    // ── THE POSE UNDER THE ASYNC HOST ────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The pane ease at <paramref name="t"/> (0..1), evaluated through the engine's evaluator.</summary>
+    public static float PaneEase(float t) => Easings.Ease(Shell.FrameRules.CardMotionEase, t);
+
+    /// <summary>A toggle settle arms the analytic pose only if the settle follows its live toggle within this window.</summary>
+    public const float ToggleArmWindowMs = 50f;
+
+    /// <summary>A change of the live pane/rail/nav-style toggles is a real toggle (the card FLIPs) only when layout transitions are
+    /// not suppressed (a sidebar grip drag or the chrome-edge latch snaps the card 1:1) and the window band did not just cross (a
+    /// resize flips the mode too and cancels the FLIP). Otherwise the settle samples the real pose.</summary>
+    public static bool ArmsPose(bool layoutSuppressed, bool bandCrossed) => !layoutSuppressed && !bandCrossed;
+
+    /// <summary>The settle runs the analytic pose tween: a live toggle armed it no more than <see cref="ToggleArmWindowMs"/> ago.
+    /// Any other settle (a window resize, a drag, a snap) samples the real pose.</summary>
+    public static bool TweensPose(bool toggleArmed, float sinceArmMs) => toggleArmed && sinceArmMs <= ToggleArmWindowMs;
+
+    /// <summary>A settle that arrives while an analytic pose tween runs keeps it when only the card's HEIGHT changed
+    /// (<paramref name="next"/> against the tween's target <paramref name="to"/>): the nav-style switch's content region re-solves
+    /// its subtree at the presented height every frame, so the card re-arranges (H only) per frame while its X, Y and W are
+    /// already final (the region's Position channel is a transform). A change of X, Y or W is a different layout (a resize, a
+    /// snap) and samples the real pose.</summary>
+    public static bool ContinuesTween(RectF to, RectF next)
+        => MathF.Abs(to.X - next.X) < 0.01f && MathF.Abs(to.Y - next.Y) < 0.01f && MathF.Abs(to.W - next.W) < 0.01f;
+
+    /// <summary>The card's presented rect <paramref name="elapsedMs"/> into a <paramref name="durationMs"/> tween from
+    /// <paramref name="from"/> to <paramref name="to"/>: a component-wise lerp at <c>ease(clamp(elapsed / duration))</c>.</summary>
+    public static RectF PoseAt(RectF from, RectF to, float elapsedMs, float durationMs, Func<float, float> ease)
+    {
+        float t = durationMs <= 0f ? 1f : Math.Clamp(elapsedMs / durationMs, 0f, 1f);
+        float k = t >= 1f ? 1f : t <= 0f ? 0f : ease(t);
+        return new RectF(from.X + (to.X - from.X) * k, from.Y + (to.Y - from.Y) * k,
+                         from.W + (to.W - from.W) * k, from.H + (to.H - from.H) * k);
+    }
 }

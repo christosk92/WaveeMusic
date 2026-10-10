@@ -138,7 +138,7 @@ public static partial class Shell
     // left edge ease on identical dynamics. Reveal lays out at the FINAL size and eases a clip + translate only; a grip
     // drag snaps both 1:1 through the suppression arbiter. WinUI SplitView's pane spline at 300 ms (200 ms read as a snap
     // behind the heavier media surface).
-    static readonly EasingSpec PaneEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
+    static readonly EasingSpec PaneEase = FrameRules.CardMotionEase;
     const float PaneMs = FrameRules.CardMotionMs;
     const string ContentRowMorphId = "shell.content-row";
     const string FrameColumnMorphId = "shell.frame-column";
@@ -755,6 +755,15 @@ public static partial class Shell
 
     static readonly Func<float> s_bleedKeep = static () => 1f - BleedCut();
 
+    /// <summary>The corners of the layers that sit over the photo (the ground and the stroke), WITH a backdrop: today's thunk with the
+    /// top-left radius faded by <see cref="ArtistBleed.CornerFor"/>, so the notch the rounded corner would cut out of the photo
+    /// fades with the hero region and returns as the hero scrolls away. Paint-rate (BleedCut reads the scroll and the presence).</summary>
+    static readonly Func<CornerRadius4> s_bleedCorners = static () =>
+    {
+        var c = s_contentCorners();
+        return new CornerRadius4(ArtistBleed.CornerFor(c.TopLeft, BleedCut()), c.TopRight, c.BottomRight, c.BottomLeft);
+    };
+
     /// <summary>The photo's extent below the card top while a backdrop is published (or fading out), else 0. Read at navigation
     /// rate by <see cref="CardGround"/> and <see cref="CardStroke"/>, which re-render when the publication changes, never per
     /// scroll.</summary>
@@ -782,7 +791,7 @@ public static partial class Shell
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, ClipToBounds = true, HitTestVisible = false,
-                Corners = Prop.Of(s_contentCorners),
+                Corners = Prop.Of(s_bleedCorners),
                 Children =
                 [
                     new BoxEl
@@ -818,7 +827,10 @@ public static partial class Shell
 
     /// <summary>The card's left+top stroke. Without a backdrop it is the single plain ring. With one it is split by CLIPPING,
     /// never redrawn: a top clip (the photo's extent, faded with the strip) and a lower clip holding the same ring with its
-    /// geometry still starting at the card top, so the union is exactly the plain ring and the left edge below the hero stays.</summary>
+    /// geometry still starting at the card top, so the union is exactly the plain ring and the left edge below the hero stays.
+    /// THE NOTCH (option 1): the ring over the photo (a) and the ground use <see cref="s_bleedCorners"/>, whose top-left radius fades
+    /// with the hero region (<see cref="ArtistBleed.CornerFor"/>), so the photo meets the window edge with no rounded notch and the
+    /// stroke fades with it; the part below the hero (b) keeps today's corners, and the backdrop is not extended behind the pane.</summary>
     sealed class CardStroke : Component
     {
         static readonly Func<Affine2D> s_leftShift = static () => Affine2D.Translation(
@@ -826,11 +838,11 @@ public static partial class Shell
 
         /// <summary>The plain ring (one DIP of extra right overhang so the box can shift left: undocked, the page bleeds to the
         /// window edge and the LEFT stroke leaves the clip, the top stroke stays), with an overridable top margin.</summary>
-        static BoxEl Ring(float top) => new()
+        static BoxEl Ring(float top, bool bleeding = false) => new()
         {
             Margin = new Edges4(0f, top, -2f * FrameRules.StrokeW, -FrameRules.StrokeW), BorderWidth = FrameRules.StrokeW,
             BorderColor = Prop.Of(static () => Tok.StrokeCardDefault),
-            Corners = Prop.Of(s_contentCorners),
+            Corners = Prop.Of(bleeding ? s_bleedCorners : s_contentCorners),
             Transform = Prop.Of(s_leftShift),
         };
 
@@ -852,7 +864,7 @@ public static partial class Shell
                         Opacity = Prop.Of(s_bleedKeep),
                         Children =
                         [
-                            Ring(FrameRules.StrokeOverhangTop) with
+                            Ring(FrameRules.StrokeOverhangTop, bleeding: true) with
                             {
                                 Margin = new Edges4(0f, FrameRules.StrokeOverhangTop, -2f * FrameRules.StrokeW, 0f),
                                 AlignSelf = FlexAlign.Start,
@@ -904,27 +916,103 @@ public static partial class Shell
         Ui.CardPose.SetIfChanged(scene.AbsoluteRect(s_contentCard));
     }
 
-    /// <summary>EXPERIMENTAL (artist bleed): samples the card's presented pose each frame for the length of its layout transition
+    /// <summary>EXPERIMENTAL (artist bleed): feeds <see cref="Ui.CardPose"/> for the length of the card's layout transition
     /// (<see cref="Ui.CardSettle"/> re-arms it on every change of the final rect), then lands on the settled pose. The ticker is
-    /// mounted only inside that window, so an idle window pays nothing. Renders an empty, zero-size box.</summary>
+    /// mounted only inside that window, so an idle window pays nothing. Renders an empty, zero-size box.
+    /// <para>TWO SOURCES. Under the Async host, sampling <c>AbsoluteRect</c> reads the PREVIOUS frame's layout, so the photo would
+    /// trail the card. A pane, rail or nav-style toggle runs a known tween (the card's FLIP: <see cref="PaneMs"/> /
+    /// <see cref="PaneEase"/>), so a settle ARMED by a live toggle plays that tween analytically
+    /// (<see cref="ArtistBleed.PoseAt"/>) and the photo follows the card in the same frame. Everything else (a window resize, the
+    /// sidebar drag peek, the rail drag commit, a snap) has no known curve and samples the real pose per tick. Every run lands on
+    /// the sample.</para>
+    /// <para>THE ARM is recorded in Render, not in an effect: the toggle's own commit re-renders this tracker (it reads the three
+    /// toggles) BEFORE the layout pass that bumps <see cref="Ui.CardSettle"/> and re-renders it again, so the arm is always
+    /// recorded first. It reads the LIVE nav style, not <c>PresentedNavStyle</c>: the card's nav-style FLIP runs in the NavStyle
+    /// commit, while PresentedNavStyle flips <c>HoistSettleMs</c> later. A settle consumes the arm.</para></summary>
     sealed class CardPoseTracker : Component
     {
         readonly Signal<bool> _running = new(false);
-        readonly Action _sample = static () => SampleCardPose();
+        readonly Action _tick;
         readonly Action _stop;
+        bool _seen;
+        SidebarPaneMode _mode;
+        bool _railOpen;
+        ShellNavStyle _navStyle;
+        SidebarWindowBand _band;
+        long _bandT;               // when the window band last crossed (0: never)
+        long _armT;               // when a live toggle last changed (0: none, or consumed by a settle)
+        int _lastSettle;
+        bool _tween;               // the current run plays the analytic pose
+        RectF _from, _to;
+        long _t0;
 
-        public CardPoseTracker() => _stop = () => { SampleCardPose(); _running.Value = false; };
+        public CardPoseTracker()
+        {
+            _tick = Tick;
+            _stop = () => { SampleCardPose(); _running.Value = false; };
+        }
+
+        void Tick()
+        {
+            // Layout-transition suppression (a scroll starts it) cancels the in-flight FLIP and snaps the card without a rect
+            // change, so the analytic pose would run on alone: fall through to the real pose.
+            if (_tween && FgMotion.LayoutTransitionsSuppressed) _tween = false;
+            if (_tween) Ui.CardPose.SetIfChanged(TweenPose());
+            else SampleCardPose();
+        }
+
+        RectF TweenPose() => ArtistBleed.PoseAt(_from, _to, Design.FrameTime.NowMs - _t0, PaneMs, ArtistBleed.PaneEase);
 
         public override Element Render()
         {
             int settle = Ui.CardSettle.Value;       // layout-change rate, never per frame
+            // The live toggles, all navigation rate. The first render only takes the snapshot (a toggle that predates the tracker
+            // armed nothing).
+            var mode = Sidebar.Mode.Value;
+            bool railOpen = Ui.RailOpen.Value;
+            var navStyle = Sidebar.NavStyle.Value;
+            var band = Sidebar.Band.Value;
+            long now = Design.FrameTime.NowMs;
+            // A window-band cross (a resize) also flips the mode, and the resize cancels the card's FLIP; the mode can trail the band
+            // by a render, so the cross shadows arming for the arm window. A drag (or the chrome-edge latch) holds the layout
+            // suppression, so the card snaps 1:1 and the sample is right. Neither is a toggle.
+            if (_seen && band != _band) _bandT = now;
+            bool toggled = _seen && (mode != _mode || railOpen != _railOpen || navStyle != _navStyle);
+            if (toggled && ArtistBleed.ArmsPose(FgMotion.LayoutTransitionsSuppressed, _bandT > 0 && now - _bandT <= ArtistBleed.ToggleArmWindowMs))
+                _armT = now;
+            (_seen, _mode, _railOpen, _navStyle, _band) = (true, mode, railOpen, navStyle, band);
+            if (settle != _lastSettle)
+            {
+                _lastSettle = settle;
+                var rect = Ui.CardRect.Peek();
+                bool armed = !Design.Reduced && ArtistBleed.TweensPose(_armT > 0, now - _armT);
+                _armT = 0;                          // consumed: a later settle (a resize) samples
+                if (armed)
+                {
+                    _tween = true;
+                    _from = Ui.CardPose.Peek();
+                    _to = rect;
+                    _t0 = now;
+                }
+                // The nav-style FLIP's height relayout re-arranges the card (H only) on every frame of the tween, one settle each:
+                // those keep the running tween and only move its target height.
+                else if (_tween && now - _t0 < PaneMs && ArtistBleed.ContinuesTween(_to, rect)) _to = rect;
+                else _tween = false;
+            }
             bool running = _running.Value;
-            UseEffect(() => { if (settle > 0) _running.Value = true; }, DepKey.From(settle));
+            // The ticker mounts on the render AFTER this effect: write the run's first analytic pose here, so the photo does not
+            // trail the card's first (front-loaded) frames.
+            UseEffect(() =>
+            {
+                if (settle <= 0) return;
+                if (_tween) Ui.CardPose.SetIfChanged(TweenPose());
+                _running.Value = true;
+            }, DepKey.From(settle));
             UseTimeout(_stop, PaneMs + 120f, DepKey.From(settle));
             return new BoxEl
             {
                 Width = 0f, Height = 0f, Shrink = 0f, HitTestVisible = false,
-                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_sample))] : [],
+                Children = running ? [Embed.Comp(() => new Controls.FrameTicker(_tick))] : [],
             };
         }
     }

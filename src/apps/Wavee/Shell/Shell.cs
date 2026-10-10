@@ -1961,6 +1961,10 @@ public static partial class Shell
         /// this many milliseconds on the same spline, so they land together. <c>Shell.UI.cs</c>'s PaneMs reads it.</summary>
         public const float CardMotionMs = 300f;
 
+        /// <summary>The spline of that tween (WinUI SplitView's pane spline). <c>Shell.UI.cs</c>'s PaneEase reads it, and the
+        /// artist bleed's analytic card pose evaluates the same curve.</summary>
+        public static readonly EasingSpec CardMotionEase = EasingSpec.CubicBezier(0f, 0.35f, 0.15f, 1f);
+
         /// <summary>When the page heads follow a nav-style switch: the card's tween plus two 60-Hz frames. A head hoist
         /// (<c>PageHead.Reflow</c>) changes height inside the content card, and the engine snaps every bounds-animated node
         /// inside a card whose rect changes in the same commit (the card is a suppression root), so the hoist lands only

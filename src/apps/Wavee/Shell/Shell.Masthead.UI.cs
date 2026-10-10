@@ -265,10 +265,12 @@ public static partial class Shell
                 ZStack = true, ClipToBounds = true, HitTestVisible = false,
                 AlignSelf = FlexAlign.Start, JustifySelf = FlexAlign.Start,
                 Width = Prop.Of(ClipWidth),
-                Height = Prop.Of(() => Ui.CardPose.Value.Y + b.PhotoHeight),
+                // The clip's ON-SCREEN bottom (this box carries the parallax translation, which PhotoClip subtracts) lands on the riser
+                // line (the hero's presented bottom): no sliver below the hero, and no feather of its own,
+                // because CardGround's fade box above the line (the same PhotoFadeBandFor band as the card media's) is the one feather.
+                Height = Prop.Of(() => Ui.CardPose.Value.Y + ArtistBleed.PhotoClip(b.ScrollY.Value, b.HeroHeight, b.Floor, b.PhotoHeight)),
                 Transform = Prop.Of(() => Affine2D.Translation(Left(), ArtistBleed.ParallaxY(b.ScrollY.Value))),
                 Opacity = Prop.Of(Strength),
-                EdgeFade = new EdgeFadeSpec(EdgeMask.Bottom, ArtistHeroLayout.PhotoFadeBandFor(b.PhotoHeight)),
                 Enter = WashFade, Exit = WashFade,
                 Children = veil is null ? [image] : [image, veil],
             };

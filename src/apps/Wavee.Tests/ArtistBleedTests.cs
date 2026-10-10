@@ -426,3 +426,96 @@ public class ArtistBleedMaterialProtocolTests
         Assert.Same(a, slot.Peek().Owner);
     }
 }
+
+public class ArtistBleedNotchAndPoseTests
+{
+    [Fact]
+    public void The_cards_top_left_radius_fades_with_the_hero_region()
+    {
+        Assert.Equal(8f, ArtistBleed.CornerFor(8f, 0f));
+        Assert.Equal(0f, ArtistBleed.CornerFor(8f, 1f));
+        Assert.Equal(8f, ArtistBleed.CornerFor(8f, -3f));   // clamped both ways
+        Assert.Equal(0f, ArtistBleed.CornerFor(8f, 3f));
+        float last = float.MaxValue;
+        for (float cut = 0f; cut <= 1.0001f; cut += 0.05f)
+        {
+            float r = ArtistBleed.CornerFor(8f, cut);
+            Assert.True(r <= last);
+            last = r;
+        }
+    }
+
+    [Fact]
+    public void The_photo_clips_end_lands_on_the_heros_presented_bottom_through_the_parallax()
+    {
+        foreach (double o in new[] { -40.0, 0.0, 60.0, 200.0, 380.0, 900.0 })
+        foreach (float heroH in new[] { 280f, 440f })
+        foreach (float floor in new[] { 0f, 56f })
+        foreach (float photoH in new[] { 300f, 440f, 520f })
+        {
+            float clip = ArtistBleed.PhotoClip(o, heroH, floor, photoH);
+            float screenBottom = clip + ArtistBleed.ParallaxY(o);   // the box carries the parallax translation
+            float heroBottom = ArtistBleed.HeroBottom(o, heroH, floor);
+            Assert.True(clip <= photoH);
+            Assert.True(screenBottom <= heroBottom + 0.001f);
+            // Equal to the hero's presented bottom whenever the photo is tall enough to reach it.
+            if (photoH + ArtistBleed.ParallaxY(o) >= heroBottom)
+                Assert.True(MathF.Abs(heroBottom - screenBottom) <= 0.001f);
+        }
+    }
+
+    [Fact]
+    public void The_analytic_pose_starts_at_from_and_lands_on_to()
+    {
+        var from = new RectF(240f, 40f, 800f, 600f);
+        var to = new RectF(0f, 0f, 1040f, 640f);
+        Assert.Equal(from, ArtistBleed.PoseAt(from, to, 0f, 300f, ArtistBleed.PaneEase));
+        Assert.Equal(to, ArtistBleed.PoseAt(from, to, 300f, 300f, ArtistBleed.PaneEase));
+        Assert.Equal(to, ArtistBleed.PoseAt(from, to, 900f, 300f, ArtistBleed.PaneEase));
+        Assert.Equal(to, ArtistBleed.PoseAt(from, to, 0f, 0f, ArtistBleed.PaneEase));   // a zero-length tween is the end
+        var up = new RectF(0f, 0f, 100f, 100f);
+        var dn = new RectF(200f, 0f, 100f, 100f);
+        float last = 0f;
+        for (float ms = 0f; ms <= 320f; ms += 10f)
+        {
+            float x = ArtistBleed.PoseAt(up, dn, ms, 300f, ArtistBleed.PaneEase).X;
+            Assert.True(x >= last);
+            last = x;
+        }
+    }
+
+    [Fact]
+    public void The_pane_ease_runs_from_zero_to_one()
+    {
+        Assert.Equal(0f, ArtistBleed.PaneEase(0f));
+        Assert.Equal(1f, ArtistBleed.PaneEase(1f), 4);
+        Assert.InRange(ArtistBleed.PaneEase(0.5f), 0.5f, 1f);   // (0, .35, .15, 1) is front-loaded
+    }
+
+    [Fact]
+    public void Only_a_settle_right_after_a_live_toggle_plays_the_analytic_pose()
+    {
+        Assert.True(ArtistBleed.TweensPose(true, 10f));
+        Assert.True(ArtistBleed.TweensPose(true, ArtistBleed.ToggleArmWindowMs));
+        Assert.False(ArtistBleed.TweensPose(true, 400f));    // a resize long after a toggle samples
+        Assert.False(ArtistBleed.TweensPose(false, 0f));
+    }
+
+    [Fact]
+    public void A_drag_or_a_band_cross_never_arms_the_analytic_pose()
+    {
+        Assert.True(ArtistBleed.ArmsPose(layoutSuppressed: false, bandCrossed: false));
+        Assert.False(ArtistBleed.ArmsPose(layoutSuppressed: true, bandCrossed: false));   // a grip drag snaps the card 1:1
+        Assert.False(ArtistBleed.ArmsPose(layoutSuppressed: false, bandCrossed: true));   // a resize cancels the FLIP
+    }
+
+    [Fact]
+    public void A_height_only_settle_keeps_the_running_tween_and_any_other_change_ends_it()
+    {
+        var to = new RectF(0f, 96f, 1040f, 544f);
+        Assert.True(ArtistBleed.ContinuesTween(to, to with { H = 560f }));    // the nav-style FLIP's height relayout
+        Assert.False(ArtistBleed.ContinuesTween(to, to with { X = 240f }));   // a pane/resize layout
+        Assert.False(ArtistBleed.ContinuesTween(to, to with { Y = 0f }));
+        Assert.False(ArtistBleed.ContinuesTween(to, to with { W = 800f }));
+    }
+}

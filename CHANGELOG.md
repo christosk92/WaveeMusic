@@ -26,6 +26,8 @@ versions separately under `v*` and is not tracked in this file.)
   change or be removed.
 - **Experimental**: over that photo the title bar, the pivots and the second pivot row turn light, then fade back to your
   theme's colours as the photo scrolls away or you leave the page.
+- **Experimental**: the artist photo no longer leaves a rounded corner beside the docked sidebar or a sliver below the hero, and it
+  follows the page when you open or close the sidebar or the right rail or switch the navigation style.
 
 ### Changed
 
