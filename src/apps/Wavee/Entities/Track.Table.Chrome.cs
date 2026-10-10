@@ -251,6 +251,8 @@ public readonly partial struct Track
                 {
                     Key = "cmd:chips", Direction = 1, Width = fit.ChipSlotW, Height = Controls.ChipHeight, Shrink = 1f, MinWidth = 0f,
                     Justify = FlexJustify.Center, Animate = s_toolbarCommandMotion,
+                    // The slot's own trailing air (RungWidth budgets it): the rail's edge fade ends this far before Sort.
+                    Margin = new Edges4(0f, 0f, LikedBarLayout.ChipRailTrailGap, 0f),
                     Children = [P.ContentFilterBar!.Invoke() ?? new BoxEl()],
                 });
             }
@@ -790,15 +792,16 @@ public readonly partial struct Track
             => Controls.ToggleOverlay(overlay, anchor, handle, content, options, closed);
 
         /// <summary>The track table's Sort command: the shared <see cref="Controls.SortButton"/>, whose direction caret
-        /// appears while the sort is not the custom order.</summary>
+        /// appears while the sort is not the custom order (never on the Liked bar's slim head, which keeps its one
+        /// chevron), and which is lit only away from the profile's own default (<see cref="TableRules.SortIsActive"/>).</summary>
         sealed class TableSortButton(TableHost host) : Component
         {
             public override Element Render()
             {
                 var h = host;
                 return Controls.SortButton(() => SortLabelFor(h._sort.Value.Column, h.Cfg.Kind), h.SortItems,
-                    () => h._sort.Value.Column != SortColumn.Index,
-                    () => h._sort.Value.Descending, () => h._sort.Value.Column != SortColumn.Index);
+                    () => TableRules.SortIsActive(h._sort.Value, h.P.DefaultSort),
+                    () => h._sort.Value.Descending, () => !h.Cfg.SlimHead && h._sort.Value.Column != SortColumn.Index);
             }
         }
 

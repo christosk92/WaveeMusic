@@ -410,7 +410,8 @@
     "row": {
       "chartNew": "New",
       "playsFull": "{count} plays",
-      "moreArtists": "+{count}"
+      "moreArtists": "+{count}",
+      "hasMusicVideo": "Has a music video"
     }
   },
   "artist": {

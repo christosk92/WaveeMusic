@@ -252,6 +252,11 @@ public readonly partial struct Track
         public static bool HeaderActive(SortColumn header, SortColumn active, bool artistColumn) =>
             header == active || (!artistColumn && header == SortColumn.Title && active == SortColumn.Artist);
 
+        /// <summary>Is the Sort command lit (accent)? Only when the sort differs from the list's profile default: Liked opens on
+        /// Date added (desc), so lighting "anything but Index" kept its Sort accent forever, and a button that is always lit
+        /// says nothing. Every other list's default is the natural order, so any other sort (column or direction) lights it.</summary>
+        public static bool SortIsActive(SortSpec sort, SortSpec profileDefault) => sort != profileDefault;
+
         /// <summary>What the natural order of this list is called in the sort dropdown: an album's is the record's own
         /// track order, everything else's is the owner's (a playlist's custom order). One rule for the button and the menu.</summary>
         public static string IndexSortLabelKey(DetailKind kind)
@@ -936,6 +941,9 @@ public readonly partial struct Track
         public const float DividerW = CommandBarLayout.GroupSeparatorWidth;
         public const float ChipSlotMinW = 120f;
         public const float InsightsW = 32f;
+        /// <summary>The air between the chip slot's end (where its edge fade lands) and Sort, on top of the bar's own
+        /// <see cref="CommandBarLayout.Gap"/>: the slot carries it as a right margin, so every rung that shows the chips pays it.</summary>
+        public const float ChipRailTrailGap = Spacing.S;
 
         /// <summary>The rungs, richest first.</summary>
         public static ReadOnlySpan<Rung> Rungs => [Rung.Full, Rung.ShuffleIcon, Rung.SortInMore, Rung.ChipsInMore, Rung.ShuffleInMore, Rung.InsightsInMore];
@@ -956,7 +964,7 @@ public readonly partial struct Track
             if (InsightsInline(r)) w += CommandBarLayout.Gap + InsightsW;
             if (ShuffleInline(r)) w += CommandBarLayout.Gap + (ShuffleLabelled(r) ? shuffleW : ShuffleIconW);
             if (SortInline(r)) w += CommandBarLayout.Gap + sortW;
-            if (chips && ChipsInline(r)) w += CommandBarLayout.Gap + DividerW + CommandBarLayout.Gap + ChipSlotMinW;
+            if (chips && ChipsInline(r)) w += CommandBarLayout.Gap + DividerW + CommandBarLayout.Gap + ChipSlotMinW + ChipRailTrailGap;
             return w;
         }
 

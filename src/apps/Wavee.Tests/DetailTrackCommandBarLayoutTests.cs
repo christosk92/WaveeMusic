@@ -259,8 +259,9 @@ public class LikedBarLayoutTests
     public void TheFullRung_SumsEveryInlinePiece()
     {
         // Play 121 + more 32 + SearchGap 8 + search pair 66, then Insights 32, Shuffle 96, Sort 156, divider 17 and the 120 chip
-        // slot, each behind one 2-DIP gap (the divider and the slot are two pieces), and one gap between Play and more.
-        float expected = 121f + 2f + 32f + 8f + 66f + (2f + 32f) + (2f + 96f) + (2f + 156f) + (2f + 17f + 2f + 120f);
+        // slot (plus its 8-DIP trailing air before Sort), each behind one 2-DIP gap (the divider and the slot are two pieces),
+        // and one gap between Play and more.
+        float expected = 121f + 2f + 32f + 8f + 66f + (2f + 32f) + (2f + 96f) + (2f + 156f) + (2f + 17f + 2f + 120f + 8f);
         Assert.Equal(expected, W(Track.LikedBarLayout.Rung.Full));
     }
 
@@ -358,10 +359,55 @@ public class LikedBarLayoutTests
     }
 
     [Fact]
+    public void TheChipSlot_PaysItsTrailingAirOnEveryRungThatShowsIt_AndNoOtherRung()
+    {
+        Assert.Equal(8f, Track.LikedBarLayout.ChipRailTrailGap);
+        foreach (var r in Rungs)
+        {
+            float with = W(r), without = W(r, chips: false);
+            Assert.Equal(Track.LikedBarLayout.ChipsInline(r)
+                ? Track.CommandBarLayout.Gap + Track.LikedBarLayout.DividerW + Track.CommandBarLayout.Gap
+                  + Track.LikedBarLayout.ChipSlotMinW + Track.LikedBarLayout.ChipRailTrailGap
+                : 0f, with - without);
+        }
+    }
+
+    [Fact]
     public void ThePlaySplitFindAndMoreAreInEveryRungsWidth()
     {
         float floor = W(Track.LikedBarLayout.Rung.InsightsInMore);
         Assert.Equal(Track.LikedBarLayout.PlayW + Track.CommandBarLayout.Gap + Track.CommandBarLayout.MoreWidth
                      + Track.CommandBarLayout.SearchGap + Track.CommandBarLayout.SearchIconWidth, floor);
+    }
+}
+
+/// <summary>The Sort command is lit only away from the profile's own default sort (Liked opens on Date added, descending).</summary>
+public class SortIsActiveTests
+{
+    static readonly Track.SortSpec LikedDefault = new(Track.SortColumn.DateAdded, true);
+
+    [Fact]
+    public void TheProfileDefault_IsNeverLit()
+    {
+        Assert.False(Track.TableRules.SortIsActive(LikedDefault, LikedDefault));
+        Assert.False(Track.TableRules.SortIsActive(Track.SortSpec.Default, Track.SortSpec.Default));
+    }
+
+    [Fact]
+    public void Liked_IsLitAnywayAwayFromDateAddedDescending()
+    {
+        Assert.False(Track.TableRules.SortIsActive(new(Track.SortColumn.DateAdded, true), LikedDefault));
+        Assert.True(Track.TableRules.SortIsActive(new(Track.SortColumn.DateAdded, false), LikedDefault));   // Date added ascending is away
+        Assert.True(Track.TableRules.SortIsActive(new(Track.SortColumn.Title, false), LikedDefault));
+        Assert.True(Track.TableRules.SortIsActive(Track.SortSpec.Default, LikedDefault));                   // the custom order is "away" on Liked
+    }
+
+    [Fact]
+    public void OtherLists_AreLitAwayFromTheNaturalOrder()
+    {
+        var def = Track.SortSpec.Default;
+        Assert.False(Track.TableRules.SortIsActive(def, def));
+        Assert.True(Track.TableRules.SortIsActive(new(Track.SortColumn.Index, true), def));
+        Assert.True(Track.TableRules.SortIsActive(new(Track.SortColumn.Duration, false), def));
     }
 }

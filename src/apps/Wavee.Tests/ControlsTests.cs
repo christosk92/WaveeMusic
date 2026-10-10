@@ -377,12 +377,18 @@ public class ControlsChipToneTests
     }
 
     [Fact]
-    public void The_neutral_chip_outlines_its_off_state_and_never_wears_the_accent()
+    public void The_neutral_chip_off_state_is_the_stock_toggle_ramp_and_it_never_wears_the_accent()
     {
+        // The off plate is the standard-button fill/border (the same look as LinkChip and Browse's pills), not an outline.
         var neutral = Controls.ChipStyle(Controls.ChipTone.Neutral);
-        Assert.Equal(ColorF.Transparent, neutral.OffBackground);
-        Assert.Equal(Tok.StrokeControlDefault, neutral.OffBorder!.Value.Stops[0].Color);
+        var stock = FluentGpu.Controls.ToggleButton.DefaultStyle;
+        Assert.Equal(stock.OffBackground, neutral.OffBackground);
+        Assert.Equal(stock.OffBorder, neutral.OffBorder);
+        Assert.Equal(stock.OffHoverBorder, neutral.OffHoverBorder);
+        Assert.NotEqual(ColorF.Transparent, neutral.OffBackground);
         Assert.NotEqual(Tok.AccentDefault, neutral.OnBackground);
+        Assert.Equal(ColorF.Transparent, neutral.OnBorder!.Value.Stops[0].Color);
+        Assert.Equal(ColorF.Transparent, neutral.OnHoverBorder!.Value.Stops[0].Color);
     }
 
     [Fact]

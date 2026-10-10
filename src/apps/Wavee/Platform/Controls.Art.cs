@@ -576,16 +576,16 @@ public static partial class Controls
             // overflowing, which is the opposite of what the scroller is for.
 
     /// <summary>Which fill a SELECTED <see cref="Chip"/> wears. <see cref="Accent"/> is the stock checked = accent capsule;
-    /// <see cref="Neutral"/> is the primary-ink fill (<see cref="Tok.TextPrimary"/>, with the contrast-picked label) over an
-    /// OUTLINED off state, for a bar whose Play button is the page's only accent (Liked Songs' genre chips).</summary>
+    /// <see cref="Neutral"/> is the primary-ink fill (<see cref="Tok.TextPrimary"/>, with the contrast-picked label) over the
+    /// stock standard-button off plate, for a bar whose Play button is the page's only accent (Liked Songs' genre chips).</summary>
     public enum ChipTone : byte { Accent, Neutral }
 
     /// <summary>The chip capsule's <see cref="ToggleButton.Style"/> for a tone: the shared geometry (the chip keeps its own
     /// capsule — the 32/r4 ladder is for the labeled/icon button grammar, not this scrolling rail, which has always read as
     /// pills) over <see cref="AccentToggleStyle"/>'s checked arm. <see cref="ChipTone.Neutral"/> fills with
-    /// <see cref="Tok.TextPrimary"/> (the ink is the contrast pick, so it flips with the theme), draws no accent hairline on
-    /// the fill, and OUTLINES the off state (transparent plate, <see cref="Tok.StrokeControlDefault"/> border); its rest and
-    /// hover ramps are otherwise the stock ToggleButton's.</summary>
+    /// <see cref="Tok.TextPrimary"/> (the ink is the contrast pick, so it flips with the theme) and draws no accent hairline
+    /// on the fill; its OFF state is the stock ToggleButton ramp (the standard-button plate and border), the same look as
+    /// <see cref="LinkChip"/> and Browse's pills.</summary>
     public static ToggleButton.Style ChipStyle(ChipTone tone)
     {
         var style = tone == ChipTone.Neutral
@@ -593,9 +593,6 @@ public static partial class Controls
             {
                 OnBorder = GradientSpec.Solid(ColorF.Transparent),
                 OnHoverBorder = GradientSpec.Solid(ColorF.Transparent),
-                OffBackground = ColorF.Transparent,
-                OffBorder = GradientSpec.Solid(Tok.StrokeControlDefault),
-                OffHoverBorder = GradientSpec.Solid(Tok.StrokeControlDefault),
             }
             : AccentToggleStyle(Tok.AccentDefault);
         return style with
@@ -644,6 +641,8 @@ public static partial class Controls
         }, horizontal: true) with
         {
             Grow = inBar ? 1f : 0f, Height = inBar ? ChipHeight : ChipRailHeight, AutoEdgeFade = true, SuppressScrollBar = true,
+            // In a bar the fade is a short 24 DIP band (the engine default is a quarter of the viewport, which ran into Sort).
+            AutoEdgeFadeBand = inBar ? 24f : 0f,
             Margin = inBar ? default : new Edges4(0f, 0f, 0f, Spacing.S),
             ScrollKey = scrollKey,
         };

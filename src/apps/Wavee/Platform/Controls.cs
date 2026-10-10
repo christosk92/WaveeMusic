@@ -884,14 +884,14 @@ public static partial class Controls
         };
     }
 
-    /// <summary>The shared sort dropdown: <see cref="Icons.Sort"/> · the current word · (a direction caret) · a chevron,
-    /// opening a radio-checked <see cref="MenuFlyout"/> under it. The track table's Sort button and the Library master
+    /// <summary>The shared sort dropdown: <see cref="Icons.Sort"/> · the current word · ONE trailing glyph (the direction caret while
+    /// one shows, else a 12 DIP chevron), opening a radio-checked <see cref="MenuFlyout"/> under it. The track table's Sort button and the Library master
     /// pane's both are this control, so a sort reads the same everywhere.
     /// <para>An <c>Embed.Comp</c> factory runs ONCE (at mount), so every input that can change is a THUNK read inside the
     /// button's own Render: <paramref name="label"/>, <paramref name="active"/>, <paramref name="descending"/> and
     /// <paramref name="showCaret"/>. A sort change re-fires this button alone; the label changes text in place inside a
     /// fixed-height button, never in a wrapping row. <paramref name="items"/> is built when the menu OPENS (the radio state
-    /// is the live one). A non-null <paramref name="descending"/> adds the caret (while <paramref name="showCaret"/> is
+    /// is the live one). A non-null <paramref name="descending"/> swaps the chevron for the caret (while <paramref name="showCaret"/> is
     /// null or true), which pops in on activation and springs 0 to 180 degrees on every flip. With <paramref name="shrink"/> the
     /// button gives its word up (ellipsis) before it can overflow a narrow row; <paramref name="showLabel"/> false drops the word for an icon-only
     /// button where the row has no room for it.</para></summary>
@@ -926,14 +926,10 @@ public static partial class Controls
             bool caret = descending is not null && (showCaret?.Invoke() ?? true);
             void Toggle() => ToggleOverlay(overlay, anchor, handle,
                 () => MenuFlyout.Create(items(), () => handle.Value?.Close()), MenuPopup);
-            Element chevron = Icon(Icons.ChevronDown, 8f, Tok.TextTertiary);
+            // ONE chevron, never two: the direction caret IS the trailing glyph while a direction is shown, else the dropdown chevron.
             Element trailing = caret
-                ? new BoxEl
-                {
-                    Direction = 0, Gap = 3f, AlignItems = FlexAlign.Center, Shrink = 0f,
-                    Children = [SortCaret(descending!), chevron],
-                }
-                : chevron;
+                ? new BoxEl { Direction = 0, AlignItems = FlexAlign.Center, Shrink = 0f, Children = [SortCaret(descending!)] }
+                : Icon(Icons.ChevronDown, 12f, Tok.TextTertiary);
             return LabeledButton(Icons.Sort, text, isActive, Toggle, n => anchor.Value = n, trailing, shrink: shrink, showLabel: showLabel);
         }
     }

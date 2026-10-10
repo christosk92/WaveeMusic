@@ -773,33 +773,73 @@ public readonly partial struct Track
     // ── trailing chrome ──────────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary><see cref="VideoMoreCell"/> bound: the film glyph at rest on a row with a video, the quiet "…" on one
-    /// without; the full-strength "…" on row hover either way.</summary>
+    /// without; the full-strength "…" on row hover either way.
+    /// <para>Liked (<paramref name="hoverHeart"/>) keeps its "…" absent at rest like the heart (shown on hover and on the
+    /// keyboard-current row) and draws the film at 16 DIP in the secondary ink (at 13 DIP tertiary it read as a checkbox); the
+    /// film hands over to the "…" on row hover and on the keyboard-current row.</para>
+    /// <para>Every other table names the film with a tooltip. The tooltip text is STATIC (a bound text would re-render a
+    /// ToolTip component on every recycle) and its owner must be an ANCESTOR of the "…" hit target (the hit ignores opacity,
+    /// so the film layer under it never sees the pointer), so the video lane has two layers, each collapsed by the row's
+    /// <c>HasVideo</c> bind: the tooltip-wrapped film + "…" for a row with a video, the bare "…" for one without. Both fill
+    /// the cell, so a recycle across the two moves nothing.</para></summary>
     static Element BoundVideoMoreCell(BoundRow r, bool hoverHeart = false)
-        => new BoxEl
+    {
+        if (hoverHeart)
         {
-            ZStack = true, MinWidth = 0f,
+            return new BoxEl
+            {
+                ZStack = true, MinWidth = 0f,
+                Children =
+                [
+                    new BoxEl
+                    {
+                        Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
+                        Opacity = Prop.Of(() => r.P.Track.HasVideo && !r.IsCurrent() ? 1f : 0f),
+                        Children = [Glyph(Icons.Movie, 16f, Tok.TextSecondary)],
+                    },
+                    new BoxEl
+                    {
+                        Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
+                        Opacity = Prop.Of(() => r.IsCurrent() ? 1f : 0f),
+                        HoverOpacity = 1f,
+                        Children = [MoreHit(true)],
+                    },
+                ],
+            };
+        }
+        Element withVideo = new BoxEl
+        {
+            Grow = 1f, MinWidth = 0f, Visible = Prop.Of(() => r.P.Track.HasVideo),
             Children =
             [
-                new BoxEl
+                ToolTip.Wrap(new BoxEl
                 {
-                    Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
-                    Children = [Glyph(Icons.Movie, 13f, Tok.TextTertiary, Prop.Of(() => r.P.Track.HasVideo))],
-                },
-                new BoxEl
-                {
-                    Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
-                    // Liked's "…" is absent at rest like its heart: shown on hover and on the keyboard-current row.
-                    Opacity = hoverHeart
-                        ? Prop.Of(() => !r.P.Track.HasVideo && r.IsCurrent() ? 1f : 0f)
-                        : Prop.Of(() => r.P.Track.HasVideo ? 0f : Controls.MoreRestOpacity),
-                    HoverOpacity = 1f,
+                    ZStack = true, Grow = 1f, MinWidth = 0f,
                     Children =
                     [
-                        MoreHit(hoverHeart),
+                        new BoxEl
+                        {
+                            Grow = 1f, AlignItems = FlexAlign.Center, Justify = FlexJustify.Center, HoverOpacity = 0f,
+                            Children = [Glyph(Icons.Movie, 13f, Tok.TextTertiary)],
+                        },
+                        new BoxEl
+                        {
+                            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch, Opacity = 0f, HoverOpacity = 1f,
+                            Children = [MoreHit(false)],
+                        },
                     ],
-                },
+                }, Prop.Of<string?>(() => Loc.Get(Strings.Detail.Row.HasMusicVideo)), grow: 1f),
             ],
         };
+        Element withoutVideo = new BoxEl
+        {
+            Direction = 0, Grow = 1f, AlignItems = FlexAlign.Stretch,
+            Visible = Prop.Of(() => !r.P.Track.HasVideo),
+            Opacity = Controls.MoreRestOpacity, HoverOpacity = 1f,
+            Children = [MoreHit(false)],
+        };
+        return new BoxEl { ZStack = true, MinWidth = 0f, Children = [withVideo, withoutVideo] };
+    }
 
     /// <summary>The video lane's "…" hit target; Liked's (hover-revealed) names itself with a tooltip.</summary>
     static Element MoreHit(bool named)
