@@ -650,7 +650,7 @@ public static partial class Shell
                                     new BoxEl
                                     {
                                         Grow = 1f, Shrink = 1f, MinWidth = 0f, MinHeight = 0f,
-                                        Fill = ColorF.Transparent, Corners = Prop.Of(s_contentCorners), ClipToBounds = true,
+                                        Fill = ColorF.Transparent, Corners = Prop.Of(s_bleedCorners), ClipToBounds = true,
                                         IsolateLayout = true, Animate = ContentCardAnim, RelativeTo = ContentCardAnchorId,
                                         OnRealized = static h => { s_contentCard = h; PublishCardRect(); },
                                         OnBoundsChanged = static _ => { PublishCardRect(); PublishScrimClip(); },
