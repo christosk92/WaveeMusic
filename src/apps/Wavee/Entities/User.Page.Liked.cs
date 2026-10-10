@@ -79,7 +79,7 @@ public readonly partial struct User
         {
             _demandModel = DemandModel;
             _demandRows = DemandRows;
-            _lensActive = () => LensActive(_lens);
+            _lensActive = () => LensActive(_lens, DetailKind.Liked);
             _computeChips = ComputeChips;
             _chipBar = () => _chips is { } chips
                 ? Embed.Comp(new LikedChipBarProps(chips, _chipScrollKey), static () => new LikedChipBar()) with { Key = "liked-chips" }
