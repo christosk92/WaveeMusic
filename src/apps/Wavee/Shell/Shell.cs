@@ -2095,6 +2095,10 @@ public static partial class Shell
         public static bool ReissueSearchFocus(MergedSearchMode old, MergedSearchMode next, bool fieldFocused, bool flyoutOpen)
             => old != next && (old == MergedSearchMode.Field ? fieldFocused : flyoutOpen);
 
+        /// <summary>The title-bar search pill widens to <see cref="Chrome.SearchExpandW"/> while its field has focus or the icon
+        /// form's flyout is open (F5). It returns on blur or Escape (the editor blurs itself on Escape).</summary>
+        public static bool SearchExpands(bool focused, bool flyoutOpen) => focused || flyoutOpen;
+
         /// <summary>The back/forward history flyout shows at most this many rows (0.2.9 <c>HistoryMenuMax</c>).</summary>
         public const int HistoryMenuMax = 8;
 

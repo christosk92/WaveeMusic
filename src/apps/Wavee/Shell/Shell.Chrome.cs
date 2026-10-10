@@ -226,7 +226,12 @@ public static partial class Shell
         // and held across resolves with a WIDEN-IMMEDIATELY / NARROW-AFTER-hysteresis shape: the OPPOSITE polarity
         // from the boolean stages below (which promote late, demote at once), because here it is GROWTH that must
         // never clip a longer title and SHRINKING that must not reclaim space only to hand it straight back.
-        float LeadClusterW)
+        float LeadClusterW,
+        // The width the search pill EASES to while its field has focus (F5): in field mode SearchWidth ≤ SearchExpandW ≤
+        // ChromeSearchMaxW, in icon mode the icon's own 44. It is bounded by the RESERVED LeadClusterW (not the tabs' required
+        // extent), so FixedBudget + SearchExpandW + LeadClusterW ≤ width and the widened pill spends only the drag gap — the tabs
+        // never move. Focus is not an input to Resolve, so focusing the field can neither republish the layout nor change LeadClusterW.
+        float SearchExpandW = 0f)
     {
         /// <summary>Bell · Friends · Pin are in the trailing row together.</summary>
         public bool ActionsInRow => ShowActions;
@@ -348,6 +353,16 @@ public static partial class Shell
                 w = MathF.Min(w, MathF.Min(measuredCentreAvail, Layout.ChromeSearchMaxW));
             return w;
         }
+
+        /// <summary>The width the FOCUSED pill is laid out at (F5). While expanded the ALLOCATOR is authoritative: the elastic
+        /// lane's <c>CenterAvail</c> is a feedback of this very width (the #88 paragraph on <see cref="FieldWidthFor"/>), so
+        /// trimming the expanded width against it would pin the pill at its rest width. <paramref name="expandW"/> is
+        /// <see cref="SearchExpandW"/>; <paramref name="restW"/> the rest width (never narrowed). A non-finite allocation
+        /// takes the compact width, like <see cref="FieldWidthFor"/>.</summary>
+        public static float ExpandedFieldWidth(float expandW, float restW)
+            => float.IsFinite(expandW)
+                ? Math.Clamp(expandW, MathF.Max(restW, Layout.ChromeSearchMinW), Layout.ChromeSearchMaxW)
+                : Layout.ChromeSearchMinW;
 
         /// <summary>The shortcut the search pill's hint chip names, from ONE constant. Ctrl+K opens the command palette in
         /// Wavee; Ctrl+F focuses the search (<c>Shell.FindChord</c>), so that is the chord shown.</summary>
@@ -478,9 +493,17 @@ public static partial class Shell
             float? previousLeadClusterW, bool compactSearch)
         {
             float searchWidth = SearchWidthFor(width, naturalTabExtent, in stage, chip, compactSearch);
+            float lead = LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW);
+            // The focused pill's width (F5). The lane is the budget with the tabs at their REQUIRED extent; the narrow-later hold can
+            // keep `lead` above that, so the bound is the smaller of the two — the reserved cluster is never spent.
+            float expand = stage.Field
+                ? Math.Clamp(QuantiseDown(MathF.Min(
+                        SearchLane(width, naturalTabExtent, stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip),
+                        width - FixedBudget(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip) - lead)),
+                    searchWidth, Layout.ChromeSearchMaxW)
+                : Layout.ChromeSearchIconW;
             return new Chrome(stage.Name, stage.Actions, stage.Forward, stage.Back, stage.NewTab, stage.Trailing, chip,
-                stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth,
-                LeadClusterFor(width, naturalTabExtent, in stage, chip, searchWidth, previousLeadClusterW));
+                stage.Field ? MergedSearchMode.Field : MergedSearchMode.Icon, searchWidth, lead, expand);
         }
 
         /// <summary>The field is sized to the LANE, capped by the desire and floored at the minimum — so the published

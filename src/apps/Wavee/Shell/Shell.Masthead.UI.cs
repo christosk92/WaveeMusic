@@ -369,6 +369,10 @@ public static partial class Shell
     static readonly Signal<bool> s_searchFocused = new(false);
     static readonly Signal<bool> s_searchFlyoutOpen = new(false);
 
+    /// <summary>The omnibar's suggestions list is mounted (open). Keeps the title-bar pill expanded across a row press, which
+    /// moves focus off the editor until the popup closes and the overlay restores it.</summary>
+    static readonly Signal<bool> s_suggestionsOpen = new(false);
+
     /// <summary>The last focus ticket a search form consumed. A form mounting later (a mode flip) acts only on a NEWER
     /// ticket, so a Ctrl+F from minutes ago never pops the flyout open on mount.</summary>
     static int s_focusTicketHandled;
@@ -411,6 +415,31 @@ public static partial class Shell
     static readonly Func<ColorF> PillInkPrimary = static () => ArtistBleed.Ink(Tok.TextPrimary, Design.OnMedia.Ink, PillInkMix());
     /// <inheritdoc cref="PillInkPrimary"/>
     static readonly Func<ColorF> PillInkSecondary = static () => ArtistBleed.Ink(Tok.TextSecondary, Design.OnMedia.InkSecondary, PillInkMix());
+
+    /// <summary>The pill's width motion (F5): a REFLOW on the width axis, so the neighbours (the drag gap, the centre column's
+    /// grow bands) are pushed through real layout instead of the pill overlapping them. <see cref="Design.Motion.Standard"/>.</summary>
+    static readonly LayoutTransition s_searchWidthMotion = new(TransitionChannels.Size | TransitionChannels.Position,
+        TransitionDynamics.Tween(Design.Motion.Standard, Easing.FluentStandard), Size: SizeMode.Reflow, Axes: SizeAxes.Width);
+
+    /// <summary>The pill's LAID-OUT width (written from its box's bounds), so the hint chip's floor test reads the width that
+    /// is actually on screen in both the rest and the expanded arm rather than recomputing it.</summary>
+    static readonly Signal<float> s_fieldW = new(Layout.ChromeSearchMinW);
+
+    /// <summary>Bumped once each time the pill's width SETTLES on its target (rest or expanded). <c>ChromeContentVersion</c>
+    /// folds it in, so the title bar re-pushes its non-client regions at the settled width — the Zune trailing island and the
+    /// Classic centre column alike — instead of at the first frame of the motion.</summary>
+    static readonly Signal<int> s_searchSettle = new(0);
+    static float s_searchSettledTarget = -1f;
+
+    /// <summary>The pill box's bounds: publishes the laid-out width, and counts a settle the first time it is within half a DIP
+    /// of <paramref name="target"/> for that target.</summary>
+    static void OnSearchFieldBounds(RectF r, float target)
+    {
+        s_fieldW.SetIfChanged(r.W);
+        if (MathF.Abs(r.W - target) > 0.5f || s_searchSettledTarget == target) return;
+        s_searchSettledTarget = target;
+        s_searchSettle.Value = s_searchSettle.Peek() + 1;
+    }
 
     sealed class SearchField(IReadSignal<float> avail) : Component
     {
@@ -470,7 +499,28 @@ public static partial class Shell
             // icon form's own 44 — back up to `ChromeSearchMinW`. The measured centre width may still TRIM the result
             // (that part is real: the row genuinely narrowed), but it can never take the field below its floor, so the
             // worst case across a mode flip is a field briefly wider than its lane, never a clipped stub.
-            float width = Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, avail.Value);
+            //
+            // EXPANDED (F5): while the field has focus the pill eases to the allocator's SearchExpandW. That arm does NOT trim
+            // against `avail`. The centre column hugs the field, so `avail` is the feedback of the width asked for here: a trim
+            // would read the rest width back as the supply and pin the pill there (the same ratchet as above, with the sign
+            // flipped). The allocator bounded SearchExpandW by the RESERVED tab cluster, so the row can always seat it.
+            //
+            // The pill also stays expanded while its suggestions list is open: pressing a row blurs the editor (the row is the
+            // pointer's focus target for a frame) and OverlayHost restores it when the popup closes, so keying on focus alone
+            // would collapse the pill, and the popup anchored to it, under the pointer mid-click and then grow it back.
+            var l = ChromeLayout.Value;
+            float rest = Chrome.FieldWidthFor(l.SearchWidth, avail.Value);
+            bool expand = FrameRules.SearchExpands(s_searchFocused.Value, s_suggestionsOpen.Value);
+            float width = expand ? Chrome.ExpandedFieldWidth(l.SearchExpandW, rest) : rest;
+            // The motion belongs to the focus change. A REST-width change that is not an arm flip (a tab added in Classic's
+            // tab-limited regime republishes a smaller SearchWidth while LeadClusterW widens) snaps with its cluster, so the
+            // old wider pill never overruns the row for 250 ms. A frame that merely re-renders keeps the motion in flight.
+            var lastExpand = UseRef(expand);
+            var lastRest = UseRef(l.SearchWidth);
+            var lastLead = UseRef(l.LeadClusterW);
+            bool flipped = lastExpand.Value != expand;
+            bool chromeMoved = !flipped && (lastRest.Value != l.SearchWidth || lastLead.Value != l.LeadClusterW);
+            lastExpand.Value = expand; lastRest.Value = l.SearchWidth; lastLead.Value = l.LeadClusterW;
             // A COLUMN, so the omnibar is STRETCHED to this slot's width (the cross axis). In fill mode it sizes its
             // editor from its own last bounds; in a row its width was its content's width, so one narrow frame (a visit
             // to the search page re-mounts the field) latched it at the query button's ~37 DIP inside a 330-DIP slot:
@@ -478,9 +528,12 @@ public static partial class Shell
             return new BoxEl
             {
                 Key = "chrome-search-field", Direction = 1, Shrink = 0f, Justify = FlexJustify.Center, AlignItems = FlexAlign.Stretch,
-                Width = width,
+                Width = width, Animate = Design.Reduced || chromeMoved ? null : s_searchWidthMotion,
+                OnBoundsChanged = r => OnSearchFieldBounds(r, width),
+                // The suggestions popup is exactly the pill's width and left edge (BottomStretch anchors to the pill), as in the
+                // WinUI AutoSuggestBox, instead of a 400 floor that overhung a 280 pill.
                 Children = [Embed.Comp(() => new RichOmnibar(parts, Layout.ChromeSearchMaxW, AutoSuggestBoxSuggestionPresentation.Popup,
-                    allowNarrow: false, hintAvail: avail))],
+                    pillWidth: s_fieldW))],
             };
         }
     }
@@ -514,7 +567,7 @@ public static partial class Shell
                         Children =
                         [
                             Embed.Comp(() => new RichOmnibar(null, flyoutWidth, AutoSuggestBoxSuggestionPresentation.Inline,
-                                allowNarrow: true, afterChoose: CloseFlyout)),
+                                afterChoose: CloseFlyout)),
                         ],
                     },
                     FlyoutPlacement.BottomEdgeAlignedRight,
@@ -556,7 +609,7 @@ public static partial class Shell
     /// <summary>The real AutoSuggestBox (focus, editing, accessibility, popup lifetime) with Wavee's artwork-aware rows.
     /// The text IS <see cref="SearchText"/>, synced to the route on navigation only.</summary>
     sealed class RichOmnibar(TemplateParts? parts, float maxWidth, AutoSuggestBoxSuggestionPresentation presentation,
-        bool allowNarrow, Action? afterChoose = null, IReadSignal<float>? hintAvail = null) : Component
+        Action? afterChoose = null, IReadSignal<float>? pillWidth = null) : Component
     {
         // The request in flight for the current generation. A superseding keystroke, a clear and an unmount cancel it; the
         // store drops whatever a cancelled request would have said, so cancelling is only ever a saving.
@@ -630,7 +683,7 @@ public static partial class Shell
 
             var presenter = new AutoSuggestBoxPresenter(
                 Build: context => Embed.Comp(() => new SuggestionsPopup(context.Width,
-                    selection => { if (InvokeSelection(selection)) context.Close(); }, context.Close, allowNarrow)),
+                    selection => { if (InvokeSelection(selection)) context.Close(); }, context.Close)),
                 MoveSelection: delta => highlight.Value = Omnibar.MoveHighlight(highlight.Peek(), delta, Omnibar.SelectableCount(query.Suggestions)),
                 SubmitSelection: () => InvokeSelection(highlight.Peek()),
                 ResetSelection: () => highlight.Value = -1);
@@ -654,7 +707,7 @@ public static partial class Shell
             return new BoxEl
             {
                 Direction = 1, Grow = 1f, MinWidth = 0f,
-                Children = hintAvail is null ? [field] : [ZStack(field, SearchHintChip(hintAvail))],
+                Children = pillWidth is null ? [field] : [ZStack(field, SearchHintChip(pillWidth))],
             };
         }
 
@@ -664,9 +717,9 @@ public static partial class Shell
         /// <summary>The shortcut chip over the pill's trailing end. Visible ONLY while the field is unfocused AND empty and the
         /// pill is at least <see cref="Chrome.SearchPillMinW"/> wide (<see cref="Chrome.ShowSearchHint"/>); it fades on change.
         /// Never hit-testable, so a click lands on the field.</summary>
-        static Element SearchHintChip(IReadSignal<float> avail)
+        static Element SearchHintChip(IReadSignal<float> pillWidth)
         {
-            float pill = Chrome.FieldWidthFor(ChromeLayout.Value.SearchWidth, avail.Value);
+            float pill = pillWidth.Value;   // the pill's LAID-OUT width (s_fieldW), rest or expanded
             bool show = Chrome.ShowSearchHint(s_searchFocused.Value, SearchText.Value.Length == 0, pill);
             return new BoxEl
             {
@@ -724,19 +777,24 @@ public static partial class Shell
 
     /// <summary>The popup body, rendered BY the store's state. Its one sentence, "No results found", is reserved for a
     /// confirmed empty answer; pending is a progress bar over the previous rows, failed is a retry offer.</summary>
-    sealed class SuggestionsPopup(IReadSignal<float> width, Action<int> choose, Action? close, bool allowNarrow) : Component
+    sealed class SuggestionsPopup(IReadSignal<float> width, Action<int> choose, Action? close) : Component
     {
         public override Element Render()
         {
+            // Mounted exactly while the list is open: the title-bar pill stays expanded for that long (see SearchField).
+            UseLayoutEffect(() =>
+            {
+                s_suggestionsOpen.SetIfChanged(true);
+                return () => s_suggestionsOpen.SetIfChanged(false);
+            }, DepKey.Empty);
             string typed = SearchText.Value.Trim();
             _ = s_omnibar.Version.Value;
             var query = s_omnibar.Query;
             var s = query.Suggestions;
             var state = query.State;
             int highlighted = s_omnibar.Highlight.Value;
-            // A FLOOR, not just a fallback: the icon-mode anchor can be 44 DIP wide, and a popup may be wider than its anchor.
-            float measured = width.Value > 0f ? width.Value : 720f;
-            float w = allowNarrow ? measured : MathF.Max(measured, 400f);
+            // The anchor's measured width: the popup is exactly as wide as the pill (or the icon flyout's field) it hangs from.
+            float w = width.Value > 0f ? width.Value : 720f;
 
             // No client-side re-filter: the source's fuzzy matching is authoritative; staleness is handled at publish.
             var rows = new List<Element>(Omnibar.MaxQueryRows + Omnibar.MaxRichRows + 1);
@@ -784,7 +842,7 @@ public static partial class Shell
         {
             MinHeight = AutoSuggestBox.ItemMinHeight, AlignItems = FlexAlign.Center,
             Padding = new Edges4(12f, 0f, 8f, 0f), Margin = new Edges4(4f, 2f, 4f, 2f), Corners = Radii.ControlAll,
-            Role = AutomationRole.MenuItem,
+            Role = AutomationRole.MenuItem, AllowFocusOnInteraction = false,   // the field keeps focus through a press
             Fill = selected ? Tok.FillSubtleSecondary : ColorF.Transparent,
             HoverFill = Tok.FillSubtleSecondary, PressedFill = Tok.FillSubtleTertiary,
             OnClick = () => choose(index),
@@ -868,7 +926,7 @@ public static partial class Shell
             };
 
             return Controls.SlotSurface(scope, data, OmnibarRowRules.RowShape)
-                with { Role = AutomationRole.MenuItem, Margin = new Edges4(4f, 2f, 4f, 2f) };
+                with { Role = AutomationRole.MenuItem, Margin = new Edges4(4f, 2f, 4f, 2f), AllowFocusOnInteraction = false };
         }
 
         static ActionTarget ContainerTargetOf(Omnibar.Item item) => item.Kind switch

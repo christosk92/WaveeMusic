@@ -75,6 +75,7 @@ versions separately under `v*` and is not tracked in this file.)
 - Album and playlist pages use one accent colour for the playing song, the heart and Play.
 - Zune: Home, Browse, Recently played and your Library pages no longer open with an empty strip under the navigation band.
 - Zune: Browse no longer lists Music, Podcasts, Audiobooks and Live events twice.
+- The search suggestions now line up with the search box, which widens while you type.
 
 ## [0.3.4] - 2026-10-06
 

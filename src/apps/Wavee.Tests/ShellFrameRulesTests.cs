@@ -586,3 +586,125 @@ public class ShellZuneChromeTests
         Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.FieldWidthFor(280f, float.PositiveInfinity));
     }
 }
+
+// ── F5: the focused pill widens (allocator-authoritative) ─────────────────────────────────────────────────────────────
+//
+// `Chrome.SearchExpandW` is the width the pill eases to while its field has focus. It is bounded by the RESERVED tab
+// cluster, so `FixedBudget + SearchExpandW + LeadClusterW <= width` and the tabs never move; focus is not an input to
+// `Resolve`, so focusing the field cannot republish the layout. While expanded the laid-out width comes from the
+// allocator (`ExpandedFieldWidth`), never from the elastic lane's measured centre width.
+public class ShellChromeSearchExpandTests
+{
+    static readonly float[] Widths = [900f, 1280f, 1920f];
+    static readonly float[] Extents = [110f, 220f, 600f];
+
+    static readonly Shell.FrameRules.ChipForm[] Chips =
+    [
+        Shell.FrameRules.ChipForm.Profile, Shell.FrameRules.ChipForm.Connecting,
+        Shell.FrameRules.ChipForm.Reconnect, Shell.FrameRules.ChipForm.SignIn,
+    ];
+
+    static void AssertExpandInvariants(Shell.Chrome c, float width)
+    {
+        if (c.SearchMode == Shell.MergedSearchMode.Field)
+        {
+            Assert.InRange(c.SearchExpandW, c.SearchWidth, Shell.Layout.ChromeSearchMaxW);
+            Assert.True(c.FixedBudgetFor() + c.SearchExpandW + c.LeadClusterW <= width + 0.001f,
+                $"width {width}: {c.FixedBudgetFor()} + {c.SearchExpandW} + {c.LeadClusterW} overruns the row");
+        }
+        else Assert.Equal(Shell.Layout.ChromeSearchIconW, c.SearchExpandW);
+    }
+
+    [Fact]
+    public void The_expanded_width_is_seatable_beside_the_reserved_tab_cluster_in_both_styles()
+    {
+        foreach (var chip in Chips)
+        foreach (bool zune in new[] { false, true })
+        foreach (float w in Widths)
+        foreach (float extent in Extents)
+        {
+            var c = Shell.Chrome.Resolve(w, extent, null, chip, zune, compactSearch: zune);
+            AssertExpandInvariants(c, w);
+        }
+    }
+
+    [Fact]
+    public void The_expanded_width_stays_seatable_after_a_narrow_later_hold()
+    {
+        // The hold keeps LeadClusterW ABOVE the required extent after the tabs shrink; the bound is the reserved cluster.
+        foreach (bool zune in new[] { false, true })
+        foreach (float w in Widths)
+        {
+            var wide = Shell.Chrome.Resolve(w, 600f, null, Shell.FrameRules.ChipForm.Profile, zune, compactSearch: zune);
+            // 600 -> 590: a shrink inside the hysteresis band, so the reservation is HELD above the new required extent.
+            var held = Shell.Chrome.Resolve(w, 590f, wide, Shell.FrameRules.ChipForm.Profile, zune, compactSearch: zune);
+            AssertExpandInvariants(held, w);
+            // ...and a shrink past the band releases it; the bound still holds.
+            AssertExpandInvariants(Shell.Chrome.Resolve(w, 120f, held, Shell.FrameRules.ChipForm.Profile, zune, compactSearch: zune), w);
+        }
+    }
+
+    [Fact]
+    public void A_wide_zune_window_rests_at_280_and_expands_to_the_ceiling()
+    {
+        var c = Shell.Chrome.Resolve(1920f, 220f, null, Shell.FrameRules.ChipForm.Profile, zune: true, compactSearch: true);
+        Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
+        Assert.Equal(280f, c.SearchWidth);
+        Assert.Equal(420f, c.SearchExpandW);
+        Assert.Equal(420f, Shell.Chrome.ExpandedFieldWidth(c.SearchExpandW, Shell.Chrome.FieldWidthFor(c.SearchWidth, 280f)));
+    }
+
+    [Fact]
+    public void A_classic_window_widens_beyond_its_rest_width_whatever_the_measured_lane_says()
+    {
+        var c = Shell.Chrome.Resolve(1280f, 220f);
+        Assert.Equal(Shell.MergedSearchMode.Field, c.SearchMode);
+        Assert.True(c.SearchExpandW > c.SearchWidth);
+        float rest = Shell.Chrome.FieldWidthFor(c.SearchWidth, measuredCentreAvail: c.SearchWidth);
+        Assert.Equal(c.SearchWidth, rest);
+        Assert.True(Shell.Chrome.ExpandedFieldWidth(c.SearchExpandW, rest) > rest);
+    }
+
+    [Fact]
+    public void A_lane_of_exactly_280_expands_to_nothing_and_icon_mode_stays_44()
+    {
+        bool found = false;
+        for (float w = 700f; w <= 2600f; w += 1f)
+        {
+            var c = Shell.Chrome.Resolve(w, 220f);
+            if (c.SearchMode != Shell.MergedSearchMode.Field) continue;
+            float lane = Shell.Chrome.SearchLane(w, 220f, c.ShowName, c.ShowActions, c.ShowForward, c.ShowBack,
+                c.ShowNewTab, c.ShowTrailing, c.Chip);
+            if (lane < 280f || lane >= 290f) continue;
+            Assert.Equal(280f, c.SearchExpandW);
+            found = true;
+        }
+        Assert.True(found, "no width in the sweep seats a 280 lane");
+
+        var icon = Shell.Chrome.Resolve(700f, naturalTabExtent: 110f);
+        Assert.Equal(Shell.MergedSearchMode.Icon, icon.SearchMode);
+        Assert.Equal(Shell.Layout.ChromeSearchIconW, icon.SearchExpandW);
+    }
+
+    [Fact]
+    public void The_expanded_width_ignores_the_measured_lane_and_takes_the_compact_width_for_a_bad_allocation()
+    {
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.ExpandedFieldWidth(float.NaN, 300f));
+        Assert.Equal(Shell.Layout.ChromeSearchMinW, Shell.Chrome.ExpandedFieldWidth(float.PositiveInfinity, 300f));
+        // Never narrower than the rest width, never beyond the ceiling.
+        Assert.Equal(350f, Shell.Chrome.ExpandedFieldWidth(300f, 350f));
+        Assert.Equal(420f, Shell.Chrome.ExpandedFieldWidth(10_000f, 280f));
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, true, true)]
+    public void The_pill_expands_while_focused_or_while_a_suggestions_list_is_open(bool focused, bool listOpen, bool expands)
+        => Assert.Equal(expands, Shell.FrameRules.SearchExpands(focused, listOpen));
+
+    [Fact]
+    public void The_hint_chord_is_unchanged()
+        => Assert.Equal("Ctrl+F", Shell.Chrome.SearchHintChord);
+}

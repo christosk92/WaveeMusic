@@ -1613,8 +1613,9 @@ public static partial class Shell
         // l.Chip is the form the trailing island actually BUILDS from (AuthChip(l.Chip)); Auth.Value alone is not enough:
         // the allocator effect publishes the new Chip after Auth flips, so the bar can render once with the stale chip
         // and the version must move again when ChromeLayout lands, or TitleBar's render memo returns the stale tree.
+        // s_searchSettle: the pill's width eases on focus, and the regions must be pushed once it has SETTLED (F5).
         return HashCode.Combine(flags, (int)l.SearchWidth, (int)l.LeadClusterW, TitleBarTabsVersion(), (int)Auth.Value,
-            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, (int)l.Chip);
+            HashCode.Combine(r.Kind, r.Subject, r.Arg), Sidebar.PinsVersion.Value, HashCode.Combine((int)l.Chip, s_searchSettle.Value));
     }
 
     // Both fold Shown: the strip's labels come from the staged route, so it must rebuild when that route LANDS (the
