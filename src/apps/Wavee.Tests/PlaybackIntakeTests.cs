@@ -384,16 +384,34 @@ public class PlaybackIntakeTests
     // ── "Start radio" the 0.2.9 way: seed → inspiredby-mix playlist, parked behind the deck (G-251) ────────────────
 
     [Fact]
-    public void The_radio_seed_is_the_seeds_own_uri_and_only_a_track_or_an_artist_has_one()
+    public void The_radio_seed_is_the_seeds_own_uri_and_only_a_track_artist_album_or_playlist_has_one()
     {
         Assert.True(EntityId.TryParseGid("spotify:track:7idegBIikag5rTZP4WZihP"u8, out EntityId track));
         Assert.True(EntityId.TryParseGid("spotify:artist:4Z8W4fKeB5YxbusRsdQVPb"u8, out EntityId artist));
+        Assert.True(EntityId.TryParseGid("spotify:album:4uLU6hMCjMI75M1A2tKUQC"u8, out EntityId album));
+        Assert.True(EntityId.TryParseGid("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"u8, out EntityId playlist));
 
         Assert.Equal("spotify:track:7idegBIikag5rTZP4WZihP", Playback.RemotePlan.RadioSeedUri(track));
         Assert.Equal("spotify:artist:4Z8W4fKeB5YxbusRsdQVPb", Playback.RemotePlan.RadioSeedUri(artist));
+        // A container seeds a radio too (`seed_to_playlist` takes album and playlist seeds) ...
+        Assert.Equal("spotify:album:4uLU6hMCjMI75M1A2tKUQC", Playback.RemotePlan.RadioSeedUri(album));
+        Assert.Equal("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", Playback.RemotePlan.RadioSeedUri(playlist));
+        // ... but stations exist only for a track or an artist.
+        Assert.Equal("", Playback.RemotePlan.StationUri(album));
+        Assert.Equal("", Playback.RemotePlan.StationUri(playlist));
+
         Assert.Equal("", Playback.RemotePlan.RadioSeedUri(EntityId.ForGid(EntityKind.Episode, (UInt128)0x1234UL)));
-        Assert.Equal("", Playback.RemotePlan.RadioSeedUri(EntityId.ForGid(EntityKind.Playlist, (UInt128)0x1234UL)));
+        Assert.Equal("", Playback.RemotePlan.RadioSeedUri(EntityId.ForGid(EntityKind.Collection, (UInt128)0x1234UL)));
         Assert.Equal("", Playback.RemotePlan.RadioSeedUri(default));
+    }
+
+    [Fact]
+    public void A_prerelease_album_or_a_text_form_collection_has_no_radio_seed()
+    {
+        Assert.True(EntityId.TryParseGid("spotify:prerelease:4uLU6hMCjMI75M1A2tKUQC"u8, out EntityId prerelease));
+        Assert.True(prerelease.IsPrerelease);
+        Assert.Equal("", Playback.RemotePlan.RadioSeedUri(prerelease));
+        Assert.Equal("", Playback.RemotePlan.RadioSeedUri(EntityId.Parse("spotify:collection:tracks")));
     }
 
     [Fact]

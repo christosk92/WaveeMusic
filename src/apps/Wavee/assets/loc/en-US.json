@@ -69,6 +69,8 @@
     "playNext": "Play next",
     "playAfter": "Play after",
     "addToQueue": "Add to queue",
+    "startRadio": "Start radio",
+    "playOptions": "More ways to play",
     "addToPlaylist": "Add to playlist",
     "copyToPlaylist": "Copy to playlist",
     "addedToQueue": "Added {count} to queue",

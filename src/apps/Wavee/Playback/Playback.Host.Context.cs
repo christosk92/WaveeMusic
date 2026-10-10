@@ -163,7 +163,8 @@ public static partial class Playback
     /// name a caller who knows one may fill in (the host does not know the playlist's title).</summary>
     public readonly record struct RadioOutcome(bool Started, EntityId Playlist, string? Name, bool Parked);
 
-    /// <summary><c>ActionServices.StartRadio</c>: song radio or artist radio from <paramref name="seed"/>, 0.2.9's way.
+    /// <summary><c>ActionServices.StartRadio</c>: song, artist, album or playlist radio from <paramref name="seed"/>
+    /// (a container seeds too: <c>seed_to_playlist</c> takes them), 0.2.9's way.
     /// The seed resolves to its REAL radio playlist (<c>inspiredby-mix</c>, <see cref="Spotify.Api.RadioSeed"/>), the
     /// playlist resolves like any other context, and then: nothing live on this deck → it plays from its first row
     /// through the one context path; a track playing here → it is PARKED behind that track, which finishes untouched,

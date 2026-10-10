@@ -203,12 +203,15 @@ public static partial class Playback
                 : "";
 
         /// <summary>The seed uri "Start radio" resolves through <c>inspiredby-mix</c> (G-251): the literal
-        /// <c>spotify:track:&lt;id&gt;</c> (song radio) or <c>spotify:artist:&lt;id&gt;</c> (artist radio). "" for a seed
-        /// with no Spotify radio (an episode, a local file, a module row, a text-form id) — the same seeds
-        /// <see cref="StationUri"/> refuses. Cold: one string per user action.</summary>
+        /// <c>spotify:track:&lt;id&gt;</c> (song radio), <c>spotify:artist:&lt;id&gt;</c> (artist radio),
+        /// <c>spotify:album:&lt;id&gt;</c> (album radio) or <c>spotify:playlist:&lt;id&gt;</c> (playlist radio) — the seeds
+        /// <c>seed_to_playlist</c> takes, as Spotify's own "Go to album radio" / "Go to playlist radio" use. "" for a seed with no
+        /// Spotify radio (an episode, a local file, a module row, a text-form id, a collection, a prerelease). Unlike
+        /// <see cref="StationUri"/> (stations exist only for a track or an artist) a container can seed. Cold: one string per
+        /// user action.</summary>
         public static string RadioSeedUri(EntityId seed)
             => seed.Provider == EntityProvider.Spotify && seed.Form == EntityForm.Gid && !seed.IsPrerelease
-               && (seed.Kind is EntityKind.Track or EntityKind.Artist)
+               && (seed.Kind is EntityKind.Track or EntityKind.Artist or EntityKind.Album or EntityKind.Playlist)
                 ? seed.Text
                 : "";
 

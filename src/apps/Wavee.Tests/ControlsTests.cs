@@ -347,6 +347,23 @@ public class ControlsCtaTests
         Assert.Equal(0x80 / 255f, Controls.OnFillSecondaryAlpha(ColorF.FromRgba(20, 20, 24)), 4);
         Assert.Equal(0xB3 / 255f, Controls.OnFillSecondaryAlpha(ColorF.FromRgba(255, 255, 255)), 4);
     }
+
+    [Fact]
+    public void The_play_split_is_88_plus_a_divider_plus_a_32_chevron()
+    {
+        Assert.Equal(121f, ButtonRules.PlaySplitWidthNominal);
+        Assert.Equal(ButtonRules.PlaySplitPrimaryMinW + 1f + ButtonRules.PlaySplitChevronW, ButtonRules.PlaySplitWidthNominal);
+    }
+
+    [Fact]
+    public void The_play_split_menu_is_always_queue_then_play_next_then_radio()
+    {
+        var items = ButtonRules.PlaySplitItems;
+        Assert.Equal(3, items.Length);
+        Assert.Equal(ButtonRules.PlaySplitVerb.AddToQueue, items[0]);
+        Assert.Equal(ButtonRules.PlaySplitVerb.PlayNext, items[1]);
+        Assert.Equal(ButtonRules.PlaySplitVerb.StartRadio, items[2]);
+    }
 }
 
 [Collection(EntitiesCollection.Name)]

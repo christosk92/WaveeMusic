@@ -2029,6 +2029,25 @@ public static partial class Detail
     static BoxEl Fab(string glyph, Action? onClick, float size = RailFabSize, float glyphSize = 16f)
         => Controls.IconAction(glyph, onClick, size: size);
 
+    /// <summary>Run a registered context verb over a CONTAINER target (the Play split's "Add to queue" / "Play next": the
+    /// verbs <c>ContainerMenuRules</c> mapped for the ⋯ rows — <c>PlayContextNext</c> / <c>AddContextToQueue</c> over the
+    /// whole context's local members, no 50-row cap). An unregistered verb does nothing; one the target cannot satisfy
+    /// ends in the "nothing to add" warning toast instead of a silent click. UI thread.</summary>
+    internal static void RunContextVerb(ActionId id, in ActionTarget target)
+    {
+        if (AppActions.Find(id) is not { } a) return;
+        var ctx = new ActionContext(target, Actions.Services);
+        if (a.EnabledFor(in ctx)) a.Execute(ctx);
+        else _ = Notify.Say(Loc.Get(Strings.Drag.NothingToAdd), InfoBarSeverity.Warning);
+    }
+
+    /// <summary>The Play split's "Start radio": a real radio off <paramref name="seed"/> (a track, artist, album or
+    /// playlist — <see cref="Playback.RemotePlan.RadioSeedUri"/>), whose OUTCOME raises the toast
+    /// (<see cref="Queue.RadioToast"/>; a refused seed is "Couldn't start radio"), never the click. Mirrors the artist
+    /// page's Radio (Artist.Page.cs).</summary>
+    internal static Action StartRadioFor(EntityUri seed, string name)
+        => () => Playback.StartRadio(seed, o => Queue.RadioToast(o with { Name = name }));
+
     /// <summary>The More button: its flyout is built lazily AT OPEN from the newest menu factory. <c>internal</c> because the
     /// library's panes (<c>Album.Pane</c>, <c>Artist.Reader</c>) head their command rows with the SAME ⋯ — one menu host, so
     /// a surface never grows a second one (library rework §5.0).</summary>

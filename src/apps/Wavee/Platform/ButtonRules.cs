@@ -33,6 +33,23 @@ public static class ButtonRules
     /// metric) can reference the SAME number instead of copying 120.</summary>
     public const float PrimaryWidthNominal = 120f;
 
+    /// <summary>The Play split's primary half FLOOR and its chevron half; with the 1-DIP divider between them they sum to
+    /// <see cref="PlaySplitWidthNominal"/>, which replaces <see cref="PrimaryWidthNominal"/> on a detail page's command
+    /// row. Named here so a layout rule (a skeleton shape, a CTA-row budget) reads the SAME numbers the control is built
+    /// from.</summary>
+    public const float PlaySplitPrimaryMinW = 88f, PlaySplitChevronW = 32f;
+
+    /// <summary>The Play split's nominal width: primary floor + the 1-DIP divider + the chevron half (121).</summary>
+    public const float PlaySplitWidthNominal = PlaySplitPrimaryMinW + 1f + PlaySplitChevronW;
+
+    /// <summary>The verbs in the Play split's chevron menu.</summary>
+    public enum PlaySplitVerb : byte { AddToQueue, PlayNext, StartRadio }
+
+    /// <summary>The Play split's menu, in order — ALWAYS these three, on every container and in every state (the menu
+    /// never grows or loses a row; a verb that cannot run says so with its own toast). PURE.</summary>
+    public static ReadOnlySpan<PlaySplitVerb> PlaySplitItems
+        => [PlaySplitVerb.AddToQueue, PlaySplitVerb.PlayNext, PlaySplitVerb.StartRadio];
+
     /// <summary>The six colours the Follow/Pre-save toggle's ON state needs, derived from the page accent
     /// <paramref name="a"/> and the theme (<paramref name="light"/> — a value, never a global read, so this stays
     /// testable both ways in the same process). Mirrors the plan's state table exactly:
