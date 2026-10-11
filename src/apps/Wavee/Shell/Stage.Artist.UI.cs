@@ -43,121 +43,6 @@ public static partial class Stage
 {
     // ══ 1. THE PURE RULES (Wavee.Tests/StageArtistRulesTests.cs) ════════════════════════════════════════════════════
 
-    /// <summary>Every Artist-pane decision that is not a tree: the column split, the header height, the reading measure,
-    /// the listener line, credits grouped by person, how many avatars / tiles fit. System-only (no Element, no signal, no
-    /// entity read) so the tests drive the real arithmetic. Public: this assembly has no <c>InternalsVisibleTo</c>.</summary>
-    public static class ArtistRules
-    {
-        /// <summary>Two columns from this pane width; one column under it.</summary>
-        public const float TwoColumnMinW = 1100f;
-        /// <summary>The header band's share of the pane height and its clamp (the floor grows with the type scale, so a
-        /// 72-DIP name never overflows its band).</summary>
-        public const float HeaderFrac = 0.3f, HeaderMin = 200f, HeaderMax = 480f;
-        /// <summary>The left column's share of the two-column row: at least / at most this much of it.</summary>
-        public const float LeftMinFrac = 0.45f, LeftMaxFrac = 0.6f;
-        /// <summary>The reading measure in ems: 68 characters at Segoe's ~0.5 em average advance.</summary>
-        public const float MeasureEms = 34f;
-        public const int PopularCount = 5, CityCount = 5, GalleryCount = 4, FansMax = 8, CreditPeopleMax = 10, BioLines = 6;
-
-        /// <summary>One contributor: the name, its distinct roles ", " joined in wire order, and the artist it links to
-        /// (0 = an unlinked contributor).</summary>
-        public readonly record struct CreditPerson(string Name, string Roles, int ArtistSlot);
-
-        public static bool TwoColumns(float paneW) => paneW >= TwoColumnMinW;
-
-        /// <summary>0.3 · the pane height, rounded, clamped to [HeaderMin · scale, HeaderMax].</summary>
-        public static float HeaderHeight(float paneH, float scale)
-            => Math.Clamp(MathF.Round(paneH * HeaderFrac), MathF.Min(HeaderMin * MathF.Max(1f, scale), HeaderMax), HeaderMax);
-
-        /// <summary>~68 characters of <paramref name="typeSize"/> type.</summary>
-        public static float ReadingMeasure(float typeSize) => MathF.Round(typeSize * MeasureEms);
-
-        /// <summary>The left (About) column: the reading measure, held between 45 % and 60 % of the row; the right column
-        /// takes the rest.</summary>
-        public static float LeftColumnW(float paneW, float gap, float measure)
-        {
-            float row = MathF.Max(0f, paneW - gap);
-            return MathF.Floor(Math.Clamp(measure, row * LeftMinFrac, row * LeftMaxFrac));
-        }
-
-        /// <summary>"7.9M" — the compact count the rest of the app uses (Detail.Text.CompactCount, current culture).</summary>
-        public static string ListenerCount(long n) => Detail.Text.CompactCount(n);
-
-        /// <summary>The non-empty parts " · " joined ("7.9M monthly listeners · #312 in the world").</summary>
-        public static string MetaLine(string listeners, string rank)
-            => listeners.Length == 0 ? rank : rank.Length == 0 ? listeners : listeners + " · " + rank;
-
-        /// <summary>Does a bio of <paramref name="plainChars"/> characters overflow <paramref name="lines"/> lines of
-        /// <paramref name="typeSize"/> type at <paramref name="width"/>? (Only then does Read more show.)</summary>
-        public static bool BioClamps(int plainChars, float width, float typeSize, int lines)
-        {
-            if (plainChars <= 0 || lines <= 0) return false;
-            int perLine = Math.Max(1, (int)(width / MathF.Max(1f, typeSize * 0.5f)));
-            return plainChars > perLine * lines;
-        }
-
-        /// <summary>How many <paramref name="tile"/>-wide items fit in <paramref name="width"/> with <paramref name="gap"/>
-        /// between them, capped by what is there and by <paramref name="max"/>.</summary>
-        public static int FitCount(float width, float tile, float gap, int available, int max)
-        {
-            if (tile <= 0f || width <= 0f) return 0;
-            int fit = (int)MathF.Floor((width + gap) / (tile + gap));
-            return Math.Max(0, Math.Min(Math.Min(available, max), fit));
-        }
-
-        /// <summary>The edge of each of <paramref name="n"/> equal tiles across <paramref name="width"/>.</summary>
-        public static float TileW(float width, float gap, int n)
-            => n <= 0 ? 0f : MathF.Max(0f, MathF.Floor((width - gap * (n - 1)) / n));
-
-        /// <summary>A city bar's share of the loudest city, 0..1.</summary>
-        public static float CityFraction(uint listeners, uint max) => max == 0 ? 0f : Math.Clamp((float)listeners / max, 0f, 1f);
-
-        /// <summary>The credits GROUPED BY PERSON, in first-appearance order: one entry per name (case-insensitive), its
-        /// distinct roles in wire order, its artist link from the credit's own target or — when the credit carries none —
-        /// from a billed artist of the same name. At most <paramref name="max"/> people.</summary>
-        public static CreditPerson[] GroupCredits(ReadOnlySpan<string> names, ReadOnlySpan<string> roles, ReadOnlySpan<int> slots,
-                                                  ReadOnlySpan<string> billedNames, ReadOnlySpan<int> billedSlots, int max)
-        {
-            var people = new List<string>(Math.Min(names.Length, Math.Max(0, max)));
-            var roleLists = new List<List<string>>(people.Capacity);
-            var links = new List<int>(people.Capacity);
-            for (int i = 0; i < names.Length; i++)
-            {
-                string name = (names[i] ?? "").Trim();
-                if (name.Length == 0) continue;
-                int at = -1;
-                for (int k = 0; k < people.Count && at < 0; k++)
-                    if (string.Equals(people[k], name, StringComparison.OrdinalIgnoreCase)) at = k;
-                if (at < 0)
-                {
-                    if (people.Count >= max) continue;
-                    at = people.Count;
-                    people.Add(name);
-                    roleLists.Add(new List<string>(2));
-                    links.Add(0);
-                }
-                string role = i < roles.Length ? (roles[i] ?? "").Trim() : "";
-                if (role.Length > 0)
-                {
-                    var list = roleLists[at];
-                    bool seen = false;
-                    for (int r = 0; r < list.Count && !seen; r++) seen = string.Equals(list[r], role, StringComparison.OrdinalIgnoreCase);
-                    if (!seen) list.Add(role);
-                }
-                if (links[at] <= 0 && i < slots.Length && slots[i] > 0) links[at] = slots[i];
-            }
-            var result = new CreditPerson[people.Count];
-            for (int k = 0; k < people.Count; k++)
-            {
-                int link = links[k];
-                for (int b = 0; link <= 0 && b < billedNames.Length && b < billedSlots.Length; b++)
-                    if (billedSlots[b] > 0 && string.Equals(billedNames[b], people[k], StringComparison.OrdinalIgnoreCase)) link = billedSlots[b];
-                result[k] = new CreditPerson(people[k], string.Join(", ", roleLists[k]), Math.Max(0, link));
-            }
-            return result;
-        }
-    }
-
     // ══ 2. THE PANE ═════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The Artist pane (PaneHost mounts it under KeepAlive). Re-renders on the playing track's key, the layout and
@@ -282,8 +167,7 @@ public static partial class Stage
     {
         var a = new Artist(artistSlot);
         if (!a.IsValid || !a.Uri.IsValid) return;
-        Close(begin, "navigate");
-        Shell.GoTo(Shell.For(a.Uri, a.Name));
+        StageVerbs.NavigateClosingStage(begin, Shell.For(a.Uri, a.Name));
     }
 
     sealed record HeaderProps(int Artist, float W, float H, float S);
@@ -410,7 +294,7 @@ public static partial class Stage
         public AboutBlock()
         {
             _toggle = () => _openFor.Value = _openFor.Peek() == _artist ? 0 : _artist;
-            _nav = key => { Close(_begin, "navigate"); Shell.GoTo(Shell.Parse(key)); };
+            _nav = key => StageVerbs.NavigateClosingStage(_begin, Shell.Parse(key));
         }
 
         public override Element Render()

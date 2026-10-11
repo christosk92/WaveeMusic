@@ -267,9 +267,7 @@ public static partial class Stage
         {
             void OpenGallery()
             {
-                if (ctx.LayoutPref.Peek() != VizLayout.Card) Prefs.Stage.SetLayout((int)VizLayout.Card);
-                if (ctx.Mode.Peek() != Mode.Visualizer) Prefs.Stage.SetMode((int)Mode.Visualizer);
-                Prefs.Stage.SetGalleryOpen(true);
+                ctx.OpenGallery();                 // the one gallery rule (StageModel.PlanGalleryOpen)
                 _close?.Invoke();
             }
             return new BoxEl
