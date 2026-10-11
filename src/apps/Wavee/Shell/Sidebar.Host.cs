@@ -1984,49 +1984,6 @@ public static partial class Sidebar
 
 }
 
-/// <summary>What a drop on a "+" create affordance means (G-170).</summary>
-public enum SidebarCreateDrop : byte
-{
-    /// <summary>None of this target's business — the drag is crossing on its way somewhere else. No cue at all.</summary>
-    Transparent = 0,
-    /// <summary>A new folder holding the dropped rootlist items.</summary>
-    NewFolder = 1,
-    /// <summary>A new playlist seeded from the dropped tracks.</summary>
-    NewPlaylist = 2,
-    /// <summary>The drop means something, but the library write it needs has no seam: refuse, with the sentence.</summary>
-    Refused = 3,
-}
-
-/// <summary>THE "+" DROP RULE (G-170): one decision per create destination, so the cue, the refusal caption and the
-/// commit all ask the same question — and a missing seam member REFUSES (a caption while hovering, a toast on a drop)
-/// instead of arming a cue for a drop that does nothing. Allocation-free: it runs per frame while a drag is live.</summary>
-public static class SidebarCreateDropRules
-{
-    /// <summary>A rootlist filing gesture: a playlist or folder dragged AS a rootlist item.</summary>
-    public static bool IsFiling(DragPayload payload) => payload.RootlistItem && payload.Kind is DragKind.Playlist or DragKind.Folder;
-
-    /// <summary>The PlaylistTree header "+": rootlist items ⇒ a new top-level folder holding them; a track set that is
-    /// not itself a rootlist item ⇒ a new playlist from it; anything else crosses.</summary>
-    public static SidebarCreateDrop Header(DragPayload payload, SidebarLibraryWrites? writes)
-    {
-        if (IsFiling(payload)) return writes?.NewFolderWith is null ? SidebarCreateDrop.Refused : SidebarCreateDrop.NewFolder;
-        if (payload.CanCopyTracks && !payload.RootlistItem)
-            return writes?.CreatePlaylistWith is null ? SidebarCreateDrop.Refused : SidebarCreateDrop.NewPlaylist;
-        return SidebarCreateDrop.Transparent;
-    }
-
-    /// <summary>A folder row's "+": rootlist items ⇒ a new sub-folder inside it; a track set crosses (it is on its way
-    /// to a playlist row).</summary>
-    public static SidebarCreateDrop Folder(DragPayload payload, SidebarLibraryWrites? writes)
-        => !IsFiling(payload) ? SidebarCreateDrop.Transparent
-            : writes?.NewFolderWith is null ? SidebarCreateDrop.Refused : SidebarCreateDrop.NewFolder;
-
-    /// <summary>A click verb that writes the library (a "+" click, "New playlist in this folder", "Rename folder"):
-    /// the refusal to say when its seam member is absent, else <see cref="SidebarDropRefusal.None"/>.</summary>
-    public static SidebarDropRefusal Verb(bool seamPresent)
-        => seamPresent ? SidebarDropRefusal.None : SidebarDropRefusal.WritesUnavailable;
-}
-
 /// <summary>Delegates only (the ActionServices shape): each one is ONE mutation that awaits the server, then announces,
 /// toasts and offers Undo itself. UI thread in, marshal back through <c>Sidebar.ToUi</c>.</summary>
 public sealed class SidebarLibraryWrites

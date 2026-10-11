@@ -191,7 +191,7 @@ public static partial class Sidebar
         {
             if (!HasMenus) return null;
             var snapshot = folder;
-            return () => Actions.Menu.WithLayoutExtras(EntryModel(in snapshot, activate, IsFolderExpanded(snapshot.FolderId),
+            return () => Actions.Menu.WithLayoutExtras(EntryModel(in snapshot, activate, Model.IsFolderExpanded(snapshot.FolderId),
                                                                   NavExtras(section, planIndex)),
                                                        SidebarRowItems(section, planIndex, rowKey));
         }

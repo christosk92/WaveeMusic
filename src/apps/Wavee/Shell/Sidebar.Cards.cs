@@ -77,7 +77,7 @@ public static class SidebarCardRules
     /// the raw uri fragment.</summary>
     public static string TitleOf(in SidebarLibraryEntry entry)
         => entry.Name.Length > 0 ? entry.Name
-         : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? Sidebar.PaneText.ShortUri(entry.Uri)
+         : SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown) ? NavRowFacts.ShortUri(entry.Uri)
          : "";
 
     /// <summary>An entry with no title yet, which renders as a bone instead of a tile with an empty title — and, like an

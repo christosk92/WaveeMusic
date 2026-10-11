@@ -139,7 +139,7 @@ public static partial class Sidebar
                 : null;
             return EntityRow.Create(new RowSpec
             {
-                Key = row.Key, Label = e.Name.Length > 0 ? e.Name : PaneText.ShortUri(e.Uri),
+                Key = row.Key, Label = e.Name.Length > 0 ? e.Name : NavRowFacts.ShortUri(e.Uri),
                 Subtitle = PaneText.SubtitleOf(in e), Shape = SidebarRowShape.EntityTwoLine, Depth = row.Depth,
                 Leading = Cover.ForEntry(in e, SidebarRowGeometry.ArtOf(SidebarRowShape.EntityTwoLine)),
                 Selected = string.Equals(e.RouteKey, owner.SelectedRoutePeek, StringComparison.Ordinal),
@@ -289,7 +289,7 @@ public static partial class Sidebar
                 // honest short form; an entity row that has not resolved shows nothing.
                 Label = entry.Name.Length > 0 ? entry.Name
                     : folder || SidebarProjection.ShouldShowUriFallbackTitle(entry.IsPinned, entry.IdentityKnown)
-                        ? PaneText.ShortUri(entry.Id)
+                        ? NavRowFacts.ShortUri(entry.Id)
                         : "",
                 // A sub-folder's count is the count of the very list a drill-in shows (ParentFolderId containment), never
                 // the projection's ChildCount — the second definition that once rendered a full folder as "0 items".

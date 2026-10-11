@@ -59,7 +59,7 @@ Pure classes are tested directly. Each row names the class under test and its fi
 | Projection and binder inputs | `SidebarProjectionInput` | `SidebarProjectionTests.cs` |
 | Your Library session: drill, folder rule, chips, search Esc and blur, empty-state facts | `NavLibrary` | `NavLibraryTests.cs` |
 | The nav model: readiness (Failed included), destinations, projection parity on six fixture libraries, the verbs | `NavModel`, `NavReadinessRules`, `NavDestinationRules` | `NavModelTests.cs` |
-| Drop and rootlist slot | `RootlistSlotResolver`, `RootlistSlotMapper` | `SidebarDropTests.cs` |
+| Drop and rootlist slot | `RootlistSlotResolver`, `RootlistSlotMapper`, `NavDropRules` (Shell/NavDropRules.cs) | `NavDropRulesTests.cs` |
 | Cards | `SidebarCardRules` | `SidebarCardsTests.cs` |
 | Pins: rules and refusal | `SidebarPinRules`, `SidebarPinId`, `SidebarPinStore` | `SidebarPinTests.cs` |
 | Pin sync with Spotify | `LibraryPinSync` | `SidebarPinSyncTests.cs` |

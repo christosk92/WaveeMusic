@@ -1225,8 +1225,8 @@ public static partial class Sidebar
         /// publish, realize and arm.</summary>
         void SchedulePrefsCommit()
         {
-            if (_post is { } post) post(_flushPrefsCommit ??= FlushPendingCommit);
-            else FlushPendingCommit();
+            if (_post is { } post) post(_flushPrefsCommit ??= Model.FlushPendingCommit);
+            else Model.FlushPendingCommit();
         }
 
         /// <summary>Always-on disclosure lifecycle log (0.2.9's env-gated trace, re-homed per CLAUDE.md).</summary>
@@ -1679,19 +1679,11 @@ public static partial class Sidebar
             AcceptPinDrop(payload, slot);
         }
 
-        /// <summary>Drop-to-pin (the band or the empty drop zone). An already-pinned payload is a MOVE, never a duplicate.</summary>
+        /// <summary>Drop-to-pin (the band or the empty drop zone). An already-pinned payload is a MOVE, never a duplicate; the
+        /// decision and the signed-out guard are the model's (<see cref="NavModel.Drop"/>).</summary>
         internal void AcceptPinDrop(object? payload, int slot)
         {
-            if (Drag.Unwrap(payload) is not { CanPin: true } p) return;
-            string? pinId = SidebarPinId.Canonical(p.Id) ?? SidebarPinId.Canonical(p.Uri);
-            if (pinId is null) return;
-            int at = Model.Pins.IndexOf(pinId);
-            if (at >= 0)
-            {
-                Model.MovePin(at, slot > at ? slot - 1 : slot);   // remove-then-insert shifts later indices down by one
-                return;
-            }
-            Model.Pin(pinId, SidebarPinId.KindOf(pinId), SidebarPinId.UriOf(pinId), p.Name, slot);
+            if (Drag.Unwrap(payload) is { } p) Model.Drop(p, NavDropTarget.PinIndex(slot));
         }
 
         // ── the tree multi-selection ───────────────────────────────────────────────────────────────────────────────
