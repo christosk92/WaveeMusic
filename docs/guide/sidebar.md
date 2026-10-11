@@ -211,7 +211,7 @@ Pure classes are engine-free and covered by `Wavee.Tests`. Each test file (`src/
 - **Rows and geometry:** `SidebarRowGeometryTests`, `SidebarPlannerTests` (fixture `PlanFixture`), `SidebarPillRulesTests`,
   `SidebarSubtitleRulesTests`, `SidebarProjectionTests`.
 - **Modes and sizing:** `SidebarPaneModeRulesTests`, `SidebarResizeRulesTests`.
-- **Edit, menus and undo:** `SidebarEditRulesTests`, `SidebarMenuModelTests`, `SidebarUndoRingTests`,
+- **Edit, menus and undo:** `SidebarEditRulesTests`, `NavEditModelTests`, `NavMenuModelTests`, `SidebarUndoRingTests`,
   `SidebarDropTests`, `SidebarTypeAheadRulesTests`.
 - **Library:** `SidebarLibraryShaperTests`, `SidebarLibraryHeadRulesTests`, `SidebarLibraryStateTests`.
 - **Pins and accounts:** `SidebarPinTests`, `SidebarPinSyncTests`, `SidebarAccountStoreTests`.

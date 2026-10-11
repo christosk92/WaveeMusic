@@ -11,8 +11,8 @@ renderer.
 | Add a Collections page (a new library route) | `Shell/Sidebar.Layout.cs` (`SidebarCatalogue.ItemsOf`, the item list in `s_collectionItems`); the page's loc key in `assets/loc/en-US.json`; `Shell/Sidebar.Library.cs` if it is a Library page (`SidebarLibraryPage`) | `SidebarCatalogueTests.cs`, `SidebarLibraryHeadRulesTests.cs` |
 | Add a section kind | `Shell/Sidebar.Layout.cs` (`SidebarSectionKind`, the catalogue, `Movable`/`Collapsible`); `Shell/Sidebar.Store.cs` (the section DTO mapping); `Shell/Sidebar.Planner.cs` (a plan branch); `Shell/Sidebar.UI.Rows.cs` or `Shell/Sidebar.UI.Slot.cs` (the header) | `SidebarCatalogueTests.cs`, `SidebarPlannerTests.cs`, `SidebarStoreV3Tests.cs` |
 | Change a row metric (height, indent, icon, label gap) | `Shell/Sidebar.cs` (`SidebarRowGeometry` — the one ladder; `SidebarRowExtents` if the extents change) | `SidebarRowGeometryTests.cs` |
-| Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `SidebarMenus.Run`) | `SidebarMenuModelTests.cs` |
-| Add an Edit mode key or verb | `Shell/Sidebar.UI.Edit.cs` (the key handler); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout | `SidebarEditRulesTests.cs` |
+| Add a menu item | `Shell/Sidebar.UI.Menus.cs` (the `SidebarMenuAction` value in `Sidebar.Edit.cs`, the row in `SidebarMenuModel`, the case in `NavMenuModel.Run`, `Shell/NavMenuModel.cs`) | `NavMenuModelTests.cs` |
+| Add an Edit mode key or verb | `Shell/NavEditModel.cs` (the key table and the ops); `Shell/Sidebar.UI.Edit.cs` (the Outline view and its key mapping); `Shell/Sidebar.Edit.cs` (`SidebarEditRules` for the decision); the `SidebarOp` in `Sidebar.Layout.cs` if it edits the layout | `SidebarEditRulesTests.cs`, `NavEditModelTests.cs` |
 | Add a pane mode rule or change a band | `Shell/Sidebar.Resize.cs` (`SidebarPaneModeRules` for the band; `SidebarResizeRules` for the width) | `SidebarPaneModeRulesTests.cs`, `SidebarResizeRulesTests.cs` |
 | Change the Library head, chips or toolbar | `Shell/Sidebar.Library.cs` (`SidebarLibraryHeadRules`, `SidebarLibraryEmptyRules`, `SidebarLibraryShaper`); `Shell/Sidebar.UI.Library.cs` (the visuals) | `SidebarLibraryHeadRulesTests.cs`, `SidebarLibraryShaperTests.cs`, `SidebarLibraryStateTests.cs` |
 | Change a pin rule or the Liked and Home guard | `Shell/Sidebar.cs` (`SidebarPinId`); `Shell/Sidebar.Rules.cs` (`SidebarPinRules`); `Shell/Sidebar.Host.cs` (`SidebarPinStore`) | `SidebarPinTests.cs` |
@@ -38,7 +38,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 
 | File | What lives there |
 |---|---|
-| `Shell/NavModel.cs`, `NavModel.Binder.cs`, `NavModel.Selection.cs`, `NavModel.Library.cs` | The nav model (`Sidebar.Model`): readiness, destinations, the read surface over the binder, the selected route and play state, and the `INavVerbs` verbs. |
+| `Shell/NavModel.cs`, `NavModel.Binder.cs`, `NavModel.Selection.cs`, `NavModel.Library.cs`, `NavEditModel.cs`, `NavMenuModel.cs` | The nav model (`Sidebar.Model`): readiness, destinations, the read surface over the binder, the selected route and play state, and the `INavVerbs` verbs. |
 | `Shell/Sidebar.Accounts.cs` | The account swap: `EnsureAccount`, `SwapAccount`, the pending-file adoption on first sign-in. |
 | `Shell/Sidebar.Cards.cs` | Card surfaces: `SidebarCardSurface`, `SidebarCardActivation`, `SidebarCardDrop`, `SidebarCardRules`. |
 | `Shell/Sidebar.Census.cs` | The re-plan census: `SidebarReplanCause` (which planner input moved) and `SidebarReplanCensus` (the log line). |

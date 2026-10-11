@@ -469,17 +469,14 @@ public static partial class Sidebar
         if (!Editing.Peek()) return;
         EditExitRestoresFocus = restoreFocus;
         Editing.Value = false;
-        if (restoreFocus && s_enabledEmptySection is { } name)
+        string? name = Model.Edit.TakeEnabledEmptySection();   // the note is the edit model's; it is cleared on every exit
+        if (restoreFocus && name is not null)
             Notify.Say(Loc.Format("sidebar.edit.emptyOnDone", ("name", name)));
-        s_enabledEmptySection = null;
     }
 
     /// <summary>How the LAST exit from Edit ended: the pane restores focus on the editing true → false edge only when this
     /// is true (Done / Esc), never for an account switch.</summary>
     internal static bool EditExitRestoresFocus { get; private set; }
-
-    /// <summary>The name of a section the user showed in Edit while it had nothing to show (one toast on Done).</summary>
-    internal static string? s_enabledEmptySection;
 
     static void CommitLayout() => s_deviceFile?.Commit(SidebarStoreV3.Serialize(s_state));
 

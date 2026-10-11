@@ -129,6 +129,13 @@ the empty-state facts (`ReadFacts`), the chip commit (`SetFilter`, `ToggleChip`,
 rule (`ActivateFolder`), and the search (`Find`, `Escape`, `SearchBlurred`, `CloseSearch`). The Classic `LibrarySession` keeps only
 the pane reference, the head's focus targets and the pill flag around it.
 
+Edit mode and the menus are core too. `Model.Edit` (`NavEditModel`) holds the Outline read, the ops a checkbox, drag or key makes
+(`SetSectionShown`, `SetItemShown`, `MoveSection`, `MoveItem`), undo / redo, the `EnabledEmptySection` note, and the key table
+(`OnPaneKey`, `OnSectionKey`, `OnPinKey`, `OnItemKey`, fed `NavEditKey` / `NavEditMods`). `NavMenuModel` (static) decides which rows a
+`NavMenuTarget` gets (`Menu`), what a picked row does (`Run`, with an `INavMenuHost` for the pane-bound collapse and rootlist step),
+`ToggleKind` / `MoveBy` / `HideItem`, the folder-rename gate and commit, and the "· modified" `LayoutName`. The view only maps rows to
+engine menu items (`SidebarMenus.Map`) and draws the Outline.
+
 ## 7. Stores, persistence and the account swap
 
 - **`sidebar.json`** (`SidebarStoreV3`, `Sidebar.Store.cs`, `FileName`): the device document, v3: the two layout overlays

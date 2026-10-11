@@ -167,7 +167,14 @@ public sealed partial class NavModel : INavVerbs
 
     /// <param name="binder">The projection driver; null = a new one over the shell's own logs. A test hands its own so it never
     /// races the process-wide stores.</param>
-    public NavModel(SidebarProjectionBinder? binder = null) => _binder = binder ?? new SidebarProjectionBinder();
+    public NavModel(SidebarProjectionBinder? binder = null)
+    {
+        _binder = binder ?? new SidebarProjectionBinder();
+        Edit = new NavEditModel(this);
+    }
+
+    /// <summary>Edit mode: the Outline, the ops its checkboxes, drags and keys make, undo and redo (<c>NavEditModel.cs</c>).</summary>
+    public NavEditModel Edit { get; }
 
     // ── destinations ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -209,7 +216,7 @@ public sealed partial class NavModel : INavVerbs
 
     // ── edit mode, drag peek, account, persistence ──────────────────────────────────────────────────────────────────────
 
-    /// <summary>Edit mode is on. The writers are <c>Sidebar.EnterEdit</c> / <c>ExitEdit</c> (the edit model, C11).</summary>
+    /// <summary>Edit mode is on. The writers are <see cref="NavEditModel.Enter"/> / <see cref="NavEditModel.Exit"/>.</summary>
     public IReadSignal<bool> Editing => Sidebar.Editing;
 
     /// <summary>A drag is live near a collapsed pane: the column presents expanded for the rest of the drag. TRANSIENT, never

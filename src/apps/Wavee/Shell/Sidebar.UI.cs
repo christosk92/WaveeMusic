@@ -785,15 +785,15 @@ public static partial class Sidebar
         // ── the section header's ⋯ menu ──
 
         /// <summary>A section header's ⋯ menu (design C.4): the header model — limits, Show, Collapse/Expand, Move, Hide section —
-        /// mapped by the one mapper. The lock reasons come from <see cref="SidebarMenus.LockingNames"/>. The kinds with no header
+        /// mapped by the one mapper. The lock reasons come from <see cref="NavMenuModel.LockingNames"/>. The kinds with no header
         /// menu are ruled out from the catalogue; the model itself is built only when the menu opens.</summary>
         internal Func<ContextMenuModel?>? HeaderMenu(string sectionId)
         {
-            if (!SidebarCatalogue.TryKindOf(sectionId, out var kind) || kind is SidebarSectionKind.Library or SidebarSectionKind.Home or SidebarSectionKind.Settings) return null;
+            if (!NavMenuModel.HasHeaderMenu(sectionId)) return null;
             return () =>
             {
                 SidebarMenus.Overlay = MenuOverlay;
-                var rows = SidebarMenuModel.Header(Sidebar.Layout.Peek(), Sidebar.State, sectionId, SidebarMenus.LockingNames());
+                var rows = NavMenuModel.Menu(NavMenuTarget.Header(sectionId));
                 return rows.Count == 0 ? null : new ContextMenuModel(SidebarMenus.Map(rows, sectionId, this));
             };
         }

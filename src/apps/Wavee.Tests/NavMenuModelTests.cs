@@ -1,4 +1,4 @@
-// ── Wavee.Tests/SidebarMenuModelTests.cs — what every sidebar menu offers, in every state, and that no raw key shows ─────
+// ── Wavee.Tests/NavMenuModelTests.cs — (moved from SidebarMenuModelTests.cs, themes plan C11) what every sidebar menu offers, in every state, and that no raw key shows ─────
 //
 // docs/plans/wavee/sidebar-rework-implementation.md §P4.2 and §P4.10 (design C.4, Q7, Q15, Q17). Pure: the rows are data, so
 // every label and reason key a menu can emit is checked against the base catalogue here, not on screen.
@@ -8,12 +8,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using FluentGpu.Localization;
 using Wavee;
 using Xunit;
 
 namespace Wavee.Tests;
 
-public sealed class SidebarMenuModelTests
+public sealed class NavMenuModelTests
 {
     static readonly string[] None = [];
     static readonly string[] Search = ["Search"];
@@ -389,5 +390,292 @@ public sealed class SidebarMenuModelTests
         Assert.True(Has(doc.RootElement, SidebarPinRules.RefusalKeyOf(DragKind.Track, "x", "wavee:local:track:1")!));
         Assert.True(Has(doc.RootElement, SidebarPinRules.RefusalKeyOf(DragKind.Route, "home", "")!));
         Assert.True(Has(doc.RootElement, SidebarPinRules.RefusalKeyOf(DragKind.Route, "liked", "")!));
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// ── THE MODEL LAYER ABOVE THE ROWS (Shell/NavMenuModel.cs): which rows a target gets, what a picked row does ────────
+// ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+[Collection(EntitiesCollection.Name)]
+public sealed class NavMenuModelRunTests : IDisposable
+{
+    sealed class FakeHost : INavMenuHost
+    {
+        public readonly List<(string Id, bool Collapsed)> Directions = new();
+        public readonly List<(string Id, int Delta)> Steps = new();
+        public void SetSectionDirection(string sectionId, bool collapsed) => Directions.Add((sectionId, collapsed));
+        public void MoveSibling(string entryId, int delta) => Steps.Add((entryId, delta));
+    }
+
+    readonly SidebarLayoutId _layout;
+    readonly SidebarDensity _density;
+    readonly SidebarLibraryWrites? _writes;
+
+    public NavMenuModelRunTests()
+    {
+        _layout = Sidebar.Layout.Peek();
+        _density = Sidebar.Density.Peek();
+        _writes = Sidebar.LibraryWrites;
+        Sidebar.ExitEdit();
+        Sidebar.SwitchLayout(SidebarLayoutId.Classic);
+        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Classic));
+        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Library));
+        Sidebar.SetLibraryFilter(SidebarLibraryFilter.None);
+        Sidebar.Pins.LoadFrom(null);
+    }
+
+    public void Dispose()
+    {
+        Sidebar.LibraryWrites = _writes;
+        Sidebar.SetLibraryFilter(SidebarLibraryFilter.None);
+        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Classic));
+        Sidebar.Dispatch(new ResetLayout(SidebarLayoutId.Library));
+        Sidebar.SetDensity(_density);
+        Sidebar.SwitchLayout(_layout);
+        Sidebar.Pins.LoadFrom(null);
+    }
+
+    static SectionState Section(SidebarLayoutId layout, string id) => Sidebar.State.Of(layout).Find(id)!;
+
+    static void Run(SidebarMenuAction action, string arg = "", string? sectionId = null, INavMenuHost? host = null, Action? confirm = null)
+        => NavMenuModel.Run(new SidebarMenuRow(action, "x", arg), sectionId, host, confirm);
+
+    // ── the "· modified" rule and the facts the labels read ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_layout_name_says_modified_once_the_user_has_edited_it()
+    {
+        string plain = Loc.Get("sidebar.layoutName.classic");
+        Assert.Equal(plain, NavMenuModel.LayoutName(SidebarLayoutId.Classic));
+        Assert.Equal(Loc.Get("sidebar.layoutName.library"), NavMenuModel.LayoutName(SidebarLayoutId.Library));
+
+        Sidebar.Dispatch(new SetSectionShown(SidebarLayoutId.Classic, "recent", true));
+
+        Assert.Equal(Loc.Format("sidebar.layoutName.modified", ("layout", plain)), NavMenuModel.LayoutName(SidebarLayoutId.Classic));
+    }
+
+    [Fact]
+    public void Section_titles_are_the_catalogues_loc_keys()
+        => Assert.Equal(Loc.Get("sidebar.section.title.recent"), NavMenuModel.SectionTitle("recent"));
+
+    // ── the rows of a target ────────────────────────────────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("pinned", true)]
+    [InlineData("collections", true)]
+    [InlineData("playlists", true)]
+    [InlineData("recent", true)]
+    [InlineData("newReleases", true)]
+    [InlineData("home", false)]
+    [InlineData("settings", false)]
+    [InlineData("library", false)]
+    [InlineData("no-such-section", false)]
+    public void Only_the_collapsible_and_hideable_sections_have_a_header_menu(string id, bool expected)
+        => Assert.Equal(expected, NavMenuModel.HasHeaderMenu(id));
+
+    [Fact]
+    public void A_target_gets_the_rows_the_row_model_builds_from_the_live_state()
+    {
+        var pane = NavMenuModel.Menu(NavMenuTarget.Pane);
+        var expected = SidebarMenuModel.Pane(Sidebar.Layout.Peek(), Sidebar.State, Sidebar.Density.Peek(), Sidebar.Editing.Peek(),
+                                             NavMenuModel.LockingNames());
+        Assert.Equal(expected.Count, pane.Count);
+
+        Assert.NotEmpty(NavMenuModel.Menu(NavMenuTarget.Header("recent")));
+        Assert.Empty(NavMenuModel.Menu(NavMenuTarget.Header("home")));           // no header menu: no rows, never a dead menu
+        Assert.Empty(NavMenuModel.Menu(NavMenuTarget.Header("no-such-section")));
+
+        Assert.Equal(SidebarMenuModel.Sort(Sidebar.State, SidebarLibraryFilter.Albums).Count,
+                     NavMenuModel.Menu(NavMenuTarget.Sort(SidebarLibraryFilter.Albums)).Count);
+        Assert.Equal(SidebarMenuModel.LibraryOptions(Sidebar.State, SidebarLibraryFilter.None).Count,
+                     NavMenuModel.Menu(NavMenuTarget.LibraryOptions(SidebarLibraryFilter.None)).Count);
+    }
+
+    [Fact]
+    public void The_edit_bars_reset_menu_offers_this_layout_only_once_it_is_modified_and_everything_always()
+    {
+        var plain = NavMenuModel.Menu(NavMenuTarget.EditReset);
+        Assert.Equal(2, plain.Count);
+        Assert.Equal(SidebarMenuAction.ResetLayout, plain[0].Action);
+        Assert.False(plain[0].Enabled);
+        Assert.Equal(SidebarMenuAction.ResetEverything, plain[1].Action);
+        Assert.True(plain[1].Enabled);
+
+        Sidebar.Dispatch(new SetSectionShown(SidebarLayoutId.Classic, "recent", true));
+        Assert.True(NavMenuModel.Menu(NavMenuTarget.EditReset)[0].Enabled);
+    }
+
+    [Fact]
+    public void A_pinned_rows_item_rows_drop_the_models_unpin_because_the_entity_menu_carries_it()
+    {
+        var withUnpin = SidebarMenuModel.Item(SidebarSectionKind.Pinned, "search", 1, 3, unavailable: false);
+        Assert.Contains(withUnpin, r => r.Action == SidebarMenuAction.Unpin);
+
+        var rows = NavMenuModel.ItemRows(SidebarSectionKind.Pinned, "search", 1, 3, unavailable: false, default);
+        Assert.DoesNotContain(rows, r => r.Action == SidebarMenuAction.Unpin);
+        Assert.Contains(rows, r => r.Action == SidebarMenuAction.MovePinUp);
+        Assert.Contains(rows, r => r.Action == SidebarMenuAction.MovePinDown);
+
+        // Any other section's rows are the model's, untouched.
+        Assert.Equal(SidebarMenuModel.Item(SidebarSectionKind.Collections, "albums", 1, 5, false).Count,
+                     NavMenuModel.ItemRows(SidebarSectionKind.Collections, "albums", 1, 5, false, default).Count);
+    }
+
+    // ── a picked row ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Show_hide_and_limit_rows_write_the_active_layouts_overlay()
+    {
+        Assert.True(Section(SidebarLayoutId.Classic, "recent").Hidden);
+
+        Run(SidebarMenuAction.ShowSection, "recent");
+        Assert.False(Section(SidebarLayoutId.Classic, "recent").Hidden);
+
+        Run(SidebarMenuAction.SetLimit, "20", sectionId: "recent");
+        Assert.Equal((int?)20, Section(SidebarLayoutId.Classic, "recent").Limit);
+
+        Run(SidebarMenuAction.HideSection, "", sectionId: "recent");           // a header's Hide uses the header's id
+        Assert.True(Section(SidebarLayoutId.Classic, "recent").Hidden);
+
+        Run(SidebarMenuAction.ShowSection, "recent");
+        Run(SidebarMenuAction.HideSection, "recent");                           // the pane menu carries its section in Arg
+        Assert.True(Section(SidebarLayoutId.Classic, "recent").Hidden);
+    }
+
+    [Fact]
+    public void A_collapse_row_goes_through_the_pane_when_there_is_one_and_straight_to_the_layout_when_not()
+    {
+        var host = new FakeHost();
+        Run(SidebarMenuAction.Collapse, sectionId: "playlists", host: host);
+        Run(SidebarMenuAction.Expand, sectionId: "playlists", host: host);
+        Assert.Equal(new[] { ("playlists", true), ("playlists", false) }, host.Directions);
+        Assert.False(Section(SidebarLayoutId.Classic, "playlists").Collapsed);   // the pane's choreography commits it, not Run
+
+        Run(SidebarMenuAction.Collapse, sectionId: "playlists");
+        Assert.True(Section(SidebarLayoutId.Classic, "playlists").Collapsed);
+        Run(SidebarMenuAction.Expand, sectionId: "playlists");
+        Assert.False(Section(SidebarLayoutId.Classic, "playlists").Collapsed);
+    }
+
+    [Fact]
+    public void A_rootlist_step_needs_the_pane_that_holds_the_tree()
+    {
+        var host = new FakeHost();
+        Run(SidebarMenuAction.MoveRootlistUp, "pl:spotify:playlist:a", host: host);
+        Run(SidebarMenuAction.MoveRootlistDown, "pl:spotify:playlist:a", host: host);
+        Assert.Equal(new[] { ("pl:spotify:playlist:a", -1), ("pl:spotify:playlist:a", 1) }, host.Steps);
+
+        Run(SidebarMenuAction.MoveRootlistUp, "pl:spotify:playlist:a");         // no pane: nothing to step through
+        Assert.Equal(2, host.Steps.Count);
+    }
+
+    [Fact]
+    public void Reset_everything_asks_to_confirm_where_an_overlay_exists_and_does_nothing_without_one()
+    {
+        int asked = 0;
+        Run(SidebarMenuAction.ResetEverything, confirm: () => asked++);
+        Assert.Equal(1, asked);
+
+        Sidebar.Dispatch(new SetSectionShown(SidebarLayoutId.Classic, "recent", true));
+        Run(SidebarMenuAction.ResetEverything);                                  // no overlay: a no-op, as it always was
+        Assert.False(Section(SidebarLayoutId.Classic, "recent").Hidden);
+    }
+
+    [Fact]
+    public void Layout_density_and_reset_rows_change_what_they_name()
+    {
+        Run(SidebarMenuAction.SwitchLayout, "library");
+        Assert.Equal(SidebarLayoutId.Library, Sidebar.Layout.Peek());
+        Run(SidebarMenuAction.SwitchLayout, "classic");
+        Assert.Equal(SidebarLayoutId.Classic, Sidebar.Layout.Peek());
+
+        Run(SidebarMenuAction.SetDensity, "compact");
+        Assert.Equal(SidebarDensity.Compact, Sidebar.Density.Peek());
+        Run(SidebarMenuAction.SetDensity, "default");
+        Assert.Equal(SidebarDensity.Default, Sidebar.Density.Peek());
+
+        Run(SidebarMenuAction.ShowSection, "recent");
+        Assert.True(SidebarLayoutRules.IsModified(Sidebar.State.Of(SidebarLayoutId.Classic)));
+        Run(SidebarMenuAction.ResetLayout);
+        Assert.False(SidebarLayoutRules.IsModified(Sidebar.State.Of(SidebarLayoutId.Classic)));
+    }
+
+    [Fact]
+    public void Move_by_steps_a_page_inside_its_order_and_a_section_inside_the_band()
+    {
+        NavMenuModel.MoveBy(SidebarLayoutId.Classic, "collections", "albums", -1);
+        var order = SidebarLayoutRules.EffectiveItemOrder(SidebarLayoutId.Classic, SidebarSectionKind.Collections, Section(SidebarLayoutId.Classic, "collections"));
+        Assert.Equal("albums", order[0]);
+
+        var band = new List<string>();
+        SidebarEditRules.Band(Sidebar.State.Of(SidebarLayoutId.Classic), band);
+        string first = band[0];
+        NavMenuModel.MoveBy(SidebarLayoutId.Classic, first, "", +1);
+        var after = new List<string>();
+        SidebarEditRules.Band(Sidebar.State.Of(SidebarLayoutId.Classic), after);
+        Assert.Equal(first, after[1]);
+    }
+
+    [Fact]
+    public void Hiding_an_item_is_decided_by_its_section()
+    {
+        NavMenuModel.HideItem(SidebarLayoutId.Classic, "collections", "albums");
+        Assert.Contains("albums", Section(SidebarLayoutId.Classic, "collections").HiddenList);
+
+        NavMenuModel.HideItem(SidebarLayoutId.Classic, null, "settings");
+        Assert.True(Section(SidebarLayoutId.Classic, "settings").Hidden);
+
+        NavMenuModel.HideItem(SidebarLayoutId.Library, "library", "liked");
+        Assert.False(Section(SidebarLayoutId.Library, "library").ShowLiked ?? true);
+
+        NavMenuModel.HideItem(SidebarLayoutId.Classic, null, "albums");          // no section: nothing to decide, nothing written
+        Assert.Single(Section(SidebarLayoutId.Classic, "collections").HiddenList);
+    }
+
+    [Fact]
+    public void A_library_kind_toggles_and_a_hidden_kinds_chip_steps_the_filter_off()
+    {
+        Sidebar.SwitchLayout(SidebarLayoutId.Library);
+        Sidebar.SetLibraryFilter(SidebarLibraryFilter.Albums);
+
+        NavMenuModel.ToggleKind("albums");                                       // hide it
+        Assert.Contains("albums", Section(SidebarLayoutId.Library, "library").HiddenList);
+        Assert.Equal(SidebarLibraryFilter.None, Sidebar.LibraryFilter.Peek());
+
+        NavMenuModel.ToggleKind("albums");                                       // show it back, quietly
+        Assert.DoesNotContain("albums", Section(SidebarLayoutId.Library, "library").HiddenList);
+    }
+
+    // ── rename a folder ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_folder_renames_only_when_it_has_an_id_and_the_seam_can()
+    {
+        Sidebar.LibraryWrites = null;
+        Assert.False(NavMenuModel.CanRenameFolder("6a1f2c"));
+        Assert.False(NavMenuModel.BeginRenameFolder("6a1f2c"));                  // refused out loud, never a silent click
+
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { RenameFolder = (_, _) => { } };
+        Assert.True(NavMenuModel.CanRenameFolder("6a1f2c"));
+        Assert.False(NavMenuModel.CanRenameFolder(""));
+        Assert.True(NavMenuModel.BeginRenameFolder("6a1f2c"));
+        Assert.False(NavMenuModel.BeginRenameFolder(""));
+    }
+
+    [Fact]
+    public void The_prompt_commits_a_trimmed_real_change_through_the_seam_and_nothing_else()
+    {
+        var sent = new List<(string Id, string Name)>();
+        Sidebar.LibraryWrites = new SidebarLibraryWrites { RenameFolder = (id, name) => sent.Add((id, name)) };
+
+        Assert.True(NavMenuModel.CommitFolderRename("6a1f2c", "Mixes", "  Road trip "));
+        Assert.False(NavMenuModel.CommitFolderRename("6a1f2c", "Mixes", "Mixes"));    // unchanged: no round trip
+        Assert.False(NavMenuModel.CommitFolderRename("6a1f2c", "Mixes", "   "));      // blank
+        Assert.False(NavMenuModel.CommitFolderRename("6a1f2c", "Mixes", null));       // cancelled
+
+        Assert.Equal(new[] { ("6a1f2c", "Road trip") }, sent);
+
+        Sidebar.LibraryWrites = null;                                                 // the dialog outlived the seam
+        Assert.False(NavMenuModel.CommitFolderRename("6a1f2c", "Mixes", "Other"));
     }
 }

@@ -682,10 +682,10 @@ public static partial class Sidebar
         }
 
         void OpenSort(NodeHandle anchor, SidebarLibraryFilter filter)
-            => Open(anchor, SidebarMenus.Map(SidebarMenuModel.Sort(State, filter)));
+            => Open(anchor, SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.Sort(filter))));
 
         void OpenOptions(NodeHandle anchor, SidebarLibraryFilter filter)
-            => Open(anchor, SidebarMenus.Map(SidebarMenuModel.LibraryOptions(State, filter)));
+            => Open(anchor, SidebarMenus.Map(NavMenuModel.Menu(NavMenuTarget.LibraryOptions(filter))));
 
         /// <summary>The open/close-handle pattern of the header overflow, moved here.</summary>
         void Open(NodeHandle anchor, IReadOnlyList<MenuFlyoutItem> items)
