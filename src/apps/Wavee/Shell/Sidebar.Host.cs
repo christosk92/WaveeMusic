@@ -90,6 +90,7 @@ public static partial class Sidebar
         s_accountFile = null;
         EnsureAccount(Entities.Current.Key);
         Pins.OnChanged = CommitAccount;                                   // every pin mutation is a commit point
+        _ = Model;                                                        // the nav model exists from here: no network, no binder start (the pane's pump starts it)
         Log.Info("sidebar", "boot layout=" + Layout.Peek() + " fault=" + LayoutFileFault);
     }
 
@@ -713,15 +714,15 @@ public static partial class Sidebar
             PinChange: SidebarPinChange.Moved, Pin: pin, PinFrom: from, PinTo: target), null);
     }
 
-    // ── the entry projection cell (owned here; not this section — see SidebarEntries) ───────────────────────────────────
+    // ── the nav model (the projection binder lives inside it) ───────────────────────────────────────────────────────────
 
-    /// <summary>The unified projection Your Library reads — one projection, shared by the docked pane and the drawer.
-    /// Rebuilt by <see cref="Binder"/> through <c>SidebarProjection.Build</c> + <c>Entries.Publish</c>.</summary>
-    public static readonly SidebarEntries Entries = new();
+    static NavModel? s_model;
 
-    /// <summary>The ONE driver of <see cref="Entries"/>, set right after both exist. Null in a headless/unit context,
-    /// where <see cref="Entries"/> simply stays empty.</summary>
-    public static SidebarProjectionBinder? Binder { get; internal set; }
+    /// <summary>THE navigation model: the layout-neutral read surface and the verbs every sidebar view uses, and the owner of
+    /// the projection binder (the ONE driver of the unified library projection, shared by the docked pane and the drawer).
+    /// Constructed by <see cref="Boot"/> — lazily here, never in a static initializer, because it reads this service's other
+    /// statics. Nothing starts the binder until the pane's pump (<see cref="NavModel.Pump"/>) does.</summary>
+    public static NavModel Model => s_model ??= new NavModel();
 
     // ── persistence health ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1335,6 +1336,7 @@ public sealed class SidebarProjectionBinder
     // The planner inputs that are NOT the published entries, published as one edge (see InputVersion).
     readonly SidebarEntriesShadow _pinShadow = new(), _playedShadow = new(), _newReleasesShadow = new();
     readonly Signal<int> _inputVersion = new(0);
+    readonly Signal<NavReadinessFacts> _readiness = new(NavReadinessFacts.Pending);
     long _inputMeta = long.MinValue;
 
     SidebarFirstSeen? _firstSeen;
@@ -1404,6 +1406,12 @@ public sealed class SidebarProjectionBinder
     /// not bump it.</summary>
     public IReadSignal<int> InputVersion => _inputVersion;
 
+    /// <summary>How far the two sources (the rootlist, the saved albums / artists / shows) have answered, INCLUDING a failed
+    /// ask (<see cref="NavReadiness.Failed"/>), which the planner's two-state <c>TreeState</c> / <c>LibraryState</c> cannot
+    /// say. Pending until the first rebuild; written by the rebuild only. The failure is part of the trigger fold, so a
+    /// failed ask rebuilds once and lands here.</summary>
+    public IReadSignal<NavReadinessFacts> Readiness => _readiness;
+
     // ─────────────────────────────────── the rebuild gate ───────────────────────────────────
 
     /// <summary>Force the next <see cref="Sync"/> to rebuild even if no trigger moved (a new host, a retry).</summary>
@@ -1457,9 +1465,16 @@ public sealed class SidebarProjectionBinder
         SidebarProjection.Build(build.Tree, in u, SidebarEntryKindMask.PlaylistTree, firstSeen, recency,
                                 includeFolderChildren: true, lastPlayed: lastPlayed);
         build.Index.Rebuild(build.All);
-        _treeState = StateOf(u.RootlistState);
-        _libraryState = Worst(StateOf(u.State(LibraryEdgeKind.SavedAlbums)),
-                        Worst(StateOf(u.State(LibraryEdgeKind.FollowedArtists)), StateOf(u.State(LibraryEdgeKind.SavedShows))));
+        // THE SOURCE READINESS, derived once: the model publishes it as it is (a failed ask reads Failed), and the planner
+        // keeps reading its two-state projection (Failed draws as Pending, the skeleton, until a view draws the failure).
+        var readiness = new NavReadinessFacts(
+            NavReadinessRules.Of(u.RootlistReadiness),
+            NavReadinessRules.Worst(NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.SavedAlbums)),
+                NavReadinessRules.Worst(NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.FollowedArtists)),
+                                        NavReadinessRules.Of(u.Readiness(LibraryEdgeKind.SavedShows)))));
+        _treeState = NavReadinessRules.ToPlanner(readiness.Tree);
+        _libraryState = NavReadinessRules.ToPlanner(readiness.Library);
+        _readiness.SetIfChanged(readiness);
         int albums = 0, artists = 0, podcasts = 0, audiobooks = 0;
         var all = build.All;
         for (int i = 0; i < all.Count; i++)
@@ -1770,8 +1785,10 @@ public sealed class SidebarProjectionBinder
         return false;
     }
 
-    // GAP: `EdgeState` has no Failed member (Unknown/Partial/Complete only — ch 15 §7), so a fetch failure has no
-    // per-relation surface yet; this never reports Failed, unlike 0.2.9's Loadable-backed version.
+    // The entries cell's LoadState is what the Library view draws today, and no view draws a failure yet, so it stays
+    // Pending/Ready here. The failure itself IS published: `Readiness` (NavModel.Readiness) reads `EdgeTableBase.Readiness`,
+    // which answers Failed for an unanswered list whose last ask failed (Rebuild above). A view that draws the failure
+    // (CT3b) reads that, and this cell follows it then.
     static (FluentGpu.Signals.LoadState State, Exception? Error) PublishState(int count, bool anyPending)
         => count == 0 && anyPending ? (FluentGpu.Signals.LoadState.Pending, null) : (FluentGpu.Signals.LoadState.Ready, null);
 
@@ -1802,9 +1819,6 @@ public sealed class SidebarProjectionBinder
         seen.ResetNewCount();
         Sidebar.PublishFirstSeen(dtos);
     }
-
-    static SidebarSourceState StateOf(EdgeState s) => s == EdgeState.Unknown ? SidebarSourceState.Pending : SidebarSourceState.Ready;
-    static SidebarSourceState Worst(SidebarSourceState a, SidebarSourceState b) => a > b ? a : b;
 
     // ─────────────────────────────────── triggers ───────────────────────────────────
 
@@ -1873,6 +1887,11 @@ public sealed class SidebarProjectionBinder
             h = h * 31 + (int)u.State(LibraryEdgeKind.SavedAlbums);
             h = h * 31 + (int)u.State(LibraryEdgeKind.FollowedArtists);
             h = h * 31 + (int)u.State(LibraryEdgeKind.SavedShows);
+            // A failed ask moves Readiness (Unknown → Failed) and nothing else: without these the model would never hear it.
+            h = h * 31 + (int)u.RootlistReadiness;
+            h = h * 31 + (int)u.Readiness(LibraryEdgeKind.SavedAlbums);
+            h = h * 31 + (int)u.Readiness(LibraryEdgeKind.FollowedArtists);
+            h = h * 31 + (int)u.Readiness(LibraryEdgeKind.SavedShows);
             return h;
         }
     }

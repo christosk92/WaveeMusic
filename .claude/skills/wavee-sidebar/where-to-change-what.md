@@ -23,6 +23,7 @@ renderer.
 | Add a feed (a section that fetches) | `Shell/Sidebar.Feeds.cs` (`SidebarFeedDemand` and its demand rule); `Shell/Sidebar.Host.cs` (the binder input) | `SidebarFeedsTests.cs`, `SidebarProjectionTests.cs` |
 | Change how a recent item resolves its title | `Shell/Sidebar.Feeds.cs` (`SidebarRecentsRules`, `ISidebarEntityPeek`) | `SidebarFeedsTests.cs` |
 | Change a drop, the drop cue or the rootlist slot | `Shell/Sidebar.cs` (`RootlistSlotResolver`, `RootlistSlotMapper`); `Shell/Sidebar.UI.Drop.cs` (publish, commit, `MoveRootlist`) | `SidebarDropTests.cs` |
+| Change what a navigation view can read or ask (a nav fact, a verb, the readiness) | `Shell/NavModel.cs` (the verbs, the stored facts), `Shell/NavModel.Binder.cs` (the projection and its pump), `Shell/NavModel.Selection.cs` (selected route, play state); the binder's readiness in `Shell/Sidebar.Host.cs` | `NavModelTests.cs` |
 | Change the account swap or signed-out behaviour | `Shell/Sidebar.Accounts.cs` (`EnsureAccount`, `SwapAccount`); `Shell/Sidebar.Store.cs` (`SidebarAccountKey`) | `SidebarAccountStoreTests.cs` |
 | Change re-plan causes or the census line | `Shell/Sidebar.Census.cs` (`SidebarReplanCause`, `SidebarReplanCensus`); the binder revision in `Shell/Sidebar.Host.cs` | `SidebarReplanCensusTests.cs`, `SidebarRevisionTests.cs` |
 | Change the section or folder disclosure | `Shell/Sidebar.Disclosures.cs` (the bookkeeping, in `feat/smooth-reveal`); `Shell/Sidebar.UI.cs` (`PaneView.StartDisclosure`) | `SidebarDisclosuresTests.cs` (in `feat/smooth-reveal`) |
@@ -36,6 +37,7 @@ Every `Shell/Sidebar*.cs` file, in alphabetical order.
 
 | File | What lives there |
 |---|---|
+| `Shell/NavModel.cs`, `NavModel.Binder.cs`, `NavModel.Selection.cs` | The nav model (`Sidebar.Model`): readiness, destinations, the read surface over the binder, the selected route and play state, and the `INavVerbs` verbs. |
 | `Shell/Sidebar.Accounts.cs` | The account swap: `EnsureAccount`, `SwapAccount`, the pending-file adoption on first sign-in. |
 | `Shell/Sidebar.Cards.cs` | Card surfaces: `SidebarCardSurface`, `SidebarCardActivation`, `SidebarCardDrop`, `SidebarCardRules`. |
 | `Shell/Sidebar.Census.cs` | The re-plan census: `SidebarReplanCause` (which planner input moved) and `SidebarReplanCensus` (the log line). |

@@ -45,7 +45,7 @@ public static partial class Sidebar
             _ = Sidebar.PinsVersion.Value;
             _ = Sidebar.RingVersion.Value;
             var state = Sidebar.State;
-            int playlists = Sidebar.Binder?.CurrentInput.PlaylistTree?.Count ?? 0;
+            int playlists = Sidebar.Model.Rootlist?.Count ?? 0;
             SidebarEditRules.Outline(state, layout, Sidebar.Pins.Items, Sidebar.PinnedLocked(), _showAllPins.Value, playlists, _rows);
             SidebarEditRules.Band(state.Of(layout), _band);
 
@@ -166,7 +166,7 @@ public static partial class Sidebar
             _sections.OnReorder = (f, t) => Sidebar.Dispatch(new MoveSection(Sidebar.Layout.Peek(), _band[f], t));
             _sections.AnnounceText = a => Announce(a, SectionName(NameAt(_band, a.Index)));
             _pins.ItemCount = 0;
-            _pins.OnReorder = (f, t) => Sidebar.MovePinRecorded(f, t);
+            _pins.OnReorder = (f, t) => Sidebar.Model.MovePin(f, t);
             _pins.AnnounceText = a => Announce(a, Sidebar.Pins.Count == 0 ? "" : SidebarMenus.PinName(Sidebar.Pins[Math.Clamp(a.Index, 0, Sidebar.Pins.Count - 1)].Id));
             _items.ItemCount = 0;
             _items.OnReorder = (f, t) => Sidebar.Dispatch(new MoveItem(Sidebar.Layout.Peek(), "collections", _collections[f], t));
@@ -385,9 +385,9 @@ public static partial class Sidebar
         static bool HasNothingToShow(SidebarSectionKind kind) => kind switch
         {
             SidebarSectionKind.Pinned => Sidebar.Pins.Count == 0,
-            SidebarSectionKind.Playlists => Sidebar.Binder?.CurrentInput.PlaylistTree is not { Count: > 0 },
-            SidebarSectionKind.Recent => Sidebar.Binder?.CurrentInput.Played is not { Count: > 0 },
-            SidebarSectionKind.NewReleases => Sidebar.Binder?.CurrentInput.NewReleases is not { Count: > 0 },
+            SidebarSectionKind.Playlists => Sidebar.Model.Rootlist is not { Count: > 0 },
+            SidebarSectionKind.Recent => Sidebar.Model.Feeds.Played is not { Count: > 0 },
+            SidebarSectionKind.NewReleases => Sidebar.Model.Feeds.NewReleases is not { Count: > 0 },
             _ => false,
         };
 
@@ -404,7 +404,7 @@ public static partial class Sidebar
                     PinArt(pin),
                     new TextEl(name) { Size = 14f, MaxLines = 1, Shrink = 1f, MinWidth = 0f, Trim = TextTrim.CharacterEllipsis, Color = Tok.TextPrimary },
                     new BoxEl { Grow = 1f },
-                    ToolTip.Wrap(SectionHeader.InlineButton(Icons.UnPin, () => Sidebar.UnpinRecorded(pin.Id, name), reveal: false), Loc.Get("sidebar.pin.unpin")),
+                    ToolTip.Wrap(SectionHeader.InlineButton(Icons.UnPin, () => Sidebar.Model.Unpin(pin.Id, name), reveal: false), Loc.Get("sidebar.pin.unpin")),
                     Icon(Icons.GripperBar, 16f, Tok.TextTertiary),
                 ],
             };
@@ -423,7 +423,7 @@ public static partial class Sidebar
         /// <summary>The projection's resolved row for a pin (its cover, its kind), or null until the projection has it.</summary>
         static SidebarLibraryEntry? ResolvedPin(string id)
         {
-            var pins = Sidebar.Binder?.CurrentInput.Pins;
+            var pins = Sidebar.Model.PinRows;
             if (pins is null) return null;
             for (int i = 0; i < pins.Count; i++) if (pins[i].Id == id) return pins[i];
             return null;
@@ -559,7 +559,7 @@ public static partial class Sidebar
             if ((e.KeyCode != Keys.Up && e.KeyCode != Keys.Down) || (e.Mods & KeyModifiers.Alt) == 0) return;
             int to = SidebarEditRules.MoveTarget(index, Sidebar.Pins.Count, e.KeyCode == Keys.Up ? -1 : 1,
                                                  toEdge: (e.Mods & KeyModifiers.Shift) != 0);
-            if (to >= 0 && to != index) Sidebar.MovePinRecorded(index, to);
+            if (to >= 0 && to != index) Sidebar.Model.MovePin(index, to);
             e.Handled = true;
         }
 

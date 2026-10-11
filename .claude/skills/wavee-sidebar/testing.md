@@ -56,6 +56,7 @@ Pure classes are tested directly. Each row names the class under test and its fi
 | Subtitles | `SidebarSubtitleRules` | `SidebarSubtitleRulesTests.cs` |
 | Feeds: demand, recents, new releases | `SidebarFeedDemands`, `SidebarRecentsRules`, `SidebarNewReleasesRules` | `SidebarFeedsTests.cs` |
 | Projection and binder inputs | `SidebarProjectionInput` | `SidebarProjectionTests.cs` |
+| The nav model: readiness (Failed included), destinations, projection parity on six fixture libraries, the verbs | `NavModel`, `NavReadinessRules`, `NavDestinationRules` | `NavModelTests.cs` |
 | Drop and rootlist slot | `RootlistSlotResolver`, `RootlistSlotMapper` | `SidebarDropTests.cs` |
 | Cards | `SidebarCardRules` | `SidebarCardsTests.cs` |
 | Pins: rules and refusal | `SidebarPinRules`, `SidebarPinId`, `SidebarPinStore` | `SidebarPinTests.cs` |

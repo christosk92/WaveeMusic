@@ -87,6 +87,10 @@ recomputed, never saved over. The overlay pane slides over the page; the pane an
 
 - **`SidebarProjectionBinder`** (`Shell/Sidebar.Host.cs`) watches the library and builds a `SidebarProjectionInput`:
   the pins, playlists, collections, folders and feeds the planner needs.
+- **`NavModel`** (`Sidebar.Model`, `Shell/NavModel*.cs`) is what a pane reads and calls: the binder's projection as typed
+  facts (destinations with counts, pins, the rootlist, the library list, the feeds), the selected route, what plays, how
+  far each source has answered (`NavReadiness`: Pending, Ready or Failed), the account, edit mode and the layout document,
+  plus the verbs (`INavVerbs`: navigate, play, toggle a section or folder, create, pin, unpin, move a pin). It plans no rows.
 - **Feeds.** `SidebarFeedDemand` says whether a feed is shown. Recent and New releases fetch only while shown, so a
   hidden feed costs no network.
 - **Recents resolution** goes in order: the index, then the resident peek, then the logged title, then skip. A row

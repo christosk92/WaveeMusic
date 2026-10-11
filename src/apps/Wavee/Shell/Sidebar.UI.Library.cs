@@ -60,7 +60,7 @@ public static partial class Sidebar
             {
                 Layout = SidebarLayoutId.Library,
                 ScrollKeyPrefix = "sidebar.library",
-                Document = static () => { _ = LayoutVersion.Value; return Doc; },
+                Document = static () => Model.ReadLayout(),
                 Input = s.ShapeInput,
                 ModeEpoch = s.ReadModeEpoch,
                 Options = s.ShapeOptions,
@@ -74,8 +74,6 @@ public static partial class Sidebar
                 OnEdgeNavigate = s.OnListEdge,
                 PillOnRowChanged = s.NotePillOnRow,
                 OpenSearch = s.OpenSearch,
-                // Null: the toolbar's "+" calls PaneView.CreatePlaylist() — the pane's ONE create flow.
-                OnCreatePlaylist = null,
             }, DepKey.Empty);
 
             // The factory runs once at mount: the session holds the pane so the head's "+" reuses the pane's own
@@ -93,11 +91,11 @@ public static partial class Sidebar
     /// A reference-stable frozen prop; everything mutable inside is a signal or read at call time. Never persisted.</summary>
     internal sealed class LibrarySession
     {
-        /// <summary>The published cell: the binder publishes its OWN <c>Entries</c>; <c>Sidebar.Entries</c> is the headless fallback.</summary>
-        public static SidebarEntries Cell => Binder?.Entries ?? Entries;
+        /// <summary>The published cell: the nav model's library list (the binder publishes it).</summary>
+        public static SidebarEntries Cell => Model.LibraryItems;
 
         /// <summary>Rebuild the projection now if any trigger moved (one struct compare when nothing did).</summary>
-        public static void Resync() => Binder?.Sync();
+        public static void Resync() => Model.Sync();
 
         /// <summary>The width the library is presented at: the drawer's overlay width, or the docked pane's presented width.
         /// The stored preference is not it: a narrow viewport clamps the pane below it.</summary>
@@ -170,7 +168,7 @@ public static partial class Sidebar
             int pinCount = Math.Clamp(cell.PinCount, 0, published.Count);
             int skip = Doc.Find(SidebarSectionKind.Pinned) is { Hidden: false } && !state.Drilled ? pinCount : 0;
             bool group = state.FoldersApply;
-            int revision = Binder?.Revision ?? 0;
+            int revision = Model.Revision;
 
             // The view's own re-bucket gate: `cell.Version` covers every input `View.Build` reads from the projection, `skip`
             // covers the pin band, `group`/`drill` cover the view state. `revision` still goes INTO `View.Build` below, as
@@ -249,7 +247,7 @@ public static partial class Sidebar
         public void PushFolder(string? folderId, string? name)
         {
             if (string.IsNullOrEmpty(folderId)) return;
-            SetFolderExpanded(folderId, true);
+            Model.SetFolderExpanded(folderId, true);
             _folderIds.Add(folderId);
             _folderNames.Add(name is { Length: > 0 } ? name : Loc.Get(Strings.Sidebar.V3.Kind.Folder));
             BumpDrill();
@@ -283,10 +281,10 @@ public static partial class Sidebar
             if (Doc.Library.View == SidebarLibraryView.Grid)
             {
                 SetLibraryView(SidebarLibraryView.List);
-                SetFolderExpanded(folderId, true);
+                Model.SetFolderExpanded(folderId, true);
             }
             else if (NarrowFolders.Peek()) PushFolder(folderId, name);
-            else ToggleFolder(folderId);
+            else Model.ToggleFolder(folderId);
             Resync();
         }
 
@@ -309,13 +307,9 @@ public static partial class Sidebar
 
         // ── shared verbs ─────────────────────────────────────────────────────────────────────────────────────────
 
-        public void Navigate(string key, string? arg)
-        {
-            if (PaneRef is { } pane) pane.Navigate(key, arg);
-            else Shell.GoTo(Shell.Parse(key, arg));
-        }
+        public void Navigate(string key, string? arg) => Model.Navigate(key, arg);
 
-        public void CreatePlaylist() => PaneRef?.CreatePlaylist();
+        public void CreatePlaylist() => Model.CreatePlaylist();
 
         public void OpenSearch() => LibrarySearchOpen.SetIfChanged(true);
 
@@ -330,9 +324,8 @@ public static partial class Sidebar
         /// <summary>The retry banner / error state: invalidate + sync re-runs the contributing reads.</summary>
         public void Retry()
         {
-            if (Binder is not { } binder) return;
-            binder.Invalidate();
-            binder.Sync();
+            Model.Invalidate();
+            Model.Sync();
         }
     }
 
@@ -370,7 +363,7 @@ public static partial class Sidebar
 
             _ = LayoutVersion.Value;
             // The kind counts AND the query the list was shaped with publish through the binder's input edge (§P5.2).
-            _ = Binder?.InputVersion.Value;
+            _ = Model.InputVersion.Value;
             // The PUBLISHED rows: the list count, the load state and the pending flag below are plain properties of the cell,
             // so the head subscribes to the cell's version here. Without this read a search with no results never shows its
             // band, and a cleared search keeps a stale one.
@@ -378,7 +371,7 @@ public static partial class Sidebar
             var lib = Doc.Library;
             var filter = SidebarLibraryFilters.Effective((int)LibraryFilter.Value, lib.HiddenKinds);
             string route = Shell.NameOf(Shell.Current.Value);
-            var counts = Binder?.Counts ?? default;
+            var counts = Model.Counts;
             SidebarLibraryHeadRules.Pages(lib.HiddenKinds, in counts, static r => Shell.Dest(Shell.Parse(r)).Glyph, _pages);
             s.HasPages = SidebarLibraryHeadRules.DropdownIsMenu(_pages.Count);
             string? page = SidebarLibraryHeadRules.PageOf(route, lib.HiddenKinds);
@@ -388,7 +381,7 @@ public static partial class Sidebar
             // THE ONE OWNER of Your Library's empty state (the planner plans no Empty row in Library, §P3.5): the scroller's
             // row count exactly as PlanLibrary builds it — the pins ShowsPinInLibrary keeps, the Liked row, the list — over
             // the query the LIST was shaped with (the binder's, never the live box text, which runs ahead by the debounce).
-            var input = Binder?.CurrentInput ?? default;
+            var input = Model.Projection;
             string? shapedSearch = SidebarSearch.Normalize(input.Search) is { Length: > 0 } q ? q : null;
             bool pinnedShown = Doc.Find(SidebarSectionKind.Pinned) is { Hidden: false };
             int rows = SidebarLibraryEmptyRules.ScrollerRows(input.Pins, pinnedShown, lib, filter, shapedSearch,

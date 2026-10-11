@@ -41,9 +41,9 @@ public static partial class Sidebar
             if (AccountKey.Length == 0) return;   // signed out: nowhere to keep a pin
             string key = Shell.NameOf(route);
             if (SidebarPinId.FromRoute(key) is not { } id) return;
-            if (!pinned) { PaneView.UnpinWithToast(id); return; }
+            if (!pinned) { Model.Unpin(id); return; }
             string uri = SidebarPinId.UriOf(id);
-            PaneView.PinWithToast(id, SidebarPinId.KindOf(id), uri, Shell.Dest(route).Title);
+            Model.Pin(id, SidebarPinId.KindOf(id), uri, Shell.Dest(route).Title);
         };
     }
 
@@ -78,13 +78,8 @@ public static partial class Sidebar
         /// <summary>A section's title, as every menu, toast and Outline row names it.</summary>
         internal static string SectionTitle(string id) => Loc.Get("sidebar.section.title." + id);
 
-        /// <summary>A pin's name for its toast: the stored name, else the route's title.</summary>
-        internal static string PinName(string id)
-        {
-            int at = Pins.IndexOf(id);
-            if (at >= 0 && Pins[at].Name.Length > 0) return Pins[at].Name;
-            return SidebarPinId.RouteOf(id) is { } route ? Shell.Dest(Shell.Parse(route)).Title : "";
-        }
+        /// <summary>A pin's name for its toast (the model's rule). Kept as the name <c>Shell.UI.cs</c>'s pin toasts call.</summary>
+        internal static string PinName(string id) => Model.PinName(id);
 
         /// <summary>"Reset everything…" (design C.3): confirm, then ONE recorded batch (§P4.4).</summary>
         internal static void ConfirmResetEverything(IOverlayService overlay)
@@ -187,9 +182,9 @@ public static partial class Sidebar
                     Dispatch(new SetSectionShown(layout, hideId, false), Loc.Format("sidebar.toast.hidden", ("name", SectionTitle(hideId))));
                     break;
                 case SidebarMenuAction.UnpinAllShortcuts: UnpinAllShortcutsRecorded(); break;
-                case SidebarMenuAction.Unpin: UnpinRecorded(r.Arg, PinName(r.Arg)); break;
-                case SidebarMenuAction.MovePinUp: MovePinRecorded(Pins.IndexOf(r.Arg), Pins.IndexOf(r.Arg) - 1); break;
-                case SidebarMenuAction.MovePinDown: MovePinRecorded(Pins.IndexOf(r.Arg), Pins.IndexOf(r.Arg) + 1); break;
+                case SidebarMenuAction.Unpin: Model.Unpin(r.Arg, null); break;
+                case SidebarMenuAction.MovePinUp: Model.MovePin(Model.Pins.IndexOf(r.Arg), Model.Pins.IndexOf(r.Arg) - 1); break;
+                case SidebarMenuAction.MovePinDown: Model.MovePin(Model.Pins.IndexOf(r.Arg), Model.Pins.IndexOf(r.Arg) + 1); break;
                 case SidebarMenuAction.HideItem: HideItem(layout, sectionId, r.Arg); break;
                 // One sibling step through WaveeResourceDrop.MoveRootlist: legality, undo anchors and the refusal toast are
                 // the drop's own (PaneView.MoveSibling → CommitMove).
@@ -336,7 +331,7 @@ public static partial class Sidebar
             return () => new ContextMenuModel(
             [
                 new MenuFlyoutItem(Loc.Get("sidebar.pin.unpin"), ActionIcons.Resolve(ActionIcons.Unpin), true,
-                    () => UnpinWithToast(id, name)),
+                    () => Model.Unpin(id, name)),
             ]);
         }
 
@@ -416,10 +411,10 @@ public static partial class Sidebar
                 rows.Add(new MenuFlyoutItem(Loc.Get(expanded ? "sidebar.item.collapseFolder" : "sidebar.item.expandFolder"),
                     new IconRef { Glyph = expanded ? Icons.ChevronUp : Icons.ChevronDown, Font = Theme.IconFont }, true, toggle));
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.newPlaylistHere"), ActionIcons.Resolve(ActionIcons.Add),
-                writes?.CreatePlaylist is not null && folderId.Length > 0, () => LibraryWrites?.CreatePlaylist?.Invoke(folderId, true)));
+                writes?.CreatePlaylist is not null && folderId.Length > 0, () => Model.CreatePlaylist(folderId, true)));
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.newFolderInside"), ActionIcons.Resolve(ActionIcons.Folder),
                 writes?.NewFolderWith is not null && folderId.Length > 0,
-                () => LibraryWrites?.NewFolderWith?.Invoke(folderId, Array.Empty<RootlistItemRef>())));
+                () => Model.CreateFolder(folderId)));
             rows.Add(MenuFlyoutItem.Separator);
             Actions.Menu.Group(rows, Actions.Menu.Organize(organize, MoveOutRow(in e), PinRow(in e)));
             rows.Add(new MenuFlyoutItem(Loc.Get("sidebar.renameFolder"), ActionIcons.Resolve(ActionIcons.Rename),
@@ -480,8 +475,8 @@ public static partial class Sidebar
             string pinId = id!, uri = e.Uri, name = e.Name;
             var entryKind = e.Kind;
             return Actions.Menu.Pin(kind == PinRowKind.Unpin,
-                () => PinWithToast(pinId, entryKind, uri, name),
-                () => UnpinWithToast(pinId, name));
+                () => Model.Pin(pinId, entryKind, uri, name),
+                () => Model.Unpin(pinId, name));
         }
 
         /// <summary>"Move out of {parent}" — nested rows only (absent at top level); the destination re-reads the live
@@ -702,9 +697,9 @@ public static partial class Sidebar
             return new ContextMenuModel(new List<MenuFlyoutItem>(2)
             {
                 new(Loc.Get("detail.newPlaylist"), ActionIcons.Resolve(ActionIcons.Add), writes.CreatePlaylist is not null,
-                    CreatePlaylistFlow),
+                    static () => Model.CreatePlaylist(null, true)),
                 new(Loc.Get("sidebar.createFolder"), ActionIcons.Resolve(ActionIcons.Folder), writes.NewFolderWith is not null,
-                    static () => LibraryWrites?.NewFolderWith?.Invoke(null, Array.Empty<RootlistItemRef>())),
+                    static () => Model.CreateFolder(null)),
             });
         }
 
@@ -713,8 +708,7 @@ public static partial class Sidebar
         internal void NewPlaylistInFolder(string folderId)
         {
             if (folderId.Length == 0) return;
-            if (LibraryWrites?.CreatePlaylist is { } create) create(folderId, true);
-            else RefuseWrite("new playlist in folder");
+            Model.CreatePlaylist(folderId, true);
         }
 
         /// <summary>"Rename folder" / F2 on a folder (G-171, 0.2.9 <c>FolderActions.Rename</c>): the shared single-field
@@ -724,12 +718,12 @@ public static partial class Sidebar
         internal void PromptRenameFolder(string folderId, string currentName)
         {
             if (folderId.Length == 0) return;
-            if (LibraryWrites?.RenameFolder is null) { RefuseWrite("rename folder"); return; }
+            if (LibraryWrites?.RenameFolder is null) { NavModel.RefuseWrite("rename folder"); return; }
             Controls.Prompt(MenuOverlay, Loc.Get("sidebar.renameFolder"), Loc.Get("menu.rename"), currentName, typed =>
             {
                 if (SidebarFolderRename.Commit(typed, currentName) is not { } next) return;
                 if (LibraryWrites?.RenameFolder is { } rename) rename(folderId, next);
-                else RefuseWrite("rename folder");
+                else NavModel.RefuseWrite("rename folder");
             });
         }
 
@@ -740,9 +734,9 @@ public static partial class Sidebar
             return new ContextMenuModel(new List<MenuFlyoutItem>(2)
             {
                 new(Loc.Get("sidebar.newPlaylistHere"), ActionIcons.Resolve(ActionIcons.Add), writes.CreatePlaylist is not null,
-                    () => LibraryWrites?.CreatePlaylist?.Invoke(folderId, true)),
+                    () => Model.CreatePlaylist(folderId, true)),
                 new(Loc.Get("sidebar.newFolderInside"), ActionIcons.Resolve(ActionIcons.Folder), writes.NewFolderWith is not null,
-                    () => LibraryWrites?.NewFolderWith?.Invoke(folderId, Array.Empty<RootlistItemRef>())),
+                    () => Model.CreateFolder(folderId)),
             });
         }
 

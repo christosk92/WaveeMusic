@@ -373,7 +373,7 @@ public static partial class Sidebar
         /// and "clear sorting to reorder" carries the one action a mode can fix it with (#85 H3).</summary>
         void RefuseDrop(SidebarDropRefusal refusal, string why)
         {
-            if (refusal == SidebarDropRefusal.WritesUnavailable) { RefuseWrite(why); return; }
+            if (refusal == SidebarDropRefusal.WritesUnavailable) { NavModel.RefuseWrite(why); return; }
             Log.Warn("sidebar", "rootlist drop refused at commit: " + refusal + " (" + why + ")");
             if (RefusalSentence(refusal) is not { Length: > 0 } sentence) return;
             if (refusal == SidebarDropRefusal.SortedList && Config.SortedListRefusalAction is { } fix)
@@ -457,7 +457,7 @@ public static partial class Sidebar
                     {
                         case SidebarCreateDrop.NewFolder: writes!.NewFolderWith!(null, RefsOf(p)); break;
                         case SidebarCreateDrop.NewPlaylist: writes!.CreatePlaylistWith!(p); break;
-                        case SidebarCreateDrop.Refused: RefuseWrite("header create drop"); break;
+                        case SidebarCreateDrop.Refused: NavModel.RefuseWrite("header create drop"); break;
                     }
                 },
                 visualPolicy: DropTargetVisualPolicy.Spotlight,
@@ -480,7 +480,7 @@ public static partial class Sidebar
                     var writes = LibraryWrites;
                     if (SidebarCreateDropRules.Folder(p, writes) == SidebarCreateDrop.NewFolder)
                         writes!.NewFolderWith!(folderId, RefsOf(p));
-                    else RefuseWrite("folder create drop");
+                    else NavModel.RefuseWrite("folder create drop");
                 },
                 visualPolicy: DropTargetVisualPolicy.Spotlight,
                 spotlightWhen: SpotlightFor);
@@ -488,28 +488,6 @@ public static partial class Sidebar
         /// <summary>The "+" plate lights only for a drop that will actually create something.</summary>
         static bool CreateArmed(SidebarCreateDrop outcome) => outcome is SidebarCreateDrop.NewFolder or SidebarCreateDrop.NewPlaylist;
 
-        // ── pins (the drop and the menus share these two mutations; both are recorded in the undo ring, §P4.4) ─────────
-
-        /// <summary>Pin through the ring (appended, or at a drop's <paramref name="slot"/>): its "Pinned … · Undo" toast (or
-        /// the batch that re-shows a hidden Pinned) is the ring's. Already pinned ⇒ a SILENT no-op (the store is idempotent;
-        /// a double invoke must never claim it did something).</summary>
-        internal static void PinWithToast(string pinId, SidebarEntryKind kind, string? uri, string? name, int slot = -1)
-        {
-            if (string.IsNullOrEmpty(pinId) || SidebarPinRules.IsFixedRoute(pinId)) return;
-            if (SidebarAccountKey.IsSignedOut(AccountKey))
-            {
-                Notify.Say(Loc.Get("sidebar.pin.signedOut"), InfoBarSeverity.Informational);
-                return;
-            }
-            var pin = new SidebarPin(pinId, kind, uri ?? "", name ?? "", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            PinRecorded(pin, name is { Length: > 0 } n ? n : SidebarMenus.PinName(pinId), slot);
-        }
-
-        /// <summary>Remove a pin through the ring: undo restores it at its FORMER index (the ring snapshots it before removal).</summary>
-        internal static void UnpinWithToast(string pinId, string? nameHint = null)
-        {
-            if (string.IsNullOrEmpty(pinId)) return;
-            UnpinRecorded(pinId, nameHint is { Length: > 0 } n ? n : SidebarMenus.PinName(pinId));
-        }
+        // The pin and unpin verbs (recorded in the undo ring, §P4.4) are the nav model's: Model.Pin / Model.Unpin.
     }
 }

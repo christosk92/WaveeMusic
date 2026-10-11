@@ -318,9 +318,15 @@ public readonly partial struct User(int slot) : IEquatable<User>
     /// <inheritdoc cref="RootlistSlots"/>
     public ReadOnlySpan<RootlistEdge> Rootlist => E.Rootlist.Payload(Slot);
     public EdgeState RootlistState => E.Rootlist.State(Slot);
+    /// <summary>The rootlist as a surface renders it: <see cref="RootlistState"/>, except that an Unknown list whose last ask
+    /// failed reads <see cref="EdgeState.Failed"/> (<see cref="EdgeTableBase.Readiness"/>). The nav model's readiness reads
+    /// this; the planner keeps reading <see cref="RootlistState"/>.</summary>
+    public EdgeState RootlistReadiness => E.Rootlist.Readiness(Slot);
 
     /// <summary>Is a relation whole? <see cref="EdgeState.Unknown"/> is "…", never an empty state (ch 15 §7).</summary>
     public EdgeState State(LibraryEdgeKind kind) => Relation(kind).State(Slot);
+    /// <summary><see cref="State"/> as a surface renders it: Unknown plus a failed last ask reads <see cref="EdgeState.Failed"/>.</summary>
+    public EdgeState Readiness(LibraryEdgeKind kind) => Relation(kind).Readiness(Slot);
     public int Count(LibraryEdgeKind kind) => Relation(kind).Count(Slot);
     /// <summary>Bumps on every structural change — the number a bound library list compares.</summary>
     public uint EdgeVersion(LibraryEdgeKind kind) => Relation(kind).Version(Slot);
