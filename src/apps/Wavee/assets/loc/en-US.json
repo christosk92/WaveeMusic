@@ -1348,7 +1348,6 @@
       "railResetConfirmBody": "This resets the left rail's remembered width and collapsed state for albums, playlists, Liked Songs and podcasts back to their defaults. This can't be undone.",
       "lyricsBlur": "Lyrics blur",
       "lyricsBlurSub": "Depth-of-field and glow blur on the lyrics. 0 turns them off — lighter on the GPU.",
-      "lyricsBlurAuto": "Auto",
       "npvPresentation": "Hero",
       "npvPresentationSub": "Show the cover or a player above the track details",
       "npvStyle": "Player style",

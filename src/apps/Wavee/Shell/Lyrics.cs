@@ -168,21 +168,15 @@ public static partial class Lyrics
     /// <summary>The blur STRENGTH dial — one 0..100 % number that scales BOTH the depth-of-field ladder
     /// (<see cref="Fx"/>) and the active-line / held-note glow halo σ.
     ///
-    /// <para>The setting stores −1 (AUTO) by default: a fresh install lets the device decide rather than shipping one
-    /// fixed number the user never chose. <see cref="Resolve"/> is the
-    /// ONLY place −1 is interpreted — everywhere else deals in the resolved 0..100 int, so a caller that forgets the
-    /// auto case cannot silently treat −1 as "1 % blur".</para></summary>
+    /// <para>The setting is just the 0..100 intensity (0 = off, default 100); there is no Auto choice. The accessor
+    /// (<c>Prefs.Lyrics.BlurStrength</c>) is the one place a stored −1 from the removed Auto is read as 100, so everything
+    /// here deals in a plain 0..100 int.</para></summary>
     public static class BlurPolicy
     {
-        public const int Auto = -1;
-        /// <summary>What Auto paints at, on every GPU tier (the weak-tier 40 was withdrawn on 2026-10-05: the GPU tier is not a
-        /// quality input; a saturated GPU is the engine's measured governor's business).</summary>
-        public const int AutoDefault = 100;
-
-        /// <summary>The stored setting (−1 = auto, else 0..100) resolved into the strength this frame actually paints at.
-        /// Clamps a stored value from an older/newer build's ladder into range rather than trusting the registry.</summary>
-        public static int Resolve(int setting)
-            => setting == Auto ? AutoDefault : Math.Clamp(setting, 0, 100);
+        /// <summary>The setting resolved into the strength this frame actually paints at. Clamps a value from an
+        /// older/newer build's ladder into range rather than trusting the registry (a negative here would be 0; the
+        /// accessor has already mapped the old Auto −1 to 100).</summary>
+        public static int Resolve(int setting) => Math.Clamp(setting, 0, 100);
 
         /// <summary>The STAGE never depth-blurs: the fullscreen surface's depth cue is the scrim and the accent pill, and
         /// every non-active line being its own blur layer was the stage's largest per-frame cost (§1.1). 0 ⇒ Enabled(0) is
@@ -190,7 +184,7 @@ public static partial class Lyrics
         /// keeps it on the user's setting (<c>ViewCore._haloScale</c>).</summary>
         public static int ResolveFor(int setting, bool onStage) => onStage ? 0 : Resolve(setting);
 
-        /// <summary>The resolved strength (0..100, NOT −1 — call <see cref="Resolve"/> first) as the 0..1 multiplier
+        /// <summary>The resolved strength (0..100 — call <see cref="Resolve"/> first) as the 0..1 multiplier
         /// the view scales its DoF ladder and halo σ by.</summary>
         public static float Scale(int strength) => Math.Clamp(strength, 0, 100) / 100f;
 

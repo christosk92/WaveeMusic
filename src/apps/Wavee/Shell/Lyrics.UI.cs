@@ -319,7 +319,7 @@ public static partial class Lyrics
         // ── preferences, republished for the rows ────────────────────────────────────────────────────────────────────
         /// <summary>The secondary-line mode. A SIGNAL the rows read: a ctor int would never reach a mounted row.</summary>
         internal readonly Signal<int> Secondary;
-        int _strength = BlurPolicy.AutoDefault;   // the RESOLVED 0..100 blur strength
+        int _strength = global::Wavee.Prefs.Lyrics.FromStored(global::Wavee.Platform.Settings.Get(global::Wavee.Platform.Keys.LyricsBlurStrength));   // the RESOLVED 0..100 blur strength
         float _dofScale = 1f;
         /// <summary>The ACTIVE line's halo / held-note bloom multiplier. Equal to the DoF scale everywhere except the stage,
         /// whose DoF is forced off (every non-active row a blur layer was its largest cost) while the one or two halo

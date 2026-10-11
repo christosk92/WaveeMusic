@@ -109,6 +109,22 @@ public class SettingsDocTests
             }
     }
 
+    [Fact]
+    public void The_lyrics_blur_is_one_slider_row_and_the_Auto_row_is_gone()
+    {
+        Assert.Equal(SettingsRowKind.Slider, SettingsDoc.Row(Settings.Tab.Appearance, "lyricsBlur").Kind);
+        Assert.DoesNotContain(Rows, r => r.Id == "lyricsBlurAuto");
+        Assert.DoesNotContain(Rows, r => r.Writer.Verb is { } v && v.Contains("ResetLyricsBlur"));
+    }
+
+    [Fact]
+    public void The_lyrics_blur_row_shows_a_legacy_stored_Auto_as_100()
+    {
+        var store = new MemoryAppSettings();
+        store.Set(Platform.Keys.LyricsBlurStrength, -1);
+        Assert.Equal(100f, SettingsDoc.Row(Settings.Tab.Appearance, "lyricsBlur").Value(store));
+    }
+
     // ── every row has a writer ──────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]

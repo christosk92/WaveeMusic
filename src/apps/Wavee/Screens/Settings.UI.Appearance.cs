@@ -44,7 +44,7 @@ public static partial class Settings
     // ══ 1. STABLE CONTROL STATE (0.2.9's `_lyricsBlurSlider` instance field + the two combo selections) ═════════════
 
     /// <summary>The lyrics-blur slider's value (the resolved 0..100). A slider binds ONE signal for its life.</summary>
-    static readonly FloatSignal s_lyricsBlurSlider = new(Lyrics.BlurPolicy.AutoDefault);
+    static readonly FloatSignal s_lyricsBlurSlider = new(Platform.Keys.LyricsBlurStrength.Default);
     /// <summary>The zoom combo's selection, kept in step with the LIVE zoom by <see cref="ZoomPicker"/>.</summary>
     static readonly Signal<int> s_zoomIndex = new(0);
     /// <summary>The daylist-clock combo's selection (the <see cref="DaylistClockMode"/> int), kept in step with the store by
@@ -83,7 +83,7 @@ public static partial class Settings
 
     static partial void SeedAppearance()
     {
-        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
+        s_lyricsBlurSlider.Value = Prefs.Lyrics.BlurStrength();
         s_stageVisualizer.Value = VisualizerIndex();
         s_stageLayout.Value = Prefs.Stage.Layout();
         s_stageSensitivity.Value = Prefs.Stage.Sensitivity();
@@ -95,7 +95,6 @@ public static partial class Settings
     private static partial Element AppearanceTab()
     {
         int themeMode = (int)Appearance.Mode;
-        bool lyricsBlurAuto = Platform.Settings.Get(Platform.Keys.LyricsBlurStrength) < 0;
         var facts = SettingsFacts.Live;   // developer mode is read reactively here, as the tab always did
         // The Now-playing rows' ONE foreign epoch (ch 27 §7): the header row, the flyout, the art menu and the palette all
         // write it, and these two rows must follow them live.
@@ -138,7 +137,7 @@ public static partial class Settings
         // The second line and the animated backdrop are no longer settings at all.
         kids.Add(SectionHeader(Loc.Get(Strings.Settings.Lyrics.Title), SectionGlyph(Tab.Appearance, "Lyrics"),
             Loc.Get(Strings.Settings.Lyrics.Subtitle)));
-        kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl(lyricsBlurAuto)));
+        kids.Add(DocRow(D(Tab.Appearance, "lyricsBlur"), LyricsBlurControl()));
         kids.Add(AiLyrics.SettingsCard());
 
         // ── the fullscreen stage: the gallery's four settings, mirrored here with the rest of Appearance ──
@@ -629,34 +628,19 @@ public static partial class Settings
 
     // ══ 6. LYRICS + NOW PLAYING ═══════════════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>The 0..100 slider plus, ONLY while the setting is pinned to an explicit value, an "Auto" link 12 DIP away
-    /// (ch 27 W2). The slider always sits in slot 0 of the same box, so the link appearing on the first drag never
-    /// remounts the slider under the pointer.</summary>
-    static Element LyricsBlurControl(bool isAuto)
-    {
-        Element slider = Slider.Create(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: 180f);
-        return new BoxEl
+    /// <summary>The one lyrics-blur control: the 0..100 slider (0 turns the blur off). There is no Auto link any more.</summary>
+    static Element LyricsBlurControl()
+        => new BoxEl
         {
             Direction = 0, AlignItems = FlexAlign.Center, Gap = Spacing.M, Shrink = 0f,
-            Children = isAuto
-                ? [slider]
-                : [slider, HyperlinkButton.Create(Loc.Get(Strings.Settings.Appearance.LyricsBlurAuto), static () => ResetLyricsBlur())],
+            Children = [Slider.Create(s_lyricsBlurSlider, static v => SetLyricsBlur(v), s_lyricsBlurOptions, length: 180f)],
         };
-    }
 
-    /// <summary>Writes the EXPLICIT 0..100 value (dragging always overrides auto), resolved to the int the store holds.</summary>
+    /// <summary>Writes the 0..100 value through the row's writer, then re-seeds the slider from the accessor.</summary>
     static void SetLyricsBlur(float v)
     {
         if (!D(Tab.Appearance, "lyricsBlur").Writer.Slide!(v)) return;
-        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Platform.Settings.Get(Platform.Keys.LyricsBlurStrength));
-        Bump();
-    }
-
-    /// <summary>"Auto" writes −1 back — never whatever the policy currently resolves — so the row stops overriding.</summary>
-    static void ResetLyricsBlur()
-    {
-        D(Tab.Appearance, "lyricsBlurAuto").Writer.Run!();
-        s_lyricsBlurSlider.Value = Lyrics.BlurPolicy.Resolve(Lyrics.BlurPolicy.Auto);
+        s_lyricsBlurSlider.Value = Prefs.Lyrics.BlurStrength();
         Bump();
     }
 
