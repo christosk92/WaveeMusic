@@ -245,11 +245,11 @@ public static partial class Rail
             var kids = new List<Element>(6) { TitleText(Shell.RailMode.Lyrics) };
             if (available != 0)
                 kids.Add(HeaderButton(Icons.Globe, Prefs.Lyrics.Tooltip(secondary),
-                    () => Prefs.Lyrics.SetSecondaryLine(Prefs.Lyrics.Next(secondary, available)),
+                    LyricsVerbs.Global.ToggleSecondLine,
                     active: (available & Prefs.Lyrics.BitFor(secondary)) != 0));
             // The on-device AI sparkle: its own component (only it subscribes the AI status), hidden while the feature is off.
             kids.Add(AiLyrics.HeaderButton());
-            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), () => Shell.PanelHost.Shared.OpenStage(begin, "rail-header")));
+            kids.Add(HeaderButton(Icons.FullScreen, Loc.Get(Playback.CurrentId.Value.Kind == EntityKind.Episode ? Strings.Podcast.Reader.Transcript : Strings.Player.ExpandLyrics), () => LyricsVerbs.Global.ExpandToStage(begin, "rail-header")));
             kids.Add(Diagnostics.LyricsInspector.Button());
             kids.Add(CloseButton());
             return HeaderBox(kids.ToArray());

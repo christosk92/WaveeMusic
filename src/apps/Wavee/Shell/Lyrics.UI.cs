@@ -157,14 +157,14 @@ public static partial class Lyrics
     // ══ 2. THE VIEW ══════════════════════════════════════════════════════════════════════════════════════════════════
 
     /// <summary>The follow scroll's four modes.</summary>
-    internal enum FollowMode : byte { Following, DetachedActive, DetachedIdle, Resyncing }
+    public enum FollowMode : byte { Following, DetachedActive, DetachedIdle, Resyncing }
 
     enum FollowArm : byte { Unavailable, AtTarget, Armed }
 
     enum FollowIntent : byte { Normal, Resync }
 
     /// <summary>The lyrics reading surface.</summary>
-    internal sealed partial class ViewCore : Component
+    internal sealed partial class ViewCore : Component, ILyricsSceneSink
     {
         // ── advance-probe seam (`--lyrics-advance-probe`, Screens/Diagnostics.Probe.cs, Wave 6) ──────────────────────
         // `internal` accessors, not switches: the probe drives the media clock SYNCHRONOUSLY so a line advance and the
@@ -213,13 +213,17 @@ public static partial class Lyrics
         internal readonly float TypeScale;
         readonly float _band;
 
-        readonly EntityId _readerEpisode;
-        EntityId _subject;
-        uint _subjectEpoch;
-        internal bool IsPodcast => _subject.Kind == EntityKind.Episode;
-        internal bool OwnsPlayback => _subject == Playback.CurrentId.Peek();
+        /// <summary>The surface's MODEL (C5): the document slot, the clock, the active / voice lines, the follow state machine,
+        /// the interlude bookkeeping, the second line, the AI state and the verbs. This view draws and drives nodes from it.</summary>
+        internal readonly LyricsModel M;
 
-        internal bool ObservedPlaybackOwner => _subject == Playback.CurrentId.Value;
+        readonly EntityId _readerEpisode;
+        EntityId _subject { get => M.Subject; set => M.Subject = value; }
+        uint _subjectEpoch { get => M.SubjectEpoch; set => M.SubjectEpoch = value; }
+        internal bool IsPodcast => M.IsPodcast;
+        internal bool OwnsPlayback => M.OwnsPlayback;
+
+        internal bool ObservedPlaybackOwner => M.ObservedPlaybackOwner;
 
         // `accent` and `onStage` are APPENDED after `readerEpisode`: `Lyrics.Transcript.cs` calls this POSITIONALLY with four
         // arguments (`new ViewCore(false, false, static () => true, episode)`).
@@ -236,35 +240,38 @@ public static partial class Lyrics
             _band = readerEpisode.IsValid ? 0.05f : Surface.FocalBand(large);
             _wakeTick = WakeTick;
             _reseedOwnership = ReseedForOwnership;
-            _dotAlpha = new FloatSignal[Interlude.DotCount];
-            for (int k = 0; k < _dotAlpha.Length; k++) _dotAlpha[k] = new FloatSignal(0f);
+            M = new LyricsModel(new LyricsSurface(large, onMedia, onStage, TypeScale), readerEpisode) { Sink = this };
+            _activeLine = M.ActiveLine;
+            _voiceLine = M.VoiceLine;
+            NowMs = M.NowMs;
+            Follow_ = M.Follow;
+            _resyncProgress = M.ResyncProgress;
+            Secondary = M.SecondLine;
+            _dotsShown = M.DotsShown;
+            _dotAlpha = M.DotAlpha;
         }
 
-        // ── the media clock ──────────────────────────────────────────────────────────────────────────────────────────
-        readonly MediaClock _clock = new();
-        long _lastSampleStamp = long.MinValue;   // the host sample (PosQpc ms stamp) already fed to the clock
-        int _lastSamplePos = int.MinValue;
-        long _lastClockLogMs;                    // FrameTime.NowMs of the last `lyrics.clock` line (0 = not baselined)
+        // ── the media clock (the model's: the sample feed and its bookkeeping live there) ────────────────────────────
+        MediaClock _clock => M.Clock;
 
         // ── emphasis, voice, now ─────────────────────────────────────────────────────────────────────────────────────
-        readonly Signal<int> _activeLine = new(-1);   // emphasis + follow target (lead-shifted)
-        readonly Signal<int> _voiceLine = new(-1);    // the line being sung on TRUE time (wipe + glow)
+        readonly Signal<int> _activeLine;   // emphasis + follow target (lead-shifted) — the model's signal
+        readonly Signal<int> _voiceLine;    // the line being sung on TRUE time (wipe + glow) — the model's signal
         // The render-thread wipe (AnimChannel.GlyphWipeSplit): the line whose rows are seeded, the nodes they ride, the
         // content rate they were timed at, and a re-seed owed by a clock jump. -1 = the UI writes the split itself.
         int _wipeRowLine = -1;
         NodeHandle _wipeRowMain, _wipeRowGlow;
         double _wipeRowRate;
         bool _wipeReseed;
-        internal readonly FloatSignal NowMs = new(0f);
+        internal readonly FloatSignal NowMs;
         /// <summary>One VALUE-GATED signal per line: a row re-renders solely on ITS OWN bucket/past/reserve change. A
         /// shared memo would fan every boundary out to the whole realized document.</summary>
         Signal<int>[] _lineEmphasis = [];
         readonly Signal<int> _emphasisFallback = new(Emphasis.Fallback);   // a resize-gap guard, never a state
 
         // ── the follow ───────────────────────────────────────────────────────────────────────────────────────────────
-        internal readonly Signal<FollowMode> Follow_ = new(FollowMode.Following);
-        readonly FloatSignal _resyncProgress = new(1f);
-        long _resyncDeadlineMs;
+        internal readonly Signal<FollowMode> Follow_;
+        readonly FloatSignal _resyncProgress;
         bool _scrollSnapped;
         float? _followProgrammaticTargetY;   // the last POSTED resync destination (dedupes a re-post of the same target)
         /// <summary>The lyrics viewport's ONE scroll handle (one per surface for the view's life; the host binds it to
@@ -311,7 +318,7 @@ public static partial class Lyrics
 
         // ── preferences, republished for the rows ────────────────────────────────────────────────────────────────────
         /// <summary>The secondary-line mode. A SIGNAL the rows read: a ctor int would never reach a mounted row.</summary>
-        internal readonly Signal<int> Secondary = new(Prefs.None);
+        internal readonly Signal<int> Secondary;
         int _strength = BlurPolicy.AutoDefault;   // the RESOLVED 0..100 blur strength
         float _dofScale = 1f;
         /// <summary>The ACTIVE line's halo / held-note bloom multiplier. Equal to the DoF scale everywhere except the stage,
@@ -323,10 +330,10 @@ public static partial class Lyrics
         internal readonly FloatSignal HaloScale = new(1f);
 
         // ── the document ─────────────────────────────────────────────────────────────────────────────────────────────
-        Doc? _doc;
-        Doc? _pendingUpgrade;
+        Doc? _doc { get => M.Doc; set => M.Doc = value; }
+        Doc? _pendingUpgrade { get => M.PendingUpgrade; set => M.PendingUpgrade = value; }
         Loadable<Doc?>? _docLoadable;
-        string _trackId = "";
+        string _trackId { get => M.TrackId; set => M.TrackId = value; }
         /// <summary>Bumped on every whole-document swap (another track, another line count, or no row surviving) and
         /// folded into each row's key, so a genuine document change remounts the rows (they froze the old line and
         /// signals at mount).</summary>
@@ -338,9 +345,9 @@ public static partial class Lyrics
         MeasuredLayout? _layout;
 
         // ── the interlude ────────────────────────────────────────────────────────────────────────────────────────────
-        int _interludeReserveLine = -1;
-        int _reserveRelatchFrames;
-        readonly Signal<bool> _dotsShown = new(false);
+        int _interludeReserveLine { get => M.InterludeReserveLine; set => M.InterludeReserveLine = value; }
+        int _reserveRelatchFrames { get => M.ReserveRelatchFrames; set => M.ReserveRelatchFrames = value; }
+        readonly Signal<bool> _dotsShown;
         readonly FloatSignal[] _dotAlpha;
         NodeHandle _dotsRowNode = NodeHandle.Null;
 
@@ -401,8 +408,7 @@ public static partial class Lyrics
             // ── preferences: ONE read per view under the lyrics epoch, republished to the rows ──────────────────────
             // Writing `Secondary`/`HaloScale` here is the 0.2.9 shape on purpose: this render does not READ either, and
             // the rows that do must re-render IN THIS flush so the re-arranged extents are what the next step latches on.
-            int secondary = Prefs.SecondaryLine();
-            Secondary.Value = secondary;
+            int secondary = M.SyncSecondLine();
             int strength = Prefs.BlurStrength(OnStage);
             _strength = strength;
             float newScale = BlurPolicy.Scale(strength);
@@ -444,12 +450,14 @@ public static partial class Lyrics
             {
                 ClearDocument();
                 _trackId = "";
+                M.PublishState(LyricsState.Nothing);
                 return Message(Loc.Get(Strings.Player.NothingPlaying));
             }
             if (trackId.Length == 0)
             {
                 ClearDocument();
                 _trackId = "";
+                M.PublishState(LyricsState.NoLyrics);
                 return Message(Loc.Get(Strings.Lyrics.NoLyrics));
             }
             if (!string.Equals(_trackId, trackId, StringComparison.Ordinal) || accountEpoch != _subjectEpoch) ClearDocument();
@@ -538,7 +546,7 @@ public static partial class Lyrics
             Children =
             [
                 Flow.Show(
-                    () => (!IsPodcast || ObservedPlaybackOwner) && Follow_.Value is FollowMode.DetachedActive or FollowMode.DetachedIdle,
+                    () => M.ResyncNeeded,
                     new BoxEl
                     {
                         Direction = 0, AlignItems = FlexAlign.Center, Gap = 8f,
@@ -764,6 +772,7 @@ public static partial class Lyrics
             {
                 // A re-fetch dropped the document: back to the shimmer, and nothing from the old one survives.
                 if (loadable.State.Peek() != (byte)LoadState.Pending) { ClearDocumentState(); loadable.SetPending(null); }
+                M.PublishState(LyricsState.Loading);
                 return;
             }
             if (loadable.State.Peek() != (byte)LoadState.Ready)
@@ -771,6 +780,7 @@ public static partial class Lyrics
                 if (doc is { Lines.Count: > 0 }) PrepareDocument(doc, Playback.PositionMs.Peek());
                 else PublishSecondaryAvailability(null);
                 loadable.SetReady(doc);
+                M.PublishState(LyricsModel.ClassifyReady(doc, IsPodcast));
                 return;
             }
             if (doc is null || ReferenceEquals(doc, loadable.Value.Peek())) return;
@@ -779,13 +789,9 @@ public static partial class Lyrics
 
         void ReceiveUpgrade(Doc upgrade)
         {
-            if (upgrade.Lines.Count == 0) return;
-            var current = _docLoadable?.Value.Peek() ?? _doc;
-            if (current is not null && !Authority.IsRicher(upgrade, current)) return;
-            if (Authority.ApplyImmediately(Playback.IsPlaying.Peek(), _doc, _activeLine.Peek()))
+            // The authority gate and the hold are the model's; the view applies (rebuilds its rows) when told to.
+            if (M.OfferUpgrade(upgrade, _docLoadable?.Value.Peek() ?? _doc) == UpgradeVerdict.Apply)
                 ApplyUpgrade(upgrade, Playback.PositionMs.Peek());
-            else
-                _pendingUpgrade = upgrade;
         }
 
         void ApplyUpgrade(Doc upgrade, long posMs)
@@ -793,6 +799,7 @@ public static partial class Lyrics
             _pendingUpgrade = null;
             PrepareDocument(upgrade, posMs);
             _docLoadable?.SetReady(upgrade);
+            M.PublishState(LyricsModel.ClassifyReady(upgrade, IsPodcast));
         }
 
         // ── 2.3 preparing and clearing a document ───────────────────────────────────────────────────────────────────
@@ -848,8 +855,7 @@ public static partial class Lyrics
 
             // SEEDED at the document's TRUE opening state (through the same interlude advance the frame lane uses), so
             // the PushEmphasis below is a silent no-op instead of fanning the whole document out on every load.
-            bool timed = IsTimed(doc);
-            int seedActive = timed && (!IsPodcast || OwnsPlayback) ? AdvancePastInterlude(doc, ResolveLine(doc.Lines, posMs), posMs, out _, out _) : -1;
+            int seedActive = M.SeedActive(doc, posMs);
             if (!keepRows)
             {
                 _interludeReserveLine = -1;
@@ -857,13 +863,13 @@ public static partial class Lyrics
                 for (int i = 0; i < n; i++) _lineEmphasis[i] = new Signal<int>(Emphasis.Pack(i, seedActive, -1));
             }
             _glowInLine = -1; _glowOutLine = -1;
-            _activeLine.Value = seedActive;
-            if (!timed || (IsPodcast && !OwnsPlayback)) _voiceLine.Value = -1;
+            M.PublishSeed(doc, seedActive);
             PushEmphasis();
             NowMs.Value = posMs;
             _scrollSnapped = false;
             RebaseClock(posMs);
             WakeMotion();
+            M.PublishState(LyricsModel.ClassifyReady(doc, IsPodcast));
         }
 
         /// <summary>The per-row half of the upgrade question (plan §3.4). For an AI publish (<see cref="RowShape.PerRowSwap"/>:
@@ -908,11 +914,7 @@ public static partial class Lyrics
             var doc = _doc;
             if (doc is null) return;
             long posMs = OwnsPlayback ? Playback.PositionMs.Peek() : 0L;
-            bool timed = IsTimed(doc);
-            int seedActive = timed && (!IsPodcast || OwnsPlayback)
-                ? AdvancePastInterlude(doc, ResolveLine(doc.Lines, posMs), posMs, out _, out _) : -1;
-            _activeLine.Value = seedActive;
-            if (!timed || (IsPodcast && !OwnsPlayback)) _voiceLine.Value = -1;
+            M.PublishSeed(doc, M.SeedActive(doc, posMs));
             PushEmphasis();
             NowMs.Value = posMs;
             _scrollSnapped = false;
@@ -923,10 +925,7 @@ public static partial class Lyrics
 
         /// <summary>The header toggle's capability. Gated on a TIMED document: an unsynced block has no rows to render a
         /// second line in, so offering the toggle there would be a control that visibly does nothing (parity 69).</summary>
-        void PublishSecondaryAvailability(Doc? doc)
-        {
-            if (!_readerEpisode.IsValid) Prefs.Available.Value = doc is not null && IsTimed(doc) ? doc.SecondaryAvailable : 0;
-        }
+        void PublishSecondaryAvailability(Doc? doc) => M.PublishSecondaryAvailability(doc);
 
         void PushEmphasis()
         {
@@ -975,21 +974,13 @@ public static partial class Lyrics
             _scrollSnapped = false;
             // A clear resets the clock too: a port that keeps it across a track change re-treats the next document's
             // first sample as a >250 ms disagreement.
-            _clock.Reset(0L, FrameTime.NowQpc, false);
-            _lastSampleStamp = long.MinValue;
-            _lastSamplePos = int.MinValue;
+            M.ResetClock();
             WakeMotion();
         }
 
         /// <summary>Seed the media clock from an authoritative position, and absorb the host's CURRENT sample so the next
         /// step does not re-treat our own re-anchor as a disagreement.</summary>
-        void RebaseClock(long positionMs)
-        {
-            var snap = Playback.Snap();
-            _clock.Reset(positionMs, FrameTime.NowQpc, OwnsPlayback && Playback.IsPlaying.Peek(), snap.ContentRate);
-            _lastSampleStamp = snap.PosQpc;
-            _lastSamplePos = snap.PosMs;
-        }
+        void RebaseClock(long positionMs) => M.RebaseClock(positionMs);
 
         // ── 2.4 the content ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -1181,7 +1172,7 @@ public static partial class Lyrics
 
         // ── 2.7 the directional σ ramp ──────────────────────────────────────────────────────────────────────────────
 
-        static bool SuppressesDof(FollowMode mode) => mode != FollowMode.Following;
+        static bool SuppressesDof(FollowMode mode) => LyricsModel.SuppressesDof(mode);
 
         /// <summary>The σ the ELEMENT declares for line <paramref name="index"/>: the ramp's LIVE value, so a re-render
         /// mid-ramp re-asserts the in-flight σ instead of stomping the node back to the rest target.</summary>
@@ -1449,57 +1440,47 @@ public static partial class Lyrics
 
         void SetFollowMode(FollowMode next, SceneStore? scene)
         {
-            var previous = Follow_.Peek();
-            if (previous == next) return;
-            bool wasSuppressed = SuppressesDof(previous);
-            bool nowSuppressed = SuppressesDof(next);
-            Follow_.Value = next;
+            var change = M.SetFollowMode(next);
+            if (!change.Changed) return;
             // Leaving Following retires the cascade (it would fight the user's scroll / the resync glide), the dots and
             // their reserved band — at the detach EDGE, so the exits animate.
-            if (next != FollowMode.Following) { ZeroCascade(scene); HideInterludeDots(); SetInterludeReserve(-1); }
-            if (wasSuppressed != nowSuppressed) ApplyDofSuppression(scene);
+            if (change.LeftFollowing) { ZeroCascade(scene); HideInterludeDots(); SetInterludeReserve(-1); }
+            if (change.SuppressionFlipped) ApplyDofSuppression(scene);
         }
 
         void ResetFollowState(SceneStore? scene)
         {
-            _resyncDeadlineMs = 0L;
-            _resyncProgress.Value = 1f;
+            M.ClearCountdown();
             ZeroCascade(scene);
             SetFollowMode(FollowMode.Following, scene);
         }
 
         void OnScrollActivity(bool userScrollActive, long nowMs)
         {
-            if (IsPodcast && !OwnsPlayback) return;
-            if (userScrollActive)
+            switch (M.OnScrollActivity(userScrollActive, nowMs))
             {
-                _resyncDeadlineMs = 0L;
-                _resyncProgress.Value = 1f;
-                ZeroCascade(Context.Scene);
-                SetFollowMode(FollowMode.DetachedActive, Context.Scene);
-                return;
+                case ScrollEdge.Detach:
+                    ZeroCascade(Context.Scene);
+                    SetFollowMode(FollowMode.DetachedActive, Context.Scene);
+                    break;
+                case ScrollEdge.Idle:
+                    SetFollowMode(FollowMode.DetachedIdle, Context.Scene);
+                    break;
             }
-            if (Follow_.Peek() != FollowMode.DetachedActive) return;
-            _resyncDeadlineMs = nowMs + Follow.ResyncIdleMs;
-            _resyncProgress.Value = 1f;
-            SetFollowMode(FollowMode.DetachedIdle, Context.Scene);
         }
 
         void TickFollowState(SceneStore scene, long nowMs)
         {
-            var mode = Follow_.Peek();
-            if (mode == FollowMode.DetachedIdle)
+            switch (M.TickFollow(nowMs))
             {
-                _resyncProgress.SetIfChanged(Follow.ResyncProgress(_resyncDeadlineMs, nowMs));
-                if (Follow.ResyncDue(_resyncDeadlineMs, nowMs)) { BeginResync(scene); return; }
+                case FollowTick.BeginResync: BeginResync(scene); break;
+                case FollowTick.DriveResync: DriveResync(scene); break;
             }
-            if (mode == FollowMode.Resyncing) DriveResync(scene);
         }
 
         void BeginResync(SceneStore? scene)
         {
-            _resyncDeadlineMs = 0L;
-            _resyncProgress.Value = 1f;
+            M.ClearCountdown();
             SetFollowMode(FollowMode.Resyncing, scene);
             if (scene is not null) DriveResync(scene);
         }
@@ -1509,27 +1490,26 @@ public static partial class Lyrics
             int active = _activeLine.Peek();
             if (active < 0 || ScrollActiveIntoView(scene, active, FollowIntent.Resync) == FollowArm.AtTarget)
             {
-                _resyncDeadlineMs = 0L;
-                _resyncProgress.Value = 1f;
+                M.ClearCountdown();
                 SetFollowMode(FollowMode.Following, scene);   // the ladder returns only once the glide has landed
             }
         }
 
-        /// <summary>A lyric row was clicked: back to live, commit the seek, re-anchor the clock, and HARD-latch.</summary>
-        internal void SeekToLine(int index)
+        /// <summary>A lyric row was clicked: <see cref="LyricsModel.SeekToLine"/> (back to live, commit the seek, re-anchor
+        /// the clock); the scene half — the hard latch, the retired cascade, the woken motion — is
+        /// <see cref="ILyricsSceneSink.SeekLanded"/>.</summary>
+        internal void SeekToLine(int index) => M.Verbs.SeekToLine(index);
+
+        void ILyricsSceneSink.ResetFollow() => ResetFollowState(Context.Scene);
+
+        void ILyricsSceneSink.SeekLanded()
         {
-            var doc = _doc;
-            if (doc is null || (uint)index >= (uint)doc.Lines.Count) return;
-            ResetFollowState(Context.Scene);
-            long ms = doc.Lines[index].StartMs;
-            if (IsPodcast && !OwnsPlayback)
-                Episode.StartAt(Entities.Episode(_subject), Playback.EpisodeStartKind.Position, (int)Math.Clamp(ms, 0L, int.MaxValue));
-            else Playback.SeekTo((int)Math.Clamp(ms, 0L, int.MaxValue));   // a line tap is a commit, never a scrub preview
-            RebaseClock(ms);
             _scrollSnapped = false;
             ZeroCascade(Context.Scene);
             WakeMotion();
         }
+
+        void ILyricsSceneSink.ResyncRequested() => BeginResync(Context.Scene);
 
         internal void ResetScrollSnap()
         {
@@ -1603,15 +1583,13 @@ public static partial class Lyrics
 
         // ── 2.11 the interlude lane ─────────────────────────────────────────────────────────────────────────────────
 
-        float ReserveOf(int index) => index >= 0 && index == _interludeReserveLine ? Interlude.ReserveDip(Large) : 0f;
+        float ReserveOf(int index) => M.ReserveOf(index);
 
         /// <summary>Arm/release the anchor's reserved band through the SAME per-line emphasis signal (bit 3), so exactly
         /// the one or two affected rows re-render.</summary>
         void SetInterludeReserve(int line)
         {
-            if (_interludeReserveLine == line) return;
-            int prev = _interludeReserveLine;
-            _interludeReserveLine = line;
+            if (!M.SetReserve(line, out int prev)) return;
             var em = _lineEmphasis;
             int active = _activeLine.Peek();
             if ((uint)prev < (uint)em.Length) em[prev].Value = Emphasis.Pack(prev, active, line);
@@ -1620,7 +1598,6 @@ public static partial class Lyrics
             // frames so an ordinary latch + cascade absorbs it as motion.
             if (Context.Scene is { } sc && !_viewportNode.IsNull && sc.IsLive(_viewportNode))
                 sc.Mark(_viewportNode, NodeFlags.LayoutDirty | NodeFlags.VirtualRangeDirty);
-            _reserveRelatchFrames = Follow.ReserveRelatchFrames;
         }
 
         void HideInterludeDots()
@@ -1671,8 +1648,8 @@ public static partial class Lyrics
             // stops together. Peek — this is a frame callback; the content's own read subscribes.
             if (SyncGate.SyncSuppressed(Playback.VideoActive.Peek(), IsPodcast))
             {
-                if (_activeLine.Peek() != -1) _activeLine.Value = -1;
-                if (_voiceLine.Peek() != -1) _voiceLine.Value = -1;
+                M.RetireLines();
+                M.PublishState(LyricsState.Unsynced);
                 ResetFollowState(Context.Scene);
                 QuiesceUnresolved();
                 return;
@@ -1682,9 +1659,6 @@ public static partial class Lyrics
             if (!_motionLive.Peek() && !ProbeSyncMode) { _dofRampMs = 0L; _casQpc = 0L; }
 
             long wallMs = FrameTime.NowMs;
-            long auth = OwnsPlayback ? Playback.PositionMs.Peek() : 0;
-            bool playing = OwnsPlayback && Playback.IsPlaying.Peek();
-            long nowMs;
             if (!OwnsPlayback && probeNowMs == long.MinValue)
             {
                 if (_activeLine.Peek() != -1) { _activeLine.Value = -1; PushEmphasis(); }
@@ -1698,65 +1672,18 @@ public static partial class Lyrics
                 _scrollSnapped = false;
                 QuiesceUnresolved(); return;
             }
-            if (probeNowMs != long.MinValue)
-            {
-                nowMs = probeNowMs; auth = probeNowMs; playing = true;
-                _clock.Reset(probeNowMs, FrameTime.NowQpc, true);
-            }
-            else
-            {
-                // The host's authoritative (position, stamp) sample, fed only when it changes and mapped onto QPC through
-                // its AGE; then queried at THIS frame's present time.
-                var snap = Playback.Snap();
-                if (snap.PosQpc != _lastSampleStamp || snap.PosMs != _lastSamplePos || snap.ContentRate != _clock.ContentRate)
-                {
-                    _lastSampleStamp = snap.PosQpc;
-                    _lastSamplePos = snap.PosMs;
-                    long sampleQpc = SampleClock.SampleQpc(snap.PosQpc, Playback.FrameNowMs(), Stopwatch.GetTimestamp(), Stopwatch.Frequency);
-                    if (_clock.OnSample(snap.PosMs, sampleQpc, playing, snap.ContentRate)) OnClockJump();
-                }
-                else if (playing != _clock.Playing)
-                {
-                    // The play state flipped with no fresh sample: feed the EDGE at the authoritative position NOW.
-                    if (_clock.OnSample(auth, Stopwatch.GetTimestamp(), playing, snap.ContentRate)) OnClockJump();
-                }
-                nowMs = playing ? _clock.At(FrameTime.NowQpc) : auth;
-            }
+            // The media time of this frame (the host's sample fed to the clock, queried at the frame's present time).
+            long nowMs = M.ReadMediaTime(probeNowMs, out bool playing, out bool clockJumped);
+            if (clockJumped) OnClockJump();
+            M.NoteClock(playing, wallMs);
 
-            // Always-on (never an env switch): one line per 30 s of wall time while a timed document plays.
-            if (playing)
-            {
-                if (_lastClockLogMs == 0L) _lastClockLogMs = wallMs;
-                else if (wallMs - _lastClockLogMs >= 30_000)
-                {
-                    _lastClockLogMs = wallMs;
-                    var diag = _clock.ReadAndResetDiagnostics();
-                    Log.Event(WaveeLogLevel.Info, Lyrics.Diag.Category, "lyrics.clock",
-                        "media clock: " + diag.Frames + " frames, " + diag.Snaps + " snap(s)",
-                        fields:
-                        [
-                            WaveeLogField.Of("frames", diag.Frames),
-                            WaveeLogField.Of("zeroAdvanceFrames", diag.ZeroAdvanceFrames),
-                            WaveeLogField.Of("maxStepMs", diag.MaxStepMs),
-                            WaveeLogField.Of("slewMs", diag.SlewMs),
-                            WaveeLogField.Of("snaps", diag.Snaps),
-                        ]);
-                }
-            }
-
-            // Eye leads voice: emphasis + follow on the LEAD-shifted clock, wipe + glow on TRUE time.
-            int active = ResolveLine(doc.Lines, nowMs + (IsPodcast ? 0 : LeadMs));
-            int voiceLine = ResolveLine(doc.Lines, nowMs);
-            // A line stops being the voice at its own SUNG-OUT point, not when the next one starts.
-            if (voiceLine >= 0 && nowMs >= SungOutMs(doc, voiceLine)) voiceLine = -1;
-            // A real break RETIRES the finished line: applied BEFORE `activeChanged`, so the onset is a normal hand-off.
-            active = AdvancePastInterlude(doc, active, nowMs, out long gapStart, out long gapEnd);
-            bool activeChanged = active != _activeLine.Peek();
-            if (activeChanged) _activeLine.Value = active;
-            int prevVoiceLine = _voiceLine.Peek();
-            bool voiceChanged = voiceLine != prevVoiceLine;
-            if (voiceChanged) _voiceLine.Value = voiceLine;
-            NowMs.Value = nowMs;
+            // Eye leads voice (emphasis + follow on the LEAD-shifted clock, wipe + glow on TRUE time): the model resolves the
+            // frame — active, voice, the interlude gap — and writes the lines and the time.
+            var frame = M.Step(doc, nowMs);
+            int active = frame.Active, voiceLine = frame.Voice, prevVoiceLine = frame.PreviousVoice;
+            long gapStart = frame.GapStart, gapEnd = frame.GapEnd;
+            bool activeChanged = frame.ActiveChanged, voiceChanged = frame.VoiceChanged;
+            M.PublishState(LyricsState.Synced);
             // The HELD upgrade lands inside the hand-off, and the step returns (the rows are about to be rebuilt).
             if (activeChanged && _pendingUpgrade is { } upgrade)
             {
@@ -1775,13 +1702,11 @@ public static partial class Lyrics
             TickFollowState(scene, wallMs);
 
             // ── core lane ──
-            bool following = Follow_.Peek() == FollowMode.Following;
-            bool dotsUp = Interlude.DotsUp(following, gapStart, gapEnd, nowMs);
+            bool dotsUp = M.DotsUp(gapStart, gapEnd, nowMs);
             // The band's edges, release-then-arm, before the follow runs (an arm and its first latch share a frame).
-            if (activeChanged && _interludeReserveLine >= 0 && _interludeReserveLine != active) SetInterludeReserve(-1);
-            if (dotsUp && _interludeReserveLine != active) SetInterludeReserve(active);
-            bool reserveRelatch = _reserveRelatchFrames > 0;
-            if (reserveRelatch) _reserveRelatchFrames--;
+            if (M.ShouldReleaseReserve(activeChanged, active)) SetInterludeReserve(-1);
+            if (M.ShouldArmReserve(dotsUp, active)) SetInterludeReserve(active);
+            bool reserveRelatch = M.TakeRelatchFrame();
             if (active >= 0 && (uint)active < (uint)doc.Lines.Count && (!_scrollSnapped || activeChanged || reserveRelatch || forceVisual))
                 ScrollActiveIntoView(scene, active, FollowIntent.Normal);
             if (dotsUp)
