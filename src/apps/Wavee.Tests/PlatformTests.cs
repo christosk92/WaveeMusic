@@ -37,6 +37,16 @@ sealed class MemoryAppSettings : IAppSettings
 
     public void Set<T>(SettingKey<T> key, T value) { if (value is not null) _values[key.Name] = value; }
 
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!_values.ContainsKey(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name) => _values.ContainsKey(name);
+    public void Remove(string name) => _values.Remove(name);
+
     public bool WasWritten<T>(SettingKey<T> key) => _values.ContainsKey(key.Name);
 
     public int WrittenCount => _values.Count;

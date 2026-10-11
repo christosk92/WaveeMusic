@@ -158,6 +158,9 @@ public class DeveloperModeTests
         public bool? SignalSeenAtWrite { get; private set; }
 
         public T Get<T>(SettingKey<T> key) => _inner.Get(key);
+        public bool TryGet<T>(SettingKey<T> key, out T value) => _inner.TryGet(key, out value);
+        public bool Has(string name) => _inner.Has(name);
+        public void Remove(string name) => _inner.Remove(name);
 
         public void Set<T>(SettingKey<T> key, T value)
         {

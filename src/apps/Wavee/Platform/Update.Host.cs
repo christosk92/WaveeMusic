@@ -704,6 +704,15 @@ public static partial class Update
                 if (s_exiting || s_post is not { } post) { Platform.Settings.Set(key, value); return; }
                 post(() => Platform.Settings.Set(key, value));
             }
+
+            public bool TryGet<T>(SettingKey<T> key, out T value) => Platform.Settings.TryGet(key, out value);
+            public bool Has(string name) => Platform.Settings.Has(name);
+
+            public void Remove(string name)
+            {
+                if (s_exiting || s_post is not { } post) { Platform.Settings.Remove(name); return; }
+                post(() => Platform.Settings.Remove(name));
+            }
         }
 
         // ── the simulation ──────────────────────────────────────────────────────────────────────────────────────────

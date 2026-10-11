@@ -112,6 +112,15 @@ public sealed class DefaultsOnlySettings : IAppSettings
     DefaultsOnlySettings() { }
     public T Get<T>(SettingKey<T> key) => key.Default;
     public void Set<T>(SettingKey<T> key, T value) { }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        value = key.Default;
+        return false;
+    }
+
+    public bool Has(string name) => false;
+    public void Remove(string name) { }
 }
 
 // ── 3. developer mode (ch 27 §9.3 item 3) ────────────────────────────────────────────────────────────────────────────

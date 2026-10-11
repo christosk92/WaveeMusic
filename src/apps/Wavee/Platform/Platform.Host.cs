@@ -80,6 +80,10 @@ public static partial class Platform
     /// overlay over the facade would read itself.</summary>
     public static IAppSettings BackingSettings => s_backing ?? DefaultsOnlySettings.Instance;
 
+    /// <summary>The registry store at <c>HKCU\Software\{publisher}\{product}</c> — for a test that names its own scratch
+    /// publisher and product (never Wavee's), and deletes the key afterwards.</summary>
+    public static IAppSettings OpenRegistrySettingsForTests(string publisher, string product) => RegistryAppSettings.Open(publisher, product);
+
     /// <summary>The OS UI locale, from Win32 rather than <c>CultureInfo.CurrentUICulture</c>: this app builds with
     /// <c>InvariantGlobalization</c>, under which that property is always the invariant culture and "system" would
     /// silently resolve to English for everyone. 0.2.9 went to <c>GetUserDefaultLocaleName</c> for the same reason.</summary>
@@ -463,20 +467,43 @@ public sealed class FileAppSettings : IAppSettings
         {
             if (_data.TryGetValue(key.Name, out string? old) && old == text) return;
             _data[key.Name] = text;
-            try
-            {
-                string? dir = Path.GetDirectoryName(_path);
-                if (dir is not null) Directory.CreateDirectory(dir);
-                string tmp = _path + ".tmp";
-                using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
-                {
-                    fs.Write(JsonSerializer.SerializeToUtf8Bytes(_data, LocalStoreJson.Default.DictionaryStringString));
-                    fs.Flush(flushToDisk: true);
-                }
-                File.Move(tmp, _path, overwrite: true);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            WriteLocked();
         }
+    }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!Has(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name)
+    {
+        lock (_gate) return _data.ContainsKey(name);
+    }
+
+    public void Remove(string name)
+    {
+        lock (_gate)
+            if (_data.Remove(name)) WriteLocked();
+    }
+
+    void WriteLocked()
+    {
+        try
+        {
+            string? dir = Path.GetDirectoryName(_path);
+            if (dir is not null) Directory.CreateDirectory(dir);
+            string tmp = _path + ".tmp";
+            using (var fs = new FileStream(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                fs.Write(JsonSerializer.SerializeToUtf8Bytes(_data, LocalStoreJson.Default.DictionaryStringString));
+                fs.Flush(flushToDisk: true);
+            }
+            File.Move(tmp, _path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 }
 
@@ -552,6 +579,25 @@ sealed class RegistryAppSettings : IAppSettings
             if (typeof(T) == typeof(double)) { _store.SetDouble(key.Name, Unsafe.As<T, double>(ref value)); return; }
             if (typeof(T) == typeof(string)) { _store.SetString(key.Name, (string)(object)value); return; }
         }
+        catch { }
+    }
+
+    public bool TryGet<T>(SettingKey<T> key, out T value)
+    {
+        if (!Has(key.Name)) { value = key.Default; return false; }
+        value = Get(key);
+        return true;
+    }
+
+    public bool Has(string name)
+    {
+        try { return _store is not null && _store.Contains(name); }
+        catch { return false; }
+    }
+
+    public void Remove(string name)
+    {
+        try { _store?.Remove(name); }
         catch { }
     }
 }

@@ -47,6 +47,19 @@ public interface IAppSettings
 {
     T Get<T>(SettingKey<T> key);
     void Set<T>(SettingKey<T> key, T value);
+
+    /// <summary>The stored value when one is present under <c>key.Name</c>: true with what <see cref="Get{T}"/> reads
+    /// (a stored value that does not read as <typeparamref name="T"/> answers the default, exactly as Get does), false
+    /// with <c>key.Default</c> when nothing is stored. The one way to tell "never written" from "written as the
+    /// default" — what a copy-only migration step needs.</summary>
+    bool TryGet<T>(SettingKey<T> key, out T value);
+
+    /// <summary>Is any value stored under <paramref name="name"/>?</summary>
+    bool Has(string name);
+
+    /// <summary>Forget the value under <paramref name="name"/>, so reads answer the key's default again. A no-op when
+    /// nothing is stored.</summary>
+    void Remove(string name);
 }
 
 // ── 2. the key registry ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -76,8 +89,8 @@ public static partial class Platform
         //    below) since v3.
         public static readonly SettingKey<bool> SidebarWidthUserSetLegacy = new("sidebar.width.userSet", false);
         public static readonly SettingKey<bool> SidebarCollapsedLegacy = new("sidebar.collapsed", false);
-        /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). There
-        /// is no key-exists probe, so this is the ONLY thing that tells "never written" from "written as the default".</summary>
+        /// <summary>Monotonic "which sidebar startup migrations have run" (0 = never; 2 = the v3 layout migration ran). It
+        /// predates <see cref="IAppSettings.Has"/> and stays the latch those migrations read.</summary>
         public static readonly SettingKey<int> SidebarBootstrapVersion = new("sidebar.bootstrap.version", 0);
         /// <summary>The active sidebar layout: 0 Classic · 1 Library. Written by the one-time v3 migration.</summary>
         public static readonly SettingKey<int> SidebarLayoutId = new("sidebar.layout.id", 0);
@@ -977,6 +990,28 @@ public static partial class Platform
                 "Settings.Set(\"" + key.Name + "\") off the UI thread — every SettingsChanged subscriber assumes C1");
 #endif
             s_backing?.Set(key, value);
+            SettingsEpoch++;
+            SettingsChanged.Value = SettingsEpoch;
+        }
+
+        public bool TryGet<T>(SettingKey<T> key, out T value)
+        {
+            if (s_backing is { } b) return b.TryGet(key, out value);
+            value = key.Default;
+            return false;
+        }
+
+        public bool Has(string name) => s_backing is { } b && b.Has(name);
+
+        /// <summary>A removal changes what reads answer, so it announces itself like a write.</summary>
+        public void Remove(string name)
+        {
+#if DEBUG
+            System.Diagnostics.Debug.Assert(
+                UiThreadId is not { } uiThreadId || uiThreadId == Environment.CurrentManagedThreadId,
+                "Settings.Remove(\"" + name + "\") off the UI thread — every SettingsChanged subscriber assumes C1");
+#endif
+            s_backing?.Remove(name);
             SettingsEpoch++;
             SettingsChanged.Value = SettingsEpoch;
         }
