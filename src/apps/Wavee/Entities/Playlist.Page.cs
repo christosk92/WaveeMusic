@@ -1002,7 +1002,7 @@ public readonly partial struct Playlist
             if (!p.IsValid || p.Uri.Provider != EntityProvider.Spotify) continue;
             candidates.Add(new DepositCandidate(p.Uri.Text, Entities.Strings.Resolve(p.TitleId), p.Editable, p.Slot));
         }
-        var recents = PlaylistDepositTargets.Parse(Platform.Settings.Get(Platform.Keys.PlaylistDepositRecents));
+        var recents = PlaylistDepositPref.Recents();
         var ordered = PlaylistDepositTargets.Order(candidates, recents, exclude.IsValid ? exclude.Text : null);
         var tiles = new string[1];
         foreach (var c in ordered)
@@ -1020,9 +1020,7 @@ public readonly partial struct Playlist
     /// re-filing into the front playlist costs no settings write (ch 06 §6.3).</summary>
     public static void RememberDeposit(string uri)
     {
-        string current = Platform.Settings.Get(Platform.Keys.PlaylistDepositRecents) ?? "";
-        string next = PlaylistDepositTargets.Serialize(PlaylistDepositTargets.Remember(PlaylistDepositTargets.Parse(current), uri));
-        if (!string.Equals(current, next, StringComparison.Ordinal)) Platform.Settings.Set(Platform.Keys.PlaylistDepositRecents, next);
+        PlaylistDepositPref.Remember(uri);
     }
 
     // ══ 4. THE PLAYLIST VERBS (ActionServices rows the sidebar, cards and queue menus ask for) ═══════════════════════

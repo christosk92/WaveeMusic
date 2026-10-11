@@ -379,7 +379,7 @@ public readonly partial struct Track
             Field(SortColumn.Artist);
             if (cfg.ShowAlbumColumn) Field(SortColumn.Album);
             if (_latest.Source.HasDateAdded) Field(SortColumn.DateAdded);
-            if (cfg.ShowPlays || (cfg.PlaysColumnOptIn && Platform.Settings.Get(Platform.Keys.PlaysColumn))) Field(SortColumn.Plays);
+            if (TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, TableColumnsPref.PlaysNow())) Field(SortColumn.Plays);
             Field(SortColumn.Duration);
             // Direction applies to custom order too: descending is the explicit "invert this list".
             items.Add(MenuFlyoutItem.Separator);
@@ -935,15 +935,15 @@ public readonly partial struct Track
                         items.Add(MenuFlyoutItem.SubMenu(Loc.Get(Strings.Detail.Density.RowSize), DensityItems(), Icons.List));
                     if (cfg.ShowTempo)
                     {
-                        bool tempoOn = Platform.Settings.Get(Platform.Keys.TempoColumn);
+                        bool tempoOn = TableColumnsPref.TempoNow();
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.TempoColumn), tempoOn,
-                            () => Prefs.Appearance.Set(Platform.Keys.TempoColumn, !tempoOn)));
+                            () => TableColumnsPref.SetTempo(!tempoOn)));
                     }
                     if (cfg.PlaysColumnOptIn)
                     {
-                        bool playsOn = Platform.Settings.Get(Platform.Keys.PlaysColumn);
+                        bool playsOn = TableColumnsPref.PlaysNow();
                         items.Add(MenuFlyoutItem.Toggle(Loc.Get(Strings.Detail.PlaysColumn), playsOn,
-                            () => Prefs.Appearance.Set(Platform.Keys.PlaysColumn, !playsOn)));
+                            () => TableColumnsPref.SetPlays(!playsOn)));
                     }
                     if ((overflow & InlineCommand.Select) != 0)
                     {

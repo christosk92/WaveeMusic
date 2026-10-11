@@ -580,18 +580,6 @@ public readonly partial struct Track
             public override int GetHashCode() => HashCode.Combine(Set, Art, RowH, Density, Tracks?.Length ?? 0);
         }
 
-        static bool TempoColumnPref()
-        {
-            _ = Prefs.Appearance.Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.TempoColumn);
-        }
-
-        static bool PlaysColumnPref()
-        {
-            _ = Prefs.Appearance.Epoch.Value;
-            return Platform.Settings.Get(Platform.Keys.PlaysColumn);
-        }
-
         Snapshot ComputeSnapshot()
         {
             var args = _args.Value!;
@@ -610,7 +598,7 @@ public readonly partial struct Track
             var cfg = ConfigOf(args);
             return new Snapshot(src.Context.Id, src.Version, src.Count, src.State, sort, query.Trim(), filters, data, likes,
                 Prefs.Appearance.TrackRowStyle() == 1, Prefs.Appearance.TrackArtworkHidden(), Prefs.Appearance.Marquee(),
-                TempoColumnPref(), PlaysColumnPref(), cfg);
+                TableColumnsPref.Tempo(), TableColumnsPref.Plays(), cfg);
         }
 
         /// <summary>Have the HOT rows (the first page, source order) settled — each knows its face, or an answer has been
@@ -659,7 +647,7 @@ public readonly partial struct Track
                 By: src.HasAddedBy && tier < 1,
                 Date: src.HasDateAdded && tier < 3,
                 Video: trailing.Video,
-                Plays: (cfg.ShowPlays || (cfg.PlaysColumnOptIn && s.PlaysColumn)) && tier < 3,
+                Plays: TableColumnsPref.PlaysVisible(cfg.ShowPlays, cfg.PlaysColumnOptIn, s.PlaysColumn) && tier < 3,
                 Heart: tier < 5,
                 Thumb: identity.Thumb,
                 Actions: trailing.Actions,

@@ -414,7 +414,7 @@ public static partial class Settings
                                 Loc.Get(Strings.Settings.Appearance.RailResetConfirmTitle),
                                 Loc.Get(Strings.Settings.Appearance.RailResetConfirmBody),
                                 Loc.Get(Strings.Settings.Appearance.RailResetAction), ResetRailSizes),
-                            isEnabled: HasCustomizedRail()),
+                            isEnabled: DetailRailPrefs.HasCustomized()),
                         icon: RowGlyph(Tab.Appearance, "railReset")),
                 ];
         }
@@ -458,31 +458,12 @@ public static partial class Settings
         }
     }
 
-    /// <summary>The reset's enable gate — a destructive-looking no-op is never offered. The uniform pair is excluded.</summary>
-    static bool HasCustomizedRail()
-    {
-        var s = Platform.Settings;
-        return Detail.RailPolicy.HasCustomizedRailPrefs(
-            s.Get(Platform.Keys.DetailAlbumRailWidth), s.Get(Platform.Keys.DetailAlbumRailCollapsed),
-            s.Get(Platform.Keys.DetailPlaylistRailWidth), s.Get(Platform.Keys.DetailPlaylistRailCollapsed),
-            s.Get(Platform.Keys.DetailLikedRailWidth), s.Get(Platform.Keys.DetailLikedRailCollapsed),
-            s.Get(Platform.Keys.DetailShowRailWidth), s.Get(Platform.Keys.DetailShowRailCollapsed));
-    }
-
-    /// <summary>Reset the FOUR per-scope pairs to their authored defaults (never the uniform pair), then ONE bump, so an
-    /// open detail page's rail snaps to the reset widths now rather than next launch.</summary>
+    /// <summary>Reset the FOUR per-scope rail pairs (<see cref="DetailRailPrefs.ResetAll"/>: authored defaults, never the
+    /// uniform pair, ONE detail-layout bump), then the page's own bump, so an open detail page's rail snaps to the reset
+    /// widths now rather than next launch. The enable gate is <see cref="DetailRailPrefs.HasCustomized"/>.</summary>
     static void ResetRailSizes()
     {
-        var s = Platform.Settings;
-        s.Set(Platform.Keys.DetailAlbumRailWidth, Platform.Keys.DetailAlbumRailWidth.Default);
-        s.Set(Platform.Keys.DetailAlbumRailCollapsed, false);
-        s.Set(Platform.Keys.DetailPlaylistRailWidth, Platform.Keys.DetailPlaylistRailWidth.Default);
-        s.Set(Platform.Keys.DetailPlaylistRailCollapsed, false);
-        s.Set(Platform.Keys.DetailLikedRailWidth, Platform.Keys.DetailLikedRailWidth.Default);
-        s.Set(Platform.Keys.DetailLikedRailCollapsed, false);
-        s.Set(Platform.Keys.DetailShowRailWidth, Platform.Keys.DetailShowRailWidth.Default);
-        s.Set(Platform.Keys.DetailShowRailCollapsed, false);
-        Prefs.DetailHero.Bump();
+        DetailRailPrefs.ResetAll();
         Bump();
     }
 

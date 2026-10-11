@@ -1,0 +1,68 @@
+// ── Entities/LibraryViewPrefs.cs ───────────────────────────────────────────────────────────────────────────────────────
+// the library page's per-kind view state as a typed pref: column widths, sort, direction, view, size, selection, the
+// artists' scope and reader sort — one record read at mount, one verb per writer
+//
+// Role: CORE
+// Spec: docs/themes/plan/technical-plan.md §5.1 C16 (X41); library-rework-implementation.md §5.3
+//
+// The persisted shape is `Platform.Keys.Library*(kind)` (`library.<kind>.*`, built per kind by the keys themselves; the
+// string shape is persisted and never changes). The page used to read and write each key by hand in its constructor and
+// its `SaveState`; this is the ONE door, so a library page in any theme seeds and persists the same keys the same way.
+//
+// ORPHANED KEYS (do NOT route them here): `library.<kind>.album.desc` / `.album.view` / `.album.size` are defined in
+// `Platform.Keys` but no longer read or written (the discography grid they steered is deleted). `library.<kind>.album.sort`
+// IS live: it is where `Artist.Reader`'s own sort persists (`AlbumSort` below).
+
+namespace Wavee;
+
+/// <summary>One library kind's persisted view. <see cref="LeftW"/> and <see cref="MidW"/> are READ here but written by
+/// their own verbs (<see cref="LibraryViewPrefs.SetLeftW"/>, <see cref="LibraryViewPrefs.SetMidW"/>: a column drag commits
+/// them on release), never by <see cref="LibraryViewPrefs.Save"/>. <see cref="Scope"/> (0 in your library · 1 all
+/// releases), <see cref="AlbumKey"/> and <see cref="AlbumSort"/> are the artists' reader's and are persisted only for it.</summary>
+public readonly record struct LibraryViewState(
+    float LeftW, float MidW, int Sort, bool Desc, int View, int Size,
+    string SelectedKey, string AlbumKey, int Scope, int AlbumSort);
+
+public static class LibraryViewPrefs
+{
+    /// <summary>The kind's persisted view: every key at its stored value, else the key's own per-kind default.</summary>
+    public static LibraryViewState Read(string kind)
+    {
+        var s = Platform.Settings;
+        return new LibraryViewState(
+            LeftW: s.Get(Platform.Keys.LibraryLeftW(kind)),
+            MidW: s.Get(Platform.Keys.LibraryMidW(kind)),
+            Sort: s.Get(Platform.Keys.LibrarySort(kind)),
+            Desc: s.Get(Platform.Keys.LibraryDesc(kind)),
+            View: s.Get(Platform.Keys.LibraryView(kind)),
+            Size: s.Get(Platform.Keys.LibrarySize(kind)),
+            SelectedKey: s.Get(Platform.Keys.LibrarySelected(kind)),
+            AlbumKey: s.Get(Platform.Keys.LibraryAlbumKey(kind)),
+            Scope: s.Get(Platform.Keys.LibraryScope(kind)),
+            AlbumSort: s.Get(Platform.Keys.LibraryAlbumSort(kind)));
+    }
+
+    /// <summary>The nav column's width, committed on release of its grip.</summary>
+    public static void SetLeftW(string kind, float width) => Platform.Settings.Set(Platform.Keys.LibraryLeftW(kind), width);
+
+    /// <summary>The middle column's width (the search shapes' third column), committed on release of its grip.</summary>
+    public static void SetMidW(string kind, float width) => Platform.Settings.Set(Platform.Keys.LibraryMidW(kind), width);
+
+    /// <summary>Persist the view state (sort, direction, view, size, selection). The artists' reader keys (album key,
+    /// scope, reader sort) follow only when <paramref name="artists"/> — the other kinds never touch them. The widths are
+    /// not written here (see <see cref="LibraryViewState"/>). Every key is written whether or not it changed, as the page
+    /// always did.</summary>
+    public static void Save(string kind, in LibraryViewState state, bool artists)
+    {
+        var s = Platform.Settings;
+        s.Set(Platform.Keys.LibrarySort(kind), state.Sort);
+        s.Set(Platform.Keys.LibraryDesc(kind), state.Desc);
+        s.Set(Platform.Keys.LibraryView(kind), state.View);
+        s.Set(Platform.Keys.LibrarySize(kind), state.Size);
+        s.Set(Platform.Keys.LibrarySelected(kind), state.SelectedKey);
+        if (!artists) return;
+        s.Set(Platform.Keys.LibraryAlbumKey(kind), state.AlbumKey);
+        s.Set(Platform.Keys.LibraryScope(kind), state.Scope);
+        s.Set(Platform.Keys.LibraryAlbumSort(kind), state.AlbumSort);
+    }
+}
