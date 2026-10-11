@@ -429,6 +429,19 @@ public sealed class OmnibarModel : IOmnibarVerbs
     /// <summary>The popup closed: no row is selected.</summary>
     public void ResetHighlight() => Highlight.Value = -1;
 
+    /// <summary>The root that mounted the omnibar's forms is going away (a root remount, <c>RootScope</c>): put back the facts only
+    /// a MOUNTED form can truth-tell about: the caret is nowhere, the icon-mode flyout is closed, no row is selected, and a focus
+    /// ticket asked before the remount (<paramref name="currentTicket"/> is <c>Shell.SearchFocusRequest</c> now) is never acted on by
+    /// the new forms. The typed text (<c>Shell.SearchText</c>) and the suggestion store (<see cref="Query"/>) are PROCESS state and
+    /// stay: a re-mount finds a Pending generation whose request died and re-issues it (<see cref="NeedsFetch"/>).</summary>
+    public void ResetMountedFacts(int currentTicket)
+    {
+        SearchFocused.SetIfChanged(false);
+        FlyoutOpen.SetIfChanged(false);
+        Highlight.SetIfChanged(-1);
+        if (currentTicket > _focusTicketHandled) _focusTicketHandled = currentTicket;
+    }
+
     // ── IOmnibarVerbs ────────────────────────────────────────────────────────────────────────────────────────────────
 
     public void SetQuery(string text) => _ports.SetSearchText(text);

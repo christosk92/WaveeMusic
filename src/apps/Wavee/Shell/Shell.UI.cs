@@ -100,12 +100,19 @@ public static partial class Shell
     /// the content host reports every route it activates here. Null = nobody is attributing frames.</summary>
     public static Action<Route>? RouteNoted;
 
+    // The frame's context captures and node handles are ROOT-LIFETIME state (RootScope.cs): each belongs to the tree that
+    // mounted it, so a root remount starts them empty and nothing in the new tree can point at a node of the frozen one.
+    static readonly RootState<InputHooks?> s_hooksState = new("Shell.Hooks");
+    static readonly RootState<SceneStore?> s_sceneState = new("Shell.Scene");
+    static readonly RootState<NodeHandle> s_contentRegionState = new("Shell.ContentRegion");
+    static readonly RootState<NodeHandle> s_sidebarColumnState = new("Shell.SidebarColumn");
+
     /// <summary>The frame's context captures, read by the static key handlers and verbs (never a render input).</summary>
-    static InputHooks? s_hooks;
-    static SceneStore? s_scene;
-    static NodeHandle s_contentRegion;
+    static InputHooks? s_hooks { get => s_hooksState.Value; set => s_hooksState.Value = value; }
+    static SceneStore? s_scene { get => s_sceneState.Value; set => s_sceneState.Value = value; }
+    static NodeHandle s_contentRegion { get => s_contentRegionState.Value; set => s_contentRegionState.Value = value; }
     /// <summary>The sidebar column's node, read only by the pane-invariant probe (never a render input).</summary>
-    static NodeHandle s_sidebarColumn;
+    static NodeHandle s_sidebarColumn { get => s_sidebarColumnState.Value; set => s_sidebarColumnState.Value = value; }
 
     /// <summary>The shell MATERIAL cell the page tints publish into (provided through <see cref="ShellMaterial.Slot"/>)
     /// and the neutral owner the content host claims it with for every route that has no colour of its own.</summary>
@@ -211,8 +218,18 @@ public static partial class Shell
         bool _railWas = Ui.RailOpen.Peek();
         Video.DockedHost _hostWas = Video.DockedHost.Rail;
 
+        /// <summary>This root's state scope (<see cref="RootScope"/>): adopted at the first render, ended by the unmount cleanup of
+        /// the process-lifetime effect below. A theme switch unmounts this component and mounts a new one.</summary>
+        RootScope? _scope;
+
         public override Element Render()
         {
+            if (_scope is null)
+            {
+                _scope = RootScope.Begin();
+                // The omnibar model is process state; the facts its mounted forms hold go with this root.
+                _scope.OnDispose(static () => s_omnibar.ResetMountedFacts(SearchFocusRequest.Peek()));
+            }
             s_hooks = UseContext(InputHooks.Current);
             s_scene = Context.Scene;
             Appearance.BindTransition(UseContext(ThemeControl.Request));
@@ -303,6 +320,7 @@ public static partial class Shell
             UseSignalEffect(() => ZoomService.PersistSettled(zoomSettled.Value));
 
             // ── the process-lifetime subscriptions (stage-2 wiring, owner-I report) ──
+            var rootScope = _scope;
             UseEffect(() =>
             {
                 var hooks = s_hooks;
@@ -329,6 +347,7 @@ public static partial class Shell
                     FluentApp.SystemColorsChanged -= onColors;
                     if (hooks is not null && ReferenceEquals(hooks.ZoomWheel, onWheel)) hooks.ZoomWheel = null;
                     if (ReferenceEquals(Diagnostics.SidebarPaneFrame, s_paneFrame)) Diagnostics.SidebarPaneFrame = null;
+                    RootScope.End(rootScope);   // LAST: the root-lifetime state (handles, overlays, pivots) goes with this tree
                 };
             }, DepKey.Empty);
 
@@ -1008,9 +1027,12 @@ public static partial class Shell
     static readonly Edges4 ChromeButtonMargin = new(2f, 0f, 2f, 0f);
 
     /// <summary>The strip's natural content extent (quantised), fed back into the chrome allocator.</summary>
-    static readonly Signal<float> s_tabExtent = new(Layout.ChromeTabMinW);
+    static readonly RootState<Signal<float>> s_tabExtentState = new("Shell.TabExtent", static () => new Signal<float>(Layout.ChromeTabMinW));
+    /// <summary>The tab strip's measured content extent (root-lifetime: the new root's strip measures itself again).</summary>
+    static Signal<float> s_tabExtent => s_tabExtentState.Value;
 
-    static TabStrip? s_strip;
+    static readonly RootState<TabStrip?> s_stripState = new("Shell.TabStrip");
+    static TabStrip? s_strip { get => s_stripState.Value; set => s_stripState.Value = value; }
 
     /// <summary>The title bar's pane toggle reads this for its enabled state (see <see cref="PaneToggleTip"/>). A plain
     /// signal mirrored by the frame component, so the bar's live binding needs no runtime at construction.</summary>

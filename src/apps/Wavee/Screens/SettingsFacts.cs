@@ -111,18 +111,24 @@ public sealed class LiveSettingsFacts : ISettingsFacts
 }
 
 /// <summary>What the settings page hands its verbs from the component context (the overlay host, the input hooks, the UI
-/// poster): published once per render by the page, read by the verbs. These were page statics of the view.</summary>
+/// poster): published once per render by the page, read by the verbs. These were page statics of the view. ROOT-LIFETIME state
+/// (<see cref="RootScope"/>): they belong to the mounted root, so a remounted root starts unbound (the verbs fall back to the
+/// inline poster and the engine defaults) until its own Settings page renders.</summary>
 public static class SettingsContext
 {
-    public static FluentGpu.Controls.IOverlayService? Overlay { get; private set; }
-    public static FluentGpu.Hooks.InputHooks? Hooks { get; private set; }
-    public static Action<Action> Post { get; private set; } = static a => a();
+    static readonly RootState<FluentGpu.Controls.IOverlayService?> s_overlay = new("Settings.Context.Overlay");
+    static readonly RootState<FluentGpu.Hooks.InputHooks?> s_hooks = new("Settings.Context.Hooks");
+    static readonly RootState<Action<Action>> s_post = new("Settings.Context.Post", static () => static a => a());
+
+    public static FluentGpu.Controls.IOverlayService? Overlay => s_overlay.Value;
+    public static FluentGpu.Hooks.InputHooks? Hooks => s_hooks.Value;
+    public static Action<Action> Post => s_post.Value;
 
     public static void Bind(FluentGpu.Controls.IOverlayService overlay, FluentGpu.Hooks.InputHooks hooks, Action<Action> post)
     {
-        Overlay = overlay;
-        Hooks = hooks;
-        Post = post;
+        s_overlay.Value = overlay;
+        s_hooks.Value = hooks;
+        s_post.Value = post;
     }
 }
 

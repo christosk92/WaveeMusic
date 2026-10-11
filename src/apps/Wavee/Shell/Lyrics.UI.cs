@@ -170,7 +170,8 @@ public static partial class Lyrics
         // `internal` accessors, not switches: the probe drives the media clock SYNCHRONOUSLY so a line advance and the
         // frame that records it are the same frame, and the autonomous stepper stays unmounted under it.
         internal static bool ProbeSyncMode = false;   // set by the probe entry (Wave 6)
-        internal static ViewCore? ProbeActive;
+        static readonly RootState<ViewCore?> s_probeActive = new("Lyrics.ProbeActive");   // ROOT-LIFETIME (RootScope.cs): a component of the mounted tree
+        internal static ViewCore? ProbeActive { get => s_probeActive.Value; set => s_probeActive.Value = value; }
         internal void ProbeStep(long nowMs) => OnFrame(forceVisual: true, probeNowMs: nowMs);
         internal void ProbeForceSnapped() => _scrollSnapped = true;
         internal NodeHandle ProbeViewport => _viewportNode;

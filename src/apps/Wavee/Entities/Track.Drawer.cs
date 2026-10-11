@@ -57,8 +57,11 @@ public readonly partial struct Track
     public static readonly Func<Track, int, Element?> DrawerSeam =
         static (t, _) => Drawer(t, new DrawerOptions(AddedAt: 0, AddedBy: default, ShowAlbum: true));
 
-    /// <summary>The overlay host the format ladder and the credits sheet open on; null ⇒ both are inert, never a crash.</summary>
-    public static IOverlayService? DrawerOverlay { get; set; }
+    /// <summary>The overlay host the format ladder and the credits sheet open on; null ⇒ both are inert, never a crash.
+    /// ROOT-LIFETIME state (<see cref="RootScope"/>): the host belongs to the mounted root, so a remounted root starts with none
+    /// until its first page publishes its own.</summary>
+    public static IOverlayService? DrawerOverlay { get => s_drawerOverlay.Value; set => s_drawerOverlay.Value = value; }
+    static readonly RootState<IOverlayService?> s_drawerOverlay = new("Track.DrawerOverlay");
 
     /// <summary>The "View credits" sheet (ch 01 W27). A no-op without an overlay host.</summary>
     public static void OpenCredits(Track t)

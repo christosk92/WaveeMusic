@@ -64,7 +64,8 @@ public static partial class Setup
     public static void RequestSignIn() => Spotify.SignIn.Requests.Value = Spotify.SignIn.Requests.Peek() + 1;
 
     /// <summary>The open surface, or null. UI THREAD.</summary>
-    static OverlayHandle? s_signIn;
+    static readonly RootState<OverlayHandle?> s_signInState = new("Setup.SignInDoor");   // ROOT-LIFETIME (RootScope.cs)
+    static OverlayHandle? s_signIn { get => s_signInState.Value; set => s_signInState.Value = value; }
 
     const string SpotifySignUpUrl = "https://www.spotify.com/signup";
     const string SpotifyPremiumUrl = "https://www.spotify.com/premium/";
@@ -415,7 +416,8 @@ public static partial class Setup
     // loader and the crash-consent verb are CORE, in `WizardModel.cs` (C14). This file keeps the overlay handle, the plate,
     // the footer and the pages.
 
-    static OverlayHandle? s_wizard;
+    static readonly RootState<OverlayHandle?> s_wizardState = new("Setup.WizardPlate");   // ROOT-LIFETIME (RootScope.cs); the once-per-launch latch and the session are WizardModel's (process)
+    static OverlayHandle? s_wizard { get => s_wizardState.Value; set => s_wizardState.Value = value; }
 
     /// <summary>Zero-size chrome, mounted in the overlay layer FIRST (before the report and after-update chromes). Once per
     /// launch it opens the plate when the boot decision (<see cref="Wizard.Due"/>) says the wizard is due: <c>setup.pending</c>

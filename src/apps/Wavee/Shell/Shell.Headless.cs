@@ -198,7 +198,8 @@ public static partial class Shell
             {
                 Host.FrameCompleted -= s_frameTick;
                 _seams.Restore();
-                Host.Dispose();
+                Host.Dispose();   // unmounts the tree: the frame's cleanup ends its RootScope
+                RootScope.EndMounted();   // belt: a mount never leaves a mounted scope behind, whatever the tree's cleanup did
                 _app.Dispose();
                 Headless.Unmounted(this);
             }

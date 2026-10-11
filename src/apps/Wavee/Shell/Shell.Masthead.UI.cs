@@ -223,6 +223,26 @@ public static partial class Shell
     /// <summary>Ask the omnibar for keyboard focus (Ctrl+F — <see cref="IFrameVerbs.FocusSearch"/>).</summary>
     internal static void FocusSearch() => s_omnibar.Focus();
 
+    // ── test-only seam (RootScopeTests) ─────────────────────────────────────────────────────────────────────────────
+    //
+    // Wavee.ShellTests has no InternalsVisibleTo, so this is public (the repo's `*ForTests` convention, see Shell.cs). It
+    // reads and writes the facts only a MOUNTED omnibar form holds, which `RootScope` puts back when its root unmounts.
+    // Never called from production code.
+    /// <summary>The omnibar facts a mounted form holds (see <see cref="OmnibarModel.ResetMountedFacts"/>).</summary>
+    public readonly record struct OmnibarFacts(bool SearchFocused, bool FlyoutOpen, int Highlight);
+
+    /// <summary>The omnibar facts now.</summary>
+    public static OmnibarFacts OmnibarFactsForTests()
+        => new(s_omnibar.SearchFocused.Peek(), s_omnibar.FlyoutOpen.Peek(), s_omnibar.Highlight.Peek());
+
+    /// <summary>Write the facts a mounted form would (the caret in the field, the flyout open, a row highlighted).</summary>
+    public static void SetOmnibarFactsForTests(OmnibarFacts facts)
+    {
+        s_omnibar.SearchFocused.SetIfChanged(facts.SearchFocused);
+        s_omnibar.FlyoutOpen.SetIfChanged(facts.FlyoutOpen);
+        s_omnibar.Highlight.SetIfChanged(facts.Highlight);
+    }
+
     /// <summary>The bar's flexible centre column: the field in Field mode, nothing in Icon mode (the icon sits in the
     /// caption-leading island). <paramref name="avail"/> is the bar's LIVE centre measurement.
     /// <para>This is the ONE mount/unmount decision for the field, and it reads the same <see cref="SearchMode"/> the
@@ -524,8 +544,12 @@ public static partial class Shell
         const float ProgressSlotHeight = 3f;
 
         // The previous answer's row counts (UI thread only): what a Pending body reserves while nothing is on screen.
-        static int s_lastQueryRows, s_lastRichRows;
-        static bool s_lastWasNotice;   // the last settled answer was Empty / Failed: one notice slot high
+        // ROOT-LIFETIME (RootScope.cs): what the MOUNTED popup measured; a remounted root starts with the typical-answer default.
+        sealed class AnswerMemory { public int QueryRows, RichRows; public bool WasNotice; }
+        static readonly RootState<AnswerMemory> s_answerMemory = new("Omnibar.AnswerMemory", static () => new AnswerMemory());
+        static int s_lastQueryRows { get => s_answerMemory.Value.QueryRows; set => s_answerMemory.Value.QueryRows = value; }
+        static int s_lastRichRows { get => s_answerMemory.Value.RichRows; set => s_answerMemory.Value.RichRows = value; }
+        static bool s_lastWasNotice { get => s_answerMemory.Value.WasNotice; set => s_answerMemory.Value.WasNotice = value; }   // the last settled answer was Empty / Failed: one notice slot high
 
         /// <summary>The popup root's height motion (Reflow on the height axis): rows arriving or leaving ease the card, and
         /// the top edge never moves. Standard / FluentDecelerate; the call site passes null under reduced motion.</summary>

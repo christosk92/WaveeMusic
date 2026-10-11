@@ -6,7 +6,7 @@
 // open a transient hand its handle to `Track`; `CloseTransients(except)` is the verb. Nothing calls it yet (the theme
 // transaction lands in P3), so opening and closing behave exactly as before.
 //
-// UI thread only, like every overlay handle.
+// UI thread only, like every overlay handle. The set is ROOT-LIFETIME (RootScope.cs).
 
 using FluentGpu.Controls;
 
@@ -17,8 +17,12 @@ public sealed class OverlayService
 {
     readonly List<OverlayHandle> _transients = new();
 
-    /// <summary>The process-wide set the shell's popup sites register with.</summary>
-    public static OverlayService Shared { get; } = new();
+    static readonly RootState<OverlayService> s_shared = new("Shell.TransientOverlays", static () => new OverlayService());
+
+    /// <summary>The set the shell's popup sites register with. ROOT-LIFETIME state (<see cref="RootScope"/>): the handles belong
+    /// to the mounted root's overlay host, so a remounted root starts with an empty set and never closes (or holds) a handle of
+    /// the frozen tree.</summary>
+    public static OverlayService Shared => s_shared.Value;
 
     /// <summary>Register a transient popup's handle (see <see cref="Add"/>) on the shared set.</summary>
     public static void Track(OverlayHandle handle) => Shared.Add(handle);

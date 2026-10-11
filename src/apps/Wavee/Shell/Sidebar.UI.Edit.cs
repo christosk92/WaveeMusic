@@ -26,7 +26,8 @@ public static partial class Sidebar
     internal sealed class EditPane(PaneView owner) : Component
     {
         /// <summary>The mounted pane: the section chip's titles read its band through this static resolver.</summary>
-        static EditPane? s_active;
+        static readonly RootState<EditPane?> s_activeState = new("Sidebar.EditPane");
+        static EditPane? s_active { get => s_activeState.Value; set => s_activeState.Value = value; }
         static readonly Func<DragState, DragChipSpec?> s_sectionChip = SectionChip;
         static readonly DragVisualStyle s_stationary = new() { Lift = DragLift.Stationary, Opacity = FluentGpu.Controls.Drag.SourceDimOpacity };
 

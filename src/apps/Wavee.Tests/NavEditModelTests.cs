@@ -93,6 +93,7 @@ public sealed class NavEditModelTests : IDisposable
     [Fact]
     public void Showing_a_section_with_nothing_in_it_is_allowed_and_remembered_for_done()
     {
+        Sidebar.EnterEdit();   // the Show checkboxes live in Edit; the fixture's ExitEdit takes whatever note is left
         Assert.True(_edit.HasNothingToShow(SidebarSectionKind.Pinned));
         Assert.False(_edit.HasNothingToShow(SidebarSectionKind.Collections));   // its items are the catalogue's
 
@@ -107,6 +108,7 @@ public sealed class NavEditModelTests : IDisposable
     [Fact]
     public void Hiding_another_section_leaves_the_note_alone()
     {
+        Sidebar.EnterEdit();
         _edit.SetSectionShown(SidebarLayoutId.Classic, "recent", SidebarSectionKind.Recent, "Recently played", shown: true);
         _edit.SetSectionShown(SidebarLayoutId.Classic, "collections", SidebarSectionKind.Collections, "Collections", shown: false);
 

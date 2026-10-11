@@ -116,7 +116,8 @@ public readonly partial struct Playlist
 
     /// <summary>The overlay the last mounted playlist page saw — where a context-menu verb with no overlay seam of its
     /// own (rename, invite, the picker) opens (<see cref="ActionServices"/> carries none; see the report's gaps).</summary>
-    static IOverlayService? s_overlay;
+    static readonly RootState<IOverlayService?> s_overlayState = new("Playlist.Overlay");   // ROOT-LIFETIME (RootScope.cs)
+    static IOverlayService? s_overlay { get => s_overlayState.Value; set => s_overlayState.Value = value; }
 
     static IOverlayService? ActionOverlay => !Controls.IsNullOverlay(s_overlay) ? s_overlay
                                            : !Controls.IsNullOverlay(Track.DrawerOverlay) ? Track.DrawerOverlay : null;

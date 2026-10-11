@@ -18,7 +18,10 @@ namespace Wavee;
 /// <summary>The teaching-tip presenter.</summary>
 public static class TipService
 {
-    static OverlayHandle? s_tipHandle;
+    // ROOT-LIFETIME (RootScope.cs): the slot holds the open tip's handle, which belongs to the mounted root's overlay host.
+    // `Shell.Tips.Active` ("one tip at a time") is process state, so a retiring root takes its tip down without acknowledging.
+    static readonly RootState<OverlayHandle?> s_tipHandleState = new("Shell.TipHandle");
+    static OverlayHandle? s_tipHandle { get => s_tipHandleState.Value; set => s_tipHandleState.Value = value; }
 
     /// <summary>Arm tip <paramref name="tipId"/> against <paramref name="anchor"/>, scheduled for after the next PAINTED
     /// frame. Returns true when the gate passed. Safe to call every render: the per-launch latch makes repeats no-ops.</summary>
@@ -50,6 +53,7 @@ public static class TipService
             });
             if (!handle.IsOpen) { Shell.Tips.Dismiss(tipId); return; }
             s_tipHandle = handle;
+            RootScope.Current.OnDispose(() => Shell.Tips.Dismiss(tipId));
             OverlayService.Track(handle);
             // Every close path — the X, Close, the host's orphaned-anchor prune — releases the one slot.
             handle.ClosedAction = () =>

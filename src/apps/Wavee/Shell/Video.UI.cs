@@ -83,8 +83,10 @@ public static partial class Video
 
     /// <summary>The live docked reservation node (UI thread; written at its realize, cleared at its unmount). The overlay's
     /// engine <c>FollowRect</c> answers it while the placement is docked. A freed node reads as "nothing to follow", so a
-    /// stale value across a remount is harmless: the overlay then keeps its last placed geometry.</summary>
-    static NodeHandle s_dockedReservation;
+    /// stale value across a remount is harmless: the overlay then keeps its last placed geometry. ROOT-LIFETIME state
+    /// (<see cref="RootScope"/>): the node belongs to the mounted root's tree, so a remounted root starts with none.</summary>
+    static readonly RootState<NodeHandle> s_dockedReservationState = new("Video.DockedReservation");
+    static NodeHandle s_dockedReservation { get => s_dockedReservationState.Value; set => s_dockedReservationState.Value = value; }
 
     /// <summary>The overlay's <c>FollowRect</c>: ONE cached delegate (a fresh closure per render would re-diff the box). It
     /// reads the placement with <c>Peek</c> because the engine runs it outside any reactive scope.</summary>
@@ -727,7 +729,8 @@ public static partial class Video
                 State.ReportLive(SurfacePlacement.Docked, false);
                 // Release OUR reservation only if a newer face has not already registered its own. Then (and only then)
                 // is nothing left to cover, so the fallback collapses; a successor keeps the last rect (see DockedSlot).
-                if (!_slot.IsNull && s_dockedReservation == _slot)
+                // (A cleanup that runs after its root's scope ended sees the next scope's empty slot: that is "nothing registered".)
+                if (!_slot.IsNull && (s_dockedReservation == _slot || s_dockedReservation.IsNull))
                 {
                     s_dockedReservation = default;
                     DockedSlot.Value = default;

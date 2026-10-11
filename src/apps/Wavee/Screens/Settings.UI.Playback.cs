@@ -70,9 +70,13 @@ public static partial class Settings
 
     // The "Manage" flyout: its handle, the anchor (a wrapper around the button — Button owns its own root props) and the
     // deep link's deferred open.
-    static OverlayHandle? s_voHandle;
-    static NodeHandle s_voAnchor;
-    static bool s_voOpenPending;
+    // ROOT-LIFETIME (RootScope.cs): the flyout and its anchor belong to the mounted root's tree and overlay host.
+    static readonly RootState<OverlayHandle?> s_voHandleState = new("Settings.VideoOverrides.Handle");
+    static readonly RootState<NodeHandle> s_voAnchorState = new("Settings.VideoOverrides.Anchor");
+    static readonly RootState<bool> s_voOpenPendingState = new("Settings.VideoOverrides.OpenPending");
+    static OverlayHandle? s_voHandle { get => s_voHandleState.Value; set => s_voHandleState.Value = value; }
+    static NodeHandle s_voAnchor { get => s_voAnchorState.Value; set => s_voAnchorState.Value = value; }
+    static bool s_voOpenPending { get => s_voOpenPendingState.Value; set => s_voOpenPendingState.Value = value; }
 
     static partial void SeedPlayback()
     {

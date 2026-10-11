@@ -59,8 +59,10 @@ public static partial class Sidebar
     {
         /// <summary>The overlay host the last sidebar menu opened on (every sidebar menu opener sets it right before it opens:
         /// the pane menu, the seam, a header ⋯, the footer's Settings row, the V3 overflow, the edit bar's Reset ▾) — the
-        /// confirm dialog of a menu verb opens on the same host.</summary>
-        internal static IOverlayService? Overlay;
+        /// confirm dialog of a menu verb opens on the same host. ROOT-LIFETIME state (<see cref="RootScope"/>): the host belongs to
+        /// the mounted root, so a remounted root starts with none until its own menu opens.</summary>
+        static readonly RootState<IOverlayService?> s_overlayState = new("Sidebar.MenuOverlay");
+        internal static IOverlayService? Overlay { get => s_overlayState.Value; set => s_overlayState.Value = value; }
 
         /// <summary>The names of the pins that lock Pinned (the model's rule). Kept as the name <c>Shell.UI.cs</c>'s pane menu calls.</summary>
         internal static IReadOnlyList<string> LockingNames() => NavMenuModel.LockingNames();

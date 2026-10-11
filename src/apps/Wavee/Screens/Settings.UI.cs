@@ -72,7 +72,10 @@ public static partial class Settings
     const float CardSpacing = 4f;
     static Edges4 SectionHeaderMargin => new(0f, Spacing.XXXL, 0f, Spacing.S);
 
-    static readonly Signal<int> s_tab = new(0);
+    // The pivot is ROOT-LIFETIME state (RootScope.cs, owner Q26): a remounted root opens Settings on its first tab, like a fresh
+    // navigation. `Open(tab)` before the first mount writes the ambient scope the root then adopts.
+    static readonly RootState<Signal<int>> s_tabState = new("Settings.Tab", static () => new Signal<int>(0));
+    static Signal<int> s_tab => s_tabState.Value;
     static readonly Signal<int> s_epoch = new(0);
 
     // Published unconditionally by the page render into `SettingsContext` (the verbs read the same values), read by the
