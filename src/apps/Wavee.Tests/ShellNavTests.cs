@@ -1122,6 +1122,8 @@ public class DevicePickerTests
     }
 }
 
+// Claimant keys resolve route args through the process-wide Entities.Strings table, which other suites reset: serial with them.
+[Collection(EntitiesCollection.Name)]
 public class ShellTintOwnershipTests
 {
     [Fact]
