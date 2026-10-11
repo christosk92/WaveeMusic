@@ -154,7 +154,7 @@ public static partial class Shell
     /// <c>Store.Use</c>, no <c>Entities.Boot</c>, no setting written.</para></summary>
     public static bool AcquireInstance()
     {
-        var args = Environment.GetCommandLineArgs();
+        var args = Platform.Args.Argv;
         ParseArgs(args, out int frames, out string? screenshot, out _, out _);
         s_instanceAcquired = true;
         if (screenshot is not null || frames >= 0) return true;   // the harness arms: no gate, same as always
@@ -198,7 +198,7 @@ public static partial class Shell
             throw new InvalidOperationException(
                 "Shell.Run called without Shell.AcquireInstance — the composition root must acquire the single-instance gate before opening the store.");
 
-        var args = Environment.GetCommandLineArgs();
+        var args = Platform.Args.Argv;
         ParseArgs(args, out int frames, out string? screenshot, out int winW, out int winH);
 
         InstallCrashNet();
@@ -228,15 +228,7 @@ public static partial class Shell
         }
 
         SeedTheme();
-        Session.Load();
-        History.Store.Load();
-        PlayLog.Load();
-        RestoreNav();
-        Tips.Load();
-        Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
-        // The play log and the deck document meet playback, then the launch restore — before the first frame, after the
-        // session document is loaded (G-078, G-079; Shell.Host.Deck.cs).
-        AttachPlayback();
+        LoadDocuments();
 
         try
         {
@@ -314,6 +306,21 @@ public static partial class Shell
         }
     }
 
+    /// <summary>The documents the first render reads (the session, history, play log, the restored route, tips), then
+    /// the play log and the deck document meet playback and the launch restore — before the first frame, after the session
+    /// document is loaded (G-078, G-079; Shell.Host.Deck.cs). <see cref="Run"/>'s and the headless host's shared prelude,
+    /// after the theme seed.</summary>
+    static void LoadDocuments()
+    {
+        Session.Load();
+        History.Store.Load();
+        PlayLog.Load();
+        RestoreNav();
+        Tips.Load();
+        Log.Event(WaveeLogLevel.Info, "app", "boot.documents", "", null, Log.SinceStartMs);
+        AttachPlayback();
+    }
+
     static void ParseArgs(string[] args, out int frames, out string? screenshot, out int winW, out int winH)
     {
         frames = -1;
@@ -357,7 +364,7 @@ public static partial class Shell
     public static void InstallMarshallers()
     {
         if (Interlocked.Exchange(ref s_marshallersInstalled, 1) != 0) return;
-        Action<Action> post = static action =>
+        AssignPosters(static action =>
         {
             // END OF THE DRAIN: a posted action commits into the tables, and a table's `Changed` signal fires only in
             // `Entities.Publish` — so every posted action is followed by it, early posts included, or a surface bound to
@@ -367,17 +374,26 @@ public static partial class Shell
             s_earlyPosts.Enqueue(a);
             // The root may have attached between the check and the enqueue: drain through it so nothing strands.
             if (s_uiPost is { } late) DrainEarlyPosts(late);
-        };
+        });
+        AiLyrics.Install(s_marshal!);     // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
+        Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
+        FluentApp.FrameCompleted += s_frameTick;
+    }
+
+    /// <summary>Point every cross-thread seam at <paramref name="post"/>: the four core seams, the lyrics store, the Store
+    /// shot, the sidebar store, the planner's drain wake and this file's own timers (<see cref="s_marshal"/>). The GUI
+    /// assigns them once (<see cref="InstallMarshallers"/>); the headless host assigns its host's poster per mount and
+    /// puts the previous values back on dispose (<see cref="PosterSeams"/>).</summary>
+    static void AssignPosters(Action<Action> post)
+    {
         Playback.ToUi = post;
         Spotify.Post = post;
         Store.Post = post;
         Wavee.Palette.Post = post;
         Lyrics.Store.ToUi = post;         // the lyrics document store's UI-thread hop (G-008)
-        AiLyrics.Install(post);           // on-device AI lyrics: the boot scan (NPU, installed files) runs off the UI thread
         Diagnostics.StoreShot.ToUi = post;   // the Store shot's settle timer lands back on the UI thread
         s_marshal = post;
         Sidebar.Activate(post);          // the sidebar store's write completions and the binder's publishes land on the UI thread
-        Residency.Install();             // the memory governor's two arenas (Platform/Residency.Pins.cs) — idempotent, pre-boot safe
 
         // THE planner's wake for an owed drain (wave D4). `Fetch.Drain()` below sends what a tick's `Ensure`s bucketed —
         // but it rides the RENDERED frame, and an ask made outside one (a posted answer's re-plan, a session event, a
@@ -387,36 +403,64 @@ public static partial class Shell
         // anyway drains at `FrameCompleted` first and the posted drain finds nothing owed (two bool compares). The
         // lambda is static and `s_drainWake` is one cached delegate; the post reuses the pooled `PublishAfter` wrapper.
         Fetch.WakeForDrain = static () => s_marshal?.Invoke(s_drainWake);
+    }
 
-        // THE frame tick. `Fetch.Drain()` sends the tick's buckets — one request per shape, however many `Ensure`s
-        // filled it — and re-tries a bucket the online gate is holding; `Palette.Tick()` is how the grading debounce
-        // fires; both are two comparisons when idle. An expired fetch backoff re-sends through the idle wake below
-        // (`ArmFetchWake`, re-armed at the end of every tick), rendering or not. It rides the host's per-RENDERED-frame
-        // relay, so an idle window (no frames) ticks nothing — a palette deadline that lands while idle is served on the
-        // next frame, which that layer documents as a delay, never a loss. The lambda is static: zero allocation per
-        // frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit: `ScrollActive` —
-        // was any viewport in user-driven motion this frame or the last (`AppHost.AnyUserScrollMoving`).
-        FluentApp.FrameCompleted += static stats =>
+    /// <summary>The values <see cref="AssignPosters"/> replaces, captured so the headless host can restore them when a
+    /// mount ends: a seam left pointing at a disposed host would drop every later post.</summary>
+    readonly record struct PosterSeams(Action<Action> PlaybackToUi, Action<Action> SpotifyPost, Action<Action> StorePost,
+        Action<Action> PalettePost, Action<Action> LyricsToUi, Action<Action> StoreShotToUi, Action<Action>? Marshal,
+        Action<Action> SidebarToUi, Action? WakeForDrain)
+    {
+        public static PosterSeams Capture() => new(Playback.ToUi, Spotify.Post, Store.Post, Wavee.Palette.Post, Lyrics.Store.ToUi,
+            Diagnostics.StoreShot.ToUi, s_marshal, Sidebar.ToUi, Fetch.WakeForDrain);
+
+        public void Restore()
         {
-            // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
-            // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
-            Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-            Fetch.Drain();
-            // The scroll bit, and its FALLING edge: the palette pump does not re-arm itself while a scroll is live
-            // (PublishCadence.PalettePumpAllowed), so the rows it left queued are picked up here, once, when the
-            // scroll ends. Read before the publish so the edge frame publishes as a non-scroll frame.
-            bool wasScrolling = ScrollActive;
-            ScrollActive = stats.ScrollActive;
-            if (wasScrolling && !stats.ScrollActive) Wavee.Palette.ResumeIfPending();
-            // A write made by a UI event handler (not a posted action) is published here, on the frame it rendered —
-            // on the cadence: every frame when no scroll is live, every 4th frame / 50 ms while one is (W2-A1). The
-            // tables already hold the data; only the `Changed` fan-out waits.
-            PublishOnCadence();
-            Lyrics.Requests.AfterPublish();
-            Wavee.Palette.Tick();
-            Store.FlushPalette();
-            ArmFetchWake();
-        };
+            Playback.ToUi = PlaybackToUi;
+            Spotify.Post = SpotifyPost;
+            Store.Post = StorePost;
+            Wavee.Palette.Post = PalettePost;
+            Lyrics.Store.ToUi = LyricsToUi;
+            Diagnostics.StoreShot.ToUi = StoreShotToUi;
+            s_marshal = Marshal;
+            Sidebar.Activate(SidebarToUi);
+            Fetch.WakeForDrain = WakeForDrain;
+        }
+    }
+
+    static readonly Action<FrameStats> s_frameTick = FrameTick;
+
+    // THE frame tick. `Fetch.Drain()` sends the tick's buckets — one request per shape, however many `Ensure`s
+    // filled it — and re-tries a bucket the online gate is holding; `Palette.Tick()` is how the grading debounce
+    // fires; both are two comparisons when idle. An expired fetch backoff re-sends through the idle wake below
+    // (`ArmFetchWake`, re-armed at the end of every tick), rendering or not. It rides the host's per-RENDERED-frame
+    // relay, so an idle window (no frames) ticks nothing — a palette deadline that lands while idle is served on the
+    // next frame, which that layer documents as a delay, never a loss. The delegate is cached (`s_frameTick`): zero allocation per
+    // frame. The payload is the engine's `FrameStats` (`Action<FrameStats>`), read here for ONE bit: `ScrollActive` —
+    // was any viewport in user-driven motion this frame or the last (`AppHost.AnyUserScrollMoving`).
+    /// <summary>THE frame tick: the planner's clock and drain, the scroll edge, the publish cadence, the palette pump.
+    /// Raised at the end of every rendered frame — by <c>FluentApp.FrameCompleted</c> in the GUI, by the mounted host's
+    /// <c>AppHost.FrameCompleted</c> under the headless shell host. UI THREAD.</summary>
+    public static void FrameTick(FrameStats stats)
+    {
+        // The planner's clock (app seconds) FIRST: nothing else in the GUI moves `Entities.Now`, so without this a
+        // fetch backoff never expires in the app (the headless host's tick does the same, Diagnostics.Probe.cs).
+        Entities.Now = Store.ToApp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        Fetch.Drain();
+        // The scroll bit, and its FALLING edge: the palette pump does not re-arm itself while a scroll is live
+        // (PublishCadence.PalettePumpAllowed), so the rows it left queued are picked up here, once, when the
+        // scroll ends. Read before the publish so the edge frame publishes as a non-scroll frame.
+        bool wasScrolling = ScrollActive;
+        ScrollActive = stats.ScrollActive;
+        if (wasScrolling && !stats.ScrollActive) Wavee.Palette.ResumeIfPending();
+        // A write made by a UI event handler (not a posted action) is published here, on the frame it rendered —
+        // on the cadence: every frame when no scroll is live, every 4th frame / 50 ms while one is (W2-A1). The
+        // tables already hold the data; only the `Changed` fan-out waits.
+        PublishOnCadence();
+        Lyrics.Requests.AfterPublish();
+        Wavee.Palette.Tick();
+        Store.FlushPalette();
+        ArmFetchWake();
     }
 
     // ── the publish cadence (W2-A1) ─────────────────────────────────────────────────────────────────────────────────
@@ -623,7 +667,7 @@ public static partial class Shell
     static void ArmJumpList()
     {
         // The jump list is keyed by the app's AUMID — shared with the user's Wavee: a --profile instance leaves it alone.
-        if (s_jumpList is not null || !Playback.Os.JumpList.OwnsList(Platform.ProfileRoot)) return;
+        if (s_jumpList is not null || s_headless || !Playback.Os.JumpList.OwnsList(Platform.ProfileRoot)) return;
         s_jumpList = new System.Threading.Timer(static _ => s_marshal?.Invoke(static () => Playback.Os.JumpList.Attach(
                 recentContexts: static max => PlayLog.RecentContexts(max),
                 recentSurfaces: static max => History.RecentSurfaces(History.Store.Entries, max))),
@@ -1042,6 +1086,15 @@ public static partial class Shell
     {
         public override Element Render()
         {
+            RootServices();
+            return RootFrame();
+        }
+
+        /// <summary>What the GUI root adds around the frame: the UI poster hand-over and the root's process-level effects.
+        /// The headless shell host mounts <see cref="RootFrame"/> without these (its host owns the posters, and none of
+        /// these services runs in a test process).</summary>
+        void RootServices()
+        {
             // The first render is the earliest point the engine's poster exists; the marshallers queued until now.
             AttachUiPoster(UsePost());
             // The notification-area icon. A SIGNAL effect, not a passive one: it runs NOW, inside the root mount on the
@@ -1065,9 +1118,12 @@ public static partial class Shell
             // the UI thread and only post work; nothing here waits.
             UseSignalEffect(AiLyrics.DriverPlayhead);
             UseSignalEffect(AiLyrics.DriverEvaluate);
-            return RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
         }
     }
+
+    /// <summary>The window's content: <see cref="RootFactory"/>'s frame (<see cref="Frame"/> once <see cref="InstallUi"/>
+    /// ran), or an empty box before it.</summary>
+    static Element RootFrame() => RootFactory is { } factory ? factory() : new BoxEl { Grow = 1f };
 
     // ══ 6. HISTORY.JSON — the navigation log's store (ch 16) ════════════════════════════════════════════════════════
 

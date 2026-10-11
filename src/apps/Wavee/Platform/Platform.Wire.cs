@@ -122,10 +122,35 @@ public static class Wire
     /// minute, which is its job and not a loop (each is still logged).</summary>
     public static HttpMessageHandler Handler(string client, HttpMessageHandler inner, bool storms = true) => new LoggingHandler(client, inner, storms);
 
+    static int s_offline, s_refused;
+
+    /// <summary>Refuse every request from now on, for the life of the process: each one fails as a dropped connection
+    /// would (<see cref="HttpRequestException"/>) before any byte is sent, and logs one `wire.refused` line. Armed only by
+    /// the shell test host (<c>Shell.Headless.Boot</c>): its `--fake` session still has the live transports behind every
+    /// page the seed does not answer, and a test must never reach Spotify. The `--fake` demo itself stays online (it
+    /// loads the real cover art).</summary>
+    public static void GoOffline() => Volatile.Write(ref s_offline, 1);
+
+    /// <summary>Whether <see cref="GoOffline"/> ran.</summary>
+    public static bool IsOffline => Volatile.Read(ref s_offline) != 0;
+
+    /// <summary>How many requests <see cref="GoOffline"/> has refused.</summary>
+    public static int Refused => Volatile.Read(ref s_refused);
+
+    static HttpRequestException Refuse(string client, HttpRequestMessage request)
+    {
+        Interlocked.Increment(ref s_refused);
+        Log.Info("wire", "wire.refused client=" + client + " "
+            + WireRules.EndpointOf(request.Method.Method, request.RequestUri?.Host ?? "", request.RequestUri?.AbsolutePath ?? "")
+            + " (the shell test host is offline)");
+        return new HttpRequestException("the shell test host is offline");
+    }
+
     sealed class LoggingHandler(string client, HttpMessageHandler inner, bool storms) : DelegatingHandler(inner)
     {
         protected override HttpResponseMessage Send(HttpRequestMessage request, CancellationToken ct)
         {
+            if (IsOffline) throw Refuse(client, request);
             long start = Stopwatch.GetTimestamp();
             long captureId = CaptureBegin(request);
             try
@@ -140,6 +165,7 @@ public static class Wire
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            if (IsOffline) throw Refuse(client, request);
             long start = Stopwatch.GetTimestamp();
             long captureId = CaptureBegin(request);
             try

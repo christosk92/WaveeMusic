@@ -26,7 +26,7 @@
 // GLOBAL STATE, KEPT LOCAL: Shell's route table, AppActions and a handful of cross-cutting seams (Track.MenuSeams,
 // Sidebar.LibraryWrites, ActionServices) are process-wide statics with no reset of their own — Sidebar's profile folder
 // is pointed at the fact's temp folder (`Sidebar.UseProfileDir`), so the real profile is never touched —
-// that is why Diagnostics.Install() is deliberately NOT called here (besides its two SetPage calls it starts a real
+// that is why Diagnostics.InstallServices() is deliberately NOT called here (unlike its page half it starts a real
 // Windows network-cost subscription and a recurring background timer that would outlive this whole test process); its
 // two routes are registered directly, through the exact same public factories it uses. Shell's page table is the one
 // piece every other test in the suite can actually observe (ShellRouteTableTests asserts Settings starts unregistered)
@@ -68,7 +68,7 @@ public sealed class BootOrderingTests : IDisposable
         Track.InstallActions();
         Artist.InstallPages();
         Settings.InstallScreens();
-        // Diagnostics.Install() itself is out of scope (see the file header) — its two routes, through its own public
+        // Diagnostics.InstallPages() keeps a once-per-process latch (see the file header) — its two routes, through its own public
         // factories:
         Shell.SetPage(Shell.RouteKind.PlaybackDiagnostics, static (in Shell.Route _) => Diagnostics.RuntimePage());
         Shell.SetPage(Shell.RouteKind.ConnectDiagnostics, static (in Shell.Route _) => Diagnostics.ConnectPage());

@@ -53,8 +53,9 @@ public static partial class Modules
 
     /// <summary>Discover the modules and compose the host. PRE-LOGIN by design: pasting a YouTube link needs no session.
     /// Nothing is launched until a match, resolve or page needs a module. Under <c>--fake</c> the catalogue is the one
-    /// in-process demo module (ch 31 row 33) — the disk modules would reach the network.</summary>
-    public static void Boot()
+    /// in-process demo module (ch 31 row 33) — the disk modules would reach the network. <paramref name="startIdleTimer"/>
+    /// is false only for the shell test host, whose process outlives every mount the timer would sweep.</summary>
+    public static void Boot(bool startIdleTimer = true)
     {
         if (s_host is not null) return;
         ModuleCatalog catalog;
@@ -74,7 +75,7 @@ public static partial class Modules
         }
 
         var host = new ModuleHost(catalog, CurrentPrefs, new ModuleHostServices(), spawn, Platform.Version.SemVer,
-            Platform.Locale.UiCulture, startIdleTimer: true, dataRoot: dataRoot);
+            Platform.Locale.UiCulture, startIdleTimer: startIdleTimer, dataRoot: dataRoot);
         Attach(host);
         host.MetadataChanged += OnModuleMetadata;
         Fetch.Register(new ModuleFetchProvider());

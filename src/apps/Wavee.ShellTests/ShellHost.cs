@@ -1,0 +1,90 @@
+// ── Wavee.ShellTests/ShellHost.cs — the process's one UI thread, booted once ───────────────────────────────────────
+//
+// xUnit runs facts on pool threads; the shell runs on the thread that booted it (`Shell.Headless`), and the DEBUG
+// settings assert (`Platform.UiThreadId`) tears the whole testhost down on a write from any other. So the assembly
+// fixture owns one dedicated thread: it boots the host there, and every fact marshals its body onto it with `Run`.
+// Facts never run in parallel (assembly attribute below): one mount at a time is the host's own rule.
+
+using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
+using Wavee;
+using Wavee.ShellTests;
+using Xunit;
+
+[assembly: AssemblyFixture(typeof(ShellHost))]
+[assembly: CollectionBehavior(DisableTestParallelization = true)]
+
+namespace Wavee.ShellTests;
+
+public sealed class ShellHost : IDisposable
+{
+    readonly BlockingCollection<Action> _work = new();
+    readonly Thread _thread;
+
+    /// <summary>The temporary profile the host booted against.</summary>
+    public string ProfileDir { get; } = Path.Combine(Path.GetTempPath(), "wavee-shell-tests", Guid.NewGuid().ToString("n"));
+
+    public ShellHost()
+    {
+        _thread = new Thread(Loop) { Name = "wavee-shell-ui", IsBackground = true };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
+        Run(() =>
+        {
+            Shell.Headless.Boot(new Shell.ShellHostOptions(ProfileDir));
+            // The network grader (Palette.Filler) is null under --fake, so no cover is ever graded and no surface that
+            // colours itself from artwork (the shell washes, the tints) would exist. The fixture grades every cover one
+            // colour, from the first frame on: a cover asked while no grader exists is marked failed for good.
+            Palette.Filler = static (uris, _) => Task.FromResult(Array.ConvertAll(uris, static _ => (Palette.Graded?)FixtureGrade));
+        });
+    }
+
+    static readonly Scheme FixtureScheme = new(0xFF2E4A7Au, 0xFF3D5F99u, 0xFFFFFFFFu, 0xFFB3C2DDu, 0xFF8FB8FFu);
+    static readonly Palette.Graded FixtureGrade = new(FixtureScheme, FixtureScheme, HasLight: true, BestFitIsLight: false);
+
+    void Loop()
+    {
+        foreach (var work in _work.GetConsumingEnumerable()) work();
+    }
+
+    /// <summary>Run <paramref name="body"/> on the UI thread and wait for it; its exception is rethrown here.</summary>
+    public void Run(Action body)
+    {
+        ExceptionDispatchInfo? failure = null;
+        using var done = new ManualResetEventSlim();
+        _work.Add(() =>
+        {
+            try { body(); }
+            catch (Exception ex) { failure = ExceptionDispatchInfo.Capture(ex); }
+            finally { done.Set(); }
+        });
+        done.Wait();
+        failure?.Throw();
+    }
+
+    /// <summary>Mount the frame, run <paramref name="body"/> against it and dispose the mount, all on the UI thread. Every
+    /// mount ends with the network guard: one request that left the process fails the fact that made it.</summary>
+    public void Mounted(Action<Shell.HeadlessShell> body, float widthDip = 1180f, float heightDip = 760f)
+        => Run(() =>
+        {
+            using (var shell = Shell.Headless.Mount(widthDip, heightDip)) body(shell);
+            AssertNoNetwork();
+        });
+
+    /// <summary>The host refuses every request (`Wire.GoOffline`), so the `wire` log holds refusals only: any other line
+    /// is a request that was sent.</summary>
+    public static void AssertNoNetwork()
+    {
+        Assert.True(Wire.IsOffline, "the shell test host is not offline");
+        foreach (var entry in Log.Snapshot())
+            if (entry.Category == "wire" && !entry.Message.StartsWith("wire.refused ", StringComparison.Ordinal))
+                Assert.Fail("a request reached the network: " + entry.Message);
+    }
+
+    public void Dispose()
+    {
+        _work.CompleteAdding();
+        _thread.Join(TimeSpan.FromSeconds(10));
+        try { Directory.Delete(ProfileDir, recursive: true); } catch (Exception) { }
+    }
+}

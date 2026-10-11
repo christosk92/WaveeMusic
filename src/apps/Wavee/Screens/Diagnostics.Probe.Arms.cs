@@ -19,7 +19,7 @@
 // WAVEE_LYRICS_ADVANCE_PROBE / WAVEE_BENCH_OUT / WAVEE_PROBE_*_FRAMES; every one is a flag now (`ProbeOptions.Parse`).
 //
 // TWO DOORS. `TryRunCliArm` runs from `Probe.TryRun` before anything else of the arm table (no window: --qr-dump and the
-// broker). `InstallGuiArms` runs once from `Diagnostics.Install()` before `Shell.Run()`: it owns `FluentApp.DiagnosticRun`
+// broker). `InstallGuiArms` runs once from `Diagnostics.InstallServices()` before `Shell.Run()`: it owns `FluentApp.DiagnosticRun`
 // — the one pre-loop hook that holds the AppHost — so the ambient power policy attaches there on EVERY launch, and a bench
 // or the lyrics probe takes the loop over only when its flag was passed.
 
@@ -131,7 +131,7 @@ public static partial class Diagnostics
 
         // ══ 2. THE GUI ARMS ═════════════════════════════════════════════════════════════════════════════════════════
 
-        /// <summary>Called ONCE by <c>Diagnostics.Install()</c>, before <c>Shell.Run()</c>. Idempotent.</summary>
+        /// <summary>Called ONCE by <c>Diagnostics.InstallServices()</c>, before <c>Shell.Run()</c>. Idempotent.</summary>
         internal static void InstallGuiArms(string[] args)
         {
             if (Interlocked.Exchange(ref s_guiInstalled, 1) != 0) return;

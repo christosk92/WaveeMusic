@@ -131,7 +131,7 @@ public static partial class Platform
             WaveeLogField.Of("framework", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription),
             WaveeLogField.Of("os", System.Runtime.InteropServices.RuntimeInformation.OSDescription));
         // The update end-to-end harness waits for this exact line: category app, event startup.
-        if (Array.IndexOf(Environment.GetCommandLineArgs(), RelaunchedAfterUpdateFlag) >= 0)
+        if (Array.IndexOf(Args.Argv, RelaunchedAfterUpdateFlag) >= 0)
             Log.Event(WaveeLogLevel.Info, "app", "startup", "relaunched by Windows after an update", null, -1, null,
                 WaveeLogField.Of("flag", RelaunchedAfterUpdateFlag));
 

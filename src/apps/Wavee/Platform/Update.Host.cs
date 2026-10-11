@@ -488,7 +488,7 @@ public static partial class Update
             IsDev = me.IsDev;
 
             // The "relaunched by Windows after an update" boot line is Platform.Host.cs's (S); this only remembers the fact.
-            RelaunchedAfterUpdate = Array.IndexOf(Environment.GetCommandLineArgs(), Platform.RelaunchedAfterUpdateFlag) >= 0;
+            RelaunchedAfterUpdate = Array.IndexOf(Platform.Args.Argv, Platform.RelaunchedAfterUpdateFlag) >= 0;
             PreviousRunVersion = Platform.Settings.Get(Platform.Keys.LastRunVersion);
             UpdatedFrom = LaunchVersion.Arm(Platform.Settings, me.IsDev, me.LastRunKey,
                 PackageIdentity.PackageFullName is { Length: > 0 } pfn ? pfn : "unpackaged", Platform.LocalFolder);

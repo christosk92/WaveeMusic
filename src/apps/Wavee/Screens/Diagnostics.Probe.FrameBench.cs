@@ -63,7 +63,7 @@ public static partial class Diagnostics
             s_benchDevice = d3d;
             bool fake = Platform.Args.Fake;
             if (FrameBenchOptions.RealRefusal(fake, o.Real, Platform.ProfileRoot) is { } refusal) { Say("[frame-bench] refusing: " + refusal); return true; }
-            foreach (string bad in FrameBenchOptions.UnknownNames(Environment.GetCommandLineArgs()))
+            foreach (string bad in FrameBenchOptions.UnknownNames(Platform.Args.Argv))
                 Say("[frame-bench] unknown scenario '" + bad + "' (known: " + string.Join(",", FrameBenchScenarios.All) + ")");
             if (o.Scenarios.Length == 0) { Say("[frame-bench] no scenario selected"); return true; }
 

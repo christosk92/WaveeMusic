@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The shell test host's suites (themes plan §2.1, H0): the REAL shell frame mounted on the engine's headless host by
+       `Shell.Headless`. Its own test process, because the boot it runs once leaves process statics behind (the page
+       table, AppActions, Platform.Args, the settings backing, Platform.UiThreadId) that the 15k unit tests in
+       Wavee.Tests must never see; every fact runs on the one UI thread `ShellHost` boots (`ShellHost.Run`). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <!-- xUnit1051: the v3 "pass TestContext.Current.CancellationToken" nag is noise for these deterministic facts. -->
+    <NoWarn>$(NoWarn);xUnit1051;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit.v3" Version="3.0.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Wavee\Wavee.csproj" />
+  </ItemGroup>
+
+</Project>

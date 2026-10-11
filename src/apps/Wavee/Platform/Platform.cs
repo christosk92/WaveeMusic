@@ -401,6 +401,12 @@ public static partial class Platform
 /// (ch 00 §6.5) — the policy supports it; nothing writes it.</summary>
 public enum ZoomAutoMode { Auto = 0, Manual = 1, Dense = 2 }
 
+/// <summary>Which process the boot (<see cref="Platform.Boot"/>, <c>App.BootCore</c>) is for. <see cref="Gui"/> is the
+/// app. <see cref="HeadlessFake"/> is the shell test host (<c>Shell.Headless</c>): the same steps in the same order over
+/// `--fake`, a temporary profile and memory settings, without the GUI process's own services (the single-instance gate,
+/// the marshallers, the log file, crash reporting, the updater, OS subscriptions, background timers).</summary>
+public enum BootProfile : byte { Gui = 0, HeadlessFake = 1 }
+
 /// <summary>Derives the app zoom from the window's DIP extent against the app's own design box, so a single "one
 /// number for every display" zoom stops being wrong on a 2×-DIP-wider monitor. BCL-only by construction, so the
 /// tests drive the REAL decision rather than a copy of it.
@@ -922,7 +928,22 @@ public static partial class Platform
         /// <c>Platform.Boot()</c>, the other two ways in (crash-diagnostics plan §B.8, §I "WP-D").</summary>
         public static bool Recovery { get; private set; }
 
-        internal static void Parse(string[] argv)
+        /// <summary>This launch's command line: what <see cref="Boot"/> was handed, and the one copy every later argv read
+        /// (the single-instance gate, the harness arms, the diagnostics probes) goes through. Empty until <see cref="Use"/>.</summary>
+        public static string[] Argv { get; private set; } = [];
+
+        /// <summary>Take <paramref name="argv"/> as the launch's command line and parse every flag above from it. Called by
+        /// <see cref="Boot"/>; the headless shell host's boot passes its own argv instead of the test runner's.</summary>
+        public static void Use(string[] argv)
+        {
+            Argv = argv;
+            Parse(argv);
+        }
+
+        /// <summary>Back to an empty command line (every flag off). For a test that ran <see cref="Use"/>.</summary>
+        public static void ResetForTests() => Use([]);
+
+        static void Parse(string[] argv)
         {
             Fake = Array.IndexOf(argv, "--fake") >= 0;
             int fv = Fake ? Array.IndexOf(argv, "--fake-video") : -1;
@@ -1166,13 +1187,17 @@ public static partial class Platform
     /// <item>the crash writers, as soon as the log exists — a crash anywhere after this leaves a report on disk.</item>
     /// </list>
     /// One-shot and allowed to allocate. Nothing here opens a socket, a database or a window.</summary>
-    public static void Boot()
+    /// <para><paramref name="argv"/> is the launch's command line (<c>Environment.GetCommandLineArgs()</c> for the app);
+    /// every flag is argv only — CLAUDE.md forbids an environment-variable switch for behaviour or verification (ch 31
+    /// §0.15, which is precisely why `WAVEE_FAKE_CHALLENGE` does NOT get ported as a second env var).
+    /// <see cref="BootProfile.HeadlessFake"/> (the shell test host) keeps the same order but skips what belongs to a GUI
+    /// process: the OS culture (the launch resolves English), the log FILE and the engine's <c>Diag</c> sink (the ring
+    /// log stays), the crash writers and the realtime capture. Its argv must carry `--fake`, so the backing is memory.</para></summary>
+    public static void Boot(string[] argv, BootProfile profile = BootProfile.Gui)
     {
-        // Self-contained (no `Main(string[] args)` signature change needed anywhere): the process's own command
-        // line, read once, is exactly what `Environment.GetCommandLineArgs()` is for. Every flag below is argv
-        // only — CLAUDE.md forbids an environment-variable switch for behaviour or verification (ch 31 §0.15,
-        // which is precisely why `WAVEE_FAKE_CHALLENGE` does NOT get ported as a second env var).
-        Args.Parse(Environment.GetCommandLineArgs());
+        Args.Use(argv);
+        bool gui = profile == BootProfile.Gui;
+        if (!gui && !Args.Fake) throw new ArgumentException("the headless shell profile boots only with --fake", nameof(argv));
         Backing = SettingsBackingFor(Args.Fake, ProfileRoot);
         // Never in the broker (a courier), a headless run or a `--fake` demo: none of them is the profile the reset was
         // armed for, and a wipe there would eat the user's real profile from a scratch launch.
@@ -1182,12 +1207,15 @@ public static partial class Platform
         Developer.Load(Settings);
         Diagnostics.ScrollSettings.Load(Settings);   // the scroll probe level + feel profile, before the first window
         string osCulture = "";
-        HostOsCulture(ref osCulture);
+        if (gui) HostOsCulture(ref osCulture);
         var locale = AppLocale.Resolve(Settings, osCulture);
         HostOpenLocale(ref locale);
         Locale = locale;
-        HostOpenLog();
-        HostInstallCrashWriters();
+        if (gui)
+        {
+            HostOpenLog();
+            HostInstallCrashWriters();
+        }
         HostOpenCredentials();
         Scope = ResolveScope();
         Log.Event(WaveeLogLevel.Info, "app", "startup", "platform booted", null, Log.SinceStartMs, null,
